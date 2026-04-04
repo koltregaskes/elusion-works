@@ -1,0 +1,9 @@
+.local/
+Thumbs.db
+Desktop.ini
+.DS_Store
+node_modules/
+dist/
+site/
+.vercel/
+.cache/

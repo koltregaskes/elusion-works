@@ -1,0 +1,7 @@
+# Elusion Works
+
+Elusion Works is the umbrella brand and index for websites, tools, hubs, and future games by Kol Tregaskes.
+
+- Primary page: `/`
+- Content model: static data-driven index
+- Focus: websites, hubs, tools, pipelines, and future interactive work

@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Elusion Works</title>
+    <meta
+      name="description"
+      content="Elusion Works is the umbrella index for websites, tools, hubs, and games built by Kol Tregaskes."
+    />
+    <meta
+      name="keywords"
+      content="Elusion Works, digital studio, websites, tools, hubs, games, Kol Tregaskes"
+    />
+    <meta name="theme-color" content="#111416" />
+    <meta property="og:title" content="Elusion Works" />
+    <meta
+      property="og:description"
+      content="Websites, tools, hubs, and games under one crafted digital brand."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://koltregaskes.github.io/elusion-works/assets/og-card.png" />
+    <meta property="og:url" content="https://koltregaskes.github.io/elusion-works/" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Elusion Works" />
+    <meta
+      name="twitter:description"
+      content="Websites, tools, hubs, and games under one crafted digital brand."
+    />
+    <meta name="twitter:image" content="https://koltregaskes.github.io/elusion-works/assets/og-card.png" />
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="site-shell">
+      <header class="site-header">
+        <a class="brand-lockup" href="#top" aria-label="Elusion Works home">
+          <img src="assets/elusion-mark.svg" alt="" width="46" height="46" />
+          <div>
+            <span class="brand-kicker">Elusion</span>
+            <strong>Works</strong>
+          </div>
+        </a>
+        <nav class="top-nav" aria-label="Primary">
+          <a href="#websites">Websites & Hubs</a>
+          <a href="#tools">Tools</a>
+          <a href="#games">Games</a>
+          <a href="#about">About</a>
+        </nav>
+      </header>
+
+      <main id="top">
+        <section class="hero">
+          <div class="hero-copy">
+            <p class="eyebrow">Digital forge / umbrella index / v1</p>
+            <h1>Elusion Works builds websites, tools, hubs, and games.</h1>
+            <p class="hero-text">
+              A central surface for live products, experiments, and digital systems built
+              under one crafted brand.
+            </p>
+            <div class="hero-actions">
+              <a class="button button-primary" href="#websites">See the estate</a>
+              <a class="button button-secondary" href="#about">Read the brand note</a>
+            </div>
+            <dl class="hero-facts">
+              <div>
+                <dt>Brand root</dt>
+                <dd>Elusion</dd>
+              </div>
+              <div>
+                <dt>Primary domain target</dt>
+                <dd>elusionworks.com</dd>
+              </div>
+              <div>
+                <dt>Current mode</dt>
+                <dd>Building in public</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div class="hero-mark" aria-hidden="true">
+            <div class="hero-grid"></div>
+            <div class="monogram-frame">
+              <img src="assets/elusion-mark.svg" alt="" />
+            </div>
+            <div class="hero-caption">
+              <span>crafted systems</span>
+              <span>live sites</span>
+              <span>future games</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="featured-strip" aria-labelledby="featured-heading">
+          <div class="section-heading compact">
+            <p class="eyebrow">Featured now</p>
+            <h2 id="featured-heading">The active front line of the estate.</h2>
+          </div>
+          <div id="featured-items" class="featured-grid"></div>
+        </section>
+
+        <section class="filter-bar" aria-label="Estate filters">
+          <div class="filter-copy">
+            <p class="eyebrow">Filter the estate</p>
+            <h2>See what is live, what is in build, and what is still in the forge.</h2>
+          </div>
+          <div class="filter-controls" id="filter-controls">
+            <button class="filter-button is-active" data-filter="all" type="button">All entries</button>
+            <button class="filter-button" data-filter="live" type="button">Live now</button>
+            <button class="filter-button" data-filter="in-progress" type="button">In build</button>
+            <button class="filter-button" data-filter="coming-soon" type="button">Coming soon</button>
+          </div>
+        </section>
+
+        <section class="catalogue-section" id="websites" aria-labelledby="websites-heading">
+          <div class="section-heading">
+            <p class="eyebrow">Websites & hubs</p>
+            <h2 id="websites-heading">Public-facing surfaces already in motion.</h2>
+            <p>
+              These are the active publishing, portfolio, and reference properties currently
+              moving through the estate.
+            </p>
+          </div>
+          <div class="catalogue-grid" id="websites-list"></div>
+        </section>
+
+        <section class="catalogue-section" id="tools" aria-labelledby="tools-heading">
+          <div class="section-heading">
+            <p class="eyebrow">Tools</p>
+            <h2 id="tools-heading">The systems behind the surfaces.</h2>
+            <p>
+              A mix of live utility pages and internal-facing pipelines that will become more
+              visible as the tooling hardens.
+            </p>
+          </div>
+          <div class="catalogue-grid" id="tools-list"></div>
+        </section>
+
+        <section class="catalogue-section" id="games" aria-labelledby="games-heading">
+          <div class="section-heading">
+            <p class="eyebrow">Games</p>
+            <h2 id="games-heading">Playable work is planned, not forgotten.</h2>
+            <p>
+              The game layer is still early, but it belongs under the same roof and will grow
+              into public releases over time.
+            </p>
+          </div>
+          <div class="catalogue-grid" id="games-list"></div>
+        </section>
+
+        <section class="about-section" id="about" aria-labelledby="about-heading">
+          <div class="section-heading">
+            <p class="eyebrow">About</p>
+            <h2 id="about-heading">Why Elusion Works exists.</h2>
+          </div>
+          <div class="about-grid">
+            <div class="about-copy">
+              <p>
+                <strong>Elusion Works</strong> is the umbrella brand for digital products,
+                publishing systems, creative technology, and future interactive work built by
+                Kol Tregaskes.
+              </p>
+              <p>
+                <strong>Elusion</strong> is the root idea: digital creation, transformation,
+                invention, and interactive craft. <strong>Works</strong> keeps the name broad
+                enough to cover websites, tools, media, and games without boxing the brand
+                into one narrow category.
+              </p>
+            </div>
+            <div class="about-panel">
+              <h3>Launch note</h3>
+              <p>
+                This first version is intentionally simple: a fast index, a strong brand
+                signal, and a clear map of what already exists.
+              </p>
+              <ul class="about-list">
+                <li>Brand handle sweep is underway.</li>
+                <li>The domain target is <code>elusionworks.com</code>.</li>
+                <li>Future expansions can add richer case studies, news, and deeper product pages.</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="site-footer">
+        <p>&copy; 2026 Elusion Works by Kol Tregaskes. All rights reserved.</p>
+        <div class="footer-links">
+          <a href="https://github.com/koltregaskes" target="_blank" rel="noreferrer">GitHub</a>
+          <a href="#top">Back to top</a>
+        </div>
+      </footer>
+    </div>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
