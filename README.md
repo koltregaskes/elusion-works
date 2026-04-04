@@ -16,7 +16,7 @@ Elusion Works is the umbrella brand and central index for the websites, tools, h
 - `app.js` - data-driven rendering and filters
 - `data/estate.js` - structured entries for websites, hubs, tools, and games
 - `assets/` - favicon, mark, and social preview assets
-- `docs/` - brand guidance, prompts, and site notes
+- `docs/` - brand guidance, prompts, architecture, and naming notes
 
 ## Local Preview
 
@@ -35,3 +35,13 @@ Then open `http://localhost:8123`.
 This repo is set up for GitHub Pages using the workflow in `.github/workflows/pages.yml`.
 
 The workflow publishes only the public site files, not the repo docs.
+
+## Brand Direction
+
+The current recommended structure is:
+
+- `Elusion` as the root brand idea
+- `Elusion Works` as the umbrella operating brand
+- distinctive product names only where a property has earned its own identity
+
+See [docs/brand-architecture.md](docs/brand-architecture.md) for the current naming model.
