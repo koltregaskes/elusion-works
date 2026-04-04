@@ -1,29 +1,46 @@
 <svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="1200" height="630" fill="#0F1214"/>
-  <rect x="32" y="32" width="1136" height="566" stroke="#2D3740" stroke-width="4"/>
-  <g opacity="0.26">
-    <path d="M0 105H1200" stroke="#223039"/>
-    <path d="M0 210H1200" stroke="#223039"/>
-    <path d="M0 315H1200" stroke="#223039"/>
-    <path d="M0 420H1200" stroke="#223039"/>
-    <path d="M0 525H1200" stroke="#223039"/>
-    <path d="M150 0V630" stroke="#223039"/>
-    <path d="M300 0V630" stroke="#223039"/>
-    <path d="M450 0V630" stroke="#223039"/>
-    <path d="M600 0V630" stroke="#223039"/>
-    <path d="M750 0V630" stroke="#223039"/>
-    <path d="M900 0V630" stroke="#223039"/>
-    <path d="M1050 0V630" stroke="#223039"/>
+  <rect width="1200" height="630" fill="#090909"/>
+  <rect x="26" y="26" width="1148" height="578" rx="34" stroke="#241F1B" stroke-width="4"/>
+  <g opacity="0.22">
+    <path d="M0 126H1200" stroke="#231F1B"/>
+    <path d="M0 252H1200" stroke="#231F1B"/>
+    <path d="M0 378H1200" stroke="#231F1B"/>
+    <path d="M0 504H1200" stroke="#231F1B"/>
+    <path d="M171 0V630" stroke="#231F1B"/>
+    <path d="M342 0V630" stroke="#231F1B"/>
+    <path d="M513 0V630" stroke="#231F1B"/>
+    <path d="M684 0V630" stroke="#231F1B"/>
+    <path d="M855 0V630" stroke="#231F1B"/>
+    <path d="M1026 0V630" stroke="#231F1B"/>
   </g>
-  <rect x="84" y="84" width="1032" height="462" rx="28" fill="#14191D" stroke="#303A40" stroke-width="4"/>
-  <rect x="124" y="124" width="280" height="280" rx="24" fill="#0C1012" stroke="#374249" stroke-width="4"/>
-  <path d="M168 158H302V196H204V232H280V270H204V326H308V364H168V158Z" fill="#F4EFE7"/>
-  <path d="M320 178L344 356L386 242L428 356L452 178" stroke="#F46E28" stroke-width="28" stroke-linecap="square" stroke-linejoin="round"/>
-  <path d="M124 448H410" stroke="#80DDF7" stroke-width="6"/>
-  <text x="472" y="228" fill="#F4EFE7" font-family="'IBM Plex Sans', Arial, sans-serif" font-size="82" font-weight="700">Elusion Works</text>
-  <text x="472" y="300" fill="#C0B8AC" font-family="'IBM Plex Sans', Arial, sans-serif" font-size="34">
-    Websites, tools, hubs, and games under one crafted digital brand.
+  <rect x="64" y="64" width="1072" height="502" rx="28" fill="#111112" stroke="#28221D" stroke-width="4"/>
+  <rect x="94" y="94" width="372" height="442" rx="26" fill="#0B0B0C" stroke="#26211C" stroke-width="3"/>
+  <circle cx="280" cy="202" r="124" fill="url(#paint0_radial)" opacity="0.7"/>
+  <path fill-rule="evenodd" clip-rule="evenodd" d="M148 132H318L224 354L148 132ZM202 177H267L248 211H223L236 233H257L238 267H209L202 177Z" fill="#F4EFE7"/>
+  <path d="M323 139H367L316 355H272L323 139Z" fill="#F4EFE7"/>
+  <path d="M378 139H422L371 355H327L378 139Z" fill="#F4EFE7"/>
+  <text x="94" y="430" fill="#F4EFE7" font-family="'IBM Plex Mono', monospace" font-size="18" letter-spacing="5">UMBRA / DIGITAL FORGE / ACTIVE ESTATE</text>
+  <text x="94" y="474" fill="#BDAF9E" font-family="'IBM Plex Sans', Arial, sans-serif" font-size="22">
+    The operating layer for websites, hubs, tools,
   </text>
-  <text x="472" y="402" fill="#80DDF7" font-family="'IBM Plex Mono', monospace" font-size="24" letter-spacing="5">DIGITAL FORGE / ESTATE INDEX / V1</text>
-  <text x="472" y="466" fill="#F46E28" font-family="'IBM Plex Mono', monospace" font-size="24" letter-spacing="5">ELUSIONWORKS.COM</text>
+  <text x="94" y="506" fill="#BDAF9E" font-family="'IBM Plex Sans', Arial, sans-serif" font-size="22">
+    and future games under one sharp studio brand.
+  </text>
+  <text x="522" y="218" fill="#F4EFE7" font-family="'Teko', 'Arial Narrow', sans-serif" font-size="146" font-weight="600" letter-spacing="4">ELUSION</text>
+  <text x="522" y="304" fill="#C5BBAD" font-family="'Teko', 'Arial Narrow', sans-serif" font-size="96" font-weight="600" letter-spacing="26">WORKS</text>
+  <text x="522" y="388" fill="#F4EFE7" font-family="'IBM Plex Sans', Arial, sans-serif" font-size="36" font-weight="600">
+    A forged digital studio surface for websites,
+  </text>
+  <text x="522" y="434" fill="#F4EFE7" font-family="'IBM Plex Sans', Arial, sans-serif" font-size="36" font-weight="600">
+    hubs, tools, and future games.
+  </text>
+  <path d="M522 472H1092" stroke="#28221D" stroke-width="3"/>
+  <text x="522" y="516" fill="#F2793F" font-family="'IBM Plex Mono', monospace" font-size="20" letter-spacing="5">ELUSIONWORKS.COM</text>
+  <text x="830" y="516" fill="#B6CDD7" font-family="'IBM Plex Mono', monospace" font-size="20" letter-spacing="5">MASTER BRAND / OPERATING LAYER</text>
+  <defs>
+    <radialGradient id="paint0_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(280 202) rotate(90) scale(124)">
+      <stop stop-color="#F2793F" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#F2793F" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
 </svg>

@@ -1,6 +1,12 @@
-<svg width="256" height="256" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="512" height="512" rx="88" fill="#0F1214"/>
-  <rect x="40" y="40" width="432" height="432" rx="64" stroke="#2A3338" stroke-width="12"/>
-  <path d="M132 138H292V182H176V228H266V272H176V330H300V374H132V138Z" fill="#F4EFE7"/>
-  <path d="M306 156L330 356L374 226L418 356L442 156" stroke="#F46E28" stroke-width="32" stroke-linecap="square" stroke-linejoin="round"/>
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="108" fill="#090909" />
+  <rect x="26" y="26" width="460" height="460" rx="82" stroke="#2A2622" stroke-width="10" />
+  <path
+    fill-rule="evenodd"
+    clip-rule="evenodd"
+    d="M118 118H318L208 376L118 118ZM181 171H258L235 211H205L220 237H245L222 277H189L181 171Z"
+    fill="#F4EFE7"
+  />
+  <path d="M323 126H373L313 378H263L323 126Z" fill="#F4EFE7" />
+  <path d="M386 126H436L376 378H326L386 126Z" fill="#F4EFE7" />
 </svg>

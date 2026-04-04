@@ -23,6 +23,7 @@ const searchInput = document.querySelector("#search-input");
 const statusControls = document.querySelector("#filter-controls");
 const resultsLabel = document.querySelector("#results-summary");
 const featuredTarget = document.querySelector("#featured-items");
+const heroStage = document.querySelector(".hero-stage");
 
 const metricTargets = {
   total: document.querySelector('[data-metric="total"]'),
@@ -63,29 +64,38 @@ function actionLabel(item) {
   return item.status === "live" ? "Open live" : "View progress";
 }
 
-function createEntryMarkup(item) {
-  const tags = item.tags.map((tag) => `<li>${tag}</li>`).join("");
+function createTags(item) {
+  return item.tags.map((tag) => `<li>${tag}</li>`).join("");
+}
+
+function createCardMarkup(item, variant = "catalogue") {
+  const tags = createTags(item);
+  const prefix = variant === "featured" ? "featured" : "entry";
   const link = item.url
     ? `<a class="entry-link" href="${item.url}" target="_blank" rel="noreferrer">${actionLabel(item)}</a>`
     : `<span class="entry-link is-disabled">${actionLabel(item)}</span>`;
   const cardAttrs = item.url
     ? `data-clickable="true" data-url="${item.url}"`
     : `data-clickable="false"`;
+  const className = variant === "featured" ? "featured-card tilt-surface" : "entry-card tilt-surface";
 
   return `
-    <article class="entry-card" ${cardAttrs}>
-      <div class="entry-card-header">
+    <article class="${className}" ${cardAttrs}>
+      <div class="${prefix}-card-header">
         <span class="entry-type">${item.type}</span>
         <span class="entry-status" data-status="${item.status}">${statusLabel(item.status)}</span>
       </div>
-      <div class="entry-title-row">
-        <h3>${item.name}</h3>
-        <span class="entry-family">${item.family}</span>
+      <div class="${prefix}-card-body">
+        <div class="${variant === "featured" ? "featured-copy" : "entry-copy"}">
+          <h3>${item.name}</h3>
+          <p>${item.blurb}</p>
+        </div>
+        <div class="entry-meta">
+          <span class="entry-family">${item.family}</span>
+          <ul class="tag-list">${tags}</ul>
+        </div>
       </div>
-      <p>${item.blurb}</p>
-      <ul class="tag-list">${tags}</ul>
-      <div class="entry-card-footer">${link}</div>
-      <span class="entry-glow" aria-hidden="true"></span>
+      <div class="${prefix}-card-footer">${link}</div>
     </article>
   `;
 }
@@ -113,15 +123,16 @@ function renderGroup(group) {
   const section = groupSections[group];
 
   target.innerHTML = items.length
-    ? items.map(createEntryMarkup).join("")
+    ? items.map((item) => createCardMarkup(item, "catalogue")).join("")
     : createEmptyMarkup("No entries match this filter");
+
   section.classList.toggle("is-hidden", items.length === 0);
 }
 
 function renderFeatured() {
   const featured = estateItems.filter((item) => item.featured && entryMatches(item));
   featuredTarget.innerHTML = featured.length
-    ? featured.map(createEntryMarkup).join("")
+    ? featured.map((item) => createCardMarkup(item, "featured")).join("")
     : createEmptyMarkup("No featured surfaces match right now");
 }
 
@@ -133,6 +144,92 @@ function updateResultSummary() {
       : `${estateItems.length} total entries`;
 }
 
+function attachInteractiveSurface(surface) {
+  if (surface.dataset.interactiveBound === "true") {
+    return;
+  }
+
+  surface.dataset.interactiveBound = "true";
+
+  surface.addEventListener("mousemove", (event) => {
+    const rect = surface.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const rx = ((y / rect.height) - 0.5) * -8;
+    const ry = ((x / rect.width) - 0.5) * 8;
+
+    surface.style.setProperty("--mx", `${x}px`);
+    surface.style.setProperty("--my", `${y}px`);
+    surface.style.transform = `perspective(1000px) rotateX(${rx}deg) rotateY(${ry}deg) translateY(-3px)`;
+  });
+
+  surface.addEventListener("mouseleave", () => {
+    surface.style.transform = "";
+  });
+}
+
+function attachCardBehaviors() {
+  document.querySelectorAll(".tilt-surface").forEach((surface) => {
+    attachInteractiveSurface(surface);
+  });
+
+  document.querySelectorAll(".entry-card, .featured-card").forEach((card) => {
+    if (card.dataset.clickBound === "true") {
+      return;
+    }
+
+    card.dataset.clickBound = "true";
+    const url = card.dataset.url;
+
+    if (!url) {
+      return;
+    }
+
+    card.addEventListener("click", (event) => {
+      if (event.target.closest("a")) {
+        return;
+      }
+
+      window.open(url, "_blank", "noopener");
+    });
+  });
+}
+
+function initRevealObserver() {
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) {
+          return;
+        }
+
+        entry.target.classList.add("is-visible");
+        observer.unobserve(entry.target);
+      });
+    },
+    {
+      threshold: 0.14,
+      rootMargin: "0px 0px -6% 0px",
+    }
+  );
+
+  document.querySelectorAll(".reveal").forEach((node) => observer.observe(node));
+}
+
+function initHeroStage() {
+  if (!heroStage) {
+    return;
+  }
+
+  heroStage.addEventListener("mousemove", (event) => {
+    const rect = heroStage.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * 100;
+    const y = ((event.clientY - rect.top) / rect.height) * 100;
+    heroStage.style.setProperty("--sx", `${x}%`);
+    heroStage.style.setProperty("--sy", `${y}%`);
+  });
+}
+
 function render() {
   setMetricCounts();
   renderFeatured();
@@ -142,30 +239,6 @@ function render() {
   renderGroup("games");
   updateResultSummary();
   attachCardBehaviors();
-}
-
-function attachCardBehaviors() {
-  document.querySelectorAll(".entry-card").forEach((card) => {
-    const url = card.dataset.url;
-
-    if (url) {
-      card.addEventListener("click", (event) => {
-        if (event.target.closest("a")) {
-          return;
-        }
-
-        window.open(url, "_blank", "noopener");
-      });
-    }
-
-    card.addEventListener("mousemove", (event) => {
-      const rect = card.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      card.style.setProperty("--mx", `${x}px`);
-      card.style.setProperty("--my", `${y}px`);
-    });
-  });
 }
 
 statusControls.addEventListener("click", (event) => {
@@ -186,4 +259,6 @@ searchInput.addEventListener("input", (event) => {
   render();
 });
 
+initHeroStage();
+initRevealObserver();
 render();
