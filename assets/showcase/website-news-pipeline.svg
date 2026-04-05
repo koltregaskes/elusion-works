@@ -1,0 +1,53 @@
+<svg width="1200" height="900" viewBox="0 0 1200 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="900" fill="#0B0D10"/>
+  <rect x="28" y="28" width="1144" height="844" rx="34" stroke="#24282D" stroke-width="4"/>
+  <g opacity="0.32">
+    <path d="M88 164H1112" stroke="#1F2328"/>
+    <path d="M88 284H1112" stroke="#1F2328"/>
+    <path d="M88 404H1112" stroke="#1F2328"/>
+    <path d="M88 524H1112" stroke="#1F2328"/>
+    <path d="M88 644H1112" stroke="#1F2328"/>
+    <path d="M88 764H1112" stroke="#1F2328"/>
+  </g>
+  <text x="88" y="102" fill="#B7AEA3" font-family="'IBM Plex Mono', monospace" font-size="22" letter-spacing="5">ELUSION WORKS / TOOL TRACK</text>
+  <text x="88" y="186" fill="#F2ECE3" font-family="'Newsreader', Georgia, serif" font-size="94" letter-spacing="-2">Website News Pipeline</text>
+  <text x="88" y="242" fill="#B7AEA3" font-family="'Manrope', sans-serif" font-size="28">Shared publishing flow for collecting, filtering, routing, and releasing updates across the estate.</text>
+  <rect x="88" y="316" width="252" height="300" rx="28" fill="#12161B" stroke="#2B3138" stroke-width="3"/>
+  <rect x="394" y="316" width="252" height="300" rx="28" fill="#12161B" stroke="#2B3138" stroke-width="3"/>
+  <rect x="700" y="316" width="412" height="300" rx="28" fill="#12161B" stroke="#2B3138" stroke-width="3"/>
+  <rect x="128" y="374" width="172" height="48" rx="24" fill="#1A1F25"/>
+  <rect x="128" y="446" width="140" height="18" rx="9" fill="#222931"/>
+  <rect x="128" y="480" width="160" height="18" rx="9" fill="#222931"/>
+  <rect x="128" y="514" width="122" height="18" rx="9" fill="#222931"/>
+  <circle cx="520" cy="438" r="80" fill="url(#paint0_radial)"/>
+  <circle cx="520" cy="438" r="44" fill="#12161B" stroke="#D9A36E" stroke-width="3"/>
+  <path d="M462 438H578" stroke="#D9A36E" stroke-width="3"/>
+  <path d="M520 380V496" stroke="#D9A36E" stroke-width="3"/>
+  <path d="M475 393L565 483" stroke="#D9A36E" stroke-width="3"/>
+  <path d="M565 393L475 483" stroke="#D9A36E" stroke-width="3"/>
+  <rect x="748" y="372" width="318" height="54" rx="20" fill="#1A1F25"/>
+  <rect x="748" y="452" width="244" height="22" rx="11" fill="#20272E"/>
+  <rect x="748" y="490" width="286" height="22" rx="11" fill="#20272E"/>
+  <rect x="748" y="528" width="200" height="22" rx="11" fill="#20272E"/>
+  <path d="M340 466H394" stroke="#8FD0A6" stroke-width="4" stroke-linecap="round"/>
+  <path d="M646 466H700" stroke="#8FD0A6" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="340" cy="466" r="9" fill="#8FD0A6"/>
+  <circle cx="394" cy="466" r="9" fill="#8FD0A6"/>
+  <circle cx="646" cy="466" r="9" fill="#8FD0A6"/>
+  <circle cx="700" cy="466" r="9" fill="#8FD0A6"/>
+  <text x="128" y="352" fill="#D9A36E" font-family="'IBM Plex Mono', monospace" font-size="20" letter-spacing="4">INTAKE</text>
+  <text x="458" y="352" fill="#D9A36E" font-family="'IBM Plex Mono', monospace" font-size="20" letter-spacing="4">FILTER</text>
+  <text x="748" y="352" fill="#D9A36E" font-family="'IBM Plex Mono', monospace" font-size="20" letter-spacing="4">ROUTE / PUBLISH</text>
+  <text x="88" y="720" fill="#F2ECE3" font-family="'IBM Plex Mono', monospace" font-size="20" letter-spacing="5">COLLECT</text>
+  <text x="244" y="720" fill="#8AA0AD" font-family="'IBM Plex Mono', monospace" font-size="20" letter-spacing="5">FILTER</text>
+  <text x="390" y="720" fill="#8FD0A6" font-family="'IBM Plex Mono', monospace" font-size="20" letter-spacing="5">PRIORITIZE</text>
+  <text x="610" y="720" fill="#D9A36E" font-family="'IBM Plex Mono', monospace" font-size="20" letter-spacing="5">PUBLISH</text>
+  <path d="M88 748H1112" stroke="#24282D" stroke-width="3"/>
+  <text x="88" y="804" fill="#B7AEA3" font-family="'Manrope', sans-serif" font-size="24">Shared tooling intended to support multiple public sites without turning the front door into infrastructure jargon.</text>
+  <defs>
+    <radialGradient id="paint0_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(520 438) rotate(90) scale(80)">
+      <stop stop-color="#D9A36E" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="#D9A36E" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+</svg>

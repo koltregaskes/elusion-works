@@ -5,29 +5,34 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Not Found / Elusion Works</title>
     <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="styles.css" />
   </head>
-  <body>
-    <div class="site-shell">
-      <main class="hero" style="min-height: calc(100vh - 3rem);">
-        <section class="hero-copy">
-          <p class="eyebrow">404 / route missing</p>
-          <h1>This path is not in the forge.</h1>
-          <p class="hero-text">
-            The page you were looking for does not exist yet, or it moved while the estate was
-            being rebuilt.
-          </p>
-          <div class="hero-actions">
-            <a class="button button-primary" href="index.html">Return home</a>
+  <body class="error-page">
+    <main class="error-shell">
+      <section class="error-card">
+        <a class="brand-lockup" href="index.html" aria-label="Return to Elusion Works home">
+          <img src="assets/elusion-mark.svg" alt="" width="50" height="50" />
+          <div class="brand-copy">
+            <span class="brand-root">Elusion</span>
+            <strong>Works</strong>
           </div>
-        </section>
-        <section class="hero-mark" aria-hidden="true">
-          <div class="hero-grid"></div>
-          <div class="monogram-frame">
-            <img src="assets/elusion-mark.svg" alt="" />
-          </div>
-        </section>
-      </main>
-    </div>
+        </a>
+
+        <p class="eyebrow">404 / page not found</p>
+        <h1>This page is not available.</h1>
+        <p>
+          The address may have changed, or the page may not be part of the public site yet.
+        </p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="index.html">Return home</a>
+        </div>
+      </section>
+    </main>
   </body>
 </html>

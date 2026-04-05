@@ -5,6 +5,19 @@ const state = {
   query: "",
 };
 
+const statusRank = {
+  live: 0,
+  "in-progress": 1,
+  "coming-soon": 2,
+};
+
+const typeRank = {
+  website: 0,
+  hub: 1,
+  tool: 2,
+  game: 3,
+};
+
 const groupTargets = {
   websites: document.querySelector("#websites-list"),
   hubs: document.querySelector("#hubs-list"),
@@ -19,11 +32,10 @@ const groupSections = {
   games: document.querySelector("#games"),
 };
 
+const featuredTarget = document.querySelector("#featured-items");
+const resultsLabel = document.querySelector("#results-summary");
 const searchInput = document.querySelector("#search-input");
 const statusControls = document.querySelector("#filter-controls");
-const resultsLabel = document.querySelector("#results-summary");
-const featuredTarget = document.querySelector("#featured-items");
-const heroStage = document.querySelector(".hero-stage");
 
 const metricTargets = {
   total: document.querySelector('[data-metric="total"]'),
@@ -32,76 +44,126 @@ const metricTargets = {
   groups: document.querySelector('[data-metric="groups"]'),
 };
 
+const featuredItems = estateItems
+  .filter((item) => item.featured)
+  .sort((a, b) => (a.featureOrder ?? 99) - (b.featureOrder ?? 99));
+
 function normalize(value) {
   return String(value ?? "").toLowerCase().trim();
 }
 
-function entryMatches(entry) {
-  const query = normalize(state.query);
-  const text = normalize(
-    [entry.name, entry.blurb, entry.family, entry.type, entry.group, ...entry.tags].join(" ")
-  );
-
-  const statusOk = state.status === "all" || entry.status === state.status;
-  const queryOk = query.length === 0 || text.includes(query);
-
-  return statusOk && queryOk;
-}
-
 function statusLabel(value) {
-  return value.replace(/-/g, " ");
+  return value === "in-progress" ? "In build" : value.replace(/-/g, " ");
 }
 
 function formatMetric(value) {
   return String(value).padStart(2, "0");
 }
 
-function actionLabel(item) {
-  if (!item.url) {
-    return "Still in build";
+function sortDirectoryItems(a, b) {
+  const statusDelta = (statusRank[a.status] ?? 99) - (statusRank[b.status] ?? 99);
+  if (statusDelta !== 0) {
+    return statusDelta;
   }
 
-  return item.status === "live" ? "Open live" : "View progress";
+  const typeDelta = (typeRank[a.type] ?? 99) - (typeRank[b.type] ?? 99);
+  if (typeDelta !== 0) {
+    return typeDelta;
+  }
+
+  return a.name.localeCompare(b.name);
 }
 
-function createTags(item) {
-  return item.tags.map((tag) => `<li>${tag}</li>`).join("");
+function entryMatches(entry) {
+  const query = normalize(state.query);
+  const statusOk = state.status === "all" || entry.status === state.status;
+  const haystack = normalize(
+    [entry.name, entry.blurb, entry.family, entry.type, entry.group, ...entry.tags].join(" ")
+  );
+  const queryOk = !query || haystack.includes(query);
+
+  return statusOk && queryOk;
 }
 
-function createCardMarkup(item, variant = "catalogue") {
-  const tags = createTags(item);
-  const prefix = variant === "featured" ? "featured" : "entry";
-  const link = item.url
-    ? `<a class="entry-link" href="${item.url}" target="_blank" rel="noreferrer">${actionLabel(item)}</a>`
-    : `<span class="entry-link is-disabled">${actionLabel(item)}</span>`;
-  const cardAttrs = item.url
-    ? `data-clickable="true" data-url="${item.url}"`
-    : `data-clickable="false"`;
-  const className = variant === "featured" ? "featured-card tilt-surface" : "entry-card tilt-surface";
+function actionLabel(item) {
+  if (!item.url) {
+    return "In development";
+  }
+
+  return item.status === "live" ? "Open" : "View";
+}
+
+function createAction(item) {
+  if (!item.url) {
+    return `<span class="card-link is-disabled">${actionLabel(item)}</span>`;
+  }
+
+  return `<a class="card-link" href="${item.url}" target="_blank" rel="noreferrer">${actionLabel(item)}</a>`;
+}
+
+function createFeatureMedia(item) {
+  if (!item.media?.src) {
+    return "";
+  }
 
   return `
-    <article class="${className}" ${cardAttrs}>
-      <div class="${prefix}-card-header">
-        <span class="entry-type">${item.type}</span>
-        <span class="entry-status" data-status="${item.status}">${statusLabel(item.status)}</span>
+    <div class="feature-media">
+      <img
+        src="${item.media.src}"
+        alt="${item.media.alt ?? ""}"
+        loading="lazy"
+        decoding="async"
+      />
+    </div>
+  `;
+}
+
+function createCardMarkup(item, variant = "directory") {
+  const cardClass = variant === "feature" ? "feature-card" : "directory-card";
+  const clickableAttr = item.url ? `data-url="${item.url}" data-clickable="true"` : `data-clickable="false"`;
+  const media = variant === "feature" ? createFeatureMedia(item) : "";
+
+  return `
+    <article class="${cardClass}" ${clickableAttr}>
+      ${media}
+      <div class="card-top">
+        <span class="card-type">${item.type}</span>
+        <span class="card-status" data-status="${item.status}">${statusLabel(item.status)}</span>
       </div>
-      <div class="${prefix}-card-body">
-        <div class="${variant === "featured" ? "featured-copy" : "entry-copy"}">
-          <h3>${item.name}</h3>
-          <p>${item.blurb}</p>
-        </div>
-        <div class="entry-meta">
-          <span class="entry-family">${item.family}</span>
-          <ul class="tag-list">${tags}</ul>
-        </div>
+      <div class="card-body">
+        <h3>${item.name}</h3>
+        <p>${item.blurb}</p>
       </div>
-      <div class="${prefix}-card-footer">${link}</div>
+      <div class="card-bottom">
+        <span class="card-family">${item.family}</span>
+        ${createAction(item)}
+      </div>
     </article>
   `;
 }
 
 function createEmptyMarkup(label) {
   return `<article class="entry-empty">${label}</article>`;
+}
+
+function renderFeatured() {
+  featuredTarget.innerHTML = featuredItems.length
+    ? featuredItems.map((item) => createCardMarkup(item, "feature")).join("")
+    : createEmptyMarkup("No selected work available");
+}
+
+function renderGroup(group) {
+  const target = groupTargets[group];
+  const section = groupSections[group];
+  const items = estateItems
+    .filter((item) => item.group === group && entryMatches(item))
+    .sort(sortDirectoryItems);
+
+  target.innerHTML = items.length
+    ? items.map((item) => createCardMarkup(item)).join("")
+    : createEmptyMarkup("No entries match this filter");
+
+  section.classList.toggle("is-hidden", items.length === 0);
 }
 
 function setMetricCounts() {
@@ -117,148 +179,68 @@ function setMetricCounts() {
   metricTargets.groups.textContent = formatMetric(groups.size);
 }
 
-function renderGroup(group) {
-  const items = estateItems.filter((item) => item.group === group && entryMatches(item));
-  const target = groupTargets[group];
-  const section = groupSections[group];
-
-  target.innerHTML = items.length
-    ? items.map((item) => createCardMarkup(item, "catalogue")).join("")
-    : createEmptyMarkup("No entries match this filter");
-
-  section.classList.toggle("is-hidden", items.length === 0);
-}
-
-function renderFeatured() {
-  const featured = estateItems.filter((item) => item.featured && entryMatches(item));
-  featuredTarget.innerHTML = featured.length
-    ? featured.map((item) => createCardMarkup(item, "featured")).join("")
-    : createEmptyMarkup("No featured surfaces match right now");
-}
-
 function updateResultSummary() {
   const count = estateItems.filter(entryMatches).length;
-  resultsLabel.textContent =
-    state.query || state.status !== "all"
-      ? `${count} matching entries`
-      : `${estateItems.length} total entries`;
+  const label = count === 1 ? "entry" : "entries";
+
+  resultsLabel.textContent = `${count} ${label} shown`;
 }
 
-function attachInteractiveSurface(surface) {
-  if (surface.dataset.interactiveBound === "true") {
-    return;
-  }
-
-  surface.dataset.interactiveBound = "true";
-
-  surface.addEventListener("mousemove", (event) => {
-    const rect = surface.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-    const rx = ((y / rect.height) - 0.5) * -8;
-    const ry = ((x / rect.width) - 0.5) * 8;
-
-    surface.style.setProperty("--mx", `${x}px`);
-    surface.style.setProperty("--my", `${y}px`);
-    surface.style.transform = `perspective(1000px) rotateX(${rx}deg) rotateY(${ry}deg) translateY(-3px)`;
-  });
-
-  surface.addEventListener("mouseleave", () => {
-    surface.style.transform = "";
-  });
-}
-
-function attachCardBehaviors() {
-  document.querySelectorAll(".tilt-surface").forEach((surface) => {
-    attachInteractiveSurface(surface);
-  });
-
-  document.querySelectorAll(".entry-card, .featured-card").forEach((card) => {
-    if (card.dataset.clickBound === "true") {
+function attachCardClicks() {
+  document.querySelectorAll("[data-clickable='true']").forEach((card) => {
+    if (card.dataset.bound === "true") {
       return;
     }
 
-    card.dataset.clickBound = "true";
-    const url = card.dataset.url;
-
-    if (!url) {
-      return;
-    }
+    card.dataset.bound = "true";
 
     card.addEventListener("click", (event) => {
       if (event.target.closest("a")) {
         return;
       }
 
-      window.open(url, "_blank", "noopener");
+      window.open(card.dataset.url, "_blank", "noopener");
     });
   });
 }
 
-function initRevealObserver() {
-  const observer = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        if (!entry.isIntersecting) {
-          return;
-        }
-
-        entry.target.classList.add("is-visible");
-        observer.unobserve(entry.target);
-      });
-    },
-    {
-      threshold: 0.14,
-      rootMargin: "0px 0px -6% 0px",
-    }
-  );
-
-  document.querySelectorAll(".reveal").forEach((node) => observer.observe(node));
-}
-
-function initHeroStage() {
-  if (!heroStage) {
-    return;
-  }
-
-  heroStage.addEventListener("mousemove", (event) => {
-    const rect = heroStage.getBoundingClientRect();
-    const x = ((event.clientX - rect.left) / rect.width) * 100;
-    const y = ((event.clientY - rect.top) / rect.height) * 100;
-    heroStage.style.setProperty("--sx", `${x}%`);
-    heroStage.style.setProperty("--sy", `${y}%`);
-  });
-}
-
-function render() {
-  setMetricCounts();
-  renderFeatured();
+function renderDirectory() {
   renderGroup("websites");
   renderGroup("hubs");
   renderGroup("tools");
   renderGroup("games");
   updateResultSummary();
-  attachCardBehaviors();
+  attachCardClicks();
 }
 
-statusControls.addEventListener("click", (event) => {
-  const button = event.target.closest(".filter-button");
-  if (!button) {
-    return;
+function initControls() {
+  if (statusControls) {
+    statusControls.addEventListener("click", (event) => {
+      const button = event.target.closest(".filter-button");
+      if (!button) {
+        return;
+      }
+
+      state.status = button.dataset.filter;
+
+      document
+        .querySelectorAll(".filter-button")
+        .forEach((node) => node.classList.toggle("is-active", node === button));
+
+      renderDirectory();
+    });
   }
 
-  state.status = button.dataset.filter;
-  document
-    .querySelectorAll(".filter-button")
-    .forEach((node) => node.classList.toggle("is-active", node === button));
-  render();
-});
+  if (searchInput) {
+    searchInput.addEventListener("input", (event) => {
+      state.query = event.target.value;
+      renderDirectory();
+    });
+  }
+}
 
-searchInput.addEventListener("input", (event) => {
-  state.query = event.target.value;
-  render();
-});
-
-initHeroStage();
-initRevealObserver();
-render();
+setMetricCounts();
+renderFeatured();
+renderDirectory();
+initControls();
+attachCardClicks();

@@ -2,7 +2,8 @@
 
 ## Core Positioning
 
-Elusion Works is the umbrella brand for websites, tools, hubs, games, and future services built by Kol Tregaskes.
+Elusion Works is the umbrella brand for websites, tools, hubs, games, and future services built
+by Kol Tregaskes.
 
 ## Brand Logic
 
@@ -13,15 +14,15 @@ Elusion Works is the umbrella brand for websites, tools, hubs, games, and future
 
 Primary:
 
-`Elusion Works builds websites, tools, hubs, and games.`
+`Elusion Works is the company behind a growing portfolio of websites, tools, and games.`
 
 Longer option:
 
-`Elusion Works is a digital studio and product umbrella for websites, tools, interactive systems, and creative technology.`
+`Elusion Works is the umbrella company for websites, internal systems, interactive products, and future digital releases.`
 
 ## Copyright Line
 
-`© 2026 Elusion Works by Kol Tregaskes. All rights reserved.`
+`Copyright 2026 Elusion Works by Kol Tregaskes. All rights reserved.`
 
 ## Handle Policy
 

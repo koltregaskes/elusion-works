@@ -28,6 +28,22 @@ jobs:
           cp -r assets/. _site/assets/
           cp -r data/. _site/data/
 
+      - name: Verify static site bundle
+        run: |
+          test -f _site/index.html
+          test -f _site/styles.css
+          test -f _site/app.js
+          test -f _site/404.html
+          test -f _site/assets/og-card.png
+          test -f _site/assets/showcase/ai-resource-hub-optimized.jpg
+          test -f _site/assets/showcase/kols-korner-optimized.jpg
+          test -f _site/assets/showcase/axylusion-optimized.jpg
+          test -f _site/assets/showcase/website-news-pipeline.svg
+          test -f _site/assets/showcase/games-in-development.svg
+          grep -q 'id="featured-items"' _site/index.html
+          grep -q 'id="results-summary"' _site/index.html
+          grep -q 'The company behind a growing portfolio of digital products.' _site/index.html
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
 

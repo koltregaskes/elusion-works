@@ -2,38 +2,42 @@
 
 ## Intent
 
-Launch a fast static umbrella site that introduces the brand and links directly to the active estate.
+Launch a fast static company site that introduces the brand and links directly to the active
+portfolio.
 
 ## Public IA
 
-- Home
-- Websites & Hubs
-- Tools
-- Games
-- About
+- Overview
+- Selected work
+- Company model
+- Portfolio directory
 
 ## Rendering Model
 
 - `index.html` provides the static shell.
 - `data/estate.js` holds the structured listing data.
-- `app.js` renders featured entries and the three catalogue sections.
+- `app.js` renders selected work, overview counts, and the grouped directory.
 
 ## Entry Model
 
 Each entry supports:
 
+- `id`
 - `name`
 - `group`
 - `type`
+- `family`
 - `status`
 - `url`
 - `blurb`
 - `tags`
 - `featured`
+- `featureOrder`
+- `media`
 
 ## Design Direction
 
-- Industrial / crafted / technical
+- Calm / editorial / technical
 - Bone text on charcoal surfaces
-- Ember orange accent with cool cyan support
-- Strong hero poster rather than a dashboard or SaaS card wall
+- Warm copper accent with cool slate support
+- Image-led company front door rather than a dashboard or SaaS card wall

@@ -6,17 +6,17 @@
     <title>Elusion Works</title>
     <meta
       name="description"
-      content="Elusion Works is the operating layer for websites, hubs, tools, and future games under one sharp digital studio brand."
+      content="Elusion Works is the company behind a growing portfolio of websites, tools, and games."
     />
     <meta
       name="keywords"
-      content="Elusion Works, Elusion, digital studio, websites, tools, hubs, games, Kol Tregaskes"
+      content="Elusion Works, Elusion, company, digital products, websites, tools, games, Kol Tregaskes"
     />
-    <meta name="theme-color" content="#090909" />
+    <meta name="theme-color" content="#0c0d10" />
     <meta property="og:title" content="Elusion Works" />
     <meta
       property="og:description"
-      content="A forged digital studio surface for websites, hubs, tools, and future games."
+      content="The company behind a growing portfolio of websites, tools, and games."
     />
     <meta property="og:type" content="website" />
     <meta property="og:image" content="https://koltregaskes.github.io/elusion-works/assets/og-card.png" />
@@ -25,25 +25,25 @@
     <meta name="twitter:title" content="Elusion Works" />
     <meta
       name="twitter:description"
-      content="A forged digital studio surface for websites, hubs, tools, and future games."
+      content="The company behind a growing portfolio of websites, tools, and games."
     />
     <meta name="twitter:image" content="https://koltregaskes.github.io/elusion-works/assets/og-card.png" />
     <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Teko:wght@500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <div class="noise-layer" aria-hidden="true"></div>
+    <div class="ambient-layer" aria-hidden="true"></div>
 
     <header class="site-header">
       <div class="header-shell">
         <a class="brand-lockup" href="#top" aria-label="Elusion Works home">
-          <img src="assets/elusion-mark.svg" alt="" width="54" height="54" />
+          <img src="assets/elusion-mark.svg" alt="" width="50" height="50" />
           <div class="brand-copy">
             <span class="brand-root">Elusion</span>
             <strong>Works</strong>
@@ -51,157 +51,180 @@
         </a>
 
         <nav class="top-nav" aria-label="Primary">
-          <a href="#estate">Estate</a>
-          <a href="#hubs">Hubs</a>
-          <a href="#tools">Tools</a>
-          <a href="#games">Games</a>
-          <a href="#about">About</a>
+          <a href="#overview">Overview</a>
+          <a href="#selected">Selected</a>
+          <a href="#portfolio">Portfolio</a>
+          <a href="#company">Company</a>
         </nav>
       </div>
     </header>
 
     <main id="top">
-      <section class="hero reveal">
+      <section class="hero reveal" id="overview">
         <div class="hero-shell">
           <div class="hero-copy">
-            <p class="eyebrow">Umbrella brand / digital forge / active estate</p>
-            <div class="hero-wordmark" aria-label="Elusion Works">
-              <span>Elusion</span>
-              <span>Works</span>
-            </div>
-            <p class="hero-strike">The operating layer for websites, hubs, tools, and future games.</p>
+            <p class="eyebrow">Elusion Works</p>
+            <h1>The company behind a growing portfolio of digital products.</h1>
             <p class="hero-text">
-              Elusion Works is the sharp public roof over the estate: the place where live
-              surfaces, systems in build, and the next wave of interactive work all resolve into
-              one clear brand.
+              Elusion Works brings websites, internal tools, and future games together under one
+              clear brand.
             </p>
 
             <div class="hero-actions">
-              <a class="button button-primary" href="#estate">Explore the estate</a>
-              <a class="button button-secondary" href="#brands">See the brand model</a>
+              <a class="button button-primary" href="#selected">See selected work</a>
+              <a class="button button-secondary" href="#portfolio">Browse portfolio</a>
             </div>
 
-            <ul class="hero-rail" aria-label="Elusion Works core lines">
-              <li>
-                <span class="rail-label">Master brand</span>
-                <strong>Elusion</strong>
-              </li>
-              <li>
-                <span class="rail-label">Operating layer</span>
-                <strong>Elusion Works</strong>
-              </li>
-              <li>
-                <span class="rail-label">Estate focus</span>
-                <strong>Websites / hubs / tools / games</strong>
-              </li>
-            </ul>
+            <div class="hero-facts" aria-label="Company overview">
+              <article class="fact-card">
+                <strong data-metric="total">00</strong>
+                <span class="metric-label">Entries</span>
+              </article>
+              <article class="fact-card">
+                <strong data-metric="live">00</strong>
+                <span class="metric-label">Live</span>
+              </article>
+              <article class="fact-card">
+                <strong data-metric="building">00</strong>
+                <span class="metric-label">In build</span>
+              </article>
+              <article class="fact-card">
+                <strong data-metric="groups">00</strong>
+                <span class="metric-label">Tracks</span>
+              </article>
+            </div>
           </div>
 
-          <aside class="hero-stage tilt-surface" aria-label="Brand crest and current posture">
-            <div class="stage-grid" aria-hidden="true"></div>
-            <div class="stage-aura" aria-hidden="true"></div>
-            <div class="stage-frame">
-              <span class="stage-label">Forged direction</span>
-              <img src="assets/elusion-mark.svg" alt="" class="stage-mark" />
-              <p>
-                Built to feel like a sharp digital studio, not a polite agency brochure or a
-                generic startup dashboard.
-              </p>
-            </div>
+          <div class="hero-visual" aria-label="Portfolio preview">
+            <figure class="showcase-frame showcase-main">
+              <img
+                src="assets/showcase/ai-resource-hub-optimized.jpg"
+                alt="AI Resource Hub homepage with a leaderboard-led hero and reference desk layout."
+                width="1600"
+                height="1200"
+                loading="eager"
+              />
+              <figcaption class="showcase-caption">
+                <span class="panel-label">Reference hub</span>
+                <strong>AI Resource Hub</strong>
+              </figcaption>
+            </figure>
 
-            <div class="stage-ledger">
-              <div class="ledger-line">
-                <span>Brand posture</span>
-                <strong>Business-like, not corporate</strong>
-              </div>
-              <div class="ledger-line">
-                <span>Energy</span>
-                <strong>Interesting, sophisticated, a little dangerous</strong>
-              </div>
-              <div class="ledger-line">
-                <span>Direction</span>
-                <strong>Forged geometry / black / bone / ember</strong>
-              </div>
+            <div class="showcase-lower">
+              <figure class="showcase-frame showcase-secondary">
+                <img
+                  src="assets/showcase/kols-korner-optimized.jpg"
+                  alt="Kols Korner homepage showing essays, daily AI digests, and recent writing."
+                  width="1600"
+                  height="1200"
+                  loading="lazy"
+                  decoding="async"
+                />
+                <figcaption class="showcase-caption">
+                  <span class="panel-label">Publishing</span>
+                  <strong>Kol's Korner</strong>
+                </figcaption>
+              </figure>
+
+              <figure class="showcase-frame showcase-secondary">
+                <img
+                  src="assets/showcase/axylusion-optimized.jpg"
+                  alt="Axy Lusion homepage with a cinematic hero for AI art, video, and music."
+                  width="1600"
+                  height="1200"
+                  loading="lazy"
+                  decoding="async"
+                />
+                <figcaption class="showcase-caption">
+                  <span class="panel-label">Creative work</span>
+                  <strong>Axy Lusion</strong>
+                </figcaption>
+              </figure>
+
+              <article class="showcase-note">
+                <p class="panel-label">Current build</p>
+                <p class="showcase-note-title">One company layer. Multiple product identities.</p>
+                <p>
+                  The public sites can grow into distinct brands while the business behind them
+                  stays coherent.
+                </p>
+              </article>
             </div>
-          </aside>
+          </div>
         </div>
       </section>
 
-      <section class="signal-section reveal">
-        <div class="section-shell signal-shell">
-          <div class="signal-copy">
-            <p class="eyebrow">Studio logic</p>
-            <h2>Not a holding page. A command surface for everything that is becoming real.</h2>
-          </div>
-          <div class="signal-notes">
-            <article>
-              <span>01</span>
-              <p>Lead with the estate, not vague promises.</p>
-            </article>
-            <article>
-              <span>02</span>
-              <p>Let product names earn attention without spawning needless sub-brands.</p>
-            </article>
-            <article>
-              <span>03</span>
-              <p>Keep the interface sharp enough to feel like a studio with momentum.</p>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section class="overview-section reveal" id="estate" aria-labelledby="estate-heading">
+      <section class="selected-section reveal" id="selected" aria-labelledby="selected-heading">
         <div class="section-shell">
           <div class="section-heading split">
             <div>
-              <p class="eyebrow">Estate overview</p>
-              <h2 id="estate-heading">One brand frame for the surfaces that already exist and the ones still being forged.</h2>
+              <p class="eyebrow">Selected work</p>
+              <h2 id="selected-heading">A small set of work to represent the whole.</h2>
             </div>
             <p>
-              The job of this site is simple: show what is live, what is still under construction,
-              and how the whole estate sits together under one disciplined brand.
+              Two public destinations, one supporting system, and one future track give the
+              clearest picture of where the company is heading.
             </p>
           </div>
 
-          <div class="metrics-grid">
-            <article class="metric-card">
-              <span class="metric-label">Entries mapped</span>
-              <strong data-metric="total">00</strong>
-              <p>Websites, hubs, tools, and game tracks surfaced in one view.</p>
+          <div id="featured-items" class="selected-grid"></div>
+        </div>
+      </section>
+
+      <section class="company-section reveal" id="company" aria-labelledby="company-heading">
+        <div class="section-shell">
+          <div class="section-heading split">
+            <div>
+              <p class="eyebrow">Company model</p>
+              <h2 id="company-heading">Three tracks, one umbrella brand.</h2>
+            </div>
+            <p>
+              Public destinations, internal systems, and future interactive work can all sit under
+              the same company without competing for attention.
+            </p>
+          </div>
+
+          <div class="company-grid">
+            <article class="company-card">
+              <span class="company-index">01</span>
+              <h3>Websites</h3>
+              <p>Public destinations for publishing, portfolio, reference, and brand-led experiences.</p>
             </article>
-            <article class="metric-card">
-              <span class="metric-label">Live now</span>
-              <strong data-metric="live">00</strong>
-              <p>Public-facing surfaces already worth sending people to.</p>
+
+            <article class="company-card">
+              <span class="company-index">02</span>
+              <h3>Tools</h3>
+              <p>Internal systems and pipelines that support publishing, media handling, and delivery.</p>
             </article>
-            <article class="metric-card">
-              <span class="metric-label">In build</span>
-              <strong data-metric="building">00</strong>
-              <p>Systems still moving toward review, launch, or stronger polish.</p>
-            </article>
-            <article class="metric-card">
-              <span class="metric-label">Tracks</span>
-              <strong data-metric="groups">00</strong>
-              <p>Websites, hubs, tools, and games under the same operating layer.</p>
+
+            <article class="company-card">
+              <span class="company-index">03</span>
+              <h3>Games</h3>
+              <p>Interactive work that can launch under the same company when the first releases are ready.</p>
             </article>
           </div>
         </div>
       </section>
 
-      <section class="command-section reveal" aria-labelledby="find-heading">
+      <section class="portfolio-section reveal" id="portfolio" aria-labelledby="portfolio-heading">
         <div class="section-shell">
-          <div class="section-heading compact">
-            <p class="eyebrow">Find a surface</p>
-            <h2 id="find-heading">Search the estate like a live control board.</h2>
+          <div class="section-heading split">
+            <div>
+              <p class="eyebrow">Portfolio directory</p>
+              <h2 id="portfolio-heading">The wider portfolio, kept in one place.</h2>
+            </div>
+            <p>
+              Search by name, focus, or status without turning the homepage into a wall of copy.
+            </p>
           </div>
 
-          <div class="command-bar">
+          <div class="directory-tools">
             <label class="search-field" for="search-input">
-              <span>Search estate</span>
+              <span>Search the portfolio</span>
               <input
                 id="search-input"
                 type="search"
-                placeholder="AI Resource Hub, photography, publishing, benchmarks, games..."
+                placeholder="AI Resource Hub, publishing, photography, benchmarks..."
                 autocomplete="off"
               />
             </label>
@@ -214,159 +237,40 @@
             </div>
           </div>
 
-          <p class="results-summary" id="results-summary">0 total entries</p>
-        </div>
-      </section>
+          <p class="results-summary" id="results-summary">0 entries shown</p>
 
-      <section class="featured-strip reveal" aria-labelledby="featured-heading">
-        <div class="section-shell">
-          <div class="section-heading split">
-            <div>
-              <p class="eyebrow">Front line</p>
-              <h2 id="featured-heading">What carries the most weight right now.</h2>
-            </div>
-            <p>
-              Featured entries are the most useful, most visible, or most strategically important
-              surfaces in the estate at this moment.
-            </p>
-          </div>
-          <div id="featured-items" class="featured-grid"></div>
-        </div>
-      </section>
+          <div class="portfolio-layout">
+            <section class="group-block" id="websites" aria-labelledby="websites-heading">
+              <div class="group-heading">
+                <p>Websites</p>
+                <h3 id="websites-heading">Public destinations</h3>
+              </div>
+              <div class="directory-grid" id="websites-list"></div>
+            </section>
 
-      <section class="catalogue-section reveal" id="websites" aria-labelledby="websites-heading">
-        <div class="section-shell">
-          <div class="section-heading">
-            <p class="eyebrow">Websites</p>
-            <h2 id="websites-heading">Public destinations with their own voice and audience.</h2>
-            <p>
-              These are the public-facing sites carrying content, editorial, portfolio, or branded
-              experience work directly to the outside world.
-            </p>
-          </div>
-          <div class="catalogue-grid" id="websites-list"></div>
-        </div>
-      </section>
+            <section class="group-block" id="hubs" aria-labelledby="hubs-heading">
+              <div class="group-heading">
+                <p>Hubs</p>
+                <h3 id="hubs-heading">Reference and discovery</h3>
+              </div>
+              <div class="directory-grid" id="hubs-list"></div>
+            </section>
 
-      <section class="catalogue-section reveal" id="hubs" aria-labelledby="hubs-heading">
-        <div class="section-shell">
-          <div class="section-heading">
-            <p class="eyebrow">Hubs</p>
-            <h2 id="hubs-heading">Reference layers and discovery engines for the wider system.</h2>
-            <p>
-              Hubs turn the estate into something more useful than a collection of standalone
-              websites. They organise knowledge, tools, or directions into one clearer whole.
-            </p>
-          </div>
-          <div class="catalogue-grid" id="hubs-list"></div>
-        </div>
-      </section>
+            <section class="group-block" id="tools" aria-labelledby="tools-heading">
+              <div class="group-heading">
+                <p>Tools</p>
+                <h3 id="tools-heading">Operational systems</h3>
+              </div>
+              <div class="directory-grid" id="tools-list"></div>
+            </section>
 
-      <section class="catalogue-section reveal" id="tools" aria-labelledby="tools-heading">
-        <div class="section-shell">
-          <div class="section-heading">
-            <p class="eyebrow">Tools</p>
-            <h2 id="tools-heading">Operational leverage, shared systems, and machine-room plumbing.</h2>
-            <p>
-              Not every important thing needs a public product page. These are the systems doing
-              real work behind the scenes while the visible surfaces mature.
-            </p>
-          </div>
-          <div class="catalogue-grid" id="tools-list"></div>
-        </div>
-      </section>
-
-      <section class="catalogue-section reveal" id="games" aria-labelledby="games-heading">
-        <div class="section-shell">
-          <div class="section-heading">
-            <p class="eyebrow">Games</p>
-            <h2 id="games-heading">The interactive branch that will emerge when the first releases are ready.</h2>
-            <p>
-              Games belong under the same umbrella, but they do not need their own sub-brand until
-              they have enough gravity to justify one.
-            </p>
-          </div>
-          <div class="catalogue-grid" id="games-list"></div>
-        </div>
-      </section>
-
-      <section class="brand-section reveal" id="brands" aria-labelledby="brands-heading">
-        <div class="section-shell">
-          <div class="section-heading split">
-            <div>
-              <p class="eyebrow">Brand architecture</p>
-              <h2 id="brands-heading">Keep the structure simple while the estate is still sharpening.</h2>
-            </div>
-            <p>
-              Elusion is the root idea. Elusion Works is the operating layer. Product names keep
-              their own identity only where audience, purpose, or market genuinely demands it.
-            </p>
-          </div>
-
-          <div class="brand-grid">
-            <article class="brand-card">
-              <span class="brand-tier">Tier 1</span>
-              <h3>Elusion</h3>
-              <p>The root brand idea: digital creation, invention, transformation, and interactive craft.</p>
-            </article>
-
-            <article class="brand-card">
-              <span class="brand-tier">Tier 2</span>
-              <h3>Elusion Works</h3>
-              <p>The umbrella studio layer that holds the estate together publicly and operationally.</p>
-            </article>
-
-            <article class="brand-card">
-              <span class="brand-tier">Tier 3</span>
-              <h3>Named properties</h3>
-              <p>Sites like AI Resource Hub or Axy Lusion keep their own names only because they behave like destinations.</p>
-            </article>
-          </div>
-
-          <div class="principles-grid">
-            <article class="principle-card">
-              <h3>Keep</h3>
-              <p>Distinctive property names where they make the estate easier to understand, remember, and navigate.</p>
-            </article>
-            <article class="principle-card">
-              <h3>Avoid</h3>
-              <p>Inventing layers of brands for capabilities, services, or internal tools that do not need to look like companies.</p>
-            </article>
-            <article class="principle-card">
-              <h3>Use later</h3>
-              <p>Create new sub-brands only when the audience, product shape, and revenue model justify the complexity.</p>
-            </article>
-            <article class="principle-card">
-              <h3>Default move</h3>
-              <p>If something is a capability or operating system, keep it under Elusion Works and let the main brand get stronger.</p>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section class="about-section reveal" id="about" aria-labelledby="about-heading">
-        <div class="section-shell about-shell">
-          <div class="about-copy">
-            <p class="eyebrow">About</p>
-            <h2 id="about-heading">A digital studio should feel intelligent, refined, and slightly charged.</h2>
-            <p>
-              Elusion Works should read like a serious creative-technology business without feeling
-              stale, corporate, or over-designed. The site should feel forged, not decorated.
-            </p>
-            <p>
-              That means stronger hierarchy, sharper typography, visible mechanics, and motion that
-              creates presence instead of gimmicks.
-            </p>
-          </div>
-
-          <div class="about-panel">
-            <h3>Current posture</h3>
-            <ul class="about-list">
-              <li>The front end is now designed around a darker, forged brand direction.</li>
-              <li>The structure is intentionally simple enough to hold deeper case studies later.</li>
-              <li>The estate index is live now; richer product narratives can grow underneath it.</li>
-              <li>Once the final production logo lands, the site can be tightened again around it.</li>
-            </ul>
+            <section class="group-block" id="games" aria-labelledby="games-heading">
+              <div class="group-heading">
+                <p>Games</p>
+                <h3 id="games-heading">Interactive work</h3>
+              </div>
+              <div class="directory-grid" id="games-list"></div>
+            </section>
           </div>
         </div>
       </section>
@@ -374,7 +278,13 @@
 
     <footer class="site-footer">
       <div class="footer-shell">
-        <p>&copy; 2026 Elusion Works by Kol Tregaskes. All rights reserved.</p>
+        <div>
+          <p class="footer-title">Elusion Works</p>
+          <p class="footer-copy">
+            The umbrella company for current and future digital products by Kol Tregaskes.
+          </p>
+        </div>
+
         <div class="footer-links">
           <a href="https://github.com/koltregaskes/elusion-works" target="_blank" rel="noreferrer">Repo</a>
           <a href="https://github.com/koltregaskes" target="_blank" rel="noreferrer">GitHub</a>
