@@ -2,21 +2,22 @@
 
 ## Intent
 
-Launch a fast static company site that introduces the brand and links directly to the active
-portfolio.
+Launch a fast static showcase site that introduces the Elusion Works label and highlights the
+current work.
 
 ## Public IA
 
 - Overview
-- Selected work
-- Company model
-- Portfolio directory
+- Websites
+- Tools
+- Games
+- Company soon placeholder
 
 ## Rendering Model
 
 - `index.html` provides the static shell.
 - `data/estate.js` holds the structured listing data.
-- `app.js` renders selected work, overview counts, and the grouped directory.
+- `app.js` renders the three showcase sections and the overview counts.
 
 ## Entry Model
 
@@ -31,8 +32,7 @@ Each entry supports:
 - `url`
 - `blurb`
 - `tags`
-- `featured`
-- `featureOrder`
+- `sectionOrder`
 - `media`
 
 ## Design Direction
@@ -40,4 +40,4 @@ Each entry supports:
 - Calm / editorial / technical
 - Bone text on charcoal surfaces
 - Warm copper accent with cool slate support
-- Image-led company front door rather than a dashboard or SaaS card wall
+- Graphical showcase first, explanation second

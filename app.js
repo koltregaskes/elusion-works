@@ -1,8 +1,15 @@
 import { estateItems } from "./data/estate.js";
 
-const state = {
-  status: "all",
-  query: "",
+const sectionTargets = {
+  websites: document.querySelector("#websites-grid"),
+  tools: document.querySelector("#tools-grid"),
+  games: document.querySelector("#games-grid"),
+};
+
+const countTargets = {
+  websites: document.querySelector('[data-count="websites"]'),
+  tools: document.querySelector('[data-count="tools"]'),
+  games: document.querySelector('[data-count="games"]'),
 };
 
 const statusRank = {
@@ -11,86 +18,52 @@ const statusRank = {
   "coming-soon": 2,
 };
 
-const typeRank = {
-  website: 0,
-  hub: 1,
-  tool: 2,
-  game: 3,
-};
-
-const groupTargets = {
-  websites: document.querySelector("#websites-list"),
-  hubs: document.querySelector("#hubs-list"),
-  tools: document.querySelector("#tools-list"),
-  games: document.querySelector("#games-list"),
-};
-
-const groupSections = {
-  websites: document.querySelector("#websites"),
-  hubs: document.querySelector("#hubs"),
-  tools: document.querySelector("#tools"),
-  games: document.querySelector("#games"),
-};
-
-const featuredTarget = document.querySelector("#featured-items");
-const resultsLabel = document.querySelector("#results-summary");
-const searchInput = document.querySelector("#search-input");
-const statusControls = document.querySelector("#filter-controls");
-
-const metricTargets = {
-  total: document.querySelector('[data-metric="total"]'),
-  live: document.querySelector('[data-metric="live"]'),
-  building: document.querySelector('[data-metric="building"]'),
-  groups: document.querySelector('[data-metric="groups"]'),
-};
-
-const featuredItems = estateItems
-  .filter((item) => item.featured)
-  .sort((a, b) => (a.featureOrder ?? 99) - (b.featureOrder ?? 99));
-
-function normalize(value) {
-  return String(value ?? "").toLowerCase().trim();
+function formatCount(value) {
+  return String(value).padStart(2, "0");
 }
 
 function statusLabel(value) {
   return value === "in-progress" ? "In build" : value.replace(/-/g, " ");
 }
 
-function formatMetric(value) {
-  return String(value).padStart(2, "0");
-}
+function sortItems(a, b) {
+  const orderDelta = (a.sectionOrder ?? 99) - (b.sectionOrder ?? 99);
+  if (orderDelta !== 0) {
+    return orderDelta;
+  }
 
-function sortDirectoryItems(a, b) {
   const statusDelta = (statusRank[a.status] ?? 99) - (statusRank[b.status] ?? 99);
   if (statusDelta !== 0) {
     return statusDelta;
   }
 
-  const typeDelta = (typeRank[a.type] ?? 99) - (typeRank[b.type] ?? 99);
-  if (typeDelta !== 0) {
-    return typeDelta;
-  }
-
   return a.name.localeCompare(b.name);
 }
 
-function entryMatches(entry) {
-  const query = normalize(state.query);
-  const statusOk = state.status === "all" || entry.status === state.status;
-  const haystack = normalize(
-    [entry.name, entry.blurb, entry.family, entry.type, entry.group, ...entry.tags].join(" ")
-  );
-  const queryOk = !query || haystack.includes(query);
+function getWebsiteItems() {
+  return estateItems
+    .filter((item) => item.group === "websites" || item.group === "hubs")
+    .sort(sortItems);
+}
 
-  return statusOk && queryOk;
+function getToolItems() {
+  return estateItems
+    .filter((item) => item.group === "tools")
+    .sort(sortItems);
+}
+
+function getGameItems() {
+  return estateItems
+    .filter((item) => item.group === "games")
+    .sort(sortItems);
 }
 
 function actionLabel(item) {
   if (!item.url) {
-    return "In development";
+    return item.status === "coming-soon" ? "Coming later" : "In progress";
   }
 
-  return item.status === "live" ? "Open" : "View";
+  return item.status === "live" ? "Open site" : "Preview";
 }
 
 function createAction(item) {
@@ -101,40 +74,32 @@ function createAction(item) {
   return `<a class="card-link" href="${item.url}" target="_blank" rel="noreferrer">${actionLabel(item)}</a>`;
 }
 
-function createFeatureMedia(item) {
-  if (!item.media?.src) {
-    return "";
-  }
+function createCardMarkup(item) {
+  const clickableAttr = item.url ? `data-url="${item.url}" data-clickable="true"` : `data-clickable="false"`;
 
   return `
-    <div class="feature-media">
+    <article class="showcase-card" data-group="${item.group}" ${clickableAttr}>
+      <div class="card-media">
       <img
         src="${item.media.src}"
         alt="${item.media.alt ?? ""}"
         loading="lazy"
         decoding="async"
+        style="object-position: ${item.media.position ?? "50% 50%"}"
       />
-    </div>
-  `;
-}
+      </div>
 
-function createCardMarkup(item, variant = "directory") {
-  const cardClass = variant === "feature" ? "feature-card" : "directory-card";
-  const clickableAttr = item.url ? `data-url="${item.url}" data-clickable="true"` : `data-clickable="false"`;
-  const media = variant === "feature" ? createFeatureMedia(item) : "";
-
-  return `
-    <article class="${cardClass}" ${clickableAttr}>
-      ${media}
-      <div class="card-top">
+      <div class="card-meta">
         <span class="card-type">${item.type}</span>
         <span class="card-status" data-status="${item.status}">${statusLabel(item.status)}</span>
       </div>
+
       <div class="card-body">
         <h3>${item.name}</h3>
         <p>${item.blurb}</p>
       </div>
-      <div class="card-bottom">
+
+      <div class="card-footer">
         <span class="card-family">${item.family}</span>
         ${createAction(item)}
       </div>
@@ -142,48 +107,10 @@ function createCardMarkup(item, variant = "directory") {
   `;
 }
 
-function createEmptyMarkup(label) {
-  return `<article class="entry-empty">${label}</article>`;
-}
-
-function renderFeatured() {
-  featuredTarget.innerHTML = featuredItems.length
-    ? featuredItems.map((item) => createCardMarkup(item, "feature")).join("")
-    : createEmptyMarkup("No selected work available");
-}
-
-function renderGroup(group) {
-  const target = groupTargets[group];
-  const section = groupSections[group];
-  const items = estateItems
-    .filter((item) => item.group === group && entryMatches(item))
-    .sort(sortDirectoryItems);
-
+function renderSection(target, items, emptyLabel) {
   target.innerHTML = items.length
-    ? items.map((item) => createCardMarkup(item)).join("")
-    : createEmptyMarkup("No entries match this filter");
-
-  section.classList.toggle("is-hidden", items.length === 0);
-}
-
-function setMetricCounts() {
-  const groups = new Set(estateItems.map((item) => item.group));
-
-  metricTargets.total.textContent = formatMetric(estateItems.length);
-  metricTargets.live.textContent = formatMetric(
-    estateItems.filter((item) => item.status === "live").length
-  );
-  metricTargets.building.textContent = formatMetric(
-    estateItems.filter((item) => item.status === "in-progress").length
-  );
-  metricTargets.groups.textContent = formatMetric(groups.size);
-}
-
-function updateResultSummary() {
-  const count = estateItems.filter(entryMatches).length;
-  const label = count === 1 ? "entry" : "entries";
-
-  resultsLabel.textContent = `${count} ${label} shown`;
+    ? items.map(createCardMarkup).join("")
+    : `<article class="entry-empty">${emptyLabel}</article>`;
 }
 
 function attachCardClicks() {
@@ -204,43 +131,18 @@ function attachCardClicks() {
   });
 }
 
-function renderDirectory() {
-  renderGroup("websites");
-  renderGroup("hubs");
-  renderGroup("tools");
-  renderGroup("games");
-  updateResultSummary();
-  attachCardClicks();
+function setCounts(websites, tools, games) {
+  countTargets.websites.textContent = formatCount(websites.length);
+  countTargets.tools.textContent = formatCount(tools.length);
+  countTargets.games.textContent = formatCount(games.length);
 }
 
-function initControls() {
-  if (statusControls) {
-    statusControls.addEventListener("click", (event) => {
-      const button = event.target.closest(".filter-button");
-      if (!button) {
-        return;
-      }
+const websiteItems = getWebsiteItems();
+const toolItems = getToolItems();
+const gameItems = getGameItems();
 
-      state.status = button.dataset.filter;
-
-      document
-        .querySelectorAll(".filter-button")
-        .forEach((node) => node.classList.toggle("is-active", node === button));
-
-      renderDirectory();
-    });
-  }
-
-  if (searchInput) {
-    searchInput.addEventListener("input", (event) => {
-      state.query = event.target.value;
-      renderDirectory();
-    });
-  }
-}
-
-setMetricCounts();
-renderFeatured();
-renderDirectory();
-initControls();
+renderSection(sectionTargets.websites, websiteItems, "Websites coming soon");
+renderSection(sectionTargets.tools, toolItems, "Tools coming soon");
+renderSection(sectionTargets.games, gameItems, "Games coming soon");
+setCounts(websiteItems, toolItems, gameItems);
 attachCardClicks();

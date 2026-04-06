@@ -2,12 +2,12 @@
 
 ## Recommended structure
 
-- `Elusion`
-  The root brand idea. Use this as the conceptual master brand and long-term identity anchor.
-
 - `Elusion Works`
-  The umbrella operating brand. This is the broad company layer that can cover websites, hubs,
+  The umbrella operating brand and public-facing label. This is the broad company layer that can cover websites, hubs,
   tools, games, and future services without sounding boxed into one category.
+
+- `Elusion`
+  Keep this only as internal brand shorthand or conceptual language, not as the standalone public label across the websites.
 
 - Named properties
   Keep distinctive public names only where they help real audiences understand a clear
@@ -46,8 +46,8 @@ stronger standalone property name.
 
 ## Current recommendation
 
-- Root idea: `Elusion`
 - Public umbrella site: `Elusion Works`
+- Internal shorthand only: `Elusion`
 - Property names to keep where they already serve a clear public destination:
   `AI Resource Hub`, `Axy Lusion`, `Ghost in the Model`, `Kol's Korner`
 

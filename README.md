@@ -1,12 +1,12 @@
 # Elusion Works
 
-Elusion Works is the public company site for the websites, tools, hubs, and future games being built by Kol Tregaskes.
+Elusion Works is the public showcase site for the websites, tools, and future games being built by Kol Tregaskes.
 
 ## What This Repo Contains
 
-- A fast static company site for `Elusion Works`
-- Structured listing data for selected work and the wider portfolio directory
-- Brand assets for favicons, social previews, and showcase visuals
+- A fast static showcase site for `Elusion Works`
+- Structured listing data for the websites, tools, and games featured on the homepage
+- Brand and showcase assets for favicons, social previews, and section artwork
 - Light documentation for setup, architecture, and brand direction
 - A GitHub Pages workflow for deployment
 
@@ -14,8 +14,8 @@ Elusion Works is the public company site for the websites, tools, hubs, and futu
 
 - `index.html` - single-page site shell
 - `styles.css` - visual system and layout styling
-- `app.js` - data-driven rendering for selected work, counts, and filters
-- `data/estate.js` - structured entries for websites, hubs, tools, and games
+- `app.js` - data-driven rendering for the three homepage sections
+- `data/estate.js` - structured entries for websites, tools, and games
 - `assets/` - favicon, mark, social preview, and showcase assets
 - `docs/` - brand guidance and site architecture notes
 
@@ -41,8 +41,8 @@ The workflow publishes only the public site files, not the repo docs.
 
 The current recommended structure is:
 
-- `Elusion` as the root brand idea
-- `Elusion Works` as the public company layer
+- `Elusion Works` as the public umbrella label for the portfolio
+- `Elusion` only as internal shorthand for the underlying brand idea, not as the standalone public label
 - distinctive product names only where a property has earned its own identity
 
 See [docs/brand-architecture.md](docs/brand-architecture.md) for the current naming model.

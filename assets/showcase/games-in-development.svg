@@ -1,52 +1,32 @@
 <svg width="1200" height="900" viewBox="0 0 1200 900" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="1200" height="900" fill="#0A0C0F"/>
-  <rect x="28" y="28" width="1144" height="844" rx="34" stroke="#24282D" stroke-width="4"/>
-  <g opacity="0.34">
-    <path d="M0 676H1200" stroke="#1C2025"/>
-    <path d="M0 734H1200" stroke="#1C2025"/>
-    <path d="M0 792H1200" stroke="#1C2025"/>
-    <path d="M146 560V900" stroke="#1C2025"/>
-    <path d="M292 560V900" stroke="#1C2025"/>
-    <path d="M438 560V900" stroke="#1C2025"/>
-    <path d="M584 560V900" stroke="#1C2025"/>
-    <path d="M730 560V900" stroke="#1C2025"/>
-    <path d="M876 560V900" stroke="#1C2025"/>
-    <path d="M1022 560V900" stroke="#1C2025"/>
-  </g>
-  <text x="88" y="102" fill="#B7AEA3" font-family="'IBM Plex Mono', monospace" font-size="22" letter-spacing="5">ELUSION WORKS / FUTURE TRACK</text>
-  <text x="88" y="188" fill="#F2ECE3" font-family="'Newsreader', Georgia, serif" font-size="98" letter-spacing="-2">Games In Development</text>
-  <text x="88" y="244" fill="#B7AEA3" font-family="'Manrope', sans-serif" font-size="28">Browser-first interactive work intended to sit under the same company once the first releases are ready.</text>
-  <path d="M88 596L332 462L564 558L854 410L1112 556" stroke="#D9A36E" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M88 596L332 696L564 618L854 752L1112 556" stroke="#2B3138" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="332" cy="462" r="12" fill="#F2ECE3"/>
-  <circle cx="564" cy="558" r="12" fill="#F2ECE3"/>
-  <circle cx="854" cy="410" r="12" fill="#F2ECE3"/>
-  <circle cx="332" cy="696" r="12" fill="#8FD0A6"/>
-  <circle cx="564" cy="618" r="12" fill="#8FD0A6"/>
-  <circle cx="854" cy="752" r="12" fill="#8FD0A6"/>
-  <rect x="142" y="326" width="224" height="132" rx="28" fill="#12161B" stroke="#2B3138" stroke-width="3"/>
-  <rect x="142" y="326" width="224" height="132" rx="28" fill="url(#paint0_linear)" fill-opacity="0.8"/>
-  <rect x="420" y="286" width="242" height="146" rx="28" fill="#12161B" stroke="#2B3138" stroke-width="3"/>
-  <rect x="420" y="286" width="242" height="146" rx="28" fill="url(#paint1_linear)" fill-opacity="0.8"/>
-  <rect x="718" y="248" width="264" height="164" rx="28" fill="#12161B" stroke="#2B3138" stroke-width="3"/>
-  <rect x="718" y="248" width="264" height="164" rx="28" fill="url(#paint2_linear)" fill-opacity="0.8"/>
-  <text x="176" y="402" fill="#F2ECE3" font-family="'IBM Plex Mono', monospace" font-size="22" letter-spacing="4">PROTOTYPES</text>
-  <text x="466" y="374" fill="#F2ECE3" font-family="'IBM Plex Mono', monospace" font-size="22" letter-spacing="4">SYSTEMS</text>
-  <text x="758" y="346" fill="#F2ECE3" font-family="'IBM Plex Mono', monospace" font-size="22" letter-spacing="4">RELEASE TRACK</text>
-  <rect x="88" y="764" width="1024" height="1" fill="#24282D"/>
-  <text x="88" y="812" fill="#D9A36E" font-family="'IBM Plex Mono', monospace" font-size="20" letter-spacing="5">BROWSER-FIRST / INTERACTIVE / FUTURE RELEASES</text>
+  <rect width="1200" height="900" fill="#0A0C10"/>
+  <rect x="28" y="28" width="1144" height="844" rx="34" stroke="#262A30" stroke-width="4"/>
+  <circle cx="870" cy="214" r="168" fill="url(#paint0_radial)"/>
+  <circle cx="260" cy="694" r="208" fill="url(#paint1_radial)"/>
+  <text x="84" y="102" fill="#B7AEA3" font-family="'IBM Plex Mono', monospace" font-size="22" letter-spacing="5">ELUSION WORKS / GAME TRACK</text>
+  <text x="84" y="196" fill="#F2ECE3" font-family="'Newsreader', Georgia, serif" font-size="102" letter-spacing="-2">Games</text>
+  <text x="84" y="272" fill="#F2ECE3" font-family="'Newsreader', Georgia, serif" font-size="102" letter-spacing="-2">In Development</text>
+  <text x="84" y="336" fill="#B7AEA3" font-family="'Manrope', sans-serif" font-size="30">Future browser-first releases under the same evolving umbrella.</text>
+  <rect x="84" y="420" width="470" height="214" rx="28" fill="#13171C" stroke="#303641" stroke-width="3"/>
+  <rect x="646" y="420" width="470" height="214" rx="28" fill="#13171C" stroke="#303641" stroke-width="3"/>
+  <path d="M128 582L214 526L300 566L386 500L510 582" stroke="#D7A16F" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M690 582L776 514L852 560L934 474L1072 582" stroke="#9DABB5" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="214" cy="526" r="12" fill="#F2ECE3"/>
+  <circle cx="386" cy="500" r="12" fill="#F2ECE3"/>
+  <circle cx="776" cy="514" r="12" fill="#F2ECE3"/>
+  <circle cx="934" cy="474" r="12" fill="#F2ECE3"/>
+  <text x="126" y="476" fill="#D7A16F" font-family="'IBM Plex Mono', monospace" font-size="22" letter-spacing="4">PROTOTYPES</text>
+  <text x="688" y="476" fill="#9DABB5" font-family="'IBM Plex Mono', monospace" font-size="22" letter-spacing="4">RELEASE TRACKS</text>
+  <path d="M84 738H1116" stroke="#262A30" stroke-width="3"/>
+  <text x="84" y="804" fill="#F2ECE3" font-family="'IBM Plex Mono', monospace" font-size="20" letter-spacing="5">BROWSER-FIRST / INTERACTIVE / FUTURE RELEASES</text>
   <defs>
-    <linearGradient id="paint0_linear" x1="142" y1="326" x2="366" y2="458" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#151A20"/>
-      <stop offset="1" stop-color="#20303A"/>
-    </linearGradient>
-    <linearGradient id="paint1_linear" x1="420" y1="286" x2="662" y2="432" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#171A20"/>
-      <stop offset="1" stop-color="#2A2520"/>
-    </linearGradient>
-    <linearGradient id="paint2_linear" x1="718" y1="248" x2="982" y2="412" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#171A20"/>
-      <stop offset="1" stop-color="#2B2320"/>
-    </linearGradient>
+    <radialGradient id="paint0_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(870 214) rotate(90) scale(168)">
+      <stop stop-color="#D7A16F" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="#D7A16F" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="paint1_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(260 694) rotate(90) scale(208)">
+      <stop stop-color="#9DABB5" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#9DABB5" stop-opacity="0"/>
+    </radialGradient>
   </defs>
 </svg>
