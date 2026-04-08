@@ -377,12 +377,6 @@ async function loadEditorialHub() {
     return;
   }
 
-  const url = new URL(window.location.href);
-  const editorialEnabled = url.searchParams.get("editorial") === "1";
-  if (!editorialEnabled) {
-    return;
-  }
-
   try {
     const response = await fetch("./data/editorial-hub.json", { cache: "no-store" });
     if (!response.ok) {

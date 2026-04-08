@@ -35,6 +35,7 @@ jobs:
           test -f _site/app.js
           test -f _site/cursor.js
           test -f _site/404.html
+          test -f _site/data/editorial-hub.json
           test -f _site/assets/og-card.png
           test -f _site/assets/showcase/ai-resource-hub-site.jpg
           test -f _site/assets/showcase/a-list-site.jpg
@@ -50,6 +51,9 @@ jobs:
           grep -q 'id="websites-grid"' _site/index.html
           grep -q 'id="tools-grid"' _site/index.html
           grep -q 'id="games-grid"' _site/index.html
+          grep -q 'id="editorial-summary"' _site/index.html
+          grep -q 'id="editorial-queue"' _site/index.html
+          grep -q 'id="editorial-sites"' _site/index.html
           grep -q 'Websites, tools, and game ideas under one evolving banner.' _site/index.html
 
       - name: Setup Pages
