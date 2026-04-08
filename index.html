@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" translate="no">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -28,11 +28,12 @@
       content="A showcase for websites, tools, and game ideas by Kol Tregaskes."
     />
     <meta name="twitter:image" content="https://koltregaskes.github.io/elusion-works/assets/og-card.png" />
+    <meta name="view-transition" content="same-origin" />
     <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600;800&family=Outfit:wght@500;700;800&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
@@ -53,6 +54,7 @@
         <nav class="top-nav" aria-label="Primary">
           <a href="#websites">Websites</a>
           <a href="#tools">Tools</a>
+          <a id="editorial-link" href="#editorial" hidden>Editorial</a>
           <a href="#games">Games</a>
           <a href="https://github.com/koltregaskes" target="_blank" rel="noreferrer">GitHub</a>
         </nav>
@@ -176,10 +178,64 @@
         </div>
       </section>
 
+      <section
+        class="editorial-section reveal"
+        id="editorial"
+        aria-labelledby="editorial-heading"
+        hidden
+      >
+        <div class="section-shell editorial-shell">
+          <div class="editorial-header">
+            <div class="section-heading editorial-heading">
+              <span class="section-index">03</span>
+              <div>
+                <p class="eyebrow">Editorial Control</p>
+                <h2 id="editorial-heading">Drafts, verdicts, and what the website manager is touching.</h2>
+              </div>
+            </div>
+
+            <div class="editorial-meta" id="editorial-meta">
+              <span class="editorial-chip editorial-chip-loading">Loading editorial feed</span>
+            </div>
+          </div>
+
+          <p class="editorial-intro">
+            Estate-wide article visibility, pulled into one board. This is where pending reviews, approvals,
+            and blocked pieces should surface before anything goes live.
+          </p>
+
+          <div class="editorial-grid">
+            <section class="editorial-panel" aria-labelledby="editorial-summary-heading">
+              <div class="editorial-panel-header">
+                <p class="eyebrow">System Totals</p>
+                <h3 id="editorial-summary-heading">Editorial summary</h3>
+              </div>
+              <div class="editorial-summary-grid" id="editorial-summary"></div>
+            </section>
+
+            <section class="editorial-panel" aria-labelledby="editorial-queue-heading">
+              <div class="editorial-panel-header">
+                <p class="eyebrow">Needs Attention</p>
+                <h3 id="editorial-queue-heading">Queue</h3>
+              </div>
+              <div class="editorial-queue-list" id="editorial-queue"></div>
+            </section>
+
+            <section class="editorial-panel editorial-panel-wide" aria-labelledby="editorial-sites-heading">
+              <div class="editorial-panel-header">
+                <p class="eyebrow">Site State</p>
+                <h3 id="editorial-sites-heading">Per-site review status</h3>
+              </div>
+              <div class="editorial-sites-grid" id="editorial-sites"></div>
+            </section>
+          </div>
+        </div>
+      </section>
+
       <section class="showcase-section reveal" id="games" aria-labelledby="games-heading">
         <div class="section-shell">
           <div class="section-heading">
-            <span class="section-index">03</span>
+            <span class="section-index">04</span>
             <div>
               <p class="eyebrow">Games</p>
               <h2 id="games-heading">Games and playable ideas.</h2>
@@ -204,6 +260,8 @@
         </div>
       </div>
     </footer>
+
+    <div class="cursor-dot" id="cursor-dot" aria-hidden="true"></div>
 
     <script type="module" src="app.js"></script>
   </body>

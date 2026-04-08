@@ -1,5 +1,6 @@
 .local/
 .playwright-cli/
+data/editorial-hub.json
 Thumbs.db
 Desktop.ini
 .DS_Store

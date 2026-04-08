@@ -24,7 +24,7 @@ jobs:
       - name: Assemble static site
         run: |
           mkdir -p _site/assets _site/data
-          cp index.html styles.css app.js 404.html robots.txt sitemap.xml llms.txt _site/
+          cp index.html styles.css app.js cursor.js 404.html robots.txt sitemap.xml llms.txt _site/
           cp -r assets/. _site/assets/
           cp -r data/. _site/data/
 
@@ -33,6 +33,7 @@ jobs:
           test -f _site/index.html
           test -f _site/styles.css
           test -f _site/app.js
+          test -f _site/cursor.js
           test -f _site/404.html
           test -f _site/assets/og-card.png
           test -f _site/assets/showcase/ai-resource-hub-site.jpg

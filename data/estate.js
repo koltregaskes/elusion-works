@@ -10,6 +10,7 @@ export const estateItems = [
     blurb: "Reference hub for models, benchmarks, pricing, and daily AI updates.",
     tags: ["AI reference", "benchmarks", "pricing"],
     sectionOrder: 1,
+    featured: true,
     media: {
       src: "assets/showcase/ai-resource-hub-site.jpg",
       alt: "AI Resource Hub homepage with a leaderboard-led hero and reference desk layout.",
@@ -112,6 +113,7 @@ export const estateItems = [
     blurb: "Shared publishing flow for collecting, filtering, and routing site updates.",
     tags: ["automation", "publishing", "pipeline"],
     sectionOrder: 1,
+    featured: true,
     media: {
       src: "assets/showcase/website-news-pipeline.svg",
       alt: "Abstract poster for the Website News Pipeline showing the flow from intake to publication.",
@@ -160,6 +162,7 @@ export const estateItems = [
     blurb: "Future browser-first releases under the same evolving umbrella brand.",
     tags: ["browser games", "future", "interactive"],
     sectionOrder: 1,
+    featured: true,
     media: {
       src: "assets/showcase/games-in-development.svg",
       alt: "Abstract poster for Games In Development with a stylized interactive landscape.",
