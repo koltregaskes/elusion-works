@@ -28,11 +28,10 @@ jobs:
 
       - name: Assemble static site
         run: |
-          mkdir -p _site/assets _site/data _site/.well-known
-          cp index.html styles.css app.js cursor.js 404.html robots.txt sitemap.xml llms.txt security.txt .nojekyll _site/
+          mkdir -p _site/assets _site/data
+          cp index.html styles.css app.js cursor.js 404.html robots.txt sitemap.xml llms.txt security.txt _site/
           cp -r assets/. _site/assets/
           cp data/estate.js _site/data/
-          cp .well-known/security.txt _site/.well-known/security.txt
 
       - name: Verify static site bundle
         run: |
@@ -41,9 +40,7 @@ jobs:
           test -f _site/app.js
           test -f _site/cursor.js
           test -f _site/404.html
-          test -f _site/.nojekyll
           test -f _site/security.txt
-          test -f _site/.well-known/security.txt
           test -f _site/data/estate.js
           test ! -f _site/data/editorial-hub.json
           test -f _site/assets/og-card.png

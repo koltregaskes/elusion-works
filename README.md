@@ -55,7 +55,7 @@ The current cadence is twice daily in UTC:
 ## Security
 
 - Public reporting guidance lives in `SECURITY.md`.
-- The site publishes `security.txt` at both `/security.txt` and `/.well-known/security.txt`.
+- The site publishes `security.txt` at `/security.txt`.
 
 ## Brand Direction
 

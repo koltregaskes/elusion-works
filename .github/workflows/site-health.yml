@@ -86,7 +86,7 @@ jobs:
           await page.screenshot({ path: ".healthchecks/elusion-works-home.png", fullPage: false });
           await browser.close();
 
-          const securityResponse = await fetch(`${process.env.SITE_URL}.well-known/security.txt`, {
+          const securityResponse = await fetch(`${process.env.SITE_URL}security.txt`, {
             headers: { "cache-control": "no-cache" },
           });
           const securityBody = await securityResponse.text();
