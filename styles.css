@@ -473,7 +473,10 @@ main {
   gap: 1rem;
 }
 
-.showcase-grid-websites,
+.showcase-grid-websites {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .showcase-grid-tools {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -748,11 +751,11 @@ main {
     grid-template-columns: 1fr;
   }
 
-  .hero-gallery,
-  .showcase-grid-websites,
-  .showcase-grid-tools {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.hero-gallery,
+.showcase-grid-websites,
+.showcase-grid-tools {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
 }
 
 @media (max-width: 760px) {
