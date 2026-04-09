@@ -8,3 +8,4 @@ dist/
 site/
 .vercel/
 .cache/
+data/editorial-hub.json

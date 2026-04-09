@@ -13,6 +13,11 @@
       content="Elusion Works, portfolio, websites, tools, games, Kol Tregaskes"
     />
     <meta name="theme-color" content="#0b0d10" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests"
+    />
     <meta property="og:title" content="Elusion Works" />
     <meta
       property="og:description"
@@ -29,6 +34,7 @@
     />
     <meta name="twitter:image" content="https://koltregaskes.github.io/elusion-works/assets/og-card.png" />
     <meta name="view-transition" content="same-origin" />
+    <link rel="canonical" href="https://koltregaskes.github.io/elusion-works/" />
     <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -38,7 +44,8 @@
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
-  <body>
+  <body id="top">
+    <a class="skip-link" href="#main-content">Skip to content</a>
     <div class="ambient-layer" aria-hidden="true"></div>
 
     <header class="site-header">
@@ -54,26 +61,25 @@
         <nav class="top-nav" aria-label="Primary">
           <a href="#websites">Websites</a>
           <a href="#tools">Tools</a>
-          <a id="editorial-link" href="#editorial" hidden>Editorial</a>
           <a href="#games">Games</a>
-          <a href="https://github.com/koltregaskes" target="_blank" rel="noreferrer">GitHub</a>
+          <a href="https://github.com/koltregaskes" target="_blank" rel="noopener noreferrer">GitHub</a>
         </nav>
       </div>
     </header>
 
-    <main id="top">
+    <main id="main-content">
       <section class="hero-section reveal" id="overview">
         <div class="hero-shell">
           <div class="hero-copy">
             <p class="eyebrow">Elusion Works</p>
-            <h1>Websites, tools, and game ideas under one evolving banner.</h1>
+            <h1>The umbrella for websites, tools, and playable ideas.</h1>
             <p class="hero-text">
-              A quieter front door for the sites, systems, and experiments already taking shape.
+              A quieter front door for the projects already live, the systems behind them, and the next releases in progress.
             </p>
 
             <div class="hero-actions">
               <a class="button button-primary" href="#websites">Explore the work</a>
-              <a class="button button-secondary" href="https://github.com/koltregaskes" target="_blank" rel="noreferrer">GitHub</a>
+              <a class="button button-secondary" href="https://github.com/koltregaskes" target="_blank" rel="noopener noreferrer">GitHub</a>
             </div>
 
             <div class="hero-totals" aria-label="Portfolio counts">
@@ -100,6 +106,8 @@
                 width="1200"
                 height="900"
                 loading="eager"
+                fetchpriority="high"
+                decoding="async"
                 style="object-position: 50% 0%"
               />
             </figure>
@@ -147,7 +155,7 @@
         <div class="notice-shell">
           <p class="eyebrow">Company Soon</p>
           <p class="notice-copy">
-            The formal company profile and services layer will come later. Right now this is the public showcase for the work itself.
+            The formal company profile will come later. For now, this site stays focused on the work itself.
           </p>
         </div>
       </section>
@@ -158,7 +166,7 @@
             <span class="section-index">01</span>
             <div>
               <p class="eyebrow">Websites</p>
-              <h2 id="websites-heading">Live websites and public destinations.</h2>
+              <h2 id="websites-heading">Current websites and public destinations.</h2>
             </div>
           </div>
           <div class="showcase-grid showcase-grid-websites" id="websites-grid"></div>
@@ -171,74 +179,20 @@
             <span class="section-index">02</span>
             <div>
               <p class="eyebrow">Tools</p>
-              <h2 id="tools-heading">Pipelines and shared systems.</h2>
+              <h2 id="tools-heading">Pipelines, systems, and shared tooling.</h2>
             </div>
           </div>
           <div class="showcase-grid showcase-grid-tools" id="tools-grid"></div>
         </div>
       </section>
 
-      <section
-        class="editorial-section reveal"
-        id="editorial"
-        aria-labelledby="editorial-heading"
-        hidden
-      >
-        <div class="section-shell editorial-shell">
-          <div class="editorial-header">
-            <div class="section-heading editorial-heading">
-              <span class="section-index">03</span>
-              <div>
-                <p class="eyebrow">Editorial Control</p>
-                <h2 id="editorial-heading">Drafts, verdicts, and what the website manager is touching.</h2>
-              </div>
-            </div>
-
-            <div class="editorial-meta" id="editorial-meta">
-              <span class="editorial-chip editorial-chip-loading">Loading editorial feed</span>
-            </div>
-          </div>
-
-          <p class="editorial-intro">
-            Estate-wide article visibility, pulled into one board. This is where pending reviews, approvals,
-            and blocked pieces should surface before anything goes live.
-          </p>
-
-          <div class="editorial-grid">
-            <section class="editorial-panel" aria-labelledby="editorial-summary-heading">
-              <div class="editorial-panel-header">
-                <p class="eyebrow">System Totals</p>
-                <h3 id="editorial-summary-heading">Editorial summary</h3>
-              </div>
-              <div class="editorial-summary-grid" id="editorial-summary"></div>
-            </section>
-
-            <section class="editorial-panel" aria-labelledby="editorial-queue-heading">
-              <div class="editorial-panel-header">
-                <p class="eyebrow">Needs Attention</p>
-                <h3 id="editorial-queue-heading">Queue</h3>
-              </div>
-              <div class="editorial-queue-list" id="editorial-queue"></div>
-            </section>
-
-            <section class="editorial-panel editorial-panel-wide" aria-labelledby="editorial-sites-heading">
-              <div class="editorial-panel-header">
-                <p class="eyebrow">Site State</p>
-                <h3 id="editorial-sites-heading">Per-site review status</h3>
-              </div>
-              <div class="editorial-sites-grid" id="editorial-sites"></div>
-            </section>
-          </div>
-        </div>
-      </section>
-
       <section class="showcase-section reveal" id="games" aria-labelledby="games-heading">
         <div class="section-shell">
           <div class="section-heading">
-            <span class="section-index">04</span>
+            <span class="section-index">03</span>
             <div>
               <p class="eyebrow">Games</p>
-              <h2 id="games-heading">Games and playable ideas.</h2>
+              <h2 id="games-heading">Game concepts and playable experiments.</h2>
             </div>
           </div>
           <div class="showcase-grid showcase-grid-games" id="games-grid"></div>
@@ -254,8 +208,9 @@
         </div>
 
         <div class="footer-links">
-          <a href="https://github.com/koltregaskes/elusion-works" target="_blank" rel="noreferrer">Repo</a>
-          <a href="https://github.com/koltregaskes" target="_blank" rel="noreferrer">GitHub</a>
+          <a href="https://github.com/koltregaskes/elusion-works" target="_blank" rel="noopener noreferrer">Repo</a>
+          <a href="https://github.com/koltregaskes" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="security.txt">Security</a>
           <a href="#top">Back to top</a>
         </div>
       </div>

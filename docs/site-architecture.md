@@ -12,12 +12,14 @@ current work.
 - Tools
 - Games
 - Company soon placeholder
+- Footer links
 
 ## Rendering Model
 
 - `index.html` provides the static shell.
 - `data/estate.js` holds the structured listing data.
-- `app.js` renders the three showcase sections and the overview counts.
+- `app.js` renders the three public showcase sections and the overview counts.
+- Internal operational views should live outside the public bundle and outside the deployed data directory.
 
 ## Entry Model
 

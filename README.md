@@ -18,6 +18,13 @@ Elusion Works is the public showcase site for the websites, tools, and future ga
 - `data/estate.js` - structured entries for websites, tools, and games
 - `assets/` - favicon, mark, social preview, and showcase assets
 - `docs/` - brand guidance and site architecture notes
+- `.local/` - local-only previews, screenshots, and experiments that never ship
+
+## Public vs Local-Only
+
+- `data/estate.js` is the only public data source for homepage listings.
+- Internal review feeds, dashboards, scratch files, and temporary verification artefacts should stay in `.local/`.
+- The GitHub Pages workflow copies only the public site bundle so local operational files do not leak into deployment.
 
 ## Local Preview
 
@@ -35,7 +42,12 @@ Then open `http://localhost:8123`.
 
 This repo is set up for GitHub Pages using the workflow in `.github/workflows/pages.yml`.
 
-The workflow publishes only the public site files, not the repo docs.
+The workflow publishes only the public site files, not the repo docs or local-only workspace artefacts.
+
+## Security
+
+- Public reporting guidance lives in `SECURITY.md`.
+- The site publishes `security.txt` at both `/security.txt` and `/.well-known/security.txt`.
 
 ## Brand Direction
 

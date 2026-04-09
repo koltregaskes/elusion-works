@@ -37,7 +37,7 @@ export function initCursor() {
   animate();
 
   function attachHovers() {
-    const interactables = document.querySelectorAll("a, button, [data-clickable='true']");
+    const interactables = document.querySelectorAll("a, button");
     interactables.forEach((el) => {
       if (el.dataset.cursorBound === "true") return;
       el.dataset.cursorBound = "true";

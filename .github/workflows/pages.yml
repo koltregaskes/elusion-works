@@ -23,10 +23,11 @@ jobs:
 
       - name: Assemble static site
         run: |
-          mkdir -p _site/assets _site/data
-          cp index.html styles.css app.js cursor.js 404.html robots.txt sitemap.xml llms.txt _site/
+          mkdir -p _site/assets _site/data _site/.well-known
+          cp index.html styles.css app.js cursor.js 404.html robots.txt sitemap.xml llms.txt security.txt _site/
           cp -r assets/. _site/assets/
-          cp -r data/. _site/data/
+          cp data/estate.js _site/data/
+          cp .well-known/security.txt _site/.well-known/security.txt
 
       - name: Verify static site bundle
         run: |
@@ -35,7 +36,10 @@ jobs:
           test -f _site/app.js
           test -f _site/cursor.js
           test -f _site/404.html
-          test -f _site/data/editorial-hub.json
+          test -f _site/security.txt
+          test -f _site/.well-known/security.txt
+          test -f _site/data/estate.js
+          test ! -f _site/data/editorial-hub.json
           test -f _site/assets/og-card.png
           test -f _site/assets/showcase/ai-resource-hub-site.jpg
           test -f _site/assets/showcase/a-list-site.jpg
@@ -51,10 +55,10 @@ jobs:
           grep -q 'id="websites-grid"' _site/index.html
           grep -q 'id="tools-grid"' _site/index.html
           grep -q 'id="games-grid"' _site/index.html
-          grep -q 'id="editorial-summary"' _site/index.html
-          grep -q 'id="editorial-queue"' _site/index.html
-          grep -q 'id="editorial-sites"' _site/index.html
-          grep -q 'Websites, tools, and game ideas under one evolving banner.' _site/index.html
+          ! grep -q 'id="editorial"' _site/index.html
+          ! grep -q 'editorial-hub' _site/app.js
+          ! grep -R -E --include='*.html' --include='*.js' --include='*.txt' --include='*.xml' 'W:\\|C:\\|review_path|repo_path|review_dir' _site
+          grep -q 'The umbrella for websites, tools, and playable ideas.' _site/index.html
 
       - name: Setup Pages
         uses: actions/configure-pages@v6
