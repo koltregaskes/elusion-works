@@ -20,16 +20,20 @@ export function initCursor() {
   });
 
   function animate() {
-    const speed = 0.2;
+    const dx = mouseX - dotX;
+    const dy = mouseY - dotY;
+    const distance = Math.hypot(dx, dy);
+    const speed = Math.min(0.48, 0.22 + distance * 0.003);
+
     dotX += (mouseX - dotX) * speed;
     dotY += (mouseY - dotY) * speed;
 
     const velX = mouseX - dotX;
     const velY = mouseY - dotY;
     const velocitySq = velX * velX + velY * velY;
-    const scale = isHovering ? 1 : Math.min(1.5, 1 + velocitySq * 0.0001);
-    
-    cursorDot.style.transform = `translate(calc(${dotX}px - 50%), calc(${dotY}px - 50%)) scale(${scale})`;
+    const scale = isHovering ? 1.08 : Math.min(1.16, 1 + velocitySq * 0.00002);
+
+    cursorDot.style.transform = `translate(${dotX}px, ${dotY}px) translate(-14%, -10%) rotate(-10deg) scale(${scale})`;
     
     requestAnimationFrame(animate);
   }
