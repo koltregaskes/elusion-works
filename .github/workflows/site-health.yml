@@ -1,0 +1,130 @@
+name: Elusion Works Site Health Check
+
+on:
+  schedule:
+    - cron: "15 7,19 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-live-site:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install Playwright
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+
+      - name: Verify live site
+        env:
+          SITE_URL: https://koltregaskes.github.io/elusion-works/
+        run: |
+          mkdir -p .healthchecks
+          node --input-type=module <<'EOF'
+          import path from "node:path";
+          import { pathToFileURL } from "node:url";
+          import { chromium } from "playwright";
+
+          const { estateItems } = await import(
+            pathToFileURL(path.join(process.cwd(), "data", "estate.js")).href
+          );
+
+          const formatCount = (value) => String(value).padStart(2, "0");
+          const expected = {
+            websites: estateItems.filter((item) => item.group === "websites" || item.group === "hubs").length,
+            tools: estateItems.filter((item) => item.group === "tools").length,
+            games: estateItems.filter((item) => item.group === "games").length,
+          };
+
+          const errors = [];
+          const browser = await chromium.launch();
+          const page = await browser.newPage({ viewport: { width: 1440, height: 1200 } });
+          page.on("console", (message) => {
+            if (message.type() === "error") {
+              errors.push(message.text());
+            }
+          });
+
+          const visitUrl = `${process.env.SITE_URL}?health=${Date.now()}`;
+          await page.goto(visitUrl, { waitUntil: "networkidle" });
+          await page.waitForSelector("#websites-grid .showcase-card");
+
+          const snapshot = await page.evaluate(() => ({
+            counts: Object.fromEntries(
+              [...document.querySelectorAll("[data-count]")].map((node) => [
+                node.dataset.count,
+                node.textContent.trim(),
+              ]),
+            ),
+            cards: {
+              websites: document.querySelectorAll("#websites-grid .showcase-card").length,
+              tools: document.querySelectorAll("#tools-grid .showcase-card").length,
+              games: document.querySelectorAll("#games-grid .showcase-card").length,
+            },
+            hasEditorialSection: Boolean(document.querySelector("#editorial")),
+            hasEditorialResource: performance
+              .getEntriesByType("resource")
+              .some((entry) => entry.name.includes("editorial-hub")),
+            footerLinks: [...document.querySelectorAll(".footer-links a")].map((link) =>
+              link.textContent.trim(),
+            ),
+          }));
+
+          await page.screenshot({ path: ".healthchecks/elusion-works-home.png", fullPage: false });
+          await browser.close();
+
+          const securityResponse = await fetch(`${process.env.SITE_URL}.well-known/security.txt`, {
+            headers: { "cache-control": "no-cache" },
+          });
+          const securityBody = await securityResponse.text();
+
+          if (errors.length > 0) {
+            throw new Error(`Console errors detected: ${errors.join(" | ")}`);
+          }
+
+          for (const [group, count] of Object.entries(expected)) {
+            const expectedCount = formatCount(count);
+            if (snapshot.counts[group] !== expectedCount) {
+              throw new Error(
+                `Count mismatch for ${group}: expected ${expectedCount}, received ${snapshot.counts[group]}`,
+              );
+            }
+
+            if (snapshot.cards[group] !== count) {
+              throw new Error(
+                `Card mismatch for ${group}: expected ${count}, received ${snapshot.cards[group]}`,
+              );
+            }
+          }
+
+          if (snapshot.hasEditorialSection || snapshot.hasEditorialResource) {
+            throw new Error("Editorial-only content appeared in the public site");
+          }
+
+          if (!snapshot.footerLinks.includes("Security")) {
+            throw new Error("Security link missing from footer");
+          }
+
+          if (!securityResponse.ok || !securityBody.includes("Canonical:")) {
+            throw new Error("security.txt is missing or incomplete");
+          }
+
+          console.log("Live site verified", { expected, snapshot });
+          EOF
+
+      - name: Upload healthcheck artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: elusion-works-healthcheck
+          path: .healthchecks/

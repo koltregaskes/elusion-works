@@ -44,6 +44,14 @@ This repo is set up for GitHub Pages using the workflow in `.github/workflows/pa
 
 The workflow publishes only the public site files, not the repo docs or local-only workspace artefacts.
 
+The repo also includes a scheduled browser-based health check in `.github/workflows/site-health.yml`.
+The current cadence is twice daily in UTC:
+
+- `07:00 UTC` scheduled refresh deploy
+- `07:15 UTC` live browser health check
+- `19:00 UTC` scheduled refresh deploy
+- `19:15 UTC` live browser health check
+
 ## Security
 
 - Public reporting guidance lives in `SECURITY.md`.
