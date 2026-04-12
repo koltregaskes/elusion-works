@@ -553,6 +553,10 @@ main {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.showcase-grid-features {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .showcase-card,
 .entry-empty {
   border: 1px solid var(--line);
@@ -578,6 +582,91 @@ main {
   transform: translateY(-5px);
   border-color: rgba(255, 51, 102, 0.4);
   box-shadow: var(--shadow-glow);
+}
+
+.feature-card {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 100%;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 58%),
+    rgba(14, 17, 21, 0.96);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.18);
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.feature-card:hover,
+.feature-card:focus-within {
+  transform: translateY(-4px);
+  border-color: rgba(255, 51, 102, 0.28);
+  box-shadow: var(--shadow-glow);
+}
+
+.feature-card > :not(.card-overlay-link) {
+  position: relative;
+  z-index: 1;
+}
+
+.feature-media {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 16 / 10;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background:
+    linear-gradient(160deg, rgba(215, 161, 111, 0.15), transparent 42%),
+    rgba(18, 22, 27, 0.98);
+}
+
+.feature-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 320ms ease;
+}
+
+.feature-card:hover .feature-media img,
+.feature-card:focus-within .feature-media img {
+  transform: scale(1.03);
+}
+
+.feature-body {
+  display: grid;
+  gap: 0.5rem;
+  padding: 1rem 1.1rem 0.9rem;
+}
+
+.feature-family {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.feature-body h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.15rem, 2vw, 1.6rem);
+  line-height: 0.98;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+
+.feature-body p {
+  margin: 0;
+  color: var(--soft);
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+.feature-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 1.1rem 1.1rem;
 }
 
 .showcase-card > :not(.card-overlay-link) {
@@ -846,6 +935,10 @@ main {
   .showcase-grid-tools {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .showcase-grid-features {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 760px) {
@@ -893,6 +986,7 @@ main {
   .hero-stage,
   .showcase-grid-websites,
   .showcase-grid-tools,
+  .showcase-grid-features,
   .showcase-grid-games {
     grid-template-columns: 1fr;
   }

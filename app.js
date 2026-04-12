@@ -1,8 +1,9 @@
-import { estateItems } from "./data/estate.js";
+import { estateItems, featureItems } from "./data/estate.js";
 import { initCursor } from "./cursor.js";
 
 const sectionTargets = {
   websites: document.querySelector("#websites-grid"),
+  features: document.querySelector("#features-grid"),
   tools: document.querySelector("#tools-grid"),
   games: document.querySelector("#games-grid"),
 };
@@ -122,9 +123,39 @@ function createCardMarkup(item) {
   `;
 }
 
-function renderSection(target, items, emptyLabel) {
+function createFeatureMarkup(item) {
+  return `
+    <article class="feature-card" data-group="${escapeHtml(item.group)}">
+      <div class="feature-media">
+        <img
+          src="${escapeHtml(item.media.src)}"
+          alt="${escapeHtml(item.media.alt ?? "")}"
+          width="1600"
+          height="900"
+          loading="lazy"
+          decoding="async"
+          style="object-position: ${escapeHtml(item.media.position ?? "50% 50%")}"
+        />
+      </div>
+
+      <div class="feature-body">
+        <span class="feature-family">${escapeHtml(item.family)}</span>
+        <h3>${escapeHtml(item.name)}</h3>
+        <p>${escapeHtml(item.blurb)}</p>
+      </div>
+
+      <div class="feature-footer">
+        <span class="card-link" aria-hidden="true">${escapeHtml(actionLabel(item))}</span>
+      </div>
+
+      ${createOverlayLink(item)}
+    </article>
+  `;
+}
+
+function renderSection(target, items, emptyLabel, renderer = createCardMarkup) {
   target.innerHTML = items.length
-    ? items.map(createCardMarkup).join("")
+    ? items.map(renderer).join("")
     : `<article class="entry-empty">${escapeHtml(emptyLabel)}</article>`;
 }
 
@@ -135,10 +166,12 @@ function setCounts(websites, tools, games) {
 }
 
 const websiteItems = getItemsFor(["websites", "hubs"]);
+const featureSpotlights = [...featureItems].sort(sortItems);
 const toolItems = getItemsFor(["tools"]);
 const gameItems = getItemsFor(["games"]);
 
 renderSection(sectionTargets.websites, websiteItems, "Websites coming soon");
+renderSection(sectionTargets.features, featureSpotlights, "Features coming soon", createFeatureMarkup);
 renderSection(sectionTargets.tools, toolItems, "Tools coming soon");
 renderSection(sectionTargets.games, gameItems, "Games coming soon");
 setCounts(websiteItems, toolItems, gameItems);
