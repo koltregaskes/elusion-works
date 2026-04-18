@@ -1,4 +1,5 @@
 .local/
+claude-design/
 .playwright-cli/
 Thumbs.db
 Desktop.ini
