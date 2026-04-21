@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://koltregaskes.github.io/elusion-works/sitemap.xml
+Sitemap: https://elusionworks.com/sitemap.xml

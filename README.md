@@ -6,6 +6,7 @@ Elusion Works is the public showcase site for the websites, tools, and future ga
 
 - A fast static showcase site for `Elusion Works`
 - Structured listing data for the websites, tools, and games featured on the homepage
+- A public showcase layer for experiments, curation formats, and design notes
 - Brand and showcase assets for favicons, social previews, and section artwork
 - Light documentation for setup, architecture, and brand direction
 - A GitHub Pages workflow for deployment
@@ -14,8 +15,13 @@ Elusion Works is the public showcase site for the websites, tools, and future ga
 
 - `index.html` - single-page site shell
 - `styles.css` - visual system and layout styling
+- `showcase-pages.css` - shared styling for the public showcase sub-pages
 - `app.js` - data-driven rendering for the three homepage sections
 - `data/estate.js` - structured entries for websites, tools, and games
+- `experiments/` - design-led microsite launch set
+- `creative-radar/` - permission-first curation format
+- `remix-relay/` - tiny daily remix-chain prototype
+- `design-notes/` - public case-study and reference layer
 - `assets/` - favicon, mark, social preview, and showcase assets
 - `docs/` - brand guidance and site architecture notes
 - `.local/` - local-only previews, screenshots, and experiments that never ship
@@ -64,5 +70,6 @@ The current recommended structure is:
 - `Elusion Works` as the public umbrella label for the portfolio
 - `Elusion` only as internal shorthand for the underlying brand idea, not as the standalone public label
 - distinctive product names only where a property has earned its own identity
+- experiments, curation formats, and small social toys should launch inside Elusion Works before they earn their own domains or brands
 
 See [docs/brand-architecture.md](docs/brand-architecture.md) for the current naming model.

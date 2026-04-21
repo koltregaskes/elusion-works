@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Interactive Product Story | Elusion Works Experiments</title>
+    <meta
+      name="description"
+      content="Interactive Product Story is an Elusion Works experiment for premium product narratives with layered callouts, transitions, and a calmer spec rail."
+    />
+    <meta name="theme-color" content="#06090b" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests"
+    />
+    <meta property="og:title" content="Interactive Product Story | Elusion Works Experiments" />
+    <meta
+      property="og:description"
+      content="A product-story pattern inside Elusion Works for premium launches that need layered explanation without dashboard clutter."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://elusionworks.com/experiments/interactive-product-story/" />
+    <meta property="og:image" content="https://elusionworks.com/assets/og-card.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Interactive Product Story | Elusion Works Experiments" />
+    <meta
+      name="twitter:description"
+      content="A product-story pattern inside Elusion Works for premium launches that need layered explanation without dashboard clutter."
+    />
+    <meta name="twitter:image" content="https://elusionworks.com/assets/og-card.png" />
+    <meta name="view-transition" content="same-origin" />
+    <link rel="canonical" href="https://elusionworks.com/experiments/interactive-product-story/" />
+    <link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600;800&family=Outfit:wght@500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../../showcase-pages.css" />
+  </head>
+  <body class="showcase-page theme-product-story">
+    <a class="skip-link" href="#main-content">Skip to content</a>
+
+    <div class="page-shell">
+      <header class="masthead">
+        <div class="masthead-inner">
+          <a class="brand-link" href="../../">
+            <img src="../../assets/elusion-mark.svg" alt="" width="46" height="46" />
+            <span class="brand-copy">
+              <span>Elusion</span>
+              <strong>Works</strong>
+            </span>
+          </a>
+
+          <nav class="masthead-nav" aria-label="Experiment routes">
+            <a href="../">Experiments</a>
+            <a href="../../design-notes/">Design Notes</a>
+            <a href="../../">Home</a>
+          </nav>
+        </div>
+      </header>
+
+      <main id="main-content">
+        <section class="hero-panel">
+          <div class="hero-grid">
+            <div class="hero-copy">
+              <p class="eyebrow">Experiment 03</p>
+              <h1 class="hero-title">Interactive Product Story gives a premium product page more calm and less kit noise.</h1>
+              <p>
+                This pattern is for launches that need explanation, comparisons, and callouts but still want to feel refined. It trades the usual block stack for a layered story: a hero object, a spec rail, anchored notes, and clearer pacing between the emotional promise and the actual details.
+              </p>
+
+              <div class="chip-row">
+                <span class="chip">Premium narrative</span>
+                <span class="chip">Anchored callouts</span>
+                <span class="chip">Transition-ready</span>
+              </div>
+
+              <div class="link-row">
+                <a class="text-link" href="../">Back to experiments</a>
+                <a class="text-link" href="../../design-notes/#interactive-product-story-notes">Open the matching notes</a>
+              </div>
+            </div>
+
+            <div class="signature-stage" aria-hidden="true">
+              <div class="product-stack">
+                <div class="product-card">
+                  <strong>Signal product hero</strong>
+                  <span>One clear claim, no clutter</span>
+                </div>
+                <div class="product-card">
+                  <strong>Specs that feel native</strong>
+                  <span>Rail and callouts, not dashboard blocks</span>
+                </div>
+                <div class="product-card">
+                  <strong>Transition-aware pacing</strong>
+                  <span>Continuity between the story beats</span>
+                </div>
+              </div>
+
+              <aside class="stage-note">
+                <p class="note-label">What it proves</p>
+                <p>That a premium product story can remain technical without collapsing into generic SaaS layout patterns.</p>
+              </aside>
+            </div>
+          </div>
+        </section>
+
+        <section class="section-panel" aria-labelledby="product-proof-heading">
+          <div class="section-heading">
+            <span class="section-index">01</span>
+            <div>
+              <p class="eyebrow">Proof points</p>
+              <h2 class="section-title" id="product-proof-heading">Where this pattern earns its keep.</h2>
+            </div>
+          </div>
+
+          <div class="detail-grid">
+            <article class="note-card">
+              <h3>Design idea</h3>
+              <p>Build the page like an object reveal. Start with the claim, then let the supporting details arrive through controlled movement, dense-but-readable modules, and anchored notes.</p>
+            </article>
+
+            <article class="note-card">
+              <h3>Frontend idea</h3>
+              <p>Use view transitions, container queries, and anchor positioning as polish layers on top of a stable static document so the experience scales down gracefully.</p>
+            </article>
+
+            <article class="note-card">
+              <h3>Best fit</h3>
+              <p>New tools, premium web apps, or productised features that deserve emotional staging but still need enough technical explanation to feel credible.</p>
+            </article>
+
+            <article class="note-card">
+              <h3>Guardrail</h3>
+              <p>If the page is really a documentation hub or a pricing matrix, this experiment is the wrong instrument. It works when the story still has a clear centre.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="section-panel" aria-labelledby="product-guides-heading">
+          <div class="section-heading">
+            <span class="section-index">02</span>
+            <div>
+              <p class="eyebrow">Reference shelf</p>
+              <h2 class="section-title" id="product-guides-heading">Guides worth using here.</h2>
+            </div>
+          </div>
+
+          <div class="guide-grid">
+            <article class="guide-card">
+              <h3>View Transitions</h3>
+              <p>A strong fit for moving between product story beats without making the route change feel cold or detached.</p>
+              <a class="guide-link" href="https://developer.chrome.com/blog/view-transitions-in-2025" target="_blank" rel="noopener noreferrer">Open guide</a>
+            </article>
+
+            <article class="guide-card">
+              <h3>Anchor positioning</h3>
+              <p>Useful for premium callouts that stay attached to a visual or a spec module instead of floating as random absolute-positioned decoration.</p>
+              <a class="guide-link" href="https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Anchor_positioning" target="_blank" rel="noopener noreferrer">Open guide</a>
+            </article>
+
+            <article class="guide-card">
+              <h3>Astro view transitions</h3>
+              <p>If this pattern evolves into an Astro-powered product microsite, this is the clean next step instead of bolting on a larger client framework.</p>
+              <a class="guide-link" href="https://docs.astro.build/en/guides/view-transitions/" target="_blank" rel="noopener noreferrer">Open guide</a>
+            </article>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer-panel">
+        <div>
+          <p class="footer-title">Interactive Product Story</p>
+          <p class="footer-copy">A premium launch page pattern for tools and products that need both atmosphere and actual explanation.</p>
+        </div>
+
+        <div class="footer-links">
+          <a class="footer-link" href="../">Experiments</a>
+          <a class="footer-link" href="../../design-notes/#interactive-product-story-notes">Matching notes</a>
+          <a class="footer-link" href="../../">Home</a>
+        </div>
+      </footer>
+    </div>
+  </body>
+</html>

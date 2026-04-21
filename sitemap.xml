@@ -1,6 +1,30 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://koltregaskes.github.io/elusion-works/</loc>
+    <loc>https://elusionworks.com/</loc>
+  </url>
+  <url>
+    <loc>https://elusionworks.com/experiments/</loc>
+  </url>
+  <url>
+    <loc>https://elusionworks.com/experiments/motion-poster/</loc>
+  </url>
+  <url>
+    <loc>https://elusionworks.com/experiments/photography-contact-story/</loc>
+  </url>
+  <url>
+    <loc>https://elusionworks.com/experiments/interactive-product-story/</loc>
+  </url>
+  <url>
+    <loc>https://elusionworks.com/experiments/data-story/</loc>
+  </url>
+  <url>
+    <loc>https://elusionworks.com/creative-radar/</loc>
+  </url>
+  <url>
+    <loc>https://elusionworks.com/remix-relay/</loc>
+  </url>
+  <url>
+    <loc>https://elusionworks.com/design-notes/</loc>
   </url>
 </urlset>

@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Remix Relay | Elusion Works</title>
+    <meta
+      name="description"
+      content="Remix Relay is a tiny Elusion Works social toy built around a daily prompt and remix chain rather than a full social network."
+    />
+    <meta name="theme-color" content="#0b0710" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests"
+    />
+    <meta property="og:title" content="Remix Relay | Elusion Works" />
+    <meta
+      property="og:description"
+      content="A deliberately tiny daily prompt and remix chain built for the web before any wider social expansion."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://elusionworks.com/remix-relay/" />
+    <meta property="og:image" content="https://elusionworks.com/assets/og-card.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Remix Relay | Elusion Works" />
+    <meta
+      name="twitter:description"
+      content="A deliberately tiny daily prompt and remix chain built for the web before any wider social expansion."
+    />
+    <meta name="twitter:image" content="https://elusionworks.com/assets/og-card.png" />
+    <meta name="view-transition" content="same-origin" />
+    <link rel="canonical" href="https://elusionworks.com/remix-relay/" />
+    <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600;800&family=Outfit:wght@500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../showcase-pages.css" />
+  </head>
+  <body class="showcase-page theme-remix">
+    <a class="skip-link" href="#main-content">Skip to content</a>
+
+    <div class="page-shell">
+      <header class="masthead">
+        <div class="masthead-inner">
+          <a class="brand-link" href="../">
+            <img src="../assets/elusion-mark.svg" alt="" width="46" height="46" />
+            <span class="brand-copy">
+              <span>Elusion</span>
+              <strong>Works</strong>
+            </span>
+          </a>
+
+          <nav class="masthead-nav" aria-label="Remix Relay routes">
+            <a href="../experiments/">Experiments</a>
+            <a href="../design-notes/">Design Notes</a>
+            <a href="../">Home</a>
+          </nav>
+        </div>
+      </header>
+
+      <main id="main-content">
+        <section class="hero-panel">
+          <div class="hero-grid">
+            <div class="hero-copy">
+              <p class="eyebrow">Remix Relay</p>
+              <h1 class="hero-title">A small daily remix chain, not a social network in disguise.</h1>
+              <p>
+                Remix Relay is intentionally constrained. One daily prompt. One source. One remix. One short note. One outbound attribution link. No profiles, no DMs, no general comment threads, and no infinite feed trying to impersonate scale.
+              </p>
+
+              <div class="chip-row">
+                <span class="chip">Daily rhythm</span>
+                <span class="chip">Archive-first</span>
+                <span class="chip">No profiles</span>
+                <span class="chip">Attribution on every entry</span>
+              </div>
+
+              <div class="link-row">
+                <a class="text-link" href="#relay-archive">Jump to sample archive</a>
+                <a class="text-link" href="../">Back to Elusion Works</a>
+              </div>
+            </div>
+
+            <div class="hero-stage" aria-hidden="true">
+              <div class="stage-grid">
+                <div class="stage-panel">
+                  <p class="kicker">Core mechanic</p>
+                  <strong>Source, remix, note, link.</strong>
+                  <p>Every public entry is small enough to stay manageable and structured enough to become a coherent archive rather than a loose feed.</p>
+                </div>
+
+                <div class="stage-stack">
+                  <div class="poster-line"></div>
+                  <div class="poster-line"></div>
+                  <div class="poster-line"></div>
+                </div>
+              </div>
+
+              <aside class="stage-note">
+                <p class="note-label">Launch guardrail</p>
+                <p>Start web-first and syndicate outward. Do not try to manufacture a self-sustaining on-site social graph from day one.</p>
+              </aside>
+            </div>
+          </div>
+        </section>
+
+        <section class="section-panel" aria-labelledby="relay-rules-heading">
+          <div class="section-heading">
+            <span class="section-index">01</span>
+            <div>
+              <p class="eyebrow">Hard limits</p>
+              <h2 class="section-title" id="relay-rules-heading">What the v1 build refuses to become.</h2>
+            </div>
+          </div>
+
+          <div class="rules-grid">
+            <article class="policy-card">
+              <h3>No profiles or social graph</h3>
+              <p>The archive matters more than identity performance. A daily chain is enough for the first version.</p>
+            </article>
+
+            <article class="policy-card">
+              <h3>No comments or DMs</h3>
+              <p>The moderation cost is too high for the value. Keep the mechanic simple and observable before opening broader community features.</p>
+            </article>
+
+            <article class="policy-card">
+              <h3>Moderation switch exists first</h3>
+              <p>Before public intake, the publish path needs a simple way to pause new entries while leaving the archive readable.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="section-panel" id="relay-archive" aria-labelledby="relay-archive-heading">
+          <div class="section-heading">
+            <span class="section-index">02</span>
+            <div>
+              <p class="eyebrow">Sample archive</p>
+              <h2 class="section-title" id="relay-archive-heading">A prototype three-day chain.</h2>
+            </div>
+          </div>
+
+          <div class="timeline">
+            <article class="timeline-day" data-day="Day 01">
+              <h3>Poster cut</h3>
+              <div class="timeline-meta">
+                <div>
+                  <p class="note-label">Source</p>
+                  <strong>Axy Lusion hero still</strong>
+                </div>
+                <div>
+                  <p class="note-label">Remix</p>
+                  <strong>Condensed motion-poster layout</strong>
+                </div>
+                <div>
+                  <p class="note-label">Note</p>
+                  <p>Reduce the image, let the title carry more weight, and make the frame feel like a release poster instead of a gallery tile.</p>
+                </div>
+              </div>
+              <a class="timeline-link" href="https://axylusion.com/" target="_blank" rel="noopener noreferrer">Outbound source link</a>
+            </article>
+
+            <article class="timeline-day" data-day="Day 02">
+              <h3>Editorial tile</h3>
+              <div class="timeline-meta">
+                <div>
+                  <p class="note-label">Source</p>
+                  <strong>Kol's Korner headline cadence</strong>
+                </div>
+                <div>
+                  <p class="note-label">Remix</p>
+                  <strong>Two-column story panel</strong>
+                </div>
+                <div>
+                  <p class="note-label">Note</p>
+                  <p>Borrow the editorial rhythm, but compress it into a cleaner promotional panel that can still live inside a narrow archive card.</p>
+                </div>
+              </div>
+              <a class="timeline-link" href="https://koltregaskes.com/" target="_blank" rel="noopener noreferrer">Outbound source link</a>
+            </article>
+
+            <article class="timeline-day" data-day="Day 03">
+              <h3>Quiet contact crop</h3>
+              <div class="timeline-meta">
+                <div>
+                  <p class="note-label">Source</p>
+                  <strong>Photography portrait layout</strong>
+                </div>
+                <div>
+                  <p class="note-label">Remix</p>
+                  <strong>Booking-story page fragment</strong>
+                </div>
+                <div>
+                  <p class="note-label">Note</p>
+                  <p>Keep the image quiet, let the whitespace do more work, and turn the prompt response into the seed of a contact-led editorial sequence.</p>
+                </div>
+              </div>
+              <a class="timeline-link" href="https://koltregaskesphotography.com/" target="_blank" rel="noopener noreferrer">Outbound source link</a>
+            </article>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer-panel">
+        <div>
+          <p class="footer-title">Remix Relay</p>
+          <p class="footer-copy">A tiny daily remix mechanic designed to stay manageable, attributable, and genuinely different from a normal feed.</p>
+        </div>
+
+        <div class="footer-links">
+          <a class="footer-link" href="../experiments/">Experiments</a>
+          <a class="footer-link" href="#relay-archive">Archive</a>
+          <a class="footer-link" href="../">Home</a>
+        </div>
+      </footer>
+    </div>
+  </body>
+</html>

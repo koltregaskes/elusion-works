@@ -30,7 +30,7 @@ jobs:
 
       - name: Verify live site
         env:
-          SITE_URL: https://koltregaskes.github.io/elusion-works/
+          SITE_URL: https://elusionworks.com/
         run: |
           mkdir -p .healthchecks
           node --input-type=module <<'EOF'
@@ -70,6 +70,7 @@ jobs:
               ]),
             ),
             cards: {
+              showcase: document.querySelectorAll("#showcase .launch-card").length,
               websites: document.querySelectorAll("#websites-grid .showcase-card").length,
               tools: document.querySelectorAll("#tools-grid .showcase-card").length,
               games: document.querySelectorAll("#games-grid .showcase-card").length,
@@ -93,6 +94,10 @@ jobs:
 
           if (errors.length > 0) {
             throw new Error(`Console errors detected: ${errors.join(" | ")}`);
+          }
+
+          if (snapshot.cards.showcase !== 4) {
+            throw new Error(`Showcase card mismatch: expected 4, received ${snapshot.cards.showcase}`);
           }
 
           for (const [group, count] of Object.entries(expected)) {

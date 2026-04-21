@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Motion Poster | Elusion Works Experiments</title>
+    <meta
+      name="description"
+      content="Motion Poster is an Elusion Works experiment for cinematic single-page storytelling around AI art, music, and moving-image work."
+    />
+    <meta name="theme-color" content="#09070a" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests"
+    />
+    <meta property="og:title" content="Motion Poster | Elusion Works Experiments" />
+    <meta
+      property="og:description"
+      content="A cinematic microsite pattern for AI art, music, and motion-led work."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://elusionworks.com/experiments/motion-poster/" />
+    <meta property="og:image" content="https://elusionworks.com/assets/og-card.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Motion Poster | Elusion Works Experiments" />
+    <meta
+      name="twitter:description"
+      content="A cinematic microsite pattern for AI art, music, and motion-led work."
+    />
+    <meta name="twitter:image" content="https://elusionworks.com/assets/og-card.png" />
+    <meta name="view-transition" content="same-origin" />
+    <link rel="canonical" href="https://elusionworks.com/experiments/motion-poster/" />
+    <link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600;800&family=Outfit:wght@500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../../showcase-pages.css" />
+  </head>
+  <body class="showcase-page theme-motion-poster">
+    <a class="skip-link" href="#main-content">Skip to content</a>
+
+    <div class="page-shell">
+      <header class="masthead">
+        <div class="masthead-inner">
+          <a class="brand-link" href="../../">
+            <img src="../../assets/elusion-mark.svg" alt="" width="46" height="46" />
+            <span class="brand-copy">
+              <span>Elusion</span>
+              <strong>Works</strong>
+            </span>
+          </a>
+
+          <nav class="masthead-nav" aria-label="Experiment routes">
+            <a href="../">Experiments</a>
+            <a href="../../design-notes/">Design Notes</a>
+            <a href="../../">Home</a>
+          </nav>
+        </div>
+      </header>
+
+      <main id="main-content">
+        <section class="hero-panel">
+          <div class="hero-grid">
+            <div class="hero-copy">
+              <p class="eyebrow">Experiment 01</p>
+              <h1 class="hero-title">Motion Poster turns one release into a title sequence.</h1>
+              <p>
+                This pattern is for work that deserves drama more than metadata: a track, a visual drop, a short film, or a single AI-art story. The job of the page is to build anticipation, stage one unforgettable frame, and then release the viewer back into the rest of the portfolio.
+              </p>
+
+              <div class="chip-row">
+                <span class="chip">Single focus page</span>
+                <span class="chip">Typography first</span>
+                <span class="chip">Motion without clutter</span>
+              </div>
+
+              <div class="link-row">
+                <a class="text-link" href="../">Back to experiments</a>
+                <a class="text-link" href="../../design-notes/#motion-poster-notes">Open the matching notes</a>
+              </div>
+            </div>
+
+            <div class="signature-stage" aria-hidden="true">
+              <div class="stage-grid">
+                <div class="stage-panel">
+                  <p class="kicker">Poster headline</p>
+                  <strong>Every release deserves one frame people remember.</strong>
+                  <p>Lead with the strongest phrase, hold the atmosphere, and let the supporting copy arrive later.</p>
+                </div>
+
+                <div class="stage-stack">
+                  <div class="poster-line"></div>
+                  <div class="poster-line"></div>
+                  <div class="poster-line"></div>
+                </div>
+              </div>
+
+              <aside class="stage-note">
+                <p class="note-label">What it proves</p>
+                <p>That a single poster-led page can feel premium without needing a gallery, a feed, or a dense product stack.</p>
+              </aside>
+            </div>
+          </div>
+        </section>
+
+        <section class="section-panel" aria-labelledby="motion-proof-heading">
+          <div class="section-heading">
+            <span class="section-index">01</span>
+            <div>
+              <p class="eyebrow">Proof points</p>
+              <h2 class="section-title" id="motion-proof-heading">Why this pattern belongs in the line.</h2>
+            </div>
+          </div>
+
+          <div class="detail-grid">
+            <article class="note-card">
+              <h3>Design idea</h3>
+              <p>Trade thumbnails and navigation density for one strong hero, one supporting line, and a small number of controlled reveals that feel staged rather than busy.</p>
+            </article>
+
+            <article class="note-card">
+              <h3>Frontend idea</h3>
+              <p>Lean on CSS-driven sequencing, reduced-motion fallbacks, and route-level view transitions so the page feels polished without introducing a heavyweight runtime.</p>
+            </article>
+
+            <article class="note-card">
+              <h3>Best fit</h3>
+              <p>Axy Lusion drops, a one-off soundtrack, a short trailer, or any release where the emotional hook matters more than catalog browsing.</p>
+            </article>
+
+            <article class="note-card">
+              <h3>Guardrail</h3>
+              <p>If a release needs search, filtering, or deep metadata, this stops being a poster and becomes a different page type. The experiment only works while it stays focused.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="section-panel" aria-labelledby="motion-guides-heading">
+          <div class="section-heading">
+            <span class="section-index">02</span>
+            <div>
+              <p class="eyebrow">Reference shelf</p>
+              <h2 class="section-title" id="motion-guides-heading">Guides worth keeping nearby.</h2>
+            </div>
+          </div>
+
+          <div class="guide-grid">
+            <article class="guide-card">
+              <h3>View Transitions</h3>
+              <p>Use route continuity to make the jump into and out of the poster feel intentional instead of abrupt.</p>
+              <a class="guide-link" href="https://developer.chrome.com/blog/view-transitions-in-2025" target="_blank" rel="noopener noreferrer">Open guide</a>
+            </article>
+
+            <article class="guide-card">
+              <h3>Scroll-driven animation</h3>
+              <p>Use restrained motion to stage text and frames without dropping into JavaScript-heavy scroll choreography.</p>
+              <a class="guide-link" href="https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Scroll-driven_animations" target="_blank" rel="noopener noreferrer">Open guide</a>
+            </article>
+
+            <article class="guide-card">
+              <h3>Baseline-aware platform choices</h3>
+              <p>Keep the poster premium but realistic by choosing effects that are sturdy across the current browser baseline.</p>
+              <a class="guide-link" href="https://web.dev/blog/whats-new-in-web-io2025" target="_blank" rel="noopener noreferrer">Open guide</a>
+            </article>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer-panel">
+        <div>
+          <p class="footer-title">Motion Poster</p>
+          <p class="footer-copy">A cinematic microsite pattern inside Elusion Works for releases that deserve a stage rather than a grid of cards.</p>
+        </div>
+
+        <div class="footer-links">
+          <a class="footer-link" href="../">Experiments</a>
+          <a class="footer-link" href="../../design-notes/#motion-poster-notes">Matching notes</a>
+          <a class="footer-link" href="../../">Home</a>
+        </div>
+      </footer>
+    </div>
+  </body>
+</html>
