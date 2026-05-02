@@ -32,7 +32,7 @@ jobs:
         env:
           SITE_URL: https://elusionworks.com/
         run: |
-          mkdir -p .healthchecks
+          mkdir -p healthchecks
           node --input-type=module <<'EOF'
           import path from "node:path";
           import { pathToFileURL } from "node:url";
@@ -84,7 +84,7 @@ jobs:
             ),
           }));
 
-          await page.screenshot({ path: ".healthchecks/elusion-works-home.png", fullPage: false });
+          await page.screenshot({ path: "healthchecks/elusion-works-home.png", fullPage: false });
           await browser.close();
 
           const securityResponse = await fetch(`${process.env.SITE_URL}security.txt`, {
@@ -135,4 +135,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: elusion-works-healthcheck
-          path: .healthchecks/
+          path: healthchecks/
