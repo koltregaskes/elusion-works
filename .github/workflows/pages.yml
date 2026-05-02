@@ -32,7 +32,7 @@ jobs:
           cp index.html styles.css app.js cursor.js 404.html robots.txt sitemap.xml llms.txt security.txt _site/
           cp -r assets/. _site/assets/
           cp data/estate.js _site/data/
-          cp -r experiments creative-radar remix-relay design-notes _site/
+          cp -r experiments creative-radar remix-relay design-notes demos _site/
 
       - name: Verify static site bundle
         run: |
@@ -64,6 +64,7 @@ jobs:
           test -f _site/creative-radar/index.html
           test -f _site/remix-relay/index.html
           test -f _site/design-notes/index.html
+          test -f _site/demos/golden/index.html
           grep -q 'id="websites-grid"' _site/index.html
           grep -q 'id="tools-grid"' _site/index.html
           grep -q 'id="games-grid"' _site/index.html
