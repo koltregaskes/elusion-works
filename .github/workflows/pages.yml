@@ -32,6 +32,7 @@ jobs:
           cp index.html styles.css app.js cursor.js 404.html robots.txt sitemap.xml llms.txt security.txt _site/
           cp -r assets/. _site/assets/
           cp data/estate.js _site/data/
+          cp -r experiments creative-radar remix-relay design-notes _site/
 
       - name: Verify static site bundle
         run: |
@@ -55,13 +56,23 @@ jobs:
           test -f _site/assets/showcase/shared-website-tools.svg
           test -f _site/assets/showcase/games-in-development.svg
           test -f _site/assets/showcase/interactive-experiments.svg
+          test -f _site/experiments/index.html
+          test -f _site/experiments/motion-poster/index.html
+          test -f _site/experiments/photography-contact-story/index.html
+          test -f _site/experiments/interactive-product-story/index.html
+          test -f _site/experiments/data-story/index.html
+          test -f _site/creative-radar/index.html
+          test -f _site/remix-relay/index.html
+          test -f _site/design-notes/index.html
           grep -q 'id="websites-grid"' _site/index.html
           grep -q 'id="tools-grid"' _site/index.html
           grep -q 'id="games-grid"' _site/index.html
+          grep -q 'id="showcase"' _site/index.html
+          grep -q 'launch-card' _site/index.html
           ! grep -q 'id="editorial"' _site/index.html
           ! grep -q 'editorial-hub' _site/app.js
           ! grep -R -E --include='*.html' --include='*.js' --include='*.txt' --include='*.xml' 'W:\\|C:\\|review_path|repo_path|review_dir' _site
-          grep -q 'The umbrella for websites, tools, and playable ideas.' _site/index.html
+          grep -q 'The umbrella for websites, tools, design experiments, and playable ideas.' _site/index.html
 
       - name: Setup Pages
         uses: actions/configure-pages@v6
