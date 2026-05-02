@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gallery — Golden Encyclopedia</title>
+<meta name="description" content="A curated visual collection of Golden Retrievers — portraits, candid moments, and adventures.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+<style>
+.gp-page { padding-top: 120px; padding-bottom: 80px; }
+.gp-head {
+  display: grid; grid-template-columns: 1.4fr 1fr; gap: 40px; align-items: end;
+  padding-bottom: 32px; border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 32px;
+}
+.gp-head .crumb {
+  font-size: 0.72rem; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--text-muted); margin-bottom: 18px;
+}
+.gp-head .crumb a { color: var(--text-muted); }
+.gp-head h1 { margin: 0 0 16px; font-size: clamp(3rem, 6vw, 5.5rem); }
+.gp-head p { color: var(--text-secondary); max-width: 50ch; }
+.gp-head .right { text-align: right; }
+.gp-head .right .meta {
+  display: inline-flex; gap: 24px; align-items: center;
+  font-size: 0.72rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-muted);
+}
+.gp-head .right .meta strong { color: var(--primary); font-family: var(--ff-display); font-size: 2rem; display: block; line-height: 1; margin-bottom: 4px; }
+
+@media (max-width: 800px) {
+  .gp-head { grid-template-columns: 1fr; }
+  .gp-head .right { text-align: left; }
+}
+
+.filter-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  margin-bottom: 24px; flex-wrap: wrap;
+}
+.filter-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+.fp-btn {
+  padding: 8px 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-full);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+  transition: all .25s ease;
+}
+.fp-btn.active, .fp-btn:hover { color: var(--on-primary); background: var(--primary); border-color: var(--primary); }
+.view-toggle { display: inline-flex; gap: 4px; background: rgba(16,20,25,0.6); border: 1px solid var(--border-subtle); padding: 3px; border-radius: var(--r-full); }
+.view-toggle button { padding: 8px 14px; border-radius: var(--r-full); color: var(--text-muted); font-size: 0.7rem; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 700; }
+.view-toggle button.active { background: var(--primary); color: var(--on-primary); }
+
+/* Masonry grid via column-count */
+.gp-masonry { columns: 4 200px; column-gap: 16px; }
+.gp-tile {
+  break-inside: avoid;
+  margin-bottom: 16px;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  position: relative;
+  cursor: pointer;
+  background: #0a0e12;
+  transition: border-color .25s ease, transform .35s ease;
+  display: block;
+}
+.gp-tile:hover { border-color: var(--primary); transform: translateY(-4px); }
+.gp-tile img { width: 100%; height: auto; display: block; transition: transform .8s ease; }
+.gp-tile:hover img { transform: scale(1.04); }
+.gp-tile .overlay {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, transparent 60%, rgba(5,7,10,0.65) 100%);
+  opacity: 0;
+  transition: opacity .35s ease;
+  display: flex; align-items: flex-end; padding: 18px;
+}
+.gp-tile:hover .overlay { opacity: 1; }
+.gp-tile .info { color: var(--cream); }
+.gp-tile .info .cap { font-family: var(--ff-display); font-size: 1.1rem; line-height: 1.1; margin: 0; letter-spacing: -0.01em; }
+.gp-tile .info .tag { font-size: 0.62rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--primary); display: block; margin-top: 6px; }
+.gp-tile .expand-ic {
+  position: absolute; top: 14px; right: 14px;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: rgba(5,7,10,0.55);
+  border: 1px solid var(--border-medium);
+  color: var(--cream);
+  display: grid; place-items: center;
+  opacity: 0;
+  transition: opacity .25s ease;
+}
+.gp-tile:hover .expand-ic { opacity: 1; }
+
+.gp-grid-fixed { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+.gp-grid-fixed .gp-tile { margin-bottom: 0; aspect-ratio: 4/5; }
+.gp-grid-fixed .gp-tile img { width: 100%; height: 100%; object-fit: cover; }
+
+.empty-state {
+  text-align: center;
+  padding: 80px 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+/* Lightbox */
+.lb {
+  position: fixed; inset: 0;
+  background: rgba(5,7,10,0.95);
+  z-index: 200;
+  display: grid; place-items: center;
+  padding: 24px;
+  opacity: 0; pointer-events: none;
+  transition: opacity .35s ease;
+}
+.lb.open { opacity: 1; pointer-events: auto; }
+.lb-stage {
+  max-width: 1200px; width: 100%;
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 16px;
+}
+.lb-image-wrap {
+  position: relative;
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  background: #000;
+  display: grid; place-items: center;
+  max-height: 75vh;
+}
+.lb-image-wrap img { max-width: 100%; max-height: 75vh; width: auto; height: auto; display: block; }
+.lb-meta {
+  display: flex; justify-content: space-between; align-items: center; gap: 16px;
+  padding: 0 8px;
+  flex-wrap: wrap;
+}
+.lb-meta .cap { font-family: var(--ff-display); font-size: 1.4rem; color: var(--cream); margin: 0; letter-spacing: -0.01em; }
+.lb-meta .tag { font-size: 0.66rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--primary); display: block; margin-bottom: 4px; }
+.lb-counter { font-size: 0.72rem; letter-spacing: 0.16em; color: var(--text-muted); text-transform: uppercase; font-variant-numeric: tabular-nums; }
+.lb-controls { position: absolute; inset: 0; pointer-events: none; }
+.lb-btn {
+  position: absolute;
+  width: 48px; height: 48px;
+  border-radius: 50%;
+  background: rgba(5,7,10,0.55);
+  border: 1px solid var(--border-medium);
+  color: var(--cream);
+  display: grid; place-items: center;
+  pointer-events: auto;
+  transition: background .25s ease, border-color .25s ease;
+}
+.lb-btn:hover { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+.lb-prev { left: 14px; top: 50%; transform: translateY(-50%); }
+.lb-next { right: 14px; top: 50%; transform: translateY(-50%); }
+.lb-close { top: 14px; right: 14px; }
+</style>
+</head>
+<body data-screen-label="03 Gallery">
+
+<div id="siteHeaderHost"></div>
+
+<main class="gp-page">
+  <div class="container">
+
+    <header class="gp-head">
+      <div>
+        <div class="crumb"><a href="index.html">Home</a> · <span style="color:var(--cream);">Gallery</span></div>
+        <span class="eyebrow">A visual collection</span>
+        <h1 class="h-1 reveal">Moments<br>in Gold</h1>
+        <p class="reveal" style="transition-delay:.1s">Portraits, candid moments and everyday adventures. A curated visual library celebrating the breed at every stage of life.</p>
+      </div>
+      <div class="right reveal">
+        <div class="meta">
+          <span><strong>32</strong>Photos</span>
+          <span><strong>4</strong>Categories</span>
+          <span><strong>2026</strong>Updated</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="filter-bar">
+      <div class="filter-pills" id="filterPills">
+        <button class="fp-btn active" data-filter="all">All</button>
+        <button class="fp-btn" data-filter="portrait">Portraits</button>
+        <button class="fp-btn" data-filter="action">Action</button>
+        <button class="fp-btn" data-filter="outdoor">Outdoor</button>
+        <button class="fp-btn" data-filter="puppy">Studio</button>
+      </div>
+      <div class="view-toggle" role="tablist" id="viewToggle">
+        <button class="active" data-view="masonry">Masonry</button>
+        <button data-view="grid">Grid</button>
+      </div>
+    </div>
+
+    <div class="gp-masonry" id="grid">
+      <!-- Tiles injected -->
+    </div>
+
+  </div>
+</main>
+
+<!-- Lightbox -->
+<div class="lb" id="lightbox" role="dialog" aria-modal="true" aria-label="Image viewer">
+  <div class="lb-stage">
+    <div class="lb-image-wrap">
+      <img id="lbImg" alt="">
+      <div class="lb-controls">
+        <button class="lb-btn lb-prev" id="lbPrev" aria-label="Previous"></button>
+        <button class="lb-btn lb-next" id="lbNext" aria-label="Next"></button>
+        <button class="lb-btn lb-close" id="lbClose" aria-label="Close"></button>
+      </div>
+    </div>
+    <div class="lb-meta">
+      <div>
+        <span class="tag" id="lbTag"></span>
+        <h2 class="cap" id="lbCap"></h2>
+      </div>
+      <div class="lb-counter" id="lbCount"></div>
+    </div>
+  </div>
+</div>
+
+<div id="siteFooterHost"></div>
+
+<script src="chrome.js"></script>
+<script>
+  GE.mountChrome('gallery');
+  const I = GE_SVG;
+
+  // Image set — reuse the supplied photographs across categories with curated captions.
+  const IMGS = [
+    { src: "assets/golden/hero_main_dog_crop_3x.png", cap: "Stillness, in Gold", cat: "portrait" },
+    { src: "assets/golden/gallery_01_running_grass_3x.png", cap: "Through the Long Grass", cat: "action" },
+    { src: "assets/golden/gallery_03_beach_sunset_3x.png", cap: "Last Light at the Tide", cat: "outdoor" },
+    { src: "assets/golden/overview_03_family_at_heart_3x.png", cap: "Family at Heart", cat: "portrait" },
+    { src: "assets/golden/gallery_02_portrait_closeup_3x.png", cap: "An Honest Look", cat: "portrait" },
+    { src: "assets/golden/overview_01_built_for_the_field_3x.png", cap: "Built for the Field", cat: "action" },
+    { src: "assets/golden/hero_cinematic_clean_highres.png", cap: "Watching the Horizon", cat: "outdoor" },
+    { src: "assets/golden/gallery_04_woodland_profile_3x.png", cap: "Woodland Profile", cat: "outdoor" },
+    { src: "assets/golden/overview_02_people_pleasers_3x.png", cap: "Eager to Please", cat: "portrait" },
+    { src: "assets/golden/studio_full_body_clean_highres.png", cap: "Studio Standard", cat: "puppy" },
+    { src: "assets/golden/history_04_today_loved_worldwide_3x.png", cap: "A Modern Companion", cat: "outdoor" },
+    { src: "assets/golden/history_03_1930s_family_favourite_3x.png", cap: "Sepia Memories", cat: "portrait" },
+  ];
+
+  const grid = document.getElementById('grid');
+  let current = 0;
+  let visible = IMGS.slice();
+
+  function render(filter) {
+    visible = filter === 'all' ? IMGS.slice() : IMGS.filter(i => i.cat === filter);
+    grid.innerHTML = visible.map((it, i) => `
+      <a class="gp-tile" data-index="${i}" href="${it.src}">
+        <img src="${it.src}" alt="${it.cap}" loading="lazy">
+        <div class="expand-ic">${I.expand}</div>
+        <div class="overlay">
+          <div class="info">
+            <h3 class="cap">${it.cap}</h3>
+            <span class="tag">${it.cat}</span>
+          </div>
+        </div>
+      </a>
+    `).join('');
+  }
+  render('all');
+
+  // View toggle
+  const vt = document.getElementById('viewToggle');
+  vt.addEventListener('click', e => {
+    const b = e.target.closest('button[data-view]'); if (!b) return;
+    vt.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    if (b.dataset.view === 'grid') {
+      grid.classList.add('gp-grid-fixed');
+      grid.classList.remove('gp-masonry');
+    } else {
+      grid.classList.remove('gp-grid-fixed');
+      grid.classList.add('gp-masonry');
+    }
+  });
+
+  // Filter
+  document.getElementById('filterPills').addEventListener('click', e => {
+    const b = e.target.closest('.fp-btn'); if (!b) return;
+    document.querySelectorAll('.fp-btn').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    render(b.dataset.filter);
+  });
+
+  // Lightbox
+  const lb = document.getElementById('lightbox');
+  const lbImg = document.getElementById('lbImg');
+  const lbCap = document.getElementById('lbCap');
+  const lbTag = document.getElementById('lbTag');
+  const lbCount = document.getElementById('lbCount');
+  document.getElementById('lbPrev').innerHTML = I.arrowLeft;
+  document.getElementById('lbNext').innerHTML = I.arrowSm;
+  document.getElementById('lbClose').innerHTML = I.close;
+
+  function show(i) {
+    if (!visible.length) return;
+    current = (i + visible.length) % visible.length;
+    const it = visible[current];
+    lbImg.src = it.src;
+    lbImg.alt = it.cap;
+    lbCap.textContent = it.cap;
+    lbTag.textContent = it.cat;
+    lbCount.textContent = `${String(current + 1).padStart(2,'0')} / ${String(visible.length).padStart(2,'0')}`;
+  }
+  function open(i) { show(i); lb.classList.add('open'); document.body.style.overflow = 'hidden'; }
+  function close() { lb.classList.remove('open'); document.body.style.overflow = ''; }
+
+  grid.addEventListener('click', e => {
+    const t = e.target.closest('.gp-tile'); if (!t) return;
+    e.preventDefault();
+    open(parseInt(t.dataset.index, 10));
+  });
+  document.getElementById('lbPrev').addEventListener('click', () => show(current - 1));
+  document.getElementById('lbNext').addEventListener('click', () => show(current + 1));
+  document.getElementById('lbClose').addEventListener('click', close);
+  lb.addEventListener('click', e => { if (e.target === lb) close(); });
+  document.addEventListener('keydown', e => {
+    if (!lb.classList.contains('open')) return;
+    if (e.key === 'Escape') close();
+    if (e.key === 'ArrowLeft') show(current - 1);
+    if (e.key === 'ArrowRight') show(current + 1);
+  });
+</script>
+</body>
+</html>

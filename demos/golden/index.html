@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Golden Encyclopedia — Loyal. Gentle. Golden.</title>
+<meta name="description" content="A premium experience for the world's most beloved companion. Discover the Golden Retriever — intelligent, loyal, and endlessly devoted.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Libre+Baskerville:wght@400;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="home.css">
+<link rel="preload" as="image" href="assets/golden/hero_cinematic_clean_highres.png">
+</head>
+<body data-screen-label="01 Homepage">
+
+<div id="siteHeaderHost"></div>
+
+<main id="main">
+
+  <!-- ============================ HERO ============================ -->
+  <section class="hero" data-screen-label="Hero">
+    <div class="hero-bg" aria-hidden="true">
+      <video id="heroVideo" autoplay muted loop playsinline preload="auto" poster="assets/golden/hero_cinematic_clean_highres.png">
+        <source src="assets/golden/hero_video.mp4" type="video/mp4">
+      </video>
+      <span class="hero-vignette"></span>
+    </div>
+    <div class="container">
+      <div class="hero-grid">
+        <div class="hero-text">
+          <span class="eyebrow reveal">The world's most beloved companion</span>
+          <h1 class="h-display reveal hero-title" style="transition-delay:.1s">
+            <span class="word">Golden</span>
+            <span class="word">Retriever</span>
+          </h1>
+          <p class="lede reveal" style="transition-delay:.25s">
+            Intelligent, loyal and endlessly devoted. Discover the breed that captures hearts around the world.
+          </p>
+          <div class="hero-cta reveal" style="transition-delay:.4s">
+            <a href="breed-guide.html" class="btn btn-primary">Explore the Breed <span class="arrow" id="ar1"></span></a>
+            <button class="btn btn-secondary" type="button" id="watchVideo">
+              <span style="display:inline-grid;place-items:center;width:22px;height:22px;border:1px solid currentColor;border-radius:50%;color:var(--primary);" id="playIcn"></span>
+              Watch Video
+            </button>
+          </div>
+          <div class="scroll-cue reveal" style="transition-delay:.55s">
+            <span class="dot" id="cueArrow"></span>
+            Scroll to discover
+          </div>
+        </div>
+
+        <aside class="facts-rail reveal" aria-label="Breed quick facts" style="transition-delay:.3s">
+          <div class="row"><span class="label">Origin</span><span class="val">Scotland</span></div>
+          <div class="row"><span class="label">Group</span><span class="val">Sporting</span></div>
+          <div class="row"><span class="label">Height</span><span class="val">51–61 cm</span></div>
+          <div class="row"><span class="label">Weight</span><span class="val">25–34 kg</span></div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ STAT STRIP ============================ -->
+  <section class="stat-strip" data-screen-label="Stats" aria-label="Breed traits">
+    <div class="container">
+      <div class="glass reveal">
+        <div class="stat-cell">
+          <span class="stat-icon" id="stIcn1"></span>
+          <div class="stat-content">
+            <span class="label">Friendly</span>
+            <div class="score">5/5</div>
+            <p>Exceptionally social and gentle with people.</p>
+          </div>
+        </div>
+        <div class="stat-cell">
+          <span class="stat-icon" id="stIcn2"></span>
+          <div class="stat-content">
+            <span class="label">Intelligent</span>
+            <div class="score">5/5</div>
+            <p>Quick learners with a love to please.</p>
+          </div>
+        </div>
+        <div class="stat-cell">
+          <span class="stat-icon" id="stIcn3"></span>
+          <div class="stat-content">
+            <span class="label">Active</span>
+            <div class="score">4/5</div>
+            <p>Energetic and always ready for adventure.</p>
+          </div>
+        </div>
+        <div class="stat-cell">
+          <span class="stat-icon" id="stIcn4"></span>
+          <div class="stat-content">
+            <span class="label">Family Dog</span>
+            <div class="score">5/5</div>
+            <p>Devoted companions for all ages.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ BREED OVERVIEW ============================ -->
+  <section class="overview section-pad" id="overview" data-screen-label="Overview">
+    <div class="container">
+      <div class="panel">
+        <div class="left reveal">
+          <span class="eyebrow">Breed Overview</span>
+          <h2 class="h-1">Grace, Intelligence<br>&amp; Loyalty</h2>
+          <p>Golden Retrievers were originally bred in Scotland to retrieve game in the field and water. Today, they are cherished family companions, service dogs, and sporting partners known for their gentle nature and unwavering devotion.</p>
+          <a href="breed-guide.html" class="btn btn-secondary">Learn More <span class="arrow" id="ar2"></span></a>
+        </div>
+        <div class="cards">
+          <a href="breed-guide.html" class="editorial-card reveal" style="transition-delay:.05s">
+            <div class="img-wrap"><img src="assets/golden/overview_01_built_for_the_field_3x.png" alt="A Golden Retriever retrieving in water."></div>
+            <div class="body">
+              <span class="index">01</span>
+              <span class="title">Built for the Field</span>
+              <p class="desc">Water-loving athletes with a natural retrieving instinct.</p>
+            </div>
+            <span class="arrow" id="cArr1"></span>
+          </a>
+          <a href="breed-guide.html#training" class="editorial-card reveal" style="transition-delay:.15s">
+            <div class="img-wrap"><img src="assets/golden/overview_02_people_pleasers_3x.png" alt="A friendly Golden Retriever portrait."></div>
+            <div class="body">
+              <span class="index">02</span>
+              <span class="title">People Pleasers</span>
+              <p class="desc">Highly trainable and eager to make you happy.</p>
+            </div>
+            <span class="arrow" id="cArr2"></span>
+          </a>
+          <a href="breed-guide.html#temperament" class="editorial-card reveal" style="transition-delay:.25s">
+            <div class="img-wrap"><img src="assets/golden/overview_03_family_at_heart_3x.png" alt="A Golden Retriever sitting with a child."></div>
+            <div class="body">
+              <span class="index">03</span>
+              <span class="title">Family at Heart</span>
+              <p class="desc">Patient, gentle and excellent with families.</p>
+            </div>
+            <span class="arrow" id="cArr3"></span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ GALLERY TEASER ============================ -->
+  <section class="gallery-teaser section-pad-sm" id="gallery" data-screen-label="Gallery">
+    <div class="container">
+      <div class="panel">
+        <div class="left reveal">
+          <span class="eyebrow">Gallery</span>
+          <h2 class="h-1">Moments That<br>Melt Hearts</h2>
+          <p>Explore beautiful moments and everyday adventures of Golden Retrievers.</p>
+          <a href="gallery.html" class="btn btn-ghost">View Gallery <span class="arrow" id="ar3"></span></a>
+        </div>
+        <div class="carousel-wrap reveal">
+          <div class="carousel" id="homeCarousel" tabindex="0" aria-label="Gallery carousel">
+            <a class="slide" href="gallery.html"><img src="assets/golden/gallery_01_running_grass_3x.png" alt="A Golden Retriever running through grass."><span class="cap">Running</span></a>
+            <a class="slide" href="gallery.html"><img src="assets/golden/gallery_02_portrait_closeup_3x.png" alt="A close-up portrait of a Golden Retriever."><span class="cap">Portrait</span></a>
+            <a class="slide" href="gallery.html"><img src="assets/golden/gallery_03_beach_sunset_3x.png" alt="A Golden Retriever running along a beach at sunset."><span class="cap">Sunset</span></a>
+            <a class="slide" href="gallery.html"><img src="assets/golden/gallery_04_woodland_profile_3x.png" alt="A Golden Retriever resting in woodland light."><span class="cap">Woodland</span></a>
+          </div>
+          <div class="carousel-controls">
+            <button class="car-btn" id="carPrev" aria-label="Previous"></button>
+            <button class="car-btn" id="carNext" aria-label="Next"></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ CARE & HEALTH ============================ -->
+  <section class="care section-pad-sm" id="care" data-screen-label="Care">
+    <div class="container">
+      <div class="panel">
+        <div class="left reveal">
+          <span class="eyebrow">Care &amp; Health</span>
+          <h2 class="h-1">Their Well-being<br>Is Everything</h2>
+          <p>A balanced diet, regular exercise and plenty of love are the keys to a long, healthy life.</p>
+          <a href="breed-guide.html#health" class="btn btn-secondary">Explore Care Guide <span class="arrow" id="ar4"></span></a>
+        </div>
+        <div class="care-grid">
+          <div class="care-cell reveal">
+            <span class="care-icon" id="ciBowl"></span>
+            <span class="label">Nutrition</span>
+            <p>High-quality food fuels their energy and supports a healthy coat.</p>
+            <a href="breed-guide.html#nutrition" class="link">View Guide <span class="arrow" id="cl1"></span></a>
+          </div>
+          <div class="care-cell reveal" style="transition-delay:.08s">
+            <span class="care-icon" id="ciRun"></span>
+            <span class="label">Exercise</span>
+            <p>Daily activity keeps them happy, healthy and mentally stimulated.</p>
+            <a href="breed-guide.html#exercise" class="link">View Guide <span class="arrow" id="cl2"></span></a>
+          </div>
+          <div class="care-cell reveal" style="transition-delay:.16s">
+            <span class="care-icon" id="ciPulse"></span>
+            <span class="label">Health</span>
+            <p>Regular check-ups and preventive care ensure a longer, happier life.</p>
+            <a href="breed-guide.html#health" class="link">View Guide <span class="arrow" id="cl3"></span></a>
+          </div>
+          <div class="care-cell reveal" style="transition-delay:.24s">
+            <span class="care-icon" id="ciBrush"></span>
+            <span class="label">Grooming</span>
+            <p>Weekly brushing keeps their coat beautiful and reduces shedding.</p>
+            <a href="breed-guide.html#grooming" class="link">View Guide <span class="arrow" id="cl4"></span></a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ HISTORY ============================ -->
+  <section class="history section-pad" id="history" data-screen-label="History">
+    <div class="container">
+      <div class="panel">
+        <div class="left reveal">
+          <span class="eyebrow">History</span>
+          <h2 class="h-1">A Legacy<br>That Endures</h2>
+          <p>From the misty highlands of Scotland to homes around the world, discover the story of a breed that has stood the test of time.</p>
+          <a href="breed-guide.html" class="btn btn-ghost">Explore History <span class="arrow" id="ar5"></span></a>
+        </div>
+        <div class="timeline-wrap reveal">
+          <div class="timeline" id="timeline">
+            <div class="timeline-item">
+              <div class="era-card era-1">
+                <span class="era-decoration" aria-hidden="true">❧</span>
+                <span class="era-year">1860s</span>
+                <span class="era-place">Inverness, Scotland</span>
+              </div>
+              <span class="node" aria-hidden="true"></span>
+              <div class="text">
+                <div class="date">1860s</div>
+                <h3 class="t-title">Humble Beginnings</h3>
+                <p class="t-desc">Developed in Scotland to retrieve game on land and water.</p>
+              </div>
+            </div>
+            <div class="timeline-item">
+              <div class="era-card era-2">
+                <span class="era-decoration" aria-hidden="true">⚜</span>
+                <span class="era-year">1900s</span>
+                <span class="era-place">North America</span>
+              </div>
+              <span class="node" aria-hidden="true"></span>
+              <div class="text">
+                <div class="date">1900s</div>
+                <h3 class="t-title">Across the Pond</h3>
+                <p class="t-desc">Brought to North America and recognised for versatility.</p>
+              </div>
+            </div>
+            <div class="timeline-item">
+              <div class="era-card era-3">
+                <span class="era-decoration" aria-hidden="true">⌂</span>
+                <span class="era-year">1930s</span>
+                <span class="era-place">The home, worldwide</span>
+              </div>
+              <span class="node" aria-hidden="true"></span>
+              <div class="text">
+                <div class="date">1930s</div>
+                <h3 class="t-title">Family Favourite</h3>
+                <p class="t-desc">Popularity grows as a loyal family companion.</p>
+              </div>
+            </div>
+            <div class="timeline-item">
+              <div class="era-card era-4">
+                <span class="era-decoration" aria-hidden="true">✯</span>
+                <span class="era-year">Today</span>
+                <span class="era-place">A worldwide companion</span>
+              </div>
+              <span class="node" aria-hidden="true"></span>
+              <div class="text">
+                <div class="date">Today</div>
+                <h3 class="t-title">Loved Worldwide</h3>
+                <p class="t-desc">Goldens remain one of the world's best-loved breeds.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<div id="siteFooterHost"></div>
+
+<!-- Video modal -->
+<div class="video-modal" id="videoModal" hidden style="position:fixed;inset:0;background:rgba(5,7,10,0.92);z-index:200;place-items:center;padding:24px;">
+  <button id="vmClose" aria-label="Close" style="position:absolute;top:24px;right:24px;width:44px;height:44px;border-radius:50%;border:1px solid var(--border-medium);color:var(--cream);background:rgba(5,7,10,0.5);display:grid;place-items:center;"></button>
+  <div style="max-width:980px;width:100%;aspect-ratio:16/9;border-radius:16px;background:#0a0e12;border:1px solid var(--border-subtle);display:grid;place-items:center;color:var(--text-secondary);">
+    <div style="text-align:center;padding:32px;">
+      <div style="font-family:var(--ff-display);font-size:2rem;color:var(--cream);margin-bottom:8px;">Breed Overview</div>
+      <p style="margin:0 0 12px;">A 2:45 cinematic film about the Golden Retriever.</p>
+      <p style="font-size:0.8rem;color:var(--text-muted);">Video placeholder — production reel to be linked here.</p>
+    </div>
+  </div>
+</div>
+
+<script src="chrome.js"></script>
+<script>
+  // Mount header & footer
+  GE.mountChrome('home');
+
+  // Inject inline icons
+  const I = window.GE_SVG;
+  document.getElementById('ar1').innerHTML = I.arrow;
+  document.getElementById('ar2').innerHTML = I.arrowSm;
+  document.getElementById('ar3').innerHTML = I.arrowSm;
+  document.getElementById('ar4').innerHTML = I.arrowSm;
+  document.getElementById('ar5').innerHTML = I.arrowSm;
+  document.getElementById('cArr1').innerHTML = I.arrowSm;
+  document.getElementById('cArr2').innerHTML = I.arrowSm;
+  document.getElementById('cArr3').innerHTML = I.arrowSm;
+  document.getElementById('cl1').innerHTML = I.arrowSm;
+  document.getElementById('cl2').innerHTML = I.arrowSm;
+  document.getElementById('cl3').innerHTML = I.arrowSm;
+  document.getElementById('cl4').innerHTML = I.arrowSm;
+  document.getElementById('cueArrow').innerHTML = '<svg viewBox=\"0 0 24 24\" width=\"10\" height=\"10\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 5v14\"/><path d=\"m5 12 7 7 7-7\"/></svg>';
+  document.getElementById('playIcn').innerHTML = '<svg viewBox=\"0 0 24 24\" width=\"10\" height=\"10\" fill=\"currentColor\"><polygon points=\"6 4 20 12 6 20\"/></svg>';
+
+  document.getElementById('stIcn1').innerHTML = I.heart;
+  document.getElementById('stIcn2').innerHTML = I.brain;
+  document.getElementById('stIcn3').innerHTML = I.bolt;
+  document.getElementById('stIcn4').innerHTML = I.home;
+
+  document.getElementById('ciBowl').innerHTML = I.bowl;
+  document.getElementById('ciRun').innerHTML = I.run;
+  document.getElementById('ciPulse').innerHTML = I.pulse;
+  document.getElementById('ciBrush').innerHTML = I.brush;
+
+  // Hero parallax (subtle)
+  const heroImg = document.getElementById('heroVideo');
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches && heroImg) {
+    window.addEventListener('scroll', () => {
+      const y = Math.min(window.scrollY, 600);
+      heroImg.style.transform = `scale(${1.02 + y * 0.00015}) translateY(${y * 0.06}px)`;
+    }, { passive: true });
+  }
+  // Seamless ping-pong loop (eliminates the hard cut at the end)
+  (function pingPong() {
+    const v = document.getElementById('heroVideo');
+    if (!v) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      v.removeAttribute('autoplay'); v.pause(); return;
+    }
+    v.removeAttribute('loop');
+    let dir = 1;            // 1 = forward, -1 = reverse
+    let raf = null;
+    let lastT = 0;
+    const margin = 0.05;    // seconds before edge to flip
+    function step(t) {
+      if (!v.duration || isNaN(v.duration)) { raf = requestAnimationFrame(step); return; }
+      if (dir === 1) {
+        if (v.currentTime >= v.duration - margin) {
+          dir = -1; v.pause(); lastT = performance.now();
+          raf = requestAnimationFrame(step); return;
+        }
+        if (v.paused) v.play().catch(()=>{});
+      } else {
+        // manual reverse via rAF (no native reverse playback)
+        const now = performance.now();
+        const dt = (now - lastT) / 1000;
+        lastT = now;
+        v.currentTime = Math.max(0, v.currentTime - dt);
+        if (v.currentTime <= margin) {
+          dir = 1; v.currentTime = 0;
+          v.play().catch(()=>{});
+        }
+      }
+      raf = requestAnimationFrame(step);
+    }
+    function start() { lastT = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(step); }
+    if (v.readyState >= 1) start();
+    else v.addEventListener('loadedmetadata', start, { once: true });
+  })();
+
+  // Carousel scroll
+  const car = document.getElementById('homeCarousel');
+  document.getElementById('carPrev').addEventListener('click', () => {
+    car.scrollBy({ left: -car.clientWidth * 0.7, behavior: 'smooth' });
+  });
+  document.getElementById('carNext').addEventListener('click', () => {
+    car.scrollBy({ left: car.clientWidth * 0.7, behavior: 'smooth' });
+  });
+  document.getElementById('carPrev').innerHTML = I.arrowLeft;
+  document.getElementById('carNext').innerHTML = I.arrowSm;
+
+  // Timeline reveal
+  const tl = document.getElementById('timeline');
+  if (tl && 'IntersectionObserver' in window) {
+    const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { tl.classList.add('in-view'); io.disconnect(); } }), { threshold: 0.25 });
+    io.observe(tl);
+  }
+
+  // Video modal
+  const vm = document.getElementById('videoModal');
+  const vmClose = document.getElementById('vmClose');
+  vmClose.innerHTML = I.close;
+  document.getElementById('watchVideo').addEventListener('click', () => { vm.hidden = false; vm.style.display = 'grid'; document.body.style.overflow = 'hidden'; });
+  vmClose.addEventListener('click', () => { vm.hidden = true; vm.style.display = 'none'; document.body.style.overflow = ''; });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !vm.hidden) { vm.hidden = true; vm.style.display = 'none'; document.body.style.overflow = ''; } });
+</script>
+</body>
+</html>
