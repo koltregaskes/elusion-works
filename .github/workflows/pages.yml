@@ -29,7 +29,7 @@ jobs:
       - name: Assemble static site
         run: |
           mkdir -p _site/assets _site/data
-          cp index.html styles.css app.js cursor.js 404.html robots.txt sitemap.xml llms.txt security.txt _site/
+          cp index.html styles.css showcase-pages.css app.js cursor.js 404.html robots.txt sitemap.xml llms.txt security.txt _site/
           cp -r assets/. _site/assets/
           cp data/estate.js _site/data/
           cp -r experiments creative-radar remix-relay design-notes demos _site/
@@ -38,6 +38,7 @@ jobs:
         run: |
           test -f _site/index.html
           test -f _site/styles.css
+          test -f _site/showcase-pages.css
           test -f _site/app.js
           test -f _site/cursor.js
           test -f _site/404.html
@@ -64,12 +65,14 @@ jobs:
           test -f _site/creative-radar/index.html
           test -f _site/remix-relay/index.html
           test -f _site/design-notes/index.html
+          test -f _site/demos/index.html
           test -f _site/demos/golden/index.html
           grep -q 'id="websites-grid"' _site/index.html
           grep -q 'id="tools-grid"' _site/index.html
           grep -q 'id="games-grid"' _site/index.html
           grep -q 'id="showcase"' _site/index.html
           grep -q 'launch-card' _site/index.html
+          grep -q 'Elusion Works demos' _site/demos/index.html
           ! grep -q 'id="editorial"' _site/index.html
           ! grep -q 'editorial-hub' _site/app.js
           ! grep -R -E --include='*.html' --include='*.js' --include='*.txt' --include='*.xml' 'W:\\|C:\\|review_path|repo_path|review_dir' _site
