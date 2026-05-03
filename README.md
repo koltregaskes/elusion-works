@@ -19,6 +19,7 @@ Elusion Works is the public showcase site for the websites, tools, and future ga
 - `app.js` - data-driven rendering for the three homepage sections
 - `data/estate.js` - structured entries for websites, tools, and games
 - `experiments/` - design-led microsite launch set
+- `demos/` - public demo index and individual prototype mini-sites
 - `creative-radar/` - permission-first curation format
 - `remix-relay/` - tiny daily remix-chain prototype
 - `design-notes/` - public case-study and reference layer

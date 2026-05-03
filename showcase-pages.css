@@ -72,6 +72,12 @@ body.theme-notes {
   --accent-warm: #ffd166;
 }
 
+body.theme-demos {
+  --accent: #d4af37;
+  --accent-cool: #74c0fc;
+  --accent-warm: #f6b95b;
+}
+
 body.theme-motion-poster {
   --accent: #ff5d6c;
   --accent-cool: #fcbf49;
@@ -354,6 +360,19 @@ img {
     rgba(10, 12, 16, 0.96);
 }
 
+.demo-hero-stage {
+  min-height: clamp(20rem, 38vw, 31rem);
+}
+
+.demo-hero-stage img {
+  width: 100%;
+  height: 100%;
+  min-height: inherit;
+  object-fit: cover;
+  object-position: 64% 48%;
+  filter: saturate(0.95) contrast(1.04);
+}
+
 .hero-stage {
   anchor-name: --hero-stage;
 }
@@ -555,6 +574,26 @@ img {
   box-shadow: 0 14px 28px rgba(0, 0, 0, 0.18);
 }
 
+.demo-hero-note {
+  position: absolute;
+  left: 1rem;
+  right: 1rem;
+  bottom: 1rem;
+  max-width: 24rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 22px;
+  background: rgba(8, 10, 13, 0.78);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(12px);
+}
+
+.demo-hero-note p:last-child {
+  margin: 0.45rem 0 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
 @supports (position-anchor: --hero-stage) {
   .stage-note {
     position: absolute;
@@ -604,6 +643,10 @@ img {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.demo-grid {
+  grid-template-columns: minmax(0, 1.25fr) minmax(18rem, 0.75fr);
+}
+
 .policy-grid,
 .rules-grid,
 .guide-grid {
@@ -633,6 +676,50 @@ img {
 .note-card h3,
 .timeline-day h3 {
   font-size: clamp(1.5rem, 4.2cqi, 2.3rem);
+}
+
+.demo-card {
+  align-content: start;
+}
+
+.demo-card-media {
+  position: relative;
+  overflow: hidden;
+  margin: -1.1rem -1.1rem 0;
+  aspect-ratio: 16 / 9;
+  border-bottom: 1px solid var(--line);
+  background: rgba(10, 12, 16, 0.94);
+}
+
+.demo-card-media::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, transparent 44%, rgba(5, 7, 10, 0.18)),
+    radial-gradient(circle at top right, rgba(212, 175, 55, 0.14), transparent 36%);
+  pointer-events: none;
+}
+
+.demo-card-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 56% 46%;
+  transition: transform 420ms ease;
+}
+
+.demo-card:hover .demo-card-media img,
+.demo-card:focus-visible .demo-card-media img {
+  transform: scale(1.035);
+}
+
+.demo-card-empty {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.05), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 64%),
+    rgba(14, 17, 21, 0.78);
 }
 
 .surface-stats {
@@ -766,6 +853,7 @@ img {
 @media (max-width: 1080px) {
   .hero-grid,
   .surface-grid,
+  .demo-grid,
   .policy-grid,
   .guide-grid,
   .rules-grid,
