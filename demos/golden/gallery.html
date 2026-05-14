@@ -3,8 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Gallery — Golden Encyclopedia</title>
-<meta name="description" content="A curated visual collection of Golden Retrievers — portraits, candid moments, and adventures.">
+<title>Gallery Demo - Golden | Elusion Works</title>
+<meta name="description" content="Static Elusion Works gallery demo for the Golden concept site, using prototype/generated image assets and client-side filters.">
+<link rel="canonical" href="https://elusionworks.com/demos/golden/gallery.html">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Gallery Demo - Golden | Elusion Works">
+<meta property="og:description" content="Static Elusion Works gallery demo using prototype/generated image assets and client-side filters.">
+<meta property="og:url" content="https://elusionworks.com/demos/golden/gallery.html">
+<meta property="og:image" content="https://elusionworks.com/assets/og-card.png">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap">
@@ -34,6 +41,28 @@
   .gp-head { grid-template-columns: 1fr; }
   .gp-head .right { text-align: left; }
 }
+@media (max-width: 600px) {
+  .gp-page { padding-top: 104px; padding-bottom: 56px; }
+  .gp-head { gap: 24px; padding-bottom: 24px; margin-bottom: 24px; }
+  .gp-head h1 { font-size: clamp(2.55rem, 16vw, 3.75rem); overflow-wrap: anywhere; }
+  .gp-head p { margin: 0; }
+  .gp-head .right .meta {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    text-align: left;
+  }
+  .gp-head .right .meta span {
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--r-sm);
+    background: rgba(16,20,25,0.45);
+    overflow-wrap: anywhere;
+  }
+  .gp-head .right .meta strong { font-size: clamp(1.05rem, 6vw, 1.5rem); }
+}
 
 .filter-bar {
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
@@ -53,6 +82,27 @@
 .view-toggle { display: inline-flex; gap: 4px; background: rgba(16,20,25,0.6); border: 1px solid var(--border-subtle); padding: 3px; border-radius: var(--r-full); }
 .view-toggle button { padding: 8px 14px; border-radius: var(--r-full); color: var(--text-muted); font-size: 0.7rem; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 700; }
 .view-toggle button.active { background: var(--primary); color: var(--on-primary); }
+@media (max-width: 600px) {
+  .filter-bar { align-items: stretch; gap: 12px; }
+  .filter-pills {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .fp-btn {
+    min-width: 0;
+    min-height: 42px;
+    padding: 9px 10px;
+    overflow-wrap: anywhere;
+  }
+  .view-toggle {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-radius: var(--r-sm);
+  }
+  .view-toggle button { border-radius: var(--r-xs); min-width: 0; }
+}
 
 /* Masonry grid via column-count */
 .gp-masonry { columns: 4 200px; column-gap: 16px; }
@@ -157,6 +207,22 @@
 .lb-prev { left: 14px; top: 50%; transform: translateY(-50%); }
 .lb-next { right: 14px; top: 50%; transform: translateY(-50%); }
 .lb-close { top: 14px; right: 14px; }
+@media (max-width: 600px) {
+  .gp-masonry { columns: 1 100%; column-gap: 0; }
+  .gp-grid-fixed { grid-template-columns: 1fr; }
+  .gp-tile { width: 100%; margin-bottom: 14px; }
+  .gp-tile .overlay { opacity: 1; padding: 14px; }
+  .gp-tile .expand-ic { opacity: 1; width: 30px; height: 30px; top: 10px; right: 10px; }
+  .lb { padding: 12px; }
+  .lb-stage { gap: 12px; }
+  .lb-image-wrap { max-height: 68vh; border-radius: var(--r-md); }
+  .lb-image-wrap img { max-height: 68vh; }
+  .lb-btn { width: 42px; height: 42px; }
+  .lb-prev { left: 8px; }
+  .lb-next { right: 8px; }
+  .lb-close { top: 8px; right: 8px; }
+  .lb-meta { padding: 0; }
+}
 </style>
 </head>
 <body data-screen-label="03 Gallery">
@@ -171,13 +237,13 @@
         <div class="crumb"><a href="index.html">Home</a> · <span style="color:var(--cream);">Gallery</span></div>
         <span class="eyebrow">A visual collection</span>
         <h1 class="h-1 reveal">Moments<br>in Gold</h1>
-        <p class="reveal" style="transition-delay:.1s">Portraits, candid moments and everyday adventures. A curated visual library celebrating the breed at every stage of life.</p>
+        <p class="reveal" style="transition-delay:.1s">Prototype portraits, candid moments and everyday adventure imagery for the Golden static demo. These are generated/demo assets, not a live photo archive.</p>
       </div>
       <div class="right reveal">
         <div class="meta">
-          <span><strong>32</strong>Photos</span>
+          <span><strong>12</strong>Demo images</span>
           <span><strong>4</strong>Categories</span>
-          <span><strong>2026</strong>Updated</span>
+          <span><strong>Static</strong>Demo</span>
         </div>
       </div>
     </header>
@@ -233,16 +299,16 @@
 
   // Image set — reuse the supplied photographs across categories with curated captions.
   const IMGS = [
-    { src: "assets/golden/hero_main_dog_crop_3x.png", cap: "Stillness, in Gold", cat: "portrait" },
+    { src: "assets/golden/hero_main_dog_crop_900.webp", cap: "Stillness, in Gold", cat: "portrait" },
     { src: "assets/golden/gallery_01_running_grass_3x.png", cap: "Through the Long Grass", cat: "action" },
     { src: "assets/golden/gallery_03_beach_sunset_3x.png", cap: "Last Light at the Tide", cat: "outdoor" },
     { src: "assets/golden/overview_03_family_at_heart_3x.png", cap: "Family at Heart", cat: "portrait" },
     { src: "assets/golden/gallery_02_portrait_closeup_3x.png", cap: "An Honest Look", cat: "portrait" },
     { src: "assets/golden/overview_01_built_for_the_field_3x.png", cap: "Built for the Field", cat: "action" },
-    { src: "assets/golden/hero_cinematic_clean_highres.png", cap: "Watching the Horizon", cat: "outdoor" },
+    { src: "assets/golden/hero_cinematic_1200.webp", cap: "Watching the Horizon", cat: "outdoor" },
     { src: "assets/golden/gallery_04_woodland_profile_3x.png", cap: "Woodland Profile", cat: "outdoor" },
     { src: "assets/golden/overview_02_people_pleasers_3x.png", cap: "Eager to Please", cat: "portrait" },
-    { src: "assets/golden/studio_full_body_clean_highres.png", cap: "Studio Standard", cat: "puppy" },
+    { src: "assets/golden/studio_full_body_900.webp", cap: "Studio Standard", cat: "puppy" },
     { src: "assets/golden/history_04_today_loved_worldwide_3x.png", cap: "A Modern Companion", cat: "outdoor" },
     { src: "assets/golden/history_03_1930s_family_favourite_3x.png", cap: "Sepia Memories", cat: "portrait" },
   ];

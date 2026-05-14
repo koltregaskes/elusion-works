@@ -3,7 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Contact — Golden Encyclopedia</title>
+<title>Contact Demo - Golden | Elusion Works</title>
+<meta name="description" content="Demo-only contact pattern for the Golden static concept site. No inbox, office, support desk, or message sending is configured.">
+<link rel="canonical" href="https://elusionworks.com/demos/golden/contact.html">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Contact Demo - Golden | Elusion Works">
+<meta property="og:description" content="Demo-only contact pattern. No inbox, office, support desk, or message sending is configured.">
+<meta property="og:url" content="https://elusionworks.com/demos/golden/contact.html">
+<meta property="og:image" content="https://elusionworks.com/assets/og-card.png">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap">
@@ -17,38 +25,39 @@
   <div class="container">
     <header class="sp-head">
       <div class="crumb"><a href="index.html">Home</a> · <span class="cur">Contact</span></div>
-      <span class="eyebrow">Say Hello</span>
-      <h1 class="h-1">We'd Love to<br>Hear from You</h1>
-      <p class="lede">Questions, corrections, story tips, or just a great photo of your Golden — there's no message too small.</p>
+      <span class="eyebrow">Demo-only form</span>
+      <h1 class="h-1">No Real Inbox,<br>No Messages Sent</h1>
+      <p class="lede">This is a prototype contact screen. It demonstrates layout and interaction only; it does not send messages anywhere.</p>
     </header>
 
     <div class="contact-grid">
       <div class="contact-info">
-        <h3>Direct Lines</h3>
+        <h3>Demo status</h3>
         <div class="contact-row">
           <span class="ic" id="ic1"></span>
-          <div><span class="k">Email</span><span class="v">hello@goldenencyclopedia.com</span></div>
+          <div><span class="k">Email</span><span class="v">Not configured for this demo</span></div>
         </div>
         <div class="contact-row">
           <span class="ic" id="ic2"></span>
-          <div><span class="k">Editorial</span><span class="v">editorial@goldenencyclopedia.com</span></div>
+          <div><span class="k">Editorial</span><span class="v">Prototype copy, not a real desk</span></div>
         </div>
         <div class="contact-row">
           <span class="ic" id="ic3"></span>
-          <div><span class="k">Press</span><span class="v">press@goldenencyclopedia.com</span></div>
+          <div><span class="k">Press</span><span class="v">No press inbox exists</span></div>
         </div>
         <div class="contact-row">
           <span class="ic" id="ic4"></span>
-          <div><span class="k">Address</span><span class="v">5 Heriot Row, Edinburgh, EH3 6HP</span></div>
+          <div><span class="k">Address</span><span class="v">No physical office for this demo</span></div>
         </div>
         <div class="contact-row">
           <span class="ic" id="ic5"></span>
-          <div><span class="k">Hours</span><span class="v">Mon–Fri · 09:00–17:00 GMT</span></div>
+          <div><span class="k">Hours</span><span class="v">No staffed support hours</span></div>
         </div>
       </div>
 
       <form class="contact-form" id="cForm" novalidate>
-        <h3>Send a Message</h3>
+        <p class="form-note">This form only previews validation and success states in the browser. It does not transmit or store the details entered below.</p>
+        <h3>Preview the form pattern</h3>
         <div>
           <label for="cName">Name</label>
           <input id="cName" type="text" required>
@@ -65,7 +74,7 @@
           <label for="cMsg">Message</label>
           <textarea id="cMsg" required></textarea>
         </div>
-        <button type="submit" class="btn btn-primary" style="align-self:flex-start;">Send Message <span id="sIc"></span></button>
+        <button type="submit" class="btn btn-primary" style="align-self:flex-start;">Preview message state <span id="sIc"></span></button>
         <div class="ok" id="cOk" role="status" aria-live="polite"></div>
       </form>
     </div>
@@ -92,7 +101,7 @@ document.getElementById('cForm').addEventListener('submit', e => {
   const email = document.getElementById('cEmail').value;
   const name = document.getElementById('cName').value;
   if (!name || !email.includes('@')) { ok.textContent = 'Please fill in name and a valid email.'; return; }
-  ok.textContent = 'Thank you — your message is on its way. We\'ll be in touch within two working days.';
+  ok.textContent = 'Demo only: no message was sent. This form shows the intended interaction pattern.';
   e.target.reset();
 });
 </script>

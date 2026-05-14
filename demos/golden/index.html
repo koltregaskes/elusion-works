@@ -3,14 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Golden Encyclopedia — Loyal. Gentle. Golden.</title>
-<meta name="description" content="A premium experience for the world's most beloved companion. Discover the Golden Retriever — intelligent, loyal, and endlessly devoted.">
+<title>Golden Demo - Elusion Works</title>
+<meta name="description" content="A static Elusion Works concept demo for a premium Golden Retriever breed-reference mini-site. Prototype copy and generated imagery only.">
+<link rel="canonical" href="https://elusionworks.com/demos/golden/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Golden Demo - Elusion Works">
+<meta property="og:description" content="A static Elusion Works concept demo for a premium Golden Retriever breed-reference mini-site.">
+<meta property="og:url" content="https://elusionworks.com/demos/golden/">
+<meta property="og:image" content="https://elusionworks.com/assets/og-card.png">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Libre+Baskerville:wght@400;700&display=swap">
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="home.css">
-<link rel="preload" as="image" href="assets/golden/hero_cinematic_clean_highres.png">
+<link rel="preload" as="image" href="assets/golden/hero_cinematic_1200.webp">
 </head>
 <body data-screen-label="01 Homepage">
 
@@ -21,40 +28,41 @@
   <!-- ============================ HERO ============================ -->
   <section class="hero" data-screen-label="Hero">
     <div class="hero-bg" aria-hidden="true">
-      <video id="heroVideo" autoplay muted loop playsinline preload="auto" poster="assets/golden/hero_cinematic_clean_highres.png">
-        <source src="assets/golden/hero_video.mp4" type="video/mp4">
+      <video id="heroVideo" autoplay muted loop playsinline preload="metadata" poster="assets/golden/hero_cinematic_1200.webp">
+        <source src="assets/golden/hero_video_720p.mp4" type="video/mp4" media="(min-width: 760px)">
       </video>
       <span class="hero-vignette"></span>
     </div>
     <div class="container">
       <div class="hero-grid">
         <div class="hero-text">
-          <span class="eyebrow reveal">The world's most beloved companion</span>
+          <span class="eyebrow reveal">Static Elusion Works demo</span>
           <h1 class="h-display reveal hero-title" style="transition-delay:.1s">
             <span class="word">Golden</span>
             <span class="word">Retriever</span>
           </h1>
           <p class="lede reveal" style="transition-delay:.25s">
-            Intelligent, loyal and endlessly devoted. Discover the breed that captures hearts around the world.
+            A cinematic prototype for a Golden Retriever reference site. It demonstrates layout, navigation, gallery, and content patterns; it is not a live publication or veterinary resource.
           </p>
           <div class="hero-cta reveal" style="transition-delay:.4s">
-            <a href="breed-guide.html" class="btn btn-primary">Explore the Breed <span class="arrow" id="ar1"></span></a>
+            <a href="breed-guide.html" class="btn btn-primary">Explore the demo guide <span class="arrow" id="ar1"></span></a>
             <button class="btn btn-secondary" type="button" id="watchVideo">
               <span style="display:inline-grid;place-items:center;width:22px;height:22px;border:1px solid currentColor;border-radius:50%;color:var(--primary);" id="playIcn"></span>
-              Watch Video
+              Preview media slot
             </button>
           </div>
           <div class="scroll-cue reveal" style="transition-delay:.55s">
             <span class="dot" id="cueArrow"></span>
-            Scroll to discover
+            Scroll the demo
           </div>
         </div>
 
         <aside class="facts-rail reveal" aria-label="Breed quick facts" style="transition-delay:.3s">
           <div class="row"><span class="label">Origin</span><span class="val">Scotland</span></div>
-          <div class="row"><span class="label">Group</span><span class="val">Sporting</span></div>
-          <div class="row"><span class="label">Height</span><span class="val">51–61 cm</span></div>
-          <div class="row"><span class="label">Weight</span><span class="val">25–34 kg</span></div>
+          <div class="row"><span class="label">AKC group</span><span class="val">Sporting</span></div>
+          <div class="row"><span class="label">AKC/GRCA height</span><span class="val">21.5-24 in</span></div>
+          <div class="row"><span class="label">AKC/GRCA weight</span><span class="val">55-75 lb</span></div>
+          <div class="row source-row"><span class="label">Source convention</span><span class="val">US AKC/GRCA facts; UK readers should note the Kennel Club Gundog convention.</span></div>
         </aside>
       </div>
     </div>
@@ -289,8 +297,8 @@
   <div style="max-width:980px;width:100%;aspect-ratio:16/9;border-radius:16px;background:#0a0e12;border:1px solid var(--border-subtle);display:grid;place-items:center;color:var(--text-secondary);">
     <div style="text-align:center;padding:32px;">
       <div style="font-family:var(--ff-display);font-size:2rem;color:var(--cream);margin-bottom:8px;">Breed Overview</div>
-      <p style="margin:0 0 12px;">A 2:45 cinematic film about the Golden Retriever.</p>
-      <p style="font-size:0.8rem;color:var(--text-muted);">Video placeholder — production reel to be linked here.</p>
+      <p style="margin:0 0 12px;">Prototype media slot for a possible breed overview reel.</p>
+      <p style="font-size:0.8rem;color:var(--text-muted);">No production film is published and no video claim is made for this demo.</p>
     </div>
   </div>
 </div>
@@ -339,7 +347,7 @@
   (function pingPong() {
     const v = document.getElementById('heroVideo');
     if (!v) return;
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || window.matchMedia('(max-width: 759px)').matches) {
       v.removeAttribute('autoplay'); v.pause(); return;
     }
     v.removeAttribute('loop');

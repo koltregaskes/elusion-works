@@ -93,29 +93,24 @@
   // ---------- Footer ----------
   function buildFooter() {
     return `
-      <section class="footer-cta" aria-label="Newsletter and contact">
+      <section class="footer-cta" aria-label="Demo status and contact">
         <div class="container inner">
           <div class="quote">
             A bond like no other.
             <span class="small">Loyal. Gentle. Golden.</span>
           </div>
           <div class="newsletter">
-            <h4>Stay Connected</h4>
-            <p>Get expert tips, breed stories and exclusive updates.</p>
-            <form id="newsletterForm" novalidate>
-              <label class="sr-only" for="nlEmail">Email address</label>
-              <input id="nlEmail" type="email" placeholder="Your email address" autocomplete="email" required>
-              <button class="btn btn-primary" type="submit">Subscribe <span class="arrow">${SVG.arrowSm}</span></button>
-            </form>
-            <div class="ok" id="nlOk" role="status" aria-live="polite"></div>
+            <h4>Prototype status</h4>
+            <p>This Golden site is a static Elusion Works demo. It does not run a real newsletter, business, or support desk.</p>
+            <a class="btn btn-primary" href="../../">Back to Elusion Works <span class="arrow">${SVG.arrowSm}</span></a>
+            <div class="ok" id="nlOk" role="status" aria-live="polite">No signup data is collected here.</div>
           </div>
           <div class="social-block">
-            <h4>Follow Us</h4>
+            <h4>Demo links</h4>
             <div class="social-icons">
-              <a href="#" aria-label="Instagram">${SVG.instagram}</a>
-              <a href="#" aria-label="Facebook">${SVG.facebook}</a>
-              <a href="#" aria-label="YouTube">${SVG.youtube}</a>
-              <a href="#" aria-label="Pinterest">${SVG.pinterest}</a>
+              <a href="../../demos/" aria-label="Elusion Works demos">${SVG.book}</a>
+              <a href="../../design-notes/" aria-label="Elusion Works design notes">${SVG.star}</a>
+              <a href="../../security.txt" aria-label="Elusion Works security contact">${SVG.pin}</a>
             </div>
           </div>
         </div>
@@ -133,7 +128,7 @@
             <a href="terms.html">Terms</a>
             <a href="sitemap.html">Sitemap</a>
           </nav>
-          <p class="copy">© 2026 Golden Encyclopedia. All rights reserved.</p>
+          <p class="copy">Golden Encyclopedia is a prototype demo inside Elusion Works.</p>
         </div>
       </footer>
     `;
@@ -363,18 +358,7 @@
   // ---------- Newsletter ----------
   function initNewsletter() {
     const form = document.getElementById('newsletterForm');
-    const ok = document.getElementById('nlOk');
     if (!form) return;
-    form.addEventListener('submit', e => {
-      e.preventDefault();
-      const inp = form.querySelector('input');
-      if (inp && inp.value && inp.value.includes('@')) {
-        ok.textContent = 'Thank you. Check your inbox for a welcome story.';
-        inp.value = '';
-      } else {
-        ok.textContent = 'Please enter a valid email.';
-      }
-    });
   }
 
   // ---------- Public mount ----------

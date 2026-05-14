@@ -20,6 +20,18 @@
 .sp-head .crumb .cur { color: var(--cream); }
 .sp-head h1 { margin: 16px 0 18px; }
 .sp-head .lede { color: var(--text-secondary); max-width: 56ch; font-size: 1.05rem; }
+@media (max-width: 600px) {
+  .sp-page { padding-top: 104px; padding-bottom: 56px; }
+  .sp-head { padding: 24px 0 32px; margin-bottom: 36px; }
+  .sp-head h1 {
+    font-size: clamp(2.45rem, 15.5vw, 3.75rem);
+    overflow-wrap: anywhere;
+  }
+  .sp-head .lede {
+    max-width: 100%;
+    font-size: 0.98rem;
+  }
+}
 
 .sp-body {
   display: grid;
@@ -65,6 +77,17 @@
   align-items: start;
 }
 @media (max-width: 800px) { .contact-grid { grid-template-columns: 1fr; } }
+.contact-grid > *,
+.contact-info,
+.contact-form {
+  min-width: 0;
+}
+.contact-form .form-note {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+}
+
 .contact-info {
   background: rgba(16,20,25,0.5);
   border: 1px solid var(--border-subtle);
@@ -92,7 +115,7 @@
   display: grid; place-items: center;
 }
 .contact-row .k { font-size: 0.66rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-muted); display: block; font-weight: 700; }
-.contact-row .v { color: var(--cream); font-size: 0.95rem; }
+.contact-row .v { color: var(--cream); font-size: 0.95rem; overflow-wrap: anywhere; }
 
 .contact-form {
   background: rgba(16,20,25,0.5);
@@ -128,3 +151,43 @@
 .contact-form input:focus,
 .contact-form textarea:focus { outline: none; border-color: var(--primary); }
 .contact-form .ok { font-size: 0.8rem; color: var(--primary-soft); min-height: 1em; }
+
+@media (max-width: 360px) {
+  .contact-info,
+  .contact-form {
+    padding: 22px;
+  }
+
+  .contact-row {
+    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .contact-row .ic {
+    width: 30px;
+    height: 30px;
+  }
+}
+
+@media (max-width: 600px) {
+  .contact-info,
+  .contact-form {
+    padding: 22px;
+  }
+
+  .contact-form .btn {
+    width: 100%;
+    align-self: stretch !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .contact-row {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+
+  .contact-row .ic {
+    width: 32px;
+    height: 32px;
+  }
+}

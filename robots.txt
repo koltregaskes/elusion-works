@@ -2,3 +2,4 @@ User-agent: *
 Allow: /
 
 Sitemap: https://elusionworks.com/sitemap.xml
+Sitemap: https://elusionworks.com/demos/golden/sitemap.xml

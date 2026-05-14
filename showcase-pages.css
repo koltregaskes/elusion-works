@@ -110,6 +110,7 @@ a {
 img {
   display: block;
   max-width: 100%;
+  height: auto;
 }
 
 .skip-link {
@@ -288,6 +289,7 @@ img {
 .hero-title {
   font-size: clamp(3rem, 8vw, 5.5rem);
   max-width: 11ch;
+  overflow-wrap: anywhere;
 }
 
 .hero-copy p,
@@ -338,6 +340,7 @@ img {
   font-size: 0.68rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
+  overflow-wrap: anywhere;
 }
 
 .text-link::after,
@@ -896,6 +899,7 @@ img {
   .footer-links {
     width: 100%;
     justify-content: space-between;
+    gap: 0.65rem;
   }
 
   .hero-title {
@@ -912,6 +916,74 @@ img {
     position: static;
     max-width: none;
     margin: 0 1rem 1rem;
+  }
+}
+
+@media (max-width: 520px) {
+  .page-shell {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .masthead-inner,
+  .hero-panel,
+  .section-panel,
+  .footer-panel {
+    padding: 0.95rem;
+  }
+
+  .brand-link,
+  .brand-mini {
+    min-width: 0;
+  }
+
+  .brand-copy strong {
+    font-size: 1.05rem;
+  }
+
+  .masthead-nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .masthead-nav a {
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    overflow-wrap: anywhere;
+  }
+
+  .hero-title {
+    max-width: 100%;
+    font-size: clamp(2.45rem, 15vw, 3.7rem);
+  }
+
+  .hero-stage,
+  .signature-stage,
+  .demo-hero-stage {
+    min-height: 15rem;
+    border-radius: 20px;
+  }
+
+  .chip,
+  .meta-pill,
+  .surface-stat {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .link-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .surface-card,
+  .policy-card,
+  .guide-card,
+  .note-card,
+  .timeline-day {
+    padding: 1rem;
   }
 }
 

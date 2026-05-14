@@ -3,6 +3,9 @@
    ============================================================ */
 
 .bg-page { padding-top: 96px; }
+@media (max-width: 600px) {
+  .bg-page { padding-top: 84px; }
+}
 
 .bg-layout {
   display: grid;
@@ -10,6 +13,14 @@
   gap: 40px;
   align-items: start;
   padding: 32px 0 64px;
+  max-width: 100%;
+}
+.bg-layout > *,
+.bg-main,
+.bg-facts-col,
+.bg-page .container {
+  min-width: 0;
+  max-width: 100%;
 }
 @media (max-width: 1200px) {
   .bg-layout { grid-template-columns: 200px minmax(0, 1fr); }
@@ -113,12 +124,15 @@
 .bg-side-mobile {
   display: none;
   margin: 16px 0 24px;
+  max-width: 100%;
+  overflow: hidden;
 }
 @media (max-width: 900px) { .bg-side-mobile { display: block; } }
 .chips {
   display: flex; gap: 8px; overflow-x: auto;
   padding-bottom: 8px;
   scrollbar-width: none;
+  max-width: 100%;
 }
 .chips::-webkit-scrollbar { display: none; }
 .chips a {
@@ -144,6 +158,7 @@
   font-size: 0.72rem; letter-spacing: 0.16em; text-transform: uppercase;
   color: var(--text-muted); margin-bottom: 24px;
   display: flex; align-items: center; gap: 8px;
+  flex-wrap: wrap;
 }
 .bg-hero .crumb a { color: var(--text-muted); }
 .bg-hero .crumb a:hover { color: var(--primary); }
@@ -183,6 +198,22 @@
 @media (max-width: 900px) {
   .bg-hero { grid-template-columns: 1fr; }
 }
+@media (max-width: 600px) {
+  .bg-layout { padding-top: 18px; }
+  .bg-hero { gap: 24px; padding-bottom: 32px; }
+  .bg-hero h1 {
+    font-size: clamp(2.55rem, 16vw, 3.8rem);
+    overflow-wrap: anywhere;
+  }
+  .bg-hero .lede { font-size: 0.98rem; max-width: 100%; }
+  .video-cta {
+    width: 100%;
+    justify-content: center;
+    border-radius: var(--r-sm);
+    flex-wrap: wrap;
+  }
+  .bg-hero-img { border-radius: var(--r-md); }
+}
 
 /* Sections */
 .article-section {
@@ -214,6 +245,18 @@
   font-size: 0.7rem; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 700;
 }
 .article-section .more:hover { color: var(--primary-soft); }
+@media (max-width: 520px) {
+  .article-section {
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 14px;
+    padding: 24px 0;
+  }
+
+  .article-section .sec-icon {
+    width: 40px;
+    height: 40px;
+  }
+}
 
 /* Facts panel */
 .facts-panel {
@@ -242,6 +285,29 @@
 .fact-row .ic { color: var(--primary); }
 .fact-row .k { color: var(--text-muted); font-size: 0.78rem; }
 .fact-row .v { color: var(--cream); font-size: 0.86rem; text-align: right; font-weight: 500; }
+.fact-source-note {
+  margin: 12px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  line-height: 1.55;
+}
+.fact-source-note a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+@media (max-width: 430px) {
+  .facts-panel { padding: 18px; }
+  .fact-row {
+    grid-template-columns: 18px minmax(0, 0.95fr) minmax(0, 1fr);
+    gap: 8px;
+  }
+  .fact-row .k,
+  .fact-row .v {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
 
 .bars {
   display: inline-flex; gap: 3px;
@@ -286,6 +352,11 @@
   grid-template-columns: 1fr 1fr;
   gap: 24px;
   margin: 48px 0;
+}
+.two-up > *,
+.three-up > * {
+  min-width: 0;
+  max-width: 100%;
 }
 @media (max-width: 800px) { .two-up { grid-template-columns: 1fr; } }
 
@@ -413,6 +484,7 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--r-md);
   padding: 22px;
+  min-width: 0;
 }
 .chart-card h3, .table-card h3, .quote-card h3 {
   font-size: 0.66rem; letter-spacing: 0.22em; text-transform: uppercase;
@@ -484,6 +556,14 @@
   font-size: 0.7rem; letter-spacing: 0.16em; text-transform: uppercase;
   color: var(--primary); font-weight: 700;
 }
+@media (max-width: 520px) {
+  .faq-head,
+  .related-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+}
 
 .faq-grid {
   display: grid;
@@ -554,6 +634,7 @@
   font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--text-muted);
   display: flex; align-items: center; gap: 8px;
+  flex-wrap: wrap;
 }
 @media (max-width: 1100px) { .related-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 600px) { .related-grid { grid-template-columns: 1fr; } }

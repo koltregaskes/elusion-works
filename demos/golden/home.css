@@ -21,6 +21,9 @@
   inset: 0;
   z-index: 0;
   overflow: hidden;
+  background-image: url("assets/golden/hero_cinematic_1200.webp");
+  background-size: cover;
+  background-position: 65% 50%;
 }
 .hero-bg img,
 .hero-bg video {
@@ -101,14 +104,69 @@
   color: var(--text-muted); font-weight: 700;
 }
 .facts-rail .val { color: var(--cream); font-size: 0.95rem; }
+.facts-rail .source-row .val { font-size: 0.78rem; line-height: 1.45; color: var(--text-secondary); }
 
 @media (max-width: 1100px) { .facts-rail { display: none; } }
 @media (max-width: 900px) {
   .hero { min-height: auto; padding-top: 110px; padding-bottom: 48px; }
   .hero-grid { grid-template-columns: 1fr; gap: 24px; }
-  .hero-bg img { object-position: 70% 40%; }
+  .hero-bg img,
+  .hero-bg video { object-position: 70% 40%; }
   .hero-vignette { background:
     linear-gradient(180deg, rgba(5,7,10,0.78) 0%, rgba(5,7,10,0.4) 50%, rgba(5,7,10,0.92) 100%); }
+}
+
+@media (max-width: 600px) {
+  .hero {
+    padding-top: 104px;
+    padding-bottom: 44px;
+  }
+
+  .hero-bg video {
+    display: none;
+  }
+
+  .hero-vignette {
+    background:
+      linear-gradient(180deg, rgba(5,7,10,0.86) 0%, rgba(5,7,10,0.56) 42%, rgba(5,7,10,0.95) 100%);
+  }
+
+  .hero-text {
+    padding-top: 0;
+    padding-right: 0;
+    max-width: 100%;
+  }
+
+  .hero-text .eyebrow {
+    margin-bottom: 20px;
+  }
+
+  .hero-text .h-display {
+    font-size: clamp(3.05rem, 19vw, 4.8rem);
+    line-height: 0.9;
+    margin-bottom: 24px;
+    overflow-wrap: anywhere;
+  }
+
+  .hero-text .lede {
+    max-width: 100%;
+    margin-bottom: 28px;
+    font-size: 0.98rem;
+  }
+
+  .hero-cta {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hero-cta .btn {
+    width: 100%;
+  }
+
+  .scroll-cue {
+    margin-top: 36px;
+    letter-spacing: 0.2em;
+  }
 }
 
 /* STAT STRIP */
@@ -225,10 +283,17 @@
 .gallery-teaser .left p { color: var(--text-secondary); margin-bottom: 24px; max-width: 32ch; }
 
 .carousel-wrap { position: relative; }
+.gallery-teaser .panel > *,
+.carousel-wrap,
+.carousel {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .carousel {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(220px, 1fr);
+  grid-auto-columns: minmax(180px, min(72vw, 220px));
   gap: 16px;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
