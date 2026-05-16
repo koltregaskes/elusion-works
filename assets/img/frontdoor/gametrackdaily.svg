@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-labelledby="title desc">
+  <title id="title">GameTrackDaily poster</title>
+  <desc id="desc">Abstract launch radar poster with tracks, date blocks, and a gamepad silhouette.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#140b05"/>
+      <stop offset="0.45" stop-color="#10151d"/>
+      <stop offset="1" stop-color="#050608"/>
+    </linearGradient>
+    <linearGradient id="copper" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f5c79a"/>
+      <stop offset="1" stop-color="#d7a16f"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="900" rx="56" fill="url(#bg)"/>
+  <g fill="none" stroke="#d7a16f" stroke-opacity=".18" stroke-width="2">
+    <path d="M110 180h980M110 300h980M110 420h980M110 540h980M110 660h980"/>
+    <path d="M220 120v660M420 120v660M620 120v660M820 120v660M1020 120v660"/>
+  </g>
+  <g transform="translate(170 190)">
+    <rect width="250" height="160" rx="28" fill="#d7a16f" fill-opacity=".12" stroke="#d7a16f" stroke-opacity=".45"/>
+    <rect x="34" y="36" width="182" height="18" rx="9" fill="url(#copper)"/>
+    <rect x="34" y="74" width="96" height="18" rx="9" fill="#9bb0c2" fill-opacity=".65"/>
+    <circle cx="198" cy="116" r="21" fill="#8fd0a6" fill-opacity=".75"/>
+  </g>
+  <g transform="translate(472 300)">
+    <path d="M0 96c0-53 43-96 96-96h268c53 0 96 43 96 96s-43 96-96 96H96c-53 0-96-43-96-96Z" fill="#f5c79a" fill-opacity=".09" stroke="#f5c79a" stroke-opacity=".5"/>
+    <circle cx="142" cy="96" r="44" fill="none" stroke="url(#copper)" stroke-width="16"/>
+    <path d="M106 96h72M142 60v72" stroke="#f5c79a" stroke-width="13" stroke-linecap="round"/>
+    <circle cx="314" cy="72" r="18" fill="#8fd0a6"/>
+    <circle cx="360" cy="116" r="18" fill="#d7a16f"/>
+  </g>
+  <g font-family="IBM Plex Mono, monospace" fill="#f4efe7">
+    <text x="96" y="805" font-size="32" letter-spacing="12">GAMETRACKDAILY</text>
+    <text x="96" y="845" font-size="18" fill="#d7a16f" letter-spacing="8">LAUNCH RADAR / RELEASE SIGNAL</text>
+  </g>
+</svg>

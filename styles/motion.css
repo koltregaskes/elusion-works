@@ -1,0 +1,240 @@
+/* D6 motion layer extras. Loaded after cabinet.css. */
+
+/* Custom cursor */
+.ew-cursor {
+  position: fixed; top: 0; left: 0; z-index: 9999; pointer-events: none;
+  transform: translate(var(--cursor-x, -100px), var(--cursor-y, -100px));
+  will-change: transform;
+  mix-blend-mode: difference;
+}
+.ew-cursor-dot {
+  position: absolute; left: -3px; top: -3px;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--copper);
+  transition: width 200ms, height 200ms, left 200ms, top 200ms;
+}
+.ew-cursor-ring {
+  position: absolute; left: -14px; top: -14px;
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 1.4px solid color-mix(in oklab, var(--copper) 70%, transparent);
+  transition: width 220ms cubic-bezier(.2,.7,.2,1), height 220ms, left 220ms, top 220ms, border-color 220ms;
+}
+/* Grow ring when over interactive things */
+body:has(.ew-plate:hover) .ew-cursor-ring,
+body:has(a:hover, button:hover) .ew-cursor-ring {
+  left: -22px; top: -22px; width: 44px; height: 44px;
+  border-color: var(--copper-2);
+}
+@media (hover: none), (pointer: coarse) { .ew-cursor { display: none; } }
+
+/* Page-wide spotlight */
+.ew-spotlight {
+  position: fixed; inset: 0; pointer-events: none; z-index: 1;
+  background: radial-gradient(450px circle at var(--mx, 50%) var(--my, 50%),
+              color-mix(in oklab, var(--copper) 12%, transparent),
+              transparent 60%);
+  transition: opacity 400ms;
+  mix-blend-mode: screen;
+}
+html[data-theme="light"] .ew-spotlight { mix-blend-mode: multiply; opacity: 0.6; }
+
+/* Scroll-progress rail (left edge) */
+.ew-scroll-rail {
+  position: fixed; left: 14px; top: 50%; transform: translateY(-50%);
+  z-index: 40; pointer-events: none;
+  width: 2px; height: 240px;
+  background: var(--line-strong); border-radius: 2px;
+  overflow: hidden;
+}
+.ew-scroll-rail-fill {
+  position: absolute; top: 0; left: 0; width: 100%;
+  height: calc(var(--scroll, 0) * 100%);
+  background: linear-gradient(180deg, var(--copper-2), var(--copper));
+  box-shadow: 0 0 14px color-mix(in oklab, var(--copper) 70%, transparent);
+}
+.ew-scroll-rail-tick {
+  position: absolute; left: 10px;
+  top: calc(var(--scroll, 0) * 100%);
+  transform: translateY(-50%);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9px; letter-spacing: 0.18em;
+  color: var(--copper);
+  white-space: nowrap;
+}
+.ew-scroll-rail-tick::before {
+  content: ''; position: absolute; left: -10px; top: 50%;
+  width: 8px; height: 1px; background: var(--copper);
+}
+@media (max-width: 1100px) { .ew-scroll-rail { display: none; } }
+
+/* Theme toggle */
+.ew-theme-toggle {
+  position: fixed; top: 24px; right: 24px; z-index: 51;
+  transform: translate(var(--magnet-x, 0px), var(--magnet-y, 0px));
+  transition: transform 220ms cubic-bezier(.2,.7,.2,1), background 220ms, color 220ms;
+}
+.ew-theme-toggle-icon {
+  display: none;
+  transition: transform 600ms cubic-bezier(.2,.7,.2,1);
+}
+.ew-theme-toggle:hover .ew-theme-toggle-icon { transform: rotate(360deg); }
+
+@media (max-width: 980px) {
+  .ew-theme-toggle {
+    top: auto;
+    right: 16px;
+    bottom: 16px;
+  }
+}
+
+/* Magnetic helper */
+.ew-magnet {
+  display: inline-block;
+  transform: translate(var(--magnet-x, 0px), var(--magnet-y, 0px));
+  transition: transform 240ms cubic-bezier(.2,.7,.2,1);
+}
+
+/* View Transitions: circular wipe on theme change */
+::view-transition-old(root),
+::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-old(root) { z-index: 1; }
+::view-transition-new(root) { z-index: 2; }
+
+/* Split-heading letter reveal */
+.ew-split { display: flex; flex-wrap: wrap; gap: 0; }
+.ew-split-word { display: inline-flex; }
+.ew-split-space { display: inline-block; width: 0.32em; }
+.ew-split-em .ew-split-char { color: var(--copper); font-style: normal; }
+.ew-split-em { background: none; }
+.ew-split-char {
+  display: inline-block;
+  opacity: 0; transform: translateY(40px) rotateX(-65deg);
+  transform-origin: center 80%;
+  animation: ew-split-in 900ms cubic-bezier(.18,.85,.3,1) both;
+  animation-delay: calc(var(--ci) * 32ms + 200ms);
+}
+@keyframes ew-split-in {
+  from { opacity: 0; transform: translateY(48px) rotateX(-65deg); filter: blur(8px); }
+  60%  { opacity: 1; transform: translateY(-4px) rotateX(8deg); filter: blur(0); }
+  to   { opacity: 1; transform: translateY(0) rotateX(0); filter: blur(0); }
+}
+
+/* The H1 itself needs perspective for the letters to swing in */
+.ew-hero-h1.ew-split { perspective: 1200px; line-height: 1; }
+
+/* Studio stats strip */
+.ew-stats { position: relative; z-index: 1; max-width: var(--max-w); margin: 4px auto 30px; padding: 0 var(--gutter); }
+.ew-stats-inner {
+  display: grid; grid-template-columns: repeat(3, 1fr) 2fr; gap: 18px;
+  padding: 22px 26px;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 22px;
+  box-shadow: var(--shadow-md);
+  align-items: center;
+}
+.ew-stat { display: flex; flex-direction: column; gap: 4px; }
+.ew-count {
+  font-family: "Outfit", system-ui; font-weight: 700;
+  font-size: 3rem; letter-spacing: -0.04em; line-height: 1;
+  color: var(--fg-1);
+  background-image: linear-gradient(180deg, var(--fg-1), color-mix(in oklab, var(--fg-1) 70%, var(--copper)));
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.ew-stat-label {
+  font-family: "IBM Plex Mono", monospace; font-size: 10px;
+  letter-spacing: 0.18em; text-transform: uppercase; color: var(--fg-3);
+}
+.ew-stat-marquee {
+  position: relative; min-width: 0; overflow: hidden; padding-left: 18px;
+  border-left: 1px solid var(--line-strong);
+  height: 64px; gap: 8px;
+}
+.ew-mini-marquee {
+  overflow: hidden; flex: 1 1 auto; min-width: 0;
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+.ew-mini-marquee-track {
+  display: inline-flex; gap: 28px; white-space: nowrap;
+  animation: ew-marquee 42s linear infinite;
+  font-family: "Outfit", system-ui; font-size: 0.95rem;
+}
+.ew-mini-marquee-item { display: inline-flex; align-items: center; gap: 10px; }
+.ew-mini-marquee-item .ew-mono { color: var(--copper); font-size: 10px; }
+.ew-mini-marquee-item .ew-marquee-sep { color: var(--copper); opacity: 0.5; }
+@media (max-width: 980px) {
+  .ew-stats-inner { grid-template-columns: repeat(3, 1fr); }
+  .ew-stat-marquee { grid-column: 1 / -1; border-left: 0; padding-left: 0; padding-top: 14px; border-top: 1px solid var(--line-strong); }
+}
+
+/* Per-plate scroll-driven entry */
+/* Override the calmer reveal in cabinet.css. Alternates sides + rotation. */
+.ew-plate {
+  animation: ew-plate-fly 1.05s cubic-bezier(.18,.85,.3,1) both !important;
+  animation-timeline: view() !important;
+  animation-range: cover 0% cover 45% !important;
+}
+.ew-plate:nth-of-type(odd)  { --fly-x: -110px; --fly-r: -6deg; }
+.ew-plate:nth-of-type(even) { --fly-x:  110px; --fly-r:  6deg; }
+.ew-plate:nth-of-type(3n)   { --fly-x: 0; --fly-r: 0deg; --fly-y: 90px; }
+
+@keyframes ew-plate-fly {
+  0% {
+    opacity: 0;
+    translate: var(--fly-x, 0) var(--fly-y, 60px);
+    rotate: var(--fly-r, 0deg);
+    scale: 0.86;
+    filter: blur(10px);
+  }
+  60% {
+    opacity: 1;
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    translate: 0 0;
+    rotate: 0deg;
+    scale: 1;
+    filter: blur(0);
+  }
+}
+
+/* When the plate finishes entry, pointer-tilt resumes from the data-attr custom
+   props on .ew-plate (handled by JS). */
+
+/* Body grain */
+body::after {
+  animation: ew-grain 12s steps(8) infinite;
+}
+@keyframes ew-grain {
+  0%, 100% { transform: translate(0, 0); }
+  10% { transform: translate(-2%, -1%); }
+  20% { transform: translate(1%, 2%); }
+  30% { transform: translate(2%, -1%); }
+  40% { transform: translate(-1%, 1%); }
+  50% { transform: translate(0%, 2%); }
+  60% { transform: translate(1%, -2%); }
+  70% { transform: translate(-2%, 0%); }
+  80% { transform: translate(2%, 1%); }
+  90% { transform: translate(-1%, -1%); }
+}
+
+/* Hero parallax tied to scroll */
+.ew-hero-inner {
+  transform: translateY(calc(var(--scrolly, 0px) * -0.12));
+  transition: none;
+}
+.ew-hero-glow {
+  transform: translate3d(0, 0, 0);
+  transition: transform 600ms cubic-bezier(.2,.7,.2,1);
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .ew-cursor, .ew-spotlight, .ew-scroll-rail { display: none !important; }
+  .ew-plate { animation: none !important; }
+  .ew-split-char { animation: none !important; opacity: 1; transform: none; }
+  .ew-hero-inner { transform: none !important; }
+  .ew-mini-marquee-track, .ew-marquee-track, .ew-march { animation: none !important; }
+}

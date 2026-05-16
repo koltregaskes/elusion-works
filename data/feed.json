@@ -1,0 +1,51 @@
+{
+  "stats": {
+    "sites": 8,
+    "tools": 4,
+    "games": 2
+  },
+  "ticker": [
+    {
+      "kind": "BUILDING",
+      "text": "Creative Radar - permission-first directory v0.2",
+      "tag": "ON THE BENCH",
+      "href": "/creative-radar/",
+      "timestamp": "2026-05-16T09:00:00Z"
+    },
+    {
+      "kind": "POSTED",
+      "text": "Triptych - rooms with the lights left on",
+      "tag": "IMAGES",
+      "href": "https://axylusion.com/",
+      "timestamp": "2026-05-15T18:00:00Z"
+    },
+    {
+      "kind": "SHIPPED",
+      "text": "News Pipeline - AI digest routing, automated end to end",
+      "tag": "TOOL",
+      "href": "https://github.com/koltregaskes",
+      "timestamp": "2026-05-14T12:00:00Z"
+    },
+    {
+      "kind": "WRITING",
+      "text": "Note - why the umbrella, not five separate brands",
+      "tag": "POST",
+      "href": "https://koltregaskes.com/",
+      "timestamp": "2026-05-13T10:30:00Z"
+    },
+    {
+      "kind": "FILMING",
+      "text": "Build log - pipeline diagram walkthrough",
+      "tag": "VIDEO",
+      "href": "https://github.com/koltregaskes/elusion-works",
+      "timestamp": "2026-05-12T16:00:00Z"
+    },
+    {
+      "kind": "CURATING",
+      "text": "Adding new entries to the Creative Radar bench",
+      "tag": "CURATION",
+      "href": "/creative-radar/",
+      "timestamp": "2026-05-11T11:00:00Z"
+    }
+  ]
+}

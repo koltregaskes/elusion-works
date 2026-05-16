@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-labelledby="title desc">
+  <title id="title">Repo Foundry poster</title>
+  <desc id="desc">Abstract foundry floor poster with repository nodes and molten signal lines.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#041016"/>
+      <stop offset=".45" stop-color="#071b1c"/>
+      <stop offset="1" stop-color="#030305"/>
+    </linearGradient>
+    <linearGradient id="molten" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8fd0a6"/>
+      <stop offset=".55" stop-color="#d7a16f"/>
+      <stop offset="1" stop-color="#f5c79a"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="900" rx="56" fill="url(#bg)"/>
+  <g opacity=".22" stroke="#f4efe7" stroke-width="2">
+    <path d="M140 206h920M140 336h920M140 466h920M140 596h920"/>
+    <path d="M240 140v540M420 140v540M600 140v540M780 140v540M960 140v540"/>
+  </g>
+  <g fill="none" stroke="url(#molten)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M210 610c145-210 282-294 410-252s244-10 350-156"/>
+    <path d="M300 270h162l70 78h170l78-92h150"/>
+  </g>
+  <g fill="#030305" stroke="#d7a16f" stroke-width="8">
+    <circle cx="300" cy="270" r="38"/>
+    <circle cx="532" cy="348" r="38"/>
+    <circle cx="780" cy="256" r="38"/>
+    <circle cx="930" cy="256" r="38"/>
+  </g>
+  <g transform="translate(190 505)">
+    <rect width="820" height="126" rx="26" fill="#f4efe7" fill-opacity=".08" stroke="#d7a16f" stroke-opacity=".4"/>
+    <rect x="36" y="34" width="260" height="16" rx="8" fill="#8fd0a6" fill-opacity=".8"/>
+    <rect x="36" y="76" width="512" height="14" rx="7" fill="#f4efe7" fill-opacity=".32"/>
+    <rect x="646" y="36" width="124" height="54" rx="18" fill="#d7a16f" fill-opacity=".16" stroke="#f5c79a" stroke-opacity=".35"/>
+  </g>
+  <g font-family="IBM Plex Mono, monospace" fill="#f4efe7">
+    <text x="96" y="805" font-size="32" letter-spacing="12">REPO FOUNDRY</text>
+    <text x="96" y="845" font-size="18" fill="#d7a16f" letter-spacing="8">OPEN-SOURCE SIGNAL / DOSSIERS</text>
+  </g>
+</svg>

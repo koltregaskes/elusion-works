@@ -1,36 +1,36 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="en-GB" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Elusion Works</title>
+    <title>Elusion Works - One studio, many projects</title>
     <meta
       name="description"
-      content="Elusion Works is a showcase for websites, tools, experiments, and future interactive ideas by Kol Tregaskes."
+      content="Elusion Works is the umbrella front door for websites, tools, games, images, video, and writing by Kol Tregaskes."
     />
     <meta
       name="keywords"
-      content="Elusion Works, portfolio, experiments, websites, tools, games, Kol Tregaskes"
+      content="Elusion Works, Kol Tregaskes, websites, tools, games, experiments, portfolio"
     />
-    <meta name="theme-color" content="#0b0d10" />
+    <meta name="theme-color" content="#030305" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests"
+      content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self' 'nonce-elusion-frontdoor-schema'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests"
     />
-    <meta property="og:title" content="Elusion Works" />
+    <meta property="og:title" content="Elusion Works - One studio, many projects" />
     <meta
       property="og:description"
-      content="A showcase for websites, tools, experiments, and future interactive ideas by Kol Tregaskes."
+      content="The umbrella front door for public and in-build work by Kol Tregaskes."
     />
     <meta property="og:type" content="website" />
     <meta property="og:image" content="https://elusionworks.com/assets/og-card.png" />
     <meta property="og:url" content="https://elusionworks.com/" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Elusion Works" />
+    <meta name="twitter:title" content="Elusion Works - One studio, many projects" />
     <meta
       name="twitter:description"
-      content="A showcase for websites, tools, experiments, and future interactive ideas by Kol Tregaskes."
+      content="The umbrella front door for public and in-build work by Kol Tregaskes."
     />
     <meta name="twitter:image" content="https://elusionworks.com/assets/og-card.png" />
     <meta name="view-transition" content="same-origin" />
@@ -39,278 +39,644 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600;800&family=Outfit:wght@500;700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles/cabinet.css" />
+    <link rel="stylesheet" href="styles/motion.css" />
+    <script type="application/ld+json" nonce="elusion-frontdoor-schema">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://elusionworks.com/#organization",
+            "name": "Elusion Works",
+            "url": "https://elusionworks.com/",
+            "logo": "https://elusionworks.com/assets/favicon.svg",
+            "description": "A showcase for websites, tools, experiments, and future interactive ideas by Kol Tregaskes.",
+            "founder": {
+              "@id": "https://koltregaskes.com/#person-kol"
+            },
+            "sameAs": [
+              "https://github.com/koltregaskes/elusion-works",
+              "https://github.com/koltregaskes"
+            ]
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://elusionworks.com/#website",
+            "name": "Elusion Works",
+            "url": "https://elusionworks.com/",
+            "publisher": {
+              "@id": "https://elusionworks.com/#organization"
+            }
+          },
+          {
+            "@type": "ItemList",
+            "@id": "https://elusionworks.com/#cabinet",
+            "name": "Elusion Works cabinet",
+            "itemListElement": [
+              { "@type": "ListItem", "position": 1, "item": { "@id": "https://elusionworks.com/#ai-resource-hub" } },
+              { "@type": "ListItem", "position": 2, "item": { "@id": "https://elusionworks.com/#kols-korner" } },
+              { "@type": "ListItem", "position": 3, "item": { "@id": "https://elusionworks.com/#ghost-in-the-models" } },
+              { "@type": "ListItem", "position": 4, "item": { "@id": "https://elusionworks.com/#axy-lusion" } },
+              { "@type": "ListItem", "position": 5, "item": { "@id": "https://elusionworks.com/#kt-photography" } },
+              { "@type": "ListItem", "position": 6, "item": { "@id": "https://elusionworks.com/#gametrackdaily" } },
+              { "@type": "ListItem", "position": 7, "item": { "@id": "https://elusionworks.com/#stackscout" } },
+              { "@type": "ListItem", "position": 8, "item": { "@id": "https://elusionworks.com/#repo-foundry" } },
+              { "@type": "ListItem", "position": 9, "item": { "@id": "https://elusionworks.com/#website-news-pipeline" } },
+              { "@type": "ListItem", "position": 10, "item": { "@id": "https://elusionworks.com/#gallery-pipeline" } },
+              { "@type": "ListItem", "position": 11, "item": { "@id": "https://elusionworks.com/#shared-website-tools" } },
+              { "@type": "ListItem", "position": 12, "item": { "@id": "https://elusionworks.com/#games-in-development" } },
+              { "@type": "ListItem", "position": 13, "item": { "@id": "https://elusionworks.com/#interactive-experiments" } }
+            ]
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://elusionworks.com/#ai-resource-hub",
+            "name": "AI Resource Hub",
+            "applicationCategory": "ReferenceApplication",
+            "url": "https://theairesourcehub.com/",
+            "image": "https://elusionworks.com/assets/img/frontdoor/ai-resource-hub-site.jpg",
+            "description": "Reference hub for models, benchmarks, pricing, and dated AI updates.",
+            "isPartOf": { "@id": "https://elusionworks.com/#website" }
+          },
+          {
+            "@type": "CreativeWork",
+            "@id": "https://elusionworks.com/#kols-korner",
+            "name": "Kol's Korner",
+            "url": "https://koltregaskes.com/",
+            "image": "https://elusionworks.com/assets/img/frontdoor/kols-korner-site.jpg",
+            "description": "Essays, AI digest archives, and commentary by Kol Tregaskes.",
+            "isPartOf": { "@id": "https://elusionworks.com/#website" }
+          },
+          {
+            "@type": "CreativeWork",
+            "@id": "https://elusionworks.com/#ghost-in-the-models",
+            "name": "Ghost in the Models",
+            "url": "https://ghostinthemodels.com/",
+            "image": "https://elusionworks.com/assets/img/frontdoor/ghost-in-the-model-site.jpg",
+            "description": "A magazine-style publishing experiment about agents, autonomy, and machine culture.",
+            "isPartOf": { "@id": "https://elusionworks.com/#website" }
+          },
+          {
+            "@type": "CreativeWork",
+            "@id": "https://elusionworks.com/#axy-lusion",
+            "name": "Axy Lusion",
+            "url": "https://axylusion.com/",
+            "image": "https://elusionworks.com/assets/img/frontdoor/axylusion-site.jpg",
+            "description": "AI art, music, and video portfolio with a cinematic visual direction.",
+            "creativeWorkStatus": "InProgress",
+            "isPartOf": { "@id": "https://elusionworks.com/#website" }
+          },
+          {
+            "@type": "CreativeWork",
+            "@id": "https://elusionworks.com/#kt-photography",
+            "name": "Kol Tregaskes Photography",
+            "url": "https://koltregaskesphotography.com/",
+            "image": "https://elusionworks.com/assets/img/frontdoor/kt-photography-site.jpg",
+            "description": "Quiet photography portfolio moving toward a fuller image-led release.",
+            "creativeWorkStatus": "InProgress",
+            "isPartOf": { "@id": "https://elusionworks.com/#website" }
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://elusionworks.com/#gametrackdaily",
+            "name": "GameTrackDaily",
+            "applicationCategory": "EntertainmentApplication",
+            "url": "https://github.com/koltregaskes/gametrackdaily",
+            "image": "https://elusionworks.com/assets/img/frontdoor/gametrackdaily.svg",
+            "description": "Games launch radar and playable-prototype surface in progress.",
+            "creativeWorkStatus": "InProgress",
+            "isPartOf": { "@id": "https://elusionworks.com/#website" }
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://elusionworks.com/#stackscout",
+            "name": "StackScout",
+            "applicationCategory": "DeveloperApplication",
+            "url": "https://github.com/koltregaskes/stackscout",
+            "image": "https://elusionworks.com/assets/img/frontdoor/stackscout.svg",
+            "description": "Curated scout desk for builder tools, APIs, MCPs, CLIs, and services.",
+            "creativeWorkStatus": "InProgress",
+            "isPartOf": { "@id": "https://elusionworks.com/#website" }
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://elusionworks.com/#repo-foundry",
+            "name": "Repo Foundry",
+            "applicationCategory": "DeveloperApplication",
+            "url": "https://github.com/koltregaskes/repo-foundry",
+            "image": "https://elusionworks.com/assets/img/frontdoor/repo-foundry.svg",
+            "description": "Curated foundry floor for high-signal open-source repositories and operator notes.",
+            "creativeWorkStatus": "InProgress",
+            "isPartOf": { "@id": "https://elusionworks.com/#website" }
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://elusionworks.com/#website-news-pipeline",
+            "name": "Website News Pipeline",
+            "applicationCategory": "DeveloperApplication",
+            "url": "https://github.com/koltregaskes",
+            "image": "https://elusionworks.com/assets/img/frontdoor/website-news-pipeline.svg",
+            "description": "Automation lane for dated website news and editorial surface maintenance.",
+            "creativeWorkStatus": "InProgress",
+            "isPartOf": { "@id": "https://elusionworks.com/#website" }
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://elusionworks.com/#gallery-pipeline",
+            "name": "Published Gallery Pipeline",
+            "applicationCategory": "MediaApplication",
+            "url": "https://github.com/koltregaskes/elusion-works",
+            "image": "https://elusionworks.com/assets/img/frontdoor/published-gallery-pipeline.svg",
+            "description": "Media workflow for gallery publishing and portfolio asset handling.",
+            "creativeWorkStatus": "InProgress",
+            "isPartOf": { "@id": "https://elusionworks.com/#website" }
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://elusionworks.com/#shared-website-tools",
+            "name": "Shared Website Tools",
+            "applicationCategory": "DeveloperApplication",
+            "url": "https://github.com/koltregaskes",
+            "image": "https://elusionworks.com/assets/img/frontdoor/shared-website-tools.svg",
+            "description": "Shared tooling and QA rails for the public website estate.",
+            "creativeWorkStatus": "InProgress",
+            "isPartOf": { "@id": "https://elusionworks.com/#website" }
+          },
+          {
+            "@type": "CreativeWork",
+            "@id": "https://elusionworks.com/#games-in-development",
+            "name": "Games In Development",
+            "url": "https://github.com/koltregaskes",
+            "image": "https://elusionworks.com/assets/img/frontdoor/games-in-development.svg",
+            "description": "Playable ideas and early prototypes that are not yet public products.",
+            "creativeWorkStatus": "InProgress",
+            "isPartOf": { "@id": "https://elusionworks.com/#website" }
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://elusionworks.com/#interactive-experiments",
+            "name": "Interactive Experiments",
+            "applicationCategory": "DesignApplication",
+            "url": "https://elusionworks.com/experiments/",
+            "image": "https://elusionworks.com/assets/img/frontdoor/interactive-experiments.svg",
+            "description": "Small interactive demos, motion studies, and browser experiments.",
+            "creativeWorkStatus": "InProgress",
+            "isPartOf": { "@id": "https://elusionworks.com/#website" }
+          }
+        ]
+      }
+    </script>
   </head>
   <body id="top">
     <a class="skip-link" href="#main-content">Skip to content</a>
-    <div class="ambient-layer" aria-hidden="true"></div>
 
-    <header class="site-header">
-      <div class="header-shell">
-        <a class="brand-lockup" href="#top" aria-label="Elusion Works home">
-          <img src="assets/elusion-mark.svg" alt="" width="50" height="50" />
-          <div class="brand-copy">
-            <span class="brand-root">Elusion</span>
+    <header class="ew-header">
+      <div class="ew-header-inner">
+        <a class="ew-brand ew-magnet" href="#top" aria-label="Elusion Works home">
+          <img src="assets/img/frontdoor/elusion-mark.svg" alt="" width="42" height="42" />
+          <span class="ew-brand-copy">
+            <span class="ew-brand-root">Elusion</span>
             <strong>Works</strong>
-          </div>
+          </span>
         </a>
 
-        <nav class="top-nav" aria-label="Primary">
-          <a href="#showcase">Showcases</a>
-          <a href="demos/">Demos</a>
-          <a href="#websites">Websites</a>
-          <a href="#tools">Tools</a>
-          <a href="#games">Games</a>
-          <a href="https://github.com/koltregaskes" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <nav class="ew-nav" aria-label="Primary">
+          <a class="ew-magnet" href="#cabinet">Cabinet</a>
+          <a class="ew-magnet" href="#sites">Sites</a>
+          <a class="ew-magnet" href="#tools">Tools</a>
+          <a class="ew-magnet" href="#games">Games</a>
+          <a class="ew-magnet" href="#hello">Hello</a>
         </nav>
+
+        <div class="ew-header-actions" aria-hidden="true">
+          <span class="ew-pill ew-pill-ghost">Studio index</span>
+        </div>
       </div>
     </header>
 
+    <button
+      class="ew-pill ew-pill-ghost ew-theme-toggle ew-magnet"
+      type="button"
+      data-theme-toggle
+      aria-label="Toggle colour theme"
+      aria-pressed="false"
+    >
+      <span class="ew-theme-toggle-icon" aria-hidden="true"></span>
+      <span class="ew-theme-toggle-label">Dark</span>
+    </button>
+
+    <div class="ew-cursor" aria-hidden="true">
+      <div class="ew-cursor-dot"></div>
+      <div class="ew-cursor-ring"></div>
+    </div>
+    <div class="ew-spotlight" aria-hidden="true"></div>
+    <div class="ew-scroll-rail" aria-hidden="true">
+      <div class="ew-scroll-rail-fill"></div>
+      <div class="ew-scroll-rail-tick">
+        <span class="ew-mono">Scroll</span>
+      </div>
+    </div>
+
     <main id="main-content">
-      <section class="hero-section reveal" id="overview">
-        <div class="hero-shell">
-          <div class="hero-topline">
-            <p class="eyebrow">Elusion Works</p>
-            <p class="hero-state">Company in formation</p>
+      <section class="ew-hero" aria-labelledby="frontdoor-heading">
+        <div class="ew-hero-grid" aria-hidden="true"></div>
+        <div class="ew-hero-glow" aria-hidden="true"></div>
+        <div class="ew-hero-inner">
+          <div class="ew-hero-meta">
+            <span class="ew-mono ew-eyebrow">Elusion Works / May 2026</span>
+            <span class="ew-pill ew-pill-ghost">Company in formation</span>
           </div>
+          <h1 class="ew-hero-h1" id="frontdoor-heading" data-split-heading>
+            One studio. <em>Many projects.</em>
+          </h1>
+          <p class="ew-hero-sub">
+            Websites, tools, games, images, video, and writing - built by Kol Tregaskes,
+            in public, all under one umbrella. Some live, some in build, some still on the bench.
+          </p>
 
-          <div class="hero-copy">
-            <h1>The umbrella for websites, tools, design experiments, and playable ideas.</h1>
+          <section class="ew-ticker ew-ticker-slide" aria-label="Studio pulse" aria-live="polite" data-ticker>
+            <div class="ew-ticker-left">
+              <span class="ew-live-dot" aria-hidden="true"></span>
+              <span class="ew-mono ew-ticker-kind" data-ticker-label>Studio pulse</span>
+            </div>
+            <div class="ew-ticker-window" data-ticker-window>
+              <div class="ew-ticker-line">
+                <span class="ew-mono ew-ticker-kicker">Building</span>
+                <span class="ew-ticker-text">Creative Radar - permission-first directory v0.2</span>
+              </div>
+            </div>
+            <a class="ew-pill ew-pill-copper" href="creative-radar/" data-ticker-tag>On the bench</a>
+            <div class="ew-ticker-progress" data-ticker-progress aria-hidden="true"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="ew-stats" aria-label="Studio stats">
+        <div class="ew-stats-inner">
+          <div class="ew-stat">
+            <span class="ew-count" data-count-to="8">0</span>
+            <span class="ew-stat-label">Sites in the cabinet</span>
           </div>
-
-          <div class="hero-support">
-            <div class="hero-support-copy">
-              <p class="hero-text">
-                A quieter front door for the projects already live, the systems behind them, and the next showcase releases in motion.
-              </p>
-            <div class="hero-actions">
-              <a class="button button-primary" href="#websites">Explore the work</a>
-              <a class="button button-secondary" href="https://github.com/koltregaskes" target="_blank" rel="noopener noreferrer">GitHub</a>
-            </div>
-            </div>
-
-            <div class="hero-totals" aria-label="Portfolio counts">
-              <article class="hero-total">
-                <strong data-count="websites">00</strong>
-                <span>Websites</span>
-              </article>
-              <article class="hero-total">
-                <strong data-count="tools">00</strong>
-                <span>Tools</span>
-              </article>
-              <article class="hero-total">
-                <strong data-count="games">00</strong>
-                <span>Games</span>
-              </article>
-            </div>
+          <div class="ew-stat">
+            <span class="ew-count" data-count-to="4">0</span>
+            <span class="ew-stat-label">Pipelines and tools</span>
           </div>
-
-          <div class="hero-stage" aria-label="Portfolio highlights">
-            <figure class="hero-screen hero-screen-secondary">
-              <img
-                src="assets/showcase/kols-korner-site.jpg"
-                alt="Kols Korner homepage showing essays and daily AI digests."
-                width="1200"
-                height="900"
-                loading="lazy"
-                decoding="async"
-                style="object-position: 50% 0%"
-              />
-            </figure>
-
-            <figure class="hero-screen hero-screen-primary">
-              <img
-                src="assets/showcase/ai-resource-hub-site.jpg"
-                alt="AI Resource Hub homepage with a leaderboard-led hero and reference desk layout."
-                width="1200"
-                height="900"
-                loading="eager"
-                fetchpriority="high"
-                decoding="async"
-                style="object-position: 50% 0%"
-              />
-            </figure>
-
-            <figure class="hero-screen hero-screen-tertiary">
-              <img
-                src="assets/showcase/axylusion-site.jpg"
-                alt="Axy Lusion homepage with a cinematic hero for AI art, video, and music."
-                width="1200"
-                height="900"
-                loading="lazy"
-                decoding="async"
-                style="object-position: 50% 44%"
-              />
-            </figure>
-
-            <figure class="hero-screen hero-screen-quaternary">
-              <img
-                src="assets/showcase/ghost-in-the-model-site.jpg"
-                alt="Ghost in the Model homepage with its editorial hero layout."
-                width="1200"
-                height="900"
-                loading="lazy"
-                decoding="async"
-                style="object-position: 50% 18%"
-              />
-            </figure>
+          <div class="ew-stat">
+            <span class="ew-count" data-count-to="2">0</span>
+            <span class="ew-stat-label">Games in concept</span>
+          </div>
+          <div class="ew-stat ew-stat-marquee">
+            <span class="ew-stat-label">Manual studio pulse</span>
+            <div class="ew-mini-marquee">
+              <div class="ew-mini-marquee-track" data-mini-marquee>
+                <span class="ew-mini-marquee-item">
+                  <span class="ew-live-dot" aria-hidden="true"></span>
+                  <span class="ew-mono">Building</span>
+                  <span>Creative Radar - permission-first directory v0.2</span>
+                  <span class="ew-marquee-sep" aria-hidden="true">::</span>
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      <section class="showcase-section reveal showcase-launch-section" id="showcase" aria-labelledby="showcase-heading">
-        <div class="section-shell section-shell-launch">
-          <div class="section-heading">
-            <span class="section-index">01</span>
-            <div>
-              <p class="eyebrow">Showcases</p>
-              <h2 id="showcase-heading">The next wave stays inside Elusion Works before it earns more brands.</h2>
-            </div>
+      <section class="ew-cabinet" id="cabinet" aria-labelledby="cabinet-heading">
+        <div class="ew-cabinet-head">
+          <div>
+            <span class="ew-mono ew-eyebrow">All plates</span>
+            <h2 id="cabinet-heading" class="ew-section-title">The estate, weighted by what matters now.</h2>
           </div>
-
-          <div class="launch-intro">
-            <p>
-              No generic tech news clone, no fake social platform, and no scraped gallery. This next layer is built for visual range:
-              design-led microsites, permission-first curation, a tiny remix toy, and clearer notes on how the work gets made.
-            </p>
-            <div class="launch-tech-chips" aria-label="Showcase technology palette">
-              <span>Static-first</span>
-              <span>View transitions</span>
-              <span>Scroll-driven motion</span>
-              <span>Anchor positioning</span>
-              <span>Case-study notes</span>
-            </div>
-          </div>
-
-          <div class="launch-grid">
-            <a class="launch-card" data-theme="experiments" href="experiments/">
-              <span class="launch-kicker">4 launch pieces</span>
-              <h3>Experiments</h3>
-              <p>Motion Poster, Photography Contact Story, Interactive Product Story, and Data Story land as small public demos before they become anything bigger.</p>
-              <ul class="launch-notes" aria-label="Experiments highlights">
-                <li>One strong design idea each</li>
-                <li>One strong frontend proof each</li>
-                <li>Built to show range, not volume</li>
-              </ul>
-              <span class="launch-link">Open experiments</span>
-            </a>
-
-            <a class="launch-card" data-theme="radar" href="creative-radar/">
-              <span class="launch-kicker">Permission-first curation</span>
-              <h3>Creative Radar</h3>
-              <p>A public directory format for artists, films, and interactive work we want to point toward without rehosting the work itself.</p>
-              <ul class="launch-notes" aria-label="Creative Radar highlights">
-                <li>Source links first</li>
-                <li>Embeds only where allowed</li>
-                <li>Takedown route stays visible</li>
-              </ul>
-              <span class="launch-link">Open Creative Radar</span>
-            </a>
-
-            <a class="launch-card" data-theme="relay" href="remix-relay/">
-              <span class="launch-kicker">Tiny social toy</span>
-              <h3>Remix Relay</h3>
-              <p>A deliberately small daily prompt and remix chain with no profiles, no feed, no comments, and no attempt to become a full platform.</p>
-              <ul class="launch-notes" aria-label="Remix Relay highlights">
-                <li>Daily challenge rhythm</li>
-                <li>Archive-first public output</li>
-                <li>Outbound attribution on every post</li>
-              </ul>
-              <span class="launch-link">Open Remix Relay</span>
-            </a>
-
-            <a class="launch-card" data-theme="notes" href="design-notes/">
-              <span class="launch-kicker">Design notes layer</span>
-              <h3>Design Notes</h3>
-              <p>The case-study layer that explains the point of each demo, the technology behind it, and the external guides worth keeping nearby.</p>
-              <ul class="launch-notes" aria-label="Design Notes highlights">
-                <li>Why each piece exists</li>
-                <li>Which platform ideas it proves</li>
-                <li>Guide links for follow-on work</li>
-              </ul>
-              <span class="launch-link">Open design notes</span>
-            </a>
-          </div>
+          <span class="ew-cabinet-hint">Move across a plate / scroll to reveal / click to open</span>
         </div>
-      </section>
 
-      <section class="showcase-section reveal" id="websites" aria-labelledby="websites-heading">
-        <div class="section-shell">
-          <div class="section-heading">
-            <span class="section-index">02</span>
-            <div>
-              <p class="eyebrow">Websites</p>
-              <h2 id="websites-heading">Current websites and public destinations.</h2>
+        <div class="ew-cabinet-grid">
+          <article class="ew-plate" id="sites" data-status="live" data-kind="website" style="grid-column: span 4; grid-row: span 2;">
+            <span class="ew-plate-halo" aria-hidden="true"></span>
+            <a class="ew-plate-link" href="https://theairesourcehub.com/" target="_blank" rel="noopener noreferrer" aria-label="Open AI Resource Hub"></a>
+            <div class="ew-plate-media">
+              <div class="ew-plate-frame">
+                <img src="assets/img/frontdoor/ai-resource-hub-site.jpg" alt="" width="1600" height="900" loading="eager" fetchpriority="high" decoding="async" style="object-position: 50% 0%;" />
+                <span class="ew-plate-shade"></span>
+                <span class="ew-plate-sheen" aria-hidden="true"></span>
+              </div>
             </div>
-          </div>
-          <div class="showcase-grid showcase-grid-websites" id="websites-grid"></div>
-        </div>
-      </section>
+            <div class="ew-plate-meta">
+              <div class="ew-plate-meta-row">
+                <span class="ew-mono ew-plate-kind">Website</span>
+                <span class="ew-status ew-status-live">Status: Live</span>
+              </div>
+              <h3 class="ew-plate-name">AI Resource Hub</h3>
+              <p class="ew-plate-blurb">Reference hub for models, benchmarks, pricing, and dated AI updates.</p>
+              <div class="ew-plate-footer">
+                <span class="ew-mono ew-plate-family">Elusion Works</span>
+                <span class="ew-plate-cta">Open <span class="ew-cta-arrow">-&gt;</span></span>
+              </div>
+            </div>
+          </article>
 
-      <section class="showcase-section reveal" id="tools" aria-labelledby="tools-heading">
-        <div class="section-shell">
-          <div class="section-heading">
-            <span class="section-index">03</span>
-            <div>
-              <p class="eyebrow">Tools</p>
-              <h2 id="tools-heading">Pipelines, systems, and shared tooling.</h2>
+          <article class="ew-plate" data-status="live" data-kind="website" style="grid-column: span 2; grid-row: span 2;">
+            <span class="ew-plate-halo" aria-hidden="true"></span>
+            <a class="ew-plate-link" href="https://koltregaskes.com/" target="_blank" rel="noopener noreferrer" aria-label="Open Kol's Korner"></a>
+            <div class="ew-plate-media">
+              <div class="ew-plate-frame">
+                <img src="assets/img/frontdoor/kols-korner-site.jpg" alt="" width="1600" height="900" loading="lazy" decoding="async" style="object-position: 50% 0%;" />
+                <span class="ew-plate-shade"></span>
+                <span class="ew-plate-sheen" aria-hidden="true"></span>
+              </div>
             </div>
-          </div>
-          <div class="showcase-grid showcase-grid-tools" id="tools-grid"></div>
-        </div>
-      </section>
+            <div class="ew-plate-meta">
+              <div class="ew-plate-meta-row">
+                <span class="ew-mono ew-plate-kind">Website</span>
+                <span class="ew-status ew-status-live">Status: Live</span>
+              </div>
+              <h3 class="ew-plate-name">Kol's Korner</h3>
+              <p class="ew-plate-blurb">Essays, AI digest archives, and commentary with a sharper editorial tone.</p>
+              <div class="ew-plate-footer">
+                <span class="ew-mono ew-plate-family">Kol Tregaskes</span>
+                <span class="ew-plate-cta">Open <span class="ew-cta-arrow">-&gt;</span></span>
+              </div>
+            </div>
+          </article>
 
-      <section class="showcase-section reveal" id="games" aria-labelledby="games-heading">
-        <div class="section-shell">
-          <div class="section-heading">
-            <span class="section-index">04</span>
-            <div>
-              <p class="eyebrow">Games</p>
-              <h2 id="games-heading">Game concepts and playable experiments.</h2>
+          <article class="ew-plate" data-status="live" data-kind="website" style="grid-column: span 2; grid-row: span 2;">
+            <span class="ew-plate-halo" aria-hidden="true"></span>
+            <a class="ew-plate-link" href="https://ghostinthemodels.com/" target="_blank" rel="noopener noreferrer" aria-label="Open Ghost in the Models"></a>
+            <div class="ew-plate-media">
+              <div class="ew-plate-frame">
+                <img src="assets/img/frontdoor/ghost-in-the-model-site.jpg" alt="" width="1600" height="900" loading="lazy" decoding="async" style="object-position: 50% 18%;" />
+                <span class="ew-plate-shade"></span>
+                <span class="ew-plate-sheen" aria-hidden="true"></span>
+              </div>
             </div>
-          </div>
-          <div class="showcase-grid showcase-grid-games" id="games-grid"></div>
-        </div>
-      </section>
+            <div class="ew-plate-meta">
+              <div class="ew-plate-meta-row">
+                <span class="ew-mono ew-plate-kind">Website</span>
+                <span class="ew-status ew-status-live">Status: Live</span>
+              </div>
+              <h3 class="ew-plate-name">Ghost in the Models</h3>
+              <p class="ew-plate-blurb">Editorial publishing experiments around agents, autonomy, and machine culture.</p>
+              <div class="ew-plate-footer">
+                <span class="ew-mono ew-plate-family">Elusion Works</span>
+                <span class="ew-plate-cta">Open <span class="ew-cta-arrow">-&gt;</span></span>
+              </div>
+            </div>
+          </article>
 
-      <section class="showcase-section reveal" id="features" aria-labelledby="features-heading">
-        <div class="section-shell section-shell-features">
-          <div class="section-heading">
-            <span class="section-index">05</span>
-            <div>
-              <p class="eyebrow">Features</p>
-              <h2 id="features-heading">Useful surfaces nested inside the sites.</h2>
+          <article class="ew-plate" data-status="in-progress" data-kind="website" style="grid-column: span 4; grid-row: span 2;">
+            <span class="ew-plate-halo" aria-hidden="true"></span>
+            <a class="ew-plate-link" href="https://axylusion.com/" target="_blank" rel="noopener noreferrer" aria-label="Open Axy Lusion"></a>
+            <div class="ew-plate-media">
+              <div class="ew-plate-frame">
+                <img src="assets/img/frontdoor/axylusion-site.jpg" alt="" width="1600" height="900" loading="lazy" decoding="async" style="object-position: 50% 44%;" />
+                <span class="ew-plate-shade"></span>
+                <span class="ew-plate-sheen" aria-hidden="true"></span>
+              </div>
             </div>
-          </div>
-          <div class="showcase-grid showcase-grid-features" id="features-grid"></div>
+            <div class="ew-plate-meta">
+              <div class="ew-plate-meta-row">
+                <span class="ew-mono ew-plate-kind">Website</span>
+                <span class="ew-status ew-status-in-progress">Status: In build</span>
+              </div>
+              <h3 class="ew-plate-name">Axy Lusion</h3>
+              <p class="ew-plate-blurb">AI art, music, and video portfolio with a cinematic visual direction.</p>
+              <div class="ew-plate-footer">
+                <span class="ew-mono ew-plate-family">Elusion Works</span>
+                <span class="ew-plate-cta">Open <span class="ew-cta-arrow">-&gt;</span></span>
+              </div>
+            </div>
+          </article>
+
+          <article class="ew-plate" data-status="in-progress" data-kind="website" style="grid-column: span 3; grid-row: span 2;">
+            <span class="ew-plate-halo" aria-hidden="true"></span>
+            <a class="ew-plate-link" href="https://koltregaskesphotography.com/" target="_blank" rel="noopener noreferrer" aria-label="Open Kol Tregaskes Photography"></a>
+            <div class="ew-plate-media">
+              <div class="ew-plate-frame">
+                <img src="assets/img/frontdoor/kt-photography-site.jpg" alt="" width="1600" height="900" loading="lazy" decoding="async" style="object-position: 50% 40%;" />
+                <span class="ew-plate-shade"></span>
+                <span class="ew-plate-sheen" aria-hidden="true"></span>
+              </div>
+            </div>
+            <div class="ew-plate-meta">
+              <div class="ew-plate-meta-row">
+                <span class="ew-mono ew-plate-kind">Website</span>
+                <span class="ew-status ew-status-in-progress">Status: In build</span>
+              </div>
+              <h3 class="ew-plate-name">KT Photography</h3>
+              <p class="ew-plate-blurb">Quiet photography portfolio moving toward a fuller image-led release.</p>
+              <div class="ew-plate-footer">
+                <span class="ew-mono ew-plate-family">Kol Tregaskes</span>
+                <span class="ew-plate-cta">Open <span class="ew-cta-arrow">-&gt;</span></span>
+              </div>
+            </div>
+          </article>
+
+          <article class="ew-plate" id="games" data-status="in-progress" data-kind="game" style="grid-column: span 3; grid-row: span 2;">
+            <span class="ew-plate-halo" aria-hidden="true"></span>
+            <a class="ew-plate-link" href="https://github.com/koltregaskes/gametrackdaily" target="_blank" rel="noopener noreferrer" aria-label="Open the GameTrackDaily repository"></a>
+            <div class="ew-plate-media">
+              <div class="ew-plate-frame">
+                <img class="ew-plate-poster" src="assets/img/frontdoor/gametrackdaily.svg" alt="" width="1200" height="900" loading="lazy" decoding="async" />
+                <span class="ew-plate-sheen" aria-hidden="true"></span>
+              </div>
+            </div>
+            <div class="ew-plate-meta">
+              <div class="ew-plate-meta-row">
+                <span class="ew-mono ew-plate-kind">Hub</span>
+                <span class="ew-status ew-status-in-progress">Status: In build</span>
+              </div>
+              <h3 class="ew-plate-name">GameTrackDaily</h3>
+              <p class="ew-plate-blurb">Launch radar where Kol's game prototypes sit beside curated industry signals.</p>
+              <div class="ew-plate-footer">
+                <span class="ew-mono ew-plate-family">E-lusion Studios</span>
+                <span class="ew-plate-cta">Repo <span class="ew-cta-arrow">-&gt;</span></span>
+              </div>
+            </div>
+          </article>
+
+          <article class="ew-plate" data-status="in-progress" data-kind="tool" style="grid-column: span 3; grid-row: span 2;">
+            <span class="ew-plate-halo" aria-hidden="true"></span>
+            <a class="ew-plate-link" href="https://github.com/koltregaskes/stackscout" target="_blank" rel="noopener noreferrer" aria-label="Open the StackScout repository"></a>
+            <div class="ew-plate-media">
+              <div class="ew-plate-frame">
+                <img class="ew-plate-poster" src="assets/img/frontdoor/stackscout.svg" alt="" width="1200" height="900" loading="lazy" decoding="async" />
+                <span class="ew-plate-sheen" aria-hidden="true"></span>
+              </div>
+            </div>
+            <div class="ew-plate-meta">
+              <div class="ew-plate-meta-row">
+                <span class="ew-mono ew-plate-kind">Hub</span>
+                <span class="ew-status ew-status-in-progress">Status: In build</span>
+              </div>
+              <h3 class="ew-plate-name">StackScout</h3>
+              <p class="ew-plate-blurb">Curated scout desk for builder tools, APIs, MCPs, CLIs, and services.</p>
+              <div class="ew-plate-footer">
+                <span class="ew-mono ew-plate-family">Elusion Works</span>
+                <span class="ew-plate-cta">Repo <span class="ew-cta-arrow">-&gt;</span></span>
+              </div>
+            </div>
+          </article>
+
+          <article class="ew-plate" data-status="in-progress" data-kind="tool" style="grid-column: span 3; grid-row: span 2;">
+            <span class="ew-plate-halo" aria-hidden="true"></span>
+            <a class="ew-plate-link" href="https://github.com/koltregaskes/repo-foundry" target="_blank" rel="noopener noreferrer" aria-label="Open the Repo Foundry repository"></a>
+            <div class="ew-plate-media">
+              <div class="ew-plate-frame">
+                <img class="ew-plate-poster" src="assets/img/frontdoor/repo-foundry.svg" alt="" width="1200" height="900" loading="lazy" decoding="async" />
+                <span class="ew-plate-sheen" aria-hidden="true"></span>
+              </div>
+            </div>
+            <div class="ew-plate-meta">
+              <div class="ew-plate-meta-row">
+                <span class="ew-mono ew-plate-kind">Hub</span>
+                <span class="ew-status ew-status-in-progress">Status: In build</span>
+              </div>
+              <h3 class="ew-plate-name">Repo Foundry</h3>
+              <p class="ew-plate-blurb">Curated foundry floor for high-signal open-source repositories and operator notes.</p>
+              <div class="ew-plate-footer">
+                <span class="ew-mono ew-plate-family">Elusion Works</span>
+                <span class="ew-plate-cta">Repo <span class="ew-cta-arrow">-&gt;</span></span>
+              </div>
+            </div>
+          </article>
+
+          <article class="ew-plate" id="tools" data-status="in-progress" data-kind="tool" style="grid-column: span 3; grid-row: span 1;">
+            <span class="ew-plate-halo" aria-hidden="true"></span>
+            <a class="ew-plate-link" href="https://github.com/koltregaskes" target="_blank" rel="noopener noreferrer" aria-label="Open Kol Tregaskes on GitHub for Website News Pipeline work"></a>
+            <div class="ew-plate-media">
+              <div class="ew-plate-frame">
+                <img class="ew-plate-poster" src="assets/img/frontdoor/website-news-pipeline.svg" alt="" width="1200" height="900" loading="lazy" decoding="async" />
+                <span class="ew-plate-sheen" aria-hidden="true"></span>
+              </div>
+            </div>
+            <div class="ew-plate-meta">
+              <div class="ew-plate-meta-row">
+                <span class="ew-mono ew-plate-kind">Tool</span>
+                <span class="ew-status ew-status-in-progress">Status: In build</span>
+              </div>
+              <h3 class="ew-plate-name">Website News Pipeline</h3>
+              <p class="ew-plate-blurb">Shared publishing flow for collecting, filtering, and routing site updates.</p>
+            </div>
+          </article>
+
+          <article class="ew-plate" data-status="in-progress" data-kind="tool" style="grid-column: span 3; grid-row: span 1;">
+            <span class="ew-plate-halo" aria-hidden="true"></span>
+            <a class="ew-plate-link" href="https://github.com/koltregaskes/elusion-works" target="_blank" rel="noopener noreferrer" aria-label="Open the Elusion Works repository for Gallery Pipeline work"></a>
+            <div class="ew-plate-media">
+              <div class="ew-plate-frame">
+                <img class="ew-plate-poster" src="assets/img/frontdoor/published-gallery-pipeline.svg" alt="" width="1200" height="900" loading="lazy" decoding="async" />
+                <span class="ew-plate-sheen" aria-hidden="true"></span>
+              </div>
+            </div>
+            <div class="ew-plate-meta">
+              <div class="ew-plate-meta-row">
+                <span class="ew-mono ew-plate-kind">Tool</span>
+                <span class="ew-status ew-status-in-progress">Status: In build</span>
+              </div>
+              <h3 class="ew-plate-name">Gallery Pipeline</h3>
+              <p class="ew-plate-blurb">Archive and delivery path for published visual work and media batches.</p>
+            </div>
+          </article>
+
+          <article class="ew-plate" data-status="coming-soon" data-kind="tool" style="grid-column: span 3; grid-row: span 2;">
+            <span class="ew-plate-halo" aria-hidden="true"></span>
+            <a class="ew-plate-link" href="https://github.com/koltregaskes" target="_blank" rel="noopener noreferrer" aria-label="Open Kol Tregaskes on GitHub for shared website tools"></a>
+            <div class="ew-plate-media">
+              <div class="ew-plate-frame">
+                <img class="ew-plate-poster" src="assets/img/frontdoor/shared-website-tools.svg" alt="" width="1200" height="900" loading="lazy" decoding="async" />
+                <span class="ew-plate-sheen" aria-hidden="true"></span>
+              </div>
+            </div>
+            <div class="ew-plate-meta">
+              <div class="ew-plate-meta-row">
+                <span class="ew-mono ew-plate-kind">Tool</span>
+                <span class="ew-status ew-status-coming-soon">Status: Coming soon</span>
+              </div>
+              <h3 class="ew-plate-name">Shared Website Tools</h3>
+              <p class="ew-plate-blurb">Cross-site components, automation, and publishing infrastructure.</p>
+              <div class="ew-plate-footer">
+                <span class="ew-mono ew-plate-family">Shared estate</span>
+                <span class="ew-plate-cta">GitHub <span class="ew-cta-arrow">-&gt;</span></span>
+              </div>
+            </div>
+          </article>
+
+          <article class="ew-plate" data-status="coming-soon" data-kind="game" style="grid-column: span 3; grid-row: span 2;">
+            <span class="ew-plate-halo" aria-hidden="true"></span>
+            <a class="ew-plate-link" href="https://github.com/koltregaskes" target="_blank" rel="noopener noreferrer" aria-label="Open Kol Tregaskes on GitHub for games in development"></a>
+            <div class="ew-plate-media">
+              <div class="ew-plate-frame">
+                <img class="ew-plate-poster" src="assets/img/frontdoor/games-in-development.svg" alt="" width="1200" height="900" loading="lazy" decoding="async" />
+                <span class="ew-plate-sheen" aria-hidden="true"></span>
+              </div>
+            </div>
+            <div class="ew-plate-meta">
+              <div class="ew-plate-meta-row">
+                <span class="ew-mono ew-plate-kind">Game</span>
+                <span class="ew-status ew-status-coming-soon">Status: Coming soon</span>
+              </div>
+              <h3 class="ew-plate-name">Games In Development</h3>
+              <p class="ew-plate-blurb">Future browser-first releases under the same evolving umbrella brand.</p>
+              <div class="ew-plate-footer">
+                <span class="ew-mono ew-plate-family">Elusion Works</span>
+                <span class="ew-plate-cta">GitHub <span class="ew-cta-arrow">-&gt;</span></span>
+              </div>
+            </div>
+          </article>
+
+          <article class="ew-plate" data-status="coming-soon" data-kind="game" style="grid-column: span 6; grid-row: span 2;">
+            <span class="ew-plate-halo" aria-hidden="true"></span>
+            <a class="ew-plate-link" href="experiments/" aria-label="Open Elusion Works experiments"></a>
+            <div class="ew-plate-media">
+              <div class="ew-plate-frame">
+                <img class="ew-plate-poster" src="assets/img/frontdoor/interactive-experiments.svg" alt="" width="1200" height="900" loading="lazy" decoding="async" />
+                <span class="ew-plate-sheen" aria-hidden="true"></span>
+              </div>
+            </div>
+            <div class="ew-plate-meta">
+              <div class="ew-plate-meta-row">
+                <span class="ew-mono ew-plate-kind">Game</span>
+                <span class="ew-status ew-status-coming-soon">Status: Coming soon</span>
+              </div>
+              <h3 class="ew-plate-name">Interactive Experiments</h3>
+              <p class="ew-plate-blurb">Playable prototypes and interface experiments before full standalone releases.</p>
+              <div class="ew-plate-footer">
+                <span class="ew-mono ew-plate-family">Elusion Works</span>
+                <span class="ew-plate-cta">Open <span class="ew-cta-arrow">-&gt;</span></span>
+              </div>
+            </div>
+          </article>
         </div>
+        <div class="ew-march" aria-hidden="true"></div>
       </section>
     </main>
 
-    <footer class="site-footer">
-      <div class="footer-shell">
+    <footer class="ew-footer" id="hello">
+      <div class="ew-footer-inner">
         <div>
-          <p class="footer-title">Elusion Works</p>
-          <p class="footer-copy">Showcase front door for current and future work by Kol Tregaskes.</p>
+          <p class="ew-footer-title">Elusion Works</p>
+          <p class="ew-footer-copy">Showcase front door for public and in-build work by Kol Tregaskes.</p>
         </div>
-
-        <div class="footer-links">
-          <a href="experiments/">Experiments</a>
-          <a href="demos/">Demos</a>
-          <a href="design-notes/">Design notes</a>
-          <a href="https://github.com/koltregaskes/elusion-works" target="_blank" rel="noopener noreferrer">Repo</a>
+        <nav class="ew-footer-links" aria-label="Footer">
+          <a href="#cabinet">Cabinet</a>
           <a href="https://github.com/koltregaskes" target="_blank" rel="noopener noreferrer">GitHub</a>
           <a href="security.txt">Security</a>
+          <a href="demos/">Demos</a>
+          <a href="design-notes/">Design notes</a>
           <a href="#top">Back to top</a>
-        </div>
+        </nav>
+      </div>
+      <div class="ew-footer-base">
+        <span class="ew-mono">&copy; 2026 Elusion Works / by Kol Tregaskes</span>
+        <span class="ew-mono">Company in formation</span>
       </div>
     </footer>
 
-    <div class="cursor-dot" id="cursor-dot" aria-hidden="true"></div>
-
-    <script type="module" src="app.js"></script>
+    <script type="module" src="scripts/cabinet.js"></script>
+    <script src="cross-site-nav.js" defer></script>
   </body>
 </html>

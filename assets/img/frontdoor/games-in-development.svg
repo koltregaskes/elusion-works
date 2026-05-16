@@ -1,0 +1,32 @@
+<svg width="1200" height="900" viewBox="0 0 1200 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="900" fill="#0A0C10"></rect>
+  <rect x="28" y="28" width="1144" height="844" rx="34" stroke="#262A30" stroke-width="4"></rect>
+  <circle cx="870" cy="214" r="168" fill="url(#paint0_radial)"></circle>
+  <circle cx="260" cy="694" r="208" fill="url(#paint1_radial)"></circle>
+  <text x="84" y="102" fill="#B7AEA3" font-family="&#39;IBM Plex Mono&#39;, monospace" font-size="22" letter-spacing="5">ELUSION WORKS / GAME TRACK</text>
+  <text x="84" y="196" fill="#F2ECE3" font-family="&#39;Newsreader&#39;, Georgia, serif" font-size="102" letter-spacing="-2">Games</text>
+  <text x="84" y="272" fill="#F2ECE3" font-family="&#39;Newsreader&#39;, Georgia, serif" font-size="102" letter-spacing="-2">In Development</text>
+  <text x="84" y="336" fill="#B7AEA3" font-family="&#39;Manrope&#39;, sans-serif" font-size="30">Future browser-first releases under the same evolving umbrella.</text>
+  <rect x="84" y="420" width="470" height="214" rx="28" fill="#13171C" stroke="#303641" stroke-width="3"></rect>
+  <rect x="646" y="420" width="470" height="214" rx="28" fill="#13171C" stroke="#303641" stroke-width="3"></rect>
+  <path d="M128 582L214 526L300 566L386 500L510 582" stroke="#D7A16F" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"></path>
+  <path d="M690 582L776 514L852 560L934 474L1072 582" stroke="#9DABB5" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"></path>
+  <circle cx="214" cy="526" r="12" fill="#F2ECE3"></circle>
+  <circle cx="386" cy="500" r="12" fill="#F2ECE3"></circle>
+  <circle cx="776" cy="514" r="12" fill="#F2ECE3"></circle>
+  <circle cx="934" cy="474" r="12" fill="#F2ECE3"></circle>
+  <text x="126" y="476" fill="#D7A16F" font-family="&#39;IBM Plex Mono&#39;, monospace" font-size="22" letter-spacing="4">PROTOTYPES</text>
+  <text x="688" y="476" fill="#9DABB5" font-family="&#39;IBM Plex Mono&#39;, monospace" font-size="22" letter-spacing="4">RELEASE TRACKS</text>
+  <path d="M84 738H1116" stroke="#262A30" stroke-width="3"></path>
+  <text x="84" y="804" fill="#F2ECE3" font-family="&#39;IBM Plex Mono&#39;, monospace" font-size="20" letter-spacing="5">BROWSER-FIRST / INTERACTIVE / FUTURE RELEASES</text>
+  <defs>
+    <radialGradient id="paint0_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(870 214) rotate(90) scale(168)">
+      <stop stop-color="#D7A16F" stop-opacity="0.34"></stop>
+      <stop offset="1" stop-color="#D7A16F" stop-opacity="0"></stop>
+    </radialGradient>
+    <radialGradient id="paint1_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(260 694) rotate(90) scale(208)">
+      <stop stop-color="#9DABB5" stop-opacity="0.22"></stop>
+      <stop offset="1" stop-color="#9DABB5" stop-opacity="0"></stop>
+    </radialGradient>
+  </defs>
+</svg>

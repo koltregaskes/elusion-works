@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-labelledby="title desc">
+  <title id="title">StackScout poster</title>
+  <desc id="desc">Abstract scout desk poster with catalog cards and signal beams.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#06120d"/>
+      <stop offset=".55" stop-color="#08101a"/>
+      <stop offset="1" stop-color="#030305"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8fd0a6"/>
+      <stop offset="1" stop-color="#d7a16f"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="900" rx="56" fill="url(#bg)"/>
+  <circle cx="962" cy="166" r="260" fill="#8fd0a6" fill-opacity=".08"/>
+  <g transform="translate(160 150)" stroke="#8fd0a6" stroke-opacity=".28" fill="none">
+    <path d="M0 0h880v600H0z"/>
+    <path d="M0 150h880M0 300h880M0 450h880M220 0v600M440 0v600M660 0v600"/>
+  </g>
+  <g transform="translate(214 206)">
+    <rect width="275" height="155" rx="22" fill="#f4efe7" fill-opacity=".08" stroke="#8fd0a6" stroke-opacity=".4"/>
+    <rect x="28" y="30" width="72" height="18" rx="9" fill="#8fd0a6"/>
+    <rect x="28" y="72" width="205" height="13" rx="6.5" fill="#f4efe7" fill-opacity=".48"/>
+    <rect x="28" y="102" width="142" height="13" rx="6.5" fill="#f4efe7" fill-opacity=".22"/>
+  </g>
+  <g transform="translate(512 360)">
+    <rect width="275" height="155" rx="22" fill="#f4efe7" fill-opacity=".08" stroke="#d7a16f" stroke-opacity=".45"/>
+    <rect x="28" y="30" width="96" height="18" rx="9" fill="#d7a16f"/>
+    <rect x="28" y="72" width="202" height="13" rx="6.5" fill="#f4efe7" fill-opacity=".48"/>
+    <rect x="28" y="102" width="118" height="13" rx="6.5" fill="#f4efe7" fill-opacity=".22"/>
+  </g>
+  <path d="M285 560c118-104 245-150 382-138 138 12 238-37 300-148" stroke="url(#beam)" stroke-width="9" fill="none" stroke-linecap="round"/>
+  <g font-family="IBM Plex Mono, monospace" fill="#f4efe7">
+    <text x="96" y="805" font-size="32" letter-spacing="12">STACKSCOUT</text>
+    <text x="96" y="845" font-size="18" fill="#8fd0a6" letter-spacing="8">TOOL SIGNAL / FIELD NOTES</text>
+  </g>
+</svg>

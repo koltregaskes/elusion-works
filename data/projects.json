@@ -1,0 +1,145 @@
+[
+  {
+    "id": "ai-resource-hub",
+    "name": "AI Resource Hub",
+    "kind": "WEBSITE",
+    "family": "Elusion Works",
+    "status": "live",
+    "href": "https://theairesourcehub.com/",
+    "blurb": "Reference hub for models, benchmarks, pricing, and dated AI updates.",
+    "image": "assets/img/frontdoor/ai-resource-hub-site.jpg",
+    "span": { "columns": 4, "rows": 2 }
+  },
+  {
+    "id": "kols-korner",
+    "name": "Kol's Korner",
+    "kind": "WEBSITE",
+    "family": "Kol Tregaskes",
+    "status": "live",
+    "href": "https://koltregaskes.com/",
+    "blurb": "Essays, AI digest archives, and commentary with a sharper editorial tone.",
+    "image": "assets/img/frontdoor/kols-korner-site.jpg",
+    "span": { "columns": 2, "rows": 2 }
+  },
+  {
+    "id": "ghost-in-the-models",
+    "name": "Ghost in the Models",
+    "kind": "WEBSITE",
+    "family": "Elusion Works",
+    "status": "live",
+    "href": "https://ghostinthemodels.com/",
+    "blurb": "Editorial publishing experiments around agents, autonomy, and machine culture.",
+    "image": "assets/img/frontdoor/ghost-in-the-model-site.jpg",
+    "span": { "columns": 2, "rows": 2 }
+  },
+  {
+    "id": "axylusion",
+    "name": "Axy Lusion",
+    "kind": "WEBSITE",
+    "family": "Elusion Works",
+    "status": "in-progress",
+    "href": "https://axylusion.com/",
+    "blurb": "AI art, music, and video portfolio with a cinematic visual direction.",
+    "image": "assets/img/frontdoor/axylusion-site.jpg",
+    "span": { "columns": 4, "rows": 2 }
+  },
+  {
+    "id": "kt-photography",
+    "name": "KT Photography",
+    "kind": "WEBSITE",
+    "family": "Kol Tregaskes",
+    "status": "in-progress",
+    "href": "https://koltregaskesphotography.com/",
+    "blurb": "Quiet photography portfolio moving toward a fuller image-led release.",
+    "image": "assets/img/frontdoor/kt-photography-site.jpg",
+    "span": { "columns": 3, "rows": 2 }
+  },
+  {
+    "id": "gametrackdaily",
+    "name": "GameTrackDaily",
+    "kind": "HUB",
+    "family": "E-lusion Studios",
+    "status": "in-progress",
+    "href": "https://github.com/koltregaskes/gametrackdaily",
+    "blurb": "Launch radar where Kol's game prototypes sit beside curated industry signals.",
+    "image": "assets/img/frontdoor/gametrackdaily.svg",
+    "span": { "columns": 3, "rows": 2 }
+  },
+  {
+    "id": "stackscout",
+    "name": "StackScout",
+    "kind": "HUB",
+    "family": "Elusion Works",
+    "status": "in-progress",
+    "href": "https://github.com/koltregaskes/stackscout",
+    "blurb": "Curated scout desk for builder tools, APIs, MCPs, CLIs, and services.",
+    "image": "assets/img/frontdoor/stackscout.svg",
+    "span": { "columns": 3, "rows": 2 }
+  },
+  {
+    "id": "repo-foundry",
+    "name": "Repo Foundry",
+    "kind": "HUB",
+    "family": "Elusion Works",
+    "status": "in-progress",
+    "href": "https://github.com/koltregaskes/repo-foundry",
+    "blurb": "Curated foundry floor for high-signal open-source repositories and operator notes.",
+    "image": "assets/img/frontdoor/repo-foundry.svg",
+    "span": { "columns": 3, "rows": 2 }
+  },
+  {
+    "id": "website-news-pipeline",
+    "name": "Website News Pipeline",
+    "kind": "PIPELINE",
+    "family": "Elusion Works",
+    "status": "in-progress",
+    "href": "https://github.com/koltregaskes",
+    "blurb": "Automation lane for dated website news and editorial surface maintenance.",
+    "image": "assets/img/frontdoor/website-news-pipeline.svg",
+    "span": { "columns": 3, "rows": 2 }
+  },
+  {
+    "id": "gallery-pipeline",
+    "name": "Published Gallery Pipeline",
+    "kind": "PIPELINE",
+    "family": "Elusion Works",
+    "status": "in-progress",
+    "href": "https://github.com/koltregaskes/elusion-works",
+    "blurb": "Media workflow for gallery publishing and portfolio asset handling.",
+    "image": "assets/img/frontdoor/published-gallery-pipeline.svg",
+    "span": { "columns": 3, "rows": 2 }
+  },
+  {
+    "id": "shared-website-tools",
+    "name": "Shared Website Tools",
+    "kind": "TOOLING",
+    "family": "Elusion Works",
+    "status": "in-progress",
+    "href": "https://github.com/koltregaskes",
+    "blurb": "Shared tooling and QA rails for the public website estate.",
+    "image": "assets/img/frontdoor/shared-website-tools.svg",
+    "span": { "columns": 3, "rows": 2 }
+  },
+  {
+    "id": "games-in-development",
+    "name": "Games In Development",
+    "kind": "GAME",
+    "family": "E-lusion Studios",
+    "status": "in-progress",
+    "href": "https://github.com/koltregaskes",
+    "blurb": "Playable ideas and early prototypes that are not yet public products.",
+    "image": "assets/img/frontdoor/games-in-development.svg",
+    "span": { "columns": 3, "rows": 2 }
+  },
+  {
+    "id": "interactive-experiments",
+    "name": "Interactive Experiments",
+    "kind": "LAB",
+    "family": "Elusion Works",
+    "status": "in-progress",
+    "href": "experiments/",
+    "blurb": "Small interactive demos, motion studies, and browser experiments.",
+    "image": "assets/img/frontdoor/interactive-experiments.svg",
+    "span": { "columns": 3, "rows": 2 }
+  }
+]
