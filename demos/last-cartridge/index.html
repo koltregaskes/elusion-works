@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>The Last Cartridge | Elusion Works Demo</title>
+    <meta
+      name="description"
+      content="A cinematic one-page interactive exhibition for a fictional lost 16-bit cartridge recovered from an alternate 1989 timeline."
+    />
+    <meta name="theme-color" content="#070814" />
+    <meta name="robots" content="index,follow" />
+    <link rel="canonical" href="https://elusionworks.com/demos/last-cartridge/" />
+    <meta property="og:title" content="The Last Cartridge" />
+    <meta
+      property="og:description"
+      content="A premium dark retro-futurist artefact exhibition for a fictional lost 16-bit game."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://elusionworks.com/demos/last-cartridge/" />
+    <meta property="og:image" content="https://elusionworks.com/demos/last-cartridge/assets/reference/homepage-reference-mockup.png" />
+    <meta property="og:image:alt" content="The Last Cartridge dark retro-futurist website reference artwork." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="assets/icons/logo-mark.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="scanlines" aria-hidden="true"></div>
+    <div class="noise" aria-hidden="true"></div>
+
+    <div class="boot" data-boot>
+      <div class="boot__panel" role="dialog" aria-modal="true" aria-labelledby="boot-title">
+        <p class="boot__eyebrow">PX-16 archive terminal</p>
+        <h1 id="boot-title">Recovered media detected</h1>
+        <ol class="boot__log" aria-label="Boot sequence">
+          <li>Checksum verified: <strong>LC-1989-REDMOON</strong></li>
+          <li>Build state: <strong>0.71 incomplete</strong></li>
+          <li>Display mode: <strong>museum reconstruction</strong></li>
+        </ol>
+        <button class="button button--primary boot__start" type="button" data-dismiss-boot>Press Start</button>
+        <p class="boot__hint">Press Enter, Space or the button to enter the archive.</p>
+      </div>
+    </div>
+
+    <header class="site-header" data-header>
+      <a class="brand" href="#top" aria-label="The Last Cartridge home">
+        <img src="assets/icons/logo-mark.svg" alt="" width="28" height="28" />
+        <span>The Last Cartridge</span>
+      </a>
+      <nav class="site-nav" aria-label="Primary navigation">
+        <a href="#story">Story</a>
+        <a href="#world">World</a>
+        <a href="#profiles">Profiles</a>
+        <a href="#archive">Archive</a>
+        <a href="#sound">Sound</a>
+      </nav>
+      <div class="header-actions">
+        <span class="status-chip">Recovered Build</span>
+        <a class="button button--small" href="#archive">Enter Archive</a>
+      </div>
+    </header>
+
+    <main id="top">
+      <section class="hero section-shell" aria-labelledby="hero-title">
+        <div class="hero__copy reveal">
+          <p class="section-kicker">PX-16 / build 0.71 / unreleased</p>
+          <h1 id="hero-title">The Last Cartridge</h1>
+          <p class="hero__lede">
+            A lost 16-bit game from an alternate 1989, reconstructed from fragments, rumours and one surviving build.
+          </p>
+          <div class="hero__actions" aria-label="Primary actions">
+            <a class="button button--primary" href="#archive">Enter the Archive</a>
+            <a class="button button--secondary" href="#world">View World Map</a>
+          </div>
+          <ul class="chip-list" aria-label="Cartridge metadata">
+            <li>PX-16</li>
+            <li>Build 0.71</li>
+            <li>Unreleased</li>
+            <li>Recovered 2026</li>
+          </ul>
+        </div>
+        <div class="hero__media reveal">
+          <div class="cartridge-frame" data-float>
+            <img
+              src="assets/core/hero-cartridge-clean.png"
+              alt="A fictional retro game cartridge displayed as a recovered artefact against a dark atmospheric background."
+              width="1200"
+              height="1500"
+              fetchpriority="high"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section class="stats section-shell" aria-label="Recovered build highlights">
+        <article class="stat-card reveal">
+          <span>Platform</span>
+          <strong>PX-16</strong>
+        </article>
+        <article class="stat-card reveal">
+          <span>Genre</span>
+          <strong>Action RPG</strong>
+        </article>
+        <article class="stat-card reveal">
+          <span>Status</span>
+          <strong>Unreleased</strong>
+        </article>
+        <article class="stat-card reveal">
+          <span>Origin</span>
+          <strong>Unknown</strong>
+        </article>
+        <article class="stat-card reveal">
+          <span>Recovery</span>
+          <strong>2026</strong>
+        </article>
+        <article class="stat-card reveal">
+          <span>Build</span>
+          <strong>71%</strong>
+        </article>
+      </section>
+
+      <section class="editorial section-shell" id="story" aria-labelledby="story-title">
+        <div class="section-heading reveal">
+          <p class="section-number">01</p>
+          <h2 id="story-title">The Discovery</h2>
+          <p>
+            In early 2026, a single cartridge surfaced in a private lot of obsolete hardware, unmarked except for a faded
+            serial code and a half-buried label. What followed was part restoration, part obsession.
+          </p>
+        </div>
+        <figure class="artefact-inset reveal">
+          <img
+            src="assets/archive/artefact-03-manual-page.png"
+            alt="A fictional manual page from the lost game showing controls and archival notes."
+            width="1000"
+            height="1400"
+            loading="lazy"
+            decoding="async"
+          />
+          <figcaption>Manual fragment recovered with the PX-16 cartridge lot.</figcaption>
+        </figure>
+      </section>
+
+      <section class="world section-shell" id="world" aria-labelledby="world-title">
+        <div class="section-heading reveal">
+          <p class="section-number">02</p>
+          <h2 id="world-title">A World Reconstructed</h2>
+          <p>
+            From corrupted tiles, surviving scenes and handwritten notes, a world began to return: broken, beautiful and
+            far stranger than anyone expected.
+          </p>
+        </div>
+        <div class="world-map reveal">
+          <img
+            src="assets/core/world-panorama-main.png"
+            alt="A wide pixel-art landscape showing a red moon citadel, crystalline forest and distant ruins."
+            width="1920"
+            height="1080"
+            loading="lazy"
+            decoding="async"
+          />
+          <button class="hotspot hotspot--forest" type="button" data-hotspot="Forest of Glass" aria-expanded="false">Forest</button>
+          <button class="hotspot hotspot--citadel" type="button" data-hotspot="Red Moon Citadel" aria-expanded="false">Citadel</button>
+          <button class="hotspot hotspot--port" type="button" data-hotspot="Drowned Neon Port" aria-expanded="false">Port</button>
+          <button class="hotspot hotspot--cathedral" type="button" data-hotspot="Cathedral of Save States" aria-expanded="false">Cathedral</button>
+          <button class="hotspot hotspot--desert" type="button" data-hotspot="Salt Circuit Desert" aria-expanded="false">Desert</button>
+          <aside class="hotspot-card" data-hotspot-card aria-live="polite">
+            <strong>Tap a signal</strong>
+            <span>Five surviving location names are pinned to the reconstructed panorama.</span>
+          </aside>
+        </div>
+        <div class="mobile-location-list" aria-label="Reconstructed locations">
+          <span>Forest of Glass</span>
+          <span>Red Moon Citadel</span>
+          <span>Drowned Neon Port</span>
+          <span>Cathedral of Save States</span>
+          <span>Salt Circuit Desert</span>
+        </div>
+      </section>
+
+      <section class="profiles section-shell" id="profiles" aria-labelledby="profiles-title">
+        <div class="section-heading reveal">
+          <p class="section-number">03</p>
+          <h2 id="profiles-title">Recovered Profiles</h2>
+        </div>
+        <div class="card-grid card-grid--profiles">
+          <article class="profile-card reveal">
+            <img src="assets/characters/character-01-protagonist.png" alt="Pixel-art portrait of Nova Vale, the Signal Knight." width="900" height="1200" loading="lazy" decoding="async" />
+            <span>Dossier 01</span>
+            <h3>Nova Vale</h3>
+            <p>Signal Knight</p>
+            <small>Recovered from a corrupted dialogue bank.</small>
+          </article>
+          <article class="profile-card reveal">
+            <img src="assets/characters/character-02-rival.png" alt="Pixel-art portrait of Mara Vex, the Red Moon Rival." width="900" height="1200" loading="lazy" decoding="async" />
+            <span>Dossier 02</span>
+            <h3>Mara Vex</h3>
+            <p>Red Moon Rival</p>
+            <small>Only appears after the red moon event.</small>
+          </article>
+          <article class="profile-card reveal">
+            <img src="assets/characters/character-03-merchant.png" alt="Pixel-art portrait of Orin Byte, the black market cartographer." width="900" height="1200" loading="lazy" decoding="async" />
+            <span>Dossier 03</span>
+            <h3>Orin Byte</h3>
+            <p>Black Market Cartographer</p>
+            <small>Sells maps to places that no longer exist.</small>
+          </article>
+          <article class="profile-card reveal">
+            <img src="assets/characters/character-04-machine-priest.png" alt="Pixel-art portrait of Priest-404, the Machine Oracle." width="900" height="1200" loading="lazy" decoding="async" />
+            <span>Dossier 04</span>
+            <h3>Priest-404</h3>
+            <p>Machine Oracle</p>
+            <small>Speaks in checksums and prayers.</small>
+          </article>
+          <article class="profile-card reveal">
+            <img src="assets/characters/character-05-secret-companion.png" alt="Pixel-art portrait of Kip, the glitch companion." width="900" height="1200" loading="lazy" decoding="async" />
+            <span>Dossier 05</span>
+            <h3>Kip</h3>
+            <p>Glitch Companion</p>
+            <small>A friendly error with suspicious timing.</small>
+          </article>
+          <article class="profile-card reveal">
+            <img src="assets/characters/character-06-final-boss.png" alt="Pixel-art portrait of The Save King, the final architect." width="900" height="1200" loading="lazy" decoding="async" />
+            <span>Dossier 06</span>
+            <h3>The Save King</h3>
+            <p>Final Architect</p>
+            <small>Guards the last writable memory gate.</small>
+          </article>
+        </div>
+      </section>
+
+      <section class="gameplay section-shell" aria-labelledby="gameplay-title">
+        <div class="section-heading reveal">
+          <p class="section-number">04</p>
+          <h2 id="gameplay-title">Recovered Gameplay</h2>
+          <p>Not a final build. Not even a full one. But enough to prove the myth was real.</p>
+        </div>
+        <div class="card-grid card-grid--gameplay">
+          <figure class="game-card reveal">
+            <img src="assets/gameplay/gameplay-01-forest-traversal.png" alt="Recovered 16-bit gameplay scene showing forest traversal through crystalline trees." width="1024" height="768" loading="lazy" decoding="async" />
+            <figcaption>Forest traversal</figcaption>
+          </figure>
+          <figure class="game-card reveal">
+            <img src="assets/gameplay/gameplay-02-boss-fight.png" alt="Recovered 16-bit gameplay scene showing a boss fight beneath a red moon." width="1024" height="768" loading="lazy" decoding="async" />
+            <figcaption>Red Moon boss fight</figcaption>
+          </figure>
+          <figure class="game-card reveal">
+            <img src="assets/gameplay/gameplay-03-inventory-menu.png" alt="Recovered 16-bit inventory screen with strange artefacts and system notes." width="1024" height="768" loading="lazy" decoding="async" />
+            <figcaption>Inventory build</figcaption>
+          </figure>
+          <figure class="game-card reveal">
+            <img src="assets/gameplay/gameplay-04-world-map.png" alt="Recovered 16-bit world map with glowing region nodes." width="1024" height="768" loading="lazy" decoding="async" />
+            <figcaption>Region map</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="timeline section-shell" aria-labelledby="timeline-title">
+        <div class="section-heading reveal">
+          <p class="section-number">05</p>
+          <h2 id="timeline-title">How the myth survived</h2>
+        </div>
+        <ol class="timeline-list">
+          <li class="reveal"><time>1987</time><strong>First prototype</strong><span>Combat, traversal and save-state experiments begin.</span></li>
+          <li class="reveal"><time>1988</time><strong>Preview build</strong><span>Magazine writers glimpse the red moon area for the first time.</span></li>
+          <li class="reveal"><time>1989</time><strong>Cancelled before release</strong><span>The studio folds before the cartridge reaches shelves.</span></li>
+          <li class="reveal"><time>1994</time><strong>Magazine rumour</strong><span>A tiny clipping revives the title as a collector myth.</span></li>
+          <li class="reveal"><time>2003</time><strong>Forum legend</strong><span>Players compare memories of a game almost nobody saw.</span></li>
+          <li class="reveal"><time>2026</time><strong>Cartridge recovered</strong><span>A surviving build enters the archive.</span></li>
+        </ol>
+      </section>
+
+      <section class="sound section-shell" id="sound" aria-labelledby="sound-title">
+        <div class="section-heading reveal">
+          <p class="section-number">06</p>
+          <h2 id="sound-title">Fragments of a soundtrack</h2>
+          <p>
+            The recovered audio is incomplete: a handful of loops, title-screen hum and one boss theme that sounds like a
+            machine trying to remember a hymn.
+          </p>
+        </div>
+        <div class="sound-panel reveal" aria-label="Recovered audio fragments">
+          <div class="waveform" aria-hidden="true">
+            <span style="--h: 34%"></span><span style="--h: 68%"></span><span style="--h: 42%"></span><span style="--h: 85%"></span><span style="--h: 58%"></span><span style="--h: 92%"></span><span style="--h: 36%"></span><span style="--h: 74%"></span><span style="--h: 48%"></span><span style="--h: 80%"></span><span style="--h: 52%"></span><span style="--h: 63%"></span>
+          </div>
+          <ol class="track-list">
+            <li><button type="button">Boot Prayer</button><span>00:48 loop</span></li>
+            <li><button type="button">Forest of Glass</button><span>01:16 loop</span></li>
+            <li><button type="button">Red Moon Approach</button><span>00:39 cue</span></li>
+            <li><button type="button">The Save King</button><span>01:03 boss</span></li>
+            <li><button type="button">End Frame</button><span>00:27 hum</span></li>
+          </ol>
+          <p class="sound-note">No audio autoplays in this v1 demo. Track buttons are visual interaction states only.</p>
+        </div>
+      </section>
+
+      <section class="archive section-shell" id="archive" aria-labelledby="archive-title">
+        <div class="section-heading reveal">
+          <p class="section-number">07</p>
+          <h2 id="archive-title">Archive Artefacts</h2>
+        </div>
+        <div class="artefact-grid">
+          <button class="artefact-card reveal" type="button" data-artefact="Box art">
+            <img src="assets/archive/artefact-01-box-art.png" alt="Fictional box art for The Last Cartridge." width="1000" height="1400" loading="lazy" decoding="async" />
+            <span>Box art</span>
+          </button>
+          <button class="artefact-card reveal" type="button" data-artefact="Cartridge label">
+            <img src="assets/archive/artefact-02-cartridge-label.png" alt="A close-up of the fictional cartridge label." width="1000" height="1400" loading="lazy" decoding="async" />
+            <span>Cartridge label</span>
+          </button>
+          <button class="artefact-card reveal" type="button" data-artefact="Manual page">
+            <img src="assets/archive/artefact-03-manual-page.png" alt="A fictional manual page from the lost game." width="1000" height="1400" loading="lazy" decoding="async" />
+            <span>Manual page</span>
+          </button>
+          <button class="artefact-card reveal" type="button" data-artefact="Map fragment">
+            <img src="assets/archive/artefact-04-map-fragment.png" alt="A torn fictional map fragment for the game world." width="1000" height="1400" loading="lazy" decoding="async" />
+            <span>Map fragment</span>
+          </button>
+          <button class="artefact-card reveal" type="button" data-artefact="Enemy sheet">
+            <img src="assets/archive/artefact-05-enemy-sheet.png" alt="A fictional enemy bestiary sheet from the archive." width="1000" height="1400" loading="lazy" decoding="async" />
+            <span>Enemy sheet</span>
+          </button>
+          <button class="artefact-card reveal" type="button" data-artefact="Magazine clipping">
+            <img src="assets/archive/artefact-06-magazine-clipping.png" alt="A fictional magazine clipping about the unreleased game." width="1000" height="1400" loading="lazy" decoding="async" />
+            <span>Magazine clipping</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="final-cta section-shell" aria-labelledby="final-title">
+        <div class="final-cta__inner reveal">
+          <p class="section-kicker">Archive terminal / end frame</p>
+          <h2 id="final-title">Some games were never released. Some worlds never stopped waiting.</h2>
+          <div class="hero__actions">
+            <a class="button button--primary" href="#archive">Open the Archive</a>
+            <button class="button button--secondary" type="button" data-dossier>View Dossier Notes</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div>
+        <img src="assets/icons/logo-mark.svg" alt="" width="30" height="30" />
+        <strong>The Last Cartridge</strong>
+        <p>Fictional Elusion Works demo. No playable game, ecommerce flow or backend is included in v1.</p>
+      </div>
+      <nav aria-label="Footer navigation">
+        <a href="#story">Story</a>
+        <a href="#world">World</a>
+        <a href="#profiles">Profiles</a>
+        <a href="#archive">Archive</a>
+      </nav>
+      <button class="motion-toggle" type="button" data-motion-toggle aria-pressed="false">Reduce motion</button>
+    </footer>
+
+    <dialog class="archive-dialog" data-dialog>
+      <div class="archive-dialog__body">
+        <button class="dialog-close" type="button" data-dialog-close aria-label="Close archive note">Close</button>
+        <p class="section-kicker" data-dialog-kicker>Archive note</p>
+        <h2 data-dialog-title>Dossier</h2>
+        <p data-dialog-copy>
+          This artefact is represented as a front-end exhibition item. A downloadable dossier can be added in a later
+          version once the archive text is final.
+        </p>
+      </div>
+    </dialog>
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "CreativeWork",
+        "name": "The Last Cartridge",
+        "description": "A fictional one-page interactive exhibition for a recovered 16-bit cartridge.",
+        "url": "https://elusionworks.com/demos/last-cartridge/",
+        "isPartOf": {
+          "@type": "WebSite",
+          "name": "Elusion Works",
+          "url": "https://elusionworks.com/"
+        },
+        "creator": {
+          "@type": "Organization",
+          "name": "Elusion Works"
+        }
+      }
+    </script>
+    <script src="app.js" defer></script>
+  </body>
+</html>
