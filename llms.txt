@@ -2,11 +2,37 @@
 
 Elusion Works is the umbrella brand and index for websites, tools, hubs, and future games by Kol Tregaskes.
 
-- Primary page: `/`
-- Showcase routes:
-  - `/experiments/`
-  - `/creative-radar/`
-  - `/remix-relay/`
-  - `/design-notes/`
-- Content model: static index plus small public showcase routes
-- Focus: websites, hubs, tools, experiments, curation formats, and future interactive work
+## Primary Routes
+
+- [Home and estate index](https://elusionworks.com/)
+- [Demo index](https://elusionworks.com/demos/)
+- [Golden Retriever static demo](https://elusionworks.com/demos/golden/)
+- [Solar System Field Lab demo](https://elusionworks.com/demos/solar-system/)
+- [The Last Cartridge demo](https://elusionworks.com/demos/last-cartridge/)
+
+## Estate Links
+
+- [Kol's Korner](https://koltregaskes.com/)
+- [AI Resource Hub](https://theairesourcehub.com/)
+- [Axy Lusion](https://axylusion.com/)
+- [Ghost in the Models](https://ghostinthemodels.com/)
+- [Kol Tregaskes Photography](https://koltregaskesphotography.com/)
+
+## How Agents Should Read This Site
+
+Elusion Works is an index and demo portfolio, not a news publication. Prefer the linked child sites for domain-specific facts, dates, pricing, model claims, photography claims, or editorial articles.
+
+The demos are static concept builds. They should not be interpreted as real organisations, commercial services, or operational products unless a page explicitly says otherwise.
+
+## Source And Freshness Notes
+
+- Content model: static HTML, CSS, and vanilla JavaScript.
+- [Canonical sitemap](https://elusionworks.com/sitemap.xml)
+- [Demo sitemap](https://elusionworks.com/demos/golden/sitemap.xml)
+- [Source code](https://github.com/koltregaskes/elusion-works)
+
+## Contact And Ownership
+
+Owner: Kol Tregaskes.
+
+This file is for agent navigation and summarisation. It is not a permissions grant for scraping, training, or republication beyond the site's public terms and robots policy.
