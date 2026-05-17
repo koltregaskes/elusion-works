@@ -95,6 +95,11 @@ function setupSplitHeading() {
   const heading = document.querySelector("[data-split-heading]");
   if (!heading) return;
 
+  const accessibleLabel = heading.textContent.replace(/\s+/g, " ").trim();
+  if (accessibleLabel && !heading.hasAttribute("aria-label")) {
+    heading.setAttribute("aria-label", accessibleLabel);
+  }
+
   const nodes = Array.from(heading.childNodes);
   heading.textContent = "";
   heading.classList.add("ew-split");
@@ -107,18 +112,21 @@ function setupSplitHeading() {
       const space = document.createElement("span");
       space.className = "ew-split-space";
       space.textContent = " ";
+      space.setAttribute("aria-hidden", "true");
       heading.append(space);
       return;
     }
 
     const wordSpan = document.createElement("span");
     wordSpan.className = `ew-split-word${isEmphasis ? " ew-split-em" : ""}`;
+    wordSpan.setAttribute("aria-hidden", "true");
 
     for (const char of Array.from(word)) {
       const charSpan = document.createElement("span");
       charSpan.className = "ew-split-char";
       charSpan.style.setProperty("--ci", String(charIndex));
       charSpan.textContent = char;
+      charSpan.setAttribute("aria-hidden", "true");
       wordSpan.append(charSpan);
       charIndex += 1;
     }

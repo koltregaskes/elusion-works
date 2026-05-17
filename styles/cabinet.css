@@ -148,8 +148,15 @@ html[data-theme="light"] .ew-brand img { filter: invert(1) brightness(0.18); }
   font-family: "IBM Plex Mono", monospace; font-size: 10px;
   letter-spacing: 0.16em; text-transform: uppercase;
   background: rgba(255,255,255,0.02); color: var(--fg-2);
-  border: 1px solid var(--line-strong); cursor: pointer;
+  border: 1px solid var(--line-strong);
   transition: background 180ms, color 180ms, border-color 180ms, transform 180ms;
+}
+a.ew-pill,
+button.ew-pill {
+  cursor: pointer;
+}
+.ew-pill:not(a):not(button) {
+  cursor: default;
 }
 .ew-pill:hover { color: var(--fg-1); border-color: color-mix(in oklab, var(--copper) 50%, var(--line-strong)); transform: translateY(-1px); }
 .ew-pill-ghost { background: transparent; }

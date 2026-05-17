@@ -160,6 +160,8 @@ function renderSection(target, items, emptyLabel, renderer = createCardMarkup) {
 }
 
 function setCounts(websites, tools, games) {
+  if (!countTargets.websites || !countTargets.tools || !countTargets.games) return;
+
   countTargets.websites.textContent = formatCount(websites.length);
   countTargets.tools.textContent = formatCount(tools.length);
   countTargets.games.textContent = formatCount(games.length);
