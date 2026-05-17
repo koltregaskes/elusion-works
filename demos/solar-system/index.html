@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Solar System Field Lab is an interactive Elusion Works demo website for learning accurate Solar System facts through an orbit lab, planet explorer, comparisons, scale model and quiz." />
+  <meta name="theme-color" content="#050816" />
+  <link rel="canonical" href="https://elusionworks.com/demos/solar-system/" />
+  <meta property="og:title" content="Solar System Field Lab | Elusion Works Demo" />
+  <meta property="og:description" content="A live-ready interactive Solar System education demo with NASA/JPL/IAU source notes." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://elusionworks.com/demos/solar-system/" />
+  <meta property="og:image" content="https://elusionworks.com/demos/solar-system/assets/social/solar-system-field-lab-og.png" />
+  <meta property="og:image:alt" content="Solar System Field Lab dark mission-control demo preview." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <title>Solar System Field Lab | Elusion Works Demo</title>
+  <link rel="icon" href="assets/brand/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="assets/brand/apple-touch-icon.png" />
+  <link rel="preload" href="styles.css" as="style" />
+  <link rel="stylesheet" href="styles.css" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "LearningResource",
+    "name": "Solar System Field Lab",
+    "description": "Interactive Solar System learning demo covering planets, dwarf planets, orbital order, scale, comparison and quiz activities.",
+    "educationalLevel": "Upper primary, secondary, general interest",
+    "learningResourceType": "Interactive demo",
+    "inLanguage": "en-GB",
+    "url": "https://elusionworks.com/demos/solar-system/",
+    "isPartOf": {
+      "@type": "WebSite",
+      "name": "Elusion Works",
+      "url": "https://elusionworks.com/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <div class="page-shell" id="top">
+    <header class="site-header" aria-label="Solar System Field Lab header">
+      <a class="brand" href="#top" aria-label="Solar System Field Lab home">
+        <span class="brand-orb" aria-hidden="true"></span>
+        <span class="brand-copy">
+          <strong>Solar System Field Lab</strong>
+          <small>Elusion Works interactive demo</small>
+        </span>
+      </a>
+      <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="mainNav">
+        <span class="sr-only">Toggle navigation</span>
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+      </button>
+      <nav class="site-nav" id="mainNav" aria-label="Primary navigation">
+        <a href="#orbit">Orbit lab</a>
+        <a href="#explore">Explorer</a>
+        <a href="#compare">Compare</a>
+        <a href="#scale">Scale</a>
+        <a href="#dwarfs">Dwarf planets</a>
+        <a href="#quiz">Quiz</a>
+      </nav>
+    </header>
+
+    <main id="main" tabindex="-1">
+      <section class="hero section-frame" aria-labelledby="heroTitle">
+        <div class="hero-copy">
+          <p class="eyebrow">STEM demo · education site · static HTML/CSS/JS</p>
+          <h1 id="heroTitle">Explore the Solar System like a mission scientist.</h1>
+          <p class="hero-intro">
+            A polished, live-ready demo concept for an interactive education website: orbital order,
+            planet data, dwarf planets, scale modelling, quick comparisons and a classroom-friendly quiz.
+          </p>
+          <div class="hero-actions" aria-label="Primary actions">
+            <a class="button button-primary" href="#orbit">Launch orbit lab</a>
+            <a class="button button-ghost" href="#explore">Browse planets</a>
+          </div>
+          <dl class="metric-strip" aria-label="Solar System headline facts">
+            <div>
+              <dt>Planets</dt>
+              <dd>8</dd>
+            </div>
+            <div>
+              <dt>Official dwarf planets</dt>
+              <dd>5</dd>
+            </div>
+            <div>
+              <dt>Main star</dt>
+              <dd>The Sun</dd>
+            </div>
+            <div>
+              <dt>Teaching mode</dt>
+              <dd>Interactive</dd>
+            </div>
+          </dl>
+        </div>
+
+        <aside class="hero-console" aria-label="Mission overview card">
+          <div class="console-topline">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span>Mission brief loaded</span>
+          </div>
+          <div class="css-orbit-model" aria-hidden="true">
+            <span class="sun"></span>
+            <span class="orbit orbit-1"><i></i></span>
+            <span class="orbit orbit-2"><i></i></span>
+            <span class="orbit orbit-3"><i></i></span>
+            <span class="orbit orbit-4"><i></i></span>
+          </div>
+          <h2>Built for serious demos, not filler pages.</h2>
+          <p>
+            This version is designed to sit beside your Golden Retriever demo but feel completely different:
+            darker, more technical, more interactive, and more “science lab”.
+          </p>
+          <ul class="check-list">
+            <li>Responsive single-page static site</li>
+            <li>No framework or external image dependency</li>
+            <li>NASA/JPL/IAU source notes included</li>
+            <li>Ready for agent handoff or server upload</li>
+          </ul>
+        </aside>
+      </section>
+
+      <section class="mission-brief section-block" aria-labelledby="briefTitle">
+        <div class="section-heading section-heading--split">
+          <div>
+            <p class="eyebrow">Learning objectives</p>
+            <h2 id="briefTitle">What this demo teaches</h2>
+            <p>
+              The page is deliberately built as an educational product demo rather than a flat article.
+              Visitors learn by changing controls, comparing data and testing themselves.
+            </p>
+          </div>
+          <a class="button button-secondary" href="#sources">View source rules</a>
+        </div>
+        <div class="brief-grid">
+          <article class="brief-card">
+            <span aria-hidden="true">01</span>
+            <h3>Orbital order</h3>
+            <p>See the eight planets in their correct order from the Sun, with simplified motion for teaching.</p>
+          </article>
+          <article class="brief-card">
+            <span aria-hidden="true">02</span>
+            <h3>Planet families</h3>
+            <p>Separate rocky terrestrial planets, gas giants and ice giants without overloading the visitor.</p>
+          </article>
+          <article class="brief-card">
+            <span aria-hidden="true">03</span>
+            <h3>Scale shock</h3>
+            <p>Use an Earth-size slider to expose how absurdly large space is, even in a small model.</p>
+          </article>
+          <article class="brief-card">
+            <span aria-hidden="true">04</span>
+            <h3>Evidence habits</h3>
+            <p>Source notes show which facts come from NASA, JPL Solar System Dynamics and the IAU.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section-block orbit-lab" id="orbit" aria-labelledby="orbitTitle">
+        <div class="section-heading section-heading--split">
+          <div>
+            <p class="eyebrow">Orbit lab</p>
+            <h2 id="orbitTitle">Animated Solar System classroom</h2>
+            <p>
+              Use the display modes to show why teachers rarely draw the Solar System to true scale.
+              The animation shows orbital order and relative rhythm, not real-time ephemerides.
+            </p>
+          </div>
+          <div class="note-chip" role="note">Educational scale model, not live astronomical positions.</div>
+        </div>
+
+        <div class="lab-layout">
+          <div class="canvas-card">
+            <canvas id="orbitCanvas" aria-label="Interactive animated orbit model"></canvas>
+            <div class="canvas-hint">Click a planet on the canvas or select a card below.</div>
+          </div>
+
+          <aside class="control-panel" aria-label="Orbit controls and selected planet facts">
+            <div class="selected-object">
+              <p class="kicker">Selected object</p>
+              <h3 id="selectedName">Earth</h3>
+              <p id="selectedTagline">Our home planet, the only world known to support life.</p>
+            </div>
+            <div class="selected-planet-art" id="selectedPlanetArt" aria-hidden="true"></div>
+            <div class="stat-grid" id="selectedStats" aria-live="polite"></div>
+
+            <div class="control-group">
+              <label for="distanceMode">Distance display</label>
+              <select id="distanceMode">
+                <option value="compressed">Compressed teaching view</option>
+                <option value="log">Logarithmic spread</option>
+                <option value="honest">AU distance ratio</option>
+              </select>
+              <p class="microcopy">AU ratio makes the inner planets huddle near the Sun. That is not a bug, mate, that is space being ridiculous.</p>
+            </div>
+
+            <div class="control-group">
+              <label for="speedRange">Animation speed</label>
+              <input id="speedRange" type="range" min="0" max="6" step="0.25" value="1.35" />
+            </div>
+
+            <div class="button-row">
+              <button class="button button-secondary" id="pauseButton" type="button">Pause motion</button>
+              <button class="button button-secondary" id="labelButton" type="button" aria-pressed="true">Hide labels</button>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="section-block" id="explore" aria-labelledby="exploreTitle">
+        <div class="section-heading section-heading--split">
+          <div>
+            <p class="eyebrow">Planet explorer</p>
+            <h2 id="exploreTitle">Find, filter and select a world</h2>
+            <p>
+              Search by name, family, nickname or feature. Planet cards feed the orbit lab, comparison tool and scale model.
+            </p>
+          </div>
+          <div class="toolbox" aria-label="Planet explorer controls">
+            <label>
+              <span>Search</span>
+              <input id="searchInput" type="search" placeholder="Try “rings”, “retrograde”, “ice”…" autocomplete="off" />
+            </label>
+            <label>
+              <span>Family</span>
+              <select id="typeFilter">
+                <option value="all">All planets</option>
+                <option value="Terrestrial">Terrestrial</option>
+                <option value="Gas giant">Gas giant</option>
+                <option value="Ice giant">Ice giant</option>
+              </select>
+            </label>
+            <label>
+              <span>Sort</span>
+              <select id="sortSelect">
+                <option value="order">Order from Sun</option>
+                <option value="sizeDesc">Largest first</option>
+                <option value="distanceDesc">Farthest first</option>
+                <option value="yearDesc">Longest year first</option>
+                <option value="gravityDesc">Strongest gravity</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="planet-grid" id="planetGrid" aria-live="polite"></div>
+      </section>
+
+      <section class="section-block compare-section" id="compare" aria-labelledby="compareTitle">
+        <div class="section-heading section-heading--split">
+          <div>
+            <p class="eyebrow">Compare lab</p>
+            <h2 id="compareTitle">Two planets, brutally different numbers</h2>
+            <p>
+              Pick any two planets and compare diameter, mass, gravity, year length and rotation period. Bars are scaled to the larger selected value.
+            </p>
+          </div>
+          <div class="compare-selectors" aria-label="Planet comparison selectors">
+            <label>
+              <span>Planet A</span>
+              <select id="compareA"></select>
+            </label>
+            <label>
+              <span>Planet B</span>
+              <select id="compareB"></select>
+            </label>
+          </div>
+        </div>
+        <div class="compare-grid" id="compareGrid"></div>
+      </section>
+
+      <section class="section-block scale-section" id="scale" aria-labelledby="scaleTitle">
+        <div class="section-heading section-heading--split">
+          <div>
+            <p class="eyebrow">Scale model builder</p>
+            <h2 id="scaleTitle">Shrink Earth, then watch the distances get silly</h2>
+            <p>
+              Choose the size of model Earth. The calculator scales the Sun, the selected planet and orbital distance from the Sun using the same ratio.
+            </p>
+          </div>
+          <div class="scale-control">
+            <label for="earthSizeRange">Model Earth diameter</label>
+            <div class="range-row">
+              <input id="earthSizeRange" type="range" min="0.5" max="20" step="0.5" value="2" />
+              <output id="earthSizeOutput" for="earthSizeRange">2 cm</output>
+            </div>
+          </div>
+        </div>
+        <div class="scale-grid">
+          <article class="scale-card scale-card--sun">
+            <p class="kicker">Scaled Sun diameter</p>
+            <strong id="scaledSun">—</strong>
+            <p>On this scale, the Sun is no longer a neat little yellow circle in the corner.</p>
+          </article>
+          <article class="scale-card">
+            <p class="kicker">Selected planet</p>
+            <strong id="scaledPlanet">—</strong>
+            <p id="scaledPlanetNote">Select a planet to update this comparison.</p>
+          </article>
+          <article class="scale-card">
+            <p class="kicker">Orbital distance</p>
+            <strong id="scaledDistance">—</strong>
+            <p id="scaledDistanceNote">Distance from the Sun at average orbital distance.</p>
+          </article>
+        </div>
+        <div class="table-wrap" tabindex="0" aria-label="Scaled orbital distance table">
+          <table class="data-table" id="scaleTable">
+            <caption>Scaled sizes and average orbital distances</caption>
+            <thead>
+              <tr>
+                <th scope="col">Planet</th>
+                <th scope="col">Model diameter</th>
+                <th scope="col">Model distance from Sun</th>
+                <th scope="col">Real average distance</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section-block dwarf-section" id="dwarfs" aria-labelledby="dwarfTitle">
+        <div class="section-heading section-heading--split">
+          <div>
+            <p class="eyebrow">Dwarf planet dock</p>
+            <h2 id="dwarfTitle">Pluto is not gone, just reclassified</h2>
+            <p>
+              The IAU officially recognises five dwarf planets: Ceres, Pluto, Haumea, Makemake and Eris.
+              This section keeps them visible without confusing “planet” and “dwarf planet”.
+            </p>
+          </div>
+          <div class="note-chip">IAU classification since 2006</div>
+        </div>
+        <div class="dwarf-grid" id="dwarfGrid"></div>
+      </section>
+
+      <section class="section-block timeline-section" aria-labelledby="timelineTitle">
+        <div class="section-heading">
+          <p class="eyebrow">Mission timeline</p>
+          <h2 id="timelineTitle">A simple story arc for learners</h2>
+          <p>
+            A compact timeline helps the site feel like a guided educational experience rather than a data dump.
+          </p>
+        </div>
+        <ol class="timeline">
+          <li>
+            <span>4.6bn years ago</span>
+            <h3>Solar System forms</h3>
+            <p>The Sun forms at the centre, with planets and smaller bodies forming from leftover material in a disk.</p>
+          </li>
+          <li>
+            <span>2006</span>
+            <h3>Planet definition clarified</h3>
+            <p>The IAU formalises the Solar System planet definition and Pluto becomes a dwarf planet.</p>
+          </li>
+          <li>
+            <span>Today</span>
+            <h3>Discovery continues</h3>
+            <p>Moons, small bodies and distant worlds are still studied and catalogued as instruments improve.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section class="section-block quiz-section" id="quiz" aria-labelledby="quizTitle">
+        <div class="section-heading section-heading--split">
+          <div>
+            <p class="eyebrow">Knowledge check</p>
+            <h2 id="quizTitle">Quick mission quiz</h2>
+            <p>Five short questions, immediate feedback, no boring worksheet energy.</p>
+          </div>
+          <button class="button button-secondary" id="resetQuiz" type="button">Reset quiz</button>
+        </div>
+        <div class="quiz-card" id="quizCard" aria-live="polite"></div>
+      </section>
+
+      <section class="section-block teacher-section" aria-labelledby="teacherTitle">
+        <div class="section-heading">
+          <p class="eyebrow">Teacher and demo notes</p>
+          <h2 id="teacherTitle">How to present this page</h2>
+        </div>
+        <div class="details-grid">
+          <details open>
+            <summary>Best demo route</summary>
+            <p>Start with the orbit lab, switch to AU distance ratio, then use the scale model with Earth at 2 cm. That creates the “oh wow” moment quickly.</p>
+          </details>
+          <details>
+            <summary>Accuracy caveat</summary>
+            <p>The orbit animation is not a live ephemeris. It simplifies positions and sizes to teach order, relative rhythm and scale concepts.</p>
+          </details>
+          <details>
+            <summary>Next upgrade options</summary>
+            <p>Add NASA imagery with attribution, a missions section, teacher worksheets, translated versions, or a WebGL/Three.js 3D mode.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="section-block sources-section" id="sources" aria-labelledby="sourcesTitle">
+        <div class="section-heading">
+          <p class="eyebrow">Sources and trust notes</p>
+          <h2 id="sourcesTitle">Built with official-source discipline</h2>
+          <p>
+            Numbers in educational sites can drift. This demo keeps a visible source trail and avoids pretending the simplified animation is a live astronomical model.
+          </p>
+        </div>
+        <div class="source-grid">
+          <article>
+            <h3>NASA Solar System overview</h3>
+            <p>Used for the eight planets, five official dwarf planets and broad Solar System summary language.</p>
+            <a href="https://science.nasa.gov/solar-system/" rel="noopener">science.nasa.gov/solar-system</a>
+          </article>
+          <article>
+            <h3>NASA planet guide</h3>
+            <p>Used for planet order, planet-family language and public-facing explanation style.</p>
+            <a href="https://science.nasa.gov/solar-system/planets/" rel="noopener">science.nasa.gov/solar-system/planets</a>
+          </article>
+          <article>
+            <h3>JPL Solar System Dynamics</h3>
+            <p>Used as the preferred source for physical and orbital parameter checks.</p>
+            <a href="https://ssd.jpl.nasa.gov/planets/phys_par.html" rel="noopener">ssd.jpl.nasa.gov/planets/phys_par.html</a>
+          </article>
+          <article>
+            <h3>IAU planet definition</h3>
+            <p>Used for planet/dwarf planet classification and Pluto wording.</p>
+            <a href="https://www.iau.org/IAU/Iau/Science/What-we-do/FAQs.aspx" rel="noopener">iau.org FAQs</a>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>Solar System Field Lab · Elusion Works demo concept</p>
+      <a href="#top">Back to top</a>
+    </footer>
+  </div>
+
+  <script src="app.js" defer></script>
+</body>
+</html>

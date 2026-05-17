@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img">
+
+
+<title>Solar System Field Lab favicon</title>
+<defs><radialGradient id="sun" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#FFF5B8"/><stop offset="0.7" stop-color="#FFE083"/><stop offset="1" stop-color="#FF9A3D"/></radialGradient></defs>
+<rect width="512" height="512" rx="96" fill="#050713"/>
+<circle cx="256" cy="256" r="58" fill="url(#sun)"/>
+<ellipse cx="256" cy="256" rx="160" ry="78" fill="none" stroke="#78F3FF" stroke-width="16" opacity="0.75"/>
+<ellipse cx="256" cy="256" rx="210" ry="112" fill="none" stroke="#BB8CFF" stroke-width="12" opacity="0.58" transform="rotate(-18 256 256)"/>
+<circle cx="387" cy="190" r="20" fill="#78F3FF"/>
+<circle cx="133" cy="308" r="15" fill="#8DFFCB"/>
+
+</svg>
