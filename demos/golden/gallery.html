@@ -166,6 +166,7 @@
   opacity: 0; pointer-events: none;
   transition: opacity .35s ease;
 }
+.lb[hidden] { display: none; }
 .lb.open { opacity: 1; pointer-events: auto; }
 .lb-stage {
   max-width: 1200px; width: 100%;
@@ -270,7 +271,7 @@
 </main>
 
 <!-- Lightbox -->
-<div class="lb" id="lightbox" role="dialog" aria-modal="true" aria-label="Image viewer">
+<div class="lb" id="lightbox" role="dialog" aria-modal="true" aria-label="Image viewer" hidden>
   <div class="lb-stage">
     <div class="lb-image-wrap">
       <img id="lbImg" alt="">
@@ -377,8 +378,17 @@
     lbTag.textContent = it.cat;
     lbCount.textContent = `${String(current + 1).padStart(2,'0')} / ${String(visible.length).padStart(2,'0')}`;
   }
-  function open(i) { show(i); lb.classList.add('open'); document.body.style.overflow = 'hidden'; }
-  function close() { lb.classList.remove('open'); document.body.style.overflow = ''; }
+  function open(i) {
+    show(i);
+    lb.hidden = false;
+    requestAnimationFrame(() => lb.classList.add('open'));
+    document.body.style.overflow = 'hidden';
+  }
+  function close() {
+    lb.classList.remove('open');
+    lb.hidden = true;
+    document.body.style.overflow = '';
+  }
 
   grid.addEventListener('click', e => {
     const t = e.target.closest('.gp-tile'); if (!t) return;
