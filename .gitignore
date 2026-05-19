@@ -10,3 +10,31 @@ site/
 .vercel/
 .cache/
 data/editorial-hub.json
+
+# Local env / secrets
+.env
+.env.*
+!.env.example
+
+# Local server logs
+.serve.log
+.serve.err.log
+*.log
+
+# Local-only planning and scratch docs
+docs/local/
+planning-local/
+review-local/
+scratch/
+todo.local.md
+tasks.local.md
+working-notes.md
+WORKING-NOTES.md
+review-notes.md
+REVIEW-NOTES.md
+session-notes.md
+SESSION-NOTES.md
+
+# WIP / handoff content (kept locally, never committed)
+design/archive/
+demos/**/archive/
