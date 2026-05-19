@@ -29,7 +29,7 @@ jobs:
       - name: Assemble static site
         run: |
           mkdir -p _site/assets _site/data
-          cp index.html styles.css showcase-pages.css app.js cursor.js 404.html robots.txt sitemap.xml llms.txt security.txt _site/
+          cp index.html styles.css showcase-pages.css app.js cursor.js 404.html robots.txt sitemap.xml llms.txt security.txt CNAME _site/
           cp -r assets/. _site/assets/
           cp data/estate.js _site/data/
           cp -r experiments creative-radar remix-relay design-notes demos _site/
@@ -43,6 +43,8 @@ jobs:
           test -f _site/cursor.js
           test -f _site/404.html
           test -f _site/security.txt
+          test -f _site/CNAME
+          grep -qx 'elusionworks.com' _site/CNAME
           test -f _site/data/estate.js
           test ! -f _site/data/editorial-hub.json
           test -f _site/assets/og-card.png
