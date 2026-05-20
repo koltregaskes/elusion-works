@@ -69,16 +69,15 @@ jobs:
           test -f _site/design-notes/index.html
           test -f _site/demos/index.html
           test -f _site/demos/golden/index.html
-          grep -q 'id="websites-grid"' _site/index.html
-          grep -q 'id="tools-grid"' _site/index.html
-          grep -q 'id="games-grid"' _site/index.html
-          grep -q 'id="showcase"' _site/index.html
-          grep -q 'launch-card' _site/index.html
+          # d6 front-door section markers (replaced legacy *-grid and showcase/launch-card IDs)
+          grep -q 'id="sites"' _site/index.html
+          grep -q 'id="tools"' _site/index.html
+          grep -q 'id="games"' _site/index.html
+          grep -q 'id="cabinet"' _site/index.html
           grep -q 'Elusion Works demos' _site/demos/index.html
           ! grep -q 'id="editorial"' _site/index.html
           ! grep -q 'editorial-hub' _site/app.js
           ! grep -R -E --include='*.html' --include='*.js' --include='*.txt' --include='*.xml' 'W:\\|C:\\|review_path|repo_path|review_dir' _site
-          grep -q 'The umbrella for websites, tools, design experiments, and playable ideas.' _site/index.html
 
       - name: Setup Pages
         uses: actions/configure-pages@v6
