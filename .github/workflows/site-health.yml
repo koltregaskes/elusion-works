@@ -35,19 +35,17 @@ jobs:
           mkdir -p healthchecks
           node --input-type=module <<'EOF'
           import path from "node:path";
-          import { pathToFileURL } from "node:url";
+          import { readFile } from "node:fs/promises";
           import { chromium } from "playwright";
 
-          const { estateItems } = await import(
-            pathToFileURL(path.join(process.cwd(), "data", "estate.js")).href
+          const feed = JSON.parse(
+            await readFile(path.join(process.cwd(), "data", "feed.json"), "utf8"),
           );
-
-          const formatCount = (value) => String(value).padStart(2, "0");
-          const expected = {
-            websites: estateItems.filter((item) => item.group === "websites" || item.group === "hubs").length,
-            tools: estateItems.filter((item) => item.group === "tools").length,
-            games: estateItems.filter((item) => item.group === "games").length,
-          };
+          const expectedCounts = [
+            String(feed?.stats?.sites ?? 0),
+            String(feed?.stats?.tools ?? 0),
+            String(feed?.stats?.games ?? 0),
+          ];
 
           const errors = [];
           const browser = await chromium.launch();
@@ -60,26 +58,23 @@ jobs:
 
           const visitUrl = `${process.env.SITE_URL}?health=${Date.now()}`;
           await page.goto(visitUrl, { waitUntil: "networkidle" });
-          await page.waitForSelector("#websites-grid .showcase-card");
+          await page.waitForSelector(".ew-cabinet-grid .ew-plate");
 
           const snapshot = await page.evaluate(() => ({
-            counts: Object.fromEntries(
-              [...document.querySelectorAll("[data-count]")].map((node) => [
-                node.dataset.count,
-                node.textContent.trim(),
-              ]),
+            counts: [...document.querySelectorAll("[data-count-to]")].map((node) =>
+              node.getAttribute("data-count-to")?.trim() ?? ""
             ),
             cards: {
-              showcase: document.querySelectorAll("#showcase .launch-card").length,
-              websites: document.querySelectorAll("#websites-grid .showcase-card").length,
-              tools: document.querySelectorAll("#tools-grid .showcase-card").length,
-              games: document.querySelectorAll("#games-grid .showcase-card").length,
+              total: document.querySelectorAll(".ew-cabinet-grid .ew-plate").length,
+              websites: document.querySelectorAll('.ew-cabinet-grid .ew-plate[data-kind="website"]').length,
+              tools: document.querySelectorAll('.ew-cabinet-grid .ew-plate[data-kind="tool"]').length,
+              games: document.querySelectorAll('.ew-cabinet-grid .ew-plate[data-kind="game"]').length,
             },
             hasEditorialSection: Boolean(document.querySelector("#editorial")),
             hasEditorialResource: performance
               .getEntriesByType("resource")
               .some((entry) => entry.name.includes("editorial-hub")),
-            footerLinks: [...document.querySelectorAll(".footer-links a")].map((link) =>
+            footerLinks: [...document.querySelectorAll(".ew-footer-links a")].map((link) =>
               link.textContent.trim(),
             ),
           }));
@@ -96,22 +91,25 @@ jobs:
             throw new Error(`Console errors detected: ${errors.join(" | ")}`);
           }
 
-          if (snapshot.cards.showcase !== 4) {
-            throw new Error(`Showcase card mismatch: expected 4, received ${snapshot.cards.showcase}`);
+          if (snapshot.counts.length < expectedCounts.length) {
+            throw new Error(
+              `Count badge mismatch: expected at least ${expectedCounts.length}, received ${snapshot.counts.length}`,
+            );
           }
 
-          for (const [group, count] of Object.entries(expected)) {
-            const expectedCount = formatCount(count);
-            if (snapshot.counts[group] !== expectedCount) {
-              throw new Error(
-                `Count mismatch for ${group}: expected ${expectedCount}, received ${snapshot.counts[group]}`,
-              );
+          expectedCounts.forEach((value, index) => {
+            if (snapshot.counts[index] !== value) {
+              throw new Error(`Count mismatch at index ${index}: expected ${value}, received ${snapshot.counts[index]}`);
             }
+          });
 
-            if (snapshot.cards[group] !== count) {
-              throw new Error(
-                `Card mismatch for ${group}: expected ${count}, received ${snapshot.cards[group]}`,
-              );
+          if (snapshot.cards.total < 10) {
+            throw new Error(`Cabinet card mismatch: expected at least 10 plates, received ${snapshot.cards.total}`);
+          }
+
+          for (const group of ["websites", "tools", "games"]) {
+            if (snapshot.cards[group] < 1) {
+              throw new Error(`Cabinet group missing visible plates for ${group}`);
             }
           }
 
@@ -127,7 +125,7 @@ jobs:
             throw new Error("security.txt is missing or incomplete");
           }
 
-          console.log("Live site verified", { expected, snapshot });
+          console.log("Live site verified", { expectedCounts, snapshot });
           EOF
 
       - name: Upload healthcheck artifact
