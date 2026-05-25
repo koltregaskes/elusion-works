@@ -1,0 +1,89 @@
+name: Validate
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  structure:
+    name: Site structure
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Verify entry-point HTML files exist
+        run: |
+          fail=0
+          for file in index.html demos/index.html 404.html; do
+            if [ ! -s "$file" ]; then
+              echo "::error file=$file::Missing or empty entry-point file"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Verify every demo subfolder has its own index.html
+        run: |
+          fail=0
+          shopt -s nullglob
+          for dir in demos/*/; do
+            slug="$(basename "$dir")"
+            # Skip dotfile/underscore-prefixed scratch folders if any exist later.
+            case "$slug" in
+              _*|.*) continue ;;
+            esac
+            if [ ! -f "${dir}index.html" ]; then
+              echo "::error::Demo folder '$slug' is missing index.html — its URL would 404"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Verify CNAME is intact and points to elusionworks.com
+        run: |
+          if [ ! -s CNAME ]; then
+            echo "::error file=CNAME::CNAME file is missing or empty"
+            exit 1
+          fi
+          if ! grep -qx 'elusionworks.com' CNAME; then
+            echo "::error file=CNAME::CNAME does not contain a clean 'elusionworks.com' line"
+            cat CNAME
+            exit 1
+          fi
+
+      - name: Warn if a demo folder is not linked from demos/index.html
+        # Soft check: a brand-new demo may not be wired up yet within the same PR.
+        # We surface a warning so it shows in the PR summary, but do not fail the run.
+        run: |
+          shopt -s nullglob
+          for dir in demos/*/; do
+            slug="$(basename "$dir")"
+            case "$slug" in
+              _*|.*) continue ;;
+            esac
+            if ! grep -q "${slug}/" demos/index.html; then
+              echo "::warning::Demo '$slug' exists but is not linked from demos/index.html"
+            fi
+          done
+
+      - name: Verify no absolute Windows paths leaked into shipped files
+        # The deploy workflow already does this on _site/. We mirror it on the source tree
+        # so a PR can be caught before the build step.
+        run: |
+          if grep -R -E --include='*.html' --include='*.js' --include='*.jsx' --include='*.txt' --include='*.xml' \
+               'W:\\|C:\\|review_path|repo_path|review_dir' \
+               --exclude-dir='node_modules' --exclude-dir='.git' \
+               . ; then
+            echo "::error::Found absolute Windows path or review-path marker in shipped files"
+            exit 1
+          fi
+          echo "No leaked workstation paths found."
