@@ -1439,3 +1439,370 @@ image-slot.frame-slot::part(placeholder) { opacity: 0.4; }
   background: var(--copper);
   border-radius: 50%;
 }
+
+/* ============================================================
+   RESPONSIVE STAGE - keep the film strip readable on narrow screens
+   ============================================================ */
+@media (max-width: 700px) {
+  :root {
+    --rail-w: 56px;
+    --act-pad-x: 16px;
+  }
+
+  .act {
+    padding: 48px 16px 78px calc(var(--rail-w) + var(--act-pad-x));
+    gap: 10px;
+  }
+
+  .topbar {
+    top: 12px;
+    left: calc(var(--rail-w) + 12px);
+    right: 12px;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 8px;
+    letter-spacing: 0.2em;
+  }
+
+  .topbar .sep,
+  .topbar span:nth-last-child(-n + 2) {
+    display: none;
+  }
+
+  .rail {
+    width: var(--rail-w);
+    padding: 16px 0;
+  }
+
+  .brand-mark {
+    width: 34px;
+    height: 34px;
+  }
+
+  .brand-name {
+    font-size: 7px;
+    letter-spacing: 0.24em;
+  }
+
+  .rail-acts {
+    gap: 14px;
+  }
+
+  .rail-numeral {
+    width: 28px;
+    font-size: 13px;
+  }
+
+  .rail-label {
+    display: none;
+  }
+
+  .cinema-toggle {
+    padding: 8px 4px;
+  }
+
+  .cinema-toggle .lbl {
+    display: none;
+  }
+
+  .act-head {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 14px;
+    padding-bottom: 6px;
+  }
+
+  .act-head .num {
+    font-size: 32px;
+  }
+
+  .act-head .title {
+    font-size: 15px;
+  }
+
+  .act-head .crumbs {
+    display: none;
+  }
+
+  .meta,
+  .meta-row,
+  .act-foot,
+  .hero-stat .lbl,
+  .ticker-item,
+  .bench-item,
+  .params .p,
+  .upscale-bar .cell .k,
+  .stack-foot .k {
+    letter-spacing: 0.16em;
+  }
+
+  .hero-center {
+    grid-template-columns: 1fr;
+    align-content: center;
+    gap: 16px;
+  }
+
+  .hero-title {
+    font-size: clamp(34px, 11.8vw, 48px);
+    line-height: 1;
+  }
+
+  .hero-title .frag.indent {
+    padding-left: 0;
+  }
+
+  .hero-title .frag.label {
+    font-size: 0.16em;
+    letter-spacing: 0.22em;
+  }
+
+  .hero-right {
+    gap: 12px;
+  }
+
+  .hero-sub {
+    max-width: 32ch;
+    font-size: 13px;
+    line-height: 1.48;
+  }
+
+  .hero-cta-row {
+    gap: 12px;
+  }
+
+  .launch {
+    padding: 14px 20px;
+    font-size: 9px;
+    letter-spacing: 0.22em;
+    overflow: hidden;
+  }
+
+  .secondary-cta {
+    font-size: 8.5px;
+    letter-spacing: 0.18em;
+  }
+
+  .ticker {
+    padding: 8px 0;
+  }
+
+  .ticker-track {
+    gap: 28px;
+  }
+
+  .ticker-item {
+    font-size: 8px;
+  }
+
+  .hero-foot {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    padding-top: 0;
+  }
+
+  .hero-foot > div:first-child {
+    display: none;
+  }
+
+  .hero-stat .num {
+    font-size: 24px;
+  }
+
+  .deconstruct-grid,
+  .cut-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .frame,
+  .upscale-wrap {
+    height: auto;
+    width: 100%;
+  }
+
+  .blade-panel {
+    max-height: 280px;
+  }
+
+  .blade-head,
+  .blade-body,
+  .terminal {
+    padding-inline: 12px;
+  }
+
+  .blade-desc,
+  .terminal {
+    font-size: 10px;
+  }
+
+  .params,
+  .upscale-bar,
+  .stack-foot {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .params .p,
+  .upscale-bar .cell,
+  .stack-foot .cell {
+    padding: 8px 10px;
+  }
+
+  .stack-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-rows: minmax(74px, 1fr);
+    overflow: hidden;
+  }
+
+  .plate,
+  .plate-feature {
+    padding: 8px 9px;
+  }
+
+  .plate .mass,
+  .plate .cat,
+  .plate-feature .copy,
+  .plate-feature .meter {
+    display: none;
+  }
+
+  .plate .sym {
+    font-size: 28px;
+  }
+
+  .plate .name {
+    font-size: 10px;
+  }
+
+  .stack-bench {
+    gap: 10px;
+    padding-inline: 10px;
+  }
+
+  .bench-lbl {
+    font-size: 7px;
+    letter-spacing: 0.18em;
+  }
+
+  .bench-track {
+    gap: 22px;
+  }
+
+  .bench-item {
+    font-size: 7.5px;
+  }
+
+  .cut-left {
+    gap: 10px;
+    justify-content: start;
+  }
+
+  .act-cut .cut-grid {
+    align-content: start;
+    overflow: hidden;
+  }
+
+  .cut-quote {
+    font-size: clamp(15px, 4.4vw, 20px);
+    line-height: 1.18;
+  }
+
+  .cut-attr {
+    gap: 12px;
+    font-size: 8px;
+    letter-spacing: 0.16em;
+  }
+
+  .bone-note {
+    width: auto;
+    padding-top: 6px;
+    font-size: 8px;
+    letter-spacing: 0.16em;
+  }
+
+  .cut-cta {
+    display: none;
+  }
+
+  .cut-right {
+    gap: 8px;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .reel {
+    padding: 8px 10px;
+    gap: 6px;
+    max-height: none;
+    overflow: hidden;
+  }
+
+  .reel-head .lbl {
+    font-size: 7.5px;
+    letter-spacing: 0.24em;
+  }
+
+  .reel-list {
+    gap: 2px;
+    overflow: hidden;
+  }
+
+  .reel-row {
+    grid-template-columns: 24px 1fr auto;
+    gap: 8px;
+    padding: 2px 0;
+    font-size: 8.5px;
+  }
+
+  .reel-row .tc,
+  .reel-row .st {
+    display: none;
+  }
+
+  .reel-row .t {
+    font-size: 8.5px;
+    letter-spacing: 0.12em;
+  }
+
+  .edge-nav {
+    display: none;
+  }
+
+  .edge-nav.prev {
+    left: calc(var(--rail-w) + 6px);
+  }
+
+  .edge-nav.next {
+    right: 10px;
+  }
+
+  .edge-nav .label {
+    display: none;
+  }
+
+  .progress {
+    left: calc(var(--rail-w) + 8px);
+    right: 8px;
+    bottom: 12px;
+    transform: none;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 9px 12px;
+    font-size: 7px;
+    letter-spacing: 0.18em;
+  }
+
+  .progress .ticks {
+    gap: 6px;
+  }
+
+  .progress .tick {
+    width: 20px;
+  }
+
+  .progress .tick.is-active {
+    width: 38px;
+  }
+
+  .progress .hint {
+    display: none;
+  }
+}

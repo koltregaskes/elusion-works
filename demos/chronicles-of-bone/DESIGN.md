@@ -374,6 +374,9 @@ Current status after the Codex content pass:
   the quiet line: "Bones beneath the dust."
 - **Shipped:** Gemini Omni is split into its own `Gm` plate. Current plate
   spans total 17 cells, under the ≤ 18 contract.
+- **Shipped:** mobile responsive safety pass keeps all five acts inside the
+  fixed stage at 390px wide; side arrows are desktop-only to avoid covering
+  scene copy on narrow screens.
 - **Still needs real assets from Kol:** `hero-bg` wide dust-toned plate or
   muted loop, `act2-still` SCN 04 Colossus Rising 21:9 still,
   `act3-before` raw 1080p frame, `act3-after` matching finished 8K frame,
