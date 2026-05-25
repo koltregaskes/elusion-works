@@ -87,7 +87,7 @@ jobs:
           test -f _site/demos/atmosphere/tweaks-panel.jsx
           test -f _site/demos/atmosphere/image-slot.js
           test -f _site/demos/atmosphere/thumbnail.png
-          test -f _site/demos/atmosphere/.image-slots.state.json
+          test -f _site/demos/atmosphere/image-slots.state.json
           test -f _site/demos/golden/index.html
           test -f _site/demos/nexus-aetherial/index.html
           test -f _site/demos/nexus-aetherial/styles-hifi.css
