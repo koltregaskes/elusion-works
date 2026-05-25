@@ -77,6 +77,9 @@ jobs:
           test -f _site/design-notes/index.html
           test -f _site/demos/index.html
           test -f _site/demos/golden/index.html
+          test -f _site/demos/chronicles-of-bone/index.html
+          test -f _site/demos/chronicles-of-bone/thumbnail.webp
+          test -f _site/demos/chronicles-of-bone/.image-slots.state.json
           # d6 front-door section markers (replaced legacy *-grid and showcase/launch-card IDs)
           grep -q 'id="sites"' _site/index.html
           grep -q 'id="tools"' _site/index.html
