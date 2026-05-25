@@ -800,6 +800,11 @@ const Foot = () => (
           <a href="#quiz">quiz</a>
           <a href="../">all demos</a>
           <a href="../../">Elusion Works</a>
+          <a href="https://koltregaskes.com/">Kol's Korner</a>
+          <a href="https://theairesourcehub.com/">AI Resource Hub</a>
+          <a href="https://axylusion.com/">Axy Lusion</a>
+          <a href="https://ghostinthemodels.com/">Ghost in the Models</a>
+          <a href="https://koltregaskesphotography.com/">KT Photography</a>
         </div>
       </div>
       <div className="row" style={{marginTop:24, alignItems:'center'}}>

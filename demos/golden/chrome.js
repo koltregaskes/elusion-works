@@ -128,6 +128,14 @@
             <a href="terms.html">Terms</a>
             <a href="sitemap.html">Sitemap</a>
           </nav>
+          <nav class="links" aria-label="Elusion Works project links">
+            <a href="../../">Elusion Works</a>
+            <a href="https://koltregaskes.com/">Kol's Korner</a>
+            <a href="https://theairesourcehub.com/">AI Resource Hub</a>
+            <a href="https://axylusion.com/">Axy Lusion</a>
+            <a href="https://ghostinthemodels.com/">Ghost in the Models</a>
+            <a href="https://koltregaskesphotography.com/">KT Photography</a>
+          </nav>
           <p class="copy">Golden Encyclopedia is a prototype demo inside Elusion Works.</p>
         </div>
       </footer>

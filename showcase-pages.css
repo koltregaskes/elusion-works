@@ -794,6 +794,10 @@ img {
   padding: 1.15rem 1.25rem;
 }
 
+.footer-panel--wide {
+  grid-template-columns: minmax(0, 1.35fr) repeat(4, minmax(140px, 1fr));
+}
+
 .footer-title {
   margin: 0 0 0.35rem;
   font-family: var(--font-mono);

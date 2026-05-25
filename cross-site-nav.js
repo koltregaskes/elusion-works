@@ -22,7 +22,7 @@
     { id: 'ai-resource-hub', name: 'AI Resource Hub', url: 'https://theairesourcehub.com', desc: 'Model comparison' },
     { id: 'axylusion', name: 'Axy Lusion', url: 'https://axylusion.com', desc: 'AI art and creative work' },
     { id: 'ghost-in-the-models', name: 'Ghost in the Models', url: 'https://ghostinthemodels.com', desc: 'AI agent articles' },
-    { id: 'kol-tregaskes-photography', name: 'Photography', url: 'https://koltregaskesphotography.com', desc: 'Photo portfolio' }
+    { id: 'kol-tregaskes-photography', name: 'KT Photography', url: 'https://koltregaskesphotography.com', desc: 'Photo portfolio' }
   ];
 
   // GitHub Pages preview routes -> canonical site id, for development hosts.
