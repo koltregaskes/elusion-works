@@ -4,7 +4,7 @@
  * Drop this into a deck, mockup, or page wherever you want the user to
  * supply an image. You control the slot's shape and size; the user fills it
  * by dragging an image file onto it (or clicking to browse). The dropped
- * image persists across reloads via a .image-slots.state.json sidecar —
+ * image persists across reloads via an image-slots.state.json sidecar —
  * same read-via-fetch / write-via-window.omelette pattern as
  * design_canvas.jsx, so the filled slot shows on share links, downloaded
  * zips, and PPTX export. Outside the omelette runtime the slot is read-only.
@@ -47,7 +47,7 @@
  */
 
 (() => {
-  const STATE_FILE = '.image-slots.state.json';
+  const STATE_FILE = 'image-slots.state.json';
   // 2× a ~600px slot in a 1920-wide deck — retina-sharp without making the
   // sidecar enormous. A 1200px WebP at q=0.85 is ~150-300KB.
   const MAX_DIM = 1200;

@@ -81,7 +81,7 @@ jobs:
           test -f _site/demos/last-cartridge/index.html
           test -f _site/demos/chronicles-of-bone/index.html
           test -f _site/demos/chronicles-of-bone/thumbnail.webp
-          test -f _site/demos/chronicles-of-bone/.image-slots.state.json
+          test -f _site/demos/chronicles-of-bone/image-slots.state.json
           test -f _site/demos/solar-system-field-lab/index.html
           test -f _site/demos/solar-system-field-lab/field-lab.jsx
           test -f _site/demos/solar-system-field-lab/orbit-lab.jsx

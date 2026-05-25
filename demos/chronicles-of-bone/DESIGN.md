@@ -135,8 +135,8 @@ dated 2026-05-25). Full original spec preserved at
 keyboard nav work, 4 pins / 10 plates / 6 reel rows / 5 image-slots / 20
 bench ticker items all present. Title/meta, logline, Bone decision, and
 Gemini Omni plate split are shipped. Five image-slots still require real
-production assets. An empty `.image-slots.state.json` sidecar ships with the
-demo so the empty slot prompts render without a fetch 404.
+production assets. An empty `image-slots.state.json` sidecar ships with the
+demo so the empty slot prompts render without a fetch 404 on GitHub Pages.
 
 ## Colors
 
