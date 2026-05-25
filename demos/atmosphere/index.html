@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Atmosphere — Local Solar &amp; Weather Analyzer</title>
+<meta name="viewport" content="width=1440" />
+<meta name="description" content="Atmosphere is an Elusion Works demo for a local solar and weather analyzer: sun position, hyperlocal weather panels, map bearing mockup, setup flow, and scrubbed virtual time." />
+<meta name="theme-color" content="#0a0e24" />
+<meta name="robots" content="index,follow" />
+<meta name="referrer" content="strict-origin-when-cross-origin" />
+<link rel="canonical" href="https://elusionworks.com/demos/atmosphere/" />
+<meta property="og:title" content="Atmosphere — Local Solar &amp; Weather Analyzer" />
+<meta property="og:description" content="A public Elusion Works demo for a future full weather app, with solar line-of-sight tools, weather station panels, map bearing mockup, and virtual-time playback." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://elusionworks.com/demos/atmosphere/" />
+<meta property="og:image" content="https://elusionworks.com/demos/atmosphere/thumbnail.png" />
+<meta property="og:image:alt" content="Atmosphere local solar and weather analyzer demo preview." />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Atmosphere — Local Solar &amp; Weather Analyzer" />
+<meta name="twitter:description" content="A solar and weather analyzer demo that will grow into a full weather app." />
+<meta name="twitter:image" content="https://elusionworks.com/demos/atmosphere/thumbnail.png" />
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --atm-accent: #c2410c;
+    --atm-text: #f5f3ee;
+    --atm-text-soft: rgba(245, 243, 238, 0.7);
+    --atm-text-faint: rgba(245, 243, 238, 0.45);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #0a0e24; color: var(--atm-text); font-family: 'Geist', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  body { min-height: 100vh; overflow-x: hidden; }
+  .app-shell { position: relative; z-index: 1; }
+  .page { width: 1440px; margin: 0 auto; padding: 32px 64px 160px; position: relative; }
+  .display { font-family: 'Geist', system-ui, sans-serif; font-weight: 500; letter-spacing: -0.03em; line-height: 0.95; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  .num { font-variant-numeric: tabular-nums; }
+  code { background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 3px; font-size: 0.92em; }
+
+  /* Top nav */
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 0 32px; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--atm-accent); box-shadow: 0 0 0 4px rgba(194,65,12,0.18); }
+  .brand-name { font-weight: 600; letter-spacing: -0.01em; font-size: 17px; }
+  .nav-pills { display: flex; gap: 4px; padding: 4px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 999px; backdrop-filter: blur(20px); }
+  .nav-pill { padding: 7px 14px; font-size: 12px; color: var(--atm-text-soft); border-radius: 999px; cursor: pointer; user-select: none; transition: background 200ms, color 200ms; }
+  .nav-pill.active { background: rgba(255,255,255,0.12); color: var(--atm-text); }
+  .nav-pill:not(.active):hover { color: var(--atm-text); }
+  .topbar-right { display: flex; align-items: center; gap: 16px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--atm-text-soft); letter-spacing: 1.5px; text-transform: uppercase; }
+  .live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--atm-accent); box-shadow: 0 0 0 3px rgba(194,65,12,0.2); animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 3px rgba(194,65,12,0.2); } 50% { box-shadow: 0 0 0 6px rgba(194,65,12,0.06); } }
+
+  /* Hero (Sun page) */
+  .hero { display: grid; grid-template-columns: 1fr auto 1fr; gap: 60px; align-items: center; padding: 40px 0 60px; }
+  .hero-side { display: flex; flex-direction: column; gap: 36px; }
+  .hero-side.right { align-items: flex-end; text-align: right; }
+  .hero-stat-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 2px; color: var(--atm-text-faint); text-transform: uppercase; margin-bottom: 4px; }
+
+  /* Section header */
+  .page-section { margin-top: 12px; }
+  .section-head { display: flex; align-items: baseline; justify-content: space-between; margin: 56px 0 22px; padding-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  .section-num { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 2.5px; color: var(--atm-text-faint); text-transform: uppercase; }
+  .section-title { font-family: 'Geist'; font-weight: 500; font-size: 36px; letter-spacing: -0.025em; line-height: 1.05; }
+  .section-meta { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 1.5px; color: var(--atm-text-faint); text-transform: uppercase; }
+
+  /* Cloud section */
+  .cloud-section { display: grid; grid-template-columns: 1fr 280px; gap: 24px; align-items: stretch; }
+
+  /* Telemetry */
+  .telemetry-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .tcard { padding: 22px 22px 20px; min-height: 200px; display: flex; flex-direction: column; justify-content: space-between; }
+  .tcard-head { display: flex; align-items: center; justify-content: space-between; }
+  .tcard-sub { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--atm-text-faint); letter-spacing: 1.2px; }
+  .gauge { display: flex; gap: 3px; margin-top: 12px; }
+  .gauge-tick { flex: 1; height: 4px; background: rgba(255,255,255,0.12); border-radius: 1px; }
+  .gauge-tick.on { background: var(--atm-accent); }
+  .tcard.accent { border-color: rgba(194,65,12,0.5); background: rgba(194,65,12,0.08); }
+
+  /* Forecast */
+  .forecast { padding: 24px 28px 20px; }
+
+  /* Cloud drift / fog */
+  @keyframes cloudDrift {
+    from { transform: translateX(-200px); }
+    to   { transform: translateX(calc(100vw + 400px)); }
+  }
+  @keyframes fogDrift {
+    from { transform: translateX(-15%); }
+    to   { transform: translateX(15%); }
+  }
+
+  /* Image slots */
+  image-slot { background: rgba(255,255,255,0.04); border: 1px dashed rgba(255,255,255,0.18); }
+
+  /* Playback bar — floating glass capsule */
+  .playback-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px; z-index: 50; pointer-events: none; }
+  .playback-inner { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: rgba(15, 18, 32, 0.72); backdrop-filter: blur(28px) saturate(140%); border: 1px solid rgba(255,255,255,0.14); border-radius: 999px; box-shadow: 0 24px 60px -24px rgba(0,0,0,0.65), 0 1px 0 rgba(255,255,255,0.18) inset; pointer-events: auto; }
+  .pb-stamp { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border: 1px solid rgba(255,255,255,0.18); border-radius: 999px; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 1.4px; color: var(--atm-text); text-transform: uppercase; }
+  .pb-stamp-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .pb-stamp-offset { font-variant-numeric: tabular-nums; color: var(--atm-text-faint); margin-left: 4px; }
+  .pb-btn { display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 999px; color: var(--atm-text); font-family: 'Geist'; font-size: 13px; font-weight: 500; cursor: pointer; transition: background 150ms, border-color 150ms; }
+  .pb-btn:hover { background: rgba(255,255,255,0.08); }
+  .pb-play { padding-left: 13px; }
+  .pb-dur { position: relative; }
+  .pb-dur-btn { min-width: 64px; justify-content: space-between; font-variant-numeric: tabular-nums; }
+  .pb-dur-menu { position: absolute; bottom: calc(100% + 8px); left: 0; right: 0; background: rgba(15, 18, 32, 0.92); backdrop-filter: blur(28px); border: 1px solid rgba(255,255,255,0.14); border-radius: 12px; padding: 4px; display: flex; flex-direction: column; min-width: 180px; box-shadow: 0 16px 32px -8px rgba(0,0,0,0.5); }
+  .pb-dur-menu button { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 9px 12px; background: none; border: none; color: var(--atm-text); font-family: 'Geist'; font-size: 13px; text-align: left; border-radius: 7px; cursor: pointer; }
+  .pb-dur-menu button:hover { background: rgba(255,255,255,0.06); }
+  .pb-dur-menu button.active { background: rgba(194,65,12,0.18); color: var(--atm-accent); }
+  .pb-dur-key { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--atm-text-faint); letter-spacing: 1px; }
+  .pb-scrub { position: relative; width: 280px; padding: 8px 12px 4px; }
+  .pb-scrub-track { position: relative; height: 16px; }
+  .pb-scrub-track::before { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 3px; transform: translateY(-50%); background: rgba(255,255,255,0.12); border-radius: 2px; }
+  .pb-scrub-now { position: absolute; top: 50%; transform: translate(-50%, -50%); width: 2px; height: 14px; background: rgba(255,255,255,0.6); border-radius: 1px; }
+  .pb-scrub-labels { display: flex; justify-content: space-between; margin-top: 2px; font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--atm-text-faint); letter-spacing: 1.2px; }
+  /* style the range input thumb */
+  .pb-scrub input[type=range] { -webkit-appearance: none; appearance: none; }
+  .pb-scrub input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--atm-accent); border: 2px solid #fff; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.4); }
+  .pb-scrub input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: var(--atm-accent); border: 2px solid #fff; cursor: pointer; }
+
+  .editing { outline: 2px dashed rgba(255,255,255,0.18); outline-offset: 4px; }
+  .estate-footer {
+    margin-top: 56px;
+    padding-top: 28px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    display: grid;
+    grid-template-columns: minmax(300px, 1fr) repeat(3, minmax(150px, 0.55fr));
+    gap: 28px;
+    color: var(--atm-text-faint);
+  }
+  .estate-footer h2,
+  .estate-footer h3,
+  .estate-footer p {
+    margin: 0;
+  }
+  .estate-footer h2 {
+    font-size: 18px;
+    letter-spacing: -0.01em;
+    color: var(--atm-text);
+  }
+  .estate-footer p {
+    margin-top: 10px;
+    max-width: 44ch;
+    color: var(--atm-text-soft);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  .estate-footer .legal,
+  .estate-footer h3,
+  .estate-footer a {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+  }
+  .estate-footer h3 {
+    color: var(--atm-accent);
+    margin-bottom: 12px;
+  }
+  .estate-footer nav {
+    display: grid;
+    align-content: start;
+    gap: 9px;
+  }
+  .estate-footer a {
+    color: var(--atm-text-soft);
+    text-decoration: none;
+    transition: color 150ms ease;
+  }
+  .estate-footer a:hover,
+  .estate-footer a:focus-visible {
+    color: var(--atm-text);
+  }
+  @media (max-width: 900px) {
+    .estate-footer {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+</style>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" integrity="sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="image-slot.js"></script>
+<script src="atm-data.js"></script>
+<script src="atm-weather.js"></script>
+</head>
+<body>
+
+<div id="root"></div>
+
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="atm-sky.jsx"></script>
+<script type="text/babel" src="atm-dial.jsx"></script>
+<script type="text/babel" src="atm-panels.jsx"></script>
+<script type="text/babel" src="atm-playback.jsx"></script>
+<script type="text/babel" src="atm-pages.jsx"></script>
+
+<script type="text/babel">
+const DEFAULTS = /*EDITMODE-BEGIN*/{
+  "accent": "#c2410c"
+}/*EDITMODE-END*/;
+
+const PAGES = [
+  { id: 'sun', label: 'Sun' },
+  { id: 'weather', label: 'Weather' },
+  { id: 'map', label: 'Map' },
+  { id: 'setup', label: 'Setup' },
+];
+
+function App() {
+  const [t, setTweak] = useTweaks(DEFAULTS);
+  const [page, setPage] = React.useState(() => localStorage.getItem('atm.page') || 'sun');
+  React.useEffect(() => { localStorage.setItem('atm.page', page); }, [page]);
+
+  // Virtual time: offset in hours from "now". Negative = history, positive = forecast.
+  // Persisted so refreshes don't lose scrub position.
+  const [virtualOffset, setVirtualOffset] = React.useState(() => {
+    const saved = localStorage.getItem('atm.virtualOffset');
+    return saved ? parseFloat(saved) : 0;
+  });
+  React.useEffect(() => { localStorage.setItem('atm.virtualOffset', String(virtualOffset)); }, [virtualOffset]);
+  const [playing, setPlaying] = React.useState(false);
+
+  // Build the 48h dataset once per app session (it's seeded by date so stable)
+  const dataset = React.useMemo(() => AtmWeather.getWeatherDataset(), []);
+  const snapshot = AtmWeather.getSnapshotAt(dataset, virtualOffset);
+
+  // Sun-time is wall-clock hour at the virtual time
+  const hour = snapshot.hourOfDay;
+
+  // Persisted setup
+  const [location, setLocation] = React.useState(() => ({
+    label: localStorage.getItem('atm.location.label') || 'Berlin · Mitte',
+    postcode: localStorage.getItem('atm.location.postcode') || '',
+    lat: parseFloat(localStorage.getItem('atm.location.lat') || '52.520'),
+    lon: parseFloat(localStorage.getItem('atm.location.lon') || '13.405'),
+  }));
+  React.useEffect(() => {
+    localStorage.setItem('atm.location.label', location.label);
+    localStorage.setItem('atm.location.postcode', location.postcode || '');
+  }, [location]);
+  const [station, setStation] = React.useState(() => ({
+    id: localStorage.getItem('atm.wu_station_id') || 'IEDENB52',
+    apiKey: localStorage.getItem('atm.wu_api_key') || '',
+  }));
+  React.useEffect(() => {
+    localStorage.setItem('atm.wu_station_id', station.id);
+    if (station.apiKey) localStorage.setItem('atm.wu_api_key', station.apiKey);
+  }, [station]);
+
+  React.useEffect(() => {
+    document.documentElement.style.setProperty('--atm-accent', t.accent);
+  }, [t.accent]);
+
+  // Derived solar values (driven by virtual hour)
+  const az = AtmData.azimuth(hour);
+  const alt = AtmData.altitude(hour);
+  const rad = AtmData.radiation(hour);
+  const uv = AtmData.uv(hour);
+  const lux = AtmData.illuminance(hour);
+  const phase = AtmData.phase(hour);
+  const time = AtmData.timeStr(hour);
+  const bearing = AtmData.azimuthBearing(az);
+  const conf = AtmData.confidence(hour);
+
+  const radTicks = Math.round((rad / 1000) * 10);
+  const uvTicks = Math.round((uv / 11) * 10);
+
+  // Drag the dial → set virtual hour offset
+  // Hour 0..24 → offset that yields that hourOfDay at virtualOffset. Map dial drag to "today's hour" for simplicity.
+  const setHourFromDial = (newHour) => {
+    setPlaying(false);
+    // Set virtualOffset to the hours-from-now needed to land on newHour today.
+    const now = new Date();
+    const nowHour = now.getHours() + now.getMinutes() / 60;
+    let off = newHour - nowHour;
+    // Wrap around if you drag past midnight in either direction (keep within +/- 24)
+    if (off > 24) off -= 24;
+    if (off < -24) off += 24;
+    setVirtualOffset(off);
+  };
+
+  return (
+    <>
+      <SkyBackdrop hour={hour} condition={snapshot.condition} />
+      <div className="app-shell">
+        <div className="page">
+          {/* Topbar with router */}
+          <div className="topbar">
+            <div className="brand">
+              <span className="brand-dot" />
+              <span className="brand-name">Atmosphere</span>
+              <span style={{ color: 'var(--atm-text-faint)', fontSize: 13, marginLeft: 6 }}>
+                {page === 'sun' && '· Local solar line-of-sight'}
+                {page === 'weather' && '· Weather station feed'}
+                {page === 'map' && '· Sun bearing on the map'}
+                {page === 'setup' && '· Connect your station'}
+              </span>
+            </div>
+            <div className="nav-pills">
+              {PAGES.map(p => (
+                <span key={p.id}
+                      className={`nav-pill ${page === p.id ? 'active' : ''}`}
+                      onClick={() => setPage(p.id)}>{p.label}</span>
+              ))}
+            </div>
+            <div className="topbar-right">
+              <span><span className="live-dot" style={{ marginRight: 8 }} />{snapshot.isNow ? 'Live' : snapshot.isHistory ? 'Replay' : 'Forecast'}</span>
+              <span>{location.lat.toFixed(3)}°N · {location.lon.toFixed(3)}°E</span>
+            </div>
+          </div>
+
+          {/* ===== SUN PAGE ===== */}
+          {page === 'sun' && (
+            <>
+              <div className="hero">
+                <div className="hero-side">
+                  <div>
+                    <div className="hero-stat-label">Azimuth</div>
+                    <div className="display num" style={{ fontSize: 92 }}>
+                      {Math.round(az)}<span style={{ fontSize: 48, color: 'var(--atm-text-faint)' }}>°</span>
+                    </div>
+                    <div className="mono" style={{ fontSize: 12, color: 'var(--atm-text-soft)', letterSpacing: 1.4, marginTop: 6 }}>{bearing} · BEARING</div>
+                  </div>
+                  <div>
+                    <div className="hero-stat-label">Altitude</div>
+                    <div className="display num" style={{ fontSize: 92 }}>
+                      {alt >= 0 ? '+' : ''}{Math.round(alt)}<span style={{ fontSize: 48, color: 'var(--atm-text-faint)' }}>°</span>
+                    </div>
+                    <div className="mono" style={{ fontSize: 12, color: 'var(--atm-text-soft)', letterSpacing: 1.4, marginTop: 6 }}>{alt > 0 ? 'ABOVE HORIZON' : 'BELOW HORIZON'}</div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+                  <div style={{ textAlign: 'center', marginBottom: -16 }}>
+                    <div className="mono" style={{ fontSize: 10, letterSpacing: 3, color: 'var(--atm-text-faint)', textTransform: 'uppercase' }}>SECTION 01 · Solar Dial</div>
+                    <div className="display" style={{ fontSize: 28, marginTop: 8 }}>Where is the sun, right now?</div>
+                    <div className="mono" style={{ fontSize: 11, color: 'var(--atm-text-faint)', marginTop: 6, letterSpacing: 1.2 }}>drag the puck → scrub the day</div>
+                  </div>
+                  <PolarDialLive hour={hour} onChange={setHourFromDial} size={520} accent={t.accent} />
+                </div>
+                <div className="hero-side right">
+                  <div>
+                    <div className="hero-stat-label">Local Time</div>
+                    <div className="display num" style={{ fontSize: 92, color: 'var(--atm-accent)' }}>{time}</div>
+                    <div className="mono" style={{ fontSize: 12, color: 'var(--atm-text-soft)', letterSpacing: 1.4, marginTop: 6 }}>{phase.toUpperCase()}</div>
+                  </div>
+                  <div>
+                    <div className="hero-stat-label">Sunny Confidence</div>
+                    <div className="display num" style={{ fontSize: 92 }}>
+                      {conf}<span style={{ fontSize: 48, color: 'var(--atm-text-faint)' }}>%</span>
+                    </div>
+                    <div className="mono" style={{ fontSize: 12, color: 'var(--atm-text-soft)', letterSpacing: 1.4, marginTop: 6 }}>{AtmWeather.conditionLabel(snapshot.condition).toUpperCase()}</div>
+                  </div>
+                </div>
+              </div>
+
+              <section className="page-section">
+                <div className="section-head">
+                  <div>
+                    <div className="section-num">Section 02 · Cloud Intercept</div>
+                    <div className="section-title">Your line-of-sight, layer by layer.</div>
+                  </div>
+                  <div className="section-meta">3 LAYERS · LIVE RAYCAST</div>
+                </div>
+                <div className="cloud-section">
+                  <GlassPanel style={{ padding: 24 }}>
+                    <CloudHorizon hour={hour} accent={t.accent} />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 18, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                      <div>
+                        <MonoLabel>Verdict</MonoLabel>
+                        <div className="display" style={{ fontSize: 22, marginTop: 6 }}>
+                          {alt > 5 ? AtmWeather.conditionLabel(snapshot.condition) : alt > 0 ? 'Sun near horizon' : 'Below horizon'}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 32 }}>
+                        <div style={{ textAlign: 'right' }}>
+                          <MonoLabel>Net transmittance</MonoLabel>
+                          <BigNum value={`${Math.round(conf * 0.92)}`} unit="%" size={36} />
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <MonoLabel>Override</MonoLabel>
+                          <BigNum value="☀" unit="SUNNY · 45M" size={36} color={t.accent} />
+                        </div>
+                      </div>
+                    </div>
+                  </GlassPanel>
+                  <GlassPanel style={{ padding: 20, display: 'flex', flexDirection: 'column' }}>
+                    <MonoLabel>Your sky · right now</MonoLabel>
+                    <image-slot
+                      id="user-sky"
+                      shape="rounded"
+                      radius="10"
+                      style={{ width: '100%', flex: 1, marginTop: 10, minHeight: 200 }}
+                      placeholder="Drop a photo of your sky"
+                    ></image-slot>
+                    <div className="mono" style={{ fontSize: 10, color: 'var(--atm-text-faint)', marginTop: 12, lineHeight: 1.4, letterSpacing: 1 }}>
+                      +4.3% CONFIDENCE BOOST<br />FROM LOCAL FEEDBACK
+                    </div>
+                  </GlassPanel>
+                </div>
+              </section>
+
+              <section className="page-section">
+                <div className="section-head">
+                  <div>
+                    <div className="section-num">Section 03 · Telemetry</div>
+                    <div className="section-title">Current conditions.</div>
+                  </div>
+                  <div className="section-meta">UPDATED · LIVE</div>
+                </div>
+                <div className="telemetry-grid">
+                  <GlassPanel className="tcard">
+                    <div className="tcard-head"><MonoLabel>Solar radiation</MonoLabel><span className="tcard-sub">W/m²</span></div>
+                    <div>
+                      <BigNum value={rad} unit="" size={56} />
+                      <div className="gauge">
+                        {Array.from({ length: 10 }, (_, i) => <div key={i} className={`gauge-tick ${i < radTicks ? 'on' : ''}`} />)}
+                      </div>
+                      <div className="tcard-sub" style={{ marginTop: 10 }}>{rad > 600 ? 'Peak window · 11:00 – 14:00' : rad > 0 ? 'Daylight' : 'Below horizon'}</div>
+                    </div>
+                  </GlassPanel>
+                  <GlassPanel className="tcard">
+                    <div className="tcard-head"><MonoLabel>UV index</MonoLabel><span className="tcard-sub">{AtmData.uvBand(uv)}</span></div>
+                    <div>
+                      <BigNum value={uv.toFixed(1)} unit="" size={56} />
+                      <div className="gauge">
+                        {Array.from({ length: 10 }, (_, i) => <div key={i} className={`gauge-tick ${i < uvTicks ? 'on' : ''}`} />)}
+                      </div>
+                      <div className="tcard-sub" style={{ marginTop: 10 }}>{uv >= 7 ? 'Apply SPF 30+ · cover skin' : uv >= 3 ? 'SPF recommended' : 'Low risk'}</div>
+                    </div>
+                  </GlassPanel>
+                  <GlassPanel className="tcard">
+                    <div className="tcard-head"><MonoLabel>Illuminance</MonoLabel><span className="tcard-sub">KLX</span></div>
+                    <div>
+                      <BigNum value={lux.toFixed(1)} unit="" size={56} />
+                      <div className="gauge">
+                        {Array.from({ length: 10 }, (_, i) => <div key={i} className={`gauge-tick ${i < Math.round((lux / 110) * 10) ? 'on' : ''}`} />)}
+                      </div>
+                      <div className="tcard-sub" style={{ marginTop: 10 }}>{lux > 50 ? 'Direct sun · clear sky' : lux > 1 ? 'Diffuse daylight' : 'Twilight / dark'}</div>
+                    </div>
+                  </GlassPanel>
+                  <GlassPanel className="tcard accent">
+                    <div className="tcard-head"><MonoLabel accent>Observer override</MonoLabel><span className="tcard-sub" style={{ color: t.accent }}>45 MIN HOLD</span></div>
+                    <div>
+                      <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                        <div style={{ flex: 1, border: `1.4px solid ${t.accent}`, background: 'rgba(194,65,12,0.18)', padding: '12px 14px', borderRadius: 10 }}>
+                          <div className="display" style={{ fontSize: 26, color: t.accent, lineHeight: 1 }}>☀</div>
+                          <div className="mono" style={{ fontSize: 10, color: t.accent, marginTop: 6, letterSpacing: 1.2 }}>SUNNY · ON</div>
+                        </div>
+                        <div style={{ flex: 1, border: '1.4px solid rgba(255,255,255,0.18)', padding: '12px 14px', borderRadius: 10 }}>
+                          <div className="display" style={{ fontSize: 26, color: 'rgba(255,255,255,0.5)', lineHeight: 1 }}>☁</div>
+                          <div className="mono" style={{ fontSize: 10, color: 'var(--atm-text-faint)', marginTop: 6, letterSpacing: 1.2 }}>OVERCAST</div>
+                        </div>
+                      </div>
+                      <div className="tcard-sub" style={{ marginTop: 12 }}>Calibrates the model from your observation.</div>
+                    </div>
+                  </GlassPanel>
+                </div>
+              </section>
+
+              <section className="page-section">
+                <div className="section-head">
+                  <div>
+                    <div className="section-num">Section 04 · 24-Hour Forecast</div>
+                    <div className="section-title">The day ahead.</div>
+                  </div>
+                  <div className="section-meta">USE PLAYBACK BAR TO SCRUB</div>
+                </div>
+                <GlassPanel className="forecast">
+                  <ForecastStripLive hour={hour} accent={t.accent} />
+                </GlassPanel>
+              </section>
+            </>
+          )}
+
+          {/* ===== WEATHER PAGE ===== */}
+          {page === 'weather' && (
+            <WeatherView snapshot={snapshot} dataset={dataset} hour={hour} virtualOffset={virtualOffset} accent={t.accent} station={station} />
+          )}
+
+          {/* ===== MAP PAGE ===== */}
+          {page === 'map' && (
+            <MapView snapshot={snapshot} hour={hour} accent={t.accent} location={location} />
+          )}
+
+          {/* ===== SETUP PAGE ===== */}
+          {page === 'setup' && (
+            <SetupView location={location} setLocation={setLocation} station={station} setStation={setStation} accent={t.accent} />
+          )}
+
+          <footer className="estate-footer">
+            <div>
+              <h2>Atmosphere</h2>
+              <p>A local solar and weather analyzer demo inside Elusion Works. The current build uses deterministic stub data; Weather Underground and Google Maps keys are entered locally through Setup.</p>
+              <p className="legal">ATMOSPHERE · v0.5 · DESIGN + STUB DATA</p>
+              <p className="legal">© 2026 Elusion Works / Kol Tregaskes</p>
+            </div>
+            <nav aria-label="Atmosphere footer main pages">
+              <h3>Main</h3>
+              <a href="../../">Elusion Works</a>
+              <a href="../">All demos</a>
+              <a href="../../experiments/">Experiments</a>
+              <a href="../../design-notes/">Design Notes</a>
+            </nav>
+            <nav aria-label="Atmosphere footer projects">
+              <h3>Projects</h3>
+              <a href="https://koltregaskes.com/">Kol's Korner</a>
+              <a href="https://theairesourcehub.com/">AI Resource Hub</a>
+              <a href="https://axylusion.com/">Axy Lusion</a>
+              <a href="https://ghostinthemodels.com/">Ghost in the Models</a>
+            </nav>
+            <nav aria-label="Atmosphere footer contact">
+              <h3>Contact</h3>
+              <a href="https://github.com/koltregaskes" target="_blank" rel="noopener noreferrer">GitHub</a>
+              <a href="https://x.com/koltregaskes" target="_blank" rel="noopener noreferrer">X / Twitter</a>
+              <a href="../../security.txt">Security</a>
+            </nav>
+          </footer>
+        </div>
+      </div>
+
+      {/* Floating playback bar (hidden on setup page) */}
+      {page !== 'setup' && (
+        <PlaybackBar
+          virtualOffset={virtualOffset}
+          setVirtualOffset={setVirtualOffset}
+          playing={playing}
+          setPlaying={setPlaying}
+          accent={t.accent}
+        />
+      )}
+
+      <TweaksPanel title="Atmosphere">
+        <TweakSection label="Accent">
+          <TweakColor
+            label="Accent color"
+            value={t.accent}
+            onChange={(v) => setTweak('accent', v)}
+            options={['#c2410c', '#d97757', '#e8b04a', '#16a34a']}
+          />
+        </TweakSection>
+        <TweakSection label="Virtual time">
+          <TweakSlider label="Offset from now (h)" min={-24} max={24} step={0.1} value={virtualOffset} onChange={setVirtualOffset} />
+          <TweakButton label="Reset to NOW" onClick={() => setVirtualOffset(0)} />
+        </TweakSection>
+      </TweaksPanel>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

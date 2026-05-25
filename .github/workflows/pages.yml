@@ -76,6 +76,18 @@ jobs:
           test -f _site/remix-relay/index.html
           test -f _site/design-notes/index.html
           test -f _site/demos/index.html
+          test -f _site/demos/atmosphere/index.html
+          test -f _site/demos/atmosphere/atm-data.js
+          test -f _site/demos/atmosphere/atm-weather.js
+          test -f _site/demos/atmosphere/atm-sky.jsx
+          test -f _site/demos/atmosphere/atm-dial.jsx
+          test -f _site/demos/atmosphere/atm-panels.jsx
+          test -f _site/demos/atmosphere/atm-pages.jsx
+          test -f _site/demos/atmosphere/atm-playback.jsx
+          test -f _site/demos/atmosphere/tweaks-panel.jsx
+          test -f _site/demos/atmosphere/image-slot.js
+          test -f _site/demos/atmosphere/thumbnail.png
+          test -f _site/demos/atmosphere/.image-slots.state.json
           test -f _site/demos/golden/index.html
           test -f _site/demos/nexus-aetherial/index.html
           test -f _site/demos/nexus-aetherial/styles-hifi.css
@@ -101,6 +113,7 @@ jobs:
           test -f _site/demos/solar-system-field-lab/planet-detail.jsx
           test -f _site/demos/solar-system-field-lab/tweaks-panel.jsx
           test -f _site/demos/solar-system-field-lab/thumbnail.webp
+          grep -q 'atmosphere/' _site/demos/index.html
           grep -q 'nexus-aetherial/' _site/demos/index.html
           grep -q 'solar-system-field-lab/' _site/demos/index.html
           # d6 front-door section markers (replaced legacy *-grid and showcase/launch-card IDs)
