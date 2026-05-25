@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nexus Aetherial · The modern AI reference desk</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Nexus Aetherial is an Elusion Works demo for a modern AI reference desk: compare frontier models, inspect anatomy, browse dossiers, and read benchmark digests.">
+<meta name="theme-color" content="#0a0c14">
+<meta name="robots" content="index,follow">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<link rel="canonical" href="https://elusionworks.com/demos/nexus-aetherial/">
+<meta property="og:title" content="Nexus Aetherial · The modern AI reference desk">
+<meta property="og:description" content="A dense, interactive Elusion Works demo for comparing frontier model systems across a matrix, anatomy explainer, reference cabinet, and benchmark digest.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://elusionworks.com/demos/nexus-aetherial/">
+<meta property="og:image" content="https://elusionworks.com/demos/nexus-aetherial/thumbnail.webp">
+<meta property="og:image:alt" content="Nexus Aetherial reference desk demo preview.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Nexus Aetherial · The modern AI reference desk">
+<meta name="twitter:description" content="Compare frontier models, inspect anatomy, browse dossiers, and read benchmark digests in a public Elusion Works demo.">
+<meta name="twitter:image" content="https://elusionworks.com/demos/nexus-aetherial/thumbnail.webp">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles-hifi.css">
+<link rel="stylesheet" href="palette.css">
+<link rel="stylesheet" href="anatomy.css">
+</head>
+<body data-mode="light">
+
+<!-- ============================================================ -->
+<!--  SHELL                                                       -->
+<!-- ============================================================ -->
+<header class="shell" data-screen-label="Shell">
+  <div class="brand">
+    <span class="emblem" aria-hidden="true"></span>
+    <span>
+      <div class="name">NEXUS&nbsp;AETHERIAL</div>
+    </span>
+    <span class="tag">REFERENCE&nbsp;DESK · EST. 2026</span>
+  </div>
+
+  <nav class="nav" aria-label="Primary">
+    <a href="#console" aria-current="page">CONSOLE</a>
+    <a href="#matrix">MATRIX</a>
+    <a href="#anatomy">ANATOMY</a>
+    <a href="#cabinet">CABINET</a>
+    <a href="#digest">DIGEST</a>
+  </nav>
+
+  <div class="shell-right">
+    <div class="cmd" role="search">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <span>SEARCH MODELS, EVALS…</span>
+      <span class="kbd">⌘K</span>
+    </div>
+    <button class="icon-btn" id="theme-btn" title="Toggle paper / ink" aria-label="Toggle theme">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+    <button class="icon-btn" id="tweaks-btn" title="Tweaks" aria-label="Open tweaks">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="14" y2="6"/><line x1="18" y1="6" x2="20" y2="6"/><circle cx="16" cy="6" r="2"/><line x1="4" y1="12" x2="6" y2="12"/><line x1="10" y1="12" x2="20" y2="12"/><circle cx="8" cy="12" r="2"/><line x1="4" y1="18" x2="14" y2="18"/><line x1="18" y1="18" x2="20" y2="18"/><circle cx="16" cy="18" r="2"/></svg>
+    </button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ======================================================== -->
+  <!--  CONSOLE · the flap-board hero                           -->
+  <!-- ======================================================== -->
+  <section id="console" class="console" data-screen-label="01 Console">
+    <div class="console-bar">
+      <span class="live"><span class="pulse"></span>LIVE FEED</span>
+      <span>↻ ROLLING · 2026.05.24 · 06:42:18 UTC</span>
+      <span style="margin-left:auto">ENTRIES TRACKED · 142</span>
+    </div>
+
+    <h1>One reference desk.<br><em>All cognitive systems.</em></h1>
+    <p class="deck">An analytical encyclopedia for frontier model architectures. Compared, scored, and digested in real time — so you can see the field move before the press release lands.</p>
+
+    <div class="flap-board" aria-label="Live release board">
+      <div class="flap-board-head">
+        <span>#</span>
+        <span>RELEASE</span>
+        <span>FAMILY</span>
+        <span>STATUS</span>
+        <span class="col-time">TIME</span>
+      </div>
+      <div id="flap-rows"><!-- filled by console.js --></div>
+    </div>
+
+    <div class="console-cta">
+      <a href="#matrix" class="btn primary">
+        Enter the matrix
+        <svg class="arrow" width="14" height="10" viewBox="0 0 14 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 5h12m-4-4 4 4-4 4"/></svg>
+      </a>
+      <a href="#digest" class="btn">Today's digest</a>
+      <a href="#cabinet" class="btn">Browse cabinet</a>
+    </div>
+  </section>
+
+
+  <!-- ======================================================== -->
+  <!--  MATRIX · compare two systems side by side               -->
+  <!-- ======================================================== -->
+  <section id="matrix" class="section" data-screen-label="02 Matrix">
+    <header class="section-head">
+      <div>
+        <div class="section-num">§ 02 · COGNITIVE COMPARE MATRIX</div>
+        <h2 class="section-title">Plot two systems. <em>Read the spread.</em></h2>
+      </div>
+      <p class="section-deck">Six axes, normalized. Value-Ratio dial recomputes reasoning-per-dollar on every swap. Click a slot to change the model.</p>
+    </header>
+
+    <div class="matrix">
+      <div class="matrix-top">
+        <div class="matrix-slot" data-slot="a">
+          <div class="slot-label">MODEL · A <span class="slot-chev">▾</span></div>
+          <div class="model-line">
+            <span class="model-name" data-bind="name">GPT-5</span>
+            <span class="model-version" data-bind="version"></span>
+          </div>
+          <div class="model-meta">
+            <span class="tag" data-bind="family">OPENAI</span>
+            <span class="tag" data-bind="context">400K CTX</span>
+            <span class="tag copper" data-bind="status">STABLE</span>
+          </div>
+          <select class="invisible" data-select="a"></select>
+        </div>
+
+        <div class="matrix-vs">
+          <button id="swap-btn" aria-label="Swap A and B">
+            <span class="swap-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 16V4m0 0L3 8m4-4 4 4M17 8v12m0 0 4-4m-4 4-4-4"/></svg>
+            </span>
+            <span>SWAP</span>
+          </button>
+        </div>
+
+        <div class="matrix-slot" data-slot="b">
+          <div class="slot-label">MODEL · B <span class="slot-chev">▾</span></div>
+          <div class="model-line">
+            <span class="model-name" data-bind="name">Claude Opus</span>
+            <span class="model-version" data-bind="version">4.5</span>
+          </div>
+          <div class="model-meta">
+            <span class="tag" data-bind="family">ANTHROPIC</span>
+            <span class="tag" data-bind="context">500K CTX</span>
+            <span class="tag" data-bind="status">STABLE</span>
+          </div>
+          <select class="invisible" data-select="b"></select>
+        </div>
+      </div>
+
+      <div class="matrix-body">
+        <!-- left: radar -->
+        <div class="matrix-radar">
+          <h3>Six-axis profile</h3>
+          <p class="sub">Normalized 0–100 across all tracked systems.</p>
+          <div class="radar-wrap">
+            <svg id="radar" viewBox="-170 -170 340 340" width="100%" height="380" style="max-height:380px"></svg>
+          </div>
+          <div class="radar-legend">
+            <span class="leg"><span class="swatch a"></span><span data-leg="a">GPT-5</span></span>
+            <span class="leg"><span class="swatch b"></span><span data-leg="b">Claude Opus 4.5</span></span>
+          </div>
+
+          <div class="axis-toggles" id="axis-toggles" aria-label="Toggle radar axes">
+            <div class="axis-toggles-head">
+              <span class="label">SHAPE OF INTELLIGENCE — tap to include / exclude</span>
+              <button class="axis-reset" id="axis-reset">RESET</button>
+            </div>
+            <div class="axis-toggles-row" id="axis-toggles-row"></div>
+          </div>
+        </div>
+
+        <div class="matrix-right">
+          <!-- dial -->
+          <div class="dial-card">
+            <div class="dial-head">
+              <div class="label">VALUE RATIO · REASONING ÷ COST</div>
+              <span class="tag copper" id="dial-winner">A LEADS · +18%</span>
+            </div>
+            <div class="dial-row">
+              <div class="dial-wrap">
+                <svg id="dial" viewBox="0 0 160 160" width="160" height="160"></svg>
+              </div>
+              <div>
+                <div class="dial-verdict" id="dial-verdict"><b>GPT-5</b> leads on reasoning-per-dollar.</div>
+                <div class="dial-callout">
+                  <div><div class="k">A · $/1M</div><div class="v" id="cost-a">$10.00</div></div>
+                  <div><div class="k">B · $/1M</div><div class="v copper" id="cost-b">$15.00</div></div>
+                  <div><div class="k">REASON Δ</div><div class="v" id="reason-delta">+2</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- bars -->
+          <div class="bars-card" id="bars">
+            <!-- bars injected by matrix.js -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ======================================================== -->
+  <!--  ANATOMY · scrollytelling explainer of how models work   -->
+  <!-- ======================================================== -->
+  <section id="anatomy" class="section anatomy" data-screen-label="03 Anatomy">
+    <header class="section-head">
+      <div>
+        <div class="section-num">§ 03 · ANATOMY OF A MODEL</div>
+        <h2 class="section-title">What you're actually <em>looking at.</em></h2>
+      </div>
+      <p class="section-deck">Scroll the column on the left. The diagram on the right keeps pace, lighting up the part of the system the text is describing. Five stations, end to end.</p>
+    </header>
+
+    <div class="anatomy-grid" id="anatomy-grid">
+      <!-- LEFT: narrative -->
+      <div class="anatomy-narrative">
+        <!-- station 1 -->
+        <article class="station" data-station="1">
+          <div class="station-num">01 · TOKENIZE</div>
+          <h3>Words become numbers.</h3>
+          <p>Before anything can be reasoned about, your input is shattered into <em>tokens</em> — sub-word units drawn from a vocabulary of around 100k–200k pieces. <span class="hl">"unforgettable"</span> typically becomes <code>un</code> · <code>forget</code> · <code>table</code>.</p>
+          <p>Each token is looked up in an embedding table — a wide vector of learned numbers. From the model's point of view, your prompt now lives in a high-dimensional space where related ideas are geometrically close.</p>
+          <div class="station-meta">
+            <span class="tag">VOCAB · 100k–200k</span>
+            <span class="tag">DIM · 4096–18432</span>
+          </div>
+        </article>
+
+        <!-- station 2 -->
+        <article class="station" data-station="2">
+          <div class="station-num">02 · ATTEND</div>
+          <h3>Every token reads every other.</h3>
+          <p>The transformer's defining trick: <em>self-attention</em>. Each token, in parallel, asks "which other tokens should I be paying attention to?" — and answers itself. Multiple <span class="hl">attention heads</span> ask this same question along different axes.</p>
+          <p>One head might track syntax, another follows entities across paragraphs, a third matches code brackets. The model isn't taught which head does what — that emerges from training.</p>
+          <div class="station-meta">
+            <span class="tag">HEADS · 32–128</span>
+            <span class="tag">CTX · up to 2M tokens</span>
+          </div>
+        </article>
+
+        <!-- station 3 -->
+        <article class="station" data-station="3">
+          <div class="station-num">03 · TRANSFORM</div>
+          <h3>Many layers, narrow signals.</h3>
+          <p>An attention layer is paired with a <em>feed-forward</em> network — a dense MLP that reshapes the signal token-by-token. Stack 40–120 of these blocks and you have a transformer.</p>
+          <p>In <span class="hl">mixture-of-experts</span> models the feed-forward layer is replaced by many parallel experts; a router picks ~2 per token. That's how 671B-parameter DeepSeek runs with only 37B active per forward pass.</p>
+          <div class="station-meta">
+            <span class="tag">LAYERS · 40–120</span>
+            <span class="tag">EXPERTS · 8–256 (MoE)</span>
+          </div>
+        </article>
+
+        <!-- station 4 -->
+        <article class="station" data-station="4">
+          <div class="station-num">04 · TRAIN</div>
+          <h3>Three teachers in sequence.</h3>
+          <p><strong>Pretraining</strong> — trillions of tokens of text and code. The model only ever learns "predict the next token", but at that scale, learning to predict becomes learning to compress, and compression starts to look like understanding.</p>
+          <p><strong>Post-training</strong> — supervised fine-tuning on curated demonstrations, then preference optimisation (RLHF, DPO). This is where the helpful assistant <em>persona</em> appears.</p>
+          <p><strong>RLVR</strong> — reinforcement learning from <em>verifiable</em> rewards. Used heavily for reasoning models: the model gets rewarded when its chain-of-thought leads to a correct, checkable answer.</p>
+          <div class="station-meta">
+            <span class="tag">PRETRAIN · 15T+ tokens</span>
+            <span class="tag">POST · SFT → DPO → RLVR</span>
+          </div>
+        </article>
+
+        <!-- station 5 -->
+        <article class="station" data-station="5">
+          <div class="station-num">05 · HARNESS</div>
+          <h3>The model is the engine. The harness is the car.</h3>
+          <p>What you call "GPT-5" or "Claude" in product is always a <em>harness</em> wrapped around model weights: a system prompt that defines its persona; a context window holding the conversation; a tool sheet listing functions it can call; a memory store; a safety filter on both sides.</p>
+          <p>Two products on the same weights can feel like different models. Two harnesses on the same task — agentic versus single-turn — can score 20 points apart on the same benchmark.</p>
+          <div class="station-meta">
+            <span class="tag">SYSTEM PROMPT</span>
+            <span class="tag">TOOLS</span>
+            <span class="tag">MEMORY</span>
+            <span class="tag">EVAL HARNESS</span>
+          </div>
+        </article>
+      </div>
+
+      <!-- RIGHT: sticky diagram -->
+      <aside class="anatomy-canvas-wrap">
+        <div class="anatomy-canvas" id="anatomy-canvas">
+          <div class="canvas-tabs">
+            <button class="canvas-tab" data-tab="1" aria-selected="true">01 TOKENIZE</button>
+            <button class="canvas-tab" data-tab="2">02 ATTEND</button>
+            <button class="canvas-tab" data-tab="3">03 TRANSFORM</button>
+            <button class="canvas-tab" data-tab="4">04 TRAIN</button>
+            <button class="canvas-tab" data-tab="5">05 HARNESS</button>
+          </div>
+
+          <div class="canvas-stage" id="canvas-stage">
+            <!-- panels are injected by anatomy.js -->
+          </div>
+
+          <div class="canvas-foot">
+            <span class="label">STATION <span id="canvas-step">01</span> / 05</span>
+            <div class="canvas-progress" aria-hidden="true">
+              <div class="canvas-progress-fill" id="canvas-progress-fill"></div>
+            </div>
+            <span class="label">SCROLL TO ADVANCE</span>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+
+  <!-- ======================================================== -->
+  <!--  CABINET · expandable drawer rows                        -->
+  <!-- ======================================================== -->
+  <section id="cabinet" class="section" data-screen-label="04 Cabinet">
+    <header class="section-head">
+      <div>
+        <div class="section-num">§ 04 · REFERENCE CABINET</div>
+        <h2 class="section-title">Ten dossiers. <em>One drawer each.</em></h2>
+      </div>
+      <p class="section-deck">Tap a row to pull the drawer. Each dossier carries architecture, modality, and a live benchmark profile.</p>
+    </header>
+
+    <div class="cabinet" id="cabinet-rows"><!-- filled by cabinet.js --></div>
+  </section>
+
+
+  <!-- ======================================================== -->
+  <!--  DIGEST · sortable benchmark table                       -->
+  <!-- ======================================================== -->
+  <section id="digest" class="section" data-screen-label="05 Digest">
+    <header class="section-head">
+      <div>
+        <div class="section-num">§ 05 · BENCHMARK DIGEST</div>
+        <h2 class="section-title">The leaderboard, <em>but readable.</em></h2>
+      </div>
+      <p class="section-deck">Pick a suite from the rail. Sort any column. Δ 30d shows movement since last month.</p>
+    </header>
+
+    <div class="digest">
+      <aside class="rail" aria-label="Digest filters">
+        <div class="rail-group">
+          <h4>Suites</h4>
+          <div class="rail-list" id="suite-list"></div>
+        </div>
+        <div class="rail-group">
+          <h4>Status</h4>
+          <div class="rail-list" id="status-list">
+            <button class="rail-item" data-status="all" aria-selected="true">ALL <span class="n">7</span></button>
+            <button class="rail-item" data-status="stable">STABLE <span class="n">3</span></button>
+            <button class="rail-item" data-status="training">IN TRAINING <span class="n">2</span></button>
+            <button class="rail-item" data-status="experimental">EXPERIMENTAL <span class="n">1</span></button>
+          </div>
+        </div>
+        <div class="rail-group">
+          <h4>View</h4>
+          <div class="seg" data-tweak="digest-view">
+            <button data-val="suite" aria-pressed="true">By suite</button>
+            <button data-val="all">All</button>
+          </div>
+        </div>
+      </aside>
+
+      <div class="digest-main">
+        <div class="digest-toolbar">
+          <div class="digest-search">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+            <input id="digest-search" type="text" placeholder="FILTER MODELS…">
+          </div>
+          <div class="row gap-3 items-center">
+            <span class="label" id="digest-meta">5 MODELS · MMLU-PRO · UPDATED 06:21 UTC</span>
+            <button class="btn" style="padding:8px 14px">EXPORT CSV</button>
+          </div>
+        </div>
+        <div style="max-height:520px;overflow:auto">
+          <table class="tbl" id="digest-table">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ======================================================== -->
+  <!--  FOOTER                                                  -->
+  <!-- ======================================================== -->
+  <footer class="foot foot--estate">
+    <div class="foot-brand">
+      <div class="foot-title">NEXUS AETHERIAL · v2.4</div>
+      <p>Instruments of understanding for frontier model comparison. An Elusion Works demo by Kol Tregaskes.</p>
+      <p class="foot-note">DATA REFRESH · EVERY 6 HOURS · ILLUSTRATIVE FIGURES</p>
+    </div>
+    <div class="emblem-sm"></div>
+    <nav class="foot-links" aria-label="Nexus Aetherial footer links">
+      <div>
+        <span>Main</span>
+        <a href="../../">Elusion Works</a>
+        <a href="../">All demos</a>
+        <a href="../../experiments/">Experiments</a>
+        <a href="../../design-notes/">Design Notes</a>
+      </div>
+      <div>
+        <span>Projects</span>
+        <a href="https://koltregaskes.com/">Kol's Korner</a>
+        <a href="https://theairesourcehub.com/">AI Resource Hub</a>
+        <a href="https://axylusion.com/">Axy Lusion</a>
+        <a href="https://ghostinthemodels.com/">Ghost in the Models</a>
+      </div>
+      <div>
+        <span>Contact</span>
+        <a href="https://github.com/koltregaskes" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a href="https://x.com/koltregaskes" target="_blank" rel="noopener noreferrer">X / Twitter</a>
+        <a href="../../security.txt">Security</a>
+      </div>
+    </nav>
+  </footer>
+
+</main>
+
+
+<!-- ============================================================ -->
+<!--  TWEAKS                                                      -->
+<!-- ============================================================ -->
+<aside class="tweaks" id="tweaks">
+  <h4>TWEAKS <button class="x" id="tweaks-close" aria-label="Close">✕</button></h4>
+
+  <div class="tweak-row">
+    <label>Mode</label>
+    <div class="seg" data-tweak="mode">
+      <button data-val="light" aria-pressed="true">Paper</button>
+      <button data-val="dark">Ink</button>
+    </div>
+  </div>
+
+  <div class="tweak-row">
+    <label>Accent</label>
+    <div class="seg" data-tweak="accent">
+      <button data-val="plasma" aria-pressed="true">Plasma</button>
+      <button data-val="signal">Signal</button>
+      <button data-val="flame">Flame</button>
+      <button data-val="ink">Ink</button>
+    </div>
+  </div>
+
+  <div class="tweak-row">
+    <label>Display type</label>
+    <div class="seg" data-tweak="display-font">
+      <button data-val="fraunces" aria-pressed="true">Fraunces</button>
+      <button data-val="grotesk">Grotesk</button>
+    </div>
+  </div>
+
+  <div class="tweak-row">
+    <label>Flap board</label>
+    <div class="seg" data-tweak="flap-rate">
+      <button data-val="off">Off</button>
+      <button data-val="slow">Slow</button>
+      <button data-val="med" aria-pressed="true">Steady</button>
+      <button data-val="fast">Fast</button>
+    </div>
+  </div>
+
+  <div class="tweak-row">
+    <label>Density</label>
+    <div class="seg" data-tweak="density">
+      <button data-val="cozy">Cozy</button>
+      <button data-val="default" aria-pressed="true">Default</button>
+      <button data-val="dense">Dense</button>
+    </div>
+  </div>
+</aside>
+
+
+<!-- data + behavior -->
+<script src="data.js"></script>
+<script src="console.js"></script>
+<script src="matrix.js"></script>
+<script src="anatomy.js"></script>
+<script src="cabinet.js"></script>
+<script src="digest.js"></script>
+<script src="shell-hifi.js"></script>
+
+<style id="__om-edit-overrides"></style>
+</body>
+</html>

@@ -1,0 +1,561 @@
+/* ============================================================
+   Anatomy section — scrollytelling layout + diagram panels.
+   Mounts a sticky right canvas; left narrative scrolls past it.
+   ============================================================ */
+
+.anatomy-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  gap: 56px;
+  align-items: flex-start;
+}
+
+/* LEFT — narrative column ──────────────────────────────────── */
+.anatomy-narrative {
+  display: flex; flex-direction: column;
+  gap: 96px;
+  padding-top: 4vh;
+  padding-bottom: 30vh;
+}
+.station {
+  min-height: 60vh;
+  display: flex; flex-direction: column;
+  gap: 14px;
+  opacity: 0.38;
+  transition: opacity 360ms cubic-bezier(.4,0,.2,1), transform 360ms cubic-bezier(.4,0,.2,1);
+  transform: translateY(6px);
+}
+.station.is-active { opacity: 1; transform: translateY(0); }
+.station-num {
+  font: 600 11px/1 var(--ff-mono);
+  letter-spacing: 0.22em;
+  color: var(--plasma);
+  position: relative;
+  padding-left: 18px;
+}
+.station-num::before {
+  content: '';
+  position: absolute; left: 0; top: 4px;
+  width: 10px; height: 10px;
+  background: var(--lime);
+  border: 1px solid var(--ink);
+}
+.station h3 {
+  font-family: var(--ff-display);
+  font-weight: 500;
+  font-size: 38px;
+  line-height: 1.05;
+  letter-spacing: -0.022em;
+  margin: 0;
+  text-wrap: balance;
+  max-width: 22ch;
+}
+.station h3 em {
+  font-style: italic;
+  color: var(--plasma);
+}
+.station p {
+  font-size: 15.5px;
+  line-height: 1.65;
+  color: var(--ink-soft);
+  margin: 0;
+  max-width: 56ch;
+  text-wrap: pretty;
+}
+.station p strong {
+  font-weight: 700;
+  color: var(--ink);
+  font-family: var(--ff-display);
+  font-style: italic;
+}
+.station p em {
+  font-style: italic;
+  color: var(--ink);
+}
+.station p code {
+  font: 500 12.5px/1 var(--ff-mono);
+  padding: 2px 6px;
+  background: var(--paper-2);
+  border: 1px solid var(--rule-faint);
+  border-radius: 3px;
+  color: var(--ink);
+}
+.station .hl {
+  background: linear-gradient(180deg, transparent 60%, var(--lime-soft) 60%);
+  padding: 0 2px;
+  color: var(--ink);
+  font-weight: 500;
+}
+.station-meta {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;
+}
+
+/* RIGHT — sticky canvas ───────────────────────────────────── */
+.anatomy-canvas-wrap {
+  position: sticky;
+  top: 96px;
+  height: calc(100vh - 124px);
+  max-height: 760px;
+  min-height: 560px;
+  display: flex; align-items: stretch;
+}
+.anatomy-canvas {
+  flex: 1;
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  box-shadow: var(--shadow-card);
+  border-radius: 4px;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  overflow: hidden;
+  container-type: inline-size;
+}
+
+.canvas-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--rule);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.canvas-tabs::-webkit-scrollbar { display: none; }
+.canvas-tab {
+  flex: 1; min-width: 0;
+  padding: 14px 10px;
+  font: 600 10px/1 var(--ff-mono);
+  letter-spacing: 0.16em;
+  color: var(--ink-faint);
+  border-right: 1px solid var(--rule);
+  transition: var(--t-fast);
+  white-space: nowrap;
+  text-align: center;
+}
+.canvas-tab:last-child { border-right: none; }
+.canvas-tab:hover { color: var(--ink); background: var(--plasma-soft); }
+.canvas-tab[aria-selected="true"] {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.canvas-stage {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, var(--paper) 0%, color-mix(in oklab, var(--paper) 70%, var(--plasma) 4%) 100%);
+}
+.canvas-panel {
+  position: absolute; inset: 0;
+  padding: 24px 28px;
+  display: flex; flex-direction: column;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 360ms cubic-bezier(.4,0,.2,1), transform 360ms cubic-bezier(.4,0,.2,1);
+  pointer-events: none;
+}
+.canvas-panel.is-active {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.canvas-foot {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 18px;
+  border-top: 1px solid var(--rule);
+  background: var(--paper-2);
+}
+.canvas-progress {
+  height: 4px;
+  background: var(--paper-3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.canvas-progress-fill {
+  height: 100%;
+  width: 20%;
+  background: linear-gradient(90deg, var(--plasma) 0%, var(--lime) 100%);
+  transition: width 320ms cubic-bezier(.22,1,.36,1);
+}
+
+/* ── PANEL · 01 Tokenize ──────────────────────────────────── */
+.tk-canvas {
+  display: grid;
+  grid-template-rows: auto auto auto 1fr;
+  gap: 18px;
+  height: 100%;
+}
+.tk-canvas h4 {
+  font: 600 11px/1 var(--ff-mono);
+  letter-spacing: 0.18em;
+  color: var(--ink-faint);
+  margin: 0;
+  text-transform: uppercase;
+}
+.tk-sample {
+  font-family: var(--ff-display);
+  font-size: 30px;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  font-weight: 500;
+  text-wrap: balance;
+}
+.tk-sample em { font-style: italic; color: var(--plasma); }
+
+.tk-tokens {
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.tk-token {
+  font: 500 12px/1 var(--ff-mono);
+  padding: 7px 10px;
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  position: relative;
+  letter-spacing: 0.04em;
+  animation: token-in 380ms cubic-bezier(.4,0,.2,1) backwards;
+  animation-delay: calc(var(--i, 0) * 50ms);
+}
+.tk-token.alt { background: var(--lime-soft); border-color: var(--lime-deep); }
+.tk-token.spc { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+@keyframes token-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.tk-embed {
+  display: grid; grid-template-rows: auto 1fr;
+  gap: 8px;
+  align-items: stretch;
+}
+.tk-embed-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14px, 1fr));
+  gap: 2px;
+  align-content: stretch;
+}
+.tk-embed-cell {
+  background: var(--ink);
+  height: 14px;
+  border-radius: 1px;
+  animation: cell-fade 600ms ease-out backwards;
+  animation-delay: calc(var(--i, 0) * 8ms);
+}
+@keyframes cell-fade { from { opacity: 0; } }
+
+/* ── PANEL · 02 Attend ────────────────────────────────────── */
+.at-canvas {
+  display: grid; grid-template-rows: auto 1fr auto;
+  gap: 16px;
+  height: 100%;
+}
+.at-canvas h4 { font: 600 11px/1 var(--ff-mono); letter-spacing: 0.18em; color: var(--ink-faint); margin: 0; text-transform: uppercase; }
+
+.at-row {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 8px;
+}
+.at-tok {
+  position: relative;
+  font: 500 11px/1 var(--ff-mono);
+  padding: 9px 4px;
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  text-align: center;
+  letter-spacing: 0.04em;
+  transition: var(--t-fast);
+}
+.at-tok.is-query {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+  z-index: 2;
+}
+.at-tok[data-w] {
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--plasma) calc(var(--w) * 1%), var(--paper-2)) 0%,
+    color-mix(in oklab, var(--plasma) calc(var(--w) * 0.7%), var(--paper-2)) 100%
+  );
+}
+.at-svg {
+  width: 100%;
+  flex: 1;
+  min-height: 180px;
+}
+.at-head-row {
+  display: flex; gap: 6px;
+  flex-wrap: wrap;
+}
+.at-head {
+  font: 500 10px/1 var(--ff-mono);
+  padding: 6px 8px;
+  border: 1px solid var(--rule);
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: var(--t-fast);
+}
+.at-head[aria-selected="true"] {
+  background: var(--plasma);
+  border-color: var(--plasma);
+  color: #fff;
+}
+.at-head:not([aria-selected="true"]):hover {
+  border-color: var(--plasma);
+  color: var(--plasma);
+}
+
+/* ── PANEL · 03 Transform · stack of blocks ───────────────── */
+.tr-canvas { height: 100%; display: grid; grid-template-rows: auto 1fr; gap: 12px; }
+.tr-canvas h4 { font: 600 11px/1 var(--ff-mono); letter-spacing: 0.18em; color: var(--ink-faint); margin: 0; text-transform: uppercase; }
+.tr-stack {
+  position: relative;
+  display: flex; flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+  padding: 4px;
+  background: var(--paper-2);
+  border: 1px solid var(--rule-faint);
+  border-radius: 3px;
+}
+.tr-layer {
+  display: grid;
+  grid-template-columns: 36px 1fr 1fr 60px;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 10px;
+  background: var(--paper);
+  border-radius: 2px;
+  font: 500 11px/1 var(--ff-mono);
+  letter-spacing: 0.04em;
+  position: relative;
+}
+.tr-layer .n { color: var(--ink-faint); }
+.tr-layer .blk {
+  height: 16px;
+  background: var(--ink);
+  border-radius: 1px;
+  position: relative;
+}
+.tr-layer .blk.attn { background: linear-gradient(90deg, var(--ink) var(--act, 60%), var(--ink-ghost) var(--act, 60%)); }
+.tr-layer .blk.ffn  { background: linear-gradient(90deg, var(--plasma) var(--act, 50%), var(--ink-ghost) var(--act, 50%)); }
+.tr-layer .lbl { color: var(--ink-faint); text-align: right; letter-spacing: 0.10em; }
+.tr-layer.is-moe .blk.ffn {
+  background:
+    repeating-linear-gradient(90deg,
+      var(--lime) 0 calc(var(--act, 50%) / 8),
+      var(--paper-3) calc(var(--act, 50%) / 8) calc(var(--act, 50%) / 4));
+}
+.tr-layer.is-active { box-shadow: 0 0 0 1px var(--plasma); background: var(--plasma-soft); }
+.tr-flow {
+  position: absolute; left: 8px; top: 0;
+  width: 2px; background: var(--lime);
+  height: var(--flow, 50%);
+  transition: height 600ms cubic-bezier(.22,1,.36,1);
+}
+
+/* ── PANEL · 04 Train · three-stage diagram ───────────────── */
+.tn-canvas {
+  display: grid; grid-template-rows: auto 1fr;
+  gap: 16px; height: 100%;
+}
+.tn-canvas h4 { font: 600 11px/1 var(--ff-mono); letter-spacing: 0.18em; color: var(--ink-faint); margin: 0; text-transform: uppercase; }
+.tn-stages {
+  display: grid;
+  grid-template-rows: repeat(3, 1fr);
+  gap: 10px;
+}
+.tn-stage {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--paper);
+  transition: var(--t-fast);
+}
+.tn-stage.is-active { border-color: var(--plasma); box-shadow: 0 0 0 1px var(--plasma); }
+.tn-stage .ord {
+  background: var(--ink);
+  color: var(--paper);
+  display: grid; place-items: center;
+  font: 600 14px/1 var(--ff-mono);
+  letter-spacing: 0.06em;
+}
+.tn-stage.is-active .ord { background: var(--plasma); }
+.tn-stage .body { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.tn-stage .name {
+  font: 600 12px/1 var(--ff-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  display: flex; align-items: center; gap: 10px;
+}
+.tn-stage .name .badge {
+  font: 500 9px/1 var(--ff-mono);
+  padding: 3px 6px;
+  background: var(--lime-soft);
+  color: var(--lime-deep);
+  letter-spacing: 0.10em;
+}
+.tn-stage .desc { font-size: 12px; color: var(--ink-soft); line-height: 1.45; }
+.tn-stage .meter {
+  height: 4px; background: var(--paper-3); border-radius: 2px; overflow: hidden;
+  margin-top: 2px;
+}
+.tn-stage .meter .fill {
+  height: 100%;
+  width: var(--w, 50%);
+  background: var(--ink);
+  transition: width 600ms cubic-bezier(.22,1,.36,1);
+}
+.tn-stage.is-active .meter .fill { background: var(--plasma); }
+
+/* ── PANEL · 05 Harness · model surrounded by widgets ─────── */
+.hr-canvas { height: 100%; display: grid; grid-template-rows: auto 1fr; gap: 12px; }
+.hr-canvas h4 { font: 600 11px/1 var(--ff-mono); letter-spacing: 0.18em; color: var(--ink-faint); margin: 0; text-transform: uppercase; }
+.hr-stage {
+  position: relative;
+  display: grid;
+  grid-template-areas:
+    "sp sp tools"
+    "user core mem"
+    "out out safety";
+  grid-template-columns: 1fr 1.2fr 1fr;
+  grid-template-rows: 1fr 1.2fr 1fr;
+  gap: 8px;
+  height: 100%;
+}
+.hr-cell {
+  border: 1px solid var(--rule);
+  padding: 12px;
+  background: var(--paper);
+  border-radius: 3px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+  display: flex; flex-direction: column;
+  gap: 4px;
+  position: relative;
+  transition: var(--t-fast);
+}
+.hr-cell .k {
+  font: 600 9.5px/1 var(--ff-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.hr-cell .v { color: var(--ink); font: 500 12px/1.35 var(--ff-mono); letter-spacing: 0.03em; }
+.hr-cell.sp { grid-area: sp; }
+.hr-cell.tools { grid-area: tools; }
+.hr-cell.user { grid-area: user; }
+.hr-cell.core {
+  grid-area: core;
+  background: var(--ink);
+  color: var(--paper);
+  text-align: center;
+  align-items: center; justify-content: center;
+  border-color: var(--ink);
+  position: relative; overflow: hidden;
+}
+.hr-cell.core .k { color: var(--paper); opacity: 0.6; }
+.hr-cell.core .v { color: var(--paper); font-family: var(--ff-display); font-size: 22px; font-weight: 500; letter-spacing: -0.01em; }
+.hr-cell.core::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at 50% 50%, var(--plasma-glow), transparent 60%);
+  opacity: 0.7;
+  animation: corePulse 3.6s ease-in-out infinite;
+}
+@keyframes corePulse {
+  0%, 100% { opacity: 0.5; transform: scale(0.95); }
+  50%      { opacity: 0.9; transform: scale(1.05); }
+}
+.hr-cell.mem { grid-area: mem; }
+.hr-cell.out { grid-area: out; background: var(--lime-soft); border-color: var(--lime-deep); }
+.hr-cell.out .v { color: var(--ink); }
+.hr-cell.safety { grid-area: safety; }
+.hr-cell:hover { border-color: var(--plasma); color: var(--ink); }
+
+/* ── Axis toggles UI (matrix radar) ───────────────────────── */
+.axis-toggles {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--rule);
+}
+.axis-toggles-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 10px;
+}
+.axis-reset {
+  font: 500 10px/1 var(--ff-mono);
+  letter-spacing: 0.14em;
+  padding: 4px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  color: var(--ink-soft);
+  transition: var(--t-fast);
+}
+.axis-reset:hover { border-color: var(--plasma); color: var(--plasma); }
+.axis-toggles-row {
+  display: flex; gap: 6px; flex-wrap: wrap;
+}
+.axis-pill {
+  font: 500 10.5px/1 var(--ff-mono);
+  letter-spacing: 0.10em;
+  padding: 7px 11px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  transition: var(--t-fast);
+  position: relative;
+}
+.axis-pill .dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--ink-ghost);
+  margin-right: 6px;
+  vertical-align: middle;
+  transition: var(--t-fast);
+}
+.axis-pill[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+.axis-pill[aria-pressed="true"] .dot { background: var(--lime); }
+.axis-pill:not([aria-pressed="true"]):hover {
+  border-color: var(--plasma);
+  color: var(--plasma);
+}
+
+/* slot affordance — show it's a control */
+.matrix-slot { cursor: pointer; }
+.slot-chev {
+  display: inline-block;
+  margin-left: 6px;
+  color: var(--plasma);
+  font-size: 10px;
+  transition: transform var(--t-fast);
+}
+.matrix-slot:hover .slot-chev { transform: translateY(2px); }
+
+/* ── responsive trim ──────────────────────────────────────── */
+@media (max-width: 1080px) {
+  .anatomy-grid { grid-template-columns: 1fr; gap: 32px; }
+  .anatomy-canvas-wrap {
+    position: relative; top: 0;
+    height: 580px;
+    max-height: none;
+    order: -1;
+  }
+  .anatomy-narrative { padding-top: 8px; padding-bottom: 32px; gap: 56px; }
+  .station { min-height: auto; opacity: 1; transform: none; }
+  .station h3 { font-size: 28px; }
+}
