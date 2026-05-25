@@ -23,6 +23,7 @@ data/editorial-hub.json
 
 # Local-only planning and scratch docs
 docs/local/
+docs/logo-prompts.md
 planning-local/
 review-local/
 scratch/
@@ -36,5 +37,6 @@ session-notes.md
 SESSION-NOTES.md
 
 # WIP / handoff content (kept locally, never committed)
+design/
 design/archive/
 demos/**/archive/
