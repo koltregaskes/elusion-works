@@ -1160,16 +1160,43 @@ output {
 }
 
 .site-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 1.2fr);
   gap: 1rem;
   padding: 2rem 0 3rem;
   color: var(--muted-2);
 }
 
+.site-footer div {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.site-footer strong {
+  color: var(--text);
+  font-family: var(--font-display);
+}
+
+.site-footer p {
+  margin: 0;
+}
+
+.site-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.75rem 1rem;
+}
+
 .site-footer a {
   color: var(--accent);
+}
+
+.footer-legal {
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .empty-state {
@@ -1247,8 +1274,13 @@ output {
   .dwarf-grid,
   .timeline,
   .details-grid,
-  .source-grid {
+  .source-grid,
+  .site-footer {
     grid-template-columns: 1fr;
+  }
+
+  .site-footer nav {
+    justify-content: flex-start;
   }
 
   .toolbox,

@@ -717,7 +717,7 @@ a {
 .site-footer {
   width: min(calc(100% - 32px), var(--max));
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 1.2fr) auto;
   gap: 24px;
   align-items: center;
   margin: 40px auto 0;
@@ -742,7 +742,17 @@ a {
 }
 
 .site-footer nav {
+  display: flex;
+  flex-wrap: wrap;
   gap: 18px;
+}
+
+.footer-legal {
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .motion-toggle {

@@ -420,16 +420,25 @@ html[data-theme="light"] .ew-plate-poster { opacity: 0.88; filter: invert(0.85) 
 .ew-footer-inner {
   background: var(--panel); border: 1px solid var(--line-strong);
   border-radius: var(--r-shell); padding: 32px;
-  display: grid; grid-template-columns: 1fr auto; gap: 24px;
+  display: grid; grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(150px, 1fr)); gap: 24px;
 }
 .ew-footer-title { font-family: "Outfit", system-ui; font-weight: 600; font-size: 1.2rem; margin: 0 0 6px; }
 .ew-footer-copy { color: var(--fg-3); margin: 0; }
+.ew-footer-brand { max-width: 34rem; }
+.ew-footer-group { display: grid; align-content: start; gap: 10px; }
+.ew-footer-group p {
+  margin: 0 0 4px;
+  font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--copper);
+}
 .ew-footer-links { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: center; }
-.ew-footer-links a {
+.ew-footer-links a,
+.ew-footer-group a {
   font-family: "IBM Plex Mono", monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
   color: var(--fg-3); transition: color 180ms;
 }
-.ew-footer-links a:hover { color: var(--fg-1); }
+.ew-footer-links a:hover,
+.ew-footer-group a:hover { color: var(--fg-1); }
 .ew-footer-base {
   display: flex; justify-content: space-between; padding: 14px 8px 0;
   color: var(--fg-4);
@@ -467,6 +476,7 @@ html[data-theme="light"] .ew-plate-poster { opacity: 0.88; filter: invert(0.85) 
 
   .ew-header-actions { display: none; }
   .ew-theme-toggle { top: auto; right: 16px; bottom: 16px; }
+  .ew-footer-inner { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
   .ew-hero-inner { padding: 42px 30px 28px; }
   .ew-ticker {
@@ -485,6 +495,7 @@ html[data-theme="light"] .ew-plate-poster { opacity: 0.88; filter: invert(0.85) 
 
 @media (max-width: 720px) {
   :root { --gutter: 14px; }
+  .ew-footer-inner { grid-template-columns: 1fr; }
 
   .ew-header { top: 8px; padding: 0 var(--gutter); }
   .ew-header-inner { padding: 14px; }
