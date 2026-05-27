@@ -74,7 +74,7 @@ jobs:
             hasEditorialResource: performance
               .getEntriesByType("resource")
               .some((entry) => entry.name.includes("editorial-hub")),
-            footerLinks: [...document.querySelectorAll(".ew-footer-links a")].map((link) =>
+            footerLinks: [...document.querySelectorAll(".ew-footer-group a, .ew-footer-links a")].map((link) =>
               link.textContent.trim(),
             ),
           }));
