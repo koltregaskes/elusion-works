@@ -106,6 +106,10 @@ jobs:
           test -f _site/demos/chronicles-of-bone/index.html
           test -f _site/demos/chronicles-of-bone/thumbnail.webp
           test -f _site/demos/chronicles-of-bone/image-slots.state.json
+          test -f _site/demos/nebula-architect/index.html
+          test -f _site/demos/nebula-architect/app.js
+          test -f _site/demos/nebula-architect/styles.css
+          test -f _site/demos/nebula-architect/thumbnail.png
           test -f _site/demos/solar-system-field-lab/index.html
           test -f _site/demos/solar-system-field-lab/field-lab.jsx
           test -f _site/demos/solar-system-field-lab/orbit-lab.jsx
