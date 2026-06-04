@@ -327,15 +327,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Mobile Touch support for Radar
   radarSvg.addEventListener('touchstart', (e) => {
+    e.preventDefault();
     isDraggingRadar = true;
     handleRadarMove(e);
-  });
+  }, { passive: false });
 
   document.addEventListener('touchmove', (e) => {
-    if (isDraggingRadar) handleRadarMove(e);
-  });
+    if (!isDraggingRadar) return;
+    e.preventDefault();
+    handleRadarMove(e);
+  }, { passive: false });
 
   document.addEventListener('touchend', () => {
+    isDraggingRadar = false;
+  });
+
+  document.addEventListener('touchcancel', () => {
     isDraggingRadar = false;
   });
 
