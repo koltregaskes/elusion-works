@@ -182,7 +182,7 @@ button.ew-pill {
   mask-image: radial-gradient(60% 80% at 80% 20%, #000 0%, transparent 70%);
 }
 .ew-hero-glow {
-  position: absolute; inset: -20% -10% auto auto; width: 60%; height: 80%;
+  position: absolute; inset: -20% 0 auto auto; width: min(60%, 720px); height: 80%;
   background: radial-gradient(60% 60% at 80% 20%, color-mix(in oklab, var(--copper) 30%, transparent), transparent 70%);
   pointer-events: none;
 }

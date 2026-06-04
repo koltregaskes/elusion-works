@@ -152,15 +152,20 @@ html[data-theme="light"] .ew-spotlight { mix-blend-mode: multiply; opacity: 0.6;
   height: 64px; gap: 8px;
 }
 .ew-mini-marquee {
-  overflow: hidden; flex: 1 1 auto; min-width: 0;
+  overflow: hidden; flex: 1 1 auto; min-width: 0; width: 100%;
   mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
 }
 .ew-mini-marquee-track {
-  display: inline-flex; gap: 28px; white-space: nowrap;
-  animation: ew-marquee 42s linear infinite;
+  display: inline-flex; gap: 28px; width: 100%; min-width: 0;
   font-family: "Outfit", system-ui; font-size: 0.95rem;
 }
-.ew-mini-marquee-item { display: inline-flex; align-items: center; gap: 10px; }
+.ew-mini-marquee-item { display: inline-flex; align-items: center; gap: 10px; min-width: 0; width: 100%; }
+.ew-mini-marquee-item span:not(.ew-live-dot):not(.ew-mono):not(.ew-marquee-sep) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .ew-mini-marquee-item .ew-mono { color: var(--copper); font-size: 10px; }
 .ew-mini-marquee-item .ew-marquee-sep { color: var(--copper); opacity: 0.5; }
 @media (max-width: 980px) {

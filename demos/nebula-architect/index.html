@@ -1,0 +1,275 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nebula Architect // Elusion Works Interactive Demo</title>
+  <!-- SEO Tags -->
+  <meta name="description" content="A cinematic interactive space habitat design simulator with mission-control styling, vector radar diagnostics, and timeline playback.">
+  <meta name="author" content="Elusion Works">
+  <!-- Typography (Space Grotesk, Inter, IBM Plex Mono) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <!-- Stylesheet -->
+  <link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Space Background Stars & Nebula Glows -->
+  <div class="space-bg">
+    <div class="stars"></div>
+    <div class="nebula-pink" id="nebulaPink"></div>
+    <div class="nebula-cyan" id="nebulaCyan"></div>
+  </div>
+
+  <!-- Main Grid Layout -->
+  <div class="control-deck">
+
+    <!-- Header Top Deck -->
+    <header class="top-deck-header">
+      <div class="brand">
+        <span class="status-dot"></span>
+        <span class="brand-title">NEBULA ARCHITECT</span>
+        <span class="divider">//</span>
+        <span class="sub-brand">MISSION CONTROL SYSTEM v1.0.4</span>
+      </div>
+      <nav class="top-nav">
+        <a href="#radar" class="active">RADAR</a>
+        <a href="#simulator">SIMULATOR</a>
+        <a href="#timeline">CHRONICLES</a>
+      </nav>
+      <div class="top-meta" id="systemClock">SYSTEM: ONLINE [2026.05.26]</div>
+    </header>
+
+    <!-- Notification Banner -->
+    <div class="notification-banner" id="notifBanner">
+      <span class="notif-icon">â–²</span>
+      <span class="notif-text" id="notifText">System initialized. Awaiting parameters.</span>
+    </div>
+
+    <!-- Main Workspace Container -->
+    <main class="workspace-grid">
+
+      <!-- LEFT COLUMN: DIAGNOSTICS & RADAR -->
+      <section class="panel-section left-pane" id="radar">
+        <div class="panel-card glass-card">
+          <div class="card-header">
+            <span class="label-tech">DECK 01 // TELEMETRY RADAR</span>
+            <span class="indicator-tag">ACTIVE</span>
+          </div>
+
+          <div class="card-body">
+            <p class="section-desc">Click and drag coordinates on the vector grid to calibrate the shield vector axes relative to the nebula stardust flow.</p>
+
+            <!-- SVG Draggable Radar Grid -->
+            <div class="radar-container" id="radarContainer">
+              <svg class="radar-grid" viewBox="0 0 200 200" id="radarSvg">
+                <!-- Grid Rings -->
+                <circle cx="100" cy="100" r="90" class="radar-ring" />
+                <circle cx="100" cy="100" r="65" class="radar-ring" />
+                <circle cx="100" cy="100" r="40" class="radar-ring" />
+
+                <!-- Crosshairs -->
+                <line x1="100" y1="10" x2="100" y2="190" class="radar-axis" />
+                <line x1="10" y1="100" x2="190" y2="100" class="radar-axis" />
+
+                <!-- Sweeper Line -->
+                <line x1="100" y1="100" x2="100" y2="10" class="radar-sweeper" id="radarSweeper" />
+
+                <!-- Draggable Target Dot -->
+                <circle cx="130" cy="70" r="6" class="radar-target" id="radarTarget" />
+                <!-- Pulsing Aura -->
+                <circle cx="130" cy="70" r="12" class="radar-target-aura" id="radarTargetAura" />
+              </svg>
+            </div>
+
+            <!-- Coordinate Telemetry Board -->
+            <div class="telemetry-readout">
+              <div class="telemetry-item">
+                <span class="telemetry-label">SHIELD AXIS X:</span>
+                <span class="telemetry-val" id="telemetryX">130.00</span>
+              </div>
+              <div class="telemetry-item">
+                <span class="telemetry-label">SHIELD AXIS Y:</span>
+                <span class="telemetry-val" id="telemetryY">70.00</span>
+              </div>
+              <div class="telemetry-item">
+                <span class="telemetry-label">ION ANGLE:</span>
+                <span class="telemetry-val" id="telemetryAngle">45.00Â°</span>
+              </div>
+            </div>
+
+            <!-- Terminal Diagnostics Logger -->
+            <div class="diagnostic-console">
+              <div class="console-header">DIAGNOSTIC LOGS</div>
+              <div class="console-body" id="consoleBody">
+                <div class="console-line">> [SYS: OK] Initializing stardust intake grids...</div>
+                <div class="console-line">> [SYS: OK] Hexagonal shield nodes responsive.</div>
+                <div class="console-line">> [SYS: OK] Awaiting observer calibration.</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      <!-- CENTER: DOME VISUAL STAGE -->
+      <section class="panel-section center-stage">
+        <!-- Main Dome Visualizer Container -->
+        <div class="visualizer-container">
+          <div class="dome-scene" id="domeScene">
+            <!-- Glass geodesic dome container -->
+            <div class="dome-wrapper" id="domeWrapper">
+              <!-- Internal biological glow core -->
+              <div class="dome-core" id="domeCore"></div>
+              <!-- Crystalline shield lines -->
+              <div class="dome-shields" id="domeShields"></div>
+            </div>
+
+            <!-- Volumetric Light Beams -->
+            <div class="light-beam left-beam"></div>
+            <div class="light-beam right-beam"></div>
+          </div>
+
+          <!-- Large HUD Digital Telemetry Deck -->
+          <div class="hud-deck">
+            <div class="hud-stat-card">
+              <div class="hud-stat-label">INTEGRITY</div>
+              <div class="hud-stat-val text-success" id="integrityVal">100%</div>
+              <div class="hud-bar-bg"><div class="hud-bar-fill bg-success" id="integrityBar" style="width: 100%;"></div></div>
+            </div>
+
+            <div class="hud-stat-card">
+              <div class="hud-stat-label">BIOME VIABILITY</div>
+              <div class="hud-stat-val text-cyan" id="viabilityVal">100%</div>
+              <div class="hud-bar-bg"><div class="hud-bar-fill bg-cyan" id="viabilityBar" style="width: 100%;"></div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- RIGHT COLUMN: PHYSICS SIMULATOR -->
+      <section class="panel-section right-pane" id="simulator">
+        <div class="panel-card glass-card">
+          <div class="card-header">
+            <span class="label-tech">DECK 02 // PHYSICS SIMULATOR</span>
+            <span class="indicator-tag highlight">READY</span>
+          </div>
+
+          <div class="card-body">
+            <p class="section-desc">Calibrate atmospheric ion density, shield frequencies, and gravity overrides. Drag sliders to trigger real-time calculations.</p>
+
+            <!-- Controls Form -->
+            <div class="controls-grid">
+
+                <!-- Slider 1: Ionization Level -->
+                <div class="slider-group">
+                  <div class="slider-labels">
+                  <label class="slider-title" id="labelIon" for="slideIon">IONIZATION LEVEL</label>
+                  <span class="slider-value" id="valIon">450 PPM</span>
+                </div>
+                <input type="range" class="tech-slider" id="slideIon" min="100" max="900" value="450" aria-labelledby="labelIon valIon" aria-describedby="caveatIon">
+                <span class="slider-caveat" id="caveatIon">Optimal range: 400 - 500 PPM</span>
+              </div>
+
+              <!-- Slider 2: Shield Frequency -->
+              <div class="slider-group">
+                <div class="slider-labels">
+                  <label class="slider-title" id="labelFreq" for="slideFreq">SHIELD FREQUENCY</label>
+                  <span class="slider-value" id="valFreq">120 HZ</span>
+                </div>
+                <input type="range" class="tech-slider" id="slideFreq" min="10" max="250" value="120" aria-labelledby="labelFreq valFreq" aria-describedby="caveatFreq">
+                <span class="slider-caveat" id="caveatFreq">Optimal frequency: 110 - 130 HZ</span>
+              </div>
+
+              <!-- Slider 3: Gravity Coefficient -->
+              <div class="slider-group">
+                <div class="slider-labels">
+                  <label class="slider-title" id="labelGrav" for="slideGrav">GRAVITY COEFFICIENT</label>
+                  <span class="slider-value" id="valGrav">1.00 G</span>
+                </div>
+                <input type="range" class="tech-slider" id="slideGrav" min="10" max="200" value="100" step="10" aria-labelledby="labelGrav valGrav" aria-describedby="caveatGrav">
+                <span class="slider-caveat" id="caveatGrav">Optimal gravity: 0.90 - 1.10 G</span>
+              </div>
+
+            </div>
+
+            <!-- Manual Trigger Actions -->
+            <div class="action-buttons-deck">
+              <button class="btn btn-primary" id="btnShields">ENGAGE DOME RADAR</button>
+              <button class="btn btn-secondary" id="btnCalibrate">CALIBRATE EXPOSURE</button>
+            </div>
+
+            <!-- Scale Telemetry Readouts -->
+            <div class="tech-spec-table">
+              <div class="spec-row">
+                <span class="spec-label">SECTOR ATMOSPHERE:</span>
+                <span class="spec-val">CIRCUMSTELLAR DISK</span>
+              </div>
+              <div class="spec-row">
+                <span class="spec-label">STARDUST DENSITY:</span>
+                <span class="spec-val" id="specDensity">1.25 BAR</span>
+              </div>
+              <div class="spec-row">
+                <span class="spec-label">VOLUMETRIC SHUNT:</span>
+                <span class="spec-val">ACTIVE [HIGH]</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- BOTTOM DECK: TIMELINE CONTROLLER -->
+    <footer class="bottom-deck-timeline" id="timeline">
+      <div class="timeline-header">
+        <span class="label-tech">DECK 03 // NARRATIVE STORYBOARD CHRONICLES</span>
+        <span class="indicator-tag">SSF SECURE</span>
+      </div>
+
+      <div class="timeline-slider-track">
+        <div class="timeline-beat-card active" id="beat1" data-beat="1">
+          <div class="beat-meta">BEAT 01 // 00:00 - 00:10</div>
+          <div class="beat-title">THE STELLAR THRESHOLD</div>
+          <div class="beat-desc">High-angle wide orbit sweep nesting the biome dome in stardust.</div>
+        </div>
+
+        <div class="timeline-beat-card" id="beat2" data-beat="2">
+          <div class="beat-meta">BEAT 02 // 00:10 - 00:20</div>
+          <div class="beat-title">THE BIO-CORE REVEAL</div>
+          <div class="beat-desc">Geodesic ceiling reveals vertical aeroponics and green jungle flora.</div>
+        </div>
+
+        <div class="timeline-beat-card" id="beat3" data-beat="3">
+          <div class="beat-meta">BEAT 03 // 00:20 - 00:30</div>
+          <div class="beat-title">MACRO VEIN DETAIL</div>
+          <div class="beat-desc">Extreme close-up macro tracking showing bioluminescent leaf veins.</div>
+        </div>
+
+        <div class="timeline-beat-card" id="beat4" data-beat="4">
+          <div class="beat-meta">BEAT 04 // 00:30 - 00:45</div>
+          <div class="beat-title">SHIELD SHIMMER PASS</div>
+          <div class="beat-desc">Geodesic hexagonal copper mesh energy grids lighting up the dome.</div>
+        </div>
+
+        <div class="timeline-beat-card" id="beat5" data-beat="5">
+          <div class="beat-meta">BEAT 05 // 00:45 - 01:00</div>
+          <div class="beat-title">COSMIC CRADLE PULL-BACK</div>
+          <div class="beat-desc">Colossal wide pull-back settling the dome within a swirling violet hurricane.</div>
+        </div>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- Custom Drag Cursor element -->
+  <div class="ring-cursor" id="ringCursor"></div>
+
+  <!-- Code Script -->
+  <script src="app.js"></script>
+</body>
+</html>
