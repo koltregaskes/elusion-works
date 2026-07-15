@@ -189,7 +189,6 @@ a {
   z-index: -4;
   object-fit: cover;
   filter: contrast(1.06) saturate(0.82);
-  animation: heroBreathe 12s ease-in-out infinite alternate;
 }
 
 .hero-particles {
@@ -444,41 +443,22 @@ a {
   z-index: 3;
   top: var(--sub-y, 24%);
   left: var(--sub-x, 62%);
-  width: clamp(4rem, 7vw, 7rem);
+  width: clamp(11rem, 18vw, 18rem);
   transform: translate(-50%, -50%) rotate(var(--sub-tilt, -5deg));
+  filter: drop-shadow(0 1rem 1.2rem rgba(0, 0, 0, 0.66));
   transition: filter 120ms linear;
 }
 
-.sub-body {
-  position: relative;
+.submersible-model {
   display: block;
   width: 100%;
-  aspect-ratio: 2.35;
-  border: 1px solid rgba(237, 241, 233, 0.65);
-  background: linear-gradient(180deg, #26302e, #080c0b 62%);
-  clip-path: polygon(3% 34%, 18% 12%, 76% 10%, 96% 40%, 86% 73%, 28% 88%, 8% 70%);
-  box-shadow: inset 0 -0.4rem 1rem rgba(0, 0, 0, 0.8);
+  height: auto;
 }
-
-.sub-body::before,
-.sub-body::after {
-  position: absolute;
-  top: 28%;
-  width: 0.38rem;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: var(--copper);
-  box-shadow: 0 0 0.75rem var(--copper);
-  content: "";
-}
-
-.sub-body::before { left: 24%; }
-.sub-body::after { left: 36%; }
 
 .sub-light {
   position: absolute;
-  top: 38%;
-  right: 85%;
+  top: 39%;
+  right: 82%;
   width: clamp(8rem, 18vw, 18rem);
   height: 42%;
   background: linear-gradient(90deg, transparent, rgba(237, 241, 233, 0.22));
@@ -489,9 +469,9 @@ a {
 
 .sub-pulse {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 100%;
+  top: 60%;
+  left: 38%;
+  width: 48%;
   aspect-ratio: 1;
   border: 1px solid var(--signal);
   border-radius: 50%;
@@ -967,11 +947,6 @@ a {
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes heroBreathe {
-  from { transform: scale(1.015); }
-  to { transform: scale(1.055); }
-}
-
 @keyframes statusPulse {
   50% { opacity: 0.36; box-shadow: 0 0 0.2rem var(--signal); }
 }
@@ -1048,6 +1023,7 @@ a {
 
   .submersible {
     left: var(--sub-x-mobile, 58%);
+    width: clamp(10rem, 39vw, 14rem);
   }
 
   .descent-chapters {

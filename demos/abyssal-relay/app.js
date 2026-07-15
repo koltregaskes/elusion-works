@@ -18,6 +18,7 @@
   const waveformCanvas = document.querySelector("[data-waveform]");
   const soundToggle = document.querySelector("[data-sound-toggle]");
   const soundLabel = document.querySelector("[data-sound-label]");
+  const signalAudio = document.querySelector("[data-signal-audio]");
   const restart = document.querySelector("[data-restart]");
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
@@ -26,9 +27,6 @@
 
   let descentProgress = 0;
   let currentFrequency = Number(frequencyControl.value);
-  let audioContext = null;
-  let oscillator = null;
-  let gainNode = null;
   let audioEnabled = false;
   let animationFrame = 0;
   let lastFrame = performance.now();
@@ -185,34 +183,30 @@
     instrument.classList.toggle("is-locked", isLocked);
     lockCopy.textContent = isLocked ? "Signal locked" : "Searching spectrum";
 
-    if (audioEnabled && oscillator && gainNode && audioContext) {
-      const targetPitch = 70 + (currentFrequency - 38) * 8;
-      oscillator.frequency.setTargetAtTime(targetPitch, audioContext.currentTime, 0.04);
-      gainNode.gain.setTargetAtTime(isLocked ? 0.035 : 0.018, audioContext.currentTime, 0.08);
+    if (audioEnabled && signalAudio) {
+      signalAudio.volume = isLocked ? 0.58 : 0.42;
     }
   }
 
-  function toggleAudio() {
-    audioEnabled = !audioEnabled;
+  async function toggleAudio() {
+    if (!signalAudio) return;
+
+    if (audioEnabled) {
+      signalAudio.pause();
+      audioEnabled = false;
+    } else {
+      signalAudio.volume = instrument.classList.contains("is-locked") ? 0.58 : 0.42;
+      try {
+        await signalAudio.play();
+        audioEnabled = true;
+      } catch {
+        audioEnabled = false;
+      }
+    }
+
     soundToggle.setAttribute("aria-pressed", String(audioEnabled));
-    soundLabel.textContent = audioEnabled ? "Signal audio on" : "Signal audio off";
-
-    if (audioEnabled && !audioContext) {
-      audioContext = new AudioContext();
-      oscillator = audioContext.createOscillator();
-      gainNode = audioContext.createGain();
-      oscillator.type = "sine";
-      oscillator.frequency.value = 94;
-      gainNode.gain.value = 0.018;
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      oscillator.start();
-    }
-
-    if (audioContext) {
-      if (audioEnabled) audioContext.resume();
-      else audioContext.suspend();
-    }
+    soundToggle.setAttribute("aria-label", audioEnabled ? "Mute sonar audio" : "Enable sonar audio");
+    soundLabel.textContent = audioEnabled ? "Sonar audio on" : "Sonar audio off";
     updateFrequency();
   }
 
