@@ -49,7 +49,7 @@ An editorial science-fiction field report submerged inside a physically plausibl
 
 - The master hadal trench frame was generated for this page in the connected Runway workspace.
 - The connected workspace reached its generation limit before image-to-video animation completed.
-- `abyssal-relay-loop.mp4` is a native 30 fps local encode derived from the generated master, avoiding cadence conversion while keeping decoding light, with live non-repeating particulate motion layered in browser canvas.
+- `abyssal-relay-loop.mp4` is a native 30 fps local encode derived from the generated master. Its ten-second elliptical camera move travels roughly two pixels per frame, avoiding both cadence conversion and integer-crop stalls, while live particulate motion remains layered in browser canvas.
 - The HADAL / 09 descent vehicle is an original 2000 x 1125 transparent render modelled and lit in Blender for this page.
 - The opt-in sonar bed was synthesized locally in the audible range and encoded as a compact looping MP3.
 - No third-party logos, characters, footage, or game IP are used.
