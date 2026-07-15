@@ -43,9 +43,15 @@
         <span>AR / 09</span>
       </a>
       <p class="header-status"><span aria-hidden="true"></span> Relay online</p>
-      <button class="sound-toggle" type="button" data-sound-toggle aria-pressed="false">
+      <button
+        class="sound-toggle"
+        type="button"
+        data-sound-toggle
+        aria-pressed="false"
+        aria-label="Enable sonar audio"
+      >
         <span class="sound-toggle-bars" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span data-sound-label>Signal audio off</span>
+        <span data-sound-label>Sonar audio off</span>
       </button>
     </header>
 
@@ -107,7 +113,14 @@
           </div>
 
           <div class="submersible" data-submersible aria-hidden="true">
-            <span class="sub-body"></span>
+            <img
+              class="submersible-model"
+              src="assets/hadal-09-submersible.webp"
+              alt=""
+              width="2000"
+              height="1125"
+              decoding="async"
+            />
             <span class="sub-light"></span>
             <span class="sub-pulse"></span>
           </div>
@@ -202,6 +215,12 @@
       </section>
     </main>
 
-    <audio data-signal-audio preload="none" loop aria-hidden="true"></audio>
+    <audio
+      data-signal-audio
+      src="assets/abyssal-relay-sonar.mp3"
+      preload="metadata"
+      loop
+      aria-hidden="true"
+    ></audio>
   </body>
 </html>
