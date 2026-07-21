@@ -166,6 +166,9 @@ img {
   display: inline-flex;
   align-items: center;
   gap: 0.85rem;
+  /* Never let a long nav squeeze the lockup: the brand box would shrink
+     while its contents could not, spilling the wordmark over the nav. */
+  flex-shrink: 0;
 }
 
 .brand-link img,
@@ -206,11 +209,20 @@ img {
 
 .masthead-nav {
   display: flex;
-  flex-wrap: wrap;
+  /* Stay on one line and scroll instead of wrapping into the lockup.
+     Scales to any number of links without growing the pill. */
+  flex-wrap: nowrap;
   gap: 1rem;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
 }
 
 .masthead-nav a {
+  flex: none;
+  white-space: nowrap;
   color: var(--muted);
   font-size: 0.68rem;
   font-family: var(--font-mono);
@@ -967,6 +979,8 @@ img {
     min-height: 36px;
     display: inline-flex;
     align-items: center;
+    /* The grid wraps labels here, so release the single-line nowrap. */
+    white-space: normal;
     overflow-wrap: anywhere;
   }
 
