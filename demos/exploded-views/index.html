@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Exploded Views | Elusion Works</title>
+<meta name="description" content="Three CAD-style interactive explorers: a fifteen-part laptop teardown, a solar-system orrery that slices planets open, and an eleven-module turbofan engine." />
+<meta name="theme-color" content="#0e1116" />
+<meta name="referrer" content="strict-origin-when-cross-origin" />
+<meta property="og:title" content="Exploded Views" />
+<meta property="og:description" content="Orbit, explode, toggle, inspect. Three interactive teardowns on one technical-illustration chassis." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://elusionworks.com/demos/exploded-views/" />
+<meta property="og:image" content="https://elusionworks.com/demos/exploded-views/thumbnail.webp" />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="canonical" href="https://elusionworks.com/demos/exploded-views/" />
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg" />
+<link rel="stylesheet" href="ui.css" />
+<style>
+  body { overflow: auto; background: var(--bg-grad); }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 96px 24px 60px; }
+  h1 { font-size: 26px; margin: 0 0 6px; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 34px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+  a.card {
+    display: block; text-decoration: none; color: var(--text);
+    border: 1px solid var(--panel-border); border-radius: 16px; overflow: hidden;
+    background: var(--panel); box-shadow: var(--shadow); transition: transform .15s, border-color .15s;
+  }
+  a.card:hover { transform: translateY(-3px); border-color: var(--accent); }
+  .thumb { height: 170px; display: flex; align-items: center; justify-content: center; font-size: 64px; }
+  .thumb.laptop { background: linear-gradient(135deg, #1d2735 0%, #31435c 55%, #e8763a 140%); }
+  .thumb.solar { background: radial-gradient(circle at 30% 40%, #2b1d0e 0%, #0a0e1a 70%); }
+  .thumb.engine { background: radial-gradient(circle at 50% 52%, #ff8a2a 0%, #b4571a 14%, #3d4a5c 46%, #16202c 100%); }
+  :root[data-theme="light"] .thumb.laptop { background: linear-gradient(135deg, #c8d4e4 0%, #9fb4cf 55%, #ffb27a 140%); }
+  :root[data-theme="light"] .thumb.solar { background: radial-gradient(circle at 30% 40%, #ffe2b0 0%, #cdd6e6 70%); }
+  :root[data-theme="light"] .thumb.engine { background: radial-gradient(circle at 50% 52%, #ffb27a 0%, #e8a06a 16%, #b3c3d6 48%, #ccd6e4 100%); }
+  .meta { padding: 14px 16px 16px; }
+  .meta h3 { margin: 0 0 4px; font-size: 15px; }
+  .meta p { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+</style>
+</head>
+<body>
+<div id="topbar">
+  <div class="crumbs">
+    <a href="../">demos</a><span class="sep">›</span>
+    <span class="here">exploded-views</span>
+  </div>
+  <div class="spacer"></div>
+  <span class="ver">0.4.0</span>
+  <button class="iconbtn" id="themeBtn" title="Toggle dark / light">◐</button>
+</div>
+<div class="wrap">
+  <h1>Exploded views</h1>
+  <p class="sub">cad.fun-style interactive explorers — orbit, explode, toggle, inspect.</p>
+  <div class="cards">
+    <a class="card" href="laptop.html">
+      <div class="thumb laptop">💻</div>
+      <div class="meta">
+        <h3>Laptop teardown</h3>
+        <p>Fifteen-part exploded view: board, silicon, cooling, battery, deck, display. Staggered top-down teardown, X-ray mode, clip planes, spinning fans.</p>
+      </div>
+    </a>
+    <a class="card" href="solar.html">
+      <div class="thumb solar">🪐</div>
+      <div class="meta">
+        <h3>Solar system orrery</h3>
+        <p>Eight planets, six moons, an asteroid belt and a running clock. Click a planet to follow it; crank time to a year per second.</p>
+      </div>
+    </a>
+    <a class="card" href="engine.html">
+      <div class="thumb engine">🛩️</div>
+      <div class="meta">
+        <h3>Turbofan engine</h3>
+        <p>Eleven modules pulled apart along the shaft: fan, compressors, combustor, turbines, nozzle. Twin-spool spin, live airflow, clip-plane cutaway.</p>
+      </div>
+    </a>
+  </div>
+</div>
+<script>
+  const btn = document.getElementById('themeBtn');
+  btn.addEventListener('click', () => {
+    const h = document.documentElement;
+    h.dataset.theme = h.dataset.theme === 'dark' ? 'light' : 'dark';
+  });
+</script>
+</body>
+</html>

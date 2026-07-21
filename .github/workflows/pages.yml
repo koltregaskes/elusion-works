@@ -76,6 +76,12 @@ jobs:
           test -f _site/remix-relay/index.html
           test -f _site/design-notes/index.html
           test -f _site/demos/index.html
+          test -f _site/demos/exploded-views/index.html
+          test -f _site/demos/exploded-views/laptop.html
+          test -f _site/demos/exploded-views/solar.html
+          test -f _site/demos/exploded-views/engine.html
+          test -f _site/demos/exploded-views/ui.css
+          test -f _site/demos/exploded-views/thumbnail.webp
           test -f _site/demos/abyssal-relay/index.html
           test -f _site/demos/abyssal-relay/styles.css
           test -f _site/demos/abyssal-relay/app.js
@@ -125,6 +131,7 @@ jobs:
           test -f _site/demos/solar-system-field-lab/thumbnail.webp
           grep -q 'atmosphere/' _site/demos/index.html
           grep -q 'abyssal-relay/' _site/demos/index.html
+          grep -q 'exploded-views/' _site/demos/index.html
           grep -q 'nexus-aetherial/' _site/demos/index.html
           grep -q 'solar-system-field-lab/' _site/demos/index.html
           # d6 front-door section markers (replaced legacy *-grid and showcase/launch-card IDs)
