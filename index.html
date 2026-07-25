@@ -42,8 +42,8 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles/cabinet.css?v=20260517" />
-    <link rel="stylesheet" href="styles/motion.css?v=20260517" />
+    <link rel="stylesheet" href="styles/cabinet.css?v=20260725b" />
+    <link rel="stylesheet" href="styles/motion.css?v=20260725b" />
     <script type="application/ld+json" nonce="elusion-frontdoor-schema">
       {
         "@context": "https://schema.org",
@@ -252,8 +252,11 @@
           <a class="ew-magnet" href="#hello">Hello</a>
         </nav>
 
-        <div class="ew-header-actions" aria-hidden="true">
-          <span class="ew-pill ew-pill-ghost">Studio index</span>
+        <div class="ew-header-actions">
+          <a class="ew-pill ew-pill-ghost ew-index-link ew-magnet" href="#cabinet" aria-label="Open the 13-project Studio Index">
+            <span>Studio index</span>
+            <span class="ew-index-count" aria-hidden="true">13</span>
+          </a>
         </div>
       </div>
     </header>
@@ -287,15 +290,16 @@
         <div class="ew-hero-glow" aria-hidden="true"></div>
         <div class="ew-hero-inner">
           <div class="ew-hero-meta">
-            <span class="ew-mono ew-eyebrow">Elusion Works / May 2026</span>
-            <span class="ew-pill ew-pill-ghost">Company in formation</span>
+            <span class="ew-mono ew-eyebrow">Elusion Works / Working studio</span>
+            <span class="ew-pill ew-pill-ghost">Sites / systems / experiments</span>
           </div>
           <h1 class="ew-hero-h1" id="frontdoor-heading" data-split-heading>
-            One studio. <em>Many projects.</em>
+            Sites that publish. <em>Tools that work. Worlds still forming.</em>
           </h1>
           <p class="ew-hero-sub">
-            Websites, tools, games, images, video, and writing - built by Kol Tregaskes,
-            in public, all under one umbrella. Some live, some in build, some still on the bench.
+            Elusion Works is Kol Tregaskes' working cabinet: eight public sites, the
+            systems behind them, and a growing shelf of interactive experiments. Open
+            the index to see what is live, building, or still being tested.
           </p>
 
           <section class="ew-ticker ew-ticker-slide" aria-label="Studio pulse" aria-live="polite" data-ticker>
@@ -318,15 +322,15 @@
       <section class="ew-stats" aria-label="Studio stats">
         <div class="ew-stats-inner">
           <div class="ew-stat">
-            <span class="ew-count" data-count-to="8">0</span>
+            <span class="ew-count" data-count-to="8">8</span>
             <span class="ew-stat-label">Sites in the cabinet</span>
           </div>
           <div class="ew-stat">
-            <span class="ew-count" data-count-to="4">0</span>
+            <span class="ew-count" data-count-to="4">4</span>
             <span class="ew-stat-label">Pipelines and tools</span>
           </div>
           <div class="ew-stat">
-            <span class="ew-count" data-count-to="2">0</span>
+            <span class="ew-count" data-count-to="2">2</span>
             <span class="ew-stat-label">Games in concept</span>
           </div>
           <div class="ew-stat ew-stat-marquee">
@@ -687,11 +691,11 @@
       </div>
       <div class="ew-footer-base">
         <span class="ew-mono">&copy; 2026 Elusion Works / by Kol Tregaskes</span>
-        <span class="ew-mono">Public web estate, not a formal company</span>
+        <span class="ew-mono">Independent studio / sites, systems and experiments</span>
       </div>
     </footer>
 
-    <script type="module" src="scripts/cabinet.js?v=20260517"></script>
-    <script src="cross-site-nav.js" defer></script>
+    <script type="module" src="scripts/cabinet.js?v=20260725b"></script>
+    <script src="cross-site-nav.js?v=20260725b" defer></script>
   </body>
 </html>

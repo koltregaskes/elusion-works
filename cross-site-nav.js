@@ -48,6 +48,10 @@
     || sites.find((site) => siteKeyFromUrl(site.url) === currentHost)?.id
     || (currentHost === 'elusionworks.com' ? 'elusion-works' : null);
 
+  // Elusion Works already carries the full estate navigation in its own
+  // footer. Do not append a second, duplicate project strip underneath it.
+  if (activeSiteId === 'elusion-works' || document.querySelector('.ew-footer')) return;
+
   const siblings = activeSiteId
     ? sites.filter((site) => site.id !== activeSiteId)
     : sites;
