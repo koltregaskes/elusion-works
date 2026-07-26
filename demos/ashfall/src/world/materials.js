@@ -639,8 +639,8 @@ function rustField(res, o) {
     const cov = bias ? coverage * (1 + (bias[i] - 0.35) * biasAmt) : coverage;
     const d = warped[i] * 0.9 + (0.5 - detail[i]) * 0.36 + (0.5 - fine[i]) * 0.16;
     // Narrow transition band = crisp, flaky edge where the oxide front has eaten in.
-    core[i] = 1 - smoothstep(coverage * 0.82, coverage * 1.0, d);
-    halo[i] = 1 - smoothstep(coverage * 1.0, coverage * 1.9, d);
+    core[i] = 1 - smoothstep(cov * 0.82, cov * 1.0, d);
+    halo[i] = 1 - smoothstep(cov * 1.0, cov * 1.9, d);
   }
   const spread = blurField(halo, res, Math.max(1, (res * 0.005) | 0), 2);
   // Re-roughen the blurred halo edge. A pure blur gives an airbrushed transition, which is
@@ -1895,8 +1895,12 @@ function bMetalPainted(ctx) {
   const chipsFine = chipField(res, { seed: seed + 29, freq: 30, threshold: 0.76, warp: 0.015 });
   const scratches = scratchField(res, { seed: seed + 41, count: 320, angle: 0.35, spread: 0.5, lenMin: 0.02, lenMax: 0.22, width: 0.0016 });
   const scratchesFine = scratchField(res, { seed: seed + 43, count: 700, angle: 1.1, spread: 0.9, lenMin: 0.006, lenMax: 0.05, width: 0.0009 });
+  // Mill grain telegraphs through a thin industrial enamel — one coat of paint does not
+  // fill a rolled finish, and the directional sheen is what says "steel" under the colour.
+  const mill = scratchField(res, { seed: seed + 47, count: 420, angle: 0.0, spread: 0.03, lenMin: 0.25, lenMax: 0.95, width: 0.001 });
   const grime = blotchField(res, seed + 61, 3);
   const streaks = streakField(res, { seed: seed + 71, count: 18, lenMin: 0.1, lenMax: 0.45, widthMin: 0.004, widthMax: 0.014 });
+  const macroL = macroField(res, seed + 73);
   // A weld seam running across the plate — a proper fabricated-steel tell.
   const weld = new Float32Array(N);
   const weldY = res * 0.62;
@@ -1965,16 +1969,59 @@ function bMetalPainted(ctx) {
 /* --- metalRust: the hero corrosion surface -------------------------------- */
 function bMetalRust(ctx) {
   const { res, N, seed } = ctx;
-  const rust = rustField(res, { seed, cells: 6, coverage: 0.5, warp: 0.1 });
-  const rust2 = rustField(res, { seed: seed + 777, cells: 13, coverage: 0.34, warp: 0.06 });
-  const pitting = pitField(res, { cells: 52, seed: seed + 131, density: 0.45, sizeMin: 0.1, sizeMax: 0.4 });
   const grain = fbmField(res, { seed: seed + 149, freq: 30, octaves: 5, gain: 0.55 });
   const speck = fbmField(res, { seed: seed + 151, freq: 150, octaves: 2 });
-  const mill = scratchField(res, { seed: seed + 163, count: 700, angle: 0.0, spread: 0.05, lenMin: 0.15, lenMax: 0.85, width: 0.0008 });
+  // Mill grain: hot-rolled plate carries a strong directional lay from the rolls, and it is
+  // the reason bare steel has an anisotropic sheen instead of reading as grey plastic. Two
+  // passes, a fine one and a coarser scored one, both along the rolling direction.
+  const mill = scratchField(res, { seed: seed + 163, count: 900, angle: 0.0, spread: 0.035, lenMin: 0.2, lenMax: 0.95, width: 0.0007 });
+  const millCoarse = scratchField(res, { seed: seed + 167, count: 160, angle: 0.0, spread: 0.05, lenMin: 0.3, lenMax: 1.0, width: 0.0022 });
   const streaks = streakField(res, { seed: seed + 179, count: 36, lenMin: 0.15, lenMax: 0.75, widthMin: 0.004, widthMax: 0.02 });
   const blotch = blotchField(res, seed + 191, 2);
   const grime = blotchField(res, seed + 193, 5);
   const dents = fbmField(res, { seed: seed + 197, freq: 4, octaves: 3 });
+  const macroL = macroField(res, seed + 199);
+
+  /*
+   * Fabrication first, corrosion second — because corrosion is a *consequence* of the
+   * fabrication. A plate has cut edges, a weld across it, and a line of bolts through it, and
+   * every one of those is where the mill scale is broken and the water is held. Building the
+   * fixings and the seams up front lets the rust field be told where to nucleate instead of
+   * being scattered at random, which is the whole difference between rust and orange stains.
+   */
+  const rivets = discField(res, { cols: 6, rows: 2, radius: 0.0125, jitter: 0.22, dropout: 0.12, rim: 2.1, seed: seed + 211 });
+  const weld = new Float32Array(N);
+  const weldWob = fbmField(res, { seed: seed + 223, freq: 12, octaves: 3, stretch: 1 / 8 });
+  const plateEdge = new Float32Array(N);
+  const weldY = res * 0.34;
+  for (let y = 0; y < res; y++) {
+    for (let x = 0; x < res; x++) {
+      const i = y * res + x;
+      const yy = weldY + (weldWob[i] - 0.5) * res * 0.014;
+      let d = Math.abs(y - yy);
+      d = Math.min(d, res - d) / (res * 0.011);
+      // Stacked-dime bead ripple along the seam: a weld is a row of overlapping puddles.
+      const ripple = 0.5 + 0.5 * Math.sin((x / res) * Math.PI * 2 * 52 + weldWob[i] * 6);
+      weld[i] = (1 - smoothstep(0.55, 1.0, d)) * (0.7 + ripple * 0.3);
+      // The plate's own cut edges, i.e. the tile borders. A 2 m tile is one plate module, so
+      // this reads as the sheared edge of the plate — exactly where rust starts on real steel.
+      const eu = Math.min(x, res - 1 - x) / res;
+      const ev = Math.min(y, res - 1 - y) / res;
+      plateEdge[i] = 1 - smoothstep(0.0, 0.045, Math.min(eu, ev));
+    }
+  }
+  // Water paths: whatever runs down the plate carries the oxide with it and keeps the steel
+  // under it wet, so the run is both a stain and a nucleation site.
+  const waterPath = bleedField(streaks, res, { run: 0.14, spread: res * 0.006, seed: seed + 227 });
+  const nucleate = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    nucleate[i] = clamp01(
+      plateEdge[i] * 0.9 + weld[i] * 0.7 + rivets.mask[i] * 0.8 + rivets.rim[i] * 0.9 + waterPath[i] * 0.55 + smoothstep(0.4, 0.85, macroL[i]) * 0.35
+    );
+  }
+  const rust = rustField(res, { seed, cells: 6, coverage: 0.42, warp: 0.1, bias: nucleate, biasAmt: 1.15 });
+  const rust2 = rustField(res, { seed: seed + 777, cells: 13, coverage: 0.28, warp: 0.06, bias: nucleate, biasAmt: 0.9 });
+  const pitting = pitField(res, { cells: 52, seed: seed + 131, density: 0.45, sizeMin: 0.1, sizeMax: 0.4 });
 
   // Weathered structural steel is darker and more neutral than bright mill stock.
   const bare = mixc(C.steelBare, C.gunmetal, 0.22);
@@ -1988,15 +2035,20 @@ function bMetalRust(ctx) {
     const halo = clamp01(rust.halo[i] * 0.9 + rust2.halo[i] * 0.5);
     const scale = clamp01(rust.scale[i] + rust2.scale[i] * 0.6);
     const pit = pitting[i] * core;
-    const run = clamp01(streaks[i] * (0.35 + halo * 0.9));
+    const run = clamp01(clamp01(streaks[i] * 0.8 + waterPath[i] * 0.5) * (0.35 + halo * 0.9));
+    const rivet = rivets.mask[i];
+    const wl = weld[i];
+    const millAll = clamp01(mill[i] * 0.85 + millCoarse[i] * 0.5);
 
     // Rust occupies more volume than the steel it came from — the scale stands proud, the
     // pits it leaves behind eat in. Both, not one or the other.
     let hv = 0.55 + (dents[i] - 0.5) * 0.18 + (grain[i] - 0.5) * 0.08;
+    hv += wl * 0.14; // the bead stands proud of the parent plate
+    hv += rivet * 0.16 - rivets.rim[i] * 0.02; // dome head, slight draw-in around it
     hv += scale * 0.2;
     hv += core * 0.06;
     hv -= pit * 0.3;
-    hv += mill[i] * 0.012;
+    hv += millAll * 0.014;
     ctx.h[i] = clamp01(hv);
 
     ctx.ar[i] = bare[0];
@@ -2007,7 +2059,10 @@ function bMetalRust(ctx) {
     tint(ctx, i, lerp(0.86, 1.1, blotch[i]));
     tint(ctx, i, lerp(0.88, 1.09, grain[i]));
     tint(ctx, i, lerp(0.95, 1.05, speck[i]));
-    paint(ctx, i, shade(bare, 1.18), mill[i] * 0.35);
+    tint(ctx, i, lerp(0.84, 1.16, macroL[i])); // the macro layer, decisive on a big plate
+    paint(ctx, i, shade(bare, 1.2), millAll * 0.4);
+    paint(ctx, i, shade(bare, 0.88), wl * 0.45); // weld metal is darker than the parent
+    paint(ctx, i, shade(bare, 1.12), rivet * 0.5);
     paint(ctx, i, mixc(dirtC, bare, 0.45), clamp01(grime[i] - 0.45) * 0.4);
     paint(ctx, i, mixc(bare, rustC, 0.55), halo * 0.6); // light oxide bloom
 
@@ -2026,9 +2081,16 @@ function bMetalRust(ctx) {
     paint(ctx, i, dustC, clamp01(blotch[i] - 0.72) * 0.22);
 
     const l = lum(ctx, i);
-    let r = 0.3;
+    // The full spread runs 0.14 on a wiped, rain-washed plate to 0.98 on flaking scale. That
+    // range is the material: a metal held near one roughness reads as painted MDF whatever
+    // the albedo does.
+    let r = 0.28;
     r += (grain[i] - 0.5) * 0.08;
-    r -= mill[i] * 0.1; // rolled mill finish is directional and smooth
+    r -= millAll * 0.13; // rolled mill finish is directional and smooth
+    r += (0.5 - macroL[i]) * 2.0 * 0.09;
+    r -= smoothstep(0.55, 0.95, blotch[i]) * (1 - core) * 0.14; // rain-washed, wiped clean
+    r += wl * 0.24; // weld metal and its heat tint are matte
+    r -= rivet * 0.12; // a bolt head is a hammered, polished dome
     r = lerp(r, 0.82, halo * 0.6);
     r = lerp(r, 0.9, core);
     r = lerp(r, 0.96, scale);
