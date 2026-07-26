@@ -388,7 +388,10 @@ export function createHUD(game) {
     coneIn: rgbaOf(COL.friendly, 0.19),
     coneOut: rgbaOf(COL.friendly, 0.0),
     arrowFill: COL.primary,
-    arrowStroke: rgbaOf(COL.shadow, 0.95),
+    arrowKey: rgbaOf(COL.shadow, 0.95),
+    /* Saturated rim on the arrow. The white core owns the top of the luminance range but is
+       nearly achromatic, so the rim is what makes the arrow the most saturated mark too. */
+    arrowRim: COL.friendly,
     arrowGlowIn: rgbaOf(COL.friendly, 0.42),
     arrowGlowOut: rgbaOf(COL.friendly, 0.0),
     blipStroke: rgbaOf(COL.shadow, 0.95),
@@ -1850,9 +1853,6 @@ export function createHUD(game) {
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(headingRad);
-    ctx.fillStyle = MAP_COL.arrowFill;
-    ctx.strokeStyle = MAP_COL.arrowStroke;
-    ctx.lineWidth = 2;
     ctx.lineJoin = 'round';
     ctx.beginPath();
     ctx.moveTo(0, -10);
@@ -1860,7 +1860,15 @@ export function createHUD(game) {
     ctx.lineTo(0, 4.5);
     ctx.lineTo(-7, 8.5);
     ctx.closePath();
+    // Dark keyline outermost, so the arrow still separates when it is standing on a wall lip.
+    ctx.strokeStyle = MAP_COL.arrowKey;
+    ctx.lineWidth = 4.5;
     ctx.stroke();
+    // Saturated rim, then the near-white core.
+    ctx.strokeStyle = MAP_COL.arrowRim;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = MAP_COL.arrowFill;
     ctx.fill();
     ctx.restore();
 

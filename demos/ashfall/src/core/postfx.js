@@ -1093,27 +1093,32 @@ vec3 hdrCentre(vec2 uv) {
    *    ~0.45 texel of red-blue separation in the corner and nothing at all inboard of it.
    *
    * Local-contrast damp. Even a sub-texel split reads as an artefact rather than as optics
-   * when it lands on a surface whose detail already alternates every pixel — corrugated steel
-   * seen edge-on, chain-link, the container ribs. A real lens fringes a *silhouette*, and a
-   * silhouette is a step, not a comb. Measure the relative spread of a 4-neighbour luma cross
-   * and fade the split out where that spread says "comb". The ratio form is scale-free, so it
-   * behaves the same on the sunlit gravel and in the shadow under the wagons.
-   * Gated on the falloff so the centre of the frame — which carries no aberration anyway —
-   * never pays for the four extra taps. */
+   * when it lands on a surface whose detail already alternates every pixel. But the damp has
+   * to be able to tell a comb from a step: a real lens fringes a *silhouette*, and that fringe
+   * is the thing this effect exists to produce, so blanket-damping on contrast would throw
+   * away the signal along with the noise. A step puts this pixel *between* its neighbours; a
+   * comb — corrugation edge-on, chain-link, container ribs — puts it outside the neighbourhood
+   * range on every axis at once. So the damp is (how far outside) x (how contrasty), and a
+   * silhouette scores zero on the first term no matter how hard it scores on the second.
+   * Both terms are ratios, so they behave the same on sunlit gravel and in the shadow under
+   * the wagons. Gated on the falloff so the middle of the frame — which carries no aberration
+   * to damp in the first place — never pays for the four extra taps. */
   vec2 d = uv - 0.5;
   float r = length(d) * 1.41421356;              // 0 on axis, 1.0 in the frame corner
   float falloff = r * r * sqrt(r);               // pow(r, 2.5) without the log2/exp2 pair
   vec2 off = d * (uChromatic * 0.47) * falloff;
 
   if (falloff > 0.02) {
-    float l0 = luma(sanitise(texture(tColour, uv + vec2( uTexel.x, 0.0)).rgb));
-    float l1 = luma(sanitise(texture(tColour, uv - vec2( uTexel.x, 0.0)).rgb));
-    float l2 = luma(sanitise(texture(tColour, uv + vec2( 0.0, uTexel.y)).rgb));
-    float l3 = luma(sanitise(texture(tColour, uv - vec2( 0.0, uTexel.y)).rgb));
+    float lc = luma(sanitise(texture(tColour, uv).rgb));
+    float l0 = luma(sanitise(texture(tColour, uv + vec2(uTexel.x, 0.0)).rgb));
+    float l1 = luma(sanitise(texture(tColour, uv - vec2(uTexel.x, 0.0)).rgb));
+    float l2 = luma(sanitise(texture(tColour, uv + vec2(0.0, uTexel.y)).rgb));
+    float l3 = luma(sanitise(texture(tColour, uv - vec2(0.0, uTexel.y)).rgb));
     float mx = max(max(l0, l1), max(l2, l3));
     float mn = min(min(l0, l1), min(l2, l3));
     float contrast = (mx - mn) / (mx + mn + 1e-3);
-    off *= 1.0 - 0.9 * smoothstep(0.18, 0.55, contrast);
+    float comb = clamp(max(mn - lc, lc - mx) / max(mx - mn, 1e-4) * 3.0, 0.0, 1.0);
+    off *= 1.0 - 0.9 * comb * smoothstep(0.18, 0.55, contrast);
   }
 
   vec3 c;

@@ -1025,24 +1025,50 @@ function discField(res, o) {
  * is the most common way procedural weathering gives itself away.
  *
  * v increases upward in these textures (row 0 is v = 0), so "down" is decreasing y. `run` is
- * the e-folding length as a fraction of the tile. Two passes down each column so a source
- * near the bottom still wraps correctly into the top.
+ * the e-folding length as a fraction of the tile. Two passes down the tile so a source near
+ * the bottom still wraps correctly into the top.
+ *
+ * Marched a row at a time with a whole row of accumulators rather than a column at a time
+ * with one, which is the same result and an order of magnitude quicker: a column-major sweep
+ * of a 1024-square field touches a different cache line on every single read, and there are
+ * five of these in the library at hero resolution.
  */
 function bleedField(src, res, o) {
   const decay = Math.exp(-1 / Math.max(1, (o.run ?? 0.08) * res));
   const spread = o.spread ?? 0;
   const out = new Float32Array(res * res);
-  const wob = spread > 0 ? fbmField(res, { seed: (o.seed ?? 17) + 55, freq: 4, octaves: 3, stretch: 8 }) : null;
-  for (let x = 0; x < res; x++) {
-    let acc = 0;
-    for (let p = 0; p < 2; p++) {
-      for (let k = 0; k < res; k++) {
-        const y = res - 1 - k;
-        const i = y * res + x;
-        const s = wob ? sampleWrap(src, res, x + (wob[i] - 0.5) * spread, y) : src[i];
-        acc = s > acc * decay ? s : acc * decay;
-        if (p === 1 && acc > out[i]) out[i] = acc;
+  const cur = new Float32Array(res);
+  const prev = new Float32Array(res);
+  const mask = res - 1;
+  // Lateral wander, so a run wobbles as it falls instead of being a plumb line. Built small
+  // and looked up nearest-neighbour: the drift is only a few pixels and everything that
+  // consumes this blurs it afterwards, so a bilinear fetch per texel would buy nothing.
+  let wob = null;
+  let wx = null;
+  const wres = 64;
+  if (spread > 0) {
+    wob = fbmField(wres, { seed: (o.seed ?? 17) + 55, freq: 4, octaves: 3, stretch: 8 });
+    wx = new Int32Array(res);
+    for (let x = 0; x < res; x++) wx[x] = ((x * wres) / res) | 0;
+  }
+  for (let p = 0; p < 2; p++) {
+    for (let k = 0; k < res; k++) {
+      const y = res - 1 - k;
+      const row = y * res;
+      const wrow = wob ? (((y * wres) / res) | 0) * wres : 0;
+      for (let x = 0; x < res; x++) {
+        let a = prev[x] * decay;
+        if (wob) {
+          const off = ((wob[wrow + wx[x]] - 0.5) * spread) | 0;
+          const b = prev[(x + off) & mask] * decay;
+          if (b > a) a = b;
+        }
+        const s = src[row + x];
+        if (s > a) a = s;
+        cur[x] = a;
+        if (p === 1 && a > out[row + x]) out[row + x] = a;
       }
+      prev.set(cur);
     }
   }
   return out;
@@ -1619,13 +1645,18 @@ function bAsphalt(ctx) {
    * off along a hard edge with a bead of sealant tar run along the joint. Every real yard has
    * one, and no amount of noise will ever produce a straight-ish cut.
    */
-  const patchF = warpField(
-    blotchField(res, seed + 181, 2),
-    res,
-    fbmField(res, { seed: seed + 183, freq: 9, octaves: 3 }),
-    fbmField(res, { seed: seed + 187, freq: 9, octaves: 3 }),
-    res * 0.02
+  // Built at a quarter resolution and upscaled BEFORE the threshold, not after: the field is
+  // low frequency by construction, and thresholding the interpolated field is what keeps the
+  // cut edge one texel wide at full resolution instead of a stair.
+  const pres = Math.min(res, 256);
+  const patchLo = warpField(
+    blotchField(pres, seed + 181, 2),
+    pres,
+    fbmField(pres, { seed: seed + 183, freq: 9, octaves: 3 }),
+    fbmField(pres, { seed: seed + 187, freq: 9, octaves: 3 }),
+    pres * 0.02
   );
+  const patchF = pres === res ? patchLo : upsampleField(patchLo, pres, res);
   const patch = new Float32Array(N);
   const patchSeam = new Float32Array(N);
   for (let i = 0; i < N; i++) {

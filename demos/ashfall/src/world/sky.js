@@ -844,7 +844,9 @@ const CLOUD_FRAG = /* glsl */ `
     // Coverage threshold. Softness controls the wispiness of the edges; a hard step here is
     // the classic "cotton wool cut out with scissors" tell. The transition widens with distance
     // — a poor man's mip bias, and what stops the compressed horizon bands crawling under TAA.
-    float soft = uSoftness * (1.0 + t * 0.00040);
+    // Capped: uncapped, the horizon bands - the whole point of the deck reaching that far -
+    // widened their way straight back out of existence past ~15 km.
+    float soft = uSoftness * (1.0 + min(t * 0.00040, 1.5));
     float cov = smoothstep(uCoverage, uCoverage + soft, dens);
     if (cov <= 0.002) discard;
 
@@ -1180,16 +1182,18 @@ export function createSky(engine, materials) {
     /** Scale height of the thin ash that gets lofted above the inversion. */
     hazeLoft: 0.34,
     /** How much of the slab's density that lofted tail carries. Small, or the edge disappears. */
-    hazeLoftAmount: 0.20,
+    hazeLoftAmount: 0.14,
 
     /**
      * Chappuis ozone absorption. The band peaks near 602 nm, between the red and green
      * primaries, so integrated against sRGB it takes most out of red, roughly half as much out
      * of green and almost nothing out of blue — which is what tips the mid-sky green-blue.
-     * 0.24 is a couple of percent of transmission at the band's peak: visible as a hue shift in
-     * a column read, invisible as a "tint".
+     * At 0.18 the band takes ~16% out of red and ~8% out of green where it peaks, for an ~8%
+     * luminance dip around 17 degrees: unmistakable in a column read, and to the eye just the
+     * cool step that stops the dome being monotonic. Pushed to 0.24 it starts reading as a
+     * grey band rather than as air.
      */
-    chappuisStrength: 0.24,
+    chappuisStrength: 0.18,
     /** Where the ozone slant path peaks, in sin(altitude). 0.30 is ~17 degrees. */
     chappuisAlt: 0.30,
     chappuisWidth: 0.30,
@@ -1203,7 +1207,7 @@ export function createSky(engine, materials) {
      * Aureole. Much wider than the disc and much wider than the Mie lobe above: 0.44 rad is
      * 25 degrees of e-folding, so the glow is still doing measurable work 60 degrees out.
      */
-    aureoleStrength: 0.62,
+    aureoleStrength: 0.45,
     aureoleWidth: 0.44,
     /** Inner lobe, ~6 degrees, so the glow has a bright heart rather than a flat disc of cream. */
     aureoleCore: 0.11,
@@ -1218,7 +1222,7 @@ export function createSky(engine, materials) {
      * The horizon glow proper — the band the container stacks and the crane silhouette against.
      * Keyed to azimuth, not to angular distance from the disc, so it runs along the horizon.
      */
-    horizonGlow: 0.55,
+    horizonGlow: 0.34,
     /** Scale height of that band, in sin(altitude). ~3 degrees. */
     horizonGlowHeight: 0.052,
     /** How tightly it hugs the sun's azimuth. 3.0 gives a ~90 degree wide wash. */
@@ -1280,8 +1284,12 @@ export function createSky(engine, materials) {
     cloudFeatureSize: 1500,
     /** Domain compression along the wind. This is what makes bands instead of blobs. */
     cloudStretch: 6.0,
-    /** Cross-wind displacement of the streaks — vertical wind shear, so they feather and fan. */
-    cloudShear: 0.55,
+    /**
+     * Cross-wind displacement of the streaks — vertical wind shear, so they feather and fan
+     * instead of ruling the sky with parallel lines. In fBm units *before* the stretch, so 1.6
+     * is ~2.4 km of along-wind offset across the deck.
+     */
+    cloudShear: 1.6,
     /** Fibrous along-streak detail. Combed, not speckled. */
     cloudFibre: 0.40,
     /** Aerial-perspective rate, per metre. Gentler than before: the deck now reaches much further. */
@@ -2119,7 +2127,7 @@ export function createSky(engine, materials) {
     cloudUniforms.uAmbTop.value
       .copy(colZenith)
       .multiplyScalar(params.zenithLuminance * skyBrightnessScale)
-      .lerp(_colC.copy(colHorizon).multiplyScalar(params.hazeLuminance * skyBrightnessScale), 0.18);
+      .lerp(_colC.copy(colHorizon).multiplyScalar(params.hazeLuminance * skyBrightnessScale), 0.10);
     cloudUniforms.uAmbUnder.value
       .copy(colHorizon)
       .multiplyScalar(params.hazeLuminance * skyBrightnessScale * 0.85)
