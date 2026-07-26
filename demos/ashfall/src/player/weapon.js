@@ -970,16 +970,23 @@ function buildMaterials(game) {
        whole effect — this is the material-system answer to "worn where the support hand
        grips", rather than painting a lighter patch on. */
     polymerWorn: make('polymerWorn', {
-      color: dielectric(PALETTE.gunPolymer, 2.75, 0.14),
+      color: dielectric(PALETTE.gunPolymer, 1.85, 0.14),
       metalness: 0.0,
       roughness: 0.46,
       envMapIntensity: ENV_POLY * 1.15,
     }, { from: 'gunPolymer', repeat: 10, normalScale: 0.34 }),
 
     /* Handguard / stock polymer: moulded, matte, and a dielectric — its specular is the
-       fixed 4% F0, so pushing roughness right up is the only way to kill the sheen. */
+       fixed 4% F0, so pushing roughness right up is the only way to kill the sheen.
+
+       The dielectric gains came down with the metals and for the same reason. At 2.4 the
+       stock's albedo landed on 0.13 linear; glass-filled nylon furniture is *black*, and black
+       polymer measures 0.03-0.05. 1.55 puts it at 0.084 — still lifted well above the raw
+       palette value, because a viewmodel with no shadowing and no fog on it needs some
+       headroom to keep its form readable, but no longer three times the reflectance of the
+       thing it is modelling. Same adjustment on the grip, the tan furniture and the rubber. */
     polymer: make('polymer', {
-      color: dielectric(PALETTE.gunPolymer, 2.4),
+      color: dielectric(PALETTE.gunPolymer, 1.55),
       metalness: 0.0,
       roughness: 0.74,
       envMapIntensity: ENV_POLY,
@@ -987,7 +994,7 @@ function buildMaterials(game) {
 
     /* Grip polymer: aggressive stipple, near-fully rough. */
     grip: make('grip', {
-      color: dielectric(PALETTE.gunPolymer, 2.0),
+      color: dielectric(PALETTE.gunPolymer, 1.35),
       metalness: 0.0,
       roughness: 0.90,
       envMapIntensity: ENV_POLY * 0.85,
@@ -995,7 +1002,7 @@ function buildMaterials(game) {
 
     /* Tan furniture — the vector reads warmer than the mk18 at a glance. */
     tan: make('tan', {
-      color: new THREE.Color(PALETTE.gunTan).multiplyScalar(0.62),
+      color: new THREE.Color(PALETTE.gunTan).multiplyScalar(0.46),
       metalness: 0.0,
       roughness: 0.68,
       envMapIntensity: ENV_POLY,
@@ -1011,7 +1018,7 @@ function buildMaterials(game) {
 
     /* Buttpad, eyecup, cheek riser pad. Rubber is the matte extreme of the set. */
     rubber: make('rubber', {
-      color: dielectric(PALETTE.gunRubber, 2.6),
+      color: dielectric(PALETTE.gunRubber, 1.7),
       metalness: 0.0,
       roughness: 0.97,
       envMapIntensity: ENV_POLY * 0.6,
@@ -1098,8 +1105,10 @@ function buildMaterials(game) {
      off a capture, the ocular came back at luminance 142 with under 12 codes of variation
      across the whole aperture — a painted disc, exactly what §3.8 says not to ship.
      Real coated glass reflects under 1% on axis and approaches 100% at grazing, so essentially
-     all of its visible energy is Fresnel. So the body colour drops by 2.6x and hands the disc
-     back to the tube interior behind it, while roughness tightens and envMapIntensity goes up:
+     all of its visible energy is Fresnel. So the body colour drops by 4.2x and the opacity with
+     it — in ADS the ocular fills the whole aperture, so every point of opacity is a point of
+     tint over the entire sight picture, and at 0.58 the view through the scope came back
+     visibly teal — while roughness tightens and envMapIntensity goes up:
      three's IBL includes the Fresnel term, so on the domed element that produces a dark centre
      and a bright rim *for free*, from the geometry, and the bright band travels round the lens
      as the weapon moves. That is what the additive rim below was faking, so it comes down. */
@@ -1108,7 +1117,7 @@ function buildMaterials(game) {
     metalness: 0.0,
     roughness: 0.12,
     transparent: true,
-    opacity: 0.34,
+    opacity: 0.24,
     depthWrite: false,
     envMapIntensity: 1.5,
   });
@@ -1135,7 +1144,7 @@ function buildMaterials(game) {
   mats.coatRim = new THREE.MeshBasicMaterial({
     color: new THREE.Color(0.3, 0.44, 0.52),
     transparent: true,
-    opacity: 0.16,
+    opacity: 0.12,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
   });
@@ -1325,11 +1334,16 @@ function buildHandguard(asm, cfg) {
       { p: [0, railY, zz] }
     );
   }
-  /* Rail cover over the forward third of the rail. Two things at once: it is what a shooter
-     actually does to a rail section their hand can reach, and it stops 200 mm of identical
-     teeth reading as a machine-generated repeat. */
-  const coverLen = len * 0.34;
-  asm.add(railCoverGeo(coverLen, 0.0212), 'polymer', { p: [0, railY + 0.0012, z1 + 0.030 + coverLen * 0.5] });
+  /* Rail covers. Two sections with a deliberate gap between them, which is what a shooter
+     actually does to the rail their hand has to reach, and what stops 200 mm of identical
+     teeth reading as a machine-generated repeat. The gap matters as much as the covers: from
+     the hip pose the whole top run is foreshortened into one ramp, and it is the *interruption*
+     that gives the eye something to measure the length against. */
+  const coverLen = len * 0.30;
+  asm.add(railCoverGeo(coverLen, 0.0212), 'polymer', { p: [0, railY + 0.0012, z1 + 0.028 + coverLen * 0.5] });
+  asm.add(railCoverGeo(len * 0.2, 0.0212), 'polymer', {
+    p: [0, railY + 0.0012, z1 + 0.048 + coverLen + len * 0.1],
+  });
   // Broken edges either side of the rail top. See addEdgeHighlight.
   asm.addMirrored(() => microPlate(0.0013, 0.0013, len - 0.046), 'worn', {
     p: [0.0101, railY + 0.0023, (z0 + z1) * 0.5 - 0.002],
@@ -1712,7 +1726,7 @@ function buildOptic(mats, cfg) {
     const n = kind === 'lpvo' ? 4 : 3;
     for (let i = 0; i < n; i++) {
       const bz = front + 0.010 + (span * (i + 0.5)) / n;
-      asm.add(tubeZ(glassR * 0.99, glassR * (0.80 - i * 0.015), bz + 0.0012, bz - 0.0012, 18), 'cavity', {
+      asm.add(tubeZ(glassR * 0.99, glassR * (0.92 - i * 0.018), bz + 0.0012, bz - 0.0012, 18), 'cavity', {
         p: [0, yc, 0],
       });
     }
@@ -1949,6 +1963,27 @@ function buildStock(asm, cfg) {
     asm.add(chamferBox(0.0105, 0.0062, 0.0072, { r: 0.0014, bevel: 0.0009, curveSegments: 2 }), 'cavity', {
       p: [0, y - tubeR + 0.0018, zz],
     });
+  }
+  /* Anti-rotation rib along the *top* of the extension, with the position index stamped into
+     it. Checked against the player's actual viewpoint rather than an orbit view: from the hip
+     pose the buffer tube is a 200 mm cylinder running out of the bottom-right of the frame
+     with nothing on it, because every feature it had — the notches, the sling loops, the
+     release lever — is on the underside where the camera never goes. This rib and the two
+     index rings below are the only things that break that run, and they are the difference
+     between a stock and a length of pipe. */
+  asm.add(chamferBox(0.0068, 0.0042, len - 0.030, { r: 0.0014, bevel: 0.001, curveSegments: 3 }), 'gunmetal', {
+    p: [0, y + tubeR - 0.0008, z0 + 0.014 + (len - 0.030) * 0.5],
+  });
+  asm.addMirrored(() => microPlate(0.0011, 0.0011, len - 0.036), 'worn', {
+    p: [0.0031, y + tubeR + 0.0012, z0 + 0.014 + (len - 0.030) * 0.5],
+    r: [0, 0, Math.PI * 0.25],
+  });
+  for (let i = 0; i < notches; i += 2) {
+    const zz = z0 + 0.042 + i * ((len - 0.062) / (notches - 1));
+    asm.add(microPlate(0.0026, 0.0016, 0.0026), 'worn', { p: [0, y + tubeR + 0.0021, zz] });
+  }
+  for (const rz of [z0 + 0.030, z0 + len - 0.020]) {
+    asm.add(latheZ([[tubeR * 1.06, rz + 0.0022], [tubeR * 1.06, rz - 0.0022]], 16), 'gunmetal', { p: [0, y, 0] });
   }
 
   if (cfg.folding) {
@@ -3278,7 +3313,7 @@ const DEG = Math.PI / 180;
 const SETTLE_PITCH = 0.3;
 const SETTLE_ROLL = 0.26;
 const SETTLE_Z = 0.34;
-const SETTLE_CLAMP = 2.4;
+const SETTLE_CLAMP = 1.2;
 
 /* How much of the recoil the hands and shoulders are allowed *not* to follow. See the
    residual-recoil block in update(): 0 is a hand welded to the receiver, 1 is a hand that
@@ -3988,8 +4023,18 @@ export function createWeapon(game) {
 
     /* Settle. Negative, so the slow companion spring pulls the muzzle *through* the aim point
        as the primary comes home and then walks it back. Braced in ADS like everything else:
-       a shoulder-welded rifle settles far less than one held out at arm's length. */
-    const settle = lerp(1.0, 0.55, state.adsBlend);
+       a shoulder-welded rifle settles far less than one held out at arm's length.
+
+       `burstFade` is not decoration. Mid-burst the arms never get to complete a settle — the
+       next round arrives in 77 ms and the muzzle is still climbing — so a full-strength
+       negative impulse every round would integrate into a standing downward sag fighting the
+       recoil pattern the player is trying to learn. `lastShotTime` is still the *previous*
+       round's at this point in fireOne, so this is the real interval: near zero inside a burst,
+       full for a first shot or a deliberate semi-auto pace, which is exactly where a settle is
+       something a shooter can actually see. */
+    const since = (game.clock ? game.clock.time : 0) - state.lastShotTime;
+    const burstFade = clamp((since - 0.06) / 0.22, 0.18, 1);
+    const settle = lerp(1.0, 0.55, state.adsBlend) * burstFade;
     sp.settlePitch.impulse(-vmPitch * SETTLE_PITCH * settle * state.impScale.settlePitch);
     sp.settleRoll.impulse(-vmRoll * SETTLE_ROLL * settle * state.impScale.settleRoll);
     sp.settleZ.impulse(-d.recoil.kick * SETTLE_Z * settle * state.impScale.settleZ);

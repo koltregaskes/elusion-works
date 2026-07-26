@@ -14,13 +14,32 @@
  *                     ├─ send: far  ▸ convolver (yard IR) ──┤
  *                     └─ send: close ▸ convolver (room IR) ─┤
  *                                                           ▼
- *   ambience ────────────────────────────────────────────▸ duckGain ▸ duckLP
+ *                     └─ send: slap  ▸ slapback taps ──────┤
+ *                                                           ▼
+ *   ambience ──────────────────▸ ambDuck ───────────────▸ duckGain ▸ duckLP
  *                                                           ▼
  *                                      busCompressor ▸ softClip ▸ limiter ▸ masterGain ▸ out
  *
  * `duckGain` + `duckLP` are the concussion model: an explosion slams them shut and they
  * recover over ~2.5 s while a tinnitus tone — deliberately wired *past* the ducker so it
- * survives it — rings down over six seconds.
+ * survives it — rings down over six seconds. `ambDuck` is a different thing entirely: a
+ * side-chain that pulls the wind and the plant hum down under gunfire, so the ambience gets
+ * out of the way of the report instead of fighting it, and comes back over ~300 ms.
+ *
+ * Three things in here are worth knowing before changing anything:
+ *
+ *  - **The room is measured, not authored.** One horizontal probe ray per frame (plus the
+ *    existing ceiling ray) gives the distance to the nearest reflector and the mean openness
+ *    of the space. That drives the pre-delay of the slap-back taps, the wet/dry split and how
+ *    much wind the player hears. Walk into the depot and the yard's slap-back shortens and the
+ *    wind dies, because the geometry says so.
+ *  - **Gunshots are a timeline, not a sound.** A shot schedules a supersonic crack, a muzzle
+ *    blast and four discrete mechanical events (sear, unlock, buffer, return) across the
+ *    weapon's real cycle time. For a shot fired at you the crack is scheduled *ahead* of the
+ *    blast by the propagation difference, which is the crack-thump every shooter knows.
+ *  - **Priority, not just polyphony.** `prio()` sets the share of the voice pool a sound may
+ *    take. Gunfire gets the whole pool; footsteps, enemies and scenery get a slice, so no
+ *    amount of ambience can starve the thing the player needs to hear.
  *
  * Design rules honoured here:
  *  - `update()` allocates nothing. All vectors are module-scope scratch.
@@ -32,7 +51,7 @@
  */
 
 import * as THREE from '../../vendor/three.module.js';
-import { SURFACES, ATMOSPHERE } from '../world/art.js';
+import { SURFACES, ATMOSPHERE, MAP, ZONES, PALETTE, LIGHTING } from '../world/art.js';
 
 /* ========================================================================== */
 /* Module-scope scratch — never allocate in update()                          */
@@ -46,9 +65,33 @@ const _rayOrigin = new THREE.Vector3();
 const _srcPos = new THREE.Vector3();
 const _tmpVec = new THREE.Vector3();
 const _battlePos = new THREE.Vector3();
+const _shotDir = new THREE.Vector3();
+const _rel = new THREE.Vector3();
+const _probeDir = new THREE.Vector3();
+const _envPos = new THREE.Vector3();
+const _stepPos = new THREE.Vector3();
+const _emberCol = new THREE.Color();
+const _lampCol = new THREE.Color();
+
+/**
+ * Horizontal probe fan, as flat (x, z) pairs. Six bearings sampled one per frame is enough to
+ * track the room at walking speed and costs a sixth of a raycast per frame, which the level's
+ * grid broadphase does not notice.
+ */
+const PROBE_DIRS = new Float32Array([
+  1, 0, 0.5, 0.866, -0.5, 0.866, -1, 0, -0.5, -0.866, 0.5, -0.866,
+]);
+const PROBE_COUNT = PROBE_DIRS.length / 2;
+const PROBE_MAX = 34; // metres — beyond this the yard is "open" as far as the ear cares
 
 const SPEED_OF_SOUND = 343.0; // m/s — drives the propagation delay
-const MAX_VOICES = 72;
+/**
+ * Raised from 72. The mechanical cycle, the heel/toe split and enemy footsteps roughly double
+ * the layer count of a busy second, and these are all sub-100 ms nodes that the engine tears
+ * down again immediately. `prio()` below is what actually protects the mix; this number only
+ * has to be high enough that gunfire never hits it.
+ */
+const MAX_VOICES = 108;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const rnd = Math.random;
 /** Symmetric jitter helper: `jit(0.03)` → 0.97 .. 1.03. */
@@ -63,47 +106,83 @@ const jit = (amount) => 1 + (rnd() * 2 - 1) * amount;
  * 7.62 marksman rifle by ear is (a) where the resonant body sits, (b) how fast it decays and
  * (c) how far the low thump sweeps. Those are the three axes below; the numbers are pulled
  * apart hard enough that the weapons are identifiable blind.
+ *
+ * Two layers exist on top of the report itself, and they are the difference between a sound
+ * effect and a weapon:
+ *
+ * `ss` — the **supersonic crack**. It is not part of the muzzle blast. It is an N-wave shed by
+ * the bullet along its whole flight, so it is generated close to whoever it passes, arrives
+ * ahead of the blast, and keeps its high end when the blast has lost everything above 2 kHz.
+ * Hearing crack-then-thump instead of one bang is how a player knows a round was meant for
+ * them; `playGun` schedules the separation from real geometry rather than faking it.
+ *
+ * `cycle` — the **mechanical events**, timed across one bolt cycle at the weapon's real rate of
+ * fire. Four distinct things happen and they are audible as four things: the hammer coming off
+ * the sear, the bolt unlocking as gas drives the carrier back, the carrier bottoming out in the
+ * buffer (the loudest, and where the weapon's mass lives), and the bolt returning into battery
+ * stripping the next round. One undifferentiated "click" is the tell of a synthesised gun.
  */
 const GUNS = {
-  // MK18 carbine — sharp crack, mid-forward body, tight decay.
+  // MK18 carbine — sharp crack, mid-forward body, tight decay. 780 rpm ⇒ 77 ms cycle.
   rifle: {
     level: 1.0,
     crack: { f: 4200, q: 1.1, g: 0.62, dur: 0.0075 },
+    ss: { f: 7400, f2: 2300, q: 1.5, g: 0.52, dec: 0.0072 },
     body: [
       { t: 0.0000, type: 'lowpass', f: 900, f2: 420, q: 6.0, g: 0.95, atk: 0.0012, dec: 0.105 },
       { t: 0.0016, type: 'bandpass', f: 1950, f2: 1150, q: 2.6, g: 0.50, atk: 0.0008, dec: 0.062 },
       { t: 0.0035, type: 'lowpass', f: 420, f2: 190, q: 2.2, g: 0.70, atk: 0.0020, dec: 0.200 },
     ],
     thump: { f0: 132, f1: 56, dur: 0.150, g: 0.85, wave: 'triangle' },
-    mech: { t: 0.030, g: 0.20, f: 2500 },
+    cycle: [
+      { t: 0.0000, kind: 'sear', f: 5600, g: 0.085 },
+      { t: 0.0130, kind: 'unlock', f: 3050, g: 0.150 },
+      { t: 0.0315, kind: 'buffer', f: 1080, g: 0.300, spring: 1620 },
+      { t: 0.0580, kind: 'return', f: 2450, g: 0.265 },
+    ],
     tail: { f: 620, q: 0.9, g: 0.55, dec: 0.34 },
     hp: 60,
   },
   // VECTOR .45 — blunter and darker, very fast decay, audible mechanical clatter.
+  // 1100 rpm ⇒ 55 ms cycle, and at that rate the mechanism is half the sound.
   smg: {
     level: 0.82,
     crack: { f: 2700, q: 1.4, g: 0.44, dur: 0.0060 },
+    // .45 ACP is subsonic: there is no N-wave, only a soft pressure wash off the bullet.
+    ss: { f: 3400, f2: 1500, q: 1.1, g: 0.16, dec: 0.0060 },
     body: [
       { t: 0.0000, type: 'lowpass', f: 620, f2: 300, q: 5.0, g: 0.90, atk: 0.0010, dec: 0.070 },
       { t: 0.0012, type: 'bandpass', f: 1320, f2: 820, q: 3.2, g: 0.40, atk: 0.0007, dec: 0.040 },
       { t: 0.0028, type: 'lowpass', f: 330, f2: 165, q: 1.8, g: 0.55, atk: 0.0018, dec: 0.125 },
     ],
     thump: { f0: 108, f1: 46, dur: 0.105, g: 0.62, wave: 'sine' },
-    mech: { t: 0.020, g: 0.34, f: 3200 },
+    cycle: [
+      { t: 0.0000, kind: 'sear', f: 6200, g: 0.075 },
+      { t: 0.0085, kind: 'unlock', f: 3600, g: 0.205 },
+      { t: 0.0215, kind: 'buffer', f: 1460, g: 0.335, spring: 2280 },
+      { t: 0.0400, kind: 'return', f: 3000, g: 0.315 },
+    ],
     tail: { f: 480, q: 0.9, g: 0.34, dec: 0.24 },
     hp: 70,
   },
   // DMR14 7.62 — enormous, slow, long tail. The one that echoes off the far wall.
+  // Semi-auto with a heavy op rod: the cycle is slower, lower and much more deliberate.
   dmr: {
     level: 1.25,
     crack: { f: 5400, q: 0.9, g: 0.78, dur: 0.0090 },
+    ss: { f: 8600, f2: 2000, q: 1.3, g: 0.85, dec: 0.0090 },
     body: [
       { t: 0.0000, type: 'lowpass', f: 700, f2: 260, q: 7.5, g: 1.05, atk: 0.0014, dec: 0.165 },
       { t: 0.0020, type: 'bandpass', f: 1550, f2: 780, q: 2.2, g: 0.58, atk: 0.0009, dec: 0.095 },
       { t: 0.0042, type: 'lowpass', f: 300, f2: 120, q: 2.6, g: 0.85, atk: 0.0025, dec: 0.340 },
     ],
     thump: { f0: 160, f1: 40, dur: 0.240, g: 1.05, wave: 'triangle' },
-    mech: { t: 0.052, g: 0.24, f: 2100 },
+    cycle: [
+      { t: 0.0000, kind: 'sear', f: 4600, g: 0.105 },
+      { t: 0.0185, kind: 'unlock', f: 2350, g: 0.170 },
+      { t: 0.0470, kind: 'buffer', f: 760, g: 0.340, spring: 1140 },
+      { t: 0.0880, kind: 'return', f: 1850, g: 0.300 },
+    ],
     tail: { f: 380, q: 0.8, g: 0.95, dec: 0.55 },
     hp: 45,
   },
@@ -128,15 +207,54 @@ const GUN_ALIAS = {
 /**
  * Footstep voicing. `hardness` from art.js SURFACES scales brightness and level so the table
  * and the gameplay surface response never drift apart.
+ *
+ * A boot makes two sounds, not one. The heel arrives first carrying the weight (`thud`), then
+ * the foot rolls forward and the toe lands (`slap`) between 20 and 40 ms later depending on the
+ * surface. `gap` is that interval at a walk; `playFootstep` collapses it as the gait speeds up,
+ * because a sprinter lands nearly flat-footed. Fusing the two is most of what separates running
+ * from walking fast, and it is free.
+ *
+ * The rest of the row is the surface's character rather than its level:
+ *   `grain`  gravel and glass scatter — discrete stones kicked, not a filtered hiss
+ *   `ring`   metal decks and hollow timber resonate; concrete and sandbag do not
+ *   `tail`   how much of a room slap the surface throws back, sent to the slap-back taps
  */
 const FOOT = {
-  concrete: { thud: 210, thudDec: 0.055, slap: 2400, slapQ: 1.0, slapDec: 0.038, g: 0.60, grain: 0, ring: 0 },
-  metal: { thud: 260, thudDec: 0.045, slap: 3400, slapQ: 1.6, slapDec: 0.030, g: 0.62, grain: 0, ring: 900 },
-  wood: { thud: 165, thudDec: 0.085, slap: 1500, slapQ: 3.0, slapDec: 0.050, g: 0.55, grain: 0, ring: 240 },
-  gravel: { thud: 150, thudDec: 0.045, slap: 3100, slapQ: 0.8, slapDec: 0.055, g: 0.52, grain: 7, ring: 0 },
-  dirt: { thud: 120, thudDec: 0.075, slap: 900, slapQ: 0.7, slapDec: 0.050, g: 0.42, grain: 2, ring: 0 },
-  glass: { thud: 190, thudDec: 0.040, slap: 4600, slapQ: 1.2, slapDec: 0.060, g: 0.48, grain: 5, ring: 3200 },
-  sandbag: { thud: 105, thudDec: 0.090, slap: 700, slapQ: 0.6, slapDec: 0.045, g: 0.38, grain: 0, ring: 0 },
+  // Hard flat slap and a short room tail — the reference surface.
+  concrete: { thud: 205, thudDec: 0.052, slap: 2500, slapQ: 1.1, slapDec: 0.032, gap: 0.030, g: 0.60, grain: 0, grainF: 0, ring: 0, ringDec: 0, tail: 0.60 },
+  // A steel deck or a wagon floor: the plate under the boot rings on for a third of a second.
+  metal: { thud: 255, thudDec: 0.042, slap: 3300, slapQ: 1.7, slapDec: 0.028, gap: 0.026, g: 0.62, grain: 0, grainF: 0, ring: 880, ringDec: 0.34, tail: 0.45 },
+  // Boxy and hollow: a low resonance, short, with no brightness to speak of.
+  wood: { thud: 160, thudDec: 0.080, slap: 1450, slapQ: 3.0, slapDec: 0.046, gap: 0.034, g: 0.55, grain: 0, grainF: 0, ring: 236, ringDec: 0.13, tail: 0.22 },
+  // Ballast. Individual stones displace and rattle for 80 ms after the foot has gone.
+  gravel: { thud: 148, thudDec: 0.042, slap: 3000, slapQ: 0.8, slapDec: 0.050, gap: 0.022, g: 0.52, grain: 9, grainF: 2600, ring: 0, ringDec: 0, tail: 0.18 },
+  // Dead. Almost all of the energy goes into the ground; a dull thud and nothing behind it.
+  dirt: { thud: 118, thudDec: 0.072, slap: 860, slapQ: 0.7, slapDec: 0.046, gap: 0.036, g: 0.42, grain: 3, grainF: 1200, ring: 0, ringDec: 0, tail: 0.10 },
+  glass: { thud: 186, thudDec: 0.038, slap: 4500, slapQ: 1.2, slapDec: 0.056, gap: 0.020, g: 0.48, grain: 6, grainF: 5200, ring: 3100, ringDec: 0.16, tail: 0.35 },
+  sandbag: { thud: 102, thudDec: 0.088, slap: 680, slapQ: 0.6, slapDec: 0.042, gap: 0.040, g: 0.38, grain: 0, grainF: 0, ring: 0, ringDec: 0, tail: 0.05 },
+};
+
+/**
+ * Vocalisations. These are formant models, not words: three high-Q bandpasses standing in for
+ * the first three formants of an open vowel, with the envelope doing the syllable and the
+ * formant sweep doing the vowel change. There is no language in here and there must not be —
+ * the ear needs to read "someone over there is shouting" and stop, which is exactly what a
+ * wordless filtered shout across 40 m of yard actually sounds like.
+ *
+ * `f0` is the voiced core, kept well under the formants so it carries the pitch contour without
+ * ever resolving into something you could transcribe. `rasp` is the breath on top: a shout is a
+ * strained voice, and the strain lives in the 2-4 kHz noise, not in the pitch.
+ */
+const VOCAL = {
+  // Sighting the player. Two hard syllables, pitch up: the most urgent thing a soldier says.
+  contact: { syl: 2, f0: 172, len: 0.170, gap: 0.105, f1: [700, 560], f2: [1240, 1880], f3: 2650, g: 1.00, rasp: 0.60 },
+  // Directing someone else. Lower, flatter, three beats.
+  order: { syl: 3, f0: 138, len: 0.145, gap: 0.095, f1: [620, 700], f2: [1150, 1420], f3: 2450, g: 0.82, rasp: 0.42 },
+  // Shouting through his own suppressing fire. One long strained note.
+  suppress: { syl: 1, f0: 155, len: 0.400, gap: 0.0, f1: [770, 640], f2: [1360, 1140], f3: 2520, g: 1.05, rasp: 0.75 },
+  // Taking a round. Involuntary, low, closed, and it collapses rather than ends.
+  hurt: { syl: 1, f0: 116, len: 0.230, gap: 0.0, f1: [520, 360], f2: [980, 720], f3: 2050, g: 0.92, rasp: 0.85 },
+  reload: { syl: 2, f0: 130, len: 0.125, gap: 0.085, f1: [600, 520], f2: [1180, 990], f3: 2300, g: 0.68, rasp: 0.35 },
 };
 
 /* ========================================================================== */
@@ -408,6 +526,21 @@ export function createAudio(game) {
   ambienceBus.gain.value = 0.0; // faded in once the context is genuinely running
   ambienceBus.connect(duckGain);
 
+  /**
+   * Ambience side-chain. Every ambient bed feeds this rather than `ambienceBus` directly, and a
+   * gunshot pulls it down for ~300 ms.
+   *
+   * This is a mix decision, not an effect. Wind, plant hum and fire all sit in the same 200 Hz
+   * to 2 kHz region as the body of a rifle report, so left alone they do not get drowned out —
+   * they *fight*, and the result is a shot that sounds smaller than it is while the ambience
+   * loses its own shape. Ducking them under fire buys the report about 3 dB of apparent level
+   * for nothing, and because the recovery is slower than the attack, sustained fire holds the
+   * ambience down instead of pumping it once per round.
+   */
+  const ambDuck = ctx.createGain();
+  ambDuck.gain.value = 1.0;
+  ambDuck.connect(ambienceBus);
+
   const uiBus = ctx.createGain();
   uiBus.gain.value = 0.9;
   uiBus.connect(duckGain);
@@ -442,6 +575,61 @@ export function createAudio(game) {
   sendCloseIn.Q.value = 0.4;
   sendCloseIn.connect(convClose);
 
+  /* ---------------------------------------------------------------------- */
+  /* Slap-back — the discrete reflections the convolver cannot give us       */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * The yard IR carries early reflections, but they are frozen at build time: the same pattern
+   * whether the player is stood in the middle of the open rails or two metres off a stack of
+   * 40-foot containers. Standing next to a steel wall and firing is one of the most recognisable
+   * sounds there is, and it is entirely about *when* the first reflection comes back.
+   *
+   * So the first reflections are live. Two taps, both fed from the gunshot's own send:
+   *
+   *   near — the nearest surface the horizontal probe found. Delay is the round trip, 2d/c, so a
+   *          container three metres away answers in 17 ms and the shot sounds boxed in; across
+   *          the open yard the same tap lands at 150 ms and reads as a distinct slap.
+   *   far  — the far boundary of the space, longer and darker, with a little feedback so it
+   *          flutters between the stacks the way a real yard does before the diffuse tail.
+   *
+   * Both are pre-delayed *ahead* of the convolver's build-up (34 ms of ramp on the yard IR), so
+   * the order the ear gets is: crack, blast, slap, flutter, diffuse tail. That order is the
+   * whole point — a reverb tail with no discrete slap in front of it sounds like a plate, not a
+   * place.
+   */
+  const slapIn = ctx.createGain();
+  slapIn.gain.value = 1.0;
+
+  function makeSlapTap(delay, cutoff, q, pan, type) {
+    const dl = ctx.createDelay(1.2);
+    dl.delayTime.value = delay;
+    const f = ctx.createBiquadFilter();
+    f.type = type || 'bandpass';
+    f.frequency.value = cutoff;
+    f.Q.value = q;
+    const g = ctx.createGain();
+    g.gain.value = 0;
+    const p = ctx.createStereoPanner ? ctx.createStereoPanner() : ctx.createGain();
+    if (p.pan) p.pan.value = pan;
+    slapIn.connect(dl);
+    dl.connect(f);
+    f.connect(g);
+    g.connect(p);
+    p.connect(sfxBus);
+    return { delay: dl, filter: f, gain: g, pan: p };
+  }
+
+  const slapNear = makeSlapTap(0.045, 1250, 0.8, -0.45, 'bandpass');
+  const slapFar = makeSlapTap(0.140, 780, 0.7, 0.5, 'bandpass');
+  // Second order: the far tap coming back off the near surface, which is the third arrival a
+  // real yard gives you. One is enough — chain more and it stops being a place and starts
+  // being a spring reverb.
+  const slapFB = ctx.createGain();
+  slapFB.gain.value = 0.0;
+  slapFar.filter.connect(slapFB);
+  slapFB.connect(slapNear.delay);
+
   // Tinnitus deliberately bypasses the ducker and the limiter: after a grenade the world
   // goes away and the ring is all that is left.
   const tinnitusBus = ctx.createGain();
@@ -475,6 +663,8 @@ export function createAudio(game) {
     const dry = ctx.createGain();
     const sFar = ctx.createGain();
     const sClose = ctx.createGain();
+    const sSlap = ctx.createGain();
+    sSlap.gain.value = 0;
     const tailIn = ctx.createGain();
     tailIn.gain.value = 1;
 
@@ -509,14 +699,17 @@ export function createAudio(game) {
     spatial.connect(dry);
     spatial.connect(sFar);
     spatial.connect(sClose);
+    spatial.connect(sSlap);
     tailIn.connect(sFar);
     tailIn.connect(sClose);
+    tailIn.connect(sSlap);
 
     dry.connect(sfxBus);
     sFar.connect(sendFarIn);
     sClose.connect(sendCloseIn);
+    sSlap.connect(slapIn);
 
-    return { mode, input, tailIn, air, delay, spatial, dry, sFar, sClose, freeAt: 0, lastUse: 0 };
+    return { mode, input, tailIn, air, delay, spatial, dry, sFar, sClose, sSlap, freeAt: 0, lastUse: 0 };
   }
 
   const poolHRTF = [];
@@ -554,8 +747,22 @@ export function createAudio(game) {
   /* Layer primitives                                                       */
   /* ---------------------------------------------------------------------- */
 
+  /**
+   * The share of the voice pool the sound currently being scheduled is allowed to take.
+   *
+   * A flat cap is the wrong shape for a firefight. Footsteps, casings, enemy kit and scenery are
+   * all cheap and all frequent, and a flat cap lets them fill the pool a millisecond before the
+   * player pulls the trigger — at which point the one sound that matters gets thinned. Every
+   * top-level `play*` sets this before it schedules anything, so gunfire and explosions can
+   * always take the whole pool and everything else is capped below them and sheds layers first.
+   */
+  let curPrio = 1;
+  function prio(p) {
+    curPrio = p;
+  }
+
   function budget() {
-    return liveVoices < MAX_VOICES;
+    return liveVoices < MAX_VOICES * curPrio;
   }
 
   function track(node) {
@@ -687,6 +894,15 @@ export function createAudio(game) {
 
   let indoor = 0; // 0 outdoors, 1 fully enclosed
   let ducking = 0; // 0 clear, 1 fully concussed
+  /** Distance to the nearest reflector and to the far boundary, from the horizontal probes. */
+  let reflectNear = 12;
+  let reflectFar = 26;
+  /** 0 boxed in, 1 stood in the open middle of the yard. Drives wind, slap level and wet mix. */
+  let openness = 0.7;
+  /** Side-chain state, decayed in `update` rather than automated per shot. */
+  let ambDuckLevel = 0;
+  /** How hard the mix is being worked by gunfire right now. Trims the reverb returns. */
+  let gunActivity = 0;
 
   /**
    * Configure a channel for a sound at `pos`, `hold` seconds long, and return it.
@@ -730,48 +946,204 @@ export function createAudio(game) {
     const wetScale = (opts && opts.wet !== undefined ? opts.wet : 1) * distFactor;
     ch.sFar.gain.setValueAtTime(clamp(0.32 * wetScale * (1 - indoor * 0.68), 0, 2.2), t);
     ch.sClose.gain.setValueAtTime(clamp(0.10 * wetScale * (0.14 + indoor * 1.55), 0, 2.2), t);
+    // Slap-back: only hard, loud, transient things throw a usable discrete reflection, so this
+    // is opt-in per sound rather than a blanket send. A near surface returns more of it.
+    const slap = opts && opts.slap ? opts.slap : 0;
+    ch.sSlap.gain.setValueAtTime(slap > 0 ? clamp(slap * (0.55 + (1 - indoor) * 0.65), 0, 2.0) : 0, t);
     ch.dry.gain.setValueAtTime(1, t);
     ch.tailIn.gain.setValueAtTime((opts && opts.tailGain) || 1, t);
     return ch;
+  }
+
+  /**
+   * Perpendicular distance from the listener to a shot's trajectory, or -1 if the round is not
+   * travelling towards this side of the world at all. This is what decides whether a shot gets a
+   * supersonic crack: a round fired away from you has no N-wave you will ever hear, only the
+   * blast, and getting that distinction right is worth more to a player than any amount of
+   * spectral detail. Allocation-free — `_rel` and `_shotDir` are module scratch.
+   */
+  function missDistance(pos, dir) {
+    if (!dir || typeof dir.x !== 'number' || typeof dir.z !== 'number') return -1;
+    _shotDir.set(dir.x, dir.y || 0, dir.z);
+    const len = _shotDir.length();
+    if (len < 1e-4) return -1;
+    _shotDir.multiplyScalar(1 / len);
+    _rel.copy(_earPos).sub(pos);
+    const along = _rel.dot(_shotDir);
+    if (along <= 0) return -1; // fired away from the listener
+    _rel.addScaledVector(_shotDir, -along);
+    return _rel.length();
+  }
+
+  /** Pull the ambience down under gunfire. Depth is 0..1; recovery happens in `update`. */
+  function duckAmbience(depth) {
+    if (depth > ambDuckLevel) ambDuckLevel = clamp(depth, 0, 1);
+    gunActivity = clamp(gunActivity + depth * 0.55, 0, 1);
   }
 
   /* ---------------------------------------------------------------------- */
   /* Gunshots                                                               */
   /* ---------------------------------------------------------------------- */
 
-  function playGun(key, t, pos, volume, isSelf) {
+  /**
+   * Per-shooter firing history. Slot 0 is the player; 1-3 are shared per enemy weapon class,
+   * which is as much as the ear can track — nobody follows the barrel temperature of one
+   * individual soldier across a yard. Typed arrays so nothing here allocates.
+   */
+  const KEY_SLOT = { rifle: 1, smg: 2, dmr: 3 };
+  const shotLast = new Float32Array(4);
+  const shotHeat = new Float32Array(4);
+  const shotRound = new Int32Array(4);
+
+  /**
+   * One mechanical event of the bolt cycle. Each kind is a different *physical* event, so each
+   * gets a different construction rather than the same click at a different pitch.
+   */
+  function cycleEvent(dest, t, c, jp, scale, heat, sustained) {
+    const g = c.g * scale;
+    if (g <= 0.0025) return;
+    switch (c.kind) {
+      case 'sear':
+        // Hammer off the sear. A tiny, very high, completely bodiless tick — you only ever
+        // notice it in the half-second before the round goes, but its absence is felt.
+        transient(dest, t, c.f * jp, 5.0, g, 0.0009);
+        break;
+      case 'unlock':
+        // Bolt unlocking as gas drives the carrier back. A short metallic scrape whose centre
+        // *climbs*, because the parts are accelerating through it.
+        burst(dest, t, 'bandpass', c.f * 0.7 * jp, c.f * 1.3 * jp, 2.2, g * 0.85, 0.0008, 0.016, bufBright, jit(0.14));
+        transient(dest, t, c.f * 1.3 * jp, 3.0, g * 0.45, 0.0012);
+        break;
+      case 'buffer':
+        // The carrier bottoming out. This is the loudest thing the mechanism does and the only
+        // one that carries the weapon's mass, so it gets a real low knock rather than a click.
+        transient(dest, t, c.f * 1.9 * jp, 1.6, g * 0.55, 0.0022);
+        burst(dest, t, 'lowpass', c.f * jp, c.f * 0.42, 2.6, g, 0.0010, 0.030, bufWhite, 1);
+        tone(dest, t, 'sine', c.f * 0.30 * jp, c.f * 0.17, 0.045, g * 0.42, 0.0018);
+        if (c.spring) {
+          // Recoil spring. A coil is a stack of near-harmonics that flutters rather than rings,
+          // and it runs longer as the weapon heats and the lubricant thins.
+          ring(dest, t + 0.0016, c.spring * jp, 0.080 + heat * 0.035, g * (0.28 + heat * 0.20), sustained ? 2 : 3, 0.11);
+          if (!sustained) {
+            burst(dest, t + 0.002, 'bandpass', c.spring * 1.4, c.spring * 0.78, 7.0, g * 0.22, 0.0012, 0.060, bufBright, jit(0.2));
+          }
+        }
+        break;
+      default:
+        // Bolt returning into battery and stripping the next round off the stack. Harder and
+        // brighter than the buffer hit, and shorter, because it stops dead against the barrel.
+        transient(dest, t, c.f * 1.6 * jp, 2.0, g * 0.72, 0.0018);
+        burst(dest, t, 'bandpass', c.f * jp, c.f * 0.5, 3.0, g * 0.85, 0.0007, 0.022, bufBright, 1);
+        burst(dest, t + 0.0025, 'lowpass', c.f * 0.28, c.f * 0.14, 2.2, g * 0.5, 0.0012, 0.042, bufWhite, 1);
+        ring(dest, t + 0.001, c.f * 1.15 * jp, 0.055, g * 0.20, 2, 0.07);
+        break;
+    }
+  }
+
+  function playGun(key, t, pos, volume, isSelf, dir) {
+    prio(1);
     const P = GUNS[key] || GUNS.rifle;
     const lean = quality === 'low';
     const dist = pos ? pos.distanceTo(_earPos) : 0;
 
-    const ch = routeAt(isSelf ? null : pos, t, 1.4, {
+    /* --- shot history ------------------------------------------------------
+       Sustained fire is where a synthesised gun gives itself away: twenty identical rounds
+       with ±3% pitch noise on top still reads as one sample retriggered. Three things fix it,
+       and all three come from this block — a genuine first-shot transient, a resonance and
+       tail level that *walk* across the burst instead of jittering, and mechanical noise that
+       builds as the weapon heats. */
+    const slot = isSelf ? 0 : KEY_SLOT[key] || 1;
+    const gap = Math.max(0, t - shotLast[slot]);
+    shotLast[slot] = t;
+    // Heat: each round adds, and it bleeds off with roughly the time constant a hot receiver
+    // takes to stop rattling differently. A long pause resets it to nothing on its own.
+    shotHeat[slot] = clamp(shotHeat[slot] * Math.exp(-gap * 0.62) + 0.055, 0, 1);
+    const heat = shotHeat[slot];
+    // First shot out of a cold, still weapon. Sharper, louder, and it hangs longer, because
+    // nothing is already ringing when it goes off.
+    const first = gap > 0.34 ? 1 : gap > 0.18 ? 0.4 : 0;
+    if (first > 0.5) shotRound[slot] = 0;
+    const n = shotRound[slot]++;
+    // Deterministic per-round hash. Real sustained fire has a repeating micro-texture because
+    // the mechanism is periodic; pure noise per round sounds like noise per round.
+    const vary = (((n + 1) * 2654435761) >>> 0) / 4294967296;
+    const qWalk = 0.84 + vary * 0.40; // resonance of the body walks ±20% round to round
+    const tailWalk = 0.74 + (1 - vary) * 0.52; // tail level walks the other way
+
+    /* --- crack–thump -------------------------------------------------------
+       The N-wave is shed along the bullet's path, so it is generated near whoever it passes and
+       reaches them before the muzzle blast that is still crossing the yard. At 60 m that is
+       about 50 ms of separation, which is unmistakable. A round fired somewhere else entirely
+       has no crack for this listener at all, only the thump — and that difference is a genuine
+       piece of gameplay information, so it is modelled from the trajectory rather than faked. */
+    let sep = 0;
+    let ssGain = 0;
+    if (!isSelf && pos && dist > 5 && dir) {
+      const miss = missDistance(pos, dir);
+      if (miss >= 0 && miss < 24) {
+        sep = clamp(dist * 0.00085, 0.003, 0.22);
+        ssGain = clamp(1 - miss / 24, 0.06, 1);
+      }
+    }
+
+    const ch = routeAt(isSelf ? null : pos, t, 1.5 + sep, {
       wet: 1.15,
       tailGain: 1.0,
+      // Hard, loud and transient: the one sound in the game that must throw a discrete slap.
+      slap: isSelf ? 1.0 : clamp(1.2 - dist / 60, 0.15, 1.0),
       pan: isSelf ? (rnd() * 2 - 1) * 0.07 : 0,
     });
     if (!ch) return;
 
+    // `routeAt` set the channel's propagation delay from the full distance, which is right for
+    // the muzzle blast. Everything below is scheduled relative to that, so the crack is pulled
+    // *earlier* by shortening the line rather than by pushing the report later — otherwise a
+    // shot from across the yard would gain a fifth of a second of latency it should not have.
+    if (sep > 0 && ch.delay) {
+      ch.delay.delayTime.setValueAtTime(clamp(dist / SPEED_OF_SOUND - sep, 0, 1.4), t);
+    }
+
     // Micro-randomisation. ±3% on pitch and level: enough that sustained fire breathes,
     // little enough that the weapon still sounds like itself round after round.
-    const jp = jit(0.03);
-    const jl = jit(0.03) * (volume === undefined ? 1 : volume) * P.level;
+    const jp = jit(0.03) * (1 + first * 0.012);
+    const jl = jit(0.03) * (volume === undefined ? 1 : volume) * P.level * (1 + first * 0.10);
     const dest = ch.input;
+    const tb = t + sep; // the muzzle blast, which is what everything but the crack hangs off
 
-    // 1. Transient crack. Attenuates fastest with distance — a shot 80 m away is all body.
+    /* --- 1. supersonic crack, separate from the blast ---------------------- */
+    if (isSelf) {
+      // Your own round: the crack leaves with the blast and fuses into it, but it is still a
+      // distinct, far brighter, far shorter element and the shot is dull without it.
+      burst(dest, t + 0.0009, 'bandpass', P.ss.f * jp, P.ss.f2 * jp, P.ss.q, P.ss.g * jl * 0.55, 0.0004, P.ss.dec, bufBright, jit(0.08));
+    } else if (ssGain > 0.02) {
+      transient(dest, t, P.ss.f * 0.8, 1.3, 0.40 * jl * ssGain, 0.0016);
+      burst(dest, t, 'bandpass', P.ss.f * jp, P.ss.f2 * 0.5, P.ss.q * 1.4, P.ss.g * jl * ssGain * 0.95, 0.0004, P.ss.dec * 1.4, bufBright, jit(0.1));
+      // The wake behind the N-wave: lower, softer, and it is what makes the crack feel like it
+      // went *past* rather than happening at a point.
+      burst(dest, t + 0.0035, 'bandpass', P.ss.f2 * 0.55, P.ss.f2 * 0.2, 1.8, P.ss.g * jl * ssGain * 0.40, 0.0012, 0.028, bufWhite, 1);
+    }
+
+    /* --- 2. transient crack of the muzzle blast ---------------------------- */
+    // Attenuates fastest with distance — a shot 80 m away is all body.
     const crackScale = pos ? clamp(1 - dist / 70, 0.12, 1) : 1;
-    transient(dest, t, P.crack.f * jp, P.crack.q, P.crack.g * jl * crackScale, P.crack.dur);
+    transient(dest, tb, P.crack.f * jp, P.crack.q, P.crack.g * jl * crackScale * (1 + first * 0.22), P.crack.dur);
+    if (first > 0.5 && !lean) {
+      // Cold-chamber snap: a single extra bodiless tick a hair ahead of the report. This is the
+      // difference between the opening round of an engagement and the fifteenth.
+      transient(dest, tb - 0.0006, P.crack.f * 1.8, 2.4, 0.22 * jl * crackScale, 0.0011);
+    }
 
-    // 2. Body: resonant noise bursts at staggered centres. This is the gun's character.
+    /* --- 3. body: resonant noise bursts at staggered centres --------------- */
     for (let i = 0; i < P.body.length; i++) {
       if (lean && i === 1) continue;
       const b = P.body[i];
       burst(
         dest,
-        t + b.t,
+        tb + b.t,
         b.type,
         b.f * jp,
         b.f2 * jp,
-        b.q,
+        b.q * qWalk,
         b.g * jl,
         b.atk,
         b.dec * jit(0.05),
@@ -780,33 +1152,54 @@ export function createAudio(game) {
       );
     }
 
-    // 3. Low thump — the pressure wave. Sweeps down fast; that sweep is the "weight".
-    tone(dest, t, P.thump.wave, P.thump.f0 * jp, P.thump.f1 * jp, P.thump.dur, P.thump.g * jl, 0.0018);
+    /* --- 4. low thump — the pressure wave ---------------------------------- */
+    tone(dest, tb, P.thump.wave, P.thump.f0 * jp, P.thump.f1 * jp, P.thump.dur, P.thump.g * jl, 0.0018);
 
-    // 4. Mechanical layer: bolt carrier slamming, quieter and behind the report.
+    /* --- 5. the mechanism, event by event across the cycle ----------------- */
     if (!lean) {
-      const mt = t + P.mech.t * jit(0.12);
-      burst(dest, mt, 'bandpass', P.mech.f * jp, P.mech.f * 0.55, 3.4, P.mech.g * jl * 0.9, 0.0006, 0.014, bufBright, 1);
-      burst(dest, mt + 0.006, 'bandpass', 720, 400, 2.6, P.mech.g * jl * 0.55, 0.0008, 0.032, bufWhite, 1);
+      // A soldier forty metres away is a report and nothing else: the mechanism is a quiet,
+      // high-frequency, close-range sound and the air eats it first.
+      const mechScale = jl * (0.85 + heat * 0.55) * (isSelf ? 1 : crackScale * 0.42);
+      /* At 780 or 1100 rpm consecutive cycles overlap and the ear stops resolving the quiet
+         events entirely — what survives is the buffer knock and the bolt going home. So
+         sustained fire renders the two loud events and drops the sear and the unlock, which is
+         both what is audible and, conveniently, a third of the voices. Break the burst for a
+         tenth of a second and the full four-event cycle comes back. */
+      const sustained = gap < 0.13;
+      for (let i = 0; i < P.cycle.length; i++) {
+        const c = P.cycle[i];
+        if (sustained && (c.kind === 'sear' || c.kind === 'unlock')) continue;
+        // Jitter the timing, not just the level: a real cycle varies with the round's pressure.
+        cycleEvent(dest, tb + c.t * jit(0.06), c, jp, mechScale, heat, sustained);
+      }
+      if (isSelf && heat > 0.4) {
+        // Hot gun. Expansion ticks and a wetter, looser rattle trailing the cycle — the sound of
+        // a weapon that has just had two magazines through it.
+        burst(dest, tb + 0.085 + rnd() * 0.055, 'bandpass', 4000 + rnd() * 2400, 2600, 5.5, 0.045 * (heat - 0.4) * jl, 0.0006, 0.022, bufBright, 1);
+        if (rnd() < heat * 0.5) transient(dest, tb + 0.12 + rnd() * 0.09, 5200 + rnd() * 2000, 6.0, 0.030 * heat * jl, 0.0010);
+      }
     }
 
-    // 5. Tail — send-only, so it feeds the yard convolver without smearing the dry transient.
+    /* --- 6. tail — send-only, into the slap taps and the yard convolver ---- */
     if (!lean) {
-      const openness = 1 - indoor * 0.5;
+      const open = (1 - indoor * 0.5) * (0.72 + openness * 0.45);
       burst(
         ch.tailIn,
-        t + 0.004,
+        tb + 0.004,
         'bandpass',
         P.tail.f * jp,
         P.tail.f * 0.45,
         P.tail.q,
-        P.tail.g * jl * openness * 1.5,
+        P.tail.g * jl * open * tailWalk * 1.5 * (1 + first * 0.28),
         0.0025,
-        P.tail.dec,
+        P.tail.dec * (1 + first * 0.18),
         bufPink,
         1
       );
     }
+
+    // Get the wind and the plant hum out of the way of the report. Own gun ducks hardest.
+    duckAmbience(isSelf ? 0.62 : clamp(0.55 - dist / 90, 0.12, 0.5));
   }
 
   /* ---------------------------------------------------------------------- */
@@ -814,10 +1207,11 @@ export function createAudio(game) {
   /* ---------------------------------------------------------------------- */
 
   function playImpact(surface, t, pos, volume) {
+    prio(0.88);
     const s = SURFACES[surface] || SURFACES.concrete;
     const hard = s.hardness;
     const v = (volume === undefined ? 1 : volume) * jit(0.05);
-    const ch = routeAt(pos, t, 0.75, { wet: 0.9 });
+    const ch = routeAt(pos, t, 0.75, { wet: 0.9, slap: hard > 0.35 ? hard * 0.45 : 0 });
     if (!ch) return;
     const d = ch.input;
     const jp = jit(0.06);
@@ -902,32 +1296,86 @@ export function createAudio(game) {
   /* ---------------------------------------------------------------------- */
 
   function playFootstep(surface, t, pos, volume, speed, heavy) {
+    prio(0.82);
     const F = FOOT[surface] || FOOT.concrete;
-    const v = (volume === undefined ? 0.6 : volume) * F.g * (heavy ? 1.7 : 1) * jit(0.07);
+    const lean = quality === 'low';
+    // 6.1 m/s is the sprint speed in §3.7, so `gait` is 0 stood still and 1 flat out.
+    const spd = clamp(speed === undefined ? 3.2 : speed, 0, 7.5);
+    const gait = clamp(spd / 6.1, 0, 1.2);
+    const v = (volume === undefined ? 0.6 : volume) * F.g * (heavy ? 1.7 : 1) * (0.70 + gait * 0.55) * jit(0.07);
     const jp = jit(0.08);
-    const ch = routeAt(pos, t, 0.5, { wet: 0.55 });
+    /* Detail by distance, and it is physics rather than an optimisation: a boot's low thud
+       carries across the yard, its scatter and resonance do not, and thirty metres of dusty air
+       has eaten the kit rattle entirely. Rendering those layers for a man at 30 m spends voices
+       on something inaudible, so the far case is the thud, the toe and nothing else. */
+    const dst = pos ? pos.distanceTo(_earPos) : 0;
+    const detail = dst < 12 ? 1 : dst < 24 ? 0.5 : 0.2;
+    const ch = routeAt(pos, t, 0.65, { wet: 0.55, slap: F.tail * 0.35 * detail });
     if (!ch) return;
     const d = ch.input;
-    const lean = quality === 'low';
 
-    // Heel: low body of the step.
-    burst(d, t, 'lowpass', F.thud * jp, F.thud * 0.42, 1.9, 0.55 * v, 0.0016, F.thudDec * (heavy ? 1.6 : 1), bufPink, jit(0.08));
-    tone(d, t, 'sine', F.thud * 0.52 * jp, F.thud * 0.28, F.thudDec * 1.3, 0.24 * v, 0.0035);
+    /* --- heel ---------------------------------------------------------------
+       The weight arrives here. Same shape on every surface; what changes between concrete and
+       dirt is how much of it survives the contact. */
+    burst(d, t, 'lowpass', F.thud * jp, F.thud * 0.40, 2.0, 0.58 * v, 0.0014, F.thudDec * (heavy ? 1.65 : 1), bufPink, jit(0.08));
+    tone(d, t, 'sine', F.thud * 0.50 * jp, F.thud * 0.27, F.thudDec * 1.35, 0.26 * v, 0.0032);
 
-    // Scuff: the surface texture. Gravel gets granular, metal gets bright and rings.
+    /* --- toe ----------------------------------------------------------------
+       A walk rolls heel-to-toe over about 30 ms. A sprint lands nearly flat, so the interval
+       closes with the gait and the two halves fuse into a single slap. That collapse is most of
+       what makes a run sound like a run rather than a fast walk, and it costs nothing. */
+    const toeT = t + F.gap * (1 - gait * 0.62) * jit(0.20);
+    const toeG = 0.30 * v * (0.72 + gait * 0.55);
     if (F.grain > 0 && !lean) {
-      for (let i = 0; i < F.grain; i++) {
-        const gt = t + rnd() * 0.055;
-        burst(d, gt, 'bandpass', (2000 + rnd() * 3200) * jp, 1400, 1.4, 0.11 * v, 0.0008, 0.020 + rnd() * 0.03, bufGrain, 1 + rnd());
+      // Ballast and broken glass: discrete pieces displaced and scattered, not a filtered hiss.
+      // Count and throw both rise with the gait — a sprinter kicks the stones further.
+      const n = Math.max(1, Math.round(F.grain * (0.55 + gait * 0.7) * detail));
+      for (let i = 0; i < n; i++) {
+        // Front-loaded: the bulk of the scatter is under the boot, the rest rattles out after.
+        const gt = t + Math.pow(rnd(), 1.7) * (0.055 + gait * 0.045);
+        burst(d, gt, 'bandpass', (F.grainF * 0.6 + rnd() * F.grainF * 1.1) * jp, F.grainF * 0.5, 1.5, 0.115 * v, 0.0008, 0.018 + rnd() * 0.032, bufGrain, 0.9 + rnd() * 1.2);
       }
+      // The compaction under the sole, which is what makes it read as ground rather than debris.
+      burst(d, toeT, 'lowpass', F.slap * 0.35 * jp, F.slap * 0.16, 1.2, toeG * 0.7, 0.0018, F.slapDec * 1.3, bufWhite, 1);
     } else {
-      burst(d, t + 0.004, F.slap > 2000 ? 'highpass' : 'bandpass', F.slap * jp, F.slap * 0.6, F.slapQ, 0.26 * v, 0.0012, F.slapDec, bufBright, jit(0.1));
+      burst(d, toeT, F.slap > 2000 ? 'highpass' : 'bandpass', F.slap * jp, F.slap * 0.6, F.slapQ, toeG, 0.0010, F.slapDec, bufBright, jit(0.1));
+      // A hard heel has a genuine transient in it, not just a filtered noise edge.
+      if (F.slap > 1200) transient(d, toeT, F.slap * 1.15 * jp, 1.4, toeG * 0.45, 0.0016);
     }
 
-    if (F.ring && !lean) ring(d, t + 0.002, F.ring * jp, 0.16, 0.09 * v, 2, 0.06);
+    /* --- surface resonance --------------------------------------------------
+       A steel deck or a hollow board rings after the foot has gone. Concrete and sandbags do
+       not, and giving them a ring is the fastest way to make every surface sound identical. */
+    if (F.ring && !lean && detail >= 0.5) {
+      ring(d, toeT + 0.002, F.ring * jp, F.ringDec, 0.10 * v * (0.7 + gait * 0.45), detail < 1 ? 2 : 3, 0.06);
+      if (F.ring > 700) {
+        // Plate wobble under the ring: the low mode of a big thin sheet flexing.
+        tone(d, toeT + 0.004, 'sine', F.ring * 0.31 * jp, F.ring * 0.26, F.ringDec * 1.4, 0.045 * v, 0.004);
+      }
+    }
 
-    // Kit rustle — the difference between a footstep and a soldier taking a step.
-    if (!lean) playCloth(d, t + 0.012, 0.26 * v * (0.6 + clamp((speed || 3) / 6, 0, 1)));
+    /* --- room tail ----------------------------------------------------------
+       A hard floor in a hard space answers itself. Send-only, so it cannot blunt the transient
+       the player is actually locating the step by. */
+    if (F.tail > 0.12 && !lean && detail >= 0.5) {
+      burst(ch.tailIn, toeT + 0.002, 'bandpass', 1500, 720, 1.0, 0.26 * v * F.tail, 0.003, 0.10 + F.tail * 0.09, bufPink, 1);
+    }
+
+    /* --- foley --------------------------------------------------------------
+       A footstep is a boot on the ground; a *soldier's* footstep is a boot plus thirty kilos of
+       kit answering it. Both are synced to the step because that is when the body decelerates
+       and everything hanging off it keeps going. */
+    if (!lean && detail >= 0.5) {
+      playCloth(d, t + 0.010, 0.24 * v * (0.55 + gait * 0.85) * detail);
+      playGear(d, t + 0.014, 0.50 * v * (0.40 + gait * 1.15) * detail);
+      if (gait > 0.78 && detail >= 1) {
+        // Sprinting, the kit swings between the steps as well as on them. The offset is half a
+        // step, derived from the same stride model the controller drives the bob with.
+        const off = 0.25 / (0.95 + 1.35 * clamp(gait, 0, 1));
+        playGear(d, t + off, 0.26 * v);
+        playCloth(d, t + off, 0.15 * v);
+      }
+    }
   }
 
   /** Nylon and webbing. Band-limited noise with a slow attack; never a click. */
@@ -935,6 +1383,28 @@ export function createAudio(game) {
     if (amount <= 0.004) return;
     burst(dest, t, 'bandpass', (1500 + rnd() * 1100) * jit(0.1), 700, 1.1, 0.30 * amount, 0.010, 0.075, bufPink, jit(0.15));
     burst(dest, t + 0.020, 'highpass', 3400, 2400, 0.8, 0.13 * amount, 0.012, 0.060, bufBright, 1);
+  }
+
+  /**
+   * Gear rattle: sling swivels, buckles, a magazine shifting in its pouch, a carabiner against
+   * a plate carrier. Three or four hard little inharmonic hits scattered over 50 ms, plus the
+   * dull knock of the pouch itself.
+   *
+   * Deliberately separate from `playCloth`. Cloth is broadband and soft-edged; kit is transient
+   * and metallic, and it is the metallic half that tells the player a person is moving rather
+   * than a sound effect playing. Level is kept low enough that it sits *under* the footstep —
+   * this layer is texture, and the moment it competes with the step it stops being either.
+   */
+  function playGear(dest, t, amount) {
+    if (amount <= 0.006) return;
+    const n = 2 + ((rnd() * 3) | 0);
+    for (let i = 0; i < n; i++) {
+      const gt = t + rnd() * 0.055;
+      transient(dest, gt, 2200 + rnd() * 3400, 3.2, 0.052 * amount, 0.0012);
+      if (i === 0) ring(dest, gt, 1800 + rnd() * 1500, 0.042, 0.032 * amount, 2, 0.10);
+    }
+    // The pouch, the pack, the weight of the thing the hardware is attached to.
+    burst(dest, t + 0.004, 'bandpass', 900 + rnd() * 520, 520, 1.4, 0.10 * amount, 0.006, 0.055, bufPink, 1);
   }
 
   /** 2D cloth for viewmodel actions (ADS, raise, inspect). */
@@ -948,6 +1418,7 @@ export function createAudio(game) {
   /* ---------------------------------------------------------------------- */
 
   function playMech(kind, t, weaponId) {
+    prio(0.95);
     // Heavier gun, lower-pitched hardware.
     const key = GUN_ALIAS[weaponId] || 'rifle';
     const mass = key === 'dmr' ? 0.82 : key === 'smg' ? 1.18 : 1.0;
@@ -1024,6 +1495,7 @@ export function createAudio(game) {
 
   /** Ejected brass hitting concrete: a tick, a pitched ring and a couple of bounces. */
   function playCasing(t, pos, volume, weaponId) {
+    prio(0.7);
     const key = GUN_ALIAS[weaponId] || 'rifle';
     const base = (key === 'dmr' ? 2600 : key === 'smg' ? 4200 : 3500) * jit(0.10);
     const v = (volume === undefined ? 0.5 : volume) * jit(0.12);
@@ -1050,6 +1522,7 @@ export function createAudio(game) {
    * fast, preceded by a tiny crack. That descending sweep is the whole illusion.
    */
   function playWhizz(t, pos, volume) {
+    prio(1);
     const v = (volume === undefined ? 0.6 : volume) * jit(0.1);
     const ch = routeAt(pos, t, 0.45, { wet: 0.5 });
     if (!ch) return;
@@ -1062,6 +1535,7 @@ export function createAudio(game) {
 
   /** Hit confirmation. Short, dry, 2D, and it must land inside 100 ms of the shot. */
   function playTick(t, kind) {
+    prio(1);
     const ch = routeAt(null, t, 0.3, { wet: 0.12 });
     if (!ch) return;
     const d = ch.input;
@@ -1087,25 +1561,76 @@ export function createAudio(game) {
         transient(ch.input, t, 2600, 1.4, 0.22 * (volume || 0.7), 0.002);
         burst(ch.input, t, 'bandpass', 780, 380, 4.0, 0.24 * (volume || 0.7), 0.001, 0.060, bufWhite, 1);
       }
+    } else if (pos && quality !== 'low' && rnd() < 0.45 && t - anyVocalAt > 0.7) {
+      // A body shot gets an involuntary noise out of a man. Not every time — a grunt on every
+      // single round turns a firefight into a comedy — and never on a head shot, where the
+      // point is that there is nothing after the impact.
+      anyVocalAt = t;
+      playVocal(t + 0.03, pos, 'hurt', 0.55);
     }
   }
 
-  /** A man going down: a short vocal collapse, then the body and kit hitting the ground. */
-  function playDeath(t, pos, volume) {
-    const v = (volume === undefined ? 0.8 : volume) * jit(0.06);
-    const ch = routeAt(pos, t, 1.6, { wet: 0.9 });
+  /**
+   * A wordless shout, positioned in the world.
+   *
+   * Three high-Q bandpasses on noise stand in for the first three formants of an open vowel;
+   * the amplitude envelope is the syllable and the formant sweep is the vowel moving. A weak
+   * triangle at the fundamental sits underneath carrying the pitch contour. That is enough for
+   * the ear to hear "a man over there is shouting" and — crucially — not enough for it to hear
+   * a word, which is exactly the abstraction this needs: no language, no recorded voice, no
+   * uncanny valley, and it still tells the player where the shout came from.
+   *
+   * `emitFormants` is separated out so the death vocalisation can reuse the same throat.
+   */
+  function emitFormants(d, t, V, jf, v, bend, len, lean) {
+    burst(d, t, 'bandpass', V.f1[0] * jf * bend, V.f1[1] * jf * bend, 7.5, 0.55 * v, 0.016, len, bufWhite, 1);
+    burst(d, t, 'bandpass', V.f2[0] * jf * bend, V.f2[1] * jf * bend, 9.0, 0.32 * v, 0.020, len * 0.92, bufWhite, 1);
+    if (!lean) {
+      // The strain. A shout is a voice being pushed past where it is comfortable, and all of
+      // that lives in the 2-4 kHz noise rather than in the pitch.
+      burst(d, t + 0.004, 'bandpass', V.f3 * jf, V.f3 * 0.86 * jf, 6.0, 0.15 * v * V.rasp, 0.022, len * 0.72, bufBright, 1);
+    }
+    // Voiced core, kept well under the formants: pitch contour without an intelligible vowel.
+    tone(d, t, 'triangle', V.f0 * jf * bend, V.f0 * 0.80 * jf * bend, len * 0.9, 0.028 * v, 0.018);
+  }
+
+  function playVocal(t, pos, kind, volume) {
+    prio(0.75);
+    const V = VOCAL[kind] || VOCAL.order;
+    const lean = quality === 'low';
+    const ch = routeAt(pos, t, 1.4, { wet: 1.0 });
     if (!ch) return;
     const d = ch.input;
-    const f = (150 + rnd() * 55) * jit(0.04);
-    // Vocal: a formant-ish pair falling in pitch.
-    tone(d, t, 'sawtooth', f, f * 0.55, 0.34, 0.055 * v, 0.014);
-    burst(d, t, 'bandpass', 620, 380, 5.0, 0.18 * v, 0.012, 0.30, bufPink, 1);
-    burst(d, t + 0.02, 'bandpass', 1450, 900, 3.0, 0.09 * v, 0.020, 0.26, bufWhite, 1);
+    const v = (volume === undefined ? 0.5 : volume) * V.g * jit(0.10);
+    // Per-man vocal tract: ±8% on every formant is the difference between six soldiers and one
+    // soldier heard six times.
+    const jf = jit(0.08);
+    let st = t;
+    for (let s = 0; s < V.syl; s++) {
+      // Later syllables fall in pitch and energy — a called order lands, it does not trail up.
+      const bend = s === 0 ? 1 : 0.94 - s * 0.055;
+      const len = V.len * (s === 0 ? 1 : 0.88);
+      emitFormants(d, st, V, jf, v * (s === 0 ? 1 : 0.82), bend, len, lean);
+      st += (len * 0.78 + V.gap) * jit(0.10);
+    }
+  }
+
+  /** A man going down: a vocal collapse, then the body, the rifle and the kit hitting the deck. */
+  function playDeath(t, pos, volume) {
+    prio(0.9);
+    const v = (volume === undefined ? 0.8 : volume) * jit(0.06);
+    const ch = routeAt(pos, t, 1.8, { wet: 0.9, slap: 0.2 });
+    if (!ch) return;
+    const d = ch.input;
+    // The same formant model as a shout, but the pitch collapses instead of holding: that fall
+    // is the whole reading. Uses the vocal table so a death and a shout share a throat.
+    emitFormants(d, t, VOCAL.hurt, jit(0.08), v * 0.85, 1, 0.34, quality === 'low');
     // Impact with the deck, ~450 ms later: body, then rifle, then kit.
     const bt = t + 0.42 + rnd() * 0.18;
     burst(d, bt, 'lowpass', 230, 95, 1.6, 0.42 * v, 0.003, 0.130, bufPink, 1);
     tone(d, bt, 'sine', 78, 44, 0.110, 0.24 * v, 0.004);
     playCloth(d, bt + 0.02, 0.55 * v);
+    playGear(d, bt + 0.01, 0.9 * v);
     if (quality !== 'low') {
       const rt = bt + 0.10 + rnd() * 0.10;
       transient(d, rt, 3200, 1.8, 0.16 * v, 0.002);
@@ -1115,6 +1640,7 @@ export function createAudio(game) {
 
   /** Player taking rounds: a dull body thump plus a brief high whine. */
   function playHurt(t, amount) {
+    prio(1);
     const v = clamp(0.35 + (amount || 20) / 70, 0.35, 1.1);
     const ch = routeAt(null, t, 0.7, { wet: 0.25 });
     if (!ch) return;
@@ -1172,10 +1698,12 @@ export function createAudio(game) {
   }
 
   function playExplosion(t, pos, power, radius) {
+    prio(1);
     const p = clamp(power === undefined ? 1 : power, 0.15, 3);
     const dist = pos ? pos.distanceTo(_earPos) : 6;
     const prox = clamp(1 - dist / Math.max(8, (radius || 8) * 3.2), 0, 1);
-    const ch = routeAt(pos, t, 3.0, { wet: 1.6, tailGain: 1.6 });
+    duckAmbience(0.9);
+    const ch = routeAt(pos, t, 3.0, { wet: 1.6, tailGain: 1.6, slap: 1.4 });
     if (!ch) return;
     const d = ch.input;
     const v = p * jit(0.05);
@@ -1207,6 +1735,49 @@ export function createAudio(game) {
 
   const ambNodes = [];
 
+  /**
+   * Where the fire is. §4 allows exactly two kinds of point light and requires both to be
+   * motivated by a visible fixture, so rather than hard-coding a coordinate that would silently
+   * rot the first time the level moves the barrel, the emitter finds the fixture: one traversal
+   * of `level.root`, once, looking for the `PointLight` whose colour is nearer to
+   * `PALETTE.ember` than to `LIGHTING.practicalColour`. The sound then lives on the thing the
+   * player can see burning, by construction.
+   */
+  const _barrelPos = new THREE.Vector3();
+  let barrelFound = false;
+  let fixturesScanned = false;
+
+  function findFixtures(level) {
+    fixturesScanned = true;
+    if (!level || !level.root || typeof level.root.traverse !== 'function') return;
+    _emberCol.setStyle(PALETTE.ember, THREE.SRGBColorSpace);
+    _lampCol.setStyle(LIGHTING.practicalColour, THREE.SRGBColorSpace);
+    let best = Infinity;
+    level.root.traverse((o) => {
+      if (!o || !o.isPointLight || !o.color) return;
+      const dE = Math.abs(o.color.r - _emberCol.r) + Math.abs(o.color.g - _emberCol.g) + Math.abs(o.color.b - _emberCol.b);
+      const dL = Math.abs(o.color.r - _lampCol.r) + Math.abs(o.color.g - _lampCol.g) + Math.abs(o.color.b - _lampCol.b);
+      if (dE < dL && dE < best) {
+        best = dE;
+        o.getWorldPosition(_barrelPos);
+        barrelFound = true;
+      }
+    });
+    if (barrelFound && barrelPan) {
+      // Down at the drum's mouth, not at the light's centre.
+      const y = _barrelPos.y - 0.35;
+      if (barrelPan.positionX) {
+        barrelPan.positionX.value = _barrelPos.x;
+        barrelPan.positionY.value = y;
+        barrelPan.positionZ.value = _barrelPos.z;
+      } else if (barrelPan.setPosition) {
+        barrelPan.setPosition(_barrelPos.x, y, _barrelPos.z);
+      }
+      if (barrelCrackleGain) barrelCrackleGain.gain.value = 0.55;
+      if (barrelRoarGain) barrelRoarGain.gain.value = 0.30;
+    }
+  }
+
   function loopNoise(buf, playRate) {
     const s = ctx.createBufferSource();
     s.buffer = buf;
@@ -1230,6 +1801,11 @@ export function createAudio(game) {
 
   let windLowGain = null;
   let windGustGain = null;
+  let windWireGain = null;
+  let windInsideGain = null;
+  let barrelPan = null;
+  let barrelCrackleGain = null;
+  let barrelRoarGain = null;
 
   function buildAmbience() {
     const windScale = clamp((ATMOSPHERE.windSpeed || 2) / 2, 0.5, 2.2);
@@ -1247,7 +1823,7 @@ export function createAudio(game) {
     low.connect(lowLP);
     lowLP.connect(lowPan);
     lowPan.connect(windLowGain);
-    windLowGain.connect(ambienceBus);
+    windLowGain.connect(ambDuck);
     lfo(0.037, 130 * windScale, lowLP.frequency).start();
     lfo(0.011, 0.030, windLowGain.gain).start();
 
@@ -1264,10 +1840,45 @@ export function createAudio(game) {
     gust.connect(gustBP);
     gustBP.connect(gustPan);
     gustPan.connect(windGustGain);
-    windGustGain.connect(ambienceBus);
+    windGustGain.connect(ambDuck);
     lfo(0.053, 420 * windScale, gustBP.frequency).start();
     lfo(0.019, 0.016, windGustGain.gain).start();
     lfo(0.007, 0.011, windGustGain.gain, 'triangle').start();
+
+    /* Bed 2b — the wire. A thin, high, resonant whistle off chain-link and the crane's stays.
+       Its level is driven entirely by the player's exposure in `update`: out on the open rails
+       it is there, and it dies the moment there is a container between the player and the wind.
+       This is the single most legible "am I in the open?" cue the mix has, and it costs one
+       bandpass, because a high-Q filter on white noise *is* wind through a wire. */
+    const wire = loopNoise(bufWhite, 1.0);
+    const wireBP = ctx.createBiquadFilter();
+    wireBP.type = 'bandpass';
+    wireBP.frequency.value = 2150 * windScale;
+    wireBP.Q.value = 7.5;
+    const wirePan = ctx.createStereoPanner ? ctx.createStereoPanner() : ctx.createGain();
+    if (wirePan.pan) wirePan.pan.value = -0.2;
+    windWireGain = ctx.createGain();
+    windWireGain.gain.value = 0.0;
+    wire.connect(wireBP);
+    wireBP.connect(wirePan);
+    wirePan.connect(windWireGain);
+    windWireGain.connect(ambDuck);
+    lfo(0.041, 560 * windScale, wireBP.frequency).start();
+    lfo(0.017, 0.0035, windWireGain.gain).start();
+
+    /* Bed 2c — the same wind heard from inside. Under a roof the high end goes and what is left
+       is a low moan around the openings, so this rises exactly as the wire falls. */
+    const inside = loopNoise(bufPink, 0.55);
+    const insideLP = ctx.createBiquadFilter();
+    insideLP.type = 'lowpass';
+    insideLP.frequency.value = 190;
+    insideLP.Q.value = 1.6;
+    windInsideGain = ctx.createGain();
+    windInsideGain.gain.value = 0.0;
+    inside.connect(insideLP);
+    insideLP.connect(windInsideGain);
+    windInsideGain.connect(ambDuck);
+    lfo(0.029, 60, insideLP.frequency).start();
 
     // Bed 3 — sub rumble. A city that has been shelled has a floor tone.
     const rum = loopNoise(bufPink, 0.35);
@@ -1279,8 +1890,92 @@ export function createAudio(game) {
     rumG.gain.value = 0.10;
     rum.connect(rumLP);
     rumLP.connect(rumG);
-    rumG.connect(ambienceBus);
+    rumG.connect(ambDuck);
     lfo(0.023, 26, rumLP.frequency).start();
+
+    /* Bed 4 — the plant across the tracks. A rectifier hum on 50 Hz (this is an Eastern
+       European industrial town, so it is 50, not 60) with its second harmonic detuned a
+       fraction of a hertz so the two beat slowly against each other, plus a fan.
+       It never changes and it is barely above the noise floor, which is the point: a continuous
+       tonal floor is what stops silence sounding like a bug, and the ear stops hearing it in
+       about ten seconds and then misses it the moment it goes. */
+    const humG = ctx.createGain();
+    humG.gain.value = 0.026;
+    humG.connect(ambDuck);
+    const hum1 = ctx.createOscillator();
+    hum1.type = 'sine';
+    hum1.frequency.value = 50;
+    hum1.connect(humG);
+    ambNodes.push(hum1);
+    const hum2 = ctx.createOscillator();
+    hum2.type = 'sine';
+    hum2.frequency.value = 100.17; // deliberately not 100: the 0.17 Hz beat is the whole trick
+    const hum2g = ctx.createGain();
+    hum2g.gain.value = 0.34;
+    hum2.connect(hum2g);
+    hum2g.connect(humG);
+    ambNodes.push(hum2);
+    try {
+      hum1.start();
+      hum2.start();
+    } catch {
+      /* already running */
+    }
+    const fan = loopNoise(bufPink, 0.55);
+    const fanBP = ctx.createBiquadFilter();
+    fanBP.type = 'bandpass';
+    fanBP.frequency.value = 235;
+    fanBP.Q.value = 1.5;
+    const fanG = ctx.createGain();
+    fanG.gain.value = 0.42;
+    fan.connect(fanBP);
+    fanBP.connect(fanG);
+    fanG.connect(humG);
+    lfo(0.013, 0.10, fanG.gain).start();
+
+    /* Bed 5 — the burning barrel, §4's one motivated practical besides the work lamps.
+       Built here with the gain at zero and a panner at the origin; `update` finds the ember
+       light in the level and moves it onto the actual fixture, so the sound is attached to the
+       thing the player can see rather than to a coordinate typed into this file. */
+    barrelPan = ctx.createPanner();
+    barrelPan.panningModel = 'equalpower';
+    barrelPan.distanceModel = 'inverse';
+    barrelPan.refDistance = 2.6;
+    barrelPan.rolloffFactor = 1.15;
+    barrelPan.maxDistance = 55;
+    barrelPan.connect(ambDuck);
+
+    // Crackle: sparse decaying impulses are literally what a fire is. `bufGrain` at a low
+    // playback rate spreads them out into individual pops instead of a fizz.
+    const crackle = loopNoise(bufGrain, 0.42);
+    const crackleBP = ctx.createBiquadFilter();
+    crackleBP.type = 'bandpass';
+    crackleBP.frequency.value = 1500;
+    crackleBP.Q.value = 1.0;
+    // The breathing of the fire lives on its own stage, so the master gain below can stay at
+    // zero until the fixture is found without the LFO driving it negative in the meantime.
+    const crackleMod = ctx.createGain();
+    crackleMod.gain.value = 1.0;
+    barrelCrackleGain = ctx.createGain();
+    barrelCrackleGain.gain.value = 0.0;
+    crackle.connect(crackleBP);
+    crackleBP.connect(crackleMod);
+    crackleMod.connect(barrelCrackleGain);
+    barrelCrackleGain.connect(barrelPan);
+    lfo(0.09, 0.38, crackleMod.gain).start();
+
+    // Roar: the draught up the drum. Low, breathy and modulated, under the crackle.
+    const roar = loopNoise(bufPink, 0.62);
+    const roarLP = ctx.createBiquadFilter();
+    roarLP.type = 'lowpass';
+    roarLP.frequency.value = 430;
+    roarLP.Q.value = 1.1;
+    barrelRoarGain = ctx.createGain();
+    barrelRoarGain.gain.value = 0.0;
+    roar.connect(roarLP);
+    roarLP.connect(barrelRoarGain);
+    barrelRoarGain.connect(barrelPan);
+    lfo(0.21, 130, roarLP.frequency).start();
 
     for (const n of ambNodes) {
       if (n.buffer && typeof n.start === 'function') {
@@ -1293,33 +1988,190 @@ export function createAudio(game) {
     }
   }
 
-  /** Distant battle: someone else's war, two streets over. */
+  /* --- environmental one-shots ------------------------------------------- */
+
+  /**
+   * Metal under thermal load. A yard full of steel boxes that spent the day in the sun and are
+   * now cooling in the shade does this constantly, and it is the single detail that most makes
+   * a static scene feel like it has a temperature.
+   *
+   * Synthesis is stick-slip friction: sparse impulses (`bufGrain` at a very low playback rate)
+   * through a high-Q resonance. The impulse rate is the creak, the resonance is the panel, and
+   * sweeping the resonance downward is the load transferring. Sometimes it ends with a knock,
+   * because a sheet under tension settles suddenly rather than gently.
+   */
+  function playCreak(t) {
+    prio(0.62);
+    // Placed on something that is actually there. The crane stands over the yard at the height
+    // art.js gives it; everything else is a container stack, which in this map means "a few
+    // metres away, on some bearing, about head height or above".
+    const crane = rnd() < 0.3;
+    if (crane) {
+      const zc = ZONES.yard.centre;
+      _envPos.set(zc[0] + (rnd() * 2 - 1) * 8, MAP.craneHeight * (0.55 + rnd() * 0.35), zc[2] + (rnd() * 2 - 1) * 8);
+    } else {
+      const a = rnd() * Math.PI * 2;
+      const r = 8 + rnd() * 24;
+      _envPos.set(_earPos.x + Math.cos(a) * r, 1.5 + rnd() * 4.5, _earPos.z + Math.sin(a) * r);
+    }
+    const ch = routeAt(_envPos, t, 3.4, { wet: 1.2, slap: 0.25 });
+    if (!ch) return;
+    const d = ch.input;
+    const v = (crane ? 0.5 : 0.34) * jit(0.25);
+    // The crane is bigger, so everything about it is lower and slower.
+    const f = (crane ? 95 : 165) * (0.7 + rnd() * 0.8);
+    const dur = (crane ? 1.1 : 0.55) * (0.7 + rnd() * 1.1);
+
+    // Friction. Two bands: the squeal and the harmonic above it that makes it metal.
+    burst(d, t, 'bandpass', f * 6.2, f * 3.1, 9.0, 0.17 * v, 0.06, dur, bufGrain, 0.07 + rnd() * 0.10);
+    burst(d, t + 0.03, 'bandpass', f * 11.5, f * 5.4, 12.0, 0.085 * v, 0.09, dur * 0.78, bufGrain, 0.045 + rnd() * 0.06);
+    // The panel itself groaning under the friction, with the pitch drifting as it takes load.
+    tone(d, t, 'triangle', f, f * 0.74, dur * 0.92, 0.055 * v, 0.11);
+    if (crane) tone(d, t + 0.08, 'sine', f * 0.5, f * 0.42, dur * 1.1, 0.045 * v, 0.16);
+    // Settling knock: sheet steel under tension lets go all at once.
+    if (rnd() < 0.62) {
+      const kt = t + dur * (0.85 + rnd() * 0.2);
+      transient(d, kt, 700 + rnd() * 1400, 1.7, 0.16 * v, 0.0028);
+      ring(d, kt, 420 + rnd() * 620, 0.20, 0.11 * v, 3, 0.09);
+      burst(d, kt, 'lowpass', 260, 120, 1.8, 0.13 * v, 0.002, 0.09, bufWhite, 1);
+    }
+  }
+
+  /** A pocket of fuel catching in the barrel — bigger than the crackle bed can do on its own. */
+  function playBarrelPop(t) {
+    if (!barrelFound) return;
+    prio(0.55);
+    const ch = routeAt(_barrelPos, t, 0.9, { wet: 0.7 });
+    if (!ch) return;
+    const d = ch.input;
+    const v = 0.20 + rnd() * 0.28;
+    transient(d, t, 1600 + rnd() * 2400, 1.6, 0.16 * v, 0.0022);
+    burst(d, t, 'bandpass', 900 + rnd() * 900, 480, 1.8, 0.24 * v, 0.0012, 0.045 + rnd() * 0.06, bufGrain, 0.7 + rnd() * 0.8);
+    // A flare of draught behind the pop, which is what makes it read as fire and not debris.
+    burst(d, t + 0.01, 'lowpass', 520, 220, 1.2, 0.16 * v, 0.020, 0.30, bufPink, 1);
+  }
+
+  /**
+   * Distant battle: someone else's war, two streets over.
+   *
+   * Five kinds of event rather than three, because the tell of a scripted ambience is that it
+   * repeats its own vocabulary. Everything here is heavily low-passed by the propagation
+   * distance already — `routeAt` does that from the position — so what distinguishes these is
+   * rhythm and length, not timbre. That is also true of real distant fire: at 150 m you cannot
+   * hear what the weapon is, only how it is being used.
+   */
   let battleTimer = 3 + rnd() * 4;
 
   function distantBattle(t) {
+    prio(0.7);
     // Somewhere out past the map edge, at a plausible bearing.
     const ang = rnd() * Math.PI * 2;
     const r = 95 + rnd() * 80;
     _battlePos.set(_earPos.x + Math.cos(ang) * r, _earPos.y + 6 + rnd() * 20, _earPos.z + Math.sin(ang) * r);
 
     const roll = rnd();
-    if (roll < 0.55) {
-      // A burst of small arms, heavily filtered by distance.
+    if (roll < 0.42) {
+      // A burst of small arms. No direction is passed, so no supersonic crack: this is being
+      // fired at somebody else, which is exactly what the player should be able to tell.
       const n = 3 + ((rnd() * 5) | 0);
       const gap = 0.055 + rnd() * 0.05;
       const key = rnd() < 0.4 ? 'smg' : 'rifle';
       for (let i = 0; i < n; i++) playGun(key, t + i * gap * jit(0.15), _battlePos, 0.26 * jit(0.12), false);
-    } else if (roll < 0.82) {
+    } else if (roll < 0.58) {
+      // Belt-fed. Longer, more even, and it walks — the rhythm is the whole identification.
+      const n = 9 + ((rnd() * 12) | 0);
+      const gap = 0.082 + rnd() * 0.018;
+      for (let i = 0; i < n; i++) playGun('rifle', t + i * gap * jit(0.05), _battlePos, 0.20 * jit(0.10), false);
+    } else if (roll < 0.72) {
       // A single heavy report.
       playGun('dmr', t, _battlePos, 0.30 * jit(0.1), false);
-    } else {
-      // Ordnance. No transient survives that distance — just the low collapse.
-      const ch = routeAt(_battlePos, t, 3.0, { wet: 2.0, tailGain: 2.0 });
+    } else if (roll < 0.86) {
+      // Ordnance. No transient survives that distance — just the low collapse and a long tail
+      // rolling back off whatever is between here and there.
+      const ch = routeAt(_battlePos, t, 3.4, { wet: 2.0, tailGain: 2.0, slap: 0.5 });
       if (ch) {
         burst(ch.input, t, 'lowpass', 520, 120, 1.0, 0.34, 0.020, 0.9, bufPink, 1);
         tone(ch.input, t, 'sine', 74, 24, 1.1, 0.22, 0.020);
         burst(ch.tailIn, t, 'lowpass', 700, 200, 0.8, 0.7, 0.015, 1.4, bufPink, 1);
       }
+    } else {
+      /* Incoming. A shell falling has a descending whistle because it is closing on you and the
+         Doppler shift runs the whole time it is in the air; the crump lands after it. Placed
+         further out so it is unambiguously somebody else's, and it is the one distant event
+         that leans on the ducker, because it is the one you would flinch at. */
+      const ch = routeAt(_battlePos, t, 4.5, { wet: 2.2, tailGain: 2.2, slap: 0.6 });
+      if (ch) {
+        const fall = 1.1 + rnd() * 0.7;
+        burst(ch.input, t, 'bandpass', 1500, 380, 5.5, 0.10, 0.30, fall, bufWhite, 1);
+        const it = t + fall;
+        burst(ch.input, it, 'lowpass', 900, 90, 1.0, 0.55, 0.010, 1.2, bufPink, 1);
+        tone(ch.input, it, 'sine', 88, 20, 1.5, 0.40, 0.012);
+        burst(ch.tailIn, it, 'lowpass', 620, 160, 0.8, 1.1, 0.020, 2.2, bufPink, 1);
+        // Debris and dust coming back down half a second behind the blast.
+        burst(ch.input, it + 0.45, 'highpass', 1400, 700, 0.8, 0.10, 0.10, 1.6, bufGrain, 0.8);
+        duckAmbience(0.35);
+      }
+    }
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Enemy audio                                                            */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * Per-enemy bookkeeping for sounds the AI does not emit events for.
+   *
+   * `ai/enemies.js` calls into audio for the things it explicitly decides (a shot, a reload, a
+   * death), but the continuous stuff — where the feet are, when a man changed his mind — is
+   * state that already exists on the enemy record and would only be duplicated by an event.
+   * So this module watches it directly: foot-plant edges become footsteps, state transitions
+   * become kit noise and shouts. Nothing is written back, and every array is preallocated, so
+   * the whole pass is a read-only scan with no allocation.
+   */
+  const ENEMY_SLOTS = 32;
+  const enemyPlant = new Uint8Array(ENEMY_SLOTS); // bit 0/1: was this foot planted last frame
+  const enemyState = new Array(ENEMY_SLOTS).fill('');
+  const enemySurf = new Array(ENEMY_SLOTS).fill('gravel');
+  const enemySurfAt = new Float32Array(ENEMY_SLOTS);
+  const enemyVocalAt = new Float32Array(ENEMY_SLOTS);
+  let anyVocalAt = 0;
+  let chatterTimer = 6 + rnd() * 8;
+
+  /**
+   * Vocal traffic control. Six soldiers all reacting to the same event would otherwise all shout
+   * in the same 200 ms, which reads as a glitch rather than a squad. One voice at a time, and a
+   * given man stays quiet for a few seconds after he has spoken.
+   */
+  function vocalAllowed(t, slot, spacing) {
+    if (t - anyVocalAt < 0.85) return false;
+    if (t - enemyVocalAt[slot] < (spacing || 4.5)) return false;
+    anyVocalAt = t;
+    enemyVocalAt[slot] = t;
+    return true;
+  }
+
+  /** Kit and weapon handling on an enemy — the sound of a man doing something with his hands. */
+  function playEnemyHandling(t, pos, kind, volume) {
+    prio(0.6);
+    const ch = routeAt(pos, t, 0.9, { wet: 0.8 });
+    if (!ch) return;
+    const d = ch.input;
+    const v = volume === undefined ? 0.5 : volume;
+    if (kind === 'shoulder') {
+      // Rifle coming up into the shoulder: cloth, then the handguard meeting a glove, then the
+      // sling swivel catching up a beat later.
+      playCloth(d, t, 0.85 * v);
+      burst(d, t + 0.055, 'bandpass', 950, 520, 2.0, 0.16 * v, 0.004, 0.055, bufPink, 1);
+      transient(d, t + 0.062, 2300, 2.6, 0.11 * v, 0.0018);
+      playGear(d, t + 0.09, 0.7 * v);
+    } else if (kind === 'settle') {
+      // Dropping into cover: the whole man and everything on him arriving at once.
+      playCloth(d, t, 1.0 * v);
+      playGear(d, t + 0.02, 1.2 * v);
+      burst(d, t + 0.03, 'lowpass', 260, 120, 1.6, 0.24 * v, 0.004, 0.10, bufPink, 1);
+    } else {
+      playGear(d, t, 0.8 * v);
+      playCloth(d, t + 0.01, 0.5 * v);
     }
   }
 
@@ -1395,7 +2247,10 @@ export function createAudio(game) {
           playGun(GUN_ALIAS[weaponId] || 'rifle', t, pos, vol, !pos);
           break;
         case 'enemyShot':
-          playGun(GUN_ALIAS[weaponId] || 'rifle', t, pos, vol * 0.95, false);
+          // The direction matters: it decides whether the player gets a supersonic crack ahead
+          // of the report or just the report. That is the difference between "being shot at"
+          // and "hearing shooting", and it is the most useful thing this module can tell them.
+          playGun(GUN_ALIAS[weaponId] || 'rifle', t, pos, vol * 0.95, false, opts && opts.dir);
           break;
 
         /* --- mechanical --------------------------------------------------- */
@@ -1447,6 +2302,31 @@ export function createAudio(game) {
           break;
         case 'cloth':
           selfCloth(t, vol * 0.5);
+          break;
+        case 'gear':
+        case 'rattle': {
+          const gch = routeAt(pos, t, 0.4, { wet: pos ? 0.7 : 0.35 });
+          if (gch) {
+            prio(0.6);
+            playGear(gch.input, t, vol * 0.8);
+          }
+          break;
+        }
+
+        /* --- enemy presence ------------------------------------------------ */
+        case 'enemyStep':
+          playFootstep(opts?.surface || 'gravel', t, pos, vol * 0.6, opts?.speed, false);
+          break;
+        case 'enemyHandling':
+          playEnemyHandling(t, pos, opts?.kind, vol);
+          break;
+        case 'shout':
+        case 'enemyVocal':
+          if (!gate('vocal', 0.30)) return;
+          playVocal(t, pos, opts?.kind || 'order', vol);
+          break;
+        case 'creak':
+          playCreak(t);
           break;
 
         /* --- impacts ------------------------------------------------------ */
@@ -1529,19 +2409,37 @@ export function createAudio(game) {
     playCasing(t + 0.30 + rnd() * 0.20, pos, 0.28, weaponId);
   }
 
+  /**
+   * An enemy reloading, positioned. Same four beats as the player's own reload — catch, mag
+   * clear, mag seated, bolt — but spread over the AI's real ~2.5 s reload rather than crammed
+   * together, because hearing a man across the yard run dry and take two and a half seconds to
+   * fix it is a window the player is supposed to be able to use.
+   */
   function playEnemyReload(t, pos, vol) {
-    const ch = routeAt(pos, t, 1.2, { wet: 0.8 });
+    prio(0.7);
+    const ch = routeAt(pos, t, 2.2, { wet: 0.85 });
     if (!ch) return;
     const d = ch.input;
     const v = vol === undefined ? 0.5 : vol;
+    // Magazine catch, then the mag dragging clear of the well and hitting the ground.
     transient(d, t, 2600, 2.0, 0.16 * v, 0.002);
     burst(d, t + 0.04, 'bandpass', 700, 420, 2.2, 0.14 * v, 0.004, 0.070, bufPink, 1);
-    burst(d, t + 0.46, 'lowpass', 520, 250, 2.4, 0.22 * v, 0.0014, 0.060, bufWhite, 1);
-    transient(d, t + 0.78, 3600, 1.6, 0.20 * v, 0.002);
-    ring(d, t + 0.78, 2200, 0.11, 0.07 * v, 2, 0.05);
+    const drop = t + 0.30 + rnd() * 0.12;
+    transient(d, drop, 1500, 1.4, 0.10 * v, 0.0026);
+    burst(d, drop, 'lowpass', 420, 180, 1.8, 0.13 * v, 0.0018, 0.075, bufWhite, 1);
+    playGear(d, t + 0.10, 0.7 * v);
+    // Fresh magazine in, then seated hard with the heel of the hand.
+    burst(d, t + 0.92, 'bandpass', 880, 560, 1.8, 0.11 * v, 0.005, 0.055, bufPink, 1);
+    transient(d, t + 1.05, 2200, 1.8, 0.24 * v, 0.0024);
+    burst(d, t + 1.05, 'lowpass', 520, 250, 2.4, 0.22 * v, 0.0014, 0.060, bufWhite, 1);
+    // Bolt released — the sound that says he is back in the fight.
+    transient(d, t + 1.62, 3600, 1.6, 0.22 * v, 0.002);
+    ring(d, t + 1.62, 2200, 0.12, 0.08 * v, 3, 0.05);
+    playCloth(d, t + 1.70, 0.45 * v);
   }
 
   function playJump(t, surface, vol) {
+    prio(0.85);
     const ch = routeAt(null, t, 0.4, { wet: 0.4 });
     if (!ch) return;
     const F = FOOT[surface] || FOOT.concrete;
@@ -1550,9 +2448,12 @@ export function createAudio(game) {
     burst(ch.input, t, 'bandpass', F.slap * 0.8, F.slap * 0.35, 1.2, 0.24 * v, 0.004, 0.075, bufBright, 1);
     burst(ch.input, t, 'lowpass', F.thud * 0.9, F.thud * 0.4, 1.6, 0.30 * v, 0.003, 0.060, bufPink, 1);
     playCloth(ch.input, t + 0.01, 0.55 * v);
+    // Everything hanging off the man leaves the ground with him and arrives back late.
+    playGear(ch.input, t + 0.02, 0.9 * v);
   }
 
   function playSlide(t, surface, vol) {
+    prio(0.85);
     const ch = routeAt(null, t, 1.3, { wet: 0.7 });
     if (!ch) return;
     const F = FOOT[surface] || FOOT.concrete;
@@ -1564,19 +2465,26 @@ export function createAudio(game) {
       burst(ch.input, t + 0.02, 'bandpass', 2400, 1200, 1.0, 0.22 * v, 0.020, 0.60, bufGrain, 1.5);
     }
     playCloth(ch.input, t, 0.9 * v);
+    // A slide is the loudest thing the kit ever does: the whole load shifts at once and again
+    // when it stops.
+    playGear(ch.input, t + 0.03, 1.3 * v);
+    playGear(ch.input, t + 0.42, 0.8 * v);
   }
 
   function playMantle(t, surface, vol) {
+    prio(0.85);
     const ch = routeAt(null, t, 0.9, { wet: 0.5 });
     if (!ch) return;
     const v = (vol === undefined ? 0.8 : vol) * jit(0.06);
     playCloth(ch.input, t, 1.0 * v);
     // Hands on the ledge, then boots.
     burst(ch.input, t + 0.06, 'bandpass', 1100, 600, 1.6, 0.20 * v, 0.008, 0.12, bufPink, 1);
+    playGear(ch.input, t + 0.10, 1.1 * v);
     playFootstep(surface, t + 0.34, null, v * 0.7, 3, false);
   }
 
   function playHeartbeat(t, vol) {
+    prio(0.9);
     const ch = routeAt(null, t, 0.9, { wet: 0.1 });
     if (!ch) return;
     const v = (vol === undefined ? 0.5 : vol);
@@ -1810,8 +2718,70 @@ export function createAudio(game) {
     }
     indoor += (indoorTarget - indoor) * (1 - Math.exp(-2.6 * dt));
 
-    returnFar.gain.value = 0.62 + (1 - indoor) * 0.45;
-    returnClose.gain.value = 0.06 + indoor * 0.70;
+    /* --- what the space looks like from here --------------------------------
+       One horizontal probe per frame, cycling round six bearings. Six rays over a tenth of a
+       second track the room faster than the player can cross it and cost a sixth of a raycast
+       per frame, which the level's grid broadphase does not notice. What comes out is the
+       distance to the nearest reflector (which sets the slap-back pre-delay) and the mean free
+       distance (which is how open the player is, and therefore how much wind they hear). */
+    const lvlP = gm && gm.level;
+    if (lvlP && typeof lvlP.raycast === 'function') {
+      const i = probeIndex % PROBE_COUNT;
+      probeIndex = (probeIndex + 1) % PROBE_COUNT;
+      _rayOrigin.copy(_earPos);
+      _probeDir.set(PROBE_DIRS[i * 2], 0, PROBE_DIRS[i * 2 + 1]);
+      let hd = PROBE_MAX;
+      try {
+        const h = lvlP.raycast(_rayOrigin, _probeDir, PROBE_MAX);
+        if (h && h.distance !== undefined) hd = clamp(h.distance, 0.5, PROBE_MAX);
+      } catch {
+        hd = PROBE_MAX;
+      }
+      probeDist[i] = hd;
+      // Recompute the summary from the whole fan, not just this ray, so one open bearing in a
+      // corridor cannot make the player sound like they are stood in the middle of the yard.
+      let near = PROBE_MAX;
+      let sum = 0;
+      for (let k = 0; k < PROBE_COUNT; k++) {
+        sum += probeDist[k];
+        if (probeDist[k] < near) near = probeDist[k];
+      }
+      reflectNear += (near - reflectNear) * (1 - Math.exp(-3.0 * dt));
+      const mean = sum / PROBE_COUNT;
+      reflectFar += (mean * 1.35 - reflectFar) * (1 - Math.exp(-2.0 * dt));
+      openness += (clamp(mean / 24, 0.06, 1) - openness) * (1 - Math.exp(-1.6 * dt));
+    }
+
+    /* --- slap-back geometry -------------------------------------------------
+       Round trip: 2d/c. `setTargetAtTime` rather than a hard set, because a delay line whose
+       length jumps is a pitch shift, and a delay line whose length glides is a Doppler — the
+       second one is what walking towards a wall actually does. */
+    const nearDelay = clamp((reflectNear * 2) / SPEED_OF_SOUND, 0.008, 0.24);
+    const farDelay = clamp((reflectFar * 2) / SPEED_OF_SOUND, 0.05, 0.62);
+    slapNear.delay.delayTime.setTargetAtTime(nearDelay, t, 0.35);
+    slapFar.delay.delayTime.setTargetAtTime(farDelay, t, 0.45);
+    // A close hard surface throws back a lot; the far boundary of an open yard throws back a
+    // slap you can hear but not much energy. Indoors the convolver owns the space instead.
+    const slapOpen = 1 - indoor * 0.65;
+    slapNear.gain.gain.value = clamp((1 - reflectNear / PROBE_MAX) * 0.75, 0.05, 0.75) * slapOpen;
+    slapFar.gain.gain.value = clamp(0.30 * (0.35 + openness), 0.05, 0.45) * slapOpen;
+    slapFB.gain.value = 0.20 * slapOpen * openness;
+    // Reflections off ash-covered steel are dull; off a close concrete wall they are not.
+    slapNear.filter.frequency.value = 900 + (1 - reflectNear / PROBE_MAX) * 1400;
+
+    /* --- ambience side-chain and reverb trim -------------------------------- */
+    ambDuckLevel *= Math.exp(-dt * 3.2);
+    if (ambDuckLevel < 0.002) ambDuckLevel = 0;
+    ambDuck.gain.value = 1 - ambDuckLevel * 0.62;
+    gunActivity *= Math.exp(-dt * 1.1);
+    if (gunActivity < 0.002) gunActivity = 0;
+
+    // Under sustained fire the tails stack up and start to sit on top of everything quieter —
+    // which in practice means footsteps, the one thing the player cannot afford to lose. Pulling
+    // the returns back as the guns work keeps the space without letting it fill in.
+    const tailTrim = 1 - gunActivity * 0.28;
+    returnFar.gain.value = (0.62 + (1 - indoor) * 0.45) * tailTrim;
+    returnClose.gain.value = (0.06 + indoor * 0.70) * tailTrim;
     // A hard interior is brighter close in; the yard tail is dustier.
     sendFarIn.frequency.value = 4200 - indoor * 900;
     sendCloseIn.frequency.value = 5200 + indoor * 1800;
@@ -1834,6 +2804,58 @@ export function createAudio(game) {
     ambienceMode += (wantAmb - ambienceMode) * (1 - Math.exp(-1.2 * dt));
     ambienceBus.gain.value = muted ? 0 : ambienceMode;
 
+    /* Exposure. The wind is a property of where the player is stood, not a loop that plays.
+       Out on the open rails all three wind beds are up and the wire is singing; step behind a
+       container stack and the high end goes first, then the body; get under the depot roof and
+       what is left is a low moan around the openings. It is the same air the whole time — only
+       the path from it to the ear changes, which is exactly what the probes measure. */
+    const exposure = clamp(openness * (1 - indoor * 0.85), 0, 1);
+    // Bounded so the fully-exposed case stays close to the level the bed was originally mixed
+    // at: exposure changes the *balance* between the three beds, it does not turn the wind up.
+    if (windLowGain) windLowGain.gain.value = 0.050 + exposure * 0.045;
+    if (windGustGain) windGustGain.gain.value = 0.008 + exposure * 0.020;
+    // Wire needs real exposure before it starts: it is the cue for "out in the open", so it
+    // must not be audible from anywhere sheltered. Squared, so the onset is late and definite.
+    if (windWireGain) windWireGain.gain.value = 0.0135 * exposure * exposure;
+    if (windInsideGain) windInsideGain.gain.value = 0.055 * indoor * (1 - exposure * 0.5);
+
+    /* --- practical fixtures ------------------------------------------------ */
+    if (!fixturesScanned && ambienceBuilt && gm && gm.level) {
+      try {
+        findFixtures(gm.level);
+      } catch {
+        // A level without a findable fire is simply a quieter level.
+        fixturesScanned = true;
+      }
+    }
+    if (barrelFound && playing) {
+      barrelTimer -= dt;
+      if (barrelTimer <= 0) {
+        barrelTimer = 0.5 + rnd() * 1.6;
+        // Only worth a voice if the player is close enough to pick a pop out of the bed.
+        if (_barrelPos.distanceTo(_earPos) < 26 && quality !== 'low') {
+          try {
+            playBarrelPop(t + 0.02);
+          } catch {
+            /* one missed pop */
+          }
+        }
+      }
+    }
+
+    /* --- the yard cooling down --------------------------------------------- */
+    creakTimer -= dt;
+    if (creakTimer <= 0) {
+      creakTimer = 5.0 + rnd() * 10.0;
+      if (quality !== 'low' && playing) {
+        try {
+          playCreak(t + 0.03);
+        } catch {
+          /* a missed creak is not worth a frame */
+        }
+      }
+    }
+
     battleTimer -= dt;
     if (battleTimer <= 0) {
       battleTimer = 3.5 + rnd() * 7.5;
@@ -1845,9 +2867,134 @@ export function createAudio(game) {
         }
       }
     }
+
+    /* --- enemies ------------------------------------------------------------ */
+    if (playing && quality !== 'low') {
+      try {
+        updateEnemies(gm, t, dt);
+      } catch {
+        /* a broken AI record must never stall the mixer */
+      }
+    }
+  }
+
+  /**
+   * Enemy presence, scanned rather than evented.
+   *
+   * Positioned footsteps are the single most valuable thing audio gives a player in a shooter:
+   * they are the only channel that reports something the camera cannot see. So they are driven
+   * off the AI's own foot-plant flags — the same booleans the renderer plants the boot with —
+   * which means the sound lands on the frame the foot lands, and a man circling behind a
+   * container is locatable by ear alone.
+   */
+  let enemyStepBudget = 0;
+
+  function updateEnemies(gm, t, dt) {
+    const list = gm && gm.ai && gm.ai.enemies;
+    if (!list || !list.length) return;
+    const lvl = gm.level;
+    // At most four steps scheduled per frame. Six men sprinting can land more than that in one
+    // 16 ms slice, and past four the ear reads it as noise anyway.
+    enemyStepBudget = 4;
+
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (!e || !e.active) continue;
+      const slot = e.index >= 0 && e.index < ENEMY_SLOTS ? e.index : ENEMY_SLOTS - 1;
+      if (e.dead) {
+        enemyPlant[slot] = 3;
+        enemyState[slot] = 'dead';
+        continue;
+      }
+
+      /* --- footfalls ------------------------------------------------------- */
+      const dist = e.position ? e.position.distanceTo(_earPos) : 999;
+      if (dist < 46 && e.footPlanted && e.footPos) {
+        for (let leg = 0; leg < 2; leg++) {
+          const bit = 1 << leg;
+          const now = e.footPlanted[leg] ? bit : 0;
+          const was = enemyPlant[slot] & bit;
+          if (now && !was) {
+            enemyPlant[slot] |= bit;
+            if (enemyStepBudget > 0 && e.speed > 0.5) {
+              enemyStepBudget--;
+              _stepPos.copy(e.footPos[leg]);
+              // Surface under this man, refreshed a couple of times a second — he does not
+              // cross from ballast to a concrete apron inside half a second.
+              if (t > enemySurfAt[slot] && lvl && typeof lvl.sampleSurface === 'function') {
+                enemySurfAt[slot] = t + 0.55;
+                try {
+                  const s = lvl.sampleSurface(_stepPos, _rayUp);
+                  if (typeof s === 'string' && s) enemySurf[slot] = s;
+                } catch {
+                  /* keep the last surface */
+                }
+              }
+              // Crouching men move quietly; that is the point of crouching.
+              const quiet = 1 - clamp(e.crouch || 0, 0, 1) * 0.45;
+              playFootstep(enemySurf[slot], t + 0.008, _stepPos, 0.62 * quiet, e.speed, false);
+            }
+          } else if (!now && was) {
+            enemyPlant[slot] &= ~bit;
+          }
+        }
+      }
+
+      /* --- decisions, heard as kit and voice ------------------------------- */
+      const st = e.state;
+      if (st !== enemyState[slot]) {
+        const prev = enemyState[slot];
+        enemyState[slot] = st;
+        if (dist < 52) {
+          const pos = e.chestWorld || e.position;
+          const near = clamp(1 - dist / 52, 0.15, 1);
+          if ((st === 'combat' || st === 'advance') && (prev === 'idle' || prev === 'patrol' || prev === 'investigate')) {
+            // He has seen the player. Weapon comes up, and one man in the group calls it.
+            playEnemyHandling(t + 0.02, pos, 'shoulder', 0.55 * near);
+            if (vocalAllowed(t, slot, 5.0)) playVocal(t + 0.10 + rnd() * 0.12, pos, 'contact', 0.62 * near);
+          } else if (st === 'takeCover') {
+            playEnemyHandling(t + 0.02, pos, 'settle', 0.5 * near);
+            if (rnd() < 0.35 && vocalAllowed(t, slot, 7.0)) playVocal(t + 0.25, pos, 'order', 0.45 * near);
+          } else if (st === 'suppress') {
+            if (rnd() < 0.5 && vocalAllowed(t, slot, 6.0)) playVocal(t + 0.05, pos, 'suppress', 0.55 * near);
+          } else if (st === 'reload') {
+            if (rnd() < 0.45 && vocalAllowed(t, slot, 6.0)) playVocal(t + 0.18, pos, 'reload', 0.5 * near);
+          } else if (st === 'investigate' && (prev === 'idle' || prev === 'patrol')) {
+            playEnemyHandling(t + 0.02, pos, 'kit', 0.35 * near);
+          } else if (st === 'flee') {
+            if (vocalAllowed(t, slot, 5.0)) playVocal(t + 0.05, pos, 'order', 0.5 * near);
+          }
+        }
+      }
+    }
+
+    /* --- squad chatter -----------------------------------------------------
+       Occasional traffic between men who are already fighting, so a firefight is not silent
+       between bursts. Picks whoever is nearest to being useful and lets the gate decide. */
+    chatterTimer -= dt;
+    if (chatterTimer <= 0) {
+      chatterTimer = 5.5 + rnd() * 9.0;
+      for (let i = 0; i < list.length; i++) {
+        const e = list[i];
+        if (!e || !e.active || e.dead) continue;
+        if (e.state !== 'combat' && e.state !== 'suppress' && e.state !== 'takeCover') continue;
+        const slot = e.index >= 0 && e.index < ENEMY_SLOTS ? e.index : ENEMY_SLOTS - 1;
+        const pos = e.chestWorld || e.position;
+        const dist = pos ? pos.distanceTo(_earPos) : 999;
+        if (dist > 48) continue;
+        if (vocalAllowed(t, slot, 8.0)) {
+          playVocal(t + 0.02, pos, 'order', 0.42 * clamp(1 - dist / 48, 0.2, 1));
+          break;
+        }
+      }
+    }
   }
 
   let indoorTarget = 0;
+  let probeIndex = 0;
+  const probeDist = new Float32Array(PROBE_COUNT).fill(PROBE_MAX);
+  let creakTimer = 3 + rnd() * 6;
+  let barrelTimer = 0.6;
 
   /* ---------------------------------------------------------------------- */
   /* Public surface                                                         */
@@ -1886,6 +3033,18 @@ export function createAudio(game) {
       },
       get ducking() {
         return ducking;
+      },
+      get openness() {
+        return openness;
+      },
+      get reflectNear() {
+        return reflectNear;
+      },
+      get gunActivity() {
+        return gunActivity;
+      },
+      get heat() {
+        return shotHeat[0];
       },
     },
     dispose() {
