@@ -2461,6 +2461,7 @@ function bPlaster(ctx) {
   const dirtF = blotchField(res, seed + 37, 3);
   const streaks = streakField(res, { seed: seed + 41, count: 20, lenMin: 0.1, lenMax: 0.5, widthMin: 0.005, widthMax: 0.02 });
   const brickPeek = gridField(res, { cols: 12, rows: 36, stagger: 0.5, gap: 0.0025, chamfer: 0.004, seed: seed + 43 });
+  const macroL = macroField(res, seed + 47);
 
   const plasterC = C.plaster;
   const brickC = C.brick;
@@ -2477,11 +2478,14 @@ function bPlaster(ctx) {
     hv -= off * brickPeek.groove[i] * 0.25;
     ctx.h[i] = clamp01(hv);
 
+    const mL = macroL[i];
     ctx.ar[i] = plasterC[0];
     ctx.ag[i] = plasterC[1];
     ctx.ab[i] = plasterC[2];
     tint(ctx, i, lerp(0.93, 1.05, base[i]));
     tint(ctx, i, lerp(0.97, 1.03, swirl[i]));
+    // Macro layer: a rendered wall is never one tone, it is patches of damp and dry render.
+    tint(ctx, i, lerp(0.8, 1.18, mL));
     paint(ctx, i, shade(cool, 1.1), crack * 0.55);
     paint(ctx, i, shade(brickC, lerp(0.85, 1.1, brickPeek.id[i])), off * 0.85);
     paint(ctx, i, mixc(plasterC, cool, 0.4), off * brickPeek.groove[i] * 0.6);
@@ -2495,6 +2499,7 @@ function bPlaster(ctx) {
     r -= smoothstep(0.6, 0.95, swirl[i]) * 0.12;
     r += crack * 0.14;
     r += off * 0.26;
+    r += (0.5 - mL) * 2.0 * 0.14; // weathered render is chalk, sheltered render keeps a skin
     r += (fine[i] - 0.5) * 0.07;
     r -= (l - 0.6) * 0.12;
     ctx.rg[i] = clamp01(r);
@@ -2670,6 +2675,7 @@ function bTarpaulin(ctx) {
   const dirtF = blotchField(res, seed + 29, 4);
   const streaks = streakField(res, { seed: seed + 31, count: 24, lenMin: 0.1, lenMax: 0.55, widthMin: 0.004, widthMax: 0.018 });
   const scuffs = scratchField(res, { seed: seed + 37, count: 220, angle: 0.9, spread: 1.0, lenMin: 0.01, lenMax: 0.08, width: 0.001 });
+  const macroL = macroField(res, seed + 41);
 
   const tarpC = C.tarpBlue;
   const dustC = C.dust;
@@ -2685,12 +2691,14 @@ function bTarpaulin(ctx) {
     let hv = 0.5 + (folds[i] - 0.4) * 0.42 + creases[i] * 0.12 + (weave - 0.5) * 0.07;
     ctx.h[i] = clamp01(hv);
 
+    const mL = macroL[i];
     ctx.ar[i] = tarpC[0];
     ctx.ag[i] = tarpC[1];
     ctx.ab[i] = tarpC[2];
     tint(ctx, i, lerp(0.85, 1.15, weave));
+    tint(ctx, i, lerp(0.82, 1.16, mL)); // macro layer: the half that faced the sun
     // Sun-bleached crests: PE tarp loses saturation before it loses value.
-    const exposure = clamp01(smoothstep(0.5, 0.95, folds[i]) * 0.7 + clamp01(bleach[i] - 0.35) * 0.8);
+    const exposure = clamp01(smoothstep(0.5, 0.95, folds[i]) * 0.7 + clamp01(bleach[i] - 0.35) * 0.8 + smoothstep(0.5, 0.95, mL) * 0.5);
     const bleached = sat(shade(tarpC, 1.35), 0.42);
     paint(ctx, i, bleached, exposure * 0.6);
     paint(ctx, i, dustC, clamp01(bleach[i] - 0.62) * 0.3);
