@@ -89,9 +89,17 @@ export const LIGHTING = {
    * authored target (PALETTE.concreteShadow) is R-B = -22. 1.20 puts the blue hemisphere back
    * in charge of the shadow fill. sky.js divides hemiGroundIntensity by this when it builds
    * the HemisphereLight, so the warm ground bounce stays at its authored absolute level and
-   * only the sky side moves. Key-to-fill is still 4.6 : 1.2, so the sun remains dominant.
+   * only the sky side moves.
+   *
+   * Revised down from 1.20 once the real cause of the flat frame was found. 1.20 was chosen
+   * while the ash shader chunk was being injected into every program twice, which broke six
+   * materials outright and washed the whole image out; against that, dialling the blue fill
+   * right up looked like it was helping. With the duplicate injection fixed and the exposure
+   * calibrated, 1.20 renders every shadowed surface a saturated electric blue rather than a
+   * cool grey. 0.55 restores the intended relationship: the sky tints the shade, the grade's
+   * `lift` does the rest, and the sun stays overwhelmingly dominant at 4.6 : 0.55.
    */
-  hemiSkyIntensity: 1.2,
+  hemiSkyIntensity: 0.55,
   hemiGroundIntensity: 0.35,
   /**
    * Image-based lighting weight. The environment probe is a PMREM of the whole dome, so it is
@@ -132,8 +140,15 @@ export const GRADE = {
    * the whole image ran on AgX's linear mid-slope and read as a flat grey-box render. 1.15 puts
    * the sun disc, the specular hits on the rails and the scope objective over the knee, which is
    * where the filmic shoulder and the bloom threshold both start doing their job.
+   *
+   * Recalibrated to 3.4 by sweeping the live render at 2.2 / 3.6 / 5.5 and reading the frames
+   * back. 1.15 was set while six materials were failing to compile and the depot light shafts
+   * were painting additive white over the frame; with both fixed, the same number leaves the
+   * ground several stops under and the scene reads as night rather than an hour before dusk.
+   * At 3.4 the sunlit faces land in the upper mid-tones, the sun disc and the burning barrel
+   * cross the bloom threshold, and the shadowed ground still has real density.
    */
-  exposure: 1.15,
+  exposure: 3.4,
   /** Pivoted on 0.18 in postfx. 1.20 is what actually reaches display white and display black. */
   contrast: 1.2,
   /**
