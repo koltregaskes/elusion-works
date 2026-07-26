@@ -5127,6 +5127,1532 @@ export function createLevel(scene, materials, game) {
   }
 
   /* ====================================================================== */
+  /* 14c. Set dressing — the density pass                                    */
+  /* ====================================================================== */
+
+  /**
+   * §4's detail bar, run as one pass over everything the region builders left bare.
+   *
+   * The region builders own *structure*. This owns the *story*: where traffic ran, what
+   * leaked, what got shelled, what somebody propped against a wall and never came back for.
+   * The single clearest gap between this map and a shipped one was not fidelity but density —
+   * large readable areas of ground and large readable areas of wall with nothing on them at
+   * all, and an eye that finds nothing to land on reads the whole frame as a test level.
+   *
+   * Three rules govern every placement below.
+   *
+   *  1. **Draw calls come from materials, not from props.** Everything merged writes into a
+   *     bucket that already exists (`concretePanel`, `concreteRough`, `metalRust`,
+   *     `metalPainted`, `woodPlank`, `brickPainted`, `corrugatedSteel`, `glassDirty`, the
+   *     triplanar `dirt` / `asphalt` / `gravel` grounds); everything repeated goes through an
+   *     instance set, six of which are new. So the whole pass costs six draw calls.
+   *  2. **Nothing is spread uniformly.** Detail banks where the eye goes — the two routes
+   *     between each pair of spaces, the cover edges, the nine spawn sightlines, and above all
+   *     the wall/floor junction, which is where a real yard accumulates and a procedural one
+   *     famously does not.
+   *  3. **Nothing is stamped.** Every instance varies in yaw, in scale and in tint, and the
+   *     tint always comes off `art.js` through the `T` table.
+   */
+
+  /* --- new instance sets -------------------------------------------------- */
+
+  /** Paper, card and plastic sheet: what blows across a yard and catches on the first edge. */
+  const setLitter = inst('litter', 'plaster', (g) => {
+    // Two flaps, each emitted twice back to back so a scrap seen edge-on does not vanish.
+    const flap = (pts, t) => {
+      _bp.length = 0;
+      for (let i = 0; i < pts.length; i++) _bp.push(pts[i]);
+      gpoly(g, _bp, 0, 1, 0, t);
+      _bp.length = 0;
+      for (let i = 0; i < pts.length; i++) _bp.push(pts[i]);
+      gpoly(g, _bp, 0, -1, 0, t);
+    };
+    place(0, 0.004, 0, 0, 0, 0.05);
+    flap([-0.13, 0, -0.09, 0.03, 0, -0.11, 0.06, 0, 0.08, -0.11, 0, 0.1], T.white);
+    popX();
+    place(0.055, 0.022, 0.015, 0.7, 0, -0.55);
+    flap([-0.07, 0, -0.05, 0.08, 0, -0.06, 0.07, 0, 0.06, -0.06, 0, 0.05], grey(0.86));
+    popX();
+  });
+
+  /** Fine grass, taller and wispier than `setWeed`, for wall feet and sleeper gaps. */
+  const setTuft = inst('tuft', 'dirt', (g) => {
+    const r2 = mulberry32(0x7a17);
+    for (let i = 0; i < 11; i++) {
+      const a = r2() * Math.PI * 2;
+      const h = 0.26 + r2() * 0.36;
+      const lean = 0.34 + r2() * 0.6;
+      place(Math.cos(a) * 0.055, 0, Math.sin(a) * 0.055, a, 0, lean);
+      _bp.length = 0;
+      _bp.push(-0.008, 0, 0, 0.008, 0, 0, 0.002, h, h * 0.42);
+      gpoly(g, _bp, 0, 0, 1, T.weeds);
+      popX();
+    }
+  });
+
+  /** 20 litre jerry can, X-swaged flanks and a three-finger handle. */
+  const setJerry = inst('jerry', 'metalPainted', (g) => {
+    chamferBox(g, 0, 0.17, 0, 0.085, 0.17, 0.155, T.white, 0.016);
+    for (let i = -1; i <= 1; i++) chamferBox(g, 0, 0.36, i * 0.072, 0.05, 0.024, 0.016, T.white, 0.007);
+    place(0, 0.355, -0.115, 0, 0, 0.22);
+    tube(g, 0.03, 0.034, 0.085, 6, T.white, true, false, 0.005);
+    popX();
+    // The pressed X on both flanks. A jerry can without it is a box with a spout.
+    for (let s = -1; s <= 1; s += 2) {
+      for (let d = -1; d <= 1; d += 2) {
+        place(s * 0.087, 0.17, 0, 0, d * 0.62, 0);
+        plainBox(g, 0, 0, 0, 0.006, 0.011, 0.185, grey(0.84));
+        popX();
+      }
+    }
+  });
+
+  /** A roosting corvid. Reads at 30 m as a black notch on a skyline member, which is the job. */
+  const setBird = inst('bird', 'metalPainted', (g) => {
+    place(0, 0, 0, 0, -0.14, 0);
+    plainBox(g, 0, 0.085, 0, 0.042, 0.052, 0.1, T.white);
+    popX();
+    plainBox(g, 0, 0.148, -0.082, 0.03, 0.032, 0.038, T.white);
+    _bp.length = 0;
+    _bp.push(-0.011, 0.146, -0.115, 0.011, 0.146, -0.115, 0, 0.136, -0.178);
+    gpoly(g, _bp, 0, 1, 0, T.white);
+    _bp.length = 0;
+    _bp.push(-0.019, 0.076, 0.085, 0.019, 0.076, 0.085, 0.009, 0.05, 0.225, -0.009, 0.05, 0.225);
+    gpoly(g, _bp, 0, 1, 0, T.white);
+  });
+
+  /** Timber wheel chock with a steel toe plate and a rope eye. */
+  const setChock = inst('chock', 'woodPlank', (g) => {
+    wedge(g, 0.155, 0.105, 0.006, 0.185, T.white);
+    plainBox(g, -0.145, 0.045, 0, 0.018, 0.042, 0.088, T.steelDark);
+  });
+
+  /** Offcut of steel angle or a length of pipe — the scrap a yard is never without. */
+  const setOffcut = inst('offcut', 'metalRust', (g) => {
+    place(0, 0.03, 0, 0, 0, 0);
+    plainBox(g, 0, 0, 0, 0.36, 0.028, 0.028, T.white);
+    plainBox(g, 0, 0.026, 0.026, 0.36, 0.026, 0.004, T.white);
+    popX();
+  });
+
+  /* --- flat ground work --------------------------------------------------- */
+
+  /** An irregular flat patch: the shape every stain, scorch mark and puddle is cut from. */
+  function blobXZ(g, r, squash, seedN, tintArr, segs, y) {
+    const n = segs || 11;
+    const r2 = mulberry32(seedN);
+    _bp.length = 0;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const rr = r * (0.76 + r2() * 0.46);
+      _bp.push(Math.cos(a) * rr, y || 0, Math.sin(a) * rr * squash);
+    }
+    gpoly(g, _bp, 0, 1, 0, tintArr);
+  }
+
+  /**
+   * Oil. A hard black core inside two softer haloes, because a spill wicks outwards into the
+   * fines and a single flat ellipse reads as a sticker.
+   */
+  function oilStain(x, z, r, squash, yaw, seedN) {
+    place(x, groundY(x, z) + 0.01, z, yaw);
+    const g = GT('asphalt', 0.35);
+    const r2 = mulberry32(seedN);
+    for (let k = 0; k < 3; k++) {
+      const f = k / 3;
+      const tone = 0.17 + f * 0.4;
+      blobXZ(g, r * (1 - f * 0.55), squash * (0.9 + r2() * 0.3), seedN + k * 13, [tone, tone * 0.97, tone * 1.02], 11, k * 0.0015);
+    }
+    popX();
+  }
+
+  /**
+   * Standing water in a rut. Two layers: a matte damp margin, then the water itself in dirty
+   * glass — the only surface in the map smooth enough to return the 8° key as a hard specular,
+   * which is the entire reason a puddle reads as wet rather than as another dark patch.
+   */
+  function puddle(x, z, r, squash, yaw, seedN) {
+    place(x, groundY(x, z), z, yaw);
+    blobXZ(GT('asphalt', 0.35), r * 1.4, squash, seedN, T.damp, 11, 0.008);
+    blobXZ(G('glassDirty'), r, squash, seedN + 7, T.water, 11, 0.015);
+    popX();
+  }
+
+  /**
+   * A pair of tyre ruts with tread across them. `wander` puts a real steering error into the
+   * run; a rut laid dead straight is the same tell as a container row laid dead straight.
+   */
+  function tyreTrack(x0, z0, x1, z1, gauge, seedN, opts) {
+    const o = opts || {};
+    const len = Math.hypot(x1 - x0, z1 - z0);
+    if (len < 1) return;
+    const yaw = runYaw(x1 - x0, z1 - z0);
+    const r2 = mulberry32(seedN);
+    place((x0 + x1) * 0.5, 0.011, (z0 + z1) * 0.5, yaw);
+    const g = GT('asphalt', 0.35);
+    const segs = Math.max(4, Math.round(len / 1.6));
+    const half = gauge * 0.5;
+    const wander = o.wander === undefined ? 0.16 : o.wander;
+    for (let s = -1; s <= 1; s += 2) {
+      for (let k = 0; k < segs; k++) {
+        const xa = -len * 0.5 + (k / segs) * len;
+        const xb = -len * 0.5 + ((k + 1) / segs) * len;
+        const wa = Math.sin(k * 0.83 + seedN) * wander + Math.sin(k * 2.1) * wander * 0.4;
+        const wb = Math.sin((k + 1) * 0.83 + seedN) * wander + Math.sin((k + 1) * 2.1) * wander * 0.4;
+        const w = 0.15 + r2() * 0.05;
+        const tone = 0.4 + hash2(k, seedN + s) * 0.28;
+        _bp.length = 0;
+        _bp.push(xa, 0, s * half + wa - w, xb, 0, s * half + wb - w, xb, 0, s * half + wb + w, xa, 0, s * half + wa + w);
+        gpoly(g, _bp, 0, 1, 0, [tone, tone, tone * 1.03]);
+        // Tread: a chevron bar every third segment, alternating hand, a shade darker again.
+        if (k % 3 === (s > 0 ? 0 : 1)) {
+          const tb = tone * 0.72;
+          const cx2 = (xa + xb) * 0.5;
+          _bp.length = 0;
+          _bp.push(
+            cx2 - 0.09, 0.0012, s * half + wa - w * 0.9,
+            cx2 + 0.09, 0.0012, s * half + wa - w * 0.1,
+            cx2 + 0.04, 0.0012, s * half + wa + w * 0.9,
+            cx2 - 0.14, 0.0012, s * half + wa + w * 0.1
+          );
+          gpoly(g, _bp, 0, 1, 0, [tb, tb, tb]);
+        }
+      }
+    }
+    popX();
+  }
+
+  /**
+   * Ballast and grit washed up against a kerb or a wall foot. Runs the drift as instanced
+   * stones over a thin dirt fillet, so it costs nothing and kills the bare crease.
+   */
+  function gravelDrift(x0, z0, x1, z1, side, seedN, density) {
+    const len = Math.hypot(x1 - x0, z1 - z0);
+    if (len < 0.5) return;
+    const yaw = runYaw(x1 - x0, z1 - z0);
+    const nx = -Math.sin(yaw);
+    const nz = -Math.cos(yaw);
+    const r2 = mulberry32(seedN);
+    // The fillet.
+    place((x0 + x1) * 0.5, 0, (z0 + z1) * 0.5, yaw);
+    const g = GT('dirt', 0.35);
+    const segs = Math.max(3, Math.round(len / 2.4));
+    for (let i = 0; i < segs; i++) {
+      const xa = -len * 0.5 + (i / segs) * len;
+      const xb = -len * 0.5 + ((i + 1) / segs) * len;
+      const wa = 0.28 + r2() * 0.4;
+      const wb = 0.28 + r2() * 0.4;
+      const ha = 0.05 + r2() * 0.07;
+      const tone = 0.84 + r2() * 0.3;
+      _bp.length = 0;
+      _bp.push(xa, ha, side * 0.04, xb, ha, side * 0.04, xb, 0.005, side * wb, xa, 0.005, side * wa);
+      gpoly(g, _bp, 0, 0.9, side * 0.35, [T.gravel[0] * tone, T.gravel[1] * tone, T.gravel[2] * tone]);
+    }
+    popX();
+    // The stones on top of it.
+    const n = Math.round(len * (density === undefined ? 2.6 : density) * (lod > 0 ? 1 : 0.5));
+    for (let i = 0; i < n; i++) {
+      const f = r2();
+      const px = lerp(x0, x1, f) + nx * side * (0.06 + r2() * 0.55) + (r2() - 0.5) * 0.2;
+      const pz = lerp(z0, z1, f) + nz * side * (0.06 + r2() * 0.55) + (r2() - 0.5) * 0.2;
+      const tone = 0.62 + r2() * 0.55;
+      addInstance(
+        stoneSet, px, groundY(px, pz) + 0.015, pz,
+        r2() * 6.28, (r2() - 0.5) * 1.5, (r2() - 0.5) * 1.5,
+        0.6 + r2() * 1.15,
+        [T.gravel[0] * tone, T.gravel[1] * tone, T.gravel[2] * tone]
+      );
+    }
+  }
+
+  /**
+   * A line of vegetation against a hard edge. Weeds only ever grow where nothing runs, so
+   * every wall foot, fence line and sleeper gap in the map gets one of these and nowhere else
+   * does — which is what makes the growth read as a consequence rather than as scatter.
+   */
+  function weedLine(x0, z0, x1, z1, side, spread, seedN, density) {
+    const len = Math.hypot(x1 - x0, z1 - z0);
+    if (len < 0.5) return;
+    const yaw = runYaw(x1 - x0, z1 - z0);
+    const nx = -Math.sin(yaw) * side;
+    const nz = -Math.cos(yaw) * side;
+    const r2 = mulberry32(seedN);
+    const n = Math.round(len * (density === undefined ? 1.5 : density) * (lod > 1 ? 1 : lod > 0 ? 0.6 : 0.3));
+    for (let i = 0; i < n; i++) {
+      const f = r2();
+      const off = 0.06 + r2() * r2() * spread;
+      const px = lerp(x0, x1, f) + nx * off;
+      const pz = lerp(z0, z1, f) + nz * off;
+      const tone = 0.6 + r2() * 0.65;
+      addInstance(
+        r2() < 0.45 ? setWeed : setTuft,
+        px, groundY(px, pz), pz,
+        r2() * 6.28, 0, 0,
+        0.65 + r2() * 0.8,
+        [T.weeds[0] * tone, T.weeds[1] * tone, T.weeds[2] * tone]
+      );
+    }
+  }
+
+  /** Litter blown up against an edge and stopped by it. Always downwind, never in the open. */
+  function litterCatch(x, z, yaw, n, seedN) {
+    const r2 = mulberry32(seedN);
+    for (let i = 0; i < n; i++) {
+      const d = r2() * r2();
+      const px = x + Math.cos(yaw) * (r2() - 0.5) * 1.7 - Math.sin(yaw) * d * 0.5;
+      const pz = z - Math.sin(yaw) * (r2() - 0.5) * 1.7 - Math.cos(yaw) * d * 0.5;
+      const tone = 0.62 + r2() * 0.55;
+      addInstance(
+        setLitter, px, groundY(px, pz) + 0.012, pz,
+        r2() * 6.28, (r2() - 0.5) * 0.5, (r2() - 0.5) * 0.5,
+        0.65 + r2() * 0.7,
+        [T.paper[0] * tone, T.paper[1] * tone, T.paper[2] * tone]
+      );
+    }
+  }
+
+  /**
+   * A boarded barrow crossing over a running line: timber deck panels inside and outside the
+   * rails, a chamfered nosing, and a hazard-banded post at each approach.
+   *
+   * Worth the geometry because it is the one thing that explains how anybody is meant to get
+   * from the road to the dock on foot, and a route the player can read is worth more than any
+   * amount of scatter.
+   */
+  function levelCrossing(x, z, halfW, seedN) {
+    const gw = G('woodPlank');
+    const gm = G('metalRust');
+    const r2 = mulberry32(seedN);
+    place(x, 0, z);
+    // Deck panels: three bays across, four boards each, laid on the sleeper tops at 0.29.
+    const bays = [[-2.05, -0.85], [-0.62, 0.62], [0.85, 2.05]];
+    for (let b = 0; b < bays.length; b++) {
+      const za = bays[b][0];
+      const zb = bays[b][1];
+      const boards = 4;
+      for (let i = 0; i < boards; i++) {
+        const pz = za + ((i + 0.5) / boards) * (zb - za);
+        const tone = 0.62 + r2() * 0.45;
+        chamferBox(gw, 0, 0.285 - r2() * 0.012, pz, halfW, 0.035, ((zb - za) / boards) * 0.5 - 0.012, [T.sleeper[0] * tone, T.sleeper[1] * tone, T.sleeper[2] * tone], 0.012);
+      }
+      // Retaining angle down each side of the bay.
+      for (let s = -1; s <= 1; s += 2) {
+        chamferBox(gm, 0, 0.28, (s < 0 ? za : zb) + s * 0.03, halfW, 0.055, 0.022, T.rustDeep, 0.006);
+      }
+    }
+    // Approach nosings, so the deck meets the ballast at a ramp rather than a step.
+    for (let s = -1; s <= 1; s += 2) {
+      place(0, 0, s * 2.5, s > 0 ? 0 : Math.PI, 0, 0);
+      place(0, 0, 0, Math.PI * 0.5);
+      wedge(gw, 0.42, halfW, 0.02, 0.3, T.sleeper);
+      popX();
+      popX();
+    }
+    // Hazard posts either side of the deck, one always knocked askew.
+    for (let s = -1; s <= 1; s += 2) {
+      const lean = s > 0 ? 0.0 : 0.22;
+      place(halfW + 0.35, 0, s * 2.9, 0, 0, lean);
+      tube(gm, 0.045, 0.05, 1.25, 6, T.steelPainted, true, false, 0.008);
+      place(0, 0.42, 0);
+      tube(gm, 0.055, 0.055, 0.16, 6, T.hazard, false, false, 0.006);
+      popX();
+      popX();
+    }
+    popX();
+  }
+
+  /* --- wall furniture ----------------------------------------------------- */
+
+  /**
+   * Painted stencil in the wall's local frame, centred on (cx, cy), facing +Z at `zOff`.
+   * `cell` is one font cell, so a glyph is 5 x 7 cells.
+   */
+  function stencilText(g, text, cx, cy, cell, tintArr, zOff) {
+    const adv = 6.4 * cell;
+    const total = text.length * adv - 1.4 * cell;
+    const gh = 7 * cell;
+    let x = cx - total * 0.5;
+    for (let i = 0; i < text.length; i++) {
+      const runs = glyphRuns(text.charAt(i));
+      for (let k = 0; k < runs.length; k += 3) {
+        const x0 = x + runs[k] * cell;
+        const x1 = x + runs[k + 1] * cell;
+        const y1 = cy + gh * 0.5 - runs[k + 2] * cell;
+        const y0 = y1 - cell;
+        _bp.length = 0;
+        _bp.push(x0, y0, zOff, x1, y0, zOff, x1, y1, zOff, x0, y1, zOff);
+        gpoly(g, _bp, 0, 0, 1, tintArr);
+      }
+      x += adv;
+    }
+  }
+
+  /**
+   * Rust bleeding down from a fixing: one tapered, drifting quad. Two triangles.
+   *
+   * This is the highest value-per-triangle detail in the file. A bracket, a bolt or a cill
+   * with nothing running out of it reads as having been fitted this morning; the streak is
+   * what dates the building, and at 8° of key elevation it is also the only tonal variation a
+   * flat sunlit wall gets between its openings.
+   */
+  function rustStreak(g, x, yTop, len, wTop, zOff, tintArr, seedN) {
+    const r2 = mulberry32(seedN);
+    const wBot = wTop * (0.22 + r2() * 0.5);
+    const drift = (r2() - 0.5) * wTop * 3.0;
+    const yBot = yTop - len;
+    _bp.length = 0;
+    _bp.push(x - wTop, yTop, zOff, x + wTop, yTop, zOff, x + drift + wBot, yBot, zOff, x + drift - wBot, yBot, zOff);
+    gpoly(g, _bp, 0, 0, 1, tintArr);
+  }
+
+  /** A fan of streaks below one fixing, with a dark cap where the water actually leaves it. */
+  function rustWash(g, x, yTop, len, spread, n, zOff, tintArr, seedN) {
+    const r2 = mulberry32(seedN);
+    for (let i = 0; i < n; i++) {
+      const px = x + (r2() - 0.5) * spread;
+      const l = len * (0.3 + r2() * 0.95);
+      const w = 0.012 + r2() * 0.038;
+      const tone = 0.55 + r2() * 0.5;
+      rustStreak(g, px, yTop - r2() * 0.05, l, w, zOff, [tintArr[0] * tone, tintArr[1] * tone, tintArr[2] * tone], seedN * 31 + i * 7);
+    }
+  }
+
+  /**
+   * Shrapnel pocking. Each hit is a dark core with a paler spall halo one millimetre behind
+   * it, which is what stops a pock reading as a black dot stuck on the surface.
+   */
+  function pockMarks(g, cx, cy, hx, hy, n, zOff, seedN, dirX, dirY) {
+    const r2 = mulberry32(seedN);
+    for (let i = 0; i < n; i++) {
+      // Biased along the blast direction, so a wall shows which way the round came from.
+      const u = (r2() - 0.5) * 2;
+      const v = (r2() - 0.5) * 2;
+      const bx = dirX === undefined ? 0 : dirX;
+      const by = dirY === undefined ? 0 : dirY;
+      const px = cx + (u * 0.72 + bx * (r2() - 0.2)) * hx;
+      const py = cy + (v * 0.72 + by * (r2() - 0.2)) * hy;
+      const r = 0.028 + r2() * r2() * 0.09;
+      const spall = 0.75 + r2() * 0.28;
+      _bp.length = 0;
+      _bp.push(px - r * 1.7, py - r * 1.5, zOff, px + r * 1.6, py - r * 1.6, zOff, px + r * 1.5, py + r * 1.7, zOff, px - r * 1.6, py + r * 1.5, zOff);
+      gpoly(g, _bp, 0, 0, 1, [spall * 1.2, spall * 1.18, spall * 1.12]);
+      const core = 0.24 + r2() * 0.2;
+      _bp.length = 0;
+      _bp.push(px - r, py - r * 0.9, zOff + 0.002, px + r * 0.9, py - r, zOff + 0.002, px + r, py + r * 0.9, zOff + 0.002, px - r * 0.9, py + r, zOff + 0.002);
+      gpoly(g, _bp, 0, 0, 1, [core, core * 0.96, core]);
+    }
+  }
+
+  /** Bolted-on plate, hazard-edged, with a stencil on it. Local frame, facing +Z. */
+  function signPlate(gm, x, y, zOff, hw, hh, text, faceTint, textTint) {
+    chamferBox(gm, x, y, zOff + 0.012, hw, hh, 0.012, faceTint, 0.006);
+    for (let sx = -1; sx <= 1; sx += 2) {
+      for (let sy = -1; sy <= 1; sy += 2) {
+        chamferBox(gm, x + sx * (hw - 0.03), y + sy * (hh - 0.03), zOff + 0.026, 0.012, 0.012, 0.004, T.steelDark, 0.002);
+      }
+    }
+    if (text) stencilText(gm, text, x, y, Math.min(hh * 0.9, hw * 1.4) / 3.5, textTint || T.soot, zOff + 0.027);
+  }
+
+  /** Weathered louvred vent: a frame with angled blades and a soot wash below it. */
+  function louvreVent(gm, x, y, zOff, hw, hh, tintArr) {
+    chamferBox(gm, x, y, zOff + 0.02, hw, hh, 0.02, tintArr, 0.008);
+    const blades = Math.max(4, Math.round(hh / 0.09));
+    for (let i = 0; i < blades; i++) {
+      const by = y + hh - 0.045 - i * ((hh * 2 - 0.06) / blades);
+      place(x, by, zOff + 0.045, 0, -0.55, 0);
+      plainBox(gm, 0, 0, 0, hw - 0.035, 0.016, 0.035, [tintArr[0] * 0.72, tintArr[1] * 0.72, tintArr[2] * 0.72]);
+      popX();
+    }
+    chamferBox(gm, x, y, zOff + 0.005, hw + 0.03, hh + 0.03, 0.008, T.steelDark, 0.004);
+  }
+
+  /** Perforated cable tray on drop brackets, with the cables lying in it. */
+  function cableTray(gm, x0, x1, y, zOff, seedN) {
+    const len = Math.abs(x1 - x0);
+    const cx = (x0 + x1) * 0.5;
+    const r2 = mulberry32(seedN);
+    chamferBox(gm, cx, y, zOff + 0.075, len * 0.5, 0.012, 0.075, T.steelPainted, 0.005);
+    for (let s = -1; s <= 1; s += 2) {
+      chamferBox(gm, cx, y + 0.038, zOff + 0.075 + s * 0.072, len * 0.5, 0.038, 0.008, T.steelPainted, 0.004);
+    }
+    const brackets = Math.max(2, Math.round(len / 1.5));
+    for (let i = 0; i <= brackets; i++) {
+      const px = x0 + ((x1 - x0) * i) / brackets;
+      chamferBox(gm, px, y - 0.02, zOff + 0.04, 0.02, 0.05, 0.045, T.steelDark, 0.005);
+      strut(gm, px, y - 0.06, zOff + 0.01, px, y + 0.02, zOff + 0.13, 0.012, T.steelDark, 0.003);
+    }
+    // Three cables in the tray, one of them dropping out of it and away down the wall.
+    for (let k = 0; k < 3; k++) {
+      place(cx, y + 0.028 + k * 0.006, zOff + 0.05 + k * 0.028, 0, 0, Math.PI * 0.5);
+      tube(gm, 0.022, 0.022, len - 0.05, 6, k === 1 ? T.steelDark : T.soot, false, false, 0.004);
+      popX();
+    }
+    const dropX = lerp(x0, x1, 0.22 + r2() * 0.5);
+    strut(gm, dropX, y - 0.02, zOff + 0.05, dropX + 0.16, y - 1.1 - r2() * 0.8, zOff + 0.035, 0.02, T.soot, 0.004);
+  }
+
+  /**
+   * A bulkhead or conical work-light fixture. It carries no `PointLight`: §4 caps the
+   * practicals at the three the yard already has, and an unpowered fitting on a dead building
+   * is both correct and free.
+   */
+  function wallLamp(gm, x, y, zOff, kind) {
+    chamferBox(gm, x, y, zOff + 0.03, 0.055, 0.075, 0.03, T.steelDark, 0.008);
+    if (kind === 'cone') {
+      strut(gm, x, y, zOff + 0.05, x, y + 0.12, zOff + 0.36, 0.022, T.steelPainted, 0.005);
+      place(x, y + 0.06, zOff + 0.4, 0, Math.PI * 0.5, 0);
+      tube(gm, 0.155, 0.055, 0.16, 10, T.steelPainted, false, true, 0.008);
+      popX();
+      place(x, y + 0.045, zOff + 0.345, 0, Math.PI * 0.5, 0);
+      tube(G('glassDirty'), 0.1, 0.1, 0.02, 8, T.glass, true, true, 0.004);
+      popX();
+    } else {
+      // Cast bulkhead: an oval body with a wire guard across the glass.
+      place(x, y, zOff + 0.11, 0, Math.PI * 0.5, 0);
+      tube(gm, 0.1, 0.13, 0.13, 8, T.steelPainted, true, false, 0.008);
+      popX();
+      place(x, y, zOff + 0.155, 0, Math.PI * 0.5, 0);
+      tube(G('glassDirty'), 0.085, 0.085, 0.02, 8, T.glass, true, true, 0.004);
+      popX();
+      for (let i = -1; i <= 1; i++) {
+        chamferBox(gm, x + i * 0.045, y, zOff + 0.175, 0.008, 0.095, 0.008, T.steelDark, 0.003);
+      }
+    }
+  }
+
+  /**
+   * Rainwater and services down one blank stretch of wall, authored in the wall's local frame
+   * (X along the run, Y up, +Z out of the face). Everything lands in buckets the wall already
+   * owns, so a fully dressed elevation costs nothing but triangles.
+   */
+  function wallFittings(gm, gWall, x0, x1, yTop, zOut, seedN, opts) {
+    const o = opts || {};
+    const r2 = mulberry32(seedN);
+    const len = x1 - x0;
+    if (len < 0.8) return;
+    const wash = o.wash || T.rustWash;
+
+    // Surface conduit at shoulder height with junction boxes, dropping to a switch.
+    const cy = Math.min(yTop - 0.5, 2.35 + r2() * 0.5);
+    strut(gm, x0 + 0.15, cy, zOut + 0.035, x1 - 0.15, cy + (r2() - 0.5) * 0.1, zOut + 0.035, 0.018, T.steelPainted, 0.004);
+    const clips = Math.max(2, Math.round(len / 1.1));
+    for (let i = 0; i <= clips; i++) {
+      const px = lerp(x0 + 0.15, x1 - 0.15, i / clips);
+      chamferBox(gm, px, cy, zOut + 0.016, 0.016, 0.016, 0.018, T.steelPainted, 0.003);
+      if (i % 3 === 1) rustWash(gWall, px, cy - 0.05, 0.9, 0.1, 2, zOut + 0.004, wash, seedN + i * 17);
+    }
+    const boxX = lerp(x0 + 0.5, x1 - 0.5, 0.25 + r2() * 0.5);
+    chamferBox(gm, boxX, cy, zOut + 0.06, 0.115, 0.15, 0.06, T.steelPainted, 0.01);
+    chamferBox(gm, boxX, cy, zOut + 0.122, 0.085, 0.12, 0.006, T.steelDark, 0.003);
+    strut(gm, boxX, cy - 0.15, zOut + 0.035, boxX + 0.05, 1.15, zOut + 0.035, 0.016, T.steelPainted, 0.003);
+    rustWash(gWall, boxX, cy - 0.16, 1.5, 0.22, 4, zOut + 0.004, wash, seedN + 3);
+
+    // A cable tray on the longer stretches, a lamp on the shorter ones.
+    if (len > 5.5 && yTop > 3.2) {
+      cableTray(gm, x0 + 0.6, x1 - 0.6, Math.min(yTop - 0.6, 3.55), zOut, seedN + 11);
+      rustWash(gWall, lerp(x0, x1, 0.4), Math.min(yTop - 0.62, 3.5), 2.2, 0.5, 5, zOut + 0.004, wash, seedN + 19);
+    }
+    if (o.lamp !== false && len > 2.0) {
+      wallLamp(gm, lerp(x0, x1, o.lampAt === undefined ? 0.62 : o.lampAt), Math.min(yTop - 0.55, 2.95), zOut, r2() < 0.5 ? 'cone' : 'bulkhead');
+      rustWash(gWall, lerp(x0, x1, o.lampAt === undefined ? 0.62 : o.lampAt), Math.min(yTop - 0.62, 2.86), 1.9, 0.16, 3, zOut + 0.004, wash, seedN + 23);
+    }
+
+    // Signage and a painted reference, both fixed to the pier not floating in the middle.
+    if (o.sign && len > 1.6) {
+      signPlate(gm, lerp(x0, x1, 0.32), 1.85, zOut, 0.28, 0.2, o.sign, T.hazard, T.soot);
+      rustWash(gWall, lerp(x0, x1, 0.32), 1.63, 1.1, 0.4, 3, zOut + 0.004, wash, seedN + 29);
+    }
+    if (o.stencil) {
+      stencilText(gWall, o.stencil, lerp(x0, x1, o.stencilAt === undefined ? 0.68 : o.stencilAt), o.stencilY === undefined ? 1.55 : o.stencilY, o.stencilSize || 0.055, o.stencilTint || T.paint, zOut + 0.006);
+    }
+    if (o.louvre && len > 2.2 && yTop > 2.4) {
+      louvreVent(gm, lerp(x0, x1, 0.5), Math.min(yTop - 0.6, 2.1), zOut, 0.42, 0.3, T.steelPainted);
+      rustWash(gWall, lerp(x0, x1, 0.5), 1.78, 1.5, 0.7, 5, zOut + 0.004, wash, seedN + 31);
+    }
+    // Grime at the base: splash-back off the ground, which every wall in the world has.
+    const splashes = Math.max(2, Math.round(len / 1.4));
+    for (let i = 0; i < splashes; i++) {
+      const px = lerp(x0, x1, (i + 0.5) / splashes) + (r2() - 0.5) * 0.4;
+      rustStreak(gWall, px, 0.34 + r2() * 0.3, 0.34, 0.09 + r2() * 0.14, zOut + 0.004, T.grime, seedN + 200 + i);
+    }
+  }
+
+  /* --- working-yard clutter ------------------------------------------------ */
+
+  /** A coil of lay-flat hose or heavy cable, dumped rather than hung. */
+  function hoseCoil(x, z, r, seedN) {
+    const gm = G('metalRust');
+    const r2 = mulberry32(seedN);
+    const y = groundY(x, z);
+    place(x, y, z, r2() * 6.28, (r2() - 0.5) * 0.1, (r2() - 0.5) * 0.1);
+    for (let k = 0; k < 4; k++) {
+      const rr = r * (1 - k * 0.13) * (0.96 + r2() * 0.08);
+      place((r2() - 0.5) * 0.05, 0.045 + k * 0.075, (r2() - 0.5) * 0.05);
+      torus(gm, rr, 0.038, 12, 5, k & 1 ? T.soot : T.steelDark);
+      popX();
+    }
+    // The loose end, thrown clear of the coil.
+    const a = r2() * 6.28;
+    strut(gm, Math.cos(a) * r, 0.04, Math.sin(a) * r, Math.cos(a) * (r + 0.9), 0.04, Math.sin(a) * (r + 0.55), 0.036, T.soot, 0.006);
+    popX();
+    dustSkirt(x, z, r * 1.15, 0.07, seedN + 5, null);
+  }
+
+  /** Two-wheel tool cart: tray, tools laid in it, a barrow handle and a bucket underneath. */
+  function toolCart(x, z, yaw, seedN) {
+    const gm = G('metalPainted');
+    const gr = G('metalRust');
+    const gw = G('woodPlank');
+    const r2 = mulberry32(seedN);
+    const y = groundY(x, z);
+    place(x, y, z, yaw);
+    chamferBox(gm, 0, 0.62, 0, 0.46, 0.045, 0.3, T.steelPainted, 0.012);
+    chamferBox(gm, 0, 0.3, 0, 0.42, 0.035, 0.27, T.steelPainted, 0.012);
+    for (let sx = -1; sx <= 1; sx += 2) {
+      for (let sz = -1; sz <= 1; sz += 2) {
+        strut(gm, sx * 0.42, 0.06, sz * 0.27, sx * 0.42, 0.66, sz * 0.27, 0.02, T.steelPainted, 0.004);
+      }
+    }
+    // Push handle.
+    strut(gm, -0.42, 0.66, -0.27, -0.62, 0.95, -0.27, 0.018, T.steelPainted, 0.004);
+    strut(gm, -0.42, 0.66, 0.27, -0.62, 0.95, 0.27, 0.018, T.steelPainted, 0.004);
+    strut(gm, -0.62, 0.95, -0.27, -0.62, 0.95, 0.27, 0.018, T.steelDark, 0.004);
+    // Wheels.
+    for (let sz = -1; sz <= 1; sz += 2) {
+      place(0.38, 0.14, sz * 0.29, 0, 0, Math.PI * 0.5);
+      tube(gr, 0.14, 0.14, 0.05, 10, grey(0.36), true, true, 0.008);
+      popX();
+    }
+    // Tools in the tray: a bar, a wrench blank, a stack of rag.
+    place(0.05, 0.68, -0.1, 0.3, 0, 0);
+    tube(gr, 0.016, 0.016, 0.72, 5, T.rustDeep, true, false, 0.004);
+    popX();
+    place(-0.1, 0.665, 0.12, -0.15, 0, 0);
+    plainBox(gr, 0, 0, 0, 0.2, 0.012, 0.03, T.steelDark);
+    popX();
+    plainBox(gw, 0.2, 0.35, 0.06, 0.11, 0.015, 0.09, T.woodDark);
+    // Bucket on the lower shelf.
+    place(-0.22, 0.44, -0.08, r2() * 3);
+    tube(gr, 0.115, 0.09, 0.2, 8, T.steelPainted, false, true, 0.008);
+    popX();
+    popX();
+    solidBox(x, 0.45, z, 0.5, 0.45, 0.34, 'metal', yaw, { cover: false });
+    dustSkirt(x, z, 0.75, 0.08, seedN + 2, null);
+  }
+
+  /** Wheelbarrow, tipped onto its nose against something, half full of spoil. */
+  function wheelbarrow(x, z, yaw, seedN) {
+    const gm = G('metalPainted');
+    const gr = G('metalRust');
+    const y = groundY(x, z);
+    place(x, y, z, yaw, 0, 0);
+    place(0, 0.34, 0, 0, -0.85, 0);
+    // The pan: a tapered tub, wider at the lip.
+    place(0, 0, 0);
+    tube(gm, 0.42, 0.24, 0.34, 8, T.steelPainted, false, true, 0.014);
+    popX();
+    // Spoil still in it.
+    place(0, 0.1, 0);
+    tube(GT('dirt', 0.35), 0.33, 0.3, 0.1, 8, T.dirt, true, false, 0.01);
+    popX();
+    popX();
+    // Handles and legs.
+    for (let s = -1; s <= 1; s += 2) {
+      strut(gm, -0.1, 0.42, s * 0.3, -0.95, 0.62, s * 0.24, 0.026, T.steelPainted, 0.005);
+      strut(gm, -0.55, 0.5, s * 0.27, -0.55, 0.06, s * 0.27, 0.02, T.steelPainted, 0.004);
+    }
+    place(0.36, 0.2, 0, 0, 0, Math.PI * 0.5);
+    tube(gr, 0.2, 0.2, 0.07, 10, grey(0.34), true, true, 0.01);
+    popX();
+    popX();
+    solidBox(x, 0.35, z, 0.62, 0.35, 0.42, 'metal', yaw);
+    dustSkirt(x, z, 0.8, 0.07, seedN + 4, null);
+  }
+
+  /**
+   * A stack of timber packing crates, stencilled. The stencil is emitted per crate rather
+   * than baked into an instance, which is the whole reason these are merged geometry: four
+   * boxes carrying the same painted number is worse than no number at all.
+   */
+  function crateStack(x, z, yaw, specs, seedN) {
+    const gw = G('woodPlank');
+    const r2 = mulberry32(seedN);
+    let y = 0;
+    for (let i = 0; i < specs.length; i++) {
+      const [hw, hh, hd, text] = specs[i];
+      const jx = (r2() - 0.5) * 0.1;
+      const jz = (r2() - 0.5) * 0.1;
+      const jy = (r2() - 0.5) * 0.14;
+      const tone = 0.66 + r2() * 0.5;
+      const tt = [T.wood[0] * tone, T.wood[1] * tone, T.wood[2] * tone];
+      place(x + jx, groundY(x, z) + y + hh, z + jz, yaw + jy);
+      chamferBox(gw, 0, 0, 0, hw, hh, hd, tt, 0.014);
+      // Battens round the case — a crate is boards on a frame, not a solid.
+      for (let s = -1; s <= 1; s += 2) {
+        chamferBox(gw, 0, s * (hh - 0.045), hd + 0.012, hw + 0.012, 0.045, 0.012, [tt[0] * 0.86, tt[1] * 0.86, tt[2] * 0.86], 0.005);
+        chamferBox(gw, s * (hw - 0.045), 0, hd + 0.012, 0.045, hh + 0.012, 0.012, [tt[0] * 0.86, tt[1] * 0.86, tt[2] * 0.86], 0.005);
+      }
+      if (text) stencilText(gw, text, 0, 0.02, Math.min(hh * 0.5, (hw * 1.6) / text.length) * 0.42, T.soot, hd + 0.03);
+      popX();
+      solidBox(x + jx, groundY(x, z) + y + hh, z + jz, hw, hh, hd, 'wood', yaw + jy, { cover: y + hh * 2 > 0.9 });
+      y += hh * 2 + 0.01;
+    }
+    dustSkirt(x, z, 0.95, 0.1, seedN + 6, null);
+  }
+
+  /** A bundle of scaffold tube leaning where it was unloaded, with a couple of fittings. */
+  function scaffoldBundle(x, z, yaw, lean, n, seedN) {
+    const gm = G('metalRust');
+    const r2 = mulberry32(seedN);
+    place(x, groundY(x, z), z, yaw, 0, 0);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const rr = 0.07 + r2() * 0.06;
+      const L = 2.6 + r2() * 1.7;
+      place(Math.cos(a) * rr, 0.09 + Math.sin(a) * rr * 0.5, Math.sin(a) * rr * 0.3, (r2() - 0.5) * 0.12, 0, Math.PI * 0.5 - lean * (0.85 + r2() * 0.3));
+      tube(gm, 0.024, 0.024, L, 5, r2() < 0.4 ? T.rustDeep : T.steelPainted, true, true, 0.004);
+      popX();
+    }
+    // Two dropped couplers at the foot.
+    for (let i = 0; i < 2; i++) {
+      place((r2() - 0.5) * 0.5, 0.035, (r2() - 0.5) * 0.5, r2() * 6.28, 0, r2());
+      plainBox(gm, 0, 0, 0, 0.05, 0.032, 0.038, T.steelDark);
+      popX();
+    }
+    popX();
+    solidBox(x + Math.cos(yaw) * 0.9, 0.35, z - Math.sin(yaw) * 0.9, 1.3, 0.35, 0.35, 'metal', yaw);
+    dustSkirt(x, z, 0.7, 0.09, seedN + 8, null);
+  }
+
+  /** A scatter of sawn timber ends beside a stack, plus a couple of steel offcuts. */
+  function timberOffcuts(x, z, n, seedN) {
+    const r2 = mulberry32(seedN);
+    for (let i = 0; i < n; i++) {
+      const a = r2() * 6.28;
+      const rr = r2() * 1.5;
+      const px = x + Math.cos(a) * rr;
+      const pz = z + Math.sin(a) * rr;
+      const tone = 0.58 + r2() * 0.6;
+      if (r2() < 0.7) {
+        addInstance(setDebris, px, groundY(px, pz) + 0.02, pz, r2() * 6.28, 0, (r2() - 0.5) * 0.5, 0.45 + r2() * 1.0,
+          [T.wood[0] * tone, T.wood[1] * tone, T.wood[2] * tone]);
+      } else {
+        addInstance(setOffcut, px, groundY(px, pz) + 0.02, pz, r2() * 6.28, (r2() - 0.5) * 0.3, (r2() - 0.5) * 0.2, 0.7 + r2() * 0.7,
+          [T.rust[0] * tone, T.rust[1] * tone, T.rust[2] * tone]);
+      }
+    }
+  }
+
+  /** A row of jerry cans, one or two knocked over, tints off the palette's painted metals. */
+  function jerryRow(x, z, yaw, n, seedN) {
+    const r2 = mulberry32(seedN);
+    for (let i = 0; i < n; i++) {
+      const f = i - (n - 1) * 0.5;
+      const px = x + Math.cos(yaw) * f * 0.23 + (r2() - 0.5) * 0.05;
+      const pz = z - Math.sin(yaw) * f * 0.23 + (r2() - 0.5) * 0.05;
+      const down = r2() < 0.22;
+      const tone = 0.7 + r2() * 0.55;
+      const base = i % 3 === 0 ? T.railGreen : i % 3 === 1 ? T.steelPainted : T.hazard;
+      addInstance(
+        setJerry, px, groundY(px, pz) + (down ? 0.09 : 0), pz,
+        yaw + (r2() - 0.5) * 0.5, down ? Math.PI * 0.5 : 0, 0, 1,
+        [base[0] * tone, base[1] * tone, base[2] * tone]
+      );
+    }
+  }
+
+  /** Chocks under a wagon's wheels, against the rail. Every stabled vehicle in a yard has them. */
+  function wheelChocks(wx, tz, seedN) {
+    const r2 = mulberry32(seedN);
+    for (let e = -1; e <= 1; e += 2) {
+      for (let s = -1; s <= 1; s += 2) {
+        if (r2() < 0.25) continue;
+        const px = wx + e * (4.3 + r2() * 0.3);
+        const pz = tz + s * 0.7175;
+        addInstance(setChock, px + e * 0.42, groundY(px, pz) + 0.19, pz,
+          e > 0 ? 0 : Math.PI, 0, (r2() - 0.5) * 0.1, 0.9 + r2() * 0.25, grey(0.72 + r2() * 0.4));
+      }
+    }
+  }
+
+  /* --- overhead ------------------------------------------------------------ */
+
+  /**
+   * A wire with real catenary sag, as two quads at right angles per segment. Four triangles a
+   * segment buys a silhouette from every angle, which a flat billboard does not have and a
+   * tube costs ten times over.
+   */
+  function wireRun(g, ax, ay, az, bx, by, bz, sag, rad, tintArr, segs) {
+    const n = Math.max(2, segs || 9);
+    let px = ax;
+    let py = ay;
+    let pz = az;
+    for (let i = 1; i <= n; i++) {
+      const t1 = i / n;
+      const qx = lerp(ax, bx, t1);
+      const qz = lerp(az, bz, t1);
+      const qy = lerp(ay, by, t1) - sag * 4 * t1 * (1 - t1);
+      let dx = qx - px;
+      let dy = qy - py;
+      let dz = qz - pz;
+      const dl = Math.hypot(dx, dy, dz) || 1;
+      dx /= dl;
+      dy /= dl;
+      dz /= dl;
+      // Horizontal perpendicular, then the third axis by cross product.
+      let ux = -dz;
+      let uz = dx;
+      const ul = Math.hypot(ux, uz) || 1;
+      ux /= ul;
+      uz /= ul;
+      const vx = dy * uz;
+      const vy = dz * ux - dx * uz;
+      const vz = -dy * ux;
+      _bp.length = 0;
+      _bp.push(px - ux * rad, py, pz - uz * rad, qx - ux * rad, qy, qz - uz * rad, qx + ux * rad, qy, qz + uz * rad, px + ux * rad, py, pz + uz * rad);
+      gpoly(g, _bp, vx, vy, vz, tintArr);
+      _bp.length = 0;
+      _bp.push(px - vx * rad, py - vy * rad, pz - vz * rad, qx - vx * rad, qy - vy * rad, qz - vz * rad, qx + vx * rad, qy + vy * rad, qz + vz * rad, px + vx * rad, py + vy * rad, pz + vz * rad);
+      gpoly(g, _bp, ux, 0, uz, tintArr);
+      px = qx;
+      py = qy;
+      pz = qz;
+    }
+  }
+
+  /** Fetch a merged bucket as if the emitter stood at (x, z), then emit in world space. */
+  function bucketAt(name, x, z) {
+    place(x, 0, z);
+    const g = G(name);
+    popX();
+    return g;
+  }
+
+  /** Creosoted pole with a cross-arm, insulators and a stay wire to the ground. */
+  function catenaryPole(x, z, h, yaw, seedN) {
+    const gw = G('woodPlank');
+    const gm = G('metalRust');
+    const r2 = mulberry32(seedN);
+    const lean = (r2() - 0.5) * 0.05;
+    place(x, groundY(x, z), z, yaw, 0, lean);
+    place(0, h * 0.5 - 0.25, 0);
+    tube(gw, 0.085, 0.115, h + 0.5, 7, T.woodDark, true, false, 0.01);
+    popX();
+    // Cross-arm with three pin insulators, plus the bolt that holds it.
+    const ay = h - 0.35;
+    chamferBox(gw, 0, ay, 0, 0.055, 0.055, 0.72, T.woodDark, 0.008);
+    for (let i = -1; i <= 1; i++) {
+      place(0, ay + 0.1, i * 0.52);
+      tube(gm, 0.035, 0.048, 0.13, 6, T.glass, true, false, 0.006);
+      popX();
+    }
+    strut(gm, 0, ay - 0.42, 0.3, 0, ay - 0.02, 0.62, 0.016, T.steelDark, 0.004);
+    strut(gm, 0, ay - 0.42, -0.3, 0, ay - 0.02, -0.62, 0.016, T.steelDark, 0.004);
+    // Numbered pole plate and the rust off it.
+    signPlate(gm, 0, 1.9, 0.118, 0.075, 0.11, String(20 + (seedN % 60)), T.steelPainted, T.soot);
+    rustWash(gw, 0, 1.76, 1.1, 0.1, 3, 0.115, T.rustWash, seedN + 9);
+    popX();
+    solidBox(x, h * 0.5, z, 0.13, h * 0.5, 0.13, 'wood');
+    dustSkirt(x, z, 0.42, 0.07, seedN + 1, null);
+  }
+
+  /** A windsock on a short mast, streaming down the map's own wind vector. */
+  function windsock(x, z, h, seedN) {
+    const gm = G('metalPainted');
+    const gt = G('tarpaulin');
+    const wd = ATMOSPHERE.windDirection;
+    const yaw = Math.atan2(wd[0], wd[2]);
+    place(x, groundY(x, z), z);
+    chamferBox(G('concreteRough'), 0, 0.12, 0, 0.38, 0.12, 0.38, T.concreteWorn, 0.02);
+    place(0, h * 0.5 + 0.2, 0);
+    tube(gm, 0.05, 0.07, h, 8, T.steelPainted, false, false, 0.008);
+    popX();
+    place(0, h + 0.2, 0, yaw);
+    // The hoop, then five tapering bands alternating hazard and bleached white.
+    place(0, 0, 0, 0, Math.PI * 0.5, 0);
+    torus(gm, 0.26, 0.018, 10, 4, T.steelDark);
+    popX();
+    for (let i = 0; i < 5; i++) {
+      const f0 = i / 5;
+      const f1 = (i + 1) / 5;
+      place(0, -f0 * 0.09, 0.55 + f0 * 1.5, 0, Math.PI * 0.5, 0);
+      tube(gt, 0.26 - f1 * 0.13, 0.26 - f0 * 0.13, (f1 - f0) * 1.5, 10, i & 1 ? grey(1.5) : T.hazard, false, false, 0.004);
+      popX();
+    }
+    popX();
+    popX();
+    solidBox(x, h * 0.5, z, 0.12, h * 0.5, 0.12, 'metal');
+  }
+
+  /** Birds along a member. Spacing is uneven and one always faces the wrong way. */
+  function roost(ax, ay, az, bx, by, bz, n, seedN) {
+    const r2 = mulberry32(seedN);
+    const yaw = Math.atan2(bx - ax, bz - az);
+    for (let i = 0; i < n; i++) {
+      const f = (i + 0.35 + r2() * 0.5) / n;
+      const g = 0.16 + r2() * 0.2;
+      addInstance(
+        setBird,
+        lerp(ax, bx, f), lerp(ay, by, f), lerp(az, bz, f),
+        yaw + (r2() < 0.25 ? Math.PI : 0) + (r2() - 0.5) * 0.7,
+        0, 0,
+        0.85 + r2() * 0.4,
+        [g, g * 1.02, g * 1.1]
+      );
+    }
+  }
+
+  /* --- damage ------------------------------------------------------------- */
+
+  /**
+   * A shell crater: a shallow bowl inside a lip of displaced earth, a scorch fan, and debris
+   * thrown directionally.
+   *
+   * The bowl only reaches -0.05 m. Ground collision is a flat plane at y = 0, so a real hole
+   * would have the player walking on air across it; at 8° of key elevation the *lip* is what
+   * reads anyway — it catches the sun on its west side and drops the east side into shadow,
+   * and that is the whole silhouette of a crater from standing height.
+   */
+  function shellCrater(x, z, r, dirX, dirZ, seedN) {
+    const r2 = mulberry32(seedN);
+    const SEG = 16;
+    const base = groundY(x, z);
+    place(x, base, z);
+    const g = GT('dirt', 0.35);
+    // Three rings: bowl floor, lip crest, feathered outer toe.
+    const ring = [];
+    for (let i = 0; i <= SEG; i++) {
+      const a = (i / SEG) * Math.PI * 2;
+      const wob = 0.82 + r2() * 0.4;
+      // The lip is always higher downrange of the burst.
+      const down = Math.cos(a) * dirX + Math.sin(a) * dirZ;
+      const lip = (0.13 + r2() * 0.1) * (0.7 + Math.max(0, down) * 0.9);
+      ring.push([
+        Math.cos(a) * r * 0.4 * wob, -0.05, Math.sin(a) * r * 0.4 * wob,
+        Math.cos(a) * r * 0.82 * wob, lip, Math.sin(a) * r * 0.82 * wob,
+        Math.cos(a) * r * 1.3 * wob, 0.004, Math.sin(a) * r * 1.3 * wob,
+      ]);
+    }
+    ring[SEG] = ring[0];
+    for (let i = 0; i < SEG; i++) {
+      const A = ring[i];
+      const B = ring[i + 1];
+      const shade = 0.6 + ((i * 5) % 7) * 0.05;
+      const inner = [T.dirt[0] * shade * 0.8, T.dirt[1] * shade * 0.8, T.dirt[2] * shade * 0.86];
+      const outer = [T.dirt[0] * (shade + 0.35), T.dirt[1] * (shade + 0.3), T.dirt[2] * (shade + 0.22)];
+      // Bowl wall.
+      _bp.length = 0;
+      _bp.push(A[0], A[1], A[2], B[0], B[1], B[2], B[3], B[4], B[5], A[3], A[4], A[5]);
+      gpoly(g, _bp, 0, 0.85, 0, inner);
+      // Lip outer face.
+      _bp.length = 0;
+      _bp.push(A[3], A[4], A[5], B[3], B[4], B[5], B[6], B[7], B[8], A[6], A[7], A[8]);
+      gpoly(g, _bp, 0, 0.9, 0, outer);
+    }
+    // Bowl floor, so the centre is not an open hole.
+    _bp.length = 0;
+    for (let i = 0; i < SEG; i++) _bp.push(ring[i][0], ring[i][1], ring[i][2]);
+    gpoly(g, _bp, 0, 1, 0, [T.dirt[0] * 0.42, T.dirt[1] * 0.4, T.dirt[2] * 0.44]);
+    // Scorch: a dark core and a fan of radiating streaks along the blast axis.
+    const gs = GT('asphalt', 0.35);
+    blobXZ(gs, r * 0.95, 1, seedN + 3, T.scorch, 13, 0.016);
+    const rays = 14;
+    for (let i = 0; i < rays; i++) {
+      const a = (i / rays) * Math.PI * 2 + r2() * 0.2;
+      const bias = 0.45 + Math.max(0, Math.cos(a) * dirX + Math.sin(a) * dirZ) * 1.2;
+      const L = r * (0.9 + r2() * 1.5) * bias;
+      const w = 0.1 + r2() * 0.22;
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      const tone = 0.26 + r2() * 0.3;
+      _bp.length = 0;
+      _bp.push(
+        ca * r * 0.5 - sa * w, 0.014, sa * r * 0.5 + ca * w,
+        ca * r * 0.5 + sa * w, 0.014, sa * r * 0.5 - ca * w,
+        ca * L + sa * w * 0.25, 0.014, sa * L - ca * w * 0.25,
+        ca * L - sa * w * 0.25, 0.014, sa * L + ca * w * 0.25
+      );
+      gpoly(gs, _bp, 0, 1, 0, [tone, tone * 0.98, tone]);
+    }
+    popX();
+    // Ejecta: clods, brick and grit thrown downrange, thinning with distance.
+    const n = Math.round(r * r * (lod > 0 ? 7 : 3.5));
+    for (let i = 0; i < n; i++) {
+      const a = Math.atan2(dirZ, dirX) + (r2() - 0.5) * 2.6;
+      const rr = r * (0.8 + r2() * r2() * 3.4);
+      const px = x + Math.cos(a) * rr;
+      const pz = z + Math.sin(a) * rr;
+      const tone = 0.6 + r2() * 0.5;
+      const pick = r2();
+      if (pick < 0.34) {
+        addInstance(chunkSet, px, groundY(px, pz) + 0.08, pz, r2() * 6.28, (r2() - 0.5) * 1.4, (r2() - 0.5) * 1.4, 0.6 + r2() * 0.85,
+          [T.concreteWorn[0] * tone, T.concreteWorn[1] * tone, T.concreteWorn[2] * tone]);
+      } else if (pick < 0.6) {
+        addInstance(setBrick, px, groundY(px, pz) + 0.035, pz, r2() * 6.28, (r2() - 0.5) * 0.9, (r2() - 0.5) * 0.9, 0.8 + r2() * 0.6,
+          [T.brick[0] * tone, T.brick[1] * tone, T.brick[2] * tone]);
+      } else if (pick < 0.86) {
+        for (let s = 0; s < 3; s++) {
+          addInstance(stoneSet, px + (r2() - 0.5) * 0.8, groundY(px, pz) + 0.02, pz + (r2() - 0.5) * 0.8,
+            r2() * 6.28, (r2() - 0.5) * 1.6, (r2() - 0.5) * 1.6, 0.6 + r2() * 1.1,
+            [T.gravel[0] * tone, T.gravel[1] * tone, T.gravel[2] * tone]);
+        }
+      } else {
+        addInstance(setScrap, px, groundY(px, pz) + 0.02, pz, r2() * 6.28, 0, (r2() - 0.5) * 0.4, 0.6 + r2() * 1.1,
+          [T.rust[0] * tone, T.rust[1] * tone, T.rust[2] * tone]);
+      }
+    }
+    // A slab or two heaved clear of the lip, and the dust fillet that ties it all to the floor.
+    for (let i = 0; i < 3; i++) {
+      const a = Math.atan2(dirZ, dirX) + (r2() - 0.5) * 1.8;
+      const rr = r * (1.0 + r2() * 0.5);
+      addInstance(setSlab, x + Math.cos(a) * rr, groundY(x, z) + 0.12, z + Math.sin(a) * rr,
+        r2() * 6.28, (r2() - 0.5) * 0.9, (r2() - 0.5) * 0.9, 0.8 + r2() * 0.6,
+        [T.concreteWorn[0] * 0.8, T.concreteWorn[1] * 0.8, T.concreteWorn[2] * 0.85]);
+    }
+    dustSkirt(x, z, r * 1.4, 0.1, seedN + 17, null);
+  }
+
+  /**
+   * A sandbag position that took a hit: courses standing at one end, burst and spilled at the
+   * other, with the fill run out across the floor. Sacks are already an instance set, so the
+   * damage costs nothing beyond the spill.
+   */
+  function burstSandbags(x0, z0, x1, z1, courses, seedN) {
+    const r2 = mulberry32(seedN);
+    const len = Math.hypot(x1 - x0, z1 - z0);
+    const dirY = runYaw(x1 - x0, z1 - z0);
+    const n = Math.max(2, Math.round(len / 0.42));
+    // The breach eats the middle third of the run.
+    const b0 = 0.34 + r2() * 0.12;
+    const b1 = b0 + 0.24 + r2() * 0.12;
+    for (let c = 0; c < courses; c++) {
+      const y = 0.075 + c * 0.155;
+      const off = (c % 2) * 0.21;
+      for (let i = 0; i < n; i++) {
+        const f = (i * 0.42 + off) / len;
+        if (f > 1.001) continue;
+        // Above the breach the wall has simply gone; at its shoulders it slumps.
+        const inBreach = f > b0 && f < b1;
+        const shoulder = Math.min(Math.abs(f - b0), Math.abs(f - b1));
+        if (inBreach && c > 0) continue;
+        if (inBreach && r2() < 0.55) continue;
+        const slump = shoulder < 0.12 ? (0.12 - shoulder) * 3.4 : 0;
+        const tone = 0.8 + r2() * 0.34;
+        const px = lerp(x0, x1, f) + (r2() - 0.5) * 0.07;
+        const pz = lerp(z0, z1, f) + (r2() - 0.5) * 0.07;
+        addInstance(
+          setSack, px, y - slump * 0.09, pz,
+          dirY + (r2() - 0.5) * (0.22 + slump), (r2() - 0.5) * (0.08 + slump * 0.6), (r2() - 0.5) * (0.1 + slump * 0.6),
+          0.92 + r2() * 0.16,
+          [T.sandbag[0] * tone, T.sandbag[1] * tone, T.sandbag[2] * tone]
+        );
+      }
+    }
+    // Burst bags thrown clear, and the fill spilled out of them.
+    const bx = lerp(x0, x1, (b0 + b1) * 0.5);
+    const bz = lerp(z0, z1, (b0 + b1) * 0.5);
+    for (let i = 0; i < 9; i++) {
+      const a = r2() * 6.28;
+      const rr = 0.4 + r2() * 1.9;
+      const tone = 0.72 + r2() * 0.4;
+      addInstance(
+        setSack, bx + Math.cos(a) * rr, groundY(bx, bz) + 0.07, bz + Math.sin(a) * rr,
+        r2() * 6.28, (r2() - 0.5) * 1.4, (r2() - 0.5) * 1.4, 0.8 + r2() * 0.3,
+        [T.sandbag[0] * tone, T.sandbag[1] * tone, T.sandbag[2] * tone]
+      );
+    }
+    dustSkirt(bx, bz, 1.9, 0.13, seedN + 21, T.sandbag);
+    for (let i = 0; i < 26; i++) {
+      const a = r2() * 6.28;
+      const rr = r2() * 2.3;
+      const px = bx + Math.cos(a) * rr;
+      const pz = bz + Math.sin(a) * rr;
+      const tone = 0.75 + r2() * 0.4;
+      addInstance(stoneSet, px, groundY(px, pz) + 0.012, pz, r2() * 6.28, (r2() - 0.5) * 1.5, (r2() - 0.5) * 1.5, 0.4 + r2() * 0.6,
+        [T.sandbag[0] * tone, T.sandbag[1] * tone, T.sandbag[2] * tone]);
+    }
+    // The position still gets its collider, breach and all — it is cover the AI relies on.
+    solidBox((x0 + x1) * 0.5, courses * 0.155 * 0.5, (z0 + z1) * 0.5, len * 0.5 + 0.15, courses * 0.155 * 0.5, 0.28, 'sandbag', dirY, { cover: true });
+  }
+
+  /* --- the driver --------------------------------------------------------- */
+
+  /** Ground: traffic, spillage, standing water, drifts, growth and litter. */
+  function dressGround() {
+    // Boarded barrow crossing from the road at z = -6 up to the middle of the yard. It is the
+    // one thing that explains how anyone crosses five running lines on foot, and a route the
+    // player can read is worth more than any amount of scatter.
+    levelCrossing(-8.5, TRACK_Z[4], 1.6, 7101);
+    levelCrossing(-8.5, TRACK_Z[3], 1.6, 7102);
+    levelCrossing(-8.5, TRACK_Z[2], 1.6, 7103);
+    tyreTrack(-8.5, -6.4, -8.5, 16.5, 1.9, 7110, { wander: 0.1 });
+
+    // Lorry movements: out of the depot roller door, off the personnel door, along the aprons
+    // and round the terraces. All of them end somewhere, none of them cross the whole map.
+    tyreTrack(-21.2, -16.2, -5.5, -8.2, 2.05, 7121);
+    tyreTrack(-41.0, -8.6, -26.0, -7.6, 2.05, 7122);
+    tyreTrack(ADMIN.x0 - 4.4, -33.0, ADMIN.x0 - 4.0, -18.5, 2.0, 7123, { wander: 0.1 });
+    tyreTrack(20.5, -8.8, 34.0, -10.6, 2.05, 7124);
+    tyreTrack(-46.5, -33.0, -46.0, -18.0, 2.0, 7125);
+    tyreTrack(28.0, 33.5, 44.0, 30.0, 2.1, 7126);
+    tyreTrack(-2.0, -6.6, 16.0, -6.0, 2.05, 7127, { wander: 0.22 });
+
+    // Oil where machinery stood or leaked: under the wagons, at the drum clusters, on the
+    // aprons, in the depot doorway.
+    const oils = [
+      [-21.0, -19.0, 1.9, 0.75, 0.2], [-14.6, 20.9, 1.2, 0.9, 0.7], [21.8, -3.4, 1.4, 0.85, 1.3],
+      [-43.6, -13.0, 1.5, 0.8, 0.4], [30.6, 30.4, 1.3, 0.9, 2.1], [-23.6, 3.3, 1.0, 0.85, 0.9],
+      [12.4, DOCK.z0 + 2.2, 1.2, 0.8, 0.3], [-2.0, 22.0, 2.4, 0.5, 0.0], [13.5, 22.0, 2.4, 0.5, 0.0],
+      [9.0, 14.0, 2.2, 0.5, 0.0], [-21.0, 14.0, 2.2, 0.5, 0.0], [14.5, 27.5, 1.8, 0.9, 0.55],
+      [-24.5, -4.0, 1.7, 0.9, 2.3], [-8.6, -6.3, 1.1, 0.7, 0.0], [34.2, -10.4, 1.3, 0.8, 1.9],
+      [-30.0, -20.0, 1.6, 0.85, 0.5], [-45.0, -30.5, 1.4, 0.8, 1.1], [4.6, -17.6, 1.0, 0.9, 0.4],
+    ];
+    for (let i = 0; i < oils.length; i++) {
+      const o = oils[i];
+      oilStain(o[0], o[1], o[2], o[3], o[4], 7200 + i);
+    }
+
+    // Standing water, always in a rut or against a kerb — never in the middle of a slab.
+    const puddles = [
+      [-14.0, -6.9, 1.15, 0.42, 0.02], [3.5, -7.1, 0.95, 0.38, 0.0], [10.5, -5.4, 0.8, 0.4, 0.05],
+      [-8.5, 0.6, 0.7, 0.5, 0.0], [-8.5, 9.4, 0.62, 0.55, 0.0], [-19.4, -16.0, 1.0, 0.45, 0.36],
+      [ADMIN.x0 - 4.3, -27.5, 1.1, 0.4, 0.03], [ADMIN.x0 - 4.1, -21.0, 0.8, 0.45, 0.0],
+      [-46.2, -25.0, 1.0, 0.42, 0.0], [30.5, -9.6, 0.9, 0.45, 1.9], [-33.0, -7.4, 0.85, 0.5, 0.2],
+      [21.0, -6.4, 0.75, 0.45, 0.0], [-40.0, 21.0, 0.7, 0.6, 0.9], [17.0, 34.6, 0.8, 0.5, 0.1],
+      [-27.5, 41.0, 0.9, 0.4, 0.0], [41.0, -41.0, 1.0, 0.4, 0.0],
+    ];
+    for (let i = 0; i < puddles.length; i++) {
+      const p = puddles[i];
+      puddle(p[0], p[1], p[2], p[3], p[4], 7300 + i);
+    }
+
+    // Grit drifted against every kerb and hard edge in the map.
+    gravelDrift(-21, -2.75, 19, -2.75, 1, 7401);
+    gravelDrift(-21, -9.25, 19, -9.25, -1, 7402);
+    gravelDrift(ADMIN.x0 - 8.25, -34, ADMIN.x0 - 8.25, -18, 1, 7403);
+    gravelDrift(ADMIN.x0 - 0.75, -34, ADMIN.x0 - 0.75, -18, -1, 7404);
+    gravelDrift(-52, -40.05, -20, -40.05, 1, 7405);
+    gravelDrift(18, -40.05, 48, -40.05, 1, 7406);
+    gravelDrift(-49.5, 41.6, 19.5, 41.6, -1, 7407, 1.6);
+    gravelDrift(28.5, 41.6, 49.5, 41.6, -1, 7408, 1.6);
+    gravelDrift(-51.5, -42.6, -20.5, -42.6, 1, 7409, 1.6);
+    gravelDrift(18.5, -42.6, 49.5, -42.6, 1, 7410, 1.6);
+    gravelDrift(DEPOT.x1 + 0.25, DEPOT.z0 + 1, DEPOT.x1 + 0.25, DEPOT.z1 - 1, 1, 7411);
+    gravelDrift(ADMIN.x0 - 0.25, ADMIN.z0 + 2, ADMIN.x0 - 0.25, ADMIN.z1 - 8, -1, 7412);
+    gravelDrift(DOCK.x0, DOCK.z0 - 0.2, DOCK.x1, DOCK.z0 - 0.2, -1, 7413);
+
+    // Growth: wall feet, fence lines, the cess and every sleeper gap on the outer roads.
+    weedLine(-49.5, 41.5, 19.5, 41.5, -1, 1.3, 7501);
+    weedLine(28.5, 41.5, 49.5, 41.5, -1, 1.3, 7502);
+    weedLine(-51.5, -42.5, -20.5, -42.5, 1, 1.2, 7503);
+    weedLine(18.5, -42.5, 49.5, -42.5, 1, 1.2, 7504);
+    weedLine(-48.2, -37, -48.2, 39, 1, 1.5, 7505, 1.9);
+    weedLine(48.2, -37, 48.2, 39, -1, 1.5, 7506, 1.9);
+    weedLine(DEPOT.x1 + 0.3, DEPOT.z0 + 1, DEPOT.x1 + 0.3, DEPOT.z1 - 1, 1, 0.85, 7507, 1.1);
+    weedLine(DEPOT.x0 - 0.3, DEPOT.z0 + 1, DEPOT.x0 - 0.3, DEPOT.z1 - 1, -1, 0.85, 7508, 1.1);
+    weedLine(ADMIN.x0 - 0.3, ADMIN.z0 + 1, ADMIN.x0 - 0.3, ADMIN.z1 - 8, -1, 0.85, 7509, 1.1);
+    weedLine(ADMIN.x1 + 0.3, ADMIN.z0 + 1, ADMIN.x1 + 0.3, ADMIN.z1 - 1, 1, 0.85, 7510, 1.1);
+    weedLine(DOCK.x0 + 1, DOCK.z0 - 0.15, DOCK.x1 - 1, DOCK.z0 - 0.15, -1, 0.7, 7511, 1.0);
+    // Between the sleepers on the two outermost roads, where nothing has run in years.
+    for (let ti = 0; ti < TRACK_Z.length; ti++) {
+      const z = TRACK_Z[ti];
+      const dens = ti === 0 || ti === 4 ? 0.9 : 0.45;
+      weedLine(-46, z - 0.55, 44, z - 0.55, 1, 1.05, 7520 + ti, dens);
+      weedLine(-46, z + 0.55, 44, z + 0.55, -1, 1.05, 7530 + ti, dens);
+    }
+
+    // Litter, always downwind of something that stopped it.
+    const wd = ATMOSPHERE.windDirection;
+    const windYaw = Math.atan2(wd[0], wd[2]);
+    const catches = [
+      [-20, -6, 5], [-16.4, -6, 4], [-12.8, -6, 5], [4, -6.4, 5], [7.6, -6.4, 4], [11.2, -6.2, 5],
+      [18.5, 3, 4], [17.0, 9.2, 5], [-6, 33.5, 4], [-2.4, 33.5, 5], [-40, -6.5, 4], [-36.4, -6.6, 5],
+      [-2.4, 15.6, 4], [3.4, 18.4, 4], [-17.5, -16.0, 5], [26.0, ADMIN.z1 + 1.0, 4],
+      [-11.0, 3.5, 4], [13.0, 26.0, 4], [-48.2, 12.0, 5], [-48.2, -20.0, 4], [48.2, 8.0, 5],
+      [48.2, -28.0, 4], [-30.0, 41.6, 6], [10.0, 41.6, 5], [-34.0, -42.6, 5], [30.0, -42.6, 5],
+      [DEPOT.x1 + 0.5, -12.0, 6], [DEPOT.x1 + 0.5, -36.0, 5], [ADMIN.x0 - 0.6, -22.0, 6],
+      [ADMIN.x0 - 0.6, -32.0, 5], [-21.5, 5.0, 4], [23.5, 33.0, 4], [-45.0, 12.0, 4],
+      [DOCK.x0 + 4, DOCK.z0 - 0.5, 5], [DOCK.x1 - 6, DOCK.z0 - 0.5, 5],
+    ];
+    for (let i = 0; i < catches.length; i++) {
+      const c = catches[i];
+      litterCatch(c[0], c[1], windYaw, lod > 0 ? c[2] : Math.max(2, c[2] >> 1), 7600 + i);
+    }
+  }
+
+  /** Walls: rainwater goods, services, fittings, signage, stencils and the stains off them. */
+  function dressWalls() {
+    const gm = G('metalRust');
+    const gs = G('metalPainted');
+
+    /* --- the depot ------------------------------------------------------- */
+    // East elevation faces the yard and carries the roller door; the blank piers either side
+    // of it are the largest unbroken wall in the map from the yard vantage.
+    {
+      const gB = G('brickPainted');
+      const gC = G('corrugatedSteel');
+      const zOut = DEPOT.x1 + 0.2;
+      // Local frame: X along the run (world -Z), +Z out of the face (world +X).
+      place(DEPOT.x1, 0, (DEPOT.z0 + DEPOT.z1) * 0.5, Math.PI * 0.5);
+      wallFittings(gm, gB, -15.4, -10.0, 2.6, 0.2, 8101, { sign: '14', stencil: 'D-2', louvre: true });
+      wallFittings(gm, gB, 0.5, 8.6, 2.6, 0.2, 8102, { sign: 'B7', stencil: '204', lampAt: 0.35 });
+      wallFittings(gm, gB, 10.8, 15.4, 2.6, 0.2, 8103, { stencil: 'KL 6', louvre: true });
+      // Cladding above the dado: sheeting bolts bleed, and the eaves gutter overflows.
+      for (let i = 0; i < 22; i++) {
+        const px = -15.2 + i * 1.42;
+        rustWash(gC, px, DEPOT.eave - 0.12, 2.1 + hash2(i, 5) * 3.4, 0.14, 3, 0.13, T.rustWash, 8110 + i);
+        if (i % 4 === 2) rustWash(gC, px, 5.6, 1.4, 0.1, 2, 0.13, T.rustWash, 8140 + i);
+      }
+      // Shrapnel across the piers nearest the yard's open ground.
+      pockMarks(gB, -12.6, 1.5, 2.4, 1.1, 26, 0.205, 8150, 0.3, -0.4);
+      pockMarks(gB, 4.5, 1.4, 3.6, 1.1, 30, 0.205, 8151, -0.2, -0.3);
+      pockMarks(gC, -6.0, 4.4, 5.0, 1.4, 22, 0.13, 8152, 0.1, -0.2);
+      popX();
+      // Rainwater goods on the bays the original build left bare.
+      downpipe(zOut + 0.08, DEPOT.z0 + 9.0, DEPOT.eave, Math.PI, gm);
+      downpipe(zOut + 0.08, DEPOT.z1 - 9.5, DEPOT.eave, Math.PI, gm);
+      downpipe(DEPOT.x0 - 0.28, DEPOT.z0 + 9.0, DEPOT.eave, 0, gm);
+    }
+    // South gable — the elevation every approach from the yard sees first.
+    {
+      const gB = G('brickPainted');
+      const gC = G('corrugatedSteel');
+      const cx = (DEPOT.x0 + DEPOT.x1) * 0.5;
+      place(cx, 0, DEPOT.z1, 0);
+      wallFittings(gm, gB, -14.6, -4.2, 2.6, 0.2, 8201, { sign: 'D2', stencil: 'SHED 2', stencilSize: 0.07, louvre: true });
+      wallFittings(gm, gB, -1.8, 5.5, 2.6, 0.2, 8202, { stencil: '14', stencilSize: 0.1, lampAt: 0.3 });
+      wallFittings(gm, gB, 11.5, 14.6, 2.6, 0.2, 8203, { sign: 'H4' });
+      // A big painted door reference beside the personnel door, half weathered away.
+      stencilText(gB, 'NO 2', -6.4, 2.15, 0.075, T.paint, 0.206);
+      for (let i = 0; i < 16; i++) {
+        const px = -14.4 + i * 1.9;
+        rustWash(gC, px, DEPOT.eave - 0.15, 1.8 + hash2(i, 9) * 3.0, 0.16, 3, 0.13, T.rustWash, 8210 + i);
+      }
+      // The blast that opened this gable pocked everything either side of the hole.
+      pockMarks(gB, 4.0, 1.5, 1.7, 1.1, 24, 0.205, 8230, -0.6, 0.2);
+      pockMarks(gB, 13.0, 1.4, 1.6, 1.1, 20, 0.205, 8231, 0.6, 0.2);
+      pockMarks(gC, 8.5, 5.2, 4.4, 1.5, 26, 0.13, 8232, 0, 0.3);
+      popX();
+    }
+
+    /* --- the terraces ---------------------------------------------------- */
+    // South elevation is the overlook; west is the route in off the yard.
+    {
+      const gB = G('brickPainted');
+      const cx = (ADMIN.x0 + ADMIN.x1) * 0.5;
+      const cz = (ADMIN.z0 + ADMIN.z1) * 0.5;
+      const span = (ADMIN.x1 - ADMIN.x0) - 1.5;
+      place(cx, 0, ADMIN.z1, 0);
+      // Piers between the ground-floor windows, and the cill stains above them.
+      for (let i = 0; i < 5; i++) {
+        const px = -span * 0.5 + ((i + 1) / 6) * span;
+        wallFittings(gm, gB, px - 1.05, px + 1.05, 3.4, 0.2, 8301 + i, {
+          lamp: i === 2,
+          sign: i === 1 ? 'A1' : null,
+          stencil: i === 3 ? String(10 + i) : null,
+        });
+      }
+      for (let i = 0; i < 6; i++) {
+        const wx = -span * 0.5 + ((i + 0.5) / 6) * span;
+        // Under every cill: the classic two-tail wash off the drip's ends.
+        rustWash(gB, wx - 0.72, 0.9, 1.6, 0.14, 3, 0.204, T.rustWash, 8320 + i);
+        rustWash(gB, wx + 0.72, 0.9, 1.6, 0.14, 3, 0.204, T.rustWash, 8340 + i);
+        rustWash(gB, wx, 3.55, 1.5, 0.5, 3, 0.204, T.grime, 8360 + i);
+      }
+      // Parapet run-off marks the top of the whole elevation.
+      for (let i = 0; i < 14; i++) {
+        rustWash(gB, -12.0 + i * 1.85, 7.15, 2.6 + hash2(i, 3) * 1.6, 0.22, 3, 0.204, T.grime, 8380 + i);
+      }
+      pockMarks(gB, -8.0, 1.6, 3.4, 1.3, 26, 0.205, 8390, 0.2, -0.3);
+      pockMarks(gB, 6.0, 5.0, 4.5, 1.4, 22, 0.205, 8391, -0.2, 0.1);
+      popX();
+      // West elevation, beside the loading door.
+      place(ADMIN.x0, 0, cz, Math.PI * 0.5);
+      wallFittings(gm, G('brickPainted'), -7.5, -1.5, 3.4, 0.2, 8401, { sign: 'W3', stencil: 'LOAD', stencilSize: 0.06 });
+      wallFittings(gm, G('brickPainted'), 6.0, 12.0, 3.4, 0.2, 8402, { stencil: '22', louvre: true });
+      stencilText(G('brickPainted'), 'BAY 3', 3.0, 3.15, 0.08, T.paint, 0.206);
+      pockMarks(G('brickPainted'), -3.0, 1.5, 2.6, 1.2, 22, 0.205, 8410, 0.4, -0.2);
+      popX();
+      downpipe(ADMIN.x0 - 0.3, ADMIN.z0 + 12.0, ADMIN.floor * 2 + ADMIN.para, 0, gm);
+      downpipe(ADMIN.x0 - 0.3, ADMIN.z1 - 2.0, ADMIN.floor * 2 + ADMIN.para, 0, gm);
+      downpipe(ADMIN.x1 + 0.3, ADMIN.z0 + 12.0, ADMIN.floor * 2 + ADMIN.para, Math.PI, gm);
+    }
+
+    /* --- the perimeter --------------------------------------------------- */
+    // The precast walls are the largest flat surfaces in the frame from the yard and were
+    // carrying nothing at all above the grime band the builder gave them.
+    {
+      const gc = G('concretePanel');
+      const runs = [
+        [-50, 20, 42, -1, 3.2, 8501],
+        [28, 50, 42, -1, 3.2, 8502],
+        [-52, -20, -43, 1, 3.0, 8503],
+        [18, 50, -43, 1, 3.0, 8504],
+      ];
+      for (let r = 0; r < runs.length; r++) {
+        const [x0, x1, wz, side, h, seedN] = runs[r];
+        const zOut = side * 0.09;
+        place((x0 + x1) * 0.5, 0, wz, side > 0 ? 0 : Math.PI);
+        const half = (x1 - x0) * 0.5;
+        const bays = Math.max(2, Math.round((x1 - x0) / 2.5));
+        for (let i = 0; i < bays; i++) {
+          const px = -half + (i + 0.5) * ((x1 - x0) / bays);
+          const hs = hash2(i, seedN);
+          // Coping run-off on most bays, a painted bay number on every fourth.
+          rustWash(gc, px, h - 0.06, 1.2 + hs * 2.2, 0.55, 2 + ((hs * 3) | 0), 0.095, T.grime, seedN + i);
+          if (i % 4 === 1) stencilText(gc, String(i + 3), px, 1.7, 0.075, T.paint, 0.097);
+          if (i % 7 === 3) pockMarks(gc, px, 1.5, 0.9, 1.0, 12, 0.096, seedN + 500 + i, 0, 0);
+        }
+        // Fittings on three bays of each run, clustered near the routes rather than spread.
+        wallFittings(gm, gc, -half + 3.0, -half + 8.0, h, 0.09, seedN + 61, { sign: String(r * 2 + 3), lamp: true });
+        wallFittings(gm, gc, half - 9.0, half - 4.0, h, 0.09, seedN + 62, { stencil: 'E-4', lamp: false });
+        popX();
+      }
+    }
+
+    /* --- the freight dock ------------------------------------------------ */
+    {
+      const gB = G('brickPainted');
+      const cx = (DOCK.x0 + DOCK.x1) * 0.5;
+      const hd = (DOCK.z1 - DOCK.z0) * 0.5;
+      place(cx, 0, DOCK.z0, Math.PI);
+      // Bay numbers along the dock face, which is what a freight platform actually carries.
+      for (let i = 0; i < 7; i++) {
+        const px = -17.0 + i * 5.7;
+        stencilText(gB, String(i + 1), px, 0.7, 0.085, T.paint, 0.19);
+        rustWash(gB, px, DOCK.h - 0.02, 0.6, 0.3, 3, 0.19, T.grime, 8601 + i);
+      }
+      pockMarks(gB, 6.0, 0.6, 4.0, 0.42, 18, 0.19, 8620, 0, 0);
+      popX();
+      void hd;
+      // Canopy columns bleed onto the deck, and the deck edge is scuffed by forty years of
+      // pallets: both are streaks, and both are two triangles each.
+      const gCon = G('concreteRough');
+      place(cx, 0, DOCK.z0 + 0.02, Math.PI);
+      for (let i = 0; i < 8; i++) {
+        const px = -19.4 + i * 5.54;
+        rustWash(gCon, px, DOCK.h + 0.02, 0.5, 0.2, 2, -0.02, T.rustWash, 8640 + i);
+      }
+      popX();
+    }
+  }
+
+  /** Working clutter: the things a yard crew leaves lying about. */
+  function dressYard() {
+    // Hose and cable coils by the water points and the sheds.
+    hoseCoil(-19.2, -17.4, 0.62, 8701);
+    hoseCoil(2.6, -6.9, 0.55, 8702);
+    hoseCoil(-43.0, -33.5, 0.68, 8703);
+    hoseCoil(22.5, 32.0, 0.6, 8704);
+    hoseCoil(ADMIN.x0 - 2.6, -30.5, 0.5, 8705);
+
+    // Tool carts and barrows, always beside something being worked on.
+    toolCart(-20.4, -14.8, 1.1, 8711);
+    toolCart(15.2, 26.2, 2.4, 8712);
+    toolCart(-42.2, -28.0, 0.3, 8713);
+    wheelbarrow(-9.0, 3.4, 2.1, 8721);
+    wheelbarrow(19.2, -16.4, 0.7, 8722);
+    wheelbarrow(-33.5, 21.5, 3.4, 8723);
+
+    // Crates. Stencilled per crate, so no two stacks read the same.
+    crateStack(-12.2, -7.4, 0.35, [[0.62, 0.38, 0.44, '7412'], [0.5, 0.3, 0.36, 'K2'], [0.34, 0.22, 0.3, null]], 8731);
+    crateStack(17.6, 21.8, 1.25, [[0.7, 0.42, 0.5, 'BX 09'], [0.55, 0.32, 0.4, null]], 8732);
+    crateStack(-41.6, -26.4, 2.2, [[0.6, 0.4, 0.42, 'D-14'], [0.6, 0.26, 0.42, '3'], [0.4, 0.24, 0.32, null]], 8733);
+    crateStack(6.4, DOCK.z0 + 2.6, 0.15, [[0.66, 0.4, 0.46, '221'], [0.42, 0.26, 0.34, 'S']], 8734);
+    crateStack(28.5, -11.5, 1.7, [[0.58, 0.36, 0.4, 'A7'], [0.46, 0.28, 0.34, null]], 8735);
+    crateStack(-27.0, 4.4, 0.9, [[0.64, 0.4, 0.44, '58'], [0.5, 0.3, 0.36, null]], 8736);
+
+    // Jerry cans, in rows against walls and cover where fuel gets stood.
+    jerryRow(-19.6, -12.6, 0.0, 5, 8741);
+    jerryRow(16.6, 25.4, 1.3, 4, 8742);
+    jerryRow(-43.2, -30.6, 0.2, 6, 8743);
+    jerryRow(21.6, -4.4, 1.55, 3, 8744);
+    jerryRow(-11.6, 5.2, 0.0, 4, 8745);
+    jerryRow(30.8, 31.4, 0.8, 3, 8746);
+
+    // Scaffold tube, propped where it was dropped.
+    scaffoldBundle(-21.4, -22.5, 0.4, 0.32, 7, 8751);
+    scaffoldBundle(ADMIN.x0 - 1.2, -18.6, 1.9, 0.28, 6, 8752);
+    scaffoldBundle(-8.2, 34.2, 2.6, 0.35, 5, 8753);
+
+    // Timber ends around every stack of sleepers and every crate pile.
+    timberOffcuts(-9.5, 2.2, 9, 8761);
+    timberOffcuts(19.0, 30.2, 8, 8762);
+    timberOffcuts(-36.5, 2.0, 10, 8763);
+    timberOffcuts(-12.2, -7.4, 7, 8764);
+    timberOffcuts(-41.6, -26.4, 8, 8765);
+    timberOffcuts(6.4, DOCK.z0 + 2.6, 7, 8766);
+
+    // More pallets, at angles, leaning and fallen — a yard is mostly pallets.
+    const pallets = [
+      [-19.0, -10.4, 0.5, 5], [-18.2, -11.3, 1.2, 3], [16.0, 23.2, 2.6, 6],
+      [-42.5, -24.6, 0.9, 4], [4.8, DOCK.z0 + 1.4, 0.2, 7], [26.4, 31.6, 1.6, 4],
+      [-27.8, 3.0, 2.9, 5], [11.0, -14.6, 0.4, 3], [-46.0, 16.0, 1.1, 6],
+      [36.5, -8.5, 2.2, 4],
+    ];
+    for (let i = 0; i < pallets.length; i++) {
+      const [x, z, yaw, n] = pallets[i];
+      for (let k = 0; k < n; k++) {
+        const tone = 0.7 + hash2(i * 11 + k, 6) * 0.52;
+        addInstance(setPallet, x + (hash2(k, i + 5) - 0.5) * 0.1, groundY(x, z) + k * 0.145, z + (hash2(k, i + 17) - 0.5) * 0.1,
+          yaw + (hash2(k, i + 23) - 0.5) * 0.09, 0, 0, 1, [T.wood[0] * tone, T.wood[1] * tone, T.wood[2] * tone]);
+      }
+      // One pallet per stack leaning off the side of it.
+      place(x + Math.cos(yaw) * 0.85, groundY(x, z), z - Math.sin(yaw) * 0.85, yaw + 0.4, 0, 1.25);
+      popX();
+      addInstance(setPallet, x + Math.cos(yaw) * 0.78, groundY(x, z) + 0.5, z - Math.sin(yaw) * 0.78, yaw + 0.5, 0, 1.3, 1, T.woodDark);
+      solidBox(x, groundY(x, z) + n * 0.0725, z, 0.62, n * 0.0725, 0.42, 'wood', yaw, { cover: n > 4 });
+      dustSkirt(x, z, 0.9, 0.09, 8800 + i, null);
+    }
+
+    // Tyres: two more heaps and a properly stacked column beside the wagon repair road.
+    tyrePile(-19.8, -19.6, 6, 8811);
+    tyrePile(17.4, -17.2, 5, 8812);
+    tyrePile(-44.0, -21.0, 7, 8813);
+    for (let i = 0; i < 6; i++) {
+      addInstance(setTyre, -20.6, groundY(-20.6, -21.2) + 0.14 + i * 0.24, -21.2,
+        hash2(i, 3) * 6.28, (hash2(i, 7) - 0.5) * 0.06, (hash2(i, 11) - 0.5) * 0.06, 0.95 + hash2(i, 5) * 0.12, grey(0.3 + hash2(i, 13) * 0.14));
+    }
+    solidBox(-20.6, 0.75, -21.2, 0.45, 0.75, 0.45, 'metal');
+
+    // Chocks under every stabled wagon.
+    wheelChocks(-2, TRACK_Z[1], 8821);
+    wheelChocks(13.5, TRACK_Z[1], 8822);
+    wheelChocks(-21, TRACK_Z[2], 8823);
+    wheelChocks(9, TRACK_Z[2], 8824);
+    wheelChocks(-34, TRACK_Z[0], 8825);
+    wheelChocks(30, TRACK_Z[3], 8826);
+
+    // Two more cable drums, and the sleeper offcut piles that go with them.
+    cableSpool(-19.0, -25.4, 1.2, 0.78, 8831);
+    cableSpool(24.5, -13.5, 0.5, 0.66, 8832);
+    sleeperStack(-21.0, -28.4, 0.6, 4, 8841);
+    sleeperStack(30.0, 33.5, 2.0, 5, 8842);
+  }
+
+  /** Overhead: the layer between the container tops and the crane that the yard had nothing in. */
+  function dressOverhead() {
+    const gm = bucketAt('metalRust', 0, 0);
+    const wireT = mixTint(grey(1), T.soot, 0.55);
+
+    // Two lines of catenary poles, both laid where the ground under them is genuinely clear.
+    const poleLines = [
+      [[13.5, -33.0], [13.5, -27.0], [13.5, -21.0]],
+      [[-46.5, 12.0], [-46.5, 20.0], [-46.5, 28.0], [-46.5, 36.0]],
+    ];
+    for (let l = 0; l < poleLines.length; l++) {
+      const line = poleLines[l];
+      const h = 7.4 + l * 0.6;
+      for (let i = 0; i < line.length; i++) {
+        catenaryPole(line[i][0], line[i][1], h + (i & 1 ? 0.25 : 0), l === 0 ? Math.PI * 0.5 : 0, 8901 + l * 20 + i);
+      }
+      for (let i = 0; i + 1 < line.length; i++) {
+        const a = line[i];
+        const b = line[i + 1];
+        const g = bucketAt('metalRust', (a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5);
+        for (let k = -1; k <= 1; k++) {
+          const off = k * 0.52;
+          const dx = l === 0 ? off : 0;
+          const dz = l === 0 ? 0 : off;
+          wireRun(g, a[0] + dx, h + 0.05, a[1] + dz, b[0] + dx, h + 0.05, b[1] + dz, 0.42, 0.018, wireT, 7);
+        }
+      }
+    }
+
+    // Mast-to-mast feeders. Only the pairs with genuinely clear air between them: a wire
+    // through a silo or a water tower is the one overhead mistake nobody forgives.
+    const feeders = [
+      [0, 6, 1.1], [4, 1, 2.4], [1, 5, 0.9],
+    ];
+    for (let i = 0; i < feeders.length; i++) {
+      const A = MAST_DEFS[feeders[i][0]];
+      const B = MAST_DEFS[feeders[i][1]];
+      const g = bucketAt('metalRust', (A[0] + B[0]) * 0.5, (A[1] + B[1]) * 0.5);
+      for (let k = 0; k < 2; k++) {
+        wireRun(g, A[0] + k * 0.22, A[2] + 0.28, A[1], B[0] + k * 0.22, B[2] + 0.28, B[1], feeders[i][2], 0.022, wireT, 10);
+      }
+    }
+
+    // The slack run across the yard: off the crane's east leg down to the north-west mast.
+    // Deliberately over-slack, so it sags into the frame instead of ruling a line across it.
+    {
+      const M = MAST_DEFS[0];
+      const g = bucketAt('metalRust', -19, 29);
+      wireRun(g, CRANE.x + 0.4, 8.4, CRANE.zB, M[0], M[2] + 0.2, M[1], 2.1, 0.026, wireT, 12);
+      wireRun(g, CRANE.x + 0.4, 8.1, CRANE.zB - 0.5, M[0] + 0.3, M[2] - 0.1, M[1], 2.4, 0.02, wireT, 12);
+    }
+
+    // Birds: the crane jib and the tower rail carry the map's silhouette, so they carry these.
+    roost(CRANE.x - 5.5, CRANE.top + 0.55, CRANE.zA + 3.0, CRANE.x - 5.5, CRANE.top + 0.55, CRANE.zB - 3.0, 9, 8951);
+    roost(MAST_DEFS[0][0], MAST_DEFS[0][2] + 0.5, MAST_DEFS[0][1] - 0.85, MAST_DEFS[0][0], MAST_DEFS[0][2] + 0.5, MAST_DEFS[0][1] + 0.85, 3, 8952);
+    roost(MAST_DEFS[2][0], MAST_DEFS[2][2] + 0.5, MAST_DEFS[2][1] - 0.85, MAST_DEFS[2][0], MAST_DEFS[2][2] + 0.5, MAST_DEFS[2][1] + 0.85, 3, 8953);
+    roost(13.5, 7.6, -33.0, 13.5, 7.6, -21.0, 6, 8954);
+    roost(-46.5, 8.1, 12.0, -46.5, 8.1, 36.0, 7, 8955);
+    roost(-48.4, 2.5, -10.0, -48.4, 2.5, 14.0, 5, 8956);
+    roost(48.4, 2.5, -4.0, 48.4, 2.5, 20.0, 4, 8957);
+    roost(DOCK.x0 + 4, DOCK.h + 4.2, DOCK.z0 + 2.4, DOCK.x1 - 4, DOCK.h + 4.2, DOCK.z0 + 2.4, 6, 8958);
+
+    // A windsock on the dock's west end: the one moving-looking thing on the skyline.
+    windsock(-18.5, 33.0, 6.4, 8961);
+
+    // More hanging chains, all of them already animated by `update`.
+    hangChain(CRANE.x - 5.5, CRANE.top - 0.2, CRANE.zA + 5.5, 20, 0.6, -0.8, 0.4, 0.11);
+    hangChain(DEPOT.x1 + 0.15, 6.2, -18.0, 24, -0.9, 0.3, 2.2, 0.1);
+    hangChain(-13.0, 4.6, -25.0, 16, 0.5, 0.85, 4.1, 0.08);
+    hangChain(ADMIN.x0 - 0.4, 6.8, -22.0, 18, -0.8, -0.5, 5.6, 0.09);
+  }
+
+  /** Damage: craters, the debris fields off them, and the positions that took the hits. */
+  function dressDamage() {
+    // Each crater sits on a route or a sightline, and each throws its debris downrange of the
+    // thing it was aimed at, so the map reads as having been fought over in a direction.
+    const craters = [
+      [-17.0, -12.5, 2.8, 0.55, 0.84, 9101],
+      [22.5, -8.5, 2.8, -0.6, 0.8, 9102],
+      [-4.5, 10.0, 2.3, 0.2, -0.98, 9103],
+      [-16.5, -25.0, 2.4, -0.9, 0.44, 9104],
+      [38.0, -10.5, 2.6, -0.7, 0.72, 9105],
+      [-45.0, 35.0, 2.2, 0.95, -0.3, 9106],
+    ];
+    for (let i = 0; i < craters.length; i++) {
+      const c = craters[i];
+      shellCrater(c[0], c[1], c[2], c[3], c[4], c[5]);
+    }
+
+    // Two positions that were hit while they were held.
+    burstSandbags(-2.4, 15.6, 3.4, 18.4, 4, 9201);
+    burstSandbags(26.0, ADMIN.z1 + 1.0, 31.0, ADMIN.z1 + 1.0, 3, 9202);
+    burstSandbags(-30.5, -3.5, -26.0, -3.5, 3, 9203);
+
+    // Shrapnel on the concrete nearest each crater — the jersey barriers and the buffer stop
+    // take it worst, because they are the only vertical concrete out in the open.
+    const gc = G('concretePanel');
+    const scarred = [
+      [-16.4, -6, 0, 9301], [-12.8, -6, 0, 9302], [4, -6.4, 0.08, 9303],
+      [18.5, 3, Math.PI * 0.5, 9304], [-40, -6.5, 0, 9305], [17.2, 11.3, Math.PI * 0.5, 9306],
+    ];
+    for (let i = 0; i < scarred.length; i++) {
+      const s = scarred[i];
+      for (let side = -1; side <= 1; side += 2) {
+        place(s[0], 0, s[1], s[2] + (side > 0 ? 0 : Math.PI));
+        pockMarks(gc, 0, 0.5, 1.0, 0.34, 10, 0.33, s[3] + (side > 0 ? 0 : 1), 0, 0);
+        popX();
+      }
+    }
+  }
+
+  function setDressing() {
+    resetX();
+    dressGround();
+    dressWalls();
+    dressYard();
+    dressOverhead();
+    dressDamage();
+    resetX();
+  }
+
+  /* ====================================================================== */
   /* 15. Perimeter assembly                                                  */
   /* ====================================================================== */
 
@@ -5624,6 +7150,10 @@ export function createLevel(scene, materials, game) {
   buildDepot();
   buildAdmin();
   buildYard();
+  // Density pass. Runs last of the playable builders so it can dress against everything the
+  // region builders put down, and before the far field so nothing it emits lands in the
+  // unshadowed backdrop chunk.
+  setDressing();
   buildFarField();
   finishShafts();
   emitGroundCollision();
