@@ -766,12 +766,16 @@ const CLOUD_FRAG = /* glsl */ `
 
     // Below this the ray-plane intersection distance runs away and the layer is edge-on
     // anyway; fading it out here is what keeps the cloud deck reading as a *ceiling* rather
-    // than a texture stuck to a dome.
-    float horizonFade = smoothstep(0.010, 0.075, up);
+    // than a texture stuck to a dome. Started much lower than before: the compressed bands in
+    // the last couple of degrees above the horizon are the most valuable part of the deck and
+    // the old 0.010..0.075 ramp threw exactly that away.
+    float horizonFade = smoothstep(uHorizonStart, uHorizonStart + 0.030, up);
     if (horizonFade <= 0.001) discard;
 
     // Intersect the view ray with the cloud plane. Doing the perspective properly - rather
-    // than UV-mapping a dome - is the single biggest reason this reads as sky and not wallpaper.
+    // than UV-mapping a dome - is the single biggest reason this reads as sky and not wallpaper,
+    // and it is also what compresses the bands into tight horizontal lines near the horizon
+    // for free: t goes as 1/sin(altitude), so the ground-plane metres per screen pixel explode.
     float t = (uCloudHeight - uCamY) / max(up, 1e-3);
     vec2 ground = uCamXZ + dir.xz * t;
     // Subtracting the drift means a given noise feature *moves along* the wind vector, which is
@@ -782,33 +786,61 @@ const CLOUD_FRAG = /* glsl */ `
     float distFade = 1.0 - smoothstep(uFadeNear, uFadeFar, t);
     if (distFade <= 0.001) discard;
 
+    /* ---- Anisotropic domain: bands, not blobs ---------------------------- */
+    //
+    // An isotropic fBm produces isotropic blobs. Every real high deck is combed out by the wind
+    // into streaks many times longer than they are wide, so the noise domain is compressed
+    // along the wind vector before it is sampled. Doing it here, in the *ground plane* rather
+    // than in screen space, means perspective handles the foreshortening: a band that is 8 km
+    // long overhead is a hairline at the horizon.
+    vec2 wperp = vec2(-uWindDir.y, uWindDir.x);
+    vec2 wq = vec2(dot(q, uWindDir), dot(q, wperp));
+    // Vertical wind shear displaces each streak along the wind by a slow function of its
+    // cross-wind position. Without it the bands are parallel rulings; with it they feather and
+    // fan the way a sheared cirrus deck actually does.
+    wq.x += noised(vec2(wq.y * 0.55, uTime * 0.004)).x * uShear;
+    vec2 qs = vec2(wq.x / max(uStretch, 0.05), wq.y);
+
     #if CLOUD_WARP
       // Curl warp. The gradient of a scalar fBm rotated 90 degrees is divergence free, so the
       // domain distortion shears and swirls without pumping density in or out. The slow time
       // offset makes the deck *evolve* rather than slide past as a rigid printed sheet.
-      vec3 w = fbmd3(q * 0.62 + vec2(uTime * 0.0035, uTime * -0.0021));
-      vec2 curl = vec2(w.z, -w.y);
-      q += curl * uWarp;
+      // Applied in the stretched frame and with its along-wind component damped, so it curls
+      // the bands rather than dissolving them back into blobs.
+      vec3 w = fbmd3(qs * 0.62 + vec2(uTime * 0.0035, uTime * -0.0021));
+      vec2 curl = vec2(w.z * 0.35, -w.y);
+      qs += curl * uWarp;
     #endif
 
-    float dens = fbmMain(q);
+    float dens = fbmMain(qs);
+
+    // Fibrous detail *along* the streaks only. Cirrus is combed: its fine structure runs
+    // parallel to the bands. Making this detail isotropic collapses the whole effect straight
+    // back into speckle, so the frequencies are deliberately lopsided.
+    float fib = noised(vec2(qs.x * 2.7, qs.y * 9.0)).x;
+    dens *= 1.0 - uFibre * 0.5 + uFibre * fib;
 
     // Coverage threshold. Softness controls the wispiness of the edges; a hard step here is
-    // the classic "cotton wool cut out with scissors" tell.
-    float cov = smoothstep(uCoverage, uCoverage + uSoftness, dens);
+    // the classic "cotton wool cut out with scissors" tell. The transition widens with distance
+    // — a poor man's mip bias, and what stops the compressed horizon bands crawling under TAA.
+    float soft = uSoftness * (1.0 + t * 0.00040);
+    float cov = smoothstep(uCoverage, uCoverage + soft, dens);
     if (cov <= 0.002) discard;
 
     /* ---- Lighting ------------------------------------------------------- */
 
     // The sun is 8 degrees up, so its path through the layer is almost horizontal: the light
     // arrives from *upwind* along the sun's ground track and the undersides are what catch it.
-    vec2 toSun = normalize(uSunDir.xz + vec2(1e-4, 0.0));
+    // Taps march in the *stretched* frame, along the sun's ground track projected into it, so
+    // the self-shadowing runs down the length of a band instead of across it.
+    vec2 sxz = normalize(uSunDir.xz + vec2(1e-4, 0.0));
+    vec2 toSun = normalize(vec2(dot(sxz, uWindDir) / max(uStretch, 0.05), dot(sxz, wperp)) + vec2(1e-5, 0.0));
     float occl = 0.0;
     #if CLOUD_SHADOW_TAPS > 0
-      occl += fbm3(q + toSun * 0.30) * 0.6;
+      occl += fbm3(qs + toSun * 0.30) * 0.6;
     #endif
     #if CLOUD_SHADOW_TAPS > 1
-      occl += fbm3(q + toSun * 0.85) * 0.4;
+      occl += fbm3(qs + toSun * 0.85) * 0.4;
     #endif
     // Beer-Lambert along the light ray, relative to this column's own density so a thin wisp
     // in front of a thick bank still lights up.
@@ -821,14 +853,22 @@ const CLOUD_FRAG = /* glsl */ `
     // 0.30 the anti-sunward banks fall into silhouette and the deck reads as lit from the side.
     float phase = 0.30 + 2.2 * hgPhase(cosGamma, 0.62);
 
-    vec3 sunLit = uSunColour * (trans * phase * uSunVisibility);
-    // Sky fill is stronger on the upper faces; the ambient gradient is what gives the deck
-    // volume without a second scattering pass.
-    vec3 ambient = uSkyColour * (0.28 + 0.42 * up);
+    // Warm undersides, cool tops. The sun is 8 degrees up: it goes *under* the deck, so the
+    // parts of it we look at edge-on near the horizon are lit almost entirely by the warm beam
+    // and by the bright dust band bouncing back up, while the parts overhead are seen from
+    // below with the beam raking past them and only the cool zenith filling the shadow. Keying
+    // both terms off view altitude is a cheap stand-in for a real cloud normal, and it puts the
+    // same warm-key/cool-shadow split on the deck that section 4 puts on the ground.
+    float topness = smoothstep(0.06, 0.62, up);
+
+    vec3 sunLit = uSunColour * (trans * phase * uSunVisibility * mix(1.35, 0.55, topness));
+    vec3 ambient = mix(uAmbUnder, uAmbTop, topness) * (0.34 + 0.34 * up);
     vec3 col = uCloudAlbedo * (sunLit + ambient);
 
-    // Aerial perspective. Without this the far clouds stay saturated and the deck looks flat.
-    float aerial = 1.0 - exp(-t * 0.00019);
+    // Aerial perspective. Without this the far clouds stay saturated and the deck looks flat;
+    // with it, the compressed horizon bands dissolve into the dust layer, which is exactly what
+    // they should do. Gentler than before because the deck now reaches much further out.
+    float aerial = 1.0 - exp(-t * uAerial);
     col = mix(col, uHazeColour * uHazeLuminance, aerial * 0.85);
 
     float alpha = cov * uOpacity * horizonFade * distFade;
