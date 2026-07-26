@@ -2869,22 +2869,24 @@ function poseEnemy(e, dt, level, aimBlend) {
     // facing — that is what stops a turning soldier twisting his own boots into the ground.
     const fy = e.footYaw[leg] + e.footToeOut[leg];
     _a1.set(-Math.sin(fy), 0, -Math.cos(fy));
-    // Full heel-strike → flat → toe-off roll, rather than a pitch that only happens in the
-    // air, with the ankle target displaced so the sole rolls over its contact patch instead of
-    // swinging through the floor.
-    const toe = ankleRoll(e, leg);
+    // Every source of ankle pitch, summed once so the pivot compensation below covers all of
+    // it. The heel-strike-to-toe-off roll; the crouch, which flexes the ankle; and crouch
+    // *velocity*, which is what gives a stand-up its direction — sinking dorsiflexes as the
+    // heel takes the load, rising plantarflexes as he pushes off the balls of his feet. A
+    // crouch pose without the velocity term is symmetrical and reads as a lift, not a
+    // movement.
+    const pitch = ankleRoll(e, leg) + e.crouch * 0.12 + clamp(e.crouchV, -3, 3) * 0.014;
     _a0.copy(e.footPos[leg]);
     _a0.y += RIG.ankleY * e.scale;
-    pivotAnkle(_a0, toe, _a1, e.scale);
+    // Displace the target so the sole rolls over its contact patch rather than swinging
+    // through the floor.
+    pivotAnkle(_a0, pitch, _a1, e.scale);
     ikChain(hip, knee, ankle, _a0, _a4, RIG.thigh * e.scale, RIG.shin * e.scale);
     // Level the sole to world horizontal first (so the boot stays flat however the shin is
-    // angled), then add the heel-to-toe roll on top as a local pitch.
+    // angled), then add the pitch on top as a local rotation.
     _a2.set(0, -1, 0);
     setBoneAim(ankle, _a2, _a1);
-    // Sinking dorsiflexes (the heel takes the load), rising plantarflexes (he pushes off the
-    // balls of his feet). Signing this off crouch *velocity* is what gives the transition its
-    // direction — a crouch pose alone is symmetrical and reads as a lift, not a movement.
-    _ae.set(toe + e.crouch * 0.12 + clamp(e.crouchV, -3, 3) * 0.014, 0, 0);
+    _ae.set(pitch, 0, 0);
     _aq.setFromEuler(_ae);
     ankle.quaternion.multiply(_aq);
     refreshLocal(ankle);
