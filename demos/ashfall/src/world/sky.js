@@ -613,10 +613,22 @@ const SKY_FRAG = /* glsl */ `
 
     col *= uSkyScale;
 
-    // A whisper of noise. The half-float target does not band, but TAA plus an 8-bit present
-    // will find any perfectly smooth gradient, and the sky is the largest one on screen.
-    float d = hash12(gl_FragCoord.xy + fract(uTime) * 137.0) - 0.5;
-    col *= 1.0 + d * 0.0035;
+    /* ---- Banding ---------------------------------------------------------
+     * The HDR target does not band; the 8-bit present at the end of the composite does, and the
+     * sky is by far the largest smooth gradient in the frame. The dither has to be *relative*,
+     * not absolute, because everything between here and the display — exposure, AgX, the grade,
+     * the sRGB transfer — is a monotone rescaling: a multiplicative perturbation survives all of
+     * it at roughly constant size in display codes, an additive one does not.
+     *
+     * uDither is sized so the perturbation is about one display code value: the sRGB transfer's
+     * local slope is ~1/2.2 in the mid-tones, so a relative step of 2.2/255 moves the output by
+     * one code. Larger and it reads as grain (postfx already owns grain); smaller and the
+     * contour survives.
+     *
+     * The 8x8 matrix is translated per frame so TAA cannot converge on it and average it away.
+     */
+    float dth = bayer8(gl_FragCoord.xy + uDitherOffset) - 0.5;
+    col *= 1.0 + dth * uDither;
 
     gl_FragColor = vec4(max(col, 0.0), 1.0);
   }
@@ -642,7 +654,8 @@ const CLOUD_FRAG = /* glsl */ `
 
   uniform vec3 uSunDir;
   uniform vec3 uSunColour;      // extinguished key, linear
-  uniform vec3 uSkyColour;      // zenith fill
+  uniform vec3 uAmbTop;         // cool zenith fill, for anything we see the top of
+  uniform vec3 uAmbUnder;       // warm dust-band fill, for the undersides
   uniform vec3 uHazeColour;     // aerial perspective target
   uniform vec3 uCloudAlbedo;
   uniform vec2 uCamXZ;
@@ -650,6 +663,7 @@ const CLOUD_FRAG = /* glsl */ `
   uniform float uCloudHeight;
   uniform float uCloudScale;
   uniform vec2 uCloudDrift;     // metres, advected by the wind
+  uniform vec2 uWindDir;        // unit, in the ground plane
   uniform float uTime;
   uniform float uCoverage;
   uniform float uSoftness;
@@ -660,6 +674,14 @@ const CLOUD_FRAG = /* glsl */ `
   uniform float uSunVisibility;
   uniform float uFadeNear;
   uniform float uFadeFar;
+  /** Domain anisotropy along the wind. >1 turns blobs into bands. */
+  uniform float uStretch;
+  /** Cross-wind displacement of the streaks, i.e. vertical wind shear. */
+  uniform float uShear;
+  /** Amplitude of the fibrous detail that runs *along* the streaks. */
+  uniform float uFibre;
+  uniform float uAerial;
+  uniform float uHorizonStart;
 
   ${GLSL_PHASE}
   ${GLSL_HASH}
