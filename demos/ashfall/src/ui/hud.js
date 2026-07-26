@@ -111,6 +111,24 @@ function rgbaOf(colour, alpha) {
   return `rgba(${c[0]},${c[1]},${c[2]},${alpha})`;
 }
 
+/** Rec.709 relative luminance of a packed triple, 0..1 in display codes. */
+function lumaOf(c) {
+  return (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
+}
+
+/**
+ * Re-level a palette colour to a target display luminance, keeping its hue and its channel
+ * ratios. The minimap ramp is *specified* in luminance because luminance is what the
+ * quarter-second glance actually resolves; the hues still come from art.js, only the level
+ * moves. Init only — never called per frame.
+ */
+function atLuma(colour, target) {
+  const c = parseColour(colour);
+  const l = lumaOf(c);
+  const k = l > 0.004 ? target / l : 0;
+  return `rgb(${clamp(Math.round(c[0] * k), 0, 255)},${clamp(Math.round(c[1] * k), 0, 255)},${clamp(Math.round(c[2] * k), 0, 255)})`;
+}
+
 /** Build an N-step ramp of css colour strings between two colours. Init only. */
 function buildRamp(from, to, steps) {
   const arr = new Array(steps);
@@ -331,7 +349,57 @@ export function createHUD(game) {
     concreteLit: PALETTE.concreteLit,
     concreteShadow: PALETTE.concreteShadow,
     gravel: PALETTE.gravel,
+    muzzle: PALETTE.muzzleCore,
   };
+
+  /* ---------------------------------------------------------------------- *
+   * Minimap palette.
+   *
+   * The previous disc failed the glance test: ground, structure and edges all landed inside
+   * a ~50-code luminance band, so the whole map read as one mid-grey field of noise with no
+   * shape in it. A minimap has to resolve in the quarter-second a player gives it, which
+   * means separation in *luminance*, not in hue.
+   *
+   * So the ramp is authored as three luminance steps with real distance between them —
+   * ground 12%, building mass 35%, wall lip 50%. That is a 2.9x step and then a 1.4x step,
+   * spanning ~100 codes instead of 35. The hues are still art.js's (cool shadow for the
+   * ground, shadowed concrete for the mass, lit concrete for the lip); `atLuma` only rebases
+   * the level.
+   *
+   * Everything static is therefore capped at 50%, which deliberately leaves the top of the
+   * range empty for the two things that must win the glance: the player arrow (near display
+   * white, ~90%) and the enemy blips (fully saturated danger red with a hot core at ~75%).
+   * Those two are also the only saturated marks on the disc — the field sits under 0.1
+   * saturation, the blips at 0.66 — so they separate by hue as well as by level.
+   *
+   * All of these are built once. `drawMinimap` never calls a colour helper.
+   * ---------------------------------------------------------------------- */
+
+  const MAP_COL = {
+    /* Outside the baked footprint. Below the ground step, so off-map reads as void. */
+    voidFill: atLuma(COL.shadow, 0.055),
+    ground: atLuma(COL.shadow, 0.12),
+    building: atLuma(COL.concreteShadow, 0.35),
+    wall: atLuma(COL.concreteLit, 0.5),
+    /* Half-range ring. Thin and dim: it must not lift the field it sits on. */
+    ring: rgbaOf(COL.primary, 0.15),
+    /* View cone. Tinted friendly rather than neutral, and much weaker than the old 0.26
+       primary wash, which alone lifted half the disc by ~40 codes and ate the ramp. */
+    coneIn: rgbaOf(COL.friendly, 0.19),
+    coneOut: rgbaOf(COL.friendly, 0.0),
+    arrowFill: COL.primary,
+    arrowStroke: rgbaOf(COL.shadow, 0.95),
+    arrowGlowIn: rgbaOf(COL.friendly, 0.42),
+    arrowGlowOut: rgbaOf(COL.friendly, 0.0),
+    blipStroke: rgbaOf(COL.shadow, 0.95),
+    north: rgbaOf(COL.accent, 0.95),
+  };
+
+  /* Blip body: danger, driven up to the top of what a saturated red can reach, so it stays
+     the most saturated mark on the disc rather than being desaturated into legibility. */
+  const BLIP_BODY = atLuma(COL.danger, 0.62);
+  /* Hot core, so the blip's peak clears the wall step by a wide margin. */
+  const BLIP_CORE = mixColour(BLIP_BODY, COL.muzzle, 0.55);
 
   /* Health bar ramp: primary at full, accent through the middle, danger when critical.
      17 steps is finer than the eye can follow at 60 fps and costs nothing at runtime. */

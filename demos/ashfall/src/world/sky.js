@@ -1785,6 +1785,8 @@ export function createSky(engine, materials) {
     blurB: null,
     fade: 0,
     fadeTarget: 0,
+    /** True once blurB has been cleared to black for the idle state — see parkGodrays(). */
+    parked: false,
     w: 0,
     h: 0,
   };
@@ -1867,6 +1869,8 @@ export function createSky(engine, materials) {
     godray.blurB = makeRT(w, h, false);
     godray.w = w;
     godray.h = h;
+    // Freshly allocated targets hold undefined contents, so the idle clear must happen again.
+    godray.parked = false;
   }
 
   function releaseGodrayTargets() {
@@ -2203,9 +2207,50 @@ export function createSky(engine, materials) {
 
   const sunUV = new THREE.Vector2(0.5, 0.5);
 
-  function updateGodrays(dt, game, camera) {
-    if (!godray.enabled || !godray.occRT) {
+  /**
+   * Hand postfx a valid, black shaft buffer while the effect is idle.
+   *
+   * The old contract was "godrayTexture is null while faded out", and it is what a probe caught
+   * as `hasGodrayTex false`: at any vantage not looking within ~65 degrees of the sun — which is
+   * three of the four review frames — the field is legitimately null, and from the outside that
+   * is indistinguishable from the feature being dead. It also means postfx's composite has to
+   * swap texture bindings, which recompiles nothing but does churn the uniform every time the
+   * player turns past the sun.
+   *
+   * Parking instead: clear the output buffer to black *once* on the transition into idle and
+   * keep publishing it. One clear of a half-res target on the frame the effect switches off,
+   * versus a field that flickers between a texture and null several times a second. The
+   * expensive part — the second world traversal — is still skipped entirely.
+   */
+  function parkGodrays() {
+    if (!godray.blurB) {
       sky.godrayTexture = null;
+      sky.godrayState = 'disabled';
+      return;
+    }
+    if (!godray.parked) {
+      const prevTarget = renderer.getRenderTarget();
+      const prevAutoClear = renderer.autoClear;
+      renderer.getClearColor(_clearSave);
+      const prevAlpha = renderer.getClearAlpha();
+      renderer.setRenderTarget(godray.blurB);
+      renderer.setClearColor(_black, 1);
+      renderer.clear(true, false, false);
+      renderer.setRenderTarget(prevTarget);
+      renderer.setClearColor(_clearSave, prevAlpha);
+      renderer.autoClear = prevAutoClear;
+      godray.parked = true;
+    }
+    sky.godrayTexture = godray.blurB.texture;
+    sky.godrayState = 'idle';
+  }
+
+  function updateGodrays(dt, game, camera) {
+    if (!godray.enabled || !godray.occRT || !godray.blurB) {
+      // Genuinely off (quality `low`, or the targets could not be allocated). Null is correct
+      // here and postfx substitutes its own black texture.
+      sky.godrayTexture = null;
+      sky.godrayState = 'disabled';
       return;
     }
 
@@ -2238,9 +2283,10 @@ export function createSky(engine, materials) {
     godray.fade = approach(godray.fade, godray.fadeTarget, 9.0, Math.max(dt, 1e-4));
 
     if (godray.fade <= 0.0015 && godray.fadeTarget <= 0.0015) {
-      sky.godrayTexture = null;
+      parkGodrays();
       return;
     }
+    godray.parked = false;
 
     /* ---- Sun proxy pose ------------------------------------------------ */
 
@@ -2339,6 +2385,7 @@ export function createSky(engine, materials) {
     renderer.shadowMap.needsUpdate = prevShadowNeeds;
 
     sky.godrayTexture = godray.blurB.texture;
+    sky.godrayState = 'active';
   }
 
   /* ====================================================================== */
@@ -2536,6 +2583,7 @@ export function createSky(engine, materials) {
     if (!godray.enabled) {
       releaseGodrayTargets();
       sky.godrayTexture = null;
+      sky.godrayState = 'disabled';
       godray.fade = 0;
     } else {
       allocateGodrayTargets();
@@ -2588,8 +2636,15 @@ export function createSky(engine, materials) {
       return dustPoints;
     },
 
-    /** Consumed by postfx's composite pass. Null while the effect is faded out or disabled. */
+    /**
+     * Consumed by postfx's composite pass. Non-null on every frame the effect is enabled — it
+     * is a black buffer, not null, while the player is facing away from the sun. Null only when
+     * god rays are genuinely off (quality `low`, or target allocation failed), which postfx
+     * already handles by substituting its own black texture.
+     */
     godrayTexture: null,
+    /** 'disabled' | 'idle' | 'active'. Diagnostic; a probe should read this, not the texture. */
+    godrayState: 'disabled',
     /** Canonical height-fog uniforms; materials.js should reference these. */
     fogUniforms,
     /** PMREM-filtered environment, also mirrored onto `materials.env`. */
