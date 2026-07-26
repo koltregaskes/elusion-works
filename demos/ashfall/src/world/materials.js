@@ -1713,6 +1713,7 @@ function bRubble(ctx) {
   // as laser-cut rather than broken.
   const aggIds = new Float32Array(N);
   const agg = pebbleField(res, { seed: seed + 83, ids: aggIds, scales: [{ cells: 64, amp: 0.55 }, { cells: 122, amp: 0.22 }] });
+  const macroL = macroField(res, seed + 97);
 
   const lit = C.concreteLit;
   const stained = C.concreteStained;
@@ -1729,10 +1730,14 @@ function bRubble(ctx) {
     hv -= seam * 0.36;
     ctx.h[i] = clamp01(hv);
 
+    const mL = macroL[i];
     const tone = lerp(0.78, 1.12, chunkIds[i]);
     ctx.ar[i] = lit[0] * tone;
     ctx.ag[i] = lit[1] * tone;
     ctx.ab[i] = lit[2] * tone;
+    // Macro layer: one part of a rubble pile is fresh and pale, the next has been rained on
+    // for months. Without it a big pile is one grey mass however varied the chunks are.
+    tint(ctx, i, lerp(0.76, 1.22, mL));
     paint(ctx, i, stained, dirt[i] * 0.5);
     paint(ctx, i, dirtC, clamp01(seam * 1.1 + (dirt[i] - 0.6)) * 0.55);
     paint(ctx, i, dustC, clamp01(dustF[i] - 0.35) * 0.5);
@@ -1754,6 +1759,7 @@ function bRubble(ctx) {
     r += seam * 0.05;
     r += cut * 0.08;
     r -= smoothstep(0.55, 0.95, dustF[i]) * 0.16;
+    r += (0.5 - mL) * 2.0 * 0.12;
     r += (grain[i] - 0.5) * 0.12;
     r -= (l - 0.4) * 0.18;
     ctx.rg[i] = clamp01(r);
@@ -1923,14 +1929,26 @@ function bMetalPainted(ctx) {
   const dirtC = C.dirt;
 
   for (let i = 0; i < N; i++) {
-    const chip = clamp01(chips.chip[i] * 0.85 + chipsFine.chip[i] * 0.5);
+    const mL = macroL[i];
+    // Paint fails first where the weather got at it. Biasing the chip threshold by the macro
+    // layer means one half of the plate is intact and the other is going, which is what a
+    // painted structure actually looks like — never an even scatter of chips.
+    const failBias = smoothstep(0.3, 0.8, mL) * 0.06 + weld[i] * 0.05;
+    const chip = clamp01(
+      smoothstep(0.7 - failBias, 0.715 - failBias, chips.field[i]) * 0.85 + chipsFine.chip[i] * 0.5
+    );
     // Only the middle of the larger chips has taken the primer off as well as the topcoat.
     const chipCore = smoothstep(0.8, 0.82, chips.field[i]);
     const scr = clamp01(scratches[i] * 0.9 + scratchesFine[i] * 0.6);
     const deep = clamp01(scr - 0.55) * 2.2; // only the hard scratches cut to bare metal
+    // Corrosion creeps out from under the coating at the chip edge and at the weld, which is
+    // where the film is thinnest. It never starts in the middle of an intact panel.
+    const creep = clamp01(chips.lip[i] * 1.3 + chipCore * 0.8 + weld[i] * 0.35) * smoothstep(0.35, 0.85, mL);
 
     let hv = 0.55 + (dents[i] - 0.5) * 0.34 + (orange[i] - 0.5) * 0.12;
     hv += weld[i] * 0.16;
+    hv += mill[i] * 0.01;
+    hv += (mL - 0.5) * 0.06;
     hv -= chip * 0.05;
     hv += chips.lip[i] * 0.03;
     hv -= scr * 0.02;
@@ -1940,11 +1958,17 @@ function bMetalPainted(ctx) {
     ctx.ag[i] = paintC[1];
     ctx.ab[i] = paintC[2];
     tint(ctx, i, lerp(0.94, 1.05, dents[i]));
+    // Sun-chalked on one side of the panel run, still saturated in the lee. Enamel loses its
+    // pigment long before it loses its film.
+    paint(ctx, i, sat(shade(paintC, 1.16), 0.55), smoothstep(0.42, 0.95, mL) * 0.42);
+    tint(ctx, i, lerp(0.88, 1.1, mL));
     // Chip reveals primer first, then bare metal in the middle of the bigger chips.
     paint(ctx, i, primer, chip * 0.8);
     paint(ctx, i, bare, chipCore * 0.7);
     paint(ctx, i, shade(bare, 1.05), deep * 0.75);
+    paint(ctx, i, shade(bare, 1.16), mill[i] * 0.18); // the lay reads through the film
     paint(ctx, i, shade(paintC, 0.88), weld[i] * 0.5);
+    paint(ctx, i, mixc(C.rust, C.rustDeep, 0.4), creep * 0.6);
     paint(ctx, i, dirtC, clamp01(grime[i] - 0.5) * 0.35);
     paint(ctx, i, shade(dirtC, 0.7), streaks[i] * 0.4);
 
@@ -1954,15 +1978,20 @@ function bMetalPainted(ctx) {
     let r = 0.46;
     r += (orange[i] - 0.5) * 0.1;
     r -= deep * 0.26;
+    r -= mill[i] * 0.06;
     r -= smoothstep(0.72, 0.95, ctx.h[i]) * 0.1;
+    r -= smoothstep(0.55, 0.05, mL) * 0.14; // the sheltered half still has its gloss
+    r += smoothstep(0.45, 0.95, mL) * 0.16; // the weather side has chalked right off
     r += chip * 0.24;
+    r += creep * 0.2;
     r += clamp01(grime[i] - 0.5) * 0.18;
-    r += streaks[i] * 0.06;
+    r -= streaks[i] * 0.05; // rain-washed runs are polished, not roughened
     r -= (l - 0.35) * 0.06;
     ctx.rg[i] = clamp01(r);
     // Only the exposed steel is metallic. Paint is a dielectric — getting this wrong is the
-    // fastest way to make painted metal look like foil.
-    ctx.mt[i] = clamp01(deep * 0.9 + chipCore * 0.85);
+    // fastest way to make painted metal look like foil — and so is the oxide creeping out of
+    // the chip edges, so the creep has to take the metalness back off again.
+    ctx.mt[i] = clamp01((deep * 0.9 + chipCore * 0.85) * (1 - creep * 0.8));
   }
 }
 
@@ -2108,12 +2137,15 @@ function bCorrugatedSteel(ctx) {
   const { res, N, seed } = ctx;
   const RIBS = 8;
   const dents = fbmField(res, { seed: seed + 7, freq: 5, octaves: 4 });
-  const rust = rustField(res, { seed: seed + 13, cells: 9, coverage: 0.36, warp: 0.07 });
   const grain = fbmField(res, { seed: seed + 23, freq: 40, octaves: 4 });
   const grime = blotchField(res, seed + 37, 3);
   const streaks = streakField(res, { seed: seed + 43, count: 40, lenMin: 0.2, lenMax: 0.9, widthMin: 0.003, widthMax: 0.01 });
+  const macroL = macroField(res, seed + 47);
 
-  // Fixings: two rows of hex screws with washers, each with a rust run beneath it.
+  // Fixings: two rows of hex screws with washers, each with a rust run beneath it. Built
+  // before the corrosion so the corrosion can be told to start at them — a screw through a
+  // galvanised sheet breaks the coating, and that penetration is where every real sheet
+  // starts to go.
   const screws = new Float32Array(N);
   const washers = new Float32Array(N);
   const srnd = mulberry32(seed + 61);
@@ -2138,6 +2170,25 @@ function bCorrugatedSteel(ctx) {
       }
     }
   }
+  // The end lap where one sheet overlaps the next: a hard shadow line, and a capillary trap
+  // that holds water between the two sheets for days after it rains.
+  const lap = new Float32Array(N);
+  const lapWob = fbmField(res, { seed: seed + 67, freq: 9, octaves: 3, stretch: 1 / 12 });
+  for (let y = 0; y < res; y++) {
+    for (let x = 0; x < res; x++) {
+      const i = y * res + x;
+      const yy = res * 0.5 + (lapWob[i] - 0.5) * res * 0.006;
+      const d = Math.abs(y - yy);
+      lap[i] = 1 - smoothstep(res * 0.004, res * 0.012, Math.min(d, res - d));
+    }
+  }
+  // Nucleation map: fixings, their washers, the lap and the water paths running off them.
+  const screwRun = bleedField(screws, res, { run: 0.11, spread: res * 0.005, seed: seed + 71 });
+  const nucleate = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    nucleate[i] = clamp01(screws[i] * 0.6 + washers[i] * 1.0 + lap[i] * 0.85 + screwRun[i] * 0.6 + smoothstep(0.45, 0.9, macroL[i]) * 0.3);
+  }
+  const rust = rustField(res, { seed: seed + 13, cells: 9, coverage: 0.3, warp: 0.07, bias: nucleate, biasAmt: 1.25 });
 
   const bare = C.steelBare;
   const painted = C.steelPainted;
@@ -2158,28 +2209,33 @@ function bCorrugatedSteel(ctx) {
     let hv = 0.2 + profile * 0.62 + (dents[i] - 0.5) * 0.08 + (grain[i] - 0.5) * 0.04;
     hv += screws[i] * 0.1;
     hv -= washers[i] * 0.03;
+    hv += lap[i] * 0.05; // the upper sheet stands off by its own thickness
     ctx.h[i] = clamp01(hv);
 
-    const rustAmt = clamp01(rust.core[i] * (0.35 + valley * 1.1) + rust.halo[i] * valley * 0.6);
+    const rustAmt = clamp01(rust.core[i] * (0.35 + valley * 1.1) + rust.halo[i] * valley * 0.6 + screwRun[i] * 0.35);
     const base = mixc(painted, bare, 0.35);
     ctx.ar[i] = base[0];
     ctx.ag[i] = base[1];
     ctx.ab[i] = base[2];
     tint(ctx, i, lerp(0.9, 1.08, dents[i]));
+    tint(ctx, i, lerp(0.85, 1.15, macroL[i])); // one end of the run has weathered harder
     paint(ctx, i, rustC, rustAmt * 0.85);
     paint(ctx, i, deepC, clamp01(rust.scale[i] * valley * 1.4) * 0.7);
     paint(ctx, i, mixc(rustC, C.dirt, 0.5), streaks[i] * valley * 0.55);
     paint(ctx, i, shade(bare, 1.1), screws[i] * 0.65);
     paint(ctx, i, mixc(rustC, deepC, 0.5), washers[i] * 0.6);
+    paint(ctx, i, mixc(rustC, deepC, 0.6), lap[i] * 0.5); // the capillary trap rots first
     paint(ctx, i, C.dirt, clamp01(grime[i] - 0.5) * valley * 0.5);
     paint(ctx, i, dustC, clamp01(profile - 0.75) * 0.28); // dust on the rib crowns
 
     const l = lum(ctx, i);
-    let r = 0.44;
+    let r = 0.4;
     r += (grain[i] - 0.5) * 0.08;
-    r = lerp(r, 0.92, rustAmt);
+    r = lerp(r, 0.94, rustAmt);
+    r -= smoothstep(0.55, 0.95, profile) * (1 - rustAmt) * 0.16; // rain-washed rib crowns
     r += clamp01(grime[i] - 0.5) * valley * 0.2;
-    r -= screws[i] * 0.14;
+    r += (0.5 - macroL[i]) * 2.0 * 0.08;
+    r -= screws[i] * 0.16;
     r += (l - 0.35) * 0.06;
     ctx.rg[i] = clamp01(r);
     ctx.mt[i] = clamp01(1 - rustAmt * 0.85 - clamp01(grime[i] - 0.5) * valley * 0.4);
@@ -2199,6 +2255,7 @@ function bWoodPlank(ctx) {
   const splits = scratchField(res, { seed: seed + 41, count: 90, angle: 0, spread: 0.02, lenMin: 0.05, lenMax: 0.35, width: 0.0014 });
   const weather = blotchField(res, seed + 53, 3);
   const streaks = streakField(res, { seed: seed + 59, count: 16, lenMin: 0.08, lenMax: 0.4, widthMin: 0.004, widthMax: 0.014 });
+  const macroL = macroField(res, seed + 61);
 
   const wood = C.woodWeathered;
   const splinter = C.woodSplinter;
@@ -2221,10 +2278,13 @@ function bWoodPlank(ctx) {
     hv += (planks.id[i] - 0.5) * 0.05 * (1 - joint); // planks sit at slightly different depths
     ctx.h[i] = clamp01(hv);
 
+    const mL = macroL[i];
     const tone = lerp(0.8, 1.15, planks.id[i]);
     ctx.ar[i] = wood[0] * tone;
     ctx.ag[i] = wood[1] * tone;
     ctx.ab[i] = wood[2] * tone;
+    // Macro layer: the end of a timber that sat in the wet against the end that stayed dry.
+    tint(ctx, i, lerp(0.78, 1.2, mL));
     // Late wood is darker than early wood — the grain must be in the albedo, not just bump.
     paint(ctx, i, shade(wood, 0.62), grain * 0.55);
     paint(ctx, i, splinter, clamp01(1 - grain - 0.25) * 0.35);
@@ -2243,6 +2303,7 @@ function bWoodPlank(ctx) {
     r += joint * 0.08;
     r += splits[i] * 0.08;
     r -= knot * 0.24; // knots are resinous and noticeably glossier
+    r += (0.5 - mL) * 2.0 * 0.12; // silvered where it weathered, sound where it did not
     r -= (l - 0.35) * 0.1;
     ctx.rg[i] = clamp01(r);
     ctx.mt[i] = 0;
@@ -2264,6 +2325,7 @@ function bSandbag(ctx) {
   // like graph paper.
   const shearU = fbmField(res, { seed: seed + 47, freq: 5, octaves: 3 });
   const shearV = fbmField(res, { seed: seed + 53, freq: 5, octaves: 3 });
+  const macroL = macroField(res, seed + 59);
 
   const bagC = C.sandbag;
   const dirtC = C.dirt;
@@ -2287,11 +2349,14 @@ function bSandbag(ctx) {
     hv += fray[i] * 0.03;
     ctx.h[i] = clamp01(hv);
 
+    const mL = macroL[i];
     ctx.ar[i] = bagC[0];
     ctx.ag[i] = bagC[1];
     ctx.ab[i] = bagC[2];
     tint(ctx, i, lerp(0.82, 1.12, weave));
     tint(ctx, i, lerp(0.9, 1.08, lumps[i]));
+    // Macro layer: bags nearer the ground are soaked and dark, the ones on top are bleached.
+    tint(ctx, i, lerp(0.76, 1.2, mL));
     paint(ctx, i, dirtC, clamp01(dirtF[i] - 0.35) * 0.55);
     // Sun-bleached crowns, dirt in the hollows.
     paint(ctx, i, dustC, smoothstep(0.6, 0.95, bulge) * clamp01(wear[i]) * 0.4);
@@ -2304,6 +2369,7 @@ function bSandbag(ctx) {
     let r = 0.93;
     r -= smoothstep(0.7, 0.98, bulge) * 0.08;
     r += clamp01(dirtF[i] - 0.5) * 0.05;
+    r -= smoothstep(0.55, 0.95, 1 - mL) * 0.16; // sodden hessian is dark and slick
     r -= (l - 0.45) * 0.05;
     r += (fibre[i] - 0.5) * 0.04;
     ctx.rg[i] = clamp01(r);
@@ -2447,6 +2513,7 @@ function bGravel(ctx) {
   const fines = fbmField(res, { seed: seed + 23, freq: 50, octaves: 4 });
   const dirtF = blotchField(res, seed + 29, 3);
   const facet = fbmField(res, { seed: seed + 31, freq: 26, octaves: 3, op: OP_RIDGE });
+  const macroL = macroField(res, seed + 37);
 
   const gravelC = C.gravel;
   const dirtC = C.dirt;
@@ -2476,23 +2543,32 @@ function bGravel(ctx) {
     ctx.ag[i] = stoneC[1];
     ctx.ab[i] = stoneC[2];
     tint(ctx, i, lerp(0.8, 1.18, facet[i]));
+    // The macro layer. Ballast is dirtier where it has been walked and cleaner where it was
+    // last topped up, and that is a metre-scale story, not a per-stone one.
+    const mL = macroL[i];
+    tint(ctx, i, lerp(0.76, 1.24, mL));
     // Fines and dust wash into the gaps between the stones.
     const gap = 1 - smoothstep(0.05, 0.4, stone);
     // Ballast sheds water off the crowns and holds it in the fines, so the shoulder is a
     // patchwork of damp and dry rather than one uniform matte.
     const damp = smoothstep(0.55, 0.95, dirtF[i]);
-    paint(ctx, i, dirtC, gap * 0.7);
+    paint(ctx, i, dirtC, gap * 0.7 * (0.5 + mL * 0.9));
     paint(ctx, i, shade(dirtC, 0.62), gap * clamp01(dirtF[i] - 0.4) * 0.7);
     paint(ctx, i, dustC, smoothstep(0.5, 0.9, stone) * clamp01(dirtF[i] - 0.3) * 0.36);
     paint(ctx, i, shade(gravelC, 0.6), damp * 0.3);
+    // Water stands in the fines between the stones long after the crowns have dried.
+    const pool = gap * smoothstep(0.62, 0.94, mL) * smoothstep(0.6, 0.95, dirtF[i]);
+    paint(ctx, i, shade(dirtC, 0.42), pool * 0.7);
 
     const l = lum(ctx, i);
     let r = 0.98;
     r -= smoothstep(0.45, 0.92, stone) * 0.32; // wet-polished stone crowns
     r -= damp * 0.3;
     r += gap * 0.05;
+    r += (0.5 - mL) * 2.0 * 0.12;
     r += (fines[i] - 0.5) * 0.12;
     r -= (l - 0.4) * 0.16;
+    r = lerp(r, 0.08, pool * 0.9); // standing water: near-mirror, and it catches the key
     ctx.rg[i] = clamp01(r);
     ctx.mt[i] = 0;
   }
@@ -2514,6 +2590,7 @@ function bDirt(ctx) {
   const weeds = fbmField(res, { seed: seed + 37, freq: 8, octaves: 4 });
   const scuff = scratchField(res, { seed: seed + 41, count: 140, angle: 0.6, spread: 1.0, lenMin: 0.02, lenMax: 0.14, width: 0.003 });
   const fine = fbmField(res, { seed: seed + 43, freq: 60, octaves: 3 });
+  const macroL = macroField(res, seed + 47);
 
   const dirtC = C.dirt;
   const dustC = C.dust;
@@ -2524,7 +2601,11 @@ function bDirt(ctx) {
     const crackMask = smoothstep(0.5, 0.8, dryMask[i]);
     const crack = (1 - smoothstep(0.01, 0.09, dry[i])) * crackMask;
     const stone = (1 - smoothstep(0.12, 0.45, stones[i])) * smoothstep(0.35, 0.6, clods[i]);
+    const mL = macroL[i];
     let hv = 0.46 + (clods[i] - 0.5) * 0.34 + (macro[i] - 0.5) * 0.2 + (fine[i] - 0.5) * 0.06;
+    // Ground is not a plane with bumps on it: it dishes and mounds at the metre scale, and
+    // that is where water ends up. The macro layer drives the form as well as the tone.
+    hv += (mL - 0.5) * 0.26;
     hv += stone * 0.14;
     hv -= crack * 0.3;
     hv -= scuff[i] * 0.06;
@@ -2543,6 +2624,9 @@ function bDirt(ctx) {
     // looks at while moving. Timid tinting here is what makes ground read as untextured.
     tint(ctx, i, lerp(0.62, 1.34, clods[i]));
     tint(ctx, i, lerp(0.84, 1.16, macro[i]));
+    // The macro layer, at the widest swing in the file. This is the surface the player stares
+    // at while moving, so a visible repeat here costs more than anywhere else in the map.
+    tint(ctx, i, lerp(0.7, 1.3, mL));
     tint(ctx, i, lerp(0.93, 1.07, fine[i]));
     // Dried-out crust goes pale, the crack interiors stay damp and dark.
     paint(ctx, i, dustC, crackMask * clamp01(macro[i]) * 0.55);
@@ -2551,18 +2635,25 @@ function bDirt(ctx) {
     paint(ctx, i, shade(sat(gravelC, 0.7), lerp(0.62, 1.28, stoneIds[i])), stone * 0.78);
     paint(ctx, i, weedC, clamp01(weeds[i] - 0.68) * 0.85);
     paint(ctx, i, shade(dirtC, 0.72), traffic * 0.45);
+    // Standing water in the dishes the ground has settled into. Nothing else on the ground
+    // returns the low sun at full strength, and one puddle catching the key is worth more
+    // than any amount of albedo detail around it.
+    const puddle = (1 - smoothstep(0.26, 0.5, ctx.h[i])) * smoothstep(0.5, 0.86, mL) * (1 - crackMask);
+    paint(ctx, i, shade(dirtC, 0.34), puddle * 0.8);
 
     const l = lum(ctx, i);
-    // Target range across one texture is roughly 0.35..0.98, driven by the damp and traffic
-    // masks rather than by a near-constant with a rounding error's worth of noise on it.
+    // Target range across one texture is roughly 0.08..0.98, driven by the damp, traffic and
+    // puddle masks rather than by a near-constant with a rounding error's worth of noise.
     let r = 0.97;
     r -= stone * 0.24;
     r -= damp * 0.34; // standing damp is the glossiest thing on the ground
     r -= traffic * 0.26; // compacted, polished wheel and boot lanes
     r += crack * 0.03;
+    r += (0.5 - mL) * 2.0 * 0.13;
     r -= clamp01(weeds[i] - 0.68) * 0.22; // foliage is waxier than soil
     r -= (l - 0.4) * 0.18;
     r += (fine[i] - 0.5) * 0.09;
+    r = lerp(r, 0.06, puddle * 0.92);
     ctx.rg[i] = clamp01(r);
     ctx.mt[i] = 0;
   }

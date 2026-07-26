@@ -34,7 +34,7 @@
 
 import * as THREE from '../../vendor/three.module.js';
 import { mergeGeometries } from '../../vendor/BufferGeometryUtils.js';
-import { PALETTE, MAP, ZONES, LIGHTING, SUN_AZIMUTH, SUN_ELEVATION } from './art.js';
+import { PALETTE, MAP, ZONES, LIGHTING, ATMOSPHERE, SUN_AZIMUTH, SUN_ELEVATION } from './art.js';
 
 /* ========================================================================== */
 /* 1. Layout                                                                  */
@@ -79,6 +79,94 @@ const SPAWN_DEFS = [
   [-6, -12, 4, 10],
   [44, 16, 24, 12],
 ];
+
+/**
+ * Floodlight and catenary masts, as [x, z, height, kind (0 = box section, 1 = lattice),
+ * armSide]. Hoisted for the same reason as `SPAWN_DEFS`: the dressing pass strings the yard's
+ * overhead cabling between these, and a wire that misses its own mast head by half a metre is
+ * the kind of error only a screenshot finds. One table, two consumers.
+ */
+const MAST_DEFS = [
+  [-30, 34.5, 12.4, 0, 1.0],
+  [26, -6.5, 10.2, 1, -1.0],
+  [44, 33, 13.6, 0, -1.0],
+  [-44, 6.5, 11.0, 1, 1.0],
+  [-11.5, -25.0, 9.4, 0, 1.0],
+  [40.5, -3.0, 12.8, 1, 1.0],
+  [-19.5, 38.4, 10.6, 0, -1.0],
+];
+
+/**
+ * A 5 x 7 stencil face, one string per glyph, rows top to bottom.
+ *
+ * Yards are covered in painted identification: bay numbers, road numbers, wagon codes, door
+ * references. It is also the only kind of surface detail that is unambiguously *man-made*, so
+ * it does more to stop a wall reading as a noise texture than any amount of extra grunge. The
+ * glyphs are emitted as run-length-merged quads (about ten per character), not per pixel.
+ */
+const STENCIL_FONT = {
+  ' ': '00000 00000 00000 00000 00000 00000 00000',
+  '-': '00000 00000 00000 11111 00000 00000 00000',
+  '/': '00001 00010 00010 00100 01000 01000 10000',
+  '0': '01110 10001 10011 10101 11001 10001 01110',
+  '1': '00100 01100 00100 00100 00100 00100 01110',
+  '2': '01110 10001 00001 00110 01000 10000 11111',
+  '3': '11111 00010 00100 00010 00001 10001 01110',
+  '4': '00010 00110 01010 10010 11111 00010 00010',
+  '5': '11111 10000 11110 00001 00001 10001 01110',
+  '6': '00110 01000 10000 11110 10001 10001 01110',
+  '7': '11111 00001 00010 00100 01000 01000 01000',
+  '8': '01110 10001 10001 01110 10001 10001 01110',
+  '9': '01110 10001 10001 01111 00001 00010 01100',
+  A: '01110 10001 10001 11111 10001 10001 10001',
+  B: '11110 10001 10001 11110 10001 10001 11110',
+  C: '01110 10001 10000 10000 10000 10001 01110',
+  D: '11100 10010 10001 10001 10001 10010 11100',
+  E: '11111 10000 10000 11110 10000 10000 11111',
+  G: '01110 10001 10000 10111 10001 10001 01111',
+  H: '10001 10001 10001 11111 10001 10001 10001',
+  K: '10001 10010 10100 11000 10100 10010 10001',
+  L: '10000 10000 10000 10000 10000 10000 11111',
+  N: '10001 11001 10101 10011 10001 10001 10001',
+  O: '01110 10001 10001 10001 10001 10001 01110',
+  P: '11110 10001 10001 11110 10000 10000 10000',
+  R: '11110 10001 10001 11110 10100 10010 10001',
+  S: '01111 10000 10000 01110 00001 00001 11110',
+  T: '11111 00100 00100 00100 00100 00100 00100',
+  U: '10001 10001 10001 10001 10001 10001 01110',
+  W: '10001 10001 10001 10101 10101 11011 10001',
+  X: '10001 10001 01010 00100 01010 10001 10001',
+  Y: '10001 10001 01010 00100 00100 00100 00100',
+  Z: '11111 00001 00010 00100 01000 10000 11111',
+};
+
+/** Run-length decomposition of a glyph, cached. Load-time only. */
+const _glyphRuns = new Map();
+function glyphRuns(ch) {
+  let runs = _glyphRuns.get(ch);
+  if (runs) return runs;
+  runs = [];
+  const rows = STENCIL_FONT[ch];
+  if (rows) {
+    const parts = rows.split(' ');
+    for (let r = 0; r < parts.length; r++) {
+      const row = parts[r];
+      let c = 0;
+      while (c < row.length) {
+        if (row.charCodeAt(c) === 49) {
+          let e = c;
+          while (e + 1 < row.length && row.charCodeAt(e + 1) === 49) e++;
+          runs.push(c, e + 1, r);
+          c = e + 1;
+        } else {
+          c++;
+        }
+      }
+    }
+  }
+  _glyphRuns.set(ch, runs);
+  return runs;
+}
 
 /** Direction *to* the sun, matching sky.js exactly. Drives the light shafts and the shadows. */
 const SUN_DIR = new THREE.Vector3(
@@ -245,6 +333,19 @@ const T = {
   smoke: tint(PALETTE.smoke, 1),
   sun: tint(PALETTE.sun, 1),
   bounce: tint(PALETTE.groundBounce, 1),
+  /**
+   * Dressing tints. A tint is a *multiplier*, so a stain has to sit between the palette hue
+   * and white or it turns the surface under it black rather than dirty. These three are the
+   * washes the set-dressing pass paints with: rust bleeding out of a fixing, soot and diesel
+   * grime, and the standing water that takes its colour from the sky it reflects.
+   */
+  rustWash: mixTint(grey(1), tint(PALETTE.rust, 1), 0.62),
+  grime: mixTint(grey(1), grey(0.32), 0.6),
+  damp: mixTint(grey(1), grey(0.32), 0.42),
+  water: tint(PALETTE.skyZenith, 0.9),
+  paper: tint(PALETTE.plaster, 1.18),
+  paint: grey(1.55),
+  scorch: grey(0.2),
 };
 
 /** Container livery. Low saturation, one hazard hit, so the stacks read as a rhythm. */
@@ -4516,17 +4617,8 @@ export function createLevel(scene, materials, game) {
      * bolts on every one, alternating lattice and tapered-box sections, jittered heights and
      * spacing, and bracket arms carrying the yard lighting out over the tracks.
      */
-    const masts = [
-      [-30, 34.5, 12.4, 0, 1.0],
-      [26, -6.5, 10.2, 1, -1.0],
-      [44, 33, 13.6, 0, -1.0],
-      [-44, 6.5, 11.0, 1, 1.0],
-      [-11.5, -25.0, 9.4, 0, 1.0],
-      [40.5, -3.0, 12.8, 1, 1.0],
-      [-19.5, 38.4, 10.6, 0, -1.0],
-    ];
-    for (let mi = 0; mi < masts.length; mi++) {
-      const [mx, mz, mh, kind, armSide] = masts[mi];
+    for (let mi = 0; mi < MAST_DEFS.length; mi++) {
+      const [mx, mz, mh, kind, armSide] = MAST_DEFS[mi];
       const yaw = hash2(mi, 5) * 0.5 - 0.25;
       place(mx, 0, mz, yaw);
       // Base: pad, grouted plate, bolts. A mast that meets the floor at a bare cylinder is
