@@ -416,7 +416,15 @@ export function createHUD(game) {
   let CH_HIT_RAMP = buildRamp(crosshairColour, COL.accent, 9);
   let CH_KILL_RAMP = buildRamp(crosshairColour, COL.danger, 9);
 
-  const BLIP_RAMP = buildAlphaRamp(COL.danger, 13, 1.0);
+  /* Blips fade out over their life, but never below 0.55 alpha while they are alive — a blip
+     that has faded into the field is worse than no blip at all. */
+  const BLIP_RAMP = new Array(13);
+  const BLIP_CORE_RAMP = new Array(13);
+  for (let i = 0; i < 13; i++) {
+    const a = (0.55 + 0.45 * (i / 12)).toFixed(3);
+    BLIP_RAMP[i] = rgbaOf(BLIP_BODY, a);
+    BLIP_CORE_RAMP[i] = rgbaOf(BLIP_CORE, a);
+  }
   const ARC_COLOUR = rgbaOf(COL.danger, 0.9);
 
   /* --- State ------------------------------------------------------------ */
@@ -1723,8 +1731,10 @@ export function createHUD(game) {
     ctx.arc(cx, cy, R, 0, TAU);
     ctx.clip();
 
-    // Ground plate.
-    ctx.fillStyle = rgbaOf(COL.shadow, 0.72);
+    // Void plate — only ever visible outside the baked footprint, and darker than the ground
+    // step so leaving the map reads as leaving the map. Opaque, so nothing behind the canvas
+    // can wash the ramp out.
+    ctx.fillStyle = MAP_COL.voidFill;
     ctx.fillRect(0, 0, W, H);
 
     // Baked navigation grid, blitted from the offscreen bake — a single drawImage.
@@ -1739,7 +1749,7 @@ export function createHUD(game) {
     const scale = (R * 2) / (HUD.minimapRange * 2); // px per metre on the disc
 
     // Range ring at half the view radius, so distance is readable.
-    ctx.strokeStyle = rgbaOf(COL.primary, 0.16);
+    ctx.strokeStyle = MAP_COL.ring;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.arc(cx, cy, R * 0.5, 0, TAU);
@@ -1750,10 +1760,19 @@ export function createHUD(game) {
     const vFov = (game?.camera?.fov || CAMERA.fov) * (Math.PI / 180);
     const hFov = 2 * Math.atan(Math.tan(vFov * 0.5) * aspect);
     const coneR = R * 0.92;
-    const grad = ctx.createRadialGradient(cx, cy, 2, cx, cy, coneR);
-    grad.addColorStop(0, rgbaOf(COL.primary, 0.26));
-    grad.addColorStop(1, rgbaOf(COL.primary, 0.0));
-    ctx.fillStyle = grad;
+    // The two gradients depend only on the canvas geometry, so they are built on the first
+    // draw and reused. Rebuilding them per draw was the one real allocation left in here.
+    if (!map.coneGrad) {
+      const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, coneR);
+      g.addColorStop(0, MAP_COL.coneIn);
+      g.addColorStop(1, MAP_COL.coneOut);
+      map.coneGrad = g;
+      const ag = ctx.createRadialGradient(cx, cy, 0, cx, cy, 17);
+      ag.addColorStop(0, MAP_COL.arrowGlowIn);
+      ag.addColorStop(1, MAP_COL.arrowGlowOut);
+      map.arrowGrad = ag;
+    }
+    ctx.fillStyle = map.coneGrad;
     ctx.beginPath();
     ctx.moveTo(cx, cy);
     // Canvas angles run clockwise from +X; north is up, so subtract a quarter turn.
@@ -1780,48 +1799,72 @@ export function createHUD(game) {
           dy *= k;
         }
         const a = clamp(Math.round((t / HUD.blipLife) * 12), 0, 12);
-        ctx.fillStyle = BLIP_RAMP[a];
         const bx = cx + dx;
         const by = cy + dy;
+        // Dark keyline first, so the blip separates from the wall step wherever it lands.
+        ctx.strokeStyle = MAP_COL.blipStroke;
+        ctx.lineWidth = 2.5;
+        ctx.lineJoin = 'round';
+        ctx.fillStyle = BLIP_RAMP[a];
         ctx.beginPath();
         if (edge) {
           // Off-map contacts collapse to a small pointer on the rim.
           const ang = Math.atan2(dy, dx);
-          ctx.moveTo(bx + Math.cos(ang) * 5, by + Math.sin(ang) * 5);
-          ctx.lineTo(bx + Math.cos(ang + 2.4) * 5, by + Math.sin(ang + 2.4) * 5);
-          ctx.lineTo(bx + Math.cos(ang - 2.4) * 5, by + Math.sin(ang - 2.4) * 5);
+          ctx.moveTo(bx + Math.cos(ang) * 6, by + Math.sin(ang) * 6);
+          ctx.lineTo(bx + Math.cos(ang + 2.4) * 6, by + Math.sin(ang + 2.4) * 6);
+          ctx.lineTo(bx + Math.cos(ang - 2.4) * 6, by + Math.sin(ang - 2.4) * 6);
+          ctx.closePath();
+          ctx.stroke();
+          ctx.fill();
         } else {
-          ctx.moveTo(bx, by - 5);
-          ctx.lineTo(bx + 5, by);
-          ctx.lineTo(bx, by + 5);
-          ctx.lineTo(bx - 5, by);
+          ctx.moveTo(bx, by - 6.5);
+          ctx.lineTo(bx + 6.5, by);
+          ctx.lineTo(bx, by + 6.5);
+          ctx.lineTo(bx - 6.5, by);
+          ctx.closePath();
+          ctx.stroke();
+          ctx.fill();
+          // Hot core. This is what puts the blip's peak clear of every static step.
+          ctx.fillStyle = BLIP_CORE_RAMP[a];
+          ctx.beginPath();
+          ctx.moveTo(bx, by - 3);
+          ctx.lineTo(bx + 3, by);
+          ctx.lineTo(bx, by + 3);
+          ctx.lineTo(bx - 3, by);
+          ctx.closePath();
+          ctx.fill();
         }
-        ctx.closePath();
-        ctx.fill();
       }
     }
 
-    // Player arrow.
+    // Player arrow. Brightest mark on the disc by a clear margin — near display white against
+    // a field whose top step is 50% — sitting on a cool halo that separates it from the cone.
+    ctx.fillStyle = map.arrowGrad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 17, 0, TAU);
+    ctx.fill();
+
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(headingRad);
-    ctx.fillStyle = COL.primary;
-    ctx.strokeStyle = rgbaOf(COL.shadow, 0.9);
-    ctx.lineWidth = 1.5;
+    ctx.fillStyle = MAP_COL.arrowFill;
+    ctx.strokeStyle = MAP_COL.arrowStroke;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
     ctx.beginPath();
-    ctx.moveTo(0, -9);
-    ctx.lineTo(6.5, 8);
+    ctx.moveTo(0, -10);
+    ctx.lineTo(7, 8.5);
     ctx.lineTo(0, 4.5);
-    ctx.lineTo(-6.5, 8);
+    ctx.lineTo(-7, 8.5);
     ctx.closePath();
-    ctx.fill();
     ctx.stroke();
+    ctx.fill();
     ctx.restore();
 
     ctx.restore(); // clip
 
     // North tick on the rim, outside the clip so it always reads.
-    ctx.fillStyle = rgbaOf(COL.accent, 0.9);
+    ctx.fillStyle = MAP_COL.north;
     ctx.beginPath();
     ctx.moveTo(cx, cy - R + 1);
     ctx.lineTo(cx - 4, cy - R + 9);
