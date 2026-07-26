@@ -1064,22 +1064,34 @@ function bConcreteRough(ctx) {
   });
   const blotch = blotchField(res, seed + 71, 2);
   const macro = blotchField(res, seed + 133, 4);
+  // Cracks are a garnish on cast concrete, not its defining motif. Held to a low density and
+  // a narrow width so they stay wandering fractures in a few patches: a crack field turned up
+  // far enough to cover the surface is a Worley diagram again however hard it is warped, and
+  // it reads as dried mud or marble rather than as a poured slab.
   const cracks = crackField(res, {
     seed: seed + 211,
     cells: 8,
-    width: 0.024,
+    width: 0.016,
     warp: 0.055,
     segFreq: 12,
-    segLo: 0.4,
-    segHi: 0.68,
+    segLo: 0.46,
+    segHi: 0.74,
     densityFreq: 3,
-    densityLo: 0.42,
-    densityHi: 0.74,
+    densityLo: 0.56,
+    densityHi: 0.88,
   });
   const pits = pitField(res, { cells: 46, seed: seed + 307, density: 0.3, sizeMin: 0.09, sizeMax: 0.34 });
   const streaks = streakField(res, { seed: seed + 401, count: 26, lenMin: 0.2, lenMax: 0.8, widthMin: 0.006, widthMax: 0.03 });
   const fine = fbmField(res, { seed: seed + 503, freq: 80, octaves: 4, gain: 0.5 });
   const speck = fbmField(res, { seed: seed + 601, freq: 190, octaves: 2, gain: 0.5 });
+  // What actually identifies concrete, none of which a noise-plus-crack recipe contains:
+  //   - the timber shuttering's grain, printed into the face,
+  //   - the ~0.6 m board bands and the pour seam between lifts,
+  //   - spalling, where the skin has come off and the aggregate is exposed in the raw.
+  const board = fbmField(res, { seed: seed + 821, freq: 5, octaves: 4, gain: 0.55, stretch: 1 / 9 });
+  const boardLines = gridField(res, { cols: 1, rows: 4, gap: 0.0018, chamfer: 0.005, seed: seed + 823, wobble: 0.004, wobbleFreq: 7 });
+  const seams = gridField(res, { cols: 2, rows: 1, gap: 0.002, chamfer: 0.009, seed: seed + 827, wobble: 0.003, wobbleFreq: 5 });
+  const spallF = blotchField(res, seed + 829, 5);
 
   const lit = C.concreteLit;
   const stained = C.concreteStained;
@@ -1089,10 +1101,21 @@ function bConcreteRough(ctx) {
   for (let i = 0; i < N; i++) {
     const crack = cracks[i];
     const pit = pits[i];
-    // Height: broad form from blotch, aggregate lumps, then carve cracks and pits out.
-    let hv = 0.46 + (blotch[i] - 0.5) * 0.26 + (pebbles[i] - 0.5) * 0.3 + (grain[i] - 0.5) * 0.2 + (fine[i] - 0.5) * 0.08;
-    hv -= crack * 0.3;
+    const bandJoint = boardLines.groove[i];
+    const seam = seams.groove[i];
+    // Spalling: the skin has failed in patches and the raw aggregate is out. Gated on the
+    // aggregate field so the exposed stones are the same stones that were under the skin.
+    const spall = smoothstep(0.62, 0.9, spallF[i]) * smoothstep(0.3, 0.75, pebbles[i]);
+
+    // Height: broad form from blotch, aggregate lumps, board grain, then carve the joints,
+    // cracks, pits and spalled patches out.
+    let hv = 0.5 + (blotch[i] - 0.5) * 0.26 + (pebbles[i] - 0.5) * 0.36 + (grain[i] - 0.5) * 0.2 + (fine[i] - 0.5) * 0.08;
+    hv += (board[i] - 0.5) * 0.09;
+    hv -= bandJoint * 0.1;
+    hv -= seam * 0.16;
+    hv -= crack * 0.24;
     hv -= pit * 0.3;
+    hv -= spall * 0.12;
     ctx.h[i] = clamp01(hv);
 
     // Albedo: a light trowelled skin, stained where water has sat, cooler in the recesses.
@@ -1100,34 +1123,48 @@ function bConcreteRough(ctx) {
     ctx.ar[i] = lit[0];
     ctx.ag[i] = lit[1];
     ctx.ab[i] = lit[2];
-    paint(ctx, i, stained, wear * 0.7);
-    paint(ctx, i, shade(cool, 1.05), streaks[i] * 0.5);
+    paint(ctx, i, stained, wear * 0.75);
+    // Board-form grain: the shuttering timber prints its own grain into the face, which is a
+    // strongly horizontal signal and the fastest way to tell cast concrete from grey noise.
+    tint(ctx, i, lerp(0.88, 1.1, board[i]));
+    paint(ctx, i, shade(stained, 0.86), bandJoint * 0.5);
+    paint(ctx, i, shade(cool, 0.8), seam * 0.55);
+    paint(ctx, i, shade(cool, 1.05), streaks[i] * 0.55);
     // Exposed aggregate: each stone gets its own tone from the Worley cell id, so the
     // aggregate reads as stones rather than as a single grey crust.
-    const exposed = smoothstep(0.66, 0.95, pebbles[i]);
-    paint(ctx, i, sat(shade(lit, lerp(0.66, 1.08, aggIds[i])), lerp(0.5, 0.95, aggIds[i])), exposed * 0.6);
+    const exposed = smoothstep(0.6, 0.93, pebbles[i]);
+    paint(ctx, i, sat(shade(lit, lerp(0.58, 1.16, aggIds[i])), lerp(0.42, 1.0, aggIds[i])), exposed * 0.66);
+    // Spalled patches read as the raw mix: paler matrix, much more stone showing.
+    paint(ctx, i, mixc(shade(lit, 0.92), sat(shade(C.gravel, lerp(0.62, 1.2, aggIds[i])), 0.8), 0.6), spall * 0.75);
     // Dust collects in the low frequencies of the surface, lightening it.
     paint(ctx, i, dustC, clamp01(macro[i] - 0.45) * 0.3);
     // Cement matrix speckle. Fine, high-contrast, and the main reason the surface still has
     // something to look at from half a metre away.
-    tint(ctx, i, lerp(0.84, 1.12, grain[i]));
-    tint(ctx, i, lerp(0.93, 1.07, speck[i]));
-    paint(ctx, i, shade(cool, 0.68), crack * 0.9);
+    tint(ctx, i, lerp(0.8, 1.16, grain[i]));
+    tint(ctx, i, lerp(0.9, 1.1, speck[i]));
+    paint(ctx, i, shade(cool, 0.68), crack * 0.55);
     // Pits stay subtle in the albedo — the AO and the normal do the work. Painting them
     // dark as well double-counts the occlusion and prints polka dots.
     paint(ctx, i, shade(cool, 0.85), pit * 0.4);
 
-    // Roughness as a function of the height and the albedo: the trowelled high points are
-    // burnished smoother, the broken aggregate and the crack interiors are rough as hell.
+    // Roughness as a function of the height and the albedo, over a range wide enough to see.
+    // Trowelled high points and traffic lanes are burnished nearly smooth; broken aggregate,
+    // spall and crack interiors are as rough as the format allows. A near-constant here is
+    // what produces one global sheen across a whole map.
     const l = lum(ctx, i);
-    let r = 0.74;
-    r -= smoothstep(0.55, 0.92, ctx.h[i]) * 0.14; // burnished highs
-    r += crack * 0.16;
+    const damp = smoothstep(0.55, 0.95, macro[i]);
+    const traffic = smoothstep(0.52, 0.9, blotch[i]);
+    let r = 0.92;
+    r -= smoothstep(0.45, 0.92, ctx.h[i]) * 0.26; // burnished highs
+    r -= damp * 0.28; // standing damp
+    r -= traffic * 0.16; // polished walking lane
+    r += crack * 0.1;
     r += pit * 0.12;
-    r -= exposed * 0.1; // polished stone faces
-    r += (fine[i] - 0.5) * 0.1;
-    r -= (l - 0.42) * 0.12; // darker = damp-stained = slightly glossier
-    r -= streaks[i] * 0.1;
+    r += spall * 0.1;
+    r -= exposed * 0.16; // polished stone faces
+    r += (fine[i] - 0.5) * 0.14;
+    r -= (l - 0.42) * 0.2; // darker = damp-stained = glossier
+    r -= streaks[i] * 0.14;
     ctx.rg[i] = clamp01(r);
     ctx.mt[i] = 0;
   }
@@ -1319,6 +1356,11 @@ function bRubble(ctx) {
   const grain = fbmField(res, { seed: seed + 31, freq: 24, octaves: 5 });
   const dustF = blotchField(res, seed + 47, 3);
   const dirt = fbmField(res, { seed: seed + 61, freq: 6, octaves: 4 });
+  // A fracture face through concrete cuts the aggregate as well as the matrix, so the broken
+  // faces have to show stone. Without it a shattered slab has clean unbroken edges and reads
+  // as laser-cut rather than broken.
+  const aggIds = new Float32Array(N);
+  const agg = pebbleField(res, { seed: seed + 83, ids: aggIds, scales: [{ cells: 64, amp: 0.55 }, { cells: 122, amp: 0.22 }] });
 
   const lit = C.concreteLit;
   const stained = C.concreteStained;
@@ -1344,12 +1386,24 @@ function bRubble(ctx) {
     paint(ctx, i, dustC, clamp01(dustF[i] - 0.35) * 0.5);
     paint(ctx, i, shade(cool, 0.75), seam * 0.5);
     tint(ctx, i, lerp(0.88, 1.1, grain[i]));
+    // Cut aggregate on the fracture faces: brighter, per-stone toned, only where the chunk
+    // has actually broken (the seam band), never on the cast top face.
+    const cut = smoothstep(0.45, 0.9, agg[i]) * smoothstep(0.15, 0.6, seam);
+    paint(ctx, i, sat(shade(lit, lerp(0.72, 1.22, aggIds[i])), lerp(0.5, 1.0, aggIds[i])), cut * 0.6);
 
     const l = lum(ctx, i);
-    let r = 0.86;
-    r -= smoothstep(0.55, 0.9, ctx.h[i]) * 0.1;
-    r += seam * 0.08;
-    r -= (l - 0.4) * 0.1;
+    // Three distinct sheens, not one: the surviving cast skin is comparatively smooth, the
+    // fresh fracture face is raw aggregate and as rough as concrete gets, and the dust that
+    // has settled between the chunks is rougher again.
+    const castFace = smoothstep(0.5, 0.92, facet);
+    let r = 0.98;
+    r -= castFace * 0.3;
+    r -= smoothstep(0.5, 0.9, ctx.h[i]) * 0.16;
+    r += seam * 0.05;
+    r += cut * 0.08;
+    r -= smoothstep(0.55, 0.95, dustF[i]) * 0.16;
+    r += (grain[i] - 0.5) * 0.12;
+    r -= (l - 0.4) * 0.18;
     ctx.rg[i] = clamp01(r);
     ctx.mt[i] = 0;
   }
@@ -1956,25 +2010,30 @@ function bGravel(ctx) {
 
     const id = big ? ids1[i] : ids2[i];
     // Ballast is a mix of granite, limestone and the odd bit of red brick.
-    let stoneC = shade(sat(gravelC, lerp(0.5, 1.1, id)), lerp(0.62, 1.22, id));
+    let stoneC = shade(sat(gravelC, lerp(0.45, 1.15, id)), lerp(0.5, 1.34, id));
     if (id > 0.9) stoneC = mixc(stoneC, C.brick, 0.45);
     else if (id < 0.12) stoneC = mixc(stoneC, cool, 0.35);
     ctx.ar[i] = stoneC[0];
     ctx.ag[i] = stoneC[1];
     ctx.ab[i] = stoneC[2];
-    tint(ctx, i, lerp(0.86, 1.12, facet[i]));
+    tint(ctx, i, lerp(0.8, 1.18, facet[i]));
     // Fines and dust wash into the gaps between the stones.
     const gap = 1 - smoothstep(0.05, 0.4, stone);
+    // Ballast sheds water off the crowns and holds it in the fines, so the shoulder is a
+    // patchwork of damp and dry rather than one uniform matte.
+    const damp = smoothstep(0.55, 0.95, dirtF[i]);
     paint(ctx, i, dirtC, gap * 0.7);
-    paint(ctx, i, shade(dirtC, 0.7), gap * clamp01(dirtF[i] - 0.4) * 0.6);
-    paint(ctx, i, dustC, smoothstep(0.5, 0.9, stone) * clamp01(dirtF[i] - 0.3) * 0.3);
+    paint(ctx, i, shade(dirtC, 0.62), gap * clamp01(dirtF[i] - 0.4) * 0.7);
+    paint(ctx, i, dustC, smoothstep(0.5, 0.9, stone) * clamp01(dirtF[i] - 0.3) * 0.36);
+    paint(ctx, i, shade(gravelC, 0.6), damp * 0.3);
 
     const l = lum(ctx, i);
-    let r = 0.87;
-    r -= smoothstep(0.55, 0.9, stone) * 0.14; // wet-polished stone crowns
-    r += gap * 0.08;
-    r += (fines[i] - 0.5) * 0.06;
-    r -= (l - 0.4) * 0.08;
+    let r = 0.98;
+    r -= smoothstep(0.45, 0.92, stone) * 0.32; // wet-polished stone crowns
+    r -= damp * 0.3;
+    r += gap * 0.05;
+    r += (fines[i] - 0.5) * 0.12;
+    r -= (l - 0.4) * 0.16;
     ctx.rg[i] = clamp01(r);
     ctx.mt[i] = 0;
   }
@@ -2012,25 +2071,39 @@ function bDirt(ctx) {
     hv -= scuff[i] * 0.06;
     ctx.h[i] = clamp01(hv);
 
+    // Damp ground and dry ground are two different materials, not one material at two
+    // brightnesses: damp is darker AND markedly glossier. Without both halves the ground has
+    // a single sheen and reads as one sheet of plastic however much albedo detail it carries.
+    const damp = smoothstep(0.52, 0.95, macro[i]) * (1 - crackMask);
+    const traffic = clamp01(scuff[i] * 1.4); // ruts and boot-polished lanes
+
     ctx.ar[i] = dirtC[0];
     ctx.ag[i] = dirtC[1];
     ctx.ab[i] = dirtC[2];
-    tint(ctx, i, lerp(0.78, 1.2, clods[i]));
-    tint(ctx, i, lerp(0.9, 1.1, macro[i]));
+    // Wide, because this is the largest surface in every frame and it is what the player
+    // looks at while moving. Timid tinting here is what makes ground read as untextured.
+    tint(ctx, i, lerp(0.62, 1.34, clods[i]));
+    tint(ctx, i, lerp(0.84, 1.16, macro[i]));
+    tint(ctx, i, lerp(0.93, 1.07, fine[i]));
     // Dried-out crust goes pale, the crack interiors stay damp and dark.
-    paint(ctx, i, dustC, crackMask * clamp01(macro[i]) * 0.4);
-    paint(ctx, i, shade(dirtC, 0.5), crack * 0.85);
-    paint(ctx, i, shade(sat(gravelC, 0.7), lerp(0.7, 1.15, stoneIds[i])), stone * 0.7);
+    paint(ctx, i, dustC, crackMask * clamp01(macro[i]) * 0.55);
+    paint(ctx, i, shade(dirtC, 0.44), crack * 0.9);
+    paint(ctx, i, shade(dirtC, 0.58), damp * 0.5);
+    paint(ctx, i, shade(sat(gravelC, 0.7), lerp(0.62, 1.28, stoneIds[i])), stone * 0.78);
     paint(ctx, i, weedC, clamp01(weeds[i] - 0.68) * 0.85);
-    paint(ctx, i, shade(dirtC, 0.78), scuff[i] * 0.4);
+    paint(ctx, i, shade(dirtC, 0.72), traffic * 0.45);
 
     const l = lum(ctx, i);
-    let r = 0.9;
-    r -= stone * 0.16;
-    r += crack * 0.05;
-    r -= clamp01(weeds[i] - 0.68) * 0.2; // foliage is waxier than soil
-    r -= (l - 0.4) * 0.12;
-    r += (fine[i] - 0.5) * 0.05;
+    // Target range across one texture is roughly 0.35..0.98, driven by the damp and traffic
+    // masks rather than by a near-constant with a rounding error's worth of noise on it.
+    let r = 0.97;
+    r -= stone * 0.24;
+    r -= damp * 0.34; // standing damp is the glossiest thing on the ground
+    r -= traffic * 0.26; // compacted, polished wheel and boot lanes
+    r += crack * 0.03;
+    r -= clamp01(weeds[i] - 0.68) * 0.22; // foliage is waxier than soil
+    r -= (l - 0.4) * 0.18;
+    r += (fine[i] - 0.5) * 0.09;
     ctx.rg[i] = clamp01(r);
     ctx.mt[i] = 0;
   }
@@ -2372,27 +2445,45 @@ function bSkin(ctx) {
 const HERO = 1024;
 const STD = 512;
 
+/*
+ * Per-surface shader parameters, on top of the map set:
+ *   macro/macroR  low-frequency (~15 m) world albedo / roughness swing
+ *   meso/mesoR    ~1.7 m world albedo / roughness swing — the band that survives mipping
+ *   grime         AO-driven cavity dirt
+ *   streak        gravity streak strength on vertical faces
+ *   edge/edgeR    convex edge wear: albedo lift / roughness drop
+ *   oxide         curvature-driven warm oxide on convex metal
+ *   metalKeep     fraction of the ash film a fully metallic texel still receives
+ *   envBoost      envMapIntensity multiplier — metals need the sun disc to carry
+ *   triBlend      weight of the coarse triplanar albedo octave
+ *
+ * The ground surfaces (dirt, gravel, asphalt, concreteRough, rubble) carry the largest meso
+ * and macro values in the table: the ground is the biggest thing on screen in every frame and
+ * the only surface the player looks at continuously while moving.
+ */
 const SURFACES = {
-  concreteRough: { res: HERO, relief: 0.05, build: bConcreteRough, normal: 1.0, ao: 1.0, ash: 1.0, detail: 0.6, tile: 2.5, aoOpts: { dirs: 8, steps: 5, cavity: 0.6 } },
-  concretePanel: { res: HERO, relief: 0.06, build: bConcretePanel, normal: 1.0, ao: 1.0, ash: 1.0, detail: 0.5, tile: 2.5, aoOpts: { dirs: 8, steps: 6, cavity: 0.7 } },
-  asphalt: { res: HERO, relief: 0.035, build: bAsphalt, normal: 0.95, ao: 1.0, ash: 0.75, detail: 0.55, tile: 3.0, aoOpts: { dirs: 8, steps: 5, cavity: 0.55 } },
-  rubble: { res: STD, relief: 0.09, build: bRubble, normal: 1.0, ao: 1.15, ash: 1.1, detail: 0.6, tile: 1.6, aoOpts: { dirs: 8, steps: 6, cavity: 0.6 } },
-  brickPainted: { res: HERO, relief: 0.045, build: bBrickPainted, normal: 1.0, ao: 1.1, ash: 0.9, detail: 0.45, tile: 2.5, aoOpts: { dirs: 8, steps: 6, cavity: 0.75 } },
-  metalPainted: { res: STD, relief: 0.038, build: bMetalPainted, normal: 0.95, ao: 1.0, ash: 0.85, detail: 0.35, tile: 2.0, aoOpts: { dirs: 8, steps: 5, cavity: 0.6 } },
-  metalRust: { res: HERO, relief: 0.035, build: bMetalRust, normal: 1.0, ao: 1.0, ash: 0.9, detail: 0.5, tile: 2.0, aoOpts: { dirs: 8, steps: 5, cavity: 0.65 } },
-  corrugatedSteel: { res: STD, relief: 0.11, build: bCorrugatedSteel, normal: 1.0, ao: 1.0, ash: 0.9, detail: 0.4, tile: 2.4, aoOpts: { dirs: 8, steps: 6, cavity: 0.45 } },
-  woodPlank: { res: STD, relief: 0.035, build: bWoodPlank, normal: 1.0, ao: 1.0, ash: 0.85, detail: 0.5, tile: 2.0, aoOpts: { dirs: 8, steps: 5, cavity: 0.6 } },
-  sandbag: { res: STD, relief: 0.07, build: bSandbag, normal: 1.0, ao: 1.15, ash: 1.0, detail: 0.55, tile: 1.2, aoOpts: { dirs: 8, steps: 5, cavity: 0.7 } },
-  glassDirty: { res: STD, relief: 0.012, build: bGlassDirty, normal: 0.7, ao: 0.5, ash: 1.3, detail: 0.2, tile: 2.0, aoOpts: { dirs: 6, steps: 4, cavity: 0.35 } },
-  plaster: { res: STD, relief: 0.025, build: bPlaster, normal: 0.9, ao: 0.95, ash: 0.95, detail: 0.5, tile: 2.5, aoOpts: { dirs: 8, steps: 5, cavity: 0.6 } },
-  gravel: { res: STD, relief: 0.075, build: bGravel, normal: 1.0, ao: 1.2, ash: 0.8, detail: 0.6, tile: 1.6, aoOpts: { dirs: 8, steps: 6, cavity: 0.7 } },
-  dirt: { res: STD, relief: 0.055, build: bDirt, normal: 1.0, ao: 1.1, ash: 0.7, detail: 0.6, tile: 2.4, aoOpts: { dirs: 8, steps: 5, cavity: 0.6 } },
-  tarpaulin: { res: STD, relief: 0.05, build: bTarpaulin, normal: 1.0, ao: 1.0, ash: 1.0, detail: 0.45, tile: 2.0, aoOpts: { dirs: 8, steps: 5, cavity: 0.55 } },
-  gunmetal: { res: HERO, relief: 0.012, build: bGunmetal, normal: 0.75, ao: 0.7, ash: 0.22, detail: 0.3, tile: 0.35, view: true, aoOpts: { dirs: 6, steps: 4, cavity: 0.45 } },
-  gunPolymer: { res: STD, relief: 0.022, build: bGunPolymer, normal: 1.0, ao: 0.8, ash: 0.22, detail: 0.3, tile: 0.3, view: true, aoOpts: { dirs: 8, steps: 5, cavity: 0.55 } },
-  gunWood: { res: STD, relief: 0.012, build: bGunWood, normal: 0.8, ao: 0.7, ash: 0.2, detail: 0.3, tile: 0.35, view: true, aoOpts: { dirs: 6, steps: 4, cavity: 0.5 } },
-  fabric: { res: STD, relief: 0.03, build: bFabric, normal: 1.0, ao: 1.0, ash: 0.35, detail: 0.4, tile: 0.6, view: true, aoOpts: { dirs: 8, steps: 5, cavity: 0.6 } },
-  skin: { res: STD, relief: 0.02, build: bSkin, normal: 0.8, ao: 0.85, ash: 0.12, detail: 0.35, tile: 0.35, view: true, aoOpts: { dirs: 8, steps: 5, cavity: 0.55 } },
+  concreteRough: { res: HERO, relief: 0.05, build: bConcreteRough, normal: 1.0, ao: 1.0, ash: 1.0, detail: 0.6, tile: 2.5, macro: 0.13, macroR: 0.13, meso: 0.135, mesoR: 0.2, grime: 0.5, streak: 0.6, edge: 0.45, edgeR: 0.24, triBlend: 0.42, aoOpts: { dirs: 8, steps: 5, cavity: 0.6 } },
+  concretePanel: { res: HERO, relief: 0.06, build: bConcretePanel, normal: 1.0, ao: 1.0, ash: 1.0, detail: 0.5, tile: 2.5, macro: 0.11, macroR: 0.11, meso: 0.1, mesoR: 0.16, grime: 0.55, streak: 0.7, edge: 0.5, edgeR: 0.26, aoOpts: { dirs: 8, steps: 6, cavity: 0.7 } },
+  asphalt: { res: HERO, relief: 0.035, build: bAsphalt, normal: 0.95, ao: 1.0, ash: 0.75, detail: 0.55, tile: 3.0, macro: 0.13, macroR: 0.16, meso: 0.13, mesoR: 0.22, grime: 0.4, streak: 0.2, edge: 0.3, edgeR: 0.2, triBlend: 0.42, aoOpts: { dirs: 8, steps: 5, cavity: 0.55 } },
+  rubble: { res: STD, relief: 0.09, build: bRubble, normal: 1.0, ao: 1.15, ash: 1.1, detail: 0.6, tile: 1.6, macro: 0.13, macroR: 0.12, meso: 0.14, mesoR: 0.18, grime: 0.6, streak: 0.35, edge: 0.55, edgeR: 0.26, triBlend: 0.45, aoOpts: { dirs: 8, steps: 6, cavity: 0.6 } },
+  brickPainted: { res: HERO, relief: 0.045, build: bBrickPainted, normal: 1.0, ao: 1.1, ash: 0.9, detail: 0.45, tile: 2.5, macro: 0.1, macroR: 0.1, meso: 0.085, mesoR: 0.14, grime: 0.5, streak: 0.75, edge: 0.45, edgeR: 0.22, aoOpts: { dirs: 8, steps: 6, cavity: 0.75 } },
+  metalPainted: { res: STD, relief: 0.038, build: bMetalPainted, normal: 0.95, ao: 1.0, ash: 0.85, detail: 0.35, tile: 2.0, macro: 0.08, macroR: 0.09, meso: 0.06, mesoR: 0.12, grime: 0.45, streak: 0.6, edge: 0.6, edgeR: 0.26, oxide: 0.5, metalKeep: 0.2, envBoost: 1.45, aoOpts: { dirs: 8, steps: 5, cavity: 0.6 } },
+  metalRust: { res: HERO, relief: 0.035, build: bMetalRust, normal: 1.0, ao: 1.0, ash: 0.9, detail: 0.5, tile: 2.0, macro: 0.09, macroR: 0.1, meso: 0.07, mesoR: 0.13, grime: 0.45, streak: 0.7, edge: 0.55, edgeR: 0.3, oxide: 0.55, metalKeep: 0.12, envBoost: 1.8, aoOpts: { dirs: 8, steps: 5, cavity: 0.65 } },
+  corrugatedSteel: { res: STD, relief: 0.11, build: bCorrugatedSteel, normal: 1.0, ao: 1.0, ash: 0.9, detail: 0.4, tile: 2.4, macro: 0.09, macroR: 0.1, meso: 0.07, mesoR: 0.13, grime: 0.5, streak: 0.8, edge: 0.5, edgeR: 0.28, oxide: 0.5, metalKeep: 0.14, envBoost: 1.7, aoOpts: { dirs: 8, steps: 6, cavity: 0.45 } },
+  woodPlank: { res: STD, relief: 0.035, build: bWoodPlank, normal: 1.0, ao: 1.0, ash: 0.85, detail: 0.5, tile: 2.0, macro: 0.1, macroR: 0.11, meso: 0.09, mesoR: 0.16, grime: 0.55, streak: 0.45, edge: 0.45, edgeR: 0.2, aoOpts: { dirs: 8, steps: 5, cavity: 0.6 } },
+  sandbag: { res: STD, relief: 0.07, build: bSandbag, normal: 1.0, ao: 1.15, ash: 1.0, detail: 0.55, tile: 1.2, macro: 0.1, macroR: 0.08, meso: 0.1, mesoR: 0.12, grime: 0.55, streak: 0.25, edge: 0.3, edgeR: 0.1, aoOpts: { dirs: 8, steps: 5, cavity: 0.7 } },
+  glassDirty: { res: STD, relief: 0.012, build: bGlassDirty, normal: 0.7, ao: 0.5, ash: 1.3, detail: 0.2, tile: 2.0, macro: 0.05, macroR: 0.04, meso: 0.05, mesoR: 0.06, grime: 0.3, streak: 0.9, edge: 0.15, edgeR: 0.05, envBoost: 1.6, aoOpts: { dirs: 6, steps: 4, cavity: 0.35 } },
+  plaster: { res: STD, relief: 0.025, build: bPlaster, normal: 0.9, ao: 0.95, ash: 0.95, detail: 0.5, tile: 2.5, macro: 0.11, macroR: 0.1, meso: 0.095, mesoR: 0.15, grime: 0.55, streak: 0.8, edge: 0.45, edgeR: 0.2, aoOpts: { dirs: 8, steps: 5, cavity: 0.6 } },
+  gravel: { res: STD, relief: 0.075, build: bGravel, normal: 1.0, ao: 1.2, ash: 0.8, detail: 0.6, tile: 1.6, macro: 0.15, macroR: 0.18, meso: 0.15, mesoR: 0.24, grime: 0.5, streak: 0.1, edge: 0.3, edgeR: 0.18, triBlend: 0.45, aoOpts: { dirs: 8, steps: 6, cavity: 0.7 } },
+  dirt: { res: STD, relief: 0.055, build: bDirt, normal: 1.0, ao: 1.1, ash: 0.7, detail: 0.6, tile: 2.4, macro: 0.16, macroR: 0.18, meso: 0.16, mesoR: 0.24, grime: 0.5, streak: 0.1, edge: 0.25, edgeR: 0.15, triBlend: 0.45, aoOpts: { dirs: 8, steps: 5, cavity: 0.6 } },
+  tarpaulin: { res: STD, relief: 0.05, build: bTarpaulin, normal: 1.0, ao: 1.0, ash: 1.0, detail: 0.45, tile: 2.0, macro: 0.08, macroR: 0.07, meso: 0.07, mesoR: 0.1, grime: 0.45, streak: 0.5, edge: 0.3, edgeR: 0.12, aoOpts: { dirs: 8, steps: 5, cavity: 0.55 } },
+  // Viewmodel surfaces skip the world-space bands (they would swim as the weapon moves) but
+  // keep edge wear, which is most of what sells a used firearm.
+  gunmetal: { res: HERO, relief: 0.012, build: bGunmetal, normal: 0.75, ao: 0.7, ash: 0.22, detail: 0.3, tile: 0.35, view: true, edge: 0.7, edgeR: 0.22, metalKeep: 0.1, envBoost: 1.5, aoOpts: { dirs: 6, steps: 4, cavity: 0.45 } },
+  gunPolymer: { res: STD, relief: 0.022, build: bGunPolymer, normal: 1.0, ao: 0.8, ash: 0.22, detail: 0.3, tile: 0.3, view: true, edge: 0.45, edgeR: 0.2, aoOpts: { dirs: 8, steps: 5, cavity: 0.55 } },
+  gunWood: { res: STD, relief: 0.012, build: bGunWood, normal: 0.8, ao: 0.7, ash: 0.2, detail: 0.3, tile: 0.35, view: true, edge: 0.4, edgeR: 0.16, aoOpts: { dirs: 6, steps: 4, cavity: 0.5 } },
+  fabric: { res: STD, relief: 0.03, build: bFabric, normal: 1.0, ao: 1.0, ash: 0.35, detail: 0.4, tile: 0.6, view: true, edge: 0.25, edgeR: 0.08, aoOpts: { dirs: 8, steps: 5, cavity: 0.6 } },
+  skin: { res: STD, relief: 0.02, build: bSkin, normal: 0.8, ao: 0.85, ash: 0.12, detail: 0.35, tile: 0.35, view: true, edge: 0.1, edgeR: 0.04, aoOpts: { dirs: 8, steps: 5, cavity: 0.55 } },
 };
 
 /* ========================================================================== */
@@ -2427,9 +2518,20 @@ uniform float uAshAmount;
 uniform float uAshSharpness;
 uniform float uAshRoughness;
 uniform float uAshNoiseScale;
+uniform float uAshMetalKeep;
 
 uniform float uMacroStrength;
 uniform float uMacroScale;
+uniform float uMacroRough;
+uniform float uMesoStrength;
+uniform float uMesoRough;
+uniform vec3  uGrimeColour;
+uniform float uGrimeStrength;
+uniform float uStreakStrength;
+uniform float uEdgeWear;
+uniform float uEdgeRough;
+uniform vec3  uOxideColour;
+uniform float uOxideStrength;
 uniform float uFogAmount;
 uniform float uSpecAAStrength;
 
@@ -2474,6 +2576,8 @@ vec3 ashRNM( vec3 base, vec3 detail ) {
 
 const PRELUDE_FRAG_TRI = /* glsl */ `
 uniform float uTriScale;
+uniform float uTriScale2;
+uniform float uTriBlend;
 uniform float uTriSharpness;
 
 vec3 ashTriWeights() {
@@ -2514,6 +2618,32 @@ const VERTEX_INJECT = /* glsl */ `
   }
 `;
 
+/**
+ * ORM is one texture serving three map slots, so three.js samples the same image three times
+ * per fragment. Fetch it once into `ashORM` instead and drive roughness, metalness and the
+ * grunge terms from that — it saves two fetches on the UV path and six on the triplanar one,
+ * and it is the only way the packed height (.a) reaches the fragment at all, which is what
+ * the edge-wear and cavity-grime terms are built on.
+ *
+ * `<roughnessmap_fragment>` runs before `<normal_fragment_maps>` in three's fragment chain,
+ * so declaring it here makes it available to FRAG_ASH.
+ */
+const FRAG_ORM_STD = /* glsl */ `
+  vec4 ashORM = vec4( 1.0, 1.0, 0.0, 0.5 );
+  float roughnessFactor = roughness;
+  #ifdef USE_ROUGHNESSMAP
+    ashORM = texture2D( roughnessMap, vRoughnessMapUv );
+    roughnessFactor *= ashORM.g;
+  #endif
+`;
+
+const FRAG_METAL_STD = /* glsl */ `
+  float metalnessFactor = metalness;
+  #ifdef USE_METALNESSMAP
+    metalnessFactor *= ashORM.b;
+  #endif
+`;
+
 /** The block that replaces <normal_fragment_maps> on the standard (UV) path. */
 const FRAG_NORMAL_STD = /* glsl */ `
   #ifdef USE_NORMALMAP_TANGENTSPACE
@@ -2533,8 +2663,12 @@ const FRAG_NORMAL_STD = /* glsl */ `
 
   #endif
 
+  // The ORM has already been fetched for roughness; its .r is the same AO texel, so reuse it
+  // rather than paying for a second sample of the identical image.
   float ashAO = 1.0;
-  #ifdef USE_AOMAP
+  #ifdef USE_ROUGHNESSMAP
+    ashAO = ashORM.r;
+  #elif defined( USE_AOMAP )
     ashAO = texture2D( aoMap, vAoMapUv ).r;
   #endif
 `;
@@ -2578,44 +2712,120 @@ const FRAG_NORMAL_TRI = /* glsl */ `
   #endif
 `;
 
-/** Ash / macro / specular-AA block. Runs after the normal is final, before lighting. */
+/**
+ * Ash / world-space breakup / grunge / edge-wear / specular-AA block.
+ * Runs after the normal is final, before lighting.
+ *
+ * Everything in here is deliberately WORLD-space and analytic. Texture-space detail is a
+ * fixed number of texels per metre, so on a 100 m ground plane it is entirely gone by five
+ * metres out — the mip chain has averaged it to its own mean and the surface reads as a flat
+ * shaded polygon from the mid-ground to the horizon. The three bands below (macro ~15 m,
+ * meso ~1.7 m, and the streak/grime/edge terms) do not mip, do not tile, and are what keeps
+ * albedo and roughness varying at every distance the player can see.
+ */
 const FRAG_ASH = /* glsl */ `
   {
     // View-space normal back to world space. viewMatrix's upper 3x3 is orthonormal, so the
     // inverse is the transpose, and v * M is exactly transpose(M) * v in GLSL.
     vec3 ashWN = normalize( normal * mat3( viewMatrix ) );
 
-    // Ash falls from above, so accumulation tracks the up-facing cosine. A power shapes how
-    // fast it drops off over a curved surface.
     float ashUp = max( ashWN.y, 0.0 );
-    float ashMask = pow( ashUp, uAshSharpness ) * uAshAmount;
+    float ashSide = 1.0 - abs( ashWN.y );
 
-    // Break it up in WORLD space, not UV space. World-space breakup is what makes two
-    // different objects sharing this material look like they are in the same weather.
+    // Packed height (ORM.a) and AO (ORM.r) are the only two channels needed to reconstruct a
+    // usable convexity signal, which is why no extra curvature map is generated:
+    //   - a convex arris is HIGH in the height field and UNOCCLUDED in the AO,
+    //   - a cavity is LOW in the height field and OCCLUDED.
+    // That gives edge wear and cavity grime for the cost of two smoothsteps.
+    float ashH = ashORM.a;
+    float ashAOc = clamp( ashAO, 0.0, 1.0 );
+    // Thresholds chosen against the actual height/AO distributions the generators produce:
+    // they put the edge term on 4-30% of texels depending on the surface (most on rolled
+    // steel and ballast, least on a cast face), which is roughly where real wear sits. A term
+    // that covers half the surface is not wear, it is a second base albedo.
+    float ashEdge = smoothstep( 0.52, 0.86, ashH ) * smoothstep( 0.58, 0.94, ashAOc );
+    float ashCavity = ( 1.0 - smoothstep( 0.10, 0.60, ashH ) ) * ( 1.0 - smoothstep( 0.42, 0.90, ashAOc ) );
+
+    // Meso band, ~1.7 m and its two sub-octaves: compacted vs loose, damp vs dry, drifted
+    // vs swept. This is the band the eye reads as "surface" while moving.
     float ashBreak = ashFbm2( vAshWorld.xz * uAshNoiseScale + vAshWorld.y * 0.11 );
-    ashMask *= mix( 0.45, 1.25, ashBreak );
+    // Macro band, ~15 m. Kills repetition on large planes and gives the long tonal drift.
+    float ashMacro = ashFbm2( vAshWorld.xz * uMacroScale + vAshWorld.y * 0.03 );
 
+    /* ---- 1. ash / dust film -------------------------------------------------- */
+
+    float ashMask = pow( ashUp, uAshSharpness ) * uAshAmount;
+    ashMask *= mix( 0.40, 1.30, ashBreak );
     // Crevices trap more dust than exposed faces.
-    ashMask *= mix( 1.3, 0.82, ashAO );
+    ashMask *= mix( 1.3, 0.82, ashAOc );
+    // Bare polished metal does not hold a dust film the way oxide, paint and concrete do, and
+    // contact faces are wiped clean by traffic. Without this gate the up-facing rail head —
+    // the one mirror-polished surface in a rail yard — has its metalness zeroed, and with it
+    // every glancing highlight in the frame. The gate is strongest exactly where the surface
+    // is both metallic and convex, i.e. on the wear band.
+    ashMask *= mix( 1.0, uAshMetalKeep, metalnessFactor * ( 0.45 + 0.55 * ashEdge ) );
     ashMask = clamp( ashMask, 0.0, 1.0 );
 
     diffuseColor.rgb = mix( diffuseColor.rgb, uDustColour, ashMask * 0.72 );
     roughnessFactor = mix( roughnessFactor, uAshRoughness, ashMask * 0.85 );
-    // A dust film is a dielectric. Without this, dusty metal keeps glinting and the whole
-    // ash conceit falls apart on every steel surface in the map.
+    // A dust film is a dielectric.
     metalnessFactor *= ( 1.0 - ashMask * 0.92 );
 
-    // Macro variation at ~15 m in world space. Texture-space blotches tile with the texture;
-    // this does not, so it is the only thing that kills repetition on a 40 m wall.
-    float ashMacro = ashFbm2( vAshWorld.xz * uMacroScale + vAshWorld.y * 0.03 );
+    /* ---- 2. three-scale world breakup, albedo AND roughness ------------------ */
+
     diffuseColor.rgb *= mix( 1.0 - uMacroStrength, 1.0 + uMacroStrength, ashMacro );
+    roughnessFactor += ( ashMacro - 0.5 ) * 2.0 * uMacroRough;
+
+    // Roughness has to vary with the same fields the albedo varies with, or the frame ends up
+    // with one global sheen no matter how much albedo detail is present.
+    float ashMeso = ashBreak - 0.5;
+    diffuseColor.rgb *= 1.0 + ashMeso * 2.0 * uMesoStrength;
+    roughnessFactor += ashMeso * 2.0 * uMesoRough;
+
+    /* ---- 3. grunge with a direction ----------------------------------------- */
+
+    // (a) Occlusion-driven grime: dirt accumulates in cavities and where an object meets the
+    //     ground, which is what stops every prop reading as newly placed.
+    diffuseColor.rgb = mix( diffuseColor.rgb, uGrimeColour, ashCavity * uGrimeStrength );
+    roughnessFactor = mix( roughnessFactor, 0.95, ashCavity * uGrimeStrength * 0.65 );
+
+    // (b) Gravity streaks. Vertically stretched world-space noise so the runs are continuous
+    //     down a face and independent of UV layout; gated on verticality, so the ground plane
+    //     and the whole horizontal half of the map skip it entirely.
+    if ( uStreakStrength > 0.0 && ashSide > 0.08 ) {
+      float ashStreakN = ashFbm2( vec2( ( vAshWorld.x - vAshWorld.z ) * 1.6, vAshWorld.y * 0.24 ) );
+      // Streaks start under a ledge and run out of dirt as they fall, so bias them into the
+      // recesses of the height field and fade them with height above the run's origin.
+      float streak = smoothstep( 0.50, 0.94, ashStreakN ) * ashSide * ashSide * uStreakStrength;
+      streak *= mix( 0.35, 1.0, 1.0 - ashH );
+      diffuseColor.rgb *= 1.0 - streak * 0.40;
+      roughnessFactor = min( 1.0, roughnessFactor + streak * 0.22 );
+    }
+
+    /* ---- 4. edge wear ------------------------------------------------------- */
+
+    // Convex arrises are rubbed back towards the substrate: lighter, and markedly smoother.
+    // The roughness drop is the part that matters — a worn edge reads as a bright line on the
+    // silhouette, which is the highest-value-per-pixel material work there is.
+    diffuseColor.rgb = mix( diffuseColor.rgb, diffuseColor.rgb * 1.30 + 0.025, ashEdge * uEdgeWear );
+    roughnessFactor -= ashEdge * uEdgeRough;
+
+    // Curvature-driven oxide: corrosion starts on convex metal edges, joints and fixings.
+    float ashOxide = ashEdge * metalnessFactor * uOxideStrength * smoothstep( 0.30, 0.78, ashMacro );
+    diffuseColor.rgb = mix( diffuseColor.rgb, uOxideColour, ashOxide );
+    roughnessFactor = mix( roughnessFactor, 0.86, ashOxide );
+    metalnessFactor *= 1.0 - ashOxide * 0.75;
+
+    roughnessFactor = clamp( roughnessFactor, 0.035, 1.0 );
 
     // Specular anti-aliasing: widen the NDF by the sub-pixel normal variance so a
-    // high-frequency normal map cannot produce sparkle that TAA then smears into crawl.
+    // high-frequency normal map cannot produce sparkle that TAA then smears into crawl. The
+    // cap is deliberately tight: a generous one drags every rough surface to the same value
+    // and reintroduces the single global sheen this block exists to break.
     vec3 ashNdx = dFdx( normal );
     vec3 ashNdy = dFdy( normal );
     float ashVar = uSpecAAStrength * ( dot( ashNdx, ashNdx ) + dot( ashNdy, ashNdy ) );
-    roughnessFactor = min( 1.0, sqrt( roughnessFactor * roughnessFactor + min( 0.28, ashVar ) ) );
+    roughnessFactor = min( 1.0, sqrt( roughnessFactor * roughnessFactor + min( 0.16, ashVar ) ) );
   }
 `;
 
@@ -2711,6 +2921,9 @@ export function createMaterials(renderer, shadows) {
   };
 
   const dustColour = new THREE.Color(PALETTE.dust);
+  // Grime and oxide are palette colours like everything else — nothing here invents a hue.
+  const grimeColour = new THREE.Color(PALETTE.dirt).multiplyScalar(0.55);
+  const oxideColour = new THREE.Color(PALETTE.rust);
 
   /* ---- registries ---- */
   const textureCache = new Map(); // name -> {map, normalMap, ormMap, ...}
@@ -2862,14 +3075,34 @@ export function createMaterials(renderer, shadows) {
       uAshAmount: { value: def.ash ?? 1.0 },
       uAshSharpness: { value: 2.6 },
       uAshRoughness: { value: 0.94 },
-      uAshNoiseScale: { value: 0.42 },
-      uMacroStrength: { value: def.view ? 0.0 : 0.075 },
+      // ~1.7 m fundamental. Its three octaves land on 1.7 / 0.8 / 0.37 m, which is exactly
+      // the meso band the ground was missing.
+      uAshNoiseScale: { value: 0.58 },
+      uAshMetalKeep: { value: def.metalKeep ?? 0.15 },
+      uMacroStrength: { value: def.view ? 0.0 : (def.macro ?? 0.075) },
       uMacroScale: { value: 0.068 },
+      uMacroRough: { value: def.view ? 0.0 : (def.macroR ?? 0.06) },
+      uMesoStrength: { value: def.view ? 0.0 : (def.meso ?? 0.075) },
+      uMesoRough: { value: def.view ? 0.0 : (def.mesoR ?? 0.09) },
+      uGrimeColour: { value: grimeColour },
+      uGrimeStrength: { value: def.view ? 0.0 : (def.grime ?? 0.4) },
+      uStreakStrength: { value: def.view ? 0.0 : (def.streak ?? 0.45) },
+      uEdgeWear: { value: def.edge ?? 0.35 },
+      uEdgeRough: { value: def.edgeR ?? 0.2 },
+      uOxideColour: { value: oxideColour },
+      uOxideStrength: { value: def.oxide ?? 0.0 },
       uFogAmount: { value: def.view ? 0.0 : 1.0 },
       uSpecAAStrength: { value: 0.6 },
     };
     if (triplanar) {
-      u.uTriScale = { value: 1 / Math.max(0.05, scale || def.tile || 2) };
+      // The caller's scale is the fine octave. The coarse octave is derived from the surface's
+      // own authored tile size, so two surfaces that happen to be drawn at the same world
+      // scale still break at different frequencies.
+      const fine = Math.max(0.05, scale || def.tile || 2);
+      const coarse = Math.max(fine * 2.0, def.tile ?? 2.0) * 2.6;
+      u.uTriScale = { value: 1 / fine };
+      u.uTriScale2 = { value: fine / coarse }; // multiplies uTriScale, so < 1 == coarser
+      u.uTriBlend = { value: def.triBlend ?? 0.4 };
       u.uTriSharpness = { value: 5.0 };
     }
     // Shared by reference: sky.js mutates fogUniforms and every material sees it.
@@ -2879,6 +3112,15 @@ export function createMaterials(renderer, shadows) {
 
   function makeHook(uniforms, triplanar) {
     return function ashOnBeforeCompile(shader) {
+      // Idempotence guard. `registerShadow` chains this hook after `shadows.register`, but
+      // shadows.js *also* chains the author's hook when it wraps `onBeforeCompile`, so without
+      // this the hook runs twice against the same shader object and injects the whole ash
+      // prelude twice — every varying, uniform and function is redefined and the program fails
+      // to compile. Three calls the entire chain with one shader object per program, so a flag
+      // on that object is enough, and it stays correct whatever order the wrappers end up in.
+      if (shader.__ashPatched) return;
+      shader.__ashPatched = true;
+
       for (const k of Object.keys(uniforms)) shader.uniforms[k] = uniforms[k];
 
       shader.vertexShader = shader.vertexShader
@@ -2897,13 +3139,25 @@ export function createMaterials(renderer, shadows) {
           /* glsl */ `
   vec3 ashTW = ashTriWeights();
   float ashAO = 1.0;
+  vec4 ashORM = vec4( 1.0, 1.0, 0.0, 0.5 );
   // No manual EOTF: the albedo texture is uploaded as SRGB8_ALPHA8, so the sampler already
   // returns linear. Decoding again here would crush the midtones.
   #ifdef USE_MAP
-    diffuseColor *= ashTriSample( map, vAshWorld, ashTW, uTriScale );
+    // Two projections of the same albedo at different world scales, blended. Triplanar
+    // mapping ties feature size to world scale, so a 40 m ground plane and a 3 m slab sharing
+    // a material otherwise show the identical motif at the identical size and read as one
+    // object. Mixing (not adding) two samples of the same distribution is energy neutral, and
+    // the coarse octave puts albedo content at a metre-plus wavelength — the only content
+    // that survives the mip chain more than a few metres from the camera.
+    diffuseColor *= mix(
+      ashTriSample( map, vAshWorld, ashTW, uTriScale ),
+      ashTriSample( map, vAshWorld, ashTW, uTriScale * uTriScale2 ),
+      uTriBlend
+    );
   #endif
-  #ifdef USE_AOMAP
-    ashAO = ashTriSample( aoMap, vAshWorld, ashTW, uTriScale ).r;
+  #ifdef USE_ROUGHNESSMAP
+    ashORM = ashTriSample( roughnessMap, vAshWorld, ashTW, uTriScale );
+    ashAO = ashORM.r;
   #endif
 `
         );
@@ -2912,19 +3166,11 @@ export function createMaterials(renderer, shadows) {
           /* glsl */ `
   float roughnessFactor = roughness;
   #ifdef USE_ROUGHNESSMAP
-    roughnessFactor *= ashTriSample( roughnessMap, vAshWorld, ashTW, uTriScale ).g;
+    roughnessFactor *= ashORM.g;
   #endif
 `
         );
-        frag = frag.replace(
-          '#include <metalnessmap_fragment>',
-          /* glsl */ `
-  float metalnessFactor = metalness;
-  #ifdef USE_METALNESSMAP
-    metalnessFactor *= ashTriSample( metalnessMap, vAshWorld, ashTW, uTriScale ).b;
-  #endif
-`
-        );
+        frag = frag.replace('#include <metalnessmap_fragment>', FRAG_METAL_STD);
         frag = frag.replace('#include <normal_fragment_maps>', FRAG_NORMAL_TRI + FRAG_ASH);
         frag = frag.replace(
           '#include <aomap_fragment>',
@@ -2940,6 +3186,8 @@ export function createMaterials(renderer, shadows) {
 `
         );
       } else {
+        frag = frag.replace('#include <roughnessmap_fragment>', FRAG_ORM_STD);
+        frag = frag.replace('#include <metalnessmap_fragment>', FRAG_METAL_STD);
         frag = frag.replace('#include <normal_fragment_maps>', FRAG_NORMAL_STD + FRAG_ASH);
       }
 
@@ -2985,10 +3233,9 @@ export function createMaterials(renderer, shadows) {
     mat.onBeforeCompile = hook;
     // Two source variants only, so programs are still shared across the twenty surfaces.
     mat.customProgramCacheKey = () => (triplanar ? 'ashfall-tri' : 'ashfall-std');
-    if (state.env) {
-      mat.envMap = state.env;
-      mat.envMapIntensity = LIGHTING.envIntensity;
-    }
+    mat.userData.envBoost = def.envBoost ?? 1.0;
+    mat.envMapIntensity = LIGHTING.envIntensity * mat.userData.envBoost;
+    if (state.env) mat.envMap = state.env;
     allMaterials.add(mat);
     registerShadow(mat);
     return mat;
@@ -3023,7 +3270,6 @@ export function createMaterials(renderer, shadows) {
       mat.transparent = true;
       mat.opacity = 1.0;
       mat.side = THREE.DoubleSide;
-      mat.envMapIntensity = LIGHTING.envIntensity * 1.6;
       mat.depthWrite = true;
     }
 
@@ -3279,7 +3525,9 @@ export function createMaterials(renderer, shadows) {
 
     // Decals get the ash and fog treatment too — a bullet hole that ignores the fog reads as
     // a sticker the moment it is more than twenty metres away.
-    const def = { detail: 0.15, ash: 0.5, tile: 0.4 };
+    // Decals carry their own weathering in the atlas, and every world-space term below would
+    // double-count it (or, worse, streak a bullet hole). Ash and fog only.
+    const def = { detail: 0.15, ash: 0.5, tile: 0.4, macro: 0, macroR: 0, meso: 0, mesoR: 0, grime: 0, streak: 0, edge: 0, edgeR: 0, oxide: 0 };
     configure(mat, `decal:${k}`, def, false, 0);
     mat.userData.atlas = { cols: 2, rows: 2, variants: 4, tile: uv.s, offset: [uv.ox, uv.oy] };
 
@@ -3324,7 +3572,9 @@ export function createMaterials(renderer, shadows) {
     state.env = env || null;
     for (const mat of allMaterials) {
       mat.envMap = state.env;
-      mat.envMapIntensity = LIGHTING.envIntensity * (mat.userData.surface === 'glassDirty' ? 1.6 : 1.0);
+      // Metals live or die on their environment reflection: with the map at parity with the
+      // dielectrics there is no glancing highlight anywhere and steel reads as grey paint.
+      mat.envMapIntensity = LIGHTING.envIntensity * (mat.userData.envBoost ?? 1.0);
       mat.needsUpdate = true;
     }
   }

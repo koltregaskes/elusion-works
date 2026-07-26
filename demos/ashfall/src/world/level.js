@@ -62,6 +62,24 @@ const CRANE = { x: -8, zA: -4, zB: 24, railY: 0.55, top: 19.2 };
 const TOWER = { x: -33, z: 18, h: MAP.waterTowerHeight };
 const DOCK = { x0: -16, x1: 26, z0: 32, z1: 40, h: 1.15 };
 
+/**
+ * Spawns, as [x, z, lookAtX, lookAtZ]. Hoisted to module scope because the dressing pass has
+ * to know where they are: §4's near-field rule means every spawn gets a deliberate occluder
+ * within about three metres of it, and that can only be placed if the geometry builder and the
+ * spawn table agree on one list.
+ */
+const SPAWN_DEFS = [
+  [4, 27.5, 0, 6],
+  [-16, 33, -6, 12],
+  [30, 24, 12, 4],
+  [-30, -2, -20, -18],
+  [-42, -30, -28, -20],
+  [40, -20, 26, -6],
+  [24, -6, 10, 8],
+  [-6, -12, 4, 10],
+  [44, 16, 24, 12],
+];
+
 /** Direction *to* the sun, matching sky.js exactly. Drives the light shafts and the shadows. */
 const SUN_DIR = new THREE.Vector3(
   Math.sin(SUN_AZIMUTH * DEG) * Math.cos(SUN_ELEVATION * DEG),
@@ -882,12 +900,21 @@ export function createLevel(scene, materials, game) {
     return chunkAt(_ptmp.x, _ptmp.z);
   }
 
+  /**
+   * Far-field mode. Everything emitted while this is set belongs to the backdrop beyond the
+   * wire: it goes into its own chunk (the four playable quadrants would otherwise be dragged
+   * out to a 500 m bounding sphere and stop culling), and the meshes it produces neither cast
+   * nor receive shadows — the CSM only reaches 140 m, so a shadow pass over the town is pure
+   * cost.
+   */
+  let farMode = false;
+
   function bucket(name, triplanar = false, triScale = 0) {
-    const ch = chunkHere();
+    const ch = farMode ? 9 : chunkHere();
     const key = `${triplanar ? 'T' : 'U'}${name}#${ch}`;
     let b = buckets.get(key);
     if (!b) {
-      b = { geo: new Geo(), name, tri: triplanar, triScale, chunk: ch };
+      b = { geo: new Geo(), name, tri: triplanar, triScale, chunk: ch, far: farMode };
       buckets.set(key, b);
       bucketOrder.push(b);
     }
@@ -1125,6 +1152,15 @@ export function createLevel(scene, materials, game) {
    * once per length and instanced with per-box colour so a stack never reads as a copy.
    */
   function containerGeo(g, len) {
+    // The box below is authored with its length running along local Z, because that is the
+    // axis the corrugated side sheets want to be rotated onto. Every *caller* — the collider
+    // in `placeContainer`, the across-the-width offsets in `containerStack`, the toppled box
+    // in the yard — treats the length as running along local X. That disagreement is why the
+    // east row rendered as one continuous corrugated ribbon with no end caps and no door
+    // faces: a "row" of 12.19 m units offset by 2.9 m was laying them *through* each other
+    // end to end instead of side by side. Rotate the authored box once, here, so the
+    // geometry and the twenty places that position it finally agree.
+    place(0, 0, 0, Math.PI * 0.5);
     const W = 2.438;
     const H = 2.591;
     const hw = W * 0.5;
@@ -1198,6 +1234,7 @@ export function createLevel(scene, materials, game) {
         chamferBox(g, 0, -hh + 0.2, s * 0.9, hw - 0.16, 0.09, 0.16, T.steelDark, 0.01);
       }
     }
+    popX();
   }
 
   /* --- jersey barrier ----------------------------------------------------- */
@@ -1368,11 +1405,30 @@ export function createLevel(scene, materials, game) {
 
   /* --- rubble ------------------------------------------------------------- */
 
+  /**
+   * A broken slab with genuine thickness. 0.20 m through the body rather than the 0.15 it
+   * used to be, plus a stepped break along one edge and three bent rebar strands out of the
+   * fractured face — a slab of reinforced concrete never snaps clean, and a flat wedge with a
+   * blank face is the single clearest programmer-art tell in a rubble heap.
+   */
   function slabGeo(g) {
-    chamferBox(g, 0, 0, 0, 0.42, 0.075, 0.31, T.white, 0.02);
-    // A stub of exposed rebar, bent — the tell that this was reinforced concrete.
-    place(0.36, 0.02, 0.1, 0.4, 0.5);
-    tube(g, 0.011, 0.011, 0.42, 6, T.rustDeep, false, false, 0.003);
+    chamferBox(g, 0, 0, 0, 0.42, 0.1, 0.31, T.white, 0.03);
+    // The broken edge: two smaller masses stepped off the main body, not a clean cut.
+    place(0.44, -0.02, 0.09, 0.22, 0, 0.18);
+    chamferBox(g, 0, 0, 0, 0.11, 0.075, 0.19, grey(0.92), 0.022);
+    popX();
+    place(-0.4, 0.03, -0.14, -0.3, 0.1, -0.24);
+    chamferBox(g, 0, 0, 0, 0.14, 0.06, 0.13, grey(0.86), 0.02);
+    popX();
+    // Rebar out of the broken faces, bent. Two strands and a stub, at different angles.
+    place(0.4, 0.02, 0.1, 0.4, 0.5);
+    tube(g, 0.011, 0.011, 0.42, 5, T.rustDeep, false, false, 0.003);
+    popX();
+    place(0.36, 0.05, -0.14, -0.35, 0.9, 0.2);
+    tube(g, 0.01, 0.01, 0.33, 5, T.rustDeep, false, false, 0.003);
+    popX();
+    place(-0.44, -0.01, 0.02, 2.7, 0.35);
+    tube(g, 0.009, 0.009, 0.2, 5, T.rustDeep, false, false, 0.003);
     popX();
   }
 
@@ -1384,6 +1440,54 @@ export function createLevel(scene, materials, game) {
   /**
    * Scatter a rubble pile: a cone of broken slabs and brick with a plausible size grading
    * (big pieces at the base, fines on top), plus rebar tangles.
+   */
+  /**
+   * A drift of ash and concrete dust banked around the foot of something. Twelve segments of
+   * skirt with a noisy crest, laid on the triplanar dirt so it never tiles.
+   *
+   * §4's detail bar is broken the moment a prop meets the floor at a bare 90 degree crease:
+   * real debris accumulates a fillet at its base, and without one the pile reads as geometry
+   * pushed through a plane. Every rubble heap, every wall foot and every container base in the
+   * map gets one of these.
+   */
+  function dustSkirt(cx, cz, radius, height, seedN, tintArr) {
+    // Placed first so `bucket` assigns the drift to the chunk it actually sits in.
+    place(cx, 0, cz);
+    const g = GT('dirt', 0.35);
+    const SEG = 12;
+    const r2 = mulberry32(seedN);
+    const inner = [];
+    const outer = [];
+    for (let i = 0; i <= SEG; i++) {
+      const a = (i / SEG) * Math.PI * 2;
+      const ri = radius * (0.82 + r2() * 0.16);
+      const ro = ri + radius * (0.34 + r2() * 0.4);
+      const h = height * (0.55 + r2() * 0.6);
+      inner.push([Math.cos(a) * ri, h, Math.sin(a) * ri]);
+      outer.push([Math.cos(a) * ro, 0.006, Math.sin(a) * ro]);
+    }
+    inner[SEG] = inner[0];
+    outer[SEG] = outer[0];
+    for (let i = 0; i < SEG; i++) {
+      const a0 = inner[i];
+      const a1 = inner[i + 1];
+      const b0 = outer[i];
+      const b1 = outer[i + 1];
+      const tone = 0.78 + ((i * 7) % 5) * 0.06;
+      const tt = tintArr
+        ? [tintArr[0] * tone, tintArr[1] * tone, tintArr[2] * tone]
+        : [T.dirt[0] * tone * 1.06, T.dirt[1] * tone * 1.02, T.dirt[2] * tone];
+      _bp.length = 0;
+      _bp.push(a0[0], a0[1], a0[2], a1[0], a1[1], a1[2], b1[0], b1[1], b1[2], b0[0], b0[1], b0[2]);
+      gpoly(g, _bp, (a0[0] + b0[0]) * 0.02, 0.9, (a0[2] + b0[2]) * 0.02, tt);
+    }
+    popX();
+  }
+
+  /**
+   * Scatter a rubble pile in three size tiers — slabs, fist-sized chunks, gravel fines —
+   * with the big pieces at the base and the grading getting finer up the cone, plus a dust
+   * fillet round the foot so nothing intersects the floor at a bare crease.
    */
   function rubblePile(slabSet, brickSet, cx, cz, radius, height, seedN, tintBase) {
     const r2 = mulberry32(seedN);
@@ -1398,12 +1502,34 @@ export function createLevel(scene, materials, game) {
       addInstance(
         slabSet,
         cx + Math.cos(a) * rr,
-        y + 0.05,
+        // Lifted by the slab's own half-thickness so a piece lying flat rests *on* the
+        // ground rather than half through it.
+        y + 0.1 * s,
         cz + Math.sin(a) * rr,
         r2() * Math.PI * 2,
         (r2() - 0.5) * 0.9,
         (r2() - 0.5) * 0.9,
         s,
+        [tintBase[0] * tone, tintBase[1] * tone, tintBase[2] * tone]
+      );
+    }
+    // Mid tier.
+    const nChunk = Math.round(radius * radius * (lod > 0 ? 5 : 2.4));
+    for (let i = 0; i < nChunk; i++) {
+      const a = r2() * Math.PI * 2;
+      const rr = Math.sqrt(r2()) * radius * 1.1;
+      const f = clamp(1 - rr / radius, 0, 1);
+      const y = f * f * height * (0.4 + r2() * 0.65);
+      const tone = 0.68 + r2() * 0.5;
+      addInstance(
+        chunkSet,
+        cx + Math.cos(a) * rr,
+        y + 0.09,
+        cz + Math.sin(a) * rr,
+        r2() * Math.PI * 2,
+        (r2() - 0.5) * 1.4,
+        (r2() - 0.5) * 1.4,
+        0.75 + r2() * 0.9,
         [tintBase[0] * tone, tintBase[1] * tone, tintBase[2] * tone]
       );
     }
@@ -1426,6 +1552,28 @@ export function createLevel(scene, materials, game) {
         [T.brick[0] * tone, T.brick[1] * tone, T.brick[2] * tone]
       );
     }
+    // Fines: gravel spilling well past the toe of the heap, which is what actually blends a
+    // pile into the floor.
+    const nFine = Math.round(radius * radius * (lod > 1 ? 9 : lod > 0 ? 5 : 2));
+    for (let i = 0; i < nFine; i++) {
+      const a = r2() * Math.PI * 2;
+      const rr = Math.sqrt(r2()) * radius * 1.6;
+      const f = clamp(1 - rr / radius, 0, 1);
+      const y = f * f * height * (0.25 + r2() * 0.6);
+      const tone = 0.68 + r2() * 0.55;
+      addInstance(
+        stoneSet,
+        cx + Math.cos(a) * rr,
+        y + 0.02,
+        cz + Math.sin(a) * rr,
+        r2() * 6.28,
+        (r2() - 0.5) * 1.8,
+        (r2() - 0.5) * 1.8,
+        0.7 + r2() * 1.2,
+        [tintBase[0] * tone, tintBase[1] * tone, tintBase[2] * tone]
+      );
+    }
+    dustSkirt(cx, cz, radius * 1.08, Math.min(0.34, height * 0.34), seedN + 77, null);
   }
 
   /* --- chain-link fence ---------------------------------------------------- */
@@ -1554,6 +1702,51 @@ export function createLevel(scene, materials, game) {
 
   /* --- rail track --------------------------------------------------------- */
 
+  /**
+   * The gravel tier. One irregular chunk, instanced by the thousand: ballast on the track
+   * shoulders, the fines tier on every rubble pile, and grit banked against kerbs. Eight
+   * facets is enough for a stone that is never more than a few pixels across, and it is the
+   * only way to give the ballast and the rubble a genuine size grading without a second
+   * material.
+   */
+  const stoneSet = inst('stone', 'gravel', (g) => {
+    const r2 = mulberry32(0x5701);
+    const pts = [];
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      const rr = 0.055 + r2() * 0.045;
+      pts.push([Math.cos(a) * rr, (r2() - 0.5) * 0.02, Math.sin(a) * rr]);
+    }
+    const top = 0.045 + r2() * 0.03;
+    const bot = -0.02 - r2() * 0.02;
+    for (let i = 0; i < 6; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % 6];
+      const nx = (a[0] + b[0]) * 0.5;
+      const nz = (a[2] + b[2]) * 0.5;
+      _bp.length = 0;
+      _bp.push(a[0], a[1] + bot, a[2], b[0], b[1] + bot, b[2], b[0] * 0.72, b[1] + top, b[2] * 0.72, a[0] * 0.72, a[1] + top, a[2] * 0.72);
+      gpoly(g, _bp, nx, 0.42, nz, T.white);
+    }
+    _bp.length = 0;
+    for (let i = 0; i < 6; i++) _bp.push(pts[i][0] * 0.72, pts[i][1] + top, pts[i][2] * 0.72);
+    gpoly(g, _bp, 0, 1, 0, T.white);
+  });
+
+  /**
+   * The mid tier: a fist-to-head sized lump of broken concrete with real thickness. Rubble
+   * that is only slabs and dust has no size grading, and a heap with no grading reads as
+   * intersecting cards however many pieces are in it.
+   */
+  const chunkSet = inst('chunk', 'rubble', (g) => {
+    const r2 = mulberry32(0x5702);
+    chamferBox(g, 0, 0, 0, 0.11 + r2() * 0.05, 0.085 + r2() * 0.04, 0.095 + r2() * 0.05, T.white, 0.02);
+    // A broken lobe off one face, so the silhouette is not a die.
+    place(0.09, 0.03, 0.05, 0.6, 0.4, 0.3);
+    chamferBox(g, 0, 0, 0, 0.07, 0.05, 0.06, grey(0.9), 0.015);
+    popX();
+  });
+
   const sleeperSet = inst('sleeper', 'woodPlank', (g) => {
     // Sleeper plus its two cast chairs and four coach screws: one instance, four props.
     chamferBox(g, 0, 0, 0, 1.3, 0.075, 0.125, T.sleeper, 0.014);
@@ -1577,24 +1770,61 @@ export function createLevel(scene, materials, game) {
     const yOff = o.y || 0;
     const gap = o.skipX || null;
 
-    // Ballast: a shallow trapezoid, triplanar so the stones never tile.
+    // Ballast: a proper trapezoidal profile, triplanar so the stones never tile.
+    //
+    // The crest sits 0.26 m above grade with the shoulder 0.44 m clear of the sleeper ends
+    // (sleepers are 2.6 m over the ends) and a 1:2 batter down to the cess. The sleeper
+    // undersides land at 0.215, i.e. 4.5 cm *inside* the crest — real sleepers are bedded into
+    // the ballast rather than sitting on it, and that buried line is most of what makes track
+    // read as steel on stone instead of as a stripe painted on concrete.
+    const bh = 0.26;
+    const hw1 = 1.74;
+    const hw0 = hw1 + bh * 2.0;
     if (o.ballast !== false) {
       const gb = GT('gravel', 0.55);
       place(cxm, yOff, z);
-      const bh = 0.22;
-      const hw0 = 2.3;
-      const hw1 = 1.55;
       const p = _bp;
-      p.length = 0;
-      p.push(-len * 0.5, bh, -hw1, len * 0.5, bh, -hw1, len * 0.5, bh, hw1, -len * 0.5, bh, hw1);
-      gpoly(gb, p, 0, 1, 0, T.gravel);
-      for (let s = -1; s <= 1; s += 2) {
+      const segs = Math.max(2, Math.round(len / 6));
+      for (let i = 0; i < segs; i++) {
+        const xa = -len * 0.5 + (i / segs) * len;
+        const xb = -len * 0.5 + ((i + 1) / segs) * len;
+        // The crest is not a machined line: a couple of centimetres of settlement per panel.
+        const ya = bh - (fbm2(xa * 0.3 + seedN, 5.1) - 0.5) * 0.05;
+        const yb = bh - (fbm2(xb * 0.3 + seedN, 5.1) - 0.5) * 0.05;
         p.length = 0;
-        p.push(-len * 0.5, bh, s * hw1, len * 0.5, bh, s * hw1, len * 0.5, 0, s * hw0, -len * 0.5, 0, s * hw0);
-        gpoly(gb, p, 0, 0.75, s * 0.66, T.gravel);
+        p.push(xa, ya, -hw1, xb, yb, -hw1, xb, yb, hw1, xa, ya, hw1);
+        gpoly(gb, p, 0, 1, 0, T.gravel);
+        for (let s = -1; s <= 1; s += 2) {
+          p.length = 0;
+          p.push(xa, ya, s * hw1, xb, yb, s * hw1, xb, 0, s * hw0, xa, 0, s * hw0);
+          gpoly(gb, p, 0, 0.89, s * 0.45, [T.gravel[0] * 0.92, T.gravel[1] * 0.92, T.gravel[2] * 0.94]);
+        }
       }
       popX();
-      solidBox(cxm, yOff + 0.11, z, len * 0.5, 0.11, hw0, 'gravel', 0, { walkTop: true });
+      solidBox(cxm, yOff + bh * 0.5, z, len * 0.5, bh * 0.5, hw0, 'gravel', 0, { walkTop: true });
+    }
+
+    // Individual ballast stone, over the shoulder and spilling into the cess. Without this
+    // the shoulder is a smooth ramp and the track has no grain at the range the player
+    // actually looks at it.
+    if (o.ballast !== false && lod > 0) {
+      const nStone = Math.round(len * (lod > 1 ? 3.4 : 1.8));
+      for (let i = 0; i < nStone; i++) {
+        const sx = x0 + r2() * len;
+        // Bias outward: the crest between the rails is compacted, the shoulder is loose.
+        const side = r2() < 0.5 ? -1 : 1;
+        const f = r2();
+        const sz = z + side * lerp(hw1 * 0.5, hw0 + 0.75, f * f);
+        const sy = yOff + (Math.abs(sz - z) < hw1 ? bh : lerp(bh * 0.8, 0.01, clamp((Math.abs(sz - z) - hw1) / (hw0 - hw1 + 0.75), 0, 1)));
+        const tone = 0.62 + r2() * 0.6;
+        addInstance(
+          stoneSet,
+          sx, sy, sz,
+          r2() * 6.28, (r2() - 0.5) * 1.6, (r2() - 0.5) * 1.6,
+          0.7 + r2() * 1.1,
+          [T.gravel[0] * tone, T.gravel[1] * tone, T.gravel[2] * tone]
+        );
+      }
     }
 
     // Sleepers.
@@ -1879,45 +2109,84 @@ export function createLevel(scene, materials, game) {
     const gp = G('metalPainted');
     const gc = G('concreteRough');
     const H = TOWER.h;
-    const tankH = 5.6;
-    const tankR = 3.5;
+    // Mass, not outline. The tank was 3.5 m by 5.6 m and the legs were 0.22 m sticks, which
+    // at 40 m through haze resolved into a dark cylinder with nothing under it. Widening the
+    // tank and building each leg as a laced pair of chords roughly triples the silhouette
+    // area below the tank, which is the part that has to survive the fog for the landmark to
+    // read as a structure standing on the ground.
+    const tankH = 6.4;
+    const tankR = 4.1;
     const legTop = H - tankH - 0.6;
-    const spreadTop = 2.4;
-    const spreadBot = 4.2;
+    const spreadTop = 2.95;
+    const spreadBot = 5.2;
+    /** Half-separation of the two chords in each leg, measured tangentially. */
+    const chordSep = 0.42;
 
     place(TOWER.x, 0, TOWER.z);
-    // Footings.
+    // Footings: a stepped concrete pad with a grouted base plate and holding-down bolts.
     for (let i = 0; i < 4; i++) {
       const a = (i / 4) * Math.PI * 2 + Math.PI * 0.25;
-      const bx = Math.cos(a) * spreadBot;
-      const bz = Math.sin(a) * spreadBot;
-      chamferBox(gc, bx, 0.3, bz, 0.6, 0.3, 0.6, T.concreteWorn, 0.025);
-      const tx = Math.cos(a) * spreadTop;
-      const tz = Math.sin(a) * spreadTop;
-      strut(gm, bx, 0.5, bz, tx, legTop, tz, 0.11, T.rust, 0.012);
-      solidBox(TOWER.x + (bx + tx) * 0.5, legTop * 0.5, TOWER.z + (bz + tz) * 0.5, 0.34, legTop * 0.5, 0.34, 'metal', 0, { cover: true });
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      const bx = ca * spreadBot;
+      const bz = sa * spreadBot;
+      const tx = ca * spreadTop;
+      const tz = sa * spreadTop;
+      place(bx, 0, bz, -a);
+      chamferBox(gc, 0, 0.24, 0, 1.05, 0.24, 1.05, T.concreteWorn, 0.03);
+      chamferBox(gc, 0, 0.56, 0, 0.78, 0.1, 0.78, T.concrete, 0.025);
+      chamferBox(gm, 0, 0.68, 0, 0.62, 0.035, 0.62, T.rustDeep, 0.01);
+      for (let sx = -1; sx <= 1; sx += 2) {
+        for (let sz = -1; sz <= 1; sz += 2) {
+          chamferBox(gm, sx * 0.5, 0.73, sz * 0.5, 0.045, 0.045, 0.045, T.steelDark, 0.008);
+        }
+      }
+      popX();
+      // Two chords per leg, laced together: this is what turns a stick into a member.
+      const px = -sa * chordSep;
+      const pz = ca * chordSep;
+      for (let s = -1; s <= 1; s += 2) {
+        strut(gm, bx + s * px, 0.7, bz + s * pz, tx + s * px * 0.62, legTop, tz + s * pz * 0.62, 0.115, T.rust, 0.014);
+      }
+      for (let k = 0; k < 9; k++) {
+        const f0 = k / 9;
+        const f1 = (k + 1) / 9;
+        const y0 = lerp(0.7, legTop, f0);
+        const y1 = lerp(0.7, legTop, f1);
+        const r0 = lerp(spreadBot, spreadTop, f0);
+        const r1 = lerp(spreadBot, spreadTop, f1);
+        const s0 = lerp(1, 0.62, f0);
+        const s1 = lerp(1, 0.62, f1);
+        strut(gm, ca * r0 - px * s0, y0, sa * r0 - pz * s0, ca * r1 + px * s1, y1, sa * r1 + pz * s1, 0.038, T.rustDeep, 0.006);
+        if (k % 3 === 0) strut(gm, ca * r0 - px * s0, y0, sa * r0 - pz * s0, ca * r0 + px * s0, y0, sa * r0 + pz * s0, 0.036, T.rustDeep, 0.006);
+      }
+      solidBox(TOWER.x + (bx + tx) * 0.5, legTop * 0.5, TOWER.z + (bz + tz) * 0.5, 0.5, legTop * 0.5, 0.5, 'metal', 0, { cover: true });
     }
-    // Three levels of cross bracing between adjacent legs.
-    for (let lvl = 1; lvl <= 3; lvl++) {
-      const f0 = (lvl - 1) / 3;
-      const f1 = lvl / 3;
-      const y0 = 0.5 + f0 * (legTop - 0.5);
-      const y1 = 0.5 + f1 * (legTop - 0.5);
+    // Four levels of cross bracing between adjacent legs, heavier than before so the frame
+    // survives at range rather than dissolving into the haze.
+    for (let lvl = 1; lvl <= 4; lvl++) {
+      const f0 = (lvl - 1) / 4;
+      const f1 = lvl / 4;
+      const y0 = 0.7 + f0 * (legTop - 0.7);
+      const y1 = 0.7 + f1 * (legTop - 0.7);
       const r0 = lerp(spreadBot, spreadTop, f0);
       const r1 = lerp(spreadBot, spreadTop, f1);
       for (let i = 0; i < 4; i++) {
         const a0 = (i / 4) * Math.PI * 2 + Math.PI * 0.25;
         const a1 = ((i + 1) / 4) * Math.PI * 2 + Math.PI * 0.25;
-        strut(gm, Math.cos(a0) * r0, y0, Math.sin(a0) * r0, Math.cos(a1) * r1, y1, Math.sin(a1) * r1, 0.032, T.rust, 0.006);
-        strut(gm, Math.cos(a1) * r0, y0, Math.sin(a1) * r0, Math.cos(a0) * r1, y1, Math.sin(a0) * r1, 0.032, T.rust, 0.006);
-        strut(gm, Math.cos(a0) * r1, y1, Math.sin(a0) * r1, Math.cos(a1) * r1, y1, Math.sin(a1) * r1, 0.042, T.rust, 0.008);
+        strut(gm, Math.cos(a0) * r0, y0, Math.sin(a0) * r0, Math.cos(a1) * r1, y1, Math.sin(a1) * r1, 0.055, T.rust, 0.008);
+        strut(gm, Math.cos(a1) * r0, y0, Math.sin(a1) * r0, Math.cos(a0) * r1, y1, Math.sin(a0) * r1, 0.055, T.rust, 0.008);
+        strut(gm, Math.cos(a0) * r1, y1, Math.sin(a0) * r1, Math.cos(a1) * r1, y1, Math.sin(a1) * r1, 0.07, T.rust, 0.01);
       }
     }
-    // Tank floor beams.
+    // Tank floor beams, cross braced, plus a ring girder the tank actually sits on.
     for (let i = 0; i < 4; i++) {
       const a = (i / 4) * Math.PI * 2 + Math.PI * 0.25;
-      strut(gm, Math.cos(a) * spreadTop, legTop, Math.sin(a) * spreadTop, Math.cos(a + Math.PI) * spreadTop, legTop, Math.sin(a + Math.PI) * spreadTop, 0.09, T.rust, 0.01);
+      strut(gm, Math.cos(a) * spreadTop, legTop, Math.sin(a) * spreadTop, Math.cos(a + Math.PI) * spreadTop, legTop, Math.sin(a + Math.PI) * spreadTop, 0.12, T.rust, 0.012);
     }
+    place(0, legTop + 0.24, 0);
+    tube(gm, tankR * 0.92, tankR * 0.92, 0.34, 20, T.rustDeep, false, false, 0.02);
+    popX();
 
     // The tank: three riveted strakes with visible hoop seams, painted band on the middle one.
     const tankY = legTop + 0.35 + tankH * 0.5;
@@ -1941,12 +2210,17 @@ export function createLevel(scene, materials, game) {
     }
     popX();
 
-    // Conical roof, vent and finial.
-    place(0, tankY + tankH * 0.5 + 0.55, 0);
-    tube(gm, 0.35, tankR + 0.12, 1.1, 24, T.rust, true, false, 0.02);
+    // Conical roof, vent and finial. Steeper than it was: the roof is the part of the tower
+    // that sits highest in the frame, so it is the part that has to carry the silhouette.
+    place(0, tankY + tankH * 0.5 + 0.85, 0);
+    tube(gm, 0.4, tankR + 0.16, 1.7, 24, T.rust, true, false, 0.02);
     popX();
-    place(0, tankY + tankH * 0.5 + 1.35, 0);
-    tube(gm, 0.22, 0.28, 0.6, 10, T.rustDeep, true, false, 0.01);
+    place(0, tankY + tankH * 0.5 + 2.0, 0);
+    tube(gm, 0.26, 0.34, 0.7, 10, T.rustDeep, true, false, 0.01);
+    popX();
+    // Lightning finial — twelve metres of nothing above a landmark is a wasted silhouette.
+    place(0, tankY + tankH * 0.5 + 3.6, 0);
+    tube(gm, 0.03, 0.05, 2.5, 6, T.steelDark, true, false, 0.006);
     popX();
 
     // Catwalk around the tank with a handrail, and a caged ladder up one leg.
@@ -1989,10 +2263,18 @@ export function createLevel(scene, materials, game) {
         }
       }
     }
-    // Downpipe from the tank to the ground.
+    // Downpipe from the tank to the ground, on brackets, with a swan neck off the tank floor
+    // and a splash block where it lands.
     place(-spreadTop * 0.8, (walkY + 0.6) * 0.5, spreadTop * 0.8);
-    tube(gm, 0.09, 0.09, walkY - 0.6, 10, T.rustDeep, false, false, 0.008);
+    tube(gm, 0.13, 0.13, walkY - 0.6, 10, T.rustDeep, false, false, 0.008);
     popX();
+    for (let i = 1; i * 2.4 < walkY - 0.8; i++) {
+      chamferBox(gm, -spreadTop * 0.8, i * 2.4, spreadTop * 0.8 - 0.16, 0.05, 0.05, 0.16, T.rustDeep, 0.008);
+    }
+    place(-spreadTop * 0.8, walkY - 0.45, spreadTop * 0.8, 0, 0.5);
+    tube(gm, 0.13, 0.13, 0.7, 10, T.rustDeep, false, false, 0.008);
+    popX();
+    chamferBox(gc, -spreadTop * 0.8, 0.07, spreadTop * 0.8 + 0.25, 0.42, 0.07, 0.6, T.concreteWorn, 0.02);
     popX();
 
     solidBox(TOWER.x, tankY, TOWER.z, tankR + 0.9, tankH * 0.5 + 0.9, tankR + 0.9, 'metal');
@@ -2612,6 +2894,14 @@ export function createLevel(scene, materials, game) {
   /* --- volumetric light shafts ---------------------------------------------- */
 
   /**
+   * Peak opacity for a sun shaft, before the view-angle and breathing terms in `update`.
+   * These are additive cards with no soft-particle depth fade, so they have to stay faint:
+   * anything near the original 0.44 reads as a solid white wedge rather than lit dust.
+   */
+  const SHAFT_OPACITY = 0.15;
+  const _shaftView = new THREE.Vector3();
+
+  /**
    * A shaft of sun from a hole in a roof or wall. Additive, vertex-graded from bright at the
    * aperture to nothing at its far end, on the NOPREPASS layer so it cannot poison SSAO.
    * At 8° of elevation the shafts rake almost horizontally, which is exactly why the depot's
@@ -2619,6 +2909,10 @@ export function createLevel(scene, materials, game) {
    */
   const shaftGeoParts = [];
   function lightShaft(x, y, z, w, h, length, strength) {
+    // Shafts must die inside the building that motivates them. At the original 26-34 m they
+    // punched right out of the depot and across the open yard, where an additive card with no
+    // occluder behind it is just a bright triangle pasted over the sky.
+    length = Math.min(length, 13);
     const dirX = -SUN_DIR.x;
     const dirY = -SUN_DIR.y;
     const dirZ = -SUN_DIR.z;
@@ -2688,7 +2982,7 @@ export function createLevel(scene, materials, game) {
     const m = new THREE.MeshBasicMaterial({
       vertexColors: true,
       transparent: true,
-      opacity: 0.5,
+      opacity: SHAFT_OPACITY,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       side: THREE.DoubleSide,
@@ -3801,7 +4095,33 @@ export function createLevel(scene, materials, game) {
     }
   });
 
-  function placeContainer(x, y, z, yaw, long, tintIdx, seedN) {
+  /**
+   * One box. `opts.flip` turns it end for end so the door leaves, lock rods and hinges face
+   * the sightline the caller cares about — a run with no door end anywhere in view carries no
+   * scale cue at all, because plain corrugation could be 1.7 m or 2.6 m tall.
+   */
+  /** A scrap tyre. Lies flat, leans on a stack, or props against a wall. */
+  const setTyre = inst('tyre', 'metalRust', (g) => {
+    torus(g, 0.4, 0.135, 10, 5, T.white);
+    // A wheel rim in a third of them reads as a bogie tyre rather than a rubber ring.
+    place(0, 0, 0);
+    tube(g, 0.19, 0.19, 0.13, 8, grey(0.62), true, true, 0.01);
+    popX();
+  });
+
+  /** A traffic cone: the one bit of hazard colour that can be dropped anywhere. */
+  const setCone = inst('cone', 'metalPainted', (g) => {
+    chamferBox(g, 0, 0.025, 0, 0.19, 0.025, 0.19, T.steelDark, 0.012);
+    place(0, 0.34, 0);
+    tube(g, 0.035, 0.135, 0.62, 8, T.hazard, true, false, 0.012);
+    popX();
+    place(0, 0.42, 0);
+    tube(g, 0.1, 0.115, 0.13, 8, grey(1.3), false, false, 0.008);
+    popX();
+  });
+
+  function placeContainer(x, y, z, yaw, long, tintIdx, seedN, opts) {
+    const o = opts || {};
     const r2 = mulberry32(seedN);
     const set = long ? set40 : set20;
     const len = long ? 12.19 : 6.06;
@@ -3809,7 +4129,10 @@ export function createLevel(scene, materials, game) {
     const tone = 0.78 + r2() * 0.44;
     // Scale variation stays small so the corrugation pitch does not visibly stretch.
     const s = 0.99 + r2() * 0.02;
-    addInstance(set, x, y + 1.2955, z, yaw + (r2() - 0.5) * 0.02, 0, 0, s, [tt[0] * tone, tt[1] * tone, tt[2] * tone]);
+    // +-2 degrees. A box is set down by a reach stacker, never by a for-loop, and a run laid
+    // true is exactly what produces the dead-straight top edge across a whole frame.
+    const skew = (r2() - 0.5) * 0.07 + (o.skew || 0);
+    addInstance(set, x, y + 1.2955, z, yaw + skew + (o.flip ? Math.PI : 0), 0, 0, s, [tt[0] * tone, tt[1] * tone, tt[2] * tone]);
     solidBox(x, y + 1.2955, z, len * 0.5, 1.2955, 1.219, 'metal', yaw, { cover: true });
   }
 
@@ -3828,9 +4151,61 @@ export function createLevel(scene, materials, game) {
           yaw + skew,
           long,
           (i * 3 + k * 5 + seedN) | 0,
-          (seedN + i * 31 + k * 7) | 0
+          (seedN + i * 31 + k * 7) | 0,
+          { flip: ((i + k) & 1) === 0 }
         );
       }
+    }
+  }
+
+  /**
+   * A run of boxes laid end to end along `yaw`, as discrete 6.06 / 12.19 m units.
+   *
+   * `spec` is `[long, tiers, gapAfter]` per unit, so the height steps along the run and the
+   * gaps become lanes. §4's brief asks for stacks that break sightlines; a wall that is the
+   * same height for forty metres breaks the sightline but reads as a fence, and a top edge
+   * that steps four or five times over the same run reads as freight.
+   */
+  function containerRun(x, z, yaw, spec, seedN, opts) {
+    const o = opts || {};
+    const r2 = mulberry32(seedN);
+    const dx = Math.cos(yaw);
+    const dz = -Math.sin(yaw);
+    let cursor = 0;
+    for (let i = 0; i < spec.length; i++) {
+      const long = spec[i][0];
+      const tiers = spec[i][1];
+      const gapAfter = spec[i][2] || 0;
+      const len = long ? 12.19 : 6.06;
+      const c = cursor + len * 0.5;
+      // One unit per run is set down properly off square, which is the detail that stops the
+      // eye reading the whole line as a single extrusion.
+      const badUnit = i === (seedN % Math.max(1, spec.length));
+      for (let k = 0; k < tiers; k++) {
+        const jl = (r2() - 0.5) * (k ? 0.4 : 0.24);
+        const jt = (r2() - 0.5) * (k ? 0.3 : 0.18);
+        placeContainer(
+          x + dx * (c + jl) - dz * jt,
+          k * 2.591,
+          z + dz * (c + jl) + dx * jt,
+          yaw,
+          long,
+          (seedN * 5 + i * 3 + k * 7) | 0,
+          (seedN + i * 31 + k * 13) | 0,
+          {
+            flip: o.doors === undefined ? ((i + k) & 1) === 0 : !!o.doors,
+            skew: badUnit && k === tiers - 1 ? 0.055 : 0,
+          }
+        );
+      }
+      // Ash drifts into the lee of every base course: overlapping fillets down the flank, not
+      // one ring, because the box is long and thin and a ring would read as a puddle.
+      const drifts = long ? 4 : 2;
+      for (let d = 0; d < drifts; d++) {
+        const cd = cursor + ((d + 0.5) / drifts) * len;
+        dustSkirt(x + dx * cd, z + dz * cd, 1.55, 0.18, seedN * 7 + i * 5 + d, null);
+      }
+      cursor += len + gapAfter;
     }
   }
 
@@ -3854,19 +4229,32 @@ export function createLevel(scene, materials, game) {
     buildTower();
 
     /* --- container stacks -------------------------------------------------- */
-    // East canyon: two rows with a 4 m lane between them. The map's main north-south flank.
-    containerStack(33, 6, 0, [[0, -2.9, 3, true], [0, 2.9, 2, true]], 11);
-    containerStack(33, 19, 0, [[0, -2.9, 2, true], [0, 2.9, 3, true]], 12);
-    containerStack(24.0, 4.0, Math.PI * 0.5, [[0, 0, 1, false]], 13);
+    // Rows sit on the 8 m midlines between the running tracks (z = 2, 10, 18, 26) — a 12 m
+    // box centred there clears both ballast shoulders by a metre, which is the only way to
+    // lay freight along the yard without it standing on the track it was unloaded from.
+    //
+    // Each row is a sequence of discrete units with the stack height stepping 3/1/2 or 2/1/3
+    // along it and one or two deliberate gaps forming cross lanes. Door ends alternate, so
+    // whichever way the row is approached there is a door face, a lock rod and a corner
+    // casting in view to carry the scale.
+    containerRun(21.0, 2.0, 0, [[true, 3, 1.6], [false, 2, 0], [false, 1, 0]], 11, { doors: false });
+    containerRun(21.0, 10.0, 0, [[false, 2, 0], [true, 1, 2.2], [false, 3, 0]], 12, { doors: true });
+    containerRun(20.5, 18.0, 0, [[false, 1, 0], [true, 2, 1.4]], 13, { doors: true });
+    containerRun(20.5, 26.0, 0, [[true, 3, 1.4], [false, 2, 0]], 14, { doors: false });
     // West group, breaking the sightline from the depot into the yard.
-    containerStack(-27, 12, 0.1, [[0, -2.8, 2, true], [0, 2.8, 1, true]], 14);
-    containerStack(-27, 24, 0, [[0, 0, 2, false], [7.2, 0, 1, false]], 15);
-    // Northern group, cover on the approach to the terraces.
-    containerStack(16, -8, Math.PI * 0.5, [[0, 0, 2, true], [0, 2.9, 1, false]], 16);
-    containerStack(6, -12, 0, [[0, 0, 1, true]], 17);
-    // A toppled box lying on its side.
-    addInstance(set20, -18, 1.28, 30.5, 0.35, 0, Math.PI * 0.5, 1, CONTAINER_TINTS[2]);
-    solidBox(-18, 1.22, 30.5, 3.03, 1.22, 1.3, 'metal', 0.35, { cover: true });
+    containerRun(-40.0, 10.0, 0.02, [[true, 2, 1.5], [false, 1, 0]], 15);
+    containerRun(-38.0, 26.0, -0.03, [[false, 3, 1.2], [true, 1, 0]], 16, { doors: true });
+    // A genuine two-wide block by the west wall: boxes butted across their width, which
+    // silhouettes quite differently from a single-file row.
+    containerStack(-38, 34, 0.06, [[0, -1.3, 2, false], [0, 1.3, 1, false]], 19);
+    // Northern group, cover on the approach to the terraces. Turned across the yard so its
+    // end grain reads against the east-west rows.
+    containerRun(10.5, -16.0, Math.PI * 0.5, [[true, 2, 1.4], [false, 1, 0]], 17, { doors: false });
+    containerRun(1.0, -12.0, 0, [[true, 1, 0], [false, 2, 0]], 18, { doors: true });
+    // A toppled box lying on its side, rolled about its own long axis.
+    addInstance(set20, -18, 1.219, 33.6, 0.35, Math.PI * 0.5, 0, 1, CONTAINER_TINTS[2]);
+    solidBox(-18, 1.219, 33.6, 3.03, 1.22, 1.3, 'metal', 0.35, { cover: true });
+    dustSkirt(-18, 33.6, 3.4, 0.24, 1801, null);
 
     /* --- rolling stock ------------------------------------------------------ */
     place(-2, 0, TRACK_Z[1]);
@@ -3999,14 +4387,14 @@ export function createLevel(scene, materials, game) {
     sandbagWall(setSack, [[26.0, ADMIN.z1 + 1.0], [31.0, ADMIN.z1 + 1.0]], 3, 503);
     sandbagWall(setSack, [[6.0, DOCK.z0 - 1.2], [11.0, DOCK.z0 - 1.2]], 3, 504);
     sandbagWall(setSack, [[-11.0, 1.5], [-11.0, 5.5]], 4, 505);
-    sandbagWall(setSack, [[20.0, 26.0], [24.5, 26.0], [24.5, 29.5]], 3, 506);
+    sandbagWall(setSack, [[13.0, 26.0], [17.5, 26.0], [17.5, 29.5]], 3, 506);
 
     // Jersey barriers: chicanes on both flanking routes.
     const jersey = [
       [-20, -6, 0], [-16.4, -6, 0], [-12.8, -6, 0],
       [4, -6.4, 0.08], [7.6, -6.4, 0], [11.2, -6.2, -0.05],
-      [18.5, 3, Math.PI * 0.5], [18.5, 6.6, Math.PI * 0.5],
-      [41.5, 9.4, Math.PI * 0.5],
+      [18.5, 3, Math.PI * 0.5], [17.0, 9.2, Math.PI * 0.5],
+      [17.2, 11.3, Math.PI * 0.5],
       [-6, 33.5, 0], [-2.4, 33.5, 0],
       [-40, -6.5, 0], [-36.4, -6.6, 0.03],
     ];
@@ -4041,7 +4429,7 @@ export function createLevel(scene, materials, game) {
 
     // Pallet stacks.
     const pallets = [
-      [-30, 8.5, 0.2, 6], [-30.1, 9.4, 0.1, 4],
+      [-13.6, 8.6, 0.2, 6], [-12.6, 9.5, 0.1, 4],
       [19.5, 21.0, 1.2, 7], [20.4, 21.6, 1.15, 3],
       [-45, -30.0, 0, 5], [-44.2, -31.0, 0.3, 8],
       [8.0, DOCK.z0 + 3.6, 0, 6], [9.3, DOCK.z0 + 3.4, 0.15, 4],
@@ -4116,13 +4504,59 @@ export function createLevel(scene, materials, game) {
       addInstance(setWeed, x, groundY(x, z), z, r2() * 6.28, 0, 0, 0.7 + r2() * 0.8, [T.weeds[0] * tone, T.weeds[1] * tone, T.weeds[2] * tone]);
     }
 
-    // Floodlight masts: tall verticals that stitch the ground plane to the sky.
-    for (const m of [[-30, 34.5], [26, -6.5], [44, 33]]) {
-      place(m[0], 0, m[1]);
-      tube(gR, 0.09, 0.16, 11.0, 10, T.steelPainted, false, false, 0.01);
-      place(0, 5.5, 0);
+    /**
+     * Floodlight and catenary masts: the tall verticals that stitch the ground plane to the
+     * sky, and the only three-tier read the yard has between the low cover and the crane.
+     *
+     * Two defects were live here. The column was emitted by `tube`, which centres on the
+     * local origin, so an 11 m mast ran from -5.5 to +5.5 and the lamp head hung five metres
+     * clear of the top of a stub that was half buried — from the yard that reads as a plain
+     * column floating over the ground. And all three masts were the same section at the same
+     * height, which is a clone array however you space it. Now: base plates and holding-down
+     * bolts on every one, alternating lattice and tapered-box sections, jittered heights and
+     * spacing, and bracket arms carrying the yard lighting out over the tracks.
+     */
+    const masts = [
+      [-30, 34.5, 12.4, 0, 1.0],
+      [26, -6.5, 10.2, 1, -1.0],
+      [44, 33, 13.6, 0, -1.0],
+      [-44, 6.5, 11.0, 1, 1.0],
+      [-11.5, -25.0, 9.4, 0, 1.0],
+      [40.5, -3.0, 12.8, 1, 1.0],
+      [-19.5, 38.4, 10.6, 0, -1.0],
+    ];
+    for (let mi = 0; mi < masts.length; mi++) {
+      const [mx, mz, mh, kind, armSide] = masts[mi];
+      const yaw = hash2(mi, 5) * 0.5 - 0.25;
+      place(mx, 0, mz, yaw);
+      // Base: pad, grouted plate, bolts. A mast that meets the floor at a bare cylinder is
+      // the same defect as a rubble slab punching through it.
+      chamferBox(G('concreteRough'), 0, 0.16, 0, 0.62, 0.16, 0.62, T.concreteWorn, 0.025);
+      chamferBox(gS, 0, 0.35, 0, 0.42, 0.035, 0.42, T.steelDark, 0.01);
+      for (let sx = -1; sx <= 1; sx += 2) {
+        for (let sz = -1; sz <= 1; sz += 2) {
+          chamferBox(gS, sx * 0.31, 0.4, sz * 0.31, 0.035, 0.04, 0.035, T.steelDark, 0.006);
+        }
+      }
+      if (kind === 0) {
+        // Tapered box section with a bolted splice halfway up.
+        place(0, 0.38 + mh * 0.5, 0);
+        tube(gR, 0.1, 0.19, mh, 8, T.steelPainted, false, false, 0.012);
+        popX();
+        chamferBox(gS, 0, 0.38 + mh * 0.52, 0, 0.2, 0.045, 0.2, T.steelDark, 0.01);
+      } else {
+        // Lattice section: four chords and K-bracing, the same vocabulary as the crane legs.
+        place(0, 0.38, 0);
+        latticeTower(gS, mh, 0.72, Math.max(3, Math.round(mh / 1.9)), 0.045, 0.028, T.steelPainted);
+        popX();
+      }
+      const top = 0.38 + mh;
+      // Bracket arm carrying the lamps out over the yard, with a tie back to the mast.
+      place(0, top - 0.5, 0, armSide > 0 ? 0 : Math.PI);
+      chamferBox(gS, 0.95, 0.34, 0, 0.95, 0.055, 0.06, T.steelPainted, 0.01);
+      strut(gS, 0.05, -0.5, 0, 1.6, 0.28, 0, 0.035, T.steelPainted, 0.006);
       popX();
-      place(0, 11.0, 0);
+      place(0, top, 0);
       chamferBox(gS, 0, 0.12, 0, 0.9, 0.06, 0.28, T.steelPainted, 0.01);
       for (let k = -1; k <= 1; k++) {
         place(k * 0.55, 0.32, 0, 0, 0.6);
@@ -4131,7 +4565,68 @@ export function createLevel(scene, materials, game) {
       }
       popX();
       popX();
-      solidBox(m[0], 5.5, m[1], 0.2, 5.5, 0.2, 'metal');
+      solidBox(mx, (0.38 + mh) * 0.5, mz, 0.24, (0.38 + mh) * 0.5, 0.24, 'metal');
+      // Ash banked round the base — nothing vertical meets this floor at a clean crease.
+      dustSkirt(mx, mz, 0.95, 0.14, 5300 + mi, null);
+    }
+
+    /**
+     * Mid tier. §4 asks for a three-tier silhouette read and the yard had two — floor, then
+     * the crane. A pair of aggregate silos on the east apron and a transfer conveyor off them
+     * put a 12 m mass between the container stacks and the landmarks, and they sit where the
+     * spawn at (44, 16) looks straight into them.
+     */
+    {
+      const gc2 = G('concreteRough');
+      for (let i = 0; i < 2; i++) {
+        const sx = 44.0;
+        const sz = 20.5 + i * 6.4;
+        place(sx, 0, sz);
+        chamferBox(gc2, 0, 0.3, 0, 3.1, 0.3, 3.1, T.concreteWorn, 0.03);
+        place(0, 6.4, 0);
+        tube(gc2, 2.6, 2.6, 11.4, 14, T.concrete, false, false, 0.03);
+        popX();
+        place(0, 1.6, 0);
+        tube(gc2, 2.6, 1.5, 2.4, 14, T.concreteDark, false, false, 0.03);
+        popX();
+        place(0, 12.5, 0);
+        tube(gR, 2.72, 2.72, 0.28, 14, T.rustDeep, false, false, 0.02);
+        popX();
+        place(0, 12.9, 0);
+        tube(gR, 1.9, 2.7, 1.0, 14, T.rust, true, false, 0.02);
+        popX();
+        // Discharge cone legs and the chute, so the silo stands on something.
+        for (let k = 0; k < 4; k++) {
+          const a = (k / 4) * Math.PI * 2 + Math.PI * 0.25;
+          strut(gS, Math.cos(a) * 2.3, 0.55, Math.sin(a) * 2.3, Math.cos(a) * 2.5, 5.2, Math.sin(a) * 2.5, 0.09, T.steelPainted, 0.01);
+        }
+        popX();
+        solidBox(sx, 6.4, sz, 2.7, 6.4, 2.7, 'concrete', 0, { cover: true });
+        dustSkirt(sx, sz, 3.4, 0.3, 5400 + i, null);
+      }
+      // Conveyor gallery running off the silos towards the dock, on two trestles.
+      place(44.0, 13.6, 27.0, 0, 0, -0.26);
+      latticeGirder(gS, 15.0, 1.0, 1.2, 8, 0.06, 0.032, T.steelPainted);
+      popX();
+      for (let k = 0; k < 2; k++) {
+        const tx = 44.0;
+        const tz = 30.5 + k * 4.0;
+        const th2 = 11.4 - k * 1.05;
+        place(tx, 0, tz);
+        for (let s = -1; s <= 1; s += 2) {
+          strut(gS, s * 1.5, 0.1, 0, s * 0.6, th2, 0, 0.075, T.steelPainted, 0.01);
+          strut(gS, s * 1.5, 0.1, -1.2, s * 0.6, th2, -1.2, 0.075, T.steelPainted, 0.01);
+        }
+        for (let b = 1; b <= 3; b++) {
+          const f = b / 4;
+          const y = f * th2;
+          const r = lerp(1.5, 0.6, f);
+          strut(gS, -r, y, 0, r, y, 0, 0.04, T.steelPainted, 0.006);
+          strut(gS, -r, y, -1.2, r, y, -1.2, 0.04, T.steelPainted, 0.006);
+        }
+        popX();
+        solidBox(tx, th2 * 0.5, tz, 1.6, th2 * 0.5, 0.7, 'metal', 0, { cover: true });
+      }
     }
 
     // Practical lights, each on a visible fixture.
@@ -4146,9 +4641,397 @@ export function createLevel(scene, materials, game) {
     hangChain(4.0, DOCK.h + 3.9, DOCK.z0 + 1.1, 18, 0.7, -0.7, 5.0, 0.07);
 
     // Tarpaulins over stacked freight.
-    tarp(-30, 1.0, 9.0, 3.6, 3.0, 0.25, 0.3, 811);
+    tarp(-13.1, 1.0, 9.0, 3.6, 3.0, 0.25, 0.3, 811);
     tarp(19.9, 1.15, 21.3, 3.2, 2.8, 1.2, 0.26, 812);
     tarp(8.5, DOCK.h + 1.0, DOCK.z0 + 3.5, 3.4, 2.6, 0.05, 0.28, 813);
+
+    groundClutter();
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* 14b. Ground clutter                                                     */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * §4: "nothing large may be a bare unbroken plane". The floor was the largest surface in
+   * the map and it was carrying almost nothing — 55% of the wide vantage was featureless
+   * concrete between the camera and the fence line.
+   *
+   * This pass is deliberately structured as a *guaranteed* cover pass rather than a random
+   * scatter: it walks a 5.5 m grid over the whole playable box and drops at least one piece
+   * of clutter in every cell that is not inside a building, so no unbroken floor region
+   * larger than about 6 x 6 m can survive anywhere. Everything it places goes into instance
+   * sets that already exist, so the whole pass costs two draw calls (tyres and cones) and no
+   * new materials.
+   */
+
+  /** A drift of ash banked along a wall foot. The wall side is high, the yard side feathers. */
+  function ashBerm(x0, z0, x1, z1, side, height, width, seedN) {
+    const len = Math.hypot(x1 - x0, z1 - z0);
+    if (len < 0.5) return;
+    const yaw = runYaw(x1 - x0, z1 - z0);
+    place((x0 + x1) * 0.5, 0, (z0 + z1) * 0.5, yaw);
+    const g = GT('dirt', 0.35);
+    const segs = Math.max(3, Math.round(len / 2.2));
+    const r2 = mulberry32(seedN);
+    let ha = height * (0.6 + r2() * 0.7);
+    for (let i = 0; i < segs; i++) {
+      const xa = -len * 0.5 + (i / segs) * len;
+      const xb = -len * 0.5 + ((i + 1) / segs) * len;
+      const hb = height * (0.5 + r2() * 0.85);
+      const wa = width * (0.7 + r2() * 0.6);
+      const wb = width * (0.7 + r2() * 0.6);
+      const tone = 0.86 + r2() * 0.3;
+      const tt = [T.dirt[0] * tone * 1.08, T.dirt[1] * tone * 1.03, T.dirt[2] * tone];
+      _bp.length = 0;
+      _bp.push(xa, ha, side * 0.06, xb, hb, side * 0.06, xb, 0.006, side * wb, xa, 0.006, side * wa);
+      gpoly(g, _bp, 0, 0.93, side * 0.36, tt);
+      ha = hb;
+    }
+    popX();
+  }
+
+  /** Cast-iron manhole with a recessed frame and a lifting key slot. */
+  function manhole(x, z, yaw) {
+    const gc = G('concretePanel');
+    const gm = G('metalRust');
+    place(x, groundY(x, z), z, yaw);
+    chamferBox(gc, 0, 0.012, 0, 0.44, 0.03, 0.44, T.concreteDark, 0.014);
+    place(0, 0.032, 0);
+    tube(gm, 0.35, 0.36, 0.05, 12, T.rustDeep, true, false, 0.008);
+    popX();
+    chamferBox(gm, 0, 0.056, 0, 0.06, 0.008, 0.02, T.steelDark, 0.004);
+    popX();
+  }
+
+  /**
+   * Surface drainage channel with a slotted grating. Runs along every hard edge that has a
+   * building or a wall on one side of it — which is what turns a floor/wall junction from a
+   * bare crease into a detail the eye can measure the space against.
+   */
+  function drainChannel(x0, z0, x1, z1, seedN) {
+    const gc = G('concretePanel');
+    const gm = G('metalRust');
+    const len = Math.hypot(x1 - x0, z1 - z0);
+    const yaw = runYaw(x1 - x0, z1 - z0);
+    const units = Math.max(1, Math.round(len / 1.2));
+    const r2 = mulberry32(seedN);
+    place((x0 + x1) * 0.5, 0, (z0 + z1) * 0.5, yaw);
+    // Channel walls.
+    for (let s = -1; s <= 1; s += 2) {
+      chamferBox(gc, 0, 0.04, s * 0.19, len * 0.5, 0.045, 0.055, T.concreteWorn, 0.014);
+    }
+    chamferBox(gc, 0, -0.03, 0, len * 0.5, 0.03, 0.14, T.concreteDark, 0.008);
+    for (let i = 0; i < units; i++) {
+      const px = -len * 0.5 + (i + 0.5) * (len / units);
+      if (r2() < 0.18) continue; // a missing grating is a story and a shadow trap
+      for (let k = -3; k <= 3; k++) {
+        chamferBox(gm, px, 0.062, k * 0.038, (len / units) * 0.5 - 0.03, 0.008, 0.014, T.rustDeep, 0.003);
+      }
+      chamferBox(gm, px, 0.058, 0, (len / units) * 0.5 - 0.02, 0.006, 0.15, T.rustDeep, 0.004);
+    }
+    popX();
+  }
+
+  /** Cable drum: two cheeks, a barrel and the coiled cable still on it. */
+  function cableSpool(x, z, yaw, r, seedN) {
+    const gw = G('woodPlank');
+    const gm = G('metalRust');
+    const r2 = mulberry32(seedN);
+    place(x, groundY(x, z) + r, z, yaw, 0, Math.PI * 0.5);
+    for (let s = -1; s <= 1; s += 2) {
+      place(0, s * r * 0.52, 0);
+      tube(gw, r, r, 0.09, 14, T.wood, true, true, 0.014);
+      popX();
+    }
+    place(0, 0, 0);
+    tube(gw, r * 0.34, r * 0.34, r * 1.0, 10, T.woodDark, false, false, 0.01);
+    popX();
+    // The cable itself, as three stacked coils so the drum is not empty.
+    for (let k = 0; k < 3; k++) {
+      place(0, (k - 1) * r * 0.24, 0);
+      tube(gm, r * 0.36 + k * 0.03 + r2() * 0.02, r * 0.36 + k * 0.03, r * 0.2, 12, T.steelDark, false, false, 0.008);
+      popX();
+    }
+    popX();
+    solidBox(x, r, z, r, r, r * 0.62, 'wood', yaw, { cover: false });
+    dustSkirt(x, z, r * 1.15, 0.12, seedN, null);
+  }
+
+  /** A short line of bollards, hazard banded, on cast bases. */
+  function bollardLine(x0, z0, x1, z1, n, seedN) {
+    const gm = G('metalRust');
+    const gc = G('concretePanel');
+    const r2 = mulberry32(seedN);
+    for (let i = 0; i < n; i++) {
+      const f = n > 1 ? i / (n - 1) : 0.5;
+      const x = lerp(x0, x1, f) + (r2() - 0.5) * 0.12;
+      const z = lerp(z0, z1, f) + (r2() - 0.5) * 0.12;
+      const h = 0.86 + r2() * 0.16;
+      const lean = (r2() - 0.5) * 0.16;
+      place(x, groundY(x, z), z, r2() * 6.28, 0, lean);
+      chamferBox(gc, 0, 0.035, 0, 0.17, 0.035, 0.17, T.concreteDark, 0.01);
+      place(0, h * 0.5 + 0.06, 0);
+      tube(gm, 0.075, 0.085, h, 8, T.steelPainted, true, false, 0.01);
+      popX();
+      place(0, h * 0.82, 0);
+      tube(gm, 0.09, 0.09, 0.14, 8, T.hazard, false, false, 0.008);
+      popX();
+      popX();
+      solidBox(x, (h + 0.06) * 0.5, z, 0.11, (h + 0.06) * 0.5, 0.11, 'metal');
+    }
+  }
+
+  /** A stack of sleeper offcuts, as found beside every yard in the world. */
+  function sleeperStack(x, z, yaw, rows, seedN) {
+    const r2 = mulberry32(seedN);
+    for (let k = 0; k < rows; k++) {
+      const cross = k & 1;
+      const n = 2 + ((r2() * 2) | 0);
+      for (let i = 0; i < n; i++) {
+        const off = (i - (n - 1) * 0.5) * 0.34;
+        const tone = 0.6 + r2() * 0.5;
+        addInstance(
+          sleeperSet,
+          x + (cross ? off : (r2() - 0.5) * 0.14),
+          groundY(x, z) + 0.08 + k * 0.16,
+          z + (cross ? (r2() - 0.5) * 0.14 : off),
+          yaw + (cross ? Math.PI * 0.5 : 0) + (r2() - 0.5) * 0.05,
+          0,
+          0,
+          0.62 + r2() * 0.3,
+          [T.sleeper[0] * tone, T.sleeper[1] * tone, T.sleeper[2] * tone],
+          1,
+          1
+        );
+      }
+    }
+    solidBox(x, 0.08 + rows * 0.08, z, 0.95, 0.08 + rows * 0.08, 0.75, 'wood', yaw, { cover: rows > 3 });
+    dustSkirt(x, z, 1.25, 0.11, seedN + 3, null);
+  }
+
+  /** A heap of tyres: some flat, some leaning, one propped on its edge. */
+  function tyrePile(x, z, n, seedN) {
+    const r2 = mulberry32(seedN);
+    for (let i = 0; i < n; i++) {
+      const flat = r2() < 0.7;
+      const a = r2() * 6.28;
+      const rr = r2() * 0.5;
+      addInstance(
+        setTyre,
+        x + Math.cos(a) * rr,
+        groundY(x, z) + (flat ? 0.14 + i * 0.16 : 0.4),
+        z + Math.sin(a) * rr,
+        r2() * 6.28,
+        flat ? (r2() - 0.5) * 0.4 : Math.PI * 0.5 + (r2() - 0.5) * 0.5,
+        (r2() - 0.5) * 0.3,
+        0.9 + r2() * 0.25,
+        grey(0.34 + r2() * 0.12)
+      );
+    }
+    dustSkirt(x, z, 1.05, 0.1, seedN + 11, null);
+  }
+
+  /**
+   * The guaranteed coverage pass. Walks the playable box on a 5.5 m grid and drops clutter in
+   * every open cell, weighted so that near-field cells (the ones inside 12 m of a spawn) get
+   * something with real height rather than another sliver of plank.
+   */
+  function clutterGrid() {
+    const r2 = mulberry32(0x9c1a7e >>> 0);
+    const CELL = 5.5;
+    const nx = Math.ceil((PLAY.maxX - PLAY.minX) / CELL);
+    const nz = Math.ceil((PLAY.maxZ - PLAY.minZ) / CELL);
+    for (let ix = 0; ix < nx; ix++) {
+      for (let iz = 0; iz < nz; iz++) {
+        const cx = PLAY.minX + (ix + 0.5) * CELL;
+        const cz = PLAY.minZ + (iz + 0.5) * CELL;
+        // Building interiors have their own dressing; the dock deck is a working surface.
+        if (inRect(cx, cz, [DEPOT.x0 - 1, DEPOT.z0 - 1, DEPOT.x1 + 1, DEPOT.z1 + 1])) continue;
+        if (inRect(cx, cz, [ADMIN.x0 - 1, ADMIN.z0 - 1, ADMIN.x1 + 1, ADMIN.z1 + 1])) continue;
+        if (inRect(cx, cz, [DOCK.x0, DOCK.z0, DOCK.x1, DOCK.z1])) continue;
+        // Three to five pieces per cell, jittered inside it, so the grid never reads.
+        const pieces = 3 + ((r2() * 3) | 0);
+        for (let k = 0; k < pieces; k++) {
+          const x = cx + (r2() - 0.5) * CELL * 0.92;
+          const z = cz + (r2() - 0.5) * CELL * 0.92;
+          const y = groundY(x, z);
+          const tone = 0.58 + r2() * 0.62;
+          const pick = r2();
+          if (pick < 0.26) {
+            addInstance(setDebris, x, y + 0.02, z, r2() * 6.28, 0, (r2() - 0.5) * 0.3, 0.5 + r2() * 1.2, [T.wood[0] * tone, T.wood[1] * tone, T.wood[2] * tone]);
+          } else if (pick < 0.46) {
+            addInstance(setScrap, x, y + 0.02, z, r2() * 6.28, 0, 0, 0.6 + r2() * 1.3, [T.rust[0] * tone, T.rust[1] * tone, T.rust[2] * tone]);
+          } else if (pick < 0.68) {
+            // Grit. Three or four together, because a single stone is invisible.
+            for (let s = 0; s < 4; s++) {
+              addInstance(
+                stoneSet,
+                x + (r2() - 0.5) * 1.1, y + 0.02, z + (r2() - 0.5) * 1.1,
+                r2() * 6.28, (r2() - 0.5) * 1.6, (r2() - 0.5) * 1.6,
+                0.7 + r2() * 1.3,
+                [T.gravel[0] * tone, T.gravel[1] * tone, T.gravel[2] * tone]
+              );
+            }
+          } else if (pick < 0.82) {
+            addInstance(setBrick, x, y + 0.035, z, r2() * 6.28, (r2() - 0.5) * 0.8, (r2() - 0.5) * 0.8, 0.8 + r2() * 0.6, [T.brick[0] * tone, T.brick[1] * tone, T.brick[2] * tone]);
+          } else if (pick < 0.93) {
+            addInstance(chunkSet, x, y + 0.09, z, r2() * 6.28, (r2() - 0.5) * 1.2, (r2() - 0.5) * 1.2, 0.7 + r2() * 0.9, [T.concreteWorn[0] * tone, T.concreteWorn[1] * tone, T.concreteWorn[2] * tone]);
+          } else {
+            addInstance(setWeed, x, y, z, r2() * 6.28, 0, 0, 0.6 + r2() * 0.9, [T.weeds[0] * tone, T.weeds[1] * tone, T.weeds[2] * tone]);
+          }
+        }
+      }
+    }
+  }
+
+  function groundClutter() {
+    /* --- ash banked against every long wall and berm ---------------------- */
+    ashBerm(-50, 41.4, 20, 41.4, -1, 0.42, 1.5, 5501);
+    ashBerm(28, 41.4, 50, 41.4, -1, 0.4, 1.4, 5502);
+    ashBerm(-52, -42.4, -20, -42.4, 1, 0.44, 1.6, 5503);
+    ashBerm(18, -42.4, 50, -42.4, 1, 0.42, 1.5, 5504);
+    ashBerm(-47.9, -38, -47.9, 40, 1, 0.36, 1.3, 5505);
+    ashBerm(47.9, -38, 47.9, 40, -1, 0.34, 1.2, 5506);
+    ashBerm(DEPOT.x1 + 0.3, DEPOT.z0 + 1, DEPOT.x1 + 0.3, DEPOT.z1 - 1, 1, 0.34, 1.2, 5507);
+    ashBerm(ADMIN.x0 - 0.3, ADMIN.z0 + 2, ADMIN.x0 - 0.3, ADMIN.z1 - 8, -1, 0.32, 1.15, 5508);
+    ashBerm(ADMIN.x0 + 2, ADMIN.z1 + 0.3, ADMIN.x1 - 2, ADMIN.z1 + 0.3, 1, 0.3, 1.1, 5509);
+    ashBerm(DOCK.x0, DOCK.z0 - 0.35, DOCK.x1, DOCK.z0 - 0.35, -1, 0.3, 1.05, 5510);
+
+    /* --- kerbs, channels and drainage along the hard edges ---------------- */
+    kerbRun(ADMIN.x0 - 8.4, -34, ADMIN.x0 - 8.4, -18, 1);
+    kerbRun(ADMIN.x0 - 0.6, -34, ADMIN.x0 - 0.6, -18, -1);
+    kerbRun(-52, -40.2, -20, -40.2, 1);
+    kerbRun(18, -40.2, 48, -40.2, 1);
+    drainChannel(DEPOT.x1 + 1.5, DEPOT.z0 + 2, DEPOT.x1 + 1.5, DEPOT.z1 - 2, 5601);
+    drainChannel(ADMIN.x0 - 1.4, ADMIN.z0 + 3, ADMIN.x0 - 1.4, ADMIN.z1 - 9, 5602);
+    drainChannel(-20, -2.9, 18, -2.9, 5603);
+    drainChannel(DOCK.x0 + 2, DOCK.z0 - 1.5, DOCK.x1 - 2, DOCK.z0 - 1.5, 5604);
+
+    for (const m of [[-12, -6.2, 0.2], [8, -6.2, 0], [-26, 2.5, 0.5], [17.5, 34.0, 0.3],
+      [-40, -20.0, 0.1], [30, -8.5, 0.7], [-6.5, 27.0, 0.4], [43.0, 4.0, 0.2]]) {
+      manhole(m[0], m[1], m[2]);
+    }
+
+    /* --- yard furniture that has real height ------------------------------ */
+    cableSpool(-14.5, -6.9, 0.4, 0.85, 5701);
+    cableSpool(-13.0, -7.6, 1.9, 0.62, 5702);
+    cableSpool(27.5, 30.5, 0.9, 0.95, 5703);
+    cableSpool(-40.5, 20.5, 2.4, 0.72, 5704);
+    cableSpool(4.5, -17.5, 0.2, 0.8, 5705);
+
+    sleeperStack(-9.5, 2.2, 0.15, 5, 5801);
+    sleeperStack(19.0, 30.2, 1.4, 4, 5802);
+    sleeperStack(-36.5, 2.0, 0.0, 6, 5803);
+    sleeperStack(35.0, -10.5, 0.9, 3, 5804);
+    sleeperStack(-4.0, -25.5, 2.2, 4, 5805);
+
+    tyrePile(-21.5, 5.0, 7, 5901);
+    tyrePile(23.5, 33.0, 5, 5902);
+    tyrePile(-45.0, 12.0, 6, 5903);
+    tyrePile(38.5, 15.0, 5, 5904);
+    tyrePile(-2.5, -18.0, 4, 5905);
+
+    bollardLine(-20.5, -2.2, -13.5, -2.2, 5, 6001);
+    bollardLine(12.0, -2.2, 18.0, -2.2, 4, 6002);
+    bollardLine(ADMIN.x0 - 7.6, -20.0, ADMIN.x0 - 7.6, -26.0, 4, 6003);
+    bollardLine(-14.0, 31.0, -8.0, 31.0, 4, 6004);
+
+    /* --- cones, scattered where work stopped ------------------------------ */
+    const cones = [
+      [-19.0, -4.2], [-17.6, -4.6], [-8.0, -4.4], [3.5, -4.6], [4.9, -4.1],
+      [16.0, -4.5], [-27.5, 6.4], [-26.3, 7.1], [12.5, 12.0], [13.9, 12.6],
+      [30.0, -12.0], [31.2, -12.7], [-42.0, -8.0], [-40.8, -8.6], [22.0, 34.5],
+      [23.4, 35.1], [-6.0, 22.0], [-4.8, 22.6], [41.0, 28.0], [-33.0, -34.0],
+      [-31.8, -34.6], [9.0, 36.0], [-46.0, 30.0], [45.5, -30.0], [36.0, 20.0],
+    ];
+    for (let i = 0; i < cones.length; i++) {
+      const [x, z] = cones[i];
+      const fallen = hash2(i, 13) < 0.28;
+      addInstance(setCone, x, groundY(x, z) + (fallen ? 0.14 : 0), z, hash2(i, 3) * 6.28, fallen ? Math.PI * 0.42 : 0, 0, 1, grey(0.9 + hash2(i, 7) * 0.3));
+    }
+
+    /* --- oil, spillage and tyre ruts -------------------------------------- */
+    // Flat, but not featureless: a dark tinted patch a centimetre off the deck is what stops
+    // a swept concrete apron reading as one value.
+    const gStain = GT('asphalt', 0.35);
+    const stains = [
+      [-14.0, -6.5, 2.6, 1.8, 0.3], [7.0, -6.4, 3.2, 2.0, 0.0], [-30.0, -20.0, 3.4, 2.4, 0.5],
+      [26.0, -9.0, 2.2, 1.6, 0.8], [-9.0, 2.5, 2.0, 1.4, 0.2], [18.5, 30.5, 2.8, 1.9, 1.1],
+      [-42.0, 22.0, 2.4, 1.7, 0.4], [33.0, 12.0, 3.0, 2.1, 2.0], [-20.0, 33.0, 2.6, 1.8, 0.9],
+      [2.0, 18.0, 2.2, 1.5, 1.6], [44.0, -8.0, 2.6, 1.8, 0.6], [-46.0, -14.0, 2.4, 1.6, 1.3],
+    ];
+    for (let i = 0; i < stains.length; i++) {
+      const [x, z, hx, hz, yaw] = stains[i];
+      place(x, groundY(x, z) + 0.012, z, yaw);
+      const n = 5;
+      for (let k = 0; k < n; k++) {
+        const f = k / n;
+        const rr = 1 - f * 0.72;
+        const tone = 0.2 + f * 0.34;
+        _bp.length = 0;
+        _bp.push(-hx * rr, k * 0.0012, -hz * rr, hx * rr, k * 0.0012, -hz * rr * 0.8, hx * rr * 0.9, k * 0.0012, hz * rr, -hx * rr * 0.85, k * 0.0012, hz * rr * 0.9);
+        gpoly(gStain, _bp, 0, 1, 0, [tone, tone * 0.98, tone * 1.02]);
+      }
+      popX();
+    }
+    // Ruts: paired dark bands following the two roads, so the apron shows where traffic ran.
+    const ruts = [[-21, -6.2, 19, -6.2], [ADMIN.x0 - 4.2, -34, ADMIN.x0 - 4.2, -18], [-49, -41.5, 47, -41.5]];
+    for (let i = 0; i < ruts.length; i++) {
+      const [ax, az, bx, bz] = ruts[i];
+      const len = Math.hypot(bx - ax, bz - az);
+      const yaw = runYaw(bx - ax, bz - az);
+      place((ax + bx) * 0.5, 0.011, (az + bz) * 0.5, yaw);
+      for (let s = -1; s <= 1; s += 2) {
+        const segs = Math.max(4, Math.round(len / 4));
+        for (let k = 0; k < segs; k++) {
+          const xa = -len * 0.5 + (k / segs) * len;
+          const xb = -len * 0.5 + ((k + 1) / segs) * len;
+          const wob = Math.sin(k * 1.7 + i) * 0.09;
+          const tone = 0.42 + hash2(k, i * 3 + s) * 0.24;
+          _bp.length = 0;
+          _bp.push(xa, 0, s * 0.82 + wob - 0.14, xb, 0, s * 0.82 - wob - 0.14, xb, 0, s * 0.82 - wob + 0.14, xa, 0, s * 0.82 + wob + 0.14);
+          gpoly(gStain, _bp, 0, 1, 0, [tone, tone, tone * 1.03]);
+        }
+      }
+      popX();
+    }
+
+    /* --- near-field occluders, one per spawn ------------------------------ */
+    // §4's foreground rule: a frame with nothing inside four metres has no depth cue at all.
+    // Each spawn gets a mass placed off to one side of its look direction — never in it — so
+    // the first frame the player sees has something breaking its border.
+    for (let i = 0; i < SPAWN_DEFS.length; i++) {
+      const [sx, sz, lx, lz] = SPAWN_DEFS[i];
+      const dx = lx - sx;
+      const dz = lz - sz;
+      const dl = Math.hypot(dx, dz) || 1;
+      const fx = dx / dl;
+      const fz = dz / dl;
+      // Perpendicular, alternating sides.
+      const side = i & 1 ? 1 : -1;
+      const px = sx + (-fz * side) * 2.6 + fx * 1.4;
+      const pz = sz + (fx * side) * 2.6 + fz * 1.4;
+      const kind = i % 4;
+      if (kind === 0) {
+        sleeperStack(px, pz, Math.atan2(fz, fx), 5, 6100 + i);
+      } else if (kind === 1) {
+        cableSpool(px, pz, Math.atan2(fz, fx) + 0.4, 0.9, 6100 + i);
+      } else if (kind === 2) {
+        // Drum trio on a pallet: waist height, so it breaks the frame edge without blocking.
+        for (let k = 0; k < 3; k++) {
+          const a = (k / 3) * 6.28;
+          addInstance(setDrum, px + Math.cos(a) * 0.36, groundY(px, pz), pz + Math.sin(a) * 0.36, hash2(i, k) * 6.28, 0, 0, 1, k === 1 ? T.rust : T.railGreen);
+          solidBox(px + Math.cos(a) * 0.36, 0.45, pz + Math.sin(a) * 0.36, 0.31, 0.45, 0.31, 'metal');
+        }
+        dustSkirt(px, pz, 0.95, 0.12, 6200 + i, null);
+      } else {
+        tyrePile(px, pz, 6, 6100 + i);
+        addInstance(setCone, px + 0.9, groundY(px, pz), pz - 0.7, 0.4, 0, 0, 1, grey(1.0));
+      }
+    }
+
+    clutterGrid();
   }
 
   /* ====================================================================== */
@@ -4193,6 +5076,454 @@ export function createLevel(scene, materials, game) {
   }
 
   /* ====================================================================== */
+  /* 15b. The far field — the town beyond the wire                           */
+  /* ====================================================================== */
+
+  /**
+   * Everything in this section sits between about 70 m and 560 m from the origin. None of it
+   * collides, none of it navigates, none of it casts a shadow: its entire job is that the
+   * horizon is never a straight line.
+   *
+   * The rule the art direction actually needs met is "the horizon is broken in six to eight
+   * places per 90 degrees of yaw from anywhere on the map", so the layers below are laid out
+   * as full rings rather than as a backdrop card facing one way. Depth is carried by five
+   * bands at increasing radius — fringe sheds, near town, mid town, far town, ridge/treeline —
+   * because parallax between bands is what stops a backdrop reading as painted-on.
+   *
+   * Heights are chosen against the fog: ATMOSPHERE.fogDensity is 0.0072/m, so a mass at 220 m
+   * still returns about a fifth of its contrast and anything past 450 m is a tonal shift only.
+   * The silhouette work therefore lives at 90-260 m and the far bands are atmosphere.
+   */
+
+  const FAR = {
+    edgeX: HALF_W + 4,
+    edgeZ: HALF_D + 4,
+    outer: 560,
+  };
+
+  /**
+   * Skirt terrain. Flat at the map edge (it has to meet `buildGround` without a step), rising
+   * into a shallow bowl rim, with two named ridge lobes that lift the skyline. tan(4 deg) over
+   * 360 m is 25 m, so the 33 m crest on the north-west lobe is the top of the range §4 asks
+   * for and the off-ridge 15 m is the bottom of it.
+   */
+  function farGroundY(x, z) {
+    const r = Math.hypot(x, z);
+    const t = clamp((r - 66) / 300, 0, 1);
+    const s = t * t;
+    const n = fbm2(x * 0.0062 + 11.3, z * 0.0062 - 7.1) - 0.5;
+    let y = s * 8 + n * 14 * s;
+    const ang = Math.atan2(z, x);
+    const lobe = (a0, w, amp) => {
+      let d = ang - a0;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      return amp * Math.exp(-(d * d) / (w * w));
+    };
+    // North-west (behind the depot) and south-east (behind the dock): two sides, as specified.
+    y += (lobe(2.5, 0.8, 18) + lobe(-1.1, 0.66, 13)) * s;
+    return y;
+  }
+
+  /** Distance from the origin out to the playable rectangle along a unit direction. */
+  function farInnerRadius(ca, sa) {
+    const tx = Math.abs(ca) > 1e-4 ? FAR.edgeX / Math.abs(ca) : 1e9;
+    const tz = Math.abs(sa) > 1e-4 ? FAR.edgeZ / Math.abs(sa) : 1e9;
+    return Math.min(tx, tz);
+  }
+
+  /**
+   * The skirt itself: a polar annulus from the map edge to the far clip. Without this the
+   * ground simply stops at x = +-58 and the frame becomes a plane meeting sky, which is the
+   * defect that made wide.png read as a prototype.
+   */
+  function farSkirt() {
+    const g = GT('dirt', 0.35);
+    const SEG = 72;
+    const rings = [0, 78, 96, 122, 158, 208, 272, 350, 448, FAR.outer];
+    const px = new Float64Array(SEG + 1);
+    const pz = new Float64Array(SEG + 1);
+    const py = new Float64Array(SEG + 1);
+    const qx = new Float64Array(SEG + 1);
+    const qz = new Float64Array(SEG + 1);
+    const qy = new Float64Array(SEG + 1);
+    const tt = [0, 0, 0];
+    for (let ri = 0; ri < rings.length - 1; ri++) {
+      const rA = rings[ri];
+      const rB = rings[ri + 1];
+      for (let i = 0; i <= SEG; i++) {
+        const a = (i / SEG) * Math.PI * 2;
+        const ca = Math.cos(a);
+        const sa = Math.sin(a);
+        const inner = farInnerRadius(ca, sa);
+        const ra = rA === 0 ? inner : Math.max(inner, rA);
+        const rb = Math.max(inner + 0.5, rB);
+        if (ri === 0) {
+          px[i] = ca * ra;
+          pz[i] = sa * ra;
+          py[i] = 0;
+        } else {
+          px[i] = qx[i];
+          pz[i] = qz[i];
+          py[i] = qy[i];
+        }
+        qx[i] = ca * rb;
+        qz[i] = sa * rb;
+        qy[i] = farGroundY(qx[i], qz[i]);
+      }
+      for (let i = 0; i < SEG; i++) {
+        // Tone drifts with distance and with the noise field, so the skirt is not one flat
+        // value the eye can read as a backdrop plate.
+        const shade = 0.62 + fbm2(px[i] * 0.012, pz[i] * 0.012) * 0.5;
+        tt[0] = T.dirt[0] * shade;
+        tt[1] = T.dirt[1] * shade * 0.99;
+        tt[2] = T.dirt[2] * shade * 1.03;
+        _bp.length = 0;
+        _bp.push(px[i], py[i], pz[i], px[i + 1], py[i + 1], pz[i + 1], qx[i + 1], qy[i + 1], qz[i + 1], qx[i], qy[i], qz[i]);
+        gpoly(g, _bp, 0, 1, 0, tt);
+      }
+    }
+  }
+
+  /** Ridge along local X between y0 and the ridge line y1, two slopes and two gable ends. */
+  function farGable(g, w, d, y0, y1, t) {
+    const hw = w * 0.5;
+    const hd = d * 0.5;
+    for (let s = -1; s <= 1; s += 2) {
+      _bp.length = 0;
+      _bp.push(-hw, y0, s * hd, hw, y0, s * hd, hw, y1, 0, -hw, y1, 0);
+      gpoly(g, _bp, 0, 0.72, s * 0.69, t);
+    }
+    for (let s = -1; s <= 1; s += 2) {
+      _bp.length = 0;
+      _bp.push(s * hw, y0, -hd, s * hw, y0, hd, s * hw, y1, 0);
+      gpoly(g, _bp, s, 0, 0, t);
+    }
+  }
+
+  /**
+   * One band of town. Blocks are placed on a jittered ring with deliberate gaps, and every
+   * block gets one of four roof treatments, because a run of flat-topped boxes is exactly the
+   * silhouette that reads as placeholder backdrop.
+   */
+  function farTownBand(radius, count, hMin, hMax, jitter, seedN) {
+    const g = G('brickPainted');
+    const gc = G('concreteRough');
+    const r2 = mulberry32(seedN);
+    for (let i = 0; i < count; i++) {
+      if (r2() < 0.2) continue; // gaps — a town has streets through it
+      const a = (i / count) * Math.PI * 2 + (r2() - 0.5) * 0.06;
+      const rr = radius + (r2() - 0.5) * jitter;
+      const x = Math.cos(a) * rr;
+      const z = Math.sin(a) * rr;
+      const y0 = farGroundY(x, z);
+      const w = 7 + r2() * 24;
+      const d = 7 + r2() * 15;
+      const h = hMin + r2() * (hMax - hMin);
+      const yaw = a + Math.PI * 0.5 + (r2() - 0.5) * 0.9;
+      // Distance haze is the post chain's job, but a far block still has to be *tonally*
+      // further away or the parallax bands merge into one silhouette.
+      const tone = (0.5 + r2() * 0.42) * lerp(1.0, 0.72, clamp((radius - 90) / 300, 0, 1));
+      const warm = r2() < 0.45;
+      const base = warm ? T.brick : T.concreteDark;
+      const tt = [base[0] * tone, base[1] * tone, base[2] * tone * 1.06];
+      place(x, y0, z, yaw);
+      plainBox(g, 0, h * 0.5, 0, w * 0.5, h * 0.5, d * 0.5, tt);
+      const roof = r2();
+      if (roof < 0.5) {
+        farGable(g, w, d, h, h + 1.8 + r2() * 3.4, tt);
+      } else if (roof < 0.74) {
+        // Parapet: a flat roof still needs a lip or the top edge is a razor line.
+        plainBox(gc, 0, h + 0.5, 0, w * 0.5 + 0.35, 0.5, d * 0.5 + 0.35, [tt[0] * 0.92, tt[1] * 0.92, tt[2] * 0.95]);
+      } else if (roof < 0.9) {
+        // Sawtooth shed roof, north lights facing one way.
+        const teeth = 2 + ((r2() * 3) | 0);
+        for (let k = 0; k < teeth; k++) {
+          const tw = w / teeth;
+          place(-w * 0.5 + (k + 0.5) * tw, h, 0);
+          _bp.length = 0;
+          _bp.push(-tw * 0.5, 0, -d * 0.5, tw * 0.5, 0, -d * 0.5, tw * 0.5, 2.2, d * 0.5, -tw * 0.5, 2.2, d * 0.5);
+          gpoly(g, _bp, 0, 0.85, -0.5, tt);
+          plainBox(g, tw * 0.42, 1.1, 0, tw * 0.08, 1.1, d * 0.5, [tt[0] * 0.8, tt[1] * 0.8, tt[2] * 0.85]);
+          popX();
+        }
+      } else {
+        // A stair or lift overrun breaking one corner of the roofline.
+        plainBox(gc, w * 0.28, h + 1.6, 0, w * 0.14, 1.6, d * 0.22, tt);
+      }
+      // A domestic stack on roughly half of them: the cheapest silhouette break there is.
+      if (r2() < 0.5) {
+        plainBox(gc, (r2() - 0.5) * w * 0.7, h + 1.5 + r2() * 1.2, (r2() - 0.5) * d * 0.5, 0.45, 1.5, 0.4, [tt[0] * 0.85, tt[1] * 0.8, tt[2] * 0.8]);
+      }
+      popX();
+    }
+  }
+
+  /** A tapering industrial chimney with banding. Four of these, all different heights. */
+  function farChimney(x, z, h, rBot, rTop, tintArr) {
+    const g = G('metalRust');
+    const y0 = farGroundY(x, z);
+    place(x, y0 + h * 0.5, z);
+    tube(g, rTop, rBot, h, 10, tintArr, true, false, 0.05);
+    popX();
+    for (let k = 0; k < 3; k++) {
+      const f = 0.35 + k * 0.22;
+      const rr = lerp(rBot, rTop, f) + 0.12;
+      place(x, y0 + f * h, z);
+      tube(g, rr, rr, 0.5, 10, [tintArr[0] * 0.7, tintArr[1] * 0.7, tintArr[2] * 0.75], false, false, 0.03);
+      popX();
+    }
+  }
+
+  /** Hyperbolic cooling tower — the one unmistakable "industrial town" shape in the set. */
+  function farCoolingTower(x, z, h, rBot, rWaist, rTop) {
+    const g = G('concreteRough');
+    const y0 = farGroundY(x, z);
+    const rings = 7;
+    const prof = (f) => (f < 0.66 ? lerp(rBot, rWaist, f / 0.66) : lerp(rWaist, rTop, (f - 0.66) / 0.34));
+    for (let i = 0; i < rings; i++) {
+      const f0 = i / rings;
+      const f1 = (i + 1) / rings;
+      const tone = 0.74 - f0 * 0.1;
+      place(x, y0 + (f0 + f1) * 0.5 * h, z);
+      tube(g, prof(f1), prof(f0), (f1 - f0) * h, 16, [T.concrete[0] * tone, T.concrete[1] * tone, T.concrete[2] * tone * 1.05], false, false, 0.02);
+      popX();
+    }
+    // The louvred air intake at the base is what makes the scale read.
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      place(x + Math.cos(a) * rBot, y0 + 4.5, z + Math.sin(a) * rBot, -a);
+      plainBox(g, 0, 0, 0, 0.5, 4.5, 1.4, T.concreteDark);
+      popX();
+    }
+  }
+
+  /** One suspension pylon: tapered lattice body, two cross arms, earth peak. */
+  function farPylonBody(g, h, base, tintArr) {
+    const legs = [];
+    for (let s = 0; s < 4; s++) {
+      const a = (s / 4) * Math.PI * 2 + Math.PI * 0.25;
+      legs.push([Math.cos(a), Math.sin(a)]);
+    }
+    const waist = h * 0.62;
+    for (let s = 0; s < 4; s++) {
+      const [cx, cz] = legs[s];
+      strutThin(g, cx * base, 0, cz * base, cx * base * 0.28, waist, cz * base * 0.28, 0.18, tintArr);
+      strutThin(g, cx * base * 0.28, waist, cz * base * 0.28, cx * base * 0.22, h, cz * base * 0.22, 0.14, tintArr);
+    }
+    for (let k = 1; k <= 4; k++) {
+      const f = k / 5;
+      const y = f * waist;
+      const r = lerp(base, base * 0.28, f);
+      for (let s = 0; s < 4; s++) {
+        const a = legs[s];
+        const b = legs[(s + 1) % 4];
+        strutThin(g, a[0] * r, y, a[1] * r, b[0] * r, y, b[1] * r, 0.12, tintArr);
+      }
+    }
+    // Cross arms with insulator strings hanging off them.
+    for (let k = 0; k < 2; k++) {
+      const y = waist + 2.5 + k * 5.5;
+      const arm = 7.5 - k * 1.8;
+      plainBox(g, 0, y, 0, arm, 0.45, 0.45, tintArr);
+      for (let s = -1; s <= 1; s += 2) {
+        strutThin(g, s * arm, y, 0, 0, y + 3.2, 0, 0.1, tintArr);
+        plainBox(g, s * arm * 0.92, y - 1.1, 0, 0.16, 1.1, 0.16, [tintArr[0] * 0.8, tintArr[1] * 0.8, tintArr[2] * 0.8]);
+      }
+    }
+  }
+
+  /** A line of pylons marching off to one side, with the conductors sagging between them. */
+  function farPylonLine(x0, z0, x1, z1, n, h, seedN) {
+    const g = G('metalRust');
+    const r2 = mulberry32(seedN);
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      const f = i / (n - 1);
+      const x = lerp(x0, x1, f) + (r2() - 0.5) * 14;
+      const z = lerp(z0, z1, f) + (r2() - 0.5) * 14;
+      const y = farGroundY(x, z);
+      const hh = h * (0.86 + r2() * 0.3);
+      pts.push([x, y, z, hh]);
+      const yaw = Math.atan2(x1 - x0, z1 - z0);
+      place(x, y, z, yaw);
+      farPylonBody(g, hh, hh * 0.11, [T.steelDark[0] * 0.62, T.steelDark[1] * 0.64, T.steelDark[2] * 0.7]);
+      popX();
+    }
+    // Conductors: two levels, three sagging segments per span. Sub-pixel at this range but
+    // they are what tells the eye the pylons are a *line* and not three unrelated towers.
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i];
+      const b = pts[i + 1];
+      for (let k = 0; k < 2; k++) {
+        const ya = a[1] + a[3] * 0.62 + 2.5 + k * 5.5;
+        const yb = b[1] + b[3] * 0.62 + 2.5 + k * 5.5;
+        const sag = 4.5;
+        let prevX = a[0];
+        let prevY = ya;
+        let prevZ = a[2];
+        for (let s = 1; s <= 3; s++) {
+          const f = s / 3;
+          const cx = lerp(a[0], b[0], f);
+          const cz = lerp(a[2], b[2], f);
+          const cy = lerp(ya, yb, f) - Math.sin(f * Math.PI) * sag;
+          strutThin(g, prevX, prevY, prevZ, cx, cy, cz, 0.09, T.steelDark);
+          prevX = cx;
+          prevY = cy;
+          prevZ = cz;
+        }
+      }
+    }
+  }
+
+  /**
+   * Treeline. A ribbon with a lumpy top edge, which is honestly all a stand of trees is at
+   * this range, plus a scatter of real crowns on the near band so the edge has depth.
+   */
+  function farTreeRibbon(radius, a0, a1, hMin, hMax, seedN, shade) {
+    const g = GT('dirt', 0.35);
+    const n = Math.max(8, Math.round(((a1 - a0) / (Math.PI * 2)) * 96));
+    const tt = [T.weeds[0] * shade * 0.62, T.weeds[1] * shade * 0.66, T.weeds[2] * shade * 0.6];
+    const r2 = mulberry32(seedN);
+    let pax = 0;
+    let paz = 0;
+    let pay = 0;
+    let pah = 0;
+    for (let i = 0; i <= n; i++) {
+      const f = i / n;
+      const a = lerp(a0, a1, f);
+      const rr = radius * (0.97 + r2() * 0.07);
+      const x = Math.cos(a) * rr;
+      const z = Math.sin(a) * rr;
+      const y = farGroundY(x, z);
+      // Lumpy: a low-frequency swell times a per-sample break, with the odd gap to zero.
+      const swell = 0.45 + 0.55 * (fbm2(a * 9.0, 3.7) + 0.2);
+      const h = (r2() < 0.07 ? 0.15 : 1) * lerp(hMin, hMax, clamp(swell, 0, 1));
+      if (i > 0) {
+        _bp.length = 0;
+        _bp.push(pax, pay, paz, x, y, z, x, y + h, z, pax, pay + pah, paz);
+        // Faces inward: the player is always inside the ring.
+        gpoly(g, _bp, -Math.cos(a), 0, -Math.sin(a), tt);
+      }
+      pax = x;
+      paz = z;
+      pay = y;
+      pah = h;
+    }
+  }
+
+  /** Individual crowns for the near treeline, so it is not a single flat cut-out. */
+  function farTreeClumps(radius, a0, a1, count, seedN) {
+    const g = GT('dirt', 0.35);
+    const r2 = mulberry32(seedN);
+    for (let i = 0; i < count; i++) {
+      const a = lerp(a0, a1, r2());
+      const rr = radius * (0.9 + r2() * 0.26);
+      const x = Math.cos(a) * rr;
+      const z = Math.sin(a) * rr;
+      const y = farGroundY(x, z);
+      const h = 7 + r2() * 9;
+      const w = 2.6 + r2() * 2.6;
+      const tone = 0.5 + r2() * 0.4;
+      const tt = [T.weeds[0] * tone * 0.7, T.weeds[1] * tone * 0.72, T.weeds[2] * tone * 0.62];
+      place(x, y + h * 0.5, z, r2() * 6.28);
+      tube(g, w * 0.2, w, h, 6, tt, true, false, 0.05);
+      popX();
+      place(x, y + h * 0.86, z, r2() * 6.28);
+      tube(g, w * 0.05, w * 0.6, h * 0.34, 6, tt, true, false, 0.05);
+      popX();
+    }
+  }
+
+  /**
+   * The industrial fringe: the first band out, 80-140 m, big low sheds and spoil heaps. This
+   * is the band that does the real work at the current fog density — everything past 250 m is
+   * tone, this is silhouette.
+   */
+  function farFringe() {
+    const g = G('corrugatedSteel');
+    const gc = G('concreteRough');
+    const gr = G('metalRust');
+    const sheds = [
+      [-104, -36, 46, 22, 11.5, 0.3],
+      [-88, 62, 34, 18, 9.0, -0.5],
+      [-22, -108, 52, 20, 10.5, 0.06],
+      [66, -96, 30, 22, 12.5, -0.9],
+      [112, -6, 24, 40, 9.5, 1.5],
+      [96, 74, 38, 20, 8.5, 0.7],
+      [12, 104, 44, 18, 10.0, 0.02],
+      [-96, 96, 26, 26, 13.0, 0.9],
+      [-124, 16, 30, 20, 8.0, 1.2],
+    ];
+    for (let i = 0; i < sheds.length; i++) {
+      const [x, z, w, d, h, yaw] = sheds[i];
+      const y0 = farGroundY(x, z);
+      const tone = 0.5 + hash2(i, 17) * 0.4;
+      const tt = [T.steelPainted[0] * tone, T.steelPainted[1] * tone, T.steelPainted[2] * tone * 1.05];
+      place(x, y0, z, yaw);
+      plainBox(g, 0, h * 0.5, 0, w * 0.5, h * 0.5, d * 0.5, tt);
+      farGable(g, w, d, h, h + 2.6 + hash2(i, 3) * 2.4, [tt[0] * 0.86, tt[1] * 0.86, tt[2] * 0.9]);
+      // Roof vents and a stub stack: never let a shed ridge run clean.
+      for (let k = -1; k <= 1; k++) {
+        plainBox(gr, k * w * 0.3, h + 2.2, 0, 0.5, 0.9, 0.5, [T.rust[0] * tone, T.rust[1] * tone, T.rust[2] * tone]);
+      }
+      if (i % 3 === 0) plainBox(gc, w * 0.36, h + 5.5, d * 0.25, 0.9, 5.5, 0.9, [T.concrete[0] * tone, T.concrete[1] * tone, T.concrete[2] * tone]);
+      popX();
+    }
+    // Spoil heaps and a bank of silos: mid-height mass between the sheds and the town.
+    const heaps = [[-70, -84, 16, 9], [78, 52, 20, 7.5], [-118, 54, 14, 8.5], [44, -118, 22, 10]];
+    const gd = GT('dirt', 0.35);
+    for (let i = 0; i < heaps.length; i++) {
+      const [x, z, r, h] = heaps[i];
+      const y0 = farGroundY(x, z);
+      place(x, y0 + h * 0.5, z, i * 0.7);
+      tube(gd, r * 0.16, r, h, 9, [T.dirt[0] * 0.7, T.dirt[1] * 0.68, T.dirt[2] * 0.72], true, false, 0.1);
+      popX();
+    }
+    for (let i = 0; i < 5; i++) {
+      const x = -132 - i * 0.5;
+      const z = -52 + i * 7.4;
+      const y0 = farGroundY(x, z);
+      place(x, y0 + 13, z);
+      tube(gc, 4.0, 4.0, 26, 12, [T.concrete[0] * 0.6, T.concrete[1] * 0.6, T.concrete[2] * 0.64], false, false, 0.06);
+      popX();
+      place(x, y0 + 27.6, z);
+      tube(gc, 0.6, 4.2, 3.2, 12, [T.concrete[0] * 0.52, T.concrete[1] * 0.52, T.concrete[2] * 0.56], true, false, 0.06);
+      popX();
+    }
+  }
+
+  function buildFarField() {
+    resetX();
+    farMode = true;
+    farSkirt();
+    farFringe();
+    // Five parallax bands. Counts fall with radius so the angular density stays roughly even.
+    farTownBand(168, 54, 7, 15, 26, 3101);
+    farTownBand(214, 48, 9, 19, 30, 3102);
+    farTownBand(272, 42, 10, 23, 36, 3103);
+    farTownBand(348, 36, 12, 27, 44, 3104);
+    farTownBand(438, 30, 14, 30, 56, 3105);
+    // Chimneys, all different heights, spread so at least one is up from most yaws.
+    farChimney(-196, -128, 58, 3.4, 1.9, [T.brick[0] * 0.52, T.brick[1] * 0.48, T.brick[2] * 0.5]);
+    farChimney(-158, -172, 41, 2.6, 1.6, [T.brick[0] * 0.5, T.brick[1] * 0.46, T.brick[2] * 0.5]);
+    farChimney(148, -186, 72, 4.0, 2.1, [T.concreteDark[0] * 0.6, T.concreteDark[1] * 0.6, T.concreteDark[2] * 0.65]);
+    farChimney(214, 96, 47, 3.0, 1.8, [T.brick[0] * 0.46, T.brick[1] * 0.44, T.brick[2] * 0.48]);
+    farCoolingTower(-238, 158, 62, 21, 12.5, 15.5);
+    farCoolingTower(-292, 196, 54, 18, 11, 13.5);
+    farPylonLine(-62, -128, 128, -352, 6, 34, 3201);
+    farPylonLine(150, 74, 470, 168, 5, 31, 3202);
+    // Broken treeline: a near band with real crowns and two far ribbons.
+    farTreeRibbon(196, 0.35, 1.85, 8, 17, 3301, 1.0);
+    farTreeClumps(184, 0.35, 1.85, 46, 3302);
+    farTreeRibbon(310, 2.2, 4.1, 10, 21, 3303, 0.86);
+    farTreeRibbon(392, 4.3, 6.05, 11, 23, 3304, 0.74);
+    farTreeRibbon(268, -0.6, 0.25, 9, 18, 3305, 0.92);
+    farMode = false;
+    resetX();
+  }
+
+  /* ====================================================================== */
   /* 16. Build                                                               */
   /* ====================================================================== */
 
@@ -4201,6 +5532,7 @@ export function createLevel(scene, materials, game) {
   buildDepot();
   buildAdmin();
   buildYard();
+  buildFarField();
   finishShafts();
   emitGroundCollision();
   resetX();
@@ -4213,7 +5545,7 @@ export function createLevel(scene, materials, game) {
     const byMaterial = new Map();
     for (const b of bucketOrder) {
       if (!b.geo.count) continue;
-      const key = `${b.tri ? 'T' : 'U'}${b.name}:${b.triScale}`;
+      const key = `${b.tri ? 'T' : 'U'}${b.name}:${b.triScale}${b.far ? ':F' : ''}`;
       let list = byMaterial.get(key);
       if (!list) byMaterial.set(key, (list = []));
       list.push(b);
@@ -4237,11 +5569,11 @@ export function createLevel(scene, materials, game) {
       }
       for (const g of geos) {
         const mesh = new THREE.Mesh(g, material);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
+        mesh.castShadow = !b0.far;
+        mesh.receiveShadow = !b0.far;
         mesh.matrixAutoUpdate = false;
         mesh.updateMatrix();
-        mesh.name = `level:${b0.name}`;
+        mesh.name = b0.far ? `level:far:${b0.name}` : `level:${b0.name}`;
         if (b0.name === 'glassDirty') setLayer(mesh, LAYER.NOPREPASS);
         root.add(mesh);
         meshes.push(mesh);
@@ -4730,18 +6062,7 @@ export function createLevel(scene, materials, game) {
     return Math.atan2(-(toX - fromX), -(toZ - fromZ));
   }
 
-  const spawnDefs = [
-    [4, 27.5, 0, 6],
-    [-16, 33, -6, 12],
-    [30, 24, 12, 4],
-    [-30, -2, -20, -18],
-    [-42, -30, -28, -20],
-    [40, -20, 26, -6],
-    [24, -6, 10, 8],
-    [-6, -12, 4, 10],
-    [44, 16, 24, 12],
-  ];
-  const spawnPoints = spawnDefs.map(([x, z, lx, lz]) => ({
+  const spawnPoints = SPAWN_DEFS.map(([x, z, lx, lz]) => ({
     pos: new THREE.Vector3(x, navGrid.heightAt(x, z) + 0.05, z),
     yaw: yawTowards(x, z, lx, lz),
   }));
@@ -4827,9 +6148,31 @@ export function createLevel(scene, materials, game) {
       lp.light.intensity = lp.base * f;
     }
 
-    /* Light shafts breathe as the dust drifts through them. */
-    for (let i = 0; i < dyn.shafts.length; i++) {
-      dyn.shafts[i].mat.opacity = 0.44 + Math.sin(t * 0.31 + i) * 0.06;
+    /*
+     * Light shafts breathe as the dust drifts through them, and fade with view angle.
+     *
+     * A shaft is forward-scattered light: you see it when you look towards the sun, and it
+     * all but vanishes when the sun is behind you. Without that term these additive cards read
+     * as hard-edged white wedges laid over the whole frame from every angle, which was by far
+     * the worst artefact in the first review pass. Weighting by the camera-to-sun dot both
+     * removes the wedge from the majority of views and is the physically correct behaviour.
+     */
+    if (dyn.shafts.length) {
+      const ctx = g || game;
+      const cam = ctx && ctx.camera ? ctx.camera : null;
+      let facing = 0.5;
+      if (cam) {
+        cam.getWorldDirection(_shaftView);
+        // SUN_DIR points *to* the sun, so this is +1 looking straight into it.
+        facing = _shaftView.dot(SUN_DIR) * 0.5 + 0.5;
+      }
+      // Bias hard towards the sun-facing half, and keep a small floor so a shaft never pops
+      // out of existence as the player turns.
+      const gaze = 0.06 + 0.94 * Math.pow(Math.max(0, facing), 3.0);
+      for (let i = 0; i < dyn.shafts.length; i++) {
+        const breathe = 1.0 + Math.sin(t * 0.31 + i) * 0.14;
+        dyn.shafts[i].mat.opacity = SHAFT_OPACITY * gaze * breathe;
+      }
     }
   }
 

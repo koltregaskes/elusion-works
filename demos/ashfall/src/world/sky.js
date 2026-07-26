@@ -29,6 +29,29 @@
  *     describe.
  *
  * ---------------------------------------------------------------------------------------
+ * ABSOLUTE LEVELS — WHY THE SKY IS NOT "AS BRIGHT AS THE SKY"
+ * ---------------------------------------------------------------------------------------
+ * The composite pass tone maps with AgX. AgX's sigmoid desaturates hard above roughly 0.5 in
+ * scene-linear: hand it a saturated blue at radiance 2.0 and it returns a pale grey-blue,
+ * because every channel has been pushed onto the shoulder. The dome therefore has to be
+ * authored at a radiance where the tone mapper still carries chroma, not at a radiance that
+ * is physically defensible for a real sky.
+ *
+ * The anchor is: `zenithLuminance` is the *linear luminance of PALETTE.skyZenith*, so the
+ * zenith resolves to the authored swatch through the grade rather than 2.6x above it. The
+ * horizon haze then sits ~3.5x the zenith, which is the dusk ratio, and the solar disc sits
+ * ~50x the horizon so it still clips to a hard white core. Everything else in the file is
+ * expressed relative to those three numbers.
+ *
+ * ---------------------------------------------------------------------------------------
+ * FOG OWNERSHIP
+ * ---------------------------------------------------------------------------------------
+ * `materials.js` evaluates the height-fog integral, but every uniform it reads is written from
+ * here every frame, so this file — not art.js — is where the fog is actually tuned. The
+ * `params.fog*` block below carries the working values; ATMOSPHERE seeds the concepts and any
+ * value that has been re-tuned against a render says so at the site.
+ *
+ * ---------------------------------------------------------------------------------------
  * AZIMUTH CONVENTION
  * ---------------------------------------------------------------------------------------
  * `art.js` says "measured from +Z clockwise". That resolves to
@@ -289,9 +312,43 @@ const SKY_FRAG = /* glsl */ `
   uniform float uSunVisibility;  // 0 once the disc has set, so it cannot glow from below
   uniform float uTime;
 
+  /* Horizon convergence. These mirror the height-fog uniforms world geometry uses so the two
+     can be made to asymptote to the same radiance at zero elevation. */
+  uniform vec3 uFogNear;
+  uniform vec3 uFogFar;
+  uniform float uFogFarMix;
+  uniform float uFogInscatter;
+  uniform float uFogAniso;
+  uniform float uHorizonFogAmount;
+  uniform float uHorizonFogAngle;
+
   ${GLSL_PHASE}
   ${GLSL_HASH}
   ${GLSL_XYZ}
+
+  /**
+   * The radiance a world surface converges to once its optical depth saturates.
+   *
+   * This is materials.js's FRAG_FOG expression evaluated at od -> infinity: the same near/far
+   * blend, the same 0.7..1.0 phase gain, the same inscatter term. Ground and sky have to land
+   * on *this* value at dir.y == 0 or they meet at a razor seam and the frame reads as a skybox
+   * behind a floor rather than a world receding into air.
+   *
+   * uFogFarMix is deliberately < 1: the map is ~110 m across, so distant geometry saturates at
+   * a partial near->far blend, not at pure fogColourFar. Matching that keeps the horizon warm.
+   */
+  vec3 saturatedFog(float cosGamma) {
+    float g = clamp(uFogAniso, -0.95, 0.95);
+    float denom = max(1.0 + g * g - 2.0 * g * cosGamma, 1e-4);
+    float hgN = (1.0 - g * g) / (denom * sqrt(denom));
+    // Same soft saturation materials.js applies: the raw lobe peaks near 30x and would blow
+    // the horizon out completely down the sun line.
+    float phase = 2.0 * hgN / (1.0 + hgN);
+    vec3 c = mix(uFogNear, uFogFar, clamp(uFogFarMix, 0.0, 1.0));
+    c *= mix(0.7, 1.0, clamp(phase, 0.0, 1.0));
+    c += uSunTint * (uFogInscatter * 0.3 * phase * uSunVisibility);
+    return c;
+  }
 
   vec3 perez(float cosTheta, float gamma, float cosGamma) {
     // exp(B / cosTheta) explodes as the view ray approaches the horizon; Preetham is simply
@@ -330,7 +387,13 @@ const SKY_FRAG = /* glsl */ `
     // section 4 is built on. Replace the hue, keep the model's luminance, and only up high where the
     // Rayleigh single-scatter blue really should dominate.
     float up = max(dir.y, 0.0);
-    float tintW = uZenithTintAmt * smoothstep(0.04, 0.80, up);
+    // Reaching full weight at sin(alt) 0.28 (~16 deg) rather than 0.80 (~53 deg): the top two
+    // thirds of the dome must be saturated Rayleigh blue, not a slow ramp out of Preetham's
+    // warm-drifted fit. The old ramp is why the upper sky measured as a neutral grey.
+    float tintW = uZenithTintAmt * smoothstep(0.015, 0.28, up);
+    // ...but never inside the aureole. Within ~13 deg of the sun the sky genuinely is Mie-white
+    // and re-hueing it to blue would ring the key light in cold. Full tint past ~49 deg.
+    tintW *= smoothstep(0.22, 0.85, gamma);
     float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
     vec3 tinted = uZenithTint * (lum / max(dot(uZenithTint, vec3(0.2126, 0.7152, 0.0722)), 1e-4));
     col = mix(col, tinted, tintW);
@@ -341,6 +404,14 @@ const SKY_FRAG = /* glsl */ `
     // goes as exp(-altitude / scaleAngle). This is what piles PALETTE.skyHorizon up against
     // the horizon instead of painting a flat gradient.
     float hazeAmt = exp(-up / max(uHazeHeight, 1e-3));
+
+    // Quartic gate on top of the exponential. The exponential alone still leaves a percent or
+    // two of cream in the upper dome, and a percent or two of a term that is 3.5x the zenith's
+    // own radiance is enough to grey the blue out. This forces it to exactly zero at the zenith
+    // and confines the band to the bottom ~25 degrees.
+    float hazeGate = 1.0 - up;
+    hazeGate *= hazeGate;
+    hazeAmt *= hazeGate * hazeGate;
 
     // Real dusty air is stratified: settled layers of ash sit at slightly different heights
     // and read as horizontal banding. Three incommensurate frequencies in altitude, sheared by
@@ -367,14 +438,24 @@ const SKY_FRAG = /* glsl */ `
     // inscattering. Straight mix() would let the horizon go brighter than physics allows.
     col = col * (1.0 - hazeAmt * 0.88) + haze * hazeAmt;
 
+    /* ---- Horizon: converge onto the same optical-depth integral as the ground ---- */
+
+    // World geometry saturates toward saturatedFog(); the dome has to arrive at the same
+    // radiance as dir.y -> 0 or the two meet at a hard cut. The band is an exponential in
+    // sin(altitude) so it is invisible by ~15 degrees up and total at the horizon itself.
+    vec3 fogSat = saturatedFog(cosGamma);
+    float hz = exp(-up / max(uHorizonFogAngle, 1e-3)) * uHorizonFogAmount;
+    col = mix(col, fogSat, clamp(hz, 0.0, 1.0));
+
     /* ---- Below the horizon --------------------------------------------- */
-    // The dome is a full sphere; the level floor does not reach the far horizon. Fade into a
-    // darker, dirtier version of the haze rather than letting Preetham's clamped horizon
-    // colour wrap around underneath, and keep the transition soft so there is no hard line.
+    // The dome is a full sphere; the level floor does not reach the far horizon. Below the
+    // horizon *is* fully saturated fog, warmed slightly by the ground bounce, which is exactly
+    // what an infinite fogged plane would resolve to, so the two sides of dir.y == 0 differ
+    // by a few percent instead of the 64 code values the art review measured.
     // Written as -dir.y against a positive edge pair: smoothstep with edge0 > edge1 is
     // explicitly undefined in the spec, and some drivers do return garbage for it.
     float below = smoothstep(0.0, uHorizonSoftness, -dir.y);
-    vec3 groundHaze = mix(uHazeColour, uGroundColour, 0.62) * uHazeLuminance * (0.34 + 0.5 * mie * uSunVisibility);
+    vec3 groundHaze = mix(fogSat, uGroundColour * uHazeLuminance, 0.22) * (0.90 + 0.28 * mie * uSunVisibility);
     col = mix(col, groundHaze, below);
 
     /* ---- Solar disc ----------------------------------------------------- */
@@ -578,8 +659,11 @@ const CLOUD_FRAG = /* glsl */ `
     float trans = exp(-uAbsorb * max(occl - dens * 0.35, 0.0) * 4.0);
 
     float cosGamma = clamp(dot(dir, uSunDir), -1.0, 1.0);
-    // Broad forward lobe: the silver lining on the sunward edge of every cloud.
-    float phase = 0.55 + 2.2 * hgPhase(cosGamma, 0.62);
+    // Broad forward lobe: the silver lining on the sunward edge of every cloud. The isotropic
+    // floor is deliberately low: at 0.55 every cloud in the sky got a bright fill regardless
+    // of which way the sun was, which is what turned the deck into one flat cream sheet. At
+    // 0.30 the anti-sunward banks fall into silhouette and the deck reads as lit from the side.
+    float phase = 0.30 + 2.2 * hgPhase(cosGamma, 0.62);
 
     vec3 sunLit = uSunColour * (trans * phase * uSunVisibility);
     // Sky fill is stronger on the upper faces; the ambient gradient is what gives the deck
@@ -788,6 +872,13 @@ const FOG_ALIASES = {
   sunTint: ['uSunTint', 'sunTint', 'uFogSunTint'],
   /** Full beam radiance (tint * intensity), for hooks that scale by it rather than tint with it. */
   sunColour: ['uFogSunColour', 'uFogSunColor', 'uSunColour', 'uSunColor', 'fogSunColour', 'sunColour'],
+  /**
+   * Ceiling on the fog blend factor, so a fully extinguished surface still contributes 10% of
+   * its own radiance and never becomes pure fog colour. materials.js does not currently declare
+   * a uniform under any of these names, so the write is inert — the alias exists so that the
+   * moment FRAG_FOG's final `mix()` gains a clamp, this file is already driving it.
+   */
+  maxOpacity: ['uFogMaxOpacity', 'fogMaxOpacity', 'uFogOpacityMax', 'uFogClamp'],
   time: ['uFogTime', 'fogTime'],
 };
 
@@ -845,28 +936,50 @@ export function createSky(engine, materials) {
     aerosol: 0.18,
     /** Multiple-scattering / aureole fill fraction — see atmosphericTransmittance(). */
     msFill: 0.37,
-    /** Luminance of the zenith in HDR units. Post exposure (GRADE.exposure) does the rest. */
-    zenithLuminance: 1.15,
+    /**
+     * Luminance of the zenith in HDR units — see the ABSOLUTE LEVELS note in the header.
+     *
+     * This is the linear luminance of PALETTE.skyZenith with 1.09x of headroom for
+     * GRADE.exposure (0.92), so the zenith tone maps back onto the authored swatch instead of
+     * landing 2.6x above it where AgX's shoulder strips the blue out. Assigned below, once
+     * colZenith exists.
+     */
+    zenithLuminance: 0.185,
     /** How hard the zenith is pulled to PALETTE.skyZenith. 0 = pure Preetham. */
-    zenithTint: 0.72,
+    zenithTint: 0.88,
 
     hazeDensity: 0.92,
     /** Angular scale height of the dust layer, in units of sin(altitude). */
-    hazeHeight: 0.115,
-    hazeLuminance: 1.65,
+    hazeHeight: 0.105,
+    /**
+     * Horizon-haze gain, i.e. PALETTE.skyHorizon times this. 1.10 puts the dust band ~3.5x the
+     * zenith's luminance — the dusk ratio — while staying under AgX's shoulder. At 1.65 it
+     * clipped, and a clipped horizon is what erased the sun disc's contrast against it.
+     */
+    hazeLuminance: 1.10,
     /** Amplitude of the horizontal ash strata. Subtle: 0.2 is already visible. */
     bandStrength: 0.16,
     horizonSoftness: 0.055,
     mieG: ATMOSPHERE.inscatterAnisotropy,
-    /** Aureole gain. Tuned so the clipped core stays inside ~3 degrees of the disc. */
-    mieStrength: 1.3,
-    sunDiscIntensity: 300,
+    /**
+     * Aureole gain. At 1.3 on top of a clipped haze the forward lobe painted a ~60 degree cream
+     * smudge with no disc in it; 0.80 keeps the glow inside ~10 degrees where the two-lobe
+     * phase function actually puts it.
+     */
+    mieStrength: 0.80,
+    /**
+     * Disc radiance multiplier on (PALETTE.sunCore x beam transmittance). Lands the core around
+     * 50x the horizon haze: hard, small, unambiguously clipped, and cheap enough on the bloom
+     * threshold that it flares rather than washes.
+     */
+    sunDiscIntensity: 120,
     skyScale: 1.0,
 
     cloudHeight: 180,
-    cloudCoverage: 0.46,
+    /** Threshold, so *higher* is less cloud. Opened up: the deck was a solid lid over the sun. */
+    cloudCoverage: 0.54,
     cloudSoftness: 0.30,
-    cloudOpacity: 0.86,
+    cloudOpacity: 0.78,
     cloudWarp: 0.55,
     cloudAbsorb: 1.35,
     /** Metres per fBm unit. ~760 m puts a cumulus bank in the right size bracket. */
@@ -885,15 +998,78 @@ export function createSky(engine, materials) {
 
     godrayStrength: ATMOSPHERE.godrayStrength,
     godrayDecay: ATMOSPHERE.godrayDecay,
+    /**
+     * Density of the participating medium — how much of the marched occlusion buffer survives
+     * into the shaft. This is a *weight*, not a march length; see `godrayReach`.
+     */
     godrayDensity: ATMOSPHERE.godrayDensity,
+    /**
+     * How far along the ray to the sun the radial march travels, as a fraction of the distance.
+     *
+     * This has to be 1.0. The march steps uv toward uSunUV by `reach * (uv - sunUV)` in total,
+     * so at 0.72 every pixel stops 28% short of the sun and never samples the light source at
+     * all: only pixels already within ~4% of screen width of the sun got any contribution,
+     * which is exactly why nothing in any frame read as a shaft. ATMOSPHERE.godrayDensity used
+     * to be wired here; it now feeds the weight above, where its name actually makes sense.
+     */
+    godrayReach: 1.0,
     /** Second-pass reach, as a fraction of the first pass's step. Fills the gaps between taps. */
     godrayRefine: 1.45,
     /**
      * Brightness of the occlusion-buffer sun relative to the beam tint. The blur normalises by
-     * the sample count, so the shafts land around a third of this; 1.4 gives shafts that read
-     * without swamping the yard once postfx applies ATMOSPHERE.godrayStrength on top.
+     * the sample count, so only the two or three taps that land inside the proxy contribute and
+     * the shafts come out around a twentieth of this.
      */
-    godrayProxyGain: 1.4,
+    godrayProxyGain: 2.6,
+    /**
+     * postfx composites the buffer with ATMOSPHERE.godrayStrength (0.55) applied on top, and
+     * the art direction (§4, "the dust in the air is what makes light visible") wants an
+     * effective ~1.4. Make the difference up here so the shafts are right in the frame we can
+     * actually render; if art.js is ever re-authored to 1.4 this collapses to 1.0 on its own.
+     */
+    godrayGain: 1.4 / Math.max(ATMOSPHERE.godrayStrength, 1e-3),
+
+    /* --- Fog -------------------------------------------------------------
+     * materials.js evaluates the integral but reads every one of these from here, so this is
+     * where the ash is actually tuned. ATMOSPHERE seeds the concepts; the values below have
+     * been re-tuned against a render and the deltas are called out individually.
+     */
+
+    /**
+     * Per-metre extinction at fogBase. ATMOSPHERE's 0.0072 put ~33% opacity on a surface at
+     * 60 m — and because the fog *colour* was also clipping (see fogLuminance), that 33% was
+     * enough to erase all albedo and normal-map response from the mid-field. 0.0040 keeps a
+     * measurable aerial-perspective ramp across the 20-80 m the map is played at while leaving
+     * distant geometry at least 30% of its own radiance anywhere inside the level bounds.
+     */
+    fogDensity: 0.0040,
+    /** Ash sits lower and thins faster with altitude than ATMOSPHERE's 0.055 implied. */
+    fogHeightFalloff: 0.10,
+    fogBase: ATMOSPHERE.fogBase,
+    /**
+     * Radiance scale on fogColourNear/Far. The palette entries are authored as *swatches*, and
+     * materials.js uses them directly as radiance — at 1.0 the near colour plus the inscatter
+     * term reached ~1.4 linear, i.e. clipping, roughly 7x brighter than the surfaces it was
+     * being mixed over. That, not the opacity, is what made the mid-field a featureless wash.
+     */
+    fogLuminance: 0.62,
+    /**
+     * Inscatter gain handed to materials.js. ATMOSPHERE's 1.35 drove the sunward fog to a flat
+     * clipped cream with no structure in it; 0.50 gives a strong warm gradient down the sun
+     * line (~1.5x the away-from-sun radiance) that survives the tone mapper as a gradient.
+     */
+    fogInscatter: 0.50,
+    /**
+     * Ceiling on the fog blend, so distant geometry always keeps 10% of its own colour.
+     * Published through FOG_ALIASES; inert until materials.js reads it (see the note there).
+     */
+    fogMaxOpacity: 0.90,
+    /** Near->far blend the *dome* assumes distant geometry has reached. See saturatedFog(). */
+    fogFarMix: 0.72,
+    /** How completely the dome's bottom band becomes fog. 1.0 = a seamless join. */
+    horizonFogAmount: 0.92,
+    /** Angular width of that band, in sin(altitude). 0.10 ~ 6 degrees. */
+    horizonFogAngle: 0.10,
 
     envIntensity: LIGHTING.envIntensity,
     /**
@@ -928,6 +1104,14 @@ export function createSky(engine, materials) {
   const colFogFar = new THREE.Color().setStyle(ATMOSPHERE.fogColourFar, THREE.SRGBColorSpace);
   const colDust = new THREE.Color().setStyle(PALETTE.dust, THREE.SRGBColorSpace);
   const colSmoke = new THREE.Color().setStyle(PALETTE.smoke, THREE.SRGBColorSpace);
+
+  /**
+   * Anchor the dome's absolute level on the palette rather than on a hand-picked HDR number:
+   * the zenith's radiance *is* PALETTE.skyZenith, plus 1/GRADE.exposure worth of headroom, so
+   * "the zenith resolves to skyZenith" is a property of the code and not of a lucky constant.
+   * Everything else in the dome is expressed as a ratio off this.
+   */
+  params.zenithLuminance = luminanceOf(colZenith) * 1.22;
 
   /**
    * Normalising constant for the sun's intensity: whatever the extinction model returns at the
@@ -1023,6 +1207,14 @@ export function createSky(engine, materials) {
     uSkyScale: { value: params.skyScale },
     uSunVisibility: { value: 1 },
     uTime: { value: 0 },
+    // Horizon convergence — mirrors of the height-fog uniforms, written in recompute().
+    uFogNear: { value: colFogNear.clone() },
+    uFogFar: { value: colFogFar.clone() },
+    uFogFarMix: { value: params.fogFarMix },
+    uFogInscatter: { value: params.fogInscatter },
+    uFogAniso: { value: ATMOSPHERE.inscatterAnisotropy },
+    uHorizonFogAmount: { value: params.horizonFogAmount },
+    uHorizonFogAngle: { value: params.horizonFogAngle },
   };
 
   const domeMaterial = new THREE.ShaderMaterial({
@@ -1277,9 +1469,15 @@ export function createSky(engine, materials) {
     toneMapped: false,
   });
 
-  /** Proxy angular radius ~0.8 deg — the disc plus its aureole, which is what casts shafts. */
+  /**
+   * Proxy angular radius. The shafts are cast by the whole bright region around the sun, not by
+   * the 0.53 deg disc, and the radial blur only integrates whatever taps land *inside* the
+   * proxy — at 0.9 deg that was well under one tap per pixel at 16 samples, so the shafts were
+   * arriving as noise rather than as beams. 2.2 deg gives two to three taps and a solid shaft.
+   */
+  const SUN_PROXY_ANGULAR_RADIUS = 2.2 * DEG;
   const SUN_PROXY_DISTANCE = 320;
-  const SUN_PROXY_SIZE = 2 * SUN_PROXY_DISTANCE * Math.tan(0.9 * DEG);
+  const SUN_PROXY_SIZE = 2 * SUN_PROXY_DISTANCE * Math.tan(SUN_PROXY_ANGULAR_RADIUS);
   const sunProxyGeometry = new THREE.PlaneGeometry(SUN_PROXY_SIZE, SUN_PROXY_SIZE);
   const sunProxy = new THREE.Mesh(sunProxyGeometry, sunProxyMaterial);
   sunProxy.name = 'godraySun';
@@ -1351,11 +1549,13 @@ export function createSky(engine, materials) {
   const fogUniforms = {
     uFogColourNear: { value: colFogNear.clone() },
     uFogColourFar: { value: colFogFar.clone() },
-    uFogDensity: { value: ATMOSPHERE.fogDensity },
-    uFogHeightFalloff: { value: ATMOSPHERE.fogHeightFalloff },
-    uFogBase: { value: ATMOSPHERE.fogBase },
-    uInscatterStrength: { value: ATMOSPHERE.inscatterStrength },
+    uFogDensity: { value: params.fogDensity },
+    uFogHeightFalloff: { value: params.fogHeightFalloff },
+    uFogBase: { value: params.fogBase },
+    uInscatterStrength: { value: params.fogInscatter },
     uInscatterAnisotropy: { value: ATMOSPHERE.inscatterAnisotropy },
+    /** See FOG_ALIASES.maxOpacity — published for materials.js, inert until it reads it. */
+    uFogMaxOpacity: { value: params.fogMaxOpacity },
     uSunDirection: { value: new THREE.Vector3(0, 0.14, -1) },
     /** Normalised beam hue, for tinting inscatter. */
     uSunTint: { value: new THREE.Color(1, 1, 1) },
@@ -1376,7 +1576,7 @@ export function createSky(engine, materials) {
   // both live the whole yard is fogged twice. So the fallback auto-disarms when materials.js
   // has published its own uniform block: whoever owns the fog owns it alone.
   // Flip `sky.params.sceneFog` at any time to override this decision.
-  const sceneFog = new THREE.FogExp2(0x000000, ATMOSPHERE.fogDensity);
+  const sceneFog = new THREE.FogExp2(0x000000, params.fogDensity);
   sceneFog.color.copy(colFogNear).lerp(colFogFar, 0.45);
   params.sceneFog = !materialsOwnFog;
   if (params.sceneFog) scene.fog = sceneFog;
@@ -1519,8 +1719,16 @@ export function createSky(engine, materials) {
     skyUniforms.uSkyScale.value = params.skyScale;
     skyUniforms.uSunAngularRadius.value = Math.max(LIGHTING.sunAngularDiameter * 0.5, 1e-5);
 
-    cloudUniforms.uSunColour.value.copy(sunRadiance).multiplyScalar(0.42);
-    cloudUniforms.uSkyColour.value.copy(colZenith).multiplyScalar(params.zenithLuminance * skyBrightnessScale * 0.9);
+    // 0.42 of a 4.6-unit beam put the lit faces around 0.9 linear, i.e. on AgX's shoulder, and
+    // the whole deck came back as one cream sheet with no form in it. 0.14 lands the lit faces
+    // near 0.3 and the sunward rims near 1.0, which is where a cloud actually has shape.
+    cloudUniforms.uSunColour.value.copy(sunRadiance).multiplyScalar(0.14);
+    // The underside of a cloud sees the whole hemisphere, not just the zenith: mostly the bright
+    // dust band. A pure-zenith fill at the new (much lower) zenith radiance would be black.
+    cloudUniforms.uSkyColour.value
+      .copy(colZenith)
+      .multiplyScalar(params.zenithLuminance * skyBrightnessScale)
+      .lerp(_colC.copy(colHorizon).multiplyScalar(params.hazeLuminance * skyBrightnessScale), 0.45);
     cloudUniforms.uHazeLuminance.value = params.hazeLuminance * skyBrightnessScale;
     cloudUniforms.uSunVisibility.value = sunVisibility;
     cloudUniforms.uCloudHeight.value = params.cloudHeight;
@@ -1560,8 +1768,15 @@ export function createSky(engine, materials) {
       THREE.LinearSRGBColorSpace
     );
     _colB.copy(colFogNear).lerp(_colC.copy(colFogNear).multiply(relativeTint), 0.65 * sunVisibility);
-    fogUniforms.uFogColourNear.value.copy(_colB).multiplyScalar(0.35 + 0.65 * skyBrightnessScale);
-    fogUniforms.uFogColourFar.value.copy(colFogFar).multiplyScalar(0.30 + 0.70 * skyBrightnessScale);
+    // params.fogLuminance brings the palette swatches down to a radiance that sits *between*
+    // the surfaces it is mixed over and the sky it has to meet at the horizon. Without it the
+    // fog is brighter than anything in the frame and every mid-field surface becomes fog.
+    fogUniforms.uFogColourNear.value
+      .copy(_colB)
+      .multiplyScalar(params.fogLuminance * (0.35 + 0.65 * skyBrightnessScale));
+    fogUniforms.uFogColourFar.value
+      .copy(colFogFar)
+      .multiplyScalar(params.fogLuminance * (0.30 + 0.70 * skyBrightnessScale));
     fogUniforms.uSunDirection.value.copy(sunDir);
     // Tint is normalised; colour carries the energy. materials.js adds its inscatter term as
     // tint * strength * phase, so handing it a 4.6x radiance there would blow the fog out.
@@ -1569,6 +1784,18 @@ export function createSky(engine, materials) {
     fogUniforms.uSunColour.value.copy(sunRadiance);
 
     sceneFog.color.copy(fogUniforms.uFogColourNear.value).lerp(fogUniforms.uFogColourFar.value, 0.45);
+
+    /* ---- Hand the same air to the dome, so ground and sky meet ----------- */
+    // These are copies of the *resolved* fog radiances above, which is the whole point: the
+    // dome's bottom band and a fully extinguished world surface are now evaluating identical
+    // numbers through identical maths.
+    skyUniforms.uFogNear.value.copy(fogUniforms.uFogColourNear.value);
+    skyUniforms.uFogFar.value.copy(fogUniforms.uFogColourFar.value);
+    skyUniforms.uFogFarMix.value = clamp(params.fogFarMix, 0, 1);
+    skyUniforms.uFogInscatter.value = params.fogInscatter;
+    skyUniforms.uFogAniso.value = ATMOSPHERE.inscatterAnisotropy;
+    skyUniforms.uHorizonFogAmount.value = clamp(params.horizonFogAmount, 0, 1);
+    skyUniforms.uHorizonFogAngle.value = Math.max(params.horizonFogAngle, 1e-3);
   }
 
   recompute();
@@ -1672,18 +1899,24 @@ export function createSky(engine, materials) {
 
     /* ---- 3. radial blur ------------------------------------------------- */
 
-    godrayUniforms.uDensity.value = params.godrayDensity;
+    // Reach, not density: the march has to actually arrive at the sun or no pixel outside the
+    // proxy ever samples the light source. The medium's density is a weight on the result.
+    godrayUniforms.uDensity.value = clamp(params.godrayReach, 0.05, 1.0);
     godrayUniforms.uDecay.value = clamp(params.godrayDecay, 0.5, 0.9999);
     godrayUniforms.uSunUV.value.copy(sunUV);
     godrayUniforms.uTint.value.copy(sunTint);
+
+    // postfx multiplies by ATMOSPHERE.godrayStrength itself; godrayGain makes up the shortfall
+    // between that and the strength the art direction asks for. Only these two and the fade
+    // belong on the output.
+    const grOut = godray.fade * Math.max(params.godrayGain, 0);
 
     // Pass 1: full reach, coarse, jittered.
     godrayUniforms.tOcc.value = godray.occRT.texture;
     godrayUniforms.uStride.value = 1.0;
     godrayUniforms.uJitter.value = 1.0;
-    godrayUniforms.uWeight.value = 1.0;
-    // postfx multiplies by ATMOSPHERE.godrayStrength itself, so only the fade belongs here.
-    godrayUniforms.uIntensity.value = preset.godrayPasses > 1 ? 1.0 : godray.fade;
+    godrayUniforms.uWeight.value = Math.max(params.godrayDensity, 0);
+    godrayUniforms.uIntensity.value = preset.godrayPasses > 1 ? 1.0 : grOut;
     blit(godrayMaterial, preset.godrayPasses > 1 ? godray.blurA : godray.blurB);
 
     if (preset.godrayPasses > 1) {
@@ -1692,10 +1925,12 @@ export function createSky(engine, materials) {
       godrayUniforms.tOcc.value = godray.blurA.texture;
       godrayUniforms.uStride.value = params.godrayRefine / preset.godraySamples;
       godrayUniforms.uJitter.value = 0.0;
+      // Pass 2 is a mean over an already-weighted buffer, so it must not re-apply the density.
+      godrayUniforms.uWeight.value = 1.0;
       // Decay compounds across the two passes; the short pass gets the per-step root so the
       // total falloff still matches ATMOSPHERE.godrayDecay.
       godrayUniforms.uDecay.value = Math.pow(clamp(params.godrayDecay, 0.5, 0.9999), 1 / preset.godraySamples);
-      godrayUniforms.uIntensity.value = godray.fade;
+      godrayUniforms.uIntensity.value = grOut;
       blit(godrayMaterial, godray.blurB);
     }
 
@@ -1775,11 +2010,15 @@ export function createSky(engine, materials) {
 
     /* ---- Fog ------------------------------------------------------------ */
 
-    fogUniforms.uFogDensity.value = ATMOSPHERE.fogDensity;
-    fogUniforms.uFogHeightFalloff.value = ATMOSPHERE.fogHeightFalloff;
-    fogUniforms.uFogBase.value = ATMOSPHERE.fogBase;
-    fogUniforms.uInscatterStrength.value = ATMOSPHERE.inscatterStrength;
+    // Sourced from `params`, not straight from ATMOSPHERE: this module owns the working fog
+    // values (see the FOG OWNERSHIP note in the header) and `params` is what a settings slider
+    // or the debug overlay can move.
+    fogUniforms.uFogDensity.value = params.fogDensity;
+    fogUniforms.uFogHeightFalloff.value = params.fogHeightFalloff;
+    fogUniforms.uFogBase.value = params.fogBase;
+    fogUniforms.uInscatterStrength.value = params.fogInscatter;
     fogUniforms.uInscatterAnisotropy.value = ATMOSPHERE.inscatterAnisotropy;
+    fogUniforms.uFogMaxOpacity.value = params.fogMaxOpacity;
     fogUniforms.uFogTime.value = time;
 
     const target = materials && materials.fogUniforms;
@@ -1794,14 +2033,15 @@ export function createSky(engine, materials) {
       writeUniform(target, FOG_ALIASES.sunDir, fogUniforms.uSunDirection.value);
       writeUniform(target, FOG_ALIASES.sunTint, fogUniforms.uSunTint.value);
       writeUniform(target, FOG_ALIASES.sunColour, fogUniforms.uSunColour.value);
+      writeUniform(target, FOG_ALIASES.maxOpacity, fogUniforms.uFogMaxOpacity.value);
       writeUniform(target, FOG_ALIASES.time, fogUniforms.uFogTime.value);
     }
 
     if (params.sceneFog) {
       // FogExp2 has no height term, so evaluate the height profile at the eye and hand it the
       // equivalent uniform density. Walking up the admin block stairwell genuinely thins it.
-      const camY = camera.position.y - ATMOSPHERE.fogBase;
-      sceneFog.density = ATMOSPHERE.fogDensity * Math.exp(-ATMOSPHERE.fogHeightFalloff * Math.max(camY, 0));
+      const camY = camera.position.y - params.fogBase;
+      sceneFog.density = params.fogDensity * Math.exp(-params.fogHeightFalloff * Math.max(camY, 0));
       if (scene.fog !== sceneFog) scene.fog = sceneFog;
     } else if (scene.fog === sceneFog) {
       scene.fog = null;

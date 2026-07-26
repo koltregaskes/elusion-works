@@ -80,9 +80,26 @@ export const SUN_AZIMUTH = 252.0;
 export const LIGHTING = {
   sunIntensity: 4.6, // physical-ish; post exposure does the rest
   sunAngularDiameter: 0.0093, // radians — real sun, drives soft shadow penumbra width
-  hemiSkyIntensity: 0.85,
+  /**
+   * Sky hemisphere fill. This is the *only* thing that makes an unlit face read as cool, and
+   * §4 makes that split the whole look, so it has to actually win against the other fills.
+   *
+   * At 0.85 against envIntensity 1.0 the near-white PMREM environment swamped it: shadow-side
+   * concrete measured R-B between 0 and +7 in a render, i.e. neutral-to-warm, when the
+   * authored target (PALETTE.concreteShadow) is R-B = -22. 1.20 puts the blue hemisphere back
+   * in charge of the shadow fill. sky.js divides hemiGroundIntensity by this when it builds
+   * the HemisphereLight, so the warm ground bounce stays at its authored absolute level and
+   * only the sky side moves. Key-to-fill is still 4.6 : 1.2, so the sun remains dominant.
+   */
+  hemiSkyIntensity: 1.2,
   hemiGroundIntensity: 0.35,
-  envIntensity: 1.0,
+  /**
+   * Image-based lighting weight. The environment probe is a PMREM of the whole dome, so it is
+   * close to achromatic — every extra unit of it is a neutral wash that cancels the hemisphere's
+   * blue and flattens the frame toward one hue family. 0.70 keeps the specular response and
+   * the sense of an open sky while leaving the diffuse shadow fill to the hemisphere.
+   */
+  envIntensity: 0.7,
   /** Practical lights are the only point lights and must have a visible fixture. */
   practicalIntensity: 12.0,
   practicalColour: '#ffb765',
@@ -109,16 +126,49 @@ export const ATMOSPHERE = {
 
 /** Post-processing look. `postfx.params` is seeded from this. */
 export const GRADE = {
-  exposure: 0.92,
-  contrast: 1.09,
-  saturation: 0.88,
-  // Split-tone: cool the shadows, warm the highlights. Small numbers; this should be felt,
-  // not seen.
-  lift: [-0.006, 0.0, 0.014],
+  /**
+   * Scene-linear exposure into AgX. At 0.92 nothing in the frame ever crossed the tone curve's
+   * shoulder: measured peak luminance sat at 228-244/255 with literally zero pixels at 254+, so
+   * the whole image ran on AgX's linear mid-slope and read as a flat grey-box render. 1.15 puts
+   * the sun disc, the specular hits on the rails and the scope objective over the knee, which is
+   * where the filmic shoulder and the bloom threshold both start doing their job.
+   */
+  exposure: 1.15,
+  /** Pivoted on 0.18 in postfx. 1.20 is what actually reaches display white and display black. */
+  contrast: 1.2,
+  /**
+   * Still well under 1.0 — §4 wants the palette desaturated so the rust and hazard paint carry.
+   * Nudged up from 0.88 only enough that the warm/cool split below survives to the display.
+   */
+  saturation: 0.94,
+  /**
+   * Split-tone, ASC-CDL order (slope, offset, power) — see postfx's composite pass.
+   *
+   * `gain` is a slope, so it owns the highlights: red above unity and blue below warms anything
+   * the sun touches. `lift` is a constant offset, so its *relative* weight grows as the pixel
+   * gets darker: it owns the shadows, and blue-positive / red-negative is what turns an unlit
+   * plane cool. The previous [-0.006, 0, 0.014] was 1.4% of range and measured as nothing at
+   * all in the render; this is roughly 3x that, which puts shadow-side concrete around
+   * R-B = -15 in display codes. It is still an offset of a few percent, not a colour cast.
+   */
+  lift: [-0.018, 0.0, 0.03],
   gamma: [1.0, 0.995, 0.985],
-  gain: [1.035, 1.0, 0.955],
-  bloomStrength: 0.045,
-  bloomThreshold: 1.0,
+  gain: [1.045, 1.0, 0.945],
+  /**
+   * Neutral black point, added to `lift` on all three channels by postfx (it defaults to -0.010
+   * when this key is absent). Deepened because the darkest 5% of the frame was landing around
+   * 66/255 — a fogged grey card, not a photograph. Negative offset clips to zero in the shader,
+   * so this is a real toe rather than a gamma crush.
+   */
+  masterLift: -0.024,
+  /**
+   * Bloom. Threshold is in HDR scene-linear, *before* exposure. At 1.0 nothing in any frame
+   * ever reached it, so the pass never fired and what looked like glow was fog inscatter.
+   * 0.75 catches the sun disc, tracers, muzzle flash and metal speculars and nothing else;
+   * strength goes up to match, because a threshold nobody crosses made 0.045 untestable.
+   */
+  bloomStrength: 0.14,
+  bloomThreshold: 0.75,
   bloomSoftKnee: 0.55,
   ssaoIntensity: 0.85,
   ssaoRadius: 0.55,

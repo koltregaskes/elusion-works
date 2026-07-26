@@ -107,30 +107,77 @@ const MAX_FAR = 140;
 
 /**
  * How far *behind* the cascade the light is pulled back, in metres. This is the caster
- * capture range: a 22 m gantry crane at 8° of sun elevation throws its shadow 22/tan(8°) ≈
- * 156 m, so an object well outside the view frustum still darkens the ground you are standing
- * on. 150 m covers the whole 110x90 m map plus its landmarks.
+ * capture range: a caster only shadows the ground under it if it still sits *in front* of the
+ * shadow camera, and at 8° of elevation an object of height h is `h / sin(8°)` = 7.19·h metres
+ * away from its own contact shadow *along the light ray*. The 22 m gantry crane therefore needs
+ * 158 m of pull-back before its shadow reaches the tarmac, and the old 150 m clipped it — the
+ * one caster whose shadow organises the whole yard was the one falling off the near plane.
+ * 180 m covers the crane, the 18 m water tower and the 9 m walls with room to spare.
  */
-const LIGHT_MARGIN = 150;
+const LIGHT_MARGIN = 180;
 
 /**
- * The PCF footprint, in texels, that the depth/normal bias has to survive. Not the maximum
- * penumbra — the *typical* one. Biasing for the widest possible kernel would peter-pan every
- * contact in the scene for the sake of the crane's soft edge 40 m up.
+ * Normal offset, in texels of the cascade, for the two filter paths.
+ *
+ * Normal-offset shadows (Holbert): displacing the receiver along its shading normal by
+ * `k · texel · sinθ` (θ = angle between the normal and the light) removes the depth error a
+ * filter kernel of `k` texels sees on a tilted plane. The `sinθ` is what makes it bounded —
+ * the naive `1/cosθ` form explodes at the grazing angles this whole map is made of and is what
+ * detached every shadow from its object.
+ *
+ * The cost of the offset is *lateral*: a receiver lifted `n` along its normal loses the shadow
+ * of anything shorter than `n`, and slides the shadow edge `n / tan(elevation)` = 7.1·n metres
+ * downsun. At 0.35 m that was 2.5 m of slide — the peter-panning the review saw. So the
+ * filtered path keeps the offset tiny and pays for acne with the slope-scaled depth bias
+ * inside `ashfallShadowCH` instead; the stock 5-tap path has no slope term available and has
+ * to carry more.
  */
-const BIAS_KERNEL_TEXELS = 2.5;
+const NORMAL_BIAS_TEXELS = 1.25;
+const NORMAL_BIAS_TEXELS_NOSLOPE = 3.2;
 
 /**
- * Safety factor on the normal offset. The derivation below assumes the shading normal is the
+ * Safety factor on the normal offset. The derivation assumes the shading normal is the
  * geometric one; interpolated vertex normals on curved rubble and the detail-normal blend in
- * materials.js both break that assumption, and acne is far more objectionable than a 1 cm
- * offset.
+ * materials.js both break that assumption.
  */
-const NORMAL_BIAS_SAFETY = 1.55;
+const NORMAL_BIAS_SAFETY = 1.25;
 
 /** Hard floor/ceiling on the normal offset, in metres. Guards against absurd cascade extents. */
-const NORMAL_BIAS_MIN = 0.012;
-const NORMAL_BIAS_MAX = 0.35;
+const NORMAL_BIAS_MIN = 0.008;
+/**
+ * 0.06 m is the ceiling the art direction can afford: it costs 0.43 m of shadow slide at an 8°
+ * sun, which the screen-space contact trace below then covers. Anything larger and kerbs,
+ * rubble and boots stop touching the ground.
+ */
+const NORMAL_BIAS_MAX = 0.06;
+
+/**
+ * Floor on sinθ. The key can be driven anywhere by `sky.setTimeOfDay`; with the sun overhead
+ * the ground needs almost no offset but a 45° roof pitch still does, so never derive from a
+ * sinθ below this.
+ */
+const SIN_THETA_FLOOR = 0.35;
+
+/**
+ * Slope-scaled depth bias, in texels, applied inside the contact filter (§3.3 asks for
+ * "normal-offset + slope-scaled bias"). Across `k` texels of kernel a receiver tilted θ off the
+ * light varies in light-space depth by `k · texel · tanθ`; unlike the normal offset this is
+ * paid *along* the light, where at 8° it only unshadows casters shorter than `bias · sin(8°)` —
+ * i.e. a 0.11 m bias costs contact only for things under 1.5 cm tall. That is the right place
+ * to spend the acne budget at a raking sun.
+ */
+const SLOPE_BIAS_TEXELS = 1.6;
+/** tan(86°). Past this the surface is edge-on to the key and unlit anyway. */
+const SLOPE_MAX_TAN = 14.0;
+
+/**
+ * Screen-space contact shadow. The cascades cannot resolve the first half-metre of contact at
+ * this sun angle no matter how the bias is tuned (one cascade-0 texel is already 10 mm and the
+ * shadow slides 7.1x any offset), so the last 0.5 m is traced against the prepass depth buffer
+ * instead. 0.5 m at 8° is the shadow of a 7 cm pebble — exactly the scale that was missing.
+ */
+const SSCS_DISTANCE = 0.5;
+const SSCS_STEPS = 8;
 
 /** Constant depth bias, expressed as a fraction of one texel of world-space depth slope. */
 const DEPTH_BIAS_TEXELS = 0.5;
@@ -178,11 +225,18 @@ const CSM_GETSHADOW_CALL =
   'directionalLightShadow.shadowIntensity, directionalLightShadow.shadowBias, ' +
   'directionalLightShadow.shadowRadius, vDirectionalShadowCoord[ i ] )';
 
+/**
+ * Our replacement. The three extra arguments are all in scope at both call sites: CSM's chunk
+ * declares `geometryPosition` / `geometryNormal` at the top of `lights_fragment_begin`, and
+ * `getDirectionalLightInfo()` has already filled `directLight.direction` (view space, pointing
+ * *at* the light) on the line above each lookup. They give the filter the receiver slope it
+ * needs for the slope-scaled bias, and the ray it needs for the contact trace.
+ */
 const CSM_CONTACT_CALL =
   'ashfallShadowCH( directionalShadowMap[ i ], directionalLightShadow.shadowMapSize, ' +
   'directionalLightShadow.shadowIntensity, directionalLightShadow.shadowBias, ' +
   'directionalLightShadow.shadowRadius, vDirectionalShadowCoord[ i ], ' +
-  'ashfallCH[ UNROLLED_LOOP_INDEX ] )';
+  'ashfallCH[ UNROLLED_LOOP_INDEX ], geometryPosition, geometryNormal, directLight.direction )';
 
 /** GLSL float literal — `1` is an int in GLSL and will not implicitly convert in ES 3.0. */
 function glf(x) {
@@ -208,7 +262,7 @@ function glf(x) {
  * Cost: 7 taps for the overwhelming majority of pixels (fully lit or deep in umbra, both of
  * which early out), 7 + 14 + N on penumbra pixels only.
  */
-function buildContactGLSL(preset, softnessTanScale) {
+function buildContactGLSL(preset, softnessTanScale, sscs) {
   const searchTaps = preset.search;
   const taps = preset.taps;
   return /* glsl */ `
@@ -219,6 +273,9 @@ function buildContactGLSL(preset, softnessTanScale) {
 	#define ASHFALL_SUN_TAN ${glf(softnessTanScale)}
 	#define ASHFALL_CH_NEAR ${glf(CH_NEAR)}
 	#define ASHFALL_CH_FAR ${glf(CH_FAR)}
+	#define ASHFALL_SLOPE_TEXELS ${glf(SLOPE_BIAS_TEXELS)}
+	#define ASHFALL_MAX_TAN ${glf(SLOPE_MAX_TAN)}
+${sscs ? `	#define ASHFALL_SSCS\n	#define ASHFALL_SSCS_STEPS ${SSCS_STEPS}\n` : ''}
 
 	// Jimenez's interleaved gradient noise. Screen-space and *static across frames* on purpose:
 	// a per-frame rotation would hand TAA a new dither pattern every frame and read as boiling
@@ -243,17 +300,71 @@ function buildContactGLSL(preset, softnessTanScale) {
 		#define ASHFALL_CMP( m, uv, z ) step( z, texture2D( m, uv ).r )
 	#endif
 
+	#if defined( ASHFALL_SSCS )
+
+		/** Window depth [0,1] -> view-space z (negative, metres). */
+		float ashfallLinearZ( float d, float n, float f ) {
+			return ( n * f ) / ( ( f - n ) * d - f );
+		}
+
+		/**
+		 * Screen-space contact shadow.
+		 *
+		 * March the first ASHFALL_SSCS_DIST metres of the ray towards the sun through the
+		 * prepass depth buffer (engine.targets.normal's DepthTexture: written this frame, with
+		 * the same jittered projection, and *not* bound while the world pass runs, so there is
+		 * no feedback hazard). Anything the ray runs into that close is a contact the cascade
+		 * physically cannot resolve: one cascade-0 texel is already 10 mm across and any normal
+		 * offset slides the shadow 7.1x itself downsun at this elevation.
+		 *
+		 * Fails safe in every direction: off-screen, behind the eye, back-facing or with no
+		 * depth texture bound all return "lit" and leave the cascade term untouched.
+		 */
+		float ashfallContactTrace( vec3 vPos, vec3 vNrm, vec3 vLightDir, float ndl ) {
+			if ( ashfallSSCS.w < 0.5 || ndl <= 0.03 ) return 1.0;
+
+			float maxD = ashfallSSCS.z;
+			// Lift off the receiver before the first tap, along the normal (clears its own
+			// depth) and along the light (clears the texel the fragment itself wrote).
+			vec3 lift = vNrm * ( maxD * 0.05 );
+			vec3 p0 = vPos + lift + vLightDir * ( maxD * 0.05 );
+			vec3 p1 = vPos + lift + vLightDir * maxD;
+
+			// Depth-buffer precision falls off with distance, so the "is this in front of me"
+			// threshold has to grow with it or the far field self-occludes.
+			float zBias = 0.012 - vPos.z * 0.004;
+			// Past this the hit is a different surface entirely, not the caster: accepting it
+			// would paint a silhouette of every foreground object onto the background.
+			float thick = maxD * 1.5 - vPos.z * 0.05;
+
+			float dither = ashfallIGN( gl_FragCoord.xy );
+			float invSteps = 1.0 / float( ASHFALL_SSCS_STEPS );
+			float hit = 0.0;
+
+			for ( int i = 0; i < ASHFALL_SSCS_STEPS; i ++ ) {
+				float t = ( float( i ) + dither ) * invSteps;
+				vec3 p = mix( p0, p1, t );
+				vec4 clip = ashfallProj * vec4( p, 1.0 );
+				if ( clip.w <= 1e-5 ) break;
+				vec2 uv = ( clip.xy / clip.w ) * 0.5 + 0.5;
+				if ( uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 ) break;
+				float sceneZ = ashfallLinearZ( texture2D( ashfallDepthTex, uv ).x, ashfallSSCS.x, ashfallSSCS.y );
+				float diff = sceneZ - p.z; // > 0: the scene surface is nearer the eye than the ray
+				if ( diff > zBias && diff < thick ) {
+					// Ramp out over the last third so the hand-off to the cascade is not a ring.
+					hit = 1.0 - smoothstep( 0.66, 1.0, t );
+					break;
+				}
+			}
+			return 1.0 - hit;
+		}
+
+	#endif
+
 	// chParams.x = metres per unit of shadow-map depth (the cascade's ortho depth range)
 	// chParams.y = shadow-map texels per metre across the cascade, times params.softness
-	float ashfallShadowCH( ASHFALL_SAMPLER shadowMap, vec2 shadowMapSize, float shadowIntensity, float shadowBias, float shadowRadius, vec4 shadowCoord, vec2 chParams ) {
-
-	#if defined( USE_REVERSED_DEPTH_BUFFER )
-
-		// Reversed depth flips every comparison below; not worth two code paths for a mode the
-		// engine does not enable. Fall back to three's own filter.
-		return getShadow( shadowMap, shadowMapSize, shadowIntensity, shadowBias, shadowRadius, shadowCoord );
-
-	#else
+	// chParams.z = metres per shadow-map texel across the cascade (no softness applied)
+	float ashfallShadowCascade( ASHFALL_SAMPLER shadowMap, vec2 shadowMapSize, float shadowIntensity, float shadowBias, float shadowRadius, vec4 shadowCoord, vec4 chParams, float ndl ) {
 
 		// A cascade whose uniform never arrived (a material set up behind our back) reports a
 		// zero depth range. Degrade to the stock filter rather than divide by it.
@@ -263,6 +374,13 @@ function buildContactGLSL(preset, softnessTanScale) {
 
 		vec3 sc = shadowCoord.xyz / shadowCoord.w;
 		sc.z += shadowBias;
+
+		// Slope-scaled receiver bias. See SLOPE_BIAS_TEXELS: this is the term that lets the
+		// normal offset stay at a couple of centimetres on a map whose every ground plane is
+		// 82 degrees off the key. Paid along the light, where it costs almost no contact.
+		float tanT = min( sqrt( max( 1.0 - ndl * ndl, 0.0 ) ) / max( ndl, 0.07 ), ASHFALL_MAX_TAN );
+		sc.z -= ( ASHFALL_SLOPE_TEXELS * chParams.z * tanT ) / chParams.x;
+
 		if ( sc.x < 0.0 || sc.x > 1.0 || sc.y < 0.0 || sc.y > 1.0 || sc.z > 1.0 ) return 1.0;
 
 		vec2 texel = vec2( 1.0 ) / shadowMapSize;
@@ -314,6 +432,33 @@ function buildContactGLSL(preset, softnessTanScale) {
 		}
 		return mix( 1.0, sum * invTaps, shadowIntensity );
 
+	}
+
+	/**
+	 * The entry point CSM's cascade loop actually calls. Combines the cascaded term with the
+	 * screen-space contact trace, so a contact survives whatever the cascade bias does to it.
+	 */
+	float ashfallShadowCH( ASHFALL_SAMPLER shadowMap, vec2 shadowMapSize, float shadowIntensity, float shadowBias, float shadowRadius, vec4 shadowCoord, vec4 chParams, vec3 vPos, vec3 vNrm, vec3 vLightDir ) {
+
+	#if defined( USE_REVERSED_DEPTH_BUFFER )
+
+		// Reversed depth flips every comparison above; not worth two code paths for a mode the
+		// engine does not enable. Fall back to three's own filter.
+		return getShadow( shadowMap, shadowMapSize, shadowIntensity, shadowBias, shadowRadius, shadowCoord );
+
+	#else
+
+		float ndl = clamp( dot( normalize( vNrm ), vLightDir ), 0.0, 1.0 );
+		float s = ashfallShadowCascade( shadowMap, shadowMapSize, shadowIntensity, shadowBias, shadowRadius, shadowCoord, chParams, ndl );
+
+		#if defined( ASHFALL_SSCS )
+			// min(), not multiply: both terms describe the same occluder near a contact and
+			// multiplying them would double-darken the metre where they overlap.
+			s = min( s, mix( 1.0, ashfallContactTrace( vPos, vNrm, vLightDir, ndl ), shadowIntensity ) );
+		#endif
+
+		return s;
+
 	#endif
 
 	}
@@ -353,14 +498,19 @@ function composeLightsFragment(csmText, contact) {
   return STOCK_LIGHTS_FRAGMENT.slice(0, s0) + dir + STOCK_LIGHTS_FRAGMENT.slice(s1);
 }
 
-function composeLightsPars(contact) {
+/**
+ * `lights_pars_begin` runs *before* `shadowmap_pars_fragment` in every material, so this is
+ * where the filter's uniforms have to be declared for `ashfallShadowCH` to see them.
+ */
+function composeLightsPars(contact, sscs) {
   return (
     /* glsl */ `
 #if defined( USE_CSM ) && defined( CSM_CASCADES )
 uniform vec2 CSM_cascades[ CSM_CASCADES ];
 uniform float cameraNear;
 uniform float shadowFar;
-${contact ? 'uniform vec2 ashfallCH[ CSM_CASCADES ];' : ''}
+${contact ? 'uniform vec4 ashfallCH[ CSM_CASCADES ];' : ''}
+${sscs ? 'uniform sampler2D ashfallDepthTex;\nuniform mat4 ashfallProj;\nuniform vec4 ashfallSSCS;' : ''}
 #endif
 ` + STOCK_LIGHTS_PARS
   );
@@ -391,9 +541,13 @@ function validateContactGLSL(gl, glsl) {
       (variants[v]
         ? 'float getShadow( sampler2DShadow m, vec2 s, float i, float b, float r, vec4 c );\n'
         : 'float getShadow( sampler2D m, vec2 s, float i, float b, float r, vec4 c );\n') +
+      // The uniforms lights_pars_begin would have declared by the time this chunk is reached.
+      'uniform sampler2D ashfallDepthTex;\nuniform mat4 ashfallProj;\nuniform vec4 ashfallSSCS;\n' +
       glsl +
-      '\nuniform ASHFALL_SAMPLER uMap;\nuniform vec2 uCh;\nout vec4 oColour;\n' +
-      'void main() { oColour = vec4( ashfallShadowCH( uMap, vec2( 2048.0 ), 1.0, -0.0001, 6.0, vec4( 0.5, 0.5, 0.5, 1.0 ), uCh ) ); }\n';
+      '\nuniform ASHFALL_SAMPLER uMap;\nuniform vec4 uCh;\nout vec4 oColour;\n' +
+      'void main() { oColour = vec4( ashfallShadowCH( uMap, vec2( 2048.0 ), 1.0, -0.0001, 6.0, ' +
+      'vec4( 0.5, 0.5, 0.5, 1.0 ), uCh, vec3( 0.0, 0.0, -5.0 ), vec3( 0.0, 1.0, 0.0 ), ' +
+      'vec3( 0.0, 0.14, 0.99 ) ) ); }\n';
 
     let shader = null;
     let ok = false;
@@ -524,13 +678,34 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
   let csm = null;
   let usingCSM = false;
   let contactActive = false;
+  let sscsActive = false;
   let disposed = false;
 
-  /** Per-cascade (depthRangeMetres, texelsPerMetre * softness) fed to the contact filter. */
+  /**
+   * Per-cascade (depthRangeMetres, texelsPerMetre * softness, metresPerTexel, 0) fed to the
+   * contact filter. One shared array; the shader reads it in place, so nothing allocates.
+   */
   let chArray = [];
   const chUniform = { value: chArray };
 
-  /** material -> { userHook, wrapped, keyFn } */
+  /**
+   * Screen-space contact trace uniforms. `ashfallProj` deliberately holds a *reference* to the
+   * live `camera.projectionMatrix`: postfx applies the TAA jitter to that same object after
+   * `shadows.update()` has run, and the prepass depth we sample was rasterised with the jitter
+   * in place, so the reference is the only way the two stay aligned.
+   */
+  const _sscsParams = new THREE.Vector4(0.05, 600, SSCS_DISTANCE, 0);
+  const sscsParamsUniform = { value: _sscsParams };
+  const sscsProjUniform = { value: engine.camera ? engine.camera.projectionMatrix : new THREE.Matrix4() };
+  const sscsDepthUniform = { value: null };
+
+  /** The prepass depth buffer, when the engine has one. Null disables the trace at runtime. */
+  function prepassDepth() {
+    const t = engine.targets && engine.targets.normal;
+    return t && t.depthTexture ? t.depthTexture : null;
+  }
+
+  /** material -> { userHook, wrapped, authorKey, keyFn, csm } */
   const registry = new Map();
 
   /** Fallback single-light path. `ownsFallback` is false when we borrowed the sun itself. */
@@ -543,12 +718,20 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
   let cachedNormalScale = params.normalBiasScale;
   let cachedDepthScale = params.depthBiasScale;
   let cachedMaxFar = params.maxFar;
+  let cachedGroundSin = 1;
 
   /* --- Sun mirroring ----------------------------------------------------- */
 
   let sunLight = sun && sun.isLight ? sun : null;
   let sunIntensity = LIGHTING.sunIntensity;
   _colour.setStyle(PALETTE.sun, THREE.SRGBColorSpace);
+
+  /**
+   * sin of the angle between an up-facing receiver and the key — the `sinθ` in the normal
+   * offset. At the art-directed 8° this is 0.99, i.e. the ground is very nearly edge-on to the
+   * sun, which is precisely why the offset has to be derived and not guessed.
+   */
+  let groundSin = 1;
 
   function readSun() {
     if (sunLight) {
@@ -569,6 +752,10 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
       sunIntensity = LIGHTING.sunIntensity;
       _colour.setStyle(PALETTE.sun, THREE.SRGBColorSpace);
     }
+
+    // Ground normal is +Y, so cosθ is just the sun's elevation sine.
+    const cosT = clamp(_sunDir.y, -1, 1);
+    groundSin = Math.max(Math.sqrt(Math.max(0, 1 - cosT * cosT)), SIN_THETA_FLOOR);
 
     _lightDir.copy(_sunDir).negate();
     // A sun exactly overhead makes the light-orientation lookAt singular (dir parallel to up).
@@ -642,15 +829,32 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
   function installChunks() {
     if (!usingCSM) return;
     contactActive = false;
+    sscsActive = false;
 
     // CSM's constructor has already installed its own (pre-r185) fork of these two chunks.
     // Everything below either improves on that or leaves it exactly as it is.
     let wantContact = !!preset.contact;
+    // The trace needs a depth buffer that is *not* the one being written. engine's prepass
+    // target is exactly that. Compile it in whenever the engine has a targets bag at all and
+    // let the runtime flag in `ashfallSSCS.w` switch it off if the texture is absent — the
+    // targets can be rebuilt (resize, quality flip) long after the chunks were installed.
+    let wantSSCS = wantContact && !!(engine.targets && typeof engine.targets === 'object');
     let glsl = '';
 
     if (wantContact) {
-      glsl = buildContactGLSL(preset, LIGHTING.sunAngularDiameter);
-      if (!validateContactGLSL(gl, glsl)) wantContact = false;
+      glsl = buildContactGLSL(preset, LIGHTING.sunAngularDiameter, wantSSCS);
+      let ok = validateContactGLSL(gl, glsl);
+      if (!ok && wantSSCS) {
+        // Retry without the trace before giving up on contact hardening altogether: the
+        // penumbra filter is worth keeping even on a driver that chokes on the depth march.
+        wantSSCS = false;
+        glsl = buildContactGLSL(preset, LIGHTING.sunAngularDiameter, false);
+        ok = validateContactGLSL(gl, glsl);
+      }
+      if (!ok) {
+        wantContact = false;
+        wantSSCS = false;
+      }
     }
 
     let composed = null;
@@ -661,6 +865,7 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
         // since the plain splice still restores r185's current iridescence and light-probe
         // code that the addon's fork predates.
         wantContact = false;
+        wantSSCS = false;
         composed = composeLightsFragment(csmFragmentSource, false);
       }
     } catch (err) {
@@ -670,11 +875,17 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
     if (!composed) return; // leave the addon's own chunks in place — still a working scene
 
     THREE.ShaderChunk.lights_fragment_begin = composed;
-    THREE.ShaderChunk.lights_pars_begin = composeLightsPars(wantContact);
+    THREE.ShaderChunk.lights_pars_begin = composeLightsPars(wantContact, wantSSCS);
     THREE.ShaderChunk.shadowmap_pars_fragment = wantContact
       ? STOCK_SHADOWMAP_PARS + glsl
       : STOCK_SHADOWMAP_PARS;
     contactActive = wantContact;
+    sscsActive = wantSSCS;
+    if (sscsActive) {
+      const depth = prepassDepth();
+      sscsDepthUniform.value = depth;
+      _sscsParams.set(engine.camera.near, engine.camera.far, SSCS_DISTANCE, depth ? 1 : 0);
+    }
   }
 
   installChunks();
@@ -688,7 +899,7 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
   /* --- Cascade tuning ---------------------------------------------------- */
 
   function ensureChArray(n) {
-    while (chArray.length < n) chArray.push(new THREE.Vector2(1, 1));
+    while (chArray.length < n) chArray.push(new THREE.Vector4(1, 1, 1, 0));
     chArray.length = n;
     chUniform.value = chArray;
   }
@@ -697,16 +908,17 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
    * Per-cascade bias, filter radius and contact-filter constants, all derived from the
    * *measured* world size of one shadow texel rather than guessed.
    *
-   * Normal offset. Take a receiver plane whose normal sits θ off the reverse light direction.
-   * Across a PCF kernel of R texels (each t metres wide) the plane's own depth varies by
-   * `R·t·sinθ`; offsetting the receiver by `n` along its normal buys `n/cosθ` of depth
-   * headroom. Equating the two gives `n = R·t·sinθ·cosθ`, which peaks at θ = 45° with
-   * `n = 0.5·R·t`. That single expression covers every angle in the scene — including the
-   * near-grazing ground planes this map is full of, where the normal offset is *most*
-   * effective because 1/cosθ blows up. At high (2048, cascade 0 ≈ 10.7 mm texels) it lands on
-   * 0.021 m, inside the 0.02–0.04 the contract asks for; lower presets need proportionally
-   * more because their texels are physically larger, and pretending otherwise would just trade
-   * peter-panning for acne.
+   * Normal offset (Holbert). A receiver plane whose normal sits θ off the light direction is
+   * displaced along that normal by `k · t · sinθ`, where `t` is the cascade's texel in metres
+   * and `k` the kernel it has to survive. The `sinθ` is the whole point: it is bounded, where
+   * the `1/cosθ` form the old derivation collapsed into runs away at exactly the grazing
+   * angles this map is made of and detaches every shadow from its object.
+   *
+   * At high (2048, cascade 0 ≈ 10 mm texels, 8° sun) that lands on 16 mm — 0.11 m of shadow
+   * slide downsun, which the screen-space contact trace then covers. The wide cascades clamp
+   * to NORMAL_BIAS_MAX and rely on the slope-scaled bias inside the filter instead; when the
+   * filter is not available (low/medium, or a driver that rejected the patched GLSL) the
+   * offset is scaled up to NORMAL_BIAS_TEXELS_NOSLOPE because nothing else is holding acne off.
    *
    * Depth bias. Half a texel of slope, expressed in the cascade's normalised depth units.
    * Clamped at the bottom so it still clears a 16-bit depth quantum and at the top so it can
@@ -737,8 +949,9 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
         cam.updateProjectionMatrix();
       }
 
+      const offsetTexels = contactActive ? NORMAL_BIAS_TEXELS : NORMAL_BIAS_TEXELS_NOSLOPE;
       light.shadow.normalBias = clamp(
-        0.5 * BIAS_KERNEL_TEXELS * NORMAL_BIAS_SAFETY * texel * params.normalBiasScale,
+        offsetTexels * NORMAL_BIAS_SAFETY * texel * groundSin * params.normalBiasScale,
         NORMAL_BIAS_MIN,
         NORMAL_BIAS_MAX
       );
@@ -756,6 +969,8 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
       const ch = chArray[i];
       ch.x = far - near; // metres per unit of shadow depth
       ch.y = (size / width) * params.softness; // texels per metre
+      ch.z = texel; // metres per texel — drives the slope-scaled bias
+      ch.w = 0;
     }
   }
 
@@ -778,10 +993,11 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
     cam.far = LIGHT_MARGIN + 2 * half;
     cam.updateProjectionMatrix();
 
-    // Same derivation as the cascaded path, one cascade wide.
+    // Same derivation as the cascaded path, one cascade wide. Always the no-slope constant:
+    // the fallback runs three's stock filter, which has no slope term to lean on.
     const texel = (2 * half) / size;
     light.shadow.normalBias = clamp(
-      0.5 * BIAS_KERNEL_TEXELS * NORMAL_BIAS_SAFETY * texel,
+      NORMAL_BIAS_TEXELS_NOSLOPE * NORMAL_BIAS_SAFETY * texel * groundSin,
       NORMAL_BIAS_MIN,
       NORMAL_BIAS_MAX
     );
@@ -857,16 +1073,33 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
    *    `onBeforeCompile.toString()`. Every wrapped material would share one source string, so
    *    two materials with *different* chained hooks would be handed the same compiled program.
    *    We fold the wrapped hook's source into the key explicitly.
+   *
+   * The chaining has to survive *being chained in turn*. `world/materials.js` wraps whatever
+   * `register()` leaves on the material and then calls its own hook again after it — the
+   * vanilla-CSM contract, where `setupMaterial` simply clobbers the author's hook and the
+   * caller is expected to restore it. Against our wrapper that ran the author's injection
+   * twice, which duplicates its `varying`/`uniform` declarations and takes the material's
+   * program out with `'vAshWorld' : redefinition`. Every world surface failed to link, which is
+   * why not one frame had a shadow — or, for that matter, a ground plane. Two guards below:
+   *  - `wrapped` only runs the author hook while it is still the material's *live*
+   *    `onBeforeCompile`. If somebody has wrapped us, they own that call.
+   *  - `register()` is idempotent per CSM instance, so a second registration (materials.js,
+   *    then level.js on the same cached material) cannot capture a wrapper as the author hook.
    */
   function register(material) {
     if (disposed || !isLitMaterial(material)) return material;
 
     let entry = registry.get(material);
     if (!entry) {
-      entry = { userHook: null, wrapped: null, authorKey: null, keyFn: null };
+      entry = { userHook: null, wrapped: null, authorKey: null, keyFn: null, csm: null };
       registry.set(material, entry);
     }
     if (!usingCSM || !csm) return material;
+
+    // Already wired to this CSM instance. Re-wrapping would treat whatever is now on the
+    // material — quite possibly a caller's chain around our own wrapper — as a fresh author
+    // hook and nest the injections. Torn down and rebuilt on setQuality/dispose.
+    if (entry.csm === csm && entry.wrapped) return material;
 
     // Pick up an author hook that was attached before us — or after a previous registration.
     const current = hasOwn(material, 'onBeforeCompile') ? material.onBeforeCompile : null;
@@ -877,15 +1110,25 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
     const csmHook = material.onBeforeCompile;
     const userHook = entry.userHook;
     const wantCH = contactActive;
+    const wantSSCS = sscsActive;
     const wrapped = function (shader, rendererRef) {
       if (typeof csmHook === 'function') csmHook.call(this, shader, rendererRef);
-      // One shared uniform object for every material: updating chArray in place updates them
+      // One shared uniform object for every material: updating the arrays in place updates them
       // all, so the per-frame cost of the contact filter's constants is zero.
       if (wantCH) shader.uniforms.ashfallCH = chUniform;
-      if (typeof userHook === 'function') userHook.call(this, shader, rendererRef);
+      if (wantSSCS) {
+        shader.uniforms.ashfallDepthTex = sscsDepthUniform;
+        shader.uniforms.ashfallProj = sscsProjUniform;
+        shader.uniforms.ashfallSSCS = sscsParamsUniform;
+      }
+      // Only ours to call while we are the live hook — see the note above.
+      if (typeof userHook === 'function' && this && this.onBeforeCompile === wrapped) {
+        userHook.call(this, shader, rendererRef);
+      }
     };
     material.onBeforeCompile = wrapped;
     entry.wrapped = wrapped;
+    entry.csm = csm;
 
     // Never chain our own key function into itself: register() may legitimately be called
     // twice on the same material (materials.js registering, then a quality flip re-registering).
@@ -938,6 +1181,7 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
         else if (current !== null) delete material.onBeforeCompile;
       }
       entry.wrapped = null;
+      entry.csm = null;
       if (hasOwn(material, 'customProgramCacheKey')) {
         if (typeof entry.authorKey === 'function') material.customProgramCacheKey = entry.authorKey;
         else delete material.customProgramCacheKey;
@@ -1014,16 +1258,19 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
       return true;
     }
 
-    // Live-tweakable parameters: three float compares a frame, so the debug menu can drive
-    // softness and bias without a dedicated dirty flag.
+    // Live-tweakable parameters: four float compares a frame, so the debug menu can drive
+    // softness and bias without a dedicated dirty flag. `groundSin` is in there because
+    // sky.setTimeOfDay moves the key, and the normal offset is derived from where it is.
     if (
       params.softness !== cachedSoftness ||
       params.normalBiasScale !== cachedNormalScale ||
-      params.depthBiasScale !== cachedDepthScale
+      params.depthBiasScale !== cachedDepthScale ||
+      Math.abs(groundSin - cachedGroundSin) > 0.01
     ) {
       cachedSoftness = params.softness;
       cachedNormalScale = params.normalBiasScale;
       cachedDepthScale = params.depthBiasScale;
+      cachedGroundSin = groundSin;
       applyCascadeTuning();
     }
     if (params.maxFar !== cachedMaxFar) {
@@ -1083,6 +1330,16 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
 
     readSun();
     maybeRefit(cam, game);
+
+    if (sscsActive) {
+      // Allocation-free: `.value` is either the engine's own DepthTexture or the live
+      // projection matrix object, and the params are written into a preallocated Vector4.
+      const depth = prepassDepth();
+      sscsDepthUniform.value = depth;
+      sscsProjUniform.value = cam.projectionMatrix;
+      // The trace switches itself off rather than sample a buffer that is not there.
+      _sscsParams.set(cam.near, cam.far, SSCS_DISTANCE, depth ? 1 : 0);
+    }
 
     if (usingCSM && csm) {
       csm.lightDirection.copy(_lightDir);
@@ -1192,6 +1449,7 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
       applyCascadeTuning();
     } else {
       contactActive = false;
+      sscsActive = false;
       fallbackLight = buildFallback();
     }
 
@@ -1207,6 +1465,7 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
     shadows.quality = qualityName;
     shadows.usingCSM = usingCSM;
     shadows.contactHardening = contactActive;
+    shadows.screenContact = sscsActive;
     shadows.csm = csm;
     shadows.lights = usingCSM && csm ? csm.lights : fallbackLight ? [fallbackLight] : [];
     shadows.cascades = usingCSM && csm ? csm.cascades : 1;
@@ -1224,6 +1483,9 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
     if (sunLight) sunLight.visible = true; // hand the key back to whoever wants it
     usingCSM = false;
     contactActive = false;
+    sscsActive = false;
+    sscsDepthUniform.value = null;
+    _sscsParams.w = 0;
   }
 
   /* --- Public object ----------------------------------------------------- */
@@ -1234,6 +1496,8 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
     usingCSM,
     /** False when the driver rejected the patched filter, or the preset does not ask for it. */
     contactHardening: contactActive,
+    /** True when the half-metre screen-space contact trace is live. */
+    screenContact: sscsActive,
     quality: qualityName,
     cascades: usingCSM && csm ? csm.cascades : 1,
     mapSize: Math.min(preset.mapSize, maxTextureSize),
@@ -1259,6 +1523,32 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
       if (!usingCSM || !csm) return [params.maxFar];
       const far = Math.min(fitCam.far, params.maxFar);
       return csm.breaks.map((b) => b * far);
+    },
+
+    /**
+     * Everything needed to answer "is the cascade actually covering the play space?" in one
+     * call — view-depth range, ortho extent, texel size and the derived biases, per cascade.
+     * Debug only; it allocates, so never call it from the frame loop.
+     */
+    cascadeBounds() {
+      if (!usingCSM || !csm) return [];
+      const far = Math.min(fitCam.far, params.maxFar);
+      return csm.lights.map((light, i) => {
+        const cam = light.shadow.camera;
+        const width = cam.right - cam.left;
+        return {
+          cascade: i,
+          viewNear: (i === 0 ? 0 : csm.breaks[i - 1] * far),
+          viewFar: csm.breaks[i] * far,
+          extent: width,
+          texel: width / csm.shadowMapSize,
+          lightNear: cam.near,
+          lightFar: cam.far,
+          normalBias: light.shadow.normalBias,
+          bias: light.shadow.bias,
+          castShadow: light.castShadow,
+        };
+      });
     },
   };
 

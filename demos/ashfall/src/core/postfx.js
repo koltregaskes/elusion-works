@@ -286,33 +286,46 @@ void main() {
   vec2 prevUV = prevClip.xy / max(prevClip.w, EPS) * 0.5 + 0.5;
   vec2 velocity = uv - prevUV;
 
-  /* --- Current neighbourhood, in tonemapped YCoCg ------------------------ */
-  vec3 m1 = vec3(0.0);
-  vec3 m2 = vec3(0.0);
-  vec3 nMin = vec3(1e5);
-  vec3 nMax = vec3(-1e5);
-  vec3 curT = vec3(0.0);
+  /* --- Current neighbourhood, in tonemapped YCoCg ------------------------
+   * 3x3 plus the four 2-ring diagonals, 13 taps. A bare 3x3 around sub-pixel-thin geometry —
+   * a mast, a fence post, a catenary wire — is almost entirely background, so the raw min/max
+   * box never contains anything as dark as the feature itself and the feature's own history is
+   * accepted forever. That is the classic TAA needle: a hard line dragged across the sky that
+   * ends in mid-air. The extra ring costs four taps and is what bounds the drag. */
+  vec3 curT = rgb2ycocg(tonemapWeight(cur));
+  vec3 m1 = curT;
+  vec3 m2 = curT * curT;
 
-  for (int y = -1; y <= 1; y++) {
-    for (int x = -1; x <= 1; x++) {
-      vec2 o = vec2(float(x), float(y)) * uTexel;
-      vec3 s = rgb2ycocg(tonemapWeight(sanitise(texture(tCurrent, uv + o).rgb)));
-      if (x == 0 && y == 0) curT = s;
-      m1 += s;
-      m2 += s * s;
-      nMin = min(nMin, s);
-      nMax = max(nMax, s);
-    }
-  }
+  // Unrolled rather than a loop over a const offset array: dynamic indexing of a local array is
+  // legal ESSL 3.00 but lands in scratch memory on more than one driver, and this is a 13-tap
+  // gather in the most bandwidth-sensitive pass of the chain.
+  // (single physical line: a backslash continuation inside a JS template literal is eaten by JS
+  // before the GLSL preprocessor ever sees it)
+  #define NBH(ox, oy) { vec3 s = rgb2ycocg(tonemapWeight(sanitise(texture(tCurrent, uv + vec2(ox, oy) * uTexel).rgb))); m1 += s; m2 += s * s; }
+  NBH(-1.0,  0.0) NBH( 1.0,  0.0) NBH( 0.0, -1.0) NBH( 0.0,  1.0)
+  NBH(-1.0, -1.0) NBH( 1.0, -1.0) NBH(-1.0,  1.0) NBH( 1.0,  1.0)
+  NBH(-2.0, -2.0) NBH( 2.0, -2.0) NBH(-2.0,  2.0) NBH( 2.0,  2.0)
+  #undef NBH
 
-  // Variance clipping (Salvi): the box is mean +- gamma*sigma intersected with the hard
-  // min/max. Pure min/max is too permissive on noisy content and lets ghosts through;
-  // variance alone can clip legitimate thin features. Gamma 1.25 is the sweet spot.
-  const float invN = 1.0 / 9.0;
+  // Variance clipping (Salvi), *without* the old intersection against the raw neighbourhood
+  // min/max. Intersecting with min/max can only ever widen the accepted set relative to the
+  // statistics, and a single dark thin-geometry texel in the 3x3 was enough to open the box
+  // wide enough to keep a ghost. mean +- gamma*sigma alone collapses correctly on low-contrast
+  // content (the haze band), which is exactly where the comet trails were living.
+  const float invN = 1.0 / 13.0;
   vec3 mu = m1 * invN;
   vec3 sigma = sqrt(max(vec3(0.0), m2 * invN - mu * mu));
-  vec3 boxMin = max(mu - uClipGamma * sigma, nMin);
-  vec3 boxMax = min(mu + uClipGamma * sigma, nMax);
+
+  // Floor on the box half-extent. A perfectly flat neighbourhood gives sigma == 0, which makes
+  // clipToAABB snap the history exactly onto the mean every frame; that is a hard reset of the
+  // temporal accumulation and reads as a fizzing shimmer over smooth fog. A fraction of a code
+  // value of slack keeps convergence without letting a real ghost through.
+  vec3 boxHalf = max(uClipGamma * sigma, vec3(0.010, 0.006, 0.006));
+
+  // The box must always contain the current sample, otherwise a legitimately new pixel can be
+  // dragged toward stale history.
+  vec3 boxMin = min(mu - boxHalf, curT);
+  vec3 boxMax = max(mu + boxHalf, curT);
 
   /* --- History ----------------------------------------------------------- */
   vec3 hist = sampleHistoryCatmullRom(tHistory, prevUV, uResolution);
@@ -324,8 +337,13 @@ void main() {
 
   // Velocity in pixels. Fast movement means the history is a poor predictor (disocclusion,
   // shading changes, reprojection error all grow with speed), so lean on the current frame.
+  // The ramp is deliberately steep: at 0.91 static feedback the history half-life is ~7 frames,
+  // and anything moving even a couple of pixels per frame has therefore been smeared over a
+  // dozen pixels by the time it decays. 0.60 by 4 px, 0.35 by 10 px — past that the current
+  // frame owns the pixel and the only softening left is the motion blur's, which is intended.
   float velPixels = length(velocity * uResolution);
-  feedback = mix(feedback, 0.6, clamp(velPixels / 18.0, 0.0, 1.0));
+  feedback = mix(feedback, 0.60, clamp(velPixels * 0.25, 0.0, 1.0));
+  feedback = mix(feedback, 0.35, clamp((velPixels - 4.0) / 6.0, 0.0, 1.0));
 
   // Near-field guard. The viewmodel is drawn with a *different* projection into the shared
   // depth buffer, so linearising its depth with the world camera's planes gives an apparent
@@ -333,7 +351,8 @@ void main() {
   // uNearCut is the apparent depth the weapon can reach (derived from engine.viewDepthParams);
   // inside it, shorten the history so the gun stays crisp instead of trailing.
   float viewDist = linearDepth(depth, uNearFar.x, uNearFar.y);
-  feedback = mix(0.80, feedback, smoothstep(uNearCut * 0.3, uNearCut, viewDist));
+  float nearFade = smoothstep(uNearCut * 0.3, uNearCut, viewDist);
+  feedback = mix(0.80, feedback, nearFade);
 
   // Reject anything that reprojects off-screen or behind the previous camera. There is no
   // history for it; using the edge-clamped texel is what smears a bright streak inwards
@@ -342,10 +361,27 @@ void main() {
                    step(0.0, prevUV.y) * step(prevUV.y, 1.0) * step(EPS, prevClip.w);
   feedback *= onScreen;
 
+  /* --- Disocclusion rejection by reprojected depth ------------------------
+   * There is no history *depth* buffer in this chain, so compare this pixel's distance against
+   * the current-frame distance at the place the history is being fetched from. If the geometry
+   * that now sits at prevUV is at a markedly different range, whatever colour is stored there
+   * belongs to something else and reusing it is precisely how a thin mast drags a needle
+   * straight through the horizon line, and how sky leaks over the skyline as the camera turns.
+   * 2%..8% relative, so ordinary slope and grazing-angle ground never trips it. Faded out by
+   * nearFade over the viewmodel band: the weapon's depth was written with the *viewmodel*
+   * projection, so its reprojected UV is approximate by construction and this test would fire
+   * on it constantly, stripping the gun of its antialiasing for no gain. */
+  vec2 prevUVc = clamp(prevUV, vec2(0.0), vec2(1.0));
+  float prevDist = linearDepth(texture(tDepth, prevUVc).x, uNearFar.x, uNearFar.y);
+  float depthRel = abs(prevDist - viewDist) / max(viewDist, 0.05);
+  feedback *= 1.0 - nearFade * smoothstep(0.02, 0.08, depthRel);
+
   // How far the history had to be dragged to fit the box. Heavy clipping means the pixel is
-  // genuinely new content, so trust it less.
+  // genuinely new content, so trust it less. The old 1.6/0.55 pair still left a heavily-clipped
+  // pixel on 45% of its stale history, which over a long feedback tail is a visible ghost;
+  // 3.0/0.85 takes it down to 15% and the trail dies within a couple of frames.
   float clipDist = length(clipped - histT);
-  feedback *= 1.0 - clamp(clipDist * 1.6, 0.0, 0.55);
+  feedback *= 1.0 - clamp(clipDist * 3.0, 0.0, 0.85);
 
   vec3 resolved = mix(curT, clipped, feedback);
   fragColor = vec4(sanitise(tonemapUnweight(ycocg2rgb(resolved))), 1.0);
@@ -545,7 +581,7 @@ uniform vec2 uTexel;
 uniform vec2 uNearFar;
 uniform float uAmount;     // params.motionBlurAmount
 uniform float uShutter;    // 0.5 — 180 degree shutter, the cinema default
-uniform float uMaxPixels;  // 40
+uniform float uMaxPixels;  // ~10 px at 1600x900, scaled with resolution
 uniform float uNearCut;    // apparent depth the viewmodel reaches, in metres
 
 #define MB_TAPS 8
@@ -553,6 +589,14 @@ uniform float uNearCut;    // apparent depth the viewmodel reaches, in metres
 void main() {
   float depth = texture(tDepth, vUv).x;
   vec3 centre = sanitise(texture(tColour, vUv).rgb);
+
+  /* Sky rejection. Depth-buffer velocity reconstruction is numerically worthless at the far
+   * plane: the unprojected ray is enormously long, so a fraction of a degree of camera rotation
+   * reconstructs as tens of pixels of "velocity", and the 8-tap gather turns the whole horizon
+   * band and the cloud layer into flat ribbons. The sky has no parallax worth blurring anyway —
+   * its apparent motion is pure rotation, which a real shutter smears far less than this. */
+  if (depth >= 0.9999) { fragColor = vec4(centre, 1.0); return; }
+
   float centreDist = linearDepth(depth, uNearFar.x, uNearFar.y);
 
   vec4 ndc = vec4(vUv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
@@ -575,8 +619,11 @@ void main() {
   float len = length(velPixels);
   if (len < 0.6) { fragColor = vec4(centre, 1.0); return; }
 
-  // A 40 px cap. Beyond that the gather turns into a smear that reads as a bug, and the tap
-  // count can no longer keep up so it bands.
+  // Roughly a 10 px cap at 1600x900, scaled with the render height by the JS side. Beyond that
+  // the gather stops reading as a shutter and starts reading as a bug: 8 taps spread over 40 px
+  // are 5 px apart, so the "blur" is eight discrete ghosts, and any reconstruction error in the
+  // velocity is multiplied by the same 40 px. This is the single most damaging clamp in the
+  // chain — it is what was letting far geometry drag comet tails the width of the frame.
   if (len > uMaxPixels) velocity *= uMaxPixels / len;
 
   // Dither the tap positions per pixel, otherwise 8 taps show as 8 discrete ghosts.
@@ -898,6 +945,10 @@ uniform vec3 uGain;
 uniform vec3 uSplitShadow;
 uniform vec3 uSplitHighlight;
 uniform float uSplitStrength;
+uniform float uLookSlope;
+uniform float uLookOffset;
+uniform float uLookPower;
+uniform float uLookSaturation;
 
 /* ---- AgX ----------------------------------------------------------------
  * Troy Sobotka's AgX: move to Rec.2020 primaries, rotate into a desaturating "inset" basis,
@@ -946,6 +997,29 @@ vec3 agxSigmoid(vec3 x) {
        - 0.00232;
 }
 
+/* ---- AgX look -----------------------------------------------------------
+ * Base AgX is deliberately, contractually flat: it is a *neutral* transform whose job is to
+ * get an unbounded scene into a display volume without breaking hue, and it is never shipped
+ * naked. Every DCC and engine that offers it pairs it with a "look" — an ASC-CDL slope/offset/
+ * power plus a saturation restore, applied to the sigmoid output while it is still in the AgX
+ * inset basis (i.e. before AGX_OUTSET, so the outset rotation still does the hue-preserving
+ * work on the graded values). Without it the toe never engages, the shoulder never engages,
+ * and the whole frame lands inside about two stops around mid grey, which is what a viewer
+ * reads as "washed out" before they can name it.
+ *
+ * power > 1 is what puts the black point back: it deepens the toe far more than it touches the
+ * shoulder, so the shadow side of concrete drops toward 8-12% reflectance where a film camera
+ * exposed for this scene would put it, and the sun-facing gravel rides up into the shoulder.
+ * The saturation restore compensates for AgX's own inset desaturation, which is a tone-mapper
+ * artefact rather than an art-direction decision and must not be left in the image. */
+vec3 agxLook(vec3 c) {
+  // Luminance is taken before the power so the curve cannot change the apparent exposure of a
+  // saturated pixel differently from a neutral one of the same brightness.
+  float l = luma(c);
+  c = pow(max(c * uLookSlope + uLookOffset, vec3(0.0)), vec3(uLookPower));
+  return max(vec3(l) + uLookSaturation * (c - vec3(l)), vec3(0.0));
+}
+
 vec3 agx(vec3 colour) {
   colour = max(colour, vec3(0.0));
   colour = SRGB_TO_REC2020 * colour;
@@ -956,6 +1030,7 @@ vec3 agx(vec3 colour) {
   colour = (colour - AGX_MIN_EV) / (AGX_MAX_EV - AGX_MIN_EV);
   colour = clamp(colour, 0.0, 1.0);
   colour = agxSigmoid(colour);
+  colour = agxLook(colour);
   colour = AGX_OUTSET * colour;
   // The sigmoid output is display-encoded (~2.2 gamma). Undo it so everything downstream —
   // grade, vignette, sharpening — runs in display-LINEAR, and the sRGB OETF is applied once,
@@ -1068,20 +1143,38 @@ void main() {
   c = clamp(c, 0.0, 1.0);
   vec3 srgb = mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
 
-  /* --- Film grain, in display code values ---------------------------------- */
-  // Two hashes summed give a triangular PDF. Uniform noise leaves a visible DC floor and
-  // dithers poorly; triangular noise is what actually removes 8-bit banding from the sky.
+  /* --- Film grain, in display code values ----------------------------------
+   * Two hashes summed give a triangular PDF; uniform noise leaves a visible DC floor. */
   float n1 = hash12(gl_FragCoord.xy + vec2(uTime * 91.7, uTime * 53.3));
   float n2 = hash12(gl_FragCoord.xy * 1.317 + vec2(uTime * 29.1, uTime * 17.9) + 19.0);
   float tri = n1 + n2 - 1.0;
 
-  // Silver halide grain is most visible in the toe: sparse crystals, low exposure. Highlights
-  // are nearly clean. Correlating grain to luminance is what stops it looking like TV static.
+  /* Silver halide grain is a *mid-tone* phenomenon. In the toe there is barely any developed
+   * silver to be granular, and in the shoulder the emulsion saturates and the crystals merge,
+   * so a real negative is cleanest at both ends and noisiest around mid grey. The previous
+   * response curve was near its maximum in the toe, which is backwards: it put the coarsest
+   * noise on the darkest, flattest surfaces in frame — the gun's polymer and receiver panels —
+   * where it reads as compression dirt rather than film, and roughly 15% relative noise on a
+   * luminance-42 panel is far past anything a shipped title tolerates.
+   *
+   * 4*L*(1-L) is the parabola that peaks at 1.0 on mid grey and falls to exactly zero at both
+   * black and white. Against the old curve that is a 1.7x cut on the gun's receiver panel
+   * (L ~ 0.16) and roughly 5x in the deep toe, while mid grey is untouched — so grainAmount
+   * still means what art.js says it means. */
   float ld = luma(srgb);
-  float response = mix(1.0, 0.16, smoothstep(0.04, 0.7, ld));
+  float response = 4.0 * ld * (1.0 - ld);
+  srgb += tri * uGrain * response;
 
-  // The 0.55/255 floor is a pure dither term and stays even when grain is off.
-  srgb += tri * (uGrain * response + 0.55 / 255.0);
+  /* --- 8-bit dither, a separate job from grain -----------------------------
+   * Quantising to 8 bits is what puts contours in a smooth sky gradient that steps one code
+   * value every ~11 rows; grain cannot fix it because grain is luminance-weighted and the sky
+   * gradient lives where we deliberately want *less* grain. A 1-LSB triangular-PDF dither
+   * applied immediately before the write decorrelates the quantisation error from the signal
+   * and turns the contour into noise below the visual threshold. Independent hashes so it does
+   * not correlate with the grain and double its amplitude. */
+  float d1 = hash12(gl_FragCoord.xy * 0.7351 + vec2(uTime * 13.7 + 71.3, uTime * 7.9 + 41.1));
+  float d2 = hash12(gl_FragCoord.xy * 2.1137 + vec2(uTime * 23.3 + 5.9, uTime * 31.7 + 87.7));
+  srgb += (d1 + d2 - 1.0) * (1.0 / 255.0);
 
   fragColor = vec4(clamp(srgb, 0.0, 1.0), 1.0);
 }
@@ -1122,6 +1215,10 @@ void main() {
     vec4 pc = uPrevViewProj * vec4(world.xyz, 1.0);
     vec2 prev = pc.xy / max(pc.w, EPS) * 0.5 + 0.5;
     vec2 v = (vUv - prev) * uResolution;
+    // Sky is rejected here exactly as FRAG_MOTION rejects it, so this view shows the velocity
+    // the chain actually consumes rather than the raw (and at the far plane, meaningless)
+    // reconstruction. A correct far field reads flat mid-grey here.
+    if (d >= 0.9999) v = vec2(0.0);
     c = vec3(0.5 + v.x * 0.02, 0.5 + v.y * 0.02, 0.5);
   } else if (uMode == 5) {
     c = sanitise(texture(tBloom, vUv).rgb) * 6.0;
@@ -1190,6 +1287,26 @@ export function createPostFX(engine, game) {
     godrayStrength: ATMOSPHERE.godrayStrength,
     /** Split-tone strength. Deliberately small; the palette does the work. */
     splitStrength: 0.16,
+
+    /* --- AgX look ---------------------------------------------------------
+     * Base AgX is a neutral transform and is never shipped naked; the look is the ASC-CDL that
+     * goes on top of it, applied inside agx() between the sigmoid and the outset. These are
+     * tone-curve constants rather than palette values, so they live here, but art.js may
+     * override any of them by adding the matching GRADE key — do that rather than editing
+     * these numbers if the look ever needs re-timing.
+     * The "punchy" preset: unity slope, no offset, power > 1 to re-engage the toe, and a
+     * saturation restore that undoes AgX's own inset desaturation. */
+    lookSlope: GRADE.agxLookSlope ?? 1.0,
+    lookOffset: GRADE.agxLookOffset ?? 0.0,
+    lookPower: GRADE.agxLookPower ?? 1.35,
+    lookSaturation: GRADE.agxLookSaturation ?? 1.4,
+    /**
+     * Master lift, added to GRADE.lift on all three channels. Small and negative so the toe
+     * actually reaches near-zero: without it the darkest percent of the frame never gets below
+     * roughly a third of full scale and the render reads as a fogged grey card rather than a
+     * photographed place.
+     */
+    masterLift: GRADE.masterLift ?? -0.010,
     /**
      * Apparent depth, in metres, below which a pixel is assumed to be the weapon and is kept
      * sharp. Derived from the engine's viewmodel projection rather than guessed — see
@@ -1344,7 +1461,7 @@ export function createPostFX(engine, game) {
     uNearFar: { value: new THREE.Vector2(0.05, 600) },
     uFeedback: { value: params.taaFeedback },
     uHistoryValid: { value: 0 },
-    uClipGamma: { value: 1.25 },
+    uClipGamma: { value: 1.0 },
     uNearCut: { value: 4.0 },
   };
 
@@ -1387,7 +1504,8 @@ export function createPostFX(engine, game) {
     uNearFar: { value: new THREE.Vector2(0.05, 600) },
     uAmount: { value: params.motionBlurAmount },
     uShutter: { value: 0.5 },
-    uMaxPixels: { value: 40.0 },
+    /** Recomputed per frame from the render height — see runMotionBlur(). */
+    uMaxPixels: { value: 10.0 },
     uNearCut: { value: 2.5 },
   };
 
@@ -1463,6 +1581,10 @@ export function createPostFX(engine, game) {
     uSplitShadow: { value: new THREE.Vector3(1, 1, 1) },
     uSplitHighlight: { value: new THREE.Vector3(1, 1, 1) },
     uSplitStrength: { value: params.splitStrength },
+    uLookSlope: { value: params.lookSlope },
+    uLookOffset: { value: params.lookOffset },
+    uLookPower: { value: params.lookPower },
+    uLookSaturation: { value: params.lookSaturation },
   };
 
   const uDebug = {
@@ -1672,7 +1794,11 @@ export function createPostFX(engine, game) {
 
   function syncParams() {
     uTaa.uFeedback.value = params.taaFeedback;
-    uTaa.uClipGamma.value = 1.25;
+    // 1.0, not 1.25. The box is now a pure variance box with a floor rather than a variance box
+    // intersected with the raw neighbourhood min/max, so the same gamma would be markedly more
+    // permissive than before. 1.0 sigma is the standard Salvi width and is what keeps thin
+    // geometry from surviving against a bright background.
+    uTaa.uClipGamma.value = 1.0;
 
     uSsao.uRadius.value = params.ssaoRadius;
     // GRADE.ssaoIntensity is a 0..1 art value; map it onto a power curve exponent. 0.85 lands
@@ -1694,7 +1820,14 @@ export function createPostFX(engine, game) {
     uComposite.uSaturation.value = params.saturation;
     uComposite.uContrast.value = params.contrast;
     uComposite.uSplitStrength.value = params.splitStrength;
-    uComposite.uLift.value.set(params.lift[0], params.lift[1], params.lift[2]);
+    uComposite.uLookSlope.value = params.lookSlope;
+    uComposite.uLookOffset.value = params.lookOffset;
+    uComposite.uLookPower.value = params.lookPower;
+    uComposite.uLookSaturation.value = params.lookSaturation;
+    // Master lift folded into the CDL offset, so there is still exactly one offset term in the
+    // shader. art.js keeps the per-channel lift for the split; this is the neutral black point.
+    const ml = params.masterLift;
+    uComposite.uLift.value.set(params.lift[0] + ml, params.lift[1] + ml, params.lift[2] + ml);
     uComposite.uGamma.value.set(params.gamma[0], params.gamma[1], params.gamma[2]);
     uComposite.uGain.value.set(params.gain[0], params.gain[1], params.gain[2]);
 
@@ -1802,6 +1935,11 @@ export function createPostFX(engine, game) {
     uMotion.tDepth.value = depthTexture;
     uMotion.uResolution.value.set(width, height);
     uMotion.uTexel.value.set(1 / width, 1 / height);
+    // 10 px at a 900-line render, scaled so the blur is the same *fraction of the frame* at
+    // every render scale rather than growing with resolution. Clamped so a 540p render scale
+    // still gets a readable smear and a 4K one does not turn into a streak. 8 taps over 10 px
+    // are ~1.2 px apart, which is dense enough to read as continuous rather than as ghosts.
+    uMotion.uMaxPixels.value = Math.min(20, Math.max(6, height * (10 / 900)));
     draw(matMotion, out);
     chainIndex = 1 - chainIndex;
     return out.texture;

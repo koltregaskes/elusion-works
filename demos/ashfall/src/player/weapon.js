@@ -32,7 +32,7 @@
 
 import * as THREE from '../../vendor/three.module.js';
 import { mergeGeometries } from '../../vendor/BufferGeometryUtils.js';
-import { PALETTE, CAMERA } from '../world/art.js';
+import { PALETTE, CAMERA, LIGHTING } from '../world/art.js';
 
 /* ========================================================================== */
 /* Scratch — module scope, never allocated per frame                          */
@@ -53,6 +53,30 @@ const _m1 = new THREE.Matrix4();
 const _m2 = new THREE.Matrix4();
 const _up = new THREE.Vector3(0, 1, 0);
 const _fwd = new THREE.Vector3(0, 0, -1);
+
+/* --- Palette-derived colour helpers ---------------------------------------
+ *
+ * art.js authors every palette entry as a *diffuse* value in sRGB. That is the right
+ * number for a painted wall and the wrong number for a metal, because a metal's base
+ * colour is its F0 reflectance: real alloys sit at 0.4-0.9, and PALETTE.gunmetal in linear
+ * is 0.035. Feeding 0.035 into `metalness: 0.94` produces a body that reflects 3.5% of the
+ * world and has no diffuse term at all, i.e. a black cut-out with a blue rim (the palette
+ * value is blue-biased, B > R, so every specular hit came back cyan). These two helpers
+ * keep the palette as the single source of hue while putting the *level* where the physics
+ * needs it, and bias the reflectance warm so a warm key produces warm highlights.
+ */
+const _C_GROUND = new THREE.Color(PALETTE.groundBounce);
+const _C_DUST = new THREE.Color(PALETTE.dust);
+const _C_SHADOW = new THREE.Color(PALETTE.moonlessShadow);
+
+/** Metal F0: lift a palette diffuse into a plausible reflectance and warm it. */
+function metalF0(hex, gain, warmth) {
+  return new THREE.Color(hex).lerp(_C_GROUND, warmth === undefined ? 0.18 : warmth).multiplyScalar(gain);
+}
+/** Dielectric albedo: same idea, far gentler — polymer really is nearly black. */
+function dielectric(hex, gain, warmth) {
+  return new THREE.Color(hex).lerp(_C_GROUND, warmth === undefined ? 0.10 : warmth).multiplyScalar(gain);
+}
 
 /* ========================================================================== */
 /* Small maths                                                                */
@@ -298,6 +322,11 @@ function bakeVertexTint(geo, opts) {
   const o = opts || {};
   const grain = o.grain !== undefined ? o.grain : 0.085;
   const wear = o.wear !== undefined ? o.wear : 0.09;
+  /** Settled dust on up-facing faces. 0 for anything the hand touches, high on a forearm. */
+  const dust = o.dust !== undefined ? o.dust : 0;
+  /** Grime that collects where a face turns away from the sky — seams, cuffs, undersides. */
+  const grime = o.grime !== undefined ? o.grime : 0;
+  const gain = o.gain !== undefined ? o.gain : 1;
   const pos = geo.getAttribute('position');
   const nrm = geo.getAttribute('normal');
   const n = pos.count;
@@ -315,18 +344,49 @@ function bakeVertexTint(geo, opts) {
     const nx = nrm ? Math.abs(nrm.getX(i)) : 0;
     // Up-facing and outboard faces catch handling wear; undersides stay dark and dusty.
     const w = clamp(ny * 0.65 + nx * 0.35, -1, 1);
-    const v = 1 + g * grain + w * wear;
-    arr[i * 3] = v;
-    arr[i * 3 + 1] = v * (1 + g * grain * 0.22);
-    arr[i * 3 + 2] = v * (1 - g * grain * 0.18);
+    const v = (1 + g * grain + w * wear) * gain;
+    let r = v;
+    let gg = v * (1 + g * grain * 0.22);
+    let b = v * (1 - g * grain * 0.18);
+    if (dust > 0) {
+      // Ash settles on horizontal faces and breaks up with the same noise field, so the
+      // dust edge is ragged rather than a clean lambert term.
+      const d = clamp(dust * clamp(ny, 0, 1) * (0.55 + 1.6 * (g + 0.28)), 0, 0.85);
+      r += (_C_DUST.r * 1.15 - r) * d;
+      gg += (_C_DUST.g * 1.15 - gg) * d;
+      b += (_C_DUST.b * 1.15 - b) * d;
+    }
+    if (grime > 0) {
+      // Downward-facing and inboard faces darken and go slightly cool — sweat, oil, shadow.
+      const c = clamp(grime * clamp(-ny * 0.7 + (1 - nx) * 0.35, 0, 1) * (0.6 + 0.8 * (0.5 - g)), 0, 0.8);
+      r += (_C_SHADOW.r * 0.55 - r) * c;
+      gg += (_C_SHADOW.g * 0.55 - gg) * c;
+      b += (_C_SHADOW.b * 0.55 - b) * c;
+    }
+    arr[i * 3] = r;
+    arr[i * 3 + 1] = gg;
+    arr[i * 3 + 2] = b;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(arr, 3));
   return geo;
 }
 
-/** Simple camo blotching straight into vertex colours — used for the sleeve cuffs. */
-function bakeCamo(geo, tones) {
+/**
+ * Simple camo blotching straight into vertex colours — used for the sleeves and cuffs.
+ *
+ * `gain` exists because the palette tones are authored for *world* surfaces standing in
+ * fog at 30 m. A sleeve 0.4 m from the eye takes the key light head-on with no atmospheric
+ * attenuation at all, so at gain 1.0 PALETTE.sandbag measured brighter than the sunlit
+ * ground behind it, which is the single loudest tell that the arm is not in the scene.
+ * `dust` lays settled ash on up-facing cloth on top of the blotches.
+ */
+function bakeCamo(geo, tones, opts) {
+  const o = opts || {};
+  const gain = o.gain !== undefined ? o.gain : 1;
+  const dust = o.dust !== undefined ? o.dust : 0;
+  const grime = o.grime !== undefined ? o.grime : 0;
   const pos = geo.getAttribute('position');
+  const nrm = geo.getAttribute('normal');
   const n = pos.count;
   const arr = new Float32Array(n * 3);
   const c = new THREE.Color();
@@ -340,10 +400,26 @@ function bakeCamo(geo, tones) {
       hash3(x * 78 + 11, y * 61 + 3, z * 78 + 7) * 0.4;
     const idx = clamp(Math.floor(f * tones.length), 0, tones.length - 1);
     c.set(tones[idx]);
-    const j = 1 + (hash3(x * 190, y * 190, z * 190) - 0.5) * 0.12;
-    arr[i * 3] = c.r * j;
-    arr[i * 3 + 1] = c.g * j;
-    arr[i * 3 + 2] = c.b * j;
+    const j = (1 + (hash3(x * 190, y * 190, z * 190) - 0.5) * 0.12) * gain;
+    let r = c.r * j;
+    let g = c.g * j;
+    let b = c.b * j;
+    const ny = nrm ? nrm.getY(i) : 0;
+    if (dust > 0) {
+      const d = clamp(dust * clamp(ny, 0, 1) * (0.5 + f * 0.9), 0, 0.8);
+      r += (_C_DUST.r * 0.85 - r) * d;
+      g += (_C_DUST.g * 0.85 - g) * d;
+      b += (_C_DUST.b * 0.85 - b) * d;
+    }
+    if (grime > 0) {
+      const k = clamp(grime * clamp(-ny, 0, 1) * (0.4 + (1 - f) * 0.9), 0, 0.8);
+      r *= 1 - k * 0.7;
+      g *= 1 - k * 0.7;
+      b *= 1 - k * 0.66;
+    }
+    arr[i * 3] = r;
+    arr[i * 3 + 1] = g;
+    arr[i * 3 + 2] = b;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(arr, 3));
   return geo;
@@ -465,13 +541,28 @@ function buildMaterials(game) {
       Object.assign({ vertexColors: true, envMapIntensity: 1.0, side: THREE.FrontSide }, params)
     );
     if (borrow) {
-      const nm = borrowMap(game, borrow.from, 'normalMap', borrow.repeat || 6);
-      const rm = borrowMap(game, borrow.from, 'roughnessMap', borrow.repeat || 6);
+      const rp = borrow.repeat || 6;
+      const nm = borrowMap(game, borrow.from, 'normalMap', rp);
+      const rm = borrowMap(game, borrow.from, 'roughnessMap', rp);
       if (nm) {
         m.normalMap = nm;
         m.normalScale.set(borrow.normalScale || 0.35, borrow.normalScale || 0.35);
       }
+      // The ORM green channel *multiplies* our authored roughness, so a borrowed map is what
+      // makes each band spatially varying instead of a flat constant — see §3.4's rule that a
+      // constant roughness reads instantly as amateur.
       if (rm) m.roughnessMap = rm;
+      if (borrow.albedo) {
+        // Only cloth and leather take a borrowed albedo: those are the surfaces whose *value*
+        // is a weave, not a moulded colour. `albedoGain` compensates for the map already
+        // carrying most of the surface value, and is applied only when the map really arrived,
+        // so the no-materials-module fallback still gets a correctly dark flat colour.
+        const am = borrowMap(game, borrow.from, 'map', borrow.albedoRepeat || rp);
+        if (am) {
+          m.map = am;
+          m.color.multiplyScalar(borrow.albedoGain !== undefined ? borrow.albedoGain : 1);
+        }
+      }
     }
     if (env) m.envMap = env;
     m.name = 'vm:' + name;
@@ -479,129 +570,214 @@ function buildMaterials(game) {
     return m;
   };
 
+  /* Viewmodel IBL weight. The gun's shadow side is lit by nothing except the environment
+     probe, so this number *is* whether the unlit half of the receiver retains material read
+     or crushes to a silhouette. Metals carry more of it than dielectrics because for a metal
+     the environment is the entire response. */
+  const ENV_METAL = 1.45;
+  const ENV_POLY = 0.95;
+  const ENV_CLOTH = 0.55; // cloth has no business mirroring the sky; this is what made the arm glow
+
+  /* Four genuinely separate roughness bands, wide enough apart that the same key light
+     produces four visibly different specular characters (§3.8's material-contrast bar):
+     anodised alloy 0.34 -> optic housing 0.28 -> phosphated steel 0.47 -> polymer 0.74,
+     with the rubber and the grip effectively matte at 0.90+. The old set ran 0.29-0.61 with
+     metalness 0.94-1.0 on everything, which is why they collapsed into one gloss. */
   const mats = {
-    /* Receivers, barrel, bolt. Hard-anodised aluminium and phosphated steel. */
+    /* Receiver / rail: hard-anodised 7075. Satin, not glossy. */
     gunmetal: make('gunmetal', {
-      color: new THREE.Color(PALETTE.gunmetal),
-      metalness: 0.94,
-      roughness: 0.44,
+      color: metalF0(PALETTE.gunmetal, 3.4, 0.20),
+      metalness: 0.86,
+      roughness: 0.34,
+      envMapIntensity: ENV_METAL,
     }, { from: 'gunmetal', repeat: 7, normalScale: 0.4 }),
 
-    /* Barrel / bolt steel — darker, tighter, more specular than the anodised receiver. */
-    steel: make('steel', {
-      color: new THREE.Color(PALETTE.gunmetal).multiplyScalar(0.72),
-      metalness: 1.0,
-      roughness: 0.29,
-    }, { from: 'gunmetal', repeat: 11, normalScale: 0.3 }),
+    /* Rail: the same alloy, but every slot corner has been worn back to bright metal by
+       mounts going on and off, so it runs a touch brighter and tighter than the receiver. */
+    rail: make('rail', {
+      color: metalF0(PALETTE.gunmetal, 4.1, 0.24),
+      metalness: 0.90,
+      roughness: 0.30,
+      envMapIntensity: ENV_METAL,
+    }, { from: 'gunmetal', repeat: 5, normalScale: 0.30 }),
 
-    /* Wear points: charging-handle latch, bolt face, mag-catch, safety detent. */
+    /* Barrel: manganese phosphate over steel. Noticeably *rougher* than the receiver — the
+       phosphate conversion coating is a matte crystalline surface, and that contrast against
+       the anodising is most of what says "two different processes". */
+    steel: make('steel', {
+      color: metalF0(PALETTE.gunmetal, 2.5, 0.12),
+      metalness: 0.92,
+      roughness: 0.47,
+      envMapIntensity: ENV_METAL,
+    }, { from: 'gunmetal', repeat: 11, normalScale: 0.34 }),
+
+    /* Optic housing: type-III anodised tube, the tightest finish on the gun. */
+    opticBody: make('opticBody', {
+      color: metalF0(PALETTE.gunmetal, 3.0, 0.14),
+      metalness: 0.88,
+      roughness: 0.28,
+      envMapIntensity: ENV_METAL * 1.1,
+    }, { from: 'gunmetal', repeat: 9, normalScale: 0.26 }),
+
+    /* Wear points: charging-handle latch, bolt face, mag-catch, safety detent. The only
+       genuinely shiny surfaces on the weapon, which is what makes them read as wear. */
     worn: make('worn', {
-      color: new THREE.Color(PALETTE.steelBare).multiplyScalar(0.8),
+      color: metalF0(PALETTE.steelBare, 2.1, 0.10),
       metalness: 1.0,
-      roughness: 0.19,
+      roughness: 0.15,
+      envMapIntensity: ENV_METAL * 1.15,
     }),
 
-    /* Handguard / stock polymer. */
+    /* Handguard / stock polymer: moulded, matte, and a dielectric — its specular is the
+       fixed 4% F0, so pushing roughness right up is the only way to kill the sheen. */
     polymer: make('polymer', {
-      color: new THREE.Color(PALETTE.gunPolymer),
-      metalness: 0.03,
-      roughness: 0.61,
-    }, { from: 'gunPolymer', repeat: 8, normalScale: 0.55 }),
+      color: dielectric(PALETTE.gunPolymer, 2.4),
+      metalness: 0.0,
+      roughness: 0.74,
+      envMapIntensity: ENV_POLY,
+    }, { from: 'gunPolymer', repeat: 8, normalScale: 0.75 }),
 
-    /* Grip polymer: stippled, and the palm swell is polished by use. */
+    /* Grip polymer: aggressive stipple, near-fully rough. */
     grip: make('grip', {
-      color: new THREE.Color(PALETTE.gunPolymer).multiplyScalar(0.88),
-      metalness: 0.02,
-      roughness: 0.78,
-    }, { from: 'gunPolymer', repeat: 18, normalScale: 0.9 }),
+      color: dielectric(PALETTE.gunPolymer, 2.0),
+      metalness: 0.0,
+      roughness: 0.90,
+      envMapIntensity: ENV_POLY * 0.85,
+    }, { from: 'gunPolymer', repeat: 18, normalScale: 1.1 }),
 
     /* Tan furniture — the vector reads warmer than the mk18 at a glance. */
     tan: make('tan', {
-      color: new THREE.Color(PALETTE.gunTan),
-      metalness: 0.02,
-      roughness: 0.66,
-    }, { from: 'gunPolymer', repeat: 9, normalScale: 0.5 }),
+      color: new THREE.Color(PALETTE.gunTan).multiplyScalar(0.62),
+      metalness: 0.0,
+      roughness: 0.68,
+      envMapIntensity: ENV_POLY,
+    }, { from: 'gunPolymer', repeat: 9, normalScale: 0.6 }),
 
-    /* Oiled walnut for the dmr14. */
+    /* Oiled walnut for the dmr14 — satin, the one warm dielectric with a real sheen. */
     wood: make('wood', {
       color: new THREE.Color(PALETTE.woodWeathered).multiplyScalar(1.05),
       metalness: 0.0,
-      roughness: 0.42,
+      roughness: 0.44,
+      envMapIntensity: ENV_POLY,
     }, { from: 'gunWood', repeat: 4, normalScale: 0.6 }),
 
-    /* Buttpad, eyecup, cheek riser pad. */
+    /* Buttpad, eyecup, cheek riser pad. Rubber is the matte extreme of the set. */
     rubber: make('rubber', {
-      color: new THREE.Color(PALETTE.gunRubber),
+      color: dielectric(PALETTE.gunRubber, 2.6),
       metalness: 0.0,
-      roughness: 0.92,
-    }, { from: 'gunPolymer', repeat: 22, normalScale: 1.0 }),
+      roughness: 0.97,
+      envMapIntensity: ENV_POLY * 0.6,
+    }, { from: 'gunPolymer', repeat: 22, normalScale: 1.2 }),
 
     /* Brass, for the round visible at the port and the follower witness holes. */
     brass: make('brass', {
       color: new THREE.Color(PALETTE.brass),
       metalness: 1.0,
-      roughness: 0.31,
+      roughness: 0.33,
+      envMapIntensity: ENV_METAL,
     }),
 
-    /* Gloves. */
+    /* Glove, back of hand: woven nomex. The borrowed fabric albedo is what puts a real weave
+       on the closest surface in the game; the authored colour is only a tint on it. */
     glove: make('glove', {
-      color: new THREE.Color(PALETTE.gunPolymer).multiplyScalar(1.35),
+      color: new THREE.Color(PALETTE.gunPolymer).lerp(new THREE.Color(PALETTE.dirt), 0.45).multiplyScalar(1.6),
       metalness: 0.0,
-      roughness: 0.83,
-    }, { from: 'fabric', repeat: 14, normalScale: 0.8 }),
+      roughness: 0.88,
+      envMapIntensity: ENV_CLOTH,
+    }, { from: 'fabric', repeat: 12, normalScale: 0.85, albedo: true, albedoRepeat: 12, albedoGain: 2.8 }),
 
-    /* Knuckle guards and finger reinforcement — rubberised, slightly glossier. */
+    /* Glove, palm and finger pads: goat leather. Much smoother than the fabric back, and
+       polished further where it actually grips — the roughness map supplies that variation. */
+    glovePalm: make('glovePalm', {
+      color: new THREE.Color(PALETTE.gunRubber).lerp(new THREE.Color(PALETTE.woodWeathered), 0.34).multiplyScalar(1.5),
+      metalness: 0.0,
+      roughness: 0.44,
+      envMapIntensity: ENV_CLOTH * 1.4,
+    }, { from: 'fabric', repeat: 16, normalScale: 0.30, albedo: true, albedoRepeat: 16, albedoGain: 3.4 }),
+
+    /* Knuckle guards and finger reinforcement — moulded TPR, between leather and fabric. */
     gloveHard: make('gloveHard', {
-      color: new THREE.Color(PALETTE.gunRubber).multiplyScalar(1.5),
+      color: dielectric(PALETTE.gunRubber, 2.2),
       metalness: 0.0,
-      roughness: 0.66,
-    }),
+      roughness: 0.58,
+      envMapIntensity: ENV_CLOTH * 1.2,
+    }, { from: 'gunPolymer', repeat: 14, normalScale: 0.9 }),
 
-    /* Sleeve, camouflaged via vertex colour. */
+    /* Sleeve, camouflaged via vertex colour. The albedo is *entirely* the baked camo, so the
+       material colour stays white and `bakeCamo`'s gain controls the level. */
     sleeve: make('sleeve', {
       color: 0xffffff,
       metalness: 0.0,
       roughness: 0.95,
-    }, { from: 'fabric', repeat: 10, normalScale: 0.7 }),
+      envMapIntensity: ENV_CLOTH,
+    }, { from: 'fabric', repeat: 3.2, normalScale: 0.55 }),
+
+    /* Cuff / wrist webbing: heavier weave than the sleeve, and dirtier. */
+    cuff: make('cuff', {
+      color: 0xffffff,
+      metalness: 0.0,
+      roughness: 0.93,
+      envMapIntensity: ENV_CLOTH * 0.8,
+    }, { from: 'fabric', repeat: 2.4, normalScale: 0.8 }),
 
     /* Hazard-yellow selector markings and the odd stencilled detail. */
     marking: make('marking', {
       color: new THREE.Color(PALETTE.hazardYellow),
       metalness: 0.1,
-      roughness: 0.55,
+      roughness: 0.52,
+      envMapIntensity: ENV_POLY,
     }),
 
     /* Deep shadow inserts: ejection port recess, M-LOK slot bottoms, bore. */
     cavity: make('cavity', {
       color: new THREE.Color(0x08090a),
-      metalness: 0.2,
-      roughness: 0.95,
+      metalness: 0.1,
+      roughness: 0.97,
+      envMapIntensity: ENV_POLY * 0.35,
     }),
   };
 
   /* Optic glass. Transmission would be lovely and is far too expensive for a viewmodel that
-     is on screen every frame; a low-opacity, low-roughness standard material with a strong
-     env response sells it, and the coating disc below adds the tell-tale blue-magenta cast. */
+     is on screen every frame, so this is an alpha-blended standard material — but the numbers
+     have to make it read *darker* than the sky behind it, which is what real coated glass
+     does. The previous set (opacity 0.24, roughness 0.045, envMapIntensity 2.6) was a mirror
+     with almost no body colour: 24% of a 2.6x sky reflection is still a blown white clip and
+     that is exactly how it rendered. Now the body colour is a deep blue-green (the coating
+     cast), it carries most of the blend, and the specular is a sheen rather than a mirror. */
   mats.glass = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(PALETTE.glass),
+    color: new THREE.Color(PALETTE.glass).lerp(new THREE.Color(PALETTE.tarpBlue), 0.72).multiplyScalar(0.42),
     metalness: 0.0,
-    roughness: 0.045,
+    roughness: 0.13,
     transparent: true,
-    opacity: 0.24,
+    opacity: 0.72,
     depthWrite: false,
-    envMapIntensity: 2.6,
+    envMapIntensity: 0.85,
   });
   if (env) mats.glass.envMap = env;
   owned.push(mats.glass);
 
+  /* Anti-reflective coating flash: the green-gold bloom every combat optic throws off axis.
+     Additive and weak — it is a tint on the glass, not a light source. */
   mats.coating = new THREE.MeshBasicMaterial({
-    color: new THREE.Color(0.11, 0.16, 0.34),
+    color: new THREE.Color(0.055, 0.105, 0.082),
+    transparent: true,
+    opacity: 0.55,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  owned.push(mats.coating);
+
+  /* Fresnel rim: a thin annulus at the edge of the glass. Grazing angles are where a lens
+     goes bright, and having the *rim* be the bright part rather than the centre is the whole
+     difference between reading as glass and reading as a painted white disc. */
+  mats.coatRim = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(0.30, 0.44, 0.52),
     transparent: true,
     opacity: 0.5,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
   });
-  owned.push(mats.coating);
+  owned.push(mats.coatRim);
 
   /* Reticle. Colour deliberately > 1.0 so the bloom threshold at 1.0 in HDR catches it. */
   mats.reticle = new THREE.MeshBasicMaterial({
@@ -766,13 +942,14 @@ function buildHandguard(asm, cfg) {
   }
 
   // Picatinny teeth along the top rail — the single most recognisable gun silhouette cue.
-  const teeth = Math.max(3, Math.round(len / 0.0102));
+  // Same coarser pitch as the receiver rail; see the note in buildReceiver.
+  const teeth = Math.max(3, Math.round(len / 0.0168));
   for (let t = 0; t < teeth; t++) {
-    const zz = z0 - 0.018 - (len - 0.034) * (t / (teeth - 1));
+    const zz = z0 - 0.020 - (len - 0.040) * (t / Math.max(1, teeth - 1));
     asm.add(
-      chamferBox(0.0206, 0.0042, 0.0058, { r: 0.0011, bevel: 0.0009, curveSegments: 2 }),
-      'gunmetal',
-      { p: [0, r * 0.92 + 0.0055, zz] }
+      chamferBox(0.0206, 0.0046, 0.0098, { r: 0.0019, bevel: 0.0016, curveSegments: 3 }),
+      'rail',
+      { p: [0, r * 0.92 + 0.0058, zz] }
     );
   }
 
@@ -946,10 +1123,10 @@ function buildOptic(mats, cfg) {
   const front = kind === 'lpvo' ? zc - 0.082 : zc - 0.026;
 
   // Mount: a bevelled cantilever with two cross-bolts and a QD throw lever.
-  asm.add(chamferBox(0.030, 0.0165, kind === 'lpvo' ? 0.088 : 0.052, { r: 0.0035, bevel: 0.0022, curveSegments: 4 }), 'gunmetal', {
+  asm.add(chamferBox(0.030, 0.0165, kind === 'lpvo' ? 0.088 : 0.052, { r: 0.0035, bevel: 0.0022, curveSegments: 4 }), 'opticBody', {
     p: [0, yc - tubeR - 0.0075, zc - (kind === 'lpvo' ? 0.010 : 0.000)],
   });
-  asm.add(chamferBox(0.0355, 0.0075, kind === 'lpvo' ? 0.084 : 0.048, { r: 0.0028, bevel: 0.0018, curveSegments: 3 }), 'gunmetal', {
+  asm.add(chamferBox(0.0355, 0.0075, kind === 'lpvo' ? 0.084 : 0.048, { r: 0.0028, bevel: 0.0018, curveSegments: 3 }), 'opticBody', {
     p: [0, yc - tubeR - 0.0175, zc - (kind === 'lpvo' ? 0.010 : 0.000)],
   });
   asm.add(chamferBoxX(0.040, 0.0075, 0.010, { r: 0.0022, bevel: 0.0015, curveSegments: 3 }), 'worn', {
@@ -958,7 +1135,7 @@ function buildOptic(mats, cfg) {
   // Rings.
   const ringZ = kind === 'lpvo' ? [zc + 0.028, zc - 0.030] : [zc + 0.004];
   for (const rz of ringZ) {
-    asm.add(tubeZ(tubeR + 0.0042, tubeR - 0.0002, rz + 0.007, rz - 0.007, 20), 'gunmetal', { p: [0, yc, 0] });
+    asm.add(tubeZ(tubeR + 0.0042, tubeR - 0.0002, rz + 0.007, rz - 0.007, 20), 'opticBody', { p: [0, yc, 0] });
     // Ring clamp screws, one each side.
     asm.addMirrored(() => latheY([[0.0021, 0], [0.0021, 0.0042], [0.0014, 0.0048]], 8), 'worn', {
       p: [tubeR + 0.0034, yc - 0.0055, rz],
@@ -988,7 +1165,7 @@ function buildOptic(mats, cfg) {
     profile.push([tubeR, front]);
     profile.push([tubeR * 0.74, front]);
   }
-  asm.add(latheZ(profile, 24), 'gunmetal', { p: [0, yc, 0] });
+  asm.add(latheZ(profile, 24), 'opticBody', { p: [0, yc, 0] });
 
   // Interior wall — deliberately near-black so the glass reads as a tunnel, not a disc.
   asm.add(tubeZ(glassR * 0.995, glassR * 0.94, back - 0.004, front + 0.004, 20), 'cavity', { p: [0, yc, 0] });
@@ -1007,18 +1184,18 @@ function buildOptic(mats, cfg) {
       ],
       12
     );
-  asm.add(turret(), 'gunmetal', { p: [0, yc + tubeR - 0.001, turretZ], r: [Math.PI * 0.5, 0, 0] });
-  asm.add(turret(), 'gunmetal', { p: [tubeR - 0.001, yc, turretZ], r: [0, -Math.PI * 0.5, 0] });
+  asm.add(turret(), 'opticBody', { p: [0, yc + tubeR - 0.001, turretZ], r: [Math.PI * 0.5, 0, 0] });
+  asm.add(turret(), 'opticBody', { p: [tubeR - 0.001, yc, turretZ], r: [0, -Math.PI * 0.5, 0] });
   if (kind === 'lpvo') {
     // Magnification ring with a throw lever.
-    asm.add(latheZ([[tubeR * 1.10, back - 0.014], [tubeR * 1.10, back - 0.030]], 20), 'gunmetal', { p: [0, yc, 0] });
+    asm.add(latheZ([[tubeR * 1.10, back - 0.014], [tubeR * 1.10, back - 0.030]], 20), 'opticBody', { p: [0, yc, 0] });
     asm.add(chamferBox(0.0075, 0.030, 0.011, { r: 0.0022, bevel: 0.0014, curveSegments: 3 }), 'polymer', {
       p: [tubeR * 1.10 + 0.012, yc + 0.006, back - 0.022],
       r: [0, 0, -0.5],
     });
   } else {
     // Brightness rheostat on the left of a red dot.
-    asm.add(latheZ([[0.0058, 0], [0.0058, -0.008], [0.0074, -0.009], [0.0074, -0.016], [1e-4, -0.016]], 12), 'gunmetal', {
+    asm.add(latheZ([[0.0058, 0], [0.0058, -0.008], [0.0074, -0.009], [0.0074, -0.016], [1e-4, -0.016]], 12), 'opticBody', {
       p: [-tubeR + 0.001, yc, turretZ + 0.010],
       r: [0, Math.PI * 0.5, 0],
     });
@@ -1032,10 +1209,15 @@ function buildOptic(mats, cfg) {
     p: [0, yc, 0],
   });
 
-  const group = asm.build(mats, { gunmetal: { grain: 0.06, wear: 0.11 } });
+  const group = asm.build(mats, { opticBody: { grain: 0.06, wear: 0.11 } });
   group.name = 'optic';
 
-  /* --- Glass: two discs, the ocular and the objective. -------------------- */
+  /* --- Glass: two discs, the ocular and the objective. --------------------
+     Draw order matters more than it looks. Everything here is depthWrite:false and
+     transparent, so three sorts it by renderOrder and *nothing* occludes anything else;
+     the numbers below simply stack coating over glass and put the reticle on top of both.
+     The reticle used to inherit renderOrder from its Group, which three ignores — group
+     render order is not propagated — so the dot was sorting at 0, underneath the glass. */
   const glassGeo = new THREE.CircleGeometry(glassR, 24);
   const ocular = new THREE.Mesh(glassGeo, mats.glass);
   ocular.position.set(0, yc, back - 0.006);
@@ -1050,7 +1232,8 @@ function buildOptic(mats, cfg) {
   objective.frustumCulled = false;
   group.add(objective);
 
-  // Anti-reflective coating flash — the blue-magenta cast every combat optic has.
+  // Anti-reflective coating flash — the green-gold cast every combat optic has, on both
+  // elements, because the objective is the one the player sees for 99% of the match.
   const coat = new THREE.Mesh(glassGeo, mats.coating);
   coat.position.set(0, yc, back - 0.0055);
   coat.scale.setScalar(0.985);
@@ -1058,10 +1241,33 @@ function buildOptic(mats, cfg) {
   coat.frustumCulled = false;
   group.add(coat);
 
+  const coatFront = new THREE.Mesh(glassGeo, mats.coating);
+  coatFront.position.set(0, yc, front + 0.0055);
+  coatFront.rotation.y = Math.PI;
+  coatFront.scale.setScalar(0.985);
+  coatFront.renderOrder = 9;
+  coatFront.frustumCulled = false;
+  group.add(coatFront);
+
+  // Fresnel rim on the objective. A lens goes bright at grazing incidence and stays dark on
+  // axis; a thin bright annulus is a cheap, view-independent stand-in that reads correctly
+  // from the off-axis angles hipfire actually shows.
+  const rimGeo = new THREE.RingGeometry(glassR * 0.80, glassR * 0.995, 24);
+  const rim = new THREE.Mesh(rimGeo, mats.coatRim);
+  rim.position.set(0, yc, front + 0.0052);
+  rim.renderOrder = 10;
+  rim.frustumCulled = false;
+  group.add(rim);
+
+  const rimBack = new THREE.Mesh(rimGeo, mats.coatRim);
+  rimBack.position.set(0, yc, back - 0.0052);
+  rimBack.renderOrder = 10;
+  rimBack.frustumCulled = false;
+  group.add(rimBack);
+
   /* --- Reticle ------------------------------------------------------------ */
   const reticle = new THREE.Group();
   reticle.name = 'reticle';
-  reticle.renderOrder = 12;
 
   if (kind === 'lpvo') {
     // Illuminated centre dot + a broken circle + heavy posts at 3, 6 and 9 o'clock.
@@ -1090,7 +1296,11 @@ function buildOptic(mats, cfg) {
   const glow = new THREE.Mesh(new THREE.CircleGeometry(kind === 'lpvo' ? 6.5 : 3.4, 14), mats.reticleGlow);
   glow.position.z = -0.0002;
   reticle.add(glow);
-  for (const c of reticle.children) c.frustumCulled = false;
+  // renderOrder has to live on the meshes, not the Group — see the note above the glass.
+  for (const c of reticle.children) {
+    c.frustumCulled = false;
+    c.renderOrder = c === glow ? 11 : 12;
+  }
   group.add(reticle);
 
   const sightAnchor = new THREE.Object3D();
@@ -1098,7 +1308,14 @@ function buildOptic(mats, cfg) {
   sightAnchor.position.set(0, yc, (back + front) * 0.5);
   group.add(sightAnchor);
 
-  return { group, reticle, sightAnchor, glassR, back, front, yc };
+  // The reticle plane sits just behind the objective, which is where the aperture clamp in
+  // update() confines it so the dot can never float outside the tube.
+  const reticlePlane = new THREE.Object3D();
+  reticlePlane.name = 'reticlePlane';
+  reticlePlane.position.set(0, yc, front + 0.014);
+  group.add(reticlePlane);
+
+  return { group, reticle, sightAnchor, reticlePlane, glassR, back, front, yc };
 }
 
 /** Buffer tube / receiver extension with adjustment notches, plus a stock that slides on it. */
@@ -1199,15 +1416,21 @@ function buildReceiver(asm, mats, cfg) {
   asm.add(chamferBox(upW, upH, upLen, { r: 0.0072, bevel: 0.0028, curveSegments: 5 }), 'gunmetal', {
     p: [0, upH * 0.5 - 0.0135, (upperZ0 + upperZ1) * 0.5],
   });
-  // Top rail with real teeth — runs the length of the upper.
-  const teeth = Math.max(4, Math.round(upLen / 0.0102));
-  asm.add(chamferBox(0.0215, 0.0055, upLen - 0.004, { r: 0.0018, bevel: 0.0013, curveSegments: 3 }), 'gunmetal', {
+  /* Top rail. Tooth *pitch* is a viewmodel-scale decision, not an accuracy one: a real
+     1913 rail is 10.2 mm pitch with a 5.35 mm slot, and at 0.88 model scale 0.4 m from a
+     60° camera that slot lands on 3-4 px — below what the sharpen and chromatic passes can
+     carry, which is why the rail resolved as red/green fringed speckle instead of slots.
+     16.8 mm pitch with a 7 mm slot keeps every feature over 10 px and still reads as
+     picatinny; the bevels go up with it so the tooth edges are a highlight, not an alias. */
+  const railPitch = 0.0168;
+  const teeth = Math.max(3, Math.round(upLen / railPitch));
+  asm.add(chamferBox(0.0215, 0.0055, upLen - 0.004, { r: 0.0018, bevel: 0.0013, curveSegments: 3 }), 'rail', {
     p: [0, upH - 0.0135 + 0.0015, (upperZ0 + upperZ1) * 0.5],
   });
   for (let t = 0; t < teeth; t++) {
-    const zz = upperZ0 - 0.006 - (upLen - 0.012) * (t / (teeth - 1));
-    asm.add(chamferBox(0.0206, 0.0042, 0.0058, { r: 0.0011, bevel: 0.0009, curveSegments: 2 }), 'gunmetal', {
-      p: [0, upH - 0.0135 + 0.0060, zz],
+    const zz = upperZ0 - 0.008 - (upLen - 0.016) * (t / Math.max(1, teeth - 1));
+    asm.add(chamferBox(0.0206, 0.0046, 0.0098, { r: 0.0019, bevel: 0.0016, curveSegments: 3 }), 'rail', {
+      p: [0, upH - 0.0135 + 0.0062, zz],
     });
   }
   // Brass deflector and forward assist — the two lumps that make an AR silhouette read.
@@ -1399,10 +1622,14 @@ function buildMk18(mats) {
   const optic = buildOptic(mats, { kind: 'reddot', z: -0.062, y: 0.0555 });
 
   const stat = asm.build(mats, {
-    gunmetal: { grain: 0.075, wear: 0.10 },
-    polymer: { grain: 0.11, wear: 0.06 },
-    grip: { grain: 0.16, wear: 0.05 },
-    steel: { grain: 0.055, wear: 0.14 },
+    gunmetal: { grain: 0.075, wear: 0.10, dust: 0.10 },
+    // The rail takes the heaviest wear term of anything on the gun: mounts clamping onto the
+    // slot corners polish them back to bright metal, and that band of brighter edges is what
+    // makes machined aluminium read as machined aluminium.
+    rail: { grain: 0.06, wear: 0.30, dust: 0.08 },
+    polymer: { grain: 0.11, wear: 0.06, dust: 0.09 },
+    grip: { grain: 0.16, wear: 0.05, grime: 0.16 },
+    steel: { grain: 0.055, wear: 0.14, dust: 0.07 },
   });
   group.add(stat, optic.group, rec.dustPivot, rec.bolt, rec.chargingHandle, rec.selector, trigger);
 
@@ -1429,10 +1656,15 @@ function buildMk18(mats) {
       eject: [0.024, 0.006, rec.portZ],
       ejectDir: [0.86, 0.44, 0.26],
       gripFire: [0, -0.052, -0.014],
-      gripSupport: [0, -0.026, -0.300],
+      /* C-clamp on the handguard, solved rather than eyeballed. In the support hand's own
+         frame the fingers wrap a circle centred 46 mm forward of and 36 mm below the palm
+         origin; converting that back through the anchor rotation and the 0.88 model scale
+         puts the anchor here, which lands the palm's metacarpal edge tangent to the 21.8 mm
+         (world) handguard and closes the fingertips on its far side. */
+      gripSupport: [-0.052, -0.041, -0.300],
       boltCatch: [-0.026, -0.022, -0.090],
       sight: [0, optic.sightAnchor.position.y, optic.sightAnchor.position.z],
-      magGrab: [0, -0.055, 0.004],
+      magGrab: [-0.028, -0.055, 0.004],
     },
   };
 }
@@ -1504,10 +1736,11 @@ function buildVector(mats) {
   const optic = buildOptic(mats, { kind: 'reddot', z: -0.056, y: 0.0585 });
 
   const stat = asm.build(mats, {
-    gunmetal: { grain: 0.07, wear: 0.11 },
-    tan: { grain: 0.13, wear: 0.09 },
-    grip: { grain: 0.17, wear: 0.05 },
-    steel: { grain: 0.055, wear: 0.15 },
+    gunmetal: { grain: 0.07, wear: 0.11, dust: 0.10 },
+    rail: { grain: 0.06, wear: 0.30, dust: 0.08 },
+    tan: { grain: 0.13, wear: 0.09, dust: 0.12 },
+    grip: { grain: 0.17, wear: 0.05, grime: 0.16 },
+    steel: { grain: 0.055, wear: 0.15, dust: 0.07 },
   });
   group.add(stat, optic.group, rec.dustPivot, rec.bolt, rec.chargingHandle, rec.selector, trigger);
 
@@ -1534,10 +1767,14 @@ function buildVector(mats) {
       eject: [0.026, 0.008, rec.portZ],
       ejectDir: [0.90, 0.38, 0.20],
       gripFire: [0, -0.056, -0.034],
-      gripSupport: [0, -0.062, -0.250],
+      /* The vector's support hand is on a vertical foregrip, so the C-clamp does not apply:
+         roll the wrist a quarter turn so the palm faces the grip from the left and pitch it
+         so the fingers wrap forward around it. */
+      gripSupport: [-0.034, -0.052, -0.232],
+      gripSupportRot: [Math.PI * 0.5, 0, -Math.PI * 0.5],
       boltCatch: [-0.028, -0.024, -0.100],
       sight: [0, optic.sightAnchor.position.y, optic.sightAnchor.position.z],
-      magGrab: [0, -0.070, 0.002],
+      magGrab: [-0.028, -0.070, 0.002],
     },
   };
 }
@@ -1652,10 +1889,11 @@ function buildDmr14(mats) {
   const optic = buildOptic(mats, { kind: 'lpvo', z: -0.052, y: 0.0625 });
 
   const stat = asm.build(mats, {
-    gunmetal: { grain: 0.07, wear: 0.10 },
-    wood: { grain: 0.14, wear: 0.11 },
-    grip: { grain: 0.16, wear: 0.05 },
-    steel: { grain: 0.05, wear: 0.14 },
+    gunmetal: { grain: 0.07, wear: 0.10, dust: 0.10 },
+    rail: { grain: 0.06, wear: 0.30, dust: 0.08 },
+    wood: { grain: 0.14, wear: 0.11, dust: 0.10 },
+    grip: { grain: 0.16, wear: 0.05, grime: 0.16 },
+    steel: { grain: 0.05, wear: 0.14, dust: 0.07 },
   });
   group.add(stat, optic.group, rec.dustPivot, rec.bolt, rec.chargingHandle, rec.selector, trigger);
 
@@ -1682,10 +1920,11 @@ function buildDmr14(mats) {
       eject: [0.026, 0.008, rec.portZ],
       ejectDir: [0.88, 0.42, 0.18],
       gripFire: [0, -0.058, -0.020],
-      gripSupport: [0, -0.034, -0.316],
+      // Same C-clamp solve as the mk18, against the wooden forend's ~26 mm effective radius.
+      gripSupport: [-0.053, -0.044, -0.308],
       boltCatch: [-0.028, -0.024, -0.100],
       sight: [0, optic.sightAnchor.position.y, optic.sightAnchor.position.z],
-      magGrab: [0, -0.052, 0.006],
+      magGrab: [-0.028, -0.052, 0.006],
     },
   };
 }
@@ -1694,77 +1933,135 @@ function buildDmr14(mats) {
 /* Arms                                                                       */
 /* ========================================================================== */
 
-/** One gloved hand, posed in a fixed grip curl. Fingers are separate meshes. */
-function buildHand(mats, side) {
+/**
+ * One gloved hand, posed in a fixed grip curl. Fingers are separate meshes.
+ *
+ * Local convention: the back of the hand faces +Y, the palm faces -Y, the fingers extend
+ * along -Z and curl towards the palm. `cfg.wrap` is the radius of the thing being gripped:
+ * it sets how far round the fingers travel, so the same builder produces a fist closed on a
+ * 29 mm pistol grip and a hand opened out around a 50 mm handguard. `cfg.trigger` straightens
+ * the index finger and lays it on the trigger instead of curling it into the palm.
+ *
+ * Materials are split three ways across the hand — leather palm and finger pads, woven
+ * fabric back and gussets, moulded knuckle armour — because a single material over the whole
+ * glove is precisely the "smooth Lambert gradient over a silhouette" this is 0.4 m from the
+ * camera to avoid.
+ */
+function buildHand(mats, side, cfg) {
+  const o = cfg || {};
   const asm = new Assembly();
   const s = side; // +1 = right, -1 = left
+  const wrap = o.wrap !== undefined ? o.wrap : 0.016;
+  /* Curl needed to lay the fingers around a cylinder of radius `wrap`, in *world* metres —
+     the hands are not parented under the weapon holder, so they are at scale 1 while the
+     gun is at ~0.88, and the wrap radius has to be quoted in the hands' own units. Tight on
+     a 15 mm pistol grip, open on a 22 mm handguard. Calibrated so that at wrap = 0.026 the
+     fingertip pads land within a millimetre of the cylinder surface rather than sticking
+     out straight past it, which is what "no fingers that wrap anything" was describing. */
+  const curlK = clamp(0.034 / (wrap + 0.010), 0.70, 1.40);
 
-  // Palm: a chamfered wedge, thicker at the thenar side.
-  asm.add(chamferBox(0.042, 0.026, 0.078, { r: 0.010, bevel: 0.0038, curveSegments: 5 }), 'glove', {
+  // Palm: a chamfered wedge, thicker at the thenar side. Leather.
+  asm.add(chamferBox(0.042, 0.026, 0.078, { r: 0.010, bevel: 0.0038, curveSegments: 5 }), 'glovePalm', {
     p: [0, 0, 0.006],
     r: [0, 0, 0],
   });
+  // Fabric back panel over the palm block — this is the panel split that gives the glove a
+  // visible seam line instead of one continuous surface.
+  asm.add(chamferBox(0.0405, 0.0085, 0.070, { r: 0.0075, bevel: 0.0030, curveSegments: 5 }), 'glove', {
+    p: [0, 0.0105, 0.004],
+  });
+  // Raised seam piping around the panel edge, one strip each side. It is 1.4 mm proud, which
+  // is enough to catch the key and read as stitching at viewmodel magnification.
+  asm.addMirrored(() => chamferBox(0.0026, 0.0034, 0.064, { r: 0.0011, bevel: 0.0008, curveSegments: 2 }), 'gloveHard', {
+    p: [0.0198, 0.0072, 0.004],
+  });
   // Back-of-hand knuckle guard.
   asm.add(chamferBox(0.040, 0.0075, 0.052, { r: 0.0055, bevel: 0.0026, curveSegments: 4 }), 'gloveHard', {
-    p: [0, 0.0148, -0.004],
+    p: [0, 0.0158, -0.004],
     r: [-0.10, 0, 0],
   });
   // Knuckle domes.
   for (let i = 0; i < 4; i++) {
     asm.add(latheY([[0.0055, 0], [0.0062, 0.0026], [0.0038, 0.0052], [1e-4, 0.0058]], 8), 'gloveHard', {
-      p: [(-0.0145 + i * 0.0097) * s, 0.017, -0.028],
+      p: [(-0.0145 + i * 0.0097) * s, 0.018, -0.028],
     });
   }
-  // Wrist cuff transition.
-  asm.add(latheZ([[0.0215, 0.036], [0.0235, 0.030], [0.0225, 0.022], [0.0205, 0.020]], 14), 'glove', null);
+  // Wrist cuff transition: a rolled fabric band, so the glove ends in a cuff rather than a
+  // polygonal cut where it meets the sleeve.
+  asm.add(latheZ([[0.0215, 0.036], [0.0250, 0.030], [0.0255, 0.020], [0.0225, 0.016], [0.0205, 0.016]], 14), 'cuff', null);
+  // Wrist closure strap across the back of the cuff.
+  asm.add(chamferBox(0.040, 0.0040, 0.011, { r: 0.0016, bevel: 0.0010, curveSegments: 2 }), 'gloveHard', {
+    p: [0, 0.0155, 0.026],
+  });
 
-  // Four fingers, each two phalanges curled around the grip.
+  // Four fingers, each two phalanges curled around whatever is being held.
   for (let i = 0; i < 4; i++) {
     const fx = (-0.0148 + i * 0.0099) * s;
-    const spread = (i - 1.5) * 0.05;
-    const curl = 1.02 + i * 0.06;
+    // Wider splay than before so the fingers read as four separate digits rather than one
+    // mitten — finger separation is explicitly what the silhouette was missing.
+    const spread = (i - 1.5) * 0.085;
+    const isTrigger = !!o.trigger && i === 0;
+    // The trigger finger comes off the grip and lies almost straight along the trigger.
+    const curl = isTrigger ? 0.30 : (1.02 + i * 0.06) * curlK;
     const r0 = 0.0062 - i * 0.0004;
+    const yaw = isTrigger ? spread * s * 0.4 : spread * s;
     // Proximal.
     asm.add(chamferBox(r0 * 2, r0 * 2, 0.030, { r: r0 * 0.85, bevel: r0 * 0.4, curveSegments: 4 }), 'glove', {
       p: [fx, -0.004, -0.046],
-      r: [-curl * 0.55, spread * s, 0],
+      r: [-curl * 0.55, yaw, 0],
     });
     // Distal, curled under.
+    const pz = -0.046 - Math.cos(curl * 0.55) * 0.024;
+    const py = -0.004 - Math.sin(curl * 0.55) * 0.026;
     asm.add(chamferBox(r0 * 1.8, r0 * 1.8, 0.026, { r: r0 * 0.8, bevel: r0 * 0.38, curveSegments: 4 }), 'glove', {
-      p: [fx + Math.sin(spread * s) * 0.012, -0.004 - Math.sin(curl * 0.55) * 0.026, -0.046 - Math.cos(curl * 0.55) * 0.024],
-      r: [-curl * 1.32, spread * s, 0],
+      p: [fx + Math.sin(yaw) * 0.012, py, pz],
+      r: [-curl * (isTrigger ? 1.05 : 1.32), yaw, 0],
     });
-    // Reinforced fingertip pad.
-    asm.add(latheY([[0.0044, 0], [0.0048, 0.0022], [0.0028, 0.0044], [1e-4, 0.005]], 7), 'gloveHard', {
+    // Reinforced fingertip pad — leather, like the palm, so the grip surfaces match.
+    const dc = curl * (isTrigger ? 1.05 : 1.32);
+    asm.add(latheY([[0.0044, 0], [0.0048, 0.0022], [0.0028, 0.0044], [1e-4, 0.005]], 7), 'glovePalm', {
       p: [
-        fx + Math.sin(spread * s) * 0.020,
-        -0.004 - Math.sin(curl * 0.55) * 0.026 - Math.sin(curl * 1.32) * 0.022,
-        -0.046 - Math.cos(curl * 0.55) * 0.024 - Math.cos(curl * 1.32) * 0.020,
+        fx + Math.sin(yaw) * 0.020,
+        py - Math.sin(dc) * 0.022,
+        pz - Math.cos(dc) * 0.020,
       ],
-      r: [-curl * 1.32 + Math.PI * 0.5, 0, 0],
+      r: [-dc + Math.PI * 0.5, 0, 0],
     });
   }
 
   // Thumb: two segments wrapping the far side of the grip.
   asm.add(chamferBox(0.0135, 0.0125, 0.030, { r: 0.0052, bevel: 0.0024, curveSegments: 4 }), 'glove', {
     p: [-0.020 * s, -0.006, -0.020],
-    r: [-0.42, 0.62 * s, 0.30 * s],
+    r: [-0.42 * curlK, 0.62 * s, 0.30 * s],
   });
-  asm.add(chamferBox(0.0118, 0.0110, 0.028, { r: 0.0046, bevel: 0.0022, curveSegments: 4 }), 'glove', {
+  asm.add(chamferBox(0.0118, 0.0110, 0.028, { r: 0.0046, bevel: 0.0022, curveSegments: 4 }), 'glovePalm', {
     p: [-0.030 * s, -0.010, -0.043],
-    r: [-0.75, 1.02 * s, 0.34 * s],
+    r: [-0.75 * curlK, 1.02 * s, 0.34 * s],
   });
 
-  const g = asm.build(mats, { glove: { grain: 0.12, wear: 0.05 }, gloveHard: { grain: 0.09, wear: 0.13 } });
+  /* Vertex treatment per panel. The palm is polished by use and picks up no dust; the fabric
+     back is dusty on top and grimy underneath; the cuff is the dirtiest thing on the rig. */
+  const g = asm.build(mats, {
+    glove: { grain: 0.13, wear: 0.05, dust: 0.13, grime: 0.22 },
+    glovePalm: { grain: 0.10, wear: 0.09, grime: 0.30 },
+    gloveHard: { grain: 0.09, wear: 0.13, dust: 0.10 },
+    cuff: { grain: 0.16, wear: 0.04, dust: 0.10, grime: 0.34 },
+  });
   g.name = side > 0 ? 'handR' : 'handL';
   return g;
 }
 
 /**
  * A full arm: sleeve cuff + tapered forearm + upper arm + hand, ready for two-bone IK.
- * The hand is a child of the arm group but positioned in the arm group's local space.
+ *
+ * `hand` is an empty Object3D that the IK writes to; the built mesh hangs off it with a
+ * fixed local orientation. That indirection is what lets the support hand sit palm-up and
+ * across the handguard (fingers running perpendicular to the bore, wrapping the ribs) while
+ * the firing hand keeps the palm-down, fingers-forward pose a pistol grip needs — without
+ * the per-frame IK having to know which is which.
  */
-function buildArm(mats, side, lengths) {
+function buildArm(mats, side, lengths, cfg) {
+  const o = cfg || {};
   const group = new THREE.Group();
   group.name = side > 0 ? 'armR' : 'armL';
 
@@ -1779,28 +2076,62 @@ function buildArm(mats, side, lengths) {
   );
   fore.frustumCulled = false;
 
-  // Multicam-ish camo baked straight into the sleeve vertex colours.
-  const tones = [PALETTE.gunPolymer, PALETTE.dirt, PALETTE.sandbag, PALETTE.weeds, PALETTE.woodWeathered];
-  bakeCamo(upper.geometry, tones);
-  bakeCamo(fore.geometry, tones);
+  /* Multicam-ish camo baked straight into the sleeve vertex colours.
+     The gain is the important number. These tones are authored in art.js for world surfaces
+     seen through 30 m of ash; on a sleeve 0.4 m from the eye taking the key head-on there is
+     no atmosphere to knock them back, and at gain 1.0 the forearm measured *brighter* than
+     the sunlit ground behind it — the arm read as a light source rather than as cloth in the
+     scene. 0.58 puts it where cloth in that light belongs: clearly darker than the sand. */
+  const tones = [PALETTE.gunPolymer, PALETTE.dirt, PALETTE.railGreen, PALETTE.woodWeathered, PALETTE.weeds];
+  bakeCamo(upper.geometry, tones, { gain: 0.58, dust: 0.30, grime: 0.35 });
+  bakeCamo(fore.geometry, tones, { gain: 0.58, dust: 0.36, grime: 0.32 });
 
-  // Cuff: a rolled band at the wrist end of the forearm, darker fabric.
+  // Cuff: a rolled band at the wrist end of the forearm, darker fabric, its own material so
+  // it does not share the sleeve's tiling.
   const cuff = new THREE.Mesh(
-    bakeVertexTint(latheY([[0.0300, 0], [0.0345, 0.006], [0.0350, 0.024], [0.0310, 0.030], [0.0295, 0.030]], 14), {
+    bakeVertexTint(latheY([[0.0300, 0], [0.0355, 0.006], [0.0362, 0.026], [0.0318, 0.033], [0.0295, 0.033]], 14), {
       grain: 0.13,
       wear: 0.04,
     }),
-    mats.sleeve
+    mats.cuff
   );
-  bakeCamo(cuff.geometry, [PALETTE.gunPolymer, PALETTE.dirt, PALETTE.gunRubber]);
-  cuff.position.y = lengths.fore - 0.030;
+  bakeCamo(cuff.geometry, [PALETTE.gunPolymer, PALETTE.dirt, PALETTE.gunRubber], { gain: 0.52, grime: 0.4 });
+  cuff.position.y = lengths.fore - 0.033;
   cuff.frustumCulled = false;
   fore.add(cuff);
 
-  const hand = buildHand(mats, side);
+  /* Elbow pad, sitting on the elbow end of the forearm (limb geometry runs +Y from the
+     proximal joint, so y = 0 on `fore` *is* the elbow). It exists to break the straight-
+     sided cone silhouette that made the sleeve read as an unwrapped putty blob, and its
+     radius has to clear the forearm's 48 mm root or it disappears inside it. */
+  const pad = new THREE.Mesh(
+    bakeVertexTint(latheY([[0.0480, 0], [0.0565, 0.012], [0.0570, 0.036], [0.0490, 0.050], [1e-4, 0.054]], 14), {
+      grain: 0.10,
+      wear: 0.16,
+      dust: 0.16,
+      grime: 0.2,
+    }),
+    mats.gloveHard
+  );
+  pad.position.y = -0.004;
+  pad.frustumCulled = false;
+  fore.add(pad);
+
+  // IK-driven wrist. The visual hand hangs off it at a fixed orientation.
+  const hand = new THREE.Group();
+  hand.name = side > 0 ? 'wristR' : 'wristL';
+  const handMesh = buildHand(mats, side, { wrap: o.wrap, trigger: o.trigger });
+  if (o.palmUp) {
+    /* Rotate hand space so the palm faces +Y and the fingers run along +X: the C-clamp a
+       support hand makes on a handguard. Derived rather than eyeballed — the matrix with
+       columns [+Z, -Y, -X] is exactly Euler XYZ (0, -pi/2, pi). */
+    handMesh.rotation.set(0, -Math.PI * 0.5, Math.PI);
+  }
+  hand.add(handMesh);
+  hand.frustumCulled = false;
 
   group.add(upper, fore, hand);
-  return { group, upper, fore, hand, lengths };
+  return { group, upper, fore, hand, handMesh, lengths };
 }
 
 /**
@@ -2150,8 +2481,19 @@ function weaponDefs() {
       viewFov: 56,
       build: buildMk18,
       scale: 0.88,
-      /* Hip pose in camera space: right of centre, below the eyeline, cranked inboard. */
-      hip: { p: [0.132, -0.118, -0.168], r: [0.020, -0.062, 0.028] },
+      /* Hip *carry* pose in camera space, not an inspect pose.
+         Three things changed together and they only work together:
+         - pushed forward (-0.168 -> -0.268) so the whole weapon subtends less of the frame
+           and the pistol grip climbs back inside the 30 deg half-FOV. At the old distance
+           the firing hand sat 36 deg below the eye axis, i.e. off the bottom of the screen
+           entirely, which is why no trigger hand appears in any frame;
+         - pulled inboard (0.132 -> 0.106) and dropped, which walks the optic from x=0.79 to
+           about x=0.66 of screen width, clear of both the right edge and the ammo counter's
+           safe area at 16:9;
+         - muzzle rotated down 4.9 deg (rotation.x is muzzle-*up*, so this goes negative) and
+           kept outboard, so the barrel stays inside the lower-right quadrant instead of
+           running up-left across the middle of the playfield. Roll stays under 1.5 deg. */
+      hip: { p: [0.105, -0.104, -0.265], r: [-0.078, -0.105, 0.026] },
       adsZ: -0.135,
       recoil: {
         /* Viewmodel figures are the *peak* excursion of a single round, in radians; the
@@ -2192,7 +2534,7 @@ function weaponDefs() {
       viewFov: 57,
       build: buildVector,
       scale: 0.90,
-      hip: { p: [0.128, -0.112, -0.150], r: [0.026, -0.070, 0.034] },
+      hip: { p: [0.100, -0.100, -0.238], r: [-0.074, -0.100, 0.028] },
       adsZ: -0.122,
       recoil: {
         pitch: 0.66 * DEG,
@@ -2227,7 +2569,7 @@ function weaponDefs() {
       viewFov: 54,
       build: buildDmr14,
       scale: 0.86,
-      hip: { p: [0.140, -0.124, -0.196], r: [0.016, -0.052, 0.024] },
+      hip: { p: [0.111, -0.108, -0.284], r: [-0.072, -0.098, 0.022] },
       adsZ: -0.150,
       recoil: {
         pitch: 3.20 * DEG,
@@ -2276,26 +2618,47 @@ export function createWeapon(game) {
   sway.add(recoilGrp);
   recoilGrp.add(poseGrp);
 
-  /* --- Viewmodel lighting fallback ---------------------------------------- */
-  // The engine owns the viewmodel scene's lights. If it failed to build them the gun would
-  // be a black silhouette, which is worse than double-lighting, so add a minimal rig.
+  /* --- Viewmodel lighting -------------------------------------------------- */
+  /* The engine owns the viewmodel key and sky fill and drives them from the world sun, so
+     this adds exactly one thing the engine's rig has no equivalent of: the warm bounce off
+     the sunlit ground into the *underside* of the weapon.
+     Without it, everything below the gun's top facets receives nothing but the hemisphere's
+     ground term and crushes to a featureless black slab — the lower half of the receiver,
+     the magazine and the whole trigger group measured under 0.12 luma against a scene
+     sitting near 0.7. It is a real light in the scene's own palette (§4: "bounce light is
+     warm off the ground"), motivated and strictly subordinate to the key at 4.6.
+     If the engine's rig is missing entirely we also stand in a key and a sky fill so the
+     weapon is never a silhouette. */
   let ownLights = null;
   try {
     let hasLight = false;
     if (game.viewScene) game.viewScene.traverse((o) => { if (o.isLight) hasLight = true; });
-    if (!hasLight) {
+    if (game.viewScene) {
       ownLights = new THREE.Group();
-      ownLights.name = 'viewmodelLightsFallback';
-      const key = new THREE.DirectionalLight(new THREE.Color(PALETTE.sun), 2.6);
-      key.position.set(-0.6, 0.9, 0.5);
-      const fill = new THREE.DirectionalLight(new THREE.Color(PALETTE.skyZenith), 0.9);
-      fill.position.set(0.8, 0.4, 0.6);
-      const bounce = new THREE.HemisphereLight(
-        new THREE.Color(PALETTE.skyZenith),
+      ownLights.name = hasLight ? 'viewmodelBounce' : 'viewmodelLightsFallback';
+      const bounce = new THREE.DirectionalLight(
         new THREE.Color(PALETTE.groundBounce),
-        0.55
+        LIGHTING.hemiGroundIntensity * 1.6
       );
-      ownLights.add(key, fill, bounce);
+      // From below and slightly ahead: the ground is the only thing down there to bounce off.
+      bounce.position.set(0.25, -1.0, -0.45);
+      bounce.castShadow = false;
+      ownLights.add(bounce, bounce.target);
+      if (!hasLight) {
+        const key = new THREE.DirectionalLight(new THREE.Color(PALETTE.sun), LIGHTING.sunIntensity);
+        key.position.set(-0.6, 0.9, 0.5);
+        key.castShadow = false;
+        // Cool sky fill from above, not a second cold key from the side.
+        const fill = new THREE.DirectionalLight(new THREE.Color(PALETTE.skyZenith), LIGHTING.hemiSkyIntensity * 0.45);
+        fill.position.set(0.35, 1.0, 0.25);
+        fill.castShadow = false;
+        const hemi = new THREE.HemisphereLight(
+          new THREE.Color(PALETTE.skyZenith),
+          new THREE.Color(PALETTE.groundBounce),
+          LIGHTING.hemiSkyIntensity * 0.6
+        );
+        ownLights.add(key, key.target, fill, fill.target, hemi);
+      }
       game.viewScene.add(ownLights);
     }
   } catch { /* a missing viewScene is handled below */ }
@@ -2346,11 +2709,19 @@ export function createWeapon(game) {
       muzzle: mkAnchor(a.muzzle),
       eject: mkAnchor(a.eject),
       // Grip anchors carry the hand orientation, not just a position.
-      gripFire: mkAnchor(a.gripFire, null, [-0.30, 0.06, 0.10]),
-      gripSupport: mkAnchor(a.gripSupport, null, [0.30, -0.10, -0.06]),
-      boltCatch: mkAnchor(a.boltCatch, null, [0.10, -0.55, -0.25]),
+      gripFire: mkAnchor(a.gripFire, null, a.gripFireRot || [-0.30, 0.06, 0.10]),
+      /* The support hand's mesh is pre-rotated palm-up with the fingers running along +X
+         (see buildArm), so these anchor rotations are expressed in that frame: identity
+         puts the palm under the handguard with the fingers across the bore and the thumb
+         forward, which is the C-clamp. A weapon with a vertical foregrip overrides it. */
+      gripSupport: mkAnchor(a.gripSupport, null, a.gripSupportRot || [0.12, -0.06, 0.16]),
+      boltCatch: mkAnchor(a.boltCatch, null, a.boltCatchRot || [0.10, -0.30, -Math.PI * 0.5]),
       sight: mkAnchor(a.sight),
-      magGrab: mkAnchor(a.magGrab, model.parts && model.parts.mag ? model.parts.mag : null, [0.25, -0.05, 0.0]),
+      magGrab: mkAnchor(
+        a.magGrab,
+        model.parts && model.parts.mag ? model.parts.mag : null,
+        a.magGrabRot || [0.20, 0.0, -Math.PI * 0.5]
+      ),
     };
     model.ejectDir = a.ejectDir || [0.9, 0.4, 0.2];
 
@@ -2385,8 +2756,10 @@ export function createWeapon(game) {
   /* --- Arms --------------------------------------------------------------- */
   // Asymmetric bone lengths: the firing arm is folded tight against the body and the support
   // arm is nearly extended, so matched lengths would make one of them look wrong.
-  const armR = buildArm(mats, 1, { upper: 0.195, fore: 0.190 });
-  const armL = buildArm(mats, -1, { upper: 0.300, fore: 0.280 });
+  // The firing hand closes on a ~29 mm pistol grip and keeps its index finger on the trigger;
+  // the support hand opens out around a ~50 mm handguard, palm up, in a C-clamp.
+  const armR = buildArm(mats, 1, { upper: 0.195, fore: 0.190 }, { wrap: 0.015, trigger: true });
+  const armL = buildArm(mats, -1, { upper: 0.306, fore: 0.288 }, { wrap: 0.026, palmUp: true });
   const armsGrp = new THREE.Group();
   armsGrp.name = 'arms';
   armsGrp.add(armR.group, armL.group);
@@ -2395,8 +2768,12 @@ export function createWeapon(game) {
 
   // Shoulder sockets in camera space. Behind the near plane, so the upper arms enter frame
   // from off-screen rather than being sliced by it.
-  const shoulderR = new THREE.Vector3(0.190, -0.258, 0.062);
-  const shoulderL = new THREE.Vector3(-0.098, -0.262, 0.022);
+  /* Both sockets moved forward and up with the carry pose below. The support socket in
+     particular has to sit forward enough that shoulder-to-handguard stays inside
+     upper + fore = 0.594 m: past that the IK clamps the wrist short of the grip anchor and
+     the forearm visibly stops before the hand, which is the "floating gun" read. */
+  const shoulderR = new THREE.Vector3(0.176, -0.238, 0.020);
+  const shoulderL = new THREE.Vector3(-0.115, -0.246, -0.030);
   const poleR = new THREE.Vector3(0.62, -0.72, 0.30).normalize();
   const poleL = new THREE.Vector3(-0.30, -0.90, 0.20).normalize();
 
@@ -3311,7 +3688,7 @@ export function createWeapon(game) {
     /* --- World matrices before IK and the reticle --------------------------- */
     root.updateMatrixWorld(true);
 
-    /* --- Reticle: parallax free ------------------------------------------- */
+    /* --- Reticle: parallax free, but confined to the aperture --------------- */
     const optic = parts.optic;
     if (optic && optic.reticle && gm.viewCamera) {
       const sa = optic.sightAnchor;
@@ -3319,11 +3696,35 @@ export function createWeapon(game) {
       sa.getWorldQuaternion(_q1);
       _v2.copy(_fwd).applyQuaternion(_q1).normalize(); // optic's own boresight
       gm.viewCamera.getWorldPosition(_v3);
-      const dist = Math.max(0.02, _v1.distanceTo(_v3));
-      // Put the dot on the line "eye + boresight * dist". Its apparent direction is therefore
-      // exactly the optic's boresight regardless of where the eye is — which is what a
-      // collimated reticle does, and why the dot stays usable when the head is off axis.
-      _v4.copy(_v3).addScaledVector(_v2, dist);
+      /* The reticle lives in the plane of the glass, not at an arbitrary distance. Solving
+         for the point in that plane whose direction from the eye *is* the boresight gives
+         a genuinely collimated dot: R = E + F * ((C - E).F).
+
+         The old code used |A - E| for that scalar, which is only equal when the eye is on
+         the optic's axis. In hipfire the eye is 14 cm inboard and 7 cm above, so the solved
+         point fell tens of centimetres outside the tube and the dot rendered as a free red
+         pip floating at screen centre with no relationship to the sight — which is exactly
+         what the frames show. Clamping it into the aperture is what a real optic does
+         optically (you lose the reticle off axis), and it puts the glow back inside the
+         glass where a viewer expects to see it. */
+      if (optic.reticlePlane) optic.reticlePlane.getWorldPosition(_v5);
+      else _v5.copy(_v1);
+      _v5.sub(_v3); // C - E
+      const along = Math.max(0.02, _v5.dot(_v2));
+      _v5.copy(_v3).addScaledVector(_v2, along); // R, before clamping
+      // Lateral offset of R from the optic's own axis, measured in the glass plane.
+      _v6.subVectors(_v5, _v1);
+      _v6.addScaledVector(_v2, -_v6.dot(_v2));
+      const off = _v6.length();
+      const rMax = (optic.glassR || 0.015) * d.scale * 0.62;
+      let edge = 1;
+      if (off > rMax) {
+        // Slide the dot back to the aperture edge and fade it out over the next half radius,
+        // so walking off axis dims and pins the glow instead of letting it escape the tube.
+        _v5.addScaledVector(_v6, (rMax - off) / off);
+        edge = clamp(1 - (off - rMax) / (rMax * 1.6), 0.16, 1);
+      }
+      _v4.copy(_v5);
       optic.reticle.parent.worldToLocal(_v4);
       optic.reticle.position.copy(_v4);
       // Screen-aligned.
@@ -3331,15 +3732,18 @@ export function createWeapon(game) {
       optic.reticle.parent.getWorldQuaternion(_q3);
       _q3.invert().multiply(_q2);
       optic.reticle.quaternion.copy(_q3);
-      // Constant angular size: ~0.0035 rad half-width, roughly 4 px at 1080p in ADS.
-      const s = dist * 0.0035 * scaleInv;
+      // Constant angular size: ~0.0035 rad half-width, roughly 4 px at 1080p in ADS. Off
+      // axis it is scaled up a little so the glow still reads as a lit emitter inside the
+      // glass rather than collapsing to a sub-pixel speck.
+      const dist = Math.max(0.02, _v3.distanceTo(_v5));
+      const s = dist * (0.0035 + 0.0026 * (1 - state.adsBlend)) * scaleInv;
       optic.reticle.scale.setScalar(s);
-      // The dot dims when you are not behind the glass — hipfire should not have a free aim
-      // point floating over the screen.
-      const vis = 0.22 + 0.78 * state.adsBlend;
+      // In ADS the dot is the aim point and runs hot; in hipfire it is only the glow you see
+      // through the objective, so it drops to a fraction and takes the aperture fade with it.
+      const vis = (0.30 + 0.70 * state.adsBlend) * edge;
       mats.reticle.opacity = vis;
-      mats.reticleGlow.opacity = 0.5 * vis;
-      optic.reticle.visible = true;
+      mats.reticleGlow.opacity = 0.55 * vis;
+      optic.reticle.visible = vis > 0.02;
     }
 
     /* --- Arms IK ----------------------------------------------------------- */
@@ -3487,6 +3891,9 @@ export function createWeapon(game) {
           if (o.geometry) o.geometry.dispose();
         });
         for (const m of mats._owned || []) {
+          // Every borrowed map is a *clone*: it has its own GPU-side wrapper to release even
+          // though the underlying source belongs to world/materials.js.
+          if (m.map) m.map.dispose();
           if (m.normalMap) m.normalMap.dispose();
           if (m.roughnessMap) m.roughnessMap.dispose();
           m.dispose();
