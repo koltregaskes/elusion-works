@@ -2384,6 +2384,7 @@ function bGlassDirty(ctx) {
   const dustF = fbmField(res, { seed: seed + 13, freq: 18, octaves: 5 });
   const streaks = streakField(res, { seed: seed + 19, count: 44, lenMin: 0.2, lenMax: 0.9, widthMin: 0.003, widthMax: 0.014 });
   const spatter = worleyField(res, { cx: 60, seed: seed + 23, jitter: 1, mode: 0 });
+  const macroL = macroField(res, seed + 29);
 
   // Two impact stars with radial and concentric cracking.
   const cracks = new Float32Array(N);
@@ -2423,7 +2424,12 @@ function bGlassDirty(ctx) {
   const dirtC = C.dirt;
 
   for (let i = 0; i < N; i++) {
-    const grime = clamp01(film[i] * 0.7 + (dustF[i] - 0.4) * 0.6 + streaks[i] * 0.5 + clamp01(1 - spatter[i] * 3) * 0.3);
+    // The macro layer matters more here than anywhere: a filthy window is filthy in patches,
+    // and the patch that is still clear is what makes the rest read as dirt on glass rather
+    // than as a translucent grey material.
+    const grime = clamp01(
+      (film[i] * 0.7 + (dustF[i] - 0.4) * 0.6 + streaks[i] * 0.5 + clamp01(1 - spatter[i] * 3) * 0.3) * lerp(0.35, 1.45, macroL[i])
+    );
     // Glass is flat. Almost all of the relief comes from the cracks and the dried spatter.
     let hv = 0.62 + (dustF[i] - 0.5) * 0.02;
     hv -= cracks[i] * 0.35;
@@ -2733,6 +2739,7 @@ function bGunmetal(ctx) {
   const wearFine = fbmField(res, { seed: seed + 29, freq: 20, octaves: 4 });
   const oil = blotchField(res, seed + 31, 5);
   const carbon = blotchField(res, seed + 37, 6);
+  const macroL = macroField(res, seed + 41);
 
   const gm = C.gunmetal;
   const bright = mixc(C.steelBare, C.hudPrimary, 0.1); // polished steel showing through
@@ -2757,6 +2764,9 @@ function bGunmetal(ctx) {
     ctx.ab[i] = gm[2];
     tint(ctx, i, lerp(0.84, 1.14, blast[i]));
     tint(ctx, i, lerp(0.93, 1.07, wearFine[i]));
+    // Macro layer. Held tighter than the world surfaces: a receiver is one part with one
+    // finish, and a big tonal swing across it would read as a badly refinished gun.
+    tint(ctx, i, lerp(0.91, 1.09, macroL[i]));
     paint(ctx, i, shade(gm, 0.72), clamp01(carbon[i] - 0.55) * 0.5); // carbon fouling
     // Worn phosphate brightens, but only a little — most of the read is in roughness, and
     // an albedo that jumps to bright steel looks like paint stripper, not use.
@@ -2895,6 +2905,7 @@ function bFabric(ctx) {
   const dirtF = blotchField(res, seed + 13, 4);
   const wearF = fbmField(res, { seed: seed + 17, freq: 9, octaves: 4 });
   const pills = worleyField(res, { cx: 90, seed: seed + 19, jitter: 1, mode: 0 });
+  const macroL = macroField(res, seed + 23);
 
   const cloth = mixc(C.gunTan, C.steelPainted, 0.35);
   const dustC = C.dust;
@@ -2923,6 +2934,8 @@ function bFabric(ctx) {
     ctx.ab[i] = cloth[2];
     tint(ctx, i, lerp(0.82, 1.12, weave));
     tint(ctx, i, lerp(0.92, 1.06, macro[i]));
+    // Macro layer: sun-faded across the panel, still dark in the shadow of a pouch flap.
+    tint(ctx, i, lerp(0.86, 1.14, macroL[i]));
     paint(ctx, i, dustC, clamp01(wearF[i] - 0.78) * 0.7); // abraded, sun-faded high wear
     paint(ctx, i, dirtC, clamp01(dirtF[i] - 0.62) * 0.5);
     paint(ctx, i, shade(dustC, 1.05), pill * 0.35);

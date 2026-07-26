@@ -20,7 +20,22 @@ export const PALETTE = {
   sunCore: '#fff1dd', // the disc itself, much hotter than the light it casts
   skyZenith: '#3f6f9e',
   skyHorizon: '#d8c3a4', // dust haze piles up at the horizon
-  groundBounce: '#7a6647', // warm dirt bounce into shadowed undersides
+  /**
+   * Warm dirt bounce into shadowed undersides. Brightened and warmed from '#7a6647'.
+   *
+   * §4 authors bounce light as "warm off the ground", but it was never visible: measured in a
+   * render, the shadowed face of the shed came out neutral-to-cool, i.e. the bounce was
+   * contributing nothing the eye could find. Two causes, and this fixes one of them —
+   * '#7a6647' is only 0.196/0.140/0.070 in linear, so even at full hemisphere weight it is a
+   * fifth of a stop of fill. sky.js multiplies this by hemiGroundIntensity/hemiSkyIntensity
+   * before it reaches the light, so the swatch has to carry real level, not just a hue.
+   *
+   * '#9a8058' is 0.323/0.216/0.098 linear — 1.65x brighter with the same warm ratio (R:B of
+   * 3.3), so the hue the palette authored is unchanged and only the amount moves. Paired with
+   * hemiGroundIntensity 0.80 this is what puts warmth back under the eaves and on the
+   * undersides of the containers, which is the half of the warm/cool split that was missing.
+   */
+  groundBounce: '#9a8058',
   moonlessShadow: '#2a3644', // the coolest shadow the scene is allowed to reach
 
   // --- Surfaces ---
@@ -100,7 +115,22 @@ export const LIGHTING = {
    * `lift` does the rest, and the sun stays overwhelmingly dominant at 4.6 : 0.55.
    */
   hemiSkyIntensity: 0.55,
-  hemiGroundIntensity: 0.35,
+  /**
+   * Warm ground bounce, the other half of §4's "bounce is warm off the ground, cool from the
+   * sky". Raised from 0.35.
+   *
+   * sky.js folds this into the HemisphereLight's groundColor as the ratio
+   * hemiGroundIntensity / hemiSkyIntensity, so at 0.35 : 0.55 the bounce arrived at 0.64x of
+   * an already-dark swatch and measured as nothing: the shadowed shed face in a render read
+   * neutral-to-cool, with no trace of the dirt under it. 0.80 puts the ratio at 1.45x, which
+   * together with the brighter PALETTE.groundBounce is roughly 2.6x more warm up-fill on
+   * shadowed undersides. That is still well under the 4.6 sun, so the key stays dominant and
+   * the bounce reads as bounce rather than as a second light.
+   *
+   * engine.js and weapon.js scale the viewmodel's bounce lamp off this same number, so the
+   * gun's underside warms with the world instead of drifting out of the grade.
+   */
+  hemiGroundIntensity: 0.8,
   /**
    * Image-based lighting weight. The environment probe is a PMREM of the whole dome, so it is
    * close to achromatic — every extra unit of it is a neutral wash that cancels the hemisphere's
