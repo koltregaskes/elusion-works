@@ -1896,6 +1896,8 @@ function createEnemyRecord(index) {
     cycle: 0,
     cycleRate: 0,
     strideLen: 0.8,
+    /** Live duty factor, derived from stride each frame — see FOOT_EXCURSION. */
+    swingFrac: GAIT.swingFrac,
     footPos: [new THREE.Vector3(), new THREE.Vector3()],
     footPrev: [new THREE.Vector3(), new THREE.Vector3()],
     footPlant: [new THREE.Vector3(), new THREE.Vector3()],
@@ -3324,6 +3326,7 @@ export function createAI(game) {
     e.speed = 0;
     e.cycle = r();
     e.cycleRate = 0;
+    e.swingFrac = GAIT.swingFrac;
     e.pathLen = 0;
     e.pathIdx = 0;
     e.pathTimer = 0;
