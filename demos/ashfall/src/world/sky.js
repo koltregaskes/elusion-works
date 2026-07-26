@@ -454,17 +454,55 @@ const SKY_FRAG = /* glsl */ `
     vec3 tinted = uZenithTint * (lum / max(dot(uZenithTint, vec3(0.2126, 0.7152, 0.0722)), 1e-4));
     col = mix(col, tinted, tintW);
 
+    /* ---- Chappuis absorption band -------------------------------------- */
+    //
+    // Preetham carries no ozone at all, and ozone is exactly what stops a dusk sky being a
+    // straight lerp from a warm horizon to a blue zenith. The Chappuis band is a broad, weak
+    // absorption centred near 602 nm — between the red and the green primary — so integrated
+    // against sRGB it takes most out of red, some out of green and almost nothing out of blue.
+    // What survives is the slightly green-blue mid-sky every photograph of a clear dusk has.
+    //
+    // Crucially it is *not* monotonic in altitude. The ozone layer sits around 25 km, so a ray
+    // leaving the eye at 15-20 degrees traverses far more of it than one heading for the zenith,
+    // while nearer the horizon the boundary-layer dust below has already taken the sky over.
+    // That gives a band of maximum absorption partway up the dome — a Gaussian in sin(altitude)
+    // is a perfectly adequate stand-in for the real slant-path integral at this scale.
+    float chapT = (up - uChappuisAlt) / max(uChappuisWidth, 1e-3);
+    vec3 chappuis = exp(-uChappuisTau * exp(-chapT * chapT));
+    col *= chappuis;
+
+    /* ---- Sunward azimuthal gradient ------------------------------------- */
+    //
+    // The other half of the answer to "a dusk sky is never a linear ramp": at 8 degrees of solar
+    // elevation the whole forward-scattering half of the dome is measurably brighter than the
+    // anti-solar half at the *same altitude*, because the aerosol phase function is broad. A
+    // purely vertical ramp is the signature of a sky model with no azimuthal term at all.
+    vec2 hxz = dir.xz;
+    float hlen = length(hxz);
+    float azCos = hlen > 1e-4 ? dot(hxz / hlen, uSunAzXZ) : 0.0;
+    float azW = 0.5 + 0.5 * azCos;
+    azW *= azW;                                    // concentrate it on the sun's half
+    // Weighted toward the lower sky, where the slant path through the aerosol is longest, but
+    // never zero at the zenith - the gradient has to run all the way across the dome.
+    col *= 1.0 + uAzimuthGain * azW * (0.35 + 0.65 * (1.0 - up));
+
     /* ---- Dust haze: an ash layer Preetham knows nothing about ---------- */
 
-    // Aerosol follows an exponential vertical profile, so the slant optical depth through it
-    // goes as exp(-altitude / scaleAngle). This is what piles PALETTE.skyHorizon up against
-    // the horizon instead of painting a flat gradient.
-    float hazeAmt = exp(-up / max(uHazeHeight, 1e-3));
+    // A dusty industrial sky does not have an exponential aerosol profile. Ash and concrete
+    // dust are mixed by convection up to the inversion at the top of the boundary layer and
+    // then simply stop. Seen from inside, that inversion is a reasonably *sharp edge* a few
+    // degrees above the horizon with cleaner air above it — and that edge is the single thing
+    // that makes a sky read as dusty rather than merely hazy. A pure exponential smears the
+    // transition over 20 degrees and reads as clean air with a wash over it.
+    float slab = 1.0 - smoothstep(uHazeTop - uHazeEdge, uHazeTop + uHazeEdge, up);
+    // Inside the slab the density still falls with altitude (the layer is not perfectly mixed);
+    // above it a thin lofted tail survives so the edge is a step in gradient, not a hard cut.
+    float inLayer = exp(-up / max(uHazeHeight, 1e-3));
+    float lofted = uHazeLoftAmount * exp(-up / max(uHazeLoft, 1e-3));
+    float hazeAmt = mix(lofted, max(inLayer, lofted), slab);
 
-    // Quartic gate on top of the exponential. The exponential alone still leaves a percent or
-    // two of cream in the upper dome, and a percent or two of a term that is 3.5x the zenith's
-    // own radiance is enough to grey the blue out. This forces it to exactly zero at the zenith
-    // and confines the band to the bottom ~25 degrees.
+    // Quartic gate. Even the lofted tail must reach exactly zero at the zenith: a percent or two
+    // of a term that is 3.5x the zenith's own radiance is enough to grey the blue out.
     float hazeGate = 1.0 - up;
     hazeGate *= hazeGate;
     hazeAmt *= hazeGate * hazeGate;
@@ -472,14 +510,15 @@ const SKY_FRAG = /* glsl */ `
     // Real dusty air is stratified: settled layers of ash sit at slightly different heights
     // and read as horizontal banding. Three incommensurate frequencies in altitude, sheared by
     // a smooth pseudo-azimuth (dot with a fixed vector rather than atan, which has a seam),
-    // and drifting slowly so the bands are not frozen.
+    // and drifting slowly so the bands are not frozen. Gated by the slab so the strata live
+    // inside the dust layer and stop at its top edge, which is what sells the edge as real.
     float alt = asin(clamp(dir.y, -1.0, 1.0));
     float az = dir.x * 1.9 + dir.z * 1.1;
     float bands =
         sin(alt * 34.0 + az * 0.35 + uTime * 0.021) * 0.50
       + sin(alt * 17.3 - az * 0.62 - uTime * 0.013) * 0.34
       + sin(alt * 71.0 + az * 1.90 + uTime * 0.037) * 0.16;
-    hazeAmt *= 1.0 + uBandStrength * bands * exp(-up * 7.0);
+    hazeAmt *= 1.0 + uBandStrength * bands * slab;
     hazeAmt = clamp(hazeAmt * uHazeDensity, 0.0, 1.0);
 
     // Two-lobe Mie: a broad forward lobe for the general glow and a tight one for the aureole
@@ -513,6 +552,45 @@ const SKY_FRAG = /* glsl */ `
     float below = smoothstep(0.0, uHorizonSoftness, -dir.y);
     vec3 groundHaze = mix(fogSat, uGroundColour * uHazeLuminance, 0.22) * (0.90 + 0.28 * mie * uSunVisibility);
     col = mix(col, groundHaze, below);
+
+    /* ---- Aureole -------------------------------------------------------- */
+    //
+    // The circumsolar aureole is not the disc's halo — it is tens of degrees wide, it is what
+    // the eye actually reads as "the sun is there", and it is what buildings silhouette
+    // against. Two things matter and neither falls out of a single HG lobe:
+    //
+    //  1. Reach. Two exponentials in angular distance, one over ~25 degrees and one over ~6,
+    //     rather than a phase function that has collapsed to nothing by 12. The mie term above
+    //     still owns the tight inner glow inside the dust; this owns the wide one.
+    //  2. Anisotropy. The aerosol doing the scattering is a *layer*, so a ray offset
+    //     horizontally from the sun stays inside the dust far longer than one offset vertically.
+    //     The glow is therefore an ellipse lying on the horizon, not a circle. Measuring the
+    //     angular distance in a frame squashed along the sun's local vertical is the cheapest
+    //     honest way to get that, and it costs one dot product.
+    //
+    // The chord |dir - sunDir| stands in for the angle: they agree to better than 2% out to
+    // 30 degrees, which is the whole range this term operates over.
+    vec3 dch = dir - uSunDir;
+    float dv = dot(dch, uSunUpAxis);
+    float dh2 = max(dot(dch, dch) - dv * dv, 0.0);
+    float gA = sqrt(dh2 / max(uAureoleSquash * uAureoleSquash, 1e-4) + dv * dv);
+    float aureole = 0.62 * exp(-gA / max(uAureoleWidth, 1e-3)) + 0.38 * exp(-gA / max(uAureoleCore, 1e-3));
+    // Faded out below the horizon: the level floor covers that hemisphere and a glow leaking
+    // under it would read as light coming up through the ground.
+    aureole *= 1.0 - below * 0.75;
+    col += uSunTint * (aureole * uAureoleStrength * uHazeLuminance * uSunVisibility);
+
+    /* ---- Horizon glow --------------------------------------------------- */
+    //
+    // Separate from the aureole and not redundant with it: this is the last few degrees above
+    // the horizon on the sun's side, where the slant path through the dust is longest and the
+    // inscattered radiance peaks. It is the band the container stacks and the crane read as
+    // silhouettes against, so it is authored as a horizontal wash keyed to azimuth rather than
+    // to angular distance from the disc.
+    float glowAz = pow(max(azCos, 0.0), uHorizonGlowFocus);
+    float glow = uHorizonGlow * glowAz * exp(-max(up, 0.0) / max(uHorizonGlowHeight, 1e-3));
+    glow *= 1.0 - below * 0.55;
+    col += uSunTint * (glow * uHazeLuminance * uSunVisibility);
 
     /* ---- Solar disc ----------------------------------------------------- */
 
