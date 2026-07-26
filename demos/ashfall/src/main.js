@@ -66,7 +66,27 @@ function reportError(where, err) {
   }
 }
 
-/** Wrap a factory so a throwing module cannot take the page down. */
+/**
+ * Import a module without letting a missing or syntactically broken file kill the boot.
+ * Returns an empty object so the caller's destructure yields undefined and `safeBuild` falls
+ * through to its stub.
+ */
+async function safeImport(name, path) {
+  try {
+    return await import(path);
+  } catch (err) {
+    reportError(`import:${name}`, err);
+    return {};
+  }
+}
+
+/**
+ * Wrap a factory so a throwing module cannot take the page down.
+ *
+ * `stub` may be a plain object or a thunk. Pass a thunk whenever building the stub has side
+ * effects — an object literal is evaluated as an argument, i.e. *before* we know whether the
+ * real factory succeeded, so a stub that adds lights to the scene would add them every time.
+ */
 function safeBuild(name, fn, stub) {
   try {
     const result = fn();
@@ -74,7 +94,8 @@ function safeBuild(name, fn, stub) {
     return result;
   } catch (err) {
     reportError(name, err);
-    return stub || { update() {} };
+    const fallback = typeof stub === 'function' ? stub() : stub;
+    return fallback || { update() {} };
   }
 }
 
@@ -150,7 +171,7 @@ export async function boot() {
   /* --- Core ------------------------------------------------------------- */
 
   progress(0.05, 'Starting renderer');
-  const { createEngine } = await import('./core/engine.js');
+  const { createEngine } = await safeImport('engine', './core/engine.js');
   game.engine = createEngine(canvas, game.quality);
   game.scene = game.engine.scene;
   game.camera = game.engine.camera;
@@ -160,9 +181,9 @@ export async function boot() {
   game.camera.updateProjectionMatrix();
 
   progress(0.15, 'Building materials');
-  const { createMaterials } = await import('./world/materials.js');
-  const { createShadows } = await import('./core/shadows.js');
-  const { createSky } = await import('./world/sky.js');
+  const { createMaterials } = await safeImport('materials', './world/materials.js');
+  const { createShadows } = await safeImport('shadows', './core/shadows.js');
+  const { createSky } = await safeImport('sky', './world/sky.js');
 
   // Sky owns the sun, shadows need the sun, materials need shadows. Build in that order but
   // let sky attach the environment map to materials afterwards.
@@ -175,17 +196,21 @@ export async function boot() {
   });
 
   progress(0.3, 'Raising the sky');
-  game.sky = safeBuild('sky', () => createSky(game.engine, game.materials), {
+  // The stub is a thunk: it puts lights in the scene, so it must only run if `createSky` failed.
+  // A second shadow-casting DirectionalLight breaks the CSM shader, which requires
+  // NUM_DIR_LIGHT_SHADOWS to equal CSM_CASCADES, and that takes out every lit material at once.
+  game.sky = safeBuild('sky', () => createSky(game.engine, game.materials), () => ({
     ...noopStub(),
     sun: (() => {
       const l = new THREE.DirectionalLight(0xffcf9a, 4.6);
       l.position.set(-60, 20, 40);
       l.castShadow = true;
+      l.name = 'stubSun';
       game.scene.add(l);
       game.scene.add(new THREE.HemisphereLight(0x3f6f9e, 0x7a6647, 0.85));
       return l;
     })(),
-  });
+  }));
 
   progress(0.4, 'Fitting shadow cascades');
   game.shadows = safeBuild(
@@ -204,7 +229,7 @@ export async function boot() {
   /* --- World ------------------------------------------------------------ */
 
   progress(0.5, 'Building the yard');
-  const { createLevel } = await import('./world/level.js');
+  const { createLevel } = await safeImport('level', './world/level.js');
   game.level = safeBuild('level', () => createLevel(game.scene, game.materials, game), {
     ...noopStub(),
     root: new THREE.Group(),
@@ -221,7 +246,7 @@ export async function boot() {
   /* --- Post ------------------------------------------------------------- */
 
   progress(0.62, 'Compiling post chain');
-  const { createPostFX } = await import('./core/postfx.js');
+  const { createPostFX } = await safeImport('postfx', './core/postfx.js');
   game.post = safeBuild('postfx', () => createPostFX(game.engine, game), {
     ...noopStub(),
     params: {},
@@ -243,9 +268,9 @@ export async function boot() {
   /* --- Player ----------------------------------------------------------- */
 
   progress(0.72, 'Kitting out');
-  const { createPlayer } = await import('./player/controller.js');
-  const { createWeapon } = await import('./player/weapon.js');
-  const { createBallistics } = await import('./player/ballistics.js');
+  const { createPlayer } = await safeImport('controller', './player/controller.js');
+  const { createWeapon } = await safeImport('weapon', './player/weapon.js');
+  const { createBallistics } = await safeImport('ballistics', './player/ballistics.js');
 
   game.player = safeBuild('player', () => createPlayer(game), {
     ...noopStub(),
@@ -284,11 +309,11 @@ export async function boot() {
   /* --- Agents, FX, audio, UI -------------------------------------------- */
 
   progress(0.82, 'Deploying opposition');
-  const { createAI } = await import('./ai/enemies.js');
+  const { createAI } = await safeImport('ai', './ai/enemies.js');
   game.ai = safeBuild('ai', () => createAI(game), noopStub({ enemies: [], spawnWave: NOOP, alive: 0, damageEnemy: NOOP }));
 
   progress(0.88, 'Loading effects');
-  const { createFX } = await import('./fx/particles.js');
+  const { createFX } = await safeImport('fx', './fx/particles.js');
   game.fx = safeBuild('fx', () => createFX(game), {
     ...noopStub(),
     spawnImpact: NOOP,
@@ -301,7 +326,7 @@ export async function boot() {
   });
 
   progress(0.93, 'Warming audio');
-  const { createAudio } = await import('./audio/audio.js');
+  const { createAudio } = await safeImport('audio', './audio/audio.js');
   game.audio = safeBuild('audio', () => createAudio(game), {
     ...noopStub(),
     ctx: null,
@@ -313,8 +338,8 @@ export async function boot() {
   game.audio.setVolume?.(settings.volume ?? 0.7);
 
   progress(0.97, 'Drawing the HUD');
-  const { createHUD } = await import('./ui/hud.js');
-  const { createMenu } = await import('./ui/menu.js');
+  const { createHUD } = await safeImport('hud', './ui/hud.js');
+  const { createMenu } = await safeImport('menu', './ui/menu.js');
   game.hud = safeBuild('hud', () => createHUD(game), noopStub({ show: NOOP, hide: NOOP, setMode: NOOP, notify: NOOP }));
   game.menu = safeBuild('menu', () => createMenu(game), noopStub({ open: NOOP, close: NOOP, settings, onChange: NOOP }));
 
