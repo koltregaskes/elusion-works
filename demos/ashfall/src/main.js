@@ -325,6 +325,19 @@ export async function boot() {
     addDecal: NOOP,
   });
 
+  // Every world material must be registered with the cascaded shadow map. An unregistered
+  // MeshStandardMaterial compiles without USE_CSM, so instead of the CSM branch picking the one
+  // cascade whose depth range contains the fragment, three's stock loop accumulates *all* of the
+  // cascade lights — four suns at full intensity on the same surface. That reads as a blown-out,
+  // shadowless white wash, which is exactly what it looked like. Shadows sweeps periodically on
+  // its own, but level, AI and FX all build their materials after it was constructed, so force a
+  // scan now that the world is fully populated.
+  try {
+    game.shadows.scan?.();
+  } catch (err) {
+    reportError('shadows.scan', err);
+  }
+
   progress(0.93, 'Warming audio');
   const { createAudio } = await safeImport('audio', './audio/audio.js');
   game.audio = safeBuild('audio', () => createAudio(game), {
