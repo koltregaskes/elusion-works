@@ -79,6 +79,7 @@ import { PALETTE, LIGHTING, ATMOSPHERE, SUN_ELEVATION, SUN_AZIMUTH } from './art
 
 const _v3a = new THREE.Vector3();
 const _v3b = new THREE.Vector3();
+const _v3c = new THREE.Vector3();
 const _colA = new THREE.Color();
 const _colB = new THREE.Color();
 const _colC = new THREE.Color();
@@ -154,6 +155,19 @@ const TAU_RAYLEIGH = [0.0464, 0.1085, 0.2648];
 const TAU_OZONE = [0.0043, 0.0121, 0.0006];
 /** Angstrom-scaled Mie extinction relative to the 550 nm reference, alpha = 0.6. */
 const MIE_SPECTRAL = [0.9217, 1.0201, 1.106];
+
+/**
+ * Relative Chappuis absorption at the RGB primaries, normalised to red.
+ *
+ * TAU_OZONE above is the *whole-column, band-integrated* ozone optical depth used for the beam
+ * transmittance, and its green-heavy weighting is right for that job. The dome needs something
+ * different: the shape of the Chappuis band itself as it appears along a long, low slant path.
+ * That band is broad and peaks around 602 nm, which sits between the red and the green primary,
+ * so it removes most from red, roughly half as much from green, and next to nothing from blue.
+ * The residue is the cool green-blue that every clear dusk has between the warm horizon and the
+ * blue zenith — the vertical structure a straight two-colour lerp cannot produce.
+ */
+const CHAPPUIS_WEIGHTS = [1.0, 0.46, 0.07];
 
 /**
  * Beam transmittance of the atmosphere toward a sun at `elevDeg`, written into `out` as a
@@ -2032,6 +2046,48 @@ export function createSky(engine, materials) {
     skyUniforms.uHorizonSoftness.value = params.horizonSoftness;
     skyUniforms.uSkyScale.value = params.skyScale;
     skyUniforms.uSunAngularRadius.value = Math.max(LIGHTING.sunAngularDiameter * 0.5, 1e-5);
+
+    /* ---- Vertical + azimuthal structure -------------------------------- */
+
+    // Ozone deepens as the path lengthens, so the band strengthens as the sun drops. Anchored
+    // on the design elevation so the authored look is unchanged at SUN_ELEVATION.
+    const chapScale = params.chappuisStrength * (0.55 + 0.45 * smoothstep(35, 2, elev));
+    skyUniforms.uChappuisTau.value.set(
+      CHAPPUIS_WEIGHTS[0] * chapScale,
+      CHAPPUIS_WEIGHTS[1] * chapScale,
+      CHAPPUIS_WEIGHTS[2] * chapScale
+    );
+    skyUniforms.uChappuisAlt.value = params.chappuisAlt;
+    skyUniforms.uChappuisWidth.value = Math.max(params.chappuisWidth, 1e-3);
+
+    // Sun azimuth projected into the ground plane, normalised. Degenerate only with the sun
+    // exactly overhead, where an azimuthal gradient is meaningless anyway.
+    const azLen = Math.hypot(sunDir.x, sunDir.z);
+    if (azLen > 1e-4) skyUniforms.uSunAzXZ.value.set(sunDir.x / azLen, sunDir.z / azLen);
+    // The gradient is a low-sun phenomenon: overhead there is no sunward half of the sky.
+    skyUniforms.uAzimuthGain.value = params.azimuthGain * smoothstep(45, 6, elev);
+
+    skyUniforms.uHazeTop.value = params.hazeTop;
+    skyUniforms.uHazeEdge.value = Math.max(params.hazeEdge, 1e-3);
+    skyUniforms.uHazeLoft.value = Math.max(params.hazeLoft, 1e-3);
+    skyUniforms.uHazeLoftAmount.value = clamp(params.hazeLoftAmount, 0, 1);
+
+    // Local vertical at the sun: world up with the component along the beam removed. This is the
+    // axis the aureole is squashed along, so the glow lies on the horizon rather than ringing
+    // the disc. Falls back to world up if the sun is within a degree of the zenith.
+    _v3c.set(0, 1, 0).addScaledVector(sunDir, -sunDir.y);
+    if (_v3c.lengthSq() < 1e-6) _v3c.set(0, 1, 0);
+    skyUniforms.uSunUpAxis.value.copy(_v3c.normalize());
+    skyUniforms.uAureoleStrength.value = Math.max(params.aureoleStrength, 0);
+    skyUniforms.uAureoleWidth.value = Math.max(params.aureoleWidth, 1e-3);
+    skyUniforms.uAureoleCore.value = Math.max(params.aureoleCore, 1e-3);
+    skyUniforms.uAureoleSquash.value = Math.max(params.aureoleSquash, 0.05);
+    // The horizon glow belongs to a low sun. By 25 degrees there is no glow band left, only
+    // a bright sky, and leaving it in would put a warm stripe under a midday horizon.
+    skyUniforms.uHorizonGlow.value = Math.max(params.horizonGlow, 0) * smoothstep(26, 3, elev);
+    skyUniforms.uHorizonGlowHeight.value = Math.max(params.horizonGlowHeight, 1e-3);
+    skyUniforms.uHorizonGlowFocus.value = Math.max(params.horizonGlowFocus, 0.1);
+    skyUniforms.uDither.value = Math.max(params.dither, 0);
 
     // 0.42 of a 4.6-unit beam put the lit faces around 0.9 linear, i.e. on AgX's shoulder, and
     // the whole deck came back as one cream sheet with no form in it. 0.14 lands the lit faces
