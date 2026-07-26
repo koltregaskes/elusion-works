@@ -5448,15 +5448,17 @@ export function createLevel(scene, materials, game) {
       popX();
       popX();
     }
-    // Hazard posts either side of the deck, one always knocked askew.
-    for (let s = -1; s <= 1; s += 2) {
-      const lean = s > 0 ? 0.0 : 0.22;
-      place(halfW + 0.35, 0, s * 2.9, 0, 0, lean);
-      tube(gm, 0.045, 0.05, 1.25, 6, T.steelPainted, true, false, 0.008);
-      place(0, 0.42, 0);
-      tube(gm, 0.055, 0.055, 0.16, 6, T.hazard, false, false, 0.006);
-      popX();
-      popX();
+    // Hazard posts at all four corners of the deck, one of them always knocked askew.
+    for (let sx = -1; sx <= 1; sx += 2) {
+      for (let sz = -1; sz <= 1; sz += 2) {
+        const lean = sx * sz > 0 ? 0.0 : 0.2 * r2();
+        place(sx * (halfW + 0.35), 0, sz * 2.9, 0, 0, lean);
+        tube(gm, 0.045, 0.05, 1.25, 6, T.steelPainted, true, false, 0.008);
+        place(0, 0.42, 0);
+        tube(gm, 0.055, 0.055, 0.16, 6, T.hazard, false, false, 0.006);
+        popX();
+        popX();
+      }
     }
     popX();
   }
@@ -5543,6 +5545,14 @@ export function createLevel(scene, materials, game) {
     }
   }
 
+  /**
+   * Largest font cell that fits `text` inside a `2*hw x 2*hh` panel with a margin. Sizing the
+   * cell by eye is what produces a number three times the width of the plate it is painted on.
+   */
+  function fitCell(text, hw, hh) {
+    return Math.min(hh * 0.24, (hw * 1.7) / (6.4 * Math.max(1, text.length)));
+  }
+
   /** Bolted-on plate, hazard-edged, with a stencil on it. Local frame, facing +Z. */
   function signPlate(gm, x, y, zOff, hw, hh, text, faceTint, textTint) {
     chamferBox(gm, x, y, zOff + 0.012, hw, hh, 0.012, faceTint, 0.006);
@@ -5551,7 +5561,7 @@ export function createLevel(scene, materials, game) {
         chamferBox(gm, x + sx * (hw - 0.03), y + sy * (hh - 0.03), zOff + 0.026, 0.012, 0.012, 0.004, T.steelDark, 0.002);
       }
     }
-    if (text) stencilText(gm, text, x, y, Math.min(hh * 0.9, hw * 1.4) / 3.5, textTint || T.soot, zOff + 0.027);
+    if (text) stencilText(gm, text, x, y, fitCell(text, hw, hh), textTint || T.soot, zOff + 0.027);
   }
 
   /** Weathered louvred vent: a frame with angled blades and a soot wash below it. */
@@ -5648,10 +5658,12 @@ export function createLevel(scene, materials, game) {
     strut(gm, boxX, cy - 0.15, zOut + 0.035, boxX + 0.05, 1.15, zOut + 0.035, 0.016, T.steelPainted, 0.003);
     rustWash(gWall, boxX, cy - 0.16, 1.5, 0.22, 4, zOut + 0.004, wash, seedN + 3);
 
-    // A cable tray on the longer stretches, a lamp on the shorter ones.
-    if (len > 5.5 && yTop > 3.2) {
-      cableTray(gm, x0 + 0.6, x1 - 0.6, Math.min(yTop - 0.6, 3.55), zOut, seedN + 11);
-      rustWash(gWall, lerp(x0, x1, 0.4), Math.min(yTop - 0.62, 3.5), 2.2, 0.5, 5, zOut + 0.004, wash, seedN + 19);
+    // A cable tray wherever there is a run long enough to justify one. On a tall elevation it
+    // goes above the conduit; on a 2.6 m dado there is no room up there, so it goes below it.
+    if (o.tray !== false && len > 4.0) {
+      const ty = yTop > 3.2 ? Math.min(yTop - 0.55, 3.5) : cy - 1.0;
+      cableTray(gm, x0 + 0.6, x1 - 0.6, ty, zOut, seedN + 11);
+      rustWash(gWall, lerp(x0, x1, 0.4), ty - 0.03, 1.6, 0.5, 4, zOut + 0.004, wash, seedN + 19);
     }
     if (o.lamp !== false && len > 2.0) {
       wallLamp(gm, lerp(x0, x1, o.lampAt === undefined ? 0.62 : o.lampAt), Math.min(yTop - 0.55, 2.95), zOut, r2() < 0.5 ? 'cone' : 'bulkhead');
@@ -5664,11 +5676,12 @@ export function createLevel(scene, materials, game) {
       rustWash(gWall, lerp(x0, x1, 0.32), 1.63, 1.1, 0.4, 3, zOut + 0.004, wash, seedN + 29);
     }
     if (o.stencil) {
-      stencilText(gWall, o.stencil, lerp(x0, x1, o.stencilAt === undefined ? 0.68 : o.stencilAt), o.stencilY === undefined ? 1.55 : o.stencilY, o.stencilSize || 0.055, o.stencilTint || T.paint, zOut + 0.006);
+      stencilText(gWall, o.stencil, lerp(x0, x1, o.stencilAt === undefined ? 0.78 : o.stencilAt), o.stencilY === undefined ? 1.55 : o.stencilY, o.stencilSize || 0.055, o.stencilTint || T.paint, zOut + 0.006);
     }
     if (o.louvre && len > 2.2 && yTop > 2.4) {
-      louvreVent(gm, lerp(x0, x1, 0.5), Math.min(yTop - 0.6, 2.1), zOut, 0.42, 0.3, T.steelPainted);
-      rustWash(gWall, lerp(x0, x1, 0.5), 1.78, 1.5, 0.7, 5, zOut + 0.004, wash, seedN + 31);
+      const ly = Math.min(yTop - 0.85, 1.78);
+      louvreVent(gm, lerp(x0, x1, 0.5), ly, zOut, 0.34, 0.28, T.steelPainted);
+      rustWash(gWall, lerp(x0, x1, 0.5), ly - 0.3, 1.4, 0.6, 5, zOut + 0.004, wash, seedN + 31);
     }
     // Grime at the base: splash-back off the ground, which every wall in the world has.
     const splashes = Math.max(2, Math.round(len / 1.4));
@@ -5775,9 +5788,12 @@ export function createLevel(scene, materials, game) {
    * than baked into an instance, which is the whole reason these are merged geometry: four
    * boxes carrying the same painted number is worse than no number at all.
    */
-  function crateStack(x, z, yaw, specs, seedN) {
+  function crateStack(x, z, yaw, specs, seedN, yBase) {
     const gw = G('woodPlank');
     const r2 = mulberry32(seedN);
+    // `yBase` lets a stack stand on the depot slab or the dock deck. Defaulting to `groundY`
+    // and then placing something on a 1.15 m platform buries it to the shoulders.
+    const y0 = yBase === undefined ? groundY(x, z) : yBase;
     let y = 0;
     for (let i = 0; i < specs.length; i++) {
       const [hw, hh, hd, text] = specs[i];
@@ -5786,16 +5802,16 @@ export function createLevel(scene, materials, game) {
       const jy = (r2() - 0.5) * 0.14;
       const tone = 0.66 + r2() * 0.5;
       const tt = [T.wood[0] * tone, T.wood[1] * tone, T.wood[2] * tone];
-      place(x + jx, groundY(x, z) + y + hh, z + jz, yaw + jy);
+      place(x + jx, y0 + y + hh, z + jz, yaw + jy);
       chamferBox(gw, 0, 0, 0, hw, hh, hd, tt, 0.014);
       // Battens round the case — a crate is boards on a frame, not a solid.
       for (let s = -1; s <= 1; s += 2) {
         chamferBox(gw, 0, s * (hh - 0.045), hd + 0.012, hw + 0.012, 0.045, 0.012, [tt[0] * 0.86, tt[1] * 0.86, tt[2] * 0.86], 0.005);
         chamferBox(gw, s * (hw - 0.045), 0, hd + 0.012, 0.045, hh + 0.012, 0.012, [tt[0] * 0.86, tt[1] * 0.86, tt[2] * 0.86], 0.005);
       }
-      if (text) stencilText(gw, text, 0, 0.02, Math.min(hh * 0.5, (hw * 1.6) / text.length) * 0.42, T.soot, hd + 0.03);
+      if (text) stencilText(gw, text, 0, 0.02, fitCell(text, hw * 0.8, hh * 0.75), T.soot, hd + 0.03);
       popX();
-      solidBox(x + jx, groundY(x, z) + y + hh, z + jz, hw, hh, hd, 'wood', yaw + jy, { cover: y + hh * 2 > 0.9 });
+      solidBox(x + jx, y0 + y + hh, z + jz, hw, hh, hd, 'wood', yaw + jy, { cover: y + hh * 2 > 0.9 });
       y += hh * 2 + 0.01;
     }
     dustSkirt(x, z, 0.95, 0.1, seedN + 6, null);
@@ -5810,7 +5826,11 @@ export function createLevel(scene, materials, game) {
       const a = (i / n) * Math.PI * 2;
       const rr = 0.07 + r2() * 0.06;
       const L = 2.6 + r2() * 1.7;
-      place(Math.cos(a) * rr, 0.09 + Math.sin(a) * rr * 0.5, Math.sin(a) * rr * 0.3, (r2() - 0.5) * 0.12, 0, Math.PI * 0.5 - lean * (0.85 + r2() * 0.3));
+      // Off-vertical by `lean`, foot on the ground: the tube is authored along local Y and
+      // centred on its own origin, so the centre has to be lifted by half its projected length
+      // or the bundle sinks through the floor and lies flat instead of standing.
+      const tilt = lean * (0.85 + r2() * 0.3);
+      place(Math.cos(a) * rr + Math.sin(tilt) * L * 0.5, Math.cos(tilt) * L * 0.5, Math.sin(a) * rr, (r2() - 0.5) * 0.2, 0, -tilt);
       tube(gm, 0.024, 0.024, L, 5, r2() < 0.4 ? T.rustDeep : T.steelPainted, true, true, 0.004);
       popX();
     }
@@ -5821,13 +5841,14 @@ export function createLevel(scene, materials, game) {
       popX();
     }
     popX();
-    solidBox(x + Math.cos(yaw) * 0.9, 0.35, z - Math.sin(yaw) * 0.9, 1.3, 0.35, 0.35, 'metal', yaw);
+    solidBox(x + Math.cos(yaw) * 0.5, 0.95, z - Math.sin(yaw) * 0.5, 0.55, 0.95, 0.35, 'metal', yaw);
     dustSkirt(x, z, 0.7, 0.09, seedN + 8, null);
   }
 
   /** A scatter of sawn timber ends beside a stack, plus a couple of steel offcuts. */
-  function timberOffcuts(x, z, n, seedN) {
+  function timberOffcuts(x, z, n, seedN, yBase) {
     const r2 = mulberry32(seedN);
+    const yb = yBase === undefined ? null : yBase;
     for (let i = 0; i < n; i++) {
       const a = r2() * 6.28;
       const rr = r2() * 1.5;
@@ -5835,17 +5856,17 @@ export function createLevel(scene, materials, game) {
       const pz = z + Math.sin(a) * rr;
       const tone = 0.58 + r2() * 0.6;
       if (r2() < 0.7) {
-        addInstance(setDebris, px, groundY(px, pz) + 0.02, pz, r2() * 6.28, 0, (r2() - 0.5) * 0.5, 0.45 + r2() * 1.0,
+        addInstance(setDebris, px, (yb === null ? groundY(px, pz) : yb) + 0.02, pz, r2() * 6.28, 0, (r2() - 0.5) * 0.5, 0.45 + r2() * 1.0,
           [T.wood[0] * tone, T.wood[1] * tone, T.wood[2] * tone]);
       } else {
-        addInstance(setOffcut, px, groundY(px, pz) + 0.02, pz, r2() * 6.28, (r2() - 0.5) * 0.3, (r2() - 0.5) * 0.2, 0.7 + r2() * 0.7,
+        addInstance(setOffcut, px, (yb === null ? groundY(px, pz) : yb) + 0.02, pz, r2() * 6.28, (r2() - 0.5) * 0.3, (r2() - 0.5) * 0.2, 0.7 + r2() * 0.7,
           [T.rust[0] * tone, T.rust[1] * tone, T.rust[2] * tone]);
       }
     }
   }
 
   /** A row of jerry cans, one or two knocked over, tints off the palette's painted metals. */
-  function jerryRow(x, z, yaw, n, seedN) {
+  function jerryRow(x, z, yaw, n, seedN, yBase) {
     const r2 = mulberry32(seedN);
     for (let i = 0; i < n; i++) {
       const f = i - (n - 1) * 0.5;
@@ -5855,7 +5876,7 @@ export function createLevel(scene, materials, game) {
       const tone = 0.7 + r2() * 0.55;
       const base = i % 3 === 0 ? T.railGreen : i % 3 === 1 ? T.steelPainted : T.hazard;
       addInstance(
-        setJerry, px, groundY(px, pz) + (down ? 0.09 : 0), pz,
+        setJerry, px, (yBase === undefined ? groundY(px, pz) : yBase) + (down ? 0.09 : 0), pz,
         yaw + (r2() - 0.5) * 0.5, down ? Math.PI * 0.5 : 0, 0, 1,
         [base[0] * tone, base[1] * tone, base[2] * tone]
       );
@@ -5949,9 +5970,12 @@ export function createLevel(scene, materials, game) {
     }
     strut(gm, 0, ay - 0.42, 0.3, 0, ay - 0.02, 0.62, 0.016, T.steelDark, 0.004);
     strut(gm, 0, ay - 0.42, -0.3, 0, ay - 0.02, -0.62, 0.016, T.steelDark, 0.004);
-    // Numbered pole plate and the rust off it.
-    signPlate(gm, 0, 1.9, 0.118, 0.075, 0.11, String(20 + (seedN % 60)), T.steelPainted, T.soot);
-    rustWash(gw, 0, 1.76, 1.1, 0.1, 3, 0.115, T.rustWash, seedN + 9);
+    // A painted identification band rather than a plate: at 0.21 m diameter a numbered plate
+    // would need a 1 cm glyph, which is under a pixel from anywhere the player can stand.
+    place(0, 1.95, 0);
+    tube(gm, 0.108, 0.112, 0.22, 8, T.hazard, false, false, 0.004);
+    popX();
+    rustWash(gw, 0, 1.82, 1.2, 0.1, 3, 0.114, T.rustWash, seedN + 9);
     popX();
     solidBox(x, h * 0.5, z, 0.13, h * 0.5, 0.13, 'wood');
     dustSkirt(x, z, 0.42, 0.07, seedN + 1, null);
@@ -5976,7 +6000,7 @@ export function createLevel(scene, materials, game) {
     for (let i = 0; i < 5; i++) {
       const f0 = i / 5;
       const f1 = (i + 1) / 5;
-      place(0, -f0 * 0.09, 0.55 + f0 * 1.5, 0, Math.PI * 0.5, 0);
+      place(0, -f0 * 0.09, 0.15 + f0 * 1.5, 0, Math.PI * 0.5, 0);
       tube(gt, 0.26 - f1 * 0.13, 0.26 - f0 * 0.13, (f1 - f0) * 1.5, 10, i & 1 ? grey(1.5) : T.hazard, false, false, 0.004);
       popX();
     }
@@ -6290,6 +6314,10 @@ export function createLevel(scene, materials, game) {
       const gB = G('brickPainted');
       const gC = G('corrugatedSteel');
       const zOut = DEPOT.x1 + 0.2;
+      // Buckets are fetched *at the wall*, not at the origin: `bucket` keys on the chunk the
+      // transform stack is standing in, and taking them at identity would drag one quadrant's
+      // bounding sphere across the whole map and stop it culling.
+      const gm = bucketAt('metalRust', DEPOT.x1, (DEPOT.z0 + DEPOT.z1) * 0.5);
       // Local frame: X along the run (world -Z), +Z out of the face (world +X).
       place(DEPOT.x1, 0, (DEPOT.z0 + DEPOT.z1) * 0.5, Math.PI * 0.5);
       wallFittings(gm, gB, -15.4, -10.0, 2.6, 0.2, 8101, { sign: '14', stencil: 'D-2', louvre: true });
@@ -6316,6 +6344,7 @@ export function createLevel(scene, materials, game) {
       const gB = G('brickPainted');
       const gC = G('corrugatedSteel');
       const cx = (DEPOT.x0 + DEPOT.x1) * 0.5;
+      const gm = bucketAt('metalRust', cx, DEPOT.z1);
       place(cx, 0, DEPOT.z1, 0);
       wallFittings(gm, gB, -14.6, -4.2, 2.6, 0.2, 8201, { sign: 'D2', stencil: 'SHED 2', stencilSize: 0.07, louvre: true });
       wallFittings(gm, gB, -1.8, 5.5, 2.6, 0.2, 8202, { stencil: '14', stencilSize: 0.1, lampAt: 0.3 });
@@ -6340,6 +6369,7 @@ export function createLevel(scene, materials, game) {
       const cx = (ADMIN.x0 + ADMIN.x1) * 0.5;
       const cz = (ADMIN.z0 + ADMIN.z1) * 0.5;
       const span = (ADMIN.x1 - ADMIN.x0) - 1.5;
+      const gm = bucketAt('metalRust', cx, cz);
       place(cx, 0, ADMIN.z1, 0);
       // Piers between the ground-floor windows, and the cill stains above them.
       for (let i = 0; i < 5; i++) {
@@ -6394,6 +6424,7 @@ export function createLevel(scene, materials, game) {
       ];
       for (let r = 0; r < runs.length; r++) {
         const [x0, x1, wz, side, h, seedN] = runs[r];
+        const gm = bucketAt('metalRust', (x0 + x1) * 0.5, wz);
         // Yaw the frame so local +Z always leaves the wall on the yard side, whichever way
         // round the run was authored. Everything below is then a plain positive offset.
         place((x0 + x1) * 0.5, 0, wz, side > 0 ? 0 : Math.PI);
@@ -6444,12 +6475,18 @@ export function createLevel(scene, materials, game) {
     /* --- the gatehouse: a blank 4 x 3 m brick face straight down the approach --- */
     {
       const gB = G('brickPainted');
+      const gm = bucketAt('metalRust', 34, 36);
       place(34, 0, 36, Math.PI);
-      wallFittings(gm, gB, -1.7, 1.7, 2.9, 1.81, 8701, { sign: 'G1', stencil: 'GATE 4', stencilSize: 0.055, stencilY: 2.35, lamp: true, lampAt: 0.18 });
-      pockMarks(gB, 0.3, 1.4, 1.6, 1.0, 16, 1.815, 8702, 0.3, 0);
+      // The window takes x +-1.3 between y 1.30 and 2.40, so everything here works the strip
+      // above it and the two returns beside it. Fittings laid across the glass would float.
+      stencilText(gB, 'GATE 4', 0, 2.68, 0.05, T.paint, 1.815);
+      wallLamp(gm, 1.62, 2.55, 1.81, 'cone');
+      rustWash(gB, 1.62, 2.44, 1.5, 0.16, 3, 1.815, T.rustWash, 8681);
+      rustWash(gB, -1.5, 2.9, 1.9, 0.5, 4, 1.815, T.grime, 8682);
+      pockMarks(gB, -1.66, 0.7, 0.28, 0.6, 9, 1.815, 8683, 0, 0);
+      pockMarks(gB, 1.66, 0.7, 0.28, 0.6, 9, 1.815, 8684, 0, 0);
       popX();
     }
-    void gs;
   }
 
   /** Working clutter: the things a yard crew leaves lying about. */
@@ -6513,8 +6550,6 @@ export function createLevel(scene, materials, game) {
           yaw + (hash2(k, i + 23) - 0.5) * 0.09, 0, 0, 1, [T.wood[0] * tone, T.wood[1] * tone, T.wood[2] * tone]);
       }
       // One pallet per stack leaning off the side of it.
-      place(x + Math.cos(yaw) * 0.85, groundY(x, z), z - Math.sin(yaw) * 0.85, yaw + 0.4, 0, 1.25);
-      popX();
       addInstance(setPallet, x + Math.cos(yaw) * 0.78, groundY(x, z) + 0.5, z - Math.sin(yaw) * 0.78, yaw + 0.5, 0, 1.3, 1, T.woodDark);
       solidBox(x, groundY(x, z) + n * 0.0725, z, 0.62, n * 0.0725, 0.42, 'wood', yaw, { cover: n > 4 });
       dustSkirt(x, z, 0.9, 0.09, 8800 + i, null);
@@ -6547,7 +6582,6 @@ export function createLevel(scene, materials, game) {
 
   /** Overhead: the layer between the container tops and the crane that the yard had nothing in. */
   function dressOverhead() {
-    const gm = bucketAt('metalRust', 0, 0);
     const wireT = mixTint(grey(1), T.soot, 0.55);
 
     // Two lines of catenary poles, both laid where the ground under them is genuinely clear.
@@ -6624,7 +6658,7 @@ export function createLevel(scene, materials, game) {
     const craters = [
       [-17.0, -12.5, 2.8, 0.55, 0.84, 9101],
       [22.5, -8.5, 2.8, -0.6, 0.8, 9102],
-      [-4.5, 10.0, 2.3, 0.2, -0.98, 9103],
+      [-2.0, 10.0, 2.3, 0.2, -0.98, 9103],
       [-16.5, -25.0, 2.4, -0.9, 0.44, 9104],
       [38.0, -10.5, 2.6, -0.7, 0.72, 9105],
       [-45.0, 35.0, 2.2, 0.95, -0.3, 9106],
@@ -6635,25 +6669,22 @@ export function createLevel(scene, materials, game) {
     }
 
     // Two positions that were hit while they were held.
-    burstSandbags(-2.4, 15.6, 3.4, 18.4, 4, 9201);
-    burstSandbags(26.0, ADMIN.z1 + 1.0, 31.0, ADMIN.z1 + 1.0, 3, 9202);
-    burstSandbags(-30.5, -3.5, -26.0, -3.5, 3, 9203);
+    // Placed as extensions of the intact positions the yard already has rather than on top of
+    // them, so a player walking the line sees the same emplacement standing at one end and
+    // blown open at the other. That contrast is the story; two separate walls is not.
+    burstSandbags(-22.0, -16.0, -17.6, -16.0, 4, 9201);
+    burstSandbags(19.5, -12.8, 24.0, -12.8, 3, 9202);
+    burstSandbags(11.0, 3.2, 15.2, 3.2, 3, 9203);
 
-    // Shrapnel on the concrete nearest each crater — the jersey barriers and the buffer stop
-    // take it worst, because they are the only vertical concrete out in the open.
-    const gc = G('concretePanel');
-    const scarred = [
-      [-16.4, -6, 0, 9301], [-12.8, -6, 0, 9302], [4, -6.4, 0.08, 9303],
-      [18.5, 3, Math.PI * 0.5, 9304], [-40, -6.5, 0, 9305], [17.2, 11.3, Math.PI * 0.5, 9306],
-    ];
-    for (let i = 0; i < scarred.length; i++) {
-      const s = scarred[i];
-      for (let side = -1; side <= 1; side += 2) {
-        place(s[0], 0, s[1], s[2] + (side > 0 ? 0 : Math.PI));
-        pockMarks(gc, 0, 0.5, 1.0, 0.34, 10, 0.33, s[3] + (side > 0 ? 0 : 1), 0, 0);
-        popX();
-      }
-    }
+    // Shrapnel on the depot's east elevation, which is the flat concrete nearest the two
+    // craters on the depot route. The jersey barriers deliberately get none: a New Jersey
+    // profile is battered, so a decal laid at a constant offset floats off the face.
+    place(DEPOT.x1, 0, (DEPOT.z0 + DEPOT.z1) * 0.5, Math.PI * 0.5);
+    pockMarks(G('brickPainted'), 1.5, 1.2, 2.4, 0.9, 18, 0.205, 9301, -0.5, -0.3);
+    popX();
+    place((DEPOT.x0 + DEPOT.x1) * 0.5, 0, DEPOT.z1, 0);
+    pockMarks(G('brickPainted'), -9.5, 1.2, 3.2, 0.9, 20, 0.205, 9302, 0.5, -0.2);
+    popX();
   }
 
   function setDressing() {

@@ -2831,6 +2831,7 @@ function bGunPolymer(ctx) {
   const scuffs = scratchField(res, { seed: seed + 13, count: 300, angle: 0.7, spread: 1.0, lenMin: 0.008, lenMax: 0.07, width: 0.001 });
   const wearF = blotchField(res, seed + 17, 5);
   const dustF = blotchField(res, seed + 19, 4);
+  const macroL = macroField(res, seed + 23);
 
   const poly = C.gunPolymer;
   const tan = C.gunTan;
@@ -2863,6 +2864,8 @@ function bGunPolymer(ctx) {
     ctx.ag[i] = poly[1];
     ctx.ab[i] = poly[2];
     tint(ctx, i, lerp(0.9, 1.1, macro[i]));
+    // Macro layer: moulded polymer sinks and gasses off unevenly across a large part.
+    tint(ctx, i, lerp(0.9, 1.1, macroL[i]));
     // Polymer scuffs go lighter — the surface goes chalky where it has been abraded.
     const wear = clamp01(scuffs[i] * 0.9 + smoothstep(0.62, 0.9, wearF[i]) * stipple * 0.7);
     paint(ctx, i, mixc(poly, tan, 0.5), wear * 0.55);
@@ -2875,6 +2878,7 @@ function bGunPolymer(ctx) {
     r -= smoothstep(0.5, 0.95, stipple) * 0.12;
     r += wear * 0.2;
     r += (micro[i] - 0.5) * 0.06;
+    r += (0.5 - macroL[i]) * 2.0 * 0.07;
     r -= seam * 0.08;
     r -= (l - 0.15) * 0.08;
     ctx.rg[i] = clamp01(r);
@@ -2890,6 +2894,7 @@ function bGunWood(ctx) {
   const pore = fbmField(res, { seed: seed + 13, freq: 90, octaves: 3, stretch: 1 / 24 });
   const handling = blotchField(res, seed + 17, 5);
   const dings = scratchField(res, { seed: seed + 19, count: 90, angle: 0.5, spread: 1.0, lenMin: 0.006, lenMax: 0.04, width: 0.0014 });
+  const macroL = macroField(res, seed + 23);
 
   // A dark oiled walnut derived from the palette rather than invented.
   const walnut = mixc(C.woodWeathered, C.gunRubber, 0.42);
@@ -2908,6 +2913,8 @@ function bGunWood(ctx) {
     ctx.ar[i] = walnut[0];
     ctx.ag[i] = walnut[1];
     ctx.ab[i] = walnut[2];
+    // Macro layer: heartwood against sapwood down the length of the blank.
+    tint(ctx, i, lerp(0.86, 1.14, macroL[i]));
     paint(ctx, i, light, clamp01(1 - grain - 0.15) * 0.45);
     paint(ctx, i, shade(walnut, 0.62), grain * 0.5);
     // Handling darkens and polishes the wrist and forend.
@@ -2919,6 +2926,7 @@ function bGunWood(ctx) {
     let r = 0.36;
     r += (pore[i] - 0.5) * 0.16;
     r += grain * 0.08;
+    r += (0.5 - macroL[i]) * 2.0 * 0.08; // the oil has worn thin at one end of the furniture
     r -= clamp01(handling[i] - 0.5) * 0.14;
     r += dings[i] * 0.3;
     r -= (l - 0.22) * 0.1;
@@ -2998,6 +3006,7 @@ function bSkin(ctx) {
   const macro = blotchField(res, seed + 29, 3);
   const oilF = fbmField(res, { seed: seed + 31, freq: 14, octaves: 4 });
   const grime = blotchField(res, seed + 37, 4);
+  const macroL = macroField(res, seed + 41);
 
   // Derived from the palette so the skin sits in the same family as everything else.
   const base = mixc(mixc(C.woodSplinter, C.gunTan, 0.35), C.brick, 0.18);
@@ -3022,6 +3031,12 @@ function bSkin(ctx) {
     ctx.ar[i] *= lerp(0.9, 1.12, mottle[i]);
     ctx.ag[i] *= lerp(0.95, 1.05, mottle[i]);
     ctx.ab[i] *= lerp(0.97, 1.03, mottle[i]);
+    // Macro layer: weathered on the back of the hand, pale where a glove has covered it.
+    // Kept to a tan rather than a value shift, because a big luminance swing on skin reads
+    // as dirt rather than as sun.
+    ctx.ar[i] *= lerp(1.06, 0.94, macroL[i]);
+    ctx.ag[i] *= lerp(1.02, 0.97, macroL[i]);
+    ctx.ab[i] *= lerp(0.98, 1.02, macroL[i]);
     paint(ctx, i, shadowTone, crease * 0.4);
     paint(ctx, i, shadowTone, clamp01(macro[i] - 0.55) * 0.3);
     paint(ctx, i, highlight, clamp01(0.5 - macro[i]) * 0.25);
@@ -3406,7 +3421,10 @@ const FRAG_ASH = /* glsl */ `
     // wall that carries any of it at all immediately reads as a tinted material rather than
     // as a dusted one. Below about 12 degrees off vertical there is none.
     ashMask *= smoothstep( 0.02, 0.32, ashWN.y );
-    ashMask *= 0.28 + 1.20 * ashDrift;
+    // Floor well below the old flat 0.40 and peak above the old 1.30: the mean coverage is
+    // about what it was, but it is now nearly all in the drifts instead of spread as an even
+    // wash, and an even wash is exactly what reads as a tint rather than as fallout.
+    ashMask *= 0.26 + 1.05 * ashDrift;
     // Crevices trap more dust than exposed faces.
     ashMask *= mix( 1.3, 0.82, ashAOc );
     // Bare polished metal does not hold a dust film the way oxide, paint and concrete do, and
@@ -3417,11 +3435,11 @@ const FRAG_ASH = /* glsl */ `
     ashMask *= mix( 1.0, uAshMetalKeep, metalnessFactor * ( 0.45 + 0.55 * ashEdge ) );
     ashMask = clamp( ashMask, 0.0, 1.0 );
 
-    diffuseColor.rgb = mix( diffuseColor.rgb, uDustColour, ashMask * 0.86 );
+    diffuseColor.rgb = mix( diffuseColor.rgb, uDustColour, ashMask * 0.84 );
     // A dust film is a powder lying ON the surface, not a stain in it: it raises the albedo
     // floor as well as pulling the hue. Squared so only the properly drifted texels lift,
     // which keeps the effect as deposits rather than an overall exposure change.
-    diffuseColor.rgb += uDustColour * ( ashMask * ashMask * 0.11 );
+    diffuseColor.rgb += uDustColour * ( ashMask * ashMask * 0.10 );
     roughnessFactor = mix( roughnessFactor, uAshRoughness, ashMask * 0.9 );
     // A dust film is a dielectric.
     metalnessFactor *= ( 1.0 - ashMask * 0.94 );

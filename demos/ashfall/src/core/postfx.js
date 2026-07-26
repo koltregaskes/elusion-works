@@ -1086,11 +1086,14 @@ vec3 hdrCentre(vec2 uv) {
    *    effect: it is identically zero on axis and only becomes measurable in the outer third
    *    of the image circle. pow(r, 2.5) with r normalised to 1.0 at the frame corner is the
    *    honest shape — 0.09 at half field, 0.35 at three-quarters, 1.0 in the extreme corner.
-   * 2) The peak split was ~2.4 source texels at the corner. Anything past about half a texel
-   *    stops being a fringe on a silhouette and starts *resampling* high-frequency texture
-   *    detail at a different phase per channel, which is precisely how you manufacture colour
-   *    moire. 0.47 = 2.35 * 0.2, i.e. the same corner magnitude cut to a fifth, landing at
-   *    ~0.45 texel of red-blue separation in the corner and nothing at all inboard of it.
+   * 2) It was far too strong even where it belonged. At GRADE.chromatic = 0.0016 on a
+   *    1088-wide render the corner put the red tap 2.0 texels one way and the blue tap 2.0 the
+   *    other: a four-texel red/blue separation. Anything past about half a texel stops being a
+   *    fringe on a silhouette and starts *resampling* high-frequency texture detail at a
+   *    different phase per channel, which is precisely how you manufacture colour moire.
+   *    0.47 = 2.35 * 0.2 keeps the same corner shape at a fifth of the magnitude — 0.4 texel
+   *    per channel, 0.8 texel of separation right in the corner, and essentially nothing
+   *    inboard of the outer third once the pow(r, 2.5) falloff is applied.
    *
    * Local-contrast damp. Even a sub-texel split reads as an artefact rather than as optics
    * when it lands on a surface whose detail already alternates every pixel. But the damp has

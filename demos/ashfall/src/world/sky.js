@@ -1267,12 +1267,16 @@ export function createSky(engine, materials) {
      */
     cloudHeight: 620,
     /**
-     * Threshold, so *higher* is less cloud. 0.54 against an fBm whose mean is ~0.5 left the deck
-     * below the coverage threshold nearly everywhere — measured as no cloud at all in three of
-     * four frames. 0.42 puts roughly a third of the sky under cloud, which is a deck.
+     * Threshold, so *higher* is less cloud, paired with a *narrow* softness so the deck is
+     * selective: clear sky where the field is thin, opaque bands where it is thick.
+     *
+     * The previous 0.54 / 0.30 pair did the opposite — a wide transition on a high threshold
+     * gives a low-alpha veil over the entire dome and nothing that reads as a cloud, which is
+     * why the deck measured as absent while still greying out the zenith. At 0.48 / 0.14 the
+     * fBm's median lands at ~4% alpha (i.e. clear) and its upper third at 70-90% (i.e. cloud).
      */
-    cloudCoverage: 0.42,
-    cloudSoftness: 0.20,
+    cloudCoverage: 0.48,
+    cloudSoftness: 0.14,
     /** Raised: at 0.78, under aerial perspective, the deck was being swamped by the haze band. */
     cloudOpacity: 0.94,
     cloudWarp: 0.55,

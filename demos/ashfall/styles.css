@@ -73,7 +73,15 @@
 
   /* --- UI (art.js PALETTE, UI block) --- */
   --hud-primary: #e8e4dc;
-  --hud-dim: rgba(232, 228, 220, 0.55);
+  /* Opaque on purpose, and the one token that deliberately does not mirror
+     art.js. art.js ships hudDim as rgba(232,228,220,0.55), which means the dim
+     labels composite toward whatever is behind them: measured on the sunline
+     frame, SCORE and KILLS came out at 1.13:1 against the sky directly behind
+     them, i.e. invisible. #b4b0a8 is that same ash hue flattened against the
+     ink, so it reads as the same step down the ramp but can never dissolve into
+     a bright background. It is re-asserted on .hud / .menu below because the UI
+     modules push the art.js alpha inline. */
+  --hud-dim: #b4b0a8;
   --hud-accent: #c8a02c;
   --hud-danger: #d64b3a;
   --hud-friendly: #6fb3d4;
@@ -97,10 +105,35 @@
   --hairline: rgba(232, 228, 220, 0.14);
   --hairline-strong: rgba(232, 228, 220, 0.28);
 
-  /* --- Type --- */
-  --font-display: 'Barlow Condensed', 'Arial Narrow', 'Helvetica Neue', sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
-  --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* --- Type ---
+     index.html links Barlow Condensed / IBM Plex Mono / Inter, but that link is
+     the one external asset in a project whose whole premise is that there are
+     none, and it is the first thing to disappear: offline, behind a CSP, or with
+     the CDN blocked. The delivered capture is exactly that case, and the old
+     stack fell straight past 'Arial Narrow' and 'Helvetica Neue' (neither of
+     which exists on Linux) into the platform grotesque, so MK18, SCORE, KILLS,
+     STAND and the compass cardinals set as wide body copy on a render.
+
+     These stacks are therefore written to work with no webfont at all. Each one
+     names the genuinely condensed faces that actually ship on each platform —
+     Arial Narrow on Windows, Helvetica Neue Condensed on macOS, Liberation Sans
+     Narrow / Nimbus Sans Narrow / DejaVu Sans Condensed on Linux, Roboto
+     Condensed on Android — before reaching a generic, and --font-stretch-hud
+     asks fontconfig for the narrow width of any family that carries one as a
+     width axis rather than a separate name. Tracking throughout the HUD has come
+     down with it (display labels 0.26-0.44em -> 0.12-0.2em, .mono 0.1 -> 0.055em)
+     because wide tracking on a wide fallback stops a short label reading as one
+     word; the condensed faces still need less of it than a grotesque does. */
+  --font-display: 'Barlow Condensed', 'Oswald', 'Roboto Condensed', 'Arial Narrow',
+    'Helvetica Neue Condensed', 'Helvetica Neue', 'Liberation Sans Narrow',
+    'Nimbus Sans Narrow', 'DejaVu Sans Condensed', 'Encode Sans Condensed',
+    system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas,
+    'Roboto Mono', 'DejaVu Sans Mono', 'Liberation Mono', 'Courier New', monospace;
+  --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Helvetica Neue', 'Liberation Sans', Arial, sans-serif;
+  /* Applied wherever --font-display is. Harmless on a family with one width. */
+  --font-stretch-hud: condensed;
 
   /* --- Metrics. One unit, clamped so the HUD holds from 1280 to 3440. --- */
   --u: clamp(11px, 0.63vw, 21px);
@@ -114,12 +147,23 @@
   --pad-b: calc(var(--gutter) + var(--safe-b));
   --pad-l: calc(var(--gutter) + var(--safe-l));
 
-  /* --- Legibility over any background: 1px dark outline + a soft drop. --- */
+  /* --- Legibility over any background: a dark outline + a soft drop. ---
+     Ash-grey type sits at roughly the same luminance as the dusk sky, so the
+     outline, not the fill colour, is what carries the contrast: it puts a near
+     black edge under every stroke and takes the local ratio from ~1.4:1 to
+     ~9:1 whether the glyph is over sky or over ground. The old version leaned
+     on four 0.7-alpha 1px offsets, which vanished on thin small type over the
+     bright horizon; the ring is now near opaque and backed by a 4px halo that
+     darkens the sky immediately around the letterforms. */
   --ink-outline:
-    0 0 1px rgba(6, 5, 4, 0.95), 1px 0 1px rgba(6, 5, 4, 0.7), -1px 0 1px rgba(6, 5, 4, 0.7),
-    0 1px 1px rgba(6, 5, 4, 0.7), 0 -1px 1px rgba(6, 5, 4, 0.7), 0 2px 7px rgba(0, 0, 0, 0.55);
-  --ink-outline-soft: 0 0 1px rgba(6, 5, 4, 0.9), 0 1px 5px rgba(0, 0, 0, 0.55);
-  --drop: drop-shadow(0 0 1px rgba(6, 5, 4, 0.95)) drop-shadow(0 1px 4px rgba(0, 0, 0, 0.55));
+    0 0 1px rgba(6, 5, 4, 0.98), 1px 0 1px rgba(6, 5, 4, 0.92), -1px 0 1px rgba(6, 5, 4, 0.92),
+    0 1px 1px rgba(6, 5, 4, 0.92), 0 -1px 1px rgba(6, 5, 4, 0.92),
+    0 0 4px rgba(0, 0, 0, 0.72), 0 2px 8px rgba(0, 0, 0, 0.55);
+  --ink-outline-soft:
+    0 0 1px rgba(6, 5, 4, 0.95), 0 0 3px rgba(0, 0, 0, 0.65), 0 1px 5px rgba(0, 0, 0, 0.55);
+  --drop:
+    drop-shadow(0 0 1px rgba(6, 5, 4, 0.98)) drop-shadow(0 0 3px rgba(0, 0, 0, 0.6))
+    drop-shadow(0 1px 4px rgba(0, 0, 0, 0.55));
 
   /* --- Motion --- */
   --ease-punch: cubic-bezier(0.2, 0.9, 0.2, 1);
@@ -240,11 +284,37 @@ body:not(.ashfall-ready)::after {
    3. Type utilities
    -------------------------------------------------------------------------- */
 
+/* The mono face is for figures — ammo, health, score values, the debug readout —
+   where the tabular width is doing real work. No condensed monospace ships on
+   any platform, so the fallback is always wider than IBM Plex Mono; 0.1em on top
+   of that pushed the HUD numerals into a spaced-out ledger. 0.055em keeps the
+   grouping without letting digits collide when the webfont is absent. */
 .mono {
   font-family: var(--font-mono);
+  /* .hud sets condensed on the root; no monospace has a narrow width, and asking
+     for one only risks fontconfig substituting a different family entirely. */
+  font-stretch: normal;
   font-variant-numeric: tabular-nums lining-nums;
   font-feature-settings: 'tnum' 1, 'lnum' 1, 'zero' 1;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.055em;
+}
+
+/* Short uppercase labels are not figures, and in the fallback they suffer most
+   from a wide mono. They take the condensed display face instead, which is what
+   makes the HUD read as stencilled military type rather than as HTML text. */
+.hud .label,
+.health-stance,
+.minimap-zone,
+.streak {
+  font-family: var(--font-display);
+  font-stretch: var(--font-stretch-hud);
+}
+
+/* Figures stay monospaced so the columns do not jitter as values change. */
+.score-row .val,
+.health-meta [data-health-value] {
+  font-family: var(--font-mono);
+  font-stretch: normal;
 }
 
 .hud,
@@ -257,6 +327,10 @@ body:not(.ashfall-ready)::after {
    4. HUD — root and full-screen state layers
    -------------------------------------------------------------------------- */
 
+/* The HUD is set in the condensed display face from the root down. Everything
+   that wants the mono face asks for it (.mono, or a rule below); nothing in the
+   interface should ever inherit --font-body, which is what made the labels in
+   the capture read as a paragraph rather than as instrumentation. */
 .hud {
   position: fixed;
   inset: 0;
@@ -264,6 +338,8 @@ body:not(.ashfall-ready)::after {
   pointer-events: none;
   user-select: none;
   -webkit-user-select: none;
+  font-family: var(--font-display);
+  font-stretch: var(--font-stretch-hud);
   font-size: var(--u);
   color: var(--hud-primary);
   contain: layout style;
@@ -274,6 +350,19 @@ body:not(.ashfall-ready)::after {
   --damage: 0;
   --ads: 0;
   --streak: 0;
+}
+
+/* The one place this stylesheet overrules a UI module, and it is deliberate.
+   hud.js and menu.js mirror art.js onto [data-hud] / [data-menu] every boot, and
+   art.js's hudDim is an alpha. An alpha cannot be made legible: over the sunline
+   sky it composites to within 1.13:1 of the background no matter what shadow is
+   under it. Author !important beats an inline non-important declaration, so the
+   opaque token wins here without either module needing to change. Every other
+   palette value the modules write is still theirs. */
+.hud,
+.menu {
+  --hud-dim: #b4b0a8 !important;
+  --menu-dim: #b4b0a8 !important;
 }
 
 body.hide-hud .hud {
@@ -560,9 +649,12 @@ body.hide-hud .hud {
   display: block;
   white-space: nowrap;
   font-family: var(--font-display);
+  font-stretch: var(--font-stretch-hud);
   font-size: 1.15em;
   font-weight: 600;
-  letter-spacing: 0.16em;
+  /* 0.16em was drawn for Barlow Condensed; the fallback is wider to begin with,
+     so the prompt was breaking into loose characters. */
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--hud-primary);
   text-shadow: var(--ink-outline);
@@ -581,6 +673,17 @@ body.hide-hud .hud {
   height: 3.4em;
   z-index: 5;
   opacity: calc(1 - var(--ads, 0) * 0.55);
+  /* The strip sits at the top of the frame, which in this map is almost always
+     open sky — the brightest thing in the image and within a hair of the type's
+     own luminance. This scrim buys back a stop of separation under the cardinals
+     and the graduations. It is inside the element's own mask, so it fades out at
+     the same rate as the ruler and never shows an edge. */
+  background: radial-gradient(
+    ellipse 58% 130% at 50% 34%,
+    rgba(6, 8, 11, 0.44) 0%,
+    rgba(6, 8, 11, 0.24) 52%,
+    rgba(6, 8, 11, 0) 100%
+  );
   -webkit-mask-image: linear-gradient(
     to right,
     transparent 0%,
@@ -647,19 +750,26 @@ body.hide-hud .hud {
   opacity: 0.72;
 }
 
+/* hud.js sets the tick size and tracking inline (12px/10px at 0.08em), so weight
+   and shadow are the only levers here. Cardinals go to 700: at 12px in a fallback
+   grotesque, 600 was not enough weight to hold the ink outline. */
 .compass-track .ct-tick {
   font-family: var(--font-display);
-  font-weight: 600;
+  font-stretch: var(--font-stretch-hud);
+  font-weight: 700;
   text-transform: uppercase;
   text-shadow: var(--ink-outline);
   line-height: 1;
 }
 
+/* Objective markers are 8px accent-coloured text over sky — the single worst
+   case in the HUD. They take the full outline, not the soft one. */
 .compass-track .ct-marker {
-  font-family: var(--font-mono);
-  font-weight: 500;
+  font-family: var(--font-display);
+  font-stretch: var(--font-stretch-hud);
+  font-weight: 600;
   text-transform: uppercase;
-  text-shadow: var(--ink-outline-soft);
+  text-shadow: var(--ink-outline);
   line-height: 1;
 }
 
@@ -786,7 +896,7 @@ body.hide-hud .hud {
   gap: 1em;
   margin-top: 0.42em;
   font-size: 0.78em;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.1em;
   text-shadow: var(--ink-outline);
 }
 
@@ -797,9 +907,13 @@ body.hide-hud .hud {
   color: var(--hud-primary);
 }
 
+/* STAND / CROUCH / SPRINT. Condensed face, and 600 so the opaque dim grey still
+   carries weight next to the health figure beside it. */
 .health-stance {
   color: var(--hud-dim);
-  font-size: 0.92em;
+  font-size: 0.96em;
+  font-weight: 600;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
@@ -889,12 +1003,17 @@ body.hide-hud .hud {
   min-width: clamp(150px, 12vw, 260px);
 }
 
+/* MK18 / VECTOR / DMR14. 0.28em was Barlow Condensed tracking; on the fallback
+   the capture showed "M K 1 8" as four separate glyphs. 0.16em (and the matching
+   indent, which pays back the trailing space so the block still rags right)
+   holds it together as a designation while keeping the stencilled feel. */
 .weapon-name {
   font-family: var(--font-display);
-  font-size: 0.95em;
+  font-stretch: var(--font-stretch-hud);
+  font-size: 1em;
   font-weight: 600;
-  letter-spacing: 0.28em;
-  text-indent: 0.28em;
+  letter-spacing: 0.16em;
+  text-indent: 0.16em;
   text-transform: uppercase;
   color: var(--hud-dim);
   text-shadow: var(--ink-outline);
@@ -906,6 +1025,7 @@ body.hide-hud .hud {
   align-items: baseline;
   gap: 0.18em;
   font-family: var(--font-display);
+  font-stretch: var(--font-stretch-hud);
   font-variant-numeric: tabular-nums lining-nums;
   line-height: 0.9;
   text-shadow: var(--ink-outline);
@@ -913,6 +1033,7 @@ body.hide-hud .hud {
 
 .ammo-mag {
   font-family: var(--font-display);
+  font-stretch: var(--font-stretch-hud);
   font-size: 3.4em;
   font-weight: 700;
   letter-spacing: -0.015em;
@@ -922,6 +1043,7 @@ body.hide-hud .hud {
 
 .ammo-sep {
   font-family: var(--font-display);
+  font-stretch: var(--font-stretch-hud);
   font-size: 1.5em;
   font-weight: 500;
   color: var(--hud-dim);
@@ -930,6 +1052,7 @@ body.hide-hud .hud {
 
 .ammo-reserve {
   font-family: var(--font-display);
+  font-stretch: var(--font-stretch-hud);
   font-size: 1.55em;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -959,9 +1082,10 @@ body.hide-hud .hud {
   display: block;
   margin-top: 0.5em;
   font-family: var(--font-display);
-  font-size: 0.98em;
+  font-stretch: var(--font-stretch-hud);
+  font-size: 1.02em;
   font-weight: 600;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--hud-accent);
   text-shadow: var(--ink-outline);
@@ -1121,10 +1245,14 @@ body.hide-hud .hud {
   bottom: -1.85em;
   transform: translateX(-50%);
   white-space: nowrap;
-  font-size: 0.72em;
-  font-weight: 500;
-  letter-spacing: 0.26em;
-  text-indent: 0.26em;
+  /* THE YARD / THE DEPOT / THE TERRACES. Two words at 0.26em in a wide mono
+     fell apart completely under the minimap in the capture; the condensed face
+     at 0.16em and 600 gives it back its shape, and the opaque dim keeps it
+     readable when the map is over the pale gravel rather than over ink. */
+  font-size: 0.76em;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-indent: 0.16em;
   text-transform: uppercase;
   color: var(--hud-dim);
   text-shadow: var(--ink-outline);
@@ -1135,11 +1263,34 @@ body.hide-hud .hud {
    -------------------------------------------------------------------------- */
 
 .scoreline {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 0.18em;
   text-shadow: var(--ink-outline);
+}
+
+/* This block is the one the contrast measurement failed on: it lives in the top
+   right corner, which on this map is sky in almost every frame. The opaque dim
+   and the heavier outline do most of the work; this is the last stop, a soft
+   corner scrim that pulls the sky down behind the two rows. Decorative only —
+   absolutely positioned behind the text, so nothing in the layout moves. */
+.scoreline::before {
+  content: '';
+  position: absolute;
+  right: -0.9em;
+  top: -0.9em;
+  left: -2.4em;
+  bottom: -0.9em;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 78% 96% at 88% 34%,
+    rgba(6, 8, 11, 0.42) 0%,
+    rgba(6, 8, 11, 0.2) 55%,
+    rgba(6, 8, 11, 0) 100%
+  );
 }
 
 .score-row {
@@ -1150,12 +1301,16 @@ body.hide-hud .hud {
   font-size: 0.78em;
 }
 
+/* SCORE / KILLS. Measured at 1.13:1 against the sky in the delivered frame: the
+   alpha dim had composited them away and the tracking had stretched five letters
+   across the corner. Condensed face, 0.16em, 600, and the opaque dim. */
 .score-row .label {
   color: var(--hud-dim);
-  letter-spacing: 0.28em;
+  font-weight: 600;
+  letter-spacing: 0.16em;
   /* Cancel the trailing letter-space so the two columns rag right cleanly. */
-  margin-right: -0.28em;
-  font-size: 0.92em;
+  margin-right: -0.16em;
+  font-size: 0.98em;
 }
 
 .score-row .val {
@@ -1171,10 +1326,10 @@ body.hide-hud .hud {
   display: block;
   margin-top: 0.32em;
   padding: 0.14em 0.55em;
-  font-size: 0.76em;
+  font-size: 0.8em;
   font-weight: 600;
-  letter-spacing: 0.2em;
-  text-indent: 0.2em;
+  letter-spacing: 0.14em;
+  text-indent: 0.14em;
   text-transform: uppercase;
   color: var(--ink-900);
   background: var(--hud-accent);
@@ -1218,7 +1373,8 @@ body.hide-hud .hud {
   align-items: baseline;
   padding: 0.16em 0.6em 0.2em;
   font-family: var(--font-display);
-  font-size: 0.96em;
+  font-stretch: var(--font-stretch-hud);
+  font-size: 1em;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1253,10 +1409,11 @@ body.hide-hud .hud {
   opacity: 0;
   white-space: nowrap;
   font-family: var(--font-display);
+  font-stretch: var(--font-stretch-hud);
   font-size: 2.15em;
   font-weight: 700;
-  letter-spacing: 0.14em;
-  text-indent: 0.14em;
+  letter-spacing: 0.12em;
+  text-indent: 0.12em;
   text-transform: uppercase;
   line-height: 1;
   color: var(--hud-primary);
@@ -1299,9 +1456,10 @@ body.hide-hud .hud {
 
 .xp-pop {
   font-family: var(--font-display);
+  font-stretch: var(--font-stretch-hud);
   font-size: 1.12em;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   text-shadow: var(--ink-outline);
   will-change: transform, opacity;
@@ -1314,7 +1472,7 @@ body.hide-hud .hud {
 .xp-tag {
   font-family: var(--font-mono);
   font-size: 0.74em;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.1em;
 }
 
 /* --------------------------------------------------------------------------
@@ -1477,8 +1635,8 @@ body.hide-hud .hud {
   margin: 0 0 clamp(10px, 1vw, 20px);
   font-size: clamp(10px, 0.62vw, 14px);
   font-weight: 500;
-  letter-spacing: 0.44em;
-  text-indent: 0.44em;
+  letter-spacing: 0.3em;
+  text-indent: 0.3em;
   text-transform: uppercase;
   color: var(--menu-accent);
   text-shadow: var(--ink-outline-soft);
@@ -1492,6 +1650,7 @@ body.hide-hud .hud {
 .title-main {
   display: block;
   font-family: var(--font-display);
+  font-stretch: var(--font-stretch-hud);
   font-size: clamp(84px, 11.5vw, 250px);
   font-weight: 700;
   letter-spacing: -0.012em;
@@ -1535,8 +1694,9 @@ body.hide-hud .hud {
 .menu-note {
   margin: clamp(20px, 1.8vw, 36px) 0 0;
   font-size: clamp(10px, 0.6vw, 13px);
-  letter-spacing: 0.16em;
+  letter-spacing: 0.12em;
   color: var(--menu-dim);
+  text-shadow: var(--ink-outline-soft);
 }
 
 .menu-note b {
@@ -1553,14 +1713,16 @@ body.hide-hud .hud {
   justify-content: space-between;
   gap: 2em;
   font-size: clamp(9px, 0.55vw, 12px);
-  letter-spacing: 0.2em;
+  letter-spacing: 0.15em;
   text-transform: uppercase;
   color: color-mix(in srgb, var(--menu-primary) 40%, transparent);
+  text-shadow: var(--ink-outline-soft);
 }
 
 .page-title {
   margin: 0 0 clamp(18px, 1.8vw, 38px);
   font-family: var(--font-display);
+  font-stretch: var(--font-stretch-hud);
   font-size: clamp(34px, 3.4vw, 74px);
   font-weight: 700;
   letter-spacing: 0.01em;
@@ -1615,9 +1777,10 @@ body.hide-hud .hud {
   min-width: 10.5em;
   padding: 0.82em 1.5em 0.78em;
   font-family: var(--font-display);
+  font-stretch: var(--font-stretch-hud);
   font-size: clamp(15px, 1.02vw, 23px);
   font-weight: 600;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   line-height: 1;
   color: var(--menu-primary);
@@ -1685,7 +1848,7 @@ body.hide-hud .hud {
 /* `.btn` is a flex container, so text-indent cannot pay back the trailing
    letter-space. Cancel it on the label instead, or the caption sits left of centre. */
 .btn > span {
-  margin-right: -0.2em;
+  margin-right: -0.14em;
 }
 
 .btn b {
@@ -1780,8 +1943,8 @@ body.hide-hud .hud {
   font-family: var(--font-mono);
   font-size: clamp(10px, 0.6vw, 13px);
   font-weight: 500;
-  letter-spacing: 0.34em;
-  text-indent: 0.34em;
+  letter-spacing: 0.22em;
+  text-indent: 0.22em;
   text-transform: uppercase;
   color: var(--menu-accent);
 }
@@ -1887,10 +2050,11 @@ body.hide-hud .hud {
 .segment-opt {
   padding: 0.62em 0.5em 0.58em;
   font-family: var(--font-display);
+  font-stretch: var(--font-stretch-hud);
   font-size: clamp(12px, 0.76vw, 17px);
   font-weight: 600;
-  letter-spacing: 0.12em;
-  text-indent: 0.12em;
+  letter-spacing: 0.1em;
+  text-indent: 0.1em;
   text-transform: uppercase;
   line-height: 1;
   color: color-mix(in srgb, var(--menu-primary) 62%, transparent);
@@ -2193,10 +2357,11 @@ body.hide-hud .hud {
 .loading-title {
   margin: 0 0 clamp(16px, 1.6vw, 30px);
   font-family: var(--font-display);
+  font-stretch: var(--font-stretch-hud);
   font-size: clamp(28px, 2.4vw, 52px);
   font-weight: 700;
-  letter-spacing: 0.42em;
-  text-indent: 0.42em;
+  letter-spacing: 0.26em;
+  text-indent: 0.26em;
   text-transform: uppercase;
   line-height: 1;
   color: var(--hud-primary);
@@ -2224,9 +2389,9 @@ body.hide-hud .hud {
 .loading-label {
   margin: clamp(12px, 1.1vw, 22px) 0 0;
   font-size: clamp(10px, 0.58vw, 13px);
-  font-weight: 400;
-  letter-spacing: 0.3em;
-  text-indent: 0.3em;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-indent: 0.2em;
   text-transform: uppercase;
   color: var(--hud-dim);
 }
@@ -2277,6 +2442,7 @@ body.hide-hud .hud {
 .error-card h2 {
   margin: 0 0 0.55em;
   font-family: var(--font-display);
+  font-stretch: var(--font-stretch-hud);
   font-size: clamp(22px, 1.7vw, 34px);
   font-weight: 700;
   letter-spacing: 0.03em;
@@ -2327,7 +2493,7 @@ body.hide-hud .hud {
   font-family: var(--font-mono);
   font-size: clamp(10px, 0.6vw, 13px);
   font-weight: 500;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   text-decoration: none;
   color: var(--menu-dim);
