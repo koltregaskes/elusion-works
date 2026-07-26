@@ -51,6 +51,7 @@ const _q2 = new THREE.Quaternion();
 const _q3 = new THREE.Quaternion();
 const _m1 = new THREE.Matrix4();
 const _m2 = new THREE.Matrix4();
+const _e1 = new THREE.Euler();
 const _up = new THREE.Vector3(0, 1, 0);
 const _fwd = new THREE.Vector3(0, 0, -1);
 
@@ -508,6 +509,293 @@ class Assembly {
 }
 
 /* ========================================================================== */
+/* Manufactured detail — the small hard parts                                 */
+/* ========================================================================== */
+
+/**
+ * Fastener heads, hex sockets, knurled bands, data panels, sling sockets, rail covers.
+ *
+ * None of these carry the silhouette. All of them carry the read at 0.3 m, which is where a
+ * viewmodel actually lives: the difference between "a gun-shaped object" and "an object that
+ * came off a production line" is almost entirely small, hard, repeated features that a hand
+ * would have had to fit. A smooth extrusion at this magnification reads as a placeholder no
+ * matter how good its proportions are.
+ *
+ * Each builder either hands `Assembly.add` several primitives with the *same* transform (the
+ * transform object is only read, never mutated, so that is safe and keeps the cluster in one
+ * batch), or lays a cluster out in a convenient local frame and merges it into one geometry
+ * first. Either way nothing here costs an extra draw call.
+ */
+
+/** Transform a geometry in place. Same {p,r,s} convention as `Assembly.add`. */
+function place(geo, p, r, s) {
+  _bp.set(p ? p[0] : 0, p ? p[1] : 0, p ? p[2] : 0);
+  _be.set(r ? r[0] : 0, r ? r[1] : 0, r ? r[2] : 0);
+  _bq.setFromEuler(_be);
+  if (typeof s === 'number') _bs.set(s, s, s);
+  else _bs.set(s ? s[0] : 1, s ? s[1] : 1, s ? s[2] : 1);
+  _bm.compose(_bp, _bq, _bs);
+  geo.applyMatrix4(_bm);
+  return geo;
+}
+
+/** Merge a locally-built cluster into a single geometry. Build time only, never per frame. */
+function mergeLocal(list) {
+  const parts = [];
+  for (const g of list) {
+    if (!g) continue;
+    const n = g.index ? g.toNonIndexed() : g;
+    if (n !== g) g.dispose();
+    for (const key of Object.keys(n.attributes)) {
+      if (key !== 'position' && key !== 'normal' && key !== 'uv') n.deleteAttribute(key);
+    }
+    parts.push(n);
+  }
+  if (!parts.length) return null;
+  if (parts.length === 1) return parts[0];
+  let merged = null;
+  try {
+    merged = mergeGeometries(parts, false);
+  } catch {
+    merged = null;
+  }
+  if (!merged) return parts[0];
+  for (const g of parts) g.dispose();
+  return merged;
+}
+
+/** Regular hexagon prism along Z, sized across the flats. A hex socket, or a nut. */
+function hexPrismZ(acrossFlats, depth) {
+  const rc = (acrossFlats * 0.5) / Math.cos(Math.PI / 6);
+  const s = new THREE.Shape();
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+    const x = Math.cos(a) * rc;
+    const y = Math.sin(a) * rc;
+    if (i === 0) s.moveTo(x, y);
+    else s.lineTo(x, y);
+  }
+  s.closePath();
+  const g = new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: false, curveSegments: 1, steps: 1 });
+  g.translate(0, 0, -depth * 0.5);
+  return g;
+}
+
+/**
+ * Socket-head cap screw, axis along the local +Z of `cfg`.
+ *
+ * The head lathe is deliberately *not* capped, so its top is an open annulus, and the hex
+ * prism sits a fourteenth of the head depth below the rim. The socket is therefore a real
+ * recess that self-occludes and goes black, rather than a hexagon painted onto a disc — which
+ * is the whole point, because what the eye reads at this size is the dark spot, not the shape.
+ */
+function addScrew(asm, cfg) {
+  const rad = cfg.rad !== undefined ? cfg.rad : 0.0026;
+  const dep = cfg.depth !== undefined ? cfg.depth : 0.0018;
+  asm.add(
+    latheZ(
+      [
+        [rad * 0.62, dep * 0.5],
+        [rad * 0.96, dep * 0.3],
+        [rad, dep * 0.1],
+        [rad, -dep * 0.5],
+        [rad * 0.5, -dep * 0.5],
+      ],
+      cfg.seg || 10
+    ),
+    cfg.mat || 'worn',
+    cfg
+  );
+  asm.add(hexPrismZ(rad * 1.07, dep * 0.86), 'cavity', cfg);
+}
+
+/**
+ * Knurled band about +Z.
+ *
+ * Real knurling is a crossed diamond; at 0.3 m through a 60° lens what survives is the
+ * high-frequency radial break-up, so a single ring of axial ridges carries it. Built as *one*
+ * extruded star annulus rather than N separate ridge boxes — same silhouette, about a fifth of
+ * the triangles, and one geometry the caller can place with a single transform. The hole
+ * matters: several of these sit round an optic tube, and a solid disc would plug the tube
+ * interior the player is looking down.
+ */
+function knurlGeo(rad, len, n, ridge) {
+  const count = Math.max(6, n || 16);
+  const rOut = rad + ridge * 0.85;
+  const rRoot = Math.max(1e-4, rad - ridge * 0.45);
+  const rIn = Math.max(1e-4, rad - ridge * 2.4);
+  const s = new THREE.Shape();
+  const pts = count * 2;
+  for (let i = 0; i < pts; i++) {
+    const a = (i / pts) * Math.PI * 2;
+    const rr = i % 2 === 0 ? rOut : rRoot;
+    if (i === 0) s.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
+    else s.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+  }
+  s.closePath();
+  const hole = new THREE.Path();
+  for (let i = 0; i < 12; i++) {
+    // Reverse winding, which is what makes three treat it as a hole rather than an island.
+    const a = -(i / 12) * Math.PI * 2;
+    if (i === 0) hole.moveTo(Math.cos(a) * rIn, Math.sin(a) * rIn);
+    else hole.lineTo(Math.cos(a) * rIn, Math.sin(a) * rIn);
+  }
+  hole.closePath();
+  s.holes.push(hole);
+  const bev = Math.min(ridge * 0.3, len * 0.18);
+  const g = new THREE.ExtrudeGeometry(s, {
+    depth: Math.max(1e-4, len - bev * 2),
+    bevelEnabled: true,
+    bevelThickness: bev,
+    bevelSize: bev * 0.55,
+    bevelOffset: 0,
+    bevelSegments: 1,
+    curveSegments: 1,
+    steps: 1,
+  });
+  g.translate(0, 0, -(len * 0.5 - bev));
+  return g;
+}
+
+/**
+ * A glyph-sized plate. Deliberately the cheapest primitive in the file: a rounded rectangle at
+ * one curve segment with a hairline bevel, roughly 60 triangles. There are forty of these on a
+ * weapon between the data panels and the index marks and they are 1 mm tall, so paying
+ * `chamferBox`'s default tessellation for them would cost more than the receiver.
+ */
+function microPlate(w, h, d) {
+  const r = Math.min(w, h) * 0.24;
+  const bev = Math.min(d * 0.4, r * 0.6);
+  const g = new THREE.ExtrudeGeometry(roundedRectShape(w, h, r), {
+    depth: Math.max(1e-4, d - bev * 2),
+    bevelEnabled: true,
+    bevelThickness: bev,
+    bevelSize: bev,
+    bevelOffset: 0,
+    bevelSegments: 1,
+    curveSegments: 1,
+    steps: 1,
+  });
+  g.translate(0, 0, -(d * 0.5 - bev));
+  return g;
+}
+
+/** `microPlate` whose long axis is X — cross ridges, serrations, pins. */
+function microPlateX(w, h, d) {
+  const g = microPlate(d, h, w);
+  g.rotateY(Math.PI * 0.5);
+  return g;
+}
+
+/** QD sling socket: a raised boss with a real bore, axis along the local +Z of `cfg`. */
+function addQdSocket(asm, cfg) {
+  const rad = cfg.rad !== undefined ? cfg.rad : 0.0058;
+  asm.add(
+    latheZ(
+      [
+        [rad * 0.52, 0.0022],
+        [rad, 0.0015],
+        [rad, -0.003],
+        [rad * 0.86, -0.0038],
+      ],
+      12
+    ),
+    cfg.mat || 'gunmetal',
+    cfg
+  );
+  asm.add(
+    latheZ(
+      [
+        [rad * 0.5, 0.0016],
+        [rad * 0.5, -0.004],
+        [1e-4, -0.0044],
+      ],
+      10
+    ),
+    'cavity',
+    cfg
+  );
+}
+
+/**
+ * Engraved data panel: a shallow recessed field with rows of raised glyph bars.
+ *
+ * It is not legible and is not trying to be. A serial plate at arm's length reads as a
+ * rectangle of high-frequency marks with a border; the glyph heights are jittered off the
+ * same hash the vertex tint uses so the rows do not degenerate into a barcode.
+ */
+function stencilGeo(cfg) {
+  const w = cfg.w || 0.026;
+  const h = cfg.h || 0.0075;
+  const rows = cfg.rows || 2;
+  const seed = cfg.seed || 3;
+  const list = [];
+  list.push(place(chamferBox(w, h, 0.0011, { r: 0.0009, bevel: 0.0005, curveSegments: 2 }), [0, 0, -0.0004]));
+  const glyphH = h / (rows + 0.9);
+  for (let r = 0; r < rows; r++) {
+    const y = h * 0.5 - glyphH * (r + 0.85);
+    const n = 7 + ((seed * (r + 3)) % 3);
+    const gw = (w * 0.86) / n;
+    for (let i = 0; i < n; i++) {
+      const x = -w * 0.43 + gw * (i + 0.5);
+      const hh = glyphH * (0.5 + 0.32 * hash3(i * 3.1 + seed, r * 7.7, seed * 2.3));
+      list.push(place(microPlate(gw * 0.58, hh, 0.0007), [x, y, 0.0006]));
+    }
+  }
+  return mergeLocal(list);
+}
+
+/**
+ * Picatinny ladder cover — the polymer strip a shooter clips over the rail sections their
+ * support hand has to touch. Two of them break up what is otherwise 200 mm of unbroken
+ * machined teeth, which is both more truthful and a much better silhouette.
+ */
+function railCoverGeo(len, w) {
+  const list = [];
+  list.push(place(chamferBox(w, 0.0042, len, { r: 0.0011, bevel: 0.0008, curveSegments: 2 }), [0, 0, 0]));
+  const rungs = Math.max(3, Math.round(len / 0.0074));
+  for (let i = 0; i < rungs; i++) {
+    const z = len * 0.5 - (len / rungs) * (i + 0.5);
+    list.push(place(microPlate(w * 0.9, 0.0024, 0.0026), [0, 0.0027, z]));
+  }
+  return mergeLocal(list);
+}
+
+/**
+ * Shallow spherical cap about Z, bulging towards +Z — a lens element rather than a flat disc.
+ *
+ * `sag` is the centre rise. A real combat optic's objective is only a fraction of a millimetre
+ * proud over 30 mm of aperture, but the *normal* sweep across it is what makes the coating
+ * flash rotate as the weapon moves, and a flat circle cannot do that at any opacity.
+ */
+function domedDisc(r, sag, seg, rings) {
+  const n = Math.max(3, rings || 5);
+  const prof = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    prof.push([Math.max(1e-5, r * t), sag * Math.sqrt(Math.max(0, 1 - t * t))]);
+  }
+  return latheZ(prof, seg || 26);
+}
+
+/**
+ * A bevel highlight: a ~1.5 mm sliver of bare alloy laid at 45° along a long edge.
+ *
+ * At the art-directed 8° key rake a square edge catches no highlight at all and reads as a CSG
+ * boolean. A broken edge on an anodised part really is bare metal — the anodising is 20 µm
+ * thick and the first thing to go — so these sit in the `worn` band, and the specular line
+ * they throw is what separates the receiver from the rail from the magwell in silhouette.
+ */
+function addEdgeHighlight(asm, cfg) {
+  const t = cfg.t || 0.0015;
+  asm.add(
+    chamferBox(t, t, cfg.len, { r: t * 0.28, bevel: t * 0.22, curveSegments: 2 }),
+    cfg.mat || 'worn',
+    cfg
+  );
+}
+
+/* ========================================================================== */
 /* Materials                                                                  */
 /* ========================================================================== */
 
@@ -573,8 +861,13 @@ function buildMaterials(game) {
   /* Viewmodel IBL weight. The gun's shadow side is lit by nothing except the environment
      probe, so this number *is* whether the unlit half of the receiver retains material read
      or crushes to a silhouette. Metals carry more of it than dielectrics because for a metal
-     the environment is the entire response. */
-  const ENV_METAL = 1.45;
+     the environment is the entire response.
+
+     Trimmed from 1.45. The probe is a PMREM of the whole dome and is close to achromatic, so
+     every unit of it over 1.0 is a neutral wash on top of an already-unshadowed key — see the
+     F0 note below, which is where the same error was much larger. 1.22 keeps the sky in the
+     receiver's flats without it being the brightest thing in the response. */
+  const ENV_METAL = 1.22;
   const ENV_POLY = 0.95;
   const ENV_CLOTH = 0.55; // cloth has no business mirroring the sky; this is what made the arm glow
 
@@ -582,11 +875,30 @@ function buildMaterials(game) {
      produces four visibly different specular characters (§3.8's material-contrast bar):
      anodised alloy 0.34 -> optic housing 0.28 -> phosphated steel 0.47 -> polymer 0.74,
      with the rubber and the grip effectively matte at 0.90+. The old set ran 0.29-0.61 with
-     metalness 0.94-1.0 on everything, which is why they collapsed into one gloss. */
+     metalness 0.94-1.0 on everything, which is why they collapsed into one gloss.
+
+     ---- Reflectance recalibration, measured off a live capture ----------------------------
+     The `gain` numbers on the four metal bands were 3.4 / 4.1 / 2.5 / 3.0 against `worn` at
+     2.1, and that ordering is backwards: it puts the *finish* brighter than the bare metal it
+     is supposed to have been worn off. Read back from a 960x540 gunclose capture, the flat of
+     the mk18 upper measured luminance 179/255 against sunlit track ballast at 83 — the
+     black-anodised receiver was the brightest object in the frame, more than twice the
+     brightness of lit gravel, and the whole weapon collapsed into one pale beige value with
+     the rail, the optic body and the buffer tube within 30 codes of each other.
+
+     The mistake was treating "a metal's base colour is its F0, so lift it" as a licence to
+     lift without a target. Bare aluminium really is F0 0.91 and PALETTE.gunmetal really is
+     0.035 linear, but a *hard-anodised* receiver is neither: the coating is a dark, porous
+     oxide and it measures around 0.08-0.12 broadband. 3.4x put it at 0.31. Phosphated barrel
+     steel is darker still. So every band below is re-derived from what the finish is, not from
+     what the substrate under it would be, and `worn` goes *up* to a real bright-steel 0.52 so
+     that a broken edge, a latch or a muzzle crown is unambiguously the brightest thing on the
+     weapon. That ordering — dark finish, bright wear — is the entire mechanism by which wear
+     reads as wear rather than as a paler shade of the same paint. */
   const mats = {
-    /* Receiver / rail: hard-anodised 7075. Satin, not glossy. */
+    /* Receiver: hard-anodised 7075. Satin, dark, and firmly below the sunlit ground behind it. */
     gunmetal: make('gunmetal', {
-      color: metalF0(PALETTE.gunmetal, 3.4, 0.20),
+      color: metalF0(PALETTE.gunmetal, 1.15, 0.20),
       metalness: 0.86,
       roughness: 0.34,
       envMapIntensity: ENV_METAL,
@@ -595,17 +907,17 @@ function buildMaterials(game) {
     /* Rail: the same alloy, but every slot corner has been worn back to bright metal by
        mounts going on and off, so it runs a touch brighter and tighter than the receiver. */
     rail: make('rail', {
-      color: metalF0(PALETTE.gunmetal, 4.1, 0.24),
+      color: metalF0(PALETTE.gunmetal, 1.55, 0.24),
       metalness: 0.90,
       roughness: 0.30,
       envMapIntensity: ENV_METAL,
     }, { from: 'gunmetal', repeat: 5, normalScale: 0.30 }),
 
-    /* Barrel: manganese phosphate over steel. Noticeably *rougher* than the receiver — the
-       phosphate conversion coating is a matte crystalline surface, and that contrast against
-       the anodising is most of what says "two different processes". */
+    /* Barrel: manganese phosphate over steel. Noticeably *rougher* and darker than the
+       receiver — the phosphate conversion coating is a matte crystalline surface, and that
+       contrast against the anodising is most of what says "two different processes". */
     steel: make('steel', {
-      color: metalF0(PALETTE.gunmetal, 2.5, 0.12),
+      color: metalF0(PALETTE.gunmetal, 1.02, 0.12),
       metalness: 0.92,
       roughness: 0.47,
       envMapIntensity: ENV_METAL,
@@ -613,20 +925,46 @@ function buildMaterials(game) {
 
     /* Optic housing: type-III anodised tube, the tightest finish on the gun. */
     opticBody: make('opticBody', {
-      color: metalF0(PALETTE.gunmetal, 3.0, 0.14),
+      color: metalF0(PALETTE.gunmetal, 1.20, 0.14),
       metalness: 0.88,
       roughness: 0.28,
       envMapIntensity: ENV_METAL * 1.1,
     }, { from: 'gunmetal', repeat: 9, normalScale: 0.26 }),
 
-    /* Wear points: charging-handle latch, bolt face, mag-catch, safety detent. The only
-       genuinely shiny surfaces on the weapon, which is what makes them read as wear. */
+    /* Wear points: charging-handle latch, bolt face, mag-catch, safety detent, broken edges,
+       the muzzle crown. Real bright steel — the only genuinely shiny surfaces on the weapon,
+       and now 4-5x the reflectance of the finish they have worn through, which is what makes
+       them read as wear instead of as highlights. */
     worn: make('worn', {
-      color: metalF0(PALETTE.steelBare, 2.1, 0.10),
+      color: metalF0(PALETTE.steelBare, 2.35, 0.10),
       metalness: 1.0,
       roughness: 0.15,
       envMapIntensity: ENV_METAL * 1.15,
     }),
+
+    /* Carbon fouling: soot round the muzzle ports, aft of the ejection port, on the bolt
+       face. Nearly black, nearly fully rough, and *slightly* metallic because burnt propellant
+       residue is a conductive film — which is why it kills the specular under it rather than
+       just darkening it. This is the other half of the wear story: bright where steel rubs
+       steel, black where gas escapes. */
+    carbon: make('carbon', {
+      color: new THREE.Color(0.028, 0.024, 0.022),
+      metalness: 0.30,
+      roughness: 0.93,
+      envMapIntensity: ENV_METAL * 0.35,
+    }, { from: 'gunmetal', repeat: 16, normalScale: 0.5 }),
+
+    /* Polymer that a hand has actually been on: the handguard where the C-clamp lands, the
+       backstrap, the magazine spine. Skin oil fills the moulding texture and polishes it, so
+       it goes *smoother* and a shade lighter, never a different hue. Roughness carries the
+       whole effect — this is the material-system answer to "worn where the support hand
+       grips", rather than painting a lighter patch on. */
+    polymerWorn: make('polymerWorn', {
+      color: dielectric(PALETTE.gunPolymer, 2.75, 0.14),
+      metalness: 0.0,
+      roughness: 0.46,
+      envMapIntensity: ENV_POLY * 1.15,
+    }, { from: 'gunPolymer', repeat: 10, normalScale: 0.34 }),
 
     /* Handguard / stock polymer: moulded, matte, and a dielectric — its specular is the
        fixed 4% F0, so pushing roughness right up is the only way to kill the sheen. */
@@ -839,18 +1177,28 @@ function buildPistolGrip(asm, cfg) {
     const zz = z + Math.sin(rake) * (0.018 + i * 0.021) - 0.0165;
     asm.add(ring(0.0092, 0.0034, 10, 5), mat, { p: [x, yy, zz], r: [Math.PI * 0.5, 0, 0], s: [1.5, 1, 1] });
   }
-  // Beavertail / backstrap flare where the web of the hand sits — polished by use.
+  /* Beavertail / backstrap flare where the web of the hand sits. `polymerWorn` rather than
+     `polymer`: this is the single spot on the weapon a hand never leaves, and skin oil fills
+     the moulding stipple and polishes it. The change is a roughness change, not a colour
+     change, which is why it survives every light angle instead of only reading head-on. */
   asm.add(
     chamferBoxY(w * 1.04, 0.026, 0.014, { r: 0.006, bevel: 0.002 }),
-    'polymer',
+    'polymerWorn',
     { p: [x, y - 0.006, z - 0.0175], r: [rake - 0.22, 0, 0] }
   );
-  // Grip cap with a lanyard loop.
+  // Grip cap with a lanyard loop, and the screw that actually holds the grip to the receiver.
   asm.add(
     chamferBoxY(w * 0.9, 0.008, 0.031, { r: 0.005, bevel: 0.0018 }),
     'polymer',
     { p: [x, y - len - 0.002, z + Math.sin(rake) * len], r: [rake, 0, 0] }
   );
+  addScrew(asm, {
+    rad: 0.0032,
+    depth: 0.0018,
+    seg: 10,
+    p: [x, y - len - 0.0058, z + Math.sin(rake) * len],
+    r: [Math.PI * 0.5 - rake, 0, 0],
+  });
 }
 
 /** Trigger guard (bevelled loop) plus the trigger itself, returned as a separate mesh. */
@@ -943,15 +1291,45 @@ function buildHandguard(asm, cfg) {
 
   // Picatinny teeth along the top rail — the single most recognisable gun silhouette cue.
   // Same coarser pitch as the receiver rail; see the note in buildReceiver.
+  const railY = r * 0.92 + 0.0058;
   const teeth = Math.max(3, Math.round(len / 0.0168));
   for (let t = 0; t < teeth; t++) {
     const zz = z0 - 0.020 - (len - 0.040) * (t / Math.max(1, teeth - 1));
     asm.add(
       chamferBox(0.0206, 0.0046, 0.0098, { r: 0.0019, bevel: 0.0016, curveSegments: 3 }),
       'rail',
-      { p: [0, r * 0.92 + 0.0058, zz] }
+      { p: [0, railY, zz] }
     );
   }
+  /* Rail cover over the forward third of the rail. Two things at once: it is what a shooter
+     actually does to a rail section their hand can reach, and it stops 200 mm of identical
+     teeth reading as a machine-generated repeat. */
+  const coverLen = len * 0.34;
+  asm.add(railCoverGeo(coverLen, 0.0212), 'polymer', { p: [0, railY + 0.0012, z1 + 0.030 + coverLen * 0.5] });
+  // Broken edges either side of the rail top. See addEdgeHighlight.
+  asm.addMirrored(() => microPlate(0.0013, 0.0013, len - 0.046), 'worn', {
+    p: [0.0101, railY + 0.0023, (z0 + z1) * 0.5 - 0.002],
+    r: [0, 0, Math.PI * 0.25],
+  });
+
+  /* Barrel-nut clamp screws round the rear collar — the fastener pattern that says this is a
+     free-float tube bolted onto a nut, not a shroud that grew out of the receiver. */
+  for (let i = 0; i < 3; i++) {
+    const zz = z0 - 0.0045 - i * 0.0052;
+    for (const sgn of [1, -1]) {
+      addScrew(asm, {
+        rad: 0.0021,
+        depth: 0.0016,
+        seg: 8,
+        p: [sgn * r * 1.03, -0.0025 - i * 0.0018, zz],
+        r: [0, sgn * Math.PI * 0.5, 0],
+      });
+    }
+  }
+  // Anti-rotation index pin under the collar.
+  asm.add(latheZ([[0.0024, z0 - 0.007], [0.0024, z0 - 0.013], [0.0016, z0 - 0.014]], 8), 'worn', {
+    p: [0, -r * 0.86, 0],
+  });
 
   // Handstop / index block where the support thumb goes — visibly worn.
   asm.add(
@@ -959,11 +1337,29 @@ function buildHandguard(asm, cfg) {
     'grip',
     { p: [0, -r * 0.92 - 0.004, z1 + len * 0.30], r: [0.10, 0, 0] }
   );
-  // QD sling socket on both sides of the rear collar.
-  asm.addMirrored(() => latheZ([[0.0034, z0 - 0.020], [0.0058, z0 - 0.020], [0.0058, z0 - 0.026], [0.0022, z0 - 0.026]], 10), 'gunmetal', {
-    p: [r * 0.86, -0.004, 0],
-    r: [0, Math.PI * 0.5, 0],
-  });
+  /* Where the C-clamp actually lands. `polymerWorn` is the same polymer with the moulding
+     texture filled by skin oil: smoother, a shade lighter, same hue. Two shallow pads either
+     side of the handstop, following the ribs so the wear looks like it grew on the geometry
+     rather than being decalled onto it. */
+  const wearMat = cfg.wear || (mat === 'polymer' ? 'polymerWorn' : mat);
+  for (let i = 0; i < 2; i++) {
+    const a = (i === 0 ? -1 : 1) * 0.86;
+    asm.add(
+      chamferBox(0.0125, 0.0032, 0.062, { r: 0.0012, bevel: 0.0009, curveSegments: 3 }),
+      wearMat,
+      {
+        p: [Math.sin(a) * r * 0.95, -Math.cos(a) * r * 0.95, z1 + len * 0.32],
+        r: [0, 0, a],
+      }
+    );
+  }
+
+  // QD sling sockets, both sides of the rear collar, plus one under the front collar for a
+  // two-point sling run forward.
+  for (const sgn of [1, -1]) {
+    addQdSocket(asm, { rad: 0.0056, p: [sgn * r * 0.9, -0.004, z0 - 0.023], r: [0, sgn * Math.PI * 0.5, 0] });
+  }
+  addQdSocket(asm, { rad: 0.005, p: [0, -r * 0.93, z1 + 0.026], r: [Math.PI * 0.5, 0, 0] });
 }
 
 /** Muzzle device: a ported flash hider or a compensator, per config. */
@@ -994,6 +1390,27 @@ function buildMuzzle(asm, cfg) {
   // Bore cavity so you are not looking at a flat disc down the barrel.
   asm.add(latheZ([[bore * 0.98, z - len], [bore * 0.98, z - len + 0.03], [1e-4, z - len + 0.03]], 12), 'cavity', null);
 
+  /* Crown. The muzzle is the most reliably worn surface on any weapon: the device is the first
+     thing into a doorway, the last thing out of a vehicle, and the bore mouth is scrubbed bare
+     by cleaning rods. A shallow bright cup wrapping the front edge is the whole "finish worn
+     through at the muzzle" note, and because it sits in `worn` at 4x the reflectance of the
+     phosphated device around it, it reads at any light angle. */
+  asm.add(
+    latheZ(
+      [
+        [r * 1.07, z - len + 0.0024],
+        [r * 1.07, z - len - 0.0005],
+        [r * 0.78, z - len - 0.0005],
+        [r * 0.78, z - len + 0.0008],
+      ],
+      18
+    ),
+    'worn',
+    null
+  );
+  // Soot ring round the bore mouth, on the front face, where the gas actually leaves.
+  asm.add(latheZ([[r * 0.79, z - len - 0.0007], [bore * 1.06, z - len - 0.0007]], 16), 'carbon', null);
+
   // Ports. Prongs on top and sides, closed underneath so muzzle blast does not kick up dust.
   const ports = cfg.ports || 5;
   for (let i = 0; i < ports; i++) {
@@ -1006,7 +1423,15 @@ function buildMuzzle(asm, cfg) {
         { p: [Math.cos(a) * r * 0.86, Math.sin(a) * r * 0.86, zz], r: [0, 0, a + Math.PI * 0.5] }
       );
     }
+    // Soot fan trailing back from each port, where the gas actually goes.
+    asm.add(
+      microPlate(0.0062, 0.0016, 0.02),
+      'carbon',
+      { p: [Math.cos(a) * r * 0.93, Math.sin(a) * r * 0.93, z - 0.030], r: [0, 0, a + Math.PI * 0.5] }
+    );
   }
+  // Knurled band on the shank, where a wrench or a hand times the device onto the thread.
+  asm.add(knurlGeo(r * 0.905, 0.013, 18, 0.0009), 'steel', { p: [0, 0, z - len + 0.030] });
   // Crush washer / timing shim. Authored front-to-back so the lathe profile descends in z.
   asm.add(latheZ([[r * 0.80, z + 0.0032], [r * 0.98, z + 0.0032], [r * 0.98, z], [r * 0.80, z]], 16), 'worn', null);
 }
@@ -1036,12 +1461,28 @@ function buildGasBlock(asm, cfg) {
     'steel',
     { p: [0, 0.0012, z] }
   );
-  // Gas tube, running rearwards from the block into the receiver. Profile z must descend.
+  /* Gas tube, running rearwards from the block into the receiver. Profile z must descend.
+     Stainless, so it stays in `worn` — and it is the one part of the gas system the player can
+     see through the handguard vents, which is the entire reason the vents are real gaps. */
   asm.add(latheZ([[0.0019, cfg.tubeZ], [0.0028, cfg.tubeZ], [0.0028, z + 0.004]], 10), 'worn', {
     p: [0, 0.0122, 0],
   });
-  // Gas port set screw.
+  // Heat colouring where the tube leaves the block: the first 30 mm runs blue-black.
+  asm.add(latheZ([[0.0030, z - 0.004], [0.0030, z + 0.026]], 10), 'carbon', { p: [0, 0.0122, 0] });
+  // Gas tube roll pin through the block, and the two taper set screws that time it.
+  asm.add(latheZ([[0.0016, 0.0125], [0.0016, -0.0125]], 8), 'worn', {
+    p: [0, 0.0122, z - 0.010],
+    r: [0, Math.PI * 0.5, 0],
+  });
+  for (const sgn of [1, -1]) {
+    addScrew(asm, { rad: 0.0022, depth: 0.0015, seg: 8, p: [sgn * 0.0104, -0.004, z + 0.008], r: [0, sgn * Math.PI * 0.5, 0] });
+  }
+  // Gas port set screw underneath.
   asm.add(latheZ([[0.0022, z - 0.008], [0.0022, z - 0.011]], 8), 'worn', { p: [0, -0.0118, 0], r: [0, 0, 0] });
+  // Carbon wash on the underside and the rear face of the block.
+  asm.add(microPlate(0.019, 0.0014, 0.026), 'carbon', {
+    p: [0, -0.0104, z + 0.001],
+  });
 }
 
 /**
@@ -1078,6 +1519,13 @@ function buildMagazineMesh(mats, cfg) {
   }
   // Feed lips and the exposed top round.
   asm.add(chamferBoxY(w * 1.02, 0.010, d * 1.01, { r: 0.005, bevel: 0.002 }), 'gunmetal', { p: [0, 0.004, 0] });
+  /* Feed lips scrubbed bare. A magazine's lips take the whole bolt face on every round and are
+     always the brightest 2 mm on the weapon; two slivers of `worn` along them are what stops
+     the magazine reading as a moulded lump with a brass sticker on top. */
+  asm.addMirrored(() => microPlate(0.0016, 0.0016, d * 0.86), 'worn', {
+    p: [w * 0.5 - 0.0008, 0.0084, 0],
+    r: [0, 0, Math.PI * 0.25],
+  });
   asm.add(
     latheZ([[0.0044, 0.010], [0.0044, -0.004], [0.0032, -0.010], [1e-4, -0.012]], 10),
     'brass',
@@ -1093,14 +1541,52 @@ function buildMagazineMesh(mats, cfg) {
     p: [0, -len - 0.008, -curve * 0.055],
     r: [bend * 0.62, 0, 0],
   });
-  // Witness holes: cavity inserts on the spine.
-  for (let i = 1; i <= 3; i++) {
-    const t = i / 4.2;
-    asm.add(chamferBox(0.0042, 0.0042, 0.0022, { r: 0.0009, bevel: 0.0006, curveSegments: 3 }), 'cavity', {
-      p: [w * 0.5 - 0.0004, -t * len, -curve * t * t * 0.055 + d * 0.30],
-      r: [0, Math.PI * 0.5, 0],
+  /* Floorplate texture. A bare rubber slab is the flattest surface on the whole model and it
+     sits at the bottom of the silhouette where the eye tracks the reload, so it gets a real
+     moulded waffle: cross ribs plus the disassembly button and its retaining plate. */
+  {
+    const list = [];
+    for (let i = -2; i <= 2; i++) {
+      list.push(place(microPlate(w * 1.10, 0.0016, 0.0022), [0, 0, i * (d * 0.20)]));
+    }
+    for (let i = -1; i <= 1; i++) {
+      list.push(place(microPlate(0.0022, 0.0016, d * 1.02), [i * (w * 0.36), 0, 0]));
+    }
+    asm.add(mergeLocal(list), 'rubber', { p: [0, -len - 0.0098, -curve * 0.055], r: [bend * 0.62, 0, 0] });
+    // Baseplate retainer button, punched through the floorplate.
+    asm.add(latheY([[0.0030, 0], [0.0030, 0.0018], [0.0021, 0.0024]], 8), 'worn', {
+      p: [0, -len - 0.0104, -curve * 0.055 + d * 0.22],
+      r: [Math.PI + bend * 0.62, 0, 0],
     });
   }
+  /* Witness holes. A recessed slot with a rim reads as a hole; a flat dark square reads as a
+     sticker, which is what these were. Round counts show as brass through the top two. */
+  for (let i = 1; i <= 4; i++) {
+    const t = i / 5.4;
+    const px = w * 0.5 - 0.0004;
+    const py = -t * len;
+    const pz = -curve * t * t * 0.055 + d * 0.30;
+    const rot = [0, Math.PI * 0.5, 0];
+    asm.add(chamferBox(0.0055, 0.0055, 0.0016, { r: 0.0012, bevel: 0.0007, curveSegments: 3 }), mat, {
+      p: [px + 0.0004, py, pz],
+      r: rot,
+    });
+    asm.add(chamferBox(0.0038, 0.0038, 0.0028, { r: 0.0009, bevel: 0.0006, curveSegments: 3 }), 'cavity', {
+      p: [px, py, pz],
+      r: rot,
+    });
+    if (i <= 2) {
+      asm.add(chamferBox(0.0026, 0.0026, 0.0012, { r: 0.0007, bevel: 0.0004, curveSegments: 3 }), 'brass', {
+        p: [px - 0.0008, py, pz],
+        r: rot,
+      });
+    }
+  }
+  // Data panel on the magazine spine — lot number, capacity, the usual moulded block.
+  asm.add(stencilGeo({ w: 0.017, h: 0.0058, rows: 2, seed: 5 }), mat, {
+    p: [0, -len * 0.42, -curve * 0.18 * 0.055 - d * 0.51],
+    r: [0, Math.PI, 0],
+  });
 
   const group = asm.build(mats, { [mat]: { grain: 0.1, wear: 0.07 } });
   group.name = 'magazine';
@@ -1132,15 +1618,38 @@ function buildOptic(mats, cfg) {
   asm.add(chamferBoxX(0.040, 0.0075, 0.010, { r: 0.0022, bevel: 0.0015, curveSegments: 3 }), 'worn', {
     p: [0.006, yc - tubeR - 0.0175, zc + 0.016],
   });
+  // Throw-lever cam on the clamp bar, and the recoil-lug screw through the mount.
+  asm.add(chamferBox(0.0055, 0.0165, 0.0135, { r: 0.0022, bevel: 0.0013, curveSegments: 3 }), 'worn', {
+    p: [0.0245, yc - tubeR - 0.0175, zc + 0.016],
+    r: [0, 0, 0.34],
+  });
+  addScrew(asm, {
+    rad: 0.0028,
+    depth: 0.0019,
+    seg: 10,
+    p: [0, yc - tubeR - 0.0092, zc - (kind === 'lpvo' ? 0.032 : 0.017)],
+    r: [Math.PI * 0.5, 0, 0],
+  });
+  // Broken edges along the mount's outer top corners — the mount is machined 6061 and the
+  // first thing to lose its anodising is exactly these two lines.
+  asm.addMirrored(() => microPlate(0.0013, 0.0013, (kind === 'lpvo' ? 0.084 : 0.048) - 0.006), 'worn', {
+    p: [0.0148, yc - tubeR - 0.0031, zc - (kind === 'lpvo' ? 0.01 : 0.0)],
+    r: [0, 0, Math.PI * 0.25],
+  });
   // Rings.
   const ringZ = kind === 'lpvo' ? [zc + 0.028, zc - 0.030] : [zc + 0.004];
   for (const rz of ringZ) {
     asm.add(tubeZ(tubeR + 0.0042, tubeR - 0.0002, rz + 0.007, rz - 0.007, 20), 'opticBody', { p: [0, yc, 0] });
-    // Ring clamp screws, one each side.
-    asm.addMirrored(() => latheY([[0.0021, 0], [0.0021, 0.0042], [0.0014, 0.0048]], 8), 'worn', {
-      p: [tubeR + 0.0034, yc - 0.0055, rz],
-      r: [0, 0, -Math.PI * 0.5],
-    });
+    // Ring clamp screws, one each side — real socket heads with real sockets.
+    for (const sgn of [1, -1]) {
+      addScrew(asm, {
+        rad: 0.0023,
+        depth: 0.0017,
+        seg: 8,
+        p: [sgn * (tubeR + 0.0034), yc - 0.0052, rz],
+        r: [Math.PI * 0.5, 0, 0],
+      });
+    }
   }
 
   // Main tube, with the bell flare at the objective for the LPVO.
@@ -1167,8 +1676,23 @@ function buildOptic(mats, cfg) {
   }
   asm.add(latheZ(profile, 24), 'opticBody', { p: [0, yc, 0] });
 
-  // Interior wall — deliberately near-black so the glass reads as a tunnel, not a disc.
+  /* Interior wall — deliberately near-black so the glass reads as a tunnel, not a disc — plus
+     real baffles. The baffles are what make it a tube: a smooth black cylinder behind glass is
+     ambiguous at any brightness, whereas three stepped rings give the eye parallax cues as the
+     weapon moves and the interior resolves as *inside something*. They sit in `carbon`, which
+     is matte and near-black but still carries a normal map, exactly like the flocking in a
+     real optic. */
   asm.add(tubeZ(glassR * 0.995, glassR * 0.94, back - 0.004, front + 0.004, 20), 'cavity', { p: [0, yc, 0] });
+  {
+    const span = back - front - 0.016;
+    const n = kind === 'lpvo' ? 4 : 3;
+    for (let i = 0; i < n; i++) {
+      const bz = front + 0.010 + (span * (i + 0.5)) / n;
+      asm.add(tubeZ(glassR * 0.99, glassR * (0.80 - i * 0.015), bz + 0.0012, bz - 0.0012, 18), 'cavity', {
+        p: [0, yc, 0],
+      });
+    }
+  }
 
   // Turrets: windage right, elevation top, each with a knurled cap.
   const turretZ = kind === 'lpvo' ? zc + 0.002 : zc - 0.002;
@@ -1184,20 +1708,50 @@ function buildOptic(mats, cfg) {
       ],
       12
     );
-  asm.add(turret(), 'opticBody', { p: [0, yc + tubeR - 0.001, turretZ], r: [Math.PI * 0.5, 0, 0] });
-  asm.add(turret(), 'opticBody', { p: [tubeR - 0.001, yc, turretZ], r: [0, -Math.PI * 0.5, 0] });
+  /* Turret caps, knurled. A turret is a knob a shooter turns wearing gloves: without the
+     knurl it is a smooth cylinder and reads as a bolt head. The index line on top is in the
+     `marking` band so it picks up the same hazard yellow as the selector — the only saturated
+     hit anywhere on the weapon, which §4 wants kept scarce. */
+  const turretCap = (mat) => [
+    { g: turret(), m: 'opticBody' },
+    { g: place(knurlGeo(0.0088, 0.0074, 16, 0.0009), [0, 0, -0.016]), m: mat || 'opticBody' },
+    { g: place(microPlate(0.0016, 0.0016, 0.0075), [0, 0.009, -0.0165]), m: 'worn' },
+  ];
+  for (const t of [
+    { p: [0, yc + tubeR - 0.001, turretZ], r: [Math.PI * 0.5, 0, 0] },
+    { p: [tubeR - 0.001, yc, turretZ], r: [0, -Math.PI * 0.5, 0] },
+  ]) {
+    for (const part of turretCap()) asm.add(part.g, part.m, t);
+  }
   if (kind === 'lpvo') {
-    // Magnification ring with a throw lever.
+    // Magnification ring with a throw lever and a knurled band under it.
     asm.add(latheZ([[tubeR * 1.10, back - 0.014], [tubeR * 1.10, back - 0.030]], 20), 'opticBody', { p: [0, yc, 0] });
+    asm.add(knurlGeo(tubeR * 1.11, 0.014, 26, 0.0011), 'opticBody', { p: [0, yc, back - 0.022] });
     asm.add(chamferBox(0.0075, 0.030, 0.011, { r: 0.0022, bevel: 0.0014, curveSegments: 3 }), 'polymer', {
       p: [tubeR * 1.10 + 0.012, yc + 0.006, back - 0.022],
       r: [0, 0, -0.5],
     });
+    // Diopter ring at the ocular, also knurled — two different knurl pitches on one optic is
+    // a real manufacturing tell.
+    asm.add(knurlGeo(tubeR * 1.02, 0.009, 20, 0.0008), 'opticBody', { p: [0, yc, back + 0.002] });
   } else {
-    // Brightness rheostat on the left of a red dot.
+    // Brightness rheostat on the left of a red dot, knurled, with a detent index.
     asm.add(latheZ([[0.0058, 0], [0.0058, -0.008], [0.0074, -0.009], [0.0074, -0.016], [1e-4, -0.016]], 12), 'opticBody', {
       p: [-tubeR + 0.001, yc, turretZ + 0.010],
       r: [0, Math.PI * 0.5, 0],
+    });
+    asm.add(place(knurlGeo(0.0076, 0.0062, 14, 0.0009), [0, 0, -0.0125]), 'opticBody', {
+      p: [-tubeR + 0.001, yc, turretZ + 0.010],
+      r: [0, Math.PI * 0.5, 0],
+    });
+    asm.add(place(microPlate(0.0014, 0.0014, 0.0062), [0, 0.008, -0.013]), 'worn', {
+      p: [-tubeR + 0.001, yc, turretZ + 0.010],
+      r: [0, Math.PI * 0.5, 0],
+    });
+    // Battery cap on the right, opposite the windage turret.
+    asm.add(latheZ([[0.0072, 0], [0.0072, -0.0052], [0.0058, -0.0062]], 12), 'opticBody', {
+      p: [0, yc - tubeR + 0.001, turretZ + 0.014],
+      r: [-Math.PI * 0.5, 0, 0],
     });
   }
 
@@ -1218,7 +1772,15 @@ function buildOptic(mats, cfg) {
      the numbers below simply stack coating over glass and put the reticle on top of both.
      The reticle used to inherit renderOrder from its Group, which three ignores — group
      render order is not propagated — so the dot was sorting at 0, underneath the glass. */
-  const glassGeo = new THREE.CircleGeometry(glassR, 24);
+  /* Both elements are shallow spherical caps, not discs. The sag is ~4% of the aperture, which
+     is about right for a 1x objective and — far more importantly — means the surface normal
+     sweeps ~9° from centre to rim. That sweep is the entire reason a lens looks like glass:
+     the coating flash and the environment reflection travel *across* the element as the weapon
+     moves, instead of the whole disc switching brightness together the way a flat plane does.
+     A flat circle cannot produce that at any opacity, which is why the old objective read as a
+     painted green dot. */
+  const sag = glassR * 0.042;
+  const glassGeo = domedDisc(glassR, sag, 26, 5);
   const ocular = new THREE.Mesh(glassGeo, mats.glass);
   ocular.position.set(0, yc, back - 0.006);
   ocular.renderOrder = 8;
@@ -1233,18 +1795,18 @@ function buildOptic(mats, cfg) {
   group.add(objective);
 
   // Anti-reflective coating flash — the green-gold cast every combat optic has, on both
-  // elements, because the objective is the one the player sees for 99% of the match.
-  const coat = new THREE.Mesh(glassGeo, mats.coating);
-  coat.position.set(0, yc, back - 0.0055);
-  coat.scale.setScalar(0.985);
+  // elements, because the objective is the one the player sees for 99% of the match. Slightly
+  // shallower dome than the glass so it never z-fights it at grazing angles.
+  const coatGeo = domedDisc(glassR * 0.985, sag * 1.06, 26, 5);
+  const coat = new THREE.Mesh(coatGeo, mats.coating);
+  coat.position.set(0, yc, back - 0.0056);
   coat.renderOrder = 9;
   coat.frustumCulled = false;
   group.add(coat);
 
-  const coatFront = new THREE.Mesh(glassGeo, mats.coating);
-  coatFront.position.set(0, yc, front + 0.0055);
+  const coatFront = new THREE.Mesh(coatGeo, mats.coating);
+  coatFront.position.set(0, yc, front + 0.0056);
   coatFront.rotation.y = Math.PI;
-  coatFront.scale.setScalar(0.985);
   coatFront.renderOrder = 9;
   coatFront.frustumCulled = false;
   group.add(coatFront);
@@ -1326,8 +1888,28 @@ function buildStock(asm, cfg) {
   const mat = cfg.mat || 'polymer';
   const tubeR = 0.0148;
 
-  // Castle nut + end plate. Lathe profiles are authored rear-to-front so z descends.
-  asm.add(latheZ([[0.0165, z0 + 0.011], [0.0195, z0 + 0.010], [0.0195, z0]], 14), 'worn', { p: [0, y, 0] });
+  /* End plate + castle nut. Lathe profiles are authored rear-to-front so z descends.
+     The castle nut is the fastener that most obviously says "this weapon was assembled": six
+     staking notches round its rim, a stepped shoulder, and a separate end plate behind it
+     carrying a QD sling socket. It was a plain cone; a cone at this scale reads as a shadow. */
+  asm.add(latheZ([[0.0140, z0 + 0.0028], [0.0196, z0 + 0.0022], [0.0196, z0 - 0.0004]], 14), 'gunmetal', {
+    p: [0, y, 0],
+  });
+  // Ambidextrous end-plate lobe carrying a QD socket, axis across the weapon.
+  asm.add(chamferBox(0.0080, 0.0145, 0.0062, { r: 0.0024, bevel: 0.0013, curveSegments: 3 }), 'gunmetal', {
+    p: [-0.0172, y + 0.002, z0 + 0.0016],
+  });
+  addQdSocket(asm, { rad: 0.005, p: [-0.0206, y + 0.002, z0 + 0.0016], r: [0, -Math.PI * 0.5, 0] });
+  asm.add(latheZ([[0.0166, z0 + 0.0118], [0.0192, z0 + 0.0112], [0.0192, z0 + 0.0038], [0.0166, z0 + 0.0032]], 16), 'worn', {
+    p: [0, y, 0],
+  });
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + 0.26;
+    asm.add(chamferBox(0.0022, 0.0034, 0.0072, { r: 0.0007, bevel: 0.0005, curveSegments: 2 }), 'cavity', {
+      p: [Math.cos(a) * 0.0188, y + Math.sin(a) * 0.0188, z0 + 0.0075],
+      r: [0, 0, a + Math.PI * 0.5],
+    });
+  }
   // Buffer tube.
   asm.add(latheZ([[1e-4, z0 + len + 0.004], [tubeR * 0.94, z0 + len + 0.004], [tubeR, z0 + len], [tubeR, z0 + 0.010]], 18), 'gunmetal', {
     p: [0, y, 0],
@@ -1427,12 +2009,44 @@ function buildReceiver(asm, mats, cfg) {
   asm.add(chamferBox(0.0215, 0.0055, upLen - 0.004, { r: 0.0018, bevel: 0.0013, curveSegments: 3 }), 'rail', {
     p: [0, upH - 0.0135 + 0.0015, (upperZ0 + upperZ1) * 0.5],
   });
+  const railY = upH - 0.0135;
   for (let t = 0; t < teeth; t++) {
     const zz = upperZ0 - 0.008 - (upLen - 0.016) * (t / Math.max(1, teeth - 1));
     asm.add(chamferBox(0.0206, 0.0046, 0.0098, { r: 0.0019, bevel: 0.0016, curveSegments: 3 }), 'rail', {
-      p: [0, upH - 0.0135 + 0.0062, zz],
+      p: [0, railY + 0.0062, zz],
     });
+    // T-marks: the numbered index scale down the side of a flat-top rail. Every third slot.
+    if (t % 3 === 0) {
+      asm.add(microPlate(0.0009, 0.0022, 0.0009), 'worn', {
+        p: [-0.0104, railY + 0.0058, zz],
+      });
+    }
   }
+  /* Broken edges. Two 1.3 mm slivers of bare alloy at 45° along the top corners of the
+     receiver and two more along the rail's outer edges. At the art-directed 8° key rake a
+     square corner returns nothing at all; these four lines are most of what separates the
+     receiver from the rail in silhouette, and they are physically what a rifle that has been
+     in and out of a plate carrier actually looks like. */
+  asm.addMirrored(() => microPlate(0.0016, 0.0016, upLen - 0.008), 'worn', {
+    p: [upW * 0.5 - 0.0009, railY - 0.0009, (upperZ0 + upperZ1) * 0.5],
+    r: [0, 0, Math.PI * 0.25],
+  });
+  asm.addMirrored(() => microPlate(0.0012, 0.0012, upLen - 0.01), 'worn', {
+    p: [0.0102, railY + 0.0084, (upperZ0 + upperZ1) * 0.5],
+    r: [0, 0, Math.PI * 0.25],
+  });
+  /* Rail cover over the rear section, behind the optic, where the shooter's hand and cheek
+     both come into contact with the teeth. */
+  asm.add(railCoverGeo(upLen * 0.20, 0.0212), 'polymer', {
+    p: [0, railY + 0.0074, upperZ0 - 0.010 - upLen * 0.10],
+  });
+  /* Model / calibre roll-mark on the left of the upper, forward of the port. Not legible and
+     not meant to be — see stencilGeo. */
+  asm.add(stencilGeo({ w: 0.030, h: 0.0078, rows: 2, seed: 4 }), 'gunmetal', {
+    p: [-upW * 0.5 - 0.0002, 0.002, upperZ0 - 0.062],
+    r: [0, -Math.PI * 0.5, 0],
+  });
+
   // Brass deflector and forward assist — the two lumps that make an AR silhouette read.
   asm.add(
     chamferBox(0.011, 0.020, 0.026, { r: 0.0042, bevel: 0.0022, curveSegments: 4 }),
@@ -1443,14 +2057,40 @@ function buildReceiver(asm, mats, cfg) {
     p: [upW * 0.5 - 0.002, -0.004, 0],
     r: [0, -0.16, 0],
   });
+  // Forward assist head: serrated, and hammered bare by a thumb. Knurl band + a bright face.
+  asm.add(knurlGeo(0.0069, 0.010, 12, 0.0009), 'worn', {
+    p: [upW * 0.5 + 0.0035, -0.004, upperZ0 - 0.033],
+    r: [0, Math.PI * 0.5, 0],
+  });
 
   /* --- Ejection port: recess + separate hinged dust cover ------------------ */
   const portZ = upperZ0 - 0.040;
   asm.add(chamferBox(0.0026, 0.019, 0.040, { r: 0.0022, bevel: 0.0012, curveSegments: 3 }), 'cavity', {
     p: [upW * 0.5 - 0.0022, 0.0015, portZ],
   });
+  /* Carbon wash trailing aft and down from the port lip. Every round that leaves the gun
+     drags gas across this exact patch, and it is the one piece of staining a shooter never
+     scrubs off. It sits *behind* the cover so it only shows when the cover is open. */
+  asm.add(microPlate(0.0012, 0.014, 0.03), 'carbon', {
+    p: [upW * 0.5 - 0.0006, -0.004, portZ + 0.022],
+    r: [0, 0, -0.16],
+  });
   const dustCover = new THREE.Mesh(
-    bakeVertexTint(chamferBox(0.0032, 0.0205, 0.0425, { r: 0.0026, bevel: 0.0014, curveSegments: 3 }), { grain: 0.07, wear: 0.13 }),
+    bakeVertexTint(
+      mergeLocal([
+        chamferBox(0.0032, 0.0205, 0.0425, { r: 0.0026, bevel: 0.0014, curveSegments: 3 }),
+        // Longitudinal stiffening ribs — a real dust cover is a stamping, not a slab.
+        place(microPlate(0.0014, 0.0022, 0.0385), [0.0021, 0.0052, 0]),
+        place(microPlate(0.0014, 0.0022, 0.0385), [0.0021, -0.0052, 0]),
+        // Spring detent boss standing proud of the outer face, near the rear edge.
+        place(
+          latheZ([[0.0026, 0.0016], [0.0026, -0.0006], [0.0018, -0.001]], 8),
+          [0.0024, 0, 0.0192],
+          [0, Math.PI * 0.5, 0]
+        ),
+      ]),
+      { grain: 0.07, wear: 0.13 }
+    ),
     mats.gunmetal
   );
   dustCover.name = 'dustCover';
@@ -1485,18 +2125,36 @@ function buildReceiver(asm, mats, cfg) {
   bolt.name = 'bolt';
   bolt.frustumCulled = false;
 
-  /* --- Charging handle ---------------------------------------------------- */
+  /* --- Charging handle ----------------------------------------------------
+     Everything a hand repeatedly closes on ends up bare, and this is the clearest case on the
+     weapon: the latch and the extended paddle are gripped hard, wet, in gloves, thousands of
+     times. They are `worn` (bright steel, roughness 0.15), the shaft behind them stays
+     anodised, and the paddle carries a knurled face so the wear has texture to sit on rather
+     than being a lighter shade of the same slab. */
+  const chY = upH - 0.0135;
   const chAsm = new Assembly();
   chAsm.add(chamferBox(0.030, 0.0095, 0.052, { r: 0.0022, bevel: 0.0015, curveSegments: 3 }), 'gunmetal', {
-    p: [0, upH - 0.0135 - 0.005, upperZ0 - 0.020],
+    p: [0, chY - 0.005, upperZ0 - 0.020],
+  });
+  // Roll pin retaining the latch, and the shaft's own broken edges.
+  chAsm.add(latheZ([[0.0011, 0.008], [0.0011, -0.008]], 6), 'worn', {
+    p: [-0.0085, chY - 0.005, upperZ0 - 0.006],
+    r: [0, Math.PI * 0.5, 0],
   });
   chAsm.add(chamferBox(0.014, 0.0135, 0.020, { r: 0.0032, bevel: 0.0018, curveSegments: 3 }), 'worn', {
-    p: [-0.0155, upH - 0.0135 - 0.006, upperZ0 + 0.001],
+    p: [-0.0155, chY - 0.006, upperZ0 + 0.001],
     r: [0, 0, 0.16],
   });
   chAsm.add(chamferBoxX(0.020, 0.0075, 0.0075, { r: 0.0018, bevel: 0.0012, curveSegments: 2 }), 'worn', {
-    p: [-0.0225, upH - 0.0135 - 0.006, upperZ0 + 0.001],
+    p: [-0.0225, chY - 0.006, upperZ0 + 0.001],
   });
+  // Knurled grip face on the paddle — five ridges across the pull surface.
+  for (let i = 0; i < 5; i++) {
+    chAsm.add(microPlateX(0.019, 0.0011, 0.0013), 'worn', {
+      p: [-0.0225, chY - 0.0102 + i * 0.0021, upperZ0 + 0.0048],
+      r: [0.28, 0, 0],
+    });
+  }
   const chargingHandle = chAsm.build(mats, { worn: { grain: 0.05, wear: 0.22 } });
   chargingHandle.name = 'chargingHandle';
 
@@ -1520,28 +2178,78 @@ function buildReceiver(asm, mats, cfg) {
     p: [0, -0.0265 - mw.h * 0.5 + 0.006, mw.z],
     r: [mw.tilt || 0, 0, 0],
   });
-  // Takedown pins.
-  asm.addMirrored(() => latheZ([[0.0046, 0], [0.0046, -0.0022], [0.0036, -0.0028]], 10), 'worn', {
-    p: [upW * 0.47, -0.0245, lowZ0 - 0.014],
-    r: [0, Math.PI * 0.5, 0],
-  });
-  asm.addMirrored(() => latheZ([[0.0046, 0], [0.0046, -0.0022], [0.0036, -0.0028]], 10), 'worn', {
-    p: [upW * 0.47, -0.0245, lowZ1 + 0.010],
-    r: [0, Math.PI * 0.5, 0],
+  /* Magwell mouth. The flare is the part that eats every magazine that misses on a speed
+     reload, so its lip is bare all the way round; a thin `worn` band there is both the wear
+     story and the bevel highlight that stops the funnel reading as a solid block. */
+  asm.add(
+    chamferBoxY(mw.w + 0.0135, 0.0018, mw.d + 0.0135, { r: 0.0055, bevel: 0.0008, curveSegments: 5 }),
+    'worn',
+    { p: [0, -0.0265 - mw.h - 0.0006, mw.z + (mw.tilt || 0) * mw.h], r: [mw.tilt || 0, 0, 0] }
+  );
+  /* Takedown and pivot pins. Both get a knurled head so the shooter can turn them and a
+     recessed detent face, which is a lot of read for four small primitives — a plain disc on
+     the side of a receiver reads as a decal, a knurled one reads as a fastener. */
+  for (const pz of [lowZ0 - 0.014, lowZ1 + 0.010]) {
+    for (const sgn of [1, -1]) {
+      const rot = [0, sgn * Math.PI * 0.5, 0];
+      asm.add(latheZ([[0.0046, 0.0004], [0.0046, -0.0022], [0.0036, -0.0028]], 10), 'worn', {
+        p: [sgn * upW * 0.47, -0.0245, pz],
+        r: rot,
+      });
+      asm.add(knurlGeo(0.0044, 0.0022, 14, 0.0007), 'worn', {
+        p: [sgn * (upW * 0.47 + 0.0009), -0.0245, pz],
+        r: rot,
+      });
+      asm.add(latheZ([[0.0021, 0.0007], [0.0021, -0.0004], [1e-4, -0.0006]], 8), 'cavity', {
+        p: [sgn * (upW * 0.47 + 0.0016), -0.0245, pz],
+        r: rot,
+      });
+    }
+  }
+  /* Serial plate on the left of the magwell — the one panel every receiver in the world
+     carries, in the one place the law puts it. */
+  asm.add(stencilGeo({ w: 0.024, h: 0.0092, rows: 2, seed: 7 }), 'gunmetal', {
+    p: [-(mw.w + 0.0075) * 0.5 - 0.0002, -0.0265 - mw.h * 0.52, mw.z + 0.001],
+    r: [0, -Math.PI * 0.5, 0],
   });
   // Bolt catch (left) and magazine release (right).
   asm.add(chamferBox(0.0062, 0.0115, 0.030, { r: 0.0018, bevel: 0.0012, curveSegments: 3 }), 'worn', {
     p: [-upW * 0.5 + 0.001, -0.021, lowZ1 + 0.018],
     r: [0, 0, 0.05],
   });
+  // Serrations across the bolt-catch paddle.
+  for (let i = 0; i < 4; i++) {
+    asm.add(microPlate(0.0011, 0.0095, 0.0011), 'worn', {
+      p: [-upW * 0.5 - 0.0018, -0.021, lowZ1 + 0.0295 - i * 0.0032],
+    });
+  }
+  /* Magazine release. Hit by the shooter's trigger-finger knuckle on every reload, so the
+     button face is one of the four brightest spots on the weapon; it gets a checkered face and
+     a fence around it. */
   asm.add(latheZ([[0.0056, 0], [0.0056, -0.0055], [0.0042, -0.0062]], 10), 'worn', {
     p: [upW * 0.5 - 0.001, -0.021, lowZ1 + 0.026],
     r: [0, -Math.PI * 0.5, 0],
   });
-  // Trigger-pin bosses.
+  asm.add(knurlGeo(0.0035, 0.0018, 10, 0.0009), 'worn', {
+    p: [upW * 0.5 + 0.0046, -0.021, lowZ1 + 0.026],
+    r: [0, -Math.PI * 0.5, 0],
+  });
+  asm.add(latheZ([[0.0076, 0.0006], [0.0076, -0.0038], [0.0064, -0.0042]], 12), 'gunmetal', {
+    p: [upW * 0.5 - 0.0016, -0.021, lowZ1 + 0.026],
+    r: [0, -Math.PI * 0.5, 0],
+  });
+  // Trigger-pin bosses, with the two real pins through them.
   asm.add(chamferBoxX(upW * 0.98, 0.014, 0.020, { r: 0.0034, bevel: 0.0018 }), 'gunmetal', {
     p: [0, -0.030, lowZ1 + 0.044],
   });
+  for (const pz of [lowZ1 + 0.038, lowZ1 + 0.050]) {
+    for (const sgn of [1, -1]) {
+      asm.add(latheZ([[0.0021, 0.0004], [0.0021, -0.0009], [0.0015, -0.0012]], 8), 'worn', {
+        p: [sgn * upW * 0.48, -0.030, pz],
+        r: [0, sgn * Math.PI * 0.5, 0],
+      });
+    }
+  }
 
   /* --- Safety selector (animated: rotates to FIRE when the trigger is live) - */
   const selAsm = new Assembly();
@@ -1630,6 +2338,12 @@ function buildMk18(mats) {
     polymer: { grain: 0.11, wear: 0.06, dust: 0.09 },
     grip: { grain: 0.16, wear: 0.05, grime: 0.16 },
     steel: { grain: 0.055, wear: 0.14, dust: 0.07 },
+    /* `worn` is bare steel and picks up no dust film at all — a surface that is being
+       rubbed clean every day is exactly the surface ash cannot settle on. `carbon` gets
+       almost no grain because soot is a smooth even deposit, and no wear term at all. */
+    worn: { grain: 0.05, wear: 0.26 },
+    carbon: { grain: 0.04, wear: 0.0, gain: 0.9 },
+    polymerWorn: { grain: 0.06, wear: 0.16, grime: 0.1 },
   });
   group.add(stat, optic.group, rec.dustPivot, rec.bolt, rec.chargingHandle, rec.selector, trigger);
 
@@ -1741,6 +2455,12 @@ function buildVector(mats) {
     tan: { grain: 0.13, wear: 0.09, dust: 0.12 },
     grip: { grain: 0.17, wear: 0.05, grime: 0.16 },
     steel: { grain: 0.055, wear: 0.15, dust: 0.07 },
+    /* `worn` is bare steel and picks up no dust film at all — a surface that is being
+       rubbed clean every day is exactly the surface ash cannot settle on. `carbon` gets
+       almost no grain because soot is a smooth even deposit, and no wear term at all. */
+    worn: { grain: 0.05, wear: 0.26 },
+    carbon: { grain: 0.04, wear: 0.0, gain: 0.9 },
+    polymerWorn: { grain: 0.06, wear: 0.16, grime: 0.1 },
   });
   group.add(stat, optic.group, rec.dustPivot, rec.bolt, rec.chargingHandle, rec.selector, trigger);
 
@@ -1848,14 +2568,32 @@ function buildDmr14(mats) {
       p: [0.0198, 0.0022, zz],
     });
   }
-  // Steel barrel bands.
+  // Steel barrel bands, each clamped by a real screw and each with a broken top edge.
   for (const bz of [fgZ0 - 0.010, fgZ1 + 0.012]) {
     asm.add(chamferBox(0.049, 0.050, 0.012, { r: 0.0068, bevel: 0.0026, curveSegments: 4 }), 'gunmetal', {
       p: [0, -0.0005, bz],
     });
+    addScrew(asm, { rad: 0.0028, depth: 0.0018, seg: 10, p: [0, -0.0262, bz], r: [Math.PI * 0.5, 0, 0] });
+    asm.addMirrored(() => microPlate(0.0014, 0.0014, 0.0112), 'worn', {
+      p: [0.0238, 0.0238, bz],
+      r: [0, 0, Math.PI * 0.25],
+    });
   }
+  /* The forend is where the support hand lives on a rifle with no vertical grip, so the wood
+     under it is polished smooth and the sharp arris either side is rubbed pale. Both are
+     material states, not painted patches: `polymerWorn` is a low-roughness dielectric and the
+     arris runs in `worn`. */
+  asm.addMirrored(() => chamferBox(0.0036, 0.0125, fgLen * 0.44, { r: 0.0012, bevel: 0.0009, curveSegments: 3 }), 'polymerWorn', {
+    p: [0.0228, -0.020, (fgZ0 + fgZ1) * 0.5 + fgLen * 0.06],
+  });
+  // Cartouche stamped into the left of the forend.
+  asm.add(stencilGeo({ w: 0.020, h: 0.0068, rows: 2, seed: 9 }), 'wood', {
+    p: [-0.0232, -0.020, (fgZ0 + fgZ1) * 0.5 - fgLen * 0.22],
+    r: [0, -Math.PI * 0.5, 0],
+  });
   // Handguard top rail for the LPVO's forward reach and a sling swivel underneath.
   asm.add(ring(0.0072, 0.0021, 10, 5), 'gunmetal', { p: [0, -0.036, fgZ1 + 0.030], r: [0, Math.PI * 0.5, 0] });
+  addQdSocket(asm, { rad: 0.005, p: [-0.0238, -0.020, fgZ1 + 0.050], r: [0, -Math.PI * 0.5, 0], mat: 'gunmetal' });
 
   /* --- Wooden thumbhole stock with a cheek riser -------------------------- */
   const stZ0 = 0.030;
@@ -1894,6 +2632,12 @@ function buildDmr14(mats) {
     wood: { grain: 0.14, wear: 0.11, dust: 0.10 },
     grip: { grain: 0.16, wear: 0.05, grime: 0.16 },
     steel: { grain: 0.05, wear: 0.14, dust: 0.07 },
+    /* `worn` is bare steel and picks up no dust film at all — a surface that is being
+       rubbed clean every day is exactly the surface ash cannot settle on. `carbon` gets
+       almost no grain because soot is a smooth even deposit, and no wear term at all. */
+    worn: { grain: 0.05, wear: 0.26 },
+    carbon: { grain: 0.04, wear: 0.0, gain: 0.9 },
+    polymerWorn: { grain: 0.06, wear: 0.16, grime: 0.1 },
   });
   group.add(stat, optic.group, rec.dustPivot, rec.bolt, rec.chargingHandle, rec.selector, trigger);
 
@@ -1994,7 +2738,15 @@ function buildHand(mats, side, cfg) {
     p: [0, 0.0155, 0.026],
   });
 
-  // Four fingers, each two phalanges curled around whatever is being held.
+  /* Four fingers, each two phalanges curled around whatever is being held.
+     The index finger of a hand that has a trigger under it is built into its own group with
+     its pivot at the metacarpophalangeal joint, because it is the one part of the rig that has
+     to move independently on every single round. A trigger blade that travels while the finger
+     lying on it stays rigid is one of the loudest tells in a first-person shooter and it is on
+     screen for the whole match; two extra draw calls on the most-scrutinised object in the
+     game is the right trade. */
+  const fingerPivot = new THREE.Vector3();
+  let fasm = null;
   for (let i = 0; i < 4; i++) {
     const fx = (-0.0148 + i * 0.0099) * s;
     // Wider splay than before so the fingers read as four separate digits rather than one
@@ -2002,28 +2754,42 @@ function buildHand(mats, side, cfg) {
     const spread = (i - 1.5) * 0.085;
     const isTrigger = !!o.trigger && i === 0;
     // The trigger finger comes off the grip and lies almost straight along the trigger.
-    const curl = isTrigger ? 0.30 : (1.02 + i * 0.06) * curlK;
+    const curl = isTrigger ? 0.3 : (1.02 + i * 0.06) * curlK;
     const r0 = 0.0062 - i * 0.0004;
     const yaw = isTrigger ? spread * s * 0.4 : spread * s;
+    let tgt = asm;
+    let ox = 0;
+    let oy = 0;
+    let oz = 0;
+    if (isTrigger) {
+      fasm = new Assembly();
+      tgt = fasm;
+      // Knuckle: the rear end of the proximal phalanx at rest. Everything below is authored in
+      // hand space and then shifted so the group's origin lands on it.
+      fingerPivot.set(fx, -0.004, -0.031);
+      ox = -fingerPivot.x;
+      oy = -fingerPivot.y;
+      oz = -fingerPivot.z;
+    }
     // Proximal.
-    asm.add(chamferBox(r0 * 2, r0 * 2, 0.030, { r: r0 * 0.85, bevel: r0 * 0.4, curveSegments: 4 }), 'glove', {
-      p: [fx, -0.004, -0.046],
+    tgt.add(chamferBox(r0 * 2, r0 * 2, 0.030, { r: r0 * 0.85, bevel: r0 * 0.4, curveSegments: 4 }), 'glove', {
+      p: [fx + ox, -0.004 + oy, -0.046 + oz],
       r: [-curl * 0.55, yaw, 0],
     });
     // Distal, curled under.
     const pz = -0.046 - Math.cos(curl * 0.55) * 0.024;
     const py = -0.004 - Math.sin(curl * 0.55) * 0.026;
-    asm.add(chamferBox(r0 * 1.8, r0 * 1.8, 0.026, { r: r0 * 0.8, bevel: r0 * 0.38, curveSegments: 4 }), 'glove', {
-      p: [fx + Math.sin(yaw) * 0.012, py, pz],
+    tgt.add(chamferBox(r0 * 1.8, r0 * 1.8, 0.026, { r: r0 * 0.8, bevel: r0 * 0.38, curveSegments: 4 }), 'glove', {
+      p: [fx + Math.sin(yaw) * 0.012 + ox, py + oy, pz + oz],
       r: [-curl * (isTrigger ? 1.05 : 1.32), yaw, 0],
     });
     // Reinforced fingertip pad — leather, like the palm, so the grip surfaces match.
     const dc = curl * (isTrigger ? 1.05 : 1.32);
-    asm.add(latheY([[0.0044, 0], [0.0048, 0.0022], [0.0028, 0.0044], [1e-4, 0.005]], 7), 'glovePalm', {
+    tgt.add(latheY([[0.0044, 0], [0.0048, 0.0022], [0.0028, 0.0044], [1e-4, 0.005]], 7), 'glovePalm', {
       p: [
-        fx + Math.sin(yaw) * 0.020,
-        py - Math.sin(dc) * 0.022,
-        pz - Math.cos(dc) * 0.020,
+        fx + Math.sin(yaw) * 0.02 + ox,
+        py - Math.sin(dc) * 0.022 + oy,
+        pz - Math.cos(dc) * 0.02 + oz,
       ],
       r: [-dc + Math.PI * 0.5, 0, 0],
     });
@@ -2041,14 +2807,24 @@ function buildHand(mats, side, cfg) {
 
   /* Vertex treatment per panel. The palm is polished by use and picks up no dust; the fabric
      back is dusty on top and grimy underneath; the cuff is the dirtiest thing on the rig. */
-  const g = asm.build(mats, {
+  const tint = {
     glove: { grain: 0.13, wear: 0.05, dust: 0.13, grime: 0.22 },
-    glovePalm: { grain: 0.10, wear: 0.09, grime: 0.30 },
-    gloveHard: { grain: 0.09, wear: 0.13, dust: 0.10 },
-    cuff: { grain: 0.16, wear: 0.04, dust: 0.10, grime: 0.34 },
-  });
-  g.name = side > 0 ? 'handR' : 'handL';
-  return g;
+    glovePalm: { grain: 0.1, wear: 0.09, grime: 0.3 },
+    gloveHard: { grain: 0.09, wear: 0.13, dust: 0.1 },
+    cuff: { grain: 0.16, wear: 0.04, dust: 0.1, grime: 0.34 },
+  };
+  const handRoot = new THREE.Group();
+  handRoot.name = side > 0 ? 'handR' : 'handL';
+  handRoot.add(asm.build(mats, tint));
+
+  let triggerFinger = null;
+  if (fasm) {
+    triggerFinger = fasm.build(mats, tint);
+    triggerFinger.name = 'triggerFinger';
+    triggerFinger.position.copy(fingerPivot);
+    handRoot.add(triggerFinger);
+  }
+  return { group: handRoot, triggerFinger };
 }
 
 /**
@@ -2120,7 +2896,8 @@ function buildArm(mats, side, lengths, cfg) {
   // IK-driven wrist. The visual hand hangs off it at a fixed orientation.
   const hand = new THREE.Group();
   hand.name = side > 0 ? 'wristR' : 'wristL';
-  const handMesh = buildHand(mats, side, { wrap: o.wrap, trigger: o.trigger });
+  const handBuilt = buildHand(mats, side, { wrap: o.wrap, trigger: o.trigger });
+  const handMesh = handBuilt.group;
   if (o.palmUp) {
     /* Rotate hand space so the palm faces +Y and the fingers run along +X: the C-clamp a
        support hand makes on a handguard. Derived rather than eyeballed — the matrix with
@@ -2131,7 +2908,7 @@ function buildArm(mats, side, lengths, cfg) {
   hand.frustumCulled = false;
 
   group.add(upper, fore, hand);
-  return { group, upper, fore, hand, handMesh, lengths };
+  return { group, upper, fore, hand, handMesh, triggerFinger: handBuilt.triggerFinger, lengths };
 }
 
 /**
@@ -2465,6 +3242,25 @@ const PATTERN_DMR = [
 
 const DEG = Math.PI / 180;
 
+/* Settle depth, as a fraction of each round's primary peak. A third of the kick coming back
+   the other way is what a shooter sees down a red dot: the dot dives slightly below the mark
+   before floating up to it. Much past 0.4 and the weapon reads as rubbery. `SETTLE_CLAMP`
+   caps the accumulated value during sustained fire so a 1100 rpm burst cannot integrate the
+   tail into a visible sag. */
+const SETTLE_PITCH = 0.3;
+const SETTLE_ROLL = 0.26;
+const SETTLE_Z = 0.34;
+const SETTLE_CLAMP = 2.4;
+
+/* How much of the recoil the hands and shoulders are allowed *not* to follow. See the
+   residual-recoil block in update(): 0 is a hand welded to the receiver, 1 is a hand that
+   stays where it is while the gun moves inside it. The support hand is braced against the
+   handguard and gives most, the firing hand is locked round the grip and gives least, and the
+   shoulders are attached to a body that barely moves at all. */
+const GIVE_SUPPORT = 0.55;
+const GIVE_FIRE = 0.2;
+const GIVE_SHOULDER = 0.78;
+
 function weaponDefs() {
   return [
     {
@@ -2735,12 +3531,18 @@ export function createWeapon(game) {
     const sz = (a.sight ? a.sight[2] : 0) * def.scale;
     def.adsPose = { p: [-sx, -sy, def.adsZ - sz], r: [0, 0, 0] };
 
-    /* Sprint pose: canted down and inboard, muzzle low and left, arms dropped. This is a
-       pose, not a rotation of the hip pose — the difference is what makes it read as the
-       character relaxing rather than the camera tilting. */
+    /* Sprint pose. A pose, not a rotation of the hip pose — the difference is what makes it
+       read as the character relaxing rather than the camera tilting.
+       Re-solved rather than nudged, because the old rotation was pointing the wrong way: with
+       Euler XYZ, r = [0.62, -0.66, -0.42] sends the bore to (+0.61, +0.46, -0.64), i.e. muzzle
+       up and *outboard*, which is a port-arms carry, not the canted-inboard-and-down sprint
+       §3.8 asks for. [-0.40, 0.58, 0.78] sends it to (-0.55, -0.33, -0.77) — forward, left and
+       down, across the player's body — and puts the top of the receiver at (-0.59, +0.81),
+       cantedinboard by about 36°. The position goes with it: inboard, well down, and drawn
+       back towards the chest, which is where a weapon ends up when someone actually runs. */
     def.sprintPose = {
-      p: [def.hip.p[0] + 0.030, def.hip.p[1] - 0.062, def.hip.p[2] + 0.030],
-      r: [0.62, -0.66, -0.42],
+      p: [def.hip.p[0] - 0.03, def.hip.p[1] - 0.072, def.hip.p[2] + 0.042],
+      r: [-0.4, 0.58, 0.78],
     };
 
     /* Low-ready idle: a shallow droop that eases in after a few idle seconds. */
@@ -2823,7 +3625,7 @@ export function createWeapon(game) {
     recoverYaw: 0,
     recoverDelay: 0,
 
-    impScale: { pitch: 1, yaw: 1, roll: 1, pos: 1 },
+    impScale: { pitch: 1, yaw: 1, roll: 1, pos: 1, settlePitch: 1, settleRoll: 1, settleZ: 1 },
 
     boltTimer: 0,
     boltDuration: 0.055,
@@ -2839,11 +3641,39 @@ export function createWeapon(game) {
     posZ: new Spring(300, 0.74),
     posY: new Spring(320, 0.80),
     posX: new Spring(300, 0.82),
+
+    /* Settle. A second, much slower spring per axis, impulsed *negative* on every shot.
+       The primary springs are fast and near-critically damped, so on their own a round is a
+       clean out-and-back: the weapon arrives at the peak, returns, stops. Real weapons do not
+       stop — the shooter's arms are still absorbing the impulse after the receiver has come
+       home, so the muzzle carries through slightly past the aim point and drifts back up into
+       it over the next third of a second.
+       Modelling that as a separate slow spring rather than by underdamping the primary is
+       deliberate: underdamping makes the *peak* bouncy, which reads as a toy, while a slow
+       negative companion leaves the snap intact and puts the wobble entirely in the tail.
+       Their stiffness is derived from each weapon's own in `equip`, so a DMR settles visibly
+       slower than a Vector without a second table of numbers. */
+    settlePitch: new Spring(120, 0.5),
+    settleRoll: new Spring(95, 0.48),
+    settleZ: new Spring(130, 0.52),
+
     swayX: new Spring(90, 0.85),
     swayY: new Spring(90, 0.85),
     swayYaw: new Spring(70, 0.80),
     swayPitch: new Spring(70, 0.80),
     swayRoll: new Spring(55, 0.78),
+
+    /* Weapon mass. Deliberately the slowest springs in the file — a 3.2 kg rifle held out at
+       arm's length has a real moment of inertia, and what sells it is not lag on its own but
+       lag *plus* overshoot on a direction change. These target the smoothed turn signal, and
+       because their period is around a second, reversing a turn leaves the value still on the
+       old side: the muzzle trails the turn, crosses over, and catches up. */
+    massYaw: new Spring(26, 0.55),
+    massPitch: new Spring(30, 0.58),
+
+    /* Sprint transition. A spring rather than an exponential blend so the pose arrives with a
+       little overshoot; the anticipation comes from its velocity — see the pose block. */
+    sprint: new Spring(150, 0.62),
   };
 
   /* Animation player. Only one clip runs at a time — reloads, inspects and swaps are all
@@ -2937,6 +3767,11 @@ export function createWeapon(game) {
     sp.posZ.set(d.recoil.stiff.pos, d.recoil.zeta.pos);
     sp.posY.set(d.recoil.stiff.pos * 1.1, 0.82);
     sp.posX.set(d.recoil.stiff.pos * 1.05, 0.84);
+    /* Settle springs run at ~0.36x the primary stiffness, i.e. 0.6x the frequency, so their
+       peak lands roughly where the primary has finished returning and the two never fight. */
+    sp.settlePitch.set(d.recoil.stiff.pitch * 0.36, 0.5);
+    sp.settleRoll.set(d.recoil.stiff.roll * 0.36, 0.48);
+    sp.settleZ.set(d.recoil.stiff.pos * 0.36, 0.52);
 
     /* Impulse needed for a given peak excursion.
        For x'' + 2ζω x' + ω²x = 0 with x(0)=0, x'(0)=v, the first peak is
@@ -2947,6 +3782,11 @@ export function createWeapon(game) {
     state.impScale.yaw = impulseFor(d.recoil.stiff.yaw, d.recoil.zeta.yaw);
     state.impScale.roll = impulseFor(d.recoil.stiff.roll, d.recoil.zeta.roll);
     state.impScale.pos = impulseFor(d.recoil.stiff.pos, d.recoil.zeta.pos);
+    // Same derivation for the settle springs, so `SETTLE_*` below are honest fractions of the
+    // primary peak rather than arbitrary velocities.
+    state.impScale.settlePitch = impulseFor(d.recoil.stiff.pitch * 0.36, 0.5);
+    state.impScale.settleRoll = impulseFor(d.recoil.stiff.roll * 0.36, 0.48);
+    state.impScale.settleZ = impulseFor(d.recoil.stiff.pos * 0.36, 0.52);
 
     weapon.current = d;
     weapon.ammo = ammoOf(d.id);
@@ -3118,6 +3958,14 @@ export function createWeapon(game) {
     sp.posY.impulse(d.recoil.kick * 0.20 * braced * state.impScale.pos);
     sp.posX.impulse(vmYaw * 0.020 * state.impScale.pos);
 
+    /* Settle. Negative, so the slow companion spring pulls the muzzle *through* the aim point
+       as the primary comes home and then walks it back. Braced in ADS like everything else:
+       a shoulder-welded rifle settles far less than one held out at arm's length. */
+    const settle = lerp(1.0, 0.55, state.adsBlend);
+    sp.settlePitch.impulse(-vmPitch * SETTLE_PITCH * settle * state.impScale.settlePitch);
+    sp.settleRoll.impulse(-vmRoll * SETTLE_ROLL * settle * state.impScale.settleRoll);
+    sp.settleZ.impulse(-d.recoil.kick * SETTLE_Z * settle * state.impScale.settleZ);
+
     /* --- Camera recoil (much softer than the viewmodel, ~1/2.2) ---------- */
     const camP = d.recoil.camPitch * pm * rp * lerp(1.0, 0.82, state.adsBlend);
     const camY = d.recoil.camYaw * (ym + ry) * lerp(1.0, 0.82, state.adsBlend);
@@ -3246,6 +4094,17 @@ export function createWeapon(game) {
   const anchorScale = new THREE.Vector3();
   const poleTmpR = new THREE.Vector3();
   const poleTmpL = new THREE.Vector3();
+  const shoulderTmpR = new THREE.Vector3();
+  const shoulderTmpL = new THREE.Vector3();
+  /* Damped follower of the recoil transform plus the residual the body has not absorbed. See
+     the residual-recoil block in update(). Preallocated: this is the hot path. */
+  const lagPos = new THREE.Vector3();
+  const lagRot = new THREE.Vector3();
+  const resPos = new THREE.Vector3();
+  const resRot = new THREE.Vector3();
+  /* Where the mass-lag rotation pivots, in camera space: the buttstock in the shoulder pocket,
+     roughly 20 cm behind, 9 cm right and 14 cm below the eye. */
+  const MASS_PIVOT = new THREE.Vector3(0.086, -0.138, 0.202);
 
   let baseWorldFov = 0;
   let baseViewFov = 0;
@@ -3432,10 +4291,21 @@ export function createWeapon(game) {
     const sprintingRaw = !!(gm.player && gm.player.sprinting);
     const wantsWeaponUp = state.ads || state.triggerHeld;
     const sprintWant = sprintingRaw && !state.reloading && !wantsWeaponUp ? 1 : 0;
-    if (state._sprintBlend === undefined) state._sprintBlend = 0;
-    // Lazier into the sprint pose than out of it: ~0.19 s down, ~0.15 s back on target.
-    state._sprintBlend += (sprintWant - state._sprintBlend) * approach(sprintWant ? 6.0 : 7.0, dt);
-    const sb = smootherstep(state._sprintBlend);
+    /* Spring, not a lerp. k = 150 / zeta = 0.62 peaks at about 0.23 s with ~8% overshoot, so
+       the weapon arrives at the sprint pose slightly past it and settles in — the same
+       follow-through an animator would key.
+       `sbPose` subtracts the spring's own velocity, which is where the anticipation comes
+       from and costs nothing: at the start of a transition the velocity is large and pointing
+       at the target, so subtracting it drives the blend briefly *negative* and the weapon
+       lifts a few degrees away from the sprint pose before dropping into it. Coming out of
+       the sprint the velocity is negative, so the same term pushes the blend past 1 first.
+       Anticipation on the way in, follow-through on the way out, one line, no keyframes.
+       `sb` stays clean 0..1 because the fire and ADS gates below are thresholds and must not
+       see the overshoot. */
+    sp.sprint.target = sprintWant;
+    sp.sprint.step(dt);
+    const sb = clamp(sp.sprint.value, 0, 1);
+    const sbPose = clamp(sp.sprint.value - clamp(sp.sprint.vel, -9, 9) * 0.026, -0.16, 1.16);
 
     /* --- ADS -------------------------------------------------------------- */
     const adsAllowed = !state.reloading && !state.switching && sb < 0.45 && !(anim.clip && anim.clip.name === 'inspect');
@@ -3583,8 +4453,45 @@ export function createWeapon(game) {
       bobRoll = Math.sin(ph) * 0.026 * amp;
     }
 
+    /* --- Weapon mass: the muzzle trails a direction change -------------------
+       The sway springs above are fast and track the mouse almost frame for frame, which gives
+       lag but not *weight* — lag alone reads as latency. Weight is what happens at the moment
+       the player reverses: a real 3 kg rifle held out in front of the chest has enough moment
+       of inertia that the muzzle is still travelling the old way when the shoulders have
+       already started the new one, so it crosses the aim line and comes back.
+       These springs are an order of magnitude slower than the sway ones (26/30 against 70) and
+       their target is the *normalised* turn rate, so they saturate on a fast flick and cannot
+       be driven off screen by a huge delta. Suppressed hard in ADS, where the stock is in the
+       shoulder and the eye is on the glass — there is nothing left to swing. */
+    const massSuppress = lerp(1.0, 0.26, state.adsBlend) * lerp(1.0, 0.55, sb);
+    sp.massYaw.target = clamp(-lookDx * 0.0022, -1, 1) * 0.088 * massSuppress;
+    sp.massPitch.target = clamp(lookDy * 0.0020, -1, 1) * 0.062 * massSuppress;
+    sp.massYaw.step(dt);
+    sp.massPitch.step(dt);
+    const massYaw = sp.massYaw.value;
+    const massPitch = sp.massPitch.value;
+    const massRoll = -massYaw * 0.38;
+
     sway.position.set(sp.swayX.value + brX + bobX, sp.swayY.value + brY + bobY, 0);
-    sway.rotation.set(sp.swayPitch.value, sp.swayYaw.value, sp.swayRoll.value + bobRoll);
+    sway.rotation.set(
+      sp.swayPitch.value + massPitch,
+      sp.swayYaw.value + massYaw,
+      sp.swayRoll.value + bobRoll + massRoll
+    );
+    /* Pivot the mass rotation at the shoulder pocket instead of the eye. Rotating about a
+       point P is a rotation about the origin plus a translation of (P - R·P); doing it here
+       rather than with another Group keeps the graph flat and the whole thing allocation free.
+       Without it the buttstock swings as far as the muzzle and the gun reads as a signpost
+       being waved; with it the butt stays roughly planted in the shoulder and only the front
+       end travels, which is the actual mechanics of the movement. */
+    if (massYaw !== 0 || massPitch !== 0) {
+      _e1.set(massPitch, massYaw, massRoll);
+      _q1.setFromEuler(_e1);
+      _v1.copy(MASS_PIVOT).applyQuaternion(_q1);
+      sway.position.x += MASS_PIVOT.x - _v1.x;
+      sway.position.y += MASS_PIVOT.y - _v1.y;
+      sway.position.z += MASS_PIVOT.z - _v1.z;
+    }
 
     /* --- Recoil springs ---------------------------------------------------- */
     sp.pitch.step(dt);
@@ -3593,9 +4500,42 @@ export function createWeapon(game) {
     sp.posZ.step(dt);
     sp.posY.step(dt);
     sp.posX.step(dt);
+    sp.settlePitch.step(dt);
+    sp.settleRoll.step(dt);
+    sp.settleZ.step(dt);
 
-    recoilGrp.position.set(sp.posX.value, sp.posY.value, sp.posZ.value);
-    recoilGrp.rotation.set(sp.pitch.value, sp.yaw.value, sp.roll.value);
+    // Clamp the settle tails so sustained fire cannot integrate them into a standing sag.
+    const setP = clamp(sp.settlePitch.value, -d.recoil.pitch * SETTLE_CLAMP, d.recoil.pitch * SETTLE_CLAMP);
+    const setR = clamp(sp.settleRoll.value, -d.recoil.roll * SETTLE_CLAMP, d.recoil.roll * SETTLE_CLAMP);
+    const setZ = clamp(sp.settleZ.value, -d.recoil.kick * SETTLE_CLAMP, d.recoil.kick * SETTLE_CLAMP);
+
+    recoilGrp.position.set(sp.posX.value, sp.posY.value, sp.posZ.value + setZ);
+    recoilGrp.rotation.set(sp.pitch.value + setP, sp.yaw.value, sp.roll.value + setR);
+
+    /* --- Residual recoil: what the hands and shoulders do *not* follow -------
+       `armsGrp` hangs off `recoilGrp`, so left alone the arms and the weapon move as one rigid
+       body — the gun, both gloves and both shoulders all kick by exactly the same amount, and
+       that is the single biggest reason a procedural viewmodel reads as a prop being waved
+       rather than a weapon being fired. In reality the support hand is braced round the
+       handguard and the receiver moves *within* it, and the shoulders barely move at all.
+       `lagPos/lagRot` is a damped follower of the recoil transform: what the body has caught up
+       with so far. The difference between the live transform and that follower is the part the
+       body has not absorbed yet, and subtracting a fraction of it from the IK targets is what
+       lets the gun cycle inside the hands. Everything below is in `recoilGrp` local space, so
+       the rotation pivot is simply the local origin. */
+    const bodyK = approach(24, dt);
+    lagPos.x += (sp.posX.value - lagPos.x) * bodyK;
+    lagPos.y += (sp.posY.value - lagPos.y) * bodyK;
+    lagPos.z += (sp.posZ.value + setZ - lagPos.z) * bodyK;
+    lagRot.x += (sp.pitch.value + setP - lagRot.x) * bodyK;
+    lagRot.y += (sp.yaw.value - lagRot.y) * bodyK;
+    lagRot.z += (sp.roll.value + setR - lagRot.z) * bodyK;
+    resPos.set(sp.posX.value - lagPos.x, sp.posY.value - lagPos.y, sp.posZ.value + setZ - lagPos.z);
+    resRot.set(
+      sp.pitch.value + setP - lagRot.x,
+      sp.yaw.value - lagRot.y,
+      sp.roll.value + setR - lagRot.z
+    );
 
     /* --- Pose blend: hip -> low-ready -> sprint -> ADS ---------------------- */
     state.idleTimer = weapon.firing || state.reloading || state.switching ? 0 : state.idleTimer + dt;
@@ -3608,9 +4548,11 @@ export function createWeapon(game) {
       hipR.lerp(_v2.set(d.readyPose.r[0], d.readyPose.r[1], d.readyPose.r[2]), readyBlend);
     }
 
-    if (sb > 0.001) {
-      hipP.lerp(_v1.set(d.sprintPose.p[0], d.sprintPose.p[1], d.sprintPose.p[2]), sb);
-      hipR.lerp(_v2.set(d.sprintPose.r[0], d.sprintPose.r[1], d.sprintPose.r[2]), sb);
+    if (Math.abs(sbPose) > 0.001) {
+      // lerp with t outside [0,1] extrapolates, which is exactly what the anticipation and the
+      // follow-through need — see sbPose above.
+      hipP.lerp(_v1.set(d.sprintPose.p[0], d.sprintPose.p[1], d.sprintPose.p[2]), sbPose);
+      hipR.lerp(_v2.set(d.sprintPose.r[0], d.sprintPose.r[1], d.sprintPose.r[2]), sbPose);
     }
 
     targetP.copy(hipP);
@@ -3783,14 +4725,42 @@ export function createWeapon(game) {
         handTargetR.y -= sb * 0.012;
       }
 
+      /* Apply the residual give. The support hand keeps most of its position while the
+         handguard cycles through it; the firing hand is closed round the grip and follows
+         nearly all of it; the shoulders are on a body and follow almost none. The rotation is
+         applied about the local origin, which *is* the recoil pivot, and to the hand's
+         orientation as well as its position — a hand that translates with the gun but does not
+         rotate with it looks broken in a way that is hard to name and impossible to unsee. */
+      const anyRes =
+        resPos.lengthSq() > 1e-12 || resRot.lengthSq() > 1e-12;
+      if (anyRes) {
+        _e1.set(-resRot.x * GIVE_SUPPORT, -resRot.y * GIVE_SUPPORT, -resRot.z * GIVE_SUPPORT);
+        _q2.setFromEuler(_e1);
+        handTargetL.applyQuaternion(_q2).addScaledVector(resPos, -GIVE_SUPPORT);
+        handQuatL.premultiply(_q2);
+
+        _e1.set(-resRot.x * GIVE_FIRE, -resRot.y * GIVE_FIRE, -resRot.z * GIVE_FIRE);
+        _q2.setFromEuler(_e1);
+        handTargetR.applyQuaternion(_q2).addScaledVector(resPos, -GIVE_FIRE);
+        handQuatR.premultiply(_q2);
+
+        _e1.set(-resRot.x * GIVE_SHOULDER, -resRot.y * GIVE_SHOULDER, -resRot.z * GIVE_SHOULDER);
+        _q2.setFromEuler(_e1);
+        shoulderTmpR.copy(shoulderR).applyQuaternion(_q2).addScaledVector(resPos, -GIVE_SHOULDER);
+        shoulderTmpL.copy(shoulderL).applyQuaternion(_q2).addScaledVector(resPos, -GIVE_SHOULDER);
+      } else {
+        shoulderTmpR.copy(shoulderR);
+        shoulderTmpL.copy(shoulderL);
+      }
+
       /* Right arm. */
       armR.hand.position.copy(handTargetR);
       armR.hand.quaternion.copy(handQuatR);
       // The wrist sits behind the palm along the hand's own +Z.
       _v1.set(0, 0.006, 0.052).applyQuaternion(handQuatR).add(handTargetR);
       poleTmpR.copy(poleR);
-      solveTwoBone(shoulderR, _v1, armR.lengths.upper, armR.lengths.fore, poleTmpR, elbowR, wristR);
-      aimLimb(armR.upper, shoulderR, elbowR, _q1);
+      solveTwoBone(shoulderTmpR, _v1, armR.lengths.upper, armR.lengths.fore, poleTmpR, elbowR, wristR);
+      aimLimb(armR.upper, shoulderTmpR, elbowR, _q1);
       aimLimb(armR.fore, elbowR, wristR, _q1);
 
       /* Left arm. */
@@ -3801,9 +4771,25 @@ export function createWeapon(game) {
       // follows the weapon when the gun cants during a reload.
       poleTmpL.copy(poleL);
       poleTmpL.applyAxisAngle(_fwd, channels.gunRoll * 0.6);
-      solveTwoBone(shoulderL, _v1, armL.lengths.upper, armL.lengths.fore, poleTmpL, elbowL, wristL);
-      aimLimb(armL.upper, shoulderL, elbowL, _q1);
+      solveTwoBone(shoulderTmpL, _v1, armL.lengths.upper, armL.lengths.fore, poleTmpL, elbowL, wristL);
+      aimLimb(armL.upper, shoulderTmpL, elbowL, _q1);
       aimLimb(armL.fore, elbowL, wristL, _q1);
+    }
+
+    /* --- Trigger finger -----------------------------------------------------
+       The blade below moves 0.34 rad; the finger on it has to move with it or the two visibly
+       separate. `_trig` is the same signal the blade uses, so they cannot drift apart.
+       On top of that the finger *indexes* — comes off the trigger and lies straight along the
+       receiver — whenever the weapon is not live: sprinting, reloading, swapping. That is
+       real weapon handling and it is one of the few animation details a viewer notices
+       consciously rather than just feeling. */
+    if (armR.triggerFinger) {
+      const idxWant = state.reloading || state.switching || sb > 0.45 ? 1 : 0;
+      state._fingerIdx = state._fingerIdx === undefined ? 0 : state._fingerIdx;
+      state._fingerIdx += (idxWant - state._fingerIdx) * approach(11, dt);
+      // Negative rotation curls (see the finger layout in buildHand); positive straightens.
+      armR.triggerFinger.rotation.x = state._fingerIdx * 0.42 - (state._trig || 0) * 0.3;
+      armR.triggerFinger.rotation.y = state._fingerIdx * -0.16;
     }
 
     /* --- Public mirror ----------------------------------------------------- */
@@ -3908,8 +4894,8 @@ export function createWeapon(game) {
   // Guns start with the bolt forward and the dust cover shut.
   state._cover = 0;
   state._trig = 0;
+  state._fingerIdx = 0;
   state._sel = 0;
-  state._sprintBlend = 0;
 
   return weapon;
 }

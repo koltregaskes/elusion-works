@@ -42,23 +42,39 @@ const HEARING_RANGE = 45.0;
 const ENEMY_HEALTH = 100;
 const ENEMY_RADIUS = 0.38;
 
-/** Rest-pose skeleton metrics, metres. Everything downstream derives from these. */
+/**
+ * Rest-pose skeleton metrics, metres. Everything downstream derives from these.
+ *
+ * Measured against a 1.8 m male rather than eyeballed, because the proportion errors that make
+ * a character read as a toy are all small ones. Three were found and corrected:
+ *
+ *  - The leg chain was thigh 0.42 + shin 0.42 = 0.840 against a hip-to-ankle span of exactly
+ *    0.840, so the IK ran permanently at full extension. A dead-straight standing knee is one
+ *    of the strongest "mannequin" tells there is. thigh/shin now sum to 0.850 against a 0.835
+ *    span — 1.8 % slack, which is a real standing knee bend and gives the solver a stable
+ *    bend plane instead of a degenerate one.
+ *  - The arm was short. Acromion-to-elbow on a 1.8 m male is ~0.30 and elbow-to-wrist ~0.27;
+ *    0.28/0.26 put the hands high enough that the rifle sat under the chin.
+ *  - Shoulders out to 0.19 (biacromial ~0.38, ~0.53 over the deltoids and brassards). A wide
+ *    shoulder against a narrow head is the whole difference between an adult silhouette and a
+ *    doll, and the head is narrowed to a real 0.163 m breadth in buildHead to match.
+ */
 const RIG = {
-  hipsY: 0.95,
-  spineY: 0.13,
-  chestY: 0.22, // above spine → world 1.30
-  neckY: 0.20, // → world 1.50
-  headY: 0.085, // → world 1.585
-  shoulderX: 0.185,
-  shoulderY: 0.195, // chest-local → world 1.495
-  upperArm: 0.28,
-  foreArm: 0.26,
-  hipX: 0.095,
-  hipYOff: -0.03, // hips-local → world 0.92
-  thigh: 0.42,
-  shin: 0.42,
-  ankleY: 0.08,
-  eyeY: 1.63,
+  hipsY: 0.94,
+  spineY: 0.135,
+  chestY: 0.225, // above spine → world 1.30
+  neckY: 0.205, // → world 1.505
+  headY: 0.09, // → world 1.595
+  shoulderX: 0.19,
+  shoulderY: 0.185, // chest-local → world 1.485, i.e. real acromion height
+  upperArm: 0.3,
+  foreArm: 0.27,
+  hipX: 0.098,
+  hipYOff: -0.02, // hips-local → world 0.92
+  thigh: 0.425,
+  shin: 0.425,
+  ankleY: 0.085,
+  eyeY: 1.65,
 };
 
 const ARM_REACH = RIG.upperArm + RIG.foreArm;
@@ -183,19 +199,24 @@ const SEG = {
   shinL: 13,
   bootL: 14,
   rifle: 15,
+  sling: 16,
 };
-const SEG_COUNT = 16;
+const SEG_COUNT = 17;
 
-/** Which bone each segment rides. */
+/**
+ * Which bone each segment rides. `sling` is the one segment that is not a rigid part of the
+ * body: its bone is given a stretched basis every frame so the strap literally spans from the
+ * rifle's front sling loop to the shoulder, whatever the weapon is doing.
+ */
 const SEG_BONE = [
   'hips', 'chest', 'head', 'head', 'head',
   'shoulderR', 'elbowR', 'shoulderL', 'elbowL',
   'hipR', 'kneeR', 'ankleR', 'hipL', 'kneeL', 'ankleL',
-  'rifle',
+  'rifle', 'sling',
 ];
 
 /** Which per-enemy tint channel each segment uses: 0 kit, 1 skin, 2 helmet, 3 cover, 4 none. */
-const SEG_TINT = [0, 0, 1, 2, 3, 0, 0, 0, 0, 0, 0, 4, 0, 0, 4, 4];
+const SEG_TINT = [0, 0, 1, 2, 3, 0, 0, 0, 0, 0, 0, 4, 0, 0, 4, 4, 0];
 
 /* ========================================================================== */
 /* Module scratch — nothing in the hot path allocates                         */
@@ -539,186 +560,359 @@ function buildPalette() {
 /* The soldier — one geometry per rigid segment, authored in bone-local space  */
 /* ========================================================================== */
 
-/** Pelvis: trouser seat, belt, dump pouch, holster. Origin at the hips bone. */
+/**
+ * Pelvis: trouser seat, belt, dump pouch, holster. Origin at the hips bone.
+ *
+ * The trouser seat is deliberately wider than the hips underneath it and sits slightly low —
+ * combat trousers bag over the belt, and a seat that hugs the pelvis exactly is what makes a
+ * figure read as a shop mannequin with clothes painted on.
+ */
 function buildPelvis(P) {
   const b = new SegmentBuilder();
-  b.add(roundedBox(0.31, 0.24, 0.21, 0.065), MAT.cloth, P.fatigue, { pos: [0, -0.02, 0], ao: 0.95 });
+  b.add(roundedBox(0.318, 0.24, 0.218, 0.07), MAT.cloth, P.fatigue, { pos: [0, -0.025, 0], ao: 0.95 });
+  // Fabric slump: a second, wider, lower block breaking the seat's silhouette at the back.
+  b.add(roundedBox(0.3, 0.11, 0.2, 0.055), MAT.cloth, P.fatigueDark, {
+    pos: [0, -0.095, -0.012], ao: 0.88,
+  });
   // Belt sits proud of the trousers so it catches a rim of key light.
-  b.add(roundedBox(0.325, 0.062, 0.225, 0.024), MAT.webbing, P.webbing, { pos: [0, 0.085, 0], ao: 0.86 });
-  b.add(roundedBox(0.055, 0.05, 0.028, 0.012), MAT.paintSteel, P.gunmetal, { pos: [0, 0.085, 0.113], ao: 0.95 });
-  // Dump pouch, rear left.
-  b.add(roundedBox(0.11, 0.13, 0.075, 0.03), MAT.webbing, P.webbing, {
-    pos: [-0.105, 0.005, -0.105], rot: [0.12, 0, 0.08], ao: 0.8,
+  b.add(roundedBox(0.332, 0.062, 0.232, 0.024), MAT.webbing, P.webbing, { pos: [0, 0.085, 0], ao: 0.86 });
+  b.add(roundedBox(0.058, 0.052, 0.03, 0.012), MAT.paintSteel, P.gunmetal, { pos: [0, 0.085, 0.117], ao: 0.95 });
+  // Belt keepers — four small loops, the kind of thing you only notice when it is missing.
+  for (let i = 0; i < 4; i++) {
+    const a = -0.9 + i * 0.6;
+    b.add(roundedBox(0.026, 0.072, 0.018, 0.005, 1), MAT.webbing, P.carrierDark, {
+      pos: [Math.sin(a) * 0.16, 0.085, Math.cos(a) * 0.118], rot: [0, a, 0], ao: 0.82,
+    });
+  }
+  // Dump pouch, rear left, with a rolled-down top so it does not read as a brick.
+  b.add(roundedBox(0.112, 0.13, 0.078, 0.032), MAT.webbing, P.webbing, {
+    pos: [-0.108, 0.0, -0.108], rot: [0.12, 0, 0.08], ao: 0.8,
   });
-  // Utility pouch, rear right.
-  b.add(roundedBox(0.085, 0.1, 0.06, 0.025), MAT.webbing, P.webbing, {
-    pos: [0.1, 0.01, -0.105], rot: [0.1, 0, -0.05], ao: 0.8,
+  b.add(new THREE.CylinderGeometry(0.03, 0.03, 0.1, 8), MAT.webbing, P.carrierDark, {
+    pos: [-0.108, 0.062, -0.112], rot: [0.12, 0, Math.PI * 0.5], ao: 0.78,
   });
-  // Holster on the right hip.
-  b.add(roundedBox(0.075, 0.15, 0.055, 0.02), MAT.leather, P.boot, {
-    pos: [0.16, -0.06, 0.015], rot: [0, 0, -0.09], ao: 0.82,
+  // Utility pouch, rear right, with its own flap and a pull tab.
+  b.add(roundedBox(0.088, 0.1, 0.062, 0.025), MAT.webbing, P.webbing, {
+    pos: [0.104, 0.005, -0.108], rot: [0.1, 0, -0.05], ao: 0.8,
   });
-  b.add(roundedBox(0.05, 0.03, 0.05, 0.012), MAT.polymer, P.gunPolymer, { pos: [0.16, 0.02, 0.015], ao: 0.85 });
+  b.add(roundedBox(0.092, 0.03, 0.07, 0.012), MAT.webbing, P.carrierDark, {
+    pos: [0.104, 0.058, -0.11], rot: [0.24, 0, -0.05], ao: 0.78,
+  });
+  b.add(roundedBox(0.016, 0.026, 0.008, 0.003, 1), MAT.webbing, P.hazard, {
+    pos: [0.104, 0.048, -0.146], ao: 0.9,
+  });
+  // Holster on the right hip, on a drop-leg platform.
+  b.add(roundedBox(0.078, 0.152, 0.058, 0.02), MAT.leather, P.boot, {
+    pos: [0.163, -0.065, 0.015], rot: [0, 0, -0.09], ao: 0.82,
+  });
+  b.add(roundedBox(0.052, 0.032, 0.052, 0.012), MAT.polymer, P.gunPolymer, { pos: [0.163, 0.018, 0.015], ao: 0.85 });
+  b.add(roundedBox(0.03, 0.09, 0.012, 0.004, 1), MAT.webbing, P.webbing, {
+    pos: [0.166, 0.045, 0.016], rot: [0, 0, -0.09], ao: 0.86,
+  });
   // Trouser tops flaring into the thigh, kills the boxy join at the hip.
-  b.add(new THREE.CylinderGeometry(0.098, 0.088, 0.1, 10, 1, true), MAT.cloth, P.fatigue, {
-    pos: [0.095, -0.11, 0], ao: 0.86,
+  b.add(new THREE.CylinderGeometry(0.104, 0.092, 0.11, 10, 1, true), MAT.cloth, P.fatigue, {
+    pos: [0.098, -0.115, 0], ao: 0.86,
   });
-  b.add(new THREE.CylinderGeometry(0.098, 0.088, 0.1, 10, 1, true), MAT.cloth, P.fatigue, {
-    pos: [-0.095, -0.11, 0], ao: 0.86,
+  b.add(new THREE.CylinderGeometry(0.104, 0.092, 0.11, 10, 1, true), MAT.cloth, P.fatigue, {
+    pos: [-0.098, -0.115, 0], ao: 0.86,
   });
   return b.build('pelvis');
 }
 
-/** Chest: torso, plate carrier front/back/side, mag pouches, radio, collar, neck. */
+/**
+ * Chest: torso, plate carrier front/back/side, mag pouches, radio, hydration, collar, neck.
+ *
+ * Almost all of the added silhouette lives here, because the chest is what the player sees
+ * first and longest. The rule applied throughout: nothing is a single closed box. Every pouch
+ * gets a flap that overhangs it, every strap gets a buckle, and the back carries a hydration
+ * bladder and its drink tube so the soldier is not flat when he turns away.
+ */
 function buildChest(P) {
   const b = new SegmentBuilder();
-  // Torso in two stacked blocks so the waist tapers rather than reading as a fridge.
-  b.add(roundedBox(0.3, 0.2, 0.2, 0.07), MAT.cloth, P.fatigue, { pos: [0, -0.06, 0], ao: 0.9 });
-  b.add(roundedBox(0.36, 0.26, 0.225, 0.08), MAT.cloth, P.fatigue, { pos: [0, 0.11, 0], ao: 0.93 });
+  // Torso in three stacked blocks so the waist tapers and the ribcage flares, rather than
+  // reading as a fridge. The middle block is the widest — that is where the lats sit.
+  b.add(roundedBox(0.295, 0.19, 0.2, 0.07), MAT.cloth, P.fatigue, { pos: [0, -0.065, 0], ao: 0.9 });
+  b.add(roundedBox(0.368, 0.2, 0.228, 0.082), MAT.cloth, P.fatigue, { pos: [0, 0.075, 0], ao: 0.93 });
+  b.add(roundedBox(0.35, 0.11, 0.212, 0.07), MAT.cloth, P.fatigue, { pos: [0, 0.17, -0.004], ao: 0.92 });
   // Trapezius wedge into the neck.
-  b.add(roundedBox(0.26, 0.09, 0.17, 0.045), MAT.cloth, P.fatigueDark, { pos: [0, 0.205, -0.01], ao: 0.86 });
+  b.add(roundedBox(0.265, 0.09, 0.175, 0.048), MAT.cloth, P.fatigueDark, { pos: [0, 0.2, -0.012], ao: 0.86 });
 
   // --- Plate carrier -----------------------------------------------------
   // Front plate, tilted back at the top the way a real carrier sits on the chest.
-  b.add(roundedBox(0.275, 0.33, 0.045, 0.018), MAT.armour, P.plate, {
-    pos: [0, 0.075, 0.125], rot: [-0.07, 0, 0], ao: 1.0,
+  b.add(roundedBox(0.278, 0.33, 0.045, 0.018), MAT.armour, P.plate, {
+    pos: [0, 0.07, 0.128], rot: [-0.07, 0, 0], ao: 1.0,
   });
-  b.add(roundedBox(0.27, 0.3, 0.04, 0.016), MAT.armour, P.plate, {
-    pos: [0, 0.075, -0.125], rot: [0.05, 0, 0], ao: 0.88,
+  b.add(roundedBox(0.272, 0.3, 0.04, 0.016), MAT.armour, P.plate, {
+    pos: [0, 0.07, -0.128], rot: [0.05, 0, 0], ao: 0.88,
   });
-  // Cummerbund side plates.
-  b.add(roundedBox(0.05, 0.185, 0.185, 0.02), MAT.armour, P.carrier, { pos: [0.175, -0.005, 0], ao: 0.84 });
-  b.add(roundedBox(0.05, 0.185, 0.185, 0.02), MAT.armour, P.carrier, { pos: [-0.175, -0.005, 0], ao: 0.84 });
-  // Shoulder straps bridging front to back over the trapezius.
-  b.add(roundedBox(0.075, 0.055, 0.28, 0.022), MAT.webbing, P.carrierDark, {
-    pos: [0.098, 0.225, 0], rot: [0, 0, 0.12], ao: 0.9,
+  // Cummerbund side plates, with the elastic band that laces them to the front.
+  b.add(roundedBox(0.05, 0.185, 0.19, 0.02), MAT.armour, P.carrier, { pos: [0.178, -0.012, 0], ao: 0.84 });
+  b.add(roundedBox(0.05, 0.185, 0.19, 0.02), MAT.armour, P.carrier, { pos: [-0.178, -0.012, 0], ao: 0.84 });
+  b.add(roundedBox(0.062, 0.03, 0.196, 0.008), MAT.webbing, P.carrierDark, { pos: [0.176, 0.05, 0], ao: 0.8 });
+  b.add(roundedBox(0.062, 0.03, 0.196, 0.008), MAT.webbing, P.carrierDark, { pos: [-0.176, 0.05, 0], ao: 0.8 });
+  // Shoulder straps bridging front to back over the trapezius, each with a quick-release buckle.
+  b.add(roundedBox(0.078, 0.055, 0.285, 0.022), MAT.webbing, P.carrierDark, {
+    pos: [0.1, 0.222, 0], rot: [0, 0, 0.12], ao: 0.9,
   });
-  b.add(roundedBox(0.075, 0.055, 0.28, 0.022), MAT.webbing, P.carrierDark, {
-    pos: [-0.098, 0.225, 0], rot: [0, 0, -0.12], ao: 0.9,
+  b.add(roundedBox(0.078, 0.055, 0.285, 0.022), MAT.webbing, P.carrierDark, {
+    pos: [-0.1, 0.222, 0], rot: [0, 0, -0.12], ao: 0.9,
+  });
+  b.add(roundedBox(0.05, 0.03, 0.045, 0.008), MAT.polymer, P.gunPolymer, {
+    pos: [0.104, 0.212, 0.108], rot: [-0.2, 0, 0.12], ao: 0.86,
+  });
+  b.add(roundedBox(0.05, 0.03, 0.045, 0.008), MAT.polymer, P.gunPolymer, {
+    pos: [-0.104, 0.212, 0.108], rot: [-0.2, 0, -0.12], ao: 0.86,
   });
 
-  // --- Front load ---------------------------------------------------------
+  // --- Front load: three mag pouches, each with its own flap and pull tab ---
   for (let i = 0; i < 3; i++) {
-    const x = -0.082 + i * 0.082;
-    b.add(roundedBox(0.076, 0.145, 0.055, 0.016), MAT.webbing, P.webbing, {
-      pos: [x, -0.035, 0.168], rot: [-0.04, 0, 0], ao: 0.92,
+    const x = -0.084 + i * 0.084;
+    // Body of the pouch, slightly bellied out — a full magazine pouch is not a flat panel.
+    b.add(roundedBox(0.078, 0.145, 0.058, 0.017), MAT.webbing, P.webbing, {
+      pos: [x, -0.04, 0.17], rot: [-0.04, 0, 0], ao: 0.92,
     });
-    // Flap with a visible lip — the shadow line under it is the whole point.
-    b.add(roundedBox(0.08, 0.045, 0.062, 0.014), MAT.webbing, P.carrierDark, {
-      pos: [x, 0.038, 0.17], rot: [-0.14, 0, 0], ao: 0.86,
+    // Flap with a visible lip — the shadow line under it is the whole point. Each one is
+    // tilted a little differently, because three identical flaps read as a texture, not kit.
+    const tilt = -0.13 - (i - 1) * 0.05;
+    b.add(roundedBox(0.083, 0.046, 0.066, 0.014), MAT.webbing, P.carrierDark, {
+      pos: [x, 0.034, 0.172], rot: [tilt, 0, (i - 1) * 0.05], ao: 0.86,
+    });
+    // Retention tab hanging off the flap's lower edge.
+    b.add(roundedBox(0.02, 0.034, 0.008, 0.003, 1), MAT.webbing, P.carrierDark, {
+      pos: [x, 0.014, 0.205], rot: [tilt * 0.5, 0, 0], ao: 0.82,
+    });
+  }
+  // MOLLE ladder across the front plate — the loom that everything else clips to.
+  for (let r = 0; r < 2; r++) {
+    b.add(roundedBox(0.24, 0.012, 0.01, 0.003, 1), MAT.webbing, P.carrierDark, {
+      pos: [0, 0.1 + r * 0.062, 0.152], ao: 0.78,
     });
   }
   // Admin pouch and a grenade, upper left of the carrier.
-  b.add(roundedBox(0.09, 0.075, 0.045, 0.014), MAT.webbing, P.carrierDark, {
-    pos: [-0.09, 0.16, 0.155], ao: 0.9,
+  b.add(roundedBox(0.092, 0.078, 0.048, 0.014), MAT.webbing, P.carrierDark, {
+    pos: [-0.092, 0.155, 0.158], ao: 0.9,
   });
-  b.add(new THREE.CylinderGeometry(0.026, 0.026, 0.07, 8), MAT.paintSteel, P.helmet, {
-    pos: [0.098, 0.16, 0.16], ao: 0.9,
+  b.add(roundedBox(0.094, 0.026, 0.052, 0.01), MAT.webbing, P.webbing, {
+    pos: [-0.092, 0.192, 0.16], rot: [-0.16, 0, 0], ao: 0.84,
   });
-  b.add(new THREE.CylinderGeometry(0.012, 0.012, 0.02, 6), MAT.gunmetal, P.gunmetal, {
-    pos: [0.098, 0.205, 0.16], ao: 0.9,
+  b.add(new THREE.CylinderGeometry(0.027, 0.027, 0.072, 8), MAT.paintSteel, P.helmet, {
+    pos: [0.1, 0.155, 0.162], ao: 0.9,
+  });
+  b.add(new THREE.CylinderGeometry(0.013, 0.013, 0.02, 6), MAT.gunmetal, P.gunmetal, {
+    pos: [0.1, 0.2, 0.162], ao: 0.9,
+  });
+  // Grenade retention strap over the top of it.
+  b.add(roundedBox(0.062, 0.012, 0.03, 0.004, 1), MAT.webbing, P.carrierDark, {
+    pos: [0.1, 0.192, 0.162], ao: 0.85,
+  });
+
+  // --- Hydration bladder + drink tube -------------------------------------
+  // The bladder is what gives the back a readable shape from behind, which matters because a
+  // flanking player spends real time looking at exactly this.
+  b.add(roundedBox(0.235, 0.3, 0.08, 0.04), MAT.webbing, P.carrierDark, {
+    pos: [0, 0.08, -0.19], rot: [0.04, 0, 0], ao: 0.8,
+  });
+  b.add(roundedBox(0.21, 0.05, 0.07, 0.02), MAT.webbing, P.webbing, {
+    pos: [0, 0.208, -0.188], rot: [0.1, 0, 0], ao: 0.76,
+  });
+  // Compression straps across it.
+  for (let i = 0; i < 2; i++) {
+    b.add(roundedBox(0.245, 0.016, 0.088, 0.005, 1), MAT.webbing, P.webbing, {
+      pos: [0, 0.03 + i * 0.09, -0.19], ao: 0.74,
+    });
+  }
+  // Drink tube: over the left shoulder and down the front, in four short runs.
+  const tube = [
+    [-0.09, 0.235, -0.15, 0.6, 0.0, 0.16],
+    [-0.108, 0.262, -0.03, 1.45, 0.0, 0.1],
+    [-0.12, 0.215, 0.075, 2.5, 0.0, 0.14],
+    [-0.13, 0.115, 0.115, 3.05, 0.0, 0.12],
+  ];
+  for (let i = 0; i < tube.length; i++) {
+    const t = tube[i];
+    b.add(new THREE.CylinderGeometry(0.0085, 0.0085, t[5], 6), MAT.rubber, P.gunPolymer, {
+      pos: [t[0], t[1], t[2]], rot: [t[3], t[4], 0], ao: 0.9,
+    });
+  }
+  b.add(roundedBox(0.02, 0.03, 0.02, 0.006), MAT.polymer, P.gunPolymer, {
+    pos: [-0.132, 0.06, 0.13], rot: [0.3, 0, 0], ao: 0.88,
+  });
+
+  // --- Rifle sling, body side ---------------------------------------------
+  // The dynamic strap (SEG.sling) runs from the weapon to just here; this is the run that is
+  // fixed relative to the chest, over the left shoulder and diagonally down the back.
+  b.add(roundedBox(0.034, 0.05, 0.16, 0.008), MAT.webbing, P.webbing, {
+    pos: [-0.14, 0.235, 0.03], rot: [0.22, 0.1, -0.14], ao: 0.86,
+  });
+  b.add(roundedBox(0.034, 0.2, 0.03, 0.008), MAT.webbing, P.webbing, {
+    pos: [-0.152, 0.15, -0.16], rot: [-0.1, 0, 0.05], ao: 0.8,
+  });
+  b.add(roundedBox(0.034, 0.24, 0.03, 0.008), MAT.webbing, P.webbing, {
+    pos: [-0.02, -0.02, -0.185], rot: [-0.06, 0, -0.95], ao: 0.78,
+  });
+  b.add(roundedBox(0.03, 0.026, 0.026, 0.006), MAT.polymer, P.gunPolymer, {
+    pos: [-0.142, 0.2, -0.07], rot: [0.2, 0, 0], ao: 0.84,
   });
 
   // --- Radio + antenna ----------------------------------------------------
-  b.add(roundedBox(0.095, 0.17, 0.06, 0.016), MAT.polymer, P.gunPolymer, {
-    pos: [-0.145, 0.09, -0.135], rot: [0, 0.22, 0], ao: 0.82,
+  b.add(roundedBox(0.095, 0.17, 0.062, 0.016), MAT.polymer, P.gunPolymer, {
+    pos: [-0.16, 0.06, -0.155], rot: [0, 0.22, 0], ao: 0.82,
   });
   b.add(new THREE.CylinderGeometry(0.006, 0.004, 0.3, 6), MAT.polymer, P.gunPolymer, {
-    pos: [-0.155, 0.3, -0.155], rot: [0.22, 0, 0.16], ao: 0.95,
+    pos: [-0.17, 0.27, -0.175], rot: [0.22, 0, 0.16], ao: 0.95,
   });
   // Coiled handset lead — a tiny bit of story on the back of the carrier.
   b.add(new THREE.TorusGeometry(0.032, 0.007, 5, 10), MAT.polymer, P.gunPolymer, {
-    pos: [-0.115, 0.17, -0.13], rot: [1.2, 0, 0.3], ao: 0.85,
+    pos: [-0.155, 0.15, -0.15], rot: [1.2, 0, 0.3], ao: 0.85,
   });
 
-  // --- Neck ---------------------------------------------------------------
-  b.add(new THREE.CylinderGeometry(0.052, 0.06, 0.13, 10), MAT.skin, P.skinShade, {
+  // --- Neck + collar ------------------------------------------------------
+  b.add(new THREE.CylinderGeometry(0.052, 0.061, 0.135, 10), MAT.skin, P.skinShade, {
     pos: [0, 0.245, 0.004], ao: 0.7,
   });
-  b.add(roundedBox(0.17, 0.055, 0.155, 0.026), MAT.cloth, P.fatigueDark, { pos: [0, 0.205, 0], ao: 0.8 });
+  // A standing collar, not a slab: an open cylinder flaring away from the neck, plus the
+  // fastening band. It is what stops the head reading as a ball dropped onto the shoulders.
+  b.add(new THREE.CylinderGeometry(0.085, 0.072, 0.086, 12, 1, true), MAT.cloth, P.fatigueDark, {
+    pos: [0, 0.242, -0.002], rot: [-0.08, 0, 0], ao: 0.78,
+  });
+  b.add(new THREE.CylinderGeometry(0.076, 0.074, 0.024, 12, 1, true), MAT.cloth, P.fatigue, {
+    pos: [0, 0.204, -0.002], ao: 0.74,
+  });
+  // Collar tips at the front, slightly splayed.
+  b.add(roundedBox(0.05, 0.055, 0.014, 0.006), MAT.cloth, P.fatigueDark, {
+    pos: [0.042, 0.248, 0.064], rot: [-0.16, -0.35, 0.1], ao: 0.8,
+  });
+  b.add(roundedBox(0.05, 0.055, 0.014, 0.006), MAT.cloth, P.fatigueDark, {
+    pos: [-0.042, 0.248, 0.064], rot: [-0.16, 0.35, -0.1], ao: 0.8,
+  });
   return b.build('chest');
 }
 
-/** Head: skull, jaw, nose, brow, ears. Deliberately not a sphere. */
+/**
+ * Head: skull, jaw, nose, brow, ears. Deliberately not a sphere.
+ *
+ * Narrowed. The skull was 0.184 m across against a real male head breadth of ~0.158, and a
+ * head 16 % too wide on a 1.8 m body is the single loudest "this is a toy" signal a character
+ * can send — it survives distance, motion blur and a helmet on top. It is now 0.163 wide by
+ * 0.213 chin-to-crown, which is a real head, and the extra height is taken out of the width so
+ * the total volume barely moves.
+ */
 function buildHead(P) {
   const b = new SegmentBuilder();
   b.add(new THREE.SphereGeometry(0.098, 14, 11), MAT.skin, P.skin, {
-    pos: [0, 0.062, -0.006], scale: [0.94, 1.06, 1.06], ao: 0.96,
+    pos: [0, 0.048, -0.01], scale: [0.83, 1.1, 1.04], ao: 0.96,
   });
   // Jaw and chin — the silhouette from side-on lives or dies on this.
-  b.add(roundedBox(0.132, 0.082, 0.13, 0.036), MAT.skin, P.skin, {
-    pos: [0, 0.006, 0.016], rot: [0.06, 0, 0], ao: 0.9,
+  b.add(roundedBox(0.122, 0.09, 0.128, 0.036), MAT.skin, P.skin, {
+    pos: [0, -0.008, 0.014], rot: [0.06, 0, 0], ao: 0.9,
   });
-  b.add(roundedBox(0.075, 0.05, 0.05, 0.022), MAT.skin, P.skin, { pos: [0, -0.014, 0.062], ao: 0.86 });
+  b.add(roundedBox(0.07, 0.052, 0.05, 0.022), MAT.skin, P.skin, { pos: [0, -0.026, 0.058], ao: 0.86 });
   // Brow ridge, nose, cheekbones.
-  b.add(roundedBox(0.126, 0.032, 0.05, 0.014), MAT.skin, P.skinShade, {
-    pos: [0, 0.078, 0.072], rot: [0.12, 0, 0], ao: 0.9,
+  b.add(roundedBox(0.118, 0.032, 0.05, 0.014), MAT.skin, P.skinShade, {
+    pos: [0, 0.07, 0.068], rot: [0.12, 0, 0], ao: 0.9,
   });
-  b.add(roundedBox(0.03, 0.058, 0.042, 0.012), MAT.skin, P.skin, {
-    pos: [0, 0.046, 0.093], rot: [-0.28, 0, 0], ao: 0.95,
+  b.add(roundedBox(0.028, 0.06, 0.042, 0.012), MAT.skin, P.skin, {
+    pos: [0, 0.036, 0.09], rot: [-0.28, 0, 0], ao: 0.95,
   });
-  b.add(roundedBox(0.115, 0.03, 0.045, 0.014), MAT.skin, P.skinShade, { pos: [0, 0.038, 0.078], ao: 0.88 });
+  b.add(roundedBox(0.108, 0.03, 0.045, 0.014), MAT.skin, P.skinShade, { pos: [0, 0.028, 0.074], ao: 0.88 });
   // Ears.
   b.add(new THREE.SphereGeometry(0.026, 7, 6), MAT.skin, P.skinShade, {
-    pos: [0.093, 0.052, -0.005], scale: [0.45, 1.1, 0.85], ao: 0.8,
+    pos: [0.082, 0.042, -0.008], scale: [0.42, 1.12, 0.85], ao: 0.8,
   });
   b.add(new THREE.SphereGeometry(0.026, 7, 6), MAT.skin, P.skinShade, {
-    pos: [-0.093, 0.052, -0.005], scale: [0.45, 1.1, 0.85], ao: 0.8,
+    pos: [-0.082, 0.042, -0.008], scale: [0.42, 1.12, 0.85], ao: 0.8,
   });
   // Eye sockets read as dark recesses at distance; two shallow dark boxes do it cheaply.
-  b.add(roundedBox(0.036, 0.018, 0.02, 0.007), MAT.skin, P.skinShade.clone().multiplyScalar(0.5), {
-    pos: [0.035, 0.062, 0.086], ao: 0.6,
+  b.add(roundedBox(0.034, 0.018, 0.02, 0.007), MAT.skin, P.skinShade.clone().multiplyScalar(0.5), {
+    pos: [0.031, 0.053, 0.082], ao: 0.6,
   });
-  b.add(roundedBox(0.036, 0.018, 0.02, 0.007), MAT.skin, P.skinShade.clone().multiplyScalar(0.5), {
-    pos: [-0.035, 0.062, 0.086], ao: 0.6,
+  b.add(roundedBox(0.034, 0.018, 0.02, 0.007), MAT.skin, P.skinShade.clone().multiplyScalar(0.5), {
+    pos: [-0.031, 0.053, 0.082], ao: 0.6,
   });
   return b.build('head');
 }
 
-/** Helmet: shell, brim, side rails, NVG mount, ear cups, chin strap. */
+/**
+ * Helmet: shell, brim, side rails, NVG mount, ear cups, counterweight, chin strap.
+ *
+ * Brought in from 0.252 m across to 0.234 to sit on the narrowed skull without floating, and
+ * given the two things a real modern helmet has that a dome does not: a counterweight pouch on
+ * the back (which is what balances an NVG mount, and reads as a distinct lump in silhouette)
+ * and bungee retention cords across the shell.
+ */
 function buildHelmet(P) {
   const b = new SegmentBuilder();
   // Shell — a partial sphere so the open bottom does not waste triangles.
-  b.add(new THREE.SphereGeometry(0.126, 18, 12, 0, TAU, 0, 1.42), MAT.armour, P.helmet, {
-    pos: [0, 0.072, -0.004], scale: [1.0, 0.96, 1.08], ao: 1.0,
+  b.add(new THREE.SphereGeometry(0.117, 18, 12, 0, TAU, 0, 1.42), MAT.armour, P.helmet, {
+    pos: [0, 0.064, -0.006], scale: [1.0, 0.99, 1.1], ao: 1.0,
   });
   // Brim: a partial cylinder shell around the front 210°, flaring outward.
-  b.add(new THREE.CylinderGeometry(0.142, 0.128, 0.024, 18, 1, false, -1.85, 3.7), MAT.armour, P.helmet, {
-    pos: [0, 0.052, -0.004], scale: [1.0, 1.0, 1.08], ao: 0.92,
+  b.add(new THREE.CylinderGeometry(0.132, 0.119, 0.024, 18, 1, false, -1.85, 3.7), MAT.armour, P.helmet, {
+    pos: [0, 0.045, -0.006], scale: [1.0, 1.0, 1.1], ao: 0.92,
   });
   // Accessory rails.
   b.add(roundedBox(0.016, 0.03, 0.16, 0.006), MAT.polymer, P.gunPolymer, {
-    pos: [0.122, 0.078, -0.01], rot: [0, 0, -0.12], ao: 0.86,
+    pos: [0.114, 0.07, -0.012], rot: [0, 0, -0.12], ao: 0.86,
   });
   b.add(roundedBox(0.016, 0.03, 0.16, 0.006), MAT.polymer, P.gunPolymer, {
-    pos: [-0.122, 0.078, -0.01], rot: [0, 0, 0.12], ao: 0.86,
+    pos: [-0.114, 0.07, -0.012], rot: [0, 0, 0.12], ao: 0.86,
   });
   // NVG shroud on the brow.
   b.add(roundedBox(0.05, 0.035, 0.05, 0.012), MAT.paintSteel, P.gunmetal, {
-    pos: [0, 0.108, 0.098], rot: [0.3, 0, 0], ao: 0.9,
+    pos: [0, 0.1, 0.094], rot: [0.3, 0, 0], ao: 0.9,
   });
   b.add(roundedBox(0.03, 0.016, 0.028, 0.006), MAT.gunmetal, P.gunmetal, {
-    pos: [0, 0.126, 0.114], rot: [0.3, 0, 0], ao: 0.95,
+    pos: [0, 0.118, 0.11], rot: [0.3, 0, 0], ao: 0.95,
   });
+  // Counterweight pouch on the rear, on its own strap. Balances the shroud above, and gives
+  // the back of the head a shape instead of a hemisphere.
+  b.add(roundedBox(0.098, 0.076, 0.056, 0.022), MAT.webbing, P.webbing, {
+    pos: [0, 0.058, -0.128], rot: [-0.26, 0, 0], ao: 0.8,
+  });
+  b.add(roundedBox(0.104, 0.024, 0.05, 0.008), MAT.webbing, P.carrierDark, {
+    pos: [0, 0.096, -0.124], rot: [-0.34, 0, 0], ao: 0.76,
+  });
+  // Bungee cords over the shell, front to back, for stowing kit under.
+  for (let i = 0; i < 2; i++) {
+    const s = i === 0 ? 1 : -1;
+    b.add(new THREE.CylinderGeometry(0.0055, 0.0055, 0.2, 5), MAT.rubber, P.gunPolymer, {
+      pos: [s * 0.062, 0.14, -0.02], rot: [0.05, 0, s * 0.34], ao: 0.88,
+    });
+  }
+  // Cat-eye retro tabs on the back — two tiny hazard flecks that catch the key.
+  for (let i = 0; i < 2; i++) {
+    b.add(roundedBox(0.026, 0.012, 0.006, 0.002, 1), MAT.coverCloth, P.hazard, {
+      pos: [(i === 0 ? 1 : -1) * 0.035, 0.104, -0.108], rot: [-0.4, 0, 0], ao: 0.95,
+    });
+  }
   // Ear protection cups.
   b.add(new THREE.CylinderGeometry(0.043, 0.04, 0.03, 12), MAT.polymer, P.gunPolymer, {
-    pos: [0.125, 0.05, -0.004], rot: [0, 0, Math.PI * 0.5], ao: 0.82,
+    pos: [0.118, 0.042, -0.006], rot: [0, 0, Math.PI * 0.5], ao: 0.82,
   });
   b.add(new THREE.CylinderGeometry(0.043, 0.04, 0.03, 12), MAT.polymer, P.gunPolymer, {
-    pos: [-0.125, 0.05, -0.004], rot: [0, 0, Math.PI * 0.5], ao: 0.82,
+    pos: [-0.118, 0.042, -0.006], rot: [0, 0, Math.PI * 0.5], ao: 0.82,
   });
   b.add(new THREE.CylinderGeometry(0.005, 0.005, 0.1, 5), MAT.polymer, P.gunPolymer, {
-    pos: [-0.11, 0.028, 0.055], rot: [0.5, 0, 0.5], ao: 0.9,
+    pos: [-0.104, 0.022, 0.05], rot: [0.5, 0, 0.5], ao: 0.9,
   });
-  // Chin strap: two risers plus the strap under the jaw.
-  b.add(roundedBox(0.012, 0.1, 0.028, 0.005), MAT.webbing, P.webbing, {
-    pos: [0.104, -0.002, 0.028], rot: [0, 0, 0.2], ao: 0.8,
+  // Chin strap: two risers, the strap under the jaw, and the buckle on it.
+  b.add(roundedBox(0.012, 0.104, 0.028, 0.005), MAT.webbing, P.webbing, {
+    pos: [0.098, -0.01, 0.026], rot: [0, 0, 0.2], ao: 0.8,
   });
-  b.add(roundedBox(0.012, 0.1, 0.028, 0.005), MAT.webbing, P.webbing, {
-    pos: [-0.104, -0.002, 0.028], rot: [0, 0, -0.2], ao: 0.8,
+  b.add(roundedBox(0.012, 0.104, 0.028, 0.005), MAT.webbing, P.webbing, {
+    pos: [-0.098, -0.01, 0.026], rot: [0, 0, -0.2], ao: 0.8,
   });
-  b.add(roundedBox(0.17, 0.02, 0.03, 0.008), MAT.webbing, P.webbing, {
-    pos: [0, -0.048, 0.052], rot: [0.18, 0, 0], ao: 0.78,
+  b.add(roundedBox(0.012, 0.09, 0.026, 0.005), MAT.webbing, P.webbing, {
+    pos: [0.09, -0.006, -0.05], rot: [0, 0, 0.24], ao: 0.78,
+  });
+  b.add(roundedBox(0.012, 0.09, 0.026, 0.005), MAT.webbing, P.webbing, {
+    pos: [-0.09, -0.006, -0.05], rot: [0, 0, -0.24], ao: 0.78,
+  });
+  b.add(roundedBox(0.16, 0.02, 0.03, 0.008), MAT.webbing, P.webbing, {
+    pos: [0, -0.058, 0.048], rot: [0.18, 0, 0], ao: 0.78,
+  });
+  b.add(roundedBox(0.03, 0.028, 0.024, 0.006), MAT.polymer, P.gunPolymer, {
+    pos: [0.042, -0.056, 0.05], rot: [0.18, 0, 0], ao: 0.82,
   });
   return b.build('helmet');
 }
@@ -726,84 +920,156 @@ function buildHelmet(P) {
 /** Optional scrim cover — a separate segment so it can be scaled to zero per soldier. */
 function buildHelmetCover(P) {
   const b = new SegmentBuilder();
-  b.add(new THREE.SphereGeometry(0.131, 16, 11, 0, TAU, 0, 1.36), MAT.coverCloth, P.helmetCover, {
-    pos: [0, 0.072, -0.004], scale: [1.0, 0.96, 1.08], ao: 1.0, grain: 0.11, uvScale: 9,
+  b.add(new THREE.SphereGeometry(0.1225, 16, 11, 0, TAU, 0, 1.36), MAT.coverCloth, P.helmetCover, {
+    pos: [0, 0.064, -0.006], scale: [1.0, 0.99, 1.1], ao: 1.0, grain: 0.11, uvScale: 9,
   });
-  // Elastic band around the shell and a couple of scrim tabs to break the dome silhouette.
-  b.add(new THREE.CylinderGeometry(0.136, 0.134, 0.026, 16, 1, true), MAT.coverCloth, P.webbing, {
-    pos: [0, 0.086, -0.004], scale: [1.0, 1.0, 1.08], ao: 0.9, grain: 0.1,
+  // Elastic band around the shell and a few scrim tabs to break the dome silhouette.
+  b.add(new THREE.CylinderGeometry(0.127, 0.125, 0.026, 16, 1, true), MAT.coverCloth, P.webbing, {
+    pos: [0, 0.078, -0.006], scale: [1.0, 1.0, 1.1], ao: 0.9, grain: 0.1,
   });
-  b.add(roundedBox(0.028, 0.05, 0.012, 0.004), MAT.coverCloth, P.helmetCover, {
-    pos: [0.09, 0.115, -0.075], rot: [0.4, 0.5, 0.2], ao: 0.85, grain: 0.14,
+  b.add(roundedBox(0.03, 0.052, 0.012, 0.004), MAT.coverCloth, P.helmetCover, {
+    pos: [0.084, 0.108, -0.078], rot: [0.4, 0.5, 0.2], ao: 0.85, grain: 0.14,
   });
-  b.add(roundedBox(0.024, 0.045, 0.01, 0.004), MAT.coverCloth, P.helmetCover, {
-    pos: [-0.06, 0.128, -0.06], rot: [0.5, -0.4, -0.3], ao: 0.85, grain: 0.14,
+  b.add(roundedBox(0.026, 0.046, 0.01, 0.004), MAT.coverCloth, P.helmetCover, {
+    pos: [-0.056, 0.12, -0.062], rot: [0.5, -0.4, -0.3], ao: 0.85, grain: 0.14,
+  });
+  b.add(roundedBox(0.022, 0.042, 0.01, 0.004), MAT.coverCloth, P.webbing, {
+    pos: [0.03, 0.126, 0.05], rot: [-0.6, 0.2, 0.5], ao: 0.85, grain: 0.14,
+  });
+  // The cover's stitched seam where it wraps under the brim — a thin darker lip all round.
+  b.add(new THREE.CylinderGeometry(0.134, 0.122, 0.014, 16, 1, true), MAT.coverCloth, P.webbing, {
+    pos: [0, 0.043, -0.006], scale: [1.0, 1.0, 1.1], ao: 0.82, grain: 0.1,
   });
   return b.build('helmetCover');
 }
 
-/** Right upper arm, origin at the shoulder joint, limb running down -Y. */
+/**
+ * Right upper arm, origin at the shoulder joint, limb running down -Y.
+ *
+ * The sleeve is built as two overlapping volumes rather than one capsule: a fuller upper
+ * section, and a lower one offset slightly rearward, cinched by a cuff just above the elbow
+ * pad. Real sleeves have slack that gathers at the joint; a single tapered tube is what makes
+ * a limb read as a pipe, and pipes are what separate a rigged prop from a person.
+ */
 function buildUpperArm(P) {
   const b = new SegmentBuilder();
   // Deltoid cap — without it the shoulder joint reads as a gap.
-  b.add(new THREE.SphereGeometry(0.085, 11, 9), MAT.cloth, P.fatigue, {
-    pos: [0.006, -0.012, 0], scale: [1.0, 0.95, 1.0], ao: 0.88,
+  b.add(new THREE.SphereGeometry(0.084, 11, 9), MAT.cloth, P.fatigue, {
+    pos: [0.006, -0.014, 0], scale: [0.98, 1.0, 1.02], ao: 0.88,
   });
-  b.add(new THREE.CapsuleGeometry(0.055, 0.19, 4, 10), MAT.cloth, P.fatigue, { pos: [0, -0.145, 0], ao: 0.94 });
+  // Upper sleeve: full, sitting a touch proud of the arm inside it.
+  b.add(new THREE.CapsuleGeometry(0.061, 0.1, 4, 10), MAT.cloth, P.fatigue, { pos: [0, -0.1, 0.002], ao: 0.94 });
+  // Lower sleeve: slack, hanging back off the triceps.
+  b.add(new THREE.CapsuleGeometry(0.057, 0.085, 4, 10), MAT.cloth, P.fatigue, {
+    pos: [0, -0.205, -0.008], ao: 0.93,
+  });
+  // Cuff above the elbow — the compression that makes the slack above it read as slack.
+  b.add(new THREE.CylinderGeometry(0.05, 0.047, 0.034, 10), MAT.cloth, P.fatigueDark, {
+    pos: [0, -0.272, -0.004], ao: 0.84,
+  });
   // Rolled sleeve seam and a shoulder patch.
-  b.add(new THREE.CylinderGeometry(0.06, 0.058, 0.022, 10), MAT.cloth, P.fatigueDark, {
-    pos: [0, -0.078, 0], ao: 0.86,
+  b.add(new THREE.CylinderGeometry(0.064, 0.062, 0.022, 10), MAT.cloth, P.fatigueDark, {
+    pos: [0, -0.152, -0.002], ao: 0.86,
   });
   b.add(roundedBox(0.05, 0.05, 0.014, 0.005), MAT.cloth, P.helmet, {
-    pos: [0.052, -0.055, 0.014], rot: [0, 0.5, 0], ao: 0.9,
+    pos: [0.056, -0.06, 0.014], rot: [0, 0.5, 0], ao: 0.9,
   });
-  // Brassard / shoulder armour lip riding on top of the deltoid.
-  b.add(roundedBox(0.1, 0.055, 0.11, 0.024), MAT.webbing, P.carrierDark, {
-    pos: [0.012, 0.008, 0], rot: [0, 0, 0.14], ao: 0.84,
+  // Brassard / shoulder armour lip riding on top of the deltoid, with its retaining strap.
+  b.add(roundedBox(0.104, 0.058, 0.116, 0.026), MAT.webbing, P.carrierDark, {
+    pos: [0.014, 0.008, 0], rot: [0, 0, 0.14], ao: 0.84,
+  });
+  b.add(roundedBox(0.108, 0.016, 0.104, 0.006), MAT.webbing, P.webbing, {
+    pos: [0.016, -0.026, 0], rot: [0, 0, 0.14], ao: 0.8,
   });
   return b.build('upperArm');
 }
 
-/** Right forearm + gloved hand, origin at the elbow. Wrist lands at -RIG.foreArm. */
+/**
+ * Right forearm + gloved hand, origin at the elbow. Wrist lands at -RIG.foreArm.
+ *
+ * The glove now has knuckles: four bumps and a hard guard plate across the back of the hand.
+ * Hands are read at close range more than any other part of a soldier, and a mitten reads as a
+ * mitten however good the rest is.
+ */
 function buildForeArm(P) {
   const b = new SegmentBuilder();
-  b.add(roundedBox(0.088, 0.088, 0.09, 0.032), MAT.padded, P.knee, { pos: [0, -0.018, 0.006], ao: 0.86 });
-  b.add(new THREE.CapsuleGeometry(0.046, 0.15, 4, 10), MAT.cloth, P.fatigue, { pos: [0, -0.125, 0], ao: 0.93 });
-  b.add(new THREE.CylinderGeometry(0.05, 0.044, 0.03, 10), MAT.cloth, P.fatigueDark, {
-    pos: [0, -0.205, 0], ao: 0.85,
+  // Elbow pad, sitting over the joint.
+  b.add(roundedBox(0.09, 0.092, 0.094, 0.034), MAT.padded, P.knee, { pos: [0, -0.02, 0.008], ao: 0.86 });
+  // Forearm: fuller near the elbow, tapering into the wrist the way a real one does.
+  b.add(new THREE.CapsuleGeometry(0.052, 0.1, 4, 10), MAT.cloth, P.fatigue, { pos: [0, -0.105, 0.002], ao: 0.93 });
+  b.add(new THREE.CapsuleGeometry(0.045, 0.06, 3, 9), MAT.cloth, P.fatigue, { pos: [0, -0.19, 0.002], ao: 0.92 });
+  // Cuff at the wrist, over the glove gauntlet.
+  b.add(new THREE.CylinderGeometry(0.05, 0.043, 0.036, 10), MAT.glove, P.glove, {
+    pos: [0, -0.248, 0.002], ao: 0.85,
+  });
+  b.add(roundedBox(0.086, 0.014, 0.08, 0.005), MAT.webbing, P.webbing, {
+    pos: [0, -0.232, 0.002], ao: 0.8,
   });
   // Wristwatch — small, but it is the kind of detail that stops a model reading as generic.
   b.add(roundedBox(0.032, 0.012, 0.03, 0.005), MAT.gunmetal, P.gunmetal, {
-    pos: [-0.042, -0.212, 0], rot: [0, 0, 0.2], ao: 0.9,
+    pos: [-0.042, -0.222, 0], rot: [0, 0, 0.2], ao: 0.9,
   });
   // Glove: palm block, thumb, wrapped fingers.
-  b.add(roundedBox(0.056, 0.095, 0.082, 0.024), MAT.glove, P.glove, {
-    pos: [0, -0.278, 0.006], rot: [0.1, 0, 0], ao: 0.9,
+  b.add(roundedBox(0.058, 0.098, 0.086, 0.024), MAT.glove, P.glove, {
+    pos: [0, -0.29, 0.006], rot: [0.1, 0, 0], ao: 0.9,
   });
-  b.add(roundedBox(0.026, 0.05, 0.03, 0.01), MAT.glove, P.glove, {
-    pos: [-0.03, -0.268, 0.03], rot: [0.2, 0, 0.5], ao: 0.86,
+  b.add(roundedBox(0.027, 0.052, 0.032, 0.01), MAT.glove, P.glove, {
+    pos: [-0.031, -0.279, 0.032], rot: [0.2, 0, 0.5], ao: 0.86,
   });
-  b.add(roundedBox(0.05, 0.05, 0.052, 0.02), MAT.glove, P.glove, {
-    pos: [0.002, -0.322, 0.016], rot: [0.35, 0, 0], ao: 0.82,
+  b.add(roundedBox(0.052, 0.052, 0.054, 0.02), MAT.glove, P.glove, {
+    pos: [0.002, -0.336, 0.016], rot: [0.35, 0, 0], ao: 0.82,
+  });
+  // Knuckles: four bumps across the back of the hand, plus the hard guard over them.
+  for (let i = 0; i < 4; i++) {
+    b.add(roundedBox(0.014, 0.016, 0.015, 0.006), MAT.glove, P.glove, {
+      pos: [-0.021 + i * 0.014, -0.322 - i * 0.001, -0.03], rot: [0.3, 0, 0], ao: 0.88,
+    });
+  }
+  b.add(roundedBox(0.056, 0.03, 0.02, 0.008), MAT.rubber, P.gunPolymer, {
+    pos: [0, -0.318, -0.033], rot: [0.28, 0, 0], ao: 0.84,
+  });
+  // Reinforced palm patch — catches a different roughness to the back of the glove.
+  b.add(roundedBox(0.05, 0.07, 0.012, 0.005), MAT.leather, P.boot, {
+    pos: [0, -0.294, 0.048], rot: [0.1, 0, 0], ao: 0.86,
   });
   return b.build('foreArm');
 }
 
-/** Right thigh, origin at the hip joint. Knee at -RIG.thigh. */
+/**
+ * Right thigh, origin at the hip joint. Knee at -RIG.thigh.
+ *
+ * Three volumes, not one: the quad, a slack lower section hanging slightly rearward, and a
+ * pronounced narrowing into the knee. Combat trousers are cut loose and gather above the knee
+ * pad, and that gather is the difference between a leg and a cylinder.
+ */
 function buildThigh(P) {
   const b = new SegmentBuilder();
-  b.add(new THREE.CapsuleGeometry(0.083, 0.24, 4, 11), MAT.cloth, P.fatigue, { pos: [0, -0.175, 0], ao: 0.95 });
-  b.add(new THREE.CapsuleGeometry(0.072, 0.1, 3, 10), MAT.cloth, P.fatigue, { pos: [0, -0.335, 0], ao: 0.9 });
-  // Cargo pocket on the outer thigh, with a flap.
-  b.add(roundedBox(0.055, 0.135, 0.11, 0.025), MAT.cloth, P.fatigueDark, {
-    pos: [0.075, -0.2, 0.012], rot: [0, 0, -0.05], ao: 0.86,
+  b.add(new THREE.CapsuleGeometry(0.09, 0.19, 4, 11), MAT.cloth, P.fatigue, { pos: [0, -0.155, 0.004], ao: 0.95 });
+  // Slack, hanging back off the hamstring.
+  b.add(new THREE.CapsuleGeometry(0.084, 0.1, 4, 11), MAT.cloth, P.fatigue, { pos: [0, -0.285, -0.012], ao: 0.92 });
+  // Compression into the knee.
+  b.add(new THREE.CapsuleGeometry(0.07, 0.05, 3, 10), MAT.cloth, P.fatigue, { pos: [0, -0.378, -0.004], ao: 0.9 });
+  // Cargo pocket on the outer thigh, with a flap, a buckle and a pull tab.
+  b.add(roundedBox(0.058, 0.14, 0.115, 0.026), MAT.cloth, P.fatigueDark, {
+    pos: [0.08, -0.2, 0.012], rot: [0, 0, -0.05], ao: 0.86,
   });
-  b.add(roundedBox(0.058, 0.04, 0.115, 0.012), MAT.webbing, P.webbing, {
-    pos: [0.077, -0.135, 0.012], ao: 0.84,
+  b.add(roundedBox(0.062, 0.042, 0.12, 0.012), MAT.webbing, P.webbing, {
+    pos: [0.082, -0.132, 0.012], rot: [0, 0, -0.05], ao: 0.84,
   });
-  // Knee pad straps.
-  b.add(new THREE.CylinderGeometry(0.078, 0.078, 0.02, 10, 1, true), MAT.webbing, P.webbing, {
-    pos: [0, -0.36, 0], ao: 0.82,
+  b.add(roundedBox(0.03, 0.03, 0.014, 0.005, 1), MAT.polymer, P.gunPolymer, {
+    pos: [0.088, -0.152, 0.07], rot: [0.2, 0, -0.05], ao: 0.86,
+  });
+  // Small dressing pouch on the inner thigh — asymmetry stops the legs mirroring perfectly.
+  b.add(roundedBox(0.048, 0.07, 0.05, 0.016), MAT.webbing, P.webbing, {
+    pos: [-0.072, -0.235, 0.024], rot: [0, 0.2, 0.06], ao: 0.82,
+  });
+  // Drop-leg strap running down from the belt to the pocket.
+  b.add(roundedBox(0.024, 0.16, 0.012, 0.004, 1), MAT.webbing, P.webbing, {
+    pos: [0.086, -0.09, 0.05], rot: [0, 0, -0.06], ao: 0.84,
+  });
+  // Knee pad's upper strap, wrapping the trouser above the joint.
+  b.add(new THREE.CylinderGeometry(0.076, 0.074, 0.022, 11, 1, true), MAT.webbing, P.webbing, {
+    pos: [0, -0.365, -0.004], ao: 0.82,
   });
   return b.build('thigh');
 }
@@ -811,36 +1077,74 @@ function buildThigh(P) {
 /** Right shin, origin at the knee. Ankle at -RIG.shin. Knee pad rides here so it tracks the joint. */
 function buildShin(P) {
   const b = new SegmentBuilder();
-  b.add(roundedBox(0.115, 0.12, 0.1, 0.042), MAT.padded, P.knee, { pos: [0, -0.03, 0.028], ao: 0.9 });
-  b.add(new THREE.CapsuleGeometry(0.064, 0.2, 4, 10), MAT.cloth, P.fatigue, { pos: [0, -0.185, -0.004], ao: 0.94 });
-  b.add(new THREE.CapsuleGeometry(0.052, 0.08, 3, 9), MAT.cloth, P.fatigue, { pos: [0, -0.33, -0.006], ao: 0.9 });
+  // Knee pad: a domed cap over the joint with a raised rim, and two wrap straps.
+  b.add(roundedBox(0.118, 0.124, 0.1, 0.044), MAT.padded, P.knee, { pos: [0, -0.028, 0.03], ao: 0.9 });
+  b.add(roundedBox(0.104, 0.05, 0.05, 0.022), MAT.padded, P.knee, {
+    pos: [0, -0.075, 0.052], rot: [0.45, 0, 0], ao: 0.86,
+  });
+  b.add(new THREE.CylinderGeometry(0.072, 0.07, 0.02, 11, 1, true), MAT.webbing, P.webbing, {
+    pos: [0, -0.088, 0.002], ao: 0.8,
+  });
+  b.add(roundedBox(0.028, 0.026, 0.02, 0.006), MAT.polymer, P.gunPolymer, {
+    pos: [-0.068, -0.088, 0.014], rot: [0, 0.4, 0], ao: 0.82,
+  });
+  // Calf: full at the top, offset rearward, then a real taper into the ankle.
+  b.add(new THREE.CapsuleGeometry(0.068, 0.15, 4, 10), MAT.cloth, P.fatigue, { pos: [0, -0.185, -0.012], ao: 0.94 });
+  b.add(new THREE.CapsuleGeometry(0.053, 0.07, 3, 9), MAT.cloth, P.fatigue, { pos: [0, -0.315, -0.006], ao: 0.9 });
   // Blousing over the boot top plus the elastic that holds it.
-  b.add(new THREE.CylinderGeometry(0.068, 0.058, 0.075, 11), MAT.cloth, P.fatigueDark, {
+  b.add(new THREE.CylinderGeometry(0.072, 0.06, 0.082, 11), MAT.cloth, P.fatigueDark, {
     pos: [0, -0.372, -0.004], ao: 0.86,
   });
-  b.add(new THREE.CylinderGeometry(0.062, 0.062, 0.016, 11), MAT.webbing, P.webbing, {
-    pos: [0, -0.402, -0.004], ao: 0.8,
+  b.add(new THREE.CylinderGeometry(0.064, 0.064, 0.016, 11), MAT.webbing, P.webbing, {
+    pos: [0, -0.404, -0.004], ao: 0.8,
   });
   return b.build('shin');
 }
 
-/** Right boot, origin at the ankle. Sole bottom sits at y = -0.08 so the ankle rides at 0.08. */
+/**
+ * Right boot, origin at the ankle. Sole bottom sits at y = -0.085 so the ankle rides at
+ * RIG.ankleY and the foot IK target lands the tread exactly on the ground.
+ */
 function buildBoot(P) {
   const b = new SegmentBuilder();
-  b.add(roundedBox(0.098, 0.1, 0.115, 0.03), MAT.leather, P.boot, { pos: [0, -0.028, -0.002], ao: 0.88 });
-  b.add(roundedBox(0.094, 0.062, 0.135, 0.028), MAT.leather, P.boot, {
-    pos: [0, -0.05, 0.075], rot: [0.06, 0, 0], ao: 0.9,
+  // Padded ankle collar — a boot without one has no join to the trouser.
+  b.add(new THREE.CylinderGeometry(0.056, 0.05, 0.052, 10), MAT.leather, P.boot, {
+    pos: [0, 0.012, -0.004], ao: 0.82,
   });
-  b.add(roundedBox(0.086, 0.04, 0.06, 0.02), MAT.leather, P.boot, {
-    pos: [0, -0.056, 0.145], rot: [0.16, 0, 0], ao: 0.88,
+  b.add(roundedBox(0.1, 0.1, 0.118, 0.03), MAT.leather, P.boot, { pos: [0, -0.03, -0.002], ao: 0.88 });
+  b.add(roundedBox(0.096, 0.062, 0.138, 0.028), MAT.leather, P.boot, {
+    pos: [0, -0.05, 0.076], rot: [0.06, 0, 0], ao: 0.9,
   });
-  // Sole and heel — the heel block is what stops a boot looking like a slipper.
-  b.add(roundedBox(0.104, 0.026, 0.29, 0.011), MAT.rubber, P.sole, { pos: [0, -0.068, 0.05], ao: 0.72 });
-  b.add(roundedBox(0.1, 0.026, 0.085, 0.01), MAT.rubber, P.sole, { pos: [0, -0.052, -0.045], ao: 0.66 });
-  // Laces.
-  for (let i = 0; i < 3; i++) {
-    b.add(roundedBox(0.07, 0.008, 0.012, 0.003), MAT.webbing, P.webbing, {
-      pos: [0, -0.012 - i * 0.022, 0.058 + i * 0.006], rot: [0.1, 0, 0], ao: 0.8,
+  // Toe cap: a separate, harder panel with its own seam line.
+  b.add(roundedBox(0.09, 0.044, 0.064, 0.02), MAT.leather, P.boot, {
+    pos: [0, -0.056, 0.148], rot: [0.16, 0, 0], ao: 0.88,
+  });
+  b.add(roundedBox(0.086, 0.012, 0.016, 0.004, 1), MAT.leather, P.sole, {
+    pos: [0, -0.042, 0.118], rot: [0.16, 0, 0], ao: 0.8,
+  });
+  // Heel counter.
+  b.add(roundedBox(0.092, 0.064, 0.05, 0.022), MAT.leather, P.boot, { pos: [0, -0.03, -0.056], ao: 0.86 });
+  // Midsole, outsole and the heel block — the heel is what stops a boot looking like a slipper.
+  b.add(roundedBox(0.106, 0.02, 0.292, 0.008), MAT.rubber, P.sole, { pos: [0, -0.062, 0.05], ao: 0.72 });
+  b.add(roundedBox(0.11, 0.014, 0.286, 0.005), MAT.rubber, P.sole, { pos: [0, -0.073, 0.05], ao: 0.66 });
+  b.add(roundedBox(0.104, 0.03, 0.086, 0.008), MAT.rubber, P.sole, { pos: [0, -0.066, -0.046], ao: 0.62 });
+  // Tread lugs. Boxes, not chamfered — they are 12 triangles each and only ever seen in
+  // silhouette against the ground or when a corpse's sole faces the camera.
+  for (let i = 0; i < 5; i++) {
+    b.add(roundedBox(0.096, 0.012, 0.03, 0.002, 1), MAT.rubber, P.sole, {
+      pos: [0, -0.079, -0.06 + i * 0.055], ao: 0.55,
+    });
+  }
+  // Laces: rungs up the vamp, then a pair of speed hooks at the top.
+  for (let i = 0; i < 4; i++) {
+    b.add(roundedBox(0.072, 0.008, 0.012, 0.003, 1), MAT.webbing, P.webbing, {
+      pos: [0, -0.008 - i * 0.02, 0.056 + i * 0.007], rot: [0.1, 0, 0], ao: 0.8,
+    });
+  }
+  for (let i = 0; i < 2; i++) {
+    const s = i === 0 ? 1 : -1;
+    b.add(roundedBox(0.01, 0.01, 0.012, 0.003, 1), MAT.gunmetal, P.gunmetal, {
+      pos: [s * 0.038, 0.008, 0.042], ao: 0.85,
     });
   }
   return b.build('boot');
@@ -919,12 +1223,17 @@ function buildRifle(P) {
   b.add(new THREE.CylinderGeometry(0.018, 0.018, 0.004, 10), MAT.optic, P.optic, {
     pos: [0, 0.092, -0.101], rot: [Math.PI * 0.5, 0, 0], ao: 1.0,
   });
-  // Sling loops and a charging handle.
+  // Sling loops and a charging handle. The front loop is a real QD socket on a mount, because
+  // the dynamic sling strap is anchored to it and a strap that emerges from bare polymer looks
+  // like a mistake rather than a fitting.
   b.add(new THREE.TorusGeometry(0.012, 0.0035, 4, 8), MAT.gunmetal, gm, {
     pos: [0.024, -0.01, 0.09], rot: [0, Math.PI * 0.5, 0], ao: 0.85,
   });
-  b.add(new THREE.TorusGeometry(0.012, 0.0035, 4, 8), MAT.gunmetal, gm, {
-    pos: [0.026, 0.012, -0.4], rot: [0, Math.PI * 0.5, 0], ao: 0.85,
+  b.add(roundedBox(0.024, 0.024, 0.03, 0.006), MAT.gunmetal, gm.clone().multiplyScalar(0.9), {
+    pos: [-0.03, 0.006, -0.4], ao: 0.88,
+  });
+  b.add(new THREE.TorusGeometry(0.013, 0.0038, 4, 9), MAT.gunmetal, gm, {
+    pos: [-0.04, 0.0, -0.4], rot: [0, Math.PI * 0.5, 0], ao: 0.85,
   });
   b.add(roundedBox(0.05, 0.012, 0.02, 0.004), MAT.gunmetal, gm.clone().multiplyScalar(0.75), {
     pos: [0, 0.05, 0.078], ao: 0.85,
@@ -932,12 +1241,57 @@ function buildRifle(P) {
   return b.build('rifle');
 }
 
-/** Local-space grip and muzzle anchors on the rifle geometry above. */
+/**
+ * The sling strap, authored in a unit span: it runs from the origin (the rifle's front QD
+ * loop) to (0, 0, 1), sagging in -Y. `poseSling` gives the segment's bone a basis whose Z axis
+ * is scaled to the live gap between the loop and the shoulder, so the strap really does
+ * connect the weapon to the body and really does tighten and slacken as the rifle moves.
+ *
+ * Built from short boxes following the curve rather than a swept tube: eleven boxes at twelve
+ * triangles each is 132 triangles for a part that is only ever a few pixels wide.
+ */
+function buildSling(P) {
+  const b = new SegmentBuilder();
+  const N = 9;
+  const SAG = 0.115;
+  // Parabolic drape. Real webbing under its own weight is a catenary, but over this span the
+  // two are within a millimetre of each other and a parabola is two multiplies.
+  const py = (u) => -SAG * 4 * u * (1 - u);
+  for (let i = 0; i < N; i++) {
+    const u0 = i / N;
+    const u1 = (i + 1) / N;
+    const y0 = py(u0);
+    const y1 = py(u1);
+    const dy = y1 - y0;
+    const dz = u1 - u0;
+    const len = Math.hypot(dy, dz);
+    b.add(roundedBox(0.034, 0.008, len * 1.12, 0.002, 1), MAT.webbing, P.webbing, {
+      pos: [0, (y0 + y1) * 0.5, (u0 + u1) * 0.5],
+      rot: [Math.atan2(-dy, dz), 0, 0],
+      ao: 0.86,
+      grain: 0.09,
+    });
+  }
+  // Length adjuster sliding on the strap, and the snap hook at the weapon end.
+  b.add(roundedBox(0.042, 0.014, 0.03, 0.004, 1), MAT.polymer, P.gunPolymer, {
+    pos: [0, py(0.3) - 0.002, 0.3], rot: [Math.atan2(SAG * 0.8, 1), 0, 0], ao: 0.82,
+  });
+  b.add(roundedBox(0.02, 0.02, 0.028, 0.005, 1), MAT.gunmetal, P.gunmetal, {
+    pos: [0, -0.002, 0.022], ao: 0.88,
+  });
+  return b.build('sling');
+}
+
+/** Local-space grip, muzzle and fitting anchors on the rifle geometry above. */
 const RIFLE = {
   gripR: new THREE.Vector3(0.0, -0.055, 0.028),
   gripL: new THREE.Vector3(-0.004, -0.048, -0.3),
   muzzle: new THREE.Vector3(0, 0.012, -0.69),
   eject: new THREE.Vector3(0.03, 0.02, -0.05),
+  /** Front sling QD socket — the moving end of the strap. */
+  slingFront: new THREE.Vector3(-0.046, 0.0, -0.4),
+  /** Magazine well, where the support hand goes during an idle weapon check. */
+  magWell: new THREE.Vector3(-0.01, -0.135, -0.082),
 };
 
 /** Build every segment geometry once. Left limbs are mirrored copies of the right. */
@@ -964,6 +1318,7 @@ function buildSegmentGeometries(P) {
   geos[SEG.shinL] = mirrorX(shin);
   geos[SEG.bootL] = mirrorX(boot);
   geos[SEG.rifle] = buildRifle(P);
+  geos[SEG.sling] = buildSling(P);
   return geos;
 }
 
@@ -1006,12 +1361,16 @@ function buildSkeleton() {
   const kneeL = mk('kneeL', 0, -RIG.thigh, 0, hipL);
   const ankleL = mk('ankleL', 0, -RIG.shin, 0, kneeL);
   const rifle = mk('rifle', 0, 0, 0, chest);
+  // The sling's "bone" is a leaf that never drives anything and never has its local TRS read:
+  // poseSling writes its matrixWorld directly, because the strap needs a non-uniform basis
+  // (uniform thickness, live length) that a position/quaternion/scale triple cannot express.
+  const sling = mk('sling', 0, 0, 0, chest);
 
   return {
     root, hips, spine, chest, neck, head,
     shoulderR, elbowR, wristR, shoulderL, elbowL, wristL,
     hipR, kneeR, ankleR, hipL, kneeL, ankleL,
-    rifle,
+    rifle, sling,
   };
 }
 
@@ -1109,6 +1468,19 @@ function solveTwoBone(rootPos, targetPos, pole, len1, len2, out) {
  * `poleWorld` is where the joint should bend toward.
  */
 function ikChain(rootBone, midBone, tipBone, targetWorld, poleWorld, len1, len2) {
+  // Refresh the root's world matrix from its parent before reading its position. Its
+  // matrixWorld is otherwise left over from the previous frame, and the shoulder/hip it
+  // describes has moved since: the pelvis alone travels by the bob, the heel-strike settle,
+  // the lateral weight shift and the whole body's velocity between frames. Solving to a
+  // one-frame-old root made the legs lag the hips by up to 10 cm at a sprint — measured as
+  // 3.8 cm of boot pushed through the ground — and after a pool slot is recycled the stale
+  // matrix belongs to the *previous* soldier, metres away, so the first frame of a respawn
+  // posed its legs from a dead man's hips. Only the translation is used here, and that depends
+  // solely on the parent and a fixed local offset, so the stale rotation is harmless.
+  if (rootBone.parent) {
+    refreshLocal(rootBone);
+    rootBone.matrixWorld.multiplyMatrices(rootBone.parent.matrixWorld, rootBone.matrix);
+  }
   boneWorldPos(rootBone, _v4);
   solveTwoBone(_v4, targetWorld, poleWorld, len1, len2, _v5);
   _v6.copy(_v5).sub(_v4);
@@ -1529,20 +1901,63 @@ function createEnemyRecord(index) {
     footPlant: [new THREE.Vector3(), new THREE.Vector3()],
     footLift: [0, 0],
     footPlanted: [true, true],
+    /** Yaw the foot was planted at. Held through stance so a turning body never twists a
+     *  planted boot — the single most visible foot-slide artefact there is. */
+    footYaw: [0, 0],
+    footYawPrev: [0, 0],
+    footToeOut: [0.1, -0.1],
+    wasSwing: [false, false],
+    /** Cooldown before the other foot may take a corrective step, so a turn is two steps. */
+    stepCooldown: 0,
     hipBob: 0,
     hipRoll: 0,
     hipYaw: 0,
     bobPhase: 0,
+    /** Heel-strike impact spring: a footfall drives it, it dips the pelvis and settles. */
+    strike: 0,
+    strikeV: 0,
+    /** −1 fully on the left foot, +1 fully on the right. Drives pelvic drop and lateral shift. */
+    weight: 0,
+    weightBias: 0,
+    weightBiasTarget: 0,
+    pelvisShift: 0,
+    armSwing: 0,
 
     /* --- additive layers --- */
     flinchPitch: 0,
     flinchPitchV: 0,
     flinchYaw: 0,
     flinchYawV: 0,
+    flinchRoll: 0,
+    flinchRollV: 0,
+    /** Knee collapse from a leg hit; separate from flinch because it is a leg, not a torso. */
+    buckle: 0,
+    buckleV: 0,
+    armJerkR: 0,
+    armJerkL: 0,
     fireShove: 0,
     fireShoveV: 0,
     breath: Math.random() * TAU,
     stagger: 0,
+    crouchV: 0,
+
+    /* --- cover lean --- */
+    lean: 0,
+    leanTarget: 0,
+    leanSide: 0,
+    leanAxis: new THREE.Vector3(1, 0, 0),
+    /** World offset from `position` the whole body (and its feet) leans out by. */
+    bodyOffset: new THREE.Vector3(),
+    bodyOffsetTarget: new THREE.Vector3(),
+
+    /* --- idle life --- */
+    idleTimer: 1.5,
+    idleAction: 0,
+    idleT: 0,
+    idleDur: 1,
+    weaponCheck: 0,
+    shoulderRoll: 0,
+    lookYawOff: 0,
 
     /* --- ragdoll --- */
     rdPos: new Float32Array(RD_COUNT * 3),
@@ -1588,7 +2003,23 @@ function createEnemyRecord(index) {
 /* Ragdoll                                                                    */
 /* ========================================================================== */
 
-function ragdollCapture(e, impulseDir, impulseMag, groundY) {
+const _rdCentre = new THREE.Vector3();
+const _rdOmega = new THREE.Vector3();
+const _rdArm = new THREE.Vector3();
+const _rdSpin = new THREE.Vector3();
+
+/**
+ * Snapshot the live pose into verlet particles and kick it with the killing shot.
+ *
+ * The important part is the *angular* impulse. A linear-only capture makes every corpse drop
+ * more or less straight down, translated a little, which is the single most obvious tell that
+ * a death is procedural. A real hit almost never passes through the centre of mass, so it
+ * applies a torque: τ = r × F, where r is the offset from the body's centre to the wound. Feed
+ * that in as ω and give every particle v += ω × (p − centre) and the body turns as it falls —
+ * a shot through the right shoulder spins him left and drops him on his face, a hit low on the
+ * hip folds him sideways. `hitPoint` is the wound, so the same maths covers all of it.
+ */
+function ragdollCapture(e, impulseDir, impulseMag, groundY, hitPoint) {
   const b = e.bones;
   for (let i = 0; i < RD_COUNT; i++) {
     boneWorldPos(b[RD_BONE[i]], _v0);
@@ -1604,6 +2035,30 @@ function ragdollCapture(e, impulseDir, impulseMag, groundY) {
     const dz = e.rdPos[a + 2] - e.rdPos[c + 2];
     e.rdRest[i] = Math.sqrt(dx * dx + dy * dy + dz * dz);
   }
+
+  // Centre of mass, near enough: midway between hips and chest.
+  _rdCentre.set(
+    (e.rdPos[RD.hips * 3] + e.rdPos[RD.chest * 3]) * 0.5,
+    (e.rdPos[RD.hips * 3 + 1] + e.rdPos[RD.chest * 3 + 1]) * 0.5,
+    (e.rdPos[RD.hips * 3 + 2] + e.rdPos[RD.chest * 3 + 2]) * 0.5
+  );
+
+  // τ = r × F. Scaled down hard because a soldier is not a rigid rod and the constraint solver
+  // adds its own rotation; 3.4 rad/s of seed spin is a body that turns as it goes down, 10 is
+  // a cartwheel. Clamped for the same reason.
+  _rdOmega.set(0, 0, 0);
+  if (hitPoint) {
+    _rdArm.copy(hitPoint).sub(_rdCentre);
+    // Clamp the lever arm: a limb hit at 0.5 m would otherwise out-torque a torso hit.
+    if (_rdArm.lengthSq() > 0.16) _rdArm.setLength(0.4);
+    _rdOmega.crossVectors(_rdArm, impulseDir).multiplyScalar(impulseMag * 5.5);
+    // A little yaw about vertical always: bodies twist as they collapse, they do not topple
+    // like a plank. Signed off the same lever arm so it stays consistent with the hit.
+    _rdOmega.y += (_rdArm.x * impulseDir.z - _rdArm.z * impulseDir.x) * impulseMag * 3.0;
+    const om = _rdOmega.length();
+    if (om > 3.4) _rdOmega.multiplyScalar(3.4 / om);
+  }
+
   // Seed prev positions from the body's own motion plus the shot impulse, so a runner
   // tumbles forward and a standing target folds where it was hit.
   const dt = 1 / 60;
@@ -1613,12 +2068,15 @@ function ragdollCapture(e, impulseDir, impulseMag, groundY) {
   for (let i = 0; i < RD_COUNT; i++) {
     // Upper body takes more of the impulse than the feet — that asymmetry is the whole look.
     const w = i <= RD.wristL ? 1.0 : 0.35;
-    const vx = e.velocity.x + ix * w;
-    const vy = e.velocity.y + iy * w * 0.6;
-    const vz = e.velocity.z + iz * w;
-    e.rdPrev[i * 3] = e.rdPos[i * 3] - vx * dt;
-    e.rdPrev[i * 3 + 1] = e.rdPos[i * 3 + 1] - vy * dt;
-    e.rdPrev[i * 3 + 2] = e.rdPos[i * 3 + 2] - vz * dt;
+    const o = i * 3;
+    _rdArm.set(e.rdPos[o] - _rdCentre.x, e.rdPos[o + 1] - _rdCentre.y, e.rdPos[o + 2] - _rdCentre.z);
+    _rdSpin.crossVectors(_rdOmega, _rdArm);
+    const vx = e.velocity.x + ix * w + _rdSpin.x;
+    const vy = e.velocity.y + iy * w * 0.6 + _rdSpin.y;
+    const vz = e.velocity.z + iz * w + _rdSpin.z;
+    e.rdPrev[o] = e.rdPos[o] - vx * dt;
+    e.rdPrev[o + 1] = e.rdPos[o + 1] - vy * dt;
+    e.rdPrev[o + 2] = e.rdPos[o + 2] - vz * dt;
   }
   e.rdGround = groundY;
   e.rdActive = true;
@@ -1758,6 +2216,8 @@ function ragdollPose(e) {
   setWorldTransform(b.rifle, _v0, _q1, e.scale);
   refreshLocal(b.rifle);
   b.rifle.matrixWorld.multiplyMatrices(b.chest.matrixWorld, b.rifle.matrix);
+  // The sling is still attached to the corpse, so it has to follow the fallen weapon too.
+  poseSling(e);
 }
 
 const _rdPole = new THREE.Vector3();
@@ -1808,15 +2268,103 @@ const _aq2 = new THREE.Quaternion();
 const _ae = new THREE.Euler();
 
 const GAIT = {
-  swingFrac: 0.42, // fraction of the cycle a foot spends in the air
-  liftHeight: 0.13,
+  /** Floor for the duty factor. The live value is per-enemy, see FOOT_EXCURSION. */
+  swingFrac: 0.42,
+  /** Ceiling. Past this both feet are airborne for a quarter of the cycle — a real run. */
+  swingFracMax: 0.62,
+  /**
+   * Cadence ceiling, cycles per second. Raised from 2.6 as a consequence of FOOT_EXCURSION:
+   * with the stride the legs can actually cover capped, the only way to keep moving at 6 m/s
+   * is to turn the legs over faster, which is also what a sprinting man does.
+   */
+  cadenceMax: 3.4,
+  liftHeight: 0.14,
   bobAmp: 0.045,
-  rollAmp: 0.055,
+  rollAmp: 0.062,
   yawAmp: 0.1,
   minStride: 0.52,
   strideGain: 0.24,
-  standWidth: 0.115,
+  standWidth: 0.112,
+  /** Squared world drift that forces a corrective step when standing — about 0.23 m. */
+  stepDrift: 0.053,
+  /** Body-vs-foot yaw that forces one, radians. ~24°: past that the boot is visibly twisted. */
+  stepYaw: 0.42,
+  /** Impulse into the heel-strike spring. Sized for a ~2 cm pelvis dip, see updateGait. */
+  strikeGain: 0.62,
+  /** Fraction of stance spent flat before the heel starts to lift. */
+  toeOffAt: 0.62,
 };
+
+/**
+ * Ankle pitch across the whole cycle: heel strike, roll to flat, weight over it, heel lift and
+ * toe-off, then clearance and a reach for the next strike.
+ *
+ * This curve is the difference between a walk and a shuffle. A foot that stays flat through
+ * stance and pitches only in the air has no heel-to-toe roll, and without the roll the body
+ * appears to be carried past a stationary foot rather than pushed by it.
+ */
+function anklePitch(phase, sf) {
+  if (phase >= sf) {
+    const u = (phase - sf) / (1 - sf);
+    if (u < 0.18) return lerp(0.21, 0.0, smoothstep(u / 0.18)); // heel down → foot flat
+    if (u < GAIT.toeOffAt) return 0.0; // flat, weight rolling over it
+    return lerp(0.0, -0.44, smoothstep((u - GAIT.toeOffAt) / (1 - GAIT.toeOffAt))); // toe-off
+  }
+  const v = phase / sf;
+  if (v < 0.45) return lerp(-0.44, 0.15, smootherstep(v / 0.45)); // recover, toes up to clear
+  return lerp(0.15, 0.21, smoothstep((v - 0.45) / 0.55)); // reach out for the heel strike
+}
+
+/**
+ * How much of the gait's foot-roll is currently active, 0..1, as a smooth function of cadence.
+ *
+ * This exists because a boolean here is a visible defect. The toe-off displaces the stance
+ * ankle by up to 7 cm, and the moment the walk-vs-stand test flipped, that displacement
+ * vanished in one frame — a 7 cm jump of a foot that is supposed to be nailed to the ground,
+ * measured at 0.051 m/frame in a 90-second soak. Fading it out as cadence decays means the
+ * offset is already at zero by the time the branch changes, so the plant stays a plant.
+ */
+function gaitAmount(cycleRate) {
+  return smoothstep(clamp((cycleRate - 0.06) / 0.35, 0, 1));
+}
+
+/**
+ * The ankle pitch applied this frame, in one place.
+ *
+ * Both updateGait and poseEnemy need it — the pose to rotate the boot, the gait to move the
+ * ankle so the boot rotates *about its contact patch* rather than about the ankle. If those two
+ * ever disagree the foot swims, so neither computes it privately.
+ */
+function ankleRoll(e, leg) {
+  const amt = gaitAmount(e.cycleRate);
+  if (amt <= 0) return 0;
+  const phase = (e.cycle + (leg === 0 ? 0 : 0.5)) % 1;
+  return anklePitch(phase, GAIT.swingFrac) * clamp(0.4 + e.speed * 0.2, 0.4, 1.1) * amt;
+}
+
+/** Boot dimensions from buildBoot, ankle-local: ball of the foot forward, heel back. */
+const BOOT_BALL = 0.13;
+const BOOT_HEEL = 0.07;
+
+/**
+ * Move the stance ankle so the boot pivots about whichever end is actually on the ground — the
+ * ball at toe-off, the heel at contact — instead of about the ankle joint.
+ *
+ * This is not a nicety. Pitching a 0.30 m boot 0.48 rad about its ankle drives the toe about
+ * 3 cm through the floor, and a foot that visibly sinks and drags at every push-off is the
+ * same defect as sliding, just harder to name. Rotating a point (f, u) about the contact by θ
+ * gives the ankle's true displacement, and it is two trig calls.
+ */
+function pivotAnkle(e, leg, pitch, forward) {
+  if (pitch === 0) return;
+  const a = Math.abs(pitch);
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  const lever = pitch < 0 ? BOOT_BALL : BOOT_HEEL; // heel-up pivots on the ball, and vice versa
+  const dir = pitch < 0 ? 1 : -1;
+  e.footPos[leg].y += (lever * s + RIG.ankleY * (c - 1)) * e.scale;
+  e.footPos[leg].addScaledVector(forward, dir * (lever * (1 - c) + RIG.ankleY * s) * e.scale);
+}
 
 /**
  * Advance the gait clock and pick world-space foot targets.
@@ -1824,6 +2372,18 @@ const GAIT = {
  * Feet are locked in WORLD space during stance — that is the difference between a walk cycle
  * and a skating character. A plant point is chosen once, at the moment the foot leaves the
  * ground, from the body's predicted position half a stride later.
+ *
+ * Three things were missing and are added here, all of them "weight":
+ *
+ *  - **Foot yaw is planted too.** Position was world-locked but orientation was not: the boot
+ *    took its heading from `e.facing` every frame, so a soldier turning on the spot twisted his
+ *    planted boots like a screw. Yaw is now captured at plant and interpolated only during
+ *    swing, which is what makes the turn-in-place read as steps.
+ *  - **Heel strike.** A footfall now kicks a stiff spring that drops the pelvis about two
+ *    centimetres and settles, so each step lands instead of gliding.
+ *  - **Weight transfer.** A signed load value tracks which foot is carrying, and shifts the
+ *    pelvis laterally over it and drops the opposite hip. Walking without it is a torso being
+ *    conveyed between two moving feet.
  */
 function updateGait(e, dt, level) {
   const speed = e.speed;
@@ -1838,6 +2398,7 @@ function updateGait(e, dt, level) {
     e.cycle += e.cycleRate * dt;
     if (e.cycle >= 1) e.cycle -= Math.floor(e.cycle);
   }
+  if (e.stepCooldown > 0) e.stepCooldown -= dt;
 
   const cosF = Math.cos(e.facing);
   const sinF = Math.sin(e.facing);
@@ -1845,48 +2406,67 @@ function updateGait(e, dt, level) {
   _a0.set(-sinF, 0, -cosF); // forward
   _a1.set(cosF, 0, -sinF); // right
 
+  // The stance is measured from the leaned body position, not the nav position, so a soldier
+  // leaning out of cover steps his outboard foot across rather than sliding off his boots.
+  _a4.set(e.position.x + e.bodyOffset.x, e.groundY, e.position.z + e.bodyOffset.z);
+
   const halfStride = e.strideLen * 0.5;
-  const stanceWidth = GAIT.standWidth * (1 + e.crouch * 0.28);
+  const stanceWidth = GAIT.standWidth * (1 + e.crouch * 0.3);
+  const cycling = e.cycleRate > 0.06;
 
   for (let leg = 0; leg < 2; leg++) {
     const side = leg === 0 ? 1 : -1; // 0 = right
     const phase = (e.cycle + (leg === 0 ? 0 : 0.5)) % 1;
     // Rest position under the hip, in world space.
-    _a2.copy(e.position)
+    _a2.copy(_a4)
       .addScaledVector(_a1, side * stanceWidth)
-      .addScaledVector(_a0, moving ? 0 : side * 0.02);
+      .addScaledVector(_a0, moving ? 0 : side * 0.018);
     _a2.y = e.groundY;
 
-    if (!moving && e.cycleRate < 0.06) {
-      // Standing: hold the plant unless it has drifted (turning on the spot, nudged by a
-      // squadmate). Then take a corrective step rather than sliding the foot.
+    if (!moving && !cycling) {
+      // --- standing: turn and shuffle in place, one foot at a time ---
       const drift = e.footPlant[leg].distanceToSquared(_a2);
-      if (drift > 0.16 || !e.footPlanted[leg]) {
+      const yawOff = Math.abs(angleDelta(e.footYaw[leg], e.facing));
+      const wantStep = drift > GAIT.stepDrift || yawOff > GAIT.stepYaw;
+      // Only step if the other foot is down and the last step has had time to land: a pivot is
+      // two separate steps, and both feet leaving the ground together is a hop.
+      if (e.footPlanted[leg] && wantStep && e.stepCooldown <= 0 && e.footPlanted[1 - leg]) {
         e.footPrev[leg].copy(e.footPos[leg]);
+        e.footYawPrev[leg] = e.footYaw[leg];
         e.footPlant[leg].copy(_a2);
         groundSnap(level, e.footPlant[leg]);
         e.footPlanted[leg] = false;
         e.footLift[leg] = 0;
+        e.stepCooldown = 0.34;
       }
       if (!e.footPlanted[leg]) {
-        e.footLift[leg] = Math.min(1, e.footLift[leg] + dt * 5.5);
+        e.footLift[leg] = Math.min(1, e.footLift[leg] + dt * 4.6);
         const t = e.footLift[leg];
-        e.footPos[leg].lerpVectors(e.footPrev[leg], e.footPlant[leg], smootherstep(t));
-        e.footPos[leg].y += Math.sin(t * Math.PI) * 0.06;
-        if (t >= 1) e.footPlanted[leg] = true;
+        const s = smootherstep(t);
+        e.footPos[leg].lerpVectors(e.footPrev[leg], e.footPlant[leg], s);
+        e.footPos[leg].y += Math.sin(t * Math.PI) * 0.055;
+        e.footYaw[leg] = e.footYawPrev[leg] + angleDelta(e.footYawPrev[leg], e.facing) * s;
+        if (t >= 1) {
+          e.footPlanted[leg] = true;
+          e.footYaw[leg] = e.facing;
+          e.strikeV -= GAIT.strikeGain * 0.42; // a shuffle still lands with some weight
+          e.stepCooldown = Math.max(e.stepCooldown, 0.14);
+        }
       } else {
         e.footPos[leg].copy(e.footPlant[leg]);
       }
+      e.wasSwing[leg] = false;
       continue;
     }
 
     const swing = phase < GAIT.swingFrac;
     if (swing) {
-      if (e.footPlanted[leg]) {
-        // Toe-off: choose where this foot is going to land.
+      if (!e.wasSwing[leg]) {
+        // Toe-off: choose where this foot is going to land, and release its planted yaw.
         e.footPrev[leg].copy(e.footPos[leg]);
+        e.footYawPrev[leg] = e.footYaw[leg];
         const ahead = halfStride + speed * 0.06;
-        _a3.copy(e.position)
+        _a3.copy(_a4)
           .addScaledVector(_a1, side * stanceWidth)
           .addScaledVector(_a0, ahead);
         _a3.y = e.groundY;
@@ -1896,22 +2476,122 @@ function updateGait(e, dt, level) {
       }
       const t = clamp(phase / GAIT.swingFrac, 0, 1);
       // Ease out of the plant, ease into the next one; the foot travels fastest mid-swing.
-      e.footPos[leg].lerpVectors(e.footPrev[leg], e.footPlant[leg], smootherstep(t));
+      const s = smootherstep(t);
+      e.footLift[leg] = t; // so a stop mid-swing continues the same arc rather than snapping
+      e.footPos[leg].lerpVectors(e.footPrev[leg], e.footPlant[leg], s);
       const lift = GAIT.liftHeight * (0.5 + speed * 0.09) * Math.sin(t * Math.PI);
       e.footPos[leg].y += lift * (1 - e.crouch * 0.3);
+      e.footYaw[leg] = e.footYawPrev[leg] + angleDelta(e.footYawPrev[leg], e.facing) * s;
     } else {
-      e.footPlanted[leg] = true;
+      if (e.wasSwing[leg]) {
+        // --- heel strike ---
+        e.footPlanted[leg] = true;
+        e.footYaw[leg] = e.facing;
+        e.strikeV -= GAIT.strikeGain * clamp(0.3 + speed * 0.19, 0.3, 1.0);
+      }
       e.footPos[leg].copy(e.footPlant[leg]);
+      // Roll the boot over its contact patch: the tread stays exactly where it was planted
+      // while the ankle arcs over it, heel at contact and ball at toe-off. Faded by cadence,
+      // so a soldier who stops mid-stride does not have the offset yanked out from under him.
+      pivotAnkle(e, leg, ankleRoll(e, leg), _a0);
     }
+    e.wasSwing[leg] = swing;
   }
 
-  // Pelvis: two dips per cycle (one per footfall), a roll onto the stance leg, and a small
-  // counter-yaw the shoulders will oppose.
+  /* --- pelvis ------------------------------------------------------------ */
   const c2 = e.cycle * TAU;
-  const amp = GAIT.bobAmp * clamp(speed / 3.2, 0.25, 1.5);
+  const spd = clamp(speed / 3.2, 0.25, 1.5);
+
+  // Heel-strike impact. A stiff spring (ω ≈ 14.8 rad/s) at ζ = 0.62: an impulse of 0.62 peaks
+  // at roughly 0.022 m of drop and is gone inside a third of a second, which is a footfall
+  // landing rather than a bounce. Clamped so a burst of strikes cannot stack into a squat.
+  const sk = 220;
+  const sd = 2 * Math.sqrt(sk) * 0.62;
+  e.strikeV += (-sk * e.strike - sd * e.strikeV) * dt;
+  e.strike += e.strikeV * dt;
+  if (e.strike < -0.048) {
+    e.strike = -0.048;
+    if (e.strikeV < 0) e.strikeV = 0;
+  } else if (e.strike > 0.016) {
+    e.strike = 0.016;
+    if (e.strikeV > 0) e.strikeV = 0;
+  }
+
+  // Weight transfer. −cos puts the load on the left at cycle 0, which is when the right leg is
+  // starting its swing. Standing, it settles onto whichever hip the idle layer has chosen.
+  e.weightBias = damp(e.weightBias, cycling ? 0 : e.weightBiasTarget, 1.3, dt);
+  const wTarget = cycling ? -Math.cos(c2) : e.weightBias;
+  e.weight = damp(e.weight, wTarget, cycling ? 12 : 3.2, dt);
+  e.pelvisShift = damp(e.pelvisShift, e.weight * (cycling ? 0.026 : 0.036), 10, dt);
+
+  const amp = GAIT.bobAmp * spd;
   e.hipBob = damp(e.hipBob, -amp * (0.5 - 0.5 * Math.cos(c2 * 2)), 18, dt);
-  e.hipRoll = damp(e.hipRoll, GAIT.rollAmp * Math.sin(c2) * clamp(speed / 3.0, 0.2, 1.3), 12, dt);
-  e.hipYaw = damp(e.hipYaw, GAIT.yawAmp * Math.sin(c2) * clamp(speed / 3.6, 0.15, 1.2), 12, dt);
+  // Positive roll lifts the right side, so the swing-side hip drops — a real Trendelenburg
+  // pattern, and it is phase-locked to the weight rather than to an independent sine.
+  e.hipRoll = damp(e.hipRoll, e.weight * GAIT.rollAmp * (cycling ? spd : 0.55), 12, dt);
+  e.hipYaw = damp(e.hipYaw, GAIT.yawAmp * Math.sin(c2) * clamp(speed / 3.6, 0, 1.2), 12, dt);
+
+  // Arm swing: damped rather than symmetric. The second harmonic makes the forward throw
+  // quicker than the return, and the damp makes the arm trail the shoulder driving it — two
+  // small asymmetries that together stop the swing reading as a metronome.
+  const swingTarget = cycling
+    ? (Math.sin(c2) * 0.9 - 0.26 * Math.sin(c2 * 2)) * clamp(speed / 3.2, 0.25, 1.35)
+    : 0;
+  e.armSwing = damp(e.armSwing, swingTarget, 15, dt);
+}
+
+/**
+ * Idle life.
+ *
+ * A stationary soldier who is perfectly still is a prop, and the usual fix — more noise on more
+ * bones — just makes a twitchy prop. What reads as a person is discrete, legible actions with
+ * dead air between them, so this is a tiny scheduler: pick one of four things, play it over a
+ * couple of seconds on a sine envelope, then wait two to six seconds and pick another.
+ *
+ *   1  shift weight onto the other hip (drives the pelvis laterally via updateGait)
+ *   2  scan: hold a look somewhere off the patrol heading
+ *   3  check the weapon: roll it inboard, support hand to the magazine well
+ *   4  roll the shoulders under the plate carrier
+ */
+function updateIdleLife(e, dt) {
+  const settled = e.speed < 0.32 && e.alert < 2;
+  if (!settled) {
+    if (e.idleAction !== 0) {
+      e.idleAction = 0;
+      e.idleT = 0;
+      e.lookYawOff = 0;
+    }
+    e.idleTimer = 1.0 + e.rng() * 1.8;
+    e.weightBiasTarget = 0;
+    e.weaponCheck = damp(e.weaponCheck, 0, 6, dt);
+    e.shoulderRoll = damp(e.shoulderRoll, 0, 6, dt);
+    return;
+  }
+  if (e.idleAction === 0) {
+    e.idleTimer -= dt;
+    if (e.idleTimer <= 0) {
+      const r = e.rng();
+      e.idleAction = r < 0.34 ? 1 : r < 0.62 ? 2 : r < 0.84 ? 3 : 4;
+      e.idleT = 0;
+      e.idleDur = e.idleAction === 3 ? 2.0 : e.idleAction === 2 ? 2.6 : 1.4;
+      // Shifting weight always goes to the *other* hip: standing on one leg and then choosing
+      // it again is the one thing a tired man never does.
+      if (e.idleAction === 1) e.weightBiasTarget = e.weightBias > 0 ? -1 : 1;
+      if (e.idleAction === 2) e.lookYawOff = (e.rng() * 2 - 1) * 1.1;
+    }
+  } else {
+    e.idleT += dt / e.idleDur;
+    if (e.idleT >= 1) {
+      e.idleAction = 0;
+      e.idleT = 0;
+      e.lookYawOff = 0;
+      e.idleTimer = 2.2 + e.rng() * 3.6;
+    }
+  }
+  // One shared envelope, so nothing ever starts or stops on a step.
+  const env = e.idleAction === 0 ? 0 : Math.sin(clamp(e.idleT, 0, 1) * Math.PI);
+  e.weaponCheck = damp(e.weaponCheck, e.idleAction === 3 ? env : 0, 7, dt);
+  e.shoulderRoll = damp(e.shoulderRoll, e.idleAction === 4 ? env : 0, 7, dt);
 }
 
 /** Drop a point onto the ground with a short downward probe. */
@@ -1931,7 +2611,9 @@ function poseEnemy(e, dt, level, aimBlend) {
   const b = e.bones;
 
   /* --- root ------------------------------------------------------------- */
-  b.root.position.set(e.position.x, e.groundY, e.position.z);
+  // bodyOffset is the cover lean: the whole figure translates out past the cover edge, and
+  // updateGait steps the feet across to follow it, so leaning is not a slide.
+  b.root.position.set(e.position.x + e.bodyOffset.x, e.groundY, e.position.z + e.bodyOffset.z);
   _ae.set(0, e.facing, 0);
   b.root.quaternion.setFromEuler(_ae);
   b.root.scale.setScalar(e.scale);
@@ -1939,13 +2621,28 @@ function poseEnemy(e, dt, level, aimBlend) {
   b.root.matrixWorld.copy(b.root.matrix);
 
   /* --- additive layers -------------------------------------------------- */
-  // Flinch: a critically damped spring, so a hit snaps then returns without wobbling.
+  // Flinch: three critically damped springs, so a hit snaps then returns without wobbling.
+  // Pitch/yaw/roll are separate because a hit's direction and its height on the body pick
+  // different mixes of them — see damageEnemy.
   const flinchK = 130;
   const flinchD = 2 * Math.sqrt(flinchK) * 0.42;
   e.flinchPitchV += (-flinchK * e.flinchPitch - flinchD * e.flinchPitchV) * dt;
   e.flinchPitch += e.flinchPitchV * dt;
   e.flinchYawV += (-flinchK * e.flinchYaw - flinchD * e.flinchYawV) * dt;
   e.flinchYaw += e.flinchYawV * dt;
+  e.flinchRollV += (-flinchK * e.flinchRoll - flinchD * e.flinchRollV) * dt;
+  e.flinchRoll += e.flinchRollV * dt;
+  // Leg buckle from a low hit: softer and slower than the torso flinch, because a knee gives
+  // way and recovers rather than snapping back.
+  const buckleK = 46;
+  const buckleD = 2 * Math.sqrt(buckleK) * 0.55;
+  e.buckleV += (-buckleK * e.buckle - buckleD * e.buckleV) * dt;
+  e.buckle += e.buckleV * dt;
+  if (e.buckle < 0) {
+    e.buckle *= Math.exp(-8 * dt); // it only ever collapses, it never springs the other way
+  }
+  e.armJerkR = damp(e.armJerkR, 0, 7, dt);
+  e.armJerkL = damp(e.armJerkL, 0, 7, dt);
   const shoveK = 190;
   const shoveD = 2 * Math.sqrt(shoveK) * 0.55;
   e.fireShoveV += (-shoveK * e.fireShove - shoveD * e.fireShoveV) * dt;
@@ -1953,14 +2650,21 @@ function poseEnemy(e, dt, level, aimBlend) {
   e.breath += dt * (1.05 + e.speed * 0.28);
   const breathe = Math.sin(e.breath) * 0.011 * (1 - aimBlend * 0.45);
   e.stagger = Math.max(0, e.stagger - dt * 2.4);
+  const leanRoll = e.lean * e.leanSide;
 
   /* --- hips ------------------------------------------------------------- */
-  const crouchDrop = e.crouch * 0.3;
-  b.hips.position.set(0, RIG.hipsY + e.hipBob / e.scale - crouchDrop, 0);
+  // Local units: the root carries e.scale, so world-space amplitudes divide it out and
+  // pose-authored ones (crouch, buckle) do not.
+  const crouchDrop = e.crouch * 0.3 + e.buckle * 0.16;
+  b.hips.position.set(
+    e.pelvisShift / e.scale,
+    RIG.hipsY + (e.hipBob + e.strike) / e.scale - crouchDrop,
+    e.crouch * 0.05
+  );
   _ae.set(
-    0.045 + e.crouch * 0.2 + e.flinchPitch * 0.35 + e.stagger * 0.12,
+    0.045 + e.crouch * 0.2 + e.buckle * 0.1 + e.flinchPitch * 0.35 + e.stagger * 0.12,
     e.hipYaw,
-    e.hipRoll
+    e.hipRoll + e.flinchRoll * 0.3 - leanRoll * 0.1
   );
   b.hips.quaternion.setFromEuler(_ae);
 
@@ -1971,13 +2675,23 @@ function poseEnemy(e, dt, level, aimBlend) {
   let twist = angleDelta(e.facing, aimYaw);
   twist = clamp(twist, -0.72, 0.72) * aimBlend;
   const counter = -e.hipYaw * 0.62;
-  _ae.set(breathe * 0.6 - e.crouch * 0.06, counter * 0.4 + twist * 0.35, -e.hipRoll * 0.25);
+  _ae.set(
+    breathe * 0.6 - e.crouch * 0.06 + e.buckle * 0.06,
+    counter * 0.4 + twist * 0.35,
+    -e.hipRoll * 0.25 + e.flinchRoll * 0.35 - leanRoll * 0.14 + e.shoulderRoll * 0.05
+  );
   b.spine.quaternion.setFromEuler(_ae);
   const aimPitch = Math.asin(clamp(e.aimDir.y, -1, 1));
   _ae.set(
-    -aimPitch * 0.28 * aimBlend + breathe + e.flinchPitch + e.crouch * 0.1 + e.fireShove * 0.5,
-    counter * 0.6 + twist * 0.65,
-    e.flinchYaw * 0.5 - e.hipRoll * 0.3
+    -aimPitch * 0.28 * aimBlend +
+      breathe +
+      e.flinchPitch +
+      e.crouch * 0.1 +
+      e.buckle * 0.14 +
+      e.fireShove * 0.5 +
+      e.weaponCheck * 0.09,
+    counter * 0.6 + twist * 0.65 - e.shoulderRoll * 0.1,
+    e.flinchYaw * 0.5 - e.hipRoll * 0.3 + e.flinchRoll * 0.55 - leanRoll * 0.24 + e.shoulderRoll * 0.13
   );
   b.chest.quaternion.setFromEuler(_ae);
 
@@ -2009,6 +2723,7 @@ function poseEnemy(e, dt, level, aimBlend) {
 
   /* --- weapon ----------------------------------------------------------- */
   poseWeapon(e, aimBlend);
+  poseSling(e);
 
   /* --- arms: two-bone IK onto the rifle grips ---------------------------- */
   _a2.copy(RIFLE.gripR).applyMatrix4(b.rifle.matrixWorld); // right hand target
@@ -2021,18 +2736,30 @@ function poseEnemy(e, dt, level, aimBlend) {
   _a5.copy(_a4).multiplyScalar(0.75).addScaledVector(UP, -1.0).normalize(); // right elbow pole
   _a6.copy(_a4).multiplyScalar(-0.35).addScaledVector(UP, -1.0).normalize(); // left elbow pole
 
+  // Idle weapon check: the support hand leaves the handguard for the magazine well, tugs it,
+  // and comes back. A stationary soldier who never touches his rifle reads as a statue.
+  if (e.weaponCheck > 0.002) {
+    _a0.copy(RIFLE.magWell).applyMatrix4(b.rifle.matrixWorld);
+    _a3.lerp(_a0, e.weaponCheck);
+  }
+
   // Off the ready, the left arm swings with the gait instead of gripping the handguard.
-  const swingBlend = 1 - clamp(e.readyWeight * 2.2, 0, 1);
+  const swingBlend = (1 - clamp(e.readyWeight * 2.2, 0, 1)) * (1 - e.weaponCheck);
   if (swingBlend > 0.001) {
     boneWorldPos(b.shoulderL, _a7);
-    const s = Math.sin(e.cycle * TAU);
     _a8.set(-sinF, 0, -cosF);
     _a0.copy(_a7)
       .addScaledVector(UP, -ARM_REACH * 0.86)
-      .addScaledVector(_a8, s * 0.2 * clamp(e.speed / 3.2, 0.2, 1.3))
-      .addScaledVector(_a4, -0.06);
+      .addScaledVector(_a8, e.armSwing * 0.22)
+      // A swinging arm crosses inboard as it comes forward and opens out as it goes back;
+      // that lateral component is most of what separates a swing from a pendulum.
+      .addScaledVector(_a4, -0.06 - Math.max(0, e.armSwing) * 0.05);
     _a3.lerp(_a0, swingBlend);
   }
+
+  // Limb jerk from a hit landing on that arm — small, brief, and on the correct side.
+  if (e.armJerkR !== 0) _a2.addScaledVector(_a4, e.armJerkR * 0.09).addScaledVector(UP, -Math.abs(e.armJerkR) * 0.05);
+  if (e.armJerkL !== 0) _a3.addScaledVector(_a4, e.armJerkL * 0.09).addScaledVector(UP, -Math.abs(e.armJerkL) * 0.05);
 
   ikChain(b.shoulderR, b.elbowR, b.wristR, _a2, _a5, RIG.upperArm * e.scale, RIG.foreArm * e.scale);
   ikChain(b.shoulderL, b.elbowL, b.wristL, _a3, _a6, RIG.upperArm * e.scale, RIG.foreArm * e.scale);
@@ -2043,20 +2770,24 @@ function poseEnemy(e, dt, level, aimBlend) {
     const hip = leg === 0 ? b.hipR : b.hipL;
     const knee = leg === 0 ? b.kneeR : b.kneeL;
     const ankle = leg === 0 ? b.ankleR : b.ankleL;
+    // Full heel-strike → flat → toe-off roll, rather than a pitch that only happens in the
+    // air. updateGait has already displaced the ankle to pivot this about the contact patch.
+    const toe = ankleRoll(e, leg);
     _a0.copy(e.footPos[leg]);
     _a0.y += RIG.ankleY * e.scale;
     ikChain(hip, knee, ankle, _a0, _a4, RIG.thigh * e.scale, RIG.shin * e.scale);
-    // Ankle: keep the sole level with the ground, rolling through the step.
-    const phase = (e.cycle + (leg === 0 ? 0 : 0.5)) % 1;
-    const swing = phase < GAIT.swingFrac && e.cycleRate > 0.06;
-    const t = swing ? phase / GAIT.swingFrac : 0;
-    const toe = swing ? Math.sin(t * Math.PI) * 0.35 - 0.12 : -0.02;
     // Level the sole to world horizontal first (so the boot stays flat however the shin is
-    // angled), then add the heel-to-toe roll on top as a local pitch.
-    _a1.set(-sinF, 0, -cosF);
+    // angled), then add the heel-to-toe roll on top as a local pitch. The heading comes from
+    // the yaw the foot was PLANTED at, never from the live body facing — that is what stops a
+    // turning soldier twisting his own boots into the ground.
+    const fy = e.footYaw[leg] + e.footToeOut[leg];
+    _a1.set(-Math.sin(fy), 0, -Math.cos(fy));
     _a2.set(0, -1, 0);
     setBoneAim(ankle, _a2, _a1);
-    _ae.set(toe + e.crouch * 0.12, 0, 0);
+    // Sinking dorsiflexes (the heel takes the load), rising plantarflexes (he pushes off the
+    // balls of his feet). Signing this off crouch *velocity* is what gives the transition its
+    // direction — a crouch pose alone is symmetrical and reads as a lift, not a movement.
+    _ae.set(toe + e.crouch * 0.12 + clamp(e.crouchV, -3, 3) * 0.014, 0, 0);
     _aq.setFromEuler(_ae);
     ankle.quaternion.multiply(_aq);
     refreshLocal(ankle);
@@ -2093,10 +2824,18 @@ function poseWeapon(e, aimBlend) {
     _a4.copy(_a2).multiplyScalar(0.85).addScaledVector(UP, -0.75).addScaledVector(_a1, -0.12).normalize();
     _a3.lerp(_a4, lowT).normalize();
   }
+  if (e.weaponCheck > 0.002) {
+    // Weapon check: muzzle further down and well inboard so he can look at the magazine.
+    _a4.copy(_a2).multiplyScalar(0.45).addScaledVector(UP, -0.9).addScaledVector(_a1, -0.5).normalize();
+    _a3.lerp(_a4, e.weaponCheck * 0.85).normalize();
+  }
 
-  const fwdOff = lerp(0.1, 0.15, aimBlend) - e.fireShove * 0.05;
-  const upOff = lerp(-0.1, -0.015, aimBlend) - e.crouch * 0.02;
-  const rightOff = lerp(0.135, 0.095, aimBlend);
+  // Off the aim, the weapon rides the gait: the arm holding it swings, so the rifle traces a
+  // small figure with it rather than being welded to a floating chest.
+  const gait = e.armSwing * (1 - aimBlend) * 0.5;
+  const fwdOff = lerp(0.1, 0.15, aimBlend) - e.fireShove * 0.05 + gait * 0.05 - e.weaponCheck * 0.06;
+  const upOff = lerp(-0.1, -0.015, aimBlend) - e.crouch * 0.02 - Math.abs(gait) * 0.02 + e.weaponCheck * 0.05;
+  const rightOff = lerp(0.135, 0.095, aimBlend) - gait * 0.03 - e.weaponCheck * 0.05;
   _a5.copy(_a0)
     .addScaledVector(_a1, rightOff * e.scale)
     .addScaledVector(UP, upOff * e.scale)
@@ -2108,7 +2847,8 @@ function poseWeapon(e, aimBlend) {
   if (_a7.lengthSq() < 1e-6) _a7.set(0, 0, 1).addScaledVector(_a6, -_a6.z);
   _a7.normalize();
   _a8.crossVectors(_a7, _a6).normalize();
-  const cant = lerp(0.14, 0.045, aimBlend) + e.hipRoll * 0.4;
+  // Checking the weapon rolls it over so the ejection port and the magazine face the eye.
+  const cant = lerp(0.14, 0.045, aimBlend) + e.hipRoll * 0.4 - e.weaponCheck * 0.75;
   _m1.makeBasis(_a8, _a7, _a6);
   _aq.setFromRotationMatrix(_m1);
   _aq2.setFromAxisAngle(_a6, -cant);
@@ -2127,6 +2867,60 @@ function poseWeapon(e, aimBlend) {
   setWorldTransform(b.rifle, _a5, _aq, e.scale);
   refreshLocal(b.rifle);
   b.rifle.matrixWorld.multiplyMatrices(b.chest.matrixWorld, b.rifle.matrix);
+}
+
+/* Sling scratch. Kept off _a* because poseSling runs both from poseEnemy, right after the
+   weapon, and from ragdollPose, where the _a* set is in use for the corpse's limbs. */
+const _sl0 = new THREE.Vector3();
+const _sl1 = new THREE.Vector3();
+const _slX = new THREE.Vector3();
+const _slY = new THREE.Vector3();
+const _slZ = new THREE.Vector3();
+/** Chest-local point where the strap crosses the left shoulder and meets the fixed webbing. */
+const SLING_SHOULDER = new THREE.Vector3(-0.15, 0.238, 0.052);
+
+/**
+ * Stretch the sling between the rifle's front QD loop and the shoulder.
+ *
+ * This is the one part of the soldier that is not a rigid segment, and it is worth the
+ * exception: a sling that is baked into either the body or the weapon is wrong the moment the
+ * other one moves, and a soldier carrying a rifle on nothing is the kind of detail a player
+ * cannot name but does notice. The bone's matrixWorld is written directly rather than through
+ * position/quaternion/scale because the strap needs a deliberately non-uniform basis —
+ * constant thickness across X, a drape that grows with the span on Y, and the live gap on Z.
+ * Three's instancing shader divides the normal by each basis column's squared length, so this
+ * shades correctly despite the anisotropy.
+ */
+function poseSling(e) {
+  const b = e.bones;
+  const m = b.sling.matrixWorld.elements;
+  _sl0.copy(RIFLE.slingFront).applyMatrix4(b.rifle.matrixWorld);
+  _sl1.copy(SLING_SHOULDER).applyMatrix4(b.chest.matrixWorld);
+  _slZ.copy(_sl1).sub(_sl0);
+  const len = _slZ.length();
+  if (len < 1e-4) {
+    // Degenerate span: collapse the instance rather than emitting a NaN basis.
+    for (let i = 0; i < 12; i++) m[i] = 0;
+    m[12] = _sl0.x;
+    m[13] = _sl0.y;
+    m[14] = _sl0.z;
+    m[15] = 1;
+    return;
+  }
+  _slZ.divideScalar(len);
+  // Y is world up made perpendicular to the run, so the drape always hangs downhill.
+  _slY.set(0, 1, 0).addScaledVector(_slZ, -_slZ.y);
+  if (_slY.lengthSq() < 1e-6) _slY.set(1, 0, 0).addScaledVector(_slZ, -_slZ.x);
+  _slY.normalize();
+  _slX.crossVectors(_slY, _slZ).normalize();
+  const s = e.scale;
+  // Sag tracks the span: a rifle held out at the shoulder pulls the strap nearly straight,
+  // one dropped to the low ready lets it belly out. Same geometry, one multiply.
+  const sag = clamp(0.4 + len * 1.1, 0.5, 1.4) * s;
+  m[0] = _slX.x * s; m[1] = _slX.y * s; m[2] = _slX.z * s; m[3] = 0;
+  m[4] = _slY.x * sag; m[5] = _slY.y * sag; m[6] = _slY.z * sag; m[7] = 0;
+  m[8] = _slZ.x * len; m[9] = _slZ.y * len; m[10] = _slZ.z * len; m[11] = 0;
+  m[12] = _sl0.x; m[13] = _sl0.y; m[14] = _sl0.z; m[15] = 1;
 }
 
 /** Refresh the capsule set used for hit detection. Six zones, two endpoints each. */
@@ -2492,8 +3286,31 @@ export function createAI(game) {
     e.fireToken = false;
     e.tokenTime = 0;
     e.flinchPitch = e.flinchPitchV = e.flinchYaw = e.flinchYawV = 0;
+    e.flinchRoll = e.flinchRollV = 0;
+    e.buckle = e.buckleV = 0;
+    e.armJerkR = e.armJerkL = 0;
     e.fireShove = e.fireShoveV = 0;
     e.stagger = 0;
+    e.crouchV = 0;
+    e.strike = e.strikeV = 0;
+    e.weight = e.weightBias = e.weightBiasTarget = 0;
+    e.pelvisShift = 0;
+    e.armSwing = 0;
+    e.stepCooldown = 0;
+    e.lean = e.leanTarget = 0;
+    e.leanSide = 0;
+    e.bodyOffset.set(0, 0, 0);
+    e.bodyOffsetTarget.set(0, 0, 0);
+    e.idleAction = 0;
+    e.idleT = 0;
+    e.idleTimer = 1.0 + r() * 2.5;
+    e.weaponCheck = 0;
+    e.shoulderRoll = 0;
+    e.lookYawOff = 0;
+    // Every soldier stands with a slightly different toe-out. Tiny, but a squad whose boots
+    // are all dead parallel reads as one asset stamped out repeatedly.
+    e.footToeOut[0] = -(0.05 + r() * 0.1);
+    e.footToeOut[1] = 0.05 + r() * 0.1;
     e.deathTime = 0;
     e.animRate = 1;
     e.animAccum = 0;
@@ -2517,6 +3334,9 @@ export function createAI(game) {
       e.footPrev[leg].copy(e.footPlant[leg]);
       e.footPlanted[leg] = true;
       e.footLift[leg] = 1;
+      e.footYaw[leg] = yaw;
+      e.footYawPrev[leg] = yaw;
+      e.wasSwing[leg] = false;
     }
 
     // Pose once immediately so eyeWorld / hit volumes are valid on the very first frame —
@@ -2968,10 +3788,11 @@ export function createAI(game) {
       e.aimTarget.lerp(_v0, 1 - Math.exp(-2.5 * dt));
       e.lookTarget.lerp(_v0, 1 - Math.exp(-4 * dt));
     } else {
-      // Idle scan: a slow sweep with pauses, never a metronome.
+      // Idle scan: a slow sweep with pauses, never a metronome. `lookYawOff` is the idle-life
+      // layer holding a look somewhere specific on top of the sweep.
       e.scanPhase += dt * 0.42;
       const sweep = Math.sin(e.scanPhase) * 0.85 + Math.sin(e.scanPhase * 0.37) * 0.5;
-      const ang = e.facing + sweep;
+      const ang = e.facing + sweep + e.lookYawOff;
       _v0.set(e.position.x - Math.sin(ang) * 9, e.groundY + 1.6, e.position.z - Math.cos(ang) * 9);
       e.lookTarget.lerp(_v0, 1 - Math.exp(-2.2 * dt));
       e.aimTarget.lerp(_v0, 1 - Math.exp(-1.6 * dt));
@@ -2993,6 +3814,68 @@ export function createAI(game) {
     e.aimError = A.minError + (A.startError - A.minError) * Math.exp(-k * e.aimAge);
     // Suppressed soldiers shoot worse; moving ones shoot much worse.
     e.aimError *= 1 + e.suppressedBy * 0.9 + clamp(e.speed / 4, 0, 1) * 0.7;
+  }
+
+  /**
+   * Which side of his cover should this soldier come out of? The one that actually has a line
+   * to the player. Two probes, 0.55 m either side of the cover point at chest height.
+   */
+  function choosePeekSide(e) {
+    const cp = e.coverPoint;
+    if (!cp || !cp.pos) return 0;
+    if (cp.normal) {
+      // Lateral runs along the cover face, i.e. perpendicular to its normal.
+      e.leanAxis.set(-cp.normal.z, 0, cp.normal.x);
+      if (e.leanAxis.lengthSq() < 1e-6) e.leanAxis.set(1, 0, 0);
+      else e.leanAxis.normalize();
+    } else {
+      e.leanAxis.set(Math.cos(e.facing), 0, -Math.sin(e.facing));
+    }
+    playerEye(_v0);
+    let best = 0;
+    let bestScore = -Infinity;
+    for (let s = -1; s <= 1; s += 2) {
+      _v1.copy(cp.pos).addScaledVector(e.leanAxis, s * 0.55);
+      _v1.y = e.groundY + 1.12;
+      const score = (lineOfSight(_v1, _v0) ? 10 : 0) + e.rng() * 2;
+      if (score > bestScore) {
+        bestScore = score;
+        best = s;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Cover lean.
+   *
+   * A soldier who takes cover and then stands beside it is worse than one who never took cover,
+   * because the player reads it as the AI not understanding its own level. So the body actually
+   * translates out past the cover edge: `bodyOffset` moves the rig root *and* the gait's stance
+   * centre, so the outboard foot steps across to follow instead of the figure sliding off its
+   * own boots, and because eyeWorld and muzzleWorld are read off the bones the lean genuinely
+   * buys line of sight — perception and the firing solution both get it for free.
+   */
+  function updateLean(e, dt) {
+    let want = 0;
+    if (e.coverPoint && (e.state === 'takeCover' || e.state === 'reload')) {
+      if (e.leanSide === 0) e.leanSide = choosePeekSide(e);
+      // Out when he is up and hunting for the shot; in behind it when he is down or reloading.
+      want =
+        e.state === 'takeCover' && e.hasTarget && e.crouchTarget < 0.75 && e.speed < 0.65 ? 1 : 0;
+    } else if (e.leanSide !== 0) {
+      e.leanSide = 0;
+    }
+    e.leanTarget = want;
+    // Slower coming out than going back in: exposing yourself is deliberate, hiding is not.
+    e.lean = damp(e.lean, e.leanTarget, want > 0 ? 3.4 : 5.5, dt);
+    if (e.lean > 0.002 && e.leanSide !== 0) {
+      e.bodyOffsetTarget.copy(e.leanAxis).multiplyScalar(e.leanSide * e.lean * 0.32);
+    } else {
+      e.bodyOffsetTarget.set(0, 0, 0);
+    }
+    e.bodyOffset.x = damp(e.bodyOffset.x, e.bodyOffsetTarget.x, 5.5, dt);
+    e.bodyOffset.z = damp(e.bodyOffset.z, e.bodyOffsetTarget.z, 5.5, dt);
   }
 
   /** Body yaw target: face the fight when engaged, face travel otherwise. */
@@ -3247,16 +4130,35 @@ export function createAI(game) {
       setState(e, 'flee');
     }
 
-    e.crouch = damp(e.crouch, e.crouchTarget, 6.5, dt);
+    // Crouch is a second-order spring, not an exponential approach, and the difference is all
+    // in the rise. An exponential decelerates into standing and reads as a hydraulic lift;
+    // ζ = 0.72 overshoots by a few percent, so the soldier pushes off, comes up slightly past
+    // standing and settles. The overshoot also feeds the ankles in poseEnemy, so he rises onto
+    // the balls of his feet the way a man actually gets up.
+    const ck = 44;
+    const cd = 2 * Math.sqrt(ck) * 0.72;
+    e.crouchV += (ck * (e.crouchTarget - e.crouch) - cd * e.crouchV) * dt;
+    e.crouch += e.crouchV * dt;
+    if (e.crouch < -0.09) {
+      e.crouch = -0.09;
+      if (e.crouchV < 0) e.crouchV = 0;
+    } else if (e.crouch > 1.08) {
+      e.crouch = 1.08;
+      if (e.crouchV > 0) e.crouchV = 0;
+    }
+
+    updateIdleLife(e, dt);
+    updateLean(e, dt);
     steer(e, dt, _thTarget, moveSpeed, hasMove);
     updateFacing(e, dt);
 
     // Firing. Suppressive fire at a last-known position needs no token — it is the job of
-    // the soldiers who are NOT currently shooting at you.
+    // the soldiers who are NOT currently shooting at you. A man leaned out past his cover has
+    // a shot even if he has not stood up, which is the whole point of leaning out.
     const wantFire =
       (e.state === 'suppress') ||
       (e.fireToken && e.state === 'combat' && e.canSee) ||
-      (e.fireToken && e.state === 'takeCover' && e.canSee && e.crouchTarget < 0.5);
+      (e.fireToken && e.state === 'takeCover' && e.canSee && (e.crouchTarget < 0.5 || e.lean > 0.5));
     updateWeapon(e, dt, wantFire, distToPlayer);
   }
 
@@ -3473,10 +4375,38 @@ export function createAI(game) {
     const sinF = Math.sin(e.facing);
     const fwd = -_dmgDir.x * sinF - _dmgDir.z * cosF;
     const right = _dmgDir.x * cosF - _dmgDir.z * sinF;
+
+    // WHERE the round landed, in his own frame: `high` runs −1 at the boots to +1 at the head,
+    // `lat` is +1 out on his right. Direction alone gives every hit the same animation, so a
+    // headshot and a round through the calf played identically — which is exactly what makes a
+    // procedural reaction read as procedural. Height picks the mix of torso pitch against hip
+    // fold and knee collapse; lateral offset picks the roll and which arm snaps.
+    let high = 0.35;
+    let lat = 0;
+    if (point) {
+      high = clamp((point.y - (e.groundY + 0.95 * e.scale)) / (0.62 * e.scale), -1, 1);
+      _v1.copy(point).sub(e.chestWorld);
+      lat = clamp((_v1.x * cosF - _v1.z * sinF) / (0.22 * e.scale), -1, 1);
+    }
+    const highW = clamp(high * 0.5 + 0.5, 0, 1);
     const mag = clamp(dmg / 34, 0.12, 1.35) * (headshot ? 1.5 : 1);
-    e.flinchPitchV += fwd * mag * 7.5;
+    e.flinchPitchV += fwd * mag * (4.5 + highW * 5.5);
     e.flinchYawV += right * mag * 6.0;
+    e.flinchRollV += (lat * 0.7 + right * 0.5) * mag * 5.5;
+    // Low hit: the leg gives. A separate, slower spring from the torso flinch, because a knee
+    // buckles and recovers rather than snapping back.
+    if (high < -0.15) e.buckleV += mag * (0.15 - high) * 5.0;
+    // And the limb that was actually struck jerks with it.
+    if (highW > 0.35 && Math.abs(lat) > 0.45) {
+      const jerk = clamp(lat, -1, 1) * Math.min(mag, 1) * 0.8;
+      if (lat > 0) e.armJerkR += jerk;
+      else e.armJerkL += jerk;
+    }
     e.stagger = Math.min(1, e.stagger + mag * 0.55);
+    // A hit moves a man. Steering damps this out inside about 0.15 m, but the displacement is
+    // what makes the flinch land instead of being a wobble on the spot.
+    e.velocity.addScaledVector(_dmgDir, mag * 0.85);
+    e.velocity.y = 0;
     // A stagger costs him accuracy and a fraction of a second of his burst.
     e.aimAge = Math.max(0, e.aimAge - 0.22 * mag);
     e.suppressedBy = Math.min(1, e.suppressedBy + mag * 0.3);
@@ -3501,13 +4431,13 @@ export function createAI(game) {
     });
 
     if (e.health <= 0) {
-      killEnemy(e, !!headshot, _dmgDir, dmg);
+      killEnemy(e, !!headshot, _dmgDir, dmg, point);
       return dmg;
     }
     return dmg;
   }
 
-  function killEnemy(e, headshot, dir, dmg) {
+  function killEnemy(e, headshot, dir, dmg, point) {
     if (e.dead) return;
     e.dead = true;
     e.deathTime = 0;
@@ -3515,9 +4445,11 @@ export function createAI(game) {
     e.burstLeft = 0;
     e.state = 'dead';
     e.headshotKill = headshot;
-    // Impulse scales with the hit, and a headshot snaps the neck back harder.
+    // Impulse scales with the hit, and a headshot snaps the neck back harder. The hit point
+    // goes in too: off-centre wounds torque the body so it turns as it falls (see
+    // ragdollCapture), which is what stops every death being the same vertical collapse.
     const impulse = clamp(dmg * 0.055, 0.8, 4.5) * (headshot ? 1.55 : 1);
-    ragdollCapture(e, dir, impulse, e.groundY);
+    ragdollCapture(e, dir, impulse, e.groundY, point || e.chestWorld);
 
     const st = game && game.state;
     if (st) {

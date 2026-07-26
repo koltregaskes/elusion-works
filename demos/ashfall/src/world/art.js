@@ -122,15 +122,23 @@ export const LIGHTING = {
    * sky.js folds this into the HemisphereLight's groundColor as the ratio
    * hemiGroundIntensity / hemiSkyIntensity, so at 0.35 : 0.55 the bounce arrived at 0.64x of
    * an already-dark swatch and measured as nothing: the shadowed shed face in a render read
-   * neutral-to-cool, with no trace of the dirt under it. 0.80 puts the ratio at 1.45x, which
-   * together with the brighter PALETTE.groundBounce is roughly 2.6x more warm up-fill on
-   * shadowed undersides. That is still well under the 4.6 sun, so the key stays dominant and
-   * the bounce reads as bounce rather than as a second light.
+   * neutral-to-cool, with no trace of the dirt under it. Most of that was the grade — the old
+   * lift zeroed the red channel across the whole shadow population, so the bounce was being
+   * rendered and then deleted on the way to the display. With the grade fixed, the swatch
+   * carrying more level is enough, and the intensity needs far less than it looked like.
+   *
+   * 0.80 was tried and measured: it inverts the split. The hemisphere blends ground into sky by
+   * the surface normal, so a *vertical* wall gets half of each, and at 0.80 the warm half wins
+   * (a terraces render came back R-B +19 in the shadow band — warm shade, which is the exact
+   * opposite of §4). The crossover is at about 0.70. 0.45 sits well below it: verticals stay
+   * clearly sky-cool while down-facing surfaces, which see the ground term alone, get 2.1x the
+   * absolute warm bounce they had at 0.35 with the old swatch. Bounce visible, key still
+   * dominant at 4.6, shade still cool.
    *
    * engine.js and weapon.js scale the viewmodel's bounce lamp off this same number, so the
    * gun's underside warms with the world instead of drifting out of the grade.
    */
-  hemiGroundIntensity: 0.8,
+  hemiGroundIntensity: 0.45,
   /**
    * Image-based lighting weight. The environment probe is a PMREM of the whole dome, so it is
    * close to achromatic — every extra unit of it is a neutral wash that cancels the hemisphere's
@@ -256,6 +264,21 @@ export const GRADE = {
    * clips any more, so the toe rolls down continuously from the shadows into it.
    */
   masterLift: 0.0153,
+  /**
+   * AgX look, the ASC-CDL postfx applies *inside* the tone map between the sigmoid and the
+   * outset rotation. postfx defaults these when the key is absent and its own comment asks that
+   * re-times happen here rather than in the shader, so the toe now lives here.
+   *
+   * This is where the frame's black density comes from, having been taken away from `contrast`
+   * and `masterLift`. power > 1 deepens the toe far more than it touches the shoulder, and
+   * because it is a power rather than an offset it can push a value arbitrarily close to zero
+   * without ever reaching it — no channel can be zeroed, no hue can be manufactured, and the
+   * curve stays continuous all the way down. Raised from postfx's 1.35 default: at 1.35 with
+   * the new exposure the 25th percentile of a terraces render sat at 55/255 and the frame had
+   * no shadow density at all. 1.50 drops the lower quartile by about 18 code values while
+   * costing the highlights under 6, which is the shape a photograph of this scene has.
+   */
+  agxLookPower: 1.5,
   /**
    * Bloom. Threshold is in HDR scene-linear, *before* exposure. At 1.0 nothing in any frame
    * ever reached it, so the pass never fired and what looked like glow was fog inscatter.

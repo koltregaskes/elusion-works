@@ -5330,8 +5330,12 @@ export function createLevel(scene, materials, game) {
     const len = Math.hypot(x1 - x0, z1 - z0);
     if (len < 0.5) return;
     const yaw = runYaw(x1 - x0, z1 - z0);
-    const nx = -Math.sin(yaw);
-    const nz = -Math.cos(yaw);
+    // `side` is the direction from the line into open ground, expressed as the sign of the
+    // run's *local +Z*. The fillet below feathers that way, so the stones have to use the same
+    // axis: taking the world normal as -sin/-cos instead scatters them on the far side of the
+    // line from the drift they are supposed to be sitting in.
+    const ux = Math.sin(yaw);
+    const uz = Math.cos(yaw);
     const r2 = mulberry32(seedN);
     // The fillet.
     place((x0 + x1) * 0.5, 0, (z0 + z1) * 0.5, yaw);
@@ -5353,8 +5357,8 @@ export function createLevel(scene, materials, game) {
     const n = Math.round(len * (density === undefined ? 2.6 : density) * (lod > 0 ? 1 : 0.5));
     for (let i = 0; i < n; i++) {
       const f = r2();
-      const px = lerp(x0, x1, f) + nx * side * (0.06 + r2() * 0.55) + (r2() - 0.5) * 0.2;
-      const pz = lerp(z0, z1, f) + nz * side * (0.06 + r2() * 0.55) + (r2() - 0.5) * 0.2;
+      const px = lerp(x0, x1, f) + ux * side * (0.06 + r2() * 0.55) + (r2() - 0.5) * 0.2;
+      const pz = lerp(z0, z1, f) + uz * side * (0.06 + r2() * 0.55) + (r2() - 0.5) * 0.2;
       const tone = 0.62 + r2() * 0.55;
       addInstance(
         stoneSet, px, groundY(px, pz) + 0.015, pz,
@@ -5374,10 +5378,11 @@ export function createLevel(scene, materials, game) {
     const len = Math.hypot(x1 - x0, z1 - z0);
     if (len < 0.5) return;
     const yaw = runYaw(x1 - x0, z1 - z0);
-    const nx = -Math.sin(yaw) * side;
-    const nz = -Math.cos(yaw) * side;
+    // Same convention as `gravelDrift`: `side` is the sign of local +Z towards open ground.
+    const nx = Math.sin(yaw) * side;
+    const nz = Math.cos(yaw) * side;
     const r2 = mulberry32(seedN);
-    const n = Math.round(len * (density === undefined ? 1.5 : density) * (lod > 1 ? 1 : lod > 0 ? 0.6 : 0.3));
+    const n = Math.round(len * (density === undefined ? 1.5 : density) * (lod > 1 ? 1 : lod > 0 ? 0.7 : 0.42));
     for (let i = 0; i < n; i++) {
       const f = r2();
       const off = 0.06 + r2() * r2() * spread;
@@ -5501,7 +5506,9 @@ export function createLevel(scene, materials, game) {
     const r2 = mulberry32(seedN);
     const wBot = wTop * (0.22 + r2() * 0.5);
     const drift = (r2() - 0.5) * wTop * 3.0;
-    const yBot = yTop - len;
+    // Clamped to the wall base: `rustWash` randomises length, and an unclamped long streak on
+    // a low fixing runs straight past the plinth and out of the bottom of the world.
+    const yBot = Math.max(0.02, yTop - len);
     _bp.length = 0;
     _bp.push(x - wTop, yTop, zOff, x + wTop, yTop, zOff, x + drift + wBot, yBot, zOff, x + drift - wBot, yBot, zOff);
     gpoly(g, _bp, 0, 0, 1, tintArr);
@@ -5599,7 +5606,7 @@ export function createLevel(scene, materials, game) {
       popX();
     }
     const dropX = lerp(x0, x1, 0.22 + r2() * 0.5);
-    strut(gm, dropX, y - 0.02, zOff + 0.05, dropX + 0.16, y - 1.1 - r2() * 0.8, zOff + 0.035, 0.02, T.soot, 0.004);
+    strut(gm, dropX, y - 0.02, zOff + 0.05, dropX + 0.16, Math.max(0.3, y - 1.1 - r2() * 0.8), zOff + 0.035, 0.02, T.soot, 0.004);
   }
 
   /**
@@ -6040,36 +6047,44 @@ export function createLevel(scene, materials, game) {
    */
   function shellCrater(x, z, r, dirX, dirZ, seedN) {
     const r2 = mulberry32(seedN);
-    const SEG = 16;
-    const base = groundY(x, z);
-    place(x, base, z);
+    const SEG = 18;
+    place(x, groundY(x, z), z);
     const g = GT('dirt', 0.35);
-    // Three rings: bowl floor, lip crest, feathered outer toe.
+    /*
+     * Three rings — bowl floor, lip crest, feathered toe — each wobbled *independently*.
+     * Sharing one radial jitter across all three (the obvious way to write this) keeps the
+     * rings concentric, and concentric rings on a shallow bowl read as a decal stamped on the
+     * floor rather than as a hole. Independent wobble is what breaks the circle.
+     */
     const ring = [];
     for (let i = 0; i <= SEG; i++) {
       const a = (i / SEG) * Math.PI * 2;
-      const wob = 0.82 + r2() * 0.4;
-      // The lip is always higher downrange of the burst.
-      const down = Math.cos(a) * dirX + Math.sin(a) * dirZ;
-      const lip = (0.13 + r2() * 0.1) * (0.7 + Math.max(0, down) * 0.9);
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      // The lip is thrown higher downrange of the burst, so the crater has a direction.
+      const down = ca * dirX + sa * dirZ;
+      const lip = (0.2 + r2() * 0.22) * (0.55 + Math.max(0, down) * 1.15);
+      const w0 = 0.72 + r2() * 0.5;
+      const w1 = 0.8 + r2() * 0.42;
+      const w2 = 0.7 + r2() * 0.75;
       ring.push([
-        Math.cos(a) * r * 0.4 * wob, -0.05, Math.sin(a) * r * 0.4 * wob,
-        Math.cos(a) * r * 0.82 * wob, lip, Math.sin(a) * r * 0.82 * wob,
-        Math.cos(a) * r * 1.3 * wob, 0.004, Math.sin(a) * r * 1.3 * wob,
+        ca * r * 0.38 * w0, -0.055, sa * r * 0.38 * w0,
+        ca * r * 0.8 * w1, lip, sa * r * 0.8 * w1,
+        ca * r * 1.25 * w2, 0.004, sa * r * 1.25 * w2,
       ]);
     }
     ring[SEG] = ring[0];
     for (let i = 0; i < SEG; i++) {
       const A = ring[i];
       const B = ring[i + 1];
-      const shade = 0.6 + ((i * 5) % 7) * 0.05;
-      const inner = [T.dirt[0] * shade * 0.8, T.dirt[1] * shade * 0.8, T.dirt[2] * shade * 0.86];
-      const outer = [T.dirt[0] * (shade + 0.35), T.dirt[1] * (shade + 0.3), T.dirt[2] * (shade + 0.22)];
-      // Bowl wall.
+      // Big per-segment tonal swing: the shaded flank of a spoil lip is a stop and a half
+      // darker than its sunlit crest, and a crater painted at one value has no volume at all.
+      const shade = 0.5 + r2() * 0.55;
+      const inner = [T.dirt[0] * shade * 0.78, T.dirt[1] * shade * 0.76, T.dirt[2] * shade * 0.84];
+      const outer = [T.dirt[0] * (shade + 0.42), T.dirt[1] * (shade + 0.36), T.dirt[2] * (shade + 0.26)];
       _bp.length = 0;
       _bp.push(A[0], A[1], A[2], B[0], B[1], B[2], B[3], B[4], B[5], A[3], A[4], A[5]);
       gpoly(g, _bp, 0, 0.85, 0, inner);
-      // Lip outer face.
       _bp.length = 0;
       _bp.push(A[3], A[4], A[5], B[3], B[4], B[5], B[6], B[7], B[8], A[6], A[7], A[8]);
       gpoly(g, _bp, 0, 0.9, 0, outer);
@@ -6077,34 +6092,64 @@ export function createLevel(scene, materials, game) {
     // Bowl floor, so the centre is not an open hole.
     _bp.length = 0;
     for (let i = 0; i < SEG; i++) _bp.push(ring[i][0], ring[i][1], ring[i][2]);
-    gpoly(g, _bp, 0, 1, 0, [T.dirt[0] * 0.42, T.dirt[1] * 0.4, T.dirt[2] * 0.44]);
-    // Scorch: a dark core and a fan of radiating streaks along the blast axis.
+    gpoly(g, _bp, 0, 1, 0, [T.dirt[0] * 0.36, T.dirt[1] * 0.34, T.dirt[2] * 0.4]);
+    /*
+     * Scorch. It goes *outside* the lip, never over the bowl: the bowl is fresh subsoil turned
+     * up by the burst and it is the brightest thing in the picture, while the burn is on the
+     * surface the fireball actually washed across. Laying it over the bowl also floats it,
+     * because the bowl is 5 cm below the plane every flat decal here sits on.
+     */
     const gs = GT('asphalt', 0.35);
-    blobXZ(gs, r * 0.95, 1, seedN + 3, T.scorch, 13, 0.016);
+    for (let i = 0; i < SEG; i++) {
+      const A = ring[i];
+      const B = ring[i + 1];
+      const ea = Math.atan2(A[8], A[6]);
+      const eb = Math.atan2(B[8], B[6]);
+      const la = r * (1.5 + r2() * 0.7);
+      const lb = r * (1.5 + r2() * 0.7);
+      const tone = 0.22 + r2() * 0.34;
+      _bp.length = 0;
+      _bp.push(A[6], 0.018, A[8], B[6], 0.018, B[8], Math.cos(eb) * lb, 0.018, Math.sin(eb) * lb, Math.cos(ea) * la, 0.018, Math.sin(ea) * la);
+      gpoly(gs, _bp, 0, 1, 0, [tone, tone * 0.97, tone]);
+    }
+    // Streaks radiating out of that ring, longest downrange.
     const rays = 14;
     for (let i = 0; i < rays; i++) {
-      const a = (i / rays) * Math.PI * 2 + r2() * 0.2;
-      const bias = 0.45 + Math.max(0, Math.cos(a) * dirX + Math.sin(a) * dirZ) * 1.2;
-      const L = r * (0.9 + r2() * 1.5) * bias;
-      const w = 0.1 + r2() * 0.22;
+      const a = (i / rays) * Math.PI * 2 + r2() * 0.3;
+      const bias = 0.5 + Math.max(0, Math.cos(a) * dirX + Math.sin(a) * dirZ) * 1.1;
+      const L = r * (1.7 + r2() * 1.6) * bias;
+      const w = 0.1 + r2() * 0.24;
       const ca = Math.cos(a);
       const sa = Math.sin(a);
-      const tone = 0.26 + r2() * 0.3;
+      const tone = 0.28 + r2() * 0.32;
       _bp.length = 0;
       _bp.push(
-        ca * r * 0.5 - sa * w, 0.014, sa * r * 0.5 + ca * w,
-        ca * r * 0.5 + sa * w, 0.014, sa * r * 0.5 - ca * w,
-        ca * L + sa * w * 0.25, 0.014, sa * L - ca * w * 0.25,
-        ca * L - sa * w * 0.25, 0.014, sa * L + ca * w * 0.25
+        ca * r * 1.2 - sa * w, 0.02, sa * r * 1.2 + ca * w,
+        ca * r * 1.2 + sa * w, 0.02, sa * r * 1.2 - ca * w,
+        ca * L + sa * w * 0.25, 0.02, sa * L - ca * w * 0.25,
+        ca * L - sa * w * 0.25, 0.02, sa * L + ca * w * 0.25
       );
       gpoly(gs, _bp, 0, 1, 0, [tone, tone * 0.98, tone]);
     }
     popX();
+    // Spoil banked on the lip itself: the silhouette of a crater from eye height is its lip,
+    // and a smooth lip is the last thing that still reads as geometry rather than as ground.
+    const nLip = Math.round(r * (lod > 0 ? 16 : 8));
+    for (let i = 0; i < nLip; i++) {
+      const a = r2() * Math.PI * 2;
+      const rr = r * (0.72 + r2() * 0.36);
+      const px = x + Math.cos(a) * rr;
+      const pz = z + Math.sin(a) * rr;
+      const tone = 0.55 + r2() * 0.55;
+      addInstance(stoneSet, px, groundY(x, z) + 0.1 + r2() * 0.12, pz,
+        r2() * 6.28, (r2() - 0.5) * 1.7, (r2() - 0.5) * 1.7, 0.8 + r2() * 1.5,
+        [T.dirt[0] * tone, T.dirt[1] * tone, T.dirt[2] * tone]);
+    }
     // Ejecta: clods, brick and grit thrown downrange, thinning with distance.
     const n = Math.round(r * r * (lod > 0 ? 7 : 3.5));
     for (let i = 0; i < n; i++) {
       const a = Math.atan2(dirZ, dirX) + (r2() - 0.5) * 2.6;
-      const rr = r * (0.8 + r2() * r2() * 3.4);
+      const rr = r * (1.1 + r2() * r2() * 3.2);
       const px = x + Math.cos(a) * rr;
       const pz = z + Math.sin(a) * rr;
       const tone = 0.6 + r2() * 0.5;
@@ -6116,7 +6161,7 @@ export function createLevel(scene, materials, game) {
         addInstance(setBrick, px, groundY(px, pz) + 0.035, pz, r2() * 6.28, (r2() - 0.5) * 0.9, (r2() - 0.5) * 0.9, 0.8 + r2() * 0.6,
           [T.brick[0] * tone, T.brick[1] * tone, T.brick[2] * tone]);
       } else if (pick < 0.86) {
-        for (let s = 0; s < 3; s++) {
+        for (let sI = 0; sI < 3; sI++) {
           addInstance(stoneSet, px + (r2() - 0.5) * 0.8, groundY(px, pz) + 0.02, pz + (r2() - 0.5) * 0.8,
             r2() * 6.28, (r2() - 0.5) * 1.6, (r2() - 0.5) * 1.6, 0.6 + r2() * 1.1,
             [T.gravel[0] * tone, T.gravel[1] * tone, T.gravel[2] * tone]);
@@ -6126,15 +6171,14 @@ export function createLevel(scene, materials, game) {
           [T.rust[0] * tone, T.rust[1] * tone, T.rust[2] * tone]);
       }
     }
-    // A slab or two heaved clear of the lip, and the dust fillet that ties it all to the floor.
+    // A slab or two heaved clear of the lip.
     for (let i = 0; i < 3; i++) {
       const a = Math.atan2(dirZ, dirX) + (r2() - 0.5) * 1.8;
-      const rr = r * (1.0 + r2() * 0.5);
-      addInstance(setSlab, x + Math.cos(a) * rr, groundY(x, z) + 0.12, z + Math.sin(a) * rr,
+      const rr = r * (1.05 + r2() * 0.5);
+      addInstance(setSlab, x + Math.cos(a) * rr, groundY(x, z) + 0.14, z + Math.sin(a) * rr,
         r2() * 6.28, (r2() - 0.5) * 0.9, (r2() - 0.5) * 0.9, 0.8 + r2() * 0.6,
         [T.concreteWorn[0] * 0.8, T.concreteWorn[1] * 0.8, T.concreteWorn[2] * 0.85]);
     }
-    dustSkirt(x, z, r * 1.4, 0.1, seedN + 17, null);
   }
 
   /**
@@ -6252,18 +6296,18 @@ export function createLevel(scene, materials, game) {
     }
 
     // Grit drifted against every kerb and hard edge in the map.
-    gravelDrift(-21, -2.75, 19, -2.75, 1, 7401);
-    gravelDrift(-21, -9.25, 19, -9.25, -1, 7402);
-    gravelDrift(ADMIN.x0 - 8.25, -34, ADMIN.x0 - 8.25, -18, 1, 7403);
-    gravelDrift(ADMIN.x0 - 0.75, -34, ADMIN.x0 - 0.75, -18, -1, 7404);
-    gravelDrift(-52, -40.05, -20, -40.05, 1, 7405);
-    gravelDrift(18, -40.05, 48, -40.05, 1, 7406);
+    gravelDrift(-21, -2.75, 19, -2.75, -1, 7401);
+    gravelDrift(-21, -9.25, 19, -9.25, 1, 7402);
+    gravelDrift(ADMIN.x0 - 8.25, -34, ADMIN.x0 - 8.25, -18, -1, 7403);
+    gravelDrift(ADMIN.x0 - 0.75, -34, ADMIN.x0 - 0.75, -18, 1, 7404);
+    gravelDrift(-52, -40.05, -20, -40.05, -1, 7405);
+    gravelDrift(18, -40.05, 48, -40.05, -1, 7406);
     gravelDrift(-49.5, 41.6, 19.5, 41.6, -1, 7407, 1.6);
     gravelDrift(28.5, 41.6, 49.5, 41.6, -1, 7408, 1.6);
     gravelDrift(-51.5, -42.6, -20.5, -42.6, 1, 7409, 1.6);
     gravelDrift(18.5, -42.6, 49.5, -42.6, 1, 7410, 1.6);
-    gravelDrift(DEPOT.x1 + 0.25, DEPOT.z0 + 1, DEPOT.x1 + 0.25, DEPOT.z1 - 1, 1, 7411);
-    gravelDrift(ADMIN.x0 - 0.25, ADMIN.z0 + 2, ADMIN.x0 - 0.25, ADMIN.z1 - 8, -1, 7412);
+    gravelDrift(DEPOT.x1 + 0.25, DEPOT.z0 + 1, DEPOT.x1 + 0.25, DEPOT.z1 - 1, -1, 7411);
+    gravelDrift(ADMIN.x0 - 0.25, ADMIN.z0 + 2, ADMIN.x0 - 0.25, ADMIN.z1 - 8, 1, 7412);
     gravelDrift(DOCK.x0, DOCK.z0 - 0.2, DOCK.x1, DOCK.z0 - 0.2, -1, 7413);
 
     // Growth: wall feet, fence lines, the cess and every sleeper gap on the outer roads.
@@ -6271,20 +6315,70 @@ export function createLevel(scene, materials, game) {
     weedLine(28.5, 41.5, 49.5, 41.5, -1, 1.3, 7502);
     weedLine(-51.5, -42.5, -20.5, -42.5, 1, 1.2, 7503);
     weedLine(18.5, -42.5, 49.5, -42.5, 1, 1.2, 7504);
-    weedLine(-48.2, -37, -48.2, 39, 1, 1.5, 7505, 1.9);
-    weedLine(48.2, -37, 48.2, 39, -1, 1.5, 7506, 1.9);
-    weedLine(DEPOT.x1 + 0.3, DEPOT.z0 + 1, DEPOT.x1 + 0.3, DEPOT.z1 - 1, 1, 0.85, 7507, 1.1);
-    weedLine(DEPOT.x0 - 0.3, DEPOT.z0 + 1, DEPOT.x0 - 0.3, DEPOT.z1 - 1, -1, 0.85, 7508, 1.1);
-    weedLine(ADMIN.x0 - 0.3, ADMIN.z0 + 1, ADMIN.x0 - 0.3, ADMIN.z1 - 8, -1, 0.85, 7509, 1.1);
-    weedLine(ADMIN.x1 + 0.3, ADMIN.z0 + 1, ADMIN.x1 + 0.3, ADMIN.z1 - 1, 1, 0.85, 7510, 1.1);
+    weedLine(-48.2, -37, -48.2, 39, -1, 1.5, 7505, 1.9);
+    weedLine(48.2, -37, 48.2, 39, 1, 1.5, 7506, 1.9);
+    weedLine(DEPOT.x1 + 0.3, DEPOT.z0 + 1, DEPOT.x1 + 0.3, DEPOT.z1 - 1, -1, 0.85, 7507, 1.1);
+    weedLine(DEPOT.x0 - 0.3, DEPOT.z0 + 1, DEPOT.x0 - 0.3, DEPOT.z1 - 1, 1, 0.85, 7508, 1.1);
+    weedLine(ADMIN.x0 - 0.3, ADMIN.z0 + 1, ADMIN.x0 - 0.3, ADMIN.z1 - 8, 1, 0.85, 7509, 1.1);
+    weedLine(ADMIN.x1 + 0.3, ADMIN.z0 + 1, ADMIN.x1 + 0.3, ADMIN.z1 - 1, -1, 0.85, 7510, 1.1);
     weedLine(DOCK.x0 + 1, DOCK.z0 - 0.15, DOCK.x1 - 1, DOCK.z0 - 0.15, -1, 0.7, 7511, 1.0);
-    // Between the sleepers on the two outermost roads, where nothing has run in years.
+    // In the cess either side of every road, 2.6 m off the centre line. Not between the
+    // sleepers: the ballast shoulder stands 0.26 m proud and `groundY` knows nothing about it,
+    // so a tuft planted on the crest is a tuft buried to its neck in stone.
     for (let ti = 0; ti < TRACK_Z.length; ti++) {
       const z = TRACK_Z[ti];
-      const dens = ti === 0 || ti === 4 ? 0.9 : 0.45;
-      weedLine(-46, z - 0.55, 44, z - 0.55, 1, 1.05, 7520 + ti, dens);
-      weedLine(-46, z + 0.55, 44, z + 0.55, -1, 1.05, 7530 + ti, dens);
+      const dens = ti === 0 || ti === 4 ? 1.1 : 0.6;
+      weedLine(-46, z - 2.6, 44, z - 2.6, -1, 1.1, 7520 + ti, dens);
+      weedLine(-46, z + 2.6, 44, z + 2.6, 1, 1.1, 7530 + ti, dens);
     }
+
+    /*
+     * Container flanks. The lanes between the stacks are the map's strongest composition —
+     * two hard verticals and a vanishing point — and they were also its emptiest ground: from
+     * inside one, the whole lower third of the frame was bare ballast. Freight stands on the
+     * same square metre for years, so the foot of every box carries a drift of grit, growth in
+     * the lee of it, a strip of blown litter and the odd offcut. Everything here rides in
+     * existing instance sets, so the densest part of the map costs nothing.
+     *
+     * `[x0, z0, x1, z1]` is the centre line of each run; boxes are 2.438 m across, so the
+     * flanks are +-1.35 off it.
+     */
+    const rowLines = [
+      [21.0, 2.0, 47.0, 2.0], [21.0, 10.0, 47.6, 10.0],
+      [20.5, 18.0, 38.8, 18.0], [20.5, 26.0, 40.3, 26.0],
+      [-40.0, 9.9, -20.2, 9.5], [-38.0, 26.1, -18.5, 26.7],
+      [10.5, -16.0, 10.5, -32.7], [1.0, -12.0, 19.3, -12.0],
+    ];
+    for (let i = 0; i < rowLines.length; i++) {
+      const [ax, az, bx, bz] = rowLines[i];
+      const yaw = runYaw(bx - ax, bz - az);
+      const ux = Math.sin(yaw) * 1.35;
+      const uz = Math.cos(yaw) * 1.35;
+      for (let side = -1; side <= 1; side += 2) {
+        const ox = ux * side;
+        const oz = uz * side;
+        gravelDrift(ax + ox, az + oz, bx + ox, bz + oz, side, 7700 + i * 4 + side, 2.2);
+        weedLine(ax + ox, az + oz, bx + ox, bz + oz, side, 0.6, 7740 + i * 4 + side, 1.5);
+        // Litter and scrap caught in three places along each flank, never evenly.
+        const len2 = Math.hypot(bx - ax, bz - az);
+        const spots = Math.max(1, Math.round(len2 / 8));
+        for (let k = 0; k < spots; k++) {
+          const f = (k + 0.25 + hash2(i * 7 + k, side + 3) * 0.5) / spots;
+          const px = lerp(ax, bx, f) + ox * 1.05;
+          const pz = lerp(az, bz, f) + oz * 1.05;
+          litterCatch(px, pz, yaw + Math.PI * 0.5 * side, lod > 0 ? 4 : 2, 7780 + i * 9 + k * 2 + (side > 0 ? 1 : 0));
+          if (hash2(i + k, side) < 0.45) {
+            timberOffcuts(px, pz, lod > 0 ? 5 : 3, 7830 + i * 9 + k * 2 + (side > 0 ? 1 : 0));
+          }
+        }
+      }
+    }
+
+    // The two-wide block by the west wall is butted, so it has no inner flank to dress — its
+    // boxes stand 0.16 m apart and a drift laid down that slot would be inside both of them.
+    gravelDrift(-40.5, 36.65, -35.5, 36.65, 1, 7736, 2.0);
+    weedLine(-40.5, 36.65, -35.5, 36.65, 1, 0.6, 7737, 1.5);
+    litterCatch(-38.0, 36.9, Math.PI * 0.5, lod > 0 ? 5 : 3, 7738);
 
     // Litter, always downwind of something that stopped it.
     const wd = ATMOSPHERE.windDirection;
@@ -6326,13 +6420,13 @@ export function createLevel(scene, materials, game) {
       // Cladding above the dado: sheeting bolts bleed, and the eaves gutter overflows.
       for (let i = 0; i < 22; i++) {
         const px = -15.2 + i * 1.42;
-        rustWash(gC, px, DEPOT.eave - 0.12, 2.1 + hash2(i, 5) * 3.4, 0.14, 3, 0.13, T.rustWash, 8110 + i);
-        if (i % 4 === 2) rustWash(gC, px, 5.6, 1.4, 0.1, 2, 0.13, T.rustWash, 8140 + i);
+        rustWash(gC, px, DEPOT.eave - 0.12, 1.6 + hash2(i, 5) * 2.6, 0.14, 3, 0.13, T.rustWash, 8110 + i);
+        if (i % 4 === 2) rustWash(gC, px, 5.6, 1.3, 0.1, 2, 0.13, T.rustWash, 8140 + i);
       }
       // Shrapnel across the piers nearest the yard's open ground.
       pockMarks(gB, -12.6, 1.5, 2.4, 1.1, 26, 0.205, 8150, 0.3, -0.4);
       pockMarks(gB, 4.5, 1.4, 3.6, 1.1, 30, 0.205, 8151, -0.2, -0.3);
-      pockMarks(gC, -6.0, 4.4, 5.0, 1.4, 22, 0.13, 8152, 0.1, -0.2);
+      pockMarks(gC, 4.0, 4.2, 4.0, 1.2, 22, 0.13, 8152, 0.1, -0.2);
       popX();
       // Rainwater goods on the bays the original build left bare.
       downpipe(zOut + 0.08, DEPOT.z0 + 9.0, DEPOT.eave, Math.PI, gm);
@@ -6353,12 +6447,12 @@ export function createLevel(scene, materials, game) {
       stencilText(gB, 'NO 2', -6.4, 2.15, 0.075, T.paint, 0.206);
       for (let i = 0; i < 16; i++) {
         const px = -14.4 + i * 1.9;
-        rustWash(gC, px, DEPOT.eave - 0.15, 1.8 + hash2(i, 9) * 3.0, 0.16, 3, 0.13, T.rustWash, 8210 + i);
+        rustWash(gC, px, DEPOT.eave - 0.15, 1.4 + hash2(i, 9) * 2.2, 0.16, 3, 0.13, T.rustWash, 8210 + i);
       }
       // The blast that opened this gable pocked everything either side of the hole.
       pockMarks(gB, 4.0, 1.5, 1.7, 1.1, 24, 0.205, 8230, -0.6, 0.2);
       pockMarks(gB, 13.0, 1.4, 1.6, 1.1, 20, 0.205, 8231, 0.6, 0.2);
-      pockMarks(gC, 8.5, 5.2, 4.4, 1.5, 26, 0.13, 8232, 0, 0.3);
+      pockMarks(gC, 8.5, 5.9, 4.2, 1.0, 24, 0.13, 8232, 0, 0.3);
       popX();
     }
 
@@ -6391,8 +6485,10 @@ export function createLevel(scene, materials, game) {
       for (let i = 0; i < 14; i++) {
         rustWash(gB, -12.0 + i * 1.85, 7.15, 2.6 + hash2(i, 3) * 1.6, 0.22, 3, 0.204, T.grime, 8380 + i);
       }
-      pockMarks(gB, -8.0, 1.6, 3.4, 1.3, 26, 0.205, 8390, 0.2, -0.3);
-      pockMarks(gB, 6.0, 5.0, 4.5, 1.4, 22, 0.205, 8391, -0.2, 0.1);
+      // Confined to the piers: the window and balcony-door openings either side of these are
+      // holes, and a pock mark hanging in a hole is worse than no pock mark at all.
+      pockMarks(gB, -8.17, 1.6, 1.0, 1.3, 20, 0.205, 8390, 0.2, -0.3);
+      pockMarks(gB, 5.6, 5.0, 1.4, 1.2, 18, 0.205, 8391, -0.2, 0.1);
       popX();
       // West elevation, beside the loading door. Note the yaw: the builder lays this face at
       // +90 degrees, which puts its outward normal at world +X — into the building. Dressing
