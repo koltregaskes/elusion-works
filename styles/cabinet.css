@@ -504,10 +504,18 @@ html[data-theme="light"] .ew-plate-poster { opacity: 0.88; filter: invert(0.85) 
 .ew-demo-card .ew-plate-frame img {
   object-position: center;
 }
-.ew-demo-card:nth-child(5) .ew-plate-frame img {
+/*
+ * Two thumbnails need their crop biased upward. These were keyed off grid position, which
+ * silently retargets the wrong cards whenever a demo is added or reordered: inserting Ashfall
+ * at the head moved Golden from child 5 to 6 and The Last Cartridge from 8 to 9, so the rules
+ * landed on Nexus Aetherial and the Solar System learning demo instead. Keying off the image
+ * source ties each rule to the artwork it was measured against, so it survives reordering.
+ */
+.ew-demo-card .ew-plate-frame img[src^='golden/'] {
   object-position: center 30%;
 }
-.ew-demo-card:nth-child(8) .ew-plate-frame img {
+/* 1440x3400 page mockup: without this it centre-crops to the middle of a tall image. */
+.ew-demo-card .ew-plate-frame img[src^='last-cartridge/'] {
   object-position: center 12%;
 }
 .ew-demos-footer {
