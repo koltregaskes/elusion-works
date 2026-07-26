@@ -771,36 +771,46 @@ export function createHUD(game) {
 
         const p = map.pxPerCell;
         const walk = grid.walkable;
-        bc.fillStyle = rgbaOf(COL.shadow, 0.0);
-        bc.clearRect(0, 0, bake.width, bake.height);
 
-        // Floor pass.
-        bc.fillStyle = rgbaOf(COL.concreteShadow, 0.62);
+        // Every pass below is opaque. The old bake stacked three translucent fills over a
+        // 0.72 plate, which is exactly how ground, floor and edge all ended up inside one
+        // 50-code band — each layer was diluted by whatever it sat on. Opaque fills mean the
+        // three steps land where they were authored.
+
+        // 1. Ground — the darkest step, and the bulk of an open yard.
+        bc.fillStyle = MAP_COL.ground;
+        bc.fillRect(0, 0, bake.width, bake.height);
+
+        // 2. Building mass — every blocked cell. Run-length per row, so a 110x90 grid costs a
+        //    few hundred fills rather than ten thousand.
+        bc.fillStyle = MAP_COL.building;
         for (let y = 0; y < gh; y++) {
           const row = y * gw;
           let runStart = -1;
           for (let x = 0; x <= gw; x++) {
-            const ok = x < gw && walk[row + x];
-            if (ok && runStart < 0) runStart = x;
-            else if (!ok && runStart >= 0) {
+            const solid = x < gw && !walk[row + x];
+            if (solid && runStart < 0) runStart = x;
+            else if (!solid && runStart >= 0) {
               bc.fillRect(runStart * p, y * p, (x - runStart) * p, p);
               runStart = -1;
             }
           }
         }
 
-        // Edge pass: any walkable cell touching a blocked cell gets a brighter lip, which is
-        // what makes walls and container stacks readable at a glance.
-        bc.fillStyle = rgbaOf(COL.concreteLit, 0.5);
+        // 3. Wall lip — a blocked cell with at least one open neighbour, i.e. the face a
+        //    player can actually walk up to. This is what turns a mass into a silhouette:
+        //    big blocks keep a mid-grey interior and get a bright rim, while thin walls and
+        //    container rows light up along their whole length.
+        bc.fillStyle = MAP_COL.wall;
         for (let y = 0; y < gh; y++) {
           const row = y * gw;
           for (let x = 0; x < gw; x++) {
-            if (!walk[row + x]) continue;
+            if (walk[row + x]) continue;
             const l = x > 0 ? walk[row + x - 1] : 0;
             const r = x < gw - 1 ? walk[row + x + 1] : 0;
             const u = y > 0 ? walk[row - gw + x] : 0;
             const d = y < gh - 1 ? walk[row + gw + x] : 0;
-            if (l && r && u && d) continue;
+            if (!(l || r || u || d)) continue;
             bc.fillRect(x * p, y * p, p, p);
           }
         }
@@ -821,11 +831,13 @@ export function createHUD(game) {
         bake.height = map.baseH = Math.ceil(md * map.pxPerCell);
         const bc = bake.getContext('2d');
         if (!bc) return;
-        bc.fillStyle = rgbaOf(COL.concreteShadow, 0.5);
+        // Same three-step ramp as the real bake: ground field, and the map boundary drawn at
+        // the wall step so the footprint still reads as an enclosed space.
+        bc.fillStyle = MAP_COL.ground;
         bc.fillRect(0, 0, bake.width, bake.height);
-        bc.strokeStyle = rgbaOf(COL.concreteLit, 0.45);
-        bc.lineWidth = 2;
-        bc.strokeRect(1, 1, bake.width - 2, bake.height - 2);
+        bc.strokeStyle = MAP_COL.wall;
+        bc.lineWidth = 3;
+        bc.strokeRect(1.5, 1.5, bake.width - 3, bake.height - 3);
         map.base = bake;
         map.ready = true;
       }

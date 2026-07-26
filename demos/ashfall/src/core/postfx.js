@@ -16,7 +16,13 @@
  *     -> Motion blur  (velocity reconstruction, 8 taps, shutter 0.5, depth-rejected)
  *     -> DOF          (ADS only, hexagonal bokeh, 3-direction 2-pass)
  *     -> Bloom        (13-tap Karis downsample x6, 3x3 tent upsample x5)
- *     -> Composite    (dirt, CA, exposure, AgX, grade, vignette, grain, CAS, sRGB) -> screen
+ *     -> Composite    (dirt, CA, exposure, AgX, grade, vignette, CAS, sRGB) -> LDR buffer
+ *     -> FXAA 3.11    (spatial edge resolve, then grain + 8-bit dither)     -> screen
+ *
+ * The last stage is not skippable by quality. TAA is the temporal super-sampler and FXAA is
+ * the spatial floor underneath it: TAA only antialiases what its jitter sequence happens to
+ * walk across and its history survives, so on its own it leaves bare staircases wherever the
+ * history is young or rejected, and it is off entirely at `low`. The two stack.
  *
  * Rules obeyed throughout:
  *   - Every intermediate target is HalfFloat / LinearSRGBColorSpace. The sRGB transfer is
@@ -935,7 +941,8 @@ uniform float uDirtStrength;
 uniform float uGodrayStrength;
 uniform float uChromatic;
 uniform float uVignette;
-uniform float uGrain;
+/** 1 only when the LDR handoff buffer is 8-bit; see the note at the end of main(). */
+uniform float uDither;
 uniform float uSharpen;
 uniform float uSaturation;
 uniform float uContrast;
@@ -1067,11 +1074,48 @@ vec3 hdrNeighbour(vec2 uv) {
 }
 
 vec3 hdrCentre(vec2 uv) {
-  // Radial chromatic aberration, 3 taps. Real lateral CA grows with the square of the field
-  // height, so the centre of the screen stays clean and only the corners fringe.
+  /* --- Lateral chromatic aberration, 3 taps -------------------------------
+   * The previous curve was d * uChromatic * (0.35 + r2 * 4.0). Two things were wrong with
+   * it and together they produced a full-saturation RGB moire grid over every corrugated
+   * surface at a grazing angle (measured on wide.png row y=210, x=1200..1230: R, G and B
+   * peaking one texel apart in sequence, which reads as a corrupted video stream rather than
+   * as a lens).
+   *
+   * 1) The 0.35 floor meant the split grew *linearly* from the optical axis, so the aberration
+   *    was already ~40% of its corner value halfway out. Real lateral CA is a field-height
+   *    effect: it is identically zero on axis and only becomes measurable in the outer third
+   *    of the image circle. pow(r, 2.5) with r normalised to 1.0 at the frame corner is the
+   *    honest shape — 0.09 at half field, 0.35 at three-quarters, 1.0 in the extreme corner.
+   * 2) The peak split was ~2.4 source texels at the corner. Anything past about half a texel
+   *    stops being a fringe on a silhouette and starts *resampling* high-frequency texture
+   *    detail at a different phase per channel, which is precisely how you manufacture colour
+   *    moire. 0.47 = 2.35 * 0.2, i.e. the same corner magnitude cut to a fifth, landing at
+   *    ~0.45 texel of red-blue separation in the corner and nothing at all inboard of it.
+   *
+   * Local-contrast damp. Even a sub-texel split reads as an artefact rather than as optics
+   * when it lands on a surface whose detail already alternates every pixel — corrugated steel
+   * seen edge-on, chain-link, the container ribs. A real lens fringes a *silhouette*, and a
+   * silhouette is a step, not a comb. Measure the relative spread of a 4-neighbour luma cross
+   * and fade the split out where that spread says "comb". The ratio form is scale-free, so it
+   * behaves the same on the sunlit gravel and in the shadow under the wagons.
+   * Gated on the falloff so the centre of the frame — which carries no aberration anyway —
+   * never pays for the four extra taps. */
   vec2 d = uv - 0.5;
-  float r2 = dot(d, d);
-  vec2 off = d * uChromatic * (0.35 + r2 * 4.0);
+  float r = length(d) * 1.41421356;              // 0 on axis, 1.0 in the frame corner
+  float falloff = r * r * sqrt(r);               // pow(r, 2.5) without the log2/exp2 pair
+  vec2 off = d * (uChromatic * 0.47) * falloff;
+
+  if (falloff > 0.02) {
+    float l0 = luma(sanitise(texture(tColour, uv + vec2( uTexel.x, 0.0)).rgb));
+    float l1 = luma(sanitise(texture(tColour, uv - vec2( uTexel.x, 0.0)).rgb));
+    float l2 = luma(sanitise(texture(tColour, uv + vec2( 0.0, uTexel.y)).rgb));
+    float l3 = luma(sanitise(texture(tColour, uv - vec2( 0.0, uTexel.y)).rgb));
+    float mx = max(max(l0, l1), max(l2, l3));
+    float mn = min(min(l0, l1), min(l2, l3));
+    float contrast = (mx - mn) / (mx + mn + 1e-3);
+    off *= 1.0 - 0.9 * smoothstep(0.18, 0.55, contrast);
+  }
+
   vec3 c;
   c.r = texture(tColour, uv + off).r;
   c.g = texture(tColour, uv).g;
@@ -1143,6 +1187,198 @@ void main() {
   c = clamp(c, 0.0, 1.0);
   vec3 srgb = mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
 
+  /* --- Grain and dither have MOVED to the FXAA pass -------------------------
+   * They used to be the last two things this shader did, back when this shader was the last
+   * thing in the chain. It no longer is: FRAG_FXAA is now the final edge resolve and writes
+   * the default framebuffer. Grain and dither must stay on the *far* side of that resolve —
+   * grain applied before an edge filter gets smeared into streaks along every silhouette the
+   * filter finds, and a dither is by definition the last operation before the 8-bit write.
+   *
+   * uDither is the one exception: on a machine with no float render targets at all the LDR
+   * handoff buffer is RGBA8, so the quantisation happens here as well and needs breaking up.
+   * On every normal machine the handoff is half-float and this is a no-op. */
+  float dq1 = hash12(gl_FragCoord.xy * 0.7351 + vec2(uTime * 13.7 + 71.3, uTime * 7.9 + 41.1));
+  float dq2 = hash12(gl_FragCoord.xy * 2.1137 + vec2(uTime * 23.3 + 5.9, uTime * 31.7 + 87.7));
+  srgb += (dq1 + dq2 - 1.0) * (1.0 / 255.0) * uDither;
+
+  fragColor = vec4(clamp(srgb, 0.0, 1.0), 1.0);
+}
+`;
+
+/* -------------------------------------------------------------------------- */
+/* 7. FXAA 3.11 — the final edge resolve                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Why a spatial pass at all when there is a TAA pass eleven hundred lines up.
+ *
+ * Because temporal accumulation is a *convergence* argument, and edge quality cannot be left
+ * to an argument that has preconditions. TAA only antialiases an edge to the extent that the
+ * Halton sequence actually walks across it and the history survives the neighbourhood clip;
+ * every one of those has a failure mode that shows up as a bare staircase in the delivered
+ * frame — the first eight frames after a spawn or a resize, a pixel whose history was rejected
+ * by the depth or clip-distance tests, anything moving fast enough to drop feedback to 0.35,
+ * and the entire `low` preset where TAA is off by design. Measured on sunline.png the container
+ * roofline against the sky was a clean one-pixel staircase with no intermediate values at all.
+ * So: TAA stays exactly as it was, running in HDR where it belongs and doing the temporal
+ * super-sampling, and this runs unconditionally underneath it as a guaranteed floor on edge
+ * quality. A shipped renderer never ships one without the other.
+ *
+ * This is FXAA 3.11's quality path (Lottes, NVIDIA) — the console-preset edge search: a 3x3
+ * luma cross for the edge test, a 3x3 corner gather to pick the dominant axis, then an
+ * end-of-edge search along that axis with the P0..P11 step schedule, and finally the
+ * sub-pixel-aliasing term blended in. It runs after the tone map and the sRGB transfer,
+ * which is not optional: FXAA's thresholds are perceptual, and feeding it linear light makes
+ * it blind in the shadows and hysterical in the highlights.
+ */
+const FRAG_FXAA = /* glsl */ `
+${COMMON}
+
+uniform sampler2D tSrc;
+uniform vec2 uTexel;
+uniform float uAmount;   // 1 = full resolve; a blend, not an on/off, so it can be tuned
+uniform float uGrain;
+uniform float uTime;
+
+// Relative and absolute edge thresholds, FXAA 3.11 "quality" defaults. The absolute floor is
+// what stops the filter chewing on film grain and dither in the deep shadows.
+const float FXAA_EDGE_REL = 0.125;
+const float FXAA_EDGE_ABS = 0.0312;
+const float FXAA_SUBPIX = 0.75;
+#define FXAA_SEARCH_STEPS 12
+
+/**
+ * Perceptual luma. The source is already sRGB-encoded display code values, so this is a plain
+ * weighted sum — the sqrt() that appears in the common ports is there to approximate the
+ * transfer function when the input is linear, and applying it here would double-encode.
+ */
+float fxaaLuma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+
+/** FXAA_QUALITY__P0..P11 for preset 12. Written as a select chain: dynamic indexing of a
+ *  const array is legal ESSL 3.00 but spills to scratch memory on several drivers. */
+float searchStep(int i) {
+  if (i < 5) return 1.0;
+  if (i == 5) return 1.5;
+  if (i < 10) return 2.0;
+  if (i == 10) return 4.0;
+  return 8.0;
+}
+
+void main() {
+  vec3 rgbM = texture(tSrc, vUv).rgb;
+  float lumaM = fxaaLuma(rgbM);
+
+  float lumaD = fxaaLuma(texture(tSrc, vUv + vec2(0.0, -uTexel.y)).rgb);
+  float lumaU = fxaaLuma(texture(tSrc, vUv + vec2(0.0,  uTexel.y)).rgb);
+  float lumaL = fxaaLuma(texture(tSrc, vUv + vec2(-uTexel.x, 0.0)).rgb);
+  float lumaR = fxaaLuma(texture(tSrc, vUv + vec2( uTexel.x, 0.0)).rgb);
+
+  float lumaMin = min(lumaM, min(min(lumaD, lumaU), min(lumaL, lumaR)));
+  float lumaMax = max(lumaM, max(max(lumaD, lumaU), max(lumaL, lumaR)));
+  float range = lumaMax - lumaMin;
+
+  vec3 outRgb = rgbM;
+
+  // Early out on flat neighbourhoods. This is the majority of the frame and is why FXAA costs
+  // what it costs rather than what its worst case costs.
+  if (range >= max(FXAA_EDGE_ABS, lumaMax * FXAA_EDGE_REL)) {
+    float lumaDL = fxaaLuma(texture(tSrc, vUv + vec2(-uTexel.x, -uTexel.y)).rgb);
+    float lumaUR = fxaaLuma(texture(tSrc, vUv + vec2( uTexel.x,  uTexel.y)).rgb);
+    float lumaUL = fxaaLuma(texture(tSrc, vUv + vec2(-uTexel.x,  uTexel.y)).rgb);
+    float lumaDR = fxaaLuma(texture(tSrc, vUv + vec2( uTexel.x, -uTexel.y)).rgb);
+
+    float lumaDU = lumaD + lumaU;
+    float lumaLR = lumaL + lumaR;
+    float lumaLCorners = lumaDL + lumaUL;
+    float lumaDCorners = lumaDL + lumaDR;
+    float lumaRCorners = lumaDR + lumaUR;
+    float lumaUCorners = lumaUR + lumaUL;
+
+    // Second-derivative energy along each axis; the larger one is the direction the edge
+    // *crosses*, so the blend must be applied perpendicular to it.
+    float edgeH = abs(-2.0 * lumaL + lumaLCorners) + abs(-2.0 * lumaM + lumaDU) * 2.0
+                + abs(-2.0 * lumaR + lumaRCorners);
+    float edgeV = abs(-2.0 * lumaU + lumaUCorners) + abs(-2.0 * lumaM + lumaLR) * 2.0
+                + abs(-2.0 * lumaD + lumaDCorners);
+    bool horizontal = edgeH >= edgeV;
+
+    float luma1 = horizontal ? lumaD : lumaL;
+    float luma2 = horizontal ? lumaU : lumaR;
+    float grad1 = luma1 - lumaM;
+    float grad2 = luma2 - lumaM;
+    bool steepest1 = abs(grad1) >= abs(grad2);
+    // A quarter of the steeper gradient is the "we have left the edge" test for the search.
+    float gradScaled = 0.25 * max(abs(grad1), abs(grad2));
+
+    float stepLength = horizontal ? uTexel.y : uTexel.x;
+    float lumaLocalAvg;
+    if (steepest1) { stepLength = -stepLength; lumaLocalAvg = 0.5 * (luma1 + lumaM); }
+    else           { lumaLocalAvg = 0.5 * (luma2 + lumaM); }
+
+    // Walk from the middle of the edge, i.e. half a texel toward the darker/brighter side.
+    vec2 currentUv = vUv;
+    if (horizontal) currentUv.y += stepLength * 0.5;
+    else            currentUv.x += stepLength * 0.5;
+
+    vec2 offset = horizontal ? vec2(uTexel.x, 0.0) : vec2(0.0, uTexel.y);
+    vec2 uv1 = currentUv - offset;
+    vec2 uv2 = currentUv + offset;
+
+    float end1 = fxaaLuma(texture(tSrc, uv1).rgb) - lumaLocalAvg;
+    float end2 = fxaaLuma(texture(tSrc, uv2).rgb) - lumaLocalAvg;
+    bool reached1 = abs(end1) >= gradScaled;
+    bool reached2 = abs(end2) >= gradScaled;
+    if (!reached1) uv1 -= offset;
+    if (!reached2) uv2 += offset;
+
+    if (!(reached1 && reached2)) {
+      for (int i = 2; i < FXAA_SEARCH_STEPS; i++) {
+        if (!reached1) end1 = fxaaLuma(texture(tSrc, uv1).rgb) - lumaLocalAvg;
+        if (!reached2) end2 = fxaaLuma(texture(tSrc, uv2).rgb) - lumaLocalAvg;
+        reached1 = abs(end1) >= gradScaled;
+        reached2 = abs(end2) >= gradScaled;
+        if (reached1 && reached2) break;
+        // The accelerating step schedule is what lets 12 iterations reach ~24 texels, which is
+        // long enough to resolve the near-horizontal rooflines and catenaries in this map.
+        float q = searchStep(i);
+        if (!reached1) uv1 -= offset * q;
+        if (!reached2) uv2 += offset * q;
+      }
+    }
+
+    float dist1 = horizontal ? (vUv.x - uv1.x) : (vUv.y - uv1.y);
+    float dist2 = horizontal ? (uv2.x - vUv.x) : (uv2.y - vUv.y);
+    bool direction1 = dist1 < dist2;
+    float distFinal = min(dist1, dist2);
+    float edgeLength = dist1 + dist2;
+
+    // Position along the edge, 0.5 at the nearer end falling to 0 at the middle: the further
+    // this pixel is from an end of the edge, the less it needs shifting.
+    float pixelOffset = -distFinal / max(edgeLength, EPS) + 0.5;
+
+    // Reject the case where the luma variation at the end of the edge disagrees with the
+    // variation at this pixel; that means the search ran off onto a different edge.
+    bool centreSmaller = lumaM < lumaLocalAvg;
+    bool correct = ((direction1 ? end1 : end2) < 0.0) != centreSmaller;
+    float finalOffset = correct ? pixelOffset : 0.0;
+
+    // Sub-pixel aliasing term: a 3x3 low-pass against the centre tap, cubed-and-squared into a
+    // gentle response. This is what catches single stray pixels and thin sub-texel geometry
+    // (the fence wire, the crane cabling) that the edge search alone cannot see.
+    float lumaAvg = (1.0 / 12.0) * (2.0 * (lumaDU + lumaLR) + lumaLCorners + lumaRCorners);
+    float sub1 = clamp(abs(lumaAvg - lumaM) / max(range, EPS), 0.0, 1.0);
+    float sub2 = (-2.0 * sub1 + 3.0) * sub1 * sub1;
+    finalOffset = max(finalOffset, sub2 * sub2 * FXAA_SUBPIX);
+
+    vec2 finalUv = vUv;
+    if (horizontal) finalUv.y += finalOffset * stepLength;
+    else            finalUv.x += finalOffset * stepLength;
+
+    // The resolve is a single bilinear tap at a sub-texel offset — the filtering hardware does
+    // the actual averaging, which is why this is a handful of ALU on top of the taps.
+    outRgb = mix(rgbM, texture(tSrc, finalUv).rgb, clamp(uAmount, 0.0, 1.0));
+  }
+
   /* --- Film grain, in display code values ----------------------------------
    * Two hashes summed give a triangular PDF; uniform noise leaves a visible DC floor. */
   float n1 = hash12(gl_FragCoord.xy + vec2(uTime * 91.7, uTime * 53.3));
@@ -1160,10 +1396,14 @@ void main() {
    * 4*L*(1-L) is the parabola that peaks at 1.0 on mid grey and falls to exactly zero at both
    * black and white. Against the old curve that is a 1.7x cut on the gun's receiver panel
    * (L ~ 0.16) and roughly 5x in the deep toe, while mid grey is untouched — so grainAmount
-   * still means what art.js says it means. */
-  float ld = luma(srgb);
+   * still means what art.js says it means.
+   *
+   * It lives here rather than in the composite because grain laid down *before* an edge filter
+   * is grain the edge filter smears along every silhouette it finds; film grain is a property
+   * of the final image, so it goes on last. */
+  float ld = luma(outRgb);
   float response = 4.0 * ld * (1.0 - ld);
-  srgb += tri * uGrain * response;
+  outRgb += tri * uGrain * response;
 
   /* --- 8-bit dither, a separate job from grain -----------------------------
    * Quantising to 8 bits is what puts contours in a smooth sky gradient that steps one code
@@ -1174,9 +1414,9 @@ void main() {
    * not correlate with the grain and double its amplitude. */
   float d1 = hash12(gl_FragCoord.xy * 0.7351 + vec2(uTime * 13.7 + 71.3, uTime * 7.9 + 41.1));
   float d2 = hash12(gl_FragCoord.xy * 2.1137 + vec2(uTime * 23.3 + 5.9, uTime * 31.7 + 87.7));
-  srgb += (d1 + d2 - 1.0) * (1.0 / 255.0);
+  outRgb += (d1 + d2 - 1.0) * (1.0 / 255.0);
 
-  fragColor = vec4(clamp(srgb, 0.0, 1.0), 1.0);
+  fragColor = vec4(clamp(outRgb, 0.0, 1.0), 1.0);
 }
 `;
 
@@ -1320,6 +1560,13 @@ export function createPostFX(engine, game) {
     taaEnabled: true,
     motionBlurEnabled: true,
     grainEnabled: true,
+    /**
+     * Blend weight of the FXAA resolve, not an on/off. The pass runs on every frame at every
+     * quality preset — TAA is the temporal super-sampler and this is the spatial floor beneath
+     * it, so the two stack rather than substitute. Below about 0.25 the staircase comes back,
+     * which is why syncParams() clamps rather than trusts.
+     */
+    fxaaAmount: 1.0,
   };
 
   /* --- Feature flags per quality ----------------------------------------- */
@@ -1571,7 +1818,7 @@ export function createPostFX(engine, game) {
     uGodrayStrength: { value: 0 },
     uChromatic: { value: params.chromatic },
     uVignette: { value: params.vignette },
-    uGrain: { value: params.grainAmount },
+    uDither: { value: hdrType === THREE.UnsignedByteType ? 1 : 0 },
     uSharpen: { value: params.sharpen },
     uSaturation: { value: params.saturation },
     uContrast: { value: params.contrast },
@@ -1585,6 +1832,14 @@ export function createPostFX(engine, game) {
     uLookOffset: { value: params.lookOffset },
     uLookPower: { value: params.lookPower },
     uLookSaturation: { value: params.lookSaturation },
+  };
+
+  const uFxaa = {
+    tSrc: { value: null },
+    uTexel: { value: new THREE.Vector2() },
+    uAmount: { value: 1.0 },
+    uGrain: { value: params.grainAmount },
+    uTime: { value: 0 },
   };
 
   const uDebug = {
@@ -1626,11 +1881,12 @@ export function createPostFX(engine, game) {
   const matBloomUp = makeMaterial(FRAG_BLOOM_UP, uBloomUp);
   matBloomUp.blending = THREE.AdditiveBlending;
   const matComposite = makeMaterial(FRAG_COMPOSITE, uComposite);
+  const matFxaa = makeMaterial(FRAG_FXAA, uFxaa);
   const matDebug = makeMaterial(FRAG_DEBUG, uDebug);
 
   const allMaterials = [
     matTaa, matSsao, matAoBlur, matAoApply, matMotion, matDofPre, matDofBlur,
-    matDofComposite, matBloomDown, matBloomUp, matComposite, matDebug,
+    matDofComposite, matBloomDown, matBloomUp, matComposite, matFxaa, matDebug,
   ];
 
   /* --- Render targets ----------------------------------------------------- */
@@ -1643,6 +1899,8 @@ export function createPostFX(engine, game) {
     ao: [null, null],
     bloom: [],
     dof: [null, null, null],
+    /** LDR handoff between the composite and the FXAA resolve. Full res, always allocated. */
+    ldr: null,
   };
   let historyIndex = 0;
   let historyValid = false;
@@ -1683,6 +1941,7 @@ export function createPostFX(engine, game) {
     for (let i = 0; i < targets.bloom.length; i++) disposeTarget(targets.bloom[i]);
     targets.bloom.length = 0;
     for (let i = 0; i < 3; i++) { disposeTarget(targets.dof[i]); targets.dof[i] = null; }
+    disposeTarget(targets.ldr); targets.ldr = null;
   }
 
   function buildTargets(w, h) {
@@ -1703,6 +1962,13 @@ export function createPostFX(engine, game) {
       targets.history[0] = makeRT(width, height, THREE.LinearFilter);
       targets.history[1] = makeRT(width, height, THREE.LinearFilter);
     }
+
+    // The composite no longer draws to the screen; it draws here and FXAA resolves this to the
+    // default framebuffer. Allocated unconditionally and at every quality level — the whole
+    // point of the pass is that edge quality never depends on a preset or on TAA converging.
+    // LinearFilter is load-bearing: the FXAA resolve is a single bilinear tap at a sub-texel
+    // offset, and with NearestFilter it would snap back to the unfiltered pixel and do nothing.
+    targets.ldr = makeRT(width, height, THREE.LinearFilter);
 
     if (features.ssao) {
       const aw = Math.max(1, Math.floor(width * features.aoScale));
@@ -1815,8 +2081,12 @@ export function createPostFX(engine, game) {
     uComposite.uDirtStrength.value = params.lensDirtStrength;
     uComposite.uChromatic.value = params.chromatic;
     uComposite.uVignette.value = params.vignette;
-    uComposite.uGrain.value = params.grainEnabled ? params.grainAmount : 0.0;
     uComposite.uSharpen.value = params.sharpen;
+    uFxaa.uGrain.value = params.grainEnabled ? params.grainAmount : 0.0;
+    // Clamped rather than gated: the settings menu may dial the resolve back, but there is no
+    // path through this function that turns it off, because a shipped frame never has zero
+    // spatial AA.
+    uFxaa.uAmount.value = Math.max(0.25, Math.min(1, params.fxaaAmount));
     uComposite.uSaturation.value = params.saturation;
     uComposite.uContrast.value = params.contrast;
     uComposite.uSplitStrength.value = params.splitStrength;
@@ -2262,7 +2532,7 @@ export function createPostFX(engine, game) {
       bloomTexture = runBloom(colour);
     }
 
-    /* 6. Composite (or a debug view) */
+    /* 6. Composite -> LDR, 7. FXAA -> screen (or a debug view straight to the screen) */
     if (debugMode !== 0) {
       uDebug.tColour.value = colour;
       uDebug.tDepth.value = depthTexture || blackTexture;
@@ -2289,7 +2559,21 @@ export function createPostFX(engine, game) {
         uComposite.uGodrayStrength.value = 0;
       }
 
-      draw(matComposite, null);
+      const ldr = targets.ldr;
+      if (ldr) {
+        draw(matComposite, ldr);
+        uFxaa.tSrc.value = ldr.texture;
+        uFxaa.uTexel.value.set(1 / width, 1 / height);
+        uFxaa.uTime.value = uComposite.uTime.value;
+        draw(matFxaa, null);
+      } else {
+        // Allocation failed. Better a slightly aliased, grainless frame than a black screen —
+        // the composite's own dither is switched on for the direct-to-screen write.
+        const savedDither = uComposite.uDither.value;
+        uComposite.uDither.value = 1;
+        draw(matComposite, null);
+        uComposite.uDither.value = savedDither;
+      }
     }
 
     /* --- Bookkeeping ----------------------------------------------------- */

@@ -1879,6 +1879,7 @@ export function createSky(engine, materials) {
     if (godray.blurB) godray.blurB.dispose();
     godray.occRT = godray.blurA = godray.blurB = null;
     godray.w = godray.h = 0;
+    godray.parked = false;
   }
 
   allocateGodrayTargets();
