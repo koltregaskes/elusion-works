@@ -2296,6 +2296,23 @@ const GAIT = {
 };
 
 /**
+ * How far a planted foot may travel from under its hip, along the ground, over one stance.
+ *
+ * This is derived, not chosen, and it is the number the whole gait geometry hangs off. The hip
+ * joint sits 0.92 m up and the ankle 0.085 m up, so the leg spans 0.835 of its 0.850 length
+ * standing. Pythagoras: a foot 0.35 m from under the hip needs the hip only 0.775 m above it,
+ * which the pelvis bob supplies; a foot 0.45 m away needs 0.72, which it does not. So the
+ * usable excursion is about ±0.345, and the body may travel 0.69 m while a foot is planted.
+ *
+ * The gait was violating this by a factor of well over two at a sprint: a 1.55 m stride at a
+ * 0.58 duty factor asks the stance foot to end up 0.9 m behind the hip. The IK cannot get
+ * there, so it straightened the leg and left the boot hanging — measured in a soak at 0.60 m
+ * of float and 2.7 m of unreachable foot target. Deriving the duty factor from this instead of
+ * fixing it at 0.42 is what makes the stride something the legs can actually walk.
+ */
+const FOOT_EXCURSION = 0.69;
+
+/**
  * Ankle pitch across the whole cycle: heel strike, roll to flat, weight over it, heel lift and
  * toe-off, then clearance and a reach for the next strike.
  *
@@ -2339,7 +2356,7 @@ function ankleRoll(e, leg) {
   const amt = gaitAmount(e.cycleRate);
   if (amt <= 0) return 0;
   const phase = (e.cycle + (leg === 0 ? 0 : 0.5)) % 1;
-  return anklePitch(phase, GAIT.swingFrac) * clamp(0.4 + e.speed * 0.2, 0.4, 1.1) * amt;
+  return anklePitch(phase, e.swingFrac) * clamp(0.4 + e.speed * 0.2, 0.4, 1.1) * amt;
 }
 
 /** Boot dimensions from buildBoot, ankle-local: ball of the foot forward, heel back. */
@@ -2392,13 +2409,29 @@ function updateGait(e, dt, level) {
   // raises cadence, which is what makes fast movement read as urgent rather than fast-forward.
   const stride = clamp(GAIT.minStride + speed * GAIT.strideGain, GAIT.minStride, 1.55);
   e.strideLen = damp(e.strideLen, stride, 8, dt);
-  const cadence = moving ? clamp(speed / Math.max(0.3, e.strideLen), 0.35, 2.6) : 0;
+  const cadence = moving ? clamp(speed / Math.max(0.3, e.strideLen), 0.35, GAIT.cadenceMax) : 0;
   e.cycleRate = damp(e.cycleRate, cadence, 9, dt);
   if (moving || e.cycleRate > 0.06) {
     e.cycle += e.cycleRate * dt;
     if (e.cycle >= 1) e.cycle -= Math.floor(e.cycle);
   }
   if (e.stepCooldown > 0) e.stepCooldown -= dt;
+
+  // Duty factor from geometry. The distance the body covers per cycle is speed / cadence, and
+  // a foot may only stay down for FOOT_EXCURSION of that, so the rest of the cycle has to be
+  // swing. Taken from the *target* cadence rather than the damped one so a hard acceleration
+  // does not briefly report an absurd stride while cycleRate is still catching up.
+  const effStride = speed > 0.05 ? speed / Math.max(0.35, cadence) : e.strideLen;
+  e.swingFrac = clamp(
+    1 - FOOT_EXCURSION / Math.max(0.35, effStride),
+    GAIT.swingFrac,
+    GAIT.swingFracMax
+  );
+  const excursion = effStride * (1 - e.swingFrac);
+  // Slight forward bias: the pelvis is lower at heel strike than at toe-off, so the leg can
+  // reach a little further ahead than behind.
+  const lead = excursion * 0.52;
+  const swingTime = e.swingFrac / Math.max(0.35, e.cycleRate);
 
   const cosF = Math.cos(e.facing);
   const sinF = Math.sin(e.facing);
@@ -2410,9 +2443,10 @@ function updateGait(e, dt, level) {
   // leaning out of cover steps his outboard foot across rather than sliding off his boots.
   _a4.set(e.position.x + e.bodyOffset.x, e.groundY, e.position.z + e.bodyOffset.z);
 
-  const halfStride = e.strideLen * 0.5;
   const stanceWidth = GAIT.standWidth * (1 + e.crouch * 0.3);
   const cycling = e.cycleRate > 0.06;
+  // Guard on how far a stance foot may end up from the body. See FOOT_EXCURSION.
+  const maxTrail = FOOT_EXCURSION * 0.62 * e.scale;
 
   for (let leg = 0; leg < 2; leg++) {
     const side = leg === 0 ? 1 : -1; // 0 = right
@@ -2459,22 +2493,25 @@ function updateGait(e, dt, level) {
       continue;
     }
 
-    const swing = phase < GAIT.swingFrac;
+    const swing = phase < e.swingFrac;
     if (swing) {
       if (!e.wasSwing[leg]) {
         // Toe-off: choose where this foot is going to land, and release its planted yaw.
+        // The plant is placed relative to where the body will BE when the foot arrives, not
+        // where it is now. Ignoring the swing displacement is what made a sprinting soldier
+        // land his foot almost underneath himself and then trail it for the whole of stance.
         e.footPrev[leg].copy(e.footPos[leg]);
         e.footYawPrev[leg] = e.footYaw[leg];
-        const ahead = halfStride + speed * 0.06;
         _a3.copy(_a4)
+          .addScaledVector(e.velocity, swingTime)
           .addScaledVector(_a1, side * stanceWidth)
-          .addScaledVector(_a0, ahead);
+          .addScaledVector(_a0, lead);
         _a3.y = e.groundY;
         groundSnap(level, _a3);
         e.footPlant[leg].copy(_a3);
         e.footPlanted[leg] = false;
       }
-      const t = clamp(phase / GAIT.swingFrac, 0, 1);
+      const t = clamp(phase / e.swingFrac, 0, 1);
       // Ease out of the plant, ease into the next one; the foot travels fastest mid-swing.
       const s = smootherstep(t);
       e.footLift[leg] = t; // so a stop mid-swing continues the same arc rather than snapping
@@ -2488,6 +2525,20 @@ function updateGait(e, dt, level) {
         e.footPlanted[leg] = true;
         e.footYaw[leg] = e.facing;
         e.strikeV -= GAIT.strikeGain * clamp(0.3 + speed * 0.19, 0.3, 1.0);
+      }
+      // Acceleration guard. A soldier who accelerates hard outruns the plant chosen at
+      // toe-off, and the geometry above only holds for a steady speed. Rather than let the
+      // knee lock and the boot hang, ease the plant forward — a scuff of a centimetre or two
+      // spread over several frames, which is both what happens to a real boot and far less
+      // visible than a straight, dragging leg.
+      _a5.copy(e.footPlant[leg]).sub(_a4);
+      _a5.y = 0;
+      const trail = _a5.length();
+      if (trail > maxTrail) {
+        e.footPlant[leg].addScaledVector(
+          _a5,
+          -((trail - maxTrail) / trail) * (1 - Math.exp(-14 * dt))
+        );
       }
       e.footPos[leg].copy(e.footPlant[leg]);
       // Roll the boot over its contact patch: the tread stays exactly where it was planted
