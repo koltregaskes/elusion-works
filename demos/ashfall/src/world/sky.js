@@ -247,6 +247,28 @@ const GLSL_HASH = /* glsl */ `
   }
 `;
 
+/**
+ * Ordered (Bayer) dither.
+ *
+ * A sky is the single most banding-prone surface in any renderer: it is the largest smooth
+ * gradient on screen and the only one that covers hundreds of pixels per display code value.
+ * The HDR target does not band, but the 8-bit present at the end of the composite does, and
+ * TAA happily averages white noise back into a clean posterised staircase.
+ *
+ * An 8x8 ordered matrix is the right tool: its error is bounded and structured rather than
+ * random, so a single frame is enough to break the contour, and it costs three fracts. The
+ * matrix is translated by a low-discrepancy (R2) offset each frame so TAA's history cannot
+ * converge on the pattern and undo it — that is the failure mode of a purely static Bayer.
+ *
+ * Written recursively rather than as a const array: dynamic indexing of a const array is not
+ * guaranteed to compile under GLSL ES 1.00.
+ */
+const GLSL_DITHER = /* glsl */ `
+  float bayer2(vec2 a) { a = floor(a); return fract(a.x * 0.5 + a.y * a.y * 0.75); }
+  float bayer4(vec2 a) { return bayer2(a * 0.5) * 0.25 + bayer2(a); }
+  float bayer8(vec2 a) { return bayer4(a * 0.5) * 0.25 + bayer2(a); }
+`;
+
 /** CIE XYZ -> linear sRGB. Written as dot products so the column-major trap cannot bite. */
 const GLSL_XYZ = /* glsl */ `
   vec3 xyzToLinearRGB(vec3 c) {
@@ -312,6 +334,39 @@ const SKY_FRAG = /* glsl */ `
   uniform float uSunVisibility;  // 0 once the disc has set, so it cannot glow from below
   uniform float uTime;
 
+  /* --- Vertical structure in the clear sky ---------------------------------
+     Without these the dome is a two-colour lerp from haze to zenith, which is what a column
+     read of the previous build measured. A real dusk sky is not monotonic in altitude. */
+
+  /** Chappuis ozone absorption: (per-channel optical depth, already weighted). */
+  uniform vec3 uChappuisTau;
+  /** Altitude (in sin(alt)) where the ozone slant path peaks, and the band's width. */
+  uniform float uChappuisAlt;
+  uniform float uChappuisWidth;
+  /** Sunward horizontal brightening — the sky is not a purely vertical ramp. */
+  uniform vec2 uSunAzXZ;         // normalised sun azimuth in the ground plane
+  uniform float uAzimuthGain;
+
+  /* --- Boundary-layer haze slab -------------------------------------------- */
+  uniform float uHazeTop;        // sin(alt) of the inversion
+  uniform float uHazeEdge;       // half-width of that edge, in sin(alt)
+  uniform float uHazeLoft;       // scale height of the thin stuff above the inversion
+  uniform float uHazeLoftAmount;
+
+  /* --- Aureole and horizon glow -------------------------------------------- */
+  uniform vec3 uSunUpAxis;       // unit, perpendicular to uSunDir in the vertical plane
+  uniform float uAureoleStrength;
+  uniform float uAureoleWidth;   // radians, the broad lobe
+  uniform float uAureoleCore;    // radians, the inner lobe
+  uniform float uAureoleSquash;  // >1 stretches the glow along the horizon
+  uniform float uHorizonGlow;
+  uniform float uHorizonGlowHeight;
+  uniform float uHorizonGlowFocus;
+
+  /* --- Banding ------------------------------------------------------------- */
+  uniform float uDither;         // relative amplitude, sized to one display code value
+  uniform vec2 uDitherOffset;
+
   /* Horizon convergence. These mirror the height-fog uniforms world geometry uses so the two
      can be made to asymptote to the same radiance at zero elevation. */
   uniform vec3 uFogNear;
@@ -324,6 +379,7 @@ const SKY_FRAG = /* glsl */ `
 
   ${GLSL_PHASE}
   ${GLSL_HASH}
+  ${GLSL_DITHER}
   ${GLSL_XYZ}
 
   /**

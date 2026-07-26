@@ -3575,18 +3575,27 @@ export function createMaterials(renderer, shadows) {
 
   /**
    * The 8x detail normal shared by every material. One 256px tile of very high frequency
-   * noise; it never appears on its own, only reoriented on top of a base normal, so it can
+   * relief; it never appears on its own, only reoriented on top of a base normal, so it can
    * be tiny and still carry the whole close-range micro-surface read.
+   *
+   * Three ingredients rather than two, because a surface's micro-relief is not one thing:
+   * an fBm for the general roughness of the substrate, an inverted Worley for the grain that
+   * sits proud of it, and a ridged octave for the scratch-and-fracture component that is what
+   * actually catches a low key. The relief is nearly double what it was — at 8 degrees of sun
+   * elevation a weak micro-normal produces no highlight at all and the surface reads as
+   * shaded plastic, and this tile is sampled at two octaves now, so it has to hold up under
+   * magnification.
    */
   const detailNormal = (() => {
     const res = 256;
     const a = fbmField(res, { seed: 0x51ee, freq: 24, octaves: 4, gain: 0.55 });
     const b = worleyField(res, { cx: 46, seed: 0x9a13, jitter: 1, mode: 0 });
+    const c = fbmField(res, { seed: 0x2c77, freq: 34, octaves: 3, gain: 0.5, op: OP_RIDGE });
     const h = new Float32Array(res * res);
     for (let i = 0; i < h.length; i++) {
-      h[i] = a[i] * 0.65 + (1 - clamp01(b[i] * 1.4)) * 0.35;
+      h[i] = a[i] * 0.5 + (1 - clamp01(b[i] * 1.4)) * 0.32 + c[i] * 0.18;
     }
-    const data = heightToNormal(h, res, 0.06);
+    const data = heightToNormal(h, res, 0.105);
     const tex = makeTexture(data, res, false);
     return tex;
   })();
@@ -3691,19 +3700,28 @@ export function createMaterials(renderer, shadows) {
     const u = {
       uDetailNormal: { value: detailNormal },
       uDetailScale: { value: triplanar ? 8.0 : 8.0 },
+      // The micro octave's frequency multiplier. Deliberately not an integer: an integer
+      // ratio puts the two octaves back in register every few tiles and prints a beat.
+      uDetailMicro: { value: 3.7 },
       uDetailStrength: { value: def.detail ?? 0.5 },
-      uDetailFadeNear: { value: def.view ? 0.4 : 6.0 },
-      uDetailFadeFar: { value: def.view ? 1.6 : 22.0 },
+      uDetailFadeNear: { value: def.view ? 0.4 : 9.0 },
+      // Held out to 30 m rather than 22. Inside the fade the surface has micro-relief; beyond
+      // it there is nothing but the mip-averaged base normal, and the transition used to land
+      // squarely in the middle of the yard, where the eye reads it as the ground going flat.
+      uDetailFadeFar: { value: def.view ? 1.6 : 30.0 },
       uDustColour: { value: dustColour },
       uAshAmount: { value: def.ash ?? 1.0 },
-      uAshSharpness: { value: 2.6 },
-      uAshRoughness: { value: 0.94 },
+      uAshSharpness: { value: 2.8 },
+      uAshRoughness: { value: 0.95 },
       // ~1.7 m fundamental. Its three octaves land on 1.7 / 0.8 / 0.37 m, which is exactly
       // the meso band the ground was missing.
       uAshNoiseScale: { value: 0.58 },
       uAshMetalKeep: { value: def.metalKeep ?? 0.15 },
       uMacroStrength: { value: def.view ? 0.0 : (def.macro ?? 0.075) },
       uMacroScale: { value: 0.068 },
+      // Ratio of the wide band to the macro band: 0.068 * 0.23 is a ~64 m wavelength, about
+      // 25 times the tile size of the surfaces that carry it.
+      uMacroScale2: { value: 0.23 },
       uMacroRough: { value: def.view ? 0.0 : (def.macroR ?? 0.06) },
       uMesoStrength: { value: def.view ? 0.0 : (def.meso ?? 0.075) },
       uMesoRough: { value: def.view ? 0.0 : (def.mesoR ?? 0.09) },
