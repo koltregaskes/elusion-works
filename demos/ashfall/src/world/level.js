@@ -34,7 +34,7 @@
 
 import * as THREE from '../../vendor/three.module.js';
 import { mergeGeometries } from '../../vendor/BufferGeometryUtils.js';
-import { PALETTE, MAP, LIGHTING, SUN_AZIMUTH, SUN_ELEVATION } from './art.js';
+import { PALETTE, MAP, ZONES, LIGHTING, SUN_AZIMUTH, SUN_ELEVATION } from './art.js';
 
 /* ========================================================================== */
 /* 1. Layout                                                                  */
@@ -579,14 +579,10 @@ function tube(g, rTop, rBot, h, seg, t, capTop = true, capBot = false, chamf = 0
       u0, u1, 0, h, t
     );
     if (chamf > 0.0005) {
-      const up = [0, 0.7, 0];
-      const dn = [0, -0.7, 0];
       const ta = [nA[0] * 0.7, 0.7, nA[2] * 0.7];
       const tb = [nB[0] * 0.7, 0.7, nB[2] * 0.7];
       const ba = [nA[0] * 0.7, -0.7, nA[2] * 0.7];
       const bb = [nB[0] * 0.7, -0.7, nB[2] * 0.7];
-      void up;
-      void dn;
       gquadN(
         g,
         c0 * rTop, y1 - chamf, s0 * rTop, ta,
@@ -2728,13 +2724,15 @@ export function createLevel(scene, materials, game) {
     for (let i = 0; i < SLAB_ZONES.length; i++) if (inRect(x, z, SLAB_ZONES[i])) return 0;
     const n = fbm2(x * 0.075, z * 0.075) - 0.5;
     const fine = fbm2(x * 0.42 + 31, z * 0.42 - 17) - 0.5;
-    let y = n * 0.22 + fine * 0.05;
+    let y = n * 0.16 + fine * 0.04;
     // Ballast shoulders shed water into shallow cess drains between the roads.
     for (let i = 0; i < TRACK_Z.length; i++) {
       const d = Math.abs(z - TRACK_Z[i]);
-      if (d < 3.6) y -= (1 - d / 3.6) * 0.09;
+      if (d < 3.6) y -= (1 - d / 3.6) * 0.07;
     }
-    return y;
+    // Collision is a flat plane at y = 0; anything outside this band would read as the player
+    // hovering over the dirt or wading through it.
+    return clamp(y, -0.06, 0.09);
   }
 
   function groundMaterialAt(x, z) {
@@ -2951,9 +2949,20 @@ export function createLevel(scene, materials, game) {
    * Window dressing for a punched opening: a precast cill with a drip, a lintel, a steel
    * frame with a transom, and the shards of glass still in the rebate.
    */
-  function windowDress(gFrame, gStone, gGlass, x, y0, y1, w, thick, broken) {
+  function windowDress(gFrame, gStone, gGlass, x, y0, y1, w, thick, broken, worldFn) {
     const hw = w * 0.5;
     const h = y1 - y0;
+    const isDoor = y0 < 0.4;
+    if (isDoor) {
+      // A doorway gets a lintel, a rubbed threshold and a steel lining — never glass.
+      chamferBox(gStone, x, y1 + 0.08, 0, hw + 0.12, 0.08, thick * 0.5 + 0.02, T.concreteWorn, 0.015);
+      for (let s = -1; s <= 1; s += 2) {
+        chamferBox(gFrame, x + s * (hw - 0.035), y0 + h * 0.5, 0, 0.035, h * 0.5, 0.03, T.steelPainted, 0.007);
+      }
+      chamferBox(gFrame, x, y1 - 0.035, 0, hw, 0.035, 0.03, T.steelPainted, 0.007);
+      chamferBox(gStone, x, 0.02, 0, hw, 0.02, thick * 0.5 + 0.02, T.concreteDark, 0.008);
+      return;
+    }
     // Cill and lintel.
     chamferBox(gStone, x, y0 - 0.05, 0, hw + 0.1, 0.055, thick * 0.5 + 0.045, T.concreteWorn, 0.015);
     chamferBox(gStone, x, y1 + 0.08, 0, hw + 0.12, 0.08, thick * 0.5 + 0.02, T.concreteWorn, 0.015);
@@ -2979,6 +2988,8 @@ export function createLevel(scene, materials, game) {
       }
     } else {
       chamferBox(gGlass, x, y0 + h * 0.5, 0, hw - 0.04, h * 0.5 - 0.04, 0.004, T.glass, 0.002);
+      // Intact panes are thin, penetrable collision so a round can break through them.
+      if (worldFn) worldFn(x, y0 + h * 0.5, hw - 0.04, h * 0.5 - 0.04);
     }
   }
 
@@ -3158,7 +3169,7 @@ export function createLevel(scene, materials, game) {
       const z = s < 0 ? DEPOT.z0 : DEPOT.z1;
       const ops = [];
       if (s > 0) {
-        ops.push({ x: -3, y0: 0, y1: 2.45, w: 1.6 }); // personnel door out to the yard
+        ops.push({ x: -3, y0: 0, y1: 2.5, w: 1.9 }); // personnel door out to the yard
         ops.push({ x: 8.5, y0: 0, y1: 4.4, w: 5.6 }); // blast hole, route two to the yard
         ops.push({ x: -11, y0: 3.2, y1: 5.0, w: 2.4 });
       } else {
@@ -3195,7 +3206,7 @@ export function createLevel(scene, materials, game) {
       // Wall-local +X maps to world -Z here, so local -5 is world z = -19: the spur's line.
       const ops = [
         { x: -5, y0: 0, y1: 5.4, w: 9.6 },
-        { x: 9.5, y0: 0, y1: 2.4, w: 1.5 },
+        { x: 9.5, y0: 0, y1: 2.5, w: 1.9 },
         { x: -14, y0: 6.4, y1: 7.9, w: 2.2 },
         { x: 13, y0: 6.4, y1: 7.9, w: 2.2 },
       ];
@@ -3226,7 +3237,7 @@ export function createLevel(scene, materials, game) {
         { x: -2, y0: 1.1, y1: 7.2, w: 7.5 },
         { x: 10, y0: 5.9, y1: 7.7, w: 2.6 },
         { x: -13, y0: 5.9, y1: 7.7, w: 2.6 },
-        { x: 13.5, y0: 0, y1: 2.4, w: 1.6 },
+        { x: 13.5, y0: 0, y1: 2.5, w: 1.9 },
       ];
       place(DEPOT.x0, 0, cz, Math.PI * 0.5);
       const pB = punchedWall(gB, D, 0, dado, th, ops, T.brick, 0.02);
@@ -3386,7 +3397,7 @@ export function createLevel(scene, materials, game) {
       chamferBox(gS, -mhx + (i / 15) * mhx * 2, 0.005, 0, 0.02, 0.006, mhz - 0.04, T.steelDark, 0.003);
     }
     popX();
-    solidBox((mez.x0 + mez.x1) * 0.5, mezY - 0.05, (mez.z0 + mez.z1) * 0.5, mhx, 0.06, mhz, 'metal', 0, { walkTop: true });
+    solidBox((mez.x0 + mez.x1) * 0.5, mezY - 0.05, (mez.z0 + mez.z1) * 0.5, mhx, 0.06, mhz, 'metal');
     // Posts and handrail.
     for (let sx = -1; sx <= 1; sx += 2) {
       for (let sz = -1; sz <= 1; sz += 2) {
@@ -3545,7 +3556,12 @@ export function createLevel(scene, materials, game) {
       chamferBox(gCon, 0, f1 + 0.02, 0, f.len * 0.5 + 0.05, 0.09, th * 0.62, T.concreteWorn, 0.018);
       chamferBox(gB, 0, f2 + ADMIN.para * 0.5, 0, f.len * 0.5, ADMIN.para * 0.5, th * 0.7, T.brickPale, 0.02);
       chamferBox(gCon, 0, f2 + ADMIN.para + 0.05, 0, f.len * 0.5 + 0.06, 0.06, th * 0.85, T.concreteWorn, 0.02);
-      for (const o of ops0) windowDress(gS, gCon, gGl, o.x, o.y0, o.y1, o.w, th, o.y0 > 0.3);
+      for (const o of ops0) {
+        windowDress(gS, gCon, gGl, o.x, o.y0, o.y1, o.w, th, o.y0 > 0.3, (lx, ly, lhw, lhh) => {
+          if (f.yaw === 0) solidBox(f.x + lx, ly, f.z, lhw, lhh, 0.02, 'glass');
+          else solidBox(f.x, ly, f.z - lx, 0.02, lhh, lhw, 'glass');
+        });
+      }
       for (const o of ops1) windowDress(gS, gCon, gGl, o.x, o.y0, o.y1, o.w, th, o.y0 > f1 + 0.5);
       // Rendered patches where the brick has spalled: plaster over brick, not a texture swap.
       for (let i = 0; i < 4; i++) {
@@ -3647,8 +3663,8 @@ export function createLevel(scene, materials, game) {
     ];
     for (let i = 0; i < partitions.length; i++) {
       const [px, pz, hl, alongX, y0] = partitions[i];
-      const ops = [{ x: -hl * 0.35, y0: 0, y1: 2.3, w: 1.8 }];
-      if (hl > 5) ops.push({ x: hl * 0.4, y0: 0, y1: 2.3, w: 1.8 });
+      const ops = [{ x: -hl * 0.35, y0: 0, y1: 2.35, w: 2.0 }];
+      if (hl > 5) ops.push({ x: hl * 0.4, y0: 0, y1: 2.35, w: 2.0 });
       // A shell has taken a bite out of one partition per floor.
       if (i % 3 === 2) ops.push({ x: 0.2 * hl, y0: 0.7, y1: 2.9, w: 2.2 });
       place(px, y0, pz, alongX ? 0 : Math.PI * 0.5);
@@ -3726,7 +3742,7 @@ export function createLevel(scene, materials, game) {
     place(ADMIN.x1 + 1.6, f1, cz + 3.6);
     chamferBox(gS, 0, -0.05, 0, 1.6, 0.05, 1.4, T.steelDark, 0.01);
     popX();
-    solidBox(ADMIN.x1 + 1.6, f1 - 0.05, cz + 3.6, 1.6, 0.07, 1.4, 'metal', 0, { walkTop: true });
+    solidBox(ADMIN.x1 + 1.6, f1 - 0.05, cz + 3.6, 1.6, 0.07, 1.4, 'metal');
     steelStair(ADMIN.x1 + 1.6, f1, cz + 1.2, 3.6, f1, 1.1, Math.PI * 0.5, gS);
 
     downpipe(ADMIN.x0 - 0.3, ADMIN.z0 + 1.0, f2 + ADMIN.para, 0, gR);
@@ -3841,7 +3857,7 @@ export function createLevel(scene, materials, game) {
     // East canyon: two rows with a 4 m lane between them. The map's main north-south flank.
     containerStack(33, 6, 0, [[0, -2.9, 3, true], [0, 2.9, 2, true]], 11);
     containerStack(33, 19, 0, [[0, -2.9, 2, true], [0, 2.9, 3, true]], 12);
-    containerStack(24.5, 12.5, Math.PI * 0.5, [[0, 0, 1, false]], 13);
+    containerStack(24.0, 4.0, Math.PI * 0.5, [[0, 0, 1, false]], 13);
     // West group, breaking the sightline from the depot into the yard.
     containerStack(-27, 12, 0.1, [[0, -2.8, 2, true], [0, 2.8, 1, true]], 14);
     containerStack(-27, 24, 0, [[0, 0, 2, false], [7.2, 0, 1, false]], 15);
@@ -3966,6 +3982,7 @@ export function createLevel(scene, materials, game) {
     chamferBox(gB, 0, 1.5, 0, 2.0, 1.5, 1.8, T.brick, 0.02);
     chamferBox(gCon, 0, 3.06, 0, 2.2, 0.08, 2.0, T.concreteWorn, 0.018);
     chamferBox(G('glassDirty'), 0, 1.85, -1.82, 1.3, 0.55, 0.02, T.glass, 0.004);
+    solidBox(34, 1.85, 34.18, 1.3, 0.55, 0.03, 'glass');
     chamferBox(gS, 0, 1.85, -1.85, 1.35, 0.03, 0.03, T.steelPainted, 0.005);
     popX();
     solidBox(34, 1.5, 36, 2.0, 1.5, 1.8, 'concrete', 0, { cover: true });
@@ -3989,8 +4006,8 @@ export function createLevel(scene, materials, game) {
       [-20, -6, 0], [-16.4, -6, 0], [-12.8, -6, 0],
       [4, -6.4, 0.08], [7.6, -6.4, 0], [11.2, -6.2, -0.05],
       [18.5, 3, Math.PI * 0.5], [18.5, 6.6, Math.PI * 0.5],
+      [41.5, 9.4, Math.PI * 0.5],
       [-6, 33.5, 0], [-2.4, 33.5, 0],
-      [40, 12, Math.PI * 0.5], [40, 15.6, Math.PI * 0.5],
       [-40, -6.5, 0], [-36.4, -6.6, 0.03],
     ];
     for (let i = 0; i < jersey.length; i++) {
@@ -4157,10 +4174,12 @@ export function createLevel(scene, materials, game) {
     solidBox(24, 1.4, 42, 1.85, 1.4, 0.12, 'metal', 0, { cover: true });
 
     // West and east: embankment with chain-link on the crown.
-    embankment(-50.5, -40, -50.5, 40, 3.4, 4.5, 1);
-    embankment(50.5, -40, 50.5, 40, 3.0, 4.2, -1);
-    fenceRun(-49.6, -38, -49.6, 40, 2.4, 921);
-    fenceRun(49.6, -38, 49.6, 40, 2.4, 922);
+    // The berms sit behind the fence line rather than under it, so the two-metre service
+    // margin outside the depot and the admin block stays walkable.
+    embankment(-53.5, -40, -53.5, 40, 3.6, 4.0, 1);
+    embankment(53.5, -40, 53.5, 40, 3.2, 3.8, -1);
+    fenceRun(-48.4, -38, -48.4, 40, 2.4, 921);
+    fenceRun(48.4, -38, 48.4, 40, 2.4, 922);
     // North: retaining wall behind the buildings plus a service-road fence.
     precastWall(-52, -43, -20, -43, 3.0, 923);
     precastWall(18, -43, 50, -43, 3.0, 924);
@@ -4533,10 +4552,14 @@ export function createLevel(scene, materials, game) {
    * than by casting a ray per cell: 17 600 casts at load time is a visible hitch, and the
    * colliders already are the simplified world the AI should be walking on.
    *
-   * Ground-level only. A 2D grid cannot express the admin block's first floor, so the AI
-   * paths on the ground and reaches the upper storey by the rubble ramp and stairs, which the
-   * ramp colliders make walkable in the height field.
+   * Ground level only, deliberately. A single-layer grid cannot hold two floors above the
+   * same footprint, and letting the admin block's first-floor slab win the height field would
+   * make its whole ground storey read as a 3.6 m plateau with no walls in it. So the height
+   * field only accepts surfaces up to `NAV_MAX_FLOOR`; the upper storeys, the mezzanine and
+   * the container tops are still fully collidable and climbable, they are simply not in the
+   * AI's path graph. The player owns the high ground, which is the intended tension.
    */
+  const NAV_MAX_FLOOR = 1.75;
   const NAV_CELL = 0.75;
   const navOrigin = new THREE.Vector3(PLAY.minX, 0, PLAY.minZ);
   const navW = Math.ceil((PLAY.maxX - PLAY.minX) / NAV_CELL);
@@ -4545,33 +4568,45 @@ export function createLevel(scene, materials, game) {
   const navWalkable = new Uint8Array(navW * navH);
 
   {
-    const AGENT_R = 0.27;
+    const AGENT_R = 0.25;
     const HEAD = 1.8;
     const STEP = 0.45;
+    /**
+     * Half-width of the probe square tested against each collider. Testing the bare cell
+     * centre lets a 0.7 m wall slip between two centres and become permeable; testing the
+     * whole 0.75 m cell closes every doorway. A 0.13 m probe blocks anything wider than
+     * 0.45 m and still finds a clear cell in any opening wider than about 1.5 m.
+     */
+    const PROBE = 0.13;
 
     // Pass one: floor heights from anything with a standable top face.
     for (let ci = 0; ci < colliders.length; ci++) {
       const c = colliders[ci];
       if (!c.walkTop || c.noNav) continue;
       const top = c.max.y;
-      if (top < -2 || top > 4.6) continue;
+      if (top < -2 || (c.type !== 'ramp' && top > NAV_MAX_FLOOR)) continue;
       const ix0 = clamp(Math.floor((c.min.x - navOrigin.x) / NAV_CELL), 0, navW - 1);
       const ix1 = clamp(Math.ceil((c.max.x - navOrigin.x) / NAV_CELL), 0, navW - 1);
       const iz0 = clamp(Math.floor((c.min.z - navOrigin.z) / NAV_CELL), 0, navH - 1);
       const iz1 = clamp(Math.ceil((c.max.z - navOrigin.z) / NAV_CELL), 0, navH - 1);
       for (let iz = iz0; iz <= iz1; iz++) {
         for (let ix = ix0; ix <= ix1; ix++) {
+          const wx = navOrigin.x + (ix + 0.5) * NAV_CELL;
+          const wz = navOrigin.z + (iz + 0.5) * NAV_CELL;
+          if (wx < c.min.x - 0.1 || wx > c.max.x + 0.1) continue;
+          if (wz < c.min.z - 0.1 || wz > c.max.z + 0.1) continue;
           const k = iz * navW + ix;
           let h = top;
           if (c.type === 'ramp') {
             // Interpolate the ramp's rise across its footprint so the slope is walkable.
-            const wx = navOrigin.x + (ix + 0.5) * NAV_CELL - c.cx;
-            const wz = navOrigin.z + (iz + 0.5) * NAV_CELL - c.cz;
+            const rx = wx - c.cx;
+            const rz = wz - c.cz;
             const cs = Math.cos(-c.yaw);
             const sn = Math.sin(-c.yaw);
-            const lx = wx * cs + wz * sn;
+            const lx = rx * cs + rz * sn;
             h = lerp(c.y0, c.y1, clamp((lx + c.hx) / (2 * c.hx), 0, 1));
           }
+          if (h > NAV_MAX_FLOOR) continue;
           if (h > navFloor[k] && h - navFloor[k] < 3.0) navFloor[k] = h;
         }
       }
@@ -4588,6 +4623,13 @@ export function createLevel(scene, materials, game) {
       const iz1 = clamp(Math.ceil((c.max.z + AGENT_R - navOrigin.z) / NAV_CELL), 0, navH - 1);
       for (let iz = iz0; iz <= iz1; iz++) {
         for (let ix = ix0; ix <= ix1; ix++) {
+          // The cell range above is conservative by up to a cell on each side. Test the cell
+          // centre against the inflated box before blocking: without this every 1.8 m doorway
+          // loses 1.5 m to rasterisation slop and the building seals itself shut.
+          const wx = navOrigin.x + (ix + 0.5) * NAV_CELL;
+          const wz = navOrigin.z + (iz + 0.5) * NAV_CELL;
+          if (wx + PROBE < c.min.x - AGENT_R || wx - PROBE > c.max.x + AGENT_R) continue;
+          if (wz + PROBE < c.min.z - AGENT_R || wz - PROBE > c.max.z + AGENT_R) continue;
           const k = iz * navW + ix;
           const f = navFloor[k];
           if (c.walkTop && Math.abs(c.max.y - f) < 0.08) continue;
@@ -4843,16 +4885,32 @@ export function createLevel(scene, materials, game) {
     sampleSurface,
     update,
     dispose,
-    /** Named spaces, for the HUD's zone readout and the AI's patrol picker. */
-    zones: {
-      yard: { label: 'The Yard', centre: new THREE.Vector3(0, 0, 8), radius: 34 },
-      depot: { label: 'The Depot', centre: new THREE.Vector3(-36, 0, -22), radius: 22 },
-      terraces: { label: 'The Terraces', centre: new THREE.Vector3(34, 0, -26), radius: 20 },
-    },
+    /**
+     * Named spaces for the HUD's zone readout and the AI's patrol picker, lifted straight
+     * from art.js so the minimap legend and this map can never disagree.
+     */
+    zones: (() => {
+      const out = {};
+      for (const key of Object.keys(ZONES)) {
+        const z = ZONES[key];
+        out[key] = {
+          label: z.label,
+          centre: new THREE.Vector3(z.centre[0], z.centre[1], z.centre[2]),
+          radius: z.radius,
+        };
+      }
+      return out;
+    })(),
     stats: {
       triangles: triCount,
       colliders: colliders.length,
-      draws: meshes.length,
+      draws: (() => {
+        let n = 0;
+        root.traverse((o) => {
+          if (o.isMesh) n++;
+        });
+        return n;
+      })(),
       coverPoints: coverPoints.length,
     },
   };
@@ -4860,7 +4918,7 @@ export function createLevel(scene, materials, game) {
   if (game && game.debug) {
     // Gated: §6 forbids console output on the shipped path.
     console.info(
-      `[level] ${meshes.length} draws, ${triCount} collision tris, ${colliders.length} colliders, ${coverPoints.length} cover points`
+      `[level] ${level.stats.draws} draws, ${triCount} collision tris, ${colliders.length} colliders, ${coverPoints.length} cover points`
     );
   }
 

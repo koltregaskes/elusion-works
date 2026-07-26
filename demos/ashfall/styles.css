@@ -201,6 +201,31 @@ body.menu-closed {
   color: var(--ink-900);
 }
 
+/* Film grain over the live 3D background.
+   It lives on <body> rather than inside .menu on purpose: .menu has a z-index and
+   therefore forms a stacking context, and `mix-blend-mode` can only reach the
+   backdrop of its own stacking context. Hung off the body it blends against the
+   canvas itself, which is the only place the grain means anything. */
+body.ashfall::after {
+  content: '';
+  position: fixed;
+  inset: -120px;
+  z-index: 45;
+  pointer-events: none;
+  background-image: var(--grain-tile);
+  background-size: 180px 180px;
+  background-repeat: repeat;
+  opacity: 0;
+  mix-blend-mode: overlay;
+  transition: opacity 420ms linear;
+}
+
+body.menu-open::after,
+body:not(.ashfall-ready)::after {
+  opacity: calc(var(--grade-grain) * 9);
+  animation: grain-shift 640ms steps(6) infinite;
+}
+
 /* Shared focus treatment. Ring is drawn inside so clipped shapes keep it. */
 :focus {
   outline: none;
@@ -280,8 +305,6 @@ body.hide-hud .hud {
       color-mix(in srgb, var(--hud-blood) 55%, transparent) 0%,
       rgba(0, 0, 0, 0) 60%
     );
-  mix-blend-mode: multiply;
-  filter: saturate(1.15);
 }
 
 /* Low-health heartbeat. The module writes the cardiac envelope into opacity; the
@@ -320,7 +343,6 @@ body.hide-hud .hud {
     color-mix(in srgb, var(--hud-blood) 70%, transparent),
     color-mix(in srgb, var(--hud-blood) 92%, transparent)
   );
-  mix-blend-mode: screen;
 }
 
 /* Optical sheen: a very faint scanline and a corner falloff so the DOM sits in
@@ -556,31 +578,32 @@ body.hide-hud .hud {
   left: 50%;
   transform: translateX(-50%);
   width: clamp(320px, 30vw, 620px);
-  height: 2.9em;
+  height: 3.4em;
   z-index: 5;
   opacity: calc(1 - var(--ads, 0) * 0.55);
   -webkit-mask-image: linear-gradient(
     to right,
     transparent 0%,
-    #000 14%,
-    #000 86%,
+    #000 13%,
+    #000 87%,
     transparent 100%
   );
-  mask-image: linear-gradient(to right, transparent 0%, #000 14%, #000 86%, transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0%, #000 13%, #000 87%, transparent 100%);
 }
 
+/* The datum the whole strip hangs from. */
 .compass::before {
   content: '';
   position: absolute;
   left: 0;
   right: 0;
-  top: 1.85em;
+  top: 0.5em;
   height: 1px;
   background: linear-gradient(
     to right,
     transparent,
-    var(--hairline-strong) 18%,
-    var(--hairline-strong) 82%,
+    var(--hairline-strong) 16%,
+    var(--hairline-strong) 84%,
     transparent
   );
 }
@@ -592,25 +615,44 @@ body.hide-hud .hud {
   will-change: transform;
 }
 
+/* Graduated ruler. It has to live on the track so it scrolls with the heading,
+   and it has to be far wider than the strip because the track translates by up
+   to +-441 px (180 deg x hud.js's 2.45 px/deg). The tile is centred rather than
+   left-aligned so a major graduation always lands exactly on the needle. */
+.compass-track::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  width: 2400px;
+  margin-left: -1200px;
+  top: 0.5em;
+  height: 0.5em;
+  background-image:
+    linear-gradient(
+      to right,
+      transparent 0 calc(50% - 0.5px),
+      var(--hud-primary) calc(50% - 0.5px) calc(50% + 0.5px),
+      transparent calc(50% + 0.5px)
+    ),
+    linear-gradient(
+      to right,
+      transparent 0 calc(50% - 0.5px),
+      var(--hud-dim) calc(50% - 0.5px) calc(50% + 0.5px),
+      transparent calc(50% + 0.5px)
+    );
+  /* 15 deg majors and 5 deg minors at 2.45 px per degree. */
+  background-size: 36.75px 100%, 12.25px 55%;
+  background-position: center top, center top;
+  background-repeat: repeat-x, repeat-x;
+  opacity: 0.72;
+}
+
 .compass-track .ct-tick {
   font-family: var(--font-display);
   font-weight: 600;
   text-transform: uppercase;
   text-shadow: var(--ink-outline);
   line-height: 1;
-}
-
-.compass-track .ct-tick.is-cardinal::after,
-.compass-track .ct-tick.is-minor::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 1.35em;
-  width: 1px;
-  height: 0.55em;
-  background: currentColor;
-  transform: translateX(-50%);
-  opacity: 0.65;
 }
 
 .compass-track .ct-marker {
@@ -621,29 +663,31 @@ body.hide-hud .hud {
   line-height: 1;
 }
 
-/* The fixed bearing needle over the strip. */
+/* The fixed bearing needle. Its tip lands on the datum line at 0.5em. */
 .compass-needle {
   position: absolute;
   left: 50%;
   top: 0;
-  width: 9px;
-  height: 8px;
+  width: 11px;
+  height: 0.5em;
+  min-height: 5px;
   transform: translateX(-50%);
   background: var(--hud-accent);
   clip-path: polygon(50% 100%, 0 0, 100% 0);
   filter: var(--drop);
+  z-index: 2;
 }
 
 .compass-needle::after {
   content: '';
   position: absolute;
   left: 50%;
-  top: 8px;
+  top: 100%;
   width: 1px;
-  height: 1.35em;
+  height: 0.5em;
   background: linear-gradient(to bottom, var(--hud-accent), transparent);
   transform: translateX(-50%);
-  opacity: 0.55;
+  opacity: 0.7;
 }
 
 /* --------------------------------------------------------------------------
@@ -1109,7 +1153,8 @@ body.hide-hud .hud {
 .score-row .label {
   color: var(--hud-dim);
   letter-spacing: 0.28em;
-  text-indent: 0.28em;
+  /* Cancel the trailing letter-space so the two columns rag right cleanly. */
+  margin-right: -0.28em;
   font-size: 0.92em;
 }
 
@@ -1155,7 +1200,7 @@ body.hide-hud .hud {
 
 .killfeed {
   position: absolute;
-  top: calc(var(--pad-t) + clamp(150px, 12vw, 250px));
+  top: calc(var(--pad-t) + clamp(72px, 5.6vw, 128px));
   right: var(--pad-r);
   margin: 0;
   padding: 0;
@@ -1333,19 +1378,6 @@ body.hide-hud .hud {
       rgba(3, 4, 7, calc(var(--grade-vignette) * 2.3)) 100%
     ),
     linear-gradient(to top, rgba(6, 8, 11, 0.72), rgba(0, 0, 0, 0) 34%);
-}
-
-.menu::before {
-  content: '';
-  position: absolute;
-  inset: -100px;
-  z-index: 1;
-  pointer-events: none;
-  background-image: var(--grain-tile);
-  background-size: 180px 180px;
-  opacity: calc(var(--grade-grain) * 9);
-  mix-blend-mode: overlay;
-  animation: grain-shift 640ms steps(6) infinite;
 }
 
 @keyframes grain-shift {
@@ -1586,7 +1618,6 @@ body.hide-hud .hud {
   font-size: clamp(15px, 1.02vw, 23px);
   font-weight: 600;
   letter-spacing: 0.2em;
-  text-indent: 0.2em;
   text-transform: uppercase;
   line-height: 1;
   color: var(--menu-primary);
@@ -1651,12 +1682,17 @@ body.hide-hud .hud {
   transition-duration: 40ms;
 }
 
+/* `.btn` is a flex container, so text-indent cannot pay back the trailing
+   letter-space. Cancel it on the label instead, or the caption sits left of centre. */
+.btn > span {
+  margin-right: -0.2em;
+}
+
 .btn b {
   font-family: var(--font-mono);
   font-size: 0.72em;
   font-weight: 500;
   letter-spacing: 0;
-  text-indent: 0;
   color: var(--menu-accent);
   opacity: 0.85;
 }
@@ -2383,7 +2419,7 @@ body.menu-closed .back-link {
    -------------------------------------------------------------------------- */
 
 @media (prefers-reduced-motion: reduce) {
-  .menu::before,
+  body.ashfall::after,
   .hud-scan,
   .hud.is-low-health .hud-lowhealth,
   .health.is-critical [data-health-value],
@@ -2402,7 +2438,7 @@ body.menu-closed .back-link {
     animation-name: hitmarker-punch-flat;
   }
 
-  .menu::before {
+  body.menu-open::after {
     opacity: calc(var(--grade-grain) * 6);
   }
 
@@ -2436,7 +2472,7 @@ body.menu-closed .back-link {
   }
 
   .hud-scan,
-  .menu::before,
+  body.ashfall::after,
   .menu::after {
     display: none;
   }

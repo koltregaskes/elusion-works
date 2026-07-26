@@ -38,8 +38,10 @@
  *
  *   Rows built inside [data-settings]:
  *     div.setting[data-setting=<key>][data-kind=<kind>]   class is-unavailable when the
- *                                                          active preset disables it
- *       div.setting-text > label.setting-label + p.setting-hint
+ *                                                          active preset disables it,
+ *                                                          is-on for a switch that is on,
+ *                                                          --value (0..1) --index --on
+ *       div.setting-text > label.setting-label + p.setting-hint + p.setting-note
  *       output.setting-value.mono[data-value]
  *       div.setting-control  (one of)
  *         div.segment[role=radiogroup] > button.segment-opt[role=radio]   --index --count
@@ -673,8 +675,13 @@ export function createMenu(game) {
     input.setAttribute('aria-labelledby', entry.label.id);
     entry.label.setAttribute('for', input.id);
     input.addEventListener('input', () => set(spec.key, parseFloat(input.value)));
-    // Arrow keys already work natively; stop them bubbling into the Esc/Enter handler.
-    input.addEventListener('keydown', (e) => e.stopPropagation());
+    // The arrows, Home/End and PageUp/Down belong to the slider and must not reach the game's
+    // key handling. Escape and Enter deliberately still bubble, so a player who tabbed into a
+    // slider can always back out of the menu with the key they expect.
+    input.addEventListener('keydown', (e) => {
+      if (e.code === 'Escape' || e.code === 'Enter' || e.code === 'NumpadEnter') return;
+      e.stopPropagation();
+    });
     control.appendChild(input);
     entry.input = input;
   }
