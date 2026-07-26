@@ -737,6 +737,9 @@ export function createHUD(game) {
     ox: 0, // world origin x of the bake
     oz: 0,
     ready: false,
+    /* Built on the first draw from the canvas geometry, which never changes, and reused. */
+    coneGrad: null,
+    arrowGrad: null,
   };
 
   if (el.minimapCanvas && el.minimapCanvas.getContext) {
