@@ -6225,10 +6225,10 @@ export function createLevel(scene, materials, game) {
     // Oil where machinery stood or leaked: under the wagons, at the drum clusters, on the
     // aprons, in the depot doorway.
     const oils = [
-      [-21.0, -19.0, 1.9, 0.75, 0.2], [-14.6, 20.9, 1.2, 0.9, 0.7], [21.8, -3.4, 1.4, 0.85, 1.3],
+      [-19.0, -14.5, 1.7, 0.75, 0.2], [-14.6, 20.9, 1.2, 0.9, 0.7], [21.8, -3.4, 1.4, 0.85, 1.3],
       [-43.6, -13.0, 1.5, 0.8, 0.4], [30.6, 30.4, 1.3, 0.9, 2.1], [-23.6, 3.3, 1.0, 0.85, 0.9],
-      [12.4, DOCK.z0 + 2.2, 1.2, 0.8, 0.3], [-2.0, 22.0, 2.4, 0.5, 0.0], [13.5, 22.0, 2.4, 0.5, 0.0],
-      [9.0, 14.0, 2.2, 0.5, 0.0], [-21.0, 14.0, 2.2, 0.5, 0.0], [14.5, 27.5, 1.8, 0.9, 0.55],
+      [12.4, DOCK.z0 - 1.4, 1.2, 0.8, 0.3], [-2.0, 25.0, 2.4, 0.5, 0.0], [13.5, 19.0, 2.4, 0.5, 0.0],
+      [9.0, 11.0, 2.2, 0.5, 0.0], [-21.0, 17.0, 2.2, 0.5, 0.0], [14.5, 27.5, 1.8, 0.9, 0.55],
       [-24.5, -4.0, 1.7, 0.9, 2.3], [-8.6, -6.3, 1.1, 0.7, 0.0], [34.2, -10.4, 1.3, 0.8, 1.9],
       [-30.0, -20.0, 1.6, 0.85, 0.5], [-45.0, -30.5, 1.4, 0.8, 1.1], [4.6, -17.6, 1.0, 0.9, 0.4],
     ];
@@ -6492,55 +6492,58 @@ export function createLevel(scene, materials, game) {
   /** Working clutter: the things a yard crew leaves lying about. */
   function dressYard() {
     // Hose and cable coils by the water points and the sheds.
-    hoseCoil(-19.2, -17.4, 0.62, 8701);
-    hoseCoil(2.6, -6.9, 0.55, 8702);
+    hoseCoil(-19.2, -14.0, 0.62, 8701);
+    hoseCoil(1.4, -7.2, 0.55, 8702);
     hoseCoil(-43.0, -33.5, 0.68, 8703);
-    hoseCoil(22.5, 32.0, 0.6, 8704);
+    hoseCoil(18.5, 25.4, 0.6, 8704);
     hoseCoil(ADMIN.x0 - 2.6, -30.5, 0.5, 8705);
 
     // Tool carts and barrows, always beside something being worked on.
     toolCart(-20.4, -14.8, 1.1, 8711);
-    toolCart(15.2, 26.2, 2.4, 8712);
+    toolCart(15.2, 25.4, 2.4, 8712);
     toolCart(-42.2, -28.0, 0.3, 8713);
-    wheelbarrow(-9.0, 3.4, 2.1, 8721);
-    wheelbarrow(19.2, -16.4, 0.7, 8722);
-    wheelbarrow(-33.5, 21.5, 3.4, 8723);
+    wheelbarrow(-9.0, 2.4, 2.1, 8721);
+    wheelbarrow(18.6, -16.4, 0.7, 8722);
+    wheelbarrow(-33.5, 21.0, 3.4, 8723);
 
     // Crates. Stencilled per crate, so no two stacks read the same.
     crateStack(-12.2, -7.4, 0.35, [[0.62, 0.38, 0.44, '7412'], [0.5, 0.3, 0.36, 'K2'], [0.34, 0.22, 0.3, null]], 8731);
-    crateStack(17.6, 21.8, 1.25, [[0.7, 0.42, 0.5, 'BX 09'], [0.55, 0.32, 0.4, null]], 8732);
-    crateStack(-41.6, -26.4, 2.2, [[0.6, 0.4, 0.42, 'D-14'], [0.6, 0.26, 0.42, '3'], [0.4, 0.24, 0.32, null]], 8733);
-    crateStack(6.4, DOCK.z0 + 2.6, 0.15, [[0.66, 0.4, 0.46, '221'], [0.42, 0.26, 0.34, 'S']], 8734);
+    crateStack(17.6, 17.6, 1.25, [[0.7, 0.42, 0.5, 'BX 09'], [0.55, 0.32, 0.4, null]], 8732);
+    // Inside the shed and up on the dock deck, both standing on their own slab.
+    crateStack(-41.6, -26.4, 2.2, [[0.6, 0.4, 0.42, 'D-14'], [0.6, 0.26, 0.42, '3'], [0.4, 0.24, 0.32, null]], 8733, 0.12);
+    crateStack(6.4, DOCK.z0 + 2.6, 0.15, [[0.66, 0.4, 0.46, '221'], [0.42, 0.26, 0.34, 'S']], 8734, DOCK.h);
     crateStack(28.5, -11.5, 1.7, [[0.58, 0.36, 0.4, 'A7'], [0.46, 0.28, 0.34, null]], 8735);
-    crateStack(-27.0, 4.4, 0.9, [[0.64, 0.4, 0.44, '58'], [0.5, 0.3, 0.36, null]], 8736);
+    crateStack(-27.0, 1.6, 0.9, [[0.64, 0.4, 0.44, '58'], [0.5, 0.3, 0.36, null]], 8736);
 
     // Jerry cans, in rows against walls and cover where fuel gets stood.
     jerryRow(-19.6, -12.6, 0.0, 5, 8741);
-    jerryRow(16.6, 25.4, 1.3, 4, 8742);
-    jerryRow(-43.2, -30.6, 0.2, 6, 8743);
+    jerryRow(16.6, 26.0, 1.3, 4, 8742);
+    jerryRow(-43.2, -30.6, 0.2, 6, 8743, 0.12);
     jerryRow(21.6, -4.4, 1.55, 3, 8744);
-    jerryRow(-11.6, 5.2, 0.0, 4, 8745);
-    jerryRow(30.8, 31.4, 0.8, 3, 8746);
+    jerryRow(-12.6, 2.6, 0.0, 4, 8745);
+    jerryRow(9.4, DOCK.z0 + 2.2, 0.8, 3, 8746, DOCK.h);
 
     // Scaffold tube, propped where it was dropped.
-    scaffoldBundle(-21.4, -22.5, 0.4, 0.32, 7, 8751);
+    scaffoldBundle(-20.6, -22.5, 0.4, 0.32, 7, 8751);
     scaffoldBundle(ADMIN.x0 - 1.2, -18.6, 1.9, 0.28, 6, 8752);
-    scaffoldBundle(-8.2, 34.2, 2.6, 0.35, 5, 8753);
+    scaffoldBundle(-11.5, 34.5, 2.6, 0.35, 5, 8753);
 
     // Timber ends around every stack of sleepers and every crate pile.
     timberOffcuts(-9.5, 2.2, 9, 8761);
     timberOffcuts(19.0, 30.2, 8, 8762);
     timberOffcuts(-36.5, 2.0, 10, 8763);
     timberOffcuts(-12.2, -7.4, 7, 8764);
-    timberOffcuts(-41.6, -26.4, 8, 8765);
-    timberOffcuts(6.4, DOCK.z0 + 2.6, 7, 8766);
+    timberOffcuts(-41.6, -26.4, 8, 8765, 0.12);
+    timberOffcuts(6.4, DOCK.z0 + 2.6, 7, 8766, DOCK.h);
 
     // More pallets, at angles, leaning and fallen — a yard is mostly pallets.
+    // Every one of these is in a lane between two ballast shoulders or on open apron; the
+    // shoulders sit 0.26 m proud, so a pallet laid across one is a pallet buried in stone.
     const pallets = [
-      [-19.0, -10.4, 0.5, 5], [-18.2, -11.3, 1.2, 3], [16.0, 23.2, 2.6, 6],
-      [-42.5, -24.6, 0.9, 4], [4.8, DOCK.z0 + 1.4, 0.2, 7], [26.4, 31.6, 1.6, 4],
-      [-27.8, 3.0, 2.9, 5], [11.0, -14.6, 0.4, 3], [-46.0, 16.0, 1.1, 6],
-      [36.5, -8.5, 2.2, 4],
+      [-17.5, -7.2, 0.5, 5], [-16.7, -8.1, 1.2, 3], [18.0, 26.0, 2.6, 6],
+      [-45.0, -6.0, 0.9, 4], [-14.5, 25.2, 0.2, 7], [27.0, 35.0, 1.6, 4],
+      [-30.5, 2.2, 2.9, 5], [11.0, -14.6, 0.4, 3], [-46.0, 18.0, 1.1, 6],
+      [34.0, -6.0, 2.2, 4],
     ];
     for (let i = 0; i < pallets.length; i++) {
       const [x, z, yaw, n] = pallets[i];
@@ -6556,14 +6559,14 @@ export function createLevel(scene, materials, game) {
     }
 
     // Tyres: two more heaps and a properly stacked column beside the wagon repair road.
-    tyrePile(-19.8, -19.6, 6, 8811);
+    tyrePile(-19.8, -15.0, 6, 8811);
     tyrePile(17.4, -17.2, 5, 8812);
-    tyrePile(-44.0, -21.0, 7, 8813);
+    tyrePile(-44.0, -12.0, 7, 8813);
     for (let i = 0; i < 6; i++) {
-      addInstance(setTyre, -20.6, groundY(-20.6, -21.2) + 0.14 + i * 0.24, -21.2,
+      addInstance(setTyre, -20.6, groundY(-20.6, -12.8) + 0.14 + i * 0.24, -12.8,
         hash2(i, 3) * 6.28, (hash2(i, 7) - 0.5) * 0.06, (hash2(i, 11) - 0.5) * 0.06, 0.95 + hash2(i, 5) * 0.12, grey(0.3 + hash2(i, 13) * 0.14));
     }
-    solidBox(-20.6, 0.75, -21.2, 0.45, 0.75, 0.45, 'metal');
+    solidBox(-20.6, 0.75, -12.8, 0.45, 0.75, 0.45, 'metal');
 
     // Chocks under every stabled wagon.
     wheelChocks(-2, TRACK_Z[1], 8821);
@@ -6575,9 +6578,9 @@ export function createLevel(scene, materials, game) {
 
     // Two more cable drums, and the sleeper offcut piles that go with them.
     cableSpool(-19.0, -25.4, 1.2, 0.78, 8831);
-    cableSpool(24.5, -13.5, 0.5, 0.66, 8832);
-    sleeperStack(-21.0, -28.4, 0.6, 4, 8841);
-    sleeperStack(30.0, 33.5, 2.0, 5, 8842);
+    cableSpool(24.5, -11.8, 0.5, 0.66, 8832);
+    sleeperStack(-19.8, -28.4, 0.6, 4, 8841);
+    sleeperStack(30.0, 35.5, 2.0, 5, 8842);
   }
 
   /** Overhead: the layer between the container tops and the crane that the yard had nothing in. */
