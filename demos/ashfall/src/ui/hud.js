@@ -136,17 +136,6 @@ function buildRamp(from, to, steps) {
   return arr;
 }
 
-/** Build an N-step alpha ramp of one colour. Init only. */
-function buildAlphaRamp(colour, steps, maxAlpha) {
-  const c = parseColour(colour);
-  const arr = new Array(steps);
-  for (let i = 0; i < steps; i++) {
-    const a = ((i / (steps - 1)) * maxAlpha).toFixed(3);
-    arr[i] = `rgba(${c[0]},${c[1]},${c[2]},${a})`;
-  }
-  return arr;
-}
-
 /* ========================================================================== */
 /* String caches — the whole point is that a steady frame allocates nothing.  */
 /* ========================================================================== */
