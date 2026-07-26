@@ -469,33 +469,95 @@ export function createEngine(canvas, quality = DEFAULT_QUALITY) {
 
   /* --- Viewmodel lighting ----------------------------------------------- */
 
-  // The gun is lit by the same key as the world, at the same intensity, so it cannot read as
-  // a sticker pasted over the frame. Direction is re-derived from the world sun every frame
-  // (see syncViewLights) which means turning towards the sun visibly rakes the receiver.
+  /**
+   * `viewScene` is a photometric island. No CSM cascade reaches into it, no geometry shadows
+   * anything in it, SSAO never sees it and the height fog never touches it. A light of a given
+   * intensity placed here therefore lands on the weapon at *full* strength, while the identical
+   * light in the world arrives attenuated by all four. That asymmetry is why viewmodels drift
+   * brighter than the frame they sit in, and a viewmodel that is obviously brighter than the
+   * world it is held in is one of the clearest tells of an amateur renderer.
+   *
+   * So none of the numbers below are absolutes. Every term is a *ratio* of the corresponding
+   * `art.js` LIGHTING value, and `syncViewLights` re-applies those ratios each frame against
+   * the live key and sky fill in `game.sky` — which sky.js itself derives from LIGHTING by
+   * atmospheric extinction. Retune the yard (exposure, hemiSkyIntensity, envIntensity) and the
+   * weapon follows automatically; drive the sun down with `sky.setTimeOfDay` and the weapon
+   * goes to dusk with it. That coupling is the fix; the constants are only its shape.
+   */
+
+  /**
+   * Key attenuation. Not an art choice — it stands in for the shadowing `viewScene` cannot
+   * compute. The world's sun is behind a shadow map and at the art-directed 8° rake most of
+   * what the weapon is judged against is *in* shadow; the shooter's own head, shoulders and
+   * forward arm also sit between the beam and the receiver over much of the yaw range. An
+   * unshadowed copy of the full 4.6-intensity key makes the gun the only object on screen
+   * receiving 100% of the sun, which is exactly how it ended up reading as white blocks.
+   */
+  const VIEW_KEY_OCCLUSION = 0.7;
+
+  /**
+   * Sky-fill occlusion. The receiver hangs ~0.3 m off the player's chest with the head,
+   * shoulders and both arms above and behind it: it sees roughly a third of the dome, not all
+   * of it. World surfaces get that correction for free from SSAO and from the buildings.
+   * Without it LIGHTING.hemiSkyIntensity — deliberately pushed to 1.2 so the *world's* shadows
+   * stay sky-blue against the near-achromatic PMREM — lands undiluted on the gloved arms and
+   * on every up-facing polymer face, which is what turned them into pale cyan blocks.
+   */
+  const VIEW_FILL_OCCLUSION = 0.34;
+
+  /**
+   * Rim strength, as a fraction of the sky fill it is a stand-in for. The rim is not physical;
+   * it fakes the sky wrap `viewScene` has no geometry to bounce off, and its only job is to
+   * keep the top edge of the receiver legible when the player faces away from the sun. It used
+   * to run at `hemiGroundIntensity * 0.9` — nominally weak, but it is a *directional* light, so
+   * on the roughness-0.15 barrel steel its GGX lobe peaks an order of magnitude above its
+   * nominal intensity, and that peak is sky-blue. §4: everything that is not the sun is fill
+   * and must stay subordinate. A fifth of an already-occluded fill cannot out-run the key.
+   */
+  const VIEW_RIM_OF_FILL = 0.2;
+
   const sunColour = new THREE.Color().setStyle(PALETTE.sun, THREE.SRGBColorSpace);
   const skyColour = new THREE.Color().setStyle(PALETTE.skyZenith, THREE.SRGBColorSpace);
   const groundColour = new THREE.Color().setStyle(PALETTE.groundBounce, THREE.SRGBColorSpace);
 
-  const viewKey = new THREE.DirectionalLight(sunColour, LIGHTING.sunIntensity);
+  // Same trick sky.js uses on the world hemisphere: a HemisphereLight has one intensity but
+  // art.js authors the sky and ground terms separately, so the ground colour has to carry the
+  // ratio. Without the divide the warm bounce comes in at the *sky* term's level — 3.4x its
+  // authored strength — and the undersides of the handguard glow like a second key.
+  groundColour.multiplyScalar(LIGHTING.hemiGroundIntensity / Math.max(LIGHTING.hemiSkyIntensity, 1e-4));
+
+  // Warm key from the world sun's direction. Colour and intensity are replaced with the live
+  // values off `game.sky.sun` on the first sync; these are the design-point values from art.js
+  // so the very first frame is already in the right ballpark rather than blazing.
+  const viewKey = new THREE.DirectionalLight(sunColour, LIGHTING.sunIntensity * VIEW_KEY_OCCLUSION);
   viewKey.name = 'viewmodelKey';
   viewKey.position.set(-0.6, 0.5, 0.62); // replaced on the first sync; a sane pose until then
   viewKey.castShadow = false;
   viewScene.add(viewKey);
   viewScene.add(viewKey.target);
 
-  const viewHemi = new THREE.HemisphereLight(skyColour, groundColour, LIGHTING.hemiSkyIntensity);
+  const viewHemi = new THREE.HemisphereLight(
+    skyColour,
+    groundColour,
+    LIGHTING.hemiSkyIntensity * VIEW_FILL_OCCLUSION
+  );
   viewHemi.name = 'viewmodelHemi';
   viewScene.add(viewHemi);
 
-  // A weak cool rim from behind-camera-left. Not physical — it stands in for the sky wrap the
-  // viewmodel scene has no geometry to bounce off, and it keeps the silhouette legible when
-  // the player faces away from the sun. Kept subordinate to the key, per §4.
-  const viewRim = new THREE.DirectionalLight(skyColour, LIGHTING.hemiGroundIntensity * 0.9);
+  // A weak cool rim from behind-camera-left. Not physical — see VIEW_RIM_OF_FILL above.
+  const viewRim = new THREE.DirectionalLight(
+    skyColour,
+    LIGHTING.hemiSkyIntensity * VIEW_FILL_OCCLUSION * VIEW_RIM_OF_FILL
+  );
   viewRim.name = 'viewmodelRim';
   viewRim.position.set(0.75, 0.35, -0.55);
   viewRim.castShadow = false;
   viewScene.add(viewRim);
   viewScene.add(viewRim.target);
+
+  // Seed the IBL weight from art.js so the weapon's metal is never reflecting the environment
+  // at Three's default 1.0 during the frames before sky.js has written the scene's value.
+  viewScene.environmentIntensity = LIGHTING.envIntensity;
 
   const viewLights = { key: viewKey, hemi: viewHemi, rim: viewRim };
 
@@ -754,15 +816,49 @@ export function createEngine(canvas, quality = DEFAULT_QUALITY) {
   let viewLightSync = true;
 
   function syncViewLights(game, activeScene, activeCamera) {
-    // Mirror the world IBL unconditionally so the gun's metal reflects the same dusk sky as
-    // the level. Without this the viewmodel is the one object in frame with no environment
-    // response and it reads as plastic.
+    // Mirror the world IBL unconditionally, at the world's weight, so the gun's metal reflects
+    // the same dusk sky as the level. Without this the viewmodel is the one object in frame
+    // with no environment response and it reads as plastic; with it at a *different* weight it
+    // is the one object whose speculars disagree with everything around them. Read the value
+    // off the scene rather than from LIGHTING directly so a debug override or an environment
+    // fade reaches the weapon too — LIGHTING.envIntensity is only the pre-sky.js fallback.
     if (viewScene.environment !== activeScene.environment) viewScene.environment = activeScene.environment;
-    viewScene.environmentIntensity = activeScene.environmentIntensity;
+    viewScene.environmentIntensity =
+      typeof activeScene.environmentIntensity === 'number'
+        ? activeScene.environmentIntensity
+        : LIGHTING.envIntensity;
 
     if (!viewLightSync) return;
-    const sun = game && game.sky && game.sky.sun ? game.sky.sun : null;
+    const sky = game && game.sky ? game.sky : null;
+
+    /* ---- Fill: proportional to the world's own sky fill ------------------ */
+    // sky.js drives hemi.intensity with the sky's live luminance and pre-scales groundColor to
+    // carry the authored sky:ground ratio, so copying the pair wholesale and applying one
+    // occlusion factor keeps the weapon's fill exactly proportional to the yard's at any time
+    // of day — including after sunset, when a hard-coded LIGHTING.hemiSkyIntensity would leave
+    // the gun sitting in noon-strength blue while the world went dark.
+    const worldHemi = sky && sky.hemi ? sky.hemi : null;
+    if (worldHemi) {
+      viewHemi.color.copy(worldHemi.color);
+      viewHemi.groundColor.copy(worldHemi.groundColor);
+      viewHemi.intensity = worldHemi.intensity * VIEW_FILL_OCCLUSION;
+      // The rim is a stand-in for sky wrap, so it is a fraction of the sky fill actually
+      // reaching the weapon, never a number of its own. Cool, and clearly weaker than the key.
+      viewRim.color.copy(worldHemi.color);
+      viewRim.intensity = viewHemi.intensity * VIEW_RIM_OF_FILL;
+    }
+
+    /* ---- Key: the world sun, attenuated, in view space ------------------- */
+    const sun = sky && sky.sun ? sky.sun : null;
     if (!sun) return;
+
+    // Colour and intensity come from the live key, never from PALETTE.sun /
+    // LIGHTING.sunIntensity. sky.js re-derives both from atmospheric extinction every time the
+    // sun moves and collapses to exactly the art.js pair at SUN_ELEVATION, so this is still
+    // art.js-driven — but a hard-coded copy would keep blazing at the design value long after
+    // the world's key had reddened and dimmed.
+    viewKey.color.copy(sun.color);
+    viewKey.intensity = sun.intensity * VIEW_KEY_OCCLUSION;
 
     // World-space direction the key light travels *from*.
     _v3a.copy(sun.position);
@@ -772,12 +868,15 @@ export function createEngine(canvas, quality = DEFAULT_QUALITY) {
 
     // Into view space. viewScene's space is the world camera's view space by construction —
     // viewCamera sits at the origin with identity rotation — so a direction rotated by the
-    // view matrix's 3x3 is directly usable as a light position in viewScene.
+    // view matrix's 3x3 is directly usable as a light position in viewScene. `activeCamera`'s
+    // matrixWorldInverse is refreshed at the top of renderScene, immediately before this call,
+    // so the rake tracks the turn on the same frame rather than one behind it.
     _m3a.setFromMatrix4(activeCamera.matrixWorldInverse);
     _v3a.applyMatrix3(_m3a).normalize();
 
-    // Track the world sun exactly: same colour, same intensity, same direction relative to
-    // the eye. Turning west must rake the receiver the way it rakes the yard.
+    // Same direction relative to the eye as the world's key. Turning west must rake the
+    // receiver the way it rakes the yard — that raking warm edge is the whole point of putting
+    // the key here rather than parking a fixed three-point rig in front of the camera.
     viewKey.position.copy(_v3a).multiplyScalar(4);
     viewKey.target.position.set(0, 0, 0);
     // Rim sits opposite the key horizontally and slightly behind the weapon, so the silhouette
