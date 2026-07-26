@@ -873,9 +873,19 @@ function buildMaterials(game) {
 
   /* Four genuinely separate roughness bands, wide enough apart that the same key light
      produces four visibly different specular characters (§3.8's material-contrast bar):
-     anodised alloy 0.34 -> optic housing 0.28 -> phosphated steel 0.47 -> polymer 0.74,
-     with the rubber and the grip effectively matte at 0.90+. The old set ran 0.29-0.61 with
-     metalness 0.94-1.0 on everything, which is why they collapsed into one gloss.
+     optic housing 0.32 -> rail 0.38 -> anodised alloy 0.46 -> phosphated steel 0.60 ->
+     polymer 0.74, with the rubber and the grip effectively matte at 0.90+, and bare `worn`
+     steel alone down at 0.15. The old set ran 0.29-0.61 with metalness 0.94-1.0 on everything,
+     which is why they collapsed into one gloss.
+
+     The whole band moved up ~0.12 after measuring where the receiver's brightness was actually
+     coming from. It was not the base colour: at roughness 0.34 the GGX lobe peaks at D = 1/(pi
+     a^2) = 24, so a 40 mm flat catching the key near its mirror direction returns ~0.74 in
+     scene-linear, which is over AgX's shoulder at exposure 5 no matter how dark the F0 is. A
+     hard-anodised receiver is bead-blasted satin, not semi-gloss; 0.46 drops that peak by 3x
+     and spreads it, which is both truer to the finish and what finally puts the weapon under
+     the sunlit ground it is being held over. The tight finish is now `worn` and only `worn`,
+     which is precisely what makes a broken edge read as a broken edge.
 
      ---- Reflectance recalibration, measured off a live capture ----------------------------
      The `gain` numbers on the four metal bands were 3.4 / 4.1 / 2.5 / 3.0 against `worn` at
@@ -900,7 +910,7 @@ function buildMaterials(game) {
     gunmetal: make('gunmetal', {
       color: metalF0(PALETTE.gunmetal, 0.72, 0.12),
       metalness: 0.86,
-      roughness: 0.34,
+      roughness: 0.46,
       envMapIntensity: ENV_METAL,
     }, { from: 'gunmetal', repeat: 7, normalScale: 0.4 }),
 
@@ -909,7 +919,7 @@ function buildMaterials(game) {
     rail: make('rail', {
       color: metalF0(PALETTE.gunmetal, 1.00, 0.16),
       metalness: 0.90,
-      roughness: 0.30,
+      roughness: 0.38,
       envMapIntensity: ENV_METAL,
     }, { from: 'gunmetal', repeat: 5, normalScale: 0.30 }),
 
@@ -919,7 +929,7 @@ function buildMaterials(game) {
     steel: make('steel', {
       color: metalF0(PALETTE.gunmetal, 0.72, 0.10),
       metalness: 0.92,
-      roughness: 0.47,
+      roughness: 0.60,
       envMapIntensity: ENV_METAL,
     }, { from: 'gunmetal', repeat: 11, normalScale: 0.34 }),
 
@@ -927,7 +937,7 @@ function buildMaterials(game) {
     opticBody: make('opticBody', {
       color: metalF0(PALETTE.gunmetal, 0.80, 0.12),
       metalness: 0.88,
-      roughness: 0.28,
+      roughness: 0.32,
       envMapIntensity: ENV_METAL * 1.1,
     }, { from: 'gunmetal', repeat: 9, normalScale: 0.26 }),
 
@@ -1094,13 +1104,13 @@ function buildMaterials(game) {
      and a bright rim *for free*, from the geometry, and the bright band travels round the lens
      as the weapon moves. That is what the additive rim below was faking, so it comes down. */
   mats.glass = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(PALETTE.glass).lerp(new THREE.Color(PALETTE.tarpBlue), 0.72).multiplyScalar(0.16),
+    color: new THREE.Color(PALETTE.glass).lerp(new THREE.Color(PALETTE.tarpBlue), 0.72).multiplyScalar(0.10),
     metalness: 0.0,
-    roughness: 0.075,
+    roughness: 0.12,
     transparent: true,
-    opacity: 0.58,
+    opacity: 0.34,
     depthWrite: false,
-    envMapIntensity: 1.35,
+    envMapIntensity: 1.5,
   });
   if (env) mats.glass.envMap = env;
   owned.push(mats.glass);
@@ -1110,7 +1120,7 @@ function buildMaterials(game) {
   mats.coating = new THREE.MeshBasicMaterial({
     color: new THREE.Color(0.055, 0.105, 0.082),
     transparent: true,
-    opacity: 0.4,
+    opacity: 0.3,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
   });
@@ -1125,7 +1135,7 @@ function buildMaterials(game) {
   mats.coatRim = new THREE.MeshBasicMaterial({
     color: new THREE.Color(0.3, 0.44, 0.52),
     transparent: true,
-    opacity: 0.24,
+    opacity: 0.16,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
   });
