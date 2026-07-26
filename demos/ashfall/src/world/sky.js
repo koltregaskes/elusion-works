@@ -87,6 +87,13 @@ const _clearSave = new THREE.Color();
 const _black = new THREE.Color(0, 0, 0);
 
 const DEG = Math.PI / 180;
+/**
+ * R2 (generalised golden ratio) low-discrepancy sequence, used to jitter the dither matrix.
+ * A per-frame random offset clumps; R2 fills the 8x8 period evenly in the handful of frames
+ * TAA actually integrates over.
+ */
+const R2_A = 0.7548776662466927;
+const R2_B = 0.5698402909980532;
 const LUMA_R = 0.2126;
 const LUMA_G = 0.7152;
 const LUMA_B = 0.0722;
@@ -1366,8 +1373,16 @@ export function createSky(engine, materials) {
     fogFarMix: 0.72,
     /** How completely the dome's bottom band becomes fog. 1.0 = a seamless join. */
     horizonFogAmount: 0.92,
-    /** Angular width of that band, in sin(altitude). 0.10 ~ 6 degrees. */
-    horizonFogAngle: 0.10,
+    /**
+     * Angular width of that band, in sin(altitude).
+     *
+     * Narrowed from 0.10 (~6 degrees) to 0.045 (~2.6). Its only job is to make the dome and a
+     * fully extinguished world surface agree at dir.y == 0. At 0.10 it was a second smooth
+     * exponential sitting on top of the haze's own, with almost the same scale height — two
+     * near-identical ramps superimposed, which is precisely how a sky ends up measuring as a
+     * straight two-colour lerp. Confined to the seam, it leaves the slab's edge visible.
+     */
+    horizonFogAngle: 0.045,
 
     envIntensity: LIGHTING.envIntensity,
     /**
@@ -2093,13 +2108,24 @@ export function createSky(engine, materials) {
     // the whole deck came back as one cream sheet with no form in it. 0.14 lands the lit faces
     // near 0.3 and the sunward rims near 1.0, which is where a cloud actually has shape.
     cloudUniforms.uSunColour.value.copy(sunRadiance).multiplyScalar(0.14);
-    // The underside of a cloud sees the whole hemisphere, not just the zenith: mostly the bright
-    // dust band. A pure-zenith fill at the new (much lower) zenith radiance would be black.
-    cloudUniforms.uSkyColour.value
+    // Two separate ambients, not one blend: the top of the deck only ever sees the cool zenith,
+    // the underside sees the bright warm dust band. Handing the shader a single averaged fill is
+    // what made the deck one flat sheet with no warm/cool relationship in it.
+    cloudUniforms.uAmbTop.value
       .copy(colZenith)
       .multiplyScalar(params.zenithLuminance * skyBrightnessScale)
-      .lerp(_colC.copy(colHorizon).multiplyScalar(params.hazeLuminance * skyBrightnessScale), 0.45);
+      .lerp(_colC.copy(colHorizon).multiplyScalar(params.hazeLuminance * skyBrightnessScale), 0.18);
+    cloudUniforms.uAmbUnder.value
+      .copy(colHorizon)
+      .multiplyScalar(params.hazeLuminance * skyBrightnessScale * 0.85)
+      .lerp(_colC.copy(colGroundBounce).multiplyScalar(params.hazeLuminance * skyBrightnessScale), 0.22);
     cloudUniforms.uHazeLuminance.value = params.hazeLuminance * skyBrightnessScale;
+    cloudUniforms.uStretch.value = Math.max(params.cloudStretch, 0.05);
+    cloudUniforms.uShear.value = params.cloudShear;
+    cloudUniforms.uFibre.value = clamp(params.cloudFibre, 0, 1);
+    cloudUniforms.uAerial.value = Math.max(params.cloudAerial, 0);
+    cloudUniforms.uHorizonStart.value = Math.max(params.cloudHorizonStart, 1e-4);
+    cloudUniforms.uWindDir.value.copy(windXZ);
     cloudUniforms.uSunVisibility.value = sunVisibility;
     cloudUniforms.uCloudHeight.value = params.cloudHeight;
     cloudUniforms.uCloudScale.value = 1 / Math.max(params.cloudFeatureSize, 1);
@@ -2321,6 +2347,7 @@ export function createSky(engine, materials) {
 
   let time = 0;
   let cloudTime = 0;
+  let ditherFrame = 0;
   const cloudDrift = new THREE.Vector2();
   const dustDrift = new THREE.Vector3();
 
@@ -2343,9 +2370,15 @@ export function createSky(engine, materials) {
     const fovRad = (camera.fov || 75) * DEG;
     const bufferH = Math.max(engine.size.h || 1080, 1);
     skyUniforms.uPixelAngle.value = (2 * Math.tan(fovRad * 0.5)) / bufferH;
-    // Wrapped: the dither term takes fract() of this, and after an hour of play an unwrapped
-    // accumulator has lost enough mantissa that the noise pattern freezes.
+    // Wrapped: the strata term takes fract()-scale differences of this, and after an hour of
+    // play an unwrapped accumulator has lost enough mantissa that the pattern freezes.
     skyUniforms.uTime.value = time % 8192;
+
+    // Translate the ordered-dither matrix each frame along an R2 low-discrepancy sequence. A
+    // static Bayer pattern is exactly what TAA's history is best at averaging away, and once it
+    // has, the contour it was hiding comes straight back. The period is the matrix's own 8 px.
+    ditherFrame = (ditherFrame + 1) % 4096;
+    skyUniforms.uDitherOffset.value.set((ditherFrame * R2_A) % 8, (ditherFrame * R2_B) % 8);
 
     /* ---- Clouds -------------------------------------------------------- */
 
