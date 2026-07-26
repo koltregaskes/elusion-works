@@ -77,17 +77,21 @@ const QUALITY_RANK = { low: 0, medium: 1, high: 2, ultra: 3 };
 /**
  * Camera stations, metres, laid out as a closed loop around the playable box
  * (`MAP.width` x `MAP.depth`) so the drift always has parallax: near cover slides past fast
- * while the crane and the water tower barely move. Heights sit above the 9 m perimeter wall
- * and below the 22 m crane so the landmarks stay in silhouette against the dusk sky.
+ * while the crane and the water tower barely move.
+ *
+ * Every height clears `MAP.wallHeight` (9 m) with room for container stacks and the depot roof,
+ * and stays under `MAP.craneHeight` (22 m) so the landmarks keep breaking the skyline. The
+ * clearance is deliberate rather than measured: this module never sees the level's geometry, so
+ * the flight path must be safe against any layout that respects the numbers in `art.js`.
  */
 const CAM_STATIONS = new Float32Array([
-  MAP.width * 0.31, 10.5, MAP.depth * 0.44,
-  MAP.width * 0.02, 8.2, MAP.depth * 0.40,
-  -MAP.width * 0.28, 12.0, MAP.depth * 0.30,
+  MAP.width * 0.31, 12.0, MAP.depth * 0.44,
+  MAP.width * 0.02, 11.5, MAP.depth * 0.40,
+  -MAP.width * 0.28, 13.0, MAP.depth * 0.30,
   -MAP.width * 0.44, 15.5, -MAP.depth * 0.06,
   -MAP.width * 0.22, 19.0, -MAP.depth * 0.40,
   MAP.width * 0.14, 15.0, -MAP.depth * 0.46,
-  MAP.width * 0.44, 11.0, -MAP.depth * 0.20,
+  MAP.width * 0.44, 12.0, -MAP.depth * 0.20,
   MAP.width * 0.46, 16.0, MAP.depth * 0.20,
 ]);
 
@@ -1184,11 +1188,18 @@ export function createMenu(game) {
     else if (mode === 'playing' && doc.pointerLockElement !== canvas) requestLock();
   }
 
+  /** Anything a click could plausibly be aimed at. A hit on one of these is not a backdrop click. */
+  const INTERACTIVE = 'button, input, select, textarea, a, label, [data-action], [role="radio"], [role="switch"]';
+
   function onMenuClick(e) {
-    // Only the backdrop itself, so a mis-click on a settings row never resumes the game.
-    if (e.target !== el.menu && !e.target.classList?.contains('menu-vignette')) return;
+    // "Click the canvas to resume" cannot rely on the canvas: the overlay is a full-screen
+    // fixed layer and swallows the event. So the overlay honours the same gesture, but only
+    // on the two pages where it is unambiguous, and only when the click missed every control.
+    if (page !== 'pause' && page !== 'title') return;
+    const target = e.target;
+    if (target && target.closest && target.closest(INTERACTIVE)) return;
     if (page === 'pause') resume();
-    else if (page === 'title') deploy();
+    else deploy();
   }
 
   function onAction(e) {

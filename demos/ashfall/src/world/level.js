@@ -1148,7 +1148,8 @@ export function createLevel(scene, materials, game) {
     corrugated(g, W - 0.2, H - 0.24, t0, 0.24, 0.03, 0.03);
     popX();
     // Roof, with a shallow camber and rain channels at the ends.
-    place(0, hh - 0.05, 0, 0, -Math.PI * 0.5);
+    // Yaw *then* pitch: the sheet's length has to lie along the box, its ribs point up.
+    place(0, hh - 0.05, 0, Math.PI * 0.5, -Math.PI * 0.5);
     corrugated(g, len - 0.24, W - 0.2, t0, 0.42, 0.022, 0.025);
     popX();
     chamferBox(g, 0, -hh + 0.06, 0, hw - 0.02, 0.06, hl - 0.02, T.steelDark, 0.012);
@@ -1866,6 +1867,7 @@ export function createLevel(scene, materials, game) {
       popX();
     }
     popX();
+    solidBox(CRANE.x, CRANE.top, (CRANE.zA + CRANE.zB) * 0.5, 1.35, 1.2, (CRANE.zB - CRANE.zA + 3.6) * 0.5, 'metal', 0, { noNav: true });
     return { trolleyZ, hookY };
   }
 
@@ -2344,13 +2346,13 @@ export function createLevel(scene, materials, game) {
     const half = 0.026;
     for (let s = -1; s <= 1; s += 2) {
       place(0, s * half, 0);
-      const seg = 8;
+      const seg = 6;
       for (let i = 0; i < seg; i++) {
         const a0 = (i / seg) * Math.PI + (s > 0 ? 0 : Math.PI);
         const a1 = ((i + 1) / seg) * Math.PI + (s > 0 ? 0 : Math.PI);
-        for (let j = 0; j < 5; j++) {
-          const b0 = (j / 5) * Math.PI * 2;
-          const b1 = ((j + 1) / 5) * Math.PI * 2;
+        for (let j = 0; j < 4; j++) {
+          const b0 = (j / 4) * Math.PI * 2;
+          const b1 = ((j + 1) / 4) * Math.PI * 2;
           const pt = (a, b) => {
             const ca = Math.cos(a);
             const sa = Math.sin(a);
@@ -2373,7 +2375,7 @@ export function createLevel(scene, materials, game) {
     }
     for (let s = -1; s <= 1; s += 2) {
       place(s * R, 0, 0, 0, 0, 0);
-      tube(g, r, r, half * 2, 6, T.white, false, false, 0.002);
+      tube(g, r, r, half * 2, 4, T.white, false, false, 0.002);
       popX();
     }
     return g;
@@ -3156,7 +3158,7 @@ export function createLevel(scene, materials, game) {
       const z = s < 0 ? DEPOT.z0 : DEPOT.z1;
       const ops = [];
       if (s > 0) {
-        ops.push({ x: -3, y0: 0, y1: 2.35, w: 1.15 }); // personnel door out to the yard
+        ops.push({ x: -3, y0: 0, y1: 2.45, w: 1.6 }); // personnel door out to the yard
         ops.push({ x: 8.5, y0: 0, y1: 4.4, w: 5.6 }); // blast hole, route two to the yard
         ops.push({ x: -11, y0: 3.2, y1: 5.0, w: 2.4 });
       } else {
@@ -3190,10 +3192,11 @@ export function createLevel(scene, materials, game) {
 
     // East wall (facing the yard): the big roller door plus a wicket.
     {
+      // Wall-local +X maps to world -Z here, so local -5 is world z = -19: the spur's line.
       const ops = [
-        { x: 5, y0: 0, y1: 5.4, w: 9.6 },
-        { x: -10, y0: 0, y1: 2.3, w: 1.1 },
-        { x: -13, y0: 6.4, y1: 7.9, w: 2.2 },
+        { x: -5, y0: 0, y1: 5.4, w: 9.6 },
+        { x: 9.5, y0: 0, y1: 2.4, w: 1.5 },
+        { x: -14, y0: 6.4, y1: 7.9, w: 2.2 },
         { x: 13, y0: 6.4, y1: 7.9, w: 2.2 },
       ];
       place(DEPOT.x1, 0, cz, Math.PI * 0.5);
@@ -3202,17 +3205,19 @@ export function createLevel(scene, materials, game) {
       chamferBox(gCon, 0, dado + 0.04, 0, D * 0.5, 0.05, th * 0.55, T.concreteWorn, 0.014);
       for (const o of ops) if (o.y0 > 3) windowDress(gS, gCon, gGl, o.x, o.y0, o.y1, o.w, th, true);
       // Roller door: the curtain rolled up into its barrel, plus the guide channels.
-      place(5, 5.55, -th * 0.35);
+      place(-5, 5.55, -th * 0.35, 0, 0, Math.PI * 0.5);
       tube(gR, 0.42, 0.42, 9.9, 14, T.rustDeep, false, false, 0.012, 0);
       popX();
       for (let s = -1; s <= 1; s += 2) {
-        chamferBox(gR, 5 + s * 4.9, 2.7, -th * 0.3, 0.09, 2.7, 0.11, T.rustDeep, 0.01);
+        chamferBox(gR, -5 + s * 4.9, 2.7, -th * 0.3, 0.09, 2.7, 0.11, T.rustDeep, 0.01);
       }
       // Concrete threshold and the rubbed steel angle that protects it.
-      chamferBox(gCon, 5, 0.06, 0, 4.9, 0.06, th * 0.6, T.concreteWorn, 0.014);
+      chamferBox(gCon, -5, 0.06, 0, 4.9, 0.06, th * 0.6, T.concreteWorn, 0.014);
       popX();
-      for (const p of pB) solidBox(DEPOT.x1, p[1], cz + p[0], th * 0.5, p[3], p[2], 'concrete', 0, { cover: p[1] < 2 });
-      for (const p of pC) solidBox(DEPOT.x1, p[1], cz + p[0], th * 0.4, p[3], p[2], 'metal');
+      // A wall placed at yaw = +90 deg maps its local +X onto world -Z, so the collision
+      // offsets have to be negated or every opening ends up mirrored about the centre.
+      for (const p of pB) solidBox(DEPOT.x1, p[1], cz - p[0], th * 0.5, p[3], p[2], 'concrete', 0, { cover: p[1] < 2 });
+      for (const p of pC) solidBox(DEPOT.x1, p[1], cz - p[0], th * 0.4, p[3], p[2], 'metal');
     }
 
     // West wall: torn open by the blast that took the roof, which is where the light gets in.
@@ -3221,7 +3226,7 @@ export function createLevel(scene, materials, game) {
         { x: -2, y0: 1.1, y1: 7.2, w: 7.5 },
         { x: 10, y0: 5.9, y1: 7.7, w: 2.6 },
         { x: -13, y0: 5.9, y1: 7.7, w: 2.6 },
-        { x: 13.5, y0: 0, y1: 2.4, w: 1.2 },
+        { x: 13.5, y0: 0, y1: 2.4, w: 1.6 },
       ];
       place(DEPOT.x0, 0, cz, Math.PI * 0.5);
       const pB = punchedWall(gB, D, 0, dado, th, ops, T.brick, 0.02);
@@ -3236,8 +3241,8 @@ export function createLevel(scene, materials, game) {
         popX();
       }
       popX();
-      for (const p of pB) solidBox(DEPOT.x0, p[1], cz + p[0], th * 0.5, p[3], p[2], 'concrete', 0, { cover: p[1] < 2 });
-      for (const p of pC) solidBox(DEPOT.x0, p[1], cz + p[0], th * 0.4, p[3], p[2], 'metal');
+      for (const p of pB) solidBox(DEPOT.x0, p[1], cz - p[0], th * 0.5, p[3], p[2], 'concrete', 0, { cover: p[1] < 2 });
+      for (const p of pC) solidBox(DEPOT.x0, p[1], cz - p[0], th * 0.4, p[3], p[2], 'metal');
     }
 
     /* --- portal frames, purlins and the roof ----------------------------- */
@@ -3290,7 +3295,9 @@ export function createLevel(scene, materials, game) {
           const gone = inBlast ? hash2(i, j) < 0.78 : hash2(i * 7, j * 3) < 0.05;
           if (gone) continue;
           const tone = 0.8 + hash2(i + 40, j) * 0.35;
-          place(mxp, myp, zc, 0, 0, Math.atan2(dy, dx * side) * side * -1 + (side < 0 ? 0 : 0));
+          // Roll the sheet so its long axis climbs the pitch; the ribs then fall out
+          // perpendicular to the roof plane rather than pointing at the sky.
+          place(mxp, myp, zc, 0, 0, Math.atan2(-dx, dy));
           place(0, 0, 0, Math.PI * 0.5);
           corrugated(gC, D / sheets, Math.hypot(dx / steps, dy / steps), [T.rust[0] * tone, T.rust[1] * tone, T.rust[2] * tone], 0.28, 0.045, 0.02);
           popX();
@@ -3521,9 +3528,9 @@ export function createLevel(scene, materials, game) {
       const ops1 = winRow(f1 + 0.95, 6, f.len - 1.5, 1.5, 1.85);
       if (f.name === 'west') {
         ops0.length = 0;
-        ops0.push({ x: -3.0, y0: 0, y1: 2.6, w: 2.6 }); // dock doorway, route two from the yard
-        ops0.push({ x: 5.5, y0: 0.95, y1: 2.8, w: 1.5 });
-        ops0.push({ x: 9.0, y0: 0.95, y1: 2.8, w: 1.5 });
+        ops0.push({ x: 3.0, y0: 0, y1: 2.9, w: 2.8 }); // dock doorway, route two from the yard
+        ops0.push({ x: -4.5, y0: 0.95, y1: 2.8, w: 1.5 });
+        ops0.push({ x: -9.0, y0: 0.95, y1: 2.8, w: 1.5 });
       }
       if (f.name === 'south') {
         // The balcony doors that make this elevation the overlook.
@@ -3551,7 +3558,7 @@ export function createLevel(scene, materials, game) {
         void yOff;
         for (const p of parts) {
           if (f.yaw === 0) solidBox(f.x + p[0], p[1], f.z, p[2], p[3], th * 0.5, 'concrete', 0, { cover: p[1] < 2.2 });
-          else solidBox(f.x, p[1], f.z + p[0], th * 0.5, p[3], p[2], 'concrete', 0, { cover: p[1] < 2.2 });
+          else solidBox(f.x, p[1], f.z - p[0], th * 0.5, p[3], p[2], 'concrete', 0, { cover: p[1] < 2.2 });
         }
       };
       emitWallCol(p0, 0);
@@ -3640,8 +3647,8 @@ export function createLevel(scene, materials, game) {
     ];
     for (let i = 0; i < partitions.length; i++) {
       const [px, pz, hl, alongX, y0] = partitions[i];
-      const ops = [{ x: -hl * 0.35, y0: 0, y1: 2.15, w: 1.0 }];
-      if (hl > 5) ops.push({ x: hl * 0.4, y0: 0, y1: 2.15, w: 1.0 });
+      const ops = [{ x: -hl * 0.35, y0: 0, y1: 2.3, w: 1.8 }];
+      if (hl > 5) ops.push({ x: hl * 0.4, y0: 0, y1: 2.3, w: 1.8 });
       // A shell has taken a bite out of one partition per floor.
       if (i % 3 === 2) ops.push({ x: 0.2 * hl, y0: 0.7, y1: 2.9, w: 2.2 });
       place(px, y0, pz, alongX ? 0 : Math.PI * 0.5);
@@ -3657,7 +3664,7 @@ export function createLevel(scene, materials, game) {
       popX();
       for (const p of parts) {
         if (alongX) solidBox(px + p[0], y0 + p[1], pz, p[2], p[3], 0.08, 'concrete', 0, { cover: p[1] < 2 });
-        else solidBox(px, y0 + p[1], pz + p[0], 0.08, p[3], p[2], 'concrete', 0, { cover: p[1] < 2 });
+        else solidBox(px, y0 + p[1], pz - p[0], 0.08, p[3], p[2], 'concrete', 0, { cover: p[1] < 2 });
       }
     }
 
@@ -3695,21 +3702,21 @@ export function createLevel(scene, materials, game) {
     /* --- exterior detail --------------------------------------------------- */
 
     // Loading dock and canopy on the west face — route two between yard and terraces.
-    place(ADMIN.x0 - 2.0, 0, cz - 3.0);
+    place(ADMIN.x0 - 2.0, 0, cz + 4.2);
     chamferBox(gCon, 0, 0.55, 0, 2.0, 0.55, 3.2, T.concreteWorn, 0.025);
     for (let i = -2; i <= 2; i++) {
       chamferBox(gCon, -1.99, 0.3, i * 1.3, 0.03, 0.3, 0.09, T.concreteDark, 0.008);
     }
     popX();
-    solidBox(ADMIN.x0 - 2.0, 0.55, cz - 3.0, 2.0, 0.55, 3.2, 'concrete', 0, { walkTop: true, cover: true });
-    solidRamp(ADMIN.x0 - 5.4, cz - 3.0, 1.5, 1.6, 0.05, 1.05, 'concrete', Math.PI);
-    place(ADMIN.x0 - 2.0, 0, cz - 3.0);
+    solidBox(ADMIN.x0 - 2.0, 0.55, cz + 4.2, 2.0, 0.55, 3.2, 'concrete', 0, { walkTop: true, cover: true });
+    solidRamp(ADMIN.x0 - 5.4, cz + 4.2, 1.5, 1.6, 0.05, 1.05, 'concrete', Math.PI);
+    place(ADMIN.x0 - 2.0, 0, cz + 4.2);
     for (let s = -1; s <= 1; s += 2) {
       place(-1.7, 1.55, s * 3.0);
       tube(gS, 0.06, 0.06, 3.1, 8, T.steelPainted, false, false, 0.008);
       popX();
     }
-    place(-0.6, 3.2, 0, 0, 0, -0.16);
+    place(-0.6, 3.2, 0, 0, -Math.PI * 0.5 + 0.16, 0);
     corrugated(G('corrugatedSteel'), 3.4, 6.4, T.rust, 0.3, 0.035, 0.02);
     popX();
     popX();
@@ -3753,14 +3760,14 @@ export function createLevel(scene, materials, game) {
 
   /** Debris: a plank, a twist of sheet metal and a crushed can, scattered by the hundred. */
   const setDebris = inst('debris', 'woodPlank', (g) => {
-    chamferBox(g, 0, 0.02, 0, 0.42, 0.02, 0.06, T.white, 0.006);
+    plainBox(g, 0, 0.02, 0, 0.42, 0.02, 0.06, T.white);
   });
   const setScrap = inst('scrap', 'metalRust', (g) => {
     place(0, 0, 0, 0, 0, 0.3);
-    chamferBox(g, 0, 0, 0, 0.24, 0.008, 0.16, T.white, 0.004);
+    plainBox(g, 0, 0, 0, 0.24, 0.008, 0.16, T.white);
     popX();
     place(0.2, 0.05, 0.05, 0.6, 0, -0.5);
-    chamferBox(g, 0, 0, 0, 0.16, 0.006, 0.1, T.white, 0.003);
+    plainBox(g, 0, 0, 0, 0.16, 0.006, 0.1, T.white);
     popX();
   });
   /** A weed tuft: crossed blades, no alpha texture needed. */
@@ -3787,7 +3794,7 @@ export function createLevel(scene, materials, game) {
     // Scale variation stays small so the corrugation pitch does not visibly stretch.
     const s = 0.99 + r2() * 0.02;
     addInstance(set, x, y + 1.2955, z, yaw + (r2() - 0.5) * 0.02, 0, 0, s, [tt[0] * tone, tt[1] * tone, tt[2] * tone]);
-    solidBox(x, y + 1.2955, z, len * 0.5, 1.2955, 1.219, 'metal', yaw, { walkTop: true, cover: true });
+    solidBox(x, y + 1.2955, z, len * 0.5, 1.2955, 1.219, 'metal', yaw, { cover: true });
   }
 
   /** A stack: containers laid up with a plausible offset and the odd one skewed. */
@@ -3841,22 +3848,20 @@ export function createLevel(scene, materials, game) {
     // Northern group, cover on the approach to the terraces.
     containerStack(16, -8, Math.PI * 0.5, [[0, 0, 2, true], [0, 2.9, 1, false]], 16);
     containerStack(6, -12, 0, [[0, 0, 1, true]], 17);
-    // A toppled box lying on its side, propped by a jersey barrier.
-    place(0, 0, 0);
-    popX();
+    // A toppled box lying on its side.
     addInstance(set20, -18, 1.28, 30.5, 0.35, 0, Math.PI * 0.5, 1, CONTAINER_TINTS[2]);
-    solidBox(-18, 1.22, 30.5, 3.03, 1.22, 1.3, 'metal', 0.35, { cover: true, walkTop: true });
+    solidBox(-18, 1.22, 30.5, 3.03, 1.22, 1.3, 'metal', 0.35, { cover: true });
 
     /* --- rolling stock ------------------------------------------------------ */
     place(-2, 0, TRACK_Z[1]);
     flatbedWagon(201, true);
     popX();
-    solidBox(-2, 1.0, TRACK_Z[1], 6.9, 0.75, 1.45, 'metal', 0, { cover: true, walkTop: true });
+    solidBox(-2, 1.0, TRACK_Z[1], 6.9, 0.75, 1.45, 'metal', 0, { cover: true });
 
     place(13.5, 0, TRACK_Z[1]);
     flatbedWagon(202, true);
     popX();
-    solidBox(13.5, 1.0, TRACK_Z[1], 6.9, 0.75, 1.45, 'metal', 0, { cover: true, walkTop: true });
+    solidBox(13.5, 1.0, TRACK_Z[1], 6.9, 0.75, 1.45, 'metal', 0, { cover: true });
 
     place(-21, 0, TRACK_Z[2]);
     tankWagon(203);
@@ -3949,8 +3954,8 @@ export function createLevel(scene, materials, game) {
       if (hash2(i, 3) < 0.22) continue;
       const px = DOCK.x0 + 1 + (i + 0.5) * ((DOCK.x1 - DOCK.x0 - 2) / 20);
       const tone = 0.78 + hash2(i, 8) * 0.4;
-      place(px, DOCK.h + 4.05, cz - hd + 2.4, 0, 0, -0.12);
-      place(0, 0, 0, Math.PI * 0.5);
+      place(px, DOCK.h + 4.05, cz - hd + 2.4, 0, -0.14, 0);
+      place(0, 0, 0, Math.PI * 0.5, -Math.PI * 0.5);
       corrugated(gC, 3.4, (DOCK.x1 - DOCK.x0 - 2) / 20, [T.rust[0] * tone, T.rust[1] * tone, T.rust[2] * tone], 0.3, 0.04, 0.02);
       popX();
       popX();
@@ -4034,7 +4039,7 @@ export function createLevel(scene, materials, game) {
     }
 
     // Rubble piles, tied to the damage: the depot blast hole, the admin corner, shelled walls.
-    rubblePile(setSlab, setBrick, -28.5, DEPOT.z1 + 1.6, 4.2, 1.5, 601, T.concreteWorn);
+    rubblePile(setSlab, setBrick, -31.6, DEPOT.z1 + 1.4, 3.6, 1.4, 601, T.concreteWorn);
     rubblePile(setSlab, setBrick, ADMIN.x0 - 1.5, ADMIN.z1 - 3.0, 5.6, 2.4, 602, T.concreteWorn);
     rubblePile(setSlab, setBrick, ADMIN.x0 + 3.5, ADMIN.z1 - 3.2, 4.4, 3.6, 603, T.concreteWorn);
     rubblePile(setSlab, setBrick, DEPOT.x0 - 2.0, -28.0, 3.4, 1.2, 604, T.concreteWorn);
@@ -4042,7 +4047,7 @@ export function createLevel(scene, materials, game) {
     rubblePile(setSlab, setBrick, 44, 26.0, 3.6, 1.1, 606, T.concreteWorn);
     rubblePile(setSlab, setBrick, -8.0, 36.0, 2.6, 0.8, 607, T.concreteWorn);
     solidRamp(ADMIN.x0 + 1.0, ADMIN.z1 - 3.0, 4.5, 3.2, 0.2, 2.6, 'concrete', 0);
-    solidBox(-28.5, 0.6, DEPOT.z1 + 1.6, 3.6, 0.6, 3.0, 'concrete', 0, { cover: true });
+    solidRamp(-31.6, DEPOT.z1 + 1.4, 2.2, 2.4, 1.05, 0.15, 'concrete', 0);
     solidBox(-8.0, 0.45, 36.0, 2.2, 0.45, 2.2, 'concrete', 0, { cover: true });
     solidBox(44, 0.55, 26.0, 3.0, 0.55, 3.0, 'concrete', 0, { cover: true });
     solidBox(2.0, 0.45, -22.0, 2.6, 0.45, 2.6, 'concrete', 0, { cover: true });
@@ -4114,7 +4119,7 @@ export function createLevel(scene, materials, game) {
 
     // Practical lights, each on a visible fixture.
     workLamp(-19.5, 3.0, -19.0, 0.4, 1.0, 'tripod');
-    workLamp(ADMIN.x0 - 0.6, 3.1, (ADMIN.z0 + ADMIN.z1) * 0.5 - 3.0, Math.PI * 0.5, 0.9, 'bracket');
+    workLamp(ADMIN.x0 - 0.6, 3.1, (ADMIN.z0 + ADMIN.z1) * 0.5 - 3.2, Math.PI * 0.5, 0.9, 'bracket');
     workLamp(CRANE.x + 1.1, 4.2, CRANE.zB, -Math.PI * 0.5, 0.85, 'bracket');
     burningBarrel(-4.5, 19.0);
 
@@ -4163,8 +4168,9 @@ export function createLevel(scene, materials, game) {
     // South-east corner fence linking the wall to the embankment.
     fenceRun(50, 41.5, 40, 41.5, 2.4, 926, false);
 
-    // A short run of fence dividing the yard from the terraces' forecourt, part-flattened.
-    fenceRun(ADMIN.x0 - 9.5, -14, ADMIN.x0 - 9.5, 2, 2.0, 927, false);
+    // A short, flattened run of fence marking the terraces' forecourt. Kept clear of the
+    // approach lane: a boundary the player cannot walk round is a wall, not a fence.
+    fenceRun(ADMIN.x0 - 9.5, 1.0, ADMIN.x0 - 9.5, 9.0, 1.9, 927, false);
   }
 
   /* ====================================================================== */
@@ -4539,7 +4545,7 @@ export function createLevel(scene, materials, game) {
   const navWalkable = new Uint8Array(navW * navH);
 
   {
-    const AGENT_R = 0.34;
+    const AGENT_R = 0.27;
     const HEAD = 1.8;
     const STEP = 0.45;
 
@@ -4575,7 +4581,7 @@ export function createLevel(scene, materials, game) {
     for (let k = 0; k < navW * navH; k++) navWalkable[k] = 1;
     for (let ci = 0; ci < colliders.length; ci++) {
       const c = colliders[ci];
-      if (c.noNav) continue;
+      if (c.noNav || c.type === 'ramp') continue;
       const ix0 = clamp(Math.floor((c.min.x - AGENT_R - navOrigin.x) / NAV_CELL), 0, navW - 1);
       const ix1 = clamp(Math.ceil((c.max.x + AGENT_R - navOrigin.x) / NAV_CELL), 0, navW - 1);
       const iz0 = clamp(Math.floor((c.min.z - AGENT_R - navOrigin.z) / NAV_CELL), 0, navH - 1);
