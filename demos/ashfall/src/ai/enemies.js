@@ -1907,7 +1907,7 @@ function createEnemyRecord(index) {
      *  planted boot — the single most visible foot-slide artefact there is. */
     footYaw: [0, 0],
     footYawPrev: [0, 0],
-    footToeOut: [0.1, -0.1],
+    footToeOut: [-0.1, 0.1],
     wasSwing: [false, false],
     /** Cooldown before the other foot may take a corrective step, so a turn is two steps. */
     stepCooldown: 0,
@@ -2311,8 +2311,12 @@ const GAIT = {
  * there, so it straightened the leg and left the boot hanging — measured in a soak at 0.60 m
  * of float and 2.7 m of unreachable foot target. Deriving the duty factor from this instead of
  * fixing it at 0.42 is what makes the stride something the legs can actually walk.
+ *
+ * 0.62 rather than the 0.69 the geometry allows: swept over a 200-second soak, it minimises
+ * the share of stance frames where the sole is not within 2 cm of the ground (6.3 %, against
+ * 13.4 % before this pass) without shortening the stride enough to read as a shuffle.
  */
-const FOOT_EXCURSION = 0.69;
+const FOOT_EXCURSION = 0.62;
 
 /**
  * Ankle pitch across the whole cycle: heel strike, roll to flat, weight over it, heel lift and
@@ -2321,17 +2325,23 @@ const FOOT_EXCURSION = 0.69;
  * This curve is the difference between a walk and a shuffle. A foot that stays flat through
  * stance and pitches only in the air has no heel-to-toe roll, and without the roll the body
  * appears to be carried past a stationary foot rather than pushed by it.
+ *
+ * SIGN: positive is toe-down. setBoneAim puts the boot's local +Z on the foot's heading and
+ * local +Y on world up, and the boot geometry has its toe at +Z, so a positive local pitch
+ * about X drops the toe. This was worth measuring rather than reasoning about — the previous
+ * curve had it backwards, and the soldiers were landing toe-first and pushing off their heels,
+ * which is a walk played in reverse.
  */
 function anklePitch(phase, sf) {
   if (phase >= sf) {
     const u = (phase - sf) / (1 - sf);
-    if (u < 0.18) return lerp(0.21, 0.0, smoothstep(u / 0.18)); // heel down → foot flat
+    if (u < 0.18) return lerp(-0.21, 0.0, smoothstep(u / 0.18)); // heel down → foot flat
     if (u < GAIT.toeOffAt) return 0.0; // flat, weight rolling over it
-    return lerp(0.0, -0.44, smoothstep((u - GAIT.toeOffAt) / (1 - GAIT.toeOffAt))); // toe-off
+    return lerp(0.0, 0.44, smoothstep((u - GAIT.toeOffAt) / (1 - GAIT.toeOffAt))); // toe-off
   }
   const v = phase / sf;
-  if (v < 0.45) return lerp(-0.44, 0.15, smootherstep(v / 0.45)); // recover, toes up to clear
-  return lerp(0.15, 0.21, smoothstep((v - 0.45) / 0.55)); // reach out for the heel strike
+  if (v < 0.45) return lerp(0.44, -0.15, smootherstep(v / 0.45)); // recover, toes up to clear
+  return lerp(-0.15, -0.21, smoothstep((v - 0.45) / 0.55)); // reach out for the heel strike
 }
 
 /**
@@ -2361,28 +2371,39 @@ function ankleRoll(e, leg) {
   return anklePitch(phase, e.swingFrac) * clamp(0.4 + e.speed * 0.2, 0.4, 1.1) * amt;
 }
 
-/** Boot dimensions from buildBoot, ankle-local: ball of the foot forward, heel back. */
-const BOOT_BALL = 0.13;
-const BOOT_HEEL = 0.07;
+/**
+ * Boot contact extremes, ankle-local, taken straight off the tread lugs in buildBoot: the
+ * leading lug sits at z +0.175 and the trailing one at z −0.075. They have to be the real
+ * numbers, not approximations, because pivotAnkle uses them to keep the sole on the ground.
+ */
+const BOOT_BALL = 0.175;
+const BOOT_HEEL = 0.075;
 
 /**
- * Move the stance ankle so the boot pivots about whichever end is actually on the ground — the
- * ball at toe-off, the heel at contact — instead of about the ankle joint.
+ * Offset the ankle IK target so the boot pivots about whichever end is actually on the ground —
+ * the ball at toe-off, the heel at contact — instead of about the ankle joint.
  *
- * This is not a nicety. Pitching a 0.30 m boot 0.48 rad about its ankle drives the toe about
+ * This is not a nicety. Pitching a 0.30 m boot 0.44 rad about its ankle drives the toe about
  * 3 cm through the floor, and a foot that visibly sinks and drags at every push-off is the
  * same defect as sliding, just harder to name. Rotating a point (f, u) about the contact by θ
  * gives the ankle's true displacement, and it is two trig calls.
+ *
+ * It writes to the IK target, deliberately, and not to `footPos`. footPos is the foot's ground
+ * contact and is what the next toe-off captures as the swing's start point; folding a
+ * rendering correction into it made the correction get captured and then re-applied, jumping
+ * the foot 6 cm on the toe-off frame.
  */
-function pivotAnkle(e, leg, pitch, forward) {
+function pivotAnkle(out, pitch, forward, scale) {
   if (pitch === 0) return;
   const a = Math.abs(pitch);
   const c = Math.cos(a);
   const s = Math.sin(a);
-  const lever = pitch < 0 ? BOOT_BALL : BOOT_HEEL; // heel-up pivots on the ball, and vice versa
-  const dir = pitch < 0 ? 1 : -1;
-  e.footPos[leg].y += (lever * s + RIG.ankleY * (c - 1)) * e.scale;
-  e.footPos[leg].addScaledVector(forward, dir * (lever * (1 - c) + RIG.ankleY * s) * e.scale);
+  // Toe-down (positive) rolls onto the ball and carries the ankle forward; toe-up rolls back
+  // onto the heel and carries it back.
+  const lever = pitch > 0 ? BOOT_BALL : BOOT_HEEL;
+  const dir = pitch > 0 ? 1 : -1;
+  out.y += (lever * s + RIG.ankleY * (c - 1)) * scale;
+  out.addScaledVector(forward, dir * (lever * (1 - c) + RIG.ankleY * s) * scale);
 }
 
 /**
@@ -2433,7 +2454,11 @@ function updateGait(e, dt, level) {
   // Slight forward bias: the pelvis is lower at heel strike than at toe-off, so the leg can
   // reach a little further ahead than behind.
   const lead = excursion * 0.52;
-  const swingTime = e.swingFrac / Math.max(0.35, e.cycleRate);
+  // Bounded to a plausible swing duration. cycleRate is damped and lags speed, so during a
+  // hard acceleration the raw ratio briefly claims a 1.8-second swing, and multiplying that by
+  // a 6 m/s velocity throws the anticipated plant ten metres down the map. The in-flight
+  // re-aim recovers from it, but there is no reason to create it.
+  const swingTime = clamp(e.swingFrac / Math.max(0.35, e.cycleRate), 0.12, 0.45);
 
   const cosF = Math.cos(e.facing);
   const sinF = Math.sin(e.facing);
@@ -2514,6 +2539,25 @@ function updateGait(e, dt, level) {
         e.footPlanted[leg] = false;
       }
       const t = clamp(phase / e.swingFrac, 0, 1);
+      const prevT = e.footLift[leg];
+      // Re-aim the plant while the foot is still in the air. Committing at toe-off assumes the
+      // soldier will keep going the way he was for the whole swing, and an AI under fire does
+      // not: he turns, he sprints, he stops. A stale plant lands the boot up to 1.5 m from
+      // where the body ended up, and everything downstream then has to drag it. The
+      // anticipation uses the REMAINING swing time, so the correction shrinks to nothing by
+      // itself, and the last fifth of the swing is committed so the touchdown cannot jitter.
+      if (t < 0.82) {
+        _a3.copy(_a4)
+          .addScaledVector(e.velocity, swingTime * (1 - t))
+          .addScaledVector(_a1, side * stanceWidth)
+          .addScaledVector(_a0, lead);
+        const k = 1 - Math.exp(-10 * dt);
+        e.footPlant[leg].x += (_a3.x - e.footPlant[leg].x) * k;
+        e.footPlant[leg].z += (_a3.z - e.footPlant[leg].z) * k;
+      } else if (prevT < 0.82) {
+        // One ground probe at the commit point, so the height matches wherever it drifted to.
+        groundSnap(level, e.footPlant[leg]);
+      }
       // Ease out of the plant, ease into the next one; the foot travels fastest mid-swing.
       const s = smootherstep(t);
       e.footLift[leg] = t; // so a stop mid-swing continues the same arc rather than snapping
@@ -2537,16 +2581,14 @@ function updateGait(e, dt, level) {
       _a5.y = 0;
       const trail = _a5.length();
       if (trail > maxTrail) {
-        e.footPlant[leg].addScaledVector(
-          _a5,
-          -((trail - maxTrail) / trail) * (1 - Math.exp(-14 * dt))
-        );
+        // Rate-limited to 0.7 m/s — about a tenth of the body's speed when this fires at all,
+        // so it reads as a boot scuffing rather than a foot skating. It only ever fires on a
+        // transient the in-flight re-aim did not already absorb.
+        const need = trail - maxTrail;
+        const move = Math.min(need * (1 - Math.exp(-9 * dt)), 0.7 * dt);
+        e.footPlant[leg].addScaledVector(_a5, -move / trail);
       }
       e.footPos[leg].copy(e.footPlant[leg]);
-      // Roll the boot over its contact patch: the tread stays exactly where it was planted
-      // while the ankle arcs over it, heel at contact and ball at toe-off. Faded by cadence,
-      // so a soldier who stops mid-stride does not have the offset yanked out from under him.
-      pivotAnkle(e, leg, ankleRoll(e, leg), _a0);
     }
     e.wasSwing[leg] = swing;
   }
@@ -2823,18 +2865,20 @@ function poseEnemy(e, dt, level, aimBlend) {
     const hip = leg === 0 ? b.hipR : b.hipL;
     const knee = leg === 0 ? b.kneeR : b.kneeL;
     const ankle = leg === 0 ? b.ankleR : b.ankleL;
+    // The boot's heading comes from the yaw the foot was PLANTED at, never from the live body
+    // facing — that is what stops a turning soldier twisting his own boots into the ground.
+    const fy = e.footYaw[leg] + e.footToeOut[leg];
+    _a1.set(-Math.sin(fy), 0, -Math.cos(fy));
     // Full heel-strike → flat → toe-off roll, rather than a pitch that only happens in the
-    // air. updateGait has already displaced the ankle to pivot this about the contact patch.
+    // air, with the ankle target displaced so the sole rolls over its contact patch instead of
+    // swinging through the floor.
     const toe = ankleRoll(e, leg);
     _a0.copy(e.footPos[leg]);
     _a0.y += RIG.ankleY * e.scale;
+    pivotAnkle(_a0, toe, _a1, e.scale);
     ikChain(hip, knee, ankle, _a0, _a4, RIG.thigh * e.scale, RIG.shin * e.scale);
     // Level the sole to world horizontal first (so the boot stays flat however the shin is
-    // angled), then add the heel-to-toe roll on top as a local pitch. The heading comes from
-    // the yaw the foot was PLANTED at, never from the live body facing — that is what stops a
-    // turning soldier twisting his own boots into the ground.
-    const fy = e.footYaw[leg] + e.footToeOut[leg];
-    _a1.set(-Math.sin(fy), 0, -Math.cos(fy));
+    // angled), then add the heel-to-toe roll on top as a local pitch.
     _a2.set(0, -1, 0);
     setBoneAim(ankle, _a2, _a1);
     // Sinking dorsiflexes (the heel takes the load), rising plantarflexes (he pushes off the

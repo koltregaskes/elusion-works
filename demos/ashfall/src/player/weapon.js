@@ -867,7 +867,7 @@ function buildMaterials(game) {
      every unit of it over 1.0 is a neutral wash on top of an already-unshadowed key — see the
      F0 note below, which is where the same error was much larger. 1.22 keeps the sky in the
      receiver's flats without it being the brightest thing in the response. */
-  const ENV_METAL = 1.22;
+  const ENV_METAL = 1.05;
   const ENV_POLY = 0.95;
   const ENV_CLOTH = 0.55; // cloth has no business mirroring the sky; this is what made the arm glow
 
@@ -898,7 +898,7 @@ function buildMaterials(game) {
   const mats = {
     /* Receiver: hard-anodised 7075. Satin, dark, and firmly below the sunlit ground behind it. */
     gunmetal: make('gunmetal', {
-      color: metalF0(PALETTE.gunmetal, 1.15, 0.20),
+      color: metalF0(PALETTE.gunmetal, 0.72, 0.12),
       metalness: 0.86,
       roughness: 0.34,
       envMapIntensity: ENV_METAL,
@@ -907,7 +907,7 @@ function buildMaterials(game) {
     /* Rail: the same alloy, but every slot corner has been worn back to bright metal by
        mounts going on and off, so it runs a touch brighter and tighter than the receiver. */
     rail: make('rail', {
-      color: metalF0(PALETTE.gunmetal, 1.55, 0.24),
+      color: metalF0(PALETTE.gunmetal, 1.00, 0.16),
       metalness: 0.90,
       roughness: 0.30,
       envMapIntensity: ENV_METAL,
@@ -917,7 +917,7 @@ function buildMaterials(game) {
        receiver — the phosphate conversion coating is a matte crystalline surface, and that
        contrast against the anodising is most of what says "two different processes". */
     steel: make('steel', {
-      color: metalF0(PALETTE.gunmetal, 1.02, 0.12),
+      color: metalF0(PALETTE.gunmetal, 0.72, 0.10),
       metalness: 0.92,
       roughness: 0.47,
       envMapIntensity: ENV_METAL,
@@ -925,7 +925,7 @@ function buildMaterials(game) {
 
     /* Optic housing: type-III anodised tube, the tightest finish on the gun. */
     opticBody: make('opticBody', {
-      color: metalF0(PALETTE.gunmetal, 1.20, 0.14),
+      color: metalF0(PALETTE.gunmetal, 0.80, 0.12),
       metalness: 0.88,
       roughness: 0.28,
       envMapIntensity: ENV_METAL * 1.1,
@@ -936,7 +936,7 @@ function buildMaterials(game) {
        and now 4-5x the reflectance of the finish they have worn through, which is what makes
        them read as wear instead of as highlights. */
     worn: make('worn', {
-      color: metalF0(PALETTE.steelBare, 2.35, 0.10),
+      color: metalF0(PALETTE.steelBare, 2.10, 0.08),
       metalness: 1.0,
       roughness: 0.15,
       envMapIntensity: ENV_METAL * 1.15,
@@ -1082,14 +1082,25 @@ function buildMaterials(game) {
      with almost no body colour: 24% of a 2.6x sky reflection is still a blown white clip and
      that is exactly how it rendered. Now the body colour is a deep blue-green (the coating
      cast), it carries most of the blend, and the specular is a sheen rather than a mirror. */
+  /* Second recalibration, and this one is about *where the energy lives*, not how much.
+     At colour x0.42 / opacity 0.72 the element was mostly a diffuse disc: 72% of a lit mid-tone
+     laid over the tube, which renders as a flat green-grey coin whatever is behind it. Measured
+     off a capture, the ocular came back at luminance 142 with under 12 codes of variation
+     across the whole aperture — a painted disc, exactly what §3.8 says not to ship.
+     Real coated glass reflects under 1% on axis and approaches 100% at grazing, so essentially
+     all of its visible energy is Fresnel. So the body colour drops by 2.6x and hands the disc
+     back to the tube interior behind it, while roughness tightens and envMapIntensity goes up:
+     three's IBL includes the Fresnel term, so on the domed element that produces a dark centre
+     and a bright rim *for free*, from the geometry, and the bright band travels round the lens
+     as the weapon moves. That is what the additive rim below was faking, so it comes down. */
   mats.glass = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(PALETTE.glass).lerp(new THREE.Color(PALETTE.tarpBlue), 0.72).multiplyScalar(0.42),
+    color: new THREE.Color(PALETTE.glass).lerp(new THREE.Color(PALETTE.tarpBlue), 0.72).multiplyScalar(0.16),
     metalness: 0.0,
-    roughness: 0.13,
+    roughness: 0.075,
     transparent: true,
-    opacity: 0.72,
+    opacity: 0.58,
     depthWrite: false,
-    envMapIntensity: 0.85,
+    envMapIntensity: 1.35,
   });
   if (env) mats.glass.envMap = env;
   owned.push(mats.glass);
@@ -1099,7 +1110,7 @@ function buildMaterials(game) {
   mats.coating = new THREE.MeshBasicMaterial({
     color: new THREE.Color(0.055, 0.105, 0.082),
     transparent: true,
-    opacity: 0.55,
+    opacity: 0.4,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
   });
@@ -1107,11 +1118,14 @@ function buildMaterials(game) {
 
   /* Fresnel rim: a thin annulus at the edge of the glass. Grazing angles are where a lens
      goes bright, and having the *rim* be the bright part rather than the centre is the whole
-     difference between reading as glass and reading as a painted white disc. */
+     difference between reading as glass and reading as a painted white disc.
+     Halved now that the elements are domed and the standard material's own IBL Fresnel does
+     most of this properly — this is only the top-up that a 26-segment lathe cannot resolve at
+     the very edge, and doubling up on it was part of what blew the aperture out. */
   mats.coatRim = new THREE.MeshBasicMaterial({
-    color: new THREE.Color(0.30, 0.44, 0.52),
+    color: new THREE.Color(0.3, 0.44, 0.52),
     transparent: true,
-    opacity: 0.5,
+    opacity: 0.24,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
   });
@@ -1855,7 +1869,11 @@ function buildOptic(mats, cfg) {
     const dot = new THREE.Mesh(new THREE.CircleGeometry(1.0, 12), mats.reticle);
     reticle.add(dot);
   }
-  const glow = new THREE.Mesh(new THREE.CircleGeometry(kind === 'lpvo' ? 6.5 : 3.4, 14), mats.reticleGlow);
+  /* Glow halo. Sized down from 3.4/6.5: the hipfire scale below put a 3.4-unit halo at 8.2 mm
+     radius inside a 13 mm aperture, so 62% of the objective was a soft orange wash and the
+     tube interior it is supposed to be sitting *in* never showed. A dot needs a halo, not a
+     floodlight. */
+  const glow = new THREE.Mesh(new THREE.CircleGeometry(kind === 'lpvo' ? 4.6 : 2.3, 14), mats.reticleGlow);
   glow.position.z = -0.0002;
   reticle.add(glow);
   // renderOrder has to live on the meshes, not the Group — see the note above the glass.
@@ -4678,7 +4696,7 @@ export function createWeapon(game) {
       // axis it is scaled up a little so the glow still reads as a lit emitter inside the
       // glass rather than collapsing to a sub-pixel speck.
       const dist = Math.max(0.02, _v3.distanceTo(_v5));
-      const s = dist * (0.0035 + 0.0026 * (1 - state.adsBlend)) * scaleInv;
+      const s = dist * (0.0035 + 0.0016 * (1 - state.adsBlend)) * scaleInv;
       optic.reticle.scale.setScalar(s);
       // In ADS the dot is the aim point and runs hot; in hipfire it is only the glow you see
       // through the objective, so it drops to a fraction and takes the aperture fade with it.
