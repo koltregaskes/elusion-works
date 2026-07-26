@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Cyberpunk Messenger icon">
+  <rect width="64" height="64" rx="10" fill="#070813"/>
+  <path d="M14 38 32 8l18 30-18 18Z" fill="#32fff0" stroke="#06121b" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M26 34h13l-8 14 2-10H22l9-18Z" fill="#ffd84f" stroke="#06121b" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M14 38 32 8l18 30" fill="none" stroke="#ff2bc2" stroke-width="3" stroke-linecap="round"/>
+</svg>
