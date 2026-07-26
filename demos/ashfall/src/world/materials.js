@@ -3080,6 +3080,7 @@ uniform float uInscatterAnisotropy;
 
 uniform sampler2D uDetailNormal;
 uniform float uDetailScale;
+uniform float uDetailMicro;
 uniform float uDetailStrength;
 uniform float uDetailFadeNear;
 uniform float uDetailFadeFar;
@@ -3093,6 +3094,7 @@ uniform float uAshMetalKeep;
 
 uniform float uMacroStrength;
 uniform float uMacroScale;
+uniform float uMacroScale2;
 uniform float uMacroRough;
 uniform float uMesoStrength;
 uniform float uMesoRough;
@@ -3222,13 +3224,30 @@ const FRAG_NORMAL_STD = /* glsl */ `
     vec3 ashBaseN = texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;
     ashBaseN.xy *= normalScale;
 
-    // Detail normal at 8x UV, faded out with distance. Without the fade this is the number
-    // one source of shimmer once TAA and a sharpen pass are in the chain.
+    // Detail normal at 8x UV plus a micro octave several times finer again, both faded out
+    // with distance. Without the fade high-frequency normals are the number one source of
+    // shimmer once TAA and a sharpen pass are in the chain.
+    //
+    // The fade is FLOORED at grazing angles rather than run to zero. A surface seen edge-on
+    // is exactly where its micro-relief is most visible — the texel projects long in one
+    // axis and the key rakes straight across it — so fading it out there is what makes the
+    // far half of a ground plane read as a flat shaded polygon. Grazing texels are also
+    // where the mip chain has already thrown the base normal away, so this is the only
+    // relief left at that angle.
     float ashViewDist = length( vViewPosition );
+    float ashNV = clamp( abs( dot( normalize( vViewPosition ), normal ) ), 0.0, 1.0 );
+    float ashGraze = 1.0 - smoothstep( 0.10, 0.72, ashNV );
     float ashDetailFade = 1.0 - smoothstep( uDetailFadeNear, uDetailFadeFar, ashViewDist );
+    ashDetailFade = max( ashDetailFade, ashGraze * 0.8 );
+
     vec3 ashDetN = texture2D( uDetailNormal, vNormalMapUv * uDetailScale ).xyz * 2.0 - 1.0;
+    // Swizzled so the micro octave is not a scaled copy of the same pattern: two octaves of
+    // the identical tile stacked in register read as one octave with a beat in it.
+    vec3 ashMicN = texture2D( uDetailNormal, vNormalMapUv * uDetailScale * uDetailMicro ).yxz * 2.0 - 1.0;
     ashDetN.xy *= uDetailStrength * ashDetailFade;
+    ashMicN.xy *= uDetailStrength * 0.6 * ashDetailFade * ashDetailFade;
     vec3 ashN = ashRNM( ashBaseN, normalize( ashDetN ) );
+    ashN = ashRNM( ashN, normalize( ashMicN ) );
 
     normal = normalize( tbn * ashN );
 
@@ -3257,7 +3276,12 @@ const FRAG_NORMAL_TRI = /* glsl */ `
     vec3 tnZ = texture2D( normalMap, ashWP.xy * ashS ).xyz * 2.0 - 1.0;
 
     float ashViewDist = length( vViewPosition );
+    float ashNV = clamp( abs( dot( normalize( vViewPosition ), normal ) ), 0.0, 1.0 );
+    float ashGraze = 1.0 - smoothstep( 0.10, 0.72, ashNV );
     float ashDetailFade = 1.0 - smoothstep( uDetailFadeNear, uDetailFadeFar, ashViewDist );
+    // Floored at grazing angles: see FRAG_NORMAL_STD. This matters most here, because the
+    // triplanar path is the ground, and the ground is almost entirely grazing.
+    ashDetailFade = max( ashDetailFade, ashGraze * 0.8 );
     float ashDS = ashS * uDetailScale;
     vec3 dnX = texture2D( uDetailNormal, ashWP.zy * ashDS ).xyz * 2.0 - 1.0;
     vec3 dnY = texture2D( uDetailNormal, ashWP.xz * ashDS ).xyz * 2.0 - 1.0;
@@ -3268,6 +3292,12 @@ const FRAG_NORMAL_TRI = /* glsl */ `
     tnX = ashRNM( tnX, normalize( dnX ) );
     tnY = ashRNM( tnY, normalize( dnY ) );
     tnZ = ashRNM( tnZ, normalize( dnZ ) );
+    // One micro octave, on the up-facing projection only. Three would triple the fetch cost
+    // of the path for detail that would be invisible on the two vertical projections, so it
+    // is weighted straight out by the up weight instead.
+    vec3 dnM = texture2D( uDetailNormal, ashWP.xz * ashDS * uDetailMicro ).yxz * 2.0 - 1.0;
+    dnM.xy *= ashDStr * 0.6 * ashDetailFade;
+    tnY = ashRNM( tnY, normalize( dnM ) );
 
     // Whiteout blend: keep the tangent-space XY perturbation, take the geometric normal for
     // the projection axis. Cheaper than a full per-axis TBN and visually indistinguishable
@@ -3320,13 +3350,26 @@ const FRAG_ASH = /* glsl */ `
     // Meso band, ~1.7 m and its two sub-octaves: compacted vs loose, damp vs dry, drifted
     // vs swept. This is the band the eye reads as "surface" while moving.
     float ashBreak = ashFbm2( vAshWorld.xz * uAshNoiseScale + vAshWorld.y * 0.11 );
-    // Macro band, ~15 m. Kills repetition on large planes and gives the long tonal drift.
-    float ashMacro = ashFbm2( vAshWorld.xz * uMacroScale + vAshWorld.y * 0.03 );
+    // Macro band, ~15 m, plus a wide band four times coarser again (~65 m, i.e. most of the
+    // width of the yard). One band alone still repeats: it beats against itself at its own
+    // wavelength and the eye finds *that* period instead. Two incommensurate bands do not.
+    float ashMacroF = ashFbm2( vAshWorld.xz * uMacroScale + vAshWorld.y * 0.03 );
+    float ashMacroW = ashNoise2( vAshWorld.xz * uMacroScale * uMacroScale2 + 7.31 );
+    float ashMacro = clamp( ashMacroF * 0.6 + ashMacroW * 0.4, 0.0, 1.0 );
 
     /* ---- 1. ash / dust film -------------------------------------------------- */
 
+    // Fallout does not settle evenly. It drifts: heaped where the air was still, scoured
+    // where it was not, and the edge between the two is what makes a horizontal face read as
+    // *covered in ash* rather than merely tinted grey. Thresholding the coverage against the
+    // two world bands is what produces that edge.
+    float ashDrift = smoothstep( 0.14, 0.76, ashBreak * 0.6 + ashMacro * 0.4 );
     float ashMask = pow( ashUp, uAshSharpness ) * uAshAmount;
-    ashMask *= mix( 0.40, 1.30, ashBreak );
+    // Hard gate through vertical. Ash sits on horizontal faces and on nothing else, and a
+    // wall that carries any of it at all immediately reads as a tinted material rather than
+    // as a dusted one. Below about 12 degrees off vertical there is none.
+    ashMask *= smoothstep( 0.02, 0.32, ashWN.y );
+    ashMask *= 0.28 + 1.20 * ashDrift;
     // Crevices trap more dust than exposed faces.
     ashMask *= mix( 1.3, 0.82, ashAOc );
     // Bare polished metal does not hold a dust film the way oxide, paint and concrete do, and
@@ -3337,15 +3380,24 @@ const FRAG_ASH = /* glsl */ `
     ashMask *= mix( 1.0, uAshMetalKeep, metalnessFactor * ( 0.45 + 0.55 * ashEdge ) );
     ashMask = clamp( ashMask, 0.0, 1.0 );
 
-    diffuseColor.rgb = mix( diffuseColor.rgb, uDustColour, ashMask * 0.72 );
-    roughnessFactor = mix( roughnessFactor, uAshRoughness, ashMask * 0.85 );
+    diffuseColor.rgb = mix( diffuseColor.rgb, uDustColour, ashMask * 0.86 );
+    // A dust film is a powder lying ON the surface, not a stain in it: it raises the albedo
+    // floor as well as pulling the hue. Squared so only the properly drifted texels lift,
+    // which keeps the effect as deposits rather than an overall exposure change.
+    diffuseColor.rgb += uDustColour * ( ashMask * ashMask * 0.11 );
+    roughnessFactor = mix( roughnessFactor, uAshRoughness, ashMask * 0.9 );
     // A dust film is a dielectric.
-    metalnessFactor *= ( 1.0 - ashMask * 0.92 );
+    metalnessFactor *= ( 1.0 - ashMask * 0.94 );
 
     /* ---- 2. three-scale world breakup, albedo AND roughness ------------------ */
 
-    diffuseColor.rgb *= mix( 1.0 - uMacroStrength, 1.0 + uMacroStrength, ashMacro );
-    roughnessFactor += ( ashMacro - 0.5 ) * 2.0 * uMacroRough;
+    // Pushed towards the ends of the range before it is applied. A raw fBm spends most of its
+    // life near its mean, so a ±20% swing authored against it delivers ±4% in practice and
+    // the tiling it exists to hide survives intact.
+    float ashMacroS = ( ashMacro - 0.5 ) * 2.0;
+    ashMacroS = sign( ashMacroS ) * pow( abs( ashMacroS ), 0.7 );
+    diffuseColor.rgb *= 1.0 + ashMacroS * uMacroStrength;
+    roughnessFactor += ashMacroS * uMacroRough;
 
     // Roughness has to vary with the same fields the albedo varies with, or the frame ends up
     // with one global sheen no matter how much albedo detail is present.

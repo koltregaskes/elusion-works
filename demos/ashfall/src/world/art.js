@@ -177,10 +177,32 @@ export const GRADE = {
    * ground several stops under and the scene reads as night rather than an hour before dusk.
    * At 3.4 the sunlit faces land in the upper mid-tones, the sun disc and the burning barrel
    * cross the bloom threshold, and the shadowed ground still has real density.
+   *
+   * Raised to 5.0 (+0.56 stop) once the toe was measured rather than eyeballed. At 3.4 the
+   * frame was bimodal: in a terraces render 42% of pixels sat under luminance 24 and 19% were
+   * at literal zero, while nothing anywhere exceeded 241 — no toe and no shoulder, just a
+   * cliff. Most of that was the offsets below, but 3.4 also left the whole shadow population
+   * sitting on the steepest part of the AgX sigmoid, where a third of a stop of light is the
+   * difference between black and mid grey. 5.0 slides the histogram up so the shadows ride the
+   * curve's toe instead of falling off its end, and pushes the sunlit gravel and the sky into
+   * the shoulder where the roll-off actually does something.
    */
-  exposure: 3.4,
-  /** Pivoted on 0.18 in postfx. 1.20 is what actually reaches display white and display black. */
-  contrast: 1.2,
+  exposure: 5.0,
+  /**
+   * Pivoted on 0.18 in postfx: `c = (c - 0.18) * contrast + 0.18`.
+   *
+   * 1.20 was the single biggest cause of the crushed black end, and not in an obvious way: the
+   * pivot form means the pass subtracts a *constant* 0.18 * (contrast - 1) in display-linear
+   * before the shader's max(c, 0). At 1.20 that is 0.036 — every pixel below display-linear
+   * 0.030, which is sRGB code 49, was forced to exactly zero. Combined with a negative lift it
+   * is what produced 19% pure-black pixels and a hard edge between "black" and "mid grey" with
+   * nothing in between.
+   *
+   * 1.08 cuts that subtraction to 0.0144, and masterLift below is set to pay it back exactly,
+   * so the toe is now a curve rather than a guillotine. The contrast the frame reads as still
+   * comes from AgX's sigmoid plus agxLookPower, which are multiplicative and cannot clip.
+   */
+  contrast: 1.08,
   /**
    * Still well under 1.0 — §4 wants the palette desaturated so the rust and hazard paint carry.
    * Nudged up from 0.88 only enough that the warm/cool split below survives to the display.
@@ -192,20 +214,48 @@ export const GRADE = {
    * `gain` is a slope, so it owns the highlights: red above unity and blue below warms anything
    * the sun touches. `lift` is a constant offset, so its *relative* weight grows as the pixel
    * gets darker: it owns the shadows, and blue-positive / red-negative is what turns an unlit
-   * plane cool. The previous [-0.006, 0, 0.014] was 1.4% of range and measured as nothing at
-   * all in the render; this is roughly 3x that, which puts shadow-side concrete around
-   * R-B = -15 in display codes. It is still an offset of a few percent, not a colour cast.
+   * plane cool.
+   *
+   * [-0.018, 0, 0.030] was not a tint, it was a channel guillotine. With masterLift folded in
+   * the red offset was -0.042 in display-linear, so red was forced to zero for every pixel
+   * below sRGB code 56 while blue was pushed *up*. Measured result: shadowed ground in a
+   * terraces render read R7 G41 B73 — saturated navy with a dead red channel — and the mean of
+   * all sub-luminance-24 pixels was 2.2 / 3.2 / 24.1. §4's cool shade was not being lit, it was
+   * being painted on by clipping two thirds of the primaries.
+   *
+   * An offset is the wrong tool for a hue at the black end, because its relative weight goes to
+   * infinity as the pixel darkens. So it is now ~7x smaller — enough to be a genuine hint of
+   * blue in the deepest tones, small enough that it can never outrun the signal. The cool now
+   * comes from where §4 says it should: the sky-zenith hemisphere fill and the environment
+   * probe in the render, and postfx's split-tone at the display end, which is *multiplicative*
+   * off PALETTE.skyZenith and therefore rotates hue without touching any channel's floor.
    */
-  lift: [-0.018, 0.0, 0.03],
+  lift: [-0.001, 0.0, 0.0025],
   gamma: [1.0, 0.995, 0.985],
-  gain: [1.045, 1.0, 0.945],
+  /**
+   * Slope, so it owns the highlights: red above unity and blue below warms what the sun
+   * touches. Blue was 0.945, which on top of the split-tone's own warm highlight tint pulled
+   * roughly 14% out of blue at the top end and stopped the frame ever resolving a neutral
+   * white; the brightest pixel anywhere measured 241. 0.98 leaves the warm bias to the split
+   * tone, which is luminance-normalised and cannot cost the image its white point. Red comes
+   * back to 1.04 for the same reason — at 1.045 with the raised exposure it clipped red before
+   * green and hue-shifted the sun disc.
+   */
+  gain: [1.04, 1.0, 0.98],
   /**
    * Neutral black point, added to `lift` on all three channels by postfx (it defaults to -0.010
-   * when this key is absent). Deepened because the darkest 5% of the frame was landing around
-   * 66/255 — a fogged grey card, not a photograph. Negative offset clips to zero in the shader,
-   * so this is a real toe rather than a gamma crush.
+   * when this key is absent).
+   *
+   * Now *positive*, which reads wrong until you follow the order of operations. The contrast
+   * pass runs after this one and, being pivoted on 0.18, unconditionally subtracts
+   * 0.18 * (contrast - 1) = 0.0133 in display-linear before the shader clamps at zero. So a
+   * masterLift of 0.0133 is not a lift at all — it is the amount needed for the toe to land on
+   * zero instead of being cut off above it. The extra 0.0020 on top is the actual authored
+   * pedestal: a hair of flare so the darkest percent of the frame sits around code 4-7 rather
+   * than at absolute black, the way a real negative or a real lens does. Nothing in the chain
+   * clips any more, so the toe rolls down continuously from the shadows into it.
    */
-  masterLift: -0.024,
+  masterLift: 0.0153,
   /**
    * Bloom. Threshold is in HDR scene-linear, *before* exposure. At 1.0 nothing in any frame
    * ever reached it, so the pass never fired and what looked like glow was fog inscatter.
