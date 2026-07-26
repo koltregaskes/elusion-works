@@ -6,7 +6,7 @@ Playable Three.js delivery-game demo for the Elusion Works cabinet.
 
 - Public path: `/demos/cyberpunk-messenger/`
 - Owning source: private `koltregaskes/cyberpunk-messenger` repository
-- Source revision: `d5d56cddb8e3bac2298c7081d9d6048fc00d679e`
+- Source revision: `7b8bd7dbb60871fc5653a13bce7455c953e37c36`
 - Build command: `npm run build:elusion`
 - The hashed JavaScript, CSS, GLB and title artwork are generated release files. Do not hand-edit them in this repository.
 - The title-screen Demos link resolves one level up to `/demos/`.
