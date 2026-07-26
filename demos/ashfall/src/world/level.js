@@ -6367,12 +6367,17 @@ export function createLevel(scene, materials, game) {
       pockMarks(gB, -8.0, 1.6, 3.4, 1.3, 26, 0.205, 8390, 0.2, -0.3);
       pockMarks(gB, 6.0, 5.0, 4.5, 1.4, 22, 0.205, 8391, -0.2, 0.1);
       popX();
-      // West elevation, beside the loading door.
-      place(ADMIN.x0, 0, cz, Math.PI * 0.5);
-      wallFittings(gm, G('brickPainted'), -7.5, -1.5, 3.4, 0.2, 8401, { sign: 'W3', stencil: 'LOAD', stencilSize: 0.06 });
-      wallFittings(gm, G('brickPainted'), 6.0, 12.0, 3.4, 0.2, 8402, { stencil: '22', louvre: true });
-      stencilText(G('brickPainted'), 'BAY 3', 3.0, 3.15, 0.08, T.paint, 0.206);
-      pockMarks(G('brickPainted'), -3.0, 1.5, 2.6, 1.2, 22, 0.205, 8410, 0.4, -0.2);
+      // West elevation, beside the loading door. Note the yaw: the builder lays this face at
+      // +90 degrees, which puts its outward normal at world +X — into the building. Dressing
+      // it needs -90 so local +Z is the yard side, and that mirrors the run, so every local X
+      // below is the negative of the opening coordinates the builder used.
+      place(ADMIN.x0, 0, cz, -Math.PI * 0.5);
+      wallFittings(gm, gB, -12.5, -5.0, 3.4, 0.2, 8401, { sign: 'W3', stencil: '22', louvre: true });
+      wallFittings(gm, gB, -1.2, 3.4, 3.4, 0.2, 8402, { stencil: 'D6', lampAt: 0.3 });
+      wallFittings(gm, gB, 10.0, 12.8, 3.4, 0.2, 8403, { sign: 'E1' });
+      stencilText(gB, 'BAY 3', 6.7, 3.15, 0.08, T.paint, 0.206);
+      stencilText(gB, 'LOAD', -3.0, 3.15, 0.07, T.paint, 0.206);
+      pockMarks(gB, -8.5, 1.5, 2.2, 1.2, 22, 0.205, 8410, 0.4, -0.2);
       popX();
       downpipe(ADMIN.x0 - 0.3, ADMIN.z0 + 12.0, ADMIN.floor * 2 + ADMIN.para, 0, gm);
       downpipe(ADMIN.x0 - 0.3, ADMIN.z1 - 2.0, ADMIN.floor * 2 + ADMIN.para, 0, gm);
