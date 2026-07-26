@@ -6283,9 +6283,6 @@ export function createLevel(scene, materials, game) {
 
   /** Walls: rainwater goods, services, fittings, signage, stencils and the stains off them. */
   function dressWalls() {
-    const gm = G('metalRust');
-    const gs = G('metalPainted');
-
     /* --- the depot ------------------------------------------------------- */
     // East elevation faces the yard and carries the roller door; the blank piers either side
     // of it are the largest unbroken wall in the map from the yard vantage.
@@ -6397,7 +6394,8 @@ export function createLevel(scene, materials, game) {
       ];
       for (let r = 0; r < runs.length; r++) {
         const [x0, x1, wz, side, h, seedN] = runs[r];
-        const zOut = side * 0.09;
+        // Yaw the frame so local +Z always leaves the wall on the yard side, whichever way
+        // round the run was authored. Everything below is then a plain positive offset.
         place((x0 + x1) * 0.5, 0, wz, side > 0 ? 0 : Math.PI);
         const half = (x1 - x0) * 0.5;
         const bays = Math.max(2, Math.round((x1 - x0) / 2.5));
@@ -6420,27 +6418,38 @@ export function createLevel(scene, materials, game) {
     {
       const gB = G('brickPainted');
       const cx = (DOCK.x0 + DOCK.x1) * 0.5;
-      const hd = (DOCK.z1 - DOCK.z0) * 0.5;
       place(cx, 0, DOCK.z0, Math.PI);
-      // Bay numbers along the dock face, which is what a freight platform actually carries.
+      // Bay numbers along the dock face, which is exactly what a freight platform carries,
+      // plus the run-off from the coping above each one.
       for (let i = 0; i < 7; i++) {
         const px = -17.0 + i * 5.7;
-        stencilText(gB, String(i + 1), px, 0.7, 0.085, T.paint, 0.19);
-        rustWash(gB, px, DOCK.h - 0.02, 0.6, 0.3, 3, 0.19, T.grime, 8601 + i);
+        stencilText(gB, String(i + 1), px, 0.66, 0.08, T.paint, 0.19);
+        rustWash(gB, px + 1.4, DOCK.h - 0.04, 0.62, 0.35, 3, 0.19, T.grime, 8601 + i);
+      }
+      for (let i = 0; i < 8; i++) {
+        rustWash(gB, -19.4 + i * 5.54, DOCK.h - 0.05, 0.55, 0.22, 3, 0.19, T.rustWash, 8640 + i);
       }
       pockMarks(gB, 6.0, 0.6, 4.0, 0.42, 18, 0.19, 8620, 0, 0);
       popX();
-      void hd;
-      // Canopy columns bleed onto the deck, and the deck edge is scuffed by forty years of
-      // pallets: both are streaks, and both are two triangles each.
-      const gCon = G('concreteRough');
-      place(cx, 0, DOCK.z0 + 0.02, Math.PI);
-      for (let i = 0; i < 8; i++) {
-        const px = -19.4 + i * 5.54;
-        rustWash(gCon, px, DOCK.h + 0.02, 0.5, 0.2, 2, -0.02, T.rustWash, 8640 + i);
+      // Scuffing on the deck itself, where forty years of pallets have been dragged off it.
+      const gsc = GT('asphalt', 0.35);
+      for (let i = 0; i < 10; i++) {
+        const px = DOCK.x0 + 2.4 + i * 3.7;
+        place(px, DOCK.h + 0.005, DOCK.z0 + 1.1 + hash2(i, 3) * 1.6, hash2(i, 7) * 3);
+        blobXZ(gsc, 0.6 + hash2(i, 11) * 0.7, 0.42, 8660 + i, T.damp, 9, 0);
+        popX();
       }
+    }
+
+    /* --- the gatehouse: a blank 4 x 3 m brick face straight down the approach --- */
+    {
+      const gB = G('brickPainted');
+      place(34, 0, 36, Math.PI);
+      wallFittings(gm, gB, -1.7, 1.7, 2.9, 1.81, 8701, { sign: 'G1', stencil: 'GATE 4', stencilSize: 0.055, stencilY: 2.35, lamp: true, lampAt: 0.18 });
+      pockMarks(gB, 0.3, 1.4, 1.6, 1.0, 16, 1.815, 8702, 0.3, 0);
       popX();
     }
+    void gs;
   }
 
   /** Working clutter: the things a yard crew leaves lying about. */
