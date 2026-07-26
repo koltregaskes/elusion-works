@@ -15,6 +15,10 @@ handling and synthesised audio.
 3. No external assets. No `.gltf`, `.png`, `.jpg`, `.mp3`, no CDN, no `fetch()`.
    All geometry is built procedurally, all textures are generated at runtime into
    `CanvasTexture`/`DataTexture`, all audio is synthesised with the WebAudio API.
+   **One documented exception:** `index.html` links three webfonts for the interface. No module
+   may depend on them — `styles.css` carries a condensed system fallback stack so the HUD reads
+   correctly with the fonts blocked or absent. Nothing the renderer touches may ever load over
+   the network.
 4. Units are metres, Y is up, Z is the depth axis. `1.0 === 1 metre`.
 5. Target 60 fps at 1080p on integrated graphics at the `medium` quality preset.
    Budget: < 300 draw calls, < 900k triangles visible.

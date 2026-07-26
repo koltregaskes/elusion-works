@@ -35,6 +35,12 @@ responses, is built from oscillators, noise buffers and biquads. That is not a s
 without assets forces every decision to be a number in a file you can read, and it leaves the
 art direction as the only thing holding the image together.
 
+There is exactly one exception, and it is worth naming rather than glossing: the page links three
+webfonts from Google Fonts for the interface. Nothing in the 3D scene depends on them, and the
+HUD is styled against a condensed system fallback stack so it still reads correctly when the
+fonts are blocked, absent or offline. Everything the renderer touches really is generated at
+runtime.
+
 ## The rendering pipeline
 
 The renderer never draws to the screen. `core/engine.js` renders in a fixed order: a **normal
