@@ -1148,6 +1148,69 @@ export function createSky(engine, materials) {
     /** Angular scale height of the dust layer, in units of sin(altitude). */
     hazeHeight: 0.105,
     /**
+     * Top of the boundary layer, in sin(altitude). 0.098 is ~5.6 degrees — the inversion an
+     * industrial town in still evening air actually sits under. This is the edge that makes the
+     * sky read as dusty; without it the aerosol profile is a pure exponential, which is a clean
+     * sky with a wash over it.
+     */
+    hazeTop: 0.098,
+    /** Half-width of that edge, in sin(altitude). ~1.7 degrees: sharp-ish, not a hard line. */
+    hazeEdge: 0.030,
+    /** Scale height of the thin ash that gets lofted above the inversion. */
+    hazeLoft: 0.34,
+    /** How much of the slab's density that lofted tail carries. Small, or the edge disappears. */
+    hazeLoftAmount: 0.20,
+
+    /**
+     * Chappuis ozone absorption. The band peaks near 602 nm, between the red and green
+     * primaries, so integrated against sRGB it takes most out of red, roughly half as much out
+     * of green and almost nothing out of blue — which is what tips the mid-sky green-blue.
+     * 0.24 is a couple of percent of transmission at the band's peak: visible as a hue shift in
+     * a column read, invisible as a "tint".
+     */
+    chappuisStrength: 0.24,
+    /** Where the ozone slant path peaks, in sin(altitude). 0.30 is ~17 degrees. */
+    chappuisAlt: 0.30,
+    chappuisWidth: 0.30,
+    /**
+     * Sunward horizontal brightening. This is the term whose absence made a vertical column
+     * read as a straight two-colour lerp: with only altitude in the model, every column is.
+     */
+    azimuthGain: 0.34,
+
+    /**
+     * Aureole. Much wider than the disc and much wider than the Mie lobe above: 0.44 rad is
+     * 25 degrees of e-folding, so the glow is still doing measurable work 60 degrees out.
+     */
+    aureoleStrength: 0.62,
+    aureoleWidth: 0.44,
+    /** Inner lobe, ~6 degrees, so the glow has a bright heart rather than a flat disc of cream. */
+    aureoleCore: 0.11,
+    /**
+     * Horizontal stretch of the aureole. The scattering aerosol is a *layer*, so a horizontal
+     * offset from the sun stays in the dust far longer than a vertical one and the glow is an
+     * ellipse lying on the horizon. 2.2 is roughly the ratio of the slab's horizontal to
+     * vertical extent at this elevation.
+     */
+    aureoleSquash: 2.2,
+    /**
+     * The horizon glow proper — the band the container stacks and the crane silhouette against.
+     * Keyed to azimuth, not to angular distance from the disc, so it runs along the horizon.
+     */
+    horizonGlow: 0.55,
+    /** Scale height of that band, in sin(altitude). ~3 degrees. */
+    horizonGlowHeight: 0.052,
+    /** How tightly it hugs the sun's azimuth. 3.0 gives a ~90 degree wide wash. */
+    horizonGlowFocus: 3.0,
+
+    /**
+     * Ordered-dither amplitude, relative. The sRGB transfer's local slope is ~1/2.2 through the
+     * mid-tones, so 2.2/255 moves the display by about one code value — the smallest step that
+     * can break a contour and the largest that is not grain. Everything between the dome and
+     * the display is a monotone rescaling, so a *relative* perturbation stays this size.
+     */
+    dither: 2.2 / 255,
+    /**
      * Horizon-haze gain, i.e. PALETTE.skyHorizon times this. 1.10 puts the dust band ~3.5x the
      * zenith's luminance — the dusk ratio — while staying under AgX's shoulder. At 1.65 it
      * clipped, and a clipped horizon is what erased the sun disc's contrast against it.
@@ -1171,19 +1234,44 @@ export function createSky(engine, materials) {
     sunDiscIntensity: 120,
     skyScale: 1.0,
 
-    cloudHeight: 180,
-    /** Threshold, so *higher* is less cloud. Opened up: the deck was a solid lid over the sun. */
-    cloudCoverage: 0.54,
-    cloudSoftness: 0.30,
-    cloudOpacity: 0.78,
+    /**
+     * Deck altitude. Raised from 180 m: at 180 the plane intersect put every visible feature
+     * inside 2.5 km, so the deck occupied a narrow strip and never reached the horizon. 620 m
+     * pushes the same angular sizes out to where perspective can compress them, which is what
+     * produces the tightening bands the horizon needs.
+     */
+    cloudHeight: 620,
+    /**
+     * Threshold, so *higher* is less cloud. 0.54 against an fBm whose mean is ~0.5 left the deck
+     * below the coverage threshold nearly everywhere — measured as no cloud at all in three of
+     * four frames. 0.42 puts roughly a third of the sky under cloud, which is a deck.
+     */
+    cloudCoverage: 0.42,
+    cloudSoftness: 0.20,
+    /** Raised: at 0.78, under aerial perspective, the deck was being swamped by the haze band. */
+    cloudOpacity: 0.94,
     cloudWarp: 0.55,
     cloudAbsorb: 1.35,
-    /** Metres per fBm unit. ~760 m puts a cumulus bank in the right size bracket. */
-    cloudFeatureSize: 760,
+    /**
+     * Metres per fBm unit *across* the wind. With the 6:1 stretch below the along-wind features
+     * run to ~9 km, which is the aspect ratio of a real sheared deck.
+     */
+    cloudFeatureSize: 1500,
+    /** Domain compression along the wind. This is what makes bands instead of blobs. */
+    cloudStretch: 6.0,
+    /** Cross-wind displacement of the streaks — vertical wind shear, so they feather and fan. */
+    cloudShear: 0.55,
+    /** Fibrous along-streak detail. Combed, not speckled. */
+    cloudFibre: 0.40,
+    /** Aerial-perspective rate, per metre. Gentler than before: the deck now reaches much further. */
+    cloudAerial: 0.00011,
+    /** Where the deck starts fading out near the horizon, in sin(altitude). ~0.2 degrees. */
+    cloudHorizonStart: 0.004,
     /** Clouds ride faster than the ground wind. */
     cloudWindScale: 5.5,
-    cloudFadeNear: 2600,
-    cloudFadeFar: 11000,
+    /** Pushed out to match the new deck altitude, or the horizon bands are culled before they read. */
+    cloudFadeNear: 9000,
+    cloudFadeFar: 42000,
 
     dustDensity: ATMOSPHERE.dustMoteDensity,
     dustAmbient: 0.055,
@@ -1403,6 +1491,29 @@ export function createSky(engine, materials) {
     uSkyScale: { value: params.skyScale },
     uSunVisibility: { value: 1 },
     uTime: { value: 0 },
+    // Vertical + azimuthal structure in the clear sky.
+    uChappuisTau: { value: new THREE.Vector3() },
+    uChappuisAlt: { value: params.chappuisAlt },
+    uChappuisWidth: { value: params.chappuisWidth },
+    uSunAzXZ: { value: new THREE.Vector2(0, -1) },
+    uAzimuthGain: { value: params.azimuthGain },
+    // Boundary-layer haze slab.
+    uHazeTop: { value: params.hazeTop },
+    uHazeEdge: { value: params.hazeEdge },
+    uHazeLoft: { value: params.hazeLoft },
+    uHazeLoftAmount: { value: params.hazeLoftAmount },
+    // Aureole + horizon glow.
+    uSunUpAxis: { value: new THREE.Vector3(0, 1, 0) },
+    uAureoleStrength: { value: params.aureoleStrength },
+    uAureoleWidth: { value: params.aureoleWidth },
+    uAureoleCore: { value: params.aureoleCore },
+    uAureoleSquash: { value: params.aureoleSquash },
+    uHorizonGlow: { value: params.horizonGlow },
+    uHorizonGlowHeight: { value: params.horizonGlowHeight },
+    uHorizonGlowFocus: { value: params.horizonGlowFocus },
+    // Banding.
+    uDither: { value: params.dither },
+    uDitherOffset: { value: new THREE.Vector2() },
     // Horizon convergence — mirrors of the height-fog uniforms, written in recompute().
     uFogNear: { value: colFogNear.clone() },
     uFogFar: { value: colFogFar.clone() },
@@ -1449,7 +1560,8 @@ export function createSky(engine, materials) {
   const cloudUniforms = {
     uSunDir: { value: skyUniforms.uSunDir.value },
     uSunColour: { value: new THREE.Color(1, 1, 1) },
-    uSkyColour: { value: colZenith.clone() },
+    uAmbTop: { value: colZenith.clone() },
+    uAmbUnder: { value: colHorizon.clone() },
     uHazeColour: { value: colHorizon.clone() },
     uCloudAlbedo: { value: colSmoke.clone().lerp(_colA.setRGB(1, 1, 1, THREE.LinearSRGBColorSpace), 0.35) },
     uCamXZ: { value: new THREE.Vector2() },
@@ -1457,6 +1569,7 @@ export function createSky(engine, materials) {
     uCloudHeight: { value: params.cloudHeight },
     uCloudScale: { value: 1 / params.cloudFeatureSize },
     uCloudDrift: { value: new THREE.Vector2() },
+    uWindDir: { value: windXZ.clone() },
     uTime: { value: 0 },
     uCoverage: { value: params.cloudCoverage },
     uSoftness: { value: params.cloudSoftness },
@@ -1467,6 +1580,11 @@ export function createSky(engine, materials) {
     uSunVisibility: { value: 1 },
     uFadeNear: { value: params.cloudFadeNear },
     uFadeFar: { value: params.cloudFadeFar },
+    uStretch: { value: params.cloudStretch },
+    uShear: { value: params.cloudShear },
+    uFibre: { value: params.cloudFibre },
+    uAerial: { value: params.cloudAerial },
+    uHorizonStart: { value: params.cloudHorizonStart },
   };
 
   const cloudMaterial = new THREE.ShaderMaterial({
