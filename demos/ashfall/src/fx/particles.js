@@ -2602,4 +2602,1798 @@ void main() {
 }
 `;
 
-//__APPEND__
+/* -------------------------------------------------------------------------- */
+/* Additional scratch — same rule as above: the hot path allocates nothing      */
+/* -------------------------------------------------------------------------- */
+
+const _fxA = new THREE.Vector3();
+const _fxB = new THREE.Vector3();
+const _fxC = new THREE.Vector3();
+const _fxD = new THREE.Vector3();
+const _tanA = new THREE.Vector3();
+const _tanB = new THREE.Vector3();
+const _gA = new THREE.Vector3();
+const _gB = new THREE.Vector3(0, -1, 0);
+const _wind = new THREE.Vector3();
+const _sunV = new THREE.Vector3();
+const _colA = new THREE.Color();
+const _colB = new THREE.Color();
+const _m1 = new THREE.Matrix4();
+const UNIT_X = new THREE.Vector3(1, 0, 0);
+
+/**
+ * Memoised sRGB-hex -> linear `Color`.
+ *
+ * `Color.setStyle` parses its argument with a regular expression, and `RegExp.exec` allocates
+ * a match array every call. That is invisible in a spawn burst but it is a garbage tap in
+ * anything that runs per frame, so the handful of palette entries the frame path needs are
+ * resolved once and copied thereafter. `Map.get` on an interned string literal allocates
+ * nothing. Spawn-time emission keeps using `emColour0`/`emColour1` above — a burst is bounded
+ * work and the shared descriptor is what matters there.
+ */
+const _linCache = new Map();
+function linConst(hex) {
+  let c = _linCache.get(hex);
+  if (c === undefined) {
+    c = new THREE.Color();
+    c.setStyle(hex, THREE.SRGBColorSpace);
+    _linCache.set(hex, c);
+  }
+  return c;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Per-surface impact recipe                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * `art.js` already owns hardness, density and the spark coefficient; this table owns only
+ * what is purely visual — how many of what, how big, and which decal. Counts are quoted at
+ * the `high` preset and are scaled by the quality particle multiplier at spawn time.
+ */
+const SURFACE_FX = {
+  concrete: {
+    decal: D_CONCRETE, decalSize: 0.19, decalTtl: 45,
+    puffs: 5, puffSize: 0.62, puffLife: 1.5, puffSpeed: 3.2,
+    chips: 6, chipTile: T_CHIP_A, chipColour: PALETTE.concreteStained, chipSize: 0.035, chipSpeed: 6.5,
+    sparkLife: 0.2, sparkSpeed: 9, ricochet: 0.55,
+  },
+  metal: {
+    decal: D_METAL, decalSize: 0.13, decalTtl: 60,
+    puffs: 2, puffSize: 0.3, puffLife: 0.8, puffSpeed: 2.4,
+    chips: 2, chipTile: T_CHIP_A, chipColour: PALETTE.steelBare, chipSize: 0.025, chipSpeed: 7.5,
+    sparkLife: 0.42, sparkSpeed: 15, ricochet: 0.8,
+  },
+  wood: {
+    decal: D_WOOD, decalSize: 0.17, decalTtl: 50,
+    puffs: 3, puffSize: 0.4, puffLife: 1.1, puffSpeed: 2.6,
+    chips: 8, chipTile: T_CHIP_B, chipColour: PALETTE.woodSplinter, chipSize: 0.05, chipSpeed: 5.5,
+    sparkLife: 0, sparkSpeed: 0, ricochet: 0.4,
+  },
+  dirt: {
+    decal: D_DIRT, decalSize: 0.34, decalTtl: 38,
+    puffs: 6, puffSize: 0.8, puffLife: 1.9, puffSpeed: 3.0,
+    chips: 7, chipTile: T_CLOD, chipColour: PALETTE.dirt, chipSize: 0.06, chipSpeed: 5.0,
+    sparkLife: 0, sparkSpeed: 0, ricochet: 0.3,
+  },
+  gravel: {
+    decal: D_DIRT, decalSize: 0.3, decalTtl: 34,
+    puffs: 5, puffSize: 0.66, puffLife: 1.5, puffSpeed: 3.1,
+    chips: 9, chipTile: T_CLOD, chipColour: PALETTE.gravel, chipSize: 0.045, chipSpeed: 6.0,
+    sparkLife: 0.16, sparkSpeed: 7, ricochet: 0.42,
+  },
+  glass: {
+    decal: D_GLASS, decalSize: 0.26, decalTtl: 70,
+    puffs: 1, puffSize: 0.22, puffLife: 0.6, puffSpeed: 1.8,
+    chips: 10, chipTile: T_SHARD_A, chipColour: PALETTE.glass, chipSize: 0.055, chipSpeed: 6.5,
+    sparkLife: 0, sparkSpeed: 0, ricochet: 0.2,
+  },
+  sandbag: {
+    decal: D_SANDBAG, decalSize: 0.24, decalTtl: 55,
+    puffs: 7, puffSize: 0.55, puffLife: 1.7, puffSpeed: 2.6,
+    chips: 5, chipTile: T_CLOD, chipColour: PALETTE.sandbag, chipSize: 0.03, chipSpeed: 4.2,
+    sparkLife: 0, sparkSpeed: 0, ricochet: 0.22,
+  },
+};
+
+/** Fallback recipe for a surface name nobody registered. Concrete is the safe default. */
+const SURFACE_FX_DEFAULT = SURFACE_FX.concrete;
+
+/**
+ * Distant burning town, placed *outside* the 110 x 90 playable footprint so the columns read
+ * as background story and can never intersect anything the player can reach. `level.js` may
+ * override the list by exposing `level.smokeColumns`.
+ */
+const DEFAULT_COLUMNS = [
+  { x: -78, y: 0, z: -62, scale: 1.0 },
+  { x: 86, y: 0, z: -48, scale: 0.78 },
+];
+
+/**
+ * World-space unit vector toward the sun, derived exactly the way `sky.js` derives it
+ * (azimuth measured from +Z, clockwise). Used when `game.sky` is a stub and cannot tell us.
+ */
+function defaultSunDirection(out) {
+  const el = (SUN_ELEVATION * Math.PI) / 180;
+  const az = (SUN_AZIMUTH * Math.PI) / 180;
+  const ce = Math.cos(el);
+  return out.set(Math.sin(az) * ce, Math.sin(el), Math.cos(az) * ce);
+}
+
+/** Orthonormal tangent pair about `n`, written into `_tanA` / `_tanB`. */
+function basisFromNormal(n) {
+  if (Math.abs(n.y) < 0.92) _tanA.set(0, 1, 0).cross(n);
+  else _tanA.set(1, 0, 0).cross(n);
+  if (_tanA.lengthSq() < 1e-8) _tanA.set(1, 0, 0);
+  _tanA.normalize();
+  _tanB.crossVectors(n, _tanA).normalize();
+}
+
+/**
+ * Uniformly distributed direction inside a cone about `n`. `spread` is the tangent of the
+ * half angle, so 0 is a pencil beam and 1 is a 45 degree cone. Requires `basisFromNormal(n)`
+ * to have been called for this `n` already — hoisting it out of the loop is the whole point.
+ */
+function coneDir(n, spread, out) {
+  const a = rnd() * 6.283185;
+  const r = Math.sqrt(rnd()) * spread;
+  out.copy(n)
+    .addScaledVector(_tanA, Math.cos(a) * r)
+    .addScaledVector(_tanB, Math.sin(a) * r)
+    .normalize();
+  return out;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Point-light flashes                                                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A fixed set of `PointLight`s, added to the scene once at construction and left there for
+ * the lifetime of the session with `intensity = 0` when idle.
+ *
+ * That is deliberate and it is the only workable design: Three bakes the light count into
+ * every material's program, so adding or removing a light mid-firefight would recompile every
+ * shader in the scene and stall for hundreds of milliseconds. An unused light costs a handful
+ * of uniforms and one dead branch per fragment. The pool is therefore always allocated at the
+ * `high`/`ultra` figure and `setLive` only changes how many are *driven*.
+ */
+class LightPool {
+  constructor(scene, cap, range) {
+    this.cap = cap;
+    this.live = cap;
+    this.scene = scene || null;
+    this.items = [];
+    for (let i = 0; i < cap; i++) {
+      const light = new THREE.PointLight(0xffffff, 0, range, 2);
+      light.name = 'fx.flash.' + i;
+      light.castShadow = false;
+      if (this.scene && this.scene.add) this.scene.add(light);
+      this.items.push({ light, age: 0, life: 0, peak: 0, curve: 2 });
+    }
+  }
+
+  setLive(n) {
+    this.live = clamp(n | 0, 0, this.cap);
+    for (let i = this.live; i < this.cap; i++) {
+      const it = this.items[i];
+      it.life = 0;
+      it.light.intensity = 0;
+    }
+  }
+
+  /** @param {THREE.Color} colour  @param {number} curve falloff exponent (2 = punchy) */
+  flash(x, y, z, colour, peak, life, range, curve) {
+    const n = this.live;
+    if (n === 0 || life <= 0) return -1;
+    // Claim a free slot, else steal the one with the least life left — that is the flash the
+    // player is least likely to still be looking at.
+    let best = 0;
+    let bestRemain = Infinity;
+    for (let i = 0; i < n; i++) {
+      const it = this.items[i];
+      const remain = it.life - it.age;
+      if (remain <= 0) {
+        best = i;
+        bestRemain = -1;
+        break;
+      }
+      if (remain < bestRemain) {
+        bestRemain = remain;
+        best = i;
+      }
+    }
+    const it = this.items[best];
+    it.light.position.set(x, y, z);
+    if (colour) it.light.color.copy(colour);
+    it.light.distance = range;
+    it.age = 0;
+    it.life = life;
+    it.peak = peak;
+    it.curve = curve === undefined ? 2 : curve;
+    it.light.intensity = peak;
+    return best;
+  }
+
+  update(dt) {
+    for (let i = 0; i < this.cap; i++) {
+      const it = this.items[i];
+      if (it.life <= 0) continue;
+      it.age += dt;
+      if (it.age >= it.life) {
+        it.life = 0;
+        it.light.intensity = 0;
+        continue;
+      }
+      const t = 1 - it.age / it.life;
+      it.light.intensity = it.peak * Math.pow(t, it.curve);
+    }
+  }
+
+  clear() {
+    for (let i = 0; i < this.cap; i++) {
+      const it = this.items[i];
+      it.life = 0;
+      it.age = 0;
+      it.light.intensity = 0;
+    }
+  }
+
+  dispose() {
+    for (let i = 0; i < this.cap; i++) {
+      const l = this.items[i].light;
+      if (l.parent) l.parent.remove(l);
+      if (l.dispose) l.dispose();
+    }
+    this.items.length = 0;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Shockwave rings                                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A small fixed set of ring meshes sharing one annulus geometry. Each needs its own material
+ * because `uLife`, `uOpacity` and the colour ramp differ per ring; four `ShaderMaterial`s is
+ * nothing, and the alternative (one material, one ring) would forbid overlapping blasts.
+ *
+ * The geometry's outer radius is 1 and the shader's pressure front sits at `vR = 0.5`, so the
+ * *visible* radius is half the mesh scale: `scale = 2 * radius`.
+ */
+class RingPool {
+  constructor(noise, cap) {
+    this.cap = cap;
+    this.live = cap;
+    this.items = [];
+    this.geometry = new THREE.RingGeometry(0.02, 1.0, 72, 5);
+    for (let i = 0; i < cap; i++) {
+      const material = new THREE.ShaderMaterial({
+        vertexShader: RING_VERT,
+        fragmentShader: RING_FRAG,
+        uniforms: {
+          uInner: { value: 0.0 },
+          uOuter: { value: 1.0 },
+          uNoise: { value: noise },
+          uTime: { value: 0 },
+          uLife: { value: 1 },
+          uHot: { value: new THREE.Color(1, 0.8, 0.5) },
+          uCool: { value: new THREE.Color(0.55, 0.55, 0.58) },
+          uOpacity: { value: 1 },
+        },
+        transparent: true,
+        depthTest: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        fog: false,
+        lights: false,
+        toneMapped: false,
+        blending: THREE.CustomBlending,
+        blendEquation: THREE.AddEquation,
+        blendSrc: THREE.OneFactor, // premultiplied in the shader, like the particle pools
+        blendDst: THREE.OneFactor,
+      });
+      material.name = 'fx:ring' + i;
+      const mesh = new THREE.Mesh(this.geometry, material);
+      mesh.name = 'fx.ring.' + i;
+      mesh.frustumCulled = false;
+      mesh.renderOrder = 14;
+      mesh.visible = false;
+      this.items.push({ mesh, material, age: 0, life: 0, r0: 0, r1: 1, billboard: false, ease: 2.2 });
+    }
+  }
+
+  setLive(n) {
+    this.live = clamp(n | 0, 0, this.cap);
+    for (let i = this.live; i < this.cap; i++) {
+      this.items[i].life = 0;
+      this.items[i].mesh.visible = false;
+    }
+  }
+
+  spawn(x, y, z, r0, r1, life, hotHex, coolHex, opacity, billboard, ease) {
+    const n = this.live;
+    if (n === 0) return -1;
+    let best = 0;
+    let bestRemain = Infinity;
+    for (let i = 0; i < n; i++) {
+      const it = this.items[i];
+      const remain = it.life - it.age;
+      if (remain <= 0) {
+        best = i;
+        bestRemain = -1;
+        break;
+      }
+      if (remain < bestRemain) {
+        bestRemain = remain;
+        best = i;
+      }
+    }
+    const it = this.items[best];
+    it.mesh.position.set(x, y, z);
+    it.age = 0;
+    it.life = life;
+    it.r0 = r0;
+    it.r1 = r1;
+    it.billboard = !!billboard;
+    it.ease = ease === undefined ? 2.2 : ease;
+    it.material.uniforms.uOpacity.value = opacity;
+    lin(hotHex, _colA);
+    it.material.uniforms.uHot.value.copy(_colA);
+    lin(coolHex, _colB);
+    it.material.uniforms.uCool.value.copy(_colB);
+    if (!it.billboard) it.mesh.quaternion.setFromAxisAngle(UNIT_X, -Math.PI * 0.5);
+    it.mesh.visible = true;
+    it.mesh.scale.setScalar(r0 * 2);
+    return best;
+  }
+
+  update(dt, time, camQuat) {
+    for (let i = 0; i < this.cap; i++) {
+      const it = this.items[i];
+      if (it.life <= 0) continue;
+      it.age += dt;
+      if (it.age >= it.life) {
+        it.life = 0;
+        it.mesh.visible = false;
+        continue;
+      }
+      const t = it.age / it.life;
+      // The front decelerates hard: a linearly expanding ring reads as a cartoon.
+      const e = 1 - Math.pow(1 - t, it.ease);
+      const r = it.r0 + (it.r1 - it.r0) * e;
+      it.mesh.scale.setScalar(r * 2);
+      it.material.uniforms.uLife.value = t;
+      it.material.uniforms.uTime.value = time;
+      if (it.billboard && camQuat) it.mesh.quaternion.copy(camQuat);
+    }
+  }
+
+  clear() {
+    for (let i = 0; i < this.cap; i++) {
+      this.items[i].life = 0;
+      this.items[i].mesh.visible = false;
+    }
+  }
+
+  dispose() {
+    this.geometry.dispose();
+    for (let i = 0; i < this.cap; i++) {
+      const it = this.items[i];
+      it.material.dispose();
+      if (it.mesh.parent) it.mesh.parent.remove(it.mesh);
+    }
+    this.items.length = 0;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Heat haze columns                                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Yaw-billboarded quads standing on hot surfaces. Slots are claimed either permanently by a
+ * level hot spot (`level.hotSpots`) or temporarily by an explosion, which leaves the air over
+ * its crater shimmering for a few seconds after the fireball has gone.
+ *
+ * The quad's pivot is at its base so a hot spot is positioned by its footprint, and the shader
+ * masks the top half out, which is what stops a rectangle silhouette appearing against the sky.
+ */
+class HazePool {
+  constructor(noise, cap) {
+    this.cap = cap;
+    this.live = cap;
+    this.items = [];
+    this.geometry = new THREE.PlaneGeometry(1, 1, 6, 10);
+    this.geometry.translate(0, 0.5, 0);
+    for (let i = 0; i < cap; i++) {
+      const material = new THREE.ShaderMaterial({
+        vertexShader: HAZE_VERT,
+        fragmentShader: HAZE_FRAG,
+        uniforms: {
+          uNoise: { value: noise },
+          uTime: { value: 0 },
+          uStrength: { value: 0 },
+          uWarm: { value: new THREE.Color(1, 0.72, 0.45) },
+          uCool: { value: new THREE.Color(0.6, 0.66, 0.74) },
+        },
+        transparent: true,
+        depthTest: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        fog: false,
+        lights: false,
+        toneMapped: false,
+        blending: THREE.CustomBlending,
+        blendEquation: THREE.AddEquation,
+        blendSrc: THREE.OneFactor,
+        blendDst: THREE.OneFactor,
+      });
+      material.name = 'fx:haze' + i;
+      lin(PALETTE.ember, _colA);
+      material.uniforms.uWarm.value.copy(_colA);
+      lin(PALETTE.skyHorizon, _colB);
+      material.uniforms.uCool.value.copy(_colB).multiplyScalar(0.5);
+      const mesh = new THREE.Mesh(this.geometry, material);
+      mesh.name = 'fx.haze.' + i;
+      mesh.frustumCulled = false;
+      mesh.renderOrder = 13;
+      mesh.visible = false;
+      this.items.push({ mesh, material, permanent: false, age: 0, ttl: 0, peak: 0 });
+    }
+  }
+
+  setLive(n) {
+    this.live = clamp(n | 0, 0, this.cap);
+    for (let i = this.live; i < this.cap; i++) {
+      this.items[i].mesh.visible = false;
+      this.items[i].ttl = 0;
+    }
+  }
+
+  /** @param {boolean} permanent true for a level hot spot, false for a transient blast */
+  place(x, y, z, width, height, strength, ttl, permanent) {
+    const n = this.live;
+    if (n === 0) return -1;
+    let best = -1;
+    for (let i = 0; i < n; i++) {
+      const it = this.items[i];
+      if (!it.permanent && it.ttl <= 0) {
+        best = i;
+        break;
+      }
+    }
+    if (best < 0) {
+      // Everything is busy. Permanent spots win over transients; transients never evict.
+      if (!permanent) return -1;
+      for (let i = 0; i < n; i++) {
+        if (!this.items[i].permanent) {
+          best = i;
+          break;
+        }
+      }
+      if (best < 0) return -1;
+    }
+    const it = this.items[best];
+    it.mesh.position.set(x, y, z);
+    it.mesh.scale.set(width, height, 1);
+    it.permanent = !!permanent;
+    it.age = 0;
+    it.ttl = permanent ? Infinity : ttl;
+    it.peak = strength;
+    it.material.uniforms.uStrength.value = permanent ? strength : 0;
+    it.mesh.visible = true;
+    return best;
+  }
+
+  update(dt, time, camX, camZ) {
+    for (let i = 0; i < this.live; i++) {
+      const it = this.items[i];
+      if (!it.mesh.visible) continue;
+      it.material.uniforms.uTime.value = time;
+      if (!it.permanent) {
+        it.age += dt;
+        if (it.age >= it.ttl) {
+          it.ttl = 0;
+          it.mesh.visible = false;
+          continue;
+        }
+        const t = it.age / it.ttl;
+        // Ramp in over the first 12% then decay: the air above a blast keeps moving long
+        // after the flash, and popping it off instantly is the tell.
+        const env = clamp(t / 0.12, 0, 1) * Math.pow(1 - t, 1.4);
+        it.material.uniforms.uStrength.value = it.peak * env;
+      }
+      // Yaw-only billboard: the column must stay vertical, so it turns about Y alone.
+      it.mesh.rotation.y = Math.atan2(camX - it.mesh.position.x, camZ - it.mesh.position.z);
+    }
+  }
+
+  clear() {
+    for (let i = 0; i < this.cap; i++) {
+      const it = this.items[i];
+      if (it.permanent) continue;
+      it.ttl = 0;
+      it.mesh.visible = false;
+    }
+  }
+
+  dispose() {
+    this.geometry.dispose();
+    for (let i = 0; i < this.cap; i++) {
+      const it = this.items[i];
+      it.material.dispose();
+      if (it.mesh.parent) it.mesh.parent.remove(it.mesh);
+    }
+    this.items.length = 0;
+  }
+}
+
+/* ========================================================================== */
+/* createFX                                                                   */
+/* ========================================================================== */
+
+/**
+ * Build the whole effects layer. Construction must not throw even when every sibling module
+ * is a stub, so anything that touches the DOM, WebGL or another module is either guarded or
+ * optional-chained, and a failure downgrades a feature rather than the page.
+ *
+ * @param {object} game the object main.js hands every module (see ARCHITECTURE.md §2)
+ * @returns {object} the `fx` contract from ARCHITECTURE.md §3.11
+ */
+export function createFX(game) {
+  const G = game || {};
+
+  /* --- Quality ---------------------------------------------------------- */
+
+  let qualityName = typeof G.quality === 'string' && FX_QUALITY[G.quality] ? G.quality : 'high';
+  let qp = FX_QUALITY[qualityName];
+  const ULTRA_PARTICLES = FX_QUALITY.ultra.particles;
+
+  /** Scale an authored (high-preset) burst count by the live quality multiplier. */
+  function n(count) {
+    if (count <= 0) return 0;
+    const v = count * qp.particles;
+    // Fractional remainder becomes a probability so a 0.35x preset still shows *some* of a
+    // one-particle effect instead of silently dropping it.
+    const whole = Math.floor(v);
+    return whole + (rnd() < v - whole ? 1 : 0);
+  }
+
+  /* --- Textures --------------------------------------------------------- */
+
+  let atlas = null;
+  try {
+    atlas = buildParticleAtlas();
+  } catch {
+    atlas = null;
+  }
+  if (!atlas) {
+    try {
+      atlas = buildFallbackAtlas();
+    } catch {
+      atlas = null;
+    }
+  }
+
+  let decalAtlas = null;
+  try {
+    decalAtlas = buildDecalAtlas();
+  } catch {
+    decalAtlas = null;
+  }
+
+  let noise = null;
+  try {
+    noise = buildNoiseTexture();
+  } catch {
+    noise = null;
+  }
+
+  /* --- Shared quad ------------------------------------------------------ */
+
+  // Unit quad centred on the origin: the particle vertex shader reads `position.xy` in
+  // [-0.5, 0.5] both as the corner offset and (biased by 0.5) as the atlas UV.
+  const quad = new THREE.PlaneGeometry(1, 1);
+
+  /* --- Pools ------------------------------------------------------------ */
+
+  const alpha = new ParticlePool(CAP_ALPHA, atlas, false, 10, quad);
+  const additive = new ParticlePool(CAP_ADD, atlas, true, 12, quad);
+  const decals = decalAtlas ? new DecalPool(decalAtlas, CAP_DECALS) : null;
+  const casings = new CasingPool(CAP_CASINGS, new THREE.Color().setStyle(PALETTE.brass, THREE.SRGBColorSpace));
+  const motes = new MotePool(CAP_MOTES, quad, PALETTE.dust);
+  const rings = noise ? new RingPool(noise, CAP_RINGS) : null;
+  const haze = noise ? new HazePool(noise, 4) : null;
+  const lights = new LightPool(G.scene, 3, 14);
+
+  // The viewmodel lives in its own scene with its own camera, so a world PointLight cannot
+  // reach it. One dedicated light in `viewScene` gives the gun its own muzzle flash, which is
+  // most of what sells the flash at all — the player is looking straight at the receiver.
+  const viewLights = G.viewScene ? new LightPool(G.viewScene, 1, 2.2) : null;
+
+  lin(PALETTE.dust, _colA);
+  motes.material.uniforms.uColour.value.copy(_colA).multiplyScalar(0.9);
+
+  /* --- Scene attachment ------------------------------------------------- */
+
+  const LAYER = (G.engine && G.engine.LAYER) || null;
+  const LAYER_NOPREPASS = LAYER ? LAYER.NOPREPASS : 0;
+  const LAYER_DECAL = LAYER ? LAYER.DECAL : 0;
+
+  const attached = [];
+
+  function attach(object, layer) {
+    if (!object) return;
+    object.layers.set(layer);
+    if (G.scene && G.scene.add) G.scene.add(object);
+    attached.push(object);
+  }
+
+  // Transparent billboards must never be written into the normal/roughness prepass: they have
+  // no meaningful normal and would punch holes in the SSAO and the soft-particle depth.
+  attach(alpha.mesh, LAYER_NOPREPASS);
+  attach(additive.mesh, LAYER_NOPREPASS);
+  attach(motes.mesh, LAYER_NOPREPASS);
+  if (decals) attach(decals.mesh, LAYER_DECAL);
+  // Brass is opaque and shadow-receiving, so it belongs in the prepass with the rest of the
+  // world: LAYER.WORLD is 0, which is the default.
+  attach(casings.mesh, LAYER ? LAYER.WORLD : 0);
+  if (rings) for (let i = 0; i < rings.items.length; i++) attach(rings.items[i].mesh, LAYER_NOPREPASS);
+  if (haze) for (let i = 0; i < haze.items.length; i++) attach(haze.items[i].mesh, LAYER_NOPREPASS);
+
+  /* --- Lighting for the decal shader ------------------------------------ */
+
+  // The decal is alpha-blended straight over the wall, so its output has to be in the same
+  // radiance units the wall is shaded in. Three's directional light contributes
+  // `albedo * colour * intensity * NdotL / PI`, so that is the factor the decal uses too;
+  // anything else and every bullet hole reads as a dark sticker.
+  const SUN_RADIANCE = LIGHTING.sunIntensity / Math.PI;
+  const SKY_RADIANCE = LIGHTING.hemiSkyIntensity / Math.PI;
+
+  /* --- Wind ------------------------------------------------------------- */
+
+  const wd = ATMOSPHERE.windDirection || [1, 0, 0];
+  _wind.set(wd[0] || 0, wd[1] || 0, wd[2] || 0);
+  if (_wind.lengthSq() < 1e-8) _wind.set(1, 0, 0);
+  _wind.normalize().multiplyScalar(ATMOSPHERE.windSpeed || 0);
+  const windX = _wind.x;
+  const windY = _wind.y;
+  const windZ = _wind.z;
+
+  /* --- Deferred work (fixed-size, never allocates) ---------------------- */
+
+  /** Blood pools form a beat after the mist, otherwise the ground goes red before the spray. */
+  const PENDING_POOLS = 8;
+  const poolTimer = new Float32Array(PENDING_POOLS);
+  const poolX = new Float32Array(PENDING_POOLS);
+  const poolY = new Float32Array(PENDING_POOLS);
+  const poolZ = new Float32Array(PENDING_POOLS);
+  const poolSize = new Float32Array(PENDING_POOLS);
+  let poolHead = 0;
+
+  /** `shot` may arrive from a module that does not call `spawnMuzzle`; resolve it next frame. */
+  const shotOrigin = new THREE.Vector3();
+  const shotDir = new THREE.Vector3(0, 0, -1);
+  const shotMuzzle = new THREE.Vector3();
+  let shotPending = false;
+  let shotScale = 1;
+
+  /* --- Barrel heat ------------------------------------------------------ */
+
+  // Sustained fire heats the barrel; the smoke that curls off it is a pure function of that
+  // heat, which is why it lags the trigger and keeps going after the last round.
+  let barrelHeat = 0;
+  let barrelEmit = 0;
+  const barrelPos = new THREE.Vector3();
+  const barrelDir = new THREE.Vector3(0, 0, -1);
+  let barrelValid = false;
+
+  /* --- Distant smoke columns -------------------------------------------- */
+
+  const columnSrc = (G.level && Array.isArray(G.level.smokeColumns) && G.level.smokeColumns.length)
+    ? G.level.smokeColumns
+    : DEFAULT_COLUMNS;
+  const columnTimer = new Float32Array(CAP_RINGS + 4);
+
+  /* --- Level hot spots -------------------------------------------------- */
+
+  if (haze) {
+    const spots = (G.level && Array.isArray(G.level.hotSpots)) ? G.level.hotSpots : null;
+    if (spots) {
+      for (let i = 0; i < spots.length && i < haze.cap; i++) {
+        const s = spots[i];
+        if (!s) continue;
+        haze.place(
+          s.x || 0,
+          s.y || 0,
+          s.z || 0,
+          s.width || s.radius || 1.4,
+          s.height || 2.6,
+          s.strength === undefined ? 0.5 : s.strength,
+          Infinity,
+          true
+        );
+      }
+    }
+  }
+
+  /* --- Stats ------------------------------------------------------------ */
+
+  const stats = { alpha: 0, additive: 0, casings: 0, decals: 0, motes: 0 };
+
+  /* ---------------------------------------------------------------------- */
+  /* Environment helpers                                                     */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * Ground height under a point, for particles that need something to bounce off. A missing
+   * or stubbed level yields y = 0, which is the map's floor plane, so debris still settles.
+   */
+  function groundYAt(x, y, z) {
+    const lvl = G.level;
+    if (lvl && typeof lvl.raycast === 'function') {
+      _gA.set(x, y + 0.3, z);
+      try {
+        const r = lvl.raycast(_gA, _gB, 8);
+        if (r && r.hit !== false && r.point) return r.point.y;
+      } catch {
+        /* level stub */
+      }
+    }
+    return 0;
+  }
+
+  /** Unit vector toward the sun, from sky.js when it exists and from art.js when it does not. */
+  function sunDirection(out) {
+    const sd = G.sky && G.sky.sunDirection;
+    if (sd && Number.isFinite(sd.x) && (sd.x || sd.y || sd.z)) return out.copy(sd);
+    return defaultSunDirection(out);
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Emission helpers                                                        */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * A smoke or dust puff. The single most reused emission in the module, so it is worth its
+   * own helper: four random tiles, turbulence, wind coupling and a soft-particle radius tied
+   * to the puff's own size (a big puff needs a deeper fade or its silhouette clips the wall).
+   */
+  function puff(px, py, pz, vx, vy, vz, size0, size1, life, hex, mul0, mul1, a0) {
+    emReset();
+    EM.px = px; EM.py = py; EM.pz = pz;
+    EM.vx = vx; EM.vy = vy; EM.vz = vz;
+    EM.life = life;
+    EM.sz0 = size0;
+    EM.sz1 = size1;
+    EM.tile = SMOKE_TILES[(rnd() * 4) | 0];
+    EM.rotv = rndS() * 0.7;
+    emColour0(hex, mul0);
+    emColour1(hex, mul1);
+    EM.a0 = a0;
+    EM.fadeIn = 0.1;
+    EM.fadeOut = 1.5;
+    EM.drag = 1.9;
+    EM.grav = -0.28; // dust and smoke are buoyant against the cool air near the ground
+    EM.wind = 0.55;
+    EM.turb = 0.5;
+    EM.soft = clamp(size1 * 0.8, 0.2, 2.5);
+    EM.flags = F_TURB;
+    return alpha.emit();
+  }
+
+  /** A hot, velocity-stretched spark. Additive, HDR, so the bloom threshold catches it. */
+  function spark(px, py, pz, vx, vy, vz, size, life, mul) {
+    emReset();
+    EM.px = px; EM.py = py; EM.pz = pz;
+    EM.vx = vx; EM.vy = vy; EM.vz = vz;
+    EM.life = life;
+    EM.sz0 = size;
+    EM.sz1 = size * 0.35;
+    EM.tile = T_SPARK;
+    emColour0(PALETTE.muzzleCore, mul);
+    emColour1(PALETTE.ember, mul * 0.22);
+    EM.cpow = 0.45; // cool towards ember early: a spark is orange for most of its flight
+    EM.a0 = 1;
+    EM.fadeIn = 0;
+    EM.fadeOut = 1.1;
+    EM.drag = 1.4;
+    EM.grav = 9.0;
+    EM.soft = 0;
+    EM.stretch = 0.16;
+    EM.ax = vx; EM.ay = vy; EM.az = vz;
+    EM.flags = F_AXIS_VEL;
+    return additive.emit();
+  }
+
+  /** Solid debris: a chip, a splinter, a clod or a glass sliver. Bounces, tumbles, settles. */
+  function debris(px, py, pz, vx, vy, vz, size, life, tile, hex, gy) {
+    emReset();
+    EM.px = px; EM.py = py; EM.pz = pz;
+    EM.vx = vx; EM.vy = vy; EM.vz = vz;
+    EM.life = life;
+    EM.sz0 = size;
+    EM.sz1 = size;
+    EM.tile = tile;
+    emColourFlat(hex, 1.0, 0.72);
+    EM.a0 = 1;
+    EM.fadeIn = 0;
+    EM.fadeOut = 0.35; // debris stays opaque then vanishes; a slow fade reads as smoke
+    EM.rotv = rndS() * 22;
+    EM.drag = 0.45;
+    EM.grav = 19.0;
+    EM.soft = 0.05;
+    EM.bounceY = gy;
+    EM.rest = 0.28 + rnd() * 0.16;
+    EM.flags = F_GROUND | F_SPIN_DAMP;
+    return alpha.emit();
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Public spawners                                                         */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * Per-surface impact burst: dust puff, debris, sparks and a bullet hole.
+   *
+   * @param {THREE.Vector3} point world hit point
+   * @param {THREE.Vector3} normal world surface normal
+   * @param {string} surface a key of art.js SURFACES
+   * @param {THREE.Vector3} dir incoming bullet direction (unit, travelling *into* the surface)
+   */
+  function spawnImpact(point, normal, surface, dir) {
+    if (!point) return;
+    const key = typeof surface === 'string' ? surface : 'concrete';
+    if (key === 'flesh') {
+      spawnBlood(point, normal, dir);
+      return;
+    }
+    const recipe = SURFACE_FX[key] || SURFACE_FX_DEFAULT;
+    const mat = SURFACES[key] || SURFACES.concrete;
+
+    _fxA.copy(normal && normal.lengthSq() > 0.1 ? normal : UNIT_Y).normalize();
+    basisFromNormal(_fxA);
+
+    // The ricochet direction: debris and sparks leave along the mirror of the incoming round,
+    // not along the surface normal. Getting this wrong is why hobby impacts look like fountains.
+    if (dir && dir.lengthSq() > 0.1) {
+      _fxB.copy(dir).normalize();
+      _fxC.copy(_fxB).addScaledVector(_fxA, -2 * _fxB.dot(_fxA)).normalize();
+    } else {
+      _fxC.copy(_fxA);
+    }
+    // Blend the ricochet back towards the normal so nothing sprays along the wall face.
+    _fxC.lerp(_fxA, 1 - recipe.ricochet).normalize();
+
+    const px = point.x;
+    const py = point.y;
+    const pz = point.z;
+    const gy = groundYAt(px, py, pz);
+
+    /* --- Dust ---------------------------------------------------------- */
+    const puffs = n(recipe.puffs);
+    for (let i = 0; i < puffs; i++) {
+      coneDir(_fxA, 0.85, _fxD);
+      const sp = recipe.puffSpeed * (0.35 + rnd() * 0.9);
+      const s0 = recipe.puffSize * (0.1 + rnd() * 0.12);
+      const s1 = recipe.puffSize * (0.75 + rnd() * 0.7);
+      puff(
+        px + _fxD.x * 0.04, py + _fxD.y * 0.04, pz + _fxD.z * 0.04,
+        _fxD.x * sp, _fxD.y * sp + 0.3, _fxD.z * sp,
+        s0, s1,
+        recipe.puffLife * (0.7 + rnd() * 0.6),
+        mat.dustColour, 1.05, 0.62,
+        0.42 + rnd() * 0.2
+      );
+    }
+
+    /* --- Debris -------------------------------------------------------- */
+    // Everything below sprays about the ricochet, not the normal, so the tangent basis has to
+    // be rebuilt for it. Reusing the normal's basis would skew the cone into an ellipse and,
+    // on a grazing hit where the ricochet lies almost in the surface plane, collapse it to a
+    // line — every chip leaving along the same edge.
+    basisFromNormal(_fxC);
+
+    const chips = n(recipe.chips);
+    for (let i = 0; i < chips; i++) {
+      coneDir(_fxC, 0.6, _fxD);
+      const sp = recipe.chipSpeed * (0.4 + rnd() * 1.0);
+      // Glass has two shard tiles; alternate so a broken window is not a field of clones.
+      const tile = recipe.chipTile === T_SHARD_A && rnd() < 0.5 ? T_SHARD_B : recipe.chipTile;
+      debris(
+        px + _fxA.x * 0.02, py + _fxA.y * 0.02, pz + _fxA.z * 0.02,
+        _fxD.x * sp, _fxD.y * sp + 1.4, _fxD.z * sp,
+        recipe.chipSize * (0.55 + rnd() * 0.9),
+        1.5 + rnd() * 1.6,
+        tile,
+        recipe.chipColour,
+        gy
+      );
+    }
+
+    /* --- Sparks -------------------------------------------------------- */
+    const sparkiness = mat.sparks || 0;
+    if (sparkiness > 0 && recipe.sparkLife > 0) {
+      const count = n(14 * sparkiness);
+      for (let i = 0; i < count; i++) {
+        coneDir(_fxC, 0.75, _fxD);
+        const sp = recipe.sparkSpeed * (0.35 + rnd() * 1.1);
+        spark(
+          px + _fxA.x * 0.015, py + _fxA.y * 0.015, pz + _fxA.z * 0.015,
+          _fxD.x * sp, _fxD.y * sp + 0.6, _fxD.z * sp,
+          0.05 + rnd() * 0.05,
+          recipe.sparkLife * (0.5 + rnd() * 0.9),
+          6 + rnd() * 5
+        );
+      }
+      // Steel-on-steel throws enough light to be worth a real one, briefly.
+      if (sparkiness > 0.6 && qp.lights > 2) {
+        lin(PALETTE.spark, _colA);
+        lights.flash(px + _fxA.x * 0.1, py + _fxA.y * 0.1, pz + _fxA.z * 0.1, _colA, 3.2, 0.09, 4.5, 2.4);
+      }
+    }
+
+    /* --- Bullet hole --------------------------------------------------- */
+    addDecal(point, _fxA, key, recipe.decalSize * (0.8 + rnd() * 0.45));
+  }
+
+  /**
+   * Muzzle flash: multi-lobed star, a hot core, unburnt powder, a smoke wisp and a real
+   * `PointLight` that lives for about 40 ms in both the world and the viewmodel scene.
+   *
+   * @param {THREE.Vector3} pos world muzzle position
+   * @param {THREE.Vector3} dir world bore direction (unit)
+   * @param {number} scale weapon-relative flash size
+   */
+  function spawnMuzzle(pos, dir, scale) {
+    if (!pos) return;
+    shotPending = false;
+    const s = scale === undefined ? 1 : scale;
+
+    _fxA.copy(dir && dir.lengthSq() > 0.1 ? dir : shotDir).normalize();
+    basisFromNormal(_fxA);
+    const px = pos.x;
+    const py = pos.y;
+    const pz = pos.z;
+
+    /* --- Star lobes ----------------------------------------------------- */
+    // Three lobes at increasing stand-off, each with its own roll. A single sprite reads as a
+    // decal stuck to the barrel; the depth spread is what gives the flash volume.
+    const lobes = 2 + n(1.6);
+    for (let i = 0; i < lobes; i++) {
+      const d = 0.02 + i * 0.055 + rnd() * 0.03;
+      const k = 1 - i * 0.24;
+      emReset();
+      EM.px = px + _fxA.x * d;
+      EM.py = py + _fxA.y * d;
+      EM.pz = pz + _fxA.z * d;
+      EM.vx = _fxA.x * 1.2; EM.vy = _fxA.y * 1.2; EM.vz = _fxA.z * 1.2;
+      EM.life = 0.038 + rnd() * 0.022;
+      EM.sz0 = 0.16 * s * k;
+      EM.sz1 = 0.34 * s * k;
+      EM.tile = T_STAR;
+      EM.rot = rnd() * 6.283;
+      emColour0(PALETTE.muzzleCore, 16 * k);
+      emColour1(PALETTE.muzzleEdge, 3.5 * k);
+      EM.cpow = 0.6;
+      EM.a0 = 1;
+      EM.fadeIn = 0;
+      EM.fadeOut = 0.9;
+      EM.drag = 6;
+      EM.soft = 0;
+      additive.emit();
+    }
+
+    // Hot core: a small, extremely bright glow that is what actually blooms.
+    emReset();
+    EM.px = px + _fxA.x * 0.03;
+    EM.py = py + _fxA.y * 0.03;
+    EM.pz = pz + _fxA.z * 0.03;
+    EM.life = 0.05;
+    EM.sz0 = 0.1 * s;
+    EM.sz1 = 0.2 * s;
+    EM.tile = T_GLOW;
+    emColour0(PALETTE.muzzleCore, 26);
+    emColour1(PALETTE.muzzleEdge, 5);
+    EM.a0 = 1;
+    EM.fadeIn = 0;
+    EM.fadeOut = 1.4;
+    EM.drag = 4;
+    EM.soft = 0;
+    additive.emit();
+
+    /* --- Unburnt powder ------------------------------------------------- */
+    const grains = n(7 * s);
+    for (let i = 0; i < grains; i++) {
+      coneDir(_fxA, 0.34, _fxD);
+      const sp = 5 + rnd() * 11;
+      spark(px, py, pz, _fxD.x * sp, _fxD.y * sp, _fxD.z * sp, 0.035 + rnd() * 0.04, 0.14 + rnd() * 0.22, 5 + rnd() * 4);
+    }
+
+    /* --- Muzzle smoke --------------------------------------------------- */
+    const wisps = n(1.6 * s);
+    for (let i = 0; i < wisps; i++) {
+      coneDir(_fxA, 0.3, _fxD);
+      const sp = 1.4 + rnd() * 1.6;
+      puff(
+        px + _fxA.x * 0.08, py + _fxA.y * 0.08, pz + _fxA.z * 0.08,
+        _fxD.x * sp, _fxD.y * sp + 0.25, _fxD.z * sp,
+        0.05 * s, (0.42 + rnd() * 0.3) * s,
+        0.75 + rnd() * 0.6,
+        PALETTE.smoke, 0.9, 0.5,
+        0.17 + rnd() * 0.1
+      );
+    }
+
+    /* --- Light ---------------------------------------------------------- */
+    // 40 ms, per the contract. Intensity is candela against a 4.6 "sun": ~7 at two metres,
+    // ~1 at five, which lights a doorway without blowing the whole yard out.
+    lin(PALETTE.muzzleEdge, _colA);
+    lights.flash(px + _fxA.x * 0.12, py + _fxA.y * 0.12, pz + _fxA.z * 0.12, _colA, 30 * s, 0.042, 12 * s, 2.0);
+    if (viewLights) {
+      // Map the world muzzle back into the viewmodel scene. `weapon.js` builds the world
+      // position by pushing the viewmodel anchor through viewCamera^-1 then worldCamera; this
+      // is exactly that transform run backwards, so the two flashes agree to the millimetre.
+      const vc = G.viewCamera;
+      const wc = G.camera;
+      if (vc && wc) {
+        _fxB.copy(pos);
+        _m1.copy(wc.matrixWorld).invert();
+        _fxB.applyMatrix4(_m1);
+        _fxB.applyMatrix4(vc.matrixWorld);
+        // Much weaker than the world flash: the receiver is 200 mm from the muzzle, and
+        // inverse-square at that range does the work.
+        viewLights.flash(_fxB.x, _fxB.y, _fxB.z, _colA, 2.0 * s, 0.045, 1.8, 2.0);
+      }
+    }
+
+    /* --- Heat ----------------------------------------------------------- */
+    barrelHeat = Math.min(1.6, barrelHeat + 0.14 * s);
+  }
+
+  /**
+   * Blood: a fast mist cone back along the bullet, heavier droplets that fall, and a ground
+   * pool that forms a moment later.
+   */
+  function spawnBlood(point, normal, dir) {
+    if (!point) return;
+    _fxA.copy(normal && normal.lengthSq() > 0.1 ? normal : UNIT_Y).normalize();
+    // Blood sprays with the round, not against it — the exit side carries the mist.
+    if (dir && dir.lengthSq() > 0.1) _fxB.copy(dir).normalize();
+    else _fxB.copy(_fxA).multiplyScalar(-1);
+    _fxC.copy(_fxA).lerp(_fxB, 0.55).normalize();
+    basisFromNormal(_fxC);
+
+    const px = point.x;
+    const py = point.y;
+    const pz = point.z;
+
+    const mist = n(6);
+    for (let i = 0; i < mist; i++) {
+      coneDir(_fxC, 0.65, _fxD);
+      const sp = 1.6 + rnd() * 3.4;
+      emReset();
+      EM.px = px; EM.py = py; EM.pz = pz;
+      EM.vx = _fxD.x * sp; EM.vy = _fxD.y * sp + 0.4; EM.vz = _fxD.z * sp;
+      EM.life = 0.42 + rnd() * 0.45;
+      EM.sz0 = 0.05 + rnd() * 0.05;
+      EM.sz1 = 0.24 + rnd() * 0.26;
+      EM.tile = T_BLOOD_MIST;
+      emColour0(PALETTE.blood, 1.5);
+      emColour1(PALETTE.blood, 0.5);
+      EM.a0 = 0.7;
+      EM.fadeIn = 0.05;
+      EM.fadeOut = 1.6;
+      EM.drag = 3.2;
+      EM.grav = 3.4;
+      EM.soft = 0.25;
+      EM.rotv = rndS() * 2.5;
+      alpha.emit();
+    }
+
+    const gy = groundYAt(px, py, pz);
+    const drops = n(7);
+    for (let i = 0; i < drops; i++) {
+      coneDir(_fxC, 0.9, _fxD);
+      const sp = 2.0 + rnd() * 4.5;
+      emReset();
+      EM.px = px; EM.py = py; EM.pz = pz;
+      EM.vx = _fxD.x * sp; EM.vy = _fxD.y * sp + 1.0; EM.vz = _fxD.z * sp;
+      EM.life = 0.9 + rnd() * 0.7;
+      EM.sz0 = 0.018 + rnd() * 0.022;
+      EM.sz1 = 0.014 + rnd() * 0.02;
+      EM.tile = T_BLOOD_SPLAT;
+      emColourFlat(PALETTE.blood, 1.2, 0.75);
+      EM.a0 = 0.95;
+      EM.fadeIn = 0;
+      EM.fadeOut = 0.4;
+      EM.drag = 0.25;
+      EM.grav = 17;
+      EM.soft = 0.05;
+      EM.stretch = 0.1;
+      EM.bounceY = gy;
+      EM.rest = 0.05;
+      EM.flags = F_GROUND | F_AXIS_VEL;
+      alpha.emit();
+    }
+
+    // Queue the pool. It appears about half a second later, which is roughly how long the
+    // spray takes to reach the floor from chest height.
+    if (decals && py - gy < 3.0) {
+      const slot = poolHead;
+      poolHead = (poolHead + 1) % PENDING_POOLS;
+      poolTimer[slot] = 0.3 + rnd() * 0.35;
+      poolX[slot] = px + rndS() * 0.25;
+      poolY[slot] = gy;
+      poolZ[slot] = pz + rndS() * 0.25;
+      poolSize[slot] = 0.5 + rnd() * 0.5;
+    }
+
+    // A fine mist on the wall behind, if there is one close enough to catch it.
+    if (rnd() < 0.5) addDecal(point, _fxA, 'blood', 0.22 + rnd() * 0.2);
+  }
+
+  /**
+   * Eject one brass case. `vel` already carries the player's motion (weapon.js adds it), so
+   * brass keeps up with a sprinting player instead of hanging in the air behind them.
+   */
+  function spawnCasing(pos, vel, spin) {
+    if (!pos) return;
+    _fxA.copy(vel || _fxD.set(0, 0, 0));
+    casings.spawn(pos, _fxA, spin === undefined ? 16 : spin, groundYAt(pos.x, pos.y, pos.z));
+  }
+
+  /**
+   * One tracer round in flight. `speed` is metres per second and the particle's life is the
+   * real time of flight, so the streak lands when the bullet does.
+   *
+   * @param {boolean} [fromPlayer] undocumented fourth argument ballistics.js passes; it lets
+   *   enemy tracers read cold against the player's warm ones, which is a genuine readability
+   *   win in a firefight.
+   */
+  function spawnTracer(from, to, speed, fromPlayer) {
+    if (!from || !to) return;
+    _fxA.copy(to).sub(from);
+    const dist = _fxA.length();
+    if (dist < 0.4) return;
+    const sp = speed && speed > 1 ? speed : 340;
+    _fxA.multiplyScalar(1 / dist);
+
+    emReset();
+    EM.px = from.x; EM.py = from.y; EM.pz = from.z;
+    EM.vx = _fxA.x * sp; EM.vy = _fxA.y * sp; EM.vz = _fxA.z * sp;
+    // Clamped so a tracer fired at the skybox does not sit in the pool for ten seconds.
+    EM.life = Math.min(dist / sp, 1.4);
+    EM.sz0 = 0.045;
+    EM.sz1 = 0.03;
+    EM.tile = T_STREAK;
+    const warm = fromPlayer === undefined ? true : !!fromPlayer;
+    emColour0(warm ? PALETTE.tracer : PALETTE.tracerEnemy, 9);
+    emColour1(warm ? PALETTE.tracer : PALETTE.tracerEnemy, 5);
+    EM.a0 = 0.95;
+    EM.fadeIn = 0;
+    EM.fadeOut = 0;
+    EM.drag = 0;
+    EM.grav = 0; // the streak must end where ballistics said the round ends
+    EM.soft = 0;
+    EM.stretch = 2.6;
+    EM.ax = _fxA.x; EM.ay = _fxA.y; EM.az = _fxA.z;
+    EM.aux0 = sp; // F_TRACER reads this to ramp the head in over the first three metres
+    EM.flags = F_TRACER | F_ALIGN;
+    additive.emit();
+  }
+
+  /**
+   * Explosion: fireball, shockwave ring, dust wall, embers, debris, scorch, light and a
+   * lingering heat shimmer over the crater.
+   */
+  function spawnExplosion(point, radius) {
+    if (!point) return;
+    const R = radius && radius > 0.2 ? radius : 4;
+    const px = point.x;
+    const py = point.y;
+    const pz = point.z;
+    const gy = groundYAt(px, py, pz);
+
+    /* --- Fireball ------------------------------------------------------- */
+    const balls = n(10);
+    for (let i = 0; i < balls; i++) {
+      _fxD.set(rndS(), rnd() * 0.9 + 0.1, rndS()).normalize();
+      const sp = R * (0.5 + rnd() * 1.1);
+      emReset();
+      EM.px = px + _fxD.x * R * 0.15;
+      EM.py = py + _fxD.y * R * 0.15;
+      EM.pz = pz + _fxD.z * R * 0.15;
+      EM.vx = _fxD.x * sp; EM.vy = _fxD.y * sp * 1.3; EM.vz = _fxD.z * sp;
+      EM.life = 0.4 + rnd() * 0.55;
+      EM.sz0 = R * (0.2 + rnd() * 0.2);
+      EM.sz1 = R * (0.7 + rnd() * 0.5);
+      EM.tile = SMOKE_TILES[(rnd() * 4) | 0];
+      emColour0(PALETTE.muzzleCore, 9);
+      emColour1(PALETTE.ember, 0.6);
+      EM.cpow = 0.5;
+      EM.a0 = 0.9;
+      EM.fadeIn = 0.03;
+      EM.fadeOut = 1.5;
+      EM.drag = 3.4;
+      EM.grav = -1.6; // the fireball is hot and rises hard before it goes to smoke
+      EM.turb = 1.6;
+      EM.soft = R * 0.4;
+      EM.flags = F_TURB;
+      additive.emit();
+    }
+
+    /* --- Black smoke ---------------------------------------------------- */
+    const smoke = n(12);
+    for (let i = 0; i < smoke; i++) {
+      _fxD.set(rndS(), rnd() * 0.8 + 0.2, rndS()).normalize();
+      const sp = R * (0.35 + rnd() * 0.7);
+      puff(
+        px + _fxD.x * R * 0.2, py + _fxD.y * R * 0.2, pz + _fxD.z * R * 0.2,
+        _fxD.x * sp, _fxD.y * sp * 1.4 + 1.2, _fxD.z * sp,
+        R * 0.25, R * (0.9 + rnd() * 0.8),
+        2.6 + rnd() * 2.4,
+        PALETTE.smoke, 0.28, 0.75,
+        0.6
+      );
+    }
+
+    /* --- Dust wall ------------------------------------------------------ */
+    // A ground burst pushes a low, fast annulus of dust outwards. This is the read that tells
+    // the player how far the blast reached, so it is the one thing that must not be cut.
+    const wall = n(16);
+    for (let i = 0; i < wall; i++) {
+      const a = (i / Math.max(1, wall)) * 6.283 + rndS() * 0.4;
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      const sp = R * (1.1 + rnd() * 0.8);
+      puff(
+        px + ca * R * 0.25, gy + 0.15 + rnd() * 0.3, pz + sa * R * 0.25,
+        ca * sp, 0.6 + rnd() * 0.9, sa * sp,
+        R * 0.2, R * (0.55 + rnd() * 0.45),
+        1.8 + rnd() * 1.6,
+        PALETTE.dust, 0.95, 0.55,
+        0.5
+      );
+    }
+
+    /* --- Embers and debris ---------------------------------------------- */
+    const embers = n(20);
+    for (let i = 0; i < embers; i++) {
+      _fxD.set(rndS(), rnd() * 1.2 + 0.15, rndS()).normalize();
+      const sp = R * (0.9 + rnd() * 2.2);
+      emReset();
+      EM.px = px; EM.py = py; EM.pz = pz;
+      EM.vx = _fxD.x * sp; EM.vy = _fxD.y * sp; EM.vz = _fxD.z * sp;
+      EM.life = 1.1 + rnd() * 1.6;
+      EM.sz0 = 0.06 + rnd() * 0.07;
+      EM.sz1 = 0.02;
+      EM.tile = T_EMBER;
+      emColour0(PALETTE.muzzleCore, 7);
+      emColour1(PALETTE.ember, 0.5);
+      EM.cpow = 0.4;
+      EM.a0 = 1;
+      EM.fadeIn = 0;
+      EM.fadeOut = 0.9;
+      EM.drag = 1.1;
+      EM.grav = 7.5;
+      EM.wind = 0.4;
+      EM.soft = 0;
+      EM.stretch = 0.1;
+      EM.ax = _fxD.x; EM.ay = _fxD.y; EM.az = _fxD.z;
+      EM.flags = F_AXIS_VEL;
+      additive.emit();
+    }
+
+    const rubble = n(14);
+    for (let i = 0; i < rubble; i++) {
+      _fxD.set(rndS(), rnd() * 1.3 + 0.2, rndS()).normalize();
+      const sp = R * (0.8 + rnd() * 1.8);
+      debris(
+        px, py, pz,
+        _fxD.x * sp, _fxD.y * sp, _fxD.z * sp,
+        0.04 + rnd() * 0.07,
+        1.8 + rnd() * 1.8,
+        rnd() < 0.5 ? T_CHIP_A : T_CLOD,
+        PALETTE.concreteStained,
+        gy
+      );
+    }
+
+    /* --- Rings ---------------------------------------------------------- */
+    if (rings) {
+      // Ground front: fast, bright, decelerating.
+      rings.spawn(px, gy + 0.06, pz, R * 0.35, R * 2.3, 0.55, PALETTE.muzzleCore, PALETTE.dust, 1.5, false, 2.4);
+      // Air blast: a camera-facing pressure ring, slower and dimmer.
+      if (qp.rings > 2) {
+        rings.spawn(px, py + R * 0.15, pz, R * 0.25, R * 1.7, 0.42, PALETTE.muzzleEdge, PALETTE.smoke, 0.9, true, 2.0);
+      }
+    }
+
+    /* --- Scorch and shimmer --------------------------------------------- */
+    if (py - gy < R * 0.8) {
+      _fxD.set(px, gy, pz);
+      addDecal(_fxD, UNIT_Y, 'scorch', R * 1.5);
+    }
+    if (haze) haze.place(px, gy, pz, R * 1.1, R * 1.4, 0.55, 5.5, false);
+
+    /* --- Light ---------------------------------------------------------- */
+    lin(PALETTE.muzzleCore, _colA);
+    lights.flash(px, py + R * 0.2, pz, _colA, 60 * R, 0.45, R * 9, 2.6);
+  }
+
+  /**
+   * Project a decal onto a surface.
+   *
+   * @param {THREE.Vector3} point contact point
+   * @param {THREE.Vector3} normal surface normal (unit)
+   * @param {string} kind a key of DECAL_KIND, or a bare surface name
+   * @param {number} size quad edge in metres
+   */
+  function addDecal(point, normal, kind, size) {
+    if (!decals || !point) return -1;
+    let tile = DECAL_KIND[kind];
+    if (tile === undefined) tile = D_CONCRETE;
+    _fxB.copy(normal && normal.lengthSq() > 0.1 ? normal : UNIT_Y).normalize();
+    const s = clamp(size === undefined ? 0.18 : size, 0.04, 8);
+    const ttl = tile === D_BLOOD ? 90 : tile === D_SCORCH ? 150 : 45;
+    // The atlas already carries the colour, so the tint is a brightness trim rather than a
+    // hue: blood darkens slightly on porous ground, scorch stays neutral.
+    const k = tile === D_BLOOD ? 0.85 : 1.0;
+    return decals.add(point, _fxB, tile, s, ttl, k, k, k, tile === D_SCORCH ? 0.85 : 1.0);
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Ambient systems                                                         */
+  /* ---------------------------------------------------------------------- */
+
+  /** Boots kick dust. Driven off the `footstep` event, which player.js already emits. */
+  function spawnFootstepDust(point, surface, speed) {
+    if (!point || qp.particles < 0.5) return;
+    const mat = SURFACES[surface] || SURFACES.gravel;
+    if ((mat.hardness || 1) > 0.6) return; // concrete and steel do not puff
+    const count = n(1.5);
+    for (let i = 0; i < count; i++) {
+      puff(
+        point.x + rndS() * 0.12, point.y + 0.03, point.z + rndS() * 0.12,
+        rndS() * 0.35, 0.28 + rnd() * 0.3, rndS() * 0.35,
+        0.05, 0.2 + rnd() * 0.16,
+        0.8 + rnd() * 0.6,
+        mat.dustColour, 0.9, 0.5,
+        0.14 + Math.min(0.16, (speed || 3) * 0.02)
+      );
+    }
+  }
+
+  /**
+   * Barrel smoke. Rate is proportional to accumulated heat, so it builds through a long burst
+   * and keeps curling off the muzzle for a second or two after the trigger is released.
+   */
+  function updateBarrelSmoke(dt) {
+    barrelHeat *= Math.exp(-dt * 0.62);
+    if (barrelHeat < 0.05) {
+      barrelEmit = 0;
+      return;
+    }
+    // Never let ambience eat the budget an impact burst is about to need.
+    if (alpha.count > alpha.budget * 0.7) return;
+
+    const cam = G.camera;
+    const w = G.weapon;
+    barrelValid = false;
+    if (w && typeof w.muzzleWorld === 'function') {
+      try {
+        w.muzzleWorld(barrelPos);
+        // A stubbed `muzzleWorld` writes the origin or the camera position. Anything further
+        // than 3 m from the eye is not a muzzle, and smoke at the world origin is worse than
+        // no smoke at all.
+        barrelValid =
+          Number.isFinite(barrelPos.x) && (!cam || barrelPos.distanceToSquared(cam.position) < 9);
+      } catch {
+        barrelValid = false;
+      }
+    }
+    if (!barrelValid) return;
+
+    if (cam) barrelDir.set(0, 0, -1).applyQuaternion(cam.quaternion);
+
+    barrelEmit += dt * (2.5 + barrelHeat * 9);
+    while (barrelEmit >= 1) {
+      barrelEmit -= 1;
+      puff(
+        barrelPos.x + rndS() * 0.02,
+        barrelPos.y + rndS() * 0.02,
+        barrelPos.z + rndS() * 0.02,
+        barrelDir.x * 0.35 + rndS() * 0.1,
+        0.3 + rnd() * 0.25,
+        barrelDir.z * 0.35 + rndS() * 0.1,
+        0.02,
+        0.1 + rnd() * 0.12 + barrelHeat * 0.1,
+        1.1 + rnd() * 0.9,
+        PALETTE.smoke,
+        0.85,
+        0.45,
+        0.06 + barrelHeat * 0.06
+      );
+    }
+  }
+
+  /**
+   * Distant burning town: a slow column of very large, very faint puffs beyond the map.
+   *
+   * These do *not* go through `puff()`. A local dust puff has heavy drag and strong wind
+   * coupling so it stalls where it was born, which is exactly wrong here — a column has to
+   * keep climbing for its whole life or it reads as a blob. So: almost no drag, real
+   * buoyancy, and only a light wind coupling to give it the downwind lean.
+   *
+   * The emission rate is deliberately miserly. Each of these quads covers a sixth of the
+   * screen and they overdraw each other, so a handful is the entire fill budget they get.
+   */
+  function updateColumns(dt) {
+    const want = qp.columns;
+    if (want <= 0) return;
+    if (alpha.count > alpha.budget * 0.55) return;
+    const count = Math.min(want, columnSrc.length, columnTimer.length);
+    for (let i = 0; i < count; i++) {
+      const c = columnSrc[i];
+      if (!c) continue;
+      columnTimer[i] -= dt;
+      if (columnTimer[i] > 0) continue;
+      columnTimer[i] = 2.4 + rnd() * 1.4;
+      const sc = c.scale === undefined ? 1 : c.scale;
+      emReset();
+      EM.px = (c.x || 0) + rndS() * 2.5 * sc;
+      EM.py = (c.y || 0) + 1.5;
+      EM.pz = (c.z || 0) + rndS() * 2.5 * sc;
+      EM.vx = rndS() * 0.5;
+      EM.vy = 2.6 + rnd() * 1.2;
+      EM.vz = rndS() * 0.5;
+      EM.life = 14 + rnd() * 5;
+      EM.sz0 = 4 * sc;
+      EM.sz1 = 16 * sc;
+      EM.tile = SMOKE_TILES[(rnd() * 4) | 0];
+      EM.rotv = rndS() * 0.12;
+      emColour0(PALETTE.smoke, 0.3);
+      emColour1(PALETTE.smoke, 0.66); // lit rim wins as the column thins out at altitude
+      EM.a0 = 0.26;
+      EM.fadeIn = 0.12;
+      EM.fadeOut = 1.1;
+      EM.drag = 0.06;
+      EM.grav = -0.35;
+      EM.wind = 0.12;
+      EM.turb = 0.12;
+      EM.soft = 2.5;
+      EM.flags = F_TURB;
+      alpha.emit();
+    }
+  }
+
+  /** Blood pools that were queued by `spawnBlood` a moment ago. */
+  function updatePendingPools(dt) {
+    for (let i = 0; i < PENDING_POOLS; i++) {
+      const t = poolTimer[i];
+      if (t <= 0) continue;
+      const next = t - dt;
+      poolTimer[i] = next;
+      if (next > 0) continue;
+      _fxD.set(poolX[i], poolY[i], poolZ[i]);
+      addDecal(_fxD, UNIT_Y, 'blood', poolSize[i]);
+    }
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Casing audio                                                            */
+  /* ---------------------------------------------------------------------- */
+
+  // Allocated once. `_audioOpts.position` is permanently aliased to `_v4`, so the callback
+  // writes the impact point there rather than handing over a fresh vector.
+  const onCasingBounce = (x, y, z, vol) => {
+    const audio = G.audio;
+    if (!audio || typeof audio.playOneShot !== 'function') return;
+    _v4.set(x, y, z);
+    _audioOpts.volume = vol;
+    _audioOpts.pitch = 0.9 + rnd() * 0.3;
+    _audioOpts.surface = 'concrete';
+    try {
+      audio.playOneShot('brass', _audioOpts);
+    } catch {
+      /* audio stub */
+    }
+  };
+
+  /* ---------------------------------------------------------------------- */
+  /* Uniform sync                                                            */
+  /* ---------------------------------------------------------------------- */
+
+  let softAvailable = false;
+
+  function syncUniforms(time) {
+    const engine = G.engine;
+    const cam = G.camera;
+
+    // Soft particles read the *prepass* depth, never the HDR depth we are drawing into.
+    const depth = engine?.targets?.normal?.depthTexture || null;
+    softAvailable = !!depth && qp.soft;
+
+    const near = cam ? cam.near : 0.05;
+    const far = cam ? cam.far : 600;
+    const w = engine?.size?.w || 1920;
+    const h = engine?.size?.h || 1080;
+
+    for (let p = 0; p < 2; p++) {
+      const u = (p === 0 ? alpha : additive).material.uniforms;
+      u.uDepth.value = depth;
+      u.uInvRes.value.set(1 / Math.max(1, w), 1 / Math.max(1, h));
+      u.uNearFar.value.set(near, far);
+      // Critical: with no depth texture bound, Three substitutes a 1x1 default whose red
+      // channel is 0, which linearises to the near plane and would discard every fragment.
+      // The fade must be hard off unless a real prepass depth exists.
+      u.uSoftEnabled.value = softAvailable ? 1 : 0;
+    }
+
+    sunDirection(_sunV);
+
+    if (decals) {
+      const du = decals.material.uniforms;
+      // The decal shader wants the direction light *travels*, which is the negation of the
+      // vector toward the sun.
+      du.uSunDir.value.copy(_sunV).multiplyScalar(-1);
+      const sc = G.sky && G.sky.sunColour;
+      du.uSunColour.value.copy(sc || linConst(PALETTE.sun)).multiplyScalar(SUN_RADIANCE);
+      du.uAmbient.value.copy(linConst(PALETTE.skyZenith)).multiplyScalar(SKY_RADIANCE);
+      du.uFadeStart.value = qualityName === 'low' ? 26 : qualityName === 'medium' ? 34 : 46;
+    }
+
+    const mu = motes.material.uniforms;
+    mu.uTime.value = time;
+    // Forward scattering: a mote is brightest when it sits between the eye and the sun, so
+    // the vertex shader wants the vector *toward* the sun despite the uniform's name.
+    mu.uSunDir.value.copy(_sunV);
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Frame                                                                   */
+  /* ---------------------------------------------------------------------- */
+
+  function update(dt, g) {
+    if (g) {
+      // main.js always passes the live game object; prefer it over the captured one so a
+      // hot-swapped subsystem is picked up without rebuilding fx.
+      if (g !== G) {
+        G.engine = g.engine || G.engine;
+        G.camera = g.camera || G.camera;
+        G.viewCamera = g.viewCamera || G.viewCamera;
+        G.level = g.level || G.level;
+        G.sky = g.sky || G.sky;
+        G.weapon = g.weapon || G.weapon;
+        G.audio = g.audio || G.audio;
+      }
+    }
+    const step = dt > 0 ? Math.min(dt, 1 / 20) : 0;
+    const time = G.clock ? G.clock.time : 0;
+
+    // A `shot` nobody drew a flash for: draw it now, one frame late, rather than never.
+    if (shotPending) {
+      shotPending = false;
+      // A dedicated vector, not module scratch: `spawnMuzzle` uses `_fxD` for its cone
+      // sampling and would overwrite the position it was handed halfway through.
+      shotMuzzle.copy(shotOrigin).addScaledVector(shotDir, 0.45);
+      spawnMuzzle(shotMuzzle, shotDir, shotScale);
+    }
+
+    const cam = G.camera;
+    const cx = cam ? cam.position.x : 0;
+    const cy = cam ? cam.position.y : 1.7;
+    const cz = cam ? cam.position.z : 0;
+
+    if (step > 0) {
+      updatePendingPools(step);
+      updateBarrelSmoke(step);
+      updateColumns(step);
+    }
+
+    syncUniforms(time);
+
+    alpha.update(step, time, cx, cy, cz, windX, windY, windZ, true);
+    additive.update(step, time, cx, cy, cz, windX, windY, windZ, false);
+    if (decals) decals.update(step);
+    casings.update(step, 14, onCasingBounce);
+    motes.update(step, cx, cy, cz, windX, windY, windZ);
+    if (rings) rings.update(step, time, cam ? cam.quaternion : null);
+    if (haze) haze.update(step, time, cx, cz);
+    lights.update(step);
+    if (viewLights) viewLights.update(step);
+
+    stats.alpha = alpha.count;
+    stats.additive = additive.count;
+    stats.casings = casings.count;
+    stats.motes = motes.live;
+    stats.decals = decals ? decals.activeCap : 0;
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Quality                                                                 */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * Budgets only — never a reallocation. The GPU buffers stay at the `ultra` capacity for the
+   * whole session so changing the preset in the settings menu cannot hitch.
+   */
+  function setQuality(q) {
+    qualityName = typeof q === 'string' && FX_QUALITY[q] ? q : 'high';
+    qp = FX_QUALITY[qualityName];
+    const k = qp.particles / ULTRA_PARTICLES;
+    alpha.budget = clamp(Math.round(CAP_ALPHA * k), 64, CAP_ALPHA);
+    additive.budget = clamp(Math.round(CAP_ADD * k), 64, CAP_ADD);
+    if (alpha.count > alpha.budget) alpha.count = alpha.budget;
+    if (additive.count > additive.budget) additive.count = additive.budget;
+    casings.budget = clamp(qp.casings, 0, CAP_CASINGS);
+    while (casings.count > casings.budget) casings.remove(casings.count - 1);
+    if (decals) decals.setCap(qp.decals);
+    motes.setLive(Math.round(qp.motes * (ATMOSPHERE.dustMoteDensity || 1)));
+    lights.setLive(qp.lights);
+    if (rings) rings.setLive(clamp(qp.rings, 1, CAP_RINGS));
+    if (haze) haze.setLive(qualityName === 'low' ? 0 : haze.cap);
+    for (let p = 0; p < 2; p++) {
+      (p === 0 ? alpha : additive).material.uniforms.uSoftEnabled.value = qp.soft && softAvailable ? 1 : 0;
+    }
+  }
+
+  setQuality(qualityName);
+
+  /* ---------------------------------------------------------------------- */
+  /* Reset / dispose                                                         */
+  /* ---------------------------------------------------------------------- */
+
+  function reset() {
+    alpha.clear();
+    additive.clear();
+    if (decals) decals.clear();
+    casings.clear();
+    if (rings) rings.clear();
+    if (haze) haze.clear();
+    lights.clear();
+    if (viewLights) viewLights.clear();
+    poolTimer.fill(0);
+    columnTimer.fill(0);
+    barrelHeat = 0;
+    barrelEmit = 0;
+    shotPending = false;
+    motes.seeded = false;
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Events — the only coupling other modules need (ARCHITECTURE.md §2)       */
+  /* ---------------------------------------------------------------------- */
+
+  const unsubs = [];
+
+  function listen(name, fn) {
+    const ev = G.events;
+    if (!ev || typeof ev.on !== 'function') return;
+    try {
+      const off = ev.on(name, fn);
+      unsubs.push(typeof off === 'function' ? off : () => ev.off?.(name, fn));
+    } catch {
+      /* emitter stub */
+    }
+  }
+
+  const onImpact = (p) => {
+    if (!p || !p.point) return;
+    spawnImpact(p.point, p.normal, p.surface, p.dir);
+  };
+
+  const onShot = (p) => {
+    if (!p) return;
+    if (p.origin) shotOrigin.copy(p.origin);
+    if (p.dir) shotDir.copy(p.dir);
+    const id = p.weapon && p.weapon.id;
+    shotScale = id === 'dmr14' ? 1.35 : id === 'vector' ? 0.78 : 1.0;
+    // weapon.js calls spawnMuzzle immediately after emitting, which clears this. If nothing
+    // does, `update` draws the flash from the shot pose instead, so an AI or a scripted shot
+    // still gets one without every caller having to know about fx.
+    shotPending = true;
+    barrelHeat = Math.min(1.6, barrelHeat + 0.02);
+  };
+
+  const onExplosion = (p) => {
+    if (!p || !p.point) return;
+    spawnExplosion(p.point, p.radius);
+  };
+
+  const onFootstep = (p) => {
+    if (!p) return;
+    const pos = p.point || p.position || (G.player && G.player.position);
+    if (!pos) return;
+    spawnFootstepDust(pos, p.surface, p.speed);
+  };
+
+  listen('impact', onImpact);
+  listen('shot', onShot);
+  listen('explosion', onExplosion);
+  listen('footstep', onFootstep);
+
+  /* ---------------------------------------------------------------------- */
+  /* Teardown                                                                */
+  /* ---------------------------------------------------------------------- */
+
+  let disposed = false;
+
+  function dispose() {
+    if (disposed) return;
+    disposed = true;
+
+    for (let i = 0; i < unsubs.length; i++) {
+      try {
+        unsubs[i]();
+      } catch {
+        /* emitter already gone */
+      }
+    }
+    unsubs.length = 0;
+
+    for (let i = 0; i < attached.length; i++) {
+      const o = attached[i];
+      if (o.parent) o.parent.remove(o);
+    }
+    attached.length = 0;
+
+    alpha.dispose();
+    additive.dispose();
+    if (decals) decals.dispose();
+    casings.dispose();
+    motes.dispose();
+    if (rings) rings.dispose();
+    if (haze) haze.dispose();
+    lights.dispose();
+    if (viewLights) viewLights.dispose();
+
+    // The pools copied this geometry's attributes rather than cloning them, so it is disposed
+    // last: freeing it earlier would pull the buffers out from under the meshes above.
+    quad.dispose();
+    if (atlas) atlas.dispose();
+    if (decalAtlas) decalAtlas.dispose();
+    if (noise) noise.dispose();
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* The object main.js holds                                                */
+  /* ---------------------------------------------------------------------- */
+
+  return {
+    update,
+    spawnImpact,
+    spawnMuzzle,
+    spawnBlood,
+    spawnCasing,
+    spawnTracer,
+    spawnExplosion,
+    addDecal,
+    reset,
+    dispose,
+    setQuality,
+
+    /** Extras — private by convention, but useful to the debug overlay and the harness. */
+    spawnFootstepDust,
+    stats,
+    alphaPool: alpha,
+    additivePool: additive,
+    decalPool: decals,
+    casingPool: casings,
+    motePool: motes,
+    ringPool: rings,
+    hazePool: haze,
+    lightPool: lights,
+    get quality() {
+      return qualityName;
+    },
+    /** Add or replace a heat-haze column at runtime; `level.js` may call this as it builds. */
+    addHotSpot(x, y, z, width, height, strength) {
+      return haze ? haze.place(x, y, z, width, height, strength, Infinity, true) : -1;
+    },
+  };
+}
+
+export default createFX;
