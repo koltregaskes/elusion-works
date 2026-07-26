@@ -623,10 +623,20 @@ function rustField(res, o) {
   const core = new Float32Array(res * res);
   const halo = new Float32Array(res * res);
   const coverage = o.coverage ?? 0.45;
+  /*
+   * `bias` steers WHERE the oxide front gets going. Corrosion does not start at random: it
+   * starts wherever the mill scale or the coating was broken and wherever water is held —
+   * cut edges, weld heat-affected zones, fixings, and the paths water runs down. Feeding
+   * those masks in as a local shift of the coverage threshold is the difference between
+   * "rust with a reason" and orange amoebas scattered over a plate.
+   */
+  const bias = o.bias || null;
+  const biasAmt = o.biasAmt ?? 0.5;
   for (let i = 0; i < core.length; i++) {
     // Bias the distance by noise at two more scales so the bloom edge is ragged all the way
     // down to the pixel. A clean distance threshold gives soft round blobs, which is the
     // single most common way procedural rust gives itself away.
+    const cov = bias ? coverage * (1 + (bias[i] - 0.35) * biasAmt) : coverage;
     const d = warped[i] * 0.9 + (0.5 - detail[i]) * 0.36 + (0.5 - fine[i]) * 0.16;
     // Narrow transition band = crisp, flaky edge where the oxide front has eaten in.
     core[i] = 1 - smoothstep(coverage * 0.82, coverage * 1.0, d);
@@ -750,7 +760,9 @@ function pitField(res, o) {
 /**
  * Grid / panel / brick lines from a cell SDF with a chamfered shoulder.
  * Returns the joint groove (1 deep in the joint), the chamfer band (for edge wear and
- * highlight), and a stable per-cell random id (for per-brick tone variation).
+ * highlight), a stable per-cell random id (for per-brick tone variation), and the sub-cell
+ * vertical fraction — which is what lets a caller cut a *struck* joint, deep at the top of
+ * the course and flush at the bottom, rather than a symmetrical machined slot.
  */
 function gridField(res, o) {
   const cols = Math.max(1, o.cols | 0);
@@ -763,6 +775,7 @@ function gridField(res, o) {
   const groove = new Float32Array(res * res);
   const chamfer = new Float32Array(res * res);
   const id = new Float32Array(res * res);
+  const sv = new Float32Array(res * res);
   const idr = mulberry32(o.seed);
   const ids = new Float32Array(cols * rows);
   for (let i = 0; i < ids.length; i++) ids[i] = idr();
@@ -798,9 +811,10 @@ function gridField(res, o) {
       groove[i] = 1 - smoothstep(gapPx, gapPx + chamferPx, d);
       chamfer[i] = smoothstep(gapPx, gapPx + chamferPx * 0.6, d) * (1 - smoothstep(gapPx + chamferPx * 0.6, gapPx + chamferPx * 2.0, d));
       id[i] = ids[row * cols + col];
+      sv[i] = fv;
     }
   }
-  return { groove, chamfer, id };
+  return { groove, chamfer, id, sv };
 }
 
 /** Aggregate pebbles for concrete/asphalt/gravel: overlapping inverted Worley domes. */
@@ -847,6 +861,191 @@ function blotchField(res, seed, freq) {
   const wy = fbmField(w, { seed: seed + 907, freq: 3, octaves: 2 });
   const warped = normaliseField(warpField(f, w, wx, wy, w * 0.06));
   return w === res ? warped : upsampleField(warped, w, res);
+}
+
+/**
+ * The macro layer: ONE feature at roughly 1/16 of the surface's own detail frequency.
+ *
+ * Every other field in a generator lives between 8 and 200 cycles per tile, so this is the
+ * only band that says anything about *where on the wall* a texel is — which half of the panel
+ * stayed dry, which end of the slab the traffic ran over. It is also the single loudest tell
+ * of a tiling texture: without it every copy of the tile carries an identical distribution of
+ * light and dark and the eye finds the repeat in one glance.
+ *
+ * The contrast push at the end is deliberate. A gentle low-frequency gradient reads as a
+ * lighting artefact and the viewer discounts it; a patchwork with real edges reads as a
+ * surface with a history. Every caller applies it at a swing you can actually see (±20% of
+ * albedo, ±0.2 of roughness) rather than the ±3% that a raw fBm's Gaussian would give.
+ */
+function macroField(res, seed) {
+  const w = Math.min(res, 128);
+  const f = fbmField(w, { seed: seed + 4409, freq: 2, octaves: 3, gain: 0.62, spread: 1.5 });
+  const wx = fbmField(w, { seed: seed + 4421, freq: 3, octaves: 2 });
+  const wy = fbmField(w, { seed: seed + 4423, freq: 3, octaves: 2 });
+  const out = normaliseField(warpField(f, w, wx, wy, w * 0.14));
+  for (let i = 0; i < out.length; i++) out[i] = clamp01(0.5 + (out[i] - 0.5) * 1.5);
+  return w === res ? out : upsampleField(out, w, res);
+}
+
+/**
+ * Propagating fracture network.
+ *
+ * A crack is not a noise field. It starts at a defect, runs, forks, narrows and stops, and
+ * every branch is finer than its parent. Growing them as walkers is the only way to get that
+ * lineage: a thresholded noise field gives lines of uniform width with no beginning and no
+ * end, which is what makes procedural concrete read as marble. The wander comes from a noise
+ * field rather than a random step so the path is smooth — a random walk gives a jittery line
+ * that reads as a scribble.
+ *
+ * The stack is explicit rather than recursive, and both the branch depth and the total pop
+ * count are capped: branch counts are data-dependent, and a runaway here would be a load-time
+ * hang rather than a visual bug.
+ */
+function fractureField(res, o) {
+  const out = new Float32Array(res * res);
+  const rnd = mulberry32(o.seed);
+  const drift = fbmField(res, { seed: o.seed + 313, freq: o.driftFreq ?? 6, octaves: 3 });
+  // Confinement: cracking clusters where the slab is restrained or the sub-base moved. A wall
+  // that is evenly cracked over its whole face reads as a pattern, not as damage.
+  const gate = fbmField(res, { seed: o.seed + 331, freq: o.gateFreq ?? 3, octaves: 3 });
+  const gateLo = o.gateLo ?? 0.32;
+  const gateHi = o.gateHi ?? 0.64;
+  const branchP = o.branch ?? 0.01;
+  const maxGen = o.gens ?? 2;
+  const baseW = (o.width ?? 0.0024) * res;
+  const baseLen = (o.length ?? 0.45) * res;
+  const wander = o.wander ?? 0.5;
+  const stack = [];
+  const n = o.count ?? 10;
+  for (let s = 0; s < n; s++) {
+    stack.push({
+      x: rnd() * res,
+      y: rnd() * res,
+      a: rnd() * Math.PI * 2,
+      w: baseW * lerp(0.75, 1.35, rnd()),
+      life: baseLen * lerp(0.55, 1.45, rnd()),
+      gen: 0,
+    });
+  }
+  let guard = 0;
+  while (stack.length > 0 && guard++ < 1024) {
+    const c = stack.pop();
+    let x = c.x;
+    let y = c.y;
+    let a = c.a;
+    const steps = Math.max(2, c.life | 0);
+    for (let t = 0; t < steps; t++) {
+      a += (sampleWrap(drift, res, x, y) - 0.5) * wander;
+      x += Math.cos(a);
+      y += Math.sin(a);
+      const f = t / steps;
+      // Taper: a fracture opens near its origin and closes as the stress runs out of it.
+      const ww = c.w * (1 - f * 0.7) * (0.55 + 0.45 * Math.sin(f * Math.PI));
+      if (ww < 0.4) break;
+      const g = smoothstep(gateLo, gateHi, sampleWrap(gate, res, x, y));
+      if (g <= 0.002) continue;
+      const amp = g * (1 - f * 0.45);
+      const ix = Math.round(x);
+      const iy = Math.round(y);
+      const wr = Math.ceil(ww * 1.8);
+      const inv2 = 1 / (2 * ww * ww);
+      for (let oy = -wr; oy <= wr; oy++) {
+        const yy = ((((iy + oy) % res) + res) % res) * res;
+        for (let ox = -wr; ox <= wr; ox++) {
+          const v = amp * Math.exp(-(ox * ox + oy * oy) * inv2);
+          if (v <= 0.004) continue;
+          const i = yy + ((((ix + ox) % res) + res) % res);
+          if (v > out[i]) out[i] = v;
+        }
+      }
+      if (c.gen < maxGen && rnd() < branchP) {
+        stack.push({
+          x,
+          y,
+          a: a + (rnd() < 0.5 ? -1 : 1) * lerp(0.45, 1.05, rnd()),
+          w: ww * 0.6,
+          life: (steps - t) * lerp(0.25, 0.6, rnd()),
+          gen: c.gen + 1,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Regularly set-out round features: form-tie holes, rivets, roofing screws, bolt heads.
+ *
+ * These are the details that identify a *manufactured* surface, and they are the one thing
+ * noise can never produce. Real fixings sit on a setting-out grid with a fitter's tolerance
+ * on it and the occasional one missing, so the grid is jittered and thinned. Returns the
+ * feature itself and the rim around it, which is where the corrosion starts.
+ */
+function discField(res, o) {
+  const mask = new Float32Array(res * res);
+  const rim = new Float32Array(res * res);
+  const cols = Math.max(1, o.cols | 0);
+  const rows = Math.max(1, o.rows | 0);
+  const rnd = mulberry32(o.seed);
+  const r0 = (o.radius ?? 0.012) * res;
+  const jit = (o.jitter ?? 0.2) * (res / Math.max(cols, rows));
+  const drop = o.dropout ?? 0.0;
+  const rimK = o.rim ?? 2.0;
+  for (let ry = 0; ry < rows; ry++) {
+    for (let rx = 0; rx < cols; rx++) {
+      const keep = rnd();
+      const cx = ((rx + 0.5) / cols) * res + (rnd() - 0.5) * jit;
+      const cy = ((ry + 0.5) / rows) * res + (rnd() - 0.5) * jit;
+      const rr = r0 * lerp(0.78, 1.24, rnd());
+      if (keep < drop) continue;
+      const R = Math.ceil(rr * (rimK + 0.4));
+      for (let dy = -R; dy <= R; dy++) {
+        const yy = ((((cy + dy) | 0) % res) + res) % res;
+        const row = yy * res;
+        for (let dx = -R; dx <= R; dx++) {
+          const d = Math.sqrt(dx * dx + dy * dy) / rr;
+          const i = row + ((((cx + dx) | 0) % res) + res) % res;
+          const m = 1 - smoothstep(0.76, 1.04, d);
+          const rm = smoothstep(0.88, 1.12, d) * (1 - smoothstep(rimK * 0.72, rimK, d));
+          if (m > mask[i]) mask[i] = m;
+          if (rm > rim[i]) rim[i] = rm;
+        }
+      }
+    }
+  }
+  return { mask, rim };
+}
+
+/**
+ * Downward bleed from a source mask.
+ *
+ * Salt bloom out of a crack, rust out of a fixing, dirt off a ledge: all three do the same
+ * thing. The source leaks, gravity takes it down the face, and it runs out as it goes. This
+ * is what ties a stain to the feature that caused it — a stain that floats free of its source
+ * is the most common way procedural weathering gives itself away.
+ *
+ * v increases upward in these textures (row 0 is v = 0), so "down" is decreasing y. `run` is
+ * the e-folding length as a fraction of the tile. Two passes down each column so a source
+ * near the bottom still wraps correctly into the top.
+ */
+function bleedField(src, res, o) {
+  const decay = Math.exp(-1 / Math.max(1, (o.run ?? 0.08) * res));
+  const spread = o.spread ?? 0;
+  const out = new Float32Array(res * res);
+  const wob = spread > 0 ? fbmField(res, { seed: (o.seed ?? 17) + 55, freq: 4, octaves: 3, stretch: 8 }) : null;
+  for (let x = 0; x < res; x++) {
+    let acc = 0;
+    for (let p = 0; p < 2; p++) {
+      for (let k = 0; k < res; k++) {
+        const y = res - 1 - k;
+        const i = y * res + x;
+        const s = wob ? sampleWrap(src, res, x + (wob[i] - 0.5) * spread, y) : src[i];
+        acc = s > acc * decay ? s : acc * decay;
+        if (p === 1 && acc > out[i]) out[i] = acc;
+      }
+    }
+  }
+  return out;
 }
 
 /* ========================================================================== */
@@ -1068,17 +1267,20 @@ function bConcreteRough(ctx) {
   // a narrow width so they stay wandering fractures in a few patches: a crack field turned up
   // far enough to cover the surface is a Worley diagram again however hard it is warped, and
   // it reads as dried mud or marble rather than as a poured slab.
-  const cracks = crackField(res, {
+  // Fatigue cracks grown as walkers rather than thresholded out of a Voronoi: they start,
+  // run, fork into finer branches and stop, and they cluster where the slab was restrained.
+  const cracks = fractureField(res, {
     seed: seed + 211,
-    cells: 8,
-    width: 0.016,
-    warp: 0.055,
-    segFreq: 12,
-    segLo: 0.46,
-    segHi: 0.74,
-    densityFreq: 3,
-    densityLo: 0.56,
-    densityHi: 0.88,
+    count: 9,
+    width: 0.0026,
+    length: 0.42,
+    branch: 0.012,
+    gens: 2,
+    wander: 0.5,
+    driftFreq: 6,
+    gateFreq: 3,
+    gateLo: 0.36,
+    gateHi: 0.68,
   });
   const pits = pitField(res, { cells: 46, seed: seed + 307, density: 0.3, sizeMin: 0.09, sizeMax: 0.34 });
   const streaks = streakField(res, { seed: seed + 401, count: 26, lenMin: 0.2, lenMax: 0.8, widthMin: 0.006, widthMax: 0.03 });
@@ -1086,36 +1288,87 @@ function bConcreteRough(ctx) {
   const speck = fbmField(res, { seed: seed + 601, freq: 190, octaves: 2, gain: 0.5 });
   // What actually identifies concrete, none of which a noise-plus-crack recipe contains:
   //   - the timber shuttering's grain, printed into the face,
-  //   - the ~0.6 m board bands and the pour seam between lifts,
-  //   - spalling, where the skin has come off and the aggregate is exposed in the raw.
+  //   - the ~0.6 m board bands and the cold joint between one pour and the next,
+  //   - form-tie holes on a setting-out grid, weeping rust down the face,
+  //   - spalling, where the skin has come off and the aggregate is exposed in the raw,
+  //   - efflorescence: lime carried out of the slab by water and left as salt at the crack.
   const board = fbmField(res, { seed: seed + 821, freq: 5, octaves: 4, gain: 0.55, stretch: 1 / 9 });
   const boardLines = gridField(res, { cols: 1, rows: 4, gap: 0.0018, chamfer: 0.005, seed: seed + 823, wobble: 0.004, wobbleFreq: 7 });
   const seams = gridField(res, { cols: 2, rows: 1, gap: 0.002, chamfer: 0.009, seed: seed + 827, wobble: 0.003, wobbleFreq: 5 });
   const spallF = blotchField(res, seed + 829, 5);
+  const macroL = macroField(res, seed + 937);
+  const ties = discField(res, { cols: 3, rows: 3, radius: 0.0105, jitter: 0.34, dropout: 0.22, rim: 2.2, seed: seed + 941 });
+
+  /*
+   * Cold joints. A wall is poured in lifts, and the line where one lift met the next is a
+   * permanent feature: a slight ledge, a tone step between two batches of cement, and a
+   * horizon for every stain on the face. Two lines per tile — one mid-tile and one *on* the
+   * tile seam — so the vertical repeat lands on a modelled joint instead of an unexplained
+   * tone step, which is what a single lift line would have produced.
+   */
+  const jointWob = fbmField(res, { seed: seed + 833, freq: 7, octaves: 3, stretch: 1 / 10 });
+  const cold = new Float32Array(N);
+  const liftTone = new Float32Array(N);
+  const coldB = res * 0.47;
+  for (let y = 0; y < res; y++) {
+    for (let x = 0; x < res; x++) {
+      const i = y * res + x;
+      const w = (jointWob[i] - 0.5) * res * 0.018;
+      const y1 = w;
+      const y2 = coldB - w * 0.7;
+      const d1 = Math.abs(((((y - y1) % res) + res + res * 0.5) % res) - res * 0.5);
+      const d2 = Math.abs(((((y - y2) % res) + res + res * 0.5) % res) - res * 0.5);
+      const k = res * 0.0055;
+      cold[i] = Math.max(1 - smoothstep(0.45, 1.35, d1 / k), 1 - smoothstep(0.45, 1.35, d2 / k));
+      const rel = (((y - y1) % res) + res) % res;
+      const span = (((y2 - y1) % res) + res) % res;
+      liftTone[i] = rel < span ? 1 : 0;
+    }
+  }
+  // Efflorescence weeps out of whatever lets water through — the cracks, the cold joint and
+  // the tie holes — and runs down the face below it. It has to be *tied* to those features:
+  // salt bloom floating free of a source is the loudest weathering mistake there is.
+  const weepSrc = new Float32Array(N);
+  for (let i = 0; i < N; i++) weepSrc[i] = clamp01(cracks[i] * 1.1 + cold[i] * 0.55 + ties.mask[i] * 0.5);
+  const efflo = blurField(bleedField(weepSrc, res, { run: 0.055, spread: res * 0.01, seed: seed + 947 }), res, Math.max(1, (res * 0.004) | 0), 1);
+  const tieWeep = bleedField(ties.mask, res, { run: 0.045, spread: res * 0.008, seed: seed + 953 });
 
   const lit = C.concreteLit;
   const stained = C.concreteStained;
   const cool = C.concreteShadow;
   const dustC = C.dust;
+  // Lime bloom is a pale chalky salt, not white paint: it is the dust colour pushed towards
+  // the plaster tone and desaturated, so it still belongs to the palette.
+  const saltC = sat(mixc(dustC, C.plaster, 0.5), 0.35);
+  const rustC = C.rust;
 
   for (let i = 0; i < N; i++) {
     const crack = cracks[i];
     const pit = pits[i];
     const bandJoint = boardLines.groove[i];
     const seam = seams.groove[i];
+    const coldJ = cold[i];
+    const tie = ties.mask[i];
+    const mL = macroL[i];
     // Spalling: the skin has failed in patches and the raw aggregate is out. Gated on the
-    // aggregate field so the exposed stones are the same stones that were under the skin.
-    const spall = smoothstep(0.62, 0.9, spallF[i]) * smoothstep(0.3, 0.75, pebbles[i]);
+    // aggregate field so the exposed stones are the same stones that were under the skin,
+    // and on the macro layer so whole regions of the face have failed rather than a scatter.
+    const spall = smoothstep(0.62, 0.9, spallF[i]) * smoothstep(0.3, 0.75, pebbles[i]) * (0.35 + smoothstep(0.4, 0.8, mL));
 
     // Height: broad form from blotch, aggregate lumps, board grain, then carve the joints,
-    // cracks, pits and spalled patches out.
+    // cracks, pits, tie holes and spalled patches out.
     let hv = 0.5 + (blotch[i] - 0.5) * 0.26 + (pebbles[i] - 0.5) * 0.36 + (grain[i] - 0.5) * 0.2 + (fine[i] - 0.5) * 0.08;
     hv += (board[i] - 0.5) * 0.09;
+    hv += (mL - 0.5) * 0.1; // whole regions of the face sit slightly proud or shy
     hv -= bandJoint * 0.1;
     hv -= seam * 0.16;
-    hv -= crack * 0.24;
+    hv -= coldJ * 0.2;
+    hv -= crack * 0.34;
     hv -= pit * 0.3;
-    hv -= spall * 0.12;
+    hv -= tie * 0.5;
+    hv += ties.rim[i] * 0.05; // the tie cone leaves a proud collar of grout around the hole
+    hv -= spall * 0.16;
+    hv += efflo[i] * 0.03; // salt is a deposit: it sits ON the face
     ctx.h[i] = clamp01(hv);
 
     // Albedo: a light trowelled skin, stained where water has sat, cooler in the recesses.
@@ -1123,12 +1376,19 @@ function bConcreteRough(ctx) {
     ctx.ar[i] = lit[0];
     ctx.ag[i] = lit[1];
     ctx.ab[i] = lit[2];
+    // The decisive macro layer, applied at a swing the eye can actually read. This is the one
+    // term that stops a 2.5 m tile repeated across a 40 m wall from looking like wallpaper.
+    tint(ctx, i, lerp(0.79, 1.2, mL));
+    // Two lifts, two batches of cement. A few percent is all it takes, and it is the single
+    // cheapest way to say "this was built in stages".
+    tint(ctx, i, liftTone[i] > 0.5 ? 1.045 : 0.965);
     paint(ctx, i, stained, wear * 0.75);
     // Board-form grain: the shuttering timber prints its own grain into the face, which is a
     // strongly horizontal signal and the fastest way to tell cast concrete from grey noise.
     tint(ctx, i, lerp(0.88, 1.1, board[i]));
     paint(ctx, i, shade(stained, 0.86), bandJoint * 0.5);
     paint(ctx, i, shade(cool, 0.8), seam * 0.55);
+    paint(ctx, i, shade(cool, 0.72), coldJ * 0.6);
     paint(ctx, i, shade(cool, 1.05), streaks[i] * 0.55);
     // Exposed aggregate: each stone gets its own tone from the Worley cell id, so the
     // aggregate reads as stones rather than as a single grey crust.
@@ -1142,7 +1402,13 @@ function bConcreteRough(ctx) {
     // something to look at from half a metre away.
     tint(ctx, i, lerp(0.8, 1.16, grain[i]));
     tint(ctx, i, lerp(0.9, 1.1, speck[i]));
-    paint(ctx, i, shade(cool, 0.68), crack * 0.55);
+    paint(ctx, i, shade(cool, 0.68), crack * 0.6);
+    // Efflorescence: pale, chalky, strongest right at the source and fading down the run.
+    paint(ctx, i, saltC, clamp01(efflo[i] * 1.35) * 0.62);
+    // The tie is a hole with a plug of grout in it, and the reinforcement behind it weeps
+    // rust down the face.
+    paint(ctx, i, shade(cool, 0.55), tie * 0.85);
+    paint(ctx, i, mixc(rustC, stained, 0.45), clamp01(tieWeep[i] * 1.25 - tie * 0.6) * 0.55);
     // Pits stay subtle in the albedo — the AO and the normal do the work. Painting them
     // dark as well double-counts the occlusion and prints polka dots.
     paint(ctx, i, shade(cool, 0.85), pit * 0.4);
@@ -1154,18 +1420,28 @@ function bConcreteRough(ctx) {
     const l = lum(ctx, i);
     const damp = smoothstep(0.55, 0.95, macro[i]);
     const traffic = smoothstep(0.52, 0.9, blotch[i]);
+    // Standing water. Where a low patch of a damp region has not drained, the surface is a
+    // near-mirror — and under an 8-degree key that is worth more than any albedo detail in
+    // the file, because it is the only thing in frame that returns the sun at full strength.
+    const puddle = smoothstep(0.68, 0.95, mL) * (1 - smoothstep(0.3, 0.55, ctx.h[i]));
     let r = 0.92;
     r -= smoothstep(0.45, 0.92, ctx.h[i]) * 0.26; // burnished highs
     r -= damp * 0.28; // standing damp
     r -= traffic * 0.16; // polished walking lane
+    r += (mL - 0.5) * 2.0 * 0.11; // the macro layer drives roughness as well as albedo
     r += crack * 0.1;
     r += pit * 0.12;
     r += spall * 0.1;
+    r += coldJ * 0.08;
+    r += clamp01(efflo[i] * 1.3) * 0.16; // salt crust is chalk: as matte as the surface gets
     r -= exposed * 0.16; // polished stone faces
     r += (fine[i] - 0.5) * 0.14;
     r -= (l - 0.42) * 0.2; // darker = damp-stained = glossier
     r -= streaks[i] * 0.14;
+    r = lerp(r, 0.075, puddle * 0.9);
     ctx.rg[i] = clamp01(r);
+    // Water darkens what it sits on, and it does it after every other albedo term.
+    tint(ctx, i, lerp(1.0, 0.74, puddle));
     ctx.mt[i] = 0;
   }
 }
@@ -1210,23 +1486,33 @@ function bConcretePanel(ctx) {
       }
     }
   }
-  // Rust bleeds out of the tie holes and runs down the face.
-  const tieBleed = streakField(res, { seed: seed + 151, count: 16, lenMin: 0.05, lenMax: 0.22, widthMin: 0.004, widthMax: 0.01, startBand: [0.1, 0.9] });
+  // Rust bleeds out of the tie holes and runs down the face — tied to the holes themselves,
+  // not scattered as free-floating streaks, because a stain without a source reads as paint.
+  const tieBleed = bleedField(ties, res, { run: 0.05, spread: res * 0.009, seed: seed + 151 });
+  const macroL = macroField(res, seed + 157);
+  // Lime weeps out of the panel joints and the tie holes and dries as salt on the face below.
+  const weepSrc = new Float32Array(N);
+  for (let i = 0; i < N; i++) weepSrc[i] = clamp01(grid.groove[i] * 0.7 + ties[i] * 0.6);
+  const efflo = blurField(bleedField(weepSrc, res, { run: 0.04, spread: res * 0.008, seed: seed + 163 }), res, Math.max(1, (res * 0.004) | 0), 1);
 
   const lit = C.concreteLit;
   const stained = C.concreteStained;
   const cool = C.concreteShadow;
   const rust = C.rust;
+  const saltC = sat(mixc(C.dust, C.plaster, 0.5), 0.35);
 
   for (let i = 0; i < N; i++) {
     const joint = grid.groove[i];
     const boardJoint = boardLines.groove[i] * 0.35;
+    const mL = macroL[i];
     let hv = 0.6 + (blotch[i] - 0.5) * 0.16 + (board[i] - 0.5) * 0.1 + (grain[i] - 0.5) * 0.07 + (pebbles[i] - 0.5) * 0.05;
+    hv += (mL - 0.5) * 0.08;
     hv -= joint * 0.5;
     hv -= boardJoint * 0.25;
     hv -= ties[i] * 0.55;
     hv -= chips.chip[i] * 0.18;
     hv += chips.lip[i] * 0.05;
+    hv += efflo[i] * 0.025;
     ctx.h[i] = clamp01(hv);
 
     ctx.ar[i] = lit[0];
@@ -1235,6 +1521,8 @@ function bConcretePanel(ctx) {
     // Panels are cast in batches, so each panel carries a slightly different cement tone.
     const panelTone = grid.id[i];
     tint(ctx, i, lerp(0.88, 1.09, panelTone));
+    // Macro layer at ~1/16 the detail frequency: which end of the panel run stayed dry.
+    tint(ctx, i, lerp(0.82, 1.17, mL));
     // Cement is a mottled, speckled material at every scale. A precast panel that is one
     // flat grey is the most obviously fake thing a scene can contain, so all four scales of
     // variation go into the albedo, not just the height.
@@ -1246,7 +1534,8 @@ function bConcretePanel(ctx) {
     paint(ctx, i, shade(stained, 0.82), clamp01(stains[i] - 0.5) * 0.55);
     paint(ctx, i, sat(shade(lit, 0.82), 0.6), smoothstep(0.7, 0.95, pebbles[i]) * 0.4);
     paint(ctx, i, shade(cool, 1.0), streaks[i] * 0.45);
-    paint(ctx, i, mixc(rust, stained, 0.45), clamp01(tieBleed[i] * 1.2) * 0.55);
+    paint(ctx, i, mixc(rust, stained, 0.45), clamp01(tieBleed[i] * 1.3 - ties[i] * 0.5) * 0.6);
+    paint(ctx, i, saltC, clamp01(efflo[i] * 1.3) * 0.55);
     paint(ctx, i, shade(cool, 0.7), joint * 0.85);
     paint(ctx, i, shade(cool, 0.6), ties[i] * 0.9);
     // Chipped corners expose the raw, paler aggregate core — which is itself aggregate, so
@@ -1254,12 +1543,17 @@ function bConcretePanel(ctx) {
     paint(ctx, i, mixc(lit, C.gravel, lerp(0.25, 0.7, pebbles[i])), chips.chip[i] * 0.8);
 
     const l = lum(ctx, i);
-    let r = 0.66;
-    r -= smoothstep(0.6, 0.95, ctx.h[i]) * 0.16; // the mould face is smooth
+    // A precast mould face is genuinely smooth, so this surface carries the widest roughness
+    // spread in the library: 0.35 on an intact face against 0.95 in a blown-out chip.
+    let r = 0.62;
+    r -= smoothstep(0.6, 0.95, ctx.h[i]) * 0.2; // the mould face is smooth
+    r -= smoothstep(0.55, 0.95, mL) * 0.14; // the sheltered half of the run never weathered
+    r += smoothstep(0.45, 0.05, mL) * 0.12; // the exposed half is etched matte
     r += joint * 0.2;
-    r += chips.chip[i] * 0.2;
+    r += chips.chip[i] * 0.28;
     r += ties[i] * 0.14;
-    r -= streaks[i] * 0.12;
+    r += clamp01(efflo[i] * 1.3) * 0.16;
+    r -= streaks[i] * 0.16; // a washed panel is polished where the water runs
     r += (l - 0.45) * 0.08;
     ctx.rg[i] = clamp01(r);
     ctx.mt[i] = 0;
@@ -1270,56 +1564,107 @@ function bConcretePanel(ctx) {
 function bAsphalt(ctx) {
   const { res, N, seed } = ctx;
   const aggIds = new Float32Array(N);
+  // Four grades of aggregate, not one. A wearing course is a graded mix: the odd 20 mm stone
+  // sitting proud, a dense 10 mm skeleton, and fines filling between them. A single Worley
+  // scale gives one stone size everywhere, which is the tell of procedural tarmac.
   const agg = pebbleField(res, {
     seed: seed + 7,
     ids: aggIds,
     scales: [
-      { cells: 34, amp: 0.55 },
-      { cells: 62, amp: 0.3 },
-      { cells: 120, amp: 0.16 },
+      { cells: 16, amp: 0.3 },
+      { cells: 34, amp: 0.5 },
+      { cells: 62, amp: 0.28 },
+      { cells: 120, amp: 0.15 },
     ],
   });
   const grain = fbmField(res, { seed: seed + 23, freq: 40, octaves: 4 });
   const blotch = blotchField(res, seed + 43, 2);
   const wear = blotchField(res, seed + 59, 3);
-  // Fatigue cracking in a road runs in wandering, branching lines that peter out, and it
-  // clusters in the wheel tracks rather than covering the whole slab.
-  const cracks = crackField(res, {
+  const macroL = macroField(res, seed + 61);
+  // Primary fatigue cracking: walkers that run, fork and stop. Roads crack from a defect
+  // outwards, and the branches are always finer than the trunk.
+  const cracks = fractureField(res, {
     seed: seed + 71,
-    cells: 6,
-    width: 0.032,
-    warp: 0.07,
-    segFreq: 10,
-    segLo: 0.34,
-    segHi: 0.62,
-    densityFreq: 3,
-    densityLo: 0.4,
-    densityHi: 0.74,
+    count: 11,
+    width: 0.0032,
+    length: 0.5,
+    branch: 0.016,
+    gens: 2,
+    wander: 0.42,
+    driftFreq: 5,
+    gateFreq: 3,
+    gateLo: 0.3,
+    gateHi: 0.6,
+  });
+  // Alligator cracking, the one place a cell network is the *correct* model: once a wheel
+  // path has fatigued through, the surface really does break into interlocking blocks. Held
+  // to the wheel path by its own density mask so it never covers the whole slab.
+  const gator = crackField(res, {
+    seed: seed + 73,
+    cells: 13,
+    width: 0.05,
+    warp: 0.05,
+    segFreq: 16,
+    segLo: 0.3,
+    segHi: 0.6,
+    densityFreq: 4,
+    densityLo: 0.66,
+    densityHi: 0.9,
   });
   const oil = blotchField(res, seed + 149, 5);
-  const patch = blotchField(res, seed + 181, 3);
+
+  /*
+   * A patched repair. Utilities dig a road up and the gang lays a fresh square of wearing
+   * course back in it: darker, finer, smoother, and — the part that actually sells it — cut
+   * off along a hard edge with a bead of sealant tar run along the joint. Every real yard has
+   * one, and no amount of noise will ever produce a straight-ish cut.
+   */
+  const patchF = warpField(
+    blotchField(res, seed + 181, 2),
+    res,
+    fbmField(res, { seed: seed + 183, freq: 9, octaves: 3 }),
+    fbmField(res, { seed: seed + 187, freq: 9, octaves: 3 }),
+    res * 0.02
+  );
+  const patch = new Float32Array(N);
+  const patchSeam = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const d = patchF[i] - 0.6;
+    patch[i] = smoothstep(0.0, 0.012, d);
+    // The sealant bead straddles the cut, proud of both surfaces.
+    patchSeam[i] = 1 - smoothstep(0.006, 0.03, Math.abs(d));
+  }
 
   const base = C.asphalt;
   const stone = C.gravel;
   const dustC = C.dust;
 
   for (let i = 0; i < N; i++) {
-    const crack = cracks[i];
-    const tarRich = smoothstep(0.62, 0.9, patch[i]); // fresh patch: smoother, blacker
-    let hv = 0.5 + (agg[i] - 0.5) * (0.5 - tarRich * 0.3) + (grain[i] - 0.5) * 0.1 + (blotch[i] - 0.5) * 0.1;
-    hv -= crack * 0.4;
+    const crack = clamp01(cracks[i] + gator[i] * 0.75);
+    const pat = patch[i];
+    const seam = patchSeam[i];
+    const mL = macroL[i];
+    const tarRich = pat; // fresh patch: smoother, blacker, finer aggregate
+    let hv = 0.5 + (agg[i] - 0.5) * (0.5 - tarRich * 0.32) + (grain[i] - 0.5) * 0.1 + (blotch[i] - 0.5) * 0.1;
+    hv += (mL - 0.5) * 0.12;
+    hv += seam * 0.1; // the bead stands proud
+    hv -= crack * 0.45;
     ctx.h[i] = clamp01(hv);
 
     ctx.ar[i] = base[0];
     ctx.ag[i] = base[1];
     ctx.ab[i] = base[2];
+    // The macro layer: bleached, oxidised bitumen at one end of the tile against black,
+    // fatter binder at the other. Asphalt greys as it ages, so this is a large swing.
+    tint(ctx, i, lerp(0.72, 1.28, mL));
     // Aggregate pokes through where the bitumen has worn away. Tight threshold so only the
     // stone crowns show, per-stone tone from the cell id, and never brighter than a wet
     // pebble — pale clumps here read as spilled cement, not as a road.
-    const exposed = smoothstep(0.74, 0.96, agg[i]) * (1 - tarRich) * (0.3 + wear[i] * 0.8);
+    const exposed = smoothstep(0.74, 0.96, agg[i]) * (1 - tarRich * 0.85) * (0.3 + wear[i] * 0.8) * (0.45 + mL * 0.9);
     paint(ctx, i, shade(sat(stone, 0.5), lerp(0.5, 0.92, aggIds[i])), clamp01(exposed) * 0.62);
     paint(ctx, i, dustC, clamp01(wear[i] - 0.62) * 0.26);
     paint(ctx, i, shade(base, 0.62), tarRich * 0.55);
+    paint(ctx, i, shade(base, 0.4), seam * 0.8); // sealant is blacker than the road
     paint(ctx, i, shade(base, 0.5), crack * 0.8);
     tint(ctx, i, lerp(0.9, 1.1, grain[i]));
 
@@ -1327,12 +1672,19 @@ function bAsphalt(ctx) {
     // Oil: dark, and much smoother than the surrounding aggregate. Reads as wet.
     const oily = smoothstep(0.78, 0.95, oil[i]);
     paint(ctx, i, shade(base, 0.42), oily * 0.85);
+    // Water stands in the rut a lorry has pressed into the wearing course. Near-mirror, and
+    // under a raking key it is the brightest thing on the ground.
+    const rut = smoothstep(0.72, 0.96, wear[i]) * (1 - smoothstep(0.34, 0.6, ctx.h[i]));
     let r = 0.9;
-    r -= tarRich * 0.22;
+    r -= tarRich * 0.26;
     r -= oily * 0.5;
-    r -= smoothstep(0.6, 0.95, wear[i]) * 0.12; // tyre-polished bands
+    r -= seam * 0.3; // fresh sealant tar is glossy
+    r -= smoothstep(0.6, 0.95, wear[i]) * 0.14; // tyre-polished bands
+    r += (0.5 - mL) * 2.0 * 0.14; // oxidised bitumen is chalk, fresh binder is satin
     r += crack * 0.06;
     r += (l - 0.2) * 0.2; // paler exposed stone is rougher than the bitumen
+    r = lerp(r, 0.06, rut * 0.85);
+    tint(ctx, i, lerp(1.0, 0.66, rut));
     ctx.rg[i] = clamp01(r);
     ctx.mt[i] = 0;
   }
@@ -1424,15 +1776,44 @@ function bBrickPainted(ctx) {
   const efflor = fbmField(res, { seed: seed + 79, freq: 7, octaves: 4 });
   const blotch = blotchField(res, seed + 97, 2);
   const spall = worleyField(res, { cx: 14, seed: seed + 103, jitter: 1, mode: 0 });
+  const macroL = macroField(res, seed + 107);
+  // Where the pointing has gone. Lime mortar erodes in patches — a wall does not lose its
+  // joints uniformly, it loses them on the weather side and around anything that drips.
+  const mortarLoss = fbmField(res, { seed: seed + 109, freq: 5, octaves: 4 });
+  /*
+   * Salt bloom. Ground water rises through a wall and dries out of the face, leaving lime on
+   * the brick — always heaviest low down and always strongest at the joints, because the
+   * mortar is the porous path. The low-v bias is deliberately soft rather than a hard band:
+   * the tile repeats vertically up the elevation, and a hard rising-damp line would print a
+   * visible stripe every 2.5 m.
+   */
+  const bloomSrc = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const v = ((i / res) | 0) / res;
+    bloomSrc[i] = clamp01(bond.groove[i] * smoothstep(0.25, 0.72, efflor[i])) * lerp(1.0, 0.42, v);
+  }
+  const bloom = blurField(bleedField(bloomSrc, res, { run: 0.05, spread: res * 0.012, seed: seed + 113 }), res, Math.max(1, (res * 0.005) | 0), 2);
 
   const paintC = C.brickPainted;
   const brickC = C.brick;
   const mortarC = mixc(C.plaster, C.concreteStained, 0.45);
   const dustC = C.dust;
   const cool = C.concreteShadow;
+  const saltC = sat(mixc(dustC, C.plaster, 0.55), 0.3);
 
   for (let i = 0; i < N; i++) {
     const joint = bond.groove[i];
+    const mL = macroL[i];
+    /*
+     * A struck joint is a wedge, not a slot: the bricklayer cuts the mortar back under the
+     * brick above and irons it flush at the brick below so the course sheds water. Driving
+     * the depth off the sub-cell vertical fraction gives that asymmetry, and it is the
+     * difference between brickwork and a grid of tiles with grout lines.
+     */
+    const struck = joint * lerp(0.55, 1.3, bond.sv[i]);
+    // Then take the pointing out altogether in patches. A raked-out joint is a deep shadow
+    // line and the strongest read on any old wall under a low sun.
+    const raked = joint * smoothstep(0.58, 0.86, mortarLoss[i]) * (0.4 + mL * 0.9);
     // Paint survives on the flat faces and fails first at the arrises and over the mortar,
     // so the failure threshold is lowered locally rather than the chip mask being scaled —
     // scaling a hard-edged mask just makes it grey, biasing the threshold makes it spread.
@@ -1444,12 +1825,15 @@ function bBrickPainted(ctx) {
     const spallMask = (1 - smoothstep(0.05, 0.3, spall[i])) * smoothstep(0.62, 0.86, paintNoise[i]);
 
     let hv = 0.62 + (brickTex[i] - 0.5) * 0.1 + (blotch[i] - 0.5) * 0.08;
-    hv -= joint * 0.5;
+    hv += (mL - 0.5) * 0.07;
+    hv -= struck * 0.46;
+    hv -= raked * 0.3; // the pointing has gone entirely here
     hv += bond.chamfer[i] * 0.03;
     hv -= chip * 0.06; // paint film is thin: the chip is a shallow step, not a crater
     hv += chips.lip[i] * 0.035;
     hv -= spallMask * 0.22; // spalled brick face is a real crater
     hv += (mortarTex[i] - 0.5) * joint * 0.12;
+    hv += bloom[i] * 0.02; // salt is a deposit and sits proud of the face
     // Slight per-brick height variation so the wall is not a perfect plane.
     hv += (bond.id[i] - 0.5) * 0.045 * (1 - joint);
     ctx.h[i] = clamp01(hv);
@@ -1463,25 +1847,38 @@ function bBrickPainted(ctx) {
     // A few bricks in any wall are badly over- or under-fired.
     if (bond.id[i] > 0.93) base = mixc(base, shade(C.gunRubber, 1.5), 0.35);
     else if (bond.id[i] < 0.07) base = mixc(base, C.sandbag, 0.4);
-    const sub = mixc(base, mortarC, joint);
+    // Mortar is a different material from the brick, and where it has weathered back it goes
+    // paler, sandier and coarser as the fines wash out of it.
+    let mort = mortarC;
+    mort = mixc(mort, sat(shade(mortarC, 1.08), 0.55), smoothstep(0.5, 0.9, mortarLoss[i]));
+    const sub = mixc(base, mort, joint);
     ctx.ar[i] = sub[0];
     ctx.ag[i] = sub[1];
     ctx.ab[i] = sub[2];
+    // The macro layer: which end of the elevation caught the weather. On a painted wall this
+    // is mostly a bleaching of the topcoat, so it is applied before the paint and again after.
+    tint(ctx, i, lerp(0.85, 1.14, mL));
     // Paint layer.
-    const paintCover = clamp01(1 - chip) * (1 - spallMask * 0.85);
+    const paintCover = clamp01(1 - chip) * (1 - spallMask * 0.85) * lerp(0.72, 1.0, mL);
     paint(ctx, i, mixc(paintC, shade(paintC, lerp(0.9, 1.08, paintNoise[i])), 0.8), paintCover * 0.94);
     // Weathering on top of the paint.
     paint(ctx, i, shade(cool, 1.0), streaks[i] * 0.45 * paintCover);
-    paint(ctx, i, dustC, clamp01(efflor[i] - 0.62) * 0.5); // salt bloom out of the mortar
+    // Salt bloom: out of the joints, running down the face, heaviest at the base of the wall.
+    paint(ctx, i, saltC, clamp01(bloom[i] * 1.5) * 0.6);
+    paint(ctx, i, dustC, clamp01(efflor[i] - 0.62) * 0.4);
     paint(ctx, i, shade(cool, 0.72), joint * 0.35);
+    paint(ctx, i, shade(cool, 0.6), raked * 0.5); // a raked joint is mostly shadow
     tint(ctx, i, lerp(0.93, 1.05, mortarTex[i]));
 
     const l = lum(ctx, i);
     // Paint is smoother than what is under it; where it has gone, roughness jumps.
-    let r = lerp(0.86, 0.52, paintCover);
+    let r = lerp(0.86, 0.48, paintCover);
     r += joint * 0.12;
+    r += raked * 0.14; // weathered mortar is the roughest thing on the wall
     r += spallMask * 0.16;
-    r -= streaks[i] * 0.08; // washed paint is slightly polished
+    r += clamp01(bloom[i] * 1.4) * 0.16; // salt crust is chalk
+    r -= streaks[i] * 0.12; // washed paint is polished where the water runs
+    r += (0.5 - mL) * 2.0 * 0.1; // the weather side has lost its sheen
     r += (l - 0.5) * 0.1;
     r += (brickTex[i] - 0.5) * 0.06;
     ctx.rg[i] = clamp01(r);
