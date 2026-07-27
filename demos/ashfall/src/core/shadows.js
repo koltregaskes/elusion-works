@@ -145,11 +145,27 @@ const NORMAL_BIAS_SAFETY = 1.25;
 /** Hard floor/ceiling on the normal offset, in metres. Guards against absurd cascade extents. */
 const NORMAL_BIAS_MIN = 0.008;
 /**
- * 0.06 m is the ceiling the art direction can afford: it costs 0.43 m of shadow slide at an 8°
- * sun, which the screen-space contact trace below then covers. Anything larger and kerbs,
- * rubble and boots stop touching the ground.
+ * 0.06 m is the ceiling that is affordable *only when the screen-space contact trace is running
+ * to cover it*, because at an 8° sun it costs 0.43 m of shadow slide.
+ *
+ * That caveat was the bug. Contact hardening is a `high`/`ultra` feature, so at `medium` — the
+ * preset every capture uses and a great many machines will pick — nothing covered the slide, and
+ * all three cascades sat pinned at this ceiling. A review of the rendered frames put it plainly:
+ * "nothing in the frame casts a shadow on the ground". Small props were slipping further than
+ * they are wide, so their shadows detached completely.
+ *
+ * `SHADOW_SLIP_MAX` is the real limit, and it is expressed in the unit that actually matters:
+ * metres of travel along the light ray. A normal offset `b` on ground lit at elevation `e`
+ * displaces the shadow by `b / sin(e)`, so the ceiling has to be derived from the sun angle
+ * rather than fixed. See `normalBiasCeiling()`.
  */
 const NORMAL_BIAS_MAX = 0.06;
+/**
+ * Metres of shadow slip along the light ray that may pass unnoticed with no contact trace to
+ * hide it. A boot sole is about 0.10 m front to back and a kerb about 0.12 m tall, so anything
+ * past this and the objects that sell ground contact stop touching it.
+ */
+const SHADOW_SLIP_MAX = 0.1;
 
 /**
  * Floor on sinθ. The key can be driven anywhere by `sky.setTimeOfDay`; with the sun overhead
@@ -732,6 +748,13 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
    * sun, which is precisely why the offset has to be derived and not guessed.
    */
   let groundSin = 1;
+  /**
+   * sin(sun elevation), i.e. the sun direction's Y component. Distinct from `groundSin`, which
+   * is the sine of the angle between the ground normal and the sun and therefore approaches 1
+   * as the sun gets *lower*. This one approaches 0, and it is the divisor that turns a normal
+   * offset into shadow slip, so the two must never be confused.
+   */
+  let sunElevSin = 1;
 
   function readSun() {
     if (sunLight) {
@@ -756,6 +779,9 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
     // Ground normal is +Y, so cosθ is just the sun's elevation sine.
     const cosT = clamp(_sunDir.y, -1, 1);
     groundSin = Math.max(Math.sqrt(Math.max(0, 1 - cosT * cosT)), SIN_THETA_FLOOR);
+    // Floored well below the art-directed 8° (sin 0.139) so a user dragging the time-of-day
+    // slider toward the horizon cannot divide the ceiling to nothing.
+    sunElevSin = Math.max(Math.abs(cosT), 0.06);
 
     _lightDir.copy(_sunDir).negate();
     // A sun exactly overhead makes the light-orientation lookAt singular (dir parallel to up).
@@ -924,6 +950,22 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
    * Clamped at the bottom so it still clears a 16-bit depth quantum and at the top so it can
    * never detach a shadow from its contact point.
    */
+  /**
+   * Ceiling on the normal offset, in metres.
+   *
+   * A normal offset `b` on ground lit at elevation `e` slides the shadow `b / sin(e)` along the
+   * light ray, so a value that is harmless with the sun overhead detaches every shadow in the
+   * scene at 8°. When the contact trace is running it hides the slide and the old absolute
+   * ceiling stands; when it is not — `medium` and `low`, and any driver that rejected the
+   * patched filter — the ceiling has to come from the slip budget instead.
+   *
+   * At the art-directed 8°: 0.10 * 0.139 = 0.014 m, against the 0.06 that was being applied.
+   */
+  function normalBiasCeiling() {
+    if (contactActive) return NORMAL_BIAS_MAX;
+    return Math.min(NORMAL_BIAS_MAX, SHADOW_SLIP_MAX * sunElevSin);
+  }
+
   function applyCascadeTuning() {
     if (!usingCSM || !csm) return;
     const size = csm.shadowMapSize;
@@ -953,7 +995,7 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
       light.shadow.normalBias = clamp(
         offsetTexels * NORMAL_BIAS_SAFETY * texel * groundSin * params.normalBiasScale,
         NORMAL_BIAS_MIN,
-        NORMAL_BIAS_MAX
+        normalBiasCeiling()
       );
       light.shadow.bias = -clamp(
         (DEPTH_BIAS_TEXELS * texel * params.depthBiasScale) / (far - near),
@@ -996,10 +1038,12 @@ export function createShadows(engine, sun, quality = DEFAULT_QUALITY) {
     // Same derivation as the cascaded path, one cascade wide. Always the no-slope constant:
     // the fallback runs three's stock filter, which has no slope term to lean on.
     const texel = (2 * half) / size;
+    // Same slip ceiling as the cascade path: the fallback never has a contact trace, so it is
+    // always the slip-derived limit that applies here.
     light.shadow.normalBias = clamp(
       NORMAL_BIAS_TEXELS_NOSLOPE * NORMAL_BIAS_SAFETY * texel * groundSin,
       NORMAL_BIAS_MIN,
-      NORMAL_BIAS_MAX
+      Math.min(NORMAL_BIAS_MAX, SHADOW_SLIP_MAX * sunElevSin)
     );
     light.shadow.bias = -clamp(
       (DEPTH_BIAS_TEXELS * texel) / (cam.far - cam.near),
