@@ -226,9 +226,20 @@ ceiling, decay, movement and airborne terms, exact on the first shot when aimed 
 ## Performance
 
 Four presets, `low` through `ultra`, drive render scale, cascade count and shadow map size,
-which post passes run at all, bloom mip count, particle multiplier and decal cap. The target is
-60 fps at 1080p on integrated graphics at `medium`, under 300 draw calls and under 900k visible
-triangles. Every particle, casing, tracer, flash and haze billboard costs two draw calls: one
+which post passes run at all, bloom mip count, particle multiplier and decal cap.
+
+Two different numbers get called "the triangle count" and it is worth separating them, because
+comparing the wrong pair makes the budget look blown when it is not. The **scene** holds about
+1.1M triangles across 98 meshes, of which the static level is 964k in 65 draw calls. The
+**frame** costs roughly four times that, because the pipeline draws the scene once for the
+normal and roughness prepass, once per shadow cascade, and once for the main pass, so
+`renderer.info.render.triangles` reports 4 to 5.5M depending on preset and view. The budget the
+level is held to is the first number: 120 draw calls and 1.2M triangles for the static world.
+
+Frame rate has not been measured on real hardware. Every capture in this project ran under
+SwiftShader, a software rasteriser, where the demo manages roughly one frame every twenty
+seconds; that figure says nothing about a GPU and is not quoted here as if it did. Every
+particle, casing, tracer, flash and haze billboard costs two draw calls: one
 instanced mesh for the alpha pool, one for the additive pool, over a generated 4x4 atlas. A
 module that throws during construction becomes an inert stub reported on an error card, so one
 failure degrades the demo instead of blanking it.

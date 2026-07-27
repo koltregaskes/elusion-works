@@ -145,7 +145,11 @@ export async function boot() {
     /** Capture mode: skips the menu and pointer lock so headless screenshots work. */
     capture: params.has('capture') || params.has('shot'),
     quality: params.get('quality') || detectQuality(),
-    clock: { time: 0, dt: 0, frame: 0, fps: 60 },
+    // fps starts at 0, not 60. It is only written once half a second of frame time has
+    // accumulated, so seeding it with a plausible-looking number meant any tool that sampled
+    // it early reported a measurement that had never been taken. A headless capture run read
+    // "60 fps" off a build that was managing one frame every twenty seconds.
+    clock: { time: 0, dt: 0, frame: 0, fps: 0 },
     events: createEmitter(),
     state: {
       mode: 'menu',
