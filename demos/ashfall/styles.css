@@ -310,11 +310,25 @@ body:not(.ashfall-ready)::after {
   font-stretch: var(--font-stretch-hud);
 }
 
-/* Figures stay monospaced so the columns do not jitter as values change. */
+/*
+ * Figures use the condensed display face with tabular figures, NOT the mono face.
+ *
+ * A reviewer caught two faults that both trace back to routing numerals through --font-mono.
+ * First, the ammo block already sets the display face, so "30" and "/210" sat side by side in
+ * two visibly different typefaces. Second, when the webfont is unavailable the mono fallback
+ * resolves to DejaVu Sans Mono, whose default zero is slashed, so every zero on screen read as
+ * a programmer's zero - which no shipped shooter uses.
+ *
+ * `tabular-nums` gives the same non-jittering columns that the mono face was there for, without
+ * either problem. `slashed-zero` is explicitly disabled for any fallback that offers it as a
+ * feature rather than as its default glyph.
+ */
 .score-row .val,
 .health-meta [data-health-value] {
-  font-family: var(--font-mono);
-  font-stretch: normal;
+  font-family: var(--font-display);
+  font-stretch: var(--font-stretch-hud);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'zero' 0;
 }
 
 .hud,
