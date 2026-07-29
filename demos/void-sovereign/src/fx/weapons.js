@@ -252,19 +252,23 @@ void main() {
   float shape;
   vec3 col;
 
+  /* Only the core is allowed to reach white. The sheath and halo are held
+     below the point where the tone curve crushes them to white, because a
+     lance that saturates on every shell is just a white bar — the colour is
+     what tells you whose ion frigate is firing, and it has to survive both the
+     bloom and the grade. */
   if ( vShell > 1.5 ) {
-    // Core: a hard white filament. Barely modulated — this is the thing that
-    // says "this is not a light, this is a hole being cut".
+    // Core: a hard white filament. This is not a light, it is a hole being cut.
     shape = pow( max( 1.0 - across * across, 0.0 ), mix( 0.55, 0.22, vClamp ) );
-    col = mix( vec3( 1.0 ), vColor, 0.14 ) * ( 2.6 + 5.0 * ends ) * mix( 0.92, 1.0, energy );
+    col = mix( vec3( 1.0 ), vColor, 0.12 ) * ( 2.2 + 4.2 * ends ) * mix( 0.92, 1.0, energy );
   } else if ( vShell > 0.5 ) {
     // Sheath: the colour, and where the plasma turbulence lives.
     shape = pow( max( 1.0 - across, 0.0 ), mix( 2.2, 1.1, vClamp ) ) * mix( 0.75, 1.25, energy );
-    col = mix( vColor, vec3( 1.0 ), 0.30 ) * ( 1.5 + 3.2 * ends ) * energy;
+    col = mix( vColor, vec3( 1.0 ), 0.06 ) * ( 0.60 + 1.15 * ends ) * energy;
   } else {
-    // Halo: the long-range read. Soft, wide, cheap.
+    // Halo: the long-range read. Soft, wide, cheap, and firmly coloured.
     shape = pow( max( 1.0 - across, 0.0 ), 2.8 ) * 0.55;
-    col = vColor * ( 0.62 + 1.5 * ends );
+    col = vColor * ( 0.30 + 0.62 * ends );
   }
 
   float a = clamp( shape, 0.0, 1.0 ) * vEnv * fxSoftFade( vFragW );
@@ -881,7 +885,7 @@ export class WeaponFX {
          An ionLance at 220 damage therefore burns a ~25 m halo around a ~3 m
          white core — a lance, not a laser pointer. */
       width: (ion ? 2.2 : 1.2) + Math.sqrt(dmg) * (ion ? 0.22 : 0.13),
-      intensity: ion ? 2.3 : 1.5,
+      intensity: ion ? 1.9 : 1.35,
       colour: new THREE.Color(this._col),
       seed: ctx.rng.next(),
       kind: ion ? 1 : 0,

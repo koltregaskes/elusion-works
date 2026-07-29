@@ -84,15 +84,40 @@ const UNSHIPPED_CONTROLS = new Set(['Queue the order']);
    actually caused, then the rail retires itself for good. This is deliberately
    not a modal: the genre's chronic failure is dumping the whole scheme up
    front, which is exactly what the H card is for once you want it. */
+/* `src/audio/index.js` publishes an event-driven control surface precisely so
+   the HUD does not have to hold a reference to the AudioSystem: emit
+   `ui:audioVolume` / `ui:audioMute`, listen for `ui:audioChanged`. It persists
+   its own preferences, so this panel owns none of that.
+
+   The panel stays hidden until audio announces itself — either by the `audio`
+   constructor option or by the first `ui:audioChanged` — because a mixer that
+   silently does nothing is worse than no mixer. */
+const AUDIO_BUSES = [
+  ['master', 'Master'],
+  ['music', 'Music'],
+  ['sfx', 'Effects'],
+  ['ui', 'Interface'],
+  ['voice', 'Comms'],
+];
+
 const ONBOARD_KEY = 'vs.onboarded.v1';
 /* A hard ceiling as well as the event triggers: whatever the player is doing,
-   a first-run card has no business being on screen two minutes in. */
-const ONBOARD_MAX_LIFE = 110;
+   a first-run rail has no business still being on screen a minute in. */
+const ONBOARD_MAX_LIFE = 45;
 const ONBOARD_STEPS = [
-  { id: 'select', text: 'Drag a box across your ships to select them' },
-  { id: 'order', text: 'Right-click to send them somewhere — drag up or down to set altitude' },
-  { id: 'build', text: 'Select the Mothership, then order a hull from Production' },
+  { id: 'select', text: 'Drag a box to select your ships' },
+  { id: 'order', text: 'Right-click to send them — drag to set altitude' },
+  { id: 'build', text: 'Select the Mothership to build' },
 ];
+
+/* Tactical pause is the best-kept secret in the build: the sim genuinely
+   freezes and orders issued while frozen are obeyed. It gets said twice —
+   once on the first-run rail and once at the top of the controls card —
+   because a feature nobody finds may as well not exist. */
+const PAUSE_LEDE =
+  'Space pauses the battle. Orders you give while it is paused are obeyed the ' +
+  'moment it resumes — a fleet engagement is meant to be commanded, not raced.';
+const PAUSE_NOTE = 'Space pauses the battle — you can still give orders.';
 
 /* -------------------------------------------------------------- projection */
 
@@ -187,7 +212,7 @@ const EMPTY = [];
 /* ============================================================================ */
 
 export class HUD {
-  constructor({ engine, world, camera, container, team = 0, intro = 'auto' } = {}) {
+  constructor({ engine, world, camera, container, team = 0, intro = 'auto', audio = null } = {}) {
     this.engine = engine || null;
     this.world = world || null;
     this.team = team;
@@ -235,6 +260,8 @@ export class HUD {
     this._selDirty = false;
     this._buildDirty = false;
     this._sensorsSelf = false;
+    this._audioLive = false;
+    this._muted = false;
     this._helpOpen = false;
     this._overOpen = false;
     this._introDone = false;
@@ -277,6 +304,7 @@ export class HUD {
     this._measure();
     this._setIntro(intro);
     this._refreshStats(true);
+    if (audio && typeof audio.getSettings === 'function') this._syncAudio(audio.getSettings());
   }
 
   /* ------------------------------------------------------------------ DOM */
@@ -383,6 +411,8 @@ export class HUD {
     this.helpClose = el('button', 'vsh-help__close', 'Close · Esc');
     this.helpClose.type = 'button';
     hHead.appendChild(this.helpClose);
+    // Promoted out of the "Groups & time" list, where it was one grey row.
+    const hLede = el('p', 'vsh-help__lede', PAUSE_LEDE);
 
     // Straight from `core/input.js`, so the card cannot drift from the handlers.
     const hGrid = el('div', 'vsh-help__grid');
@@ -398,14 +428,53 @@ export class HUD {
       }
       hGrid.appendChild(col);
     }
-    hInner.append(hHead, hGrid);
+
+    /* ------------------------------------------------------------- audio */
+    const audio = el('section', 'vsh-help__col vsh-audio');
+    audio.appendChild(el('p', 'vsh-help__grp', 'Audio'));
+    const muteRow = el('div', 'vsh-audio__row vsh-audio__row--mute');
+    this.muteBtn = el('button', 'vsh-audio__mute', 'Sound on');
+    this.muteBtn.type = 'button';
+    this.muteBtn.setAttribute('aria-pressed', 'false');
+    muteRow.append(el('span', 'vsh-audio__k', 'Mute'), this.muteBtn);
+    audio.appendChild(muteRow);
+
+    this.audioSliders = AUDIO_BUSES.map(([id, label]) => {
+      const row = el('div', 'vsh-audio__row');
+      const input = document.createElement('input');
+      input.type = 'range';
+      input.className = 'vsh-audio__slider';
+      input.min = '0';
+      input.max = '1';
+      input.step = '0.02';
+      input.value = '0.8';
+      input.dataset.bus = id;
+      input.setAttribute('aria-label', `${label} volume`);
+      row.append(el('span', 'vsh-audio__k', label), input);
+      audio.appendChild(row);
+      return { id, input };
+    });
+    hGrid.appendChild(audio);
+    this.audioPanel = audio;
+
+    hInner.append(hHead, hLede, hGrid);
     help.appendChild(hInner);
     this.help = help;
 
     /* ---------------------------------------------------------- onboarding */
+    /* A thin strip under the top rule rather than a block in the middle of the
+       frame. It is transient by design, so it must not own the composition
+       while it is up — it sits in the one band of the screen nothing else
+       uses, and leaves the void, the fleet and the bottom deck alone. */
     const ob = this._add(root, el('aside', 'vsh-onboard'));
     ob.setAttribute('aria-label', 'Getting started');
-    ob.append(el('p', 'vsh-onboard__k', 'First orders'));
+    const obHead = el('div', 'vsh-onboard__head');
+    obHead.append(el('p', 'vsh-onboard__k', 'First orders'));
+    this.obSkip = el('button', 'vsh-onboard__skip', 'Dismiss');
+    this.obSkip.type = 'button';
+    obHead.appendChild(this.obSkip);
+
+    const obRows = el('div', 'vsh-onboard__rows');
     this.obSteps = ONBOARD_STEPS.map((s, i) => {
       const row = el('div', 'vsh-onboard__row');
       row.append(
@@ -413,13 +482,28 @@ export class HUD {
         el('span', 'vsh-onboard__n vsh-num', String(i + 1)),
         el('span', 'vsh-onboard__t', s.text),
       );
-      ob.appendChild(row);
+      obRows.appendChild(row);
       return { id: s.id, row, done: false };
     });
-    this.obSkip = el('button', 'vsh-onboard__skip', 'Dismiss · press H for everything');
-    this.obSkip.type = 'button';
-    ob.appendChild(this.obSkip);
+    ob.append(obHead, obRows, el('p', 'vsh-onboard__note', PAUSE_NOTE));
     this.onboard = ob;
+
+    /* --------------------------------------------------------- paused state */
+    /* A frozen simulation with no indicator reads as a crash. Corner ticks and
+       one word — no dimming, because the whole point is that you can still
+       read the battlefield and command it while it is stopped. */
+    const paused = this._add(root, el('div', 'vsh-paused'));
+    paused.setAttribute('aria-hidden', 'true');
+    for (const c of ['tl', 'tr', 'bl', 'br']) {
+      paused.appendChild(el('i', `vsh-paused__c vsh-paused__c--${c}`));
+    }
+    const pTag = el('div', 'vsh-paused__tag');
+    pTag.append(
+      el('span', 'vsh-paused__word', 'Paused'),
+      el('span', 'vsh-paused__sub', 'Orders still stand · Space to resume'),
+    );
+    paused.appendChild(pTag);
+    this.pausedEl = paused;
 
     /* --------------------------------------------------------------- boot */
     /* Dormant unless something drives it with `ui:progress` — the page shell
@@ -541,6 +625,7 @@ export class HUD {
       if (this._sensorsSelf) return;
       this._setSensors(!!(p && p.open), true);
     });
+    on('ui:audioChanged', (p) => this._syncAudio(p));
     on('ui:progress', (p) => p && this.setLoadProgress(p.value, p.label));
     on('ui:ready', (p) => {
       if (p && p.seed !== undefined) this.seed = p.seed;
@@ -560,6 +645,13 @@ export class HUD {
 
     this._onClick = (ev) => this._click(ev);
     this.root.addEventListener('click', this._onClick);
+
+    this._onSlide = (ev) => {
+      const t = ev.target;
+      if (!t || !t.dataset || !t.dataset.bus) return;
+      bus.emit('ui:audioVolume', { bus: t.dataset.bus, value: Number(t.value) });
+    };
+    this.audioPanel.addEventListener('input', this._onSlide);
 
     this._ro = null;
     if (typeof ResizeObserver === 'function') {
@@ -595,6 +687,10 @@ export class HUD {
     }
     if (t.closest('.vsh-onboard__skip')) {
       this._obRetire();
+      return;
+    }
+    if (t.closest('.vsh-audio__mute')) {
+      bus.emit('ui:audioMute', { muted: !this._muted });
       return;
     }
     const cmd = t.closest('.vsh-cmd');
@@ -693,6 +789,30 @@ export class HUD {
     this.toast(text, kind || 'info');
   }
 
+  /* ------------------------------------------------------------------ audio */
+
+  /* Called with whatever `getSettings()` returns. The first call is also what
+     reveals the panel — no audio system, no mixer. */
+  _syncAudio(s) {
+    if (!s || typeof s !== 'object') return;
+    if (s.available === false) return;
+    if (!this._audioLive) {
+      this._audioLive = true;
+      this.audioPanel.classList.add('is-live');
+    }
+    this._muted = !!s.muted;
+    this.muteBtn.setAttribute('aria-pressed', String(this._muted));
+    this.muteBtn.textContent = this._muted ? 'Muted' : 'Sound on';
+    this.audioPanel.classList.toggle('is-muted', this._muted);
+    for (const sl of this.audioSliders) {
+      const v = num(s[sl.id], undefined);
+      // Never fight the control the player is currently dragging.
+      if (v !== undefined && document.activeElement !== sl.input) {
+        sl.input.value = String(v);
+      }
+    }
+  }
+
   _syncPalette() {
     const live = this.selection.size > 0;
     this.stanceRow.classList.toggle('is-live', live);
@@ -711,7 +831,10 @@ export class HUD {
     for (const b of this.speedBtns) {
       b.setAttribute('aria-pressed', String(Number(b.dataset.speed) === this.speed));
     }
-    this.root.classList.toggle('is-paused', this.speed === 0);
+    const paused = this.speed === 0;
+    this.root.classList.toggle('is-paused', paused);
+    this.pausedEl.classList.toggle('is-open', paused);
+    this.pausedEl.setAttribute('aria-hidden', String(!paused));
   }
 
   setStance(id) {
@@ -1117,6 +1240,7 @@ export class HUD {
     this._offs.length = 0;
     window.removeEventListener('keydown', this._onKey);
     this.root.removeEventListener('click', this._onClick);
+    this.audioPanel.removeEventListener('input', this._onSlide);
     if (this._onResize) window.removeEventListener('resize', this._onResize);
     if (this._ro) this._ro.disconnect();
     if (this._bootTimer) clearTimeout(this._bootTimer);

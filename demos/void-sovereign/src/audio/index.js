@@ -351,26 +351,37 @@ export class AudioSystem {
   }
 
   /**
-   * One sub-bus: input -> [inserts] -> volume -> duck -> preMaster,
-   * with post-fader sends. `insert()` splices a node in before the fader so
-   * tone shaping tracks the fader rather than the other way round.
+   * One sub-bus:
+   *
+   *   input     -> duck -> postDuck -> [inserts] -> volume -> preMaster
+   *   lateInput ---------> postDuck
+   *
+   * `lateInput` is the escape hatch for the thing that caused the duck. A
+   * capital detonation ducks the sfx bus so the rest of the battle leans back
+   * out of its way; if the detonation itself went through that duck node it
+   * would attenuate itself and the whole point — dynamic range — would be lost.
+   * Tone shaping and the user's fader still apply to both paths.
    */
   _makeBus(name) {
     const ctx = this.ctx;
     const input = ctx.createGain();
-    const volume = ctx.createGain();
+    const lateInput = ctx.createGain();
     const duck = ctx.createGain();
     duck.gain.value = 1;
-    let tail = input;
-    volume.connect(duck);
-    duck.connect(this.preMaster);
-    tail.connect(volume);
+    const postDuck = ctx.createGain();
+    const volume = ctx.createGain();
+    input.connect(duck);
+    duck.connect(postDuck);
+    lateInput.connect(postDuck);
+    postDuck.connect(volume);
+    volume.connect(this.preMaster);
     const b = {
       name,
       input,
+      lateInput,
       volume,
       duck,
-      _tail: tail,
+      _tail: postDuck,
       insert(node) {
         safeDisconnect(b._tail);
         b._tail.connect(node);
@@ -380,7 +391,7 @@ export class AudioSystem {
       send(target, amount) {
         const g = ctx.createGain();
         g.gain.value = amount;
-        duck.connect(g);
+        volume.connect(g);
         g.connect(target);
         return g;
       },
@@ -654,9 +665,10 @@ export class AudioSystem {
    * Build the standard tail of a positional sound: panner + tone + output gain,
    * already connected to the given bus. Returns the node to feed.
    */
-  positional(busName, sp, level) {
+  positional(busName, sp, level, late) {
     const ctx = this.ctx;
     const target = this.buses[busName] || this.buses.sfx;
+    const sink = late ? target.lateInput : target.input;
     const out = ctx.createGain();
     out.gain.value = 1;
     const tone = ctx.createBiquadFilter();
@@ -671,9 +683,9 @@ export class AudioSystem {
       const pan = ctx.createStereoPanner();
       pan.pan.value = sp ? sp.pan : 0;
       amp.connect(pan);
-      pan.connect(target.input);
+      pan.connect(sink);
     } else {
-      amp.connect(target.input);
+      amp.connect(sink);
     }
     return { input: out, amp, tone };
   }

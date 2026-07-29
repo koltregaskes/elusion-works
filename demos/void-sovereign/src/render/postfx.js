@@ -48,21 +48,32 @@ const TIERS = {
   },
   medium: {
     taa: false, smaa: true, msaa: 4, bloom: true, bloomMips: 6, glow: true,
-    streak: true, dof: false, grain: true, aberration: true, vignette: true,
+    streak: false, dof: false, grain: true, aberration: true, vignette: true,
     exposure: true, grade: true, bloomScatter: 0.58, taaSharpen: 0.0,
   },
   high: {
     taa: true, smaa: false, msaa: 0, bloom: true, bloomMips: 7, glow: true,
-    streak: true, dof: true, grain: true, aberration: true, vignette: true,
+    streak: false, dof: true, grain: true, aberration: true, vignette: true,
     exposure: true, grade: true, bloomScatter: 0.62, taaSharpen: 0.0,
   },
   ultra: {
     taa: true, smaa: false, msaa: 0, bloom: true, bloomMips: 8, glow: true,
-    streak: true, dof: true, grain: true, aberration: true, vignette: true,
+    streak: false, dof: true, grain: true, aberration: true, vignette: true,
     exposure: true, grade: true, bloomScatter: 0.66, taaSharpen: 0.0,
   },
 };
 
+/* The anamorphic streak is off in every tier on purpose, not because it does
+   not work. It is a horizontal-only smear, which claims an anamorphic lens —
+   and nothing else in this game supports that claim: the HUD is a thin vector
+   overlay with no chrome or gloss, and the bloom, the flares and the shield
+   hits are all radially symmetrical. One wide horizontal bar across the key
+   star reads as a rendering fault rather than a lens. The pass and its params
+   are kept so that `setEnabled('streak', true)` can switch it back on if the
+   art direction ever commits to anamorphic across the board.
+
+   Ownership note: the key star's flare is [ENV]'s — it is scene geometry and
+   blooms correctly through this stack on its own. POSTFX does not draw one. */
 const ORDER = ['low', 'medium', 'high', 'ultra'];
 
 /* Fullscreen triangle. FullScreenQuad's geometry is already in clip space, so
@@ -324,7 +335,14 @@ export class PostFX {
       grain: 0.026,
       contrast: 0.07,
       saturation: 1.02,
-      shadowLift: 0.02,
+      /* Deliberately tiny. This is an *additive* floor, so it lands entirely on
+         the darkest part of the image — which is the shadow side of every hull.
+         Measured through the composite: at 0.02 it put true black at #0d1422
+         and added ~20 8-bit codes below linear 0.02, i.e. it single-handedly
+         turned the void navy and flattened the terminator §3.2 depends on. At
+         0.004 the same measurement is ~3 codes: enough that space is not a dead
+         flat zero, not enough to lift a shadow. */
+      shadowLift: 0.004,
       splitTone: 0.09,
       highlightRolloff: 0.35,
       shadowTint: new THREE.Color(0.36, 0.52, 0.85),
@@ -763,7 +781,7 @@ export class PostFX {
       uGrain: { value: 0.026 },
       uContrast: { value: 0.07 },
       uSaturation: { value: 1.02 },
-      uShadowLift: { value: 0.02 },
+      uShadowLift: { value: 0.004 },
       uSplitTone: { value: 0.09 },
       uHighlightRolloff: { value: 0.35 },
       uShadowTint: { value: new THREE.Vector3(0.36, 0.52, 0.85) },
@@ -844,12 +862,26 @@ export class PostFX {
 
     if (this._rtGlow) {
       const mask = e.camera.layers.mask;
+      const depthBuf = r.state.buffers.depth;
       e.camera.layers.set(LAYER.GLOW);
       r.setRenderTarget(this._rtGlow);
-      // Colour only. The depth attachment is the scene's, and every material
-      // on this layer is depthWrite:false, so the buffer survives read-only.
+
+      /* Colour only — the depth attachment here is the *scene's* depth texture,
+         shared so the glow layer is occluded by the hull in front of it. That
+         sharing means a single LAYER.GLOW material with depthWrite:true would
+         silently corrupt the buffer that TAA, DoF and the bloom prefilter all
+         read afterwards. FX currently sets depthWrite:false everywhere on this
+         layer, but MAT and SHIPS are now adding emissive hull details to it as
+         well, so relying on that convention is not good enough. Locking the
+         depth mask off makes it impossible for any material to write, whatever
+         it asks for. */
+      depthBuf.setMask(false);
+      depthBuf.setLocked(true);
       r.clear(true, false, false);
       r.render(e.scene, e.camera);
+      depthBuf.setLocked(false);
+      depthBuf.setMask(true);
+
       e.camera.layers.mask = mask;
     }
 

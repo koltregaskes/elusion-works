@@ -45,12 +45,16 @@ const BIG_RADIUS = 100;
 let buildShipModel = null;
 let getFleetBatch = null;
 let commitAllBatches = null;
+let setFleetScene = null;
+let classBatches = null;
 try {
   const mod = await import('../ships/index.js');
   if (mod) {
     if (typeof mod.buildShipModel === 'function') buildShipModel = mod.buildShipModel;
     if (typeof mod.getFleetBatch === 'function') getFleetBatch = mod.getFleetBatch;
     if (typeof mod.commitAllBatches === 'function') commitAllBatches = mod.commitAllBatches;
+    if (typeof mod.setFleetScene === 'function') setFleetScene = mod.setFleetScene;
+    if (typeof mod.classBatches === 'function') classBatches = mod.classBatches;
   }
 } catch (err) {
   buildShipModel = null;
@@ -60,8 +64,16 @@ try {
    twice a side and carries bespoke detail; batching them would buy nothing and
    cost the thing that makes them read as landmarks. Everything else turns up in
    dozens and draws from an instanced batch, because draw calls — not
-   triangles — are what a thousand-hull fleet runs out of first. */
+   triangles — are what a thousand-hull fleet runs out of first.
+
+   `ships/` is the authority on which classes batch; this list is only the
+   fallback for a build where that export has not landed, and the two must not
+   be allowed to drift. */
 const BATCH_EXEMPT = new Set(['mothership', 'carrier', 'cruiser']);
+
+function classIsBatched(classId) {
+  return classBatches ? classBatches(classId) === true : !BATCH_EXEMPT.has(classId);
+}
 
 /* LOD bands, in metres, scaled by hull size so a 14 m interceptor and a 380 m
    destroyer drop detail at the range each actually stops resolving. */
@@ -239,6 +251,7 @@ export class World {
     this._commanders = [];
     this._batches = new Map();
     this._anyBatched = false;
+    this._fleetSceneSet = false;
 
     // Perf counters — the debug harness and the HUD read these.
     this.stats = { tickMs: 0, entities: 0, projectiles: 0, queries: 0 };
@@ -411,9 +424,18 @@ export class World {
     let rec = this._batches.get(key);
     if (rec !== undefined) return rec;
     rec = null;
-    if (getFleetBatch && !BATCH_EXEMPT.has(classId)) {
+    if (getFleetBatch && classIsBatched(classId)) {
       let b = null;
       try {
+        // The batches all live under one root group, and that root has to be
+        // parented into the scene exactly once. Miss this and everything still
+        // reserves slots and reports healthy counts while drawing nothing —
+        // which is precisely how a "draw calls are flat" measurement can be
+        // taken of a scene with no fleet in it.
+        if (setFleetScene && !this._fleetSceneSet && this.engine && this.engine.scene) {
+          setFleetScene(this.engine.scene);
+          this._fleetSceneSet = true;
+        }
         b = getFleetBatch(classId, team);
       } catch (err) {
         b = null; // batch side not ready; an ordinary scene node will do

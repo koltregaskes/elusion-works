@@ -1409,6 +1409,52 @@ function curlBytes(size, rng) {
 
 /* ----------------------------------------------------------- sprite textures */
 
+/* Every billboard leaves here through `feather()`.
+
+   The reported artefact was a hard-edged white disc a couple of hundred pixels
+   across that appeared to punch a hole in the frame, plus square-cornered white
+   bars. Neither was an alpha bug — the sheets are RGBA, straight-alpha, and
+   measure zero in all four corners. Both were *shape* bugs of the same kind: a
+   sprite whose alpha is still non-zero where it runs off the edge of its own
+   quad. A halo sitting at alpha 0.03 is invisible at unit gain and is a solid
+   white disc with a razor rim the moment a consumer multiplies by thirty, which
+   additive FX routinely do; and a streak drawn with fillRect has no profile
+   across its short axis at all, so it is a rectangle by construction.
+
+   Rather than tune each consumer's gain — which pushes the problem outward and
+   guarantees it comes back — every sprite is windowed here so its alpha reaches
+   exactly zero at the border *with a vanishing slope*. After that no amount of
+   downstream gain can manufacture an edge, because there is no edge to find. */
+function feather(canvas, mode, inner) {
+  const w = canvas.width;
+  const h = canvas.height;
+  const g = ctx2d(canvas);
+  const img = g.getImageData(0, 0, w, h);
+  const d = img.data;
+  const k = inner === undefined ? 0.72 : inner;
+  for (let y = 0; y < h; y++) {
+    const v = ((y + 0.5) / h) * 2 - 1;
+    for (let x = 0; x < w; x++) {
+      const u = ((x + 0.5) / w) * 2 - 1;
+      let win;
+      if (mode === 'radial') {
+        win = 1 - sstep(k, 1, Math.hypot(u, v));
+      } else if (mode === 'streak') {
+        // long axis u, short axis v: taper both ends and both flanks
+        win = (1 - sstep(k, 1, Math.abs(u))) * (1 - sstep(k * 0.55, 1, Math.abs(v)));
+      } else {
+        // column: u across, v down the plume — the nozzle end stays solid
+        win = (1 - sstep(k, 1, Math.abs(u))) * (1 - sstep(k, 1, (v + 1) * 0.5));
+      }
+      const i = (y * w + x) * 4 + 3;
+      d[i] = Math.round(d[i] * clamp01(win));
+    }
+  }
+  g.putImageData(img, 0, 0);
+  return canvas;
+}
+
+
 function spriteFlare(size, rng) {
   const c = makeCanvas(size, size);
   const g = ctx2d(c);
@@ -1424,10 +1470,14 @@ function spriteFlare(size, rng) {
   g.fillStyle = rad;
   g.fillRect(0, 0, size, size);
 
+  /* A real lens halo decays fast. The previous stops held ~0.035 alpha out to
+     0.6 of the radius, which is invisible on its own and a saturated disc under
+     the gains the explosion and engine FX use. */
   rad = g.createRadialGradient(h, h, 0, h, h, h);
   rad.addColorStop(0, 'rgba(160,200,255,0.34)');
-  rad.addColorStop(0.22, 'rgba(110,160,230,0.13)');
-  rad.addColorStop(0.6, 'rgba(70,110,190,0.035)');
+  rad.addColorStop(0.14, 'rgba(120,168,236,0.10)');
+  rad.addColorStop(0.34, 'rgba(80,124,200,0.022)');
+  rad.addColorStop(0.62, 'rgba(56,94,168,0.004)');
   rad.addColorStop(1, 'rgba(40,70,140,0)');
   g.fillStyle = rad;
   g.fillRect(0, 0, size, size);
@@ -1504,29 +1554,35 @@ function spriteSmoke(size, rng) {
   return c;
 }
 
+/* A spark is a streak with a hot head. Drawn per pixel rather than as stacked
+   fillRects: a rect has no profile across its short axis, which is how this one
+   was reaching the screen as a square-cornered white bar. */
 function spriteSpark(size) {
   const c = makeCanvas(size, size);
   const g = ctx2d(c);
-  const h = size / 2;
-  g.clearRect(0, 0, size, size);
-  const lin = g.createLinearGradient(0, h, size, h);
-  lin.addColorStop(0, 'rgba(255,120,40,0)');
-  lin.addColorStop(0.35, 'rgba(255,168,80,0.55)');
-  lin.addColorStop(0.72, 'rgba(255,236,200,1)');
-  lin.addColorStop(0.88, 'rgba(255,255,255,1)');
-  lin.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = lin;
-  for (let i = 0; i < 4; i++) {
-    const t = 1 - i * 0.24;
-    g.globalAlpha = 0.45 * t;
-    g.fillRect(0, h - (size * 0.05) / t, size, (size * 0.1) / t);
+  const img = g.createImageData(size, size);
+  const d = img.data;
+  for (let y = 0; y < size; y++) {
+    const v = ((y + 0.5) / size - 0.5) * 2;       // -1 .. 1 across the streak
+    for (let x = 0; x < size; x++) {
+      const u = (x + 0.5) / size;                 // 0 tail .. 1 head
+      // the core swells toward the head, so the streak reads as motion
+      const thick = 0.045 + 0.075 * sstep(0.25, 0.95, u);
+      const across = clamp01(1 - Math.abs(v) / thick);
+      const along = sstep(0.0, 0.42, u) * (1 - sstep(0.88, 1.0, u));
+      let a = across * across * along;
+      const hr = Math.hypot((u - 0.86) * 1.6, v * 0.5) / 0.16;
+      const head = clamp01(1 - sstep(0.0, 1.0, hr));
+      a = clamp01(a + head * head);
+      const hot = clamp01(sstep(0.35, 0.95, u) + head);
+      const i = (y * size + x) * 4;
+      d[i] = 255;
+      d[i + 1] = Math.round(mix(0.52, 1.0, hot) * 255);
+      d[i + 2] = Math.round(mix(0.16, 0.95, hot * hot) * 255);
+      d[i + 3] = Math.round(a * 255);
+    }
   }
-  g.globalAlpha = 1;
-  const rad = g.createRadialGradient(size * 0.86, h, 0, size * 0.86, h, size * 0.14);
-  rad.addColorStop(0, 'rgba(255,255,255,1)');
-  rad.addColorStop(1, 'rgba(255,190,110,0)');
-  g.fillStyle = rad;
-  g.fillRect(0, 0, size, size);
+  g.putImageData(img, 0, 0);
   return c;
 }
 
@@ -1897,14 +1953,17 @@ export function getSpriteTexture(kind) {
 
   const lo = state.quality === 'low';
   const rng = state.rng.fork(0x400 + kind.length * 7 + kind.charCodeAt(0));
+  /* The second argument to feather() is where the window starts, as a fraction
+     of the half-size: a ring needs its shell inside the guard, a flare wants a
+     long soft skirt. */
   let canvas;
-  if (kind === 'flare') canvas = spriteFlare(lo ? 256 : 512, rng);
-  else if (kind === 'smoke') canvas = spriteSmoke(lo ? 128 : 256, rng);
-  else if (kind === 'spark') canvas = spriteSpark(lo ? 64 : 128);
-  else if (kind === 'ring') canvas = spriteRing(lo ? 256 : 512, rng);
-  else if (kind === 'beamcap') canvas = spriteBeamCap(lo ? 64 : 128);
-  else if (kind === 'plume') canvas = spritePlume(lo ? 64 : 128, lo ? 128 : 256, rng);
-  else canvas = spriteBeamCap(64);
+  if (kind === 'flare') canvas = feather(spriteFlare(lo ? 256 : 512, rng), 'radial', 0.58);
+  else if (kind === 'smoke') canvas = feather(spriteSmoke(lo ? 128 : 256, rng), 'radial', 0.78);
+  else if (kind === 'spark') canvas = feather(spriteSpark(lo ? 64 : 128), 'streak', 0.86);
+  else if (kind === 'ring') canvas = feather(spriteRing(lo ? 256 : 512, rng), 'radial', 0.92);
+  else if (kind === 'beamcap') canvas = feather(spriteBeamCap(lo ? 64 : 128), 'radial', 0.66);
+  else if (kind === 'plume') canvas = feather(spritePlume(lo ? 64 : 128, lo ? 128 : 256, rng), 'column', 0.80);
+  else canvas = feather(spriteBeamCap(64), 'radial', 0.66);
 
   const t = canvasTexture(canvas, THREE.SRGBColorSpace, state.aniso, false);
   t.name = `vs.sprite.${kind}`;

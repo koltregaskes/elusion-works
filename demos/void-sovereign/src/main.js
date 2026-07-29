@@ -260,11 +260,23 @@ async function main() {
   if (!cameraRig) cameraRig = makeFallbackCamera(engine);
   vs.cameraRig = cameraRig;
 
-  // Open on the player's mothership rather than wherever the rig happens to
-  // start, framed far enough back that the hull reads at full length.
+  /* Open on the player's mothership.
+
+     Framed off hull *length*, not bounding radius. Radius × 7.5 put the camera
+     9.2 km out — 4.8 hull lengths — and the flagship came in at 324 px of a
+     1920 px frame, one element among asteroids rather than the subject. This
+     is the single most important image in the demo, so the hero fills it. */
   const playerBase = world.entities.get(world.teams[0].baseId);
   if (playerBase && cameraRig.focusOn) {
-    cameraRig.focusOn(playerBase.position, playerBase.radius * 7.5, true);
+    const hullLength = (playerBase.def && playerBase.def.length) || playerBase.radius * 2;
+    cameraRig.focusOn(playerBase.position, hullLength * 2.1, true);
+  } else if (playerBase === undefined) {
+    // Seen on at least one seed: teams[0].baseId did not resolve to an entity.
+    // Fall back to the team's home position so the camera is never left at the
+    // origin staring into empty space.
+    loadErrors.push({ label: 'camera:openingFrame', error: 'player base entity did not resolve' });
+    const home = world.teams[0] && world.teams[0].homePosition;
+    if (home && cameraRig.focusOn) cameraRig.focusOn(home, 4000, true);
   }
 
   const inputMod = await tryImport('./core/input.js', 'input');

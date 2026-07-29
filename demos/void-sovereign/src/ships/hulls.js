@@ -78,6 +78,42 @@ function navSet(ctx, x, y, z, size, period) {
 }
 
 /**
+ * Running-light spacing. Grows far more slowly than the hull does, so the
+ * lamps down a mothership's flank read as a dense dotted line while a
+ * fighter carries three — which is §3.4's scale cue stated in metres.
+ */
+export function lightPitch(len) {
+  // Exponent chosen so the mothership lands at ~70 m — inside the 40–80 m
+  // band a capital needs for its lamps to read as a countable row at 20 km —
+  // while a fighter still keeps three lamps at 6 m.
+  return 6 * Math.pow(len / 14, 0.5);
+}
+
+/**
+ * A run of running lights along the hull at `lightPitch` spacing. This is the
+ * cue that survives when nothing else does: at 20 km a capital is a dark shape
+ * with a measurable row of lamps down it, and counting them is how the eye
+ * gets its length.
+ */
+function lightStrake(ctx, opts) {
+  const { z0, z1, x, y, colour = NAV.beacon, period = 2.6, size, both = true } = opts;
+  const pitch = lightPitch(ctx.def.length);
+  const n = Math.max(2, Math.round(Math.abs(z1 - z0) / pitch));
+  for (let i = 0; i <= n; i++) {
+    const z = z0 + ((z1 - z0) * i) / n;
+    // Phase walks along the hull so the strake pulses as a travelling ripple
+    // rather than blinking as one block.
+    const p = period * (1 + (i % 5) * 0.06);
+    if (both) {
+      light(ctx, x, y, z, colour, p, size);
+      light(ctx, -x, y, z, colour, p, size);
+    } else {
+      light(ctx, x, y, z, colour, p, size);
+    }
+  }
+}
+
+/**
  * Drop an engine bell and record its mouth for the FX agent.
  *
  * `dir` is the direction the plume travels, and it must match the way the bell
@@ -661,6 +697,7 @@ function buildAssaultFrigate(ctx) {
   b.paint({ x0: -6.0, x1: 6.0, y0: 8.0, y1: 11.0, z0: 30.0, z1: 56.0, n: [0, 1, 0], nMin: 0.3 });
   b.paint({ x0: -10.0, x1: 10.0, y0: -9.0, y1: 9.0, z0: -66.5, z1: -60.5, n: [0, 0, -1], nMin: 0.4 });
 
+  lightStrake(ctx, { z0: -56, z1: 46, x: 11.2, y: -1.0, colour: NAV.beacon, period: 2.0, size: 0.55 });
   navSet(ctx, 11.0, 1.2, -30.0, 0.7, 1.9);
   light(ctx, -1.4, 21.0, tz + 1.5, NAV.beacon, 2.4, 0.6);
   light(ctx, 0, 10.0, 52.0, NAV.deck, 1.3, 0.5);
@@ -765,6 +802,7 @@ function buildIonFrigate(ctx) {
   b.paint({ x0: -8.0, x1: 8.0, y0: 7.0, y1: 11.0, z0: bz0 + 14, z1: bz0 + 54, n: [0, 1, 0], nMin: 0.3 });
   b.paint({ x0: -8.0, x1: 8.0, y0: -10.0, y1: 4.0, z0: -72.0, z1: -66.0, n: [0, 0, -1], nMin: 0.4 });
 
+  lightStrake(ctx, { z0: -66, z1: 20, x: 9.2, y: -6.0, colour: NAV.beacon, period: 2.0, size: 0.55 });
   navSet(ctx, 9.0, -2.0, -40.0, 0.7, 2.0);
   light(ctx, 4.2, 6.9, -50.0, NAV.beacon, 2.4, 0.55);
   light(ctx, 0, 10.4, bz0 + bl - 12, NAV.deck, 0.9, 0.5);
@@ -885,6 +923,7 @@ function buildSupportFrigate(ctx) {
   b.paint({ x0: -5.0, x1: 3.4, y0: 11.0, y1: 13.0, z0: 9.0, z1: 19.0, n: [0, 1, 0], nMin: 0.3 });
   b.paint({ x0: -9.0, x1: 9.0, y0: -8.0, y1: 8.0, z0: -57.0, z1: -51.5, n: [0, 0, -1], nMin: 0.4 });
 
+  lightStrake(ctx, { z0: -50, z1: 34, x: 9.4, y: 0.0, colour: NAV.beacon, period: 2.0, size: 0.5 });
   navSet(ctx, 9.2, 1.0, -30.0, 0.65, 1.8);
   light(ctx, -0.8, 12.4, 14.0, NAV.beacon, 2.2, 0.5);
 }
@@ -1038,6 +1077,7 @@ function buildDestroyer(ctx) {
   b.paint({ x0: -16.0, x1: 16.0, y0: 8.0, y1: 24.0, z0: 138.0, z1: 200.0, n: [0, 1, 0], nMin: 0.3 });
   b.paint({ x0: -26.0, x1: 26.0, y0: -26.0, y1: 24.0, z0: -192.0, z1: -177.0, n: [0, 0, -1], nMin: 0.45 });
 
+  lightStrake(ctx, { z0: -180, z1: 150, x: 31.5, y: -2.0, colour: NAV.beacon, period: 2.2, size: 1.5 });
   navSet(ctx, 31.0, 2.0, -60.0, 2.0, 2.0);
   navSet(ctx, 26.0, 2.0, 60.0, 1.8, 2.0);
   light(ctx, -2.5, 62.5, tz + 12, NAV.beacon, 2.6, 1.8);
@@ -1240,6 +1280,7 @@ function buildCruiser(ctx) {
   b.paint({ x0: -30.0, x1: 30.0, y0: 14.0, y1: 36.0, z0: 180.0, z1: 300.0, n: [0, 1, 0], nMin: 0.3 });
   b.paint({ x0: -46.0, x1: 46.0, y0: -48.0, y1: 36.0, z0: -316.0, z1: -292.0, n: [0, 0, -1], nMin: 0.45 });
 
+  lightStrake(ctx, { z0: -290, z1: 250, x: 53.0, y: -6.0, colour: NAV.beacon, period: 2.3, size: 2.4 });
   navSet(ctx, 52.0, 2.0, -100.0, 3.2, 2.1);
   navSet(ctx, 44.0, 2.0, 100.0, 3.0, 2.1);
   light(ctx, -2.0, 113.0, -100.0, NAV.beacon, 2.7, 3.0);
@@ -1456,11 +1497,13 @@ function buildCarrier(ctx) {
   b.add(chamferBox(134.0, 64.0, 32.0, { chamfer: 10.0, chamferZ: 6.5, wTop: 100.0 }), {
     y: -4, z: -364.0, variant: PLATE.MECH, wear: 0.5,
   });
-  b.addParts(pocket(112.0, 50.0, 12.0, { chamfer: 6.0, taper: 0.9, variant: PLATE.MECH }), {
-    y: -4, z: -378.0, wear: 0.8,
+  // Bells proud of the housing — see the mothership drive block for why a
+  // recessed bay cannot work against a closed solid.
+  b.add(chamferBox(120.0, 56.0, 9.0, { chamfer: 7.0, chamferZ: 3.0, wTop: 90.0 }), {
+    y: -4, z: -384.0, variant: PLATE.ARMOUR, wear: 0.75,
   });
   for (const [x, y] of [[-48, 9], [0, 11], [48, 9], [-48, -15], [0, -17], [48, -15]]) {
-    thruster(ctx, x, y - 4, -375.0, 12.5);
+    thruster(ctx, x, y - 4, -394.0, 12.5);
   }
   b.both((s) => {
     b.addParts(radiator(7.0, 78.0, 2.8, b.lod(10, 6, 0, 0)), {
@@ -1529,6 +1572,7 @@ function buildCarrier(ctx) {
   b.paint({ x0: -30.0, x1: 30.0, y0: 10.0, y1: 30.0, z0: 250.0, z1: 386.0, n: [0, 1, 0], nMin: 0.3 });
   b.paint({ x0: -76.0, x1: 76.0, y0: -42.0, y1: 36.0, z0: -376.0, z1: -352.0, n: [0, 0, -1], nMin: 0.45 });
 
+  lightStrake(ctx, { z0: -350, z1: 330, x: 101.0, y: -30.0, colour: NAV.beacon, period: 2.4, size: 2.8 });
   navSet(ctx, 99.0, -30.0, -160.0, 3.4, 2.2);
   navSet(ctx, 88.0, -26.0, 200.0, 3.2, 2.2);
   light(ctx, tx, 110.0, tz + 14, NAV.beacon, 2.8, 3.2);
@@ -1956,18 +2000,20 @@ function buildMothership(ctx) {
   b.add(chamferBox(376.0, 316.0, 104.0, { chamfer: 32.0, chamferZ: 19.0, wTop: 272.0 }), {
     y: -74, z: -890.0, variant: PLATE.MECH, wear: 0.5,
   });
-  // The recess opens astern and the bells sit just inside its lip. Rotating
-  // the pocket to face forward buries every engine mouth behind 16 m of hull,
-  // which kills the stern glow outright — the bloom pass can only work with
-  // emissive surfaces it can actually see.
-  b.addParts(pocket(320.0, 262.0, 38.0, { chamfer: 18.0, taper: 0.9, variant: PLATE.MECH }), {
-    y: -74, z: -940.0, wear: 0.8,
+  // The bells stand proud of the drive housing. A recessed bay would look
+  // better, but `chamferBox` is a closed solid and there is no CSG here: its
+  // rear cap sits astern of any bell mouth placed inside it and occludes the
+  // lot, so from dead astern the flagship shows a flat grey plate and no
+  // engine glow at all. Proud mouths with a collar round the cluster give the
+  // same read and are honest about the geometry available.
+  b.add(chamferBox(340.0, 282.0, 26.0, { chamfer: 20.0, chamferZ: 8.0, wTop: 246.0 }), {
+    y: -74, z: -952.0, variant: PLATE.ARMOUR, wear: 0.75,
   });
   for (const [x, y] of [[-138, 66], [-46, 74], [46, 74], [138, 66], [-138, -46], [-46, -54], [46, -54], [138, -46]]) {
-    thruster(ctx, x, y - 74, -936.0, 34.0);
+    thruster(ctx, x, y - 74, -972.0, 34.0);
   }
   for (const [x, y] of [[-186, 8], [186, 8], [-72, -158], [72, -158]]) {
-    thruster(ctx, x, y - 74, -922.0, 15.0);
+    thruster(ctx, x, y - 74, -958.0, 15.0);
   }
   b.both((s) => {
     b.addParts(radiator(22.0, 250.0, 9.0, b.lod(14, 8, 0, 0)), {
@@ -2120,6 +2166,12 @@ function buildMothership(ctx) {
     n: [0, 1, 0], nMin: 0.4, mirror: true,
   });
 
+  // Running-light strakes. At 20 km this hull is a dark shape with rows of
+  // lamps down it, and counting them is how the eye gets its length — so the
+  // strake runs the whole keel at ~85 m spacing, with a second row along the
+  // citadel edge.
+  lightStrake(ctx, { z0: -790, z1: 600, x: 224.0, y: -92.0, colour: NAV.beacon, period: 2.6, size: 6.0 });
+  lightStrake(ctx, { z0: deck.z - deck.d * 0.46, z1: deck.z + deck.d * 0.46, x: deck.wt * 0.5 + 4, y: deck.y - deck.h * 0.5, colour: NAV.deck, period: 3.1, size: 5.0 });
   navSet(ctx, 224.0, -92.0, -360.0, 8.0, 2.4);
   navSet(ctx, 224.0, -92.0, 200.0, 8.0, 2.4);
   navSet(ctx, 258.0, 30.0, shieldZ, 8.0, 2.4);

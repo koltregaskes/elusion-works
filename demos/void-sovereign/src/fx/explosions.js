@@ -35,8 +35,9 @@ attribute float iIntensity;
 attribute float iSeed;
 
 uniform float uTime;
+uniform sampler2D uNoise;
 
-varying vec2 vLocal;
+varying float vRr;
 varying vec3 vColor;
 varying float vEnv;
 varying float vThick;
@@ -57,10 +58,28 @@ void main() {
                              : normalize( cross( n, vec3( 1.0, 0.0, 0.0 ) ) );
   vec3 t2 = cross( n, t1 );
 
-  vec3 wp = iCenter + ( t1 * position.x + t2 * position.y ) * ( 2.8 * R );
+  /* The base mesh is an annulus, not a quad.
+
+     This used to be a billboard with the disc discarded in the fragment stage,
+     and that was wrong twice over. It made an interior that has to be exactly
+     zero — and at capital scale the quad is four kilometres across, so any
+     residue at all became a screen-covering veil over the battle. It also paid
+     full-disc overdraw for a shape that is 95% empty. An annulus cannot fill
+     its own middle, and it rasterises about a tenth of the fragments.
+
+     uv.y runs 0 at the inner edge to 1 at the outer, so the fragment stage gets
+     its distance-from-front directly with no length() and no discard. */
+  float rr = mix( RING_INNER, RING_OUTER, uv.y );
+
+  // Ragged front: a real blast is not a perfect circle.
+  float wobble = texture2D( uNoise, vec2( uv.x + iSeed, iSeed * 3.1 ) ).b;
+  rr *= 1.0 + ( wobble - 0.5 ) * 0.10;
+
+  float ang = uv.x * 6.2831853;
+  vec3 wp = iCenter + ( t1 * cos( ang ) + t2 * sin( ang ) ) * ( rr * R );
   gl_Position = projectionMatrix * viewMatrix * vec4( wp, 1.0 );
 
-  vLocal = position.xy * 2.8;
+  vRr = rr;
   vColor = iColor;
   vThick = iThick;
   vIntensity = iIntensity;
@@ -76,10 +95,7 @@ const RING_FRAG = /* glsl */ `
 #include <logdepthbuf_pars_fragment>
 #SOFT_PARS
 
-uniform sampler2D uNoise;
-uniform float uTime;
-
-varying vec2 vLocal;
+varying float vRr;
 varying vec3 vColor;
 varying float vEnv;
 varying float vThick;
@@ -89,25 +105,23 @@ varying float vFragW;
 
 void main() {
   #include <logdepthbuf_fragment>
-  float r = length( vLocal );
-  if ( r > 1.34 ) discard;
-
-  float ang = atan( vLocal.y, vLocal.x );
-  // Break the perfect circle: a real front is ragged.
-  float wobble = texture2D( uNoise, vec2( ang * 0.1592 + vSeed, vSeed * 3.1 ) ).b;
-  float rr = r * ( 1.0 + ( wobble - 0.5 ) * 0.10 );
-
   float thick = max( vThick, 0.012 );
+
   /* Asymmetric: a hard leading edge with the energy piled against it and a
-     long draining tail behind. A symmetric Gaussian reads as a smoke ring. */
-  float d = rr - 1.0;
+     long draining tail behind. A symmetric Gaussian reads as a smoke ring.
+     `vRr` is the interpolated radius as a fraction of the front, straight off
+     the annulus — there is no disc here to accidentally fill. */
+  float d = vRr - 1.0;
   float lead = exp( -pow( max( d, 0.0 ) / ( thick * 0.55 ), 2.0 ) );
   float trail = exp( -pow( max( -d, 0.0 ) / ( thick * 2.6 ), 1.35 ) );
   float band = max( lead, trail * 0.72 );
-  float lip = exp( -pow( ( rr - 1.02 ) / ( thick * 0.30 ), 2.0 ) );
-  float wash = smoothstep( 1.02, 0.35, rr ) * 0.09;
+  float lip = exp( -pow( ( vRr - 1.02 ) / ( thick * 0.30 ), 2.0 ) );
 
-  float a = clamp( band * 0.95 + wash, 0.0, 1.0 ) * vEnv * fxSoftFade( vFragW );
+  // Hard zero at both rims of the annulus so the mesh edge is never visible.
+  float rim = smoothstep( RING_INNER, RING_INNER + 0.06, vRr )
+            * ( 1.0 - smoothstep( RING_OUTER - 0.06, RING_OUTER, vRr ) );
+
+  float a = clamp( band, 0.0, 1.0 ) * rim * vEnv * fxSoftFade( vFragW );
   if ( a <= 0.004 ) discard;
 
   /* Cheap stand-in for refraction: the leading lip goes cold-blue while the
@@ -130,13 +144,34 @@ const RING_ATTRS = [
   { name: 'iSeed', size: 1, offset: 15 },
 ];
 
-function quadGeometry() {
+/* Radial span of the annulus, as a fraction of the front radius. Wide enough
+   to hold the leading edge, its bloom, and the draining tail; narrow enough
+   that the ring never has an interior to fill. Shared with the shaders. */
+const RING_INNER = 0.62;
+const RING_OUTER = 1.18;
+
+/** Flat annulus in the XY plane. uv.x = angle 0..1, uv.y = 0 inner, 1 outer. */
+function annulusGeometry(segments = 96) {
+  const pos = [];
+  const uvs = [];
+  const idx = [];
+  for (let i = 0; i <= segments; i++) {
+    const u = i / segments;
+    for (let j = 0; j < 2; j++) {
+      // Position is unused — the vertex shader rebuilds the ring from uv so it
+      // can apply the per-instance radius and wobble.
+      pos.push(0, 0, 0);
+      uvs.push(u, j);
+    }
+  }
+  for (let i = 0; i < segments; i++) {
+    const a = i * 2;
+    idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+  }
   const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
-    -0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0,
-  ]), 3));
-  g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), 2));
-  g.setIndex(new THREE.BufferAttribute(new Uint16Array([0, 1, 2, 0, 2, 3]), 1));
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  g.setIndex(idx);
   return g;
 }
 
@@ -153,15 +188,17 @@ export class ExplosionFX {
     this.debris = debris;
     this.drawCalls = 1;
 
-    this._quadGeo = quadGeometry();
+    this._quadGeo = annulusGeometry(96);
+    const defs = `#define RING_INNER ${RING_INNER.toFixed(3)}\n`
+      + `#define RING_OUTER ${RING_OUTER.toFixed(3)}\n`;
     this.rings = ctx.instanceBatch({
       name: 'shockwaves',
       base: this._quadGeo,
       attributes: RING_ATTRS,
       stride: RING_STRIDE,
       capacity: ctx.budget.rings,
-      vertexShader: RING_VERT,
-      fragmentShader: RING_FRAG,
+      vertexShader: defs + RING_VERT,
+      fragmentShader: defs + RING_FRAG,
       uniforms: { uNoise: { value: ctx.noises.fbm } },
       renderOrder: 17,
       softness: 60,
@@ -267,7 +304,7 @@ export class ExplosionFX {
     return [
       { t: 0.00, k: 'flash', size: R * 2.4, minPx: 13, life: 0.22, bright: 11.0 },
       { t: 0.00, k: 'sparks', n: 44 * N, speed: L * 16, size: L * 0.13, minPx: 2.6 },
-      { t: 0.00, k: 'ring', r0: R * 0.3, r1: ring, life: 0.46, thick: 0.11, intensity: 2.4 },
+      { t: 0.00, k: 'ring', r0: R * 0.3, r1: ring, life: 0.46, thick: 0.11, intensity: 1.9 },
       { t: 0.00, k: 'smoke', n: 3, size: R * 2.4, speed: L * 2.2, life: 1.4 },
       { t: 0.02, k: 'debris', n: 5, scale: 0.30, speed: L * 4.5 },
       { t: 0.03, k: 'embers', n: 22 * N, speed: L * 3.5, life: 1.8 },
@@ -288,12 +325,12 @@ export class ExplosionFX {
       { t: 0.62, k: 'vent', n: 1, duration: 1.1, speed: L * 2.6 },
       { t: 0.70, k: 'hullglow', duration: 0.30, size: L, bright: 3.2 },
       { t: 0.84, k: 'flash', size: R * 1.9, minPx: 52, life: 0.42, bright: 15.0 },
-      { t: 0.84, k: 'ring', r0: R * 0.3, r1: ring * 1.15, life: 0.9, thick: 0.075, intensity: 3.4 },
+      { t: 0.84, k: 'ring', r0: R * 0.3, r1: ring * 1.15, life: 0.9, thick: 0.075, intensity: 2.4 },
       { t: 0.84, k: 'sparks', n: 100 * N, speed: L * 7.0, size: L * 0.06, minPx: 2.6 },
       { t: 0.86, k: 'debris', n: 18, scale: 0.5, speed: L * 1.9 },
       { t: 0.86, k: 'embers', n: 70 * N, speed: L * 2.2, life: 3.6 },
       { t: 0.88, k: 'smoke', n: 14, size: L * 1.6, speed: L * 1.4, life: 4.0 },
-      { t: 1.06, k: 'ring', r0: R * 0.8, r1: ring * 1.6, life: 1.6, thick: 0.05, intensity: 1.6 },
+      { t: 1.06, k: 'ring', r0: R * 0.8, r1: ring * 1.6, life: 1.6, thick: 0.05, intensity: 1.2 },
       { t: 0.90, k: 'linger', duration: 5.0, rate: 11, size: L * 0.5 },
     ];
   }
@@ -327,7 +364,7 @@ export class ExplosionFX {
        along its whole length, which is the beat that makes the primary land. */
     ev.push({ t: 2.20, k: 'hullglow', duration: 0.95, size: L, bright: 2.2 });
     ev.push({ t: 2.62, k: 'flash', size: R * 0.7, minPx: 34, life: 0.38, bright: 8.0 });
-    ev.push({ t: 2.62, k: 'ring', r0: R * 0.2, r1: R * 1.2, life: 0.65, thick: 0.09, intensity: 2.4 });
+    ev.push({ t: 2.62, k: 'ring', r0: R * 0.2, r1: R * 1.2, life: 0.65, thick: 0.09, intensity: 1.8 });
     ev.push({ t: 2.64, k: 'sparks', n: 120 * N, speed: L * 1.6, size: L * 0.018, minPx: 2.6 });
     ev.push({ t: 2.66, k: 'hullglow', duration: 0.36, size: L * 1.05, bright: 5.5 });
 
@@ -337,16 +374,16 @@ export class ExplosionFX {
        fill the frame just greys the image out and drags auto-exposure down
        with it; a smaller, far hotter one blooms into the same area and keeps
        the nebula behind it. */
-    ev.push({ t: 2.98, k: 'flash', size: R * 1.7, minPx: 150, life: 0.60, bright: 30.0 });
-    ev.push({ t: 2.98, k: 'flash', size: R * 0.9, minPx: 80, life: 1.7, bright: 9.0, colour: FIRE });
-    ev.push({ t: 3.00, k: 'flash', size: R * 2.7, minPx: 210, life: 0.26, bright: 3.0, colour: CORE });
-    ev.push({ t: 2.98, k: 'ring', r0: R * 0.35, r1: ring * 1.55, life: 1.6, thick: 0.055, intensity: 4.6, axis: 'hull' });
-    ev.push({ t: 3.02, k: 'ring', r0: R * 0.25, r1: ring * 1.05, life: 2.0, thick: 0.075, intensity: 3.2, axis: 'perp' });
+    ev.push({ t: 2.98, k: 'flash', size: R * 1.7, minPx: 110, life: 0.60, bright: 34.0 });
+    ev.push({ t: 2.98, k: 'flash', size: R * 0.9, minPx: 60, life: 1.7, bright: 12.0, colour: FIRE });
+    ev.push({ t: 3.00, k: 'flash', size: R * 2.6, minPx: 150, life: 0.30, bright: 6.0, colour: CORE });
+    ev.push({ t: 2.98, k: 'ring', r0: R * 0.35, r1: ring * 1.55, life: 1.6, thick: 0.055, intensity: 3.0, axis: 'hull' });
+    ev.push({ t: 3.02, k: 'ring', r0: R * 0.25, r1: ring * 1.05, life: 2.0, thick: 0.075, intensity: 2.2, axis: 'perp' });
     ev.push({ t: 2.99, k: 'sparks', n: 280 * N, speed: L * 3.4, size: L * 0.024, minPx: 3.0 });
     ev.push({ t: 3.00, k: 'debris', n: 48, scale: 1.0, speed: L * 0.75 });
     ev.push({ t: 3.02, k: 'embers', n: 240 * N, speed: L * 0.85, life: 8.0 });
     ev.push({ t: 3.04, k: 'smoke', n: 32, size: L * 0.9, speed: L * 0.5, life: 9.0 });
-    ev.push({ t: 3.30, k: 'ring', r0: R * 1.1, r1: ring * 2.1, life: 2.8, thick: 0.035, intensity: 1.8 });
+    ev.push({ t: 3.30, k: 'ring', r0: R * 1.1, r1: ring * 2.1, life: 2.8, thick: 0.035, intensity: 1.3 });
     ev.push({ t: 3.10, k: 'linger', duration: 14.0, rate: 20, size: L * 0.35 });
 
     ev.sort((a, b) => a.t - b.t);
@@ -371,14 +408,30 @@ export class ExplosionFX {
     const px = (metres, minPx) => (minPx ? ctx.atLeast(metres, dist, minPx) : metres);
 
     switch (ev.k) {
+      /* A fireball is a colour ramp in time, not one coloured blob: a white
+         core that collapses almost immediately, a body that cools through
+         gold to deep orange as it expands, and soot behind it. Three overlaid
+         flares with different lifetimes and size ramps give the whole arc for
+         two extra particles. */
       case 'flash': {
         const col = ev.colour || CORE;
         const V = seq.vel;
         const size = px(ev.size, ev.minPx);
+        /* `bright` is the peak radiance of the *core* only. The body and the
+           cooling shell are held far below it: a large billboard at core
+           brightness does not read as a fireball, it reads as a white card,
+           because every texel past the sprite's alpha shoulder still clears the
+           tone curve. Small and searing, then large and dim, is the difference
+           between an explosion and a lens flare. */
+        // Core: smallest, hottest, gone first. This is what drives bloom.
+        f.flare.spawn(origin.x, origin.y, origin.z, V.x, V.y, V.z, ev.life * 0.42, 0,
+          size * 0.40, size * 0.14, WHITE, ev.bright, 0, 0);
+        // Body: expands and cools through gold.
         f.flare.spawn(origin.x, origin.y, origin.z, V.x, V.y, V.z, ev.life, 0,
-          size * 0.35, size, col, ev.bright, 0, 0);
-        f.flare.spawn(origin.x, origin.y, origin.z, V.x, V.y, V.z, ev.life * 0.45, 0,
-          size * 0.55, size * 0.18, WHITE, ev.bright * 1.4, 0, 0);
+          size * 0.32, size, col, ev.bright * 0.14, 0, 0);
+        // Cooling shell: deep orange, slower, wider — the fireball's edge.
+        f.flare.spawn(origin.x, origin.y, origin.z, V.x, V.y, V.z, ev.life * 2.1, 0,
+          size * 0.5, size * 1.5, EMBER, ev.bright * 0.045, 0, 0);
         break;
       }
 

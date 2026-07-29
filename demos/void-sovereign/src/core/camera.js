@@ -173,6 +173,46 @@ const _dir = new THREE.Vector3();
 const _look = new THREE.Vector3();
 const _prevPos = new THREE.Vector3();
 const _fwd = new THREE.Vector3();
+const _m1 = new THREE.Matrix4();
+const _p1 = new THREE.Vector3();
+const _q1 = new THREE.Quaternion();
+const _s1 = new THREE.Vector3();
+const _try = new THREE.Vector3();
+
+/* Anything smaller than this cannot hide a capital ship and is not worth
+   orbiting around; the rock fields are full of them. Anything larger than the
+   ceiling is scenery, not an obstacle — the nebula shells and dust volumes are
+   tens of kilometres across and the camera lives *inside* them. The biggest
+   landmark ENV builds is under 6 km. */
+const OCCLUDER_MIN_RADIUS = 220;
+const OCCLUDER_MAX_RADIUS = 12000;
+const MAX_STATIC_OCCLUDERS = 192;
+const MAX_SCANNED_INSTANCES = 4096;
+const HARVEST_INTERVAL_MS = 2000;
+
+/* An obstruction is not a distance, it is an angle. A three-kilometre gap
+   sounds generous until the thing three kilometres away is a two-kilometre
+   rock, at which point it is a close-up of a rock face. A body counts as being
+   in the way when its angular radius from the camera exceeds this share of the
+   frame's half-height *and* it overlaps the middle of the shot. */
+const OCCLUSION_FRACTION = 0.25;
+
+/* Candidate offsets, in radians, searched in order when the shot is blocked.
+   Yaw first and in both directions, because swinging sideways preserves the
+   composition; pitch is the fallback, and going over the top is the last
+   resort. Nearest clear direction wins, so the camera moves as little as it
+   can get away with. */
+const CLEAR_SEARCH = (() => {
+  const out = [[0, 0]];
+  for (const yaw of [0.26, -0.26, 0.52, -0.52, 0.79, -0.79, 1.05, -1.05, 1.40, -1.40, 1.83, -1.83, 2.36, -2.36, 3.14]) {
+    out.push([yaw, 0]);
+  }
+  for (const pitch of [0.26, -0.26, 0.52, -0.52, 0.87, -0.87]) {
+    out.push([0, pitch]);
+    for (const yaw of [0.52, -0.52, 1.05, -1.05, 1.83, -1.83, 3.14]) out.push([yaw, pitch]);
+  }
+  return out;
+})();
 
 /* ------------------------------------------------------------------ the rig */
 
@@ -211,6 +251,9 @@ export class CameraRig {
     this._colliderTick = 0;
     this._colliders = [];
     this._worldOk = true;
+    this._static = [];          // big, immobile scene occluders (landmarks, planets)
+    this._staticStamp = -1;
+    this._staticAt = -1e9;
 
     /* Impact shake: trauma decays linearly, displacement goes as trauma^2, so
        a big hit hits hard and the tail vanishes instead of lingering. */
@@ -308,8 +351,9 @@ export class CameraRig {
     if (typeof distance === 'number' && isFinite(distance)) {
       this._logDist.target = clamp(Math.log(Math.max(1e-3, distance)), this._logMin, this._logMax);
     }
+    if (instant) this._focus.snap(this._focus.target);
+    this._clearView(instant);
     if (instant) {
-      this._focus.snap(this._focus.target);
       this._logDist.snap(this._logDist.target);
       this._clear.snap(0);
       this._apply(0);
@@ -353,8 +397,9 @@ export class CameraRig {
     this._logDist.target = clamp(Math.log(dist), this._logMin, this._logMax);
     this._follow = list.length ? list : null;
 
+    if (instant) this._focus.snap(this._focus.target);
+    this._clearView(instant);
     if (instant) {
-      this._focus.snap(this._focus.target);
       this._logDist.snap(this._logDist.target);
       this._apply(0);
     }
@@ -787,28 +832,215 @@ export class CameraRig {
     this._focusRadius = biggest;
   }
 
-  /** Distance along `dir` at which the camera clears every nearby hull. */
-  _sweepClearance(focus, dir, dist) {
-    const list = this._collidersFor(focus, dist);
-    let out = dist;
-    for (let i = 0; i < list.length; i++) {
-      const e = list[i];
-      const c = e.position || (e.object3D && e.object3D.position);
-      if (!c) continue;
-      const R = (e.radius || 0) * 1.18 + 3;
-      const mx = focus.x - c.x;
-      const my = focus.y - c.y;
-      const mz = focus.z - c.z;
-      const b = 2 * (dir.x * mx + dir.y * my + dir.z * mz);
-      const cc = mx * mx + my * my + mz * mz - R * R;
-      const disc = b * b - 4 * cc;
-      if (disc <= 0) continue;
-      const s = Math.sqrt(disc);
-      const t1 = (-b - s) * 0.5;
-      const t2 = (-b + s) * 0.5;
-      if (out > t1 && out < t2) out = t2;
+  /* ----------------------------------------------------- line of sight */
+
+  /** Big immobile things in the scene that can stand between the camera and
+      its subject. Cached: the asteroid field is built once and never moves,
+      so this only re-runs when the scene graph gains or loses a child. */
+  _harvestStatic() {
+    const scene = this.engine && this.engine.scene;
+    if (!scene) return this._static;
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const stamp = scene.children.length;
+    if (stamp === this._staticStamp && now - this._staticAt < HARVEST_INTERVAL_MS) return this._static;
+    this._staticStamp = stamp;
+    this._staticAt = now;
+
+    const out = this._static;
+    out.length = 0;
+    for (let i = 0; i < scene.children.length; i++) {
+      const o = scene.children[i];
+      if (!o || o.visible === false || !o.isMesh || !o.geometry) continue;
+      /* Only gameplay-layer geometry can occlude gameplay. This also keeps the
+         overlays out — they deliberately carry an infinite bounding sphere so
+         they are never culled, and an infinite radius poisons every sum it
+         reaches. */
+      if (!o.layers.test(this.camera.layers) || !o.layers.isEnabled(0)) continue;
+
+      const geo = o.geometry;
+      if (!geo.boundingSphere) {
+        try { geo.computeBoundingSphere(); } catch (err) { continue; }
+      }
+      const br = geo.boundingSphere ? geo.boundingSphere.radius : 0;
+      if (!Number.isFinite(br) || br <= 0) continue;
+      o.updateMatrixWorld();
+
+      if (o.isInstancedMesh) {
+        /* Every instance gets looked at, not just the short landmark batch:
+           the cluster fields carry rocks well over a kilometre and one of those
+           parked in front of the flagship is exactly the opening frame we are
+           trying to stop. Instances below OCCLUDER_MIN_RADIUS fall out on their
+           own, and this runs on a two-second cadence, not per frame.
+
+           A batch that rewrites its matrices every frame is a fleet, not
+           scenery; SIM owns those and `_collidersFor` already tracks them. */
+        if (o.instanceMatrix && o.instanceMatrix.usage === THREE.DynamicDrawUsage) continue;
+        const n = Math.min(o.count, MAX_SCANNED_INSTANCES);
+        for (let k = 0; k < n; k++) {
+          o.getMatrixAt(k, _m1);
+          _m1.premultiply(o.matrixWorld);
+          _m1.decompose(_p1, _q1, _s1);
+          this._pushOccluder(out, _p1, br * Math.max(_s1.x, _s1.y, _s1.z));
+        }
+      } else {
+        _m1.copy(o.matrixWorld).decompose(_p1, _q1, _s1);
+        this._pushOccluder(out, _p1, br * Math.max(_s1.x, _s1.y, _s1.z));
+      }
+    }
+
+    /* Keep the biggest: if the field is dense enough to overflow the budget,
+       the ones that can actually hide a mothership are the ones that matter. */
+    if (out.length > MAX_STATIC_OCCLUDERS) {
+      out.sort((a, b) => b.r - a.r);
+      out.length = MAX_STATIC_OCCLUDERS;
     }
     return out;
+  }
+
+  /** Accept a candidate occluder only if it is finite and in the size band
+      where "it is in the way" is a meaningful statement. */
+  _pushOccluder(out, pos, r) {
+    if (!Number.isFinite(r) || r < OCCLUDER_MIN_RADIUS || r > OCCLUDER_MAX_RADIUS) return;
+    if (!Number.isFinite(pos.x) || !Number.isFinite(pos.y) || !Number.isFinite(pos.z)) return;
+    out.push({ x: pos.x, y: pos.y, z: pos.z, r });
+  }
+
+  /** Is the subject at `focus` hidden from a camera `dist` away along `dir`?
+
+      Not a ray test: a five-kilometre rock that the centre line misses by a
+      few hundred metres still eats half the frame. The subject has to be clear
+      inside a corridor that widens with the shot, which is what "you can see
+      the ship" actually means. */
+  _sightBlocked(focus, dir, dist, list, subjectRadius) {
+    /* Everything here is in angles, so it is independent of zoom, of the size
+       of the subject, and of how far away the obstruction happens to be. */
+    const halfFov = this.camera.fov * DEG * 0.5;
+    const minHalf = halfFov * OCCLUSION_FRACTION;
+    /* If the caller does not know how big the subject is, protect the middle
+       of the frame instead — a shot of the flagship with a rock across the
+       centre is a bad shot whatever the flagship measures. */
+    const subjHalf = Math.atan2(Math.max(subjectRadius || 0, dist * 0.12), Math.max(dist, 1));
+
+    const camX = focus.x + dir.x * dist;
+    const camY = focus.y + dir.y * dist;
+    const camZ = focus.z + dir.z * dist;
+
+    for (let i = 0; i < list.length; i++) {
+      const o = list[i];
+
+      /* A volume we are standing inside is not an obstruction. */
+      const fx = o.x - focus.x;
+      const fy = o.y - focus.y;
+      const fz = o.z - focus.z;
+      if (fx * fx + fy * fy + fz * fz < o.r * o.r) continue;
+
+      let ox = o.x - camX;
+      let oy = o.y - camY;
+      let oz = o.z - camZ;
+      const dc = Math.sqrt(ox * ox + oy * oy + oz * oz);
+      if (dc <= o.r) return true;               // the camera is inside it
+      if (dc >= dist + o.r) continue;           // it is behind the subject
+
+      const half = Math.asin(clamp(o.r / dc, 0, 1));
+      if (half < minHalf) continue;             // too small on screen to matter
+
+      /* How far off the centre of the shot it sits. */
+      ox /= dc; oy /= dc; oz /= dc;
+      const off = Math.acos(clamp(-(ox * dir.x + oy * dir.y + oz * dir.z), -1, 1));
+      if (off < half + subjHalf * 0.9) return true;
+    }
+    return false;
+  }
+
+  /** Swing to the nearest yaw/pitch that actually sees the subject.
+
+      Only ever called when the rig *chooses* a framing — boot, F, `ui:focus`.
+      Fighting the player mid-orbit would be worse than the occlusion; if they
+      drive into a rock, the per-frame push-out in `_apply` still stops the
+      camera ending up inside it. */
+  _clearView(instant) {
+    const focus = this._focus.target;
+    const dist = Math.exp(this._logDist.target);
+    this._colliderTick = 0;          // reframing is rare; do not trust a stale scan
+    const world = this._collidersFor(focus, dist);
+    const list = this._harvestStatic().concat(
+      world.map((e) => {
+        const p = e.position || (e.object3D && e.object3D.position);
+        return p ? { x: p.x, y: p.y, z: p.z, r: (e.radius || 0) * 1.1 } : null;
+      }).filter(Boolean),
+    );
+    if (!list.length) return;
+
+    const yaw0 = this._yaw.target;
+    const pitch0 = this._pitch.target;
+    for (let i = 0; i < CLEAR_SEARCH.length; i++) {
+      const yaw = yaw0 + CLEAR_SEARCH[i][0];
+      const pitch = clamp(pitch0 + CLEAR_SEARCH[i][1], -PITCH_LIMIT, PITCH_LIMIT);
+      const cp = Math.cos(pitch);
+      _try.set(Math.sin(yaw) * cp, Math.sin(pitch), Math.cos(yaw) * cp).normalize();
+      if (this._sightBlocked(focus, _try, dist, list, this._focusRadius)) continue;
+      if (i === 0) return;              // already clear, leave the shot alone
+      this._yaw.target = yaw;
+      this._pitch.target = pitch;
+      if (instant) {
+        this._yaw.snap(yaw);
+        this._pitch.snap(pitch);
+      }
+      return;
+    }
+    /* Nothing at this range works — the subject is buried. Come in close
+       enough to be inside whatever is wrapped around it. */
+    const tight = Math.max(this._minDistance(this._focusRadius), this._focusRadius * 2.6);
+    if (tight < dist * 0.8) {
+      this._logDist.target = clamp(Math.log(tight), this._logMin, this._logMax);
+      if (instant) this._logDist.snap(this._logDist.target);
+    }
+  }
+
+  /** Distance along `dir` at which the camera clears every nearby hull. */
+  _sweepClearance(focus, dir, dist) {
+    let out = dist;
+
+    const ents = this._collidersFor(focus, dist);
+    for (let i = 0; i < ents.length; i++) {
+      const e = ents[i];
+      const c = e.position || (e.object3D && e.object3D.position);
+      if (!c) continue;
+      out = this._pushPast(focus, dir, out, c.x, c.y, c.z, (e.radius || 0) * 1.18 + 3);
+    }
+
+    /* Asteroid landmarks swallow a camera exactly as readily as a carrier
+       does, and unlike a carrier they never move out of the way. */
+    const stat = this._harvestStatic();
+    for (let i = 0; i < stat.length; i++) {
+      const o = stat[i];
+      /* Something we are standing inside is a volume, not an obstacle. */
+      const dx = focus.x - o.x;
+      const dy = focus.y - o.y;
+      const dz = focus.z - o.z;
+      if (dx * dx + dy * dy + dz * dz < o.r * o.r) continue;
+      out = this._pushPast(focus, dir, out, o.x, o.y, o.z, o.r * 1.06 + 3);
+    }
+
+    /* A push-out is a correction, never a teleport. If the arithmetic ever
+       produces something absurd, the camera keeps the shot it had. */
+    if (!Number.isFinite(out)) return dist;
+    return Math.min(out, dist * 4 + 2000);
+  }
+
+  /** If `dist` along `dir` lands inside the sphere, return the exit distance. */
+  _pushPast(focus, dir, dist, cx, cy, cz, R) {
+    const mx = focus.x - cx;
+    const my = focus.y - cy;
+    const mz = focus.z - cz;
+    const b = 2 * (dir.x * mx + dir.y * my + dir.z * mz);
+    const cc = mx * mx + my * my + mz * mz - R * R;
+    const disc = b * b - 4 * cc;
+    if (disc <= 0) return dist;
+    const s = Math.sqrt(disc);
+    const t1 = (-b - s) * 0.5;
+    const t2 = (-b + s) * 0.5;
+    return dist > t1 && dist < t2 ? t2 : dist;
   }
 
   /* Only capitals can swallow a camera, and there are never many of them.
@@ -859,6 +1091,7 @@ export class CameraRig {
     }
     this._mq = null;
     this._colliders.length = 0;
+    this._static.length = 0;
     this._blasts.length = 0;
     this._follow = null;
     this.camera.near = this._nearBase;

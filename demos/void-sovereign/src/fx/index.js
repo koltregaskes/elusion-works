@@ -1125,7 +1125,7 @@ function scaleCaps(scale) {
     trails: s(440),
     smokeTrails: s(220),
     plumes: s(4200),
-    lights: s(5200),
+    lights: s(9000),
   };
 }
 

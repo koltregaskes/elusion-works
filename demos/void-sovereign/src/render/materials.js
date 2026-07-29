@@ -67,7 +67,7 @@ export const TEAM_COLORS = [
 const NEBULA = {
   key: new THREE.Color(0x4a6f9c),
   fill: new THREE.Color(0x2a2233),
-  ambient: 0.12,
+  ambient: 0.085,
   rim: 0.46,
 };
 
@@ -492,15 +492,26 @@ const HULL_BOUNCE = /* glsl */`
   vec3 wNp = normalize( ( vec4( normal, 0.0 ) * viewMatrix ).xyz );
   vec3 wV = normalize( ( vec4( vViewPosition, 0.0 ) * viewMatrix ).xyz );
   float fres = pow( 1.0 - saturate( dot( wNp, wV ) ), 4.2 );
-
-  vec3 hemiN = mix( uNebulaFill, uNebulaKey, wN.y * 0.5 + 0.5 );
-  vec3 R = reflect( - wV, wNp );
-  vec3 hemiR = mix( uNebulaFill, uNebulaKey, R.y * 0.5 + 0.5 );
   vec3 f0 = mix( vec3( 0.045 ), diffuseColor.rgb, vsMetal );
   float gloss = 1.0 - vsRough;
 
-  outgoingLight += hemiN * diffuseColor.rgb * uBounce.x * ( 1.0 - vsMetal * 0.85 ) * vsAO;
-  outgoingLight += hemiR * f0 * uBounce.x * ( 0.30 + 0.85 * gloss * gloss ) * vsAO;
+  /* Every term here is *directional*. There is deliberately no constant floor:
+     an ambient offset added to all three lifts the shadow side into mid-grey
+     and the hull stops reading as a solid object in hard sunlight — it starts
+     reading as a model on a turntable. The diffuse term is weighted by how much
+     of the bright half of the sky the normal actually sees, the reflected term
+     is a real mirror lobe that vanishes as the surface roughens, and the rim is
+     pure Fresnel, so all three go to zero on a face that is both away from the
+     nebula and facing the camera square on. "Lifted, never black" has to mean
+     0.02–0.05 in linear light, not 0.25. */
+  float skyN = wN.y * 0.5 + 0.5;
+  vec3 hemiN = mix( uNebulaFill, uNebulaKey, skyN );
+  vec3 R = reflect( - wV, wNp );
+  vec3 hemiR = mix( uNebulaFill, uNebulaKey, R.y * 0.5 + 0.5 );
+
+  outgoingLight += hemiN * diffuseColor.rgb * uBounce.x
+    * ( 0.35 + 0.65 * skyN ) * ( 1.0 - vsMetal * 0.85 ) * vsAO;
+  outgoingLight += hemiR * f0 * uBounce.x * gloss * gloss * vsAO;
   outgoingLight += hemiN * f0 * uBounce.y * fres * mix( 1.0, 0.4, vsRough ) * vsAO;
 }
 `;
@@ -645,7 +656,7 @@ function buildHullMaterial(team, family, opts, instanced) {
        a high intensity it paints the whole hull the colour of the sky — which
        is the same failure as a coloured key. The controlled hemispheric bounce
        below does the nebula's job with a dial we own. */
-    envMapIntensity: opts.envMapIntensity === undefined ? 0.34 : opts.envMapIntensity,
+    envMapIntensity: opts.envMapIntensity === undefined ? 0.24 : opts.envMapIntensity,
     dithering: true,
     side: THREE.FrontSide,
     flatShading: false,
@@ -737,15 +748,28 @@ export function getInstancedHullMaterial(team, family, opts) {
 
 /* ------------------------------------------------------------ engine glow */
 
-const ENGINE_VERT = /* glsl */`
+/* This material is applied by ships/index.js to the `glow` group, which is not
+   a plume — the plume belongs to FX. It is the *emitter inside the bell*: an
+   inward cone running up the recess plus a thin lip ring. Two consequences,
+   both learned the hard way:
+
+     - the geometry's UVs are hull-space, measured at -1.1 to 1.38 rather than
+       0..1, so anything that reads `uv` as a position along a column renders
+       the whole bell at the hot end and it goes flat white. Everything here is
+       driven by the view-facing term instead, which needs no UVs at all and
+       happens to be exactly the right gradient: looking into a bell is looking
+       at its throat.
+     - it is the largest piece of team colour on a ship seen from astern, so it
+       is keyed to TEAM_COLORS[n].engine and only the very throat is allowed to
+       reach white. A bell that blows out to white has no faction in it. */
+
+const BELL_VERT = /* glsl */`
 #include <common>
 #include <logdepthbuf_pars_vertex>
-varying vec2 vUvE;
 varying vec3 vNrm;
 varying vec3 vVDir;
 varying vec3 vLocal;
 void main() {
-  vUvE = uv;
   vLocal = position;
   vec3 n = normal;
   vec4 mv;
@@ -762,64 +786,56 @@ void main() {
 }
 `;
 
-const ENGINE_FRAG = /* glsl */`
+const BELL_FRAG = /* glsl */`
 #include <common>
 #include <logdepthbuf_pars_fragment>
 uniform sampler2D uCurl;
-uniform sampler2D uPlume;
 uniform vec3 uCore;
 uniform vec3 uEdge;
 uniform float uTime;
 uniform float uThrottle;
 uniform float uIntensity;
-uniform float uFlip;
-varying vec2 vUvE;
+uniform float uSharp;
 varying vec3 vNrm;
 varying vec3 vVDir;
 varying vec3 vLocal;
 
 void main() {
-  float along = clamp( uFlip > 0.5 ? 1.0 - vUvE.y : vUvE.y, 0.0, 1.0 );
-  float t = clamp( uThrottle, 0.0, 1.4 );
+  float t = clamp( uThrottle, 0.0, 1.5 );
+  float ndv = clamp( dot( normalize( vNrm ), normalize( vVDir ) ), 0.0, 1.0 );
 
-  /* Turbulence advected down the column. Two curl samples at different rates
-     give the plume a churn that never repeats on a visible cycle. */
-  vec2 f1 = texture2D( uCurl, vec2( vUvE.x * 1.7, along * 0.6 - uTime * 0.75 ) ).rg - 0.5;
-  vec2 f2 = texture2D( uCurl, vec2( vUvE.x * 3.4 + 0.37, along * 1.3 - uTime * 1.9 ) ).rg - 0.5;
-  float churn = ( f1.x * 0.62 + f2.y * 0.38 );
-  vec2 warp = vec2( churn, f2.x * 0.5 ) * ( 0.02 + 0.16 * along );
+  /* Combustion churn, sampled on the fragment's own position so it works on a
+     cone, a ring or whatever else ships/ decides a bell is made of, and slow
+     enough that a stationary fleet does not strobe. */
+  vec2 q = vec2( vLocal.x + vLocal.z, vLocal.y - vLocal.z ) * 0.06;
+  float n1 = texture2D( uCurl, q + vec2( 0.0, uTime * 0.11 ) ).r;
+  float n2 = texture2D( uCurl, q * 2.7 - vec2( uTime * 0.23, 0.0 ) ).g;
+  float churn = 0.78 + 0.44 * ( n1 * 0.6 + n2 * 0.4 );
 
-  vec4 plume = texture2D( uPlume, clamp( vec2( vUvE.x, along ) + warp, vec2( 0.002 ), vec2( 0.998 ) ) );
+  float heat = clamp( pow( ndv, uSharp ) * churn, 0.0, 1.0 );
+  vec3 c = mix( uEdge, uCore, heat );
+  /* White is rationed hard. The bell is built from two parts — an inward cone
+     whose throat faces astern and a lip ring at the mouth — and both present a
+     face-on normal to a camera behind the ship, so a generous white term turns
+     the whole assembly into white discs. Since the drive is the largest piece
+     of faction colour on a ship seen from astern, the exponent is steep and the
+     mix is capped: the very centre of the throat goes hot, nothing else does. */
+  c = mix( c, vec3( 1.0 ), pow( heat, 14.0 ) * 0.6 );
 
-  /* Volumetric shell: a hollow cone has more material along a grazing ray, so
-     the silhouette rims up and it reads as a column of gas rather than a card.
-     Shock diamonds ride the first third, where the flow is still choked. */
-  float ndv = abs( dot( normalize( vNrm ), normalize( vVDir ) ) );
-  float shell = mix( 0.22, 1.0, pow( 1.0 - ndv, 1.15 ) );
-
-  float taper = pow( 1.0 - smoothstep( 0.0, 0.72 + 0.28 * t, along ), 1.5 );
-  float shock = 1.0 + 0.42 * max( 0.0, sin( along * 30.0 - 0.6 ) )
-    * ( 1.0 - smoothstep( 0.02, 0.34, along ) );
-
-  float a = clamp( ( taper * 0.75 + plume.a * 0.55 ) * shell * shock * t, 0.0, 1.0 );
-  a *= 0.55 + 0.45 * ( 0.5 + churn );
-
-  float heat = clamp( taper * ( 0.55 + 0.75 * plume.r ) * shock, 0.0, 1.0 );
-  vec3 c = mix( uEdge, uCore, heat * heat );
-  /* The white core is kept to the very throat. A plume that blows out to white
-     over most of its length is a plume with no faction in it — at two
-     kilometres the drive glow is one of only three things still telling the
-     player whose ship this is. */
-  c = mix( c, vec3( 1.0 ), pow( clamp( heat * 1.05, 0.0, 1.0 ), 7.0 ) );
-
-  gl_FragColor = vec4( c * uIntensity * a, a );
+  // Idle still glows: a cold drive is a dead ship, and a fleet holding station
+  // at zero throttle would lose its faction read at range.
+  float level = mix( 0.30, 1.0, t );
+  gl_FragColor = vec4( c * uIntensity * level, 1.0 );
   #include <logdepthbuf_fragment>
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
 `;
 
-/** Additive engine plume / nozzle glow. Shared per team. */
+/**
+ * Engine-bell emitter, shared per team. Set `userData.uniforms.uThrottle` from
+ * `entity.throttle` to make the drives respond to the sim.
+ */
 export function getEngineMaterial(team) {
   if (!store) throw new Error('materials: initMaterials() must run first');
   const t = team === 1 ? 1 : 0;
@@ -827,32 +843,32 @@ export function getEngineMaterial(team) {
   if (hit) return hit;
 
   const pal = TEAM_COLORS[t];
-  const core = pal.engine.clone().lerp(new THREE.Color(0xffffff), 0.40);
+  const core = pal.engine.clone().lerp(new THREE.Color(0xffffff), 0.30);
+
+  const uniforms = {
+    uCurl: { value: getNoiseTexture('curl', 256) },
+    uCore: { value: core },
+    uEdge: { value: pal.engine.clone() },
+    uTime: SHARED_TIME,
+    uThrottle: { value: 1 },
+    // comfortably over the 1.55 bloom threshold: drives are meant to flare
+    uIntensity: { value: 3.4 },
+    uSharp: { value: 3.0 },
+  };
 
   const mat = new THREE.ShaderMaterial({
-    uniforms: {
-      uCurl: { value: getNoiseTexture('curl', 256) },
-      uPlume: { value: getSpriteTexture('plume') },
-      uCore: { value: core },
-      uEdge: { value: pal.engine.clone() },
-      uTime: SHARED_TIME,
-      uThrottle: { value: 1 },
-      uIntensity: { value: 2.6 },
-      // Plume cones are built nozzle-first, so V already runs the right way.
-      // Kept as a uniform so a differently-wound cone can flip without a recompile.
-      uFlip: { value: 0 },
-    },
-    vertexShader: ENGINE_VERT,
-    fragmentShader: ENGINE_FRAG,
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
+    uniforms,
+    vertexShader: BELL_VERT,
+    fragmentShader: BELL_FRAG,
+    transparent: false,
+    depthWrite: true,
     depthTest: true,
     side: THREE.DoubleSide,
     toneMapped: true,
   });
   mat.name = `vs.engine.${t}`;
   mat.userData.bloom = true;
+  mat.userData.uniforms = uniforms;
 
   store.engine.set(t, mat);
   store.materials.push(mat);

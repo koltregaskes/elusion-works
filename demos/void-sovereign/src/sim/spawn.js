@@ -1,5 +1,5 @@
 import * as THREE from '../../vendor/three/build/three.module.js';
-import { SHIPS, TEAM } from '../ships/catalog.js';
+import { SHIPS, TEAM, approxRadius } from '../ships/catalog.js';
 
 /* Skirmish setup.
 

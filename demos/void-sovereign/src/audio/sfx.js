@@ -51,6 +51,11 @@ const CATEGORY_CAP = { ion: 3, beam: 4, capitalGun: 6, death: 8, capitalDeath: 3
 /* Rate limits in events per second. */
 const RATE = { capitalGun: 14, spawn: 3, resource: 0.5 };
 
+/* Ambience levels. Both are deliberately tiny: the loudest thing in the game is
+   about 45 dB above the void floor, and that headroom is the whole aesthetic. */
+const VOID_LEVEL = 0.012;
+const HULL_LEVEL = 0.09;
+
 /** Growing cluster of near-simultaneous events at roughly one place. */
 class Cluster {
   constructor() {
@@ -307,7 +312,7 @@ export class SfxLayer {
       o.type = 'sawtooth';
       sweep(o.frequency, t, 560 * (1 + i * 0.006), 300, 0.11);
       const a = this.ctx.createGain();
-      blip(a.gain, t, 0.30, 0.002, 0.13);
+      blip(a.gain, t, 0.19, 0.002, 0.13);
       o.connect(a);
       a.connect(g);
       o.start(t);
@@ -475,9 +480,11 @@ export class SfxLayer {
       o.type = 'square';
       o.frequency.value = 118 + i * 5.5;
       const a = this.ctx.createGain();
-      // Two short bursts, like a locked door being tried twice.
-      blip(a.gain, t, 0.20, 0.003, 0.055);
-      blip(a.gain, t + 0.085, 0.18, 0.003, 0.075);
+      // Two short bursts, like a locked door being tried twice. Kept a few dB
+      // above the rest of the palette but nowhere near startling — the hard
+      // drive stage below already makes it the most abrasive sound in the set.
+      blip(a.gain, t, 0.075, 0.003, 0.055);
+      blip(a.gain, t + 0.085, 0.066, 0.003, 0.075);
       o.connect(a);
       a.connect(g);
       o.start(t);
@@ -694,7 +701,7 @@ export class SfxLayer {
     const pops = clamp(Math.round(2 + Math.log2(1 + (density || 1)) * 2), 2, BUCKETS.flak.cap + 2);
     const v = this._claim(2, 0.55, sp.gain * 0.5);
     if (!v) return this._cull();
-    const chain = this.audio.positional('sfx', sp, 0.5);
+    const chain = this.audio.positional('sfx', sp, 0.66);
     const srcs = [];
     for (let i = 0; i < pops; i++) {
       const at2 = t + i * this.rng.range(0.014, 0.04);
@@ -789,7 +796,9 @@ export class SfxLayer {
     this._hold('ion', total + 0.2);
 
     const scale = clamp(size / 500, 0.5, 2.0);
-    const chain = this.audio.positional('sfx', sp, 1.0);
+    // A spinal mount is lower than a frigate's lance — and must not be quieter
+    // for it, so size buys level as well as pitch.
+    const chain = this.audio.positional('sfx', sp, lerp(0.88, 1.15, clamp((scale - 0.5) / 1.5, 0, 1)));
     const srcs = [];
 
     // Extra reverb: the lance is the one thing that should sound enormous.
@@ -1156,7 +1165,8 @@ export class SfxLayer {
     if (!v) return this._cull();
     this._hold('capitalDeath', 11);
     const scale = clamp(size / 900, 0.5, 2.4);
-    const chain = this.audio.positional('sfx', sp, 1.0);
+    // `late` keeps the detonation out of its own duck node — see index.js.
+    const chain = this.audio.positional('sfx', sp, 1.0, true);
     const send = this.ctx.createGain();
     send.gain.value = 0.42;
     chain.amp.connect(send);
@@ -1247,11 +1257,14 @@ export class SfxLayer {
   }
 
   _secondary(dest, srcs, t, size, level) {
-    const scale = clamp(size / 120, 0.3, 2.5);
+    const scale = clamp(size / 120, 0.4, 2.2);
+    // Same discipline as _detonation: size lengthens the tail and darkens the
+    // timbre, but the fundamental stays inside the band a speaker can reproduce.
+    const shift = Math.pow(scale, 0.4);
     const n = this._noise(t, 'brown', this.rng.range(0.8, 1.3));
     const lp = this.ctx.createBiquadFilter();
     lp.type = 'lowpass';
-    sweep(lp.frequency, t, 1500 / scale, 190 / scale, 0.24);
+    sweep(lp.frequency, t, 1500 / shift, 190 / shift, 0.24);
     const g = this.ctx.createGain();
     blip(g.gain, t, level, 0.003, 0.26 * scale);
     n.connect(lp);
@@ -1262,7 +1275,7 @@ export class SfxLayer {
     srcs.push(n);
     const o = this.ctx.createOscillator();
     o.type = 'sine';
-    sweep(o.frequency, t, 120 / scale, 46 / scale, 0.2);
+    sweep(o.frequency, t, 150 / shift, 55 / shift, 0.2);
     const og = this.ctx.createGain();
     blip(og.gain, t, level * 0.8, 0.002, 0.24 * scale);
     o.connect(og);
@@ -1272,24 +1285,48 @@ export class SfxLayer {
     srcs.push(o);
   }
 
-  /** The big one. Sub, saturated body, tearing mid, and a bright transient. */
+  /**
+   * The big one: sub, low-mid boom, saturated body, tearing mid, bright transient.
+   *
+   * Size makes it *louder and lower*, never quieter. An early version scaled
+   * every layer's frequency by hull length, which put a mothership almost
+   * entirely under 40 Hz and made it measure 6 dB below a destroyer — physically
+   * defensible, perceptually backwards, and inaudible on a laptop. The sub now
+   * goes lower with size while a scale-independent boom layer holds the part you
+   * actually hear, and the level rises instead of falling.
+   */
   _detonation(dest, srcs, t, size, level, tail) {
-    const scale = clamp(size / 900, 0.4, 2.4);
+    const scale = clamp(size / 900, 0.45, 2.2);
+    const big = clamp((scale - 0.45) / 1.75, 0, 1);
+    const lvl = level * lerp(0.85, 1.4, big);
 
-    // Sub: 45 Hz down to 17 Hz over most of the tail. Subsonic on purpose —
-    // on a laptop speaker it is felt as air, on anything decent it is felt.
+    // Sub: the part you feel. Bigger hulls sink further and hold longer.
     const sub = this.ctx.createOscillator();
     sub.type = 'sine';
-    sweep(sub.frequency, t, 52 / scale, 17 / scale, tail * 0.45);
+    sweep(sub.frequency, t, 66 / Math.sqrt(scale), Math.max(16, 22 / scale), tail * 0.45);
     const sg = this.ctx.createGain();
     sg.gain.setValueAtTime(1e-4, t);
-    sg.gain.exponentialRampToValueAtTime(level * 1.15, t + 0.02);
+    sg.gain.exponentialRampToValueAtTime(lvl * 1.15, t + 0.02);
     sg.gain.exponentialRampToValueAtTime(1e-4, t + tail * 0.55);
     sub.connect(sg);
     sg.connect(dest);
     sub.start(t);
     sub.stop(t + tail * 0.6);
     srcs.push(sub);
+
+    // Boom: the audible octave above the sub, barely moved by size so the
+    // detonation always reads through a small speaker.
+    const boomShift = Math.pow(scale, 0.35);
+    const boom = this.ctx.createOscillator();
+    boom.type = 'sine';
+    sweep(boom.frequency, t, 150 / boomShift, 58 / boomShift, tail * 0.3);
+    const bmg = this.ctx.createGain();
+    blip(bmg.gain, t, lvl * 0.9, 0.004, tail * 0.35);
+    boom.connect(bmg);
+    bmg.connect(dest);
+    boom.start(t);
+    boom.stop(t + tail * 0.5);
+    srcs.push(boom);
 
     // Body: brown noise through a filter that opens for a moment and then
     // closes for good. Saturated so it has grit rather than being a whoosh.
@@ -1304,8 +1341,8 @@ export class SfxLayer {
     lp.Q.value = 0.9;
     const bg = this.ctx.createGain();
     bg.gain.setValueAtTime(1e-4, t);
-    bg.gain.exponentialRampToValueAtTime(level, t + 0.012);
-    bg.gain.exponentialRampToValueAtTime(level * 0.22, t + tail * 0.3);
+    bg.gain.exponentialRampToValueAtTime(lvl, t + 0.012);
+    bg.gain.exponentialRampToValueAtTime(lvl * 0.22, t + tail * 0.3);
     bg.gain.exponentialRampToValueAtTime(1e-4, t + tail);
     body.connect(shaper);
     shaper.connect(lp);
@@ -1322,7 +1359,7 @@ export class SfxLayer {
     bp.Q.value = 1.4;
     sweep(bp.frequency, t, 1100, 130, tail * 0.35);
     const tg = this.ctx.createGain();
-    blip(tg.gain, t, level * 0.55, 0.004, tail * 0.4);
+    blip(tg.gain, t, lvl * 0.55, 0.004, tail * 0.4);
     tear.connect(bp);
     bp.connect(tg);
     tg.connect(dest);
@@ -1330,7 +1367,7 @@ export class SfxLayer {
     tear.stop(t + tail * 0.6);
     srcs.push(tear);
 
-    this._crack(dest, srcs, t, level * 0.7, 1.6);
+    this._crack(dest, srcs, t, lvl * 0.7, 1.6);
   }
 
   /** Expanding shockwave: a swell that pitches down as it passes. */
@@ -1373,7 +1410,7 @@ export class SfxLayer {
     vlp.frequency.value = 130;
     const vg = ctx.createGain();
     vg.gain.value = 0;
-    vg.gain.setTargetAtTime(0.05, t, 3);
+    vg.gain.setTargetAtTime(VOID_LEVEL, t, 3);
     void_.connect(vlp);
     vlp.connect(vg);
     vg.connect(target);
@@ -1384,12 +1421,12 @@ export class SfxLayer {
     h1.type = 'peaking';
     h1.frequency.value = 78;
     h1.Q.value = 7;
-    h1.gain.value = 16;
+    h1.gain.value = 9;
     const h2 = ctx.createBiquadFilter();
     h2.type = 'peaking';
     h2.frequency.value = 147;
     h2.Q.value = 9;
-    h2.gain.value = 12;
+    h2.gain.value = 7;
     const hlp = ctx.createBiquadFilter();
     hlp.type = 'lowpass';
     hlp.frequency.value = 420;
@@ -1489,7 +1526,10 @@ export class SfxLayer {
         const dy = e.position.y - l.y;
         const dz = e.position.z - l.z;
         const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        const t = smoothstep(r * 8, r * 1.6, d);
+        // A hull's acoustic envelope is roughly its own length plus a kilometre.
+        // Scaling purely by radius made a mothership audible from 7 km, which is
+        // not "close to a ship", it is "somewhere in the same battle".
+        const t = smoothstep(r * 3 + 1200, r * 1.2 + 120, d);
         if (t > best) {
           best = t;
           bestSize = r;
@@ -1507,10 +1547,10 @@ export class SfxLayer {
     if (!a) return;
     const presence = this.audio.presence;
     // The void floor is loudest in the quiet — it is what silence sounds like.
-    const voidLevel = 0.045 * lerp(1.3, 0.55, presence);
+    const voidLevel = VOID_LEVEL * lerp(1.3, 0.55, presence);
     a.voidGain.gain.setTargetAtTime(voidLevel, now, 1.2);
 
-    const hullLevel = this._hullNear * 0.5 * presence;
+    const hullLevel = this._hullNear * HULL_LEVEL * presence;
     a.hullGain.gain.setTargetAtTime(hullLevel, now, 0.35);
     if (this._hullSize > 0) {
       // Bigger hulls resonate lower. A mothership hums; a frigate rings.
@@ -1656,7 +1696,7 @@ export class SfxLayer {
     if (!v) return;
     const g = this.ctx.createGain();
     g.gain.value = 0.7;
-    g.connect(this.audio.buses.sfx.input);
+    g.connect(this.audio.buses.sfx.lateInput);
     const send = this.ctx.createGain();
     send.gain.value = 0.5;
     g.connect(send);

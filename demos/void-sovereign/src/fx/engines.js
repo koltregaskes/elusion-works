@@ -488,8 +488,12 @@ export class EngineFX {
     // bigger than a fighter's, not 135x bigger, which is what sells the scale.
     const size = Math.min(4.2, Math.max(0.22, Math.pow(L, 0.62) * 0.055));
     const out = [];
-    // 48 is plenty to describe a 1.9 km spine and bounds the per-frame write.
-    const step = Math.max(1, Math.ceil(src.length / 48));
+    /* Take every lamp up to a generous cap. Running-light *spacing* is the
+       scale cue (§3.4) — 86 lamps at 70 m pitch is what says "1.9 km" — so
+       thinning them out is thinning out the thing they are there to do. The
+       per-frame cost is bounded by the batch budget and the distance gate
+       instead. */
+    const step = Math.max(1, Math.ceil(src.length / 96));
     for (let i = 0; i < src.length; i += step) {
       const l = src[i];
       if (!l || !l.pos) continue;

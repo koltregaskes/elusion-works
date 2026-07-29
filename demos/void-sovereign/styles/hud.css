@@ -1294,25 +1294,31 @@
 .vsh-tally--them { color: var(--vsh-amber); }
 
 /* --------------------------------------------------- 8b. first-run rail */
-/* Three steps, ticked off by doing them, then gone for good. The alternative
-   — one panel listing thirty-two controls — is the reliable way to make a new
-   player close an RTS, which is what the H card is for once they want it. */
+/* Three steps, ticked off by doing them, then gone for good — it retires on
+   the first order landing, because someone who has selected a fleet and sent
+   it somewhere is playing the game. A thin strip under the top rule, not a
+   block in the middle: it is transient, so it must not own the composition
+   while it is up. The alternative — one panel listing thirty-two controls —
+   is the reliable way to make a new player close an RTS. */
 .vsh-onboard {
   z-index: 3;
   position: absolute;
-  left: var(--vsh-gut);
-  top: 50%;
-  width: min(340px, 42vw);
-  padding-left: 16px;
-  border-left: 1px solid var(--vsh-ink-16);
-  transform: translate3d(0, -50%, 0);
-  transition: opacity 0.55s var(--vsh-ease), transform 0.55s var(--vsh-ease);
+  left: 50%;
+  top: 86px;
+  width: min(760px, calc(100% - var(--vsh-gut) * 2));
+  transform: translate3d(-50%, 0, 0);
+  transition: opacity 0.5s var(--vsh-ease), transform 0.5s var(--vsh-ease);
   pointer-events: none;
+}
+
+.vsh-onboard::before {
+  inset: -18px -40px -20px -40px;
+  background: radial-gradient(74% 130% at 50% 50%, rgba(2, 6, 11, 0.86), rgba(2, 6, 11, 0) 78%);
 }
 
 .vsh-onboard.is-gone {
   opacity: 0;
-  transform: translate3d(-10px, -50%, 0);
+  transform: translate3d(-50%, -10px, 0);
 }
 
 .vsh-onboard.is-mute {
@@ -1320,28 +1326,37 @@
   transition: opacity 0.22s var(--vsh-ease);
 }
 
-.vsh-onboard::before {
-  inset: -22px -40px -22px -30px;
-  background: radial-gradient(100% 88% at 0% 50%, rgba(2, 6, 11, 0.9), rgba(2, 6, 11, 0) 82%);
+.vsh-onboard__head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding-bottom: 6px;
+  margin-bottom: 9px;
+  border-bottom: 1px solid var(--vsh-ink-10);
 }
 
 .vsh-onboard__k {
-  margin: 0 0 12px;
+  margin: 0;
   font-family: var(--vsh-mono);
   font-size: 9px;
   letter-spacing: 0.34em;
   text-transform: uppercase;
   color: var(--vsh-cyan);
-  opacity: 0.7;
+  opacity: 0.8;
+}
+
+.vsh-onboard__rows {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px 22px;
 }
 
 .vsh-onboard__row {
   position: relative;
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 8px;
   align-items: baseline;
-  padding: 5px 0;
   transition: opacity 0.3s linear;
 }
 
@@ -1352,16 +1367,16 @@
 }
 
 .vsh-onboard__t {
-  font-size: 12px;
-  line-height: 1.45;
+  font-size: 11.5px;
+  line-height: 1.4;
   color: var(--vsh-ink-88);
 }
 
 /* A tick that replaces the number rather than crowding it. */
 .vsh-onboard__tick {
   position: absolute;
-  left: 1px;
-  top: 8px;
+  left: 0;
+  top: 5px;
   width: 9px;
   height: 5px;
   border-left: 1px solid var(--vsh-cyan);
@@ -1383,8 +1398,17 @@
   text-decoration-color: var(--vsh-ink-16);
 }
 
+/* The one feature in the build that is genuinely worth advertising. */
+.vsh-onboard__note {
+  margin: 10px 0 0;
+  font-family: var(--vsh-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  color: var(--vsh-ink-40);
+}
+
 .vsh-onboard__skip {
-  margin-top: 12px;
+  margin-left: auto;
   font-family: var(--vsh-mono);
   font-size: 9px;
   letter-spacing: 0.16em;
@@ -1395,6 +1419,67 @@
 
 .vsh-onboard__skip:hover { color: var(--vsh-cyan); }
 .vsh-onboard.is-gone .vsh-onboard__skip { pointer-events: none; }
+
+/* ------------------------------------------------------- 8c. paused state */
+/* A frozen sim with no indicator reads as a crash. Corner ticks and one word;
+   deliberately no dimming, because the whole selling point is that you can
+   still read the battlefield and command it while it is stopped. */
+.vsh-paused {
+  z-index: 4;
+  position: absolute;
+  inset: 12px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s var(--vsh-ease), visibility 0s linear 0.2s;
+  pointer-events: none;
+}
+
+.vsh-paused.is-open {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.2s var(--vsh-ease), visibility 0s;
+}
+
+.vsh-paused__c {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border: 0 solid var(--vsh-amber);
+  opacity: 0.75;
+}
+
+.vsh-paused__c--tl { top: 0; left: 0; border-top-width: 1px; border-left-width: 1px; }
+.vsh-paused__c--tr { top: 0; right: 0; border-top-width: 1px; border-right-width: 1px; }
+.vsh-paused__c--bl { bottom: 0; left: 0; border-bottom-width: 1px; border-left-width: 1px; }
+.vsh-paused__c--br { bottom: 0; right: 0; border-bottom-width: 1px; border-right-width: 1px; }
+
+.vsh-paused__tag {
+  position: absolute;
+  left: 50%;
+  bottom: 84px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  transform: translate3d(-50%, 0, 0);
+}
+
+.vsh-paused__word {
+  font-family: var(--vsh-mono);
+  font-size: 13px;
+  letter-spacing: 0.56em;
+  text-indent: 0.56em;
+  text-transform: uppercase;
+  color: var(--vsh-amber);
+}
+
+.vsh-paused__sub {
+  font-family: var(--vsh-mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--vsh-ink-40);
+}
 
 /* --------------------------------------------------------------- 9. help */
 /* Centred, with its own scrim. A docked rail collided with the production
@@ -1473,6 +1558,18 @@
 
 .vsh-help__close:hover { color: var(--vsh-cyan); }
 
+/* Tactical pause promoted out of the control list, where it was one grey row
+   among thirty-two and nobody ever found it. */
+.vsh-help__lede {
+  max-width: 76ch;
+  margin: -8px 0 26px;
+  padding-left: 14px;
+  border-left: 1px solid var(--vsh-cyan);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--vsh-ink-64);
+}
+
 /* Newspaper columns rather than a grid: the five groups are different lengths
    and CSS balances them better than any fixed layout would. */
 .vsh-help__grid {
@@ -1517,6 +1614,95 @@
   font-size: 11.5px;
   line-height: 1.45;
   color: var(--vsh-ink-40);
+}
+
+/* ------------------------------------------------------- 9b. audio mixer */
+/* Lives inside the controls card because that is where a player goes when
+   they stop to fiddle. Hidden until `src/audio/index.js` announces itself —
+   a mixer wired to nothing is worse than no mixer. */
+.vsh-audio { display: none; }
+.vsh-audio.is-live { display: block; }
+
+.vsh-audio__row {
+  display: grid;
+  grid-template-columns: minmax(0, 74px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 4px 0;
+}
+
+.vsh-audio__k {
+  font-family: var(--vsh-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  color: var(--vsh-ink-64);
+}
+
+.vsh-audio__mute {
+  justify-self: start;
+  font-family: var(--vsh-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vsh-cyan);
+  transition: color 0.15s linear;
+}
+
+.vsh-audio__mute[aria-pressed='true'] { color: var(--vsh-red); }
+
+.vsh-audio.is-muted .vsh-audio__slider { opacity: 0.35; }
+
+/* A hairline track and a single tick for a thumb — no native chrome, and no
+   rounded corners anywhere, per DESIGN.md. */
+.vsh-audio__slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 12px;
+  margin: 0;
+  background: none;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: opacity 0.15s linear;
+}
+
+.vsh-audio__slider::-webkit-slider-runnable-track {
+  height: 1px;
+  background: var(--vsh-ink-16);
+}
+
+.vsh-audio__slider::-moz-range-track {
+  height: 1px;
+  background: var(--vsh-ink-16);
+}
+
+.vsh-audio__slider::-moz-range-progress {
+  height: 1px;
+  background: var(--vsh-cyan);
+}
+
+.vsh-audio__slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 2px;
+  height: 11px;
+  margin-top: -5px;
+  border: 0;
+  border-radius: 0;
+  background: var(--vsh-cyan);
+}
+
+.vsh-audio__slider::-moz-range-thumb {
+  width: 2px;
+  height: 11px;
+  border: 0;
+  border-radius: 0;
+  background: var(--vsh-cyan);
+}
+
+.vsh-audio__slider:focus-visible {
+  outline: 1px solid var(--vsh-cyan);
+  outline-offset: 2px;
 }
 
 /* --------------------------------------------------------------- 10. boot */
@@ -1749,6 +1935,7 @@
 
 @media (max-width: 760px) {
   .vsh-help__grid { column-count: 1; }
+  .vsh-onboard__rows { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* Short viewports: the production menu is the tallest thing in the HUD and it
@@ -1785,6 +1972,6 @@
 
   .vsh-sensors__head { transform: translate3d(-50%, 0, 0) !important; }
   .vsh-onboard,
-  .vsh-onboard.is-gone { transform: translate3d(0, -50%, 0) !important; }
+  .vsh-onboard.is-gone { transform: translate3d(-50%, 0, 0) !important; }
   .vsh-onboard__row.is-done .vsh-onboard__tick { transform: rotate(-45deg) !important; }
 }

@@ -245,6 +245,77 @@ Phase 2 (desktop).
 
 ---
 
+## 6a. Publishing — how this actually goes live
+
+**Nothing is live until it is merged to `main`.** `.github/workflows/pages.yml`
+deploys GitHub Pages on `push` to `main` only. Work on `feat/void-sovereign`
+is pushed to GitHub but is **not** served at `elusionworks.com`.
+
+There are two independent gates, and both must be opened deliberately:
+
+1. **Merge `feat/void-sovereign` → `main`** (via PR). That deploys the files,
+   making the demo reachable at `elusionworks.com/demos/void-sovereign/`.
+2. **Link it from the shelf.** Until the card exists in `demos/index.html`,
+   the demo is deployed but undiscoverable — which is a perfectly reasonable
+   soft-launch state for sharing a direct URL with a few people.
+
+### The shelf card, ready to paste
+
+Insert into `demos/index.html` alongside the other `data-kind="game"` cards,
+and **bump `<span class="ew-index-count">` from 10 to 11**.
+
+```html
+<article class="ew-plate ew-demo-card ew-demo-card--wide" data-kind="game">
+  <span class="ew-plate-halo" aria-hidden="true"></span>
+  <a class="ew-plate-link" href="void-sovereign/" aria-label="Open Void Sovereign"></a>
+  <div class="ew-plate-media"><div class="ew-plate-frame"><img src="void-sovereign/thumbnail.webp" alt="" width="1200" height="675" loading="lazy" decoding="async" /><span class="ew-plate-shade"></span><span class="ew-plate-sheen" aria-hidden="true"></span></div></div>
+  <div class="ew-plate-meta">
+    <div class="ew-plate-meta-row"><span class="ew-mono ew-plate-kind">3D space RTS</span><span class="ew-status ew-status-live">Playable</span></div>
+    <h3 class="ew-plate-name">Void Sovereign</h3>
+    <p class="ew-plate-blurb">Fleet command at universe scale. Every hull, nebula and asteroid generated in the browser from one seed.</p>
+    <div class="ew-plate-footer"><span class="ew-mono ew-plate-family">Three.js</span><span class="ew-plate-cta">Launch <span class="ew-cta-arrow">-&gt;</span></span></div>
+  </div>
+</article>
+```
+
+### Launch checklist
+
+Do these in order. Do not skip 1–3 to hit a date; the whole point of the demo
+is that it is good.
+
+- [ ] All Phase 1 conditions in §6 hold.
+- [ ] Critic answers **YES** with no BLOCKER or MAJOR outstanding.
+- [ ] Measured at **1440p60 on the target laptop** — cannot be checked here.
+- [ ] **Capture `thumbnail.webp` at 1200×675.** Do this *after* the art is
+      fixed, never before — the thumbnail is the single most-seen image and a
+      stale one undersells the whole thing. Use a hero framing of the
+      mothership with the nebula behind it, HUD off.
+- [ ] Add the card above; bump the index count to 11.
+- [ ] Confirm `og:image` and `twitter:card` in `void-sovereign/index.html`
+      point at a real image — needed for social embeds.
+- [ ] Boot time acceptable (currently ~30 s; see §3 known-weak).
+- [ ] Open a PR, let `validate.yml` pass, merge to `main`.
+- [ ] Verify the live URL, then check `site-health.yml` stays green.
+
+### Testing on the target laptop before launch
+
+The most useful thing the owner can do is run it on the real hardware, since
+the dev box cannot measure the 1440p60 target:
+
+```bash
+git clone https://github.com/koltregaskes/elusion-works.git
+cd elusion-works
+git checkout feat/void-sovereign
+node demos/void-sovereign/tools/dev-server.mjs
+```
+
+Then open `http://127.0.0.1:8899/demos/void-sovereign/`. Node 20+ only; no
+`npm install` needed — there are no runtime dependencies.
+Useful URL parameters: `?seed=kharak`, `?quality=ultra`, `?adaptive=1`,
+`?difficulty=hard`.
+
+---
+
 ## 7. If you are resuming mid-flight
 
 1. Start the dev server (§2) and run `node .local/shot.mjs .local/shots/resume.png`
