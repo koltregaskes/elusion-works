@@ -49,10 +49,11 @@ export function homePosition(team, separation, out) {
 export const OPENING_ANGLE = 0.52; // radians, ~30 degrees
 
 /* An ore seam is not a wall. You fly into it, mine inside it and see straight
-   through the gaps, so its silhouette is one rock rather than the whole swarm.
-   Seams are held to this much looser angle, which in practice means only the
-   hard no-overlap floor binds — close ore is exactly what the opening wants. */
-export const SEAM_ANGLE = 1.2; // radians, ~69 degrees
+   through the gaps, so it is held to a looser angle than an opaque landmark —
+   close ore is exactly what a good opening wants. It is not unlimited, though:
+   past about a third of the field of view a seam stops reading as "ore over
+   there" and starts reading as scenery in the way. */
+export const SEAM_ANGLE = 0.62; // radians, ~35.5 degrees
 
 /** Hard floor: nothing may physically intersect the mothership, ever. */
 const HARD_GAP = 600;

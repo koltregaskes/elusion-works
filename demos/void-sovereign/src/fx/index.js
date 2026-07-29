@@ -91,15 +91,28 @@ function finishTexture(canvas, { wrap = false } = {}) {
   return t;
 }
 
+/* A point-source profile, not a disc.
+
+   The alpha ramp is the effect. A flare whose alpha stays high out to half its
+   radius is a *card*: at the additive gains an explosion core needs, every
+   texel inside that plateau clears the tone curve and the result is a flat
+   white circle with a rim. This falls away fast — half brightness by 8% of the
+   radius — so the sprite reads as a hot point with a halo around it, and the
+   thing that grows when you scale it up is the halo rather than the disc.
+
+   RGB is flat white throughout: colour comes from the per-particle tint, so
+   the same sprite serves a cyan muzzle flash and a deep orange fireball. */
 function spriteFlare(size = 128) {
   const c = makeCanvas(size);
   const g = c.getContext('2d');
   const h = size / 2;
   const grad = g.createRadialGradient(h, h, 0, h, h, h);
   grad.addColorStop(0.0, 'rgba(255,255,255,1)');
-  grad.addColorStop(0.09, 'rgba(255,255,255,0.94)');
-  grad.addColorStop(0.26, 'rgba(255,255,255,0.42)');
-  grad.addColorStop(0.55, 'rgba(255,255,255,0.10)');
+  grad.addColorStop(0.04, 'rgba(255,255,255,0.80)');
+  grad.addColorStop(0.10, 'rgba(255,255,255,0.40)');
+  grad.addColorStop(0.22, 'rgba(255,255,255,0.13)');
+  grad.addColorStop(0.45, 'rgba(255,255,255,0.035)');
+  grad.addColorStop(0.72, 'rgba(255,255,255,0.008)');
   grad.addColorStop(1.0, 'rgba(255,255,255,0)');
   g.fillStyle = grad;
   g.fillRect(0, 0, size, size);
@@ -1238,8 +1251,12 @@ export class FXSystem {
       }),
       smoke: new ParticleField(ctx, {
         name: 'smoke', texture: sprites.smoke, capacity: budget.smoke,
+        /* Vacuum. There is no atmosphere to hold a smoke column, and soot is
+           the only thing in this system that *occludes* rather than adds — so
+           it stays thin and sparse. Dense smoke over a fireball reads as a
+           flat card laid across the battle, which is worse than no smoke. */
         blending: THREE.NormalBlending, layer: LAYER.DEFAULT,
-        alphaPow: 1.5, opacity: 0.62, minPixels: 2.0, renderOrder: 6, softness: 60,
+        alphaPow: 1.5, opacity: 0.26, minPixels: 2.0, renderOrder: 6, softness: 60,
       }),
       /* Trails must not out-shout the guns. They are a motion cue for strike
          craft, not the loudest thing in a fleet action. */

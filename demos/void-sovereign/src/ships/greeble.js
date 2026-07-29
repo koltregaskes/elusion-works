@@ -26,7 +26,12 @@ import { fbm3 } from '../core/rng.js';
     which is exactly the scale cue ARCHITECTURE §3.4 asks for. */
 export const UV_TILE = 6;
 
-export const KIND = { HULL: 'hull', GLASS: 'glass', GLOW: 'glow' };
+/* `bell` is emissive like `glow`, but split into its own merged group so it can
+   take a different material: a drive bell wants an axial gradient down the
+   throat, everything else is a flat emitter. Both go on LAYER.GLOW. */
+export const KIND = { HULL: 'hull', GLASS: 'glass', GLOW: 'glow', BELL: 'bell' };
+
+const MERGE_KINDS = ['hull', 'glass', 'glow', 'bell'];
 
 /** Plate families in the material atlas. `aVariant` selects one. */
 export const PLATE = {
@@ -409,6 +414,25 @@ export function ring(rInner, rOuter, thickness, sides = 12, opts = {}) {
   return m.geometry();
 }
 
+/**
+ * Rewrite V as a normalised 0..1 ramp along local Z. Lofted surfaces carry UVs
+ * in metres, which for the fleet's glow group ran -1.10…1.38 — fine for tiling
+ * plate, useless for a gradient. `flip` puts 1 at the mouth (z = z0).
+ */
+export function axialV(geo, z0, z1, flip = false) {
+  const pos = geo.getAttribute('position');
+  const uv = geo.getAttribute('uv');
+  if (!pos || !uv) return geo;
+  const span = Math.abs(z1 - z0) || 1;
+  for (let i = 0; i < pos.count; i++) {
+    let t = (pos.getZ(i) - z0) / span;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    uv.setY(i, flip ? 1 - t : t);
+  }
+  uv.needsUpdate = true;
+  return geo;
+}
+
 /** Flat emissive quad in the XY plane facing -Z (matches the helper convention). */
 export function plate(w, h, opts = {}) {
   const m = new Mesher();
@@ -542,26 +566,24 @@ export function engineNozzle(r, opts = {}) {
   // from — off-axis the bell goes dead grey. So the lit surface is a cone
   // running back up the recess to just inside the lip, and it is what the
   // bloom pass and the FX plume both key off.
-  parts.push({
-    geo: loft(
-      [
-        { z: 0, pts: ngonSection(r * 0.8, sides, { rot: Math.PI / sides }) },
-        { z: r * 1.18, pts: ngonSection(r * 0.42, sides, { rot: Math.PI / sides }) },
-      ],
-      { inward: true, capStart: false, capEnd: true },
-    ),
-    kind: KIND.GLOW,
-    variant: PLATE.MECH,
-    z: r * 0.1,
-  });
+  //
+  // V is remapped 0 at the throat to 1 at the mouth so [MAT] can run an axial
+  // gradient down the bell rather than a view-facing one.
+  const cone = loft(
+    [
+      { z: 0, pts: ngonSection(r * 0.8, sides, { rot: Math.PI / sides }) },
+      { z: r * 1.18, pts: ngonSection(r * 0.42, sides, { rot: Math.PI / sides }) },
+    ],
+    { inward: true, capStart: false, capEnd: false },
+  );
+  axialV(cone, 0, r * 1.18, true);
+  parts.push({ geo: cone, kind: KIND.BELL, variant: PLATE.MECH, z: r * 0.1 });
+
   // Lip ring: a thin band of light right at the mouth, so the bell reads as
   // live from dead astern and from ninety degrees off.
-  parts.push({
-    geo: ring(r * 0.82, r * 0.94, r * 0.05, sides, { rot: Math.PI / sides }),
-    kind: KIND.GLOW,
-    variant: PLATE.MECH,
-    z: r * 0.02,
-  });
+  const lip = ring(r * 0.82, r * 0.94, r * 0.05, sides, { rot: Math.PI / sides });
+  axialV(lip, 0, r * 0.05, true);
+  parts.push({ geo: lip, kind: KIND.BELL, variant: PLATE.MECH, z: r * 0.02 });
 
   return { parts, mouth: { x: 0, y: 0, z: 0, r } };
 }
@@ -1389,7 +1411,7 @@ export class Builder {
       if (m.determinant() < 0) reverseWinding(geo);
     }
     const count = geo.getAttribute('position').count;
-    if (count === 0) {
+    if (count === 0 || this.tooSmall(geo, kind)) {
       geo.dispose();
       return this;
     }
@@ -1418,7 +1440,7 @@ export class Builder {
         if (shared.determinant() < 0) reverseWinding(geo);
       }
       const count = geo.getAttribute('position').count;
-      if (count === 0) {
+      if (count === 0 || this.tooSmall(geo, p.kind || opts.kind || KIND.HULL)) {
         geo.dispose();
         continue;
       }
@@ -1439,8 +1461,8 @@ export class Builder {
   }
 
   finish(wearOpts) {
-    const out = { hull: null, glass: null, glow: null };
-    for (const kind of ['hull', 'glass', 'glow']) {
+    const out = { hull: null, glass: null, glow: null, bell: null };
+    for (const kind of MERGE_KINDS) {
       const arr = this.groups[kind];
       if (!arr.length) continue;
       let merged = null;
@@ -1457,7 +1479,7 @@ export class Builder {
     // and only the merged buffer knows which triangles ended up where.
     if (out.hull && this.teamRegions.length) paintTeamMask(out.hull, this.teamRegions);
     if (out.hull && wearOpts) applyWear(out.hull, wearOpts);
-    this.groups = { hull: [], glass: [], glow: [] };
+    this.groups = { hull: [], glass: [], glow: [], bell: [] };
     this.teamRegions = [];
     return out;
   }

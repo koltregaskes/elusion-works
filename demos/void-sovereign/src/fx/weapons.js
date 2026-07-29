@@ -16,6 +16,7 @@
    400 tracers cost one buffer upload and one draw call. */
 
 import * as THREE from '../../vendor/three/build/three.module.js';
+import { bus } from '../core/events.js';
 
 /* ------------------------------------------------------------------ shaders */
 
@@ -208,7 +209,7 @@ void main() {
   vSeed = iTint.w;
   vKind = iKind;
   vShell = aShell;
-  vIntensity = iTime.w * ( 1.0 + 3.4 * exp( -t * 34.0 ) );
+  vIntensity = iTime.w * ( 1.0 + 1.5 * exp( -t * 34.0 ) );
   vEnv = env;
   vFragW = gl_Position.w;
   #include <logdepthbuf_vertex>
@@ -260,7 +261,7 @@ void main() {
   if ( vShell > 1.5 ) {
     // Core: a hard white filament. This is not a light, it is a hole being cut.
     shape = pow( max( 1.0 - across * across, 0.0 ), mix( 0.55, 0.22, vClamp ) );
-    col = mix( vec3( 1.0 ), vColor, 0.12 ) * ( 2.2 + 4.2 * ends ) * mix( 0.92, 1.0, energy );
+    col = mix( vec3( 1.0 ), vColor, 0.12 ) * ( 1.9 + 3.0 * ends ) * mix( 0.92, 1.0, energy );
   } else if ( vShell > 0.5 ) {
     // Sheath: the colour, and where the plasma turbulence lives.
     shape = pow( max( 1.0 - across, 0.0 ), mix( 2.2, 1.1, vClamp ) ) * mix( 0.75, 1.25, energy );
@@ -885,7 +886,7 @@ export class WeaponFX {
          An ionLance at 220 damage therefore burns a ~25 m halo around a ~3 m
          white core — a lance, not a laser pointer. */
       width: (ion ? 2.2 : 1.2) + Math.sqrt(dmg) * (ion ? 0.22 : 0.13),
-      intensity: ion ? 1.9 : 1.35,
+      intensity: ion ? 1.25 : 0.95,
       colour: new THREE.Color(this._col),
       seed: ctx.rng.next(),
       kind: ion ? 1 : 0,
@@ -909,6 +910,16 @@ export class WeaponFX {
     }
 
     this._beams.push(b);
+
+    /* An ion lance firing is worth a nudge — same channel as death blasts so
+       the camera needs no bespoke listener (see ExplosionFX._blast). */
+    if (ion) {
+      bus.emit('fx:blast', {
+        point: b.from.clone(),
+        radius: Math.max(600, b.width * 90),
+        strength: 0.10 + dmg / 3400,
+      });
+    }
 
     /* Ignition. The muzzle has to announce itself half a second before the eye
        finds the far end of the beam, so this is deliberately over-sized: a

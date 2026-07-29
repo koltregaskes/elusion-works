@@ -207,7 +207,7 @@ function buildScout(ctx) {
     { z: 3.2, pts: sec(0.95, 0.85, 0, 0.22) },
     { z: 4.1, pts: sec(0.36, 0.32, 0, 0.09) },
   ];
-  b.add(loft(decimateStations(spine, b.lod(1, 1, 2, 3)), {}), { variant: PLATE.HULL });
+  b.add(loft(decimateStations(spine, b.lod(1, 2, 4, 7)), {}), { variant: PLATE.HULL });
 
   // The dish is the ship. Offset and tilted so it never reads as a decal.
   b.addParts(dish(2.6, { sides: b.lod(16, 12, 8, 6), rows: b.lod(4, 3, 2, 1), mast: b.detail < 2 }), {
@@ -276,7 +276,7 @@ function buildInterceptor(ctx) {
     { z: 6.4, pts: sec(0.42, 0.5, -0.05, 0.1) },
     { z: 7.0, pts: sec(0.1, 0.14, -0.06, 0.03) },
   ];
-  b.add(loft(decimateStations(spine, b.lod(1, 1, 2, 3)), {}), { variant: PLATE.HULL });
+  b.add(loft(decimateStations(spine, b.lod(1, 2, 4, 7)), {}), { variant: PLATE.HULL });
 
   // Dorsal spine ridge — one long knife edge down the back.
   b.add(loft([
@@ -360,7 +360,7 @@ function buildBomber(ctx) {
     { z: 8.2, pts: sec(2.2, 2.2, 0.4, 0.4) },
     { z: 9.6, pts: sec(0.9, 1.1, 0.1, 0.2) },
   ];
-  b.add(loft(decimateStations(spine, b.lod(1, 1, 2, 3)), {}), { variant: PLATE.HULL });
+  b.add(loft(decimateStations(spine, b.lod(1, 2, 4, 7)), {}), { variant: PLATE.HULL });
 
   // Armoured nose cap — the bomber leads with its face.
   b.add(chamferBox(2.9, 2.4, 3.4, { chamfer: 0.55, chamferZ: 0.8, taperFront: 0.42, wTop: 2.1 }), {
@@ -442,7 +442,7 @@ function buildCorvette(ctx) {
     { z: 14.0, pts: sec(3.6, 3.6, -0.2, 0.5, 0) },
     { z: 16.8, pts: sec(1.2, 1.5, -0.3, 0.2, 0) },
   ];
-  b.add(loft(decimateStations(spine, b.lod(1, 1, 2, 3)), {}), { variant: PLATE.HULL });
+  b.add(loft(decimateStations(spine, b.lod(1, 2, 4, 7)), {}), { variant: PLATE.HULL });
 
   // Armoured cheeks — the bow carries the weight.
   b.both((s) => {
@@ -515,7 +515,7 @@ function buildMissileCorvette(ctx) {
     { z: 14.4, pts: sec(2.0, 2.2, -0.2, 0.32) },
     { z: 16.0, pts: sec(0.7, 0.9, -0.25, 0.14) },
   ];
-  b.add(loft(decimateStations(spine, b.lod(1, 1, 2, 3)), {}), { variant: PLATE.HULL });
+  b.add(loft(decimateStations(spine, b.lod(1, 2, 4, 7)), {}), { variant: PLATE.HULL });
 
   // Honeycomb block: a real grid of sunk cells, four across, six deep.
   b.add(chamferBox(7.6, 2.4, 12.0, { chamfer: 0.5, chamferZ: 0.7, wTop: 6.8 }), {
@@ -594,7 +594,7 @@ function armourBelt(ctx, stations, opts) {
       wTop: w * (opts.tumble || 0.94), wBot: w, top, bottom, chamfer,
     }) };
   });
-  b.add(loft(decimateStations(belt, b.lod(1, 1, 2, 3)), {}), { variant, wear: 0.4 });
+  b.add(loft(decimateStations(belt, b.lod(1, 2, 4, 7)), {}), { variant, wear: 0.4 });
 }
 
 /* assaultFrigate — slab-sided, turret deck, flak sponsons, spine trench. */
@@ -619,7 +619,7 @@ function buildAssaultFrigate(ctx) {
       notchW: p.n, notchDepth: p.h * 0.2, cy: 0,
     }),
   }));
-  b.add(loft(decimateStations(spine, b.lod(1, 1, 2, 3)), {}), { variant: PLATE.HULL });
+  b.add(loft(decimateStations(spine, b.lod(1, 2, 4, 7)), {}), { variant: PLATE.HULL });
   armourBelt(ctx, plan.slice(0, 7), { out: 0.7, top: 1.5, bottom: -4.5, chamfer: 1.1 });
 
   // Turret deck: a raised armoured strip carrying the main battery.
@@ -719,7 +719,7 @@ function buildIonFrigate(ctx) {
   b.add(loft(decimateStations(bodyPlan.map((p) => ({
     z: p.z,
     pts: rectSection(p.w, p.h, { wTop: p.w * 0.6, wBot: p.w * 0.98, chamfer: p.h * 0.12, cy: -3.5 }),
-  })), b.lod(1, 1, 2, 3)), {}), { variant: PLATE.HULL });
+  })), b.lod(1, 2, 4, 7)), {}), { variant: PLATE.HULL });
 
   // The barrel: 88 m of accelerator running past the bow. This is the ship.
   const bl = 88;
@@ -732,7 +732,7 @@ function buildIonFrigate(ctx) {
     { z: bz0 + 70, pts: ngonSection(6.6, sides) },
     { z: bz0 + bl - 3, pts: ngonSection(6.9, sides) },
     { z: bz0 + bl, pts: ngonSection(6.2, sides) },
-  ], b.lod(1, 1, 2, 2)), {}), { y: 3.2, variant: PLATE.MECH, wear: 0.45 });
+  ], b.lod(1, 2, 4, 6)), {}), { y: 3.2, variant: PLATE.MECH, wear: 0.45 });
 
   // Accelerator coils, spaced tighter toward the muzzle.
   const coils = b.lod(9, 6, 3, 0);
@@ -827,7 +827,7 @@ function buildSupportFrigate(ctx) {
       wTop: p.w * 0.74, wBot: p.w * 0.96, chamfer: p.h * 0.11,
       notchW: p.w * 0.24, notchDepth: p.h * 0.16, chamferNotch: p.h * 0.04,
     }),
-  })), b.lod(1, 1, 2, 3)), {}), { variant: PLATE.HULL });
+  })), b.lod(1, 2, 4, 7)), {}), { variant: PLATE.HULL });
   armourBelt(ctx, plan.slice(0, 5), { out: 0.6, top: 1.0, bottom: -3.6, chamfer: 0.9, variant: PLATE.PANEL });
 
   // Boom arms: two segments plus an emitter head, reaching forward and out.
@@ -959,7 +959,7 @@ function buildDestroyer(ctx) {
       wTop: p.w * 0.84, wBot: p.w, chamfer: p.h * 0.13, chamferNotch: p.h * 0.035,
       notchW: p.n, notchDepth: p.h * 0.2,
     }),
-  })), b.lod(1, 1, 2, 3)), {}), { variant: PLATE.HULL });
+  })), b.lod(1, 2, 4, 7)), {}), { variant: PLATE.HULL });
 
   // Layered armour: two belts at different heights, the lower one stepped out.
   armourBelt(ctx, plan.slice(0, 10), { out: 1.8, top: 4.0, bottom: -8.0, chamfer: 3.0 });
@@ -1111,7 +1111,7 @@ function buildCruiser(ctx) {
       wTop: p.w * 0.8, wBot: p.w, chamfer: p.h * 0.13, chamferNotch: p.h * 0.03,
       notchW: p.n, notchDepth: p.h * 0.22, cy: -6,
     }),
-  })), b.lod(1, 1, 2, 3)), {}), { variant: PLATE.HULL });
+  })), b.lod(1, 2, 4, 7)), {}), { variant: PLATE.HULL });
   armourBelt(ctx, plan.slice(0, 11), { out: 2.6, top: 4.0, bottom: -14.0, chamfer: 5.0 });
   armourBelt(ctx, plan.slice(0, 10), { out: 5.0, top: -16.0, bottom: -32.0, chamfer: 4.0, tumble: 1.0 });
   // Blunt armoured prow block.
@@ -1139,7 +1139,7 @@ function buildCruiser(ctx) {
       { z: 326, r: 22.0 },
       { z: 340, r: 18.0 },
     ];
-    b.add(loft(decimateStations(barrel.map((p) => ({ z: p.z, pts: ngonSection(p.r, sides) })), b.lod(1, 1, 2, 2)), {}), {
+    b.add(loft(decimateStations(barrel.map((p) => ({ z: p.z, pts: ngonSection(p.r, sides) })), b.lod(1, 2, 4, 6)), {}), {
       mirrorX: s < 0, x: gunX, y: gunY, ry: s * -0.012, variant: PLATE.MECH, wear: 0.45,
     });
     // Breech housing: the guns have to come from somewhere, and a bare tube
@@ -1304,7 +1304,7 @@ function buildCollector(ctx) {
   b.add(loft(decimateStations(plan.map((p) => ({
     z: p.z,
     pts: rectSection(p.w, p.h, { wTop: p.w * 0.9, wBot: p.w * 0.86, chamfer: p.h * 0.14, cy: -1.0 }),
-  })), b.lod(1, 1, 2, 3)), {}), { variant: PLATE.HULL });
+  })), b.lod(1, 2, 4, 7)), {}), { variant: PLATE.HULL });
 
   // Ore hopper: an open box with ribbed walls sunk into the dorsal deck.
   b.addParts(pocket(9.0, 17.0, 6.4, { chamfer: 0.9, taper: 0.7, variant: PLATE.MECH }), {
@@ -1421,7 +1421,7 @@ function buildCarrier(ctx) {
       wTop: p.w * 0.86, wBot: p.w, chamfer: p.h * 0.18, chamferNotch: p.h * 0.05,
       notchW: p.n, notchDepth: p.h * 0.26, cy: -2,
     }),
-  })), b.lod(1, 1, 2, 3)), {}), { variant: PLATE.HULL });
+  })), b.lod(1, 2, 4, 7)), {}), { variant: PLATE.HULL });
   armourBelt(ctx, plan.slice(0, 10), { out: 2.6, top: -4.0, bottom: -26.0, chamfer: 4.6, tumble: 1.0 });
   armourBelt(ctx, plan.slice(0, 9), { out: 1.2, top: 30.0, bottom: 12.0, chamfer: 3.4, tumble: 0.92, variant: PLATE.PANEL });
   b.add(chamferBox(66.0, 40.0, 94.0, { chamfer: 9.0, chamferZ: 17.0, taperFront: 0.52, wTop: 38.0 }), {
@@ -1637,7 +1637,7 @@ function buildMothership(ctx) {
       wTop: p.w * 0.88, wBot: p.w * 0.94, chamfer: p.h * 0.1, chamferNotch: p.h * 0.026,
       notchW: p.n, notchDepth: p.h * p.nd, cy: -20,
     }),
-  })), b.lod(1, 1, 2, 3)), {}), { variant: PLATE.HULL });
+  })), b.lod(1, 2, 4, 7)), {}), { variant: PLATE.HULL });
 
   // Three belts at three heights. Layered armour is the difference between a
   // slab and something that was assembled.
@@ -1659,7 +1659,7 @@ function buildMothership(ctx) {
   b.add(loft(decimateStations(pod.map((p) => ({
     z: p.z,
     pts: rectSection(p.w, p.h, { wTop: p.w, wBot: p.w * 0.8, chamfer: p.h * 0.22, cy: -256 }),
-  })), b.lod(1, 1, 2, 3)), {}), { variant: PLATE.ARMOUR, wear: 0.45 });
+  })), b.lod(1, 2, 4, 7)), {}), { variant: PLATE.ARMOUR, wear: 0.45 });
   b.addParts(ribBand(b.lod(13, 8, 4, 0), -730, 340, 356.0, 28.0, 10.0, {
     variant: PLATE.MECH, y: -256,
   }), {});
@@ -1682,9 +1682,9 @@ function buildMothership(ctx) {
     b.add(chamferBox(16.0, 34.0, 250.0, { chamfer: 5.0, chamferZ: 13.0 }), {
       mirrorX: s < 0, x: 84.0, y: 34.0, z: 150.0, variant: PLATE.MECH, wear: 0.6,
     });
-    winBay(ctx, 224.0, 15.0, 5.0, 4.0, {
+    winBay(ctx, 224.0, 2.3, 0.8, 0.6, {
       mirrorX: s < 0, x: 92.0, y: 66.0, z: 150.0, ry: -Math.PI / 2,
-      rows: 3, rowPitch: 11.0, fill: 0.66, depth: 4.4,
+      rows: 12, rowPitch: 1.7, fill: 0.62, depth: 0.7,
     });
   });
   if (b.detail < 2) {
@@ -1708,12 +1708,12 @@ function buildMothership(ctx) {
 
   winBay(ctx, deck.wt * 0.84, 16.0, 5.2, 4.2, {
     x: -8.0, y: deck.y + deck.h * 0.04, z: deck.z + deck.d * 0.5 + 1.0,
-    rows: 3, rowPitch: 13.0, fill: 0.66, depth: 5.0,
+    rows: 12, rowPitch: 2, fill: 0.62, depth: 0.8,
   });
   for (const row of [-0.28, 0.0, 0.28]) {
     b.both((s) => winBay(ctx, deck.d * 0.86, 14.0, 4.6, 3.6, {
       mirrorX: s < 0, x: deck.wt * 0.5 + 1.0, y: deck.y + deck.h * row, z: deck.z,
-      ry: -Math.PI / 2, rows: 2, rowPitch: 9.0, fill: 0.6, depth: 4.4,
+      ry: -Math.PI / 2, rows: 8, rowPitch: 1.4, fill: 0.6, depth: 0.7,
     }));
   }
   b.addParts(ribBand(b.lod(11, 6, 3, 0), deck.z - deck.d * 0.42, deck.z + deck.d * 0.42, deck.wt * 1.04, 14.0, 6.0, {
@@ -1754,17 +1754,17 @@ function buildMothership(ctx) {
 
   // Sail skin: window cities on both faces, arrays, plate layers.
   b.both((s) => {
-    winBay(ctx, 520.0, 19.0, 6.5, 5.0, {
+    winBay(ctx, 520.0, 2.9, 1, 0.8, {
       mirrorX: s < 0, x: sail.x + sail.tk * 0.5 + 1.0, y: 336.0, z: -344.0,
-      ry: -Math.PI / 2, rows: 3, rowPitch: 16.0, fill: 0.62, depth: 5.0,
+      ry: -Math.PI / 2, rows: 12, rowPitch: 2.5, fill: 0.62, depth: 0.8,
     });
-    winBay(ctx, 152.0, 16.0, 5.5, 4.4, {
+    winBay(ctx, 152.0, 2.5, 0.8, 0.7, {
       mirrorX: s < 0, x: sail.x + 40.0, y: 540.0, z: -134.0,
-      ry: -Math.PI / 2, rows: 6, rowPitch: 34.0, fill: 0.58, depth: 4.4,
+      ry: -Math.PI / 2, rows: 24, rowPitch: 5.2, fill: 0.58, depth: 0.7,
     });
-    winBay(ctx, 100.0, 16.0, 5.5, 4.4, {
+    winBay(ctx, 100.0, 2.5, 0.8, 0.7, {
       mirrorX: s < 0, x: sail.x + 34.0, y: 512.0, z: -582.0,
-      ry: -Math.PI / 2, rows: 5, rowPitch: 34.0, fill: 0.5, depth: 4.4,
+      ry: -Math.PI / 2, rows: 20, rowPitch: 5.2, fill: 0.5, depth: 0.7,
     });
     b.addParts(commsArray(96.0, 132.0, { rows: 6, thickness: 8.0 }), {
       mirrorX: s < 0, x: sail.x + 40.0, y: 556.0, z: -600.0, ry: -Math.PI / 2, wear: 0.3,
@@ -1778,8 +1778,8 @@ function buildMothership(ctx) {
   b.add(chamferBox(88.0, 26.0, 34.0, { chamfer: 6.0, chamferZ: 9.0, taperFront: 0.55, wTop: 52.0 }), {
     x: sail.x, y: 632.0, z: -16.0, kind: KIND.GLASS, variant: PLATE.PANEL,
   });
-  winBay(ctx, 76.0, 12.0, 4.0, 3.2, {
-    x: sail.x, y: 572.0, z: -48.0, rows: 3, rowPitch: 11.0, fill: 0.72, depth: 4.0,
+  winBay(ctx, 76.0, 1.8, 0.6, 0.5, {
+    x: sail.x, y: 572.0, z: -48.0, rows: 12, rowPitch: 1.7, fill: 0.62, depth: 0.6,
   });
 
   /* -------------------------------------------------------- forward tower */
@@ -1805,14 +1805,14 @@ function buildMothership(ctx) {
   b.addParts(ribBand(b.lod(7, 4, 2, 0), tower.z - 74, tower.z + 74, tower.wt * 1.06, 15.0, 6.0, {
     variant: PLATE.MECH, y: tower.y + tower.h * 0.5,
   }), { x: 6.0 });
-  winBay(ctx, 140.0, 15.0, 5.0, 4.0, {
+  winBay(ctx, 140.0, 2.3, 0.8, 0.6, {
     x: 6.0, y: 330.0, z: tower.z + tower.d * 0.5 + 1.0,
-    rows: 5, rowPitch: 26.0, fill: 0.66, depth: 4.6,
+    rows: 20, rowPitch: 4, fill: 0.62, depth: 0.7,
   });
   b.both((s) => {
-    winBay(ctx, 150.0, 15.0, 5.0, 4.0, {
+    winBay(ctx, 150.0, 2.3, 0.8, 0.6, {
       mirrorX: s < 0, x: tower.wt * 0.5 + 7.0, y: 330.0, z: tower.z,
-      ry: -Math.PI / 2, rows: 6, rowPitch: 30.0, fill: 0.62, depth: 4.6,
+      ry: -Math.PI / 2, rows: 24, rowPitch: 4.6, fill: 0.62, depth: 0.7,
     });
     b.add(chamferBox(30.0, 168.0, 54.0, { chamfer: 8.0, chamferZ: 12.0, wTop: 16.0, wBot: 40.0 }), {
       mirrorX: s < 0, x: 132.0, y: 200.0, z: tower.z - 20, rz: s * 0.2,
@@ -1870,17 +1870,17 @@ function buildMothership(ctx) {
       mirrorX: s < 0, x: 146.0, y: -84.0, z: 790.0, ry: -s * 0.4, rz: s * 0.3,
       variant: PLATE.PANEL, wear: 0.5,
     });
-    winBay(ctx, 260.0, 13.0, 4.4, 3.4, {
+    winBay(ctx, 260.0, 2, 0.7, 0.5, {
       mirrorX: s < 0, x: 236.0, y: 104.0, z: shieldZ - 4, ry: -Math.PI / 2,
-      rows: 2, rowPitch: 9.0, fill: 0.6, depth: 4.0,
+      rows: 8, rowPitch: 1.4, fill: 0.6, depth: 0.6,
     });
     b.addParts(dish(30.0, { sides: b.lod(16, 12, 8, 6), rows: 4 }), {
       mirrorX: s < 0, x: 216.0, y: 206.0, z: shieldZ - 20, rx: -0.3, ry: s * 0.5,
       variant: PLATE.PANEL, wear: 0.4,
     });
   });
-  winBay(ctx, 300.0, 14.0, 5.0, 4.0, {
-    y: 132.0, z: shieldZ + 56, rows: 3, rowPitch: 12.0, fill: 0.66, depth: 4.6,
+  winBay(ctx, 300.0, 2.2, 0.8, 0.6, {
+    y: 132.0, z: shieldZ + 56, rows: 12, rowPitch: 1.8, fill: 0.62, depth: 0.7,
   });
 
   /* ---------------------------------------------------------- docking arms */
@@ -1918,7 +1918,7 @@ function buildMothership(ctx) {
     ].map((p) => ({
       z: p.z,
       pts: rectSection(p.w, p.h, { wTop: p.w * 0.72, wBot: p.w * 0.9, chamfer: p.h * 0.17 }),
-    })), b.lod(1, 1, 2, 3)), {}), { ...place, variant: PLATE.ARMOUR, wear: 0.35 });
+    })), b.lod(1, 2, 4, 7)), {}), { ...place, variant: PLATE.ARMOUR, wear: 0.35 });
     b.addParts(ribBand(b.lod(7, 4, 2, 0), 26, solid - 22, 116.0, 136.0, 10.0, { variant: PLATE.MECH }), place);
 
     const trussLen = a.len * 0.46;
@@ -1959,9 +1959,9 @@ function buildMothership(ctx) {
       chamfer: 10.0, frame: 19.0,
       ribs: b.lod(6, 4, 2, 0), sideRibs: b.lod(4, 3, 0, 0), lamps: b.lod(11, 7, 0, 0),
     }), { mirrorX: bay.s < 0, x: 216.0, y: -14.0, z: bay.z, ry: -Math.PI / 2 });
-    winBay(ctx, 190.0, 9.5, 3.4, 2.6, {
+    winBay(ctx, 190.0, 1.5, 0.5, 0.4, {
       mirrorX: bay.s < 0, x: 220.0, y: 62.0, z: bay.z, ry: -Math.PI / 2,
-      rows: 2, rowPitch: 7.0, fill: 0.7, depth: 3.4,
+      rows: 8, rowPitch: 1.1, fill: 0.62, depth: 0.5,
     });
     ctx.dock.push(new THREE.Vector3(bay.s * 280.0, -14.0, bay.z));
     light(ctx, bay.s * 234.0, 48.0, bay.z + 114.0, NAV.hangar, 0.8, 4.5);
@@ -2170,8 +2170,8 @@ function buildMothership(ctx) {
   // lamps down it, and counting them is how the eye gets its length — so the
   // strake runs the whole keel at ~85 m spacing, with a second row along the
   // citadel edge.
-  lightStrake(ctx, { z0: -790, z1: 600, x: 224.0, y: -92.0, colour: NAV.beacon, period: 2.6, size: 6.0 });
-  lightStrake(ctx, { z0: deck.z - deck.d * 0.46, z1: deck.z + deck.d * 0.46, x: deck.wt * 0.5 + 4, y: deck.y - deck.h * 0.5, colour: NAV.deck, period: 3.1, size: 5.0 });
+  lightStrake(ctx, { z0: -790, z1: 600, x: 224.0, y: -92.0, colour: NAV.beacon, period: 2.6, size: 1.2 });
+  lightStrake(ctx, { z0: deck.z - deck.d * 0.46, z1: deck.z + deck.d * 0.46, x: deck.wt * 0.5 + 4, y: deck.y - deck.h * 0.5, colour: NAV.deck, period: 3.1, size: 1.0 });
   navSet(ctx, 224.0, -92.0, -360.0, 8.0, 2.4);
   navSet(ctx, 224.0, -92.0, 200.0, 8.0, 2.4);
   navSet(ctx, 258.0, 30.0, shieldZ, 8.0, 2.4);
@@ -2218,7 +2218,7 @@ export function buildHullLevel(classId, detail, xform) {
   const def = SHIPS[classId];
   if (!def || !BUILDERS[classId]) return null;
   const rng = makeRng(def.modelSeed);
-  const b = new Builder(rng, detail);
+  const b = new Builder(rng, detail, def.length);
   // Windows draw from their own stream. The coarse levels skip them entirely,
   // and a shared stream would then shift every greeble behind them, turning a
   // reduced LOD into a visibly different ship.
@@ -2235,7 +2235,7 @@ export function buildHullLevel(classId, detail, xform) {
   // Union bounding box across all three material groups.
   const box = new THREE.Box3();
   let any = false;
-  for (const k of ['hull', 'glass', 'glow']) {
+  for (const k of ['hull', 'glass', 'glow', 'bell']) {
     if (!geo[k]) continue;
     geo[k].computeBoundingBox();
     box.union(geo[k].boundingBox);
@@ -2254,7 +2254,7 @@ export function buildHullLevel(classId, detail, xform) {
     m.multiply(new THREE.Matrix4().makeTranslation(-centre.x, -centre.y, -centre.z));
   }
 
-  for (const k of ['hull', 'glass', 'glow']) {
+  for (const k of ['hull', 'glass', 'glow', 'bell']) {
     if (!geo[k]) continue;
     geo[k].applyMatrix4(m);
     geo[k].computeBoundingBox();
@@ -2303,6 +2303,6 @@ export function buildHullLevel(classId, detail, xform) {
     dock: ctx.dock,
     radius: radius.radius,
     xform: m,
-    tris: triCount(geo.hull) + triCount(geo.glass) + triCount(geo.glow),
+    tris: triCount(geo.hull) + triCount(geo.glass) + triCount(geo.glow) + triCount(geo.bell),
   };
 }

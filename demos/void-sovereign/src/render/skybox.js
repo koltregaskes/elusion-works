@@ -535,6 +535,8 @@ varying vec2 vUv;
 
 uniform float uStarSigma;   // minimum star sigma, in texels
 uniform float uStarGain;
+uniform float uGasGain;     // per-seed exposure ceiling, set after probing
+uniform float uGasSat;      // per-seed saturation ceiling
 uniform sampler2D uGas;
 
 ${NOISE_GLSL}
@@ -645,8 +647,24 @@ void main() {
      which the gas pass has already accumulated into one optical depth. */
   vec3 stars = ${on.stars ? '(starMain(d, sig) + starBright(d, sig)) * uStarGain' : 'vec3(0.0)'};
 
+  /* Exposure and saturation ceilings, applied to the gas only.
+
+     The layer amounts are drawn per seed from wide ranges, and the palettes
+     are deliberately spread from near-monochrome slate to amber-and-violet, so
+     the product of the two occasionally lands on a sky that is brighter and
+     more chromatic than the fleet in front of it. That inverts the whole
+     visual direction: §3.3 puts the colour in the nebula but §3.1 puts the
+     subject in the ships, and a backdrop cannot out-read the thing it is
+     behind. These two numbers are measured from the first bake and applied on
+     a second one — the program is already compiled by then, so the correction
+     costs a few milliseconds rather than another compile.
+
+     Stars are deliberately left alone: their budget is already set low on
+     purpose, and dimming them with the gas would only make the sky emptier. */
   vec4 gas = texture2D(uGas, vUv);
-  vec3 col = stars * exp(-EXT * gas.a) + gas.rgb;
+  vec3 gasCol = gas.rgb * uGasGain;
+  gasCol = mix(vec3(dot(gasCol, vec3(0.2126, 0.7152, 0.0722))), gasCol, uGasSat);
+  vec3 col = stars * exp(-EXT * gas.a) + gasCol;
 
   /* A hair of ambient so the void is deep charcoal-blue rather than a dead
      zero — pure #000 reads as a hole punched in the frame. */
@@ -1099,6 +1117,8 @@ export function buildSkybox(renderer, rng, opts = {}) {
       // being band-limited and the field starts to crawl when the camera turns.
       uStarSigma: { value: 0.62 },
       uStarGain: { value: 1.0 },
+      uGasGain: { value: 1.0 },
+      uGasSat: { value: 1.0 },
       uGas: { value: gasTarget.texture },
     },
     vertexShader: SKY_VERTEX,
@@ -1158,9 +1178,49 @@ export function buildSkybox(renderer, rng, opts = {}) {
   drawTiled(gasMaterial, gasTarget, GW, GH, tiles);
   drawTiled(material, preview, PW, PH, tiles);
   quad.material = material;
-  buildMips(preview);
 
-  const probe = probeSky(renderer, preview.texture);
+  /* Measure, correct, re-shade.
+
+     The exposure and saturation of the gas cannot be known before it is
+     rendered: the layer amounts, the clarity mask and the palette all multiply
+     together and the spread across seeds is wide. So the first bake is a
+     measurement, the ceilings below are applied, and pass B is shaded again.
+     Only pass B — the gas target is untouched and its program is already
+     compiled — so the correction costs a few milliseconds against the several
+     seconds the first compile took.
+
+     MEAN_CEIL and PEAK_CEIL are in the same linear units the sky is stored in,
+     and are set against the fleet: a lit hull sits around 0.25 and its shadow
+     side around 0.005, so a sky whose brightest region clears ~0.16 is
+     competing with the subject rather than sitting behind it. */
+     The mip chain has to be built before every probe, not after. The sky
+     target carries a mipmapped min filter, and a mipmapped texture with no mip
+     chain is *incomplete* — it samples as solid black, so the probe silently
+     returns zero and every colour derived from it (fog, fill, rim, ambient,
+     the hull bounce) quietly falls back to a default. */
+  const MEAN_CEIL = 0.0155;
+  const PEAK_CEIL = 0.155;
+  const SAT_CEIL = 0.62;
+  buildMips(preview);
+  let probe = probeSky(renderer, preview.texture);
+
+  const gain = Math.min(
+    1,
+    MEAN_CEIL / Math.max(1e-5, probe.luminance),
+    PEAK_CEIL / Math.max(1e-5, probe.peak),
+  );
+  const wmx = Math.max(probe.weighted.r, probe.weighted.g, probe.weighted.b);
+  const wmn = Math.min(probe.weighted.r, probe.weighted.g, probe.weighted.b);
+  const chroma = wmx > 1e-5 ? (wmx - wmn) / wmx : 0;
+  const sat = chroma > SAT_CEIL ? SAT_CEIL / chroma : 1;
+
+  if (gain < 0.985 || sat < 0.985) {
+    material.uniforms.uGasGain.value = gain;
+    material.uniforms.uGasSat.value = sat;
+    drawTiled(material, preview, PW, PH, tiles);
+    buildMips(preview);
+    probe = probeSky(renderer, preview.texture);
+  }
 
   renderer.setScissorTest(prevScissorTest);
   renderer.setScissor(prevScissor.x, prevScissor.y, prevScissor.z, prevScissor.w);
@@ -1197,31 +1257,44 @@ export function buildSkybox(renderer, rng, opts = {}) {
   const keyColour = new THREE.Color(pal.key[0], pal.key[1], pal.key[2]);
   keyColour.lerp(WHITE, 0.12);
 
-  /* Lighting colours are pulled hard toward neutral on purpose.
+  /* Lighting colours carry the sky's hue but never its saturation.
 
-     The sky is now genuinely saturated, and a fill light taken straight from
-     it would push a bone-grey hull to whatever hue the nebula happens to be —
-     which is exactly the "everything is brown" failure the visual direction
-     forbids. Colour is meant to come from the nebula *behind* the ships, not
-     from repainting them. So: take the hue from the sky, then spend almost all
-     of the saturation. What survives is a tint, not a gel. */
+     Two failures sit either side of this, and the palettes are spread widely
+     enough that a single fixed lerp walks into one or the other. Too neutral
+     and every fill is white, the key-to-fill ratio reads as flat CG, and the
+     nebula might as well not be there. Too saturated and a bone-grey hull is
+     repainted by whatever the sky happens to be — measured on the emberfall
+     palette as the player's mothership reading rust while the identical hull
+     reads cold steel under a blue sky, which moves team identity with the seed.
+
+     So the amount of surviving chroma is *capped* rather than scaled. A
+     near-neutral sky keeps all of its (slight) tint; a violently coloured one
+     is pulled back to the same ceiling. The ceiling on the bounce pair is
+     tighter than on the scene lights, because MAT multiplies those into the
+     hull's own response where they compete with team colour directly, whereas
+     the scene lights only tint the shadow side. */
   const fillColour = probe.mean.clone().lerp(new THREE.Color(pal.fill[0], pal.fill[1], pal.fill[2]), 0.45);
-  lightingTint(fillColour, 0.52);
+  lightingTint(fillColour, 0.66);
+  clampChroma(fillColour, 0.45);
 
   const nebulaColour = probe.weighted.clone();
-  lightingTint(nebulaColour, 0.62);
+  lightingTint(nebulaColour, 0.72);
+  clampChroma(nebulaColour, 0.50);
 
   const ambientColour = fillColour.clone().lerp(nebulaColour, 0.3);
-  lightingTint(ambientColour, 0.44);
+  lightingTint(ambientColour, 0.52);
+  clampChroma(ambientColour, 0.40);
 
-  /* What the hull shader wants for its own bounce term: a saturated rim hue
-     from the bright side of the sky, and a dark, cool fill for the shadow
-     side. These are ratios, not intensities — MAT scales them. */
+  /* What the hull shader wants for its own bounce term: a rim hue from the
+     bright side of the sky, and a dark, cool fill for the shadow side. These
+     are ratios, not intensities — MAT scales them. */
   const bounceKey = probe.weighted.clone();
   lightingTint(bounceKey, 0.80);
+  clampChroma(bounceKey, 0.32);
   bounceKey.multiplyScalar(0.62);
   const bounceFill = probe.mean.clone().lerp(new THREE.Color(pal.fill[0], pal.fill[1], pal.fill[2]), 0.6);
   lightingTint(bounceFill, 0.72);
+  clampChroma(bounceFill, 0.38);
   bounceFill.multiplyScalar(0.20);
 
   const result = {
@@ -1318,6 +1391,24 @@ function lightingTint(c, sat) {
   return c;
 }
 
+/**
+ * Cap how far a lighting colour may sit from neutral, without touching it if
+ * it is already inside the cap. `maxChroma` is the largest (max-min)/max the
+ * result may carry — a ceiling, not a scale, so a quiet sky keeps its tint and
+ * only a loud one is pulled back.
+ */
+function clampChroma(c, maxChroma) {
+  const mx = Math.max(c.r, c.g, c.b);
+  const mn = Math.min(c.r, c.g, c.b);
+  if (mx <= 1e-5) return c;
+  const chroma = (mx - mn) / mx;
+  if (chroma > maxChroma) {
+    const grey = new THREE.Color(mx, mx, mx);
+    c.lerp(grey, 1 - maxChroma / chroma);
+  }
+  return c;
+}
+
 /* ---------------------------------------------------------------------------
    Sky readback. Two texels: the plain mean (what the sky contributes as fill)
    and a luminance-weighted mean (the hue of the bright regions, which is what
@@ -1339,6 +1430,7 @@ void main() {
   vec3 sum = vec3(0.0);
   vec3 wsum = vec3(0.0);
   float wtot = 0.0;
+  float peak = 0.0;
   for (int i = 0; i < 160; i++) {
     float t = (float(i) + 0.5) * (1.0 / 160.0);
     float z = 1.0 - 2.0 * t;
@@ -1351,16 +1443,24 @@ void main() {
     float w = l * l;
     wsum += c * w;
     wtot += w;
+    peak = max(peak, l);
   }
   vec3 mean = sum * (1.0 / 160.0);
   vec3 wmean = wsum / max(wtot, 1.0e-6);
-  vec3 outc = vXy.x < 0.0 ? mean * 8.0 : wmean / max(max(wmean.r, max(wmean.g, wmean.b)), 1.0e-5);
+  /* Three texels: the plain mean scaled up so eight bits still resolve it, the
+     luminance-weighted hue, and the brightest sample of the 160 — a rough p99
+     of the sky, which is what an exposure ceiling has to be set against. A
+     mean alone cannot tell a dim sky with one blazing complex in it from an
+     evenly lit one. */
+  vec3 outc = vXy.x < -0.34 ? mean * 8.0
+            : vXy.x < 0.34 ? wmean / max(max(wmean.r, max(wmean.g, wmean.b)), 1.0e-5)
+            : vec3(clamp(peak * 2.0, 0.0, 1.0));
   gl_FragColor = vec4(clamp(outc, 0.0, 1.0), 1.0);
 }
 `;
 
 function probeSky(renderer, skyTexture) {
-  const rt = new THREE.WebGLRenderTarget(2, 1, {
+  const rt = new THREE.WebGLRenderTarget(3, 1, {
     type: THREE.UnsignedByteType,
     format: THREE.RGBAFormat,
     depthBuffer: false,
@@ -1391,13 +1491,15 @@ function probeSky(renderer, skyTexture) {
   renderer.setScissorTest(false);
   renderer.render(scene, new THREE.Camera());
 
-  const buf = new Uint8Array(8);
+  const buf = new Uint8Array(12);
   let mean = new THREE.Color(0.05, 0.07, 0.10);
   let weighted = new THREE.Color(0.5, 0.7, 0.9);
+  let peak = 0.12;
   try {
-    renderer.readRenderTargetPixels(rt, 0, 0, 2, 1, buf);
+    renderer.readRenderTargetPixels(rt, 0, 0, 3, 1, buf);
     mean = new THREE.Color((buf[0] / 255) / 8, (buf[1] / 255) / 8, (buf[2] / 255) / 8);
     weighted = new THREE.Color(buf[4] / 255, buf[5] / 255, buf[6] / 255);
+    peak = (buf[8] / 255) / 2;
   } catch (e) {
     /* Readback is a nicety; the palette fallbacks above are perfectly usable. */
   }
@@ -1409,5 +1511,5 @@ function probeSky(renderer, skyTexture) {
   const luminance = 0.2126 * mean.r + 0.7152 * mean.g + 0.0722 * mean.b;
   if (mean.r + mean.g + mean.b < 1e-4) mean.setRGB(0.05, 0.07, 0.1);
   if (weighted.r + weighted.g + weighted.b < 1e-4) weighted.setRGB(0.5, 0.7, 0.9);
-  return { mean, weighted, luminance };
+  return { mean, weighted, luminance, peak };
 }

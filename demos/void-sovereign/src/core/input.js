@@ -41,8 +41,20 @@ export const STANCES = ['evasive', 'neutral', 'aggressive'];
 export const SPEED_STEPS = [0, 0.25, 0.5, 1, 2, 4];
 
 /** The full control scheme, as data, so ui/hud.js can render the help panel
-    from the same source of truth the handlers are written against. */
+    from the same source of truth the handlers are written against.
+
+    Time comes first on purpose. Tactical pause is the single most valuable
+    thing a new commander can be told about — you can pause the battle and
+    still issue every order — and it is invisible unless something says so. */
 export const CONTROL_SCHEME = [
+  {
+    group: 'Time',
+    rows: [
+      ['Space', 'Pause the battle — you can still select and give orders'],
+      ['+ / −', 'Game speed: ¼, ½, ×1, ×2, ×4'],
+      ['H', 'This panel'],
+    ],
+  },
   {
     group: 'Selection',
     rows: [
@@ -82,13 +94,10 @@ export const CONTROL_SCHEME = [
     ],
   },
   {
-    group: 'Groups & time',
+    group: 'Control groups',
     rows: [
       ['Ctrl + 0 – 9', 'Assign control group'],
-      ['0 – 9', 'Recall group (twice to focus it)'],
-      ['+ / −', 'Game speed'],
-      ['Space', 'Pause / resume'],
-      ['H', 'This panel'],
+      ['0 – 9', 'Recall group (press twice to focus it)'],
     ],
   },
   {

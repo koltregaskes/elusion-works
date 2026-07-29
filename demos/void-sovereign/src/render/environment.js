@@ -91,6 +91,7 @@ const PLANET_SCHEMES = [
    from the worst point on that shell rather than from the hull. */
 const OPENING_SHELL = 4600;
 const LANDMARK_MAX_DEG = 26;
+const ROCK_MAX_DEG = 22;
 const ROCK_CLEAR = 1500;
 
 const _sub = new THREE.Vector3();
@@ -934,7 +935,9 @@ export class Environment {
       iPos[n * 3 + 1] = y;
       iPos[n * 3 + 2] = z;
 
-      const size = r.range(1400, 6200) * (r.chance(0.16) ? 1.9 : 1);
+      // A 6 km sheet cannot be drawn anywhere near the camera without covering
+      // the frame, so the top of the range was only ever wasted geometry.
+      const size = r.range(1200, 4200) * (r.chance(0.16) ? 1.6 : 1);
       iParam[n * 4] = size;
       iParam[n * 4 + 1] = r.range(0, Math.PI * 2);
       iParam[n * 4 + 2] = r.range(0.020, 0.070) * (size > 8000 ? 0.55 : 1);
@@ -1011,10 +1014,25 @@ export class Environment {
           vec2 rq = vec2(q.x * c - q.y * s, q.x * s + q.y * c);
           vec3 world = centre + (right * rq.x + up * rq.y) * iParam.x;
 
-          /* No depth buffer to soften against, so fade a sheet out before the
-             camera can reach its plane. Also attenuates with the same haze law
-             the near-field fog uses, so dust and fog agree. */
-          float near = smoothstep(iParam.x * 0.30, iParam.x * 1.25, dist);
+          /* No depth buffer to soften against, so a sheet has to fade out
+             before the camera can reach its plane.
+
+             The fade must be driven by how much of the FRAME the sheet covers,
+             not by a multiple of its own size. Keying it to its own size — a
+             smoothstep from 0.30x to 1.25x of the sprite width — guaranteed
+             precisely the wrong thing: every sheet reached full opacity at
+             about the distance where it filled the screen, so the field's
+             largest sprites were always drawn at maximum alpha and maximum
+             screen area. That is what read as dozens of big soft discs and got
+             mistaken for a depth-of-field artefact; POSTFX proved their pass
+             was not touching those regions.
+
+             projectionMatrix[1][1] is 1/tan(fov/2), so this is the sheet's
+             half-width as a fraction of the frame's half-height. Past about a
+             fifth of the frame it starts to go, and it is gone by half. */
+          float halfH = dist / max(projectionMatrix[1][1], 1.0e-4);
+          float cover = (iParam.x * 0.5) / max(halfH, 1.0);
+          float near = 1.0 - smoothstep(0.20, 0.52, cover);
           float far = 1.0 - smoothstep(uFar * 0.62, uFar, dist);
           float hz = exp(-dist * uHaze * 4.0);
           vAlpha = iParam.z * near * far * uIntensity * (0.45 + 0.55 * hz);
@@ -1209,7 +1227,24 @@ export class Environment {
            #else
              vRockSize = 100.0;
            #endif
-           vRockView = (modelViewMatrix * vec4(transformed, 1.0)).xyz;`,
+           /* The instance matrix MUST be applied here.
+
+              three multiplies it in inside <project_vertex>, not
+              <begin_vertex>, so 'modelViewMatrix * transformed' is the position
+              on the *unit* rock — before any instance scale. The bump below
+              divides a height in metres by the screen-space derivative of this
+              position, so leaving the instance matrix out made the denominator
+              smaller than the numerator's units by exactly the instance scale:
+              a factor of ~2,800 on a 2.8 km landmark. The surface gradient
+              saturated, every normal was randomised, and the rock came out as
+              black-and-white dazzle at pixel frequency no matter what the band
+              amplitudes were set to. Two passes of amplitude tuning could not
+              fix it because amplitude was never the variable. */
+           #ifdef USE_INSTANCING
+             vRockView = (modelViewMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
+           #else
+             vRockView = (modelViewMatrix * vec4(transformed, 1.0)).xyz;
+           #endif`,
         );
       shader.fragmentShader = shader.fragmentShader
         .replace(
@@ -1266,24 +1301,32 @@ export class Environment {
                 out nearer 0.5 and drew a hard black-to-white edge round every
                 basin. Wide windows keep the stated slope honest. */
              float b = fbm3e(n * 2.35 + 41.0);
-             float basin = smoothstep(0.34, -0.58, b);
-             float rim = exp(-(b - 0.30) * (b - 0.30) * 7.0);
-             float h = (rim * 0.34 - basin * 0.90) * slopeBand(0.055, 2.35);
+             float basin = smoothstep(0.26, -0.46, b);
+             float rim = exp(-(b - 0.24) * (b - 0.24) * 13.0);
+             float h = (rim * 0.36 - basin * 0.92) * slopeBand(0.19, 2.35);
+
+             /* A second, smaller crater population. Real fields are dominated
+                by the small end of the size distribution; one band of craters
+                all the same size is the giveaway of a procedural surface. */
+             float b2 = fbm3e(n * 6.1 + 88.0);
+             float basin2 = smoothstep(0.22, -0.40, b2);
+             float rim2 = exp(-(b2 - 0.21) * (b2 - 0.21) * 15.0);
+             h += (rim2 * 0.34 - basin2 * 0.88) * slopeBand(0.115, 6.1) * bandFade(6.1, foot);
 
              /* Broad undulation between the basins — mass wasting, slumped
                 debris, the shallow stuff that gives a terminator something to
                 travel across. */
-             h += fbm4e(n * 5.1) * slopeBand(0.040, 5.1);
+             h += fbm4e(n * 5.1) * slopeBand(0.090, 5.1);
 
              /* Regolith, anchored at roughly 90 m of real wavelength so a
                 landmark and a boulder are not one object at two zoom levels. */
              float fR = clamp(radius / 90.0, 2.0, 30.0);
-             h += fbm3e(n * fR + 7.0) * slopeBand(0.026, fR) * bandFade(fR, foot);
+             h += fbm3e(n * fR + 7.0) * slopeBand(0.050, fR) * bandFade(fR, foot);
 
              /* Grain, ~11 m. The first band to go and the last you should
                 notice; it exists so a close pass has something to resolve. */
              float fG = clamp(radius / 11.0, 8.0, 140.0);
-             h += gnoise(n * fG) * slopeBand(0.014, fG) * bandFade(fG, foot);
+             h += gnoise(n * fG) * slopeBand(0.025, fG) * bandFade(fG, foot);
 
              return h * radius;
            }`,
@@ -1360,11 +1403,17 @@ export class Environment {
        record SIM reads is untouched — only the visible rocks move — so this
        costs nothing in economy terms. */
     const starts = [home.clone(), home.clone().negate()];
+    /* Two tests, because they catch different failures. The distance test
+       keeps rocks out of the hull's immediate volume; the angular one is what
+       stops a 400 m boulder that is technically 1.5 km from the mothership —
+       and so passes any scalar clearance — from still filling a third of the
+       opening frame, because the camera opens 4.6 km out and can be a few
+       hundred metres from it. */
     const clearOfStarts = (p, radius) => {
       for (const s of starts) {
         if (_sub.copy(p).sub(s).length() < ROCK_CLEAR + radius) return false;
       }
-      return true;
+      return subtendedFrom(starts, p, radius) <= ROCK_MAX_DEG;
     };
 
     for (let ci = 0; ci < clusters.length; ci++) {

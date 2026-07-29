@@ -17,6 +17,7 @@
    the dead ship's drift so the wreck keeps its momentum. */
 
 import * as THREE from '../../vendor/three/build/three.module.js';
+import { bus } from '../core/events.js';
 
 const RING_STRIDE = 16;
 /* 0..2 centre | 3..5 normal | 6..9 start,life,r0,r1 | 10..12 rgb | 13 thickness
@@ -35,6 +36,7 @@ attribute float iIntensity;
 attribute float iSeed;
 
 uniform float uTime;
+uniform float uPixelScale;
 uniform sampler2D uNoise;
 
 varying float vRr;
@@ -79,9 +81,16 @@ void main() {
   vec3 wp = iCenter + ( t1 * cos( ang ) + t2 * sin( ang ) ) * ( rr * R );
   gl_Position = projectionMatrix * viewMatrix * vec4( wp, 1.0 );
 
+  /* Screen floor on the band, as a fraction of the front radius. A shock front
+     one pixel wide is not a thin ring — it is a high-contrast line that the
+     bloom smears into a 250-pixel white band, which is how a ring stops
+     reading as a ring. Give it real width and less radiance instead. */
+  float camDist = max( distance( cameraPosition, iCenter ), 1.0 );
+  float thickFloor = ( camDist * uPixelScale * 7.0 ) / max( R, 1.0 );
+
   vRr = rr;
   vColor = iColor;
-  vThick = iThick;
+  vThick = max( iThick, thickFloor );
   vIntensity = iIntensity;
   vSeed = iSeed;
   vEnv = alive * smoothstep( 0.0, 0.04, age ) * pow( 1.0 - age, 1.5 );
@@ -127,7 +136,11 @@ void main() {
   /* Cheap stand-in for refraction: the leading lip goes cold-blue while the
      body stays hot, which is what a compressed shell actually looks like. */
   vec3 col = mix( vColor, vec3( 0.60, 0.78, 1.0 ), clamp( lip, 0.0, 1.0 ) * 0.7 );
-  col *= vIntensity * uGain * ( 0.28 + 3.6 * lip + 0.9 * band );
+  /* Peak radiance is deliberately held near 4. The bloom prefilter cuts at 2.8
+     scene-linear, so this clears it and blooms — but a thin front at radiance
+     12 blooms into a 200-pixel white band and stops reading as a front at all.
+     Bright enough to glow, dim enough to stay a line. */
+  col *= vIntensity * uGain * ( 0.20 + 0.75 * lip + 0.35 * band );
   gl_FragColor = vec4( col, a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -329,7 +342,7 @@ export class ExplosionFX {
       { t: 0.84, k: 'sparks', n: 100 * N, speed: L * 7.0, size: L * 0.06, minPx: 2.6 },
       { t: 0.86, k: 'debris', n: 18, scale: 0.5, speed: L * 1.9 },
       { t: 0.86, k: 'embers', n: 70 * N, speed: L * 2.2, life: 3.6 },
-      { t: 0.88, k: 'smoke', n: 14, size: L * 1.6, speed: L * 1.4, life: 4.0 },
+      { t: 0.88, k: 'smoke', n: 8, size: L * 0.7, speed: L * 1.4, life: 4.0 },
       { t: 1.06, k: 'ring', r0: R * 0.8, r1: ring * 1.6, life: 1.6, thick: 0.020, intensity: 1.3 },
       { t: 0.90, k: 'linger', duration: 5.0, rate: 11, size: L * 0.5 },
     ];
@@ -344,7 +357,7 @@ export class ExplosionFX {
        spine so the eye follows it. */
     ev.push({ t: 0.00, k: 'secondary', at: rng.range(-0.5, 0.1), size: R * 0.14 });
     ev.push({ t: 0.00, k: 'vent', n: 4, duration: 3.2, speed: L * 1.1 });
-    ev.push({ t: 0.00, k: 'smoke', n: 6, size: L * 0.16, speed: L * 0.30, life: 4.5 });
+    ev.push({ t: 0.00, k: 'smoke', n: 5, size: L * 0.12, speed: L * 0.30, life: 4.5 });
 
     const beats = 12 + Math.round(rng.range(0, 4));
     for (let i = 0; i < beats; i++) {
@@ -377,12 +390,12 @@ export class ExplosionFX {
     ev.push({ t: 2.98, k: 'flash', size: R * 1.7, minPx: 110, life: 0.60, bright: 34.0 });
     ev.push({ t: 2.98, k: 'flash', size: R * 0.9, minPx: 60, life: 1.7, bright: 12.0, colour: FIRE });
     ev.push({ t: 3.00, k: 'flash', size: R * 2.6, minPx: 150, life: 0.30, bright: 6.0, colour: CORE });
-    ev.push({ t: 2.98, k: 'ring', r0: R * 0.35, r1: ring * 1.55, life: 1.6, thick: 0.022, intensity: 2.6, axis: 'hull' });
-    ev.push({ t: 3.02, k: 'ring', r0: R * 0.25, r1: ring * 1.05, life: 2.0, thick: 0.030, intensity: 1.9, axis: 'perp' });
+    ev.push({ t: 2.98, k: 'ring', r0: R * 0.35, r1: ring * 1.55, life: 1.6, thick: 0.022, intensity: 2.4, axis: 'hull' });
+    ev.push({ t: 3.02, k: 'ring', r0: R * 0.25, r1: ring * 1.05, life: 2.0, thick: 0.030, intensity: 1.7, axis: 'perp' });
     ev.push({ t: 2.99, k: 'sparks', n: 280 * N, speed: L * 3.4, size: L * 0.024, minPx: 3.0 });
     ev.push({ t: 3.00, k: 'debris', n: 48, scale: 1.0, speed: L * 0.75 });
     ev.push({ t: 3.02, k: 'embers', n: 240 * N, speed: L * 0.85, life: 8.0 });
-    ev.push({ t: 3.04, k: 'smoke', n: 32, size: L * 0.9, speed: L * 0.5, life: 9.0 });
+    ev.push({ t: 3.04, k: 'smoke', n: 14, size: L * 0.42, speed: L * 0.5, life: 9.0 });
     ev.push({ t: 3.30, k: 'ring', r0: R * 1.1, r1: ring * 2.1, life: 2.8, thick: 0.016, intensity: 1.2 });
     ev.push({ t: 3.10, k: 'linger', duration: 14.0, rate: 20, size: L * 0.35 });
 
@@ -394,6 +407,25 @@ export class ExplosionFX {
 
   _at(seq, t, out) {
     return out.copy(seq.pos).addScaledVector(seq.vel, t);
+  }
+
+  /* `fx:blast` — the one channel anything that shoves the camera goes through.
+
+     Emitted on the beats of a death sequence that should be *felt*: each
+     secondary, the buckle, and the primary detonation. `strength` is
+     dimensionless and normalised so 1.0 is a destroyer's primary detonation,
+     which puts a fighter pop near 0.04 and a mothership near 5 — so a listener
+     never needs to know the ship class table. `radius` is the blast's reach in
+     metres, for distance falloff.
+
+     This exists so `core/camera.js` does not have to mirror the beat timings
+     here; if these tables change, the shake follows automatically. */
+  _blast(seq, origin, radius, strength) {
+    bus.emit('fx:blast', {
+      point: origin.clone(),
+      radius,
+      strength: strength * Math.pow(seq.L / 380, 1.5),
+    });
   }
 
   _run(seq, ev) {
@@ -432,6 +464,8 @@ export class ExplosionFX {
         // Cooling shell: deep orange, slower, wider — the fireball's edge.
         f.flare.spawn(origin.x, origin.y, origin.z, V.x, V.y, V.z, ev.life * 2.1, 0,
           size * 0.5, size * 1.5, EMBER, ev.bright * 0.045, 0, 0);
+        // Brightness is a good proxy for how hard this beat should hit.
+        this._blast(seq, origin, seq.m.ring, ev.bright / 34);
         break;
       }
 
@@ -460,6 +494,7 @@ export class ExplosionFX {
             V.x + u.x * s, V.y + u.y * s, V.z + u.z * s,
             rng.range(2.0, 3.6), 0.09, ev.size * 0.5, ev.size * 3.0, SOOT, 0.9, 0, rng.gaussian(0, 0.9));
         }
+        this._blast(seq, this._v, seq.m.R * 1.5, 0.07);
         break;
       }
 
@@ -530,6 +565,7 @@ export class ExplosionFX {
          envelope the length of the ship that lights from inside and pulses,
          with breaches punched through it. */
       case 'hullglow': {
+        this._blast(seq, origin, seq.m.R * 2.0, 0.16 * (ev.bright / 5.5));
         this._glows.push({
           seq,
           start: ctx.now,

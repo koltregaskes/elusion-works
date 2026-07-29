@@ -476,7 +476,7 @@ export class SfxLayer {
        a fraction of a dB — which is how it ended up 12 dB above the rest of the
        palette. The trim is the actual fader; the envelope only shapes it. */
     const trim = this.ctx.createGain();
-    trim.gain.value = 0.38;
+    trim.gain.value = 0.62;
     g.connect(shaper);
     shaper.connect(lp);
     lp.connect(trim);

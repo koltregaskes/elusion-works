@@ -355,6 +355,10 @@ async function main() {
   engine.registerRenderHook((dt, elapsed) => {
     if (cameraRig && cameraRig.update) cameraRig.update(dt);
     if (input && input.update) input.update(dt);
+    // Must run every frame, not just on events: the listener frame, distance
+    // attenuation, voice stealing, coalesced weapon clusters and the score's
+    // scheduler all advance here. Constructing it alone leaves it inert.
+    if (audio) audio.update(dt, elapsed, engine.camera);
     if (environment && environment.update) environment.update(dt, elapsed, engine.camera);
     if (materialsMod && materialsMod.updateMaterials) materialsMod.updateMaterials(elapsed);
     if (fx) fx.update(dt, elapsed, engine.camera);
@@ -393,6 +397,7 @@ async function main() {
     if (fx) fx.dispose();
     if (environment && environment.dispose) environment.dispose();
     world.dispose();
+    if (audio) audio.dispose();
     engine.dispose();
   };
 

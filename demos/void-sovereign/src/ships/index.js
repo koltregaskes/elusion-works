@@ -136,6 +136,23 @@ function glassMaterial(team) {
 const LOD_STEPS = [0, 6, 22, 70];
 const LOD_HYSTERESIS = 0.08;
 
+/**
+ * The LOD level a ship should draw at, given camera distance in metres.
+ *
+ * Batched hulls do not go through `THREE.LOD` — nothing walks the graph to
+ * update them — so the level has to be chosen by the caller and pushed with
+ * `batch.setLod()`. Exported so SIM picks exactly the same thresholds the
+ * individual path uses; an unbatched fighter and a batched one at the same
+ * range must not be drawing different geometry.
+ */
+export function pickLod(classId, distance) {
+  const def = SHIPS[classId];
+  if (!def) return 0;
+  const t = distance / def.length;
+  for (let i = LOD_STEPS.length - 1; i > 0; i--) if (t >= LOD_STEPS[i]) return i;
+  return 0;
+}
+
 /* ------------------------------------------------------------------ cache */
 
 const _cache = new Map();
@@ -472,14 +489,16 @@ class FleetBatch {
         im.name = `${this.classId}:${kind}:L${i}`;
         im.userData.kind = kind;
         im.userData.lodLevel = i;
-        im.userData.emissive = kind === KIND.GLOW;
+        im.userData.emissive = kind === KIND.GLOW || kind === KIND.BELL;
+        if (im.userData.emissive) asGlow(im);
         this.group.add(im);
         level.parts.push({ mesh: im, damage: dmg, kind });
       };
 
-      make(geo.hull, hullMaterial(this.team, this.asset.def.family, true), KIND.HULL, true);
+      make(geo.hull, hullMaterial(this.team, this.asset.def.family, true, this.asset.def.length), KIND.HULL, true);
       make(geo.glass, glassMaterial(this.team), KIND.GLASS, false);
-      make(geo.glow, engineMaterial(this.team), KIND.GLOW, false);
+      make(geo.glow, glowMaterial(this.team, 'light'), KIND.GLOW, false);
+      make(geo.bell, glowMaterial(this.team, 'bell'), KIND.BELL, false);
       this.levels.push(level);
     }
 
@@ -587,6 +606,11 @@ class FleetBatch {
     if (this.slotLevel[slot] === want) return;
     this.removeFromLevel(slot);
     this.addToLevel(slot, want);
+  }
+
+  /** Convenience wrapper so the caller never has to hold the LOD table. */
+  setLodFromDistance(slot, distance) {
+    this.setLod(slot, pickLod(this.classId, distance));
   }
 
   setColor(slot, colour) {
@@ -705,7 +729,7 @@ export function shipStats(classId) {
     family: asset.def.family,
     radius: asset.radius,
     levels: asset.tris.slice(),
-    groups: asset.levels.map((g) => [g.hull ? 1 : 0, g.glass ? 1 : 0, g.glow ? 1 : 0].reduce((a, v) => a + v, 0)),
+    groups: asset.levels.map((g) => [g.hull ? 1 : 0, g.glass ? 1 : 0, g.glow ? 1 : 0, g.bell ? 1 : 0].reduce((a, v) => a + v, 0)),
     // Per-kind counts so an audit can measure emissive coverage and team-mask
     // coverage directly rather than inferring either from the material.
     hullTris: tri(lvl0.hull),
@@ -725,7 +749,7 @@ export function shipStats(classId) {
 export function disposeShipCache() {
   for (const asset of _cache.values()) {
     for (const level of asset.levels) {
-      for (const k of [KIND.HULL, KIND.GLASS, KIND.GLOW]) {
+      for (const k of [KIND.HULL, KIND.GLASS, KIND.GLOW, KIND.BELL]) {
         if (level[k]) level[k].dispose();
       }
     }
