@@ -2,6 +2,7 @@ import * as THREE from '../../vendor/three/build/three.module.js';
 import { LAYER } from '../core/engine.js';
 import { makeRng, fbm2, fbm3, ridged3 } from '../core/rng.js';
 import { buildSkybox } from './skybox.js';
+import { setNebulaBounce } from './materials.js';
 
 /* Everything that is not a ship.
 
@@ -15,11 +16,13 @@ import { buildSkybox } from './skybox.js';
    the nebula occupies one part of the sky, the star another, the planet a
    third, and the rest is black. Emptiness is the subject. */
 
+/* Cluster counts are rounded up to an even number in `_buildAsteroids`: the
+   field is mirrored through the origin, so seams always come in pairs. */
 const QUALITY = {
-  low: { clusters: 4, rocksPerCluster: 40, dust: 56, derelicts: 0, landmarks: 3, rockDetail: [1, 0] },
-  medium: { clusters: 5, rocksPerCluster: 80, dust: 110, derelicts: 9, landmarks: 4, rockDetail: [2, 1] },
-  high: { clusters: 6, rocksPerCluster: 130, dust: 190, derelicts: 12, landmarks: 5, rockDetail: [2, 1] },
-  ultra: { clusters: 7, rocksPerCluster: 175, dust: 260, derelicts: 16, landmarks: 5, rockDetail: [3, 1] },
+  low: { clusters: 6, rocksPerCluster: 45, dust: 70, derelicts: 0, landmarks: 2, rockDetail: [1, 0] },
+  medium: { clusters: 8, rocksPerCluster: 90, dust: 140, derelicts: 10, landmarks: 4, rockDetail: [2, 1] },
+  high: { clusters: 10, rocksPerCluster: 140, dust: 230, derelicts: 14, landmarks: 6, rockDetail: [3, 1] },
+  ultra: { clusters: 12, rocksPerCluster: 190, dust: 320, derelicts: 18, landmarks: 6, rockDetail: [3, 2] },
 };
 
 /* Gas-giant schemes. Restrained — bands are close in hue and separated by
@@ -74,6 +77,8 @@ const PLANET_SCHEMES = [
 ];
 
 /* --------------------------------------------------------------------------- */
+
+const _invQ = new THREE.Quaternion();
 
 const num = (v) => {
   if (!Number.isFinite(v)) return '0.0';
@@ -197,6 +202,8 @@ export class Environment {
       size: this.options.skySize,
       tiles: this.options.skyTiles,
       layers: this.options.skyLayers,
+      // The gas has to know where the star is or it has no lit side.
+      sunDirection: this.sunDirection,
     });
 
     engine.farScene.background = this.sky.texture;
@@ -204,11 +211,15 @@ export class Environment {
 
     /* The sky is also the environment probe. Hulls pick up a nebula-coloured
        bounce on their shadow side for free, which is exactly the "cold fill
-       from the nebula" the visual direction asks for. Kept low so it fills
-       rather than flattens. */
+       from the nebula" the visual direction asks for.
+
+       Kept deliberately low. An IBL from a sky this saturated is an
+       omnidirectional light, and omnidirectional light is precisely what
+       destroys a terminator. The nebula's job is to tint the shadow side, not
+       to fill it in. */
     engine.scene.environment = this.sky.texture;
     engine.scene.environmentIntensity =
-      this.options.environmentIntensity !== undefined ? this.options.environmentIntensity : 0.32;
+      this.options.environmentIntensity !== undefined ? this.options.environmentIntensity : 0.16;
 
     /* Depth haze. Deliberately a very dark, nebula-tinted colour: fog that
        tends toward grey turns the void into soup, fog that tends toward a dark
@@ -226,8 +237,21 @@ export class Environment {
     const { engine, sky } = this;
     const r = this.rng;
 
+    /* One hard key star and a nebula-tinted fill (§3.2).
+
+       The ratio is the whole game here. An earlier balance ran the key at 3.15
+       against roughly 1.0 of combined fill, rim, ambient and IBL — a little
+       over 3:1 — and at 3:1 there is no terminator on anything. Every hull
+       came out evenly lit, which is exactly the flat CG look the visual
+       direction exists to prevent. This runs closer to 12:1 of key against
+       everything else, so the lit side is bright, the shadow side falls to a
+       dark nebula-coloured bounce, and the edge between them is a hard line.
+
+       The fill is tinted and *dim* rather than neutral and strong. A saturated
+       fill at low intensity leaves a grey hull grey while still telling you
+       what colour the sky behind it is; a bright one repaints the fleet. */
     const keyColour = sky.keyColour.clone();
-    const key = new THREE.DirectionalLight(keyColour, this.options.keyIntensity || 3.15);
+    const key = new THREE.DirectionalLight(keyColour, this.options.keyIntensity || 4.6);
     key.position.copy(this.sunDirection).multiplyScalar(50000);
     key.target.position.set(0, 0, 0);
     key.castShadow = false; // a 60 km ortho frustum buys nothing but texels
@@ -238,11 +262,11 @@ export class Environment {
 
     /* Hemisphere fill tinted top-and-bottom by the two ends of the sky: bright
        nebula overhead, deep gas below. This is what stops the shadow side of a
-       hull reading as a black hole. */
+       hull reading as a hole punched in the frame — and no more than that. */
     const hemi = new THREE.HemisphereLight(
       sky.nebulaColour.clone(),
-      sky.fillColour.clone().multiplyScalar(0.6),
-      this.options.fillIntensity || 0.42,
+      sky.fillColour.clone().multiplyScalar(0.45),
+      this.options.fillIntensity || 0.19,
     );
     hemi.position.set(0, 1, 0);
     hemi.name = 'env:fill';
@@ -250,7 +274,7 @@ export class Environment {
     this.fillLight = hemi;
 
     /* A cold rim from roughly the opposite side. One key light, one bounce —
-       never a second key. */
+       never a second key, so this stays well under a tenth of the key. */
     const rimDir = this.sunDirection
       .clone()
       .negate()
@@ -258,7 +282,7 @@ export class Environment {
       .normalize();
     const rim = new THREE.DirectionalLight(
       sky.nebulaColour.clone(),
-      this.options.rimIntensity || 0.55,
+      this.options.rimIntensity || 0.30,
     );
     rim.position.copy(rimDir).multiplyScalar(50000);
     rim.name = 'env:rim';
@@ -266,12 +290,26 @@ export class Environment {
     engine.scene.add(rim.target);
     this.rimLight = rim;
 
-    const amb = new THREE.AmbientLight(sky.fillColour.clone(), 0.055);
+    const amb = new THREE.AmbientLight(sky.ambientColour.clone(), 0.022);
     amb.name = 'env:ambient';
     engine.scene.add(amb);
     this.ambientLight = amb;
 
     this._lights = [key, hemi, rim, amb];
+
+    /* Hand the same sky to the hull shader. Without this the whole fleet is
+       lit by whatever bounce colour [MAT] shipped as a placeholder, no matter
+       what the nebula behind it is doing. */
+    try {
+      setNebulaBounce(
+        sky.bounceKey || sky.nebulaColour,
+        sky.bounceFill || sky.fillColour,
+        this.options.hullAmbient !== undefined ? this.options.hullAmbient : 0.085,
+        this.options.hullRim !== undefined ? this.options.hullRim : 0.52,
+      );
+    } catch (err) {
+      /* [MAT] may not have initialised; its own defaults are perfectly usable. */
+    }
   }
 
   get lights() {
@@ -331,8 +369,12 @@ export class Environment {
           float ca = cos(uAngle);
           float sa = sin(uAngle);
           vec2 q = vec2(vQ.x * ca - vQ.y * sa, vQ.x * sa + vQ.y * ca);
-          float streak = exp(-abs(q.y) / 0.010) * exp(-abs(q.x) / 0.42) * 0.16
-                       + exp(-abs(q.x) / 0.010) * exp(-abs(q.y) / 0.28) * 0.09;
+          /* A symmetric four-point flare. The arms used to differ in both
+             length and weight, which reads as an anamorphic lens — and nothing
+             else in the game, in the post stack or in the HUD supports one.
+             The sky's own bright stars use the same symmetric cross. */
+          float streak = exp(-abs(q.y) / 0.010) * exp(-abs(q.x) / 0.36) * 0.13
+                       + exp(-abs(q.x) / 0.010) * exp(-abs(q.y) / 0.36) * 0.13;
           float a = core * 46.0 + inner + glow + halo + streak * uSpike;
           gl_FragColor = vec4(uColour * a, 1.0);
         }`,
@@ -348,7 +390,11 @@ export class Environment {
     const quad = new THREE.Mesh(geo, mat);
     quad.position.copy(this.sunDirection).multiplyScalar(dist);
     quad.lookAt(0, 0, 0);
-    quad.renderOrder = -10;
+    /* Drawn after the planet, its rings and its atmosphere, so a backdrop body
+       in front of the star occludes it instead of the flare compositing over
+       the rings. Everything in farScene that can stand in front of the star
+       either writes depth or is ordered before this. */
+    quad.renderOrder = 8;
     quad.layers.enable(LAYER.BACKDROP);
     engine.farScene.add(quad);
 
@@ -370,19 +416,27 @@ export class Environment {
       ];
     this.planetScheme = scheme;
 
-    // Angular diameter 15..24 degrees. Big enough to be the scale cue, small
+    // Angular diameter 17..27 degrees. Big enough to be the scale cue, small
     // enough that the void still dominates the frame.
-    const angular = r.range(0.26, 0.42);
+    const angular = r.range(0.30, 0.47);
     const radius = r.range(5.2e7, 8.4e7);
     const dist = radius / Math.tan(angular * 0.5);
 
-    // Keep the planet well away from the star so the terminator is a strong,
-    // readable crescent rather than a full-face or a rim sliver.
+    /* Phase angle. `a` is the cosine between the direction to the planet and
+       the direction to the star; the phase angle is its arccos measured the
+       other way, so a = -1 is full-face and a = +1 is a black new moon.
+
+       The previous window (-0.55 .. 0.35) allowed a nearly full disc, and a
+       full disc has no terminator — which is why the hero object read as a
+       flat sticker on several seeds. This window keeps the phase between about
+       75 and 130 degrees: always a fat crescent to a little past half, so the
+       terminator always crosses the visible disc and there is always a dark
+       limb to read it against. */
     let dir;
-    for (let i = 0; i < 24; i++) {
+    for (let i = 0; i < 32; i++) {
       dir = new THREE.Vector3(r.gaussian(0, 1), r.gaussian(0, 0.6), r.gaussian(0, 1)).normalize();
       const a = dir.dot(this.sunDirection);
-      if (a > -0.55 && a < 0.35) break;
+      if (a > -0.26 && a < 0.64) break;
     }
     this.planetDirection = dir.clone();
     const centre = dir.clone().multiplyScalar(dist);
@@ -400,10 +454,46 @@ export class Environment {
     const sunColour = sky.keyColour;
     const fill = sky.fillColour.clone().multiplyScalar(0.5);
 
+    /* Ring geometry is decided before the body is built because the body needs
+       it: a ringed gas giant with no ring shadow banding its cloud tops is the
+       single most obvious tell that a planet is procedural. Both shaders read
+       the same numbers so the shadow lands exactly where the ring is. */
+    const hasRing = r.chance(0.62);
+    const ring = {
+      inner: radius * r.range(1.32, 1.55),
+      outer: radius * r.range(2.05, 2.55),
+      bandFreq: r.range(9, 15),
+      fineFreq: r.range(48, 80),
+      gap1: r.range(0.30, 0.45),
+      gap2: r.range(0.60, 0.76),
+    };
+    /* Ring density as a function of normalised radius, in one expression both
+       the ring shader and the body's shadow term can call. */
+    const RING_DENSITY_GLSL = /* glsl */ `
+      float ringDensity(float t) {
+        if (t < 0.0 || t > 1.0) return 0.0;
+        /* Broad bands, then hundreds of ringlets on top of them, then two
+           hard gaps. It is the ringlets that stop a procedural ring reading as
+           concentric grooves cut in vinyl. */
+        float band = fbm4e(vec3(t * ${num(ring.bandFreq)}, 3.7, 1.1)) * 0.5 + 0.5;
+        float fine = fbm3e(vec3(t * ${num(ring.fineFreq)}, 11.3, 5.2)) * 0.5 + 0.5;
+        float lets = fbm3e(vec3(t * ${num(ring.fineFreq * 3.7)}, 27.1, 3.9)) * 0.5 + 0.5;
+        float dens = smoothstep(0.26, 0.70, band);
+        dens *= 0.30 + 0.70 * smoothstep(0.20, 0.86, fine);
+        dens *= 0.52 + 0.48 * lets;
+        dens *= smoothstep(0.0, 0.045, t) * (1.0 - smoothstep(0.86, 1.0, t));
+        dens *= smoothstep(0.010, 0.030, abs(t - ${num(ring.gap1)}));
+        dens *= smoothstep(0.006, 0.020, abs(t - ${num(ring.gap2)}));
+        return dens;
+      }`;
+
     /* ---- body ---- */
     const bodyMat = new THREE.ShaderMaterial({
       uniforms: {
         uSunDir: { value: this.sunDirection.clone() },
+        // Same direction expressed in the group's own frame, refreshed as the
+        // planet turns, so the ring shadow tracks the light instead of the mesh.
+        uSunLocal: { value: this.sunDirection.clone() },
         uSunColour: { value: new THREE.Color().copy(sunColour) },
         uFill: { value: fill },
         uSpin: { value: 0 },
@@ -424,7 +514,9 @@ export class Environment {
         #include <common>
         #include <logdepthbuf_pars_fragment>
         ${NOISE_GLSL}
+        ${hasRing ? RING_DENSITY_GLSL : ''}
         uniform vec3 uSunDir;
+        uniform vec3 uSunLocal;
         uniform vec3 uSunColour;
         uniform vec3 uFill;
         uniform float uSpin;
@@ -476,19 +568,45 @@ export class Environment {
           float ndl = dot(N, uSunDir);
           float ndv = max(dot(N, V), 0.0);
 
-          /* Hard terminator with a couple of degrees of atmospheric wrap. */
-          float lit = smoothstep(-0.085, 0.105, ndl);
-          float shade = lit * (0.22 + 0.78 * clamp(ndl, 0.0, 1.0));
-          shade *= mix(0.66, 1.0, pow(ndv, 0.42));   // limb darkening
+          /* Hard terminator with a couple of degrees of atmospheric wrap, then
+             a night side that is genuinely night: a gas giant with no moonlight
+             is lit only by whatever the nebula throws at it. */
+          float lit = smoothstep(-0.075, 0.085, ndl);
+          float shade = lit * (0.10 + 0.90 * clamp(ndl, 0.0, 1.0));
+          shade *= mix(0.58, 1.0, pow(ndv, 0.40));   // limb darkening
 
-          vec3 col = albedo * uSunColour * shade * ${num(r.range(1.5, 2.1))};
-          col += albedo * uFill * 0.16;              // nebula bounce, night side included
-          col += uFill * 0.020;
+          /* Ring shadow. March the local surface point toward the star and see
+             whether it crosses the ring plane (group-local y = 0) inside the
+             annulus. Cheap, exact, and it is what makes the rings feel like
+             they are physically there rather than drawn behind. */
+          float ringShade = 1.0;
+          ${hasRing ? /* glsl */ `
+          if (abs(uSunLocal.y) > 1.0e-4) {
+            float tHit = -lp.y / uSunLocal.y;
+            if (tHit > 0.0) {
+              vec3 hit = lp + uSunLocal * tHit;
+              float rr = length(hit.xz) * ${num(radius)};
+              float tt = (rr - ${num(ring.inner)}) / ${num(ring.outer - ring.inner)};
+              ringShade = 1.0 - 0.80 * clamp(ringDensity(tt), 0.0, 1.0);
+            }
+          }` : ''}
+
+          vec3 col = albedo * uSunColour * shade * ringShade * ${num(r.range(1.7, 2.3))};
+          col += albedo * uFill * 0.085;             // nebula bounce, night side included
+          col += uFill * 0.010;
+
+          /* Twilight: the last couple of degrees before the terminator run
+             through the atmosphere at a grazing angle, so they redden. Without
+             this the terminator is a clean arc and reads as a stencil. */
+          float twi = lit * (1.0 - smoothstep(0.0, 0.30, ndl));
+          col += albedo * ATMO.zyx * twi * 0.28;
 
           /* Thin atmospheric limb over the disc — forward-scattering haze that
-             only shows where the air is edge-on and lit. */
+             only shows where the air is edge-on *and* lit. Past the terminator
+             it must go to zero, or the glow wraps the unlit limb and the whole
+             thing reads as a sprite behind a ball. */
           float rim = pow(1.0 - ndv, 3.4);
-          col += ATMO * rim * (0.06 + 0.85 * smoothstep(-0.18, 0.42, ndl)) * 0.55;
+          col += ATMO * rim * smoothstep(-0.04, 0.34, ndl) * 0.62;
 
           gl_FragColor = vec4(col, 1.0);
         }`,
@@ -501,6 +619,7 @@ export class Environment {
     body.layers.enable(LAYER.BACKDROP);
     group.add(body);
     this._planet = body;
+    this._planetMat = bodyMat;
     this._disposables.push(bodyGeo, bodyMat);
 
     /* ---- atmospheric shell: exponential limb glow, computed from the true
@@ -545,11 +664,22 @@ export class Environment {
           if (h < 0.0) discard;
           vec3 limb = normalize((ro + rd * tca) - uCentre);
           float ndl = dot(limb, uSunDir);
-          float lit = smoothstep(-0.22, 0.30, ndl);
+          /* The shell must not glow past the terminator. An earlier version
+             used a wide smoothstep that still returned ~0.3 on the night limb,
+             so the halo ran right round the disc and the planet read as a
+             sprite pasted behind a sphere. This falls to exactly zero a couple
+             of degrees onto the dark side. */
+          float lit = smoothstep(-0.02, 0.26, ndl);
+          lit *= lit;
           float mu = max(dot(rd, -uSunDir), 0.0);
-          float scat = 0.55 + 1.9 * pow(mu, 4.0);
+          /* Forward scattering only: the crescent nearest the star flares, the
+             rest of the limb is a thin line. */
+          float scat = 0.30 + 2.30 * pow(mu, 4.0);
           float a = exp(-h * 1.35) * (1.0 - smoothstep(2.2, 3.4, h));
-          gl_FragColor = vec4(uColour * a * lit * scat * 0.75, 1.0);
+          /* Grazing light reddens on its way through, so the few degrees at
+             the terminator run warm before they go out. */
+          vec3 tint = mix(uColour.zyx * 0.9, uColour, smoothstep(0.02, 0.32, ndl));
+          gl_FragColor = vec4(tint * a * lit * scat * 0.80, 1.0);
         }`,
       transparent: true,
       blending: THREE.AdditiveBlending,
@@ -565,9 +695,9 @@ export class Environment {
     this._disposables.push(atmoGeo, atmoMat);
 
     /* ---- rings ---- */
-    if (r.chance(0.55)) {
-      const rin = radius * r.range(1.32, 1.55);
-      const rout = radius * r.range(2.05, 2.55);
+    if (hasRing) {
+      const rin = ring.inner;
+      const rout = ring.outer;
       const ringMat = new THREE.ShaderMaterial({
         uniforms: {
           uSunDir: { value: this.sunDirection.clone() },
@@ -594,6 +724,7 @@ export class Environment {
           #include <common>
           #include <logdepthbuf_pars_fragment>
           ${NOISE_GLSL}
+          ${RING_DENSITY_GLSL}
           uniform vec3 uSunDir;
           uniform vec3 uCentre;
           uniform float uR;
@@ -610,14 +741,10 @@ export class Environment {
             float t = clamp((rad - uIn) / (uOut - uIn), 0.0, 1.0);
 
             /* Radial structure: a few broad bands cut by hard, narrow gaps —
-               the gaps are what make a ring look like ice and not a decal. */
-            float band = fbm4e(vec3(t * ${num(r.range(9, 15))}, 3.7, 1.1)) * 0.5 + 0.5;
-            float fine = fbm3e(vec3(t * ${num(r.range(48, 80))}, 11.3, 5.2)) * 0.5 + 0.5;
-            float dens = smoothstep(0.30, 0.72, band) * (0.55 + 0.45 * fine);
-            dens *= smoothstep(0.0, 0.045, t) * (1.0 - smoothstep(0.86, 1.0, t));
-            float gap1 = smoothstep(0.010, 0.030, abs(t - ${num(r.range(0.30, 0.45))}));
-            float gap2 = smoothstep(0.006, 0.020, abs(t - ${num(r.range(0.60, 0.76))}));
-            dens *= gap1 * gap2;
+               the gaps are what make a ring look like ice and not a decal.
+               Shared verbatim with the body's shadow term. */
+            float dens = ringDensity(t);
+            float fine = fbm3e(vec3(t * ${num(ring.fineFreq)}, 11.3, 5.2)) * 0.5 + 0.5;
             if (dens < 0.004) discard;
 
             /* Planet shadow: the cylinder cast along the light direction. */
@@ -633,23 +760,31 @@ export class Environment {
                rings glow when the sun is behind them. */
             float phase = 0.42 + 1.55 * pow(max(mu, 0.0), 3.0);
 
+            /* Ring particles are dirty water ice: near-neutral, and much
+               darker than the cloud tops they orbit. Tinting them with the
+               planet's own scheme made the rings compete with the planet. */
             vec3 ice = mix(vec3(${f3(scheme.c)}), vec3(${f3(scheme.b)}), fine);
-            vec3 col = ice * uSunColour * shade * phase * 0.62 + uFill * 0.10;
-            float alpha = clamp(dens * (0.55 + 0.45 * phase), 0.0, 1.0) * 0.92;
+            ice = mix(vec3(dot(ice, vec3(0.2126, 0.7152, 0.0722))), ice, 0.42) * 0.62;
+            vec3 col = ice * uSunColour * shade * phase * 0.52 + uFill * 0.06;
+            float alpha = clamp(dens * (0.50 + 0.50 * phase), 0.0, 1.0) * 0.70;
             gl_FragColor = vec4(col, alpha);
           }`,
         transparent: true,
-        depthWrite: false,
+        /* A flat annulus seen from outside never overlaps itself, so writing
+           depth here is free of the usual transparent-sorting trouble — and it
+           is what stops the star's flare compositing straight through the
+           rings, since the flare is ordered after them. */
+        depthWrite: true,
         side: THREE.DoubleSide,
         toneMapped: false,
       });
-      const ringGeo = new THREE.RingGeometry(rin, rout, 192, 6);
-      const ring = new THREE.Mesh(ringGeo, ringMat);
-      ring.rotation.x = -Math.PI / 2;
-      ring.layers.enable(LAYER.BACKDROP);
-      ring.renderOrder = 1;
-      group.add(ring);
-      this._ring = ring;
+      const ringGeo = new THREE.RingGeometry(rin, rout, 256, 8);
+      const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+      ringMesh.rotation.x = -Math.PI / 2;
+      ringMesh.layers.enable(LAYER.BACKDROP);
+      ringMesh.renderOrder = 1;
+      group.add(ringMesh);
+      this._ring = ringMesh;
       this._disposables.push(ringGeo, ringMat);
     }
 
@@ -911,57 +1046,189 @@ export class Environment {
     const r = this.rng.fork(0xa570);
     const b = this.budget;
 
-    /* ---- cluster layout ---- */
-    const clusterCount = b.clusters;
+    /* ---- cluster layout ----
+
+       SIM adopts these verbatim as the resource field when ENV provides them
+       (`sim/spawn.js: resolveResourceClusters`), so the layout is a balance
+       decision, not a dressing one. It has to satisfy the same contract SIM's
+       own fallback does:
+
+         - mirror-symmetric through the origin, so neither side gets a better
+           opening from the seed;
+         - two rich seams within a short haul of each mothership;
+         - expansion seams further out that cost a warship to hold;
+         - a contested band straddling the midline to fight over.
+
+       The two motherships sit at +/- (separation/2) along X (see
+       `sim/spawn.js: homePosition`). `separation` is passed through when SIM
+       overrides the default. */
+    const sep = this.options.separation || 22000;
+    const home = new THREE.Vector3(-sep * 0.5, -900, -sep * 0.12);
     const clusters = [];
-    for (let i = 0; i < clusterCount; i++) {
-      const ang = (i / clusterCount) * Math.PI * 2 + r.range(-0.5, 0.5);
-      const rad = r.range(3200, 16000);
-      const pos = new THREE.Vector3(
-        Math.cos(ang) * rad,
-        r.gaussian(0, 1400),
-        Math.sin(ang) * rad,
+
+    const pushPair = (x, y, z, radius, amount) => {
+      clusters.push(makeClusterRecord(x, y, z, radius, amount));
+      clusters.push(makeClusterRecord(-x, -y, -z, radius, amount));
+    };
+
+    // Two rich home seams per side, so the opening is never a dice roll.
+    for (let i = 0; i < 2; i++) {
+      const a = (i / 2) * Math.PI * 2 + r.range(0, Math.PI);
+      const d = r.range(3600, 5200);
+      pushPair(
+        home.x + Math.cos(a) * d,
+        home.y + r.range(-900, 900),
+        home.z + Math.sin(a) * d,
+        r.range(950, 1500),
+        r.range(22000, 26000),
       );
-      const radius = r.range(500, 2400);
-      clusters.push({
-        position: pos,
-        radius,
-        amount: Math.round(radius * r.range(3.0, 6.5)),
-        maxAmount: 0,
-        _visible: true,
-        _high: true,
-      });
     }
-    for (const c of clusters) c.maxAmount = c.amount;
+
+    // Everything is built in mirrored pairs, so the budget is spent in pairs.
+    const pairs = Math.max(3, Math.round(b.clusters / 2));
+    const contested = Math.max(1, Math.floor((pairs - 2) / 2));
+    const expansions = Math.max(0, pairs - 2 - contested);
+
+    for (let i = 0; i < expansions; i++) {
+      const a = r.range(0, Math.PI * 2);
+      const d = r.range(8000, 12500);
+      pushPair(
+        home.x * 0.55 + Math.cos(a) * d,
+        r.range(-2600, 2600),
+        home.z * 0.55 + Math.sin(a) * d,
+        r.range(1200, 1900),
+        r.range(19000, 23000),
+      );
+    }
+
+    // Contested band on the midline. Symmetric by construction: each is
+    // generated in one half and mirrored, so the pair straddles the middle.
+    for (let i = 0; i < contested; i++) {
+      const a = (i / contested) * Math.PI + r.range(-0.25, 0.25);
+      const d = r.range(2500, 7000);
+      pushPair(
+        Math.cos(a) * d * 0.35,
+        Math.sin(a) * d * 0.55,
+        Math.sin(a * 1.7) * d,
+        r.range(1400, 2100),
+        r.range(28000, 32000),
+      );
+    }
+
     this._clusters = clusters;
 
     /* ---- base shapes. Four is plenty: per-instance rotation and non-uniform
        scale do most of the work of making a field look varied. ---- */
     const shapes = 4;
     const [dHigh, dLow] = b.rockDetail;
-    const rockColour = new THREE.Color(0.062, 0.056, 0.050).lerp(sky.fillColour, 0.20);
+
+    /* Rock albedo.
+
+       Real asteroids are charcoal — C-types sit around 0.05 and even the
+       bright S-types rarely clear 0.20. An earlier build ran them near #d8d8d8
+       and they out-read every capital ship in the frame: two rocks were
+       brighter, larger and higher-contrast than the whole fleet. Silhouette
+       first (§3.1) means the rocks have to sit *under* the ships tonally, and
+       that is an albedo decision, not a lighting one. */
+    const rockColour = new THREE.Color(0.050, 0.046, 0.041).lerp(sky.palette.body, 0.12);
 
     const material = new THREE.MeshStandardMaterial({
       color: rockColour,
-      roughness: 0.94,
-      metalness: 0.02,
-      flatShading: true,
-      envMapIntensity: 0.9,
+      roughness: 0.95,
+      metalness: 0.0,
+      // Smooth normals plus a procedural bump, not flat shading. Flat facets on
+      // a 320-tri icosahedron read as a low-poly blob at any distance; a bump
+      // that scales with the rock's real size reads as rock.
+      flatShading: false,
+      envMapIntensity: 0.30,
       fog: true,
     });
     material.onBeforeCompile = (shader) => {
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nvarying vec3 vRockLocal;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRockLocal = position;');
+        .replace(
+          '#include <common>',
+          '#include <common>\nvarying vec3 vRockLocal;\nvarying vec3 vRockView;\nvarying float vRockSize;',
+        )
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+           vRockLocal = position;
+           /* Metres, recovered from the instance matrix, so surface detail can
+              be specified in metres rather than in unit-sphere space. Without
+              it a 12 m boulder and a 3 km landmark carry identical craters and
+              the field has no sense of scale at all (§3.4). */
+           #ifdef USE_INSTANCING
+             vRockSize = length(instanceMatrix[0].xyz);
+           #else
+             vRockSize = 100.0;
+           #endif
+           vRockView = (modelViewMatrix * vec4(transformed, 1.0)).xyz;`,
+        );
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nvarying vec3 vRockLocal;\n' + NOISE_GLSL)
+        .replace(
+          '#include <common>',
+          `#include <common>
+           varying vec3 vRockLocal;
+           varying vec3 vRockView;
+           varying float vRockSize;
+           ${NOISE_GLSL}
+           /* A detail band is only worth evaluating while the screen still has
+              the pixels to resolve it. The foot argument is the angular
+              footprint of one pixel on the unit sphere; once a band's period
+              drops below a couple of footprints it is pure aliasing and gets
+              faded out. A hand-rolled mip chain for a texture that does not
+              exist. (No backticks in here — this string is a JS template
+              literal and a stray one silently truncates the shader.) */
+           float bandFade(float freq, float foot) {
+             return 1.0 - smoothstep(0.22, 0.80, freq * foot);
+           }
+           /* Height field. Three bands: regolith mottling, ~100 m craters,
+              ~15 m boulders. The frequencies come from the rock's own radius,
+              so a 3 km landmark and a 15 m chip are not the same object at
+              different zoom levels (§3.4). */
+           float rockHeight(vec3 n, float radius, float foot) {
+             float h = fbm4e(n * 3.1) * 0.55;
+             float fC = clamp(radius / 110.0, 1.2, 26.0);
+             h += (ridge2e(n * fC) - 0.5) * 0.42 * bandFade(fC * 2.5, foot);
+             float fB = clamp(radius / 15.0, 4.0, 72.0);
+             h += gnoise(n * fB) * 0.22 * bandFade(fB, foot);
+             return h;
+           }`,
+        )
+        .replace(
+          '#include <normal_fragment_maps>',
+          `#include <normal_fragment_maps>
+           {
+             /* Tangent-free bump (Mikkelsen): build the surface gradient from
+                screen-space derivatives of the height and of the view-space
+                position. No tangent attribute, no normal map texture, and it
+                costs one height evaluation. */
+             vec3 rn = normalize(vRockLocal);
+             float bh = rockHeight(rn, vRockSize, length(fwidth(rn)));
+             vec3 dpx = dFdx(vRockView);
+             vec3 dpy = dFdy(vRockView);
+             vec3 rr1 = cross(dpy, normal);
+             vec3 rr2 = cross(normal, dpx);
+             float det = dot(dpx, rr1);
+             if (abs(det) > 1.0e-12) {
+               vec3 grad = (rr1 * dFdx(bh) + rr2 * dFdy(bh)) / det;
+               normal = normalize(normal - grad * 0.55);
+             }
+           }`,
+        )
         .replace(
           '#include <roughnessmap_fragment>',
           `#include <roughnessmap_fragment>
-           float rkn = fbm3e(normalize(vRockLocal) * 5.5) * 0.5 + 0.5;
-           float rkm = fbm3e(normalize(vRockLocal) * 17.0) * 0.5 + 0.5;
-           roughnessFactor *= 0.80 + 0.34 * rkn;
-           diffuseColor.rgb *= 0.62 + 0.55 * mix(rkn, rkm, 0.45);`,
+           vec3 rkn3 = normalize(vRockLocal);
+           float rkFoot = length(fwidth(rkn3));
+           float rkn = fbm3e(rkn3 * 4.2) * 0.5 + 0.5;
+           float rkf = clamp(vRockSize / 22.0, 5.0, 48.0);
+           float rkm = (gnoise(rkn3 * rkf) * 0.5 + 0.5 - 0.5) * bandFade(rkf, rkFoot) + 0.5;
+           roughnessFactor *= 0.84 + 0.22 * rkn;
+           /* Albedo variation stays narrow. Rock is monotonous; the contrast
+              in a real asteroid field comes from the terminator, not from
+              patchwork colour. */
+           diffuseColor.rgb *= 0.84 + 0.26 * mix(rkn, rkm, 0.40);`,
         );
     };
     material.customProgramCacheKey = () => 'env-rock';
@@ -993,7 +1260,9 @@ export class Environment {
         const size = Math.pow(r.next(), 3.0) * 430 + 11;
         scl.set(size * r.range(0.7, 1.25), size * r.range(0.6, 1.1), size * r.range(0.75, 1.3));
         m.compose(pos, qt, scl);
-        const tint = 0.55 + r.range(0, 0.95);
+        // Narrow: rock is monotonous, and a wide per-instance tint reads as
+        // putty rather than as a field of the same material.
+        const tint = r.range(0.78, 1.22);
         perShapeInstances[s].push({ cluster: ci, matrix: m.clone(), tint });
         totalPerShape[s]++;
       }
@@ -1050,23 +1319,27 @@ export class Environment {
       this._disposables.push(geoHigh, geoLow);
     }
 
-    /* ---- landmarks: a handful of multi-kilometre rocks. Nothing sells the
-       scale of a 380 m destroyer like parking it beside a 4 km one. ---- */
+    /* ---- landmarks: a handful of genuinely multi-kilometre rocks. Nothing
+       sells the scale of a 380 m destroyer like parking it beside a 4 km one,
+       and nothing else in the near field is big enough to do that job. ---- */
     const lmGeo = makeRockGeometry(r.fork(77), Math.min(4, dHigh + 1));
     const lmCount = b.landmarks;
     const lm = new THREE.InstancedMesh(lmGeo, material, lmCount);
     lm.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(lmCount * 3), 3);
     for (let i = 0; i < lmCount; i++) {
-      const c = clusters[r.int(0, clusters.length - 1)];
+      // Mirror them in pairs too — a 5 km landmark is cover, and cover on one
+      // side of the map only is not a fair map.
+      const c = clusters[(i * 2) % clusters.length];
       const dir = r.unitVector();
-      const rr = c.radius * r.range(1.1, 2.2);
+      const rr = c.radius * r.range(1.2, 2.4);
       pos.set(c.position.x + dir.x * rr, c.position.y + dir.y * rr * 0.4, c.position.z + dir.z * rr);
+      if (i % 2 === 1) pos.negate();
       qt.set(r.gaussian(), r.gaussian(), r.gaussian(), r.gaussian()).normalize();
-      const size = r.range(900, 3400);
+      const size = r.range(1800, 5200);
       scl.set(size * r.range(0.8, 1.2), size * r.range(0.55, 0.95), size * r.range(0.8, 1.3));
       m.compose(pos, qt, scl);
       lm.setMatrixAt(i, m);
-      const t = 0.62 + r.range(0, 0.7);
+      const t = r.range(0.80, 1.16);
       lm.setColorAt(i, new THREE.Color(t, t * 0.985, t * 0.955));
     }
     lm.instanceMatrix.needsUpdate = true;
@@ -1133,10 +1406,31 @@ export class Environment {
     this._time = elapsed;
     const cam = camera || this.engine.camera;
 
+    /* The sky hands back a half-size map immediately and fills the full-size
+       one from here, a tile per frame. Two references have to follow it when
+       it swaps: the backdrop and the environment probe. */
+    if (this.sky.refine && !this.sky.refined) {
+      if (this.sky.refine(this.engine.renderer, 1)) {
+        this.engine.farScene.background = this.sky.texture;
+        this.engine.scene.environment = this.sky.texture;
+      }
+    }
+
     if (this._dustMat) this._dustMat.uniforms.uTime.value = elapsed;
 
     // The gas giant turns; slowly enough that it reads as scale, not motion.
-    if (this._planetGroup) this._planetGroup.rotation.y += dt * 0.0022;
+    if (this._planetGroup) {
+      this._planetGroup.rotation.y += dt * 0.0022;
+      if (this._planetMat) {
+        /* The ring shadow is traced in the planet's own frame, so the light
+           has to be re-expressed there every time the planet moves under it. */
+        this._planetGroup.updateMatrixWorld();
+        this._planetMat.uniforms.uSunLocal.value
+          .copy(this.sunDirection)
+          .applyQuaternion(_invQ.copy(this._planetGroup.quaternion).invert())
+          .normalize();
+      }
+    }
 
     this._lodTimer -= dt;
     if (this._lodTimer <= 0 && cam) {
@@ -1260,8 +1554,8 @@ export class Environment {
     }
     this._disposables.length = 0;
 
-    if (engine.farScene.background === this.sky.texture) engine.farScene.background = null;
-    if (engine.scene.environment === this.sky.texture) engine.scene.environment = null;
+    engine.farScene.background = null;
+    engine.scene.environment = null;
     if (engine.scene.fog === this.fog) engine.scene.fog = null;
     this.sky.dispose();
   }
@@ -1270,6 +1564,19 @@ export class Environment {
 /* ===========================================================================
    Procedural geometry helpers
    =========================================================================== */
+
+/** One resource seam. SIM reads `position`, `radius` and `amount` and may
+    decrement `amount` in place as miners work it. */
+function makeClusterRecord(x, y, z, radius, amount) {
+  return {
+    position: new THREE.Vector3(x, y, z),
+    radius,
+    amount: Math.round(amount),
+    maxAmount: Math.round(amount),
+    _visible: true,
+    _high: true,
+  };
+}
 
 /** Deformed icosahedron: fBm lumps, ridged crags, a few impact craters. */
 function makeRockGeometry(rng, detail, sharedShape) {

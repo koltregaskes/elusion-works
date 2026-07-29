@@ -250,6 +250,55 @@ export function warmShipCache(rng): void;   // pre-build all classes
 Models must be **+Z forward, +Y up**, centred on the origin, and scaled so
 bounding-box length == `SHIPS[classId].length`.
 
+### Fleet rendering must be instanced — the batch contract [SHIPS + SIM]
+
+Measured at iteration 2: **≈2.9 draw calls per unit**, a clean straight line
+from 32 to 470 entities (93 → 1,356 calls). Extrapolated to the 1,000+ units
+§0 requires, that is ~2,900 calls per frame. No WebGL 2 context holds that at
+60 fps on any GPU — it is a CPU-side submission limit, so the target laptop
+does not rescue it. This is the architectural instancing rule in §0, not a
+Phase 4 optimisation, and the retrofit cost grows with every system that
+assumes one `Object3D` per entity.
+
+`ships/index.js` already exports `buildInstancedBatch()` and it has **zero
+callers**. Make it real, and consume it.
+
+**Division of work:**
+
+- **[SHIPS]** owns the batch. Per `(classId, team)`, back each LOD level with a
+  `THREE.InstancedMesh`. Expose:
+  ```js
+  export function getFleetBatch(classId, team): {
+    reserve(): number;                 // returns an instance slot index
+    release(slot: number): void;
+    setMatrix(slot, matrix4): void;
+    setLod(slot, level: number): void; // moves the instance between LOD meshes
+    setColor(slot, color): void;
+    setDamage(slot, value01): void;
+    commit(): void;                    // flush dirty instance buffers, once per frame
+    meshes: THREE.InstancedMesh[];     // added to engine.scene by the batch itself
+  }
+  export function commitAllBatches(): void;
+  ```
+  Slots must survive LOD changes. Capacity grows geometrically; never
+  reallocate per frame.
+
+- **[SIM]** consumes it. In `world.spawn()`, reserve a slot instead of adding a
+  per-entity `Object3D` to the scene for any class that batches. Keep
+  `entity.object3D` as a **detached** transform carrier so FX, HUD and camera
+  keep working unchanged — just do not add it to `engine.scene`. In
+  `syncTransforms(alpha)`, write the interpolated matrix into the slot, pick the
+  LOD from camera distance, then call `commitAllBatches()` once.
+
+- **Exempt from batching:** unique hulls that appear once or twice per side —
+  `mothership`, `carrier`, `cruiser`. Keep those as ordinary `Object3D`s so
+  they can carry per-ship damage state and bespoke detail. Everything else
+  batches.
+
+**Target: draw calls must be roughly flat in unit count.** 1,000 units should
+cost tens of calls for the fleet, not thousands. Report measured calls at 100 /
+500 / 1,000 entities.
+
 ### `fx/index.js` [FX]
 ```js
 export class FXSystem {

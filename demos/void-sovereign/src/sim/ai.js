@@ -12,20 +12,40 @@ import { FORMATION } from './formations.js';
    a spawner are: it harasses collectors early, it masses before it attacks,
    and it pulls wounded capitals out of the line.
 
+   Two rules keep the push coherent rather than a trickle:
+
+     * Force membership is sticky. A ship keeps its job until the commander
+       deliberately reassigns it, and quotas drift back into line a ship or two
+       at a time. Rebuilding the order of battle from scratch every think was
+       what had wings receiving fresh waypoints faster than they could fly to
+       the last one.
+     * Orders are only re-issued when they have actually changed. A move is
+       repeated when the objective drifts, the force gains or loses a real
+       fraction of its hulls, or the wing has run out of orders — not on a
+       timer.
+
+   And one rule makes the match resolve: the commander escalates. Strangling
+   an economy is an opening, not a win condition, so pressure shifts from
+   collectors to yards to the mothership as the fleet grows, as the enemy
+   economy dies, and — failing both — as the clock runs out.
+
    No resource cheating at 'normal'. */
 
 const DIFFICULTY = {
   easy: {
     think: 2.6, commitScale: 1.75, collectors: 5, harassAt: 200,
     income: 0.9, buildRate: 0.85, retreatAt: 0.45, techScale: 1.35, sloppiness: 0.35,
+    dominance: 1.5, siegeAt: 1500, yards: 2, defenceShare: 0.30, reserve: 3.2,
   },
   normal: {
     think: 1.4, commitScale: 1.0, collectors: 8, harassAt: 78,
     income: 1.0, buildRate: 1.0, retreatAt: 0.34, techScale: 1.0, sloppiness: 0.12,
+    dominance: 1.08, siegeAt: 840, yards: 4, defenceShare: 0.22, reserve: 2.4,
   },
   hard: {
     think: 0.8, commitScale: 0.72, collectors: 11, harassAt: 52,
     income: 1.15, buildRate: 1.15, retreatAt: 0.28, techScale: 0.8, sloppiness: 0.0,
+    dominance: 0.92, siegeAt: 560, yards: 6, defenceShare: 0.18, reserve: 1.8,
   },
 };
 
@@ -48,15 +68,42 @@ const TECH_GATE = {
 
 const COMBAT_ROLES = [ROLE.FIGHTER, ROLE.CORVETTE, ROLE.FRIGATE, ROLE.CAPITAL, ROLE.SUPPORT];
 
+/* Once a push is under way the fleet stays a fleet. A new objective inside
+   this radius is a change of aim, not a reason to fly home and form up again —
+   which is what used to happen every time a collector died. */
+const THEATRE = 11000;
+
+/* A fleet is "together" when most of it is inside this of its own centre, and
+   it advances on the objective in bounds of this length. Ships outside the
+   body are told to rejoin it, never to go and find the enemy on their own:
+   that is the difference between a push and a queue of single ships walking
+   into a meat grinder. */
+const COHESION = 5400;
+const ADVANCE = 6500;
+
+/* How far from the body the commander will look for the thing to kill next
+   when the fleet is in contact short of its objective. */
+const MELEE = 7000;
+
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
+const _c = new THREE.Vector3();
+const _p = new THREE.Vector3();
+const UP = new THREE.Vector3(0, 1, 0);
+
+/* Sorting a force by range to a point. The comparator is module-level so the
+   sort does not allocate a closure every think. */
+const _sortOrigin = new THREE.Vector3();
+function byRangeToOrigin(a, b) {
+  return a.position.distanceToSquared(_sortOrigin) - b.position.distanceToSquared(_sortOrigin);
+}
 
 export class Commander {
   constructor(world, team, opts = {}) {
     this.world = world;
     this.team = team;
-    this.difficulty = opts.difficulty || 'normal';
-    this.cfg = DIFFICULTY[this.difficulty] || DIFFICULTY.normal;
+    this.difficulty = DIFFICULTY[opts.difficulty] ? opts.difficulty : 'normal';
+    this.cfg = DIFFICULTY[this.difficulty];
     this.rng = world.rngAi.fork(team + 1);
 
     const t = world.teams[team];
@@ -74,23 +121,38 @@ export class Commander {
     this.defence = [];
     this.harass = [];
     this.strikeTargetId = -1;
+    this.meleeTargetId = -1;
     this.strikePoint = new THREE.Vector3();
-    this.phase = 'rally';
+    this.phase = 'massing';
     this.phaseDeadline = 0;
+    this.bestProgress = Infinity;
+    this.progressAt = 0;
+    this.flankSign = 0;
+    this.flankUntil = -1;
     this.committed = false;
     this.harassSent = false;
+    this.harassCooldown = 0;
     this.expandCluster = -1;
     this.lastDefenceCall = -999;
     this.defencePoint = new THREE.Vector3();
+
     this._scratch = [];
+    this._ids = [];
+    this._near = [];
+    this._far = [];
+    this._body = [];
+    this._orders = {};
   }
 
   get state() {
     return {
+      difficulty: this.difficulty,
       committed: this.committed,
+      phase: this.phase,
       strike: this.strike.length,
       defence: this.defence.length,
       harass: this.harass.length,
+      targetId: this.strikeTargetId,
       intel: this.intel,
     };
   }
@@ -216,21 +278,25 @@ export class Commander {
   /* Keep every yard working.
      A mothership spends 210 seconds on a cruiser; if that is the only thing on
      order, income outruns spending by two to one and the treasury swells while
-     the fleet stays tiny — which is exactly what the second soak run did. So
-     production is planned per yard: the mothership lays down capitals while the
-     carriers pump strike craft, the way the genre has always worked. */
+     the fleet stays tiny. So production is planned per yard: the mothership
+     lays down capitals while the carriers pump strike craft, the way the genre
+     has always worked.
+
+     Throughput, not money, is the real ceiling — one hull at a time per yard.
+     A treasury that keeps growing is therefore a signal to buy another yard,
+     not to queue deeper at the ones already saturated. */
   _production() {
     const world = this.world;
     const t = world.teams[this.team];
 
-    // Population headroom first: a fleet with nowhere to live is no fleet.
-    // Yards are expensive — the first soak run proved the AI will cheerfully
-    // buy seven — so the cap only lifts when the treasury is genuinely idle.
     const head = t.popCap - t.popUsed - t.popQueued;
     const carriers = (this.own.carrier || 0) + this._queuedCount('carrier');
-    const maxCarriers = t.credits > 14000 ? 4 : 2;
-    if (head < 12 && carriers < maxCarriers &&
-        this.time > TECH_GATE.carrier * this.cfg.techScale &&
+    const gate = TECH_GATE.carrier * this.cfg.techScale;
+    // Two reasons to lay down a yard: nowhere to put the fleet, or money
+    // piling up faster than the existing yards can spend it.
+    const needRoom = head < 12;
+    const idleMoney = t.credits > SHIPS.carrier.cost * this.cfg.reserve;
+    if ((needRoom || idleMoney) && carriers < this.cfg.yards && this.time > gate &&
         t.credits > SHIPS.carrier.cost * 1.4 && canBuild(world, this.team, 'carrier')) {
       enqueueBuild(world, this.team, 'carrier');
       return;
@@ -344,15 +410,21 @@ export class Commander {
 
   /* ----------------------------------------------------------------- forces */
 
+  /**
+   * Sticky order of battle. Ships keep the job they were given; the quota is
+   * nudged back into line by a couple of hulls per think rather than rebuilt,
+   * so a wing is never handed a new destination faster than it can reach the
+   * last one.
+   */
   _assignForces() {
-    this.strike.length = 0;
-    this.defence.length = 0;
-    this.harass.length = 0;
+    const strike = this.strike;
+    const defence = this.defence;
+    const harass = this.harass;
+    strike.length = 0;
+    defence.length = 0;
+    harass.length = 0;
 
     const list = this.world.dense;
-    const wantDefence = Math.max(2, Math.round(this.own.combat * 0.22));
-    let defenceCount = 0;
-
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
       if (!e.alive || e.team !== this.team) continue;
@@ -361,21 +433,48 @@ export class Commander {
         e.aiForce = 'scout';
         continue;
       }
-      if (e.aiForce === 'harass' && this.harassSent) {
-        this.harass.push(e);
-        continue;
-      }
       if (e.aiRepairing) {
+        e.aiForce = 'repair';
         continue;
       }
-      if (defenceCount < wantDefence && e.role !== ROLE.CAPITAL) {
-        e.aiForce = 'defence';
-        this.defence.push(e);
-        defenceCount++;
+      if (e.aiForce === 'harass' && this.harassSent) {
+        harass.push(e);
+        continue;
+      }
+      if (e.aiForce === 'defence' && e.role !== ROLE.CAPITAL) {
+        defence.push(e);
         continue;
       }
       e.aiForce = 'strike';
-      this.strike.push(e);
+      strike.push(e);
+    }
+
+    const want = Math.min(14, Math.max(2, Math.round(this.own.combat * this.cfg.defenceShare)));
+    let moves = 2;
+    while (defence.length > want && moves-- > 0) {
+      const e = defence.pop();
+      e.aiForce = 'strike';
+      e.orderQueue.length = 0;
+      e.aiCommitted = false;
+      strike.push(e);
+    }
+    moves = 2;
+    while (defence.length < want && moves-- > 0) {
+      let pick = -1;
+      for (let i = strike.length - 1; i >= 0; i--) {
+        if (strike[i].role !== ROLE.CAPITAL) {
+          pick = i;
+          break;
+        }
+      }
+      if (pick < 0) break;
+      const e = strike[pick];
+      strike[pick] = strike[strike.length - 1];
+      strike.length--;
+      e.aiForce = 'defence';
+      e.orderQueue.length = 0;
+      e.aiCommitted = false;
+      defence.push(e);
     }
   }
 
@@ -385,6 +484,71 @@ export class Commander {
     return v;
   }
 
+  _centroid(force, out) {
+    out.set(0, 0, 0);
+    if (!force.length) return out;
+    for (let i = 0; i < force.length; i++) out.add(force[i].position);
+    return out.multiplyScalar(1 / force.length);
+  }
+
+  /* ----------------------------------------------------------- order memory */
+
+  _memo(tag) {
+    let m = this._orders[tag];
+    if (!m) {
+      m = {
+        point: new THREE.Vector3(NaN, NaN, NaN),
+        count: -1, formation: null, mode: null, targetId: -1, time: -999,
+      };
+      this._orders[tag] = m;
+    }
+    return m;
+  }
+
+  /**
+   * Re-issue a move only when it means something: the objective has drifted,
+   * the force has gained or lost a real share of its hulls, the shape changed,
+   * or most of the wing has run out of orders.
+   */
+  _moveForce(force, point, formation, tag, minShift, mode) {
+    if (!force.length) return;
+    const m = this._memo(tag);
+    const shift = minShift || 1400;
+    let orderless = 0;
+    for (let i = 0; i < force.length; i++) if (!force[i].orderQueue.length) orderless++;
+    const drifted = !(m.point.distanceToSquared(point) < shift * shift);
+    const churned = Math.abs(m.count - force.length) > Math.max(2, force.length * 0.25);
+    const idle = orderless > force.length * 0.34;
+    if (!drifted && !churned && !idle && m.formation === formation && m.mode === mode) return;
+
+    this.world.issueMove(force, point, formation, true, { mode });
+    m.point.copy(point);
+    m.count = force.length;
+    m.formation = formation;
+    m.mode = mode;
+    m.time = this.time;
+  }
+
+  /** Mark a target. Ships already on it are left alone; the anchor is only
+      refreshed periodically, so a moving mark does not reset the whole wing. */
+  _attackForce(force, targetId, tag) {
+    if (!force.length) return;
+    const m = this._memo(tag);
+    const refresh = m.targetId !== targetId || this.time - m.time > 9;
+    const ids = this._ids;
+    ids.length = 0;
+    for (let i = 0; i < force.length; i++) {
+      const e = force[i];
+      if (refresh || e.forcedTargetId !== targetId) ids.push(e.id);
+    }
+    if (!ids.length) return;
+    this.world.commandAttack({ ids, targetId });
+    if (refresh) {
+      m.targetId = targetId;
+      m.time = this.time;
+    }
+  }
+
   /* ------------------------------------------------------------- behaviours */
 
   /** Early fighters go for the throat: their collectors, not their warships. */
@@ -392,19 +556,26 @@ export class Commander {
     if (this.harassSent) {
       if (this.harass.length === 0) {
         this.harassSent = false;
+        this.harassCooldown = this.time + 90;
         return;
       }
-      const mark = this._nearestEnemyOfRole(this.harass[0].position, ROLE.RESOURCE);
+      this._centroid(this.harass, _c);
+      const mark = this._nearestEnemyOfRole(_c, ROLE.RESOURCE);
       if (mark) {
-        this.world.commandAttack({ ids: idsOf(this.harass), targetId: mark.id });
+        this._attackForce(this.harass, mark.id, 'harass');
         for (let i = 0; i < this.harass.length; i++) this.harass[i].stance = STANCE.AGGRESSIVE;
       } else {
+        // Nothing left to strangle: fold the raiders back into the fleet.
         this.harassSent = false;
-        for (let i = 0; i < this.harass.length; i++) this.harass[i].aiForce = 'strike';
+        this.harassCooldown = this.time + 120;
+        for (let i = 0; i < this.harass.length; i++) {
+          this.harass[i].aiForce = 'strike';
+          this.harass[i].orderQueue.length = 0;
+        }
       }
       return;
     }
-    if (this.time < this.cfg.harassAt) return;
+    if (this.time < this.cfg.harassAt || this.time < this.harassCooldown) return;
 
     const pool = [];
     for (let i = 0; i < this.strike.length; i++) {
@@ -413,12 +584,16 @@ export class Commander {
       if (pool.length >= 5) break;
     }
     if (pool.length < 3) return;
-    for (let i = 0; i < pool.length; i++) pool[i].aiForce = 'harass';
+    for (let i = 0; i < pool.length; i++) {
+      pool[i].aiForce = 'harass';
+      pool[i].orderQueue.length = 0;
+    }
     this.harass = pool;
     this.harassSent = true;
+    this._memo('harass').targetId = -1;
   }
 
-  /** Somebody is shooting our miners: send the standing defence force. */
+  /** Somebody is shooting our economy: send the standing defence force. */
   _defend() {
     const world = this.world;
     if (!this.defence.length) return;
@@ -433,15 +608,26 @@ export class Commander {
         break;
       }
     }
+    if (!alarm) {
+      // A yard under fire is a louder alarm than a miner, not a quieter one.
+      for (const id of t.producers) {
+        const p = world.entities.get(id);
+        if (!p || !p.alive) continue;
+        if (world.tickCount - p.lastHitTick < 150) {
+          alarm = p;
+          break;
+        }
+      }
+    }
 
     if (alarm) {
       this.defencePoint.copy(alarm.position);
       this.lastDefenceCall = this.time;
       const attacker = world.entities.get(alarm.lastAttackerId);
-      if (attacker && attacker.alive) {
-        world.commandAttack({ ids: idsOf(this.defence), targetId: attacker.id });
+      if (attacker && attacker.alive && attacker.team !== this.team) {
+        this._attackForce(this.defence, attacker.id, 'defend');
       } else {
-        world.issueMove(this.defence, this.defencePoint, FORMATION.CLAW, true);
+        this._moveForce(this.defence, this.defencePoint, FORMATION.CLAW, 'defend', 1600, 'attackMove');
       }
       for (let i = 0; i < this.defence.length; i++) this.defence[i].stance = STANCE.AGGRESSIVE;
       return;
@@ -454,21 +640,19 @@ export class Commander {
     _v.copy(base.position);
     const seam = this._busiestOwnCluster();
     if (seam) _v.lerp(seam.position, 0.55);
-    let far = 0;
-    for (let i = 0; i < this.defence.length; i++) {
-      const d = this.defence[i].position.distanceToSquared(_v);
-      if (d > far) far = d;
-    }
-    if (far > 4200 * 4200) {
-      world.issueMove(this.defence, _v, FORMATION.SPHERE, true);
-      for (let i = 0; i < this.defence.length; i++) this.defence[i].stance = STANCE.NEUTRAL;
-    }
+    this._moveForce(this.defence, _v, FORMATION.SPHERE, 'defend', 3200, 'move');
+    for (let i = 0; i < this.defence.length; i++) this.defence[i].stance = STANCE.NEUTRAL;
   }
 
   /** Mass, choose, commit. Do not trickle. */
   _strike() {
     const world = this.world;
-    if (!this.strike.length) return;
+    if (!this.strike.length) {
+      this.committed = false;
+      this.strikeTargetId = -1;
+      this.phase = 'massing';
+      return;
+    }
     const value = this._forceValue(this.strike);
     const enemyValue = this._enemyCombatValue();
     // The bar rises early — you do not attack at ninety seconds with two
@@ -481,38 +665,48 @@ export class Commander {
 
     if (!this.committed) {
       if (value < need) {
-        // Hold short of home while the yards work.
-        if (base && this.rng.chance(0.25)) {
-          _v.copy(base.position).addScaledVector(
-            _v2.copy(world.teams[this.team ^ 1].homePosition).sub(base.position).normalize(),
-            3000,
-          );
-          world.issueMove(this.strike, _v, FORMATION.WALL, true);
-          for (let i = 0; i < this.strike.length; i++) this.strike[i].stance = STANCE.NEUTRAL;
-        }
+        this.phase = 'massing';
+        this._stage(base);
         return;
       }
       this.committed = true;
       this.phase = 'rally';
-      this.phaseDeadline = this.time + 100;
+      this.phaseDeadline = this.time + 110;
       this.strikeTargetId = -1;
     }
 
     // Fall back home if the push has been ground down.
     if (value < need * 0.38) {
       this.committed = false;
+      this.phase = 'massing';
       this.strikeTargetId = -1;
-      if (base) world.issueMove(this.strike, base.position, FORMATION.DELTA, true);
+      for (let i = 0; i < this.strike.length; i++) {
+        this.strike[i].stance = STANCE.NEUTRAL;
+        this.strike[i].aiCommitted = false;
+      }
+      if (base) this._moveForce(this.strike, base.position, FORMATION.DELTA, 'strike', 2600, 'move');
       return;
     }
 
     let target = this.strikeTargetId >= 0 ? world.entities.get(this.strikeTargetId) : null;
     if (!target || !target.alive) {
       target = this._pickStrikeTarget(value);
-      this.phase = 'rally';
-      this.phaseDeadline = this.time + 100;
+      if (!target) return;
+      this._centroid(this.strike, _c);
+      // Killing a collector is not a reason to fly 8 km home and form up
+      // again. Only a genuinely distant objective earns a fresh rally.
+      if (_c.distanceToSquared(target.position) > THEATRE * THEATRE) {
+        this.phase = 'rally';
+        this.phaseDeadline = this.time + 110;
+      } else {
+        this.phase = 'assault';
+      }
+      for (let i = 0; i < this.strike.length; i++) this.strike[i].aiCommitted = false;
+      this.bestProgress = Infinity;
+      this.progressAt = this.time;
+      this.flankSign = 0;
+      this.flankUntil = -1;
     }
-    if (!target) return;
     this.strikeTargetId = target.id;
 
     /* Rally, then assault.
@@ -526,48 +720,215 @@ export class Commander {
       this.strikePoint.copy(target.position).addScaledVector(_v2.normalize(), 8500);
       let ready = 0;
       for (let i = 0; i < this.strike.length; i++) {
-        if (this.strike[i].position.distanceToSquared(this.strikePoint) < 4000 * 4000) ready++;
+        if (this.strike[i].position.distanceToSquared(this.strikePoint) < 4200 * 4200) ready++;
       }
       if (ready >= this.strike.length * 0.7 || this.time > this.phaseDeadline) {
         this.phase = 'assault';
       } else {
-        world.issueMove(this.strike, this.strikePoint, FORMATION.WALL, true);
+        this._moveForce(this.strike, this.strikePoint, FORMATION.WALL, 'strike', 1800, 'move');
         for (let i = 0; i < this.strike.length; i++) this.strike[i].stance = STANCE.NEUTRAL;
         return;
       }
     }
 
-    // Assault: anything in reach engages, stragglers and fresh hulls close up.
-    const near = [];
-    const far = [];
+    /* Assault, as a body.
+
+       Ships with the objective in weapon reach go aggressive and put fire on
+       it. Everything else is *not* sent hunting: it is given a station on the
+       fleet, at neutral, and the fleet advances in bounds. A reinforcement set
+       loose at aggressive will chase the first contact it sees for nine
+       kilometres, arrive alone and die — repeat that for forty minutes and you
+       have two fleets feeding a permanent front line and a match that cannot
+       end. Which is exactly what the soak did.
+
+       Hysteresis on the boundary stops a ship on the edge of reach flipping
+       between an attack order and a move order every think. */
+    const near = this._near;
+    const far = this._far;
+    near.length = 0;
+    far.length = 0;
     for (let i = 0; i < this.strike.length; i++) {
       const e = this.strike[i];
-      e.stance = STANCE.AGGRESSIVE;
-      const reach = e.engageRange + target.radius + 3000;
-      if (e.position.distanceToSquared(target.position) < reach * reach) near.push(e);
-      else far.push(e);
+      const reach = (e.engageRange + target.radius + 900) * (e.aiCommitted ? 1.45 : 1);
+      if (e.position.distanceToSquared(target.position) < reach * reach) {
+        e.aiCommitted = true;
+        e.stance = STANCE.AGGRESSIVE;
+        near.push(e);
+      } else {
+        e.aiCommitted = false;
+        e.stance = STANCE.NEUTRAL;
+        far.push(e);
+      }
     }
-    if (near.length) world.commandAttack({ ids: idsOf(near), targetId: target.id });
-    if (far.length) world.issueMove(far, target.position, FORMATION.CLAW, true);
+    if (near.length) this._attackForce(near, target.id, 'strikeAttack');
+    if (!far.length) {
+      this.meleeTargetId = -1;
+      return;
+    }
+
+    /* Where the body is.
+
+       The body is the *forward* part of the fleet, not its arithmetic centre.
+       Fresh hulls rolling off yards twenty kilometres behind the front would
+       otherwise drag the average backwards for ever: cohesion never passes,
+       the fleet regroups on a point that keeps retreating, and the objective
+       is never reached. Measured this way the push leads and the stragglers
+       chase, which is also what it looks like when a person plays. */
+    const body = this._body;
+    body.length = 0;
+    for (let i = 0; i < near.length; i++) body.push(near[i]);
+    for (let i = 0; i < far.length; i++) body.push(far[i]);
+    _sortOrigin.copy(target.position);
+    body.sort(byRangeToOrigin);
+    body.length = Math.max(1, Math.ceil(body.length * 0.6));
+    this._centroid(body, _c);
+
+    /* Contact well short of the objective means the fleet has run into their
+       line. Fight that line as a fleet: one mark at a time, everything on it.
+
+       Fifty ships each choosing their own favourite spreads damage across a
+       whole enemy fleet and almost nothing dies — which is how two evenly
+       matched sides end up feeding a front line for forty minutes with neither
+       able to advance. Concentration is the whole of fleet combat, and it is
+       what turns that stalemate back into a battle somebody wins. */
+    let contact = 0;
+    for (let i = 0; i < far.length; i++) if (far[i].engaged) contact++;
+    if (contact > far.length * 0.25) {
+      let mark = this.meleeTargetId >= 0 ? world.entities.get(this.meleeTargetId) : null;
+      if (!mark || !mark.alive ||
+          mark.position.distanceToSquared(_c) > MELEE * MELEE * 2.25) {
+        mark = this._localMark(_c);
+      }
+      if (mark) {
+        this.meleeTargetId = mark.id;
+        for (let i = 0; i < far.length; i++) far[i].stance = STANCE.AGGRESSIVE;
+        this._attackForce(far, mark.id, 'melee');
+        return;
+      }
+    }
+    this.meleeTargetId = -1;
+
+    let together = 0;
+    for (let i = 0; i < body.length; i++) {
+      if (body[i].position.distanceToSquared(_c) < COHESION * COHESION) together++;
+    }
+    const cohesive = together >= body.length * 0.6 || near.length >= 3;
+
+    if (cohesive) {
+      /* Push: the next bound toward the objective, from where the fleet is.
+         If the body has stopped closing, it is being held — go round rather
+         than shove into the same wall for the rest of the match. */
+      const dist = _c.distanceTo(target.position);
+      if (dist < this.bestProgress - 1200) {
+        this.bestProgress = dist;
+        this.progressAt = this.time;
+        this.flankUntil = -1;
+      } else if (this.time - this.progressAt > 55 && this.time > this.flankUntil) {
+        this.flankSign = this.rng.chance(0.5) ? 1 : -1;
+        this.progressAt = this.time;
+        this.flankUntil = this.time + 80;
+      }
+
+      _v2.subVectors(target.position, _c);
+      const d = _v2.length();
+      if (d > ADVANCE) _v.copy(_c).addScaledVector(_v2.multiplyScalar(1 / d), ADVANCE);
+      else _v.copy(target.position);
+
+      if (this.time < this.flankUntil) {
+        _p.crossVectors(_v2, UP);
+        if (_p.lengthSq() < 1e-6) _p.set(1, 0, 0);
+        _v.addScaledVector(_p.normalize(), 7000 * this.flankSign);
+      }
+    } else {
+      // Regroup: form on the fleet before going a metre further.
+      _v.copy(_c);
+    }
+    this._moveForce(
+      far, _v,
+      cohesive ? FORMATION.CLAW : FORMATION.WALL,
+      'strikeFar', 2400,
+      // Advancing on the objective is an attack-move: fight what is in the way,
+      // then carry on. Regrouping is a plain move — form up first, argue later.
+      cohesive ? 'attackMove' : 'move',
+    );
   }
 
+  /**
+   * What the fleet kills next when it is in contact. Value, weakness and
+   * proximity, warships only — a body that stops to shoot collectors while an
+   * enemy line is on top of it deserves what happens next.
+   */
+  _localMark(centre) {
+    const list = this.world.dense;
+    let best = null;
+    let bestScore = 0;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (!e.alive || e.team === this.team) continue;
+      if (e.role === ROLE.STRUCTURE) continue;
+      const d2 = e.position.distanceToSquared(centre);
+      if (d2 > MELEE * MELEE) continue;
+      const soft = 1 - (e.hull + e.shield) / (e.maxHull + e.maxShield + 1);
+      const score = ((e.def.cost + 120) * (1 + soft * 1.8)) / (Math.sqrt(d2) + 900);
+      if (score > bestScore) {
+        bestScore = score;
+        best = e;
+      }
+    }
+    return best;
+  }
+
+  /** Hold short of home, formed up, while the yards work. */
+  _stage(base) {
+    if (!base) return;
+    const foeHome = this.world.teams[this.team ^ 1].homePosition;
+    _v2.copy(foeHome).sub(base.position);
+    if (_v2.lengthSq() < 1) _v2.set(0, 0, 1);
+    _v.copy(base.position).addScaledVector(_v2.normalize(), 3400);
+    this._moveForce(this.strike, _v, FORMATION.WALL, 'strike', 2000, 'move');
+    for (let i = 0; i < this.strike.length; i++) {
+      this.strike[i].stance = STANCE.NEUTRAL;
+      this.strike[i].aiCommitted = false;
+    }
+  }
+
+  /**
+   * What the push is for.
+   *
+   * Escalation, in order: go for the win when the fleet can carry it, when
+   * their economy is already dead, when we are stood on their doorstep, or
+   * when the clock says trading miners is no longer winning. Otherwise take
+   * the yards — a carrier is worth six collectors — then the collectors, then
+   * whatever is softest and closest.
+   */
   _pickStrikeTarget(value) {
     const world = this.world;
     const foe = this.team ^ 1;
     const enemyBase = world.entities.get(world.teams[foe].baseId);
-    const enemyValue = this._enemyCombatValue();
+    const theirs = this._enemyCombatValue();
+    const mine = Math.max(value, this.own.value || 0);
 
-    _v.set(0, 0, 0);
-    for (let i = 0; i < this.strike.length; i++) _v.add(this.strike[i].position);
-    _v.multiplyScalar(1 / this.strike.length);
+    this._centroid(this.strike, _c);
 
-    // Go for the win when the fleet can carry it, or when their economy is
-    // already dead and there is nothing left worth strangling.
     const minersLeft = world.teams[foe].collectors.size;
-    if (enemyBase && (value > enemyValue * 1.25 + 700 || minersLeft === 0)) return enemyBase;
+    const dominant = mine > theirs * this.cfg.dominance + 300;
+    const siege = this.time > this.cfg.siegeAt * this.cfg.techScale;
+    const atTheDoor = enemyBase &&
+      _c.distanceToSquared(enemyBase.position) < 9000 * 9000;
 
-    // Otherwise strangle the economy or crack the weakest formation.
-    const miner = this._nearestEnemyOfRole(_v, ROLE.RESOURCE);
+    const yard = this._nearestEnemyProducer(_c, enemyBase);
+
+    if (enemyBase && (dominant || minersLeft === 0 || siege || atTheDoor)) {
+      // Yards first even in the endgame. A mothership still laying down
+      // destroyers behind your assault is a mothership you have not killed;
+      // the carriers are what make the next fleet, so they die first.
+      if (yard && yard.position.distanceToSquared(_c) < 14000 * 14000) return yard;
+      return enemyBase;
+    }
+
+    if (yard) return yard;
+
+    const miner = this._nearestEnemyOfRole(_c, ROLE.RESOURCE);
     if (miner) return miner;
 
     let best = null;
@@ -577,7 +938,7 @@ export class Commander {
       const e = list[i];
       if (!e.alive || e.team === this.team) continue;
       if (e.role === ROLE.STRUCTURE && e.id !== (enemyBase && enemyBase.id)) continue;
-      const d = Math.sqrt(e.position.distanceToSquared(_v)) + 500;
+      const d = Math.sqrt(e.position.distanceToSquared(_c)) + 500;
       const soft = 1 - (e.hull + e.shield) / (e.maxHull + e.maxShield + 1);
       const score = (1 + soft * 2) * 4000 / d;
       if (score > bestScore) {
@@ -616,11 +977,14 @@ export class Commander {
       if (!e.aiRepairing && frac < this.cfg.retreatAt) {
         e.aiRepairing = true;
         e.aiRepairUntil = this.time + 220;
+        e.aiCommitted = false;
         e.stance = STANCE.PASSIVE;
         e.orderQueue.length = 0;
         e.forcedTargetId = -1;
+        _v2.subVectors(e.position, base.position);
+        if (_v2.lengthSq() < 1) _v2.set(0, 0, 1);
         _v.copy(base.position).addScaledVector(
-          _v2.subVectors(e.position, base.position).normalize(),
+          _v2.normalize(),
           base.radius + e.radius + 700,
         );
         e.orderQueue.push({ type: 'move', point: _v.clone(), formation: FORMATION.BROAD });
@@ -629,6 +993,8 @@ export class Commander {
         // Rejoin on health, or on a timer. A hull parked at the yard forever
         // because nothing is repairing it is a hull the enemy already killed.
         e.aiRepairing = false;
+        e.aiForce = 'strike';
+        e.orderQueue.length = 0;
         e.stance = STANCE.NEUTRAL;
       }
     }
@@ -637,7 +1003,8 @@ export class Commander {
   /** Keep one wing on the move so intel never goes fully cold. */
   _scout() {
     const world = this.world;
-    const scouts = [];
+    const scouts = this._scratch;
+    scouts.length = 0;
     const list = world.dense;
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
@@ -661,6 +1028,7 @@ export class Commander {
     );
     world.issueMove(scouts, _v, FORMATION.BROAD, true);
     for (let i = 0; i < scouts.length; i++) scouts[i].stance = STANCE.EVASIVE;
+    scouts.length = 0;
   }
 
   /* ---------------------------------------------------------------- helpers */
@@ -676,6 +1044,24 @@ export class Commander {
       if (d < bestD) {
         bestD = d;
         best = e;
+      }
+    }
+    return best;
+  }
+
+  /** Their forward yards: the thing that makes the next fleet. */
+  _nearestEnemyProducer(from, except) {
+    const foe = this.world.teams[this.team ^ 1];
+    let best = null;
+    let bestD = Infinity;
+    for (const id of foe.producers) {
+      const p = this.world.entities.get(id);
+      if (!p || !p.alive) continue;
+      if (except && p.id === except.id) continue;
+      const d = p.position.distanceToSquared(from);
+      if (d < bestD) {
+        bestD = d;
+        best = p;
       }
     }
     return best;
@@ -700,13 +1086,12 @@ export class Commander {
     this.defence.length = 0;
     this.harass.length = 0;
     this._scratch.length = 0;
+    this._ids.length = 0;
+    this._near.length = 0;
+    this._far.length = 0;
+    this._body.length = 0;
+    this._orders = {};
   }
-}
-
-function idsOf(list) {
-  const out = new Array(list.length);
-  for (let i = 0; i < list.length; i++) out[i] = list[i].id;
-  return out;
 }
 
 export function createCommander(world, team, opts) {

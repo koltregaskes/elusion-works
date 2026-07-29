@@ -73,6 +73,7 @@ export const CONTROL_SCHEME = [
       ['Middle drag', 'Orbit'],
       ['Alt + right drag', 'Orbit, even with a selection'],
       ['Wheel', 'Zoom (exponential; Shift for coarse)'],
+      ['Page Up / Page Down', 'Zoom without the wheel'],
       ['W A S D / arrows', 'Pan across the focus plane'],
       ['Q / E', 'Swing the camera left / right'],
       ['Screen edge', 'Edge-scroll'],
@@ -851,8 +852,19 @@ export class InputController {
     const world = this.world;
     if (world && typeof world.selectionAt === 'function') {
       try {
-        const ids = world.selectionAt(rect, this.rig.camera, this.team);
-        if (Array.isArray(ids)) return ids;
+        /* Hand the sim an unambiguous NDC rect. A CSS-pixel rect carrying its
+           own `width` invites a viewport-size heuristic to divide by the
+           marquee's width instead of the canvas's, which silently returns an
+           empty selection. `space` pins it beyond doubt. */
+        const n = rect.ndc;
+        const ids = world.selectionAt({
+          space: 'ndc',
+          x0: n.minX, y0: n.minY, x1: n.maxX, y1: n.maxY,
+          left: n.minX, top: n.maxY, right: n.maxX, bottom: n.minY,
+        }, this.rig.camera, this.team);
+        /* An empty answer is indistinguishable from a broken one, and band
+           select failing silently is unacceptable — verify it ourselves. */
+        if (Array.isArray(ids) && ids.length) return ids;
       } catch (err) {
         /* Fall through to the local implementation. */
       }
@@ -1047,15 +1059,32 @@ export class InputController {
       toneMapped: false,
     });
 
+    /* Additive light can only ever brighten, so a hairline crossing a sunlit
+       asteroid adds a few percent and vanishes. Laying the identical geometry
+       down first in near-black normal blending punches the background out to a
+       known dark value, and the additive pass then reads as cyan against
+       anything. Same buffers, same draw range — it costs one extra call. */
+    this._materialDark = new THREE.LineBasicMaterial({
+      color: 0x03060c,
+      transparent: true,
+      opacity: 0.88,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
+    });
+
     this._gizGeo = makeLineBuffer(GIZMO_VERTS);
     this._bandGeo = makeLineBuffer(BAND_VERTS);
 
     this._gizMesh = new THREE.LineSegments(this._gizGeo, this._material);
     this._bandMesh = new THREE.LineSegments(this._bandGeo, this._material);
+    this._gizBack = new THREE.LineSegments(this._gizGeo, this._materialDark);
+    this._bandBack = new THREE.LineSegments(this._bandGeo, this._materialDark);
 
-    for (const m of [this._gizMesh, this._bandMesh]) {
+    this._overlays = [this._gizBack, this._bandBack, this._gizMesh, this._bandMesh];
+    for (const m of this._overlays) {
       m.frustumCulled = false;
-      m.renderOrder = 9990;
+      m.renderOrder = m.material === this._materialDark ? 9989 : 9990;
       m.layers.set(LAYER.HUD3D);
       m.visible = false;
       this.engine.scene.add(m);
@@ -1081,11 +1110,12 @@ export class InputController {
     cursor.i = i + 2;
   }
 
-  _finish(geo, mesh, cursor) {
+  _finish(geo, mesh, cursor, backing) {
     geo.setDrawRange(0, cursor.i);
     geo.attributes.position.needsUpdate = true;
     geo.attributes.color.needsUpdate = true;
     mesh.visible = cursor.i > 0;
+    if (backing) backing.visible = mesh.visible;
   }
 
   /** NDC to a world point at a fixed camera-space depth — how the marquee
@@ -1102,7 +1132,7 @@ export class InputController {
     const geo = this._bandGeo;
     const cursor = { i: 0, max: BAND_VERTS };
     if (!this._band.active) {
-      this._finish(geo, this._bandMesh, cursor);
+      this._finish(geo, this._bandMesh, cursor, this._bandBack);
       return;
     }
 
@@ -1140,7 +1170,7 @@ export class InputController {
       this._seg(geo, cursor, _ptA.x, _ptA.y, _ptA.z, _ptB.x, _ptB.y, _ptB.z, 1);
     }
 
-    this._finish(geo, this._bandMesh, cursor);
+    this._finish(geo, this._bandMesh, cursor, this._bandBack);
   }
 
   _refreshGizmo() {
@@ -1148,7 +1178,7 @@ export class InputController {
     const cursor = { i: 0, max: GIZMO_VERTS };
     const g = this._giz;
     if (!g.active) {
-      this._finish(geo, this._gizMesh, cursor);
+      this._finish(geo, this._gizMesh, cursor, this._gizBack);
       return;
     }
 
@@ -1279,7 +1309,7 @@ export class InputController {
       }
     }
 
-    this._finish(geo, this._gizMesh, cursor);
+    this._finish(geo, this._gizMesh, cursor, this._gizBack);
   }
 
   /* --------------------------------------------------------------- update */
@@ -1369,12 +1399,14 @@ export class InputController {
     if (this._offHook) this._offHook();
     this._offHook = null;
 
-    for (const m of [this._gizMesh, this._bandMesh]) {
+    for (const m of this._overlays) {
       if (m && m.parent) m.parent.remove(m);
     }
+    this._overlays.length = 0;
     this._gizGeo.dispose();
     this._bandGeo.dispose();
     this._material.dispose();
+    this._materialDark.dispose();
 
     this._keys.clear();
     this._touches.clear();

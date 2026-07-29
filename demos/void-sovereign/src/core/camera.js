@@ -23,6 +23,37 @@ import { bus } from './events.js';
 
 const DEG = Math.PI / 180;
 
+/* Death-shake beats, as [seconds after sim:death, share of full strength].
+
+   `fx/explosions.js` does not kill a big ship in one frame. A frigate takes a
+   hit, burns for most of a second, then goes; a capital walks secondaries along
+   its spine for over two seconds, buckles, and only then detonates — that last
+   flash is the frame the whole sequence exists for. Dumping all the trauma on
+   the death event put the punch three seconds before the picture it belonged
+   to, so the impulses are scheduled onto the same beats instead.
+
+   These mirror `_scriptBreak` and `_scriptCapital`. If the FX ever emits an
+   explicit blast event, read that instead and delete these tables. */
+const BREAK_BEATS = [[0, 0.34], [0.84, 1.0]];
+const CAPITAL_BEATS = [[0, 0.22], [1.05, 0.16], [1.85, 0.22], [2.62, 0.42], [2.98, 1.0], [3.14, 0.44]];
+
+/* Length bands, matching the ones fx/explosions.js scripts against. Below the
+   first, a death is a pop: at a thousand live units the screen would never be
+   still if fighters moved the camera. */
+const POP_LENGTH = 45;
+const CAPITAL_LENGTH = 210;
+const MAX_PENDING_BLASTS = 36;
+
+/* Turns the two sub-unity attenuators in addShake() back into a usable range;
+   see the note there. */
+const SHAKE_GAIN = 2.4;
+
+/* Displacement goes as trauma^SHAKE_CURVE. Squaring is the usual choice and it
+   does make a big hit hit hard, but it also erases everything below about a
+   third of full trauma — which is where the hull-failing rumble lives. 1.7
+   keeps the big/small contrast and lets the quiet beats be felt. */
+const SHAKE_CURVE = 1.7;
+
 /* Just short of the pole. Going all the way to +/-90 makes `lookAt` pick an
    arbitrary roll and the view snaps a quarter turn — the classic gimbal flip. */
 const PITCH_LIMIT = Math.PI * 0.5 - 0.035;
@@ -186,17 +217,26 @@ export class CameraRig {
     this._trauma = 0;
     this._shakeDir = new THREE.Vector3(0, 1, 0);
     this._shakeSeed = 0;
+    this._blasts = [];          // impulses waiting for their beat
 
     this._sensors = false;
     this._restore = null;
     this._trans = null;
 
+    /* Reduced motion kills the two things that move without being asked to:
+       idle sway and impact shake. Deliberate motion — orbit, zoom, focus, the
+       sensors pull-out — still happens, because that is the player driving.
+       Turning the preference on cuts the decorative motion dead rather than
+       letting it glide out, which is the whole point of asking for it. */
     this._reduced = false;
     this._mq = null;
     if (typeof window !== 'undefined' && window.matchMedia) {
       this._mq = window.matchMedia('(prefers-reduced-motion: reduce)');
       this._reduced = this._mq.matches;
-      this._onMq = (e) => { this._reduced = e.matches; };
+      this._onMq = (e) => {
+        this._reduced = e.matches;
+        if (e.matches) this._stillness();
+      };
       if (this._mq.addEventListener) this._mq.addEventListener('change', this._onMq);
       else if (this._mq.addListener) this._mq.addListener(this._onMq);
     }
@@ -504,14 +544,20 @@ export class CameraRig {
     const camPos = this.camera.position;
     const d = Math.max(1, _v1.copy(camPos).sub(point).length());
 
-    /* A mothership going up should be felt from ten kilometres; a corvette
-       from a few hundred metres. Reach scales with the wreck, falloff is
-       superlinear so the edge of the reach is genuinely nothing. */
-    const reach = radius * 26 + 500;
+    /* Reach scales with the wreck: a mothership is felt from tens of
+       kilometres, a frigate from a few. Falloff is superlinear so the edge of
+       the reach is genuinely nothing rather than a faint permanent tremor.
+
+       SHAKE_GAIN exists because the two attenuators are both below one and
+       multiplying them left a destroyer at a natural viewing distance with
+       three percent of the available shake — technically present, invisible in
+       practice. The gain restores the near field and the clamp in `_trauma`
+       stops it running away when a mothership goes up in your face. */
+    const reach = radius * 40 + 1200;
     if (d > reach) return;
-    const falloff = Math.pow(1 - d / reach, 1.35);
-    const size = clamp(radius / 260, 0.12, 1);
-    const amp = falloff * size * strength;
+    const falloff = Math.pow(1 - d / reach, 1.6);
+    const size = clamp(0.35 + radius / 900, 0.35, 1.15);
+    const amp = falloff * size * strength * SHAKE_GAIN;
     if (amp <= 0.002) return;
 
     this._shakeDir.copy(camPos).sub(point);
@@ -521,12 +567,49 @@ export class CameraRig {
     this._trauma = Math.min(1, this._trauma + amp);
   }
 
+  /** Drop every undirected motion source to zero this instant. */
+  _stillness() {
+    this._trauma = 0;
+    this._swayGain.snap(0);
+    this._blasts.length = 0;
+  }
+
   _onDeath(p) {
     const e = p && p.entity;
     if (!e || !e.position) return;
-    const radius = e.radius || (e.def ? e.def.length * 0.55 : 10);
-    if (radius < 40) return;  // fighters and corvettes do not move the camera
-    this.addShake(e.position, radius, 1);
+    const def = e.def || null;
+    const radius = e.radius || (def && def.length ? def.length * 0.55 : 10);
+    const length = (def && def.length) || radius * 2.2;
+    if (length < POP_LENGTH) return;
+    if (this._reduced) return;
+    if (this._blasts.length >= MAX_PENDING_BLASTS) return;
+
+    const beats = length < CAPITAL_LENGTH ? BREAK_BEATS : CAPITAL_BEATS;
+    for (let i = 0; i < beats.length; i++) {
+      this._blasts.push({
+        at: this._elapsed + beats[i][0],
+        delay: beats[i][0],
+        strength: beats[i][1],
+        radius,
+        point: new THREE.Vector3().copy(e.position),
+        /* The wreck keeps its momentum, so the blast is not where it died. */
+        drift: e.velocity ? new THREE.Vector3().copy(e.velocity) : null,
+      });
+    }
+  }
+
+  /** Release any scheduled impulse whose beat has arrived. */
+  _fireDueBlasts() {
+    const list = this._blasts;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const b = list[i];
+      if (this._elapsed < b.at) continue;
+      list.splice(i, 1);
+      if (this._reduced) continue;
+      _v3.copy(b.point);
+      if (b.drift) _v3.addScaledVector(b.drift, b.delay);
+      this.addShake(_v3, b.radius, b.strength);
+    }
   }
 
   /* --------------------------------------------------------------- update */
@@ -542,6 +625,7 @@ export class CameraRig {
     const step = clamp(dt || 0, 0, 0.1);
     this._elapsed += step;
     this._idle += step;
+    if (this._blasts.length) this._fireDueBlasts();
     this._apply(step);
   }
 
@@ -617,7 +701,7 @@ export class CameraRig {
     /* Impact shake. */
     if (this._trauma > 0) {
       this._trauma = Math.max(0, this._trauma - dt * 1.05);
-      const s = this._trauma * this._trauma;
+      const s = Math.pow(this._trauma, SHAKE_CURVE);
       if (s > 0.0001) {
         const wpp = this.worldPerPixel(eff);
         const t = this._elapsed * 19;
@@ -775,6 +859,7 @@ export class CameraRig {
     }
     this._mq = null;
     this._colliders.length = 0;
+    this._blasts.length = 0;
     this._follow = null;
     this.camera.near = this._nearBase;
     this.camera.far = this._farBase;

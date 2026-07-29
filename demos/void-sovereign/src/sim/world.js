@@ -38,14 +38,37 @@ const GRID_ORIGIN = (GRID_DIM * GRID_CELL) / 2;
 const GRID_PAD = 100; // largest radius still held in the grid
 const BIG_RADIUS = 100;
 
-/* buildShipModel may not exist yet — the SHIPS agent is building it in
-   parallel. Fall back to a scaled box so the sim runs standalone. */
+/* The ships module is built in parallel and each export lands separately, so
+   every one of them is feature-detected and every one has a fallback: a scaled
+   box for the model, an ordinary scene node when the instanced batch is not
+   there yet. The sim must run standalone whatever the art side has finished. */
 let buildShipModel = null;
+let getFleetBatch = null;
+let commitAllBatches = null;
 try {
   const mod = await import('../ships/index.js');
-  if (mod && typeof mod.buildShipModel === 'function') buildShipModel = mod.buildShipModel;
+  if (mod) {
+    if (typeof mod.buildShipModel === 'function') buildShipModel = mod.buildShipModel;
+    if (typeof mod.getFleetBatch === 'function') getFleetBatch = mod.getFleetBatch;
+    if (typeof mod.commitAllBatches === 'function') commitAllBatches = mod.commitAllBatches;
+  }
 } catch (err) {
   buildShipModel = null;
+}
+
+/* Unique hulls stay unique. A mothership, carrier or cruiser appears once or
+   twice a side and carries bespoke detail; batching them would buy nothing and
+   cost the thing that makes them read as landmarks. Everything else turns up in
+   dozens and draws from an instanced batch, because draw calls — not
+   triangles — are what a thousand-hull fleet runs out of first. */
+const BATCH_EXEMPT = new Set(['mothership', 'carrier', 'cruiser']);
+
+/* LOD bands, in metres, scaled by hull size so a 14 m interceptor and a 380 m
+   destroyer drop detail at the range each actually stops resolving. */
+function lodFor(radius, distance) {
+  if (distance < radius * 120 + 1500) return 0;
+  if (distance < radius * 420 + 5000) return 1;
+  return 2;
 }
 
 const _v = new THREE.Vector3();
@@ -214,6 +237,8 @@ export class World {
     this._groupSeq = 1;
     this._offs = [];
     this._commanders = [];
+    this._batches = new Map();
+    this._anyBatched = false;
 
     // Perf counters — the debug harness and the HUD read these.
     this.stats = { tickMs: 0, entities: 0, projectiles: 0, queries: 0 };
@@ -224,13 +249,24 @@ export class World {
       setupSkirmish(this, options.setup || {});
     }
 
+    // `options.difficulty` is what main.js passes from the URL; `options.ai`
+    // is the harness form. Honour both or the skirmish difficulty selector
+    // silently does nothing.
     const ai = options.ai || {};
+    const baseDifficulty = ai.difficulty || options.difficulty || 'normal';
     if (ai.enemy !== false) {
-      this._commanders.push(new Commander(this, 1, { difficulty: ai.difficulty || 'normal' }));
+      this._commanders.push(new Commander(this, 1, { difficulty: baseDifficulty }));
     }
     if (ai.player === true) {
-      this._commanders.push(new Commander(this, 0, { difficulty: ai.playerDifficulty || ai.difficulty || 'normal' }));
+      this._commanders.push(new Commander(this, 0, {
+        difficulty: ai.playerDifficulty || baseDifficulty,
+      }));
     }
+  }
+
+  /** Live commanders, for the debug harness and the HUD's AI readout. */
+  get commanders() {
+    return this._commanders;
   }
 
   /* --------------------------------------------------------------- events */
@@ -242,6 +278,12 @@ export class World {
     this._offs.push(bus.on('cmd:formation', (p) => this.commandFormation(p)));
     this._offs.push(bus.on('cmd:build', (p) => this.commandBuild(p)));
     this._offs.push(bus.on('cmd:cancelBuild', (p) => this.commandCancelBuild(p)));
+    // The rest of the order verbs. `cmd:move` and `cmd:attack` also accept a
+    // `mode` field for the same effect, so an input layer may use either.
+    this._offs.push(bus.on('cmd:attackMove', (p) => this.commandAttackMove(p)));
+    this._offs.push(bus.on('cmd:guard', (p) => this.commandGuard(p)));
+    this._offs.push(bus.on('cmd:patrol', (p) => this.commandPatrol(p)));
+    this._offs.push(bus.on('cmd:stop', (p) => this.commandStop(p)));
   }
 
   /* --------------------------------------------------------------- spawning */
@@ -284,10 +326,18 @@ export class World {
       hardpoints: null,
       forcedTargetId: -1,
       combatHelm: true,
+      orderEngage: false,
       harvestOrder: true,
       engaged: false,
       avoid: true,
       birth: this.time,
+
+      /* Instanced-batch slot. Declared here rather than bolted on at reserve
+         time so every entity keeps the same hidden shape. */
+      _batchRec: null,
+      _slot: -1,
+      _lod: -1,
+      _damageShown: -1,
     };
     e.prevQuaternion.copy(e.quaternion);
 
@@ -341,7 +391,9 @@ export class World {
     e.object3D.updateMatrix();
     e.object3D.userData.entityId = e.id;
 
-    if (this.engine && this.engine.scene) this.engine.scene.add(e.object3D);
+    if (this.engine && this.engine.scene && !this._reserveSlot(e)) {
+      this.engine.scene.add(e.object3D);
+    }
     if (this.fx && this.fx.attachEngines && e._engines) {
       try {
         this.fx.attachEngines(e, e._engines);
@@ -349,6 +401,103 @@ export class World {
         /* FX not ready — plumes are cosmetic, carry on. */
       }
     }
+  }
+
+  /* ------------------------------------------------------------- batching */
+
+  /** The batch record for a class/team pair, or null if it cannot batch. */
+  _batchFor(classId, team) {
+    const key = `${classId}/${team}`;
+    let rec = this._batches.get(key);
+    if (rec !== undefined) return rec;
+    rec = null;
+    if (getFleetBatch && !BATCH_EXEMPT.has(classId)) {
+      let b = null;
+      try {
+        b = getFleetBatch(classId, team);
+      } catch (err) {
+        b = null; // batch side not ready; an ordinary scene node will do
+      }
+      // Every method is checked once, here, so the per-frame path can be a
+      // straight loop with no guards in it.
+      if (b && typeof b.reserve === 'function' && typeof b.release === 'function' &&
+          typeof b.setMatrix === 'function') {
+        rec = {
+          batch: b,
+          hasLod: typeof b.setLod === 'function',
+          hasDamage: typeof b.setDamage === 'function',
+        };
+      }
+    }
+    this._batches.set(key, rec);
+    return rec;
+  }
+
+  /**
+   * Hand the entity to its class batch. The `Object3D` is deliberately kept —
+   * FX, HUD and the camera rig all read transforms off it — it is simply never
+   * added to the scene, so it costs no draw call.
+   */
+  _reserveSlot(e) {
+    const rec = this._batchFor(e.classId, e.team);
+    if (!rec) return false;
+    let slot = -1;
+    try {
+      slot = rec.batch.reserve();
+    } catch (err) {
+      slot = -1;
+    }
+    if (!(slot >= 0)) return false;
+    e._batchRec = rec;
+    e._slot = slot;
+    e._lod = -1;
+    e._damageShown = -1;
+    this._anyBatched = true;
+    return true;
+  }
+
+  _releaseSlot(e) {
+    if (!e._batchRec) return;
+    try {
+      e._batchRec.batch.release(e._slot);
+    } catch (err) {
+      /* the batch is going away anyway */
+    }
+    e._batchRec = null;
+    e._slot = -1;
+  }
+
+  /** Push interpolated transforms into the instance buffers, once per frame. */
+  _syncBatches() {
+    const cam = this.engine ? this.engine.camera : null;
+    const camPos = cam ? cam.position : null;
+    const list = this.dense;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      const rec = e._batchRec;
+      if (!rec || !e.alive) continue;
+      const o = e.object3D;
+      if (!o) continue;
+      rec.batch.setMatrix(e._slot, o.matrix);
+      if (rec.hasLod && camPos) {
+        const lod = lodFor(e.radius, camPos.distanceTo(o.position));
+        if (lod !== e._lod) {
+          e._lod = lod;
+          rec.batch.setLod(e._slot, lod);
+        }
+      }
+      if (rec.hasDamage) {
+        const d = 1 - e.hull / e.maxHull;
+        // Only when it has moved enough to see: this writes an instance
+        // attribute, and rewriting it every frame for every hull is the cost
+        // instancing was supposed to remove.
+        if (d - e._damageShown > 0.05 || e._damageShown - d > 0.05) {
+          e._damageShown = d;
+          rec.batch.setDamage(e._slot, d);
+        }
+      }
+    }
+    if (commitAllBatches) commitAllBatches();
   }
 
   /* --------------------------------------------------------------- removal */
@@ -391,9 +540,14 @@ export class World {
         /* no-op */
       }
     }
+    this._releaseSlot(e);
     if (e.object3D) {
       if (e.object3D.parent) e.object3D.parent.remove(e.object3D);
-      if (!e._fallbackModel) disposeTree(e.object3D);
+      // Only the fallback boxes are ours to free. A model from `ships/` is
+      // built from cached, class-shared geometry and materials — disposing it
+      // here would delete the geometry every *other* hull of that class is
+      // still drawing from. The ships module owns that teardown.
+      if (e._fallbackModel) disposeTree(e.object3D);
       e.object3D = null;
     }
     this.entities.delete(e.id);
@@ -594,20 +748,57 @@ export class World {
 
   /* --------------------------------------------------------------- commands */
 
-  commandMove({ ids, point, formation }) {
+  /* Order verbs.
+
+     Move, attack-move, attack, guard, patrol, stop/hold, formation and stance,
+     each queueable. Two rules govern all of them:
+
+       * A player order is never silently discarded. Nothing in the simulation
+         clears an order queue except a new order, the order completing, or its
+         subject dying. Automatic behaviour may *suspend* the helm — that is
+         what attack-move is for — but the order underneath survives and
+         resumes.
+       * The verbs mean different things. A move is a move: the helm stays on
+         the waypoint and the guns look after themselves. An attack-move hands
+         the helm to combat when there is something to fight and takes it back
+         when the sky is clear. Collapsing the two is how a fleet ends up
+         wandering off after a target of opportunity it was never sent for. */
+
+  commandMove({ ids, point, formation, queue, mode }) {
     const members = this.entitiesByIds(ids);
     if (!members.length || !point) return;
-    this.issueMove(members, point, formation);
+    this.issueMove(members, point, formation, false, {
+      queue: queue === true,
+      mode: mode === 'attackMove' ? 'attackMove' : 'move',
+    });
+  }
+
+  commandAttackMove({ ids, point, formation, queue }) {
+    const members = this.entitiesByIds(ids);
+    if (!members.length || !point) return;
+    this.issueMove(members, point, formation, false, {
+      queue: queue === true,
+      mode: 'attackMove',
+    });
   }
 
   /** Shared by player commands and the AI commander. */
-  issueMove(members, point, formation, keepStance) {
+  issueMove(members, point, formation, keepStance, opts) {
     if (!members.length) return;
+    const o = opts || EMPTY_OPTS;
+    const mode = o.mode === 'attackMove' ? 'attackMove' : 'move';
+    const queue = o.queue === true;
     const shape = formation || members[0].formation || FORMATION.DELTA;
     const order = assignFormation(members, shape);
 
+    // A queued leg is laid out from where the group will be when it *starts*
+    // that leg, not from where it happens to be standing now — otherwise a
+    // three-waypoint route keeps the heading of the first leg for all of them.
     _v.set(0, 0, 0);
-    for (let i = 0; i < order.length; i++) _v.add(order[i].position);
+    for (let i = 0; i < order.length; i++) {
+      const tail = queue ? lastWaypoint(order[i]) : null;
+      _v.add(tail || order[i].position);
+    }
     _v.multiplyScalar(1 / order.length);
     _v2.subVectors(point, _v);
     if (_v2.lengthSq() < 1) _v2.copy(WORLD_FWD);
@@ -621,10 +812,12 @@ export class World {
       const dest = new THREE.Vector3();
       formationWorld(point, _v2, offsets[i], dest);
       e.groupId = gid;
-      e.orderQueue.length = 0;
-      e.orderQueue.push({ type: 'move', point: dest, formation: shape });
-      e.station = dest.clone();
-      e.forcedTargetId = -1;
+      if (!queue) {
+        e.orderQueue.length = 0;
+        e.forcedTargetId = -1;
+        e.station = dest.clone();
+      }
+      e.orderQueue.push({ type: mode, point: dest, formation: shape });
       e.harvestOrder = false;
       if (!keepStance && e.stance === STANCE.PASSIVE && e.role !== ROLE.RESOURCE &&
           e.role !== ROLE.STRUCTURE) {
@@ -633,22 +826,144 @@ export class World {
     }
   }
 
-  commandAttack({ ids, targetId }) {
+  commandAttack({ ids, targetId, queue, mode }) {
+    if (mode === 'guard') {
+      this.commandGuard({ ids, targetId, queue });
+      return;
+    }
     const members = this.entitiesByIds(ids);
     const target = this.entities.get(targetId);
     if (!members.length || !target) return;
+    const append = queue === true;
+    for (let i = 0; i < members.length; i++) {
+      const e = members[i];
+      if (!append) {
+        e.orderQueue.length = 0;
+        e.forcedTargetId = targetId;
+        e.targetId = targetId;
+        e.retarget = 0;
+        // The mark becomes the leash anchor, or a passive escort would be
+        // dragged home by its old station the moment it opened fire.
+        e.station = target.position.clone();
+      }
+      e.orderQueue.push({ type: 'attack', targetId });
+      e.combatHelm = true;
+      e.harvestOrder = false;
+    }
+  }
+
+  /**
+   * Escort. The wing stations on the anchor, rides with it, and engages
+   * anything that comes for it — then falls back to station rather than
+   * chasing the survivor across the map.
+   */
+  commandGuard({ ids, targetId, point, radius, queue }) {
+    const members = this.entitiesByIds(ids);
+    if (!members.length) return;
+    const anchor = targetId === undefined || targetId === null
+      ? null
+      : this.entities.get(targetId);
+    if (!anchor && !point) return;
+    const append = queue === true;
+    const shape = members[0].formation || FORMATION.SPHERE;
+    const order = assignFormation(members, shape);
+    const r = radius || 4200;
+
+    for (let i = 0; i < order.length; i++) {
+      const e = order[i];
+      if (!append) {
+        e.orderQueue.length = 0;
+        e.forcedTargetId = -1;
+      }
+      const o = { type: 'guard', targetId: anchor ? anchor.id : -1, radius: r, point: null };
+      if (!anchor) {
+        o.point = new THREE.Vector3(point.x, point.y, point.z);
+        e.station = o.point.clone();
+      }
+      e.orderQueue.push(o);
+      e.harvestOrder = false;
+    }
+  }
+
+  /**
+   * Patrol a closed route, engaging on contact. One point means "between here
+   * and there"; the leg heading rotates the formation, so a patrolling wing
+   * keeps its shape through the turn.
+   */
+  commandPatrol({ ids, points, point, formation, queue }) {
+    const members = this.entitiesByIds(ids);
+    if (!members.length) return;
+    const raw = [];
+    if (points && points.length) {
+      for (let i = 0; i < points.length; i++) {
+        raw.push(new THREE.Vector3(points[i].x, points[i].y, points[i].z));
+      }
+    } else if (point) {
+      _v.set(0, 0, 0);
+      for (let i = 0; i < members.length; i++) _v.add(members[i].position);
+      raw.push(_v.multiplyScalar(1 / members.length).clone());
+      raw.push(new THREE.Vector3(point.x, point.y, point.z));
+    }
+    if (raw.length < 2) return;
+
+    const append = queue === true;
+    const shape = formation || members[0].formation || FORMATION.BROAD;
+    const order = assignFormation(members, shape);
+    const spacing = spacingFor(order);
+    const offsets = formationOffsets(shape, order.length, spacing);
+    const gid = this._groupSeq++;
+
+    for (let i = 0; i < order.length; i++) {
+      const e = order[i];
+      const route = new Array(raw.length);
+      for (let k = 0; k < raw.length; k++) {
+        _v2.subVectors(raw[k], raw[(k - 1 + raw.length) % raw.length]);
+        if (_v2.lengthSq() < 1) _v2.copy(WORLD_FWD);
+        route[k] = new THREE.Vector3();
+        formationWorld(raw[k], _v2, offsets[i], route[k]);
+      }
+      e.groupId = gid;
+      if (!append) {
+        e.orderQueue.length = 0;
+        e.forcedTargetId = -1;
+      }
+      // Start on the leg the ship is furthest from finishing, so a wing does
+      // not all turn round and fly back to the first marker.
+      let start = 0;
+      let bestD = Infinity;
+      for (let k = 0; k < route.length; k++) {
+        const d = e.position.distanceToSquared(route[k]);
+        if (d < bestD) {
+          bestD = d;
+          start = k;
+        }
+      }
+      e.orderQueue.push({
+        type: 'patrol',
+        points: route,
+        index: (start + 1) % route.length,
+        formation: shape,
+      });
+      e.station = route[start].clone();
+      e.harvestOrder = false;
+      if (e.stance === STANCE.PASSIVE && e.role !== ROLE.RESOURCE &&
+          e.role !== ROLE.STRUCTURE) {
+        e.stance = STANCE.NEUTRAL;
+      }
+    }
+  }
+
+  /** Stop and hold position. Guns stay hot; the helm stays put. */
+  commandStop({ ids }) {
+    const members = this.entitiesByIds(ids);
     for (let i = 0; i < members.length; i++) {
       const e = members[i];
       e.orderQueue.length = 0;
-      e.orderQueue.push({ type: 'attack', targetId });
-      e.forcedTargetId = targetId;
-      e.targetId = targetId;
-      e.combatHelm = true;
+      e.forcedTargetId = -1;
+      e.station = e.position.clone();
+      e.orderQueue.push({ type: 'hold', point: e.position.clone() });
       e.harvestOrder = false;
-      e.retarget = 0;
-      // The mark becomes the leash anchor, or a passive escort would be
-      // dragged home by its old station the moment it opened fire.
-      e.station = target.position.clone();
+      setNavHold(e);
     }
   }
 
@@ -676,6 +991,11 @@ export class World {
 
   /* ----------------------------------------------------------------- orders */
 
+  /** Formation tightness: a mothership does not need to hit the pixel. */
+  _slackFor(e) {
+    return (e.radius + 60) / Math.max(0.2, formationTightness(e.role));
+  }
+
   _updateOrders(dt) {
     const list = this.dense;
     for (let i = 0; i < list.length; i++) {
@@ -683,6 +1003,7 @@ export class World {
       if (!e.alive) continue;
       const q = e.orderQueue;
       if (q.length === 0) {
+        e.orderEngage = false;
         if (e.combatHelm === false) e.combatHelm = true;
         if (e.role === ROLE.RESOURCE) e.harvestOrder = true;
         if (!e.engaged && e.role !== ROLE.RESOURCE) this._idleBehaviour(e);
@@ -694,29 +1015,96 @@ export class World {
         const t = this.entities.get(o.targetId);
         if (!t || !t.alive) {
           q.shift();
-          e.forcedTargetId = -1;
+          if (e.forcedTargetId === o.targetId) e.forcedTargetId = -1;
           continue;
         }
+        if (e.forcedTargetId !== o.targetId) {
+          // A queued attack coming live: adopt the mark and re-anchor the leash.
+          e.forcedTargetId = o.targetId;
+          e.targetId = o.targetId;
+          e.retarget = 0;
+          e.station = t.position.clone();
+        }
+        e.orderEngage = false;
         e.combatHelm = true;
         continue;
       }
 
-      if (o.type === 'move') {
-        const d = e.position.distanceTo(o.point);
-        // Formation tightness: a mothership does not need to hit the pixel.
-        const slack = (e.radius + 60) / Math.max(0.2, formationTightness(e.role));
-        if (d < slack && e.speed < e.maxSpeed * 0.06) {
-          q.shift();
-          e.combatHelm = true;
-          setNavHold(e);
+      if (o.type === 'guard') {
+        const anchor = o.targetId >= 0 ? this.entities.get(o.targetId) : null;
+        if (o.targetId >= 0 && (!anchor || !anchor.alive)) {
+          q.shift(); // nothing left to escort
+          e.orderEngage = false;
           continue;
         }
-        // Contact breaks the march: a wing under a move order still turns and
-        // fights, then picks the waypoint back up when the sky is clear.
+        _v.copy(anchor ? anchor.position : o.point);
+        if (!e.station) e.station = new THREE.Vector3();
+        e.station.copy(_v);
+        e.orderEngage = true;
+        const t = e.targetId >= 0 ? this.entities.get(e.targetId) : null;
+        const threat = !!(t && t.alive &&
+          t.position.distanceToSquared(_v) < o.radius * o.radius);
+        e.combatHelm = threat && e.stance !== STANCE.PASSIVE;
+        if (!e.combatHelm) {
+          // A slot on the escort's flank, not sitting inside it.
+          const slot = e.formationSlot >= 0 ? e.formationSlot : 0;
+          const n = Math.max(1, e.formationCount);
+          const a = (slot / n) * Math.PI * 2;
+          const r = (anchor ? anchor.radius : 0) + e.radius + 280;
+          _v3.set(Math.cos(a) * r, ((slot % 3) - 1) * r * 0.3, Math.sin(a) * r).add(_v);
+          setNavArrive(e, _v3, 1, e.radius + 60);
+          setFacePoint(e, null);
+        }
+        continue;
+      }
+
+      if (o.type === 'hold') {
+        e.orderEngage = false;
+        // Hold position still fights back — it just does not go anywhere. A
+        // fighter parked in front of a target shooting is the tell of a lazy
+        // space RTS, so the helm is released the moment there is a mark.
         const contact = e.engaged && e.targetId >= 0 && e.stance !== STANCE.PASSIVE;
         e.combatHelm = contact;
         if (!contact) {
-          setNavArrive(e, o.point, 1, e.radius * 0.4);
+          setNavHold(e);
+          setFacePoint(e, null);
+        }
+        continue;
+      }
+
+      if (o.type === 'move' || o.type === 'attackMove' || o.type === 'patrol') {
+        const point = o.type === 'patrol' ? o.points[o.index] : o.point;
+        const slack = this._slackFor(e);
+        // Copy, never alias: `station` is written in place elsewhere, and
+        // pointing it at a stored waypoint would let the leash quietly rewrite
+        // the order it is supposed to be anchored to.
+        if (!e.station) e.station = new THREE.Vector3();
+        e.station.copy(point);
+        if (e.position.distanceTo(point) < slack && e.speed < e.maxSpeed * 0.14) {
+          if (o.type === 'patrol') {
+            o.index = (o.index + 1) % o.points.length;
+          } else {
+            q.shift();
+            setNavHold(e);
+          }
+          e.combatHelm = true;
+          continue;
+        }
+        /* This is the line between the two verbs. A move keeps the helm on the
+           waypoint whatever it passes — the guns are independent and fire
+           regardless. An attack-move or a patrol hands the helm to combat
+           while there is something to fight, and takes it straight back when
+           the sky is clear. The order itself is never dropped either way. */
+        const engage = o.type !== 'move';
+        e.orderEngage = engage;
+        const contact = engage && e.engaged && e.targetId >= 0 &&
+          e.stance !== STANCE.PASSIVE;
+        e.combatHelm = contact;
+        if (!contact) {
+          // The nav dead-band covers most of the slack so a ship that is there
+          // cuts thrust instead of hunting the exact metre, sailing over it
+          // and turning back.
+          setNavArrive(e, point, 1, slack * 0.55);
           setFacePoint(e, null);
         }
       }
@@ -786,6 +1174,7 @@ export class World {
   syncTransforms(alpha) {
     if (this.headless) return;
     syncMovement(this, alpha);
+    if (this._anyBatched) this._syncBatches();
   }
 
   /* ---------------------------------------------------------------- teardown */
@@ -804,12 +1193,15 @@ export class World {
           /* no-op */
         }
       }
+      this._releaseSlot(e);
       if (e.object3D) {
         if (e.object3D.parent) e.object3D.parent.remove(e.object3D);
-        if (!e._fallbackModel) disposeTree(e.object3D);
+        if (e._fallbackModel) disposeTree(e.object3D);
         e.object3D = null;
       }
     }
+    this._batches.clear();
+    this._anyBatched = false;
     this.entities.clear();
     this.dense.length = 0;
     this.bigList.length = 0;
@@ -824,6 +1216,19 @@ export class World {
 }
 
 /* ------------------------------------------------------------------ helpers */
+
+const EMPTY_OPTS = {};
+
+/** Where a ship will be standing once its current orders are exhausted. */
+function lastWaypoint(e) {
+  const q = e.orderQueue;
+  for (let i = q.length - 1; i >= 0; i--) {
+    const o = q[i];
+    if (o.point) return o.point;
+    if (o.points && o.points.length) return o.points[o.points.length - 1];
+  }
+  return null;
+}
 
 function makeTeam(id, options) {
   return {

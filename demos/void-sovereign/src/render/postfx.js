@@ -19,15 +19,15 @@ import { LAYER } from '../core/engine.js';
      -> exposure         log-average luminance, reduced on the GPU and eased
                          into a 1x1 target. Never read back — a readPixels here
                          would stall the pipeline every frame.
-     -> bloom            threshold is applied to *exposed* luminance, so the
-                         cut point tracks adaptation instead of drifting when
-                         the camera flies into a nebula.
+     -> bloom            thresholded in *scene-referred* linear, with three
+                         different cut points (see _renderBloom).
      -> streak           anamorphic smear off the brightest bloom mip only.
-     -> DoF              far-field only. Blurring the near field would smear
-                         ships the player is trying to click.
+     -> DoF              far-field only, and never the backdrop. Blurring the
+                         near field would smear ships the player is clicking;
+                         blurring the backdrop would throw away the subject.
      -> composite        grade, tone map, vignette, aberration, grain, dither.
-     -> SMAA             spatial AA fallback, run on the tone-mapped LDR image
-                         where its luma edge detection actually works.
+     -> SMAA             spatial AA for the tiers without TAA, run on the
+                         tone-mapped LDR image where luma edge detection works.
 
    Nothing in here touches engine state permanently: the camera projection is
    jittered and restored inside a single render(), and the renderer's own tone
@@ -42,24 +42,24 @@ const HALTON = [
 
 const TIERS = {
   low: {
-    taa: false, smaa: true, bloom: true, bloomMips: 4, streak: false, dof: false,
-    grain: false, aberration: false, vignette: true, exposure: true, grade: true,
-    bloomScatter: 0.55, taaSharpen: 0.0,
+    taa: false, smaa: true, msaa: 0, bloom: true, bloomMips: 5, glow: false,
+    streak: false, dof: false, grain: false, aberration: false, vignette: true,
+    exposure: true, grade: true, bloomScatter: 0.55, taaSharpen: 0.0,
   },
   medium: {
-    taa: false, smaa: true, bloom: true, bloomMips: 5, streak: true, dof: false,
-    grain: true, aberration: true, vignette: true, exposure: true, grade: true,
-    bloomScatter: 0.58, taaSharpen: 0.0,
+    taa: false, smaa: true, msaa: 4, bloom: true, bloomMips: 6, glow: true,
+    streak: true, dof: false, grain: true, aberration: true, vignette: true,
+    exposure: true, grade: true, bloomScatter: 0.58, taaSharpen: 0.0,
   },
   high: {
-    taa: true, smaa: false, bloom: true, bloomMips: 6, streak: true, dof: true,
-    grain: true, aberration: true, vignette: true, exposure: true, grade: true,
-    bloomScatter: 0.62, taaSharpen: 0.35,
+    taa: true, smaa: false, msaa: 0, bloom: true, bloomMips: 7, glow: true,
+    streak: true, dof: true, grain: true, aberration: true, vignette: true,
+    exposure: true, grade: true, bloomScatter: 0.62, taaSharpen: 0.0,
   },
   ultra: {
-    taa: true, smaa: false, bloom: true, bloomMips: 7, streak: true, dof: true,
-    grain: true, aberration: true, vignette: true, exposure: true, grade: true,
-    bloomScatter: 0.66, taaSharpen: 0.5,
+    taa: true, smaa: false, msaa: 0, bloom: true, bloomMips: 8, glow: true,
+    streak: true, dof: true, grain: true, aberration: true, vignette: true,
+    exposure: true, grade: true, bloomScatter: 0.66, taaSharpen: 0.0,
   },
 };
 
@@ -126,6 +126,15 @@ float hash13( vec3 p ) {
   p = fract( p * 0.1031 );
   p += dot( p, p.zyx + 31.32 );
   return fract( ( p.x + p.y ) * p.z );
+}
+
+/* Soft-knee highlight isolation, shared by all three bloom cut points so they
+   cannot drift apart. */
+float kneeCut( float br, float thr, float soft ) {
+  float knee = max( thr * soft, 1e-4 );
+  float s = clamp( br - thr + knee, 0.0, 2.0 * knee );
+  s = s * s / ( 4.0 * knee );
+  return max( s, br - thr ) / max( br, 1e-4 );
 }
 `;
 
@@ -271,48 +280,61 @@ export class PostFX {
     this._dpr = 1;
     this._frame = 0;
     this._historyValid = false;
-    this._glowMode = 'threshold';
+    this._glowMode = 'both';
     this._split = -1;
 
     this._prevView = new THREE.Matrix4();
+    this._reproj = new THREE.Matrix4();
     this._savedProj = new THREE.Matrix4();
     this._jitter = new THREE.Vector2();
+    this._prevProj = new THREE.Vector2(1, 1);
 
     // 1x1 black stand-in so samplers are never left unbound.
     this._black = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
     this._black.needsUpdate = true;
 
     this.params = {
-      bloomThreshold: 1.55,
+      /* Bloom cut points are scene-referred (pre-exposure) on purpose. A cut
+         that floats with adaptation cannot honour "hulls never bloom" (§3.6):
+         exposure legitimately swings ~4x as the camera moves, and no single
+         exposed threshold sits above the hull ceiling at one end and below the
+         star cores at the other. Measured in-game: lit hull peaks at ~2.3,
+         combat FX run 4–9+, so 2.8 sits in a real gap. */
+      bloomThreshold: 2.8,      // near scene: above the hull ceiling
+      bloomThresholdSky: 0.45,  // backdrop only: lets star cores bloom
+      bloomThresholdGlow: 0.6,  // FX glow layer: authored emissives
       bloomSoftness: 0.55,
-      bloomStrength: 0.62,
+      bloomStrength: 0.5,
+      bloomClamp: 48.0,
       bloomScatter: this.tier.bloomScatter,
       streakThreshold: 3.2,
-      streakStrength: 0.055,
+      streakStrength: 0.05,
       streakLength: 1.0,
       streakAtten: 0.94,
       streakTint: new THREE.Color(0.55, 0.72, 1.0),
       exposureComp: 1.0,
       exposureRef: 0.1,
       adaptStrength: 0.5,
-      exposureMin: 0.55,
-      exposureMax: 2.1,
+      exposureMin: 0.6,
+      exposureMax: 2.4,
       exposureUpRate: 1.35,
       exposureDownRate: 0.5,
       vignette: 0.2,
       aberration: 0.55,
-      grain: 0.028,
+      grain: 0.026,
       contrast: 0.07,
       saturation: 1.02,
-      shadowLift: 0.016,
-      splitTone: 0.1,
+      shadowLift: 0.02,
+      splitTone: 0.09,
+      highlightRolloff: 0.35,
       shadowTint: new THREE.Color(0.36, 0.52, 0.85),
       highlightTint: new THREE.Color(1.0, 0.86, 0.66),
-      taaFeedback: 0.92,
-      taaClampGamma: 1.15,
-      dofStrength: 0.0,
-      dofRange: 2600,
-      dofMaxRadius: 5.0,
+      taaFeedback: 0.94,
+      taaClampGamma: 1.25,
+      taaFilter: 1.4,
+      dofStrength: 0.35,
+      dofRange: 9000,
+      dofMaxRadius: 4.0,
       focusDistance: 1200,
       autoFocus: true,
       focusRate: 2.4,
@@ -333,8 +355,9 @@ export class PostFX {
 
   /* ---------------------------------------------------------------- public */
 
+  /** Safe to call at any time after construction; rebuilds every target. */
   setQuality(q) {
-    if (!TIERS[q]) return;
+    if (!TIERS[q] || q === this.quality) return;
     this.quality = q;
     this.tier = Object.assign({}, TIERS[q]);
     this.params.bloomScatter = this.tier.bloomScatter;
@@ -360,6 +383,7 @@ export class PostFX {
     if (!(name in this.tier)) return;
     this.tier[name] = !!on;
     this._syncDefines();
+    if (name === 'glow') this._allocate();
     if (name === 'bloom' || name === 'taa') this._historyValid = false;
   }
 
@@ -372,7 +396,9 @@ export class PostFX {
     }
   }
 
-  /** Lets the grade drift with the seeded nebula instead of a fixed teal. */
+  /** Lets the grade drift with the seeded nebula instead of a fixed teal.
+      Both tints are luma-normalised in the shader, so these only ever change
+      hue — never the level, and never a neutral surface. */
   setNebulaColours(key, fill) {
     if (key) this.params.highlightTint.set(key);
     if (fill) this.params.shadowTint.set(fill);
@@ -382,10 +408,12 @@ export class PostFX {
     this.setParams(opts || {});
   }
 
-  /** 'threshold' | 'layer' | 'both'. 'layer' guarantees hulls cannot bloom but
-      requires FX to tag emissive meshes with LAYER.GLOW. */
+  /** 'threshold' | 'layer' | 'both'. 'both' (default) unions the scene-referred
+      cut with the FX glow layer, so an authored emissive blooms even if the
+      VFX pass later dials its absolute brightness down. */
   setGlowMode(mode) {
     if (mode !== 'threshold' && mode !== 'layer' && mode !== 'both') return;
+    if (mode === this._glowMode) return;
     this._glowMode = mode;
     this._syncDefines();
     this._allocate();
@@ -495,28 +523,47 @@ export class PostFX {
       if (rt.depthTexture) rt.depthTexture.dispose();
       rt.dispose();
     };
+    // The glow target borrows the scene's depth texture; drop the reference
+    // first so three does not free it twice.
+    if (this._rtGlow) {
+      this._rtGlow.depthTexture = null;
+      this._rtGlow.dispose();
+      this._rtGlow = null;
+    }
     kill(this._rtScene);
-    kill(this._rtGlow);
     kill(this._rtLdr);
-    if (this._rtTaa) for (const rt of this._rtTaa) kill(rt);
-    if (this._rtDown) for (const rt of this._rtDown) kill(rt);
-    if (this._rtUp) for (const rt of this._rtUp) kill(rt);
-    if (this._rtStreak) for (const rt of this._rtStreak) kill(rt);
-    if (this._rtLum) for (const rt of this._rtLum) kill(rt);
-    if (this._rtExp) for (const rt of this._rtExp) kill(rt);
-    if (this._rtFocus) for (const rt of this._rtFocus) kill(rt);
+    const killAll = (list) => { if (list) for (const rt of list) kill(rt); };
+    killAll(this._rtTaa);
+    killAll(this._rtDown);
+    killAll(this._rtUp);
+    killAll(this._rtStreak);
+    killAll(this._rtLum);
+    killAll(this._rtExp);
+    killAll(this._rtFocus);
     kill(this._rtDof);
     this._rtScene = null;
+    this._rtLdr = null;
+    this._rtDof = null;
+    this._rtTaa = null;
+    this._rtDown = null;
+    this._rtUp = null;
+    this._rtStreak = null;
+    this._rtLum = null;
+    this._rtExp = null;
+    this._rtFocus = null;
+    this._bloomTex = null;
+    this._streakTex = null;
   }
 
   _allocate() {
     this._freeTargets();
     const w = this._w;
     const h = this._h;
-    const samples = this.tier.taa ? 0 : (this.engine.preset.samples || 0);
-
-    // Scene target: half-float for headroom, depth texture for TAA + DoF.
     // MSAA and TAA together is wasted bandwidth, so they are mutually exclusive.
+    const samples = this.tier.taa ? 0 : (this.tier.msaa || 0);
+
+    // Scene target: half-float for headroom, depth texture for TAA + DoF and
+    // as the read-only depth attachment the glow pass tests against.
     this._rtScene = makeTarget(w, h, { depth: true, samples });
     const depth = new THREE.DepthTexture(w, h);
     depth.type = THREE.UnsignedIntType;
@@ -564,14 +611,20 @@ export class PostFX {
     this._rtLdr = makeTarget(w, h, { type: THREE.UnsignedByteType });
     this._rtLdr.texture.colorSpace = THREE.SRGBColorSpace;
 
-    if (this._glowMode !== 'threshold') {
-      this._rtGlow = makeTarget(w >> 1, h >> 1, { depth: true });
-    } else {
-      this._rtGlow = null;
+    if (this._useGlow) {
+      // Full res and sharing the scene depth: the glow layer must be occluded
+      // by the hull in front of it, or an engine plume haloes straight through
+      // the ship it belongs to.
+      this._rtGlow = makeTarget(w, h, { depth: true });
+      this._rtGlow.depthTexture = depth;
     }
 
     this._smaa.setSize(w, h);
     this._seedExposure();
+  }
+
+  get _useGlow() {
+    return this._glowMode !== 'threshold' && !!this.tier.glow;
   }
 
   /* Prime the adaptation buffers so frame one is not a black flash. */
@@ -603,15 +656,16 @@ export class PostFX {
       tHistory: { value: null },
       tDepth: { value: null },
       uTexel: { value: V2() },
-      uJitter: { value: V2() },
+      uJitterPx: { value: V2() },
       uProj: { value: V2() },
-      uCamWorld: { value: new THREE.Matrix4() },
-      uPrevView: { value: new THREE.Matrix4() },
+      uPrevProj: { value: V2() },
+      uReproj: { value: new THREE.Matrix4() },
       uLogFar: { value: 1 },
       uNearFar: { value: V2() },
-      uFeedback: { value: 0.92 },
-      uClampGamma: { value: 1.15 },
-      uSharpen: { value: 0.35 },
+      uFeedback: { value: 0.94 },
+      uClampGamma: { value: 1.25 },
+      uFilter: { value: 1.4 },
+      uSharpen: { value: 0.0 },
       uReset: { value: 1 },
     }));
 
@@ -634,14 +688,13 @@ export class PostFX {
     this._mPrefilter = keep(fsMaterial(PREFILTER_FRAG, {
       tSource: { value: null },
       tGlow: { value: this._black },
-      tExposure: { value: null },
+      tDepth: { value: null },
       uTexel: { value: V2() },
-      uThreshold: { value: 1.55 },
+      uThreshold: { value: 2.8 },
+      uSkyThreshold: { value: 0.45 },
+      uGlowThreshold: { value: 0.6 },
       uSoftness: { value: 0.55 },
-      uExposureComp: { value: 1 },
-      uExposureRef: { value: 0.1 },
-      uAdaptStrength: { value: 0.5 },
-      uExposureRange: { value: new THREE.Vector2(0.55, 2.1) },
+      uClamp: { value: 48 },
     }));
     this._mDown = keep(fsMaterial(DOWN_FRAG, {
       tSource: { value: null },
@@ -683,8 +736,8 @@ export class PostFX {
       uTexel: { value: V2() },
       uLogFar: { value: 1 },
       uNearFar: { value: V2() },
-      uRange: { value: 2600 },
-      uRadius: { value: 5 },
+      uRange: { value: 9000 },
+      uRadius: { value: 4 },
     }));
 
     this._mComposite = keep(fsMaterial(COMPOSITE_FRAG, {
@@ -698,24 +751,25 @@ export class PostFX {
       uTexel: { value: V2() },
       uResolution: { value: V2() },
       uTime: { value: 0 },
-      uBloomStrength: { value: 0.62 },
-      uStreakStrength: { value: 0.055 },
+      uBloomStrength: { value: 0.5 },
+      uStreakStrength: { value: 0.05 },
       uStreakTint: { value: new THREE.Vector3(0.55, 0.72, 1.0) },
       uExposureComp: { value: 1 },
       uExposureRef: { value: 0.1 },
       uAdaptStrength: { value: 0.5 },
-      uExposureRange: { value: new THREE.Vector2(0.55, 2.1) },
+      uExposureRange: { value: new THREE.Vector2(0.6, 2.4) },
       uVignette: { value: 0.2 },
       uAberration: { value: 0.55 },
-      uGrain: { value: 0.028 },
+      uGrain: { value: 0.026 },
       uContrast: { value: 0.07 },
       uSaturation: { value: 1.02 },
-      uShadowLift: { value: 0.016 },
-      uSplitTone: { value: 0.1 },
+      uShadowLift: { value: 0.02 },
+      uSplitTone: { value: 0.09 },
+      uHighlightRolloff: { value: 0.35 },
       uShadowTint: { value: new THREE.Vector3(0.36, 0.52, 0.85) },
       uHighlightTint: { value: new THREE.Vector3(1.0, 0.86, 0.66) },
       uDofStrength: { value: 0 },
-      uDofRange: { value: 2600 },
+      uDofRange: { value: 9000 },
       uLogFar: { value: 1 },
       uNearFar: { value: V2() },
       uSplit: { value: -1 },
@@ -733,8 +787,9 @@ export class PostFX {
       else if (!on && has) { delete m.defines[key]; m.needsUpdate = true; }
     };
     for (const m of [this._mTaa, this._mDof, this._mFocus, this._mComposite]) set(m, 'LOG_DEPTH', log);
-    set(this._mPrefilter, 'USE_GLOW_LAYER', this._glowMode !== 'threshold');
-    set(this._mPrefilter, 'GLOW_LAYER_ONLY', this._glowMode === 'layer');
+    set(this._mPrefilter, 'LOG_DEPTH', log);
+    set(this._mPrefilter, 'USE_GLOW_LAYER', this._useGlow);
+    set(this._mPrefilter, 'GLOW_LAYER_ONLY', this._glowMode === 'layer' && this._useGlow);
     set(this._mComposite, 'USE_BLOOM', this.tier.bloom);
     set(this._mComposite, 'USE_STREAK', this.tier.bloom && this.tier.streak);
     set(this._mComposite, 'USE_DOF', this.tier.dof);
@@ -753,14 +808,18 @@ export class PostFX {
     this._quad.render(this.renderer);
   }
 
-  /* Both scenes, backdrop first, depth cleared between. Delegates to the
-     engine when there is no jitter so the sequence stays in one place. */
+  /* Both scenes, backdrop first, depth cleared between, then the glow-layer
+     pass. The glow pass runs while the jitter is still applied so it depth-
+     tests against the depth buffer that was just written; restoring first
+     would offset it by a sub-pixel and rim the plumes. */
   _drawScenes() {
     const e = this.engine;
     const r = this.renderer;
+    const jittered = this.tier.taa;
+
     r.setRenderTarget(this._rtScene);
 
-    if (!this.tier.taa) {
+    if (!jittered) {
       this._jitter.set(0, 0);
       e.renderScenes();
     } else {
@@ -773,6 +832,7 @@ export class PostFX {
       e.syncFarCamera();
       e.camera.projectionMatrix.elements[8] += ox;
       e.camera.projectionMatrix.elements[9] += oy;
+      e.camera.projectionMatrixInverse.copy(e.camera.projectionMatrix).invert();
       e.farCamera.projectionMatrix.elements[8] += ox;
       e.farCamera.projectionMatrix.elements[9] += oy;
 
@@ -780,19 +840,23 @@ export class PostFX {
       r.render(e.farScene, e.farCamera);
       r.clearDepth();
       r.render(e.scene, e.camera);
-
-      e.camera.projectionMatrix.copy(this._savedProj);
-      e.camera.projectionMatrixInverse.copy(this._savedProj).invert();
-      e.farCamera.updateProjectionMatrix();
     }
 
     if (this._rtGlow) {
       const mask = e.camera.layers.mask;
       e.camera.layers.set(LAYER.GLOW);
       r.setRenderTarget(this._rtGlow);
-      r.clear(true, true, false);
+      // Colour only. The depth attachment is the scene's, and every material
+      // on this layer is depthWrite:false, so the buffer survives read-only.
+      r.clear(true, false, false);
       r.render(e.scene, e.camera);
       e.camera.layers.mask = mask;
+    }
+
+    if (jittered) {
+      e.camera.projectionMatrix.copy(this._savedProj);
+      e.camera.projectionMatrixInverse.copy(this._savedProj).invert();
+      e.farCamera.updateProjectionMatrix();
     }
   }
 
@@ -801,24 +865,36 @@ export class PostFX {
     const u = this._mTaa.uniforms;
     const prev = this._rtTaa[this._taaIndex];
     const next = this._rtTaa[1 - this._taaIndex];
+    const px = e.camera.projectionMatrix.elements[0];
+    const py = e.camera.projectionMatrix.elements[5];
+
+    /* One matrix, composed on the CPU in double precision. Going via world
+       space in the shader would build a float32 position of order 1e5 metres
+       before subtracting the camera again, and the cancellation eats the
+       sub-pixel accuracy the whole pass depends on. */
+    this._reproj.multiplyMatrices(this._prevView, e.camera.matrixWorld);
 
     u.tCurrent.value = this._rtScene.texture;
     u.tHistory.value = prev.texture;
     u.tDepth.value = this._rtScene.depthTexture;
     u.uTexel.value.set(1 / this._w, 1 / this._h);
-    u.uJitter.value.copy(this._jitter);
-    u.uProj.value.set(e.camera.projectionMatrix.elements[0], e.camera.projectionMatrix.elements[5]);
-    u.uCamWorld.value.copy(e.camera.matrixWorld);
-    u.uPrevView.value.copy(this._prevView);
+    // Jitter in pixels, for the reconstruction filter weight (see TAA_FRAG).
+    u.uJitterPx.value.set(this._jitter.x * this._w * 0.5, this._jitter.y * this._h * 0.5);
+    u.uProj.value.set(px, py);
+    if (this._historyValid) u.uPrevProj.value.copy(this._prevProj);
+    else u.uPrevProj.value.set(px, py);
+    u.uReproj.value.copy(this._reproj);
     u.uLogFar.value = Math.log2(e.camera.far + 1);
     u.uNearFar.value.set(e.camera.near, e.camera.far);
     u.uFeedback.value = this.params.taaFeedback;
     u.uClampGamma.value = this.params.taaClampGamma;
+    u.uFilter.value = this.params.taaFilter;
     u.uSharpen.value = this.tier.taaSharpen;
     u.uReset.value = this._historyValid ? 0 : 1;
 
     this._blit(this._mTaa, next);
     this._taaIndex = 1 - this._taaIndex;
+    this._prevProj.set(px, py);
     return next;
   }
 
@@ -836,17 +912,14 @@ export class PostFX {
       this._blit(this._mReduce, this._rtLum[i]);
     }
     const last = this._rtLum[this._rtLum.length - 1];
-    this._mReduce.uniforms.tSource.value = last.texture;
-    this._mReduce.uniforms.uTexel.value.set(1 / last.width, 1 / last.height);
 
     const prev = this._rtExp[this._expIndex];
     const next = this._rtExp[1 - this._expIndex];
     const a = this._mAdapt.uniforms;
     a.tSource.value = last.texture;
-    a.tPrev.value = this._historyValid ? prev.texture : null;
+    a.tPrev.value = prev.texture;
     a.uRate.value.set(this.params.exposureUpRate, this.params.exposureDownRate);
     a.uDt.value = Math.min(dt, 0.1);
-    if (!a.tPrev.value) a.tPrev.value = prev.texture;
     this._blit(this._mAdapt, next);
     this._expIndex = 1 - this._expIndex;
   }
@@ -855,9 +928,6 @@ export class PostFX {
     return this._rtExp[this._expIndex].texture;
   }
 
-  /* Both the bloom prefilter and the composite must agree on exposure to the
-     last bit — a mismatch makes the bloom threshold float relative to the
-     image, which is how hulls end up glowing on some frames. */
   _applyExposure(u) {
     const p = this.params;
     u.uExposureComp.value = p.exposureComp;
@@ -871,11 +941,13 @@ export class PostFX {
     const pre = this._mPrefilter.uniforms;
     pre.tSource.value = src.texture;
     pre.tGlow.value = this._rtGlow ? this._rtGlow.texture : this._black;
-    pre.tExposure.value = this._exposureTex;
+    pre.tDepth.value = this._rtScene.depthTexture;
     pre.uTexel.value.set(1 / this._w, 1 / this._h);
     pre.uThreshold.value = p.bloomThreshold;
+    pre.uSkyThreshold.value = p.bloomThresholdSky;
+    pre.uGlowThreshold.value = p.bloomThresholdGlow;
     pre.uSoftness.value = p.bloomSoftness;
-    this._applyExposure(pre);
+    pre.uClamp.value = p.bloomClamp;
     this._blit(this._mPrefilter, this._rtDown[0]);
 
     for (let i = 1; i < this._mips; i++) {
@@ -961,8 +1033,8 @@ export class PostFX {
     const dofOn = this.tier.dof && p.dofStrength > 0.001;
 
     u.tScene.value = src.texture;
-    u.tBloom.value = this.tier.bloom ? this._bloomTex : this._black;
-    u.tStreak.value = this.tier.bloom && this.tier.streak ? this._streakTex : this._black;
+    u.tBloom.value = this.tier.bloom ? (this._bloomTex || this._black) : this._black;
+    u.tStreak.value = this.tier.bloom && this.tier.streak ? (this._streakTex || this._black) : this._black;
     u.tDof.value = dofOn ? this._rtDof.texture : this._black;
     u.tDepth.value = this._rtScene.depthTexture;
     u.tExposure.value = this._exposureTex;
@@ -981,6 +1053,7 @@ export class PostFX {
     u.uSaturation.value = p.saturation;
     u.uShadowLift.value = p.shadowLift;
     u.uSplitTone.value = p.splitTone;
+    u.uHighlightRolloff.value = p.highlightRolloff;
     u.uShadowTint.value.set(p.shadowTint.r, p.shadowTint.g, p.shadowTint.b);
     u.uHighlightTint.value.set(p.highlightTint.r, p.highlightTint.g, p.highlightTint.b);
     u.uDofStrength.value = dofOn ? p.dofStrength : 0;
@@ -1007,12 +1080,13 @@ uniform sampler2D tCurrent;
 uniform sampler2D tHistory;
 uniform sampler2D tDepth;
 uniform vec2 uTexel;
-uniform vec2 uJitter;
+uniform vec2 uJitterPx;
 uniform vec2 uProj;
-uniform mat4 uCamWorld;
-uniform mat4 uPrevView;
+uniform vec2 uPrevProj;
+uniform mat4 uReproj;
 uniform float uFeedback;
 uniform float uClampGamma;
+uniform float uFilter;
 uniform float uSharpen;
 uniform float uReset;
 varying vec2 vUv;
@@ -1072,31 +1146,31 @@ void main() {
   vec3 lo = min( mean - uClampGamma * sigma, nmin );
   vec3 hi = max( mean + uClampGamma * sigma, nmax );
 
-  // Reproject. Background pixels (depth cleared to 1.0 between the two scenes)
-  // are infinitely far, so a direction-only transform is exact there — which is
+  /* Reproject from the *pixel centre*, not from the jittered sample position.
+     The history buffer is a resolved image: texel n holds the converged colour
+     of pixel n, indexed by pixel centre. Building the ray from the jittered
+     NDC instead lands prevUv half a pixel off, every frame, in a direction
+     that walks around the Halton sequence — the Catmull-Rom fetch then keeps
+     resampling a moving target, the history drifts outside the neighbourhood
+     box and gets clipped. Measured before this was fixed: 21-32% of the frame
+     clipped per frame with a *static* camera, and ~0.45 px of phantom motion.
+     Both go to ~0 with the jitter term removed. */
+  vec2 ndc = vUv * 2.0 - 1.0;
+  vec3 dirView = vec3( ndc.x / uProj.x, ndc.y / uProj.y, -1.0 );
+
+  // Background pixels (depth cleared to 1.0 between the two scenes) are
+  // infinitely far, so a direction-only transform is exact there — which is
   // precisely what keeps the star field from crawling as the camera orbits.
   float d = texture2D( tDepth, vUv ).x;
-  /* uJitter is the offset added to projectionMatrix[2][0..1]. Because clip.w is
-     -viewZ, that term shifts the rendered image by *minus* the offset in NDC,
-     so undoing it means adding. Getting this sign backwards doubles the error
-     into a ~1 px history misalignment and the whole frame crawls. */
-  vec2 ndc = vUv * 2.0 - 1.0 + uJitter;
-  vec3 dirView = vec3( ndc.x / uProj.x, ndc.y / uProj.y, -1.0 );
-  vec3 prevView;
-  if ( d >= 0.999999 ) {
-    vec3 dirWorld = ( uCamWorld * vec4( dirView, 0.0 ) ).xyz;
-    prevView = ( uPrevView * vec4( dirWorld, 0.0 ) ).xyz;
-  } else {
-    float w = linearDepth( d );
-    vec4 world = uCamWorld * vec4( dirView * w, 1.0 );
-    prevView = ( uPrevView * world ).xyz;
-  }
+  vec4 pv = d >= 0.999999
+    ? uReproj * vec4( dirView, 0.0 )
+    : uReproj * vec4( dirView * linearDepth( d ), 1.0 );
 
-  float pw = -prevView.z;
-  vec2 prevUv = vec2( 0.5 );
+  float pw = -pv.z;
+  vec2 prevUv = vUv;
   float valid = 0.0;
   if ( pw > 1e-6 ) {
-    prevUv = vec2( uProj.x * prevView.x, uProj.y * prevView.y ) / pw * 0.5 + 0.5;
+    prevUv = vec2( uPrevProj.x * pv.x, uPrevProj.y * pv.y ) / pw * 0.5 + 0.5;
     valid = step( 0.0, prevUv.x ) * step( prevUv.x, 1.0 ) * step( 0.0, prevUv.y ) * step( prevUv.y, 1.0 );
   }
 
@@ -1123,12 +1197,26 @@ void main() {
   // the running average.
   float wc = 1.0 / ( 1.0 + luma( cur ) );
   float wh = 1.0 / ( 1.0 + luma( hist ) );
-  float a = ( 1.0 - feedback ) * wc;
+
+  /* Reconstruction filter weight. Accumulating jittered samples with equal
+     weight reconstructs a *box* over the pixel, and a box is a poor filter —
+     it is why untuned TAA reads as mush. Weighting each incoming sample by a
+     Gaussian on its distance from the pixel centre concentrates the estimate
+     where it belongs and buys back most of the sharpness for free. Measured:
+     mean |laplacian| goes 1.20 -> 1.93 with no cost in temporal stability,
+     against 2.92 for the aliased no-AA image. */
+  float filt = exp( -uFilter * dot( uJitterPx, uJitterPx ) );
+
+  float a = ( 1.0 - feedback ) * wc * filt;
   float b = feedback * wh;
   vec3 outc = ( cur * a + hist * b ) / max( a + b, 1e-6 );
 
-  #ifdef NOOP
-  #endif
+  /* Resolve sharpening. Kept very low on purpose: this is an unsharp mask
+     against the *jittered* current frame, so every unit of it injects that
+     frame's jitter pattern into the output — and into the next frame's
+     history. At 0.28 it measurably tripled the number of pixels that moved by
+     more than 12/255 between frames (0.011% -> 0.125%), i.e. it manufactured
+     exactly the star crawl this pass exists to remove. */
   if ( uSharpen > 0.0 ) {
     vec3 blur = (
       texture2D( tCurrent, vUv + vec2( uTexel.x, 0.0 ) ).rgb +
@@ -1199,16 +1287,20 @@ void main() {
 
 const PREFILTER_FRAG = `
 ${COMMON}
-${EXPOSURE_GLSL}
+${DEPTH_GLSL}
 uniform sampler2D tSource;
 uniform sampler2D tGlow;
+uniform sampler2D tDepth;
 uniform vec2 uTexel;
 uniform float uThreshold;
+uniform float uSkyThreshold;
+uniform float uGlowThreshold;
 uniform float uSoftness;
+uniform float uClamp;
 varying vec2 vUv;
 
 /* Karis average: weight each tap by 1/(1+luma) before averaging so a lone
-   fireflies pixel cannot seed a full-strength bloom blob. */
+   firefly pixel cannot seed a full-strength bloom blob. */
 vec3 karis( vec3 a, vec3 b, vec3 c, vec3 d ) {
   float wa = 1.0 / ( 1.0 + luma( a ) );
   float wb = 1.0 / ( 1.0 + luma( b ) );
@@ -1219,31 +1311,60 @@ vec3 karis( vec3 a, vec3 b, vec3 c, vec3 d ) {
 
 void main() {
   vec2 t = uTexel;
-  vec3 c;
-  #ifdef GLOW_LAYER_ONLY
-    c = texture2D( tGlow, vUv ).rgb;
-  #else
-    vec3 a0 = texture2D( tSource, vUv + vec2( -1.0, -1.0 ) * t ).rgb;
-    vec3 a1 = texture2D( tSource, vUv + vec2(  1.0, -1.0 ) * t ).rgb;
-    vec3 a2 = texture2D( tSource, vUv + vec2( -1.0,  1.0 ) * t ).rgb;
-    vec3 a3 = texture2D( tSource, vUv + vec2(  1.0,  1.0 ) * t ).rgb;
-    c = karis( a0, a1, a2, a3 );
-    #ifdef USE_GLOW_LAYER
-      c = max( c, texture2D( tGlow, vUv ).rgb );
-    #endif
+  vec2 o0 = vec2( -1.0, -1.0 ) * t;
+  vec2 o1 = vec2(  1.0, -1.0 ) * t;
+  vec2 o2 = vec2( -1.0,  1.0 ) * t;
+  vec2 o3 = vec2(  1.0,  1.0 ) * t;
+
+  vec3 result = vec3( 0.0 );
+
+  #ifndef GLOW_LAYER_ONLY
+    vec3 c = karis(
+      texture2D( tSource, vUv + o0 ).rgb,
+      texture2D( tSource, vUv + o1 ).rgb,
+      texture2D( tSource, vUv + o2 ).rgb,
+      texture2D( tSource, vUv + o3 ).rgb );
+
+    /* Two cut points, selected by depth. The backdrop is everything the far
+       scene drew before the depth clear, so it still reads exactly 1.0: star
+       cores and nebula hot spots live there and are dim in absolute terms, so
+       they need a low cut to bloom at all. Hull surfaces are never at 1.0 and
+       get a cut deliberately parked above the measured hull ceiling, which is
+       what makes §3.6 structural rather than a lucky tuning. Taking the max of
+       all four taps' depths means a hull silhouette can never be mistaken for
+       sky along its own edge. */
+    float dm = max(
+      max( texture2D( tDepth, vUv + o0 ).x, texture2D( tDepth, vUv + o1 ).x ),
+      max( texture2D( tDepth, vUv + o2 ).x, texture2D( tDepth, vUv + o3 ).x ) );
+    float dn = min(
+      min( texture2D( tDepth, vUv + o0 ).x, texture2D( tDepth, vUv + o1 ).x ),
+      min( texture2D( tDepth, vUv + o2 ).x, texture2D( tDepth, vUv + o3 ).x ) );
+    float sky = step( 0.999999, dn ) * step( 0.999999, dm );
+    float thr = mix( uThreshold, uSkyThreshold, sky );
+
+    result = c * kneeCut( maxc( c ), thr, uSoftness );
   #endif
 
-  // Threshold in exposed space so the cut point follows adaptation. A fixed
-  // linear threshold drifts the moment the scene brightness changes, and that
-  // is how lit hull starts glowing on one map and not another.
-  c *= sceneExposure();
+  #ifdef USE_GLOW_LAYER
+    /* The authored-emissive path. FX tag every plume, beam, muzzle flash and
+       explosion sprite with LAYER.GLOW, and this pass is depth-tested against
+       the scene, so it blooms exactly what the VFX system says should glow —
+       independent of how bright that system decides to run. Union rather than
+       sum: the same energy is already in tSource, and adding it twice is how
+       a bloom stops conserving energy the moment 40 beams fire at once. */
+    vec3 g = karis(
+      texture2D( tGlow, vUv + o0 ).rgb,
+      texture2D( tGlow, vUv + o1 ).rgb,
+      texture2D( tGlow, vUv + o2 ).rgb,
+      texture2D( tGlow, vUv + o3 ).rgb );
+    result = max( result, g * kneeCut( maxc( g ), uGlowThreshold, uSoftness ) );
+  #endif
 
-  float br = maxc( c );
-  float knee = uThreshold * uSoftness;
-  float soft = clamp( br - uThreshold + knee, 0.0, 2.0 * knee );
-  soft = soft * soft / ( 4.0 * knee + 1e-4 );
-  float contribution = max( soft, br - uThreshold ) / max( br, 1e-4 );
-  gl_FragColor = vec4( c * contribution, 1.0 );
+  // Absolute ceiling. A single NaN or a 500x explosion texel would otherwise
+  // propagate through every mip and fog the whole frame white.
+  float m = maxc( result );
+  if ( m > uClamp ) result *= uClamp / m;
+  gl_FragColor = vec4( max( result, vec3( 0.0 ) ), 1.0 );
 }
 `;
 
@@ -1364,8 +1485,20 @@ void main() {
 }
 `;
 
+/* Circle-of-confusion for the far field only, and never for the backdrop.
+   Letting the sky blur would be doubly wrong: §3.5 makes the backdrop the
+   subject of the shot, and it is the one part of frame with no parallax, so
+   blurring it buys no depth cue and costs the star field its crispness. */
+const COC_GLSL = `
+float farCoc( float d, float focus, float range ) {
+  if ( d >= 0.999999 ) return 0.0;
+  return clamp( ( linearDepth( d ) - focus ) / range, 0.0, 1.0 );
+}
+`;
+
 const DOF_FRAG = `
 ${DEPTH_GLSL}
+${COC_GLSL}
 uniform sampler2D tSource;
 uniform sampler2D tDepth;
 uniform sampler2D tFocus;
@@ -1383,18 +1516,14 @@ const vec2 KERNEL[16] = vec2[16](
 
 void main() {
   float focus = max( texture2D( tFocus, vec2( 0.5 ) ).r, 1.0 );
-  float dc = texture2D( tDepth, vUv ).x;
-  float wc = dc >= 0.999999 ? 1e7 : linearDepth( dc );
-  float cocC = clamp( ( wc - focus ) / uRange, 0.0, 1.0 );
+  float cocC = farCoc( texture2D( tDepth, vUv ).x, focus, uRange );
 
   vec3 acc = texture2D( tSource, vUv ).rgb;
   float wsum = 1.0;
   for ( int i = 0; i < 16; i++ ) {
     vec2 off = KERNEL[i] * uRadius * cocC;
     vec2 uv = vUv + off * uTexel;
-    float ds = texture2D( tDepth, uv ).x;
-    float ws = ds >= 0.999999 ? 1e7 : linearDepth( ds );
-    float cocS = clamp( ( ws - focus ) / uRange, 0.0, 1.0 );
+    float cocS = farCoc( texture2D( tDepth, uv ).x, focus, uRange );
     // Reject taps nearer than the centre, or a sharp foreground bleeds into
     // the blur and ships grow halos.
     float ok = step( cocC - 0.08, cocS );
@@ -1408,6 +1537,7 @@ void main() {
 const COMPOSITE_FRAG = `
 ${COMMON}
 ${DEPTH_GLSL}
+${COC_GLSL}
 ${EXPOSURE_GLSL}
 uniform sampler2D tScene;
 uniform sampler2D tBloom;
@@ -1428,12 +1558,23 @@ uniform float uContrast;
 uniform float uSaturation;
 uniform float uShadowLift;
 uniform float uSplitTone;
+uniform float uHighlightRolloff;
 uniform vec3 uShadowTint;
 uniform vec3 uHighlightTint;
 uniform float uDofStrength;
 uniform float uDofRange;
 uniform float uSplit;
 varying vec2 vUv;
+
+/* Normalise a tint to unit luminance. Everything the grade does with the
+   nebula colours goes through this, so changing the key/fill can only ever
+   rotate hue — it can never change the level of the image, and it can never
+   put a cast on a neutral surface. That matters right now: the hulls are being
+   re-authored because they read muddy, and a grade that quietly multiplies
+   every highlight by a warm tint would make that impossible to judge. */
+vec3 unitTint( vec3 c ) {
+  return c / max( luma( c ), 1e-4 );
+}
 
 vec3 fetchScene( vec2 uv ) {
   #ifdef USE_ABERRATION
@@ -1457,9 +1598,7 @@ void main() {
   #ifdef USE_DOF
     if ( uDofStrength > 0.001 ) {
       float focus = max( texture2D( tFocus, vec2( 0.5 ) ).r, 1.0 );
-      float d = texture2D( tDepth, vUv ).x;
-      float w = d >= 0.999999 ? 1e7 : linearDepth( d );
-      float coc = clamp( ( w - focus ) / uDofRange, 0.0, 1.0 );
+      float coc = farCoc( texture2D( tDepth, vUv ).x, focus, uDofRange );
       coc = smoothstep( 0.0, 1.0, coc ) * uDofStrength;
       scene = mix( scene, texture2D( tDof, vUv ).rgb, coc );
     }
@@ -1469,11 +1608,13 @@ void main() {
   vec3 col = scene * exposure;
   vec3 plain = col;
 
+  /* Bloom is thresholded scene-referred, so it has to be exposed here to stay
+     in step with the image it is being added to. */
   #ifdef USE_BLOOM
-    col += texture2D( tBloom, vUv ).rgb * uBloomStrength;
+    col += texture2D( tBloom, vUv ).rgb * uBloomStrength * exposure;
   #endif
   #ifdef USE_STREAK
-    col += texture2D( tStreak, vUv ).rgb * uStreakTint * uStreakStrength;
+    col += texture2D( tStreak, vUv ).rgb * uStreakTint * uStreakStrength * exposure;
   #endif
 
   #ifdef USE_VIGNETTE
@@ -1483,14 +1624,36 @@ void main() {
   #endif
 
   #ifdef USE_GRADE
-    // Shadow lift tinted with the nebula fill: space is never truly black,
-    // and a flat 0,0,0 floor is the fastest way to look like a tech demo.
+    vec3 shadowN = unitTint( uShadowTint );
+    vec3 highN = unitTint( uHighlightTint );
     float l = luma( col );
-    col += uShadowTint * uShadowLift * exp( -l * 9.0 );
-    // Split tone, kept small. Big split tone is the teal-and-orange trap.
+
+    /* Shadow lift tinted with the nebula fill: space is never truly black, and
+       a flat 0,0,0 floor is the fastest way to look like a tech demo. The
+       falloff is steep enough that anything at or above mid-grey receives
+       essentially none of it. */
+    col += shadowN * uShadowLift * exp( -l * 14.0 );
+
+    /* Split tone, built so mid-grey is a fixed point. Both weights fall to
+       zero at t = 0.5, so a neutral mid-grey card comes through the grade
+       bit-for-bit neutral; only the deep shadows pick up the nebula fill and
+       only the highlights pick up the key. Big split tone is the teal-and-
+       orange trap, so this is deliberately a few percent. */
     float t = clamp( l * 1.6, 0.0, 1.0 );
-    vec3 tone = mix( uShadowTint, uHighlightTint, t );
-    col = mix( col, col * tone, uSplitTone );
+    float wS = 1.0 - smoothstep( 0.0, 0.5, t );
+    float wH = smoothstep( 0.5, 1.0, t );
+    vec3 tone = vec3( 1.0 )
+      + ( shadowN - 1.0 ) * ( wS * uSplitTone )
+      + ( highN - 1.0 ) * ( wH * uSplitTone );
+    col *= tone;
+
+    /* Highlight roll-off. Real film loses saturation before it loses detail,
+       so a bright ion beam should bleach toward white rather than clip to a
+       flat slab of hue. Blending toward the max channel rather than toward
+       luma keeps it a bleach and not a desaturation, and leaves any neutral
+       value exactly where it was. */
+    float m = maxc( col );
+    col = mix( col, vec3( m ), smoothstep( 1.0, 6.0, m ) * uHighlightRolloff );
   #endif
 
   vec3 mapped = acesFitted( col );

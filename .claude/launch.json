@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "void-sovereign",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["demos/void-sovereign/tools/dev-server.mjs", "--port", "8899"],
+      "port": 8899,
+      "url": "http://127.0.0.1:8899"
+    }
+  ]
+}

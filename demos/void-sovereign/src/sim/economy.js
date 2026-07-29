@@ -12,6 +12,11 @@ import { setNavArrive, setNavHold, setFacePoint } from './movement.js';
 
 export const HARVEST = { SEEK: 0, CUT: 1, RETURN: 2, UNLOAD: 3 };
 
+/* Anything below this much damage-per-second against a hauler is a picket, not
+   a raid. A collector that downs tools every time an enemy scout drifts past
+   has stopped being an economy. */
+const FLEE_THREAT = 40;
+
 const _a = new THREE.Vector3();
 const _b = new THREE.Vector3();
 
@@ -25,6 +30,8 @@ export function initEconomyState(e) {
   e.clusterId = -1;
   e.homeId = -1;
   e.dockTimer = 0;
+  e.fleeUntil = 0;
+  e.fleeFromId = -1;
 }
 
 /* ------------------------------------------------------------ resourcing */
@@ -80,8 +87,88 @@ function seamPoint(cluster, e, out) {
   return out;
 }
 
+/* ------------------------------------------------------------------- flight */
+
+let _threatSelf = null;
+let _threatBest = null;
+let _threatScore = 0;
+
+function threatVisitor(n) {
+  const e = _threatSelf;
+  if (!n.alive || n.team === e.team) return;
+  if (!(n.threatScore > FLEE_THREAT)) return;
+  if (n.role === ROLE.STRUCTURE) return; // a fixed battery is a place, not a hunter
+  const score = n.threatScore / (n.position.distanceToSquared(e.position) + 1);
+  if (score > _threatScore) {
+    _threatScore = score;
+    _threatBest = n;
+  }
+}
+
+/** Nearest armed enemy inside `range` that could actually kill a hauler. */
+function nearestThreat(world, e, range) {
+  _threatSelf = e;
+  _threatBest = null;
+  _threatScore = 0;
+  world.forEachNear(e.position.x, e.position.y, e.position.z, range, threatVisitor);
+  const out = _threatBest;
+  _threatSelf = null;
+  _threatBest = null;
+  return out;
+}
+
+function releaseCluster(world, e) {
+  if (e.clusterId < 0) return;
+  const c = world.resourceClusters[e.clusterId];
+  if (c) c.miners[e.team] = Math.max(0, (c.miners[e.team] || 0) - 1);
+  e.clusterId = -1;
+}
+
 function updateCollector(world, e, dt) {
   const clusters = world.resourceClusters;
+
+  /* Collectors are the game, and a full hold is worth nothing if the hauler
+     dies with it. They keep cutting under fire only long enough to notice it,
+     then run for the nearest yard and unload whatever they have. The scan is
+     staggered across hulls — this decides something that plays out over half a
+     minute, so it does not need to be answered thirty times a second. */
+  const tick = world.tickCount;
+  if ((tick + e.id) % 10 === 0) {
+    const hunted = tick - e.lastHitTick < 90;
+    const threat = nearestThreat(world, e, hunted ? 3600 : 2200);
+    if (threat) {
+      e.fleeUntil = world.time + 7;
+      e.fleeFromId = threat.id;
+    }
+  }
+
+  if (world.time < e.fleeUntil) {
+    if (e.harvestState === HARVEST.CUT || e.harvestState === HARVEST.SEEK) {
+      releaseCluster(world, e);
+      e.harvestState = HARVEST.RETURN;
+    }
+    const guard = nearestProducer(world, e);
+    if (guard) {
+      const safe = guard.radius + e.radius + 900;
+      if (e.cargo <= 0 && e.position.distanceToSquared(guard.position) < safe * safe) {
+        // Home and empty: sit under the yard's guns until it blows over.
+        setNavHold(e);
+        setFacePoint(e, null);
+        return;
+      }
+    } else {
+      // Nowhere to run to. Put distance between us and the shooter instead.
+      const from = world.entities.get(e.fleeFromId);
+      if (from && from.alive) {
+        _b.subVectors(e.position, from.position);
+        if (_b.lengthSq() < 1e-4) _b.set(0, 1, 0);
+        _b.normalize().multiplyScalar(5000).add(e.position);
+        setNavArrive(e, _b, 1, e.radius + 40);
+        setFacePoint(e, null);
+        return;
+      }
+    }
+  }
 
   switch (e.harvestState) {
     case HARVEST.CUT: {

@@ -44,6 +44,12 @@ export class Engine {
       preserveDrawingBuffer: false,
     });
     this.renderer.autoClear = false;
+    /* Accumulate render stats across every pass in a frame rather than letting
+       three reset them per `render()` call. With a post stack installed the
+       last call is a fullscreen quad, so the default behaviour reports "1 draw
+       call, 1 triangle" for the whole game and the instancing budget in
+       ARCHITECTURE §0 becomes unmeasurable. We reset once per frame instead. */
+    this.renderer.info.autoReset = false;
     this.renderer.setClearColor(0x000000, 1);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -132,6 +138,7 @@ export class Engine {
 
   render(dt, elapsed) {
     this.frame++;
+    this.renderer.info.reset();
     for (let i = 0; i < this._hooks.length; i++) this._hooks[i](dt, elapsed);
 
     if (this._post) {

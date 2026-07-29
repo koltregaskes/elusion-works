@@ -40,6 +40,7 @@ varying vec3 vColor;
 varying float vEnv;
 varying float vBright;
 varying float vFragW;
+varying float vClamp;
 
 void main() {
   float t = uTime - iTime.x;
@@ -59,8 +60,13 @@ void main() {
   // the round head is all that is visible at that angle anyway.
   side = sl > 1e-4 ? side / sl : normalize( cross( dirW, vec3( 0.371, 0.664, 0.649 ) ) );
 
-  float width = max( iTime.z, dist * uPixelScale * 2.2 ) * alive;
-  float len = max( iTime.w, dist * uPixelScale * 6.0 );
+  /* Screen floor. A 0.5 m round at 4 km is a fifth of a pixel; without these
+     two clamps a fleet action is an empty starfield with some noise in it. */
+  float wFloor = dist * uPixelScale * 3.6;
+  float width = max( iTime.z, wFloor );
+  vClamp = clamp( 1.0 - iTime.z / max( width, 0.0001 ), 0.0, 1.0 );
+  width *= alive;
+  float len = max( iTime.w, dist * uPixelScale * 30.0 );
 
   vec3 wp = p - dirW * ( len * ( 1.0 - uv.y ) ) + side * ( ( uv.x - 0.5 ) * width );
   gl_Position = projectionMatrix * viewMatrix * vec4( wp, 1.0 );
@@ -84,6 +90,7 @@ varying vec3 vColor;
 varying float vEnv;
 varying float vBright;
 varying float vFragW;
+varying float vClamp;
 
 void main() {
   #include <logdepthbuf_fragment>
@@ -91,12 +98,16 @@ void main() {
   float across = abs( vUv.x * 2.0 - 1.0 );
   float lat = max( 1.0 - across * across, 0.0 );
 
-  float tail = pow( along, 2.8 ) * lat;
-  float head = smoothstep( 0.80, 1.0, along ) * exp( -across * across * 5.5 );
+  /* Far away the round is a pixel wide, so the lateral falloff has to collapse
+     into a solid bar — a soft gradient across three pixels is invisible. */
+  float lateral = mix( lat, pow( lat, 0.35 ), vClamp );
+  float tail = pow( along, mix( 2.8, 1.6, vClamp ) ) * lateral;
+  float head = smoothstep( 0.74, 1.0, along ) * exp( -across * across * mix( 5.5, 2.2, vClamp ) );
 
-  float a = clamp( tail * 0.46 + head * 1.15, 0.0, 1.0 ) * vEnv * fxSoftFade( vFragW );
+  float a = clamp( tail * 0.55 + head * 1.35, 0.0, 1.0 ) * vEnv * fxSoftFade( vFragW );
   if ( a <= 0.004 ) discard;
-  vec3 col = mix( vColor, vec3( 1.0 ), clamp( head * 1.25, 0.0, 1.0 ) ) * vBright * ( 0.7 + 1.9 * head );
+  vec3 col = mix( vColor, vec3( 1.0 ), clamp( head * 1.25, 0.0, 1.0 ) )
+           * vBright * uGain * ( 0.85 + 2.4 * head ) * ( 1.0 + 1.1 * vClamp );
   gl_FragColor = vec4( col, a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -106,10 +117,25 @@ void main() {
 const BEAM_STRIDE = 16;
 /* 0..2 from | 3..5 to | 6..9 start,duration,width,intensity | 10..13 rgb,seed | 14 kind | 15 pad */
 
+/* The ion lance is the game's money shot (ARCHITECTURE §3), so it is built as
+   three concentric shells rather than one ribbon:
+
+     shell 0  halo     wide, dim, soft — the thing you see from five kilometres
+     shell 1  sheath   team-coloured, carries the scrolling energy noise
+     shell 2  core     near-white, thin, hard-edged — the thing that reads as
+                       *hot* when the camera is 500 m away
+
+   All three live in one base geometry, so a beam is still one instance and the
+   whole batch is still one draw call. Each shell carries its own minimum pixel
+   width, which is what keeps the lance legible across the whole camera range:
+   at 4 km the halo is floored to 20 px and the core to 3, so the beam is a
+   glowing bar with a white filament down it instead of a hairline. */
+
 const BEAM_VERT = /* glsl */ `
 #include <common>
 #include <logdepthbuf_pars_vertex>
 
+attribute float aShell;
 attribute vec3 iFrom;
 attribute vec3 iTo;
 attribute vec4 iTime;
@@ -125,7 +151,9 @@ varying float vEnv;
 varying float vIntensity;
 varying float vSeed;
 varying float vKind;
+varying float vShell;
 varying float vFragW;
+varying float vClamp;
 
 void main() {
   float span = max( iTime.y, 0.0001 );
@@ -134,37 +162,53 @@ void main() {
 
   /* Envelope: a fast strike-up, a long steady burn, a collapse. The width
      tracks it so the beam visibly snaps on and pinches out. */
-  float charge = smoothstep( 0.0, 0.075, t );
-  float decay = 1.0 - smoothstep( 0.80, 1.0, t );
+  float charge = smoothstep( 0.0, 0.055, t );
+  float decay = 1.0 - smoothstep( 0.86, 1.0, t );
   float env = charge * decay * alive;
 
   vec3 axis = iTo - iFrom;
   float len = length( axis );
   vec3 dirW = len > 1e-4 ? axis / len : vec3( 0.0, 0.0, 1.0 );
 
-  vec3 p = mix( iFrom, iTo, uv.y );
+  // Overshoot both ends a little so the muzzle throat sits inside the barrel
+  // and the impact bulb sits on the hull rather than short of it.
+  float along = uv.y * 1.07 - 0.035;
+  vec3 p = iFrom + dirW * ( along * len );
+
   vec3 toCam = cameraPosition - p;
   float dist = max( length( toCam ), 1.0 );
   vec3 side = cross( dirW, toCam / dist );
   float sl = length( side );
   side = sl > 1e-4 ? side / sl : vec3( 1.0, 0.0, 0.0 );
 
-  float w = iTime.z * mix( 0.22, 1.0, charge ) * mix( 1.0, 0.12, smoothstep( 0.78, 1.0, t ) );
-  w = max( w, dist * uPixelScale * 2.8 ) * step( 0.001, env );
+  float shellW = aShell < 0.5 ? 4.6 : ( aShell < 1.5 ? 1.75 : 0.52 );
+  float shellPx = aShell < 0.5 ? 20.0 : ( aShell < 1.5 ? 8.0 : 3.0 );
+
+  // Fatten toward the impact end: the beam is dumping into something.
+  float belly = 1.0 + 0.55 * smoothstep( 0.55, 1.0, along ) + 0.25 * ( 1.0 - smoothstep( 0.0, 0.18, along ) );
+
+  float natural = iTime.z * shellW * belly
+                * mix( 0.18, 1.0, charge )
+                * mix( 1.0, 0.10, smoothstep( 0.84, 1.0, t ) );
+  float floorW = dist * uPixelScale * shellPx;
+  float w = max( natural, floorW );
+  vClamp = clamp( 1.0 - natural / max( w, 0.0001 ), 0.0, 1.0 );
+  w *= step( 0.001, env );
 
   // Sub-metre instability. Enough to look like contained plasma, not enough
   // to break the "it is a straight lance" read.
-  float swim = sin( uv.y * 6.0 + uTime * 8.5 + iTint.w * 31.0 ) * 0.11
-             + sin( uv.y * 19.0 - uTime * 21.0 + iTint.w * 13.0 ) * 0.05;
+  float swim = sin( along * 6.0 + uTime * 8.5 + iTint.w * 31.0 ) * 0.11
+             + sin( along * 19.0 - uTime * 21.0 + iTint.w * 13.0 ) * 0.05;
 
-  vec3 wp = p + side * ( ( uv.x - 0.5 ) * w + swim * w * 0.6 );
+  vec3 wp = p + side * ( ( uv.x - 0.5 ) * w + swim * w * 0.35 );
   gl_Position = projectionMatrix * viewMatrix * vec4( wp, 1.0 );
 
-  vUv = uv;
+  vUv = vec2( uv.x, along );
   vColor = iTint.rgb;
   vSeed = iTint.w;
   vKind = iKind;
-  vIntensity = iTime.w * ( 1.0 + 2.6 * exp( -t * 42.0 ) );
+  vShell = aShell;
+  vIntensity = iTime.w * ( 1.0 + 3.4 * exp( -t * 34.0 ) );
   vEnv = env;
   vFragW = gl_Position.w;
   #include <logdepthbuf_vertex>
@@ -185,32 +229,48 @@ varying float vEnv;
 varying float vIntensity;
 varying float vSeed;
 varying float vKind;
+varying float vShell;
 varying float vFragW;
+varying float vClamp;
 
 void main() {
   #include <logdepthbuf_fragment>
   float across = abs( vUv.x * 2.0 - 1.0 );
-
-  float core = exp( -across * across * 46.0 );
-  float sheath = exp( -across * across * 5.2 );
-  float halo = pow( max( 1.0 - across, 0.0 ), 3.0 );
+  float along = vUv.y;
 
   /* Two noise fields running down the beam at different speeds — the thing
      that stops it reading as a glowing tube. */
-  float n1 = texture2D( uNoise, vec2( vUv.y * 2.1 - uTime * 2.9, vSeed ) ).r;
-  float n2 = texture2D( uNoise, vec2( vUv.y * 6.4 + uTime * 1.7, vSeed * 0.37 + 0.21 ) ).g;
-  float energy = mix( 0.76, 1.46, n1 * 0.6 + n2 * 0.4 );
+  float n1 = texture2D( uNoise, vec2( along * 2.1 - uTime * 2.9, vSeed ) ).r;
+  float n2 = texture2D( uNoise, vec2( along * 6.4 + uTime * 1.7, vSeed * 0.37 + 0.21 ) ).g;
+  float energy = mix( 0.72, 1.55, n1 * 0.6 + n2 * 0.4 );
 
-  float shape = core + sheath * 0.44 + halo * 0.22;
+  // Ends: the throat at the muzzle and the splash on the hull both run hot.
+  float muzzle = pow( max( 1.0 - along * 4.0, 0.0 ), 2.0 );
+  float splash = pow( max( ( along - 0.78 ) / 0.22, 0.0 ), 1.6 );
+  float ends = muzzle * 1.3 + splash * 1.8;
+
+  float shape;
+  vec3 col;
+
+  if ( vShell > 1.5 ) {
+    // Core: a hard white filament. Barely modulated — this is the thing that
+    // says "this is not a light, this is a hole being cut".
+    shape = pow( max( 1.0 - across * across, 0.0 ), mix( 0.55, 0.22, vClamp ) );
+    col = mix( vec3( 1.0 ), vColor, 0.14 ) * ( 2.6 + 5.0 * ends ) * mix( 0.92, 1.0, energy );
+  } else if ( vShell > 0.5 ) {
+    // Sheath: the colour, and where the plasma turbulence lives.
+    shape = pow( max( 1.0 - across, 0.0 ), mix( 2.2, 1.1, vClamp ) ) * mix( 0.75, 1.25, energy );
+    col = mix( vColor, vec3( 1.0 ), 0.30 ) * ( 1.5 + 3.2 * ends ) * energy;
+  } else {
+    // Halo: the long-range read. Soft, wide, cheap.
+    shape = pow( max( 1.0 - across, 0.0 ), 2.8 ) * 0.55;
+    col = vColor * ( 0.62 + 1.5 * ends );
+  }
+
   float a = clamp( shape, 0.0, 1.0 ) * vEnv * fxSoftFade( vFragW );
   if ( a <= 0.004 ) discard;
 
-  vec3 col = mix( vColor, vec3( 1.0 ), clamp( core * 1.15, 0.0, 1.0 ) );
-  col *= vIntensity * energy * ( 0.5 + 3.4 * core + 0.55 * sheath );
-  // Both ends run hotter: muzzle throat and impact splash.
-  col += vColor * pow( abs( vUv.y * 2.0 - 1.0 ), 7.0 ) * 0.8 * vIntensity;
-
-  gl_FragColor = vec4( col, a );
+  gl_FragColor = vec4( col * vIntensity * uGain, a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -244,8 +304,14 @@ varying float vHeat;
 varying float vFragW;
 
 void main() {
-  float rad = max( iScale.y, 0.0 );
-  vec3 local = vec3( position.xy * rad, position.z * iScale.x );
+  /* Collapse the body as it approaches the lens. Without this a missile that
+     flies through the camera fills the frame with a hard-edged prism — the
+     silhouette of a 6 m object seen from two metres. */
+  float camDist = distance( cameraPosition, iPos );
+  float nearFade = smoothstep( iScale.x * 1.5, iScale.x * 9.0, camDist );
+
+  float rad = max( iScale.y, 0.0 ) * nearFade;
+  vec3 local = vec3( position.xy * rad, position.z * iScale.x * nearFade );
   vec3 wp = qrot( iQuat, local ) + iPos;
   gl_Position = projectionMatrix * viewMatrix * vec4( wp, 1.0 );
 
@@ -275,7 +341,12 @@ varying float vFragW;
 void main() {
   #include <logdepthbuf_fragment>
   float ndl = max( dot( vNormal, uKeyDir ), 0.0 );
-  vec3 col = vColor * ( uKeyColor * ( 0.10 + 0.92 * ndl ) + uFill * 0.35 );
+  float wrap = max( dot( vNormal, -uKeyDir ), 0.0 );
+  /* A back-lit missile must never resolve to pure black. A 6 m body passing
+     close to the lens covers a third of the frame, and an unlit slab there
+     reads as a rendering fault rather than ordnance. */
+  vec3 col = vColor * ( uKeyColor * ( 0.10 + 0.92 * ndl ) + uFill * ( 0.30 + 0.45 * wrap ) );
+  col = max( col, vColor * 0.055 );
   // Tail-end throat glow, so a missile reads as under power.
   float throat = pow( max( 1.0 - vAxial, 0.0 ), 6.0 );
   col += vec3( 1.0, 0.62, 0.30 ) * throat * 3.4 * vHeat;
@@ -332,9 +403,9 @@ varying float vFragW;
 void main() {
   #include <logdepthbuf_fragment>
   vec4 texel = texture2D( uMap, vUv );
-  float a = texel.a * fxSoftFade( vFragW );
+  float a = texel.a * fxQuadMask( vUv ) * fxSoftFade( vFragW );
   if ( a <= 0.004 ) discard;
-  gl_FragColor = vec4( vColor * texel.rgb * 2.2, a );
+  gl_FragColor = vec4( vColor * texel.rgb * 2.2 * uGain, a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -349,6 +420,27 @@ function quadGeometry() {
   ]), 3));
   g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), 2));
   g.setIndex(new THREE.BufferAttribute(new Uint16Array([0, 1, 2, 0, 2, 3]), 1));
+  return g;
+}
+
+/** `shells` stacked unit quads, tagged 0..n-1 on `aShell`. One draw, n layers. */
+function shellQuadGeometry(shells) {
+  const pos = [];
+  const uvs = [];
+  const tag = [];
+  const idx = [];
+  for (let s = 0; s < shells; s++) {
+    const b = s * 4;
+    pos.push(-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0);
+    uvs.push(0, 0, 1, 0, 1, 1, 0, 1);
+    tag.push(s, s, s, s);
+    idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  g.setAttribute('aShell', new THREE.Float32BufferAttribute(tag, 1));
+  g.setIndex(idx);
   return g;
 }
 
@@ -428,12 +520,16 @@ const FLAK_BURST = new THREE.Color(0xffb264);
 const FLAK_SMOKE = new THREE.Color(0x6b6259);
 const HOT_WHITE = new THREE.Color(0xffffff);
 
+/** Sim rate (ARCHITECTURE §0). Tracer length is quoted in sim ticks of travel. */
+const SIM_HZ = 30;
+
 export class WeaponFX {
   constructor(ctx) {
     this.ctx = ctx;
     this.drawCalls = 4;
 
     this._quadGeo = quadGeometry();
+    this._beamGeo = shellQuadGeometry(3);
     this._missileGeo = missileGeometry();
 
     this.tracers = ctx.instanceBatch({
@@ -451,7 +547,7 @@ export class WeaponFX {
 
     this.beams = ctx.instanceBatch({
       name: 'beams',
-      base: this._quadGeo,
+      base: this._beamGeo,
       attributes: BEAM_ATTRS,
       stride: BEAM_STRIDE,
       capacity: ctx.budget.beams,
@@ -555,20 +651,25 @@ export class WeaponFX {
     if (!pt) return;
     const n = p.normal || this._v.set(0, 1, 0);
     const amount = Math.max(1, p.amount || 10);
-    const mag = Math.min(3.5, 0.45 + Math.sqrt(amount) * 0.16);
+    const mag = Math.min(6.0, 0.9 + Math.sqrt(amount) * 0.30);
+    const f = this.ctx.fields;
 
-    this.ctx.fields.flare.spawn(
-      pt.x, pt.y, pt.z, 0, 0, 0, 0.11, 0,
-      mag * 5.5, mag * 1.4, HOT_WHITE, 2.6, 0, 0,
-    );
-    this._sparkBurst(pt, n, Math.round(4 + mag * 3), 0.55, 26 + amount * 0.5, mag * 1.8);
-    if (amount > 40) {
+    // White core, then an orange bloom: the difference between "hit" and
+    // "nothing happened" at four kilometres.
+    f.flare.spawn(pt.x, pt.y, pt.z, 0, 0, 0, 0.13, 0,
+      mag * 11, mag * 2.4, HOT_WHITE, 4.2, 0, 0);
+    f.flare.spawn(pt.x, pt.y, pt.z, 0, 0, 0, 0.30, 0,
+      mag * 4, mag * 20, FLAK_BURST, 2.0, 0, 0);
+    this._sparkBurst(pt, n, Math.round(8 + mag * 4), 0.55, 60 + amount * 0.9, mag * 2.0);
+
+    if (amount > 25) {
       const rng = this.ctx.rng;
       for (let i = 0; i < 2; i++) {
-        this.ctx.fields.smoke.spawn(
+        // No drag in vacuum: the ejecta keeps going and simply thins out.
+        f.smoke.spawn(
           pt.x, pt.y, pt.z,
-          n.x * 6 + rng.gaussian(0, 4), n.y * 6 + rng.gaussian(0, 4), n.z * 6 + rng.gaussian(0, 4),
-          1.1 + rng.next() * 0.8, 0.9, mag * 3, mag * 12,
+          n.x * 14 + rng.gaussian(0, 9), n.y * 14 + rng.gaussian(0, 9), n.z * 14 + rng.gaussian(0, 9),
+          1.4 + rng.next() * 1.0, 0.12, mag * 4, mag * 20,
           FLAK_SMOKE, 0.8, 0, rng.gaussian(0, 1.2),
         );
       }
@@ -602,16 +703,18 @@ export class WeaponFX {
     const life = dist / speed;
 
     const dmg = w.damage || 10;
-    const width = Math.max(0.32, 0.16 + Math.sqrt(dmg) * 0.11);
-    // Tail length is a fixed slice of travel time — reads as motion blur, and
-    // stays proportional whether the round is doing 900 or 3,000 m/s.
-    const len = Math.max(14, speed * 0.030 + dmg * 0.20);
+    const width = Math.max(0.55, 0.28 + Math.sqrt(dmg) * 0.19);
+    /* Tail length is two sim ticks of travel — the distance the round actually
+       covers between frames, which is what motion blur would show. It must not
+       depend on how far the target is: a shot at 3 km and a shot at 300 m are
+       the same object. */
+    const len = Math.max(26, speed * (2 / SIM_HZ) + dmg * 0.35);
 
-    this._col.copy(team.trim).lerp(HOT_WHITE, 0.30);
+    this._col.copy(team.trim).lerp(HOT_WHITE, 0.16);
     this._addTracer(
       from.x, from.y, from.z,
       (dx / dist) * speed, (dy / dist) * speed, (dz / dist) * speed,
-      life, width, len, this._col, 1.5, 'kinetic', dmg, team,
+      life, width, len, this._col, 2.1, 'kinetic', dmg, team,
     );
     this._muzzle(from, dx / dist, dy / dist, dz / dist, dmg, team, 1.0);
   }
@@ -640,7 +743,7 @@ export class WeaponFX {
     this._col.copy(team.trim).lerp(FLAK_BURST, 0.45);
     this._addTracer(
       from.x, from.y, from.z, dx * speed, dy * speed, dz * speed,
-      burst / speed, 0.34, Math.max(10, speed * 0.022), this._col, 1.25, 'flak', dmg, team,
+      burst / speed, 0.5, Math.max(20, speed * (1.4 / SIM_HZ)), this._col, 1.8, 'flak', dmg, team,
     );
     this._muzzle(from, dx, dy, dz, dmg, team, 0.8);
   }
@@ -648,24 +751,24 @@ export class WeaponFX {
   _flakBurst(x, y, z, dmg) {
     const rng = this.ctx.rng;
     const f = this.ctx.fields;
-    const scale = 1 + Math.sqrt(dmg) * 0.22;
+    const scale = 1.6 + Math.sqrt(dmg) * 0.34;
 
-    f.flare.spawn(x, y, z, 0, 0, 0, 0.16, 0, 22 * scale, 5 * scale, HOT_WHITE, 3.2, 0, 0);
-    f.flare.spawn(x, y, z, 0, 0, 0, 0.34, 0, 9 * scale, 30 * scale, FLAK_BURST, 1.5, 0, 0);
+    f.flare.spawn(x, y, z, 0, 0, 0, 0.18, 0, 34 * scale, 7 * scale, HOT_WHITE, 5.0, 0, 0);
+    f.flare.spawn(x, y, z, 0, 0, 0, 0.40, 0, 13 * scale, 48 * scale, FLAK_BURST, 2.4, 0, 0);
 
     const puffs = Math.round(3 + 2 * this.ctx.qscale);
     for (let i = 0; i < puffs; i++) {
       const u = rng.unitVector();
-      const s = rng.range(8, 26);
+      const s = rng.range(14, 40);
       f.smoke.spawn(
         x + u.x * 3, y + u.y * 3, z + u.z * 3,
         u.x * s, u.y * s, u.z * s,
-        rng.range(1.5, 2.6), 1.4,
+        rng.range(1.5, 2.6), 0.15,
         6 * scale, rng.range(34, 58) * scale,
         FLAK_SMOKE, 0.85, 0, rng.gaussian(0, 1.0),
       );
     }
-    const sparks = Math.round((10 + dmg * 0.5) * this.ctx.qscale);
+    const sparks = Math.round((16 + dmg * 0.7) * this.ctx.qscale);
     this._col2.copy(FLAK_BURST).lerp(HOT_WHITE, 0.4);
     for (let i = 0; i < sparks; i++) {
       const u = rng.unitVector();
@@ -763,7 +866,7 @@ export class WeaponFX {
 
     const ion = w.type === 'ion';
     const dmg = w.damage || 100;
-    this._col.copy(team.engine).lerp(HOT_WHITE, ion ? 0.22 : 0.35);
+    this._col.copy(team.engine).lerp(HOT_WHITE, ion ? 0.16 : 0.32);
 
     const b = {
       shooter: p.shooter || null,
@@ -774,12 +877,16 @@ export class WeaponFX {
       localTo: null,
       start: ctx.now,
       duration: w.beamDuration || (ion ? 1.6 : 0.7),
-      width: (ion ? 2.6 : 1.5) + Math.sqrt(dmg) * (ion ? 0.30 : 0.16),
-      intensity: ion ? 1.5 : 1.15,
+      /* Base radius, before the three shell multipliers (4.6 / 1.75 / 0.52).
+         An ionLance at 220 damage therefore burns a ~25 m halo around a ~3 m
+         white core — a lance, not a laser pointer. */
+      width: (ion ? 2.2 : 1.2) + Math.sqrt(dmg) * (ion ? 0.22 : 0.13),
+      intensity: ion ? 2.3 : 1.5,
       colour: new THREE.Color(this._col),
       seed: ctx.rng.next(),
       kind: ion ? 1 : 0,
       damage: dmg,
+      ion,
       nextEmit: 0,
       team,
     };
@@ -799,11 +906,39 @@ export class WeaponFX {
 
     this._beams.push(b);
 
-    // Ignition: a hard muzzle bloom that outlives the strike-up.
+    /* Ignition. The muzzle has to announce itself half a second before the eye
+       finds the far end of the beam, so this is deliberately over-sized: a
+       white core that collapses, a coloured bloom that expands, and a cone of
+       sparks blown forward out of the barrel. */
     const f = ctx.fields;
-    const scale = b.width * 3.2;
-    f.flare.spawn(b.from.x, b.from.y, b.from.z, 0, 0, 0, 0.28, 0, scale * 3.4, scale * 0.8, HOT_WHITE, 5.0, 0, 0);
-    f.flare.spawn(b.from.x, b.from.y, b.from.z, 0, 0, 0, 0.5, 0, scale * 1.2, scale * 4.5, b.colour, 2.4, 0, 0);
+    const rng = ctx.rng;
+    const scale = b.width * 4.6;
+    this._v.copy(b.to).sub(b.from);
+    const l = Math.max(1e-4, this._v.length());
+    this._v.multiplyScalar(1 / l);
+    const ax = this._v.x;
+    const ay = this._v.y;
+    const az = this._v.z;
+
+    f.flare.spawn(b.from.x, b.from.y, b.from.z, 0, 0, 0, 0.32, 0,
+      scale * 4.2, scale * 0.9, HOT_WHITE, 7.0, 0, 0);
+    f.flare.spawn(b.from.x, b.from.y, b.from.z, 0, 0, 0, 0.62, 0,
+      scale * 1.4, scale * 6.0, b.colour, 3.4, 0, 0);
+    // Throat: a short hot stub pushed along the barrel line.
+    f.flare.spawn(b.from.x + ax * scale, b.from.y + ay * scale, b.from.z + az * scale,
+      ax * scale * 3, ay * scale * 3, az * scale * 3, 0.24, 3,
+      scale * 1.8, scale * 0.4, HOT_WHITE, 5.0, 0, 0);
+
+    const n = Math.round(14 * ctx.qscale) + 6;
+    this._col2.copy(b.colour).lerp(HOT_WHITE, 0.55);
+    for (let i = 0; i < n; i++) {
+      const s = rng.range(160, 620);
+      const j = s * 0.16;
+      f.spark.spawn(b.from.x, b.from.y, b.from.z,
+        ax * s + rng.gaussian(0, j), ay * s + rng.gaussian(0, j), az * s + rng.gaussian(0, j),
+        rng.range(0.15, 0.42), 3.4, b.width * rng.range(0.5, 1.3), 0.2,
+        this._col2, 3.0, rng.range(4, 11), 0);
+    }
   }
 
   /* --------------------------------------------------------------- helpers */
@@ -853,23 +988,25 @@ export class WeaponFX {
     const ctx = this.ctx;
     const rng = ctx.rng;
     const f = ctx.fields;
-    const size = (2.0 + 2.6 * Math.sqrt(Math.max(1, damage))) * gain;
+    const size = (5.0 + 4.4 * Math.sqrt(Math.max(1, damage))) * gain;
 
-    this._col2.copy(team.trim).lerp(HOT_WHITE, 0.6);
-    f.flare.spawn(from.x, from.y, from.z, 0, 0, 0, 0.075, 0, size, size * 0.35, HOT_WHITE, 3.4, 0, 0);
+    this._col2.copy(team.trim).lerp(HOT_WHITE, 0.55);
+    // Core flash, then a coloured cone blown down the barrel line.
+    f.flare.spawn(from.x, from.y, from.z, 0, 0, 0, 0.085, 0,
+      size, size * 0.3, HOT_WHITE, 5.0, 0, 0);
     f.flare.spawn(
-      from.x + dx * size * 0.25, from.y + dy * size * 0.25, from.z + dz * size * 0.25,
-      dx * 26, dy * 26, dz * 26, 0.14, 4, size * 0.7, size * 1.5, this._col2, 1.8, 0, 0,
+      from.x + dx * size * 0.3, from.y + dy * size * 0.3, from.z + dz * size * 0.3,
+      dx * 42, dy * 42, dz * 42, 0.17, 4, size * 0.8, size * 2.0, this._col2, 2.6, 0, 0,
     );
-    const n = Math.max(2, Math.round(3 * ctx.qscale));
+    const n = Math.max(3, Math.round(5 * ctx.qscale));
     for (let i = 0; i < n; i++) {
-      const s = rng.range(60, 190) * gain;
+      const s = rng.range(90, 280) * gain;
       f.spark.spawn(
         from.x, from.y, from.z,
         dx * s + rng.gaussian(0, s * 0.22),
         dy * s + rng.gaussian(0, s * 0.22),
         dz * s + rng.gaussian(0, s * 0.22),
-        rng.range(0.08, 0.2), 5.0, size * 0.14, 0.2, this._col2, 2.2, rng.range(3, 8), 0,
+        rng.range(0.09, 0.24), 5.0, size * 0.18, 0.2, this._col2, 2.8, rng.range(3, 9), 0,
       );
     }
   }
@@ -921,9 +1058,12 @@ export class WeaponFX {
         const inv = 1 / Math.max(1e-4, Math.hypot(t.dx, t.dy, t.dz));
         this._v.set(-t.dx * inv, -t.dy * inv, -t.dz * inv);
         this._v2.set(t.ex, t.ey, t.ez);
-        const mag = Math.min(2.6, 0.5 + Math.sqrt(t.damage) * 0.14);
-        ctx.fields.flare.spawn(t.ex, t.ey, t.ez, 0, 0, 0, 0.10, 0, mag * 6, mag * 1.5, HOT_WHITE, 2.8, 0, 0);
-        this._sparkBurst(this._v2, this._v, Math.round(5 + mag * 4), 0.6, 40 + t.damage * 0.8, mag * 1.6);
+        const mag = Math.min(5.0, 0.9 + Math.sqrt(t.damage) * 0.26);
+        ctx.fields.flare.spawn(t.ex, t.ey, t.ez, 0, 0, 0, 0.11, 0,
+          mag * 12, mag * 2.6, HOT_WHITE, 4.4, 0, 0);
+        ctx.fields.flare.spawn(t.ex, t.ey, t.ez, 0, 0, 0, 0.26, 0,
+          mag * 4, mag * 18, FLAK_BURST, 1.9, 0, 0);
+        this._sparkBurst(this._v2, this._v, Math.round(8 + mag * 4), 0.6, 80 + t.damage * 1.2, mag * 1.9);
       }
     }
     this._writeTracerBuffer();
@@ -948,7 +1088,7 @@ export class WeaponFX {
         b.to.copy(b.localTo).applyQuaternion(tq).add(tp);
       }
       if (now >= b.nextEmit) {
-        b.nextEmit = now + 0.045;
+        b.nextEmit = now + (b.ion ? 0.032 : 0.05);
         this._beamSplash(b);
       }
     }
@@ -986,35 +1126,60 @@ export class WeaponFX {
     b.needsUpdate = true;
   }
 
+  /* Fired on a fixed cadence for the whole burn. Two seconds of ion has to look
+     like two seconds of sustained work being done to a hull, not a line that
+     switches on. */
   _beamSplash(b) {
     const ctx = this.ctx;
     const rng = ctx.rng;
     const f = ctx.fields;
     const t = (ctx.now - b.start) / b.duration;
-    if (t > 0.9) return;
-    const gain = Math.min(1, t / 0.1);
+    if (t > 0.94) return;
+    const gain = Math.min(1, t / 0.08) * (1 - Math.max(0, (t - 0.86) / 0.14));
 
-    // Muzzle throat.
-    const ms = b.width * 5.0 * gain;
-    f.flare.spawn(b.from.x, b.from.y, b.from.z, 0, 0, 0, 0.09, 0, ms, ms * 0.6, HOT_WHITE, 3.6, 0, 0);
+    // Muzzle throat, re-lit every emit so the barrel stays white for the burn.
+    const ms = b.width * 7.0 * gain;
+    f.flare.spawn(b.from.x, b.from.y, b.from.z, 0, 0, 0, 0.10, 0,
+      ms, ms * 0.55, HOT_WHITE, 5.2, 0, 0);
+    f.flare.spawn(b.from.x, b.from.y, b.from.z, 0, 0, 0, 0.22, 0,
+      ms * 0.7, ms * 2.2, b.colour, 2.6, 0, 0);
 
-    // Impact: splash flare plus sparks thrown back along the beam.
-    const is = b.width * 6.5 * gain;
-    f.flare.spawn(b.to.x, b.to.y, b.to.z, 0, 0, 0, 0.11, 0, is, is * 0.5, HOT_WHITE, 4.2, 0, 0);
-    f.flare.spawn(b.to.x, b.to.y, b.to.z, 0, 0, 0, 0.3, 0, is * 0.6, is * 2.4, b.colour, 2.0, 0, 0);
+    // Impact bulb: white core, coloured wash, both floored to a legible size.
+    const is = b.width * 9.5 * gain;
+    f.flare.spawn(b.to.x, b.to.y, b.to.z, 0, 0, 0, 0.12, 0,
+      is, is * 0.45, HOT_WHITE, 6.4, 0, 0);
+    f.flare.spawn(b.to.x, b.to.y, b.to.z, 0, 0, 0, 0.34, 0,
+      is * 0.6, is * 3.0, b.colour, 3.0, 0, 0);
 
+    // Back along the beam is the hull normal for a head-on cut; spall goes that
+    // way, and a wide skirt of it sprays across the plating.
     this._v.copy(b.from).sub(b.to);
     const l = this._v.length();
     if (l > 1e-4) this._v.multiplyScalar(1 / l);
     else this._v.set(0, 1, 0);
-    this._sparkBurst(b.to, this._v, Math.round(4 + 4 * ctx.qscale), 0.85, 120 + b.damage * 0.35, b.width * 0.9);
 
-    if (rng.chance(0.5)) {
+    const hot = Math.round((10 + 8 * ctx.qscale) * (b.ion ? 1.6 : 1));
+    this._sparkBurst(b.to, this._v, hot, 0.55,
+      (220 + b.damage * 0.9) * gain, b.width * 1.5);
+    // A second, flatter fan: molten metal running along the surface.
+    this._sparkBurst(b.to, this._v, Math.round(hot * 0.6), 1.35,
+      (110 + b.damage * 0.4) * gain, b.width * 1.1);
+
+    for (let i = 0; i < (b.ion ? 2 : 1); i++) {
+      const u = rng.unitVector();
+      f.ember.spawn(
+        b.to.x, b.to.y, b.to.z,
+        this._v.x * 60 + u.x * 45, this._v.y * 60 + u.y * 45, this._v.z * 60 + u.z * 45,
+        rng.range(0.7, 1.8), 0.25, b.width * 1.6, b.width * 0.3,
+        FLAK_BURST, 2.4, 0, 0,
+      );
+    }
+    if (rng.chance(0.6)) {
       const u = rng.unitVector();
       f.smoke.spawn(
         b.to.x, b.to.y, b.to.z,
-        this._v.x * 30 + u.x * 14, this._v.y * 30 + u.y * 14, this._v.z * 30 + u.z * 14,
-        1.4, 1.5, b.width * 2, b.width * 16, FLAK_SMOKE, 0.7, 0, rng.gaussian(0, 1),
+        this._v.x * 34 + u.x * 22, this._v.y * 34 + u.y * 22, this._v.z * 34 + u.z * 22,
+        1.6, 0.25, b.width * 3, b.width * 22, FLAK_SMOKE, 0.7, 0, rng.gaussian(0, 1),
       );
     }
   }
@@ -1124,6 +1289,7 @@ export class WeaponFX {
     this.missiles.dispose();
     this.exhaust.dispose();
     this._quadGeo.dispose();
+    this._beamGeo.dispose();
     this._missileGeo.dispose();
   }
 }

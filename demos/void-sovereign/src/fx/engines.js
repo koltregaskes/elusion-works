@@ -33,6 +33,8 @@ attribute vec3 iColor;
 attribute vec4 iMisc;
 
 uniform float uTime;
+uniform float uPixelScale;
+uniform float uMinPixels;
 
 varying vec2 vUv;
 varying vec3 vColor;
@@ -41,12 +43,26 @@ varying float vFacing;
 varying float vThrottle;
 varying float vSeed;
 varying float vFragW;
+varying float vClamp;
 
 void main() {
-  vec3 local = position * iScale;
+  /* Screen floor on the plume radius. An interceptor nozzle is 0.64 m across;
+     at three kilometres that is a fifth of a pixel, so a whole fighter wing
+     under full burn would show nothing at all. Scale the cone up — length with
+     it, so the shape stays a cone rather than a disc — until it is at least a
+     couple of pixels wide. */
+  vec3 scale = iScale;
+  float camDist = max( distance( cameraPosition, iPos ), 1.0 );
+  float floorR = camDist * uPixelScale * uMinPixels;
+  float k = max( 1.0, floorR / max( scale.x, 0.0001 ) );
+  vClamp = clamp( 1.0 - 1.0 / k, 0.0, 1.0 );
+  scale.xy *= k;
+  scale.z *= mix( 1.0, k, 0.35 );
+
+  vec3 local = position * scale;
   vec3 wp = qrot( iQuat, local ) + iPos;
 
-  vec3 n = qrot( iQuat, normalize( normal / max( iScale, vec3( 0.0001 ) ) ) );
+  vec3 n = qrot( iQuat, normalize( normal / max( scale, vec3( 0.0001 ) ) ) );
   vec3 toCam = normalize( cameraPosition - wp );
 
   gl_Position = projectionMatrix * viewMatrix * vec4( wp, 1.0 );
@@ -78,6 +94,7 @@ varying float vFacing;
 varying float vThrottle;
 varying float vSeed;
 varying float vFragW;
+varying float vClamp;
 
 void main() {
   #include <logdepthbuf_fragment>
@@ -105,7 +122,12 @@ void main() {
     col = mix( mix( uHot, vColor, 0.55 ), vColor * 0.75, smoothstep( 0.0, 0.7, t ) );
   }
 
-  a *= smoothstep( 0.0, 0.06, vThrottle );
+  // Once the pixel floor is doing the work the cone is a smear a few pixels
+  // across; concentrate it and drive it harder so it still reads as thrust.
+  a = fxSharpen( a, vClamp * 0.8 );
+  col *= uGain * ( 1.0 + 1.1 * vClamp );
+
+  a *= smoothstep( 0.0, 0.02, vThrottle );
   a *= fxSoftFade( vFragW );
   if ( a <= 0.003 ) discard;
   gl_FragColor = vec4( col, a );
@@ -127,11 +149,13 @@ attribute vec4 iMisc;
 
 uniform float uTime;
 uniform float uPixelScale;
+uniform float uMinPixels;
 
 varying vec2 vUv;
 varying vec3 vColor;
 varying float vGain;
 varying float vFragW;
+varying float vClamp;
 
 void main() {
   vec3 axis = qrot( iQuat, vec3( 0.0, 0.0, 1.0 ) );
@@ -140,8 +164,9 @@ void main() {
   float dist = max( -mv.z, 1.0 );
 
   float pulse = 0.92 + 0.08 * sin( uTime * 33.0 + iMisc.x * 19.0 );
-  float size = iScale.x * iMisc.w * pulse;
-  size = max( size, dist * uPixelScale * 1.6 );
+  float natural = iScale.x * iMisc.w * pulse;
+  float size = max( natural, dist * uPixelScale * uMinPixels );
+  vClamp = clamp( 1.0 - natural / max( size, 0.0001 ), 0.0, 1.0 );
 
   mv.xy += position.xy * size;
   gl_Position = projectionMatrix * mv;
@@ -150,7 +175,7 @@ void main() {
   vColor = iColor;
   // Facing the nozzle straight-on is where the flare should dominate.
   vGain = mix( 0.45, 1.0, pow( abs( dot( normalize( axis ), normalize( cameraPosition - wp ) ) ), 1.6 ) )
-        * smoothstep( 0.0, 0.08, iMisc.y );
+        * smoothstep( 0.0, 0.02, iMisc.y );
   vFragW = gl_Position.w;
   #include <logdepthbuf_vertex>
 }
@@ -167,13 +192,17 @@ varying vec2 vUv;
 varying vec3 vColor;
 varying float vGain;
 varying float vFragW;
+varying float vClamp;
 
 void main() {
   #include <logdepthbuf_fragment>
   vec4 texel = texture2D( uMap, vUv );
-  float a = texel.a * vGain * fxSoftFade( vFragW );
+  float a = fxSharpen( texel.a, vClamp ) * fxQuadMask( vUv ) * vGain * fxSoftFade( vFragW );
   if ( a <= 0.003 ) discard;
-  gl_FragColor = vec4( mix( vColor, vec3( 1.0 ), 0.45 ) * texel.rgb * 1.6, a );
+  /* Mostly team colour with a white-hot centre, not the other way round: the
+     drive is the strongest colour signal a ship gives at range (§3.3). */
+  vec3 hot = mix( vColor, vec3( 1.0 ), 0.16 + 0.55 * pow( texel.a, 3.0 ) );
+  gl_FragColor = vec4( hot * texel.rgb * 2.1 * uGain * ( 1.0 + 0.75 * vClamp ), a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -241,12 +270,107 @@ const PLUME_ATTRS = [
   { name: 'iMisc', size: 4, offset: 13 },
 ];
 
+/* ------------------------------------------------------------ running lights
+   `buildShipModel()` hands back a `lights[]` array per the §2 contract and
+   nothing was consuming it. They matter: a row of navigation lights at fixed
+   spacing along a hull is the cheapest and strongest scale cue there is
+   (§3.4). Twenty-four of them down a 1,900 m mothership say "this thing is
+   enormous" before any greeble resolves; two on a 14 m interceptor say the
+   opposite. They carry a screen floor so they survive at strategic range,
+   which is exactly where the scale read matters most. */
+
+const L_STRIDE = 12;
+/* 0..2 pos | 3..5 rgb | 6 size | 7 phase | 8 period | 9 seed | 10..11 pad */
+
+const LIGHT_VERT = /* glsl */ `
+#include <common>
+#include <logdepthbuf_pars_vertex>
+
+attribute vec3 iPos;
+attribute vec3 iColor;
+attribute float iSize;
+attribute float iPhase;
+attribute float iPeriod;
+attribute float iSeed;
+
+uniform float uTime;
+uniform float uPixelScale;
+uniform float uMinPixels;
+
+varying vec2 vUv;
+varying vec3 vColor;
+varying float vGain;
+varying float vFragW;
+
+void main() {
+  vec4 mv = viewMatrix * vec4( iPos, 1.0 );
+  float dist = max( -mv.z, 1.0 );
+
+  // period 0 => steady. Otherwise a short bright pulse, not a square wave.
+  float blink = 1.0;
+  if ( iPeriod > 0.001 ) {
+    float ph = fract( ( uTime + iPhase ) / iPeriod );
+    blink = 0.12 + 0.88 * exp( -ph * 7.0 ) + 0.35 * exp( -abs( ph - 0.5 ) * 26.0 );
+  }
+
+  float size = max( iSize, dist * uPixelScale * uMinPixels );
+  mv.xy += position.xy * size;
+  gl_Position = projectionMatrix * mv;
+
+  vUv = uv;
+  vColor = iColor;
+  vGain = blink;
+  vFragW = gl_Position.w;
+  #include <logdepthbuf_vertex>
+}
+`;
+
+const LIGHT_FRAG = /* glsl */ `
+#include <common>
+#include <logdepthbuf_pars_fragment>
+#SOFT_PARS
+
+varying vec2 vUv;
+varying vec3 vColor;
+varying float vGain;
+varying float vFragW;
+
+void main() {
+  #include <logdepthbuf_fragment>
+  vec2 d = vUv * 2.0 - 1.0;
+  float r2 = dot( d, d );
+  if ( r2 > 1.0 ) discard;
+  float core = exp( -r2 * 12.0 );
+  float halo = pow( max( 1.0 - sqrt( r2 ), 0.0 ), 2.2 ) * 0.30;
+  float a = ( core + halo ) * vGain * fxSoftFade( vFragW );
+  if ( a <= 0.004 ) discard;
+  gl_FragColor = vec4( mix( vColor, vec3( 1.0 ), core * 0.45 ) * ( 1.4 + 2.2 * core ) * uGain, a );
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}
+`;
+
+const LIGHT_ATTRS = [
+  { name: 'iPos', size: 3, offset: 0 },
+  { name: 'iColor', size: 3, offset: 3 },
+  { name: 'iSize', size: 1, offset: 6 },
+  { name: 'iPhase', size: 1, offset: 7 },
+  { name: 'iPeriod', size: 1, offset: 8 },
+  { name: 'iSeed', size: 1, offset: 9 },
+];
+
+const LIGHT_RANGE = 16000;
+
 const TRAIL_RANGE = 9000;
+
+/* Station-keeping glow floor. Small enough to read as "hot, idle", large
+   enough that a parked mothership is not twelve dead holes. */
+const IDLE_THROTTLE = 0.14;
 
 export class EngineFX {
   constructor(ctx) {
     this.ctx = ctx;
-    this.drawCalls = 2;
+    this.drawCalls = 3;
     this._entries = new Map();
 
     this._plumeGeo = buildPlumeGeometry(12, 8);
@@ -263,6 +387,7 @@ export class EngineFX {
       uniforms: {
         uNoise: { value: ctx.noises.fbm },
         uHot: { value: new THREE.Color(0xdff2ff) },
+        uMinPixels: { value: 2.6 },
       },
       renderOrder: 10,
       softness: 16,
@@ -276,12 +401,31 @@ export class EngineFX {
       capacity: ctx.budget.plumes,
       vertexShader: FLARE_VERT,
       fragmentShader: FLARE_FRAG,
-      uniforms: { uMap: { value: ctx.sprites.flare } },
+      uniforms: {
+        uMap: { value: ctx.sprites.flare },
+        uMinPixels: { value: 4.0 },
+      },
       renderOrder: 11,
       softness: 12,
     });
 
+    this.lights = ctx.instanceBatch({
+      name: 'runningLights',
+      base: this._quadGeo,
+      attributes: LIGHT_ATTRS,
+      stride: L_STRIDE,
+      capacity: ctx.budget.lights,
+      vertexShader: LIGHT_VERT,
+      fragmentShader: LIGHT_FRAG,
+      uniforms: { uMinPixels: { value: 1.9 } },
+      renderOrder: 12,
+      softness: 6,
+      nearFade: 8,
+    });
+
     this.plumeCount = 0;
+    this.lightCount = 0;
+    this._lightCursor = 0;
 
     this._q = new THREE.Quaternion();
     this._v = new THREE.Vector3();
@@ -319,14 +463,47 @@ export class EngineFX {
       seed: (entity.id * 0.6180339887) % 1,
       /* Fast movers streak; capitals never do. Corvettes and up read as mass
          moving, and a light-trail on a 380 m destroyer looks like a toy. */
-      wantsTrail: (def.speed || 0) >= 260 && (def.length || 0) <= 60,
+      wantsTrail: (def.speed || 0) >= 220 && (def.length || 0) <= 60,
       centre: new THREE.Vector3(),
     };
     entry.defs = defs;
     entry.centre.set(0, 0, 0);
     for (const d of defs) entry.centre.add(d.pos);
     entry.centre.multiplyScalar(1 / defs.length);
+    entry.lights = this._readLights(entity);
     this._entries.set(entity.id, entry);
+  }
+
+  /** Running lights, per the `buildShipModel()` contract. Cheap if absent. */
+  _readLights(entity) {
+    const src = entity._lights
+      || entity.lights
+      || (entity.model && entity.model.lights)
+      || (entity.object3D && entity.object3D.userData && entity.object3D.userData.lights);
+    if (!Array.isArray(src) || !src.length) return null;
+
+    const def = entity.def || {};
+    const L = def.length || (entity.radius || 10) * 2.2;
+    // Fixture size tracks hull size but sub-linearly: a mothership's lamps are
+    // bigger than a fighter's, not 135x bigger, which is what sells the scale.
+    const size = Math.min(4.2, Math.max(0.22, Math.pow(L, 0.62) * 0.055));
+    const out = [];
+    // 48 is plenty to describe a 1.9 km spine and bounds the per-frame write.
+    const step = Math.max(1, Math.ceil(src.length / 48));
+    for (let i = 0; i < src.length; i += step) {
+      const l = src[i];
+      if (!l || !l.pos) continue;
+      const c = l.colour || l.color;
+      out.push({
+        pos: new THREE.Vector3(l.pos.x, l.pos.y, l.pos.z),
+        r: c ? c.r : 1, g: c ? c.g : 0.86, b: c ? c.b : 0.72,
+        size,
+        period: l.period > 0 ? l.period : 0,
+        phase: ((entity.id * 0.6180339887 + i * 0.2393) % 1) * (l.period > 0 ? l.period : 1),
+        seed: (i * 0.618034) % 1,
+      });
+    }
+    return out.length ? out : null;
   }
 
   detach(entity) {
@@ -350,6 +527,10 @@ export class EngineFX {
     const camPos = camera.position;
     const trails = ctx.fields.trail;
 
+    const ld = this.lights.data;
+    const lcap = ctx.budget.lights;
+    let ln = 0;
+
     let n = 0;
     for (const entry of this._entries.values()) {
       const e = entry.entity;
@@ -365,16 +546,42 @@ export class EngineFX {
       const dz = op.z - camPos.z;
       const dist2 = dx * dx + dy * dy + dz * dz;
 
-      const throttle = Math.max(0, Math.min(1, e.throttle === undefined ? 1 : e.throttle));
+      if (entry.lights && ln < lcap && dist2 < LIGHT_RANGE * LIGHT_RANGE) {
+        const ls = entry.lights;
+        for (let i = 0; i < ls.length && ln < lcap; i++) {
+          const l = ls[i];
+          v.copy(l.pos).multiplyScalar(scale).applyQuaternion(oq).add(op);
+          const o = ln * L_STRIDE;
+          ld[o] = v.x; ld[o + 1] = v.y; ld[o + 2] = v.z;
+          ld[o + 3] = l.r; ld[o + 4] = l.g; ld[o + 5] = l.b;
+          ld[o + 6] = l.size * scale;
+          ld[o + 7] = l.phase;
+          ld[o + 8] = l.period;
+          ld[o + 9] = l.seed;
+          ln++;
+        }
+      }
+
+      /* Idle burn. A ship at station keeping still has hot bells — reactors do
+         not switch off — and a fleet parked at zero throttle with dead engines
+         is the single most lifeless thing this renderer can produce. The floor
+         is enough to light the nozzle and put a stub of plume behind it. */
+      const raw = Math.max(0, Math.min(1, e.throttle === undefined ? 1 : e.throttle));
+      const throttle = Math.max(IDLE_THROTTLE, raw);
       const team = ctx.teamColour(e.team || 0);
 
       /* Trail bookkeeping. Distance-gated so the ribbon budget is spent on the
          fighters the camera can actually see streak. */
       if (entry.wantsTrail) {
-        const want = throttle > 0.12 && dist2 < TRAIL_RANGE * TRAIL_RANGE;
+        const want = raw > 0.12 && dist2 < TRAIL_RANGE * TRAIL_RANGE;
         if (want && !entry.trail) {
-          const r = Math.max(1.6, Math.min(16, (e.radius || 8) * 0.42));
-          entry.trail = trails.acquire(team.engine, r, 0.85 + 0.5 * ctx.qscale, Math.max(5, r * 2.4));
+          /* Per-ship jitter. A wing flying formation with identical trails
+             reads as one emitter's pattern rather than six pilots; ±25% on
+             width and life is enough to break that up. */
+          const j = 0.75 + 0.5 * entry.seed;
+          const r = Math.max(2.0, Math.min(16, (e.radius || 8) * 0.44 * j));
+          const life = (0.42 + 0.28 * ctx.qscale) * j;
+          entry.trail = trails.acquire(team.engine, r, life, Math.max(5, r * 2.4));
         } else if (!want && entry.trail) {
           trails.detach(entry.trail);
           entry.trail = null;
@@ -385,10 +592,8 @@ export class EngineFX {
         }
       }
 
-      if (throttle <= 0.015) continue;
-
-      // Beyond ~14 km a plume is a pixel; drop the geometry, keep the flare.
-      const far = dist2 > 14000 * 14000;
+      // Beyond ~20 km a plume is a pixel; drop the geometry, keep the flare.
+      const far = dist2 > 20000 * 20000;
 
       for (let i = 0; i < entry.defs.length; i++) {
         if (n >= cap) break;
@@ -397,7 +602,10 @@ export class EngineFX {
         q.copy(d.quat).premultiply(oq);
 
         const r = d.radius * scale;
-        const len = r * (2.6 + 10.5 * throttle);
+        // A fighter at full burn trails roughly its own length of flame; a
+        // capital's block runs proportionally further because its bells are
+        // proportionally larger. One formula covers a 45x span of nozzle size.
+        const len = r * (3.0 + 22.0 * throttle);
         const wid = r * (0.92 + 0.30 * throttle);
         const seed = (entry.seed + i * 0.317) % 1;
 
@@ -423,13 +631,16 @@ export class EngineFX {
     }
 
     this.plumeCount = n;
+    this.lightCount = ln;
     core.flush(n);
     flare.flush(n);
+    this.lights.flush(ln);
   }
 
   dispose() {
     this.core.dispose();
     this.flare.dispose();
+    this.lights.dispose();
     this._plumeGeo.dispose();
     this._quadGeo.dispose();
     this._entries.clear();

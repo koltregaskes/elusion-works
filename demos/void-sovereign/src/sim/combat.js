@@ -40,6 +40,14 @@ export function stanceConfig(stance) {
   return STANCE_CFG[stance] || STANCE_CFG[STANCE.NEUTRAL];
 }
 
+/* An attack-move, guard or patrol order is an instruction to go looking for a
+   fight along the way, so it widens the acquisition envelope and the leash.
+   It deliberately does *not* touch `entity.stance`: the stance is the player's
+   setting, and an order that quietly rewrote it would be exactly the class of
+   bug that has automatic behaviour outranking an explicit command. An evasive
+   ship still refuses the engagement, because the player said so. */
+const ORDER_ENGAGE = { scan: 1.0, leash: 4200 };
+
 /* Attack-run phases for strike craft. */
 const RUN = { APPROACH: 0, BREAK: 1, REFORM: 2 };
 
@@ -130,6 +138,7 @@ export function initCombatState(e) {
       beamLeft: 0,
       beamDps: 0,
       beamTick: 0,
+      beamHp: 0,
     };
   }
   e.weapons = ws;
@@ -137,12 +146,14 @@ export function initCombatState(e) {
   e.targetId = -1;
   e.retarget = 0;
   e.runPhase = RUN.APPROACH;
-  e.runTimer = 0;
+  e.runTimer = 12;
   e.breakDir = new THREE.Vector3(0, 1, 0);
   e.lastHitTick = -99999;
   e.lastAttackerId = -1;
   e.engageRange = maxWeaponRange(e.def);
-  e.threatScore = 0;
+  // How dangerous this hull is to an unarmed hauler. Read by the economy so a
+  // collector runs from an interceptor wing but not from a passing picket.
+  e.threatScore = dpsAgainst(e.def, ROLE.RESOURCE);
 }
 
 export function maxWeaponRange(def) {
@@ -285,14 +296,22 @@ function fireWeapon(world, e, ws, target) {
     ws.beamDps = (w.damage * hp) / ws.beamLeft;
     ws.beamTick = 0;
     ws.targetId = target.id;
+    ws.beamHp = ws.muzzle;
     if (emit) {
       muzzleAt(e, ws.muzzle, _muzzle);
+      // The lance has to land on the hull, not at the centre of it: the FX
+      // layer welds this point into the target's frame and splashes there, so
+      // a centre-of-mass `to` would bury a two-second beam inside a carrier.
+      _aim.subVectors(_muzzle, target.position);
+      const l = _aim.length();
+      if (l > 1e-4) _aim.multiplyScalar(target.radius / l).add(target.position);
+      else _aim.copy(target.position);
       bus.emit('sim:fire', {
         shooter: e,
         target,
         weapon: w,
         from: _muzzle.clone(),
-        to: target.position.clone(),
+        to: _aim.clone(),
       });
     }
     ws.muzzle++;
@@ -568,7 +587,13 @@ function attackRun(world, e, target, dt) {
       return;
     }
     default: {
-      if (dist < breakAt || e.runTimer <= 0) {
+      /* A run ends by breaking off the mark. A timer that expires while the
+         target is still kilometres away is a transit, not an attack run — so
+         it is refreshed rather than triggering a break in open space. */
+      const closed = dist < breakAt;
+      const spent = e.runTimer <= 0;
+      if (spent && dist > reformAt) e.runTimer = 14;
+      if (closed || (spent && dist <= reformAt)) {
         // Break out along a vector that keeps the overshoot legible: mostly
         // perpendicular to the run-in, seeded off the entity so a whole wing
         // fans instead of stacking.
@@ -764,17 +789,30 @@ export function updateCombat(world, dt) {
     const ws = e.weapons;
     if (!ws || ws.length === 0) continue;
     const cfg = stanceConfig(e.stance);
+    // Attack-move, guard and patrol widen the envelope; the stance still has
+    // the final say on whether this ship fights at all.
+    const seeking = e.orderEngage === true && cfg.fire;
+    const scanScale = seeking && ORDER_ENGAGE.scan > cfg.scan ? ORDER_ENGAGE.scan : cfg.scan;
+    const leash = seeking && ORDER_ENGAGE.leash > cfg.leash ? ORDER_ENGAGE.leash : cfg.leash;
 
     // --- hull-level target, refreshed on a stagger ---
     e.retarget -= dt;
     if (e.retarget <= 0) {
       e.retarget = RETARGET_PERIOD + ((e.id % 13) / 13) * 0.5;
+      const scan = Math.max(e.engageRange, (e.def.sensorRange || 4000) * scanScale);
       const forced = e.forcedTargetId >= 0 ? world.entities.get(e.forcedTargetId) : null;
       if (forced && forced.alive && forced.team !== e.team) {
         e.targetId = forced.id;
+        /* An order to attack is an order to be in that fight, not an order to
+           fly an ion lance at a fighter. When the main gun cannot meaningfully
+           hurt the mark, the helm follows something it can — and picks the
+           original mark back up the moment the screen is clear. */
+        if (damageAffinity(ws[0].def.type, forced.role) < 0.25) {
+          const alt = findTarget(world, e, ws[0].def, scan);
+          if (alt) e.targetId = alt.id;
+        }
       } else {
         e.forcedTargetId = -1;
-        const scan = Math.max(e.engageRange, (e.def.sensorRange || 4000) * cfg.scan);
         const t = cfg.fire ? findTarget(world, e, ws[0].def, scan) : null;
         e.targetId = t ? t.id : -1;
       }
@@ -797,11 +835,14 @@ export function updateCombat(world, dt) {
         } else {
           w.beamLeft -= dt;
           w.beamTick += dt;
-          // Batch the damage at ~10 Hz so the FX bus is not flooded.
+          // Batch the damage at ~10 Hz so the FX bus is not flooded. The
+          // origin is the live muzzle, not the hull centre, so the splash sits
+          // where the beam actually meets the plating as both ships manoeuvre.
           if (w.beamTick >= 0.1 || w.beamLeft <= 0) {
+            muzzleAt(e, w.beamHp, _muzzle);
             applyDamage(
               world, bt, w.beamDps * w.beamTick, def.type, e,
-              e.position.x, e.position.y, e.position.z,
+              _muzzle.x, _muzzle.y, _muzzle.z,
             );
             w.beamTick = 0;
           }
@@ -867,7 +908,7 @@ export function updateCombat(world, dt) {
     // Leash: a passive/neutral ship will not follow a mark off the map.
     if (e.station) {
       const away = e.position.distanceTo(e.station);
-      if (away > cfg.leash + e.engageRange) {
+      if (away > leash + e.engageRange) {
         setNavArrive(e, e.station, 1, e.radius + 80);
         setFacePoint(e, null);
         e.engaged = false;

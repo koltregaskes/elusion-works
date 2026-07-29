@@ -1,11 +1,11 @@
-import { SHIPS, approxRadius } from '../ships/catalog.js';
+import { SHIPS, ROLE, approxRadius, damageAffinity } from '../ships/catalog.js';
 
 /* Selection surfaces: the grouped roster along the bottom-left, and the
    world-space marker layer that draws brackets, health pips, target reticles
    and order markers over the 3D view.
 
    The marker layer is the hot path of the whole HUD — it runs every frame over
-   the live selection. Three rules keep it inside budget:
+   the live selection. Four rules keep it inside budget:
 
      1. Nothing is created or destroyed per frame. Every element comes from a
         pool and is parked with `opacity: 0` when unused.
@@ -14,17 +14,30 @@ import { SHIPS, approxRadius } from '../ships/catalog.js';
         corner ticks outward from a zero-size anchor rather than by setting
         width/height, so a bracket never triggers layout and its 1px stroke
         stays 1px whether it frames an interceptor or a mothership.
-     3. Everything is culled off-screen and hard-capped. Past the cap the
-        selection collapses to a single group bracket. */
+     3. Everything is culled off-screen, and a culled contact releases its
+        pool slot to the next one — so the cost tracks what you can see, not
+        what you have selected.
+     4. Two pools, not one. A readable contact gets a nine-node bracket; a
+        contact smaller than the ticks themselves gets a one-node pip. A
+        200-ship fleet is therefore ~200 DOM nodes rather than ~2,000, and
+        past the group threshold it collapses to a single bracket plus a
+        constellation of pips. */
 
-const MAX_BRACKETS = 110;
+/* A full bracket is nine nodes; a pip is one. The caps are chosen so the
+   worst case is a few hundred elements, all of them transform-only. */
+const MAX_BRACKETS = 96;
+const MAX_PIPS = 320;
 const MAX_RETICLES = 14;
 const MAX_ORDERS = 16;
 
-/* Below this half-size a bracket is visual noise, so it becomes a single pip.
-   This is what makes a 300-ship fleet at long range read as a constellation
-   rather than a mess of overlapping boxes. */
-const DOT_HALF = 7;
+/* Past this many selected hulls, individual brackets stop helping: you get one
+   bracket around the whole formation and a pip per ship. */
+const GROUP_AT = 140;
+
+/* Below this half-size a bracket is visual noise, so it becomes a pip. This is
+   what makes a 300-ship fleet at long range read as a constellation rather
+   than a mess of overlapping boxes. */
+const PIP_HALF = 8;
 const CORNER = 9;
 const SMALL_CORNER = 5;
 const RET_CORNER = 6;
@@ -101,6 +114,148 @@ export function groupSelection(ids, ctx) {
 }
 
 /* ========================================================================== */
+/*  Ship detail card                                                           */
+/* ========================================================================== */
+
+/* The rock-paper-scissors in `catalog.js` is well shaped and, until now,
+   completely invisible: the AFFINITY table and the hand-written `description`
+   on all thirteen classes were never rendered anywhere. A player could only
+   learn the counters by losing to them.
+
+   This card is the fix. It reads the catalog and nothing else, so it cannot
+   drift from the balance table, and the counter lines are *computed* from the
+   same affinity multipliers combat.js applies — not written by hand. */
+
+const COUNTER_ROLES = [
+  [ROLE.FIGHTER, 'Fighters'],
+  [ROLE.CORVETTE, 'Corvettes'],
+  [ROLE.FRIGATE, 'Frigates'],
+  [ROLE.CAPITAL, 'Capitals'],
+  [ROLE.SUPPORT, 'Support'],
+  [ROLE.STRUCTURE, 'Structures'],
+];
+
+const ROLE_NAME = {
+  fighter: 'Strike craft',
+  corvette: 'Corvette',
+  frigate: 'Frigate',
+  capital: 'Capital',
+  support: 'Support',
+  resource: 'Economy',
+  structure: 'Fleet base',
+};
+
+/** Effective damage per second this class puts on each target role. */
+function counterProfile(def) {
+  const weapons = def && def.weapons;
+  if (!weapons || !weapons.length) return null;
+  const rows = [];
+  let peak = 0;
+  for (const [role, label] of COUNTER_ROLES) {
+    let dps = 0;
+    for (const w of weapons) {
+      dps += (w.damage || 0) * (w.rate || 0) * (w.hardpoints || 1) * damageAffinity(w.type, role);
+    }
+    if (dps > peak) peak = dps;
+    rows.push({ label, dps });
+  }
+  if (peak <= 0) return null;
+
+  const strong = [];
+  const weak = [];
+  for (const r of rows) {
+    const k = r.dps / peak;
+    if (k >= 0.8) strong.push(r.label);
+    else if (k <= 0.34) weak.push(r.label);
+  }
+  return { strong: strong.slice(0, 3), weak: weak.slice(0, 3) };
+}
+
+/* A hairline card, no fill — the same language as the rest of the HUD. It is
+   absolutely positioned against its host so showing it never moves anything. */
+export class ShipCard {
+  constructor({ root, align = 'right' }) {
+    const el = document.createElement('div');
+    el.className = `vsh-card vsh-card--${align}`;
+    el.setAttribute('role', 'tooltip');
+    el.setAttribute('aria-hidden', 'true');
+
+    const head = document.createElement('div');
+    head.className = 'vsh-card__head';
+    this.name = document.createElement('span');
+    this.name.className = 'vsh-card__name';
+    this.cost = document.createElement('span');
+    this.cost.className = 'vsh-card__cost vsh-num';
+    head.append(this.name, this.cost);
+
+    this.meta = document.createElement('p');
+    this.meta.className = 'vsh-card__meta';
+    this.desc = document.createElement('p');
+    this.desc.className = 'vsh-card__desc';
+
+    this.counters = document.createElement('div');
+    this.counters.className = 'vsh-card__counters';
+    this.strong = this._counterRow('Strong', 'strong');
+    this.weak = this._counterRow('Weak', 'weak');
+
+    el.append(head, this.meta, this.desc, this.counters);
+    root.appendChild(el);
+    this.el = el;
+    this.classId = null;
+  }
+
+  _counterRow(label, mod) {
+    const row = document.createElement('div');
+    row.className = `vsh-card__row vsh-card__row--${mod}`;
+    const k = document.createElement('span');
+    k.className = 'vsh-card__k';
+    k.textContent = label;
+    const v = document.createElement('span');
+    v.className = 'vsh-card__v';
+    row.append(k, v);
+    this.counters.appendChild(row);
+    return { row, v };
+  }
+
+  show(classId) {
+    const def = SHIPS[classId];
+    if (!def) return this.hide();
+    if (this.classId !== classId) {
+      this.classId = classId;
+      this.name.textContent = def.name;
+      this.cost.textContent = def.cost > 0 ? `${def.cost} RU` : '';
+      const bits = [ROLE_NAME[def.role] || def.role, `${def.length} m`];
+      if (def.buildTime > 0) bits.push(`${def.buildTime} s`);
+      if (def.popCost > 0) bits.push(`${def.popCost} pop`);
+      if (def.squadSize > 1) bits.push(`wing of ${def.squadSize}`);
+      this.meta.textContent = bits.join(' · ');
+      this.desc.textContent = def.description || '';
+
+      const c = counterProfile(def);
+      const has = !!(c && (c.strong.length || c.weak.length));
+      this.counters.hidden = !has;
+      if (has) {
+        this.strong.row.hidden = !c.strong.length;
+        this.weak.row.hidden = !c.weak.length;
+        this.strong.v.textContent = c.strong.join(' · ');
+        this.weak.v.textContent = c.weak.join(' · ');
+      }
+    }
+    this.el.classList.add('is-live');
+    this.el.setAttribute('aria-hidden', 'false');
+  }
+
+  hide() {
+    this.el.classList.remove('is-live');
+    this.el.setAttribute('aria-hidden', 'true');
+  }
+
+  dispose() {
+    this.el.remove();
+  }
+}
+
+/* ========================================================================== */
 /*  Roster                                                                     */
 /* ========================================================================== */
 
@@ -135,11 +290,27 @@ export class SelectionRoster {
     el.append(head, this.list);
     root.appendChild(el);
     this.el = el;
+    this.card = new ShipCard({ root: el, align: 'left' });
 
     this._onClick = (ev) => this._hit(ev, false);
     this._onDbl = (ev) => this._hit(ev, true);
+    this._onOver = (ev) => this._peek(ev);
+    this._onOut = () => this.card.hide();
     this.list.addEventListener('click', this._onClick);
     this.list.addEventListener('dblclick', this._onDbl);
+    this.list.addEventListener('pointerover', this._onOver);
+    this.list.addEventListener('pointerleave', this._onOut);
+    this.list.addEventListener('focusin', this._onOver);
+    this.list.addEventListener('focusout', this._onOut);
+  }
+
+  /* Hovering or tabbing to a class chip explains what the class is for. The
+     counters are otherwise unlearnable except by losing. */
+  _peek(ev) {
+    const btn = ev.target.closest && ev.target.closest('.vsh-chip');
+    if (!btn) return;
+    const g = this.groups[Number(btn.dataset.i)];
+    if (g) this.card.show(g.classId);
   }
 
   _hit(ev, all) {
@@ -307,6 +478,11 @@ export class SelectionRoster {
   dispose() {
     this.list.removeEventListener('click', this._onClick);
     this.list.removeEventListener('dblclick', this._onDbl);
+    this.list.removeEventListener('pointerover', this._onOver);
+    this.list.removeEventListener('pointerleave', this._onOut);
+    this.list.removeEventListener('focusin', this._onOver);
+    this.list.removeEventListener('focusout', this._onOut);
+    this.card.dispose();
     this.el.remove();
     this.chips.length = 0;
     this.groups.length = 0;
@@ -321,6 +497,7 @@ export class WorldMarkers {
   constructor({ root, ctx }) {
     this.ctx = ctx;
     this.brackets = [];
+    this.pips = [];
     this.reticles = [];
     this.orders = [];
     this._hits = new Map(); // entityId -> seconds of remaining "under fire" flash
@@ -331,6 +508,11 @@ export class WorldMarkers {
     el.className = 'vsh-layer vsh-layer--world';
     root.appendChild(el);
     this.el = el;
+
+    // Pips paint under brackets, so they get their own host created first.
+    this.pipHost = document.createElement('div');
+    this.pipHost.className = 'vsh-layer__pips';
+    el.appendChild(this.pipHost);
 
     this.group = this._makeBracket(true);
     this.group.el.classList.add('vsh-brk--group');
@@ -358,8 +540,6 @@ export class WorldMarkers {
       el.appendChild(c);
       corners.push(c);
     }
-    const dot = document.createElement('i');
-    dot.className = 'vsh-brk__dot';
     const hp = document.createElement('i');
     hp.className = 'vsh-brk__hp';
     const hpf = document.createElement('i');
@@ -370,12 +550,12 @@ export class WorldMarkers {
     const shf = document.createElement('i');
     shf.className = 'vsh-brk__shf';
     sh.appendChild(shf);
-    el.append(dot, hp, sh);
+    el.append(hp, sh);
     this.el.appendChild(el);
     return {
-      el, corners, dot, hp, hpf, sh, shf,
+      el, corners, hp, hpf, sh, shf,
       half: -1, hull: -1, shield: -1, live: false, low: false,
-      tier: -1, hurt: false, enemy: false, isGroup: !!isGroup,
+      small: false, hurt: false, enemy: false, isGroup: !!isGroup,
     };
   }
 
@@ -386,6 +566,20 @@ export class WorldMarkers {
       this.brackets[i] = b;
     }
     return b;
+  }
+
+  /* One node, one transform write. This is what keeps a 300-hull selection
+     affordable — the bracket's nine elements would not be. */
+  _pip(i) {
+    let p = this.pips[i];
+    if (!p) {
+      const el = document.createElement('i');
+      el.className = 'vsh-pip';
+      this.pipHost.appendChild(el);
+      p = { el, live: false, low: false, enemy: false };
+      this.pips[i] = p;
+    }
+    return p;
   }
 
   /* A target lock is the same corner-tick language as a selection bracket,
@@ -430,7 +624,7 @@ export class WorldMarkers {
     base.className = 'vsh-ord__base';
     el.append(ring, v, h, stalk, base);
     this.el.appendChild(el);
-    return { el, stalk, base, life: 0, ttl: 1, x: 0, y: 0, z: 0, targetId: -1, attack: false };
+    return { el, ring, stalk, base, life: 0, ttl: 1, x: 0, y: 0, z: 0, targetId: -1, attack: false };
   }
 
   /* ------------------------------------------------------------ triggers */
@@ -497,21 +691,43 @@ export class WorldMarkers {
       else this._hits.set(id, left);
     }
 
-    const useGroup = sel.size > MAX_BRACKETS;
-    let used = 0;
+    /* Past the group threshold every contact drops to a pip and the formation
+       gets one bracket around it. Below it, size decides: readable hulls get
+       a bracket, distant ones a pip, and the two pools fill independently so
+       a mixed fleet degrades smoothly instead of all at once. */
+    const useGroup = sel.size > GROUP_AT;
+    let nBrk = 0;
+    let nPip = 0;
 
-    if (useGroup) {
-      this._drawGroup();
-    } else {
-      this._park(this.group);
-      for (const id of sel) {
-        const e = ctx.entity(id);
-        if (!e || e.alive === false) continue;
-        if (used >= MAX_BRACKETS) break;
-        if (this._drawBracket(this._bracket(used), e, proj)) used++;
+    if (useGroup) this._drawGroup();
+    else this._park(this.group);
+
+    for (const id of sel) {
+      if (nPip >= MAX_PIPS) break;
+      const e = ctx.entity(id);
+      if (!e || e.alive === false) continue;
+      const p = posOf(e);
+      if (!p || !proj.project(p.x, p.y, p.z)) continue;
+
+      const radius = e.radius || approxRadius(e.classId);
+      const half = Math.min(220, ((radius * proj.scaleK) / proj.cw) * 1.5 + 5);
+      const margin = half + 30;
+      if (
+        proj.sx < -margin || proj.sx > proj.w + margin ||
+        proj.sy < -margin || proj.sy > proj.h + margin
+      ) continue;
+
+      if (!useGroup && half >= PIP_HALF && nBrk < MAX_BRACKETS) {
+        this._drawBracket(this._bracket(nBrk), e, half, proj.sx, proj.sy);
+        nBrk++;
+      } else {
+        this._drawPip(this._pip(nPip), e, proj.sx, proj.sy);
+        nPip++;
       }
     }
-    for (let i = used; i < this.brackets.length; i++) this._park(this.brackets[i]);
+
+    for (let i = nBrk; i < this.brackets.length; i++) this._park(this.brackets[i]);
+    for (let i = nPip; i < this.pips.length; i++) this._parkPip(this.pips[i]);
 
     this._drawReticles(proj);
     this._drawOrders(dt, proj);
@@ -524,27 +740,34 @@ export class WorldMarkers {
     }
   }
 
-  _drawBracket(b, e, proj) {
-    const p = posOf(e);
-    if (!p || !proj.project(p.x, p.y, p.z)) {
-      this._park(b);
-      return true;
+  _parkPip(p) {
+    if (p.live) {
+      p.live = false;
+      p.el.classList.remove('is-live');
     }
-    const radius = e.radius || approxRadius(e.classId);
-    let half = (radius * proj.scaleK) / proj.cw;
-    half = half * 1.5 + 5;
-    if (half > 220) half = 220;
+  }
 
-    const margin = half + 30;
-    if (
-      proj.sx < -margin || proj.sx > proj.w + margin ||
-      proj.sy < -margin || proj.sy > proj.h + margin
-    ) {
-      this._park(b);
-      return true;
+  _drawPip(p, e, sx, sy) {
+    p.el.style.transform = `translate3d(${sx.toFixed(1)}px,${sy.toFixed(1)}px,0)`;
+
+    const enemy = e.team !== this.ctx.team;
+    if (enemy !== p.enemy) {
+      p.enemy = enemy;
+      p.el.classList.toggle('vsh-pip--enemy', enemy);
     }
+    const low = (e.hull || 0) < (e.maxHull || 1) * 0.34 || this._hits.has(e.id);
+    if (low !== p.low) {
+      p.low = low;
+      p.el.classList.toggle('vsh-pip--low', low);
+    }
+    if (!p.live) {
+      p.live = true;
+      p.el.classList.add('is-live');
+    }
+  }
 
-    b.el.style.transform = `translate3d(${proj.sx.toFixed(1)}px,${proj.sy.toFixed(1)}px,0)`;
+  _drawBracket(b, e, half, sx, sy) {
+    b.el.style.transform = `translate3d(${sx.toFixed(1)}px,${sy.toFixed(1)}px,0)`;
 
     const enemy = e.team !== this.ctx.team;
     if (enemy !== b.enemy) {
@@ -552,20 +775,18 @@ export class WorldMarkers {
       b.el.classList.toggle('vsh-brk--enemy', enemy);
     }
 
-    /* Three tiers: a full bracket with pips on anything you can actually read,
-       short ticks in the middle, a bare pip once it is smaller than the ticks
-       themselves. This is what stops a big fleet becoming a wall of boxes. */
-    const tier = half < DOT_HALF ? 2 : half < 18 ? 1 : 0;
-    if (tier !== b.tier) {
-      b.tier = tier;
-      b.el.classList.toggle('vsh-brk--dot', tier === 2);
-      b.el.classList.toggle('vsh-brk--sm', tier === 1);
+    /* Two bracket sizes: short ticks in the middle band, full corners once a
+       hull is big enough to carry them. Below the small band it is a pip and
+       never reaches here. */
+    const small = half < 19;
+    if (small !== b.small) {
+      b.small = small;
+      b.el.classList.toggle('vsh-brk--sm', small);
       b.half = -1;
     }
-
-    if (tier !== 2 && Math.abs(half - b.half) > 0.6) {
+    if (Math.abs(half - b.half) > 0.6) {
       b.half = half;
-      this._layout(b, half, tier === 1 ? SMALL_CORNER : CORNER);
+      this._layout(b, half, small ? SMALL_CORNER : CORNER);
     }
 
     const maxHull = e.maxHull || 1;
@@ -597,7 +818,6 @@ export class WorldMarkers {
       b.live = true;
       b.el.classList.add('is-live');
     }
-    return true;
   }
 
   /** Position the four corner ticks and the pips for a given half-size. */
@@ -644,6 +864,15 @@ export class WorldMarkers {
       this._park(g);
       return;
     }
+    /* Clamp to the viewport before sizing. A fleet spread past the edges of
+       the screen would otherwise put its corner ticks — and the count label —
+       somewhere the player cannot see them. */
+    const pad = 26;
+    minX = Math.max(pad, Math.min(proj.w - pad, minX));
+    maxX = Math.max(pad, Math.min(proj.w - pad, maxX));
+    minY = Math.max(pad + 20, Math.min(proj.h - pad, minY));
+    maxY = Math.max(pad + 20, Math.min(proj.h - pad, maxY));
+
     const cx = (minX + maxX) * 0.5;
     const cy = (minY + maxY) * 0.5;
     const half = Math.max(36, Math.max(maxX - minX, maxY - minY) * 0.5 + 22);
@@ -673,6 +902,7 @@ export class WorldMarkers {
       if (n >= MAX_RETICLES) break;
       const e = ctx.entity(id);
       if (!e || e.alive === false || e.targetId === undefined || e.targetId === null) continue;
+      if (e.targetId < 0) continue;
       const t = ctx.entity(e.targetId);
       if (!t || t.alive === false || seen.has(t.id)) continue;
       seen.add(t.id);
@@ -772,8 +1002,8 @@ export class WorldMarkers {
           const ang = Math.atan2(-dx, dy);
           o.stalk.style.transform = `rotate(${ang.toFixed(4)}rad) scaleY(${len.toFixed(1)})`;
           o.base.style.transform = `translate(${dx.toFixed(1)}px,${dy.toFixed(1)}px)`;
-          o.stalk.style.opacity = '0.34';
-          o.base.style.opacity = '0.5';
+          o.stalk.style.opacity = '0.4';
+          o.base.style.opacity = '0.55';
         } else {
           o.stalk.style.opacity = '0';
           o.base.style.opacity = '0';
@@ -783,15 +1013,28 @@ export class WorldMarkers {
         o.base.style.opacity = '0';
       }
 
-      const t = o.life / o.ttl;
-      const fade = t > 0.85 ? (1 - t) / 0.15 : Math.min(1, t / 0.3);
-      o.el.style.opacity = fade.toFixed(3);
+      /* Acknowledgement has to beat the ~85 ms perception threshold, so the
+         marker is at full strength within about four frames of the click and
+         the ring snaps down onto the point. This is drawn straight off the
+         `cmd:*` event and never waits on the sim to agree. */
+      const age = o.ttl - o.life;
+      const rise = Math.min(1, age / 0.05);
+      const fall = Math.min(1, o.life / 0.35);
+      o.el.style.opacity = (rise * fall).toFixed(3);
+      if (!this.ctx.reduceMotion) {
+        const pop = age < 0.16 ? 1 + 0.75 * (1 - age / 0.16) : 1;
+        if (pop !== o.pop) {
+          o.pop = pop;
+          o.ring.style.transform = `scale(${pop.toFixed(3)})`;
+        }
+      }
     }
   }
 
   dispose() {
     this.el.remove();
     this.brackets.length = 0;
+    this.pips.length = 0;
     this.reticles.length = 0;
     this.orders.length = 0;
     this._hits.clear();

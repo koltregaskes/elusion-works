@@ -537,20 +537,30 @@ export function engineNozzle(r, opts = {}) {
     variant: PLATE.MECH,
     wear: 0.95,
   });
-  // emitter disc, seen down the throat
+  // Emitter. A single disc at the bottom of the throat is only visible looking
+  // straight down the bore, which is exactly the angle you never see a ship
+  // from — off-axis the bell goes dead grey. So the lit surface is a cone
+  // running back up the recess to just inside the lip, and it is what the
+  // bloom pass and the FX plume both key off.
   parts.push({
-    geo: (() => {
-      const m = new Mesher();
-      const p = ngonSection(r * 0.44, sides, { rot: Math.PI / sides });
-      for (let i = 0; i < sides; i++) {
-        const j = (i + 1) % sides;
-        m.tri([0, 0, 0], [p[j][0], p[j][1], 0], [p[i][0], p[i][1], 0], [0.5, 0.5], [0.5 + p[j][0] / (4 * r), 0.5 + p[j][1] / (4 * r)], [0.5 + p[i][0] / (4 * r), 0.5 + p[i][1] / (4 * r)]);
-      }
-      return m.geometry();
-    })(),
+    geo: loft(
+      [
+        { z: 0, pts: ngonSection(r * 0.8, sides, { rot: Math.PI / sides }) },
+        { z: r * 1.18, pts: ngonSection(r * 0.42, sides, { rot: Math.PI / sides }) },
+      ],
+      { inward: true, capStart: false, capEnd: true },
+    ),
     kind: KIND.GLOW,
     variant: PLATE.MECH,
-    z: r * 1.22,
+    z: r * 0.1,
+  });
+  // Lip ring: a thin band of light right at the mouth, so the bell reads as
+  // live from dead astern and from ninety degrees off.
+  parts.push({
+    geo: ring(r * 0.82, r * 0.94, r * 0.05, sides, { rot: Math.PI / sides }),
+    kind: KIND.GLOW,
+    variant: PLATE.MECH,
+    z: r * 0.02,
   });
 
   return { parts, mouth: { x: 0, y: 0, z: 0, r } };
@@ -1045,6 +1055,10 @@ export function armourPlates(rng, opts) {
   const {
     x0, x1, z0, z1, y = 0, size, count, thickness = size * 0.13,
     variant = PLATE.ARMOUR, keep = 1, width = null, lean = 0.05, aspect = 2.6,
+    // Base rotation applied to each plate about its own centre. Laying plates
+    // on a vertical flank needs a quarter turn per plate — passing that as a
+    // shared placement instead would swing the whole scatter off the hull.
+    rzBase = 0, rxBase = 0,
   } = opts;
   const parts = [];
   const span = Math.max(Math.abs(x0), Math.abs(x1)) || 1;
@@ -1062,16 +1076,18 @@ export function armourPlates(rng, opts) {
       if (lim < size * 0.5) continue;
       x *= lim / span;
     }
+    const flank = Math.abs(rzBase) > 1e-3;
     parts.push({
       geo: chamferBox(w, th, d, { chamfer: th * 0.45, chamferZ: th * 0.7 }),
       kind: KIND.HULL,
       variant,
       wear,
-      x,
-      y: y + th * 0.32,
+      // Sit proud of whichever surface the plate is lying on.
+      x: x + (flank ? Math.sign(rzBase) * th * 0.32 : 0),
+      y: y + (flank ? 0 : th * 0.32),
       z,
-      rx: tilt,
-      rz: tilt * 0.6,
+      rx: rxBase + tilt,
+      rz: rzBase + tilt * 0.6,
     });
   }
   return parts;
@@ -1110,6 +1126,10 @@ export function greebleField(rng, opts) {
   const {
     x0, x1, z0, z1, y = 0, size, count, tall = 1.6, variant = PLATE.MECH, sink = 0.45,
     keep = 1, width = null,
+    // The finest tier is placed in the hundreds, and at that size the end
+    // chamfer is below a pixel at any range it is visible from — so drop it
+    // and halve the cost per fitting.
+    simple = false,
   } = opts;
   const parts = [];
   const span = Math.max(Math.abs(x0), Math.abs(x1)) || 1;
@@ -1131,7 +1151,10 @@ export function greebleField(rng, opts) {
       x *= lim / span;
     }
     parts.push({
-      geo: chamferBox(w, h, d, { chamfer: Math.min(w, h) * 0.2, chamferZ: Math.min(d, h) * 0.18 }),
+      geo: chamferBox(w, h, d, {
+        chamfer: Math.min(w, h) * 0.2,
+        chamferZ: simple ? 0 : Math.min(d, h) * 0.18,
+      }),
       kind: KIND.HULL,
       variant,
       wear,

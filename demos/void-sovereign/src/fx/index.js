@@ -238,6 +238,40 @@ function spritePlume(size = 128) {
   return finishTexture(c);
 }
 
+/* Corner alpha must be effectively zero for a sprite to be usable as a soft
+   billboard. Reads four corners of whatever the texture is backed by; returns
+   false when the image cannot be sampled, which fails safe onto our own
+   generator rather than risking an opaque quad. */
+function hasSoftEdge(texture) {
+  const img = texture && texture.image;
+  if (!img) return false;
+  try {
+    if (img.data && img.data.length >= 4) {
+      const w = img.width | 0;
+      const h = img.height | 0;
+      if (!w || !h) return false;
+      const stride = img.data.length / (w * h);
+      if (stride < 4) return false;
+      const at = (x, y) => img.data[(y * w + x) * stride + 3];
+      const m = Math.max(at(0, 0), at(w - 1, 0), at(0, h - 1), at(w - 1, h - 1));
+      return m <= 8;
+    }
+    const w = img.width | 0;
+    const h = img.height | 0;
+    if (!w || !h) return false;
+    const c = document.createElement('canvas');
+    c.width = 2;
+    c.height = 2;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(img, 0, 0, w, h, 0, 0, 2, 2);
+    const d = g.getImageData(0, 0, 2, 2).data;
+    // A 2x2 box filter of a soft sprite still leaves the corners nearly clear.
+    return Math.max(d[3], d[7], d[11], d[15]) <= 96;
+  } catch (e) {
+    return false;
+  }
+}
+
 function noiseTexture(kind, size, rng) {
   const c = makeCanvas(size);
   const g = c.getContext('2d');
@@ -300,6 +334,7 @@ uniform sampler2D uSceneDepth;
 uniform vec4 uDepthCfg;   // hasDepth, logarithmic, near, far
 uniform vec2 uViewport;
 uniform vec2 uSoft;       // soften distance (m), near-camera fade (m)
+uniform float uGain;      // global FX intensity, set once per frame
 
 float fxSoftFade( float fragW ) {
   float near = smoothstep( uSoft.y * 0.2, uSoft.y, fragW );
@@ -317,6 +352,19 @@ float fxSoftFade( float fragW ) {
   }
   return near * clamp( ( sceneW - fragW ) / max( uSoft.x, 0.001 ), 0.0, 1.0 );
 }
+
+float fxSharpen( float a, float clampAmt ) {
+  return pow( clamp( a, 0.0, 1.0 ), mix( 1.0, 0.45, clampAmt ) );
+}
+
+/* Hard guarantee that a billboard fades out before its own edge, whatever the
+   bound texture happens to contain. Without this, an opaque sprite renders as
+   a square-cornered white card — and on a normal-blended field that card
+   occludes everything behind it. */
+float fxQuadMask( vec2 uv ) {
+  vec2 d = uv * 2.0 - 1.0;
+  return 1.0 - smoothstep( 0.72, 1.0, length( d ) );
+}
 `;
 
 function softUniforms() {
@@ -325,8 +373,26 @@ function softUniforms() {
     uDepthCfg: { value: new THREE.Vector4(0, 1, 1, 400000) },
     uViewport: { value: new THREE.Vector2(1, 1) },
     uSoft: { value: new THREE.Vector2(28, 26) },
+    uGain: { value: 1 },
   };
 }
+
+/* ------------------------------------------------------------- screen floor
+   The single most important idea in this subsystem.
+
+   An RTS is played from 3–6 km. At 4 km and a 48° vertical FOV one screen
+   pixel is 3.3 metres, so a 10 m muzzle flash is three pixels and a 0.3 m
+   tracer is a tenth of one — it simply is not there. Every effect therefore
+   carries a *minimum angular size*: the shader takes whichever is larger of the
+   physical size and `distance * pixelScale * minPixels`, so nothing an effect
+   does can drop it below a legible number of pixels.
+
+   Forcing the size up alone gives a faint smudge, because the sprite's own
+   alpha ramp still spreads over that whole area. `fxClamp` reports how hard the
+   floor is biting; the fragment side uses it to sharpen the alpha curve and
+   lift intensity, which is what turns a distant impact from a grey smear into
+   a hot dot. `fxSharpen` lives in the SOFT_PARS block so every FX shader has
+   it without a second include. */
 
 /* ------------------------------------------------------------- InstanceBatch
    The generic "N copies of a mesh, driven by one interleaved instance buffer"
@@ -446,6 +512,7 @@ varying vec3 vColor;
 varying float vAlpha;
 varying float vFragW;
 varying float vSeed;
+varying float vClamp;
 
 void main() {
   float t = uTime - iParams.x;
@@ -460,8 +527,12 @@ void main() {
   vec4 mv = viewMatrix * vec4( wp, 1.0 );
   float dist = max( -mv.z, 1.0 );
 
-  float size = mix( iSize.x, iSize.y, age );
-  size = max( size, dist * uPixelScale * uMinPixels ) * alive;
+  float natural = mix( iSize.x, iSize.y, age );
+  float floorSize = dist * uPixelScale * uMinPixels;
+  float size = max( natural, floorSize );
+  // 0 when the sprite is at its own size, 1 when the pixel floor is carrying it.
+  vClamp = clamp( 1.0 - natural / max( size, 0.0001 ), 0.0, 1.0 );
+  size *= alive;
 
   vec2 q;
   float stretch = iFade.z;
@@ -497,19 +568,24 @@ ${SOFT_PARS}
 
 uniform sampler2D uMap;
 uniform float uOpacity;
+uniform float uClampLift;
 
 varying vec2 vUv;
 varying vec3 vColor;
 varying float vAlpha;
 varying float vFragW;
 varying float vSeed;
+varying float vClamp;
 
 void main() {
   #include <logdepthbuf_fragment>
   vec4 texel = texture2D( uMap, vUv );
-  float a = texel.a * vAlpha * uOpacity * fxSoftFade( vFragW );
+  // Sharpen and hot up whatever the pixel floor had to rescue, so a distant
+  // impact is a hot dot rather than a wide grey smudge.
+  float a = fxSharpen( texel.a, vClamp ) * fxQuadMask( vUv )
+          * vAlpha * uOpacity * fxSoftFade( vFragW );
   if ( a <= 0.0025 ) discard;
-  gl_FragColor = vec4( vColor * texel.rgb, a );
+  gl_FragColor = vec4( vColor * texel.rgb * uGain * ( 1.0 + uClampLift * vClamp ), a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -528,6 +604,9 @@ export class ParticleField {
       opacity = 1.0,
       renderOrder = 10,
       softness = 28,
+      // Emissive fields get an intensity lift when the pixel floor rescues
+      // them; smoke must not, or distant soot glows.
+      clampLift = blending === THREE.NormalBlending ? 0.0 : 1.35,
     } = opts;
 
     this.ctx = ctx;
@@ -573,6 +652,7 @@ export class ParticleField {
           uPixelScale: { value: 0.001 },
           uMinPixels: { value: minPixels },
           uOpacity: { value: opacity },
+          uClampLift: { value: clampLift },
         },
         softUniforms(),
       ),
@@ -712,6 +792,7 @@ varying vec3 vColor;
 varying float vAlpha;
 varying float vFragW;
 varying vec2 vUv;
+varying float vClamp;
 
 void main() {
   float age = uTime - aBirth;
@@ -725,8 +806,10 @@ void main() {
   float sl = length( side );
   side = sl > 1e-5 ? side / sl : vec3( 0.0 );
 
-  float w = aWidth * mix( 1.0, k, uTaper );
-  w = max( w, dist * uPixelScale * uMinPixels ) * live;
+  float natural = aWidth * mix( 1.0, k, uTaper );
+  float w = max( natural, dist * uPixelScale * uMinPixels );
+  vClamp = clamp( 1.0 - natural / max( w, 0.0001 ), 0.0, 1.0 );
+  w *= live;
 
   vec3 p = position + side * ( aSide * w * 0.5 );
   gl_Position = projectionMatrix * viewMatrix * vec4( p, 1.0 );
@@ -746,20 +829,22 @@ ${SOFT_PARS}
 
 uniform float uOpacity;
 uniform float uCore;
+uniform float uClampLift;
 
 varying vec3 vColor;
 varying float vAlpha;
 varying float vFragW;
 varying vec2 vUv;
+varying float vClamp;
 
 void main() {
   #include <logdepthbuf_fragment>
   float across = abs( vUv.x * 2.0 - 1.0 );
-  float shape = pow( 1.0 - across, 1.5 );
+  float shape = pow( 1.0 - across, mix( 1.5, 0.85, vClamp ) );
   float core = exp( -across * across * 18.0 ) * uCore;
   float a = vAlpha * uOpacity * ( shape + core ) * fxSoftFade( vFragW );
   if ( a <= 0.0025 ) discard;
-  gl_FragColor = vec4( vColor * ( 1.0 + core * 1.4 ), a );
+  gl_FragColor = vec4( vColor * ( 1.0 + core * 1.4 ) * uGain * ( 1.0 + uClampLift * vClamp ), a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -779,6 +864,7 @@ export class RibbonField {
       minPixels = 0,
       renderOrder = 9,
       softness = 24,
+      clampLift = blending === THREE.NormalBlending ? 0.0 : 0.9,
     } = opts;
 
     this.ctx = ctx;
@@ -835,6 +921,7 @@ export class RibbonField {
           uTaper: { value: taper },
           uPixelScale: { value: 0.001 },
           uMinPixels: { value: minPixels },
+          uClampLift: { value: clampLift },
         },
         softUniforms(),
       ),
@@ -1019,22 +1106,26 @@ export class RibbonField {
 
 const QUALITY_SCALE = { low: 0.4, medium: 0.7, high: 1.0, ultra: 1.35 };
 
+/* Caps are sized for the target machine (§0: RTX 40/50-class), not this dev
+   box. Every one of these is a fixed allocation with oldest-first eviction, so
+   the cost is bounded whatever the battle does. */
 function scaleCaps(scale) {
   const s = (n) => Math.max(16, Math.round(n * scale));
   return {
-    flare: s(900),
-    spark: s(3000),
-    smoke: s(1400),
-    ember: s(1200),
-    tracers: s(1400),
-    beams: Math.max(8, Math.round(72 * Math.min(1, scale + 0.3))),
-    missiles: s(260),
-    rings: Math.max(8, s(56)),
-    shields: Math.max(8, s(72)),
-    debris: s(620),
-    trails: s(320),
-    smokeTrails: s(160),
-    plumes: s(3600),
+    flare: s(2200),
+    spark: s(7000),
+    smoke: s(2400),
+    ember: s(3200),
+    tracers: s(2600),
+    beams: Math.max(16, Math.round(128 * Math.min(1, scale + 0.3))),
+    missiles: s(320),
+    rings: Math.max(16, s(120)),
+    shields: Math.max(8, s(96)),
+    debris: s(900),
+    trails: s(440),
+    smokeTrails: s(220),
+    plumes: s(4200),
+    lights: s(5200),
   };
 }
 
@@ -1056,14 +1147,30 @@ export class FXSystem {
     const tex = textures || MOD_TEXTURES;
     const mat = materials || MOD_MATERIALS;
 
-    const sprite = (kind, fallback) => {
-      if (tex && typeof tex.getSpriteTexture === 'function') {
-        try {
-          const t = tex.getSpriteTexture(kind);
-          if (t) return t;
-        } catch (e) { /* fall through to the local generator */ }
-      }
-      const t = fallback();
+    /* Billboard sprites are generated here rather than taken from
+       `render/textures.js`.
+
+       Every FX sprite is a camera-facing quad, so its alpha *must* reach zero
+       before the quad edge. A sprite that is opaque at its border does not
+       render as a soft puff — it renders as a hard-edged card that punches a
+       flat white hole in the frame, and on the normal-blended smoke field that
+       card occludes the battle behind it. The texture library's atlas is built
+       for hull surfaces, where opacity is exactly what you want, so its sprites
+       are the wrong shape of asset for this job; taking them produced precisely
+       that failure. These generators are procedural canvas draws (no binary
+       assets, per §0) and the alpha ramp is the whole point of them.
+
+       `hasSoftEdge` is still applied to anything explicitly handed in, and the
+       shaders independently clamp alpha to zero at the quad edge
+       (`fxQuadMask`), so a square-cornered sprite cannot reach the screen by
+       any route. This failure mode is catastrophic rather than merely ugly, so
+       it gets three independent guards. */
+    const sprite = (kind, generate) => {
+      const explicit = textures && typeof textures.getSpriteTexture === 'function'
+        ? textures.getSpriteTexture(kind)
+        : null;
+      if (explicit && hasSoftEdge(explicit)) return explicit;
+      const t = generate();
       this._ownedTextures.push(t);
       return t;
     };
@@ -1118,6 +1225,22 @@ export class FXSystem {
       now: 0,
       dt: 1 / 60,
       pixelScale: 0.001,
+      gain: 1,
+      camPos: new THREE.Vector3(),
+      /* Metres subtended by one screen pixel at `dist`. CPU-side twin of the
+         shader floor: sizes chosen here can be quoted in pixels too. */
+      px(dist) {
+        return Math.max(dist, 1) * ctx.pixelScale;
+      },
+      /** At least `px` pixels tall when viewed from `dist` metres. */
+      atLeast(metres, dist, px) {
+        return Math.max(metres, Math.max(dist, 1) * ctx.pixelScale * px);
+      },
+      /** Distance from the camera to a point, for CPU-side pixel floors. */
+      distTo(x, y, z) {
+        const c = ctx.camPos;
+        return Math.max(1, Math.hypot(x - c.x, y - c.y, z - c.z));
+      },
       keyLight: { dir: new THREE.Vector3(-0.45, 0.32, -0.83).normalize(), colour: new THREE.Color(0xfff2df) },
       fillLight: new THREE.Color(0x2b3f5c),
       softPars: SOFT_PARS,
@@ -1136,32 +1259,37 @@ export class FXSystem {
     };
     this.ctx = ctx;
 
+    /* minPixels is the readability contract. These are the numbers that decide
+       whether a battle four kilometres away is a fight or a smudge. */
     ctx.fields = {
       flare: new ParticleField(ctx, {
         name: 'flare', texture: sprites.flare, capacity: budget.flare,
-        alphaPow: 1.15, minPixels: 1.5, renderOrder: 14, softness: 18,
+        alphaPow: 1.15, minPixels: 5.0, renderOrder: 14, softness: 18,
       }),
       spark: new ParticleField(ctx, {
         name: 'spark', texture: sprites.spark, capacity: budget.spark,
-        alphaPow: 1.9, minPixels: 1.0, renderOrder: 13, softness: 10,
+        alphaPow: 1.9, minPixels: 2.4, renderOrder: 13, softness: 10,
       }),
       ember: new ParticleField(ctx, {
         name: 'ember', texture: sprites.flare, capacity: budget.ember,
-        alphaPow: 2.2, minPixels: 0.8, renderOrder: 12, softness: 14,
+        alphaPow: 2.2, minPixels: 2.2, renderOrder: 12, softness: 14,
       }),
       smoke: new ParticleField(ctx, {
         name: 'smoke', texture: sprites.smoke, capacity: budget.smoke,
         blending: THREE.NormalBlending, layer: LAYER.DEFAULT,
-        alphaPow: 1.5, opacity: 0.62, renderOrder: 6, softness: 60,
+        alphaPow: 1.5, opacity: 0.62, minPixels: 2.0, renderOrder: 6, softness: 60,
       }),
+      /* Trails must not out-shout the guns. They are a motion cue for strike
+         craft, not the loudest thing in a fleet action. */
       trail: new RibbonField(ctx, {
         name: 'trail', capacity: budget.trails, segments: 30,
-        core: 1.1, taper: 0.9, minPixels: 0.9, renderOrder: 11, softness: 16,
+        core: 0.85, taper: 0.95, minPixels: 1.4, opacity: 0.8,
+        renderOrder: 11, softness: 16,
       }),
       smokeTrail: new RibbonField(ctx, {
         name: 'smokeTrail', capacity: budget.smokeTrails, segments: 24,
         blending: THREE.NormalBlending, layer: LAYER.DEFAULT,
-        opacity: 0.45, core: 0, taper: 0.6, minPixels: 0.6, renderOrder: 5, softness: 45,
+        opacity: 0.45, core: 0, taper: 0.6, minPixels: 1.6, renderOrder: 5, softness: 45,
       }),
     };
 
@@ -1215,17 +1343,20 @@ export class FXSystem {
     // minimum on-screen width so tracers and beams still read from 5 km.
     const h = Math.max(1, this.engine.size ? this.engine.size.h : 1080);
     this.ctx.pixelScale = (2 * Math.tan((cam.fov * Math.PI) / 360)) / h;
+    this.ctx.camPos.copy(cam.position);
 
     const vw = this.engine.size ? this.engine.size.w * this.engine.size.dpr : 1920;
     const vh = this.engine.size ? this.engine.size.h * this.engine.size.dpr : 1080;
 
     // One place sets the frame-global uniforms for every FX material.
     const mats = this.ctx.materials;
+    const gain = this.ctx.gain;
     for (let i = 0; i < mats.length; i++) {
       const u = mats[i].uniforms;
       if (u.uTime) u.uTime.value = this.ctx.now;
       if (u.uPixelScale) u.uPixelScale.value = this.ctx.pixelScale;
       if (u.uViewport) u.uViewport.value.set(vw, vh);
+      if (u.uGain) u.uGain.value = gain;
     }
 
     for (let i = 0; i < this._subsystems.length; i++) this._subsystems[i].update(step, cam);
@@ -1262,6 +1393,7 @@ export class FXSystem {
       trails: f.trail.live,
       smokeTrails: f.smokeTrail.live,
       plumes: this.engines.plumeCount,
+      runningLights: this.engines.lightCount,
       tracers: this.weapons.tracerCount,
       beams: this.weapons.beamCount,
       missiles: this.weapons.missileCount,

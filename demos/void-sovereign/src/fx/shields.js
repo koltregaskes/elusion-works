@@ -140,7 +140,7 @@ void main() {
   if ( a <= 0.004 ) discard;
 
   vec3 col = mix( vColor, vec3( 1.0 ), clamp( hot * 0.8 + grid * excite * 0.45, 0.0, 1.0 ) );
-  gl_FragColor = vec4( col * ( 1.1 + 2.2 * hot ), clamp( a, 0.0, 1.0 ) );
+  gl_FragColor = vec4( col * ( 1.4 + 3.0 * hot ) * uGain, clamp( a, 0.0, 1.0 ) );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -232,12 +232,12 @@ export class ShieldFX {
     const px = centre.x + dir.x * radius;
     const py = centre.y + dir.y * radius;
     const pz = centre.z + dir.z * radius;
-    const mag = Math.min(3.0, 0.6 + Math.sqrt(amount) * 0.13);
-    f.flare.spawn(px, py, pz, 0, 0, 0, 0.13, 0, mag * 7, mag * 2, WHITE, 3.0, 0, 0);
-    f.flare.spawn(px, py, pz, 0, 0, 0, 0.3, 0, mag * 3, mag * 14, this._col, 1.6, 0, 0);
+    const mag = Math.min(5.5, 1.0 + Math.sqrt(amount) * 0.24);
+    f.flare.spawn(px, py, pz, 0, 0, 0, 0.14, 0, mag * 13, mag * 3, WHITE, 4.6, 0, 0);
+    f.flare.spawn(px, py, pz, 0, 0, 0, 0.32, 0, mag * 5, mag * 22, this._col, 2.4, 0, 0);
 
     const rng = ctx.rng;
-    const n = Math.round((4 + mag * 3) * ctx.qscale);
+    const n = Math.round((7 + mag * 3) * ctx.qscale);
     for (let i = 0; i < n; i++) {
       // Skid the sparks along the shield surface rather than out of it.
       const u = rng.unitVector();

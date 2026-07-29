@@ -61,6 +61,17 @@ export function profileFor(role) {
   return PROFILE[role] || DEFAULT_PROFILE;
 }
 
+/**
+ * Deceleration a hull can actually produce along its own axis: retro thrust
+ * plus the airbrake term. The arrive curve has to use this and not the full
+ * forward figure, or every ship plans a stop it has no way of making and
+ * sails straight over its waypoint.
+ */
+function decelFor(e) {
+  const p = e.profile;
+  return Math.max(1e-3, e.maxAccel * (p.reverse + p.brake * 0.35));
+}
+
 /** Attach the mutable flight state an entity needs. Called once, at spawn. */
 export function initMovementState(e) {
   const d = e.def;
@@ -196,11 +207,14 @@ function desiredVelocity(e, dt) {
     case NAV.ARRIVE: {
       _des.set(e.navPoint.x - p.x, e.navPoint.y - p.y, e.navPoint.z - p.z);
       const d = _des.length();
-      const slack = Math.max(0, d - e.navArrive);
+      const slack = d - e.navArrive;
+      // Inside the dead-band the demand is zero, not a tiny vector pointing
+      // back at the mark — that is the difference between parking and
+      // oscillating about the waypoint for the rest of the match.
       if (slack < 1e-3) return _des.set(0, 0, 0);
-      // v = sqrt(2 a s) puts us at zero speed exactly on the mark.
-      const decel = e.maxAccel * e.profile.brake;
-      const want = Math.min(maxV, Math.sqrt(2 * decel * slack));
+      // v = sqrt(2 a s) puts us at zero speed exactly on the mark, provided
+      // `a` is a deceleration the hull can genuinely produce.
+      const want = Math.min(maxV, Math.sqrt(2 * decelFor(e) * slack));
       return _des.multiplyScalar(want / d);
     }
     case NAV.HOLD:
@@ -303,10 +317,12 @@ function thrust(e, dt) {
   _tmp2.copy(e.velocity).addScaledVector(_fwd, -e.velocity.dot(_fwd));
   _tmp.sub(_tmp2); // lateral velocity error
   const latErr = _tmp.length();
+  let latUsed = 0;
   if (latErr > 1e-4) {
     const latMax = aMax * prof.lateral;
     const mag = Math.min(latMax, latErr / dt);
     e.velocity.addScaledVector(_tmp, (mag * dt) / latErr);
+    latUsed = mag / aMax;
   }
 
   // Grip: sideslip bleeds off. This is what makes a banked turn carve.
@@ -314,10 +330,19 @@ function thrust(e, dt) {
   const bleed = Math.min(1, prof.grip * dt);
   e.velocity.addScaledVector(_tmp2, -bleed);
 
-  // Throttle for the engine FX: burn hard, or coasting fast, reads as lit.
+  /* Throttle drives every engine plume and trail the FX layer draws, so it
+     has to be an honest account of what the drives are doing: main burn, the
+     glow of a hull already travelling fast, vectored thrust, and a floor from
+     the manoeuvring jets while a capital hauls its nose round. It is written
+     every tick for every hull, moving or parked. */
   const burn = along > 0 ? along / aMax : 0;
   const cruise = Math.max(0, vFwd) / e.maxSpeed;
-  const want = Math.min(1, Math.max(burn, cruise * 0.5));
+  const swing = e.turnRate > 1e-4 ? Math.abs(e.yawRate) / e.turnRate : 0;
+  let want = burn;
+  if (cruise * 0.5 > want) want = cruise * 0.5;
+  if (latUsed * 0.6 > want) want = latUsed * 0.6;
+  if (swing * 0.2 > want) want = swing * 0.2;
+  if (want > 1) want = 1;
   e.throttle += (want - e.throttle) * Math.min(1, dt * 7);
   if (e.throttle < 0) e.throttle = 0;
 }

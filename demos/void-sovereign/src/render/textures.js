@@ -8,29 +8,32 @@ import { makeRng, fbm2, worley3, hash2 } from '../core/rng.js';
    detail (plates, grooves, rivets, hatches, stencils) and a per-pixel pass
    derives albedo / normal / ORM / emissive from that height field.
 
-   The hull atlas is one 2048² sheet per map, split into a 2x2 grid of 1024²
-   regions:
+   Hull surfaces live in two WebGL 2 **texture arrays**, not in a packed atlas:
 
-       +-------------+-------------+
-       |  lancer     |  bulwark    |   plate families — tiled at plate density
-       +-------------+-------------+
-       |  monolith   |  macro 2x2  |   macro = 4 independently-tileable 512²
-       +-------------+-------------+   variants of hatches/stencils/windows
+     plates  3 layers of 1024²   lancer / bulwark / monolith, tiled at plate
+                                 density — the close-range surface
+     macro   4 layers of 512²    sparse stamps (hatch clusters, window rows,
+                                 hull numbers, sub-panels) at ~3x the plate
+                                 wavelength, so nothing repeats visibly
 
-   Each region tiles seamlessly *within itself*; the shader picks a region and
-   wraps with fract() + textureGrad(), so one texture serves every hull in the
-   fleet without a single extra draw call.
+   The array is the whole point. A packed atlas cannot mip: two levels down and
+   neighbouring regions bleed across the seam, which forced the previous build
+   to cross-fade the entire hull surface to a flat average colour the moment one
+   texel covered more than a few pixels. In practice that meant every ship
+   beyond about 150 m rendered as untextured grey. Array layers mip and wrap
+   independently, so plating now survives to the pixel limit and the only thing
+   distance does is what distance should do — average the detail away.
 
    Channel plan (frozen — materials.js decodes exactly this):
 
      map        rgb = albedo (sRGB)
-                a   = plate regions: paint coverage (1 painted, 0 bare metal)
-                      macro regions: stamp coverage (blend weight over base)
+                a   = plates: paint coverage (1 painted, 0 bare metal)
+                      macro:  stamp coverage (blend weight over the plate layer)
      orm        r   = ambient occlusion
                 g   = roughness
                 b   = metalness
-                a   = plate regions: 1
-                      macro regions: team trim mask (0.5 secondary, 1 primary)
+                a   = plates: 1
+                      macro:  painted-accent mask (0.5 pinstripe, 1 band)
      normalMap  rgb = tangent-space normal
      emissive   rgb = emissive colour (sRGB), a = 1 for team running lights,
                       0 for warm interior windows                              */
@@ -44,6 +47,7 @@ const sstep = (a, b, x) => {
   return t * t * (3 - 2 * t);
 };
 const TAU = Math.PI * 2;
+const srgbToLinear = (c) => (c < 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
 
 /** Wrap any non-tileable field into a seamless one by cross-fading its four
     toroidal shifts. Costs 4 evaluations — only used on low-res mask buffers. */
@@ -530,13 +534,20 @@ function hazardStripes(P, S, x, y, w, h, rng, colour) {
 /* Hull greys are authored in sRGB and kept deliberately dark: a warship in
    vacuum under one hard star reads at roughly 0.35–0.5 on the lit side, and
    anything lighter turns into a white blob the moment ACES gets hold of it.
-   `bare` is the F0 of the underlying alloy, so it sits higher than the paint. */
+   `bare` is the F0 of the underlying alloy, so it sits higher than the paint.
+
+   Every one of these is achromatic to within a couple of points, and the two
+   that are not are *cool*. That is deliberate and it is §3.3: the hull carries
+   no hue of its own. All colour in a frame comes from the nebula, the engines
+   and the painted team livery — a hull that is even faintly warm turns both
+   fleets into the same tan mass under a warm sky, which is exactly the failure
+   this palette replaces. */
 const HULL_PALETTES = {
   lancer: {
-    base: [0.452, 0.462, 0.476], // pale bone-steel, small craft
-    bare: [0.520, 0.528, 0.540],
-    tint: 0.17,
-    bareChance: 0.20,
+    base: [0.428, 0.434, 0.443], // pale bone-steel, small craft
+    bare: [0.498, 0.506, 0.520],
+    tint: 0.15,
+    bareChance: 0.11,
     rough: 0.38,
     plates: { rows: 7, cols: 7, rowJitter: 0.34, colJitter: 0.42, splitChance: 0.42, maxDepth: 2, minPlate: 22 },
     grooveW: [1.6, 2.6],
@@ -550,10 +561,10 @@ const HULL_PALETTES = {
     wearAmount: 0.80,
   },
   bulwark: {
-    base: [0.352, 0.360, 0.374], // slate armour, line warships
-    bare: [0.500, 0.506, 0.514],
-    tint: 0.21,
-    bareChance: 0.34,
+    base: [0.330, 0.337, 0.348], // slate armour, line warships
+    bare: [0.470, 0.478, 0.492],
+    tint: 0.18,
+    bareChance: 0.16,
     rough: 0.44,
     plates: { rows: 5, cols: 5, rowJitter: 0.30, colJitter: 0.38, splitChance: 0.55, maxDepth: 2, minPlate: 30 },
     grooveW: [2.2, 3.6],
@@ -567,10 +578,10 @@ const HULL_PALETTES = {
     wearAmount: 1.0,
   },
   monolith: {
-    base: [0.408, 0.400, 0.384], // warm stone-grey, fleet-scale architecture
-    bare: [0.486, 0.488, 0.496],
-    tint: 0.19,
-    bareChance: 0.28,
+    base: [0.382, 0.385, 0.386], // bone-grey, fleet-scale architecture
+    bare: [0.458, 0.466, 0.478],
+    tint: 0.16,
+    bareChance: 0.13,
     rough: 0.41,
     plates: { rows: 4, cols: 6, rowJitter: 0.26, colJitter: 0.46, splitChance: 0.62, maxDepth: 3, minPlate: 26 },
     grooveW: [2.6, 4.2],
@@ -636,9 +647,13 @@ function drawPlateSurface(S, rng, pal) {
     const dh = p.tint * 0.014;
     p.bare = rng.chance(pal.bareChance);
     fillRectWrap(H, S, p.x, p.y, p.w, p.h, grey(0.5 + dh));
-    const swap = rng.chance(0.14) ? rng.gaussian(0, 0.9) : 0; // replacement panel
+    const swap = rng.chance(0.09) ? rng.gaussian(0, 0.7) : 0; // replacement panel
     const t = Math.round(clamp01(0.5 + (p.tint + swap) * 0.3) * 255);
-    fillRectWrap(M, S, p.x, p.y, p.w, p.h, `rgba(${t},${p.bare ? 0 : 255},0,1)`);
+    /* A "bare" plate is a *worn* plate, not a stripped one. Driving it to zero
+       coverage flipped whole panels to raw alloy, and at a third of the sheet
+       that reads as a chequerboard rather than as a hull that has been in
+       service. Seventy per cent bare is still unmistakably unpainted metal. */
+    fillRectWrap(M, S, p.x, p.y, p.w, p.h, `rgba(${t},${p.bare ? 76 : 255},0,1)`);
   }
 
   // 2. armour belts / long raised bands break the plate rhythm at a bigger scale
@@ -884,23 +899,28 @@ function drawMacroSurface(S, rng, recipe) {
     }
   }
 
-  // team trim: bands and stripes that carry faction colour
+  /* Painted accents. These are *detail*, not livery — short pinstripes and the
+     odd stubby band along a panel edge, the sort of thing you only ever notice
+     inside a few hundred metres. The ship's actual faction markings are cut
+     analytically in materials.js from the hull's own axes, because anything
+     that lives in a texture is gone by the time the hull is twenty pixels tall.
+     Keeping the two jobs apart is what lets the close-up stay busy without the
+     long shot turning into a smear. */
   for (let i = 0; i < recipe.trim; i++) {
-    const primary = rng.chance(0.45);
-    const horiz = rng.chance(0.8);
-    const len = rng.range(S * 0.25, S * 0.9);
-    const thick = primary ? rng.range(S * 0.005, S * 0.012) : rng.range(S * 0.013, S * 0.030);
+    const bold = rng.chance(0.35);
+    const horiz = rng.chance(0.82);
+    const len = rng.range(S * 0.10, S * 0.34);
+    const thick = bold ? rng.range(S * 0.007, S * 0.014) : rng.range(S * 0.0035, S * 0.007);
     const x = rng.range(0, S);
     const y = rng.range(0, S);
     const w = horiz ? len : thick;
     const h = horiz ? thick : len;
-    fillRectWrap(T, S, x, y, w, h, primary ? '#fff' : 'rgb(128,128,128)');
-    // trim paint is glossier and slightly proud
+    fillRectWrap(T, S, x, y, w, h, bold ? '#fff' : 'rgb(128,128,128)');
+    // enamel over the plate: painted, never machined
     fillRectWrap(M, S, x, y, w, h, 'rgba(128,255,0,1)');
     cov(x - 1, y - 1, w + 2, h + 2);
-    if (primary && rng.chance(0.5)) {
-      fillRectWrap(H, S, x, y, w, h, grey(0.508));
-    }
+    // a paint edge stands a hair proud of bare plate
+    if (bold) fillRectWrap(H, S, x, y, w, h, grey(0.506));
   }
 
   for (let i = 0; i < recipe.chevrons; i++) {
@@ -1088,18 +1108,21 @@ function deriveMaps(S, rng, opts) {
       g = mix(g, bare[1] * (1 + plateTint * 0.09), bareM);
       b = mix(b, bare[2] * (1 + plateTint * 0.07), bareM);
 
-      // dirt in the recesses, stains trailing along the hull axis
+      /* Dirt in the recesses, stains trailing along the hull axis. Achromatic
+         on purpose: propellant residue and micrometeorite dust are grey, and
+         the moment grime is given a warm bias every hull in the fleet drifts
+         toward tan under a warm key. */
       const dirt = clamp01(concave * 0.95 + grime[i] * 0.22 + streak[i] * 0.30);
       const dm = mix(1, 0.60, dirt);
-      r *= dm;
-      g *= dm * 0.994;
-      b *= dm * 0.982;
+      r *= dm * 0.996;
+      g *= dm;
+      b *= dm * 1.004;
 
       // Soot is a whisper here — real scorch is a decal or comes from uDamage.
       const scorch = clamp01(sstep(0.90, 1.0, soot[i]) * (macro ? 0.22 : 0.34));
-      r = mix(r, 0.062, scorch);
+      r = mix(r, 0.058, scorch);
       g = mix(g, 0.058, scorch);
-      b = mix(b, 0.057, scorch);
+      b = mix(b, 0.060, scorch);
 
       // painted stencils sit on top of everything but the wear
       const pa = (pData[o + 3] / 255) * (1 - bareM * 0.55);
@@ -1153,9 +1176,13 @@ function deriveMaps(S, rng, opts) {
         emis[o + 3] = 0;
       }
 
-      avgR += albedo[o];
-      avgG += albedo[o + 1];
-      avgB += albedo[o + 2];
+      /* Averaged in *linear* light. The albedo bytes are sRGB-encoded, so
+         meaning the mean of the bytes as a linear colour makes the average
+         roughly three times too bright — which is precisely what turned every
+         distant hull into a white-grey slab in the previous build. */
+      avgR += srgbToLinear(albedo[o] / 255);
+      avgG += srgbToLinear(albedo[o + 1] / 255);
+      avgB += srgbToLinear(albedo[o + 2] / 255);
       avgRough += rough;
       avgMetal += metal;
     }
@@ -1167,28 +1194,27 @@ function deriveMaps(S, rng, opts) {
     orm,
     emis,
     average: {
-      colour: [avgR / N / 255, avgG / N / 255, avgB / N / 255],
+      colour: [avgR / N, avgG / N, avgB / N],
       rough: avgRough / N,
       metal: avgMetal / N,
     },
   };
 }
 
-/* ------------------------------------------------------------ atlas assembly */
+/* ------------------------------------------------------------ array assembly */
 
-function blit(dst, dstS, src, srcS, ox, oy) {
-  for (let y = 0; y < srcS; y++) {
-    const so = y * srcS * 4;
-    const doff = ((oy + y) * dstS + ox) * 4;
-    dst.set(src.subarray(so, so + srcS * 4), doff);
-  }
-}
-
-function dataTexture(bytes, size, colorSpace, aniso) {
-  const t = new THREE.DataTexture(bytes, size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
+/** RGBA8 2D array, repeat-wrapped with a full mip chain. Layer `i` occupies
+    `bytes[i * size * size * 4 …]`; three.js uploads the whole block in one
+    texSubImage3D, so the layers must be contiguous and equally sized. */
+function dataArrayTexture(bytes, size, depth, colorSpace, aniso) {
+  const t = new THREE.DataArrayTexture(bytes, size, size, depth);
+  t.format = THREE.RGBAFormat;
+  t.type = THREE.UnsignedByteType;
   t.colorSpace = colorSpace;
-  t.wrapS = THREE.ClampToEdgeWrapping;
-  t.wrapT = THREE.ClampToEdgeWrapping;
+  // Each layer tiles seamlessly within itself, and layers never bleed into one
+  // another, so repeat-wrapping is exact at every mip level.
+  t.wrapS = THREE.RepeatWrapping;
+  t.wrapT = THREE.RepeatWrapping;
   t.magFilter = THREE.LinearFilter;
   t.minFilter = THREE.LinearMipmapLinearFilter;
   t.generateMipmaps = true;
@@ -1683,32 +1709,21 @@ function canvasTexture(canvas, colorSpace, aniso, repeat) {
 
 /* --------------------------------------------------------------- public API */
 
-/** Atlas geometry, read by materials.js to build region transforms. */
+/** Array geometry, read by materials.js to build the tiling maths. */
 export const ATLAS = {
-  cols: 2,
-  rows: 2,
-  regionScale: 0.5,
-  macroVariants: 2, // 2x2 inside the macro region
-  macroScale: 0.25,
-  /** Region plates across one tile — drives the physical tiling maths. */
-  platesPerRegion: 8,
-  /** Macro tile is this many base regions across. */
+  /** Plate tiles across one wrap of the plate layer. */
+  platesPerRegion: 6,
+  /** One macro wrap covers this many plate wraps. */
   macroSpan: 3,
-  index: { lancer: 0, bulwark: 1, monolith: 2, macro: 3 },
+  plateLayers: 3,
+  macroLayers: 4,
+  index: { lancer: 0, bulwark: 1, monolith: 2 },
 };
 
-/** uv origin of a named plate-family region. */
-export function regionOrigin(family) {
-  const i = ATLAS.index[family] === undefined ? 0 : ATLAS.index[family];
-  return [(i % 2) * 0.5, Math.floor(i / 2) * 0.5];
-}
-
-/** uv origin of macro sub-variant q (0..3) inside the macro region. */
-export function macroOrigin(q) {
-  const m = ATLAS.index.macro;
-  const bx = (m % 2) * 0.5;
-  const by = Math.floor(m / 2) * 0.5;
-  return [bx + (q % 2) * 0.25, by + Math.floor(q / 2) * 0.25];
+/** Array layer holding a named plate family. */
+export function familyLayer(family) {
+  const i = ATLAS.index[family];
+  return i === undefined ? 0 : i;
 }
 
 let state = null;
@@ -1727,41 +1742,47 @@ export function initTextureLibrary(renderer, rng, opts) {
   const aniso = Math.max(1, Math.min(o.maxAnisotropy || caps, caps));
   const base = rng || makeRng(0x5EED);
 
-  const atlasSize = quality === 'low' ? 1024 : 2048;
-  const regionS = atlasSize / 2;
-  const macroS = regionS / 2;
+  /* Resolution is set by how fine a rivet has to be at arm's length, not by a
+     memory budget — the target machine has 8–16 GB of VRAM and the whole hull
+     surface library below costs about 90 MB with mips. */
+  const plateS = quality === 'low' ? 512 : 1024;
+  const macroS = plateS >> 1;
+  const nPlate = ATLAS.plateLayers;
+  const nMacro = ATLAS.macroLayers;
 
-  const albedoBytes = new Uint8Array(atlasSize * atlasSize * 4);
-  const normalBytes = new Uint8Array(atlasSize * atlasSize * 4);
-  const ormBytes = new Uint8Array(atlasSize * atlasSize * 4);
-  const emisBytes = new Uint8Array(atlasSize * atlasSize * 4);
+  const plateLayer = plateS * plateS * 4;
+  const macroLayer = macroS * macroS * 4;
+  const pAlbedo = new Uint8Array(plateLayer * nPlate);
+  const pNormal = new Uint8Array(plateLayer * nPlate);
+  const pOrm = new Uint8Array(plateLayer * nPlate);
+  const pEmis = new Uint8Array(plateLayer * nPlate);
+  const mAlbedo = new Uint8Array(macroLayer * nMacro);
+  const mNormal = new Uint8Array(macroLayer * nMacro);
+  const mOrm = new Uint8Array(macroLayer * nMacro);
+  const mEmis = new Uint8Array(macroLayer * nMacro);
 
   const averages = {};
 
-  // --- three plate families
+  // --- three plate families, one array layer each
   FAMILY_KEYS.forEach((family, i) => {
     const r = base.fork(0x100 + i);
     const pal = HULL_PALETTES[family];
-    const drawn = drawPlateSurface(regionS, r, pal);
-    const maps = deriveMaps(regionS, r, {
+    const drawn = drawPlateSurface(plateS, r, pal);
+    const maps = deriveMaps(plateS, r, {
       hc: drawn.hc, mc: drawn.mc, pc: drawn.pc, ec: drawn.ec,
       cc: null, tc: null, lc: null,
       palette: pal, macro: false, quality,
     });
-    const ox = (i % 2) * regionS;
-    const oy = Math.floor(i / 2) * regionS;
-    blit(albedoBytes, atlasSize, maps.albedo, regionS, ox, oy);
-    blit(normalBytes, atlasSize, maps.normal, regionS, ox, oy);
-    blit(ormBytes, atlasSize, maps.orm, regionS, ox, oy);
-    blit(emisBytes, atlasSize, maps.emis, regionS, ox, oy);
+    const o = plateLayer * i;
+    pAlbedo.set(maps.albedo, o);
+    pNormal.set(maps.normal, o);
+    pOrm.set(maps.orm, o);
+    pEmis.set(maps.emis, o);
     averages[family] = maps.average;
   });
 
-  // --- four macro variants packed into the fourth region
-  const mIdx = ATLAS.index.macro;
-  const mox = (mIdx % 2) * regionS;
-  const moy = Math.floor(mIdx / 2) * regionS;
-  for (let q = 0; q < 4; q++) {
+  // --- four macro variants, one array layer each
+  for (let q = 0; q < nMacro; q++) {
     const r = base.fork(0x200 + q);
     const drawn = drawMacroSurface(macroS, r, MACRO_RECIPES[q]);
     const maps = deriveMaps(macroS, r, {
@@ -1769,28 +1790,38 @@ export function initTextureLibrary(renderer, rng, opts) {
       cc: drawn.cc, tc: drawn.tc, ec: drawn.ec, lc: drawn.lc,
       palette: HULL_PALETTES.bulwark, macro: true, quality,
     });
-    const ox = mox + (q % 2) * macroS;
-    const oy = moy + Math.floor(q / 2) * macroS;
-    blit(albedoBytes, atlasSize, maps.albedo, macroS, ox, oy);
-    blit(normalBytes, atlasSize, maps.normal, macroS, ox, oy);
-    blit(ormBytes, atlasSize, maps.orm, macroS, ox, oy);
-    blit(emisBytes, atlasSize, maps.emis, macroS, ox, oy);
+    const o = macroLayer * q;
+    mAlbedo.set(maps.albedo, o);
+    mNormal.set(maps.normal, o);
+    mOrm.set(maps.orm, o);
+    mEmis.set(maps.emis, o);
   }
 
-  const map = dataTexture(albedoBytes, atlasSize, THREE.SRGBColorSpace, aniso);
-  const normalMap = dataTexture(normalBytes, atlasSize, THREE.NoColorSpace, aniso);
-  const orm = dataTexture(ormBytes, atlasSize, THREE.NoColorSpace, aniso);
-  const emissiveMap = dataTexture(emisBytes, atlasSize, THREE.SRGBColorSpace, aniso);
+  const map = dataArrayTexture(pAlbedo, plateS, nPlate, THREE.SRGBColorSpace, aniso);
+  const normalMap = dataArrayTexture(pNormal, plateS, nPlate, THREE.NoColorSpace, aniso);
+  const orm = dataArrayTexture(pOrm, plateS, nPlate, THREE.NoColorSpace, aniso);
+  const emissiveMap = dataArrayTexture(pEmis, plateS, nPlate, THREE.SRGBColorSpace, aniso);
+  const macroMap = dataArrayTexture(mAlbedo, macroS, nMacro, THREE.SRGBColorSpace, aniso);
+  const macroNormalMap = dataArrayTexture(mNormal, macroS, nMacro, THREE.NoColorSpace, aniso);
+  const macroOrm = dataArrayTexture(mOrm, macroS, nMacro, THREE.NoColorSpace, aniso);
+  const macroEmissiveMap = dataArrayTexture(mEmis, macroS, nMacro, THREE.SRGBColorSpace, aniso);
 
   map.name = 'vs.hull.albedo';
   normalMap.name = 'vs.hull.normal';
   orm.name = 'vs.hull.orm';
   emissiveMap.name = 'vs.hull.emissive';
+  macroMap.name = 'vs.macro.albedo';
+  macroNormalMap.name = 'vs.macro.normal';
+  macroOrm.name = 'vs.macro.orm';
+  macroEmissiveMap.name = 'vs.macro.emissive';
+
+  const owned = [map, normalMap, orm, emissiveMap,
+    macroMap, macroNormalMap, macroOrm, macroEmissiveMap];
 
   state = {
     quality,
     aniso,
-    atlasSize,
+    atlasSize: plateS,
     rng: base,
     atlas: {
       map,
@@ -1801,13 +1832,20 @@ export function initTextureLibrary(renderer, rng, opts) {
       metalnessMap: orm,
       aoMap: orm,
       emissiveMap,
-      size: atlasSize,
+      macroMap,
+      macroNormalMap,
+      macroRoughnessMap: macroOrm,
+      macroEmissiveMap,
+      size: plateS,
+      macroSize: macroS,
+      layers: nPlate,
+      macroVariantCount: nMacro,
       averages,
     },
     noise: new Map(),
     sprites: new Map(),
     decals: new Map(),
-    owned: [map, normalMap, orm, emissiveMap],
+    owned,
   };
 }
 

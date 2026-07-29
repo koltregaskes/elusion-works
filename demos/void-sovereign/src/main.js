@@ -96,8 +96,22 @@ async function tryImport(path, label) {
   }
 }
 
-/** Give the browser a frame so the boot bar actually paints between stages. */
-const yieldFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
+/* Give the browser a chance to paint the boot bar between stages.
+
+   Raced against a timer on purpose: a backgrounded or hidden tab throttles
+   requestAnimationFrame to nearly nothing, and a boot that awaits rAF simply
+   stops. Switching tabs while the sky bakes must not wedge the load. */
+const yieldFrame = () =>
+  new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      resolve();
+    };
+    requestAnimationFrame(finish);
+    setTimeout(finish, 60);
+  });
 
 async function main() {
   if (!hasWebGL2()) {
@@ -318,7 +332,15 @@ async function main() {
   const loop = new Loop({ engine, world, hz: 30 });
   vs.loop = loop;
 
-  installAdaptiveQuality(loop, engine, post);
+  /* Opt-in only, via ?adaptive=1.
+
+     It was on by default and silently walked high -> medium -> low within ~40 s
+     on the dev mini-PC, which meant every screenshot and every art review was
+     of a downgraded build without anyone being told. That directly contradicts
+     the build-first/optimise-last policy in ARCHITECTURE §0: quality decisions
+     belong to Phase 4, measured on the target laptop, not to a watchdog running
+     on hardware we are explicitly not targeting. */
+  if (params.get('adaptive') === '1') installAdaptiveQuality(loop, engine, post);
 
   vs.restart = (seed) => {
     const url = new URL(location.href);
@@ -346,14 +368,16 @@ async function main() {
   loop.start();
 
   // Mark ready only after a real frame has rendered — the screenshot harness
-  // and any perf tooling both key off this.
-  requestAnimationFrame(() =>
-    requestAnimationFrame(() => {
-      vs.ready = true;
-      boot.dismiss();
-      bus.emit('ui:ready', { seed: SEED, quality: QUALITY });
-    }),
-  );
+  // and any perf tooling both key off this. Fall back to a timer so a hidden
+  // tab still reports ready rather than appearing to hang forever.
+  const markReady = () => {
+    if (vs.ready) return;
+    vs.ready = true;
+    boot.dismiss();
+    bus.emit('ui:ready', { seed: SEED, quality: QUALITY });
+  };
+  requestAnimationFrame(() => requestAnimationFrame(markReady));
+  setTimeout(markReady, 1500);
 }
 
 /* --------------------------------------------------------------- fallbacks */

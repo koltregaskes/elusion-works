@@ -1,5 +1,5 @@
 import { SHIPS, shipsBuildableBy } from '../ships/catalog.js';
-import { silhouetteIcon } from './select.js';
+import { silhouetteIcon, ShipCard } from './select.js';
 
 /* Production menu.
 
@@ -27,6 +27,7 @@ export class BuildMenu {
     this.producerClass = null;
     this._acc = 1;
     this._sig = '';
+    this._status = null;
 
     const el = document.createElement('section');
     el.className = 'vsh-build';
@@ -37,9 +38,14 @@ export class BuildMenu {
     const title = document.createElement('span');
     title.className = 'vsh-build__title';
     title.textContent = 'Production';
+    /* One status line for whatever is blocking the whole yard. Repeating
+       "Population cap" on ten rows is noise, and painting it amber would
+       borrow the enemy's colour for a neutral economy state. */
+    this.status = document.createElement('span');
+    this.status.className = 'vsh-build__status';
     this.tabBar = document.createElement('div');
     this.tabBar.className = 'vsh-build__tabs';
-    head.append(title, this.tabBar);
+    head.append(title, this.status, this.tabBar);
 
     this.grid = document.createElement('div');
     this.grid.className = 'vsh-build__grid';
@@ -54,6 +60,17 @@ export class BuildMenu {
     el.append(head, this.grid, this.queue);
     root.appendChild(el);
     this.el = el;
+    this.card = new ShipCard({ root: el, align: 'right' });
+
+    this._onPeek = (ev) => {
+      const btn = ev.target.closest && ev.target.closest('.vsh-item');
+      if (btn && btn.dataset.classId) this.card.show(btn.dataset.classId);
+    };
+    this._onLeave = () => this.card.hide();
+    this.grid.addEventListener('pointerover', this._onPeek);
+    this.grid.addEventListener('pointerleave', this._onLeave);
+    this.grid.addEventListener('focusin', this._onPeek);
+    this.grid.addEventListener('focusout', this._onLeave);
 
     this._onGrid = (ev) => {
       const btn = ev.target.closest('.vsh-item');
@@ -184,27 +201,48 @@ export class BuildMenu {
     const t = ctx.teamState();
     const list = this._list || [];
 
+    /* Hulls already paid for but not yet hatched still hold their slot, so
+       the cap test has to include the queue or the menu will cheerfully let
+       you order a wing you have no room for. */
+    const pop = t.pop + (t.queued || 0);
+    const capped = t.popCap > 0 && pop >= t.popCap;
+    const status = !this.producerClass
+      ? 'No yard'
+      : capped
+        ? `Population ${Math.round(pop)} / ${Math.round(t.popCap)}`
+        : '';
+    if (status !== this._status) {
+      this._status = status;
+      this.status.textContent = status;
+      this.status.classList.toggle('is-live', !!status);
+    }
+
     for (let i = 0; i < list.length; i++) {
       const def = list[i];
       const it = this.items[i];
       if (!it || it.el.hidden) continue;
 
+      /* Two different kinds of "no". A shortfall is per-ship and worth saying
+         on the row; the population cap is a yard-wide state and is said once,
+         in the header, so ten identical warnings do not shout down the menu. */
       let blocked = '';
-      if (!this.producerClass) blocked = 'No producer';
-      else if (t.credits < def.cost) blocked = `Short ${Math.ceil(def.cost - t.credits)} RU`;
-      else if (def.popCost > 0 && t.pop + def.popCost > t.popCap) blocked = 'Population cap';
+      let note = '';
+      if (!this.producerClass) blocked = 'no yard';
+      else if (t.credits < def.cost) {
+        blocked = 'cost';
+        note = `Short ${Math.ceil(def.cost - t.credits)} RU`;
+      } else if (def.popCost > 0 && pop + def.popCost > t.popCap) blocked = 'pop';
 
       if (force || blocked !== it.blocked) {
         it.blocked = blocked;
         it.el.disabled = !!blocked;
-        it.sub.classList.toggle('is-blocked', !!blocked);
-        it.sub.textContent = blocked
-          ? blocked
-          : `${def.buildTime}s · ${def.popCost} pop${def.squadSize > 1 ? ` · ×${def.squadSize}` : ''}`;
+        it.sub.classList.toggle('is-blocked', blocked === 'cost');
+        it.sub.textContent = note
+          || `${def.buildTime}s · ${def.popCost} pop${def.squadSize > 1 ? ` · ×${def.squadSize}` : ''}`;
         it.el.setAttribute(
           'aria-label',
           blocked
-            ? `${def.name}, unavailable: ${blocked}`
+            ? `${def.name}, unavailable: ${note || (blocked === 'pop' ? 'population cap reached' : 'no shipyard')}`
             : `Build ${def.name}, ${def.cost} resource units, ${def.buildTime} seconds`,
         );
       }
@@ -292,6 +330,11 @@ export class BuildMenu {
     this.grid.removeEventListener('click', this._onGrid);
     this.queue.removeEventListener('click', this._onQueue);
     this.tabBar.removeEventListener('click', this._onTabs);
+    this.grid.removeEventListener('pointerover', this._onPeek);
+    this.grid.removeEventListener('pointerleave', this._onLeave);
+    this.grid.removeEventListener('focusin', this._onPeek);
+    this.grid.removeEventListener('focusout', this._onLeave);
+    this.card.dispose();
     this.el.remove();
     this.items.length = 0;
     this.chips.length = 0;
