@@ -337,95 +337,35 @@ vec3 starTint(float t) {
    the star pass one number (alpha) plus the already-composited gas emission
    (rgb). No multiple render targets, no per-channel approximation. */
 
-/** One gas layer: halo + body + ionisation fronts, with absorption. */
-function buildLayerGlsl(L) {
-  const bodyNoise = L.oct >= 5 ? 'fbm5n' : 'fbm4n';
-  return /* glsl */ `
-  {
-    const vec3 e0 = vec3(${f3(L.e0)});
-    const vec3 e1 = vec3(${f3(L.e1)});
-    const vec3 e2 = vec3(${f3(L.e2)});
-    float ca = dot(d, e0);
-    float tx = dot(d, e1) * ${num(1 / L.a)};
-    float ty = dot(d, e2) * ${num(1 / L.b)};
-    /* Super-gaussian with an exponent under one: a fat core and a long, soft
-       halo. A plain gaussian has neither, and the difference between the two
-       is most of the difference between "nebula" and "airbrushed blob". */
-    float env = exp(-pow(tx * tx + ty * ty + 1.0e-4, ${num(L.shape)}))
-              * smoothstep(-0.42, 0.40, ca);
-    /* The branch below is a performance early-out over the empty part of the
-       sky, but it cannot be allowed to show, so the envelope is faded to
-       exactly zero as it approaches the threshold. */
-    env *= smoothstep(${num(ENV_CUTOFF)}, ${num(ENV_CUTOFF * 16)}, env);
-    if (env > 0.0) {
-      vec3 p = d * ${num(L.scale)} + vec3(${f3(L.off)});
-      vec3 w = warp * ${num(L.warp)};
-      float base = ${bodyNoise}(p + w) * 0.5 + 0.5;
+/* Pass A is not one program. It is six small ones, ping-ponged.
 
-      /* Bulk gas. This is the only term that absorbs. */
-      float body = smoothstep(${num(L.thr)}, ${num(L.thr + L.soft)}, base);
-      body = pow(body, ${num(L.contrast)});
+   The whole-sky nebula used to be a single generated fragment shader with
+   every layer, lane and sheet unrolled into it and every parameter baked in as
+   a literal. It was correct and it looked right, but it cost **8 to 22 seconds
+   to compile** — and that, not fill rate, was essentially the entire boot time
+   of the game. Measured on the dev box at a map height of 256, where fill is
+   negligible: an empty sky compiled in 78 ms, one layer took 8.2 s and the
+   shipping five layers plus three lanes took 21.5 s. The GPU work itself, once
+   compiled, is tens of milliseconds.
 
-      /* Ionisation fronts ride *on* the bulk — multiplied by it, never
-         independent of it, so a ridge trough can never punch a hole. */
-      float fil = ridge3(p * ${num(L.ridgeScale)} + w * 0.55);
-      float front = smoothstep(${num(L.filThr)}, ${num(L.filThr + L.filSoft)}, fil)
-                  * (0.16 + 0.84 * body);
+   So the fix is not to make the sky cheaper to *draw*, which would have cost
+   quality for nothing. It is to stop asking the driver to compile ~100 inlined
+   gradient-noise evaluations as one basic block. Each stage below is its own
+   small program whose per-layer parameters arrive as uniforms, so the layer
+   program is compiled once and then run five times with different numbers, and
+   the largest program the driver ever sees contains eight noise evaluations
+   rather than a hundred.
 
-      /* Unthresholded glow so the gas dissolves into the void. */
-      float halo = base * base * base;
+   Composition is unchanged: the same back-to-front absorb-then-emit, in the
+   same order, with the same maths. The only differences are that `warp` and
+   `clarity` are now computed once into their own target instead of being
+   recomputed per layer, and that the running (emission, optical depth) pair
+   round-trips through an RGBA16F target between stages rather than staying in
+   registers — half-float at these magnitudes is far below the noise floor of
+   the eight-bit image it ends up in. */
 
-      float k = env * clarity;
-      float dens = k * (halo * ${num(L.haloAmt)} + body * ${num(L.amount)}
-                      + front * ${num(L.frontAmt)});
-
-      vec3 emis = vec3(${f3(L.cool)});
-      emis = mix(emis, vec3(${f3(L.mid)}), smoothstep(0.02, 0.80, body));
-      emis = mix(emis, vec3(${f3(L.hot)}), clamp(front * front * ${num(L.hotAmt)}, 0.0, 1.0));
-      emis = emis * sunLit + SUNCOL * sunFwd * ${num(L.scatterAmt)};
-
-      float tk = k * body * ${num(L.extAmt)};
-      emitted *= exp(-EXT * tk);
-      tau += tk;
-      emitted += emis * dens;
-    }
-  }`;
-}
-
-/** Absorption-only dust lane set: long sinuous filaments through a complex. */
-function buildLaneGlsl(L) {
-  return /* glsl */ `
-  {
-    const vec3 e0 = vec3(${f3(L.e0)});
-    const vec3 e1 = vec3(${f3(L.e1)});
-    const vec3 e2 = vec3(${f3(L.e2)});
-    float ca = dot(d, e0);
-    float tx = dot(d, e1) * ${num(1 / L.a)};
-    float ty = dot(d, e2) * ${num(1 / L.b)};
-    float env = exp(-pow(tx * tx + ty * ty + 1.0e-4, ${num(L.shape)}))
-              * smoothstep(-0.42, 0.40, ca);
-    env *= smoothstep(${num(ENV_CUTOFF)}, ${num(ENV_CUTOFF * 16)}, env);
-    if (env > 0.0) {
-      vec3 p = d * ${num(L.scale)} + vec3(${f3(L.off)});
-      /* Lanes are the zero set of a smooth field, not a threshold on it. That
-         is what gives long, sinuous, branching filaments instead of blobs. */
-      float n = fbm3n(p + warp * ${num(L.warp)});
-      float lane = 1.0 - smoothstep(0.0, ${num(L.width)}, abs(n));
-      lane *= 0.35 + 0.65 * smoothstep(0.30, 0.72, ridge3(p * ${num(L.grain)}));
-      float amt = env * clarity * lane * ${num(L.amount)};
-      emitted *= exp(-EXT * amt);
-      tau += amt;
-      emitted += (vec3(${f3(L.tint)}) * sunLit + SUNCOL * sunFwd * 0.05) * amt * ${num(L.scatter)};
-    }
-  }`;
-}
-
-/** Pass A: all the gas, at reduced resolution. rgb = emission, a = optical depth. */
-function buildGasFragment(P) {
-  const on = P.enable;
-  const layers = on.nebula ? P.layers.map(buildLayerGlsl).join('\n') : '';
-  const lanes = on.nebula ? P.lanes.map(buildLaneGlsl).join('\n') : '';
-
+/** Header shared by every gas program. */
+function gasCommon(P) {
   return /* glsl */ `
 precision highp float;
 
@@ -435,37 +375,57 @@ varying vec2 vUv;
 
 ${NOISE_GLSL}
 
-const vec3 BAND_AXIS = vec3(${f3(P.bandAxis)});
-const vec3 BAND_CORE = vec3(${f3(P.bandCore)});
 const vec3 EXT = vec3(${f3(P.dustExt)});
 const vec3 SUN = vec3(${f3(P.sunDir)});
 const vec3 SUNCOL = vec3(${f3(P.sunCol)});
 
-void main() {
-  float lon = (vUv.x * 2.0 - 1.0) * PI;
-  float lat = (vUv.y - 0.5) * PI;
+/* Lat/long -> direction. Must be per fragment: a direction interpolated across
+   the quad is not a unit vector and the whole sky shears. */
+vec3 skyDir(vec2 uv) {
+  float lon = (uv.x * 2.0 - 1.0) * PI;
+  float lat = (uv.y - 0.5) * PI;
   float cl = cos(lat);
-  vec3 d = normalize(vec3(cl * sin(lon), sin(lat), cl * cos(lon)));
+  return normalize(vec3(cl * sin(lon), sin(lat), cl * cos(lon)));
+}
+`;
+}
 
-  vec3 emitted = vec3(0.0);
-  float tau = 0.0;
-
-  /* The key star lights the gas like it lights everything else. Without this
-     the nebula has no lit side and no shadow side and reads as a flat matte
-     behind the fleet. Two terms: a broad gradient toward the star, and a
-     narrow forward-scattering lobe — dust scatters hard forward, which is why
-     a reflection nebula near a bright star glows. */
-  float sunMu = dot(d, SUN);
-  float sunFwd = pow(max(sunMu, 0.0), 6.0);
-  float sunLit = 0.62 + 0.62 * smoothstep(-0.70, 0.85, sunMu);
+/** Stage 0: domain warp and the large-scale clarity mask, computed once. */
+function buildWarpFragment(P) {
+  return /* glsl */ `
+${gasCommon(P)}
+void main() {
+  vec3 d = skyDir(vUv);
+  vec3 warp = vec3(
+    fbm3n(d * ${num(P.warpScale)} + vec3(11.31, 4.72, 27.10)),
+    fbm3n(d * ${num(P.warpScale)} + vec3(47.71, 19.03, 3.55)),
+    fbm3n(d * ${num(P.warpScale)} + vec3(83.11, 62.40, 91.72)));
 
   /* Very large scale clarity mask: keeps a good part of the sky honestly
      empty instead of veiling the whole shell in gas. */
   float clarity = mix(0.02, 1.0,
     smoothstep(-0.08, 0.42, fbm3n(d * ${num(P.clarityScale)} + vec3(${f3(P.clarityOff)}))));
 
-  /* ---- galactic band: emission first, then its own dust lane in front ---- */
-  if (${on.band ? 'true' : 'false'}) {
+  gl_FragColor = vec4(warp, clarity);
+}
+`;
+}
+
+/** Stage 1: the galactic band and its own dust lane. Seeds the accumulator. */
+function buildBandFragment(P) {
+  return /* glsl */ `
+${gasCommon(P)}
+uniform float uEnable;
+
+const vec3 BAND_AXIS = vec3(${f3(P.bandAxis)});
+const vec3 BAND_CORE = vec3(${f3(P.bandCore)});
+
+void main() {
+  vec3 d = skyDir(vUv);
+  vec3 emitted = vec3(0.0);
+  float tau = 0.0;
+
+  if (uEnable > 0.5) {
     float blat = dot(d, BAND_AXIS);
     float g = exp(-(blat * blat) * ${num(1 / (2 * P.bandW * P.bandW))});
     float along = fbm3n(d * ${num(P.bandScale)} + vec3(${f3(P.bandOff)})) * 0.5 + 0.5;
@@ -484,37 +444,192 @@ void main() {
     tau += laneD;
   }
 
-  /* ---- gas layers, far to near ---- */
-  vec3 warp = vec3(
-    fbm3n(d * ${num(P.warpScale)} + vec3(11.31, 4.72, 27.10)),
-    fbm3n(d * ${num(P.warpScale)} + vec3(47.71, 19.03, 3.55)),
-    fbm3n(d * ${num(P.warpScale)} + vec3(83.11, 62.40, 91.72)));
+  gl_FragColor = vec4(max(emitted, vec3(0.0)), tau);
+}
+`;
+}
 
-${layers}
+/** The sun terms and the accumulator load, shared by every compositing stage. */
+const GAS_STAGE_HEAD = /* glsl */ `
+uniform sampler2D uPrev;
+uniform sampler2D uWarp;
+uniform vec3 uE0;
+uniform vec3 uE1;
+uniform vec3 uE2;
+uniform vec3 uOff;
+uniform vec2 uAB;
+uniform float uShape;
+uniform float uScale;
+uniform float uWarpAmt;
+`;
 
-  /* ---- dust lanes carved through the complexes ---- */
-${lanes}
+/** Stage 2, run once per gas layer: halo + body + ionisation fronts. */
+function buildLayerFragment(P) {
+  return /* glsl */ `
+${gasCommon(P)}
+${GAS_STAGE_HEAD}
+uniform vec3 uCool;
+uniform vec3 uMid;
+uniform vec3 uHot;
+uniform float uRidgeScale;
+uniform float uThr;
+uniform float uSoft;
+uniform float uContrast;
+uniform float uFilThr;
+uniform float uFilSoft;
+uniform float uHaloAmt;
+uniform float uAmount;
+uniform float uFrontAmt;
+uniform float uHotAmt;
+uniform float uExtAmt;
+uniform float uScatterAmt;
 
-  /* ---- foreground dust sheet: absorption only, plus a whisper of reflection */
-  if (${on.nebula ? 'true' : 'false'}) {
-    const vec3 f0 = vec3(${f3(P.dust.e0)});
-    const vec3 f1 = vec3(${f3(P.dust.e1)});
-    const vec3 f2 = vec3(${f3(P.dust.e2)});
-    float ca = dot(d, f0);
-    float tx = dot(d, f1) * ${num(1 / P.dust.a)};
-    float ty = dot(d, f2) * ${num(1 / P.dust.b)};
-    float env = exp(-(tx * tx + ty * ty)) * smoothstep(-0.20, 0.45, ca);
-    env *= smoothstep(${num(ENV_CUTOFF)}, ${num(ENV_CUTOFF * 16)}, env);
-    if (env > 0.0) {
-      vec3 p = d * ${num(P.dust.scale)} + vec3(${f3(P.dust.off)});
-      float nn = fbm4n(p + warp * 1.5) * 0.5 + 0.5;
-      float rg = ridge3(p * 1.7 + warp * 0.8);
-      float m = mix(nn, rg, 0.40);
-      float dens = env * smoothstep(${num(P.dust.thr)}, ${num(P.dust.thr + 0.30)}, m) * ${num(P.dust.amount)};
-      emitted *= exp(-EXT * dens);
-      tau += dens;
-      emitted += vec3(${f3(P.dustTint)}) * dens * 0.45;
-    }
+void main() {
+  vec3 d = skyDir(vUv);
+  vec4 acc = texture2D(uPrev, vUv);
+  vec3 emitted = acc.rgb;
+  float tau = acc.a;
+  vec4 wc = texture2D(uWarp, vUv);
+  vec3 warp = wc.xyz;
+  float clarity = wc.w;
+
+  /* The key star lights the gas like it lights everything else. Without this
+     the nebula has no lit side and no shadow side and reads as a flat matte
+     behind the fleet. Two terms: a broad gradient toward the star, and a
+     narrow forward-scattering lobe — dust scatters hard forward, which is why
+     a reflection nebula near a bright star glows. */
+  float sunMu = dot(d, SUN);
+  float sunFwd = pow(max(sunMu, 0.0), 6.0);
+  float sunLit = 0.62 + 0.62 * smoothstep(-0.70, 0.85, sunMu);
+
+  float ca = dot(d, uE0);
+  float tx = dot(d, uE1) * uAB.x;
+  float ty = dot(d, uE2) * uAB.y;
+  /* Super-gaussian with an exponent under one: a fat core and a long, soft
+     halo. A plain gaussian has neither, and the difference between the two
+     is most of the difference between "nebula" and "airbrushed blob". */
+  float env = exp(-pow(tx * tx + ty * ty + 1.0e-4, uShape))
+            * smoothstep(-0.42, 0.40, ca);
+  /* The branch below is a performance early-out over the empty part of the
+     sky, but it cannot be allowed to show, so the envelope is faded to
+     exactly zero as it approaches the threshold. */
+  env *= smoothstep(${num(ENV_CUTOFF)}, ${num(ENV_CUTOFF * 16)}, env);
+  if (env > 0.0) {
+    vec3 p = d * uScale + uOff;
+    vec3 w = warp * uWarpAmt;
+    float base = fbm5n(p + w) * 0.5 + 0.5;
+
+    /* Bulk gas. This is the only term that absorbs. */
+    float body = smoothstep(uThr, uThr + uSoft, base);
+    body = pow(body, uContrast);
+
+    /* Ionisation fronts ride *on* the bulk — multiplied by it, never
+       independent of it, so a ridge trough can never punch a hole. */
+    float fil = ridge3(p * uRidgeScale + w * 0.55);
+    float front = smoothstep(uFilThr, uFilThr + uFilSoft, fil) * (0.16 + 0.84 * body);
+
+    /* Unthresholded glow so the gas dissolves into the void. */
+    float halo = base * base * base;
+
+    float k = env * clarity;
+    float dens = k * (halo * uHaloAmt + body * uAmount + front * uFrontAmt);
+
+    vec3 emis = uCool;
+    emis = mix(emis, uMid, smoothstep(0.02, 0.80, body));
+    emis = mix(emis, uHot, clamp(front * front * uHotAmt, 0.0, 1.0));
+    emis = emis * sunLit + SUNCOL * sunFwd * uScatterAmt;
+
+    float tk = k * body * uExtAmt;
+    emitted *= exp(-EXT * tk);
+    tau += tk;
+    emitted += emis * dens;
+  }
+
+  gl_FragColor = vec4(max(emitted, vec3(0.0)), tau);
+}
+`;
+}
+
+/** Stage 3, run once per lane set: long sinuous absorbing filaments. */
+function buildLaneFragment(P) {
+  return /* glsl */ `
+${gasCommon(P)}
+${GAS_STAGE_HEAD}
+uniform vec3 uTint;
+uniform float uWidth;
+uniform float uGrain;
+uniform float uAmount;
+uniform float uScatter;
+
+void main() {
+  vec3 d = skyDir(vUv);
+  vec4 acc = texture2D(uPrev, vUv);
+  vec3 emitted = acc.rgb;
+  float tau = acc.a;
+  vec4 wc = texture2D(uWarp, vUv);
+  vec3 warp = wc.xyz;
+  float clarity = wc.w;
+
+  float sunMu = dot(d, SUN);
+  float sunFwd = pow(max(sunMu, 0.0), 6.0);
+  float sunLit = 0.62 + 0.62 * smoothstep(-0.70, 0.85, sunMu);
+
+  float ca = dot(d, uE0);
+  float tx = dot(d, uE1) * uAB.x;
+  float ty = dot(d, uE2) * uAB.y;
+  float env = exp(-pow(tx * tx + ty * ty + 1.0e-4, uShape))
+            * smoothstep(-0.42, 0.40, ca);
+  env *= smoothstep(${num(ENV_CUTOFF)}, ${num(ENV_CUTOFF * 16)}, env);
+  if (env > 0.0) {
+    vec3 p = d * uScale + uOff;
+    /* Lanes are the zero set of a smooth field, not a threshold on it. That
+       is what gives long, sinuous, branching filaments instead of blobs. */
+    float n = fbm3n(p + warp * uWarpAmt);
+    float lane = 1.0 - smoothstep(0.0, uWidth, abs(n));
+    lane *= 0.35 + 0.65 * smoothstep(0.30, 0.72, ridge3(p * uGrain));
+    float amt = env * clarity * lane * uAmount;
+    emitted *= exp(-EXT * amt);
+    tau += amt;
+    emitted += (uTint * sunLit + SUNCOL * sunFwd * 0.05) * amt * uScatter;
+  }
+
+  gl_FragColor = vec4(max(emitted, vec3(0.0)), tau);
+}
+`;
+}
+
+/** Stage 4: the foreground dust sheet. Absorption plus a whisper of reflection. */
+function buildDustFragment(P) {
+  return /* glsl */ `
+${gasCommon(P)}
+uniform sampler2D uPrev;
+uniform sampler2D uWarp;
+
+const vec3 F0 = vec3(${f3(P.dust.e0)});
+const vec3 F1 = vec3(${f3(P.dust.e1)});
+const vec3 F2 = vec3(${f3(P.dust.e2)});
+
+void main() {
+  vec3 d = skyDir(vUv);
+  vec4 acc = texture2D(uPrev, vUv);
+  vec3 emitted = acc.rgb;
+  float tau = acc.a;
+  vec3 warp = texture2D(uWarp, vUv).xyz;
+
+  float ca = dot(d, F0);
+  float tx = dot(d, F1) * ${num(1 / P.dust.a)};
+  float ty = dot(d, F2) * ${num(1 / P.dust.b)};
+  float env = exp(-(tx * tx + ty * ty)) * smoothstep(-0.20, 0.45, ca);
+  env *= smoothstep(${num(ENV_CUTOFF)}, ${num(ENV_CUTOFF * 16)}, env);
+  if (env > 0.0) {
+    vec3 p = d * ${num(P.dust.scale)} + vec3(${f3(P.dust.off)});
+    float nn = fbm4n(p + warp * 1.5) * 0.5 + 0.5;
+    float rg = ridge3(p * 1.7 + warp * 0.8);
+    float m = mix(nn, rg, 0.40);
+    float dens = env * smoothstep(${num(P.dust.thr)}, ${num(P.dust.thr + 0.30)}, m) * ${num(P.dust.amount)};
+    emitted *= exp(-EXT * dens);
+    tau += dens;
+    emitted += vec3(${f3(P.dustTint)}) * dens * 0.45;
   }
 
   gl_FragColor = vec4(max(emitted, vec3(0.0)), tau);
@@ -1088,28 +1203,65 @@ export function buildSkybox(renderer, rng, opts = {}) {
      last of the noise aliasing. */
   const GW = Math.max(512, W >> 2);
   const GH = Math.max(256, H >> 2);
-  const gasTarget = new THREE.WebGLRenderTarget(GW, GH, {
-    type: THREE.HalfFloatType,
-    format: THREE.RGBAFormat,
-    generateMipmaps: false,
-    minFilter: THREE.LinearFilter,
-    magFilter: THREE.LinearFilter,
-    wrapS: THREE.RepeatWrapping,
-    wrapT: THREE.ClampToEdgeWrapping,
-    depthBuffer: false,
-    stencilBuffer: false,
-  });
-  gasTarget.texture.colorSpace = THREE.LinearSRGBColorSpace;
+  const makeGasTarget = () => {
+    const rt = new THREE.WebGLRenderTarget(GW, GH, {
+      type: THREE.HalfFloatType,
+      format: THREE.RGBAFormat,
+      generateMipmaps: false,
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      wrapS: THREE.RepeatWrapping,
+      wrapT: THREE.ClampToEdgeWrapping,
+      depthBuffer: false,
+      stencilBuffer: false,
+    });
+    rt.texture.colorSpace = THREE.LinearSRGBColorSpace;
+    return rt;
+  };
+  /* Two accumulators to ping-pong between, plus the warp/clarity field. */
+  const gasA = makeGasTarget();
+  const gasB = makeGasTarget();
+  const warpTarget = makeGasTarget();
 
-  const gasMaterial = new THREE.ShaderMaterial({
-    uniforms: {},
-    vertexShader: SKY_VERTEX,
-    fragmentShader: buildGasFragment(P),
-    depthTest: false,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-    toneMapped: false,
+  const stage = (fragmentShader, uniforms) =>
+    new THREE.ShaderMaterial({
+      uniforms,
+      vertexShader: SKY_VERTEX,
+      fragmentShader,
+      depthTest: false,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+    });
+
+  const v3 = () => ({ value: new THREE.Vector3() });
+  const f = (value = 0) => ({ value });
+
+  const warpMaterial = stage(buildWarpFragment(P), {});
+  const bandMaterial = stage(buildBandFragment(P), { uEnable: f(P.enable.band ? 1 : 0) });
+  const layerMaterial = stage(buildLayerFragment(P), {
+    uPrev: { value: null }, uWarp: { value: warpTarget.texture },
+    uE0: v3(), uE1: v3(), uE2: v3(), uOff: v3(),
+    uAB: { value: new THREE.Vector2() },
+    uShape: f(), uScale: f(), uWarpAmt: f(),
+    uCool: { value: new THREE.Color() }, uMid: { value: new THREE.Color() },
+    uHot: { value: new THREE.Color() },
+    uRidgeScale: f(), uThr: f(), uSoft: f(), uContrast: f(),
+    uFilThr: f(), uFilSoft: f(), uHaloAmt: f(), uAmount: f(),
+    uFrontAmt: f(), uHotAmt: f(), uExtAmt: f(), uScatterAmt: f(),
   });
+  const laneMaterial = stage(buildLaneFragment(P), {
+    uPrev: { value: null }, uWarp: { value: warpTarget.texture },
+    uE0: v3(), uE1: v3(), uE2: v3(), uOff: v3(),
+    uAB: { value: new THREE.Vector2() },
+    uShape: f(), uScale: f(), uWarpAmt: f(),
+    uTint: { value: new THREE.Color() },
+    uWidth: f(), uGrain: f(), uAmount: f(), uScatter: f(),
+  });
+  const dustMaterial = stage(buildDustFragment(P), {
+    uPrev: { value: null }, uWarp: { value: warpTarget.texture },
+  });
+  const gasStages = [warpMaterial, bandMaterial, layerMaterial, laneMaterial, dustMaterial];
 
   const material = new THREE.ShaderMaterial({
     uniforms: {
@@ -1119,7 +1271,7 @@ export function buildSkybox(renderer, rng, opts = {}) {
       uStarGain: { value: 1.0 },
       uGasGain: { value: 1.0 },
       uGasSat: { value: 1.0 },
-      uGas: { value: gasTarget.texture },
+      uGas: { value: gasA.texture },
     },
     vertexShader: SKY_VERTEX,
     fragmentShader: buildSkyFragment(P),
@@ -1175,7 +1327,68 @@ export function buildSkybox(renderer, rng, opts = {}) {
     }
   };
 
-  drawTiled(gasMaterial, gasTarget, GW, GH, tiles);
+  /* ---- pass A: the gas, one small program at a time ---------------------- */
+
+  const setEnv = (mat, L) => {
+    const u = mat.uniforms;
+    u.uE0.value.fromArray(L.e0);
+    u.uE1.value.fromArray(L.e1);
+    u.uE2.value.fromArray(L.e2);
+    u.uOff.value.fromArray(L.off);
+    u.uAB.value.set(1 / L.a, 1 / L.b);
+    u.uShape.value = L.shape;
+    u.uScale.value = L.scale;
+    u.uWarpAmt.value = L.warp;
+  };
+
+  let src = gasA;
+  let dst = gasB;
+  const composite = (mat) => {
+    mat.uniforms.uPrev.value = src.texture;
+    drawTiled(mat, dst, GW, GH, tiles);
+    const t = src;
+    src = dst;
+    dst = t;
+  };
+
+  drawTiled(warpMaterial, warpTarget, GW, GH, tiles);
+  drawTiled(bandMaterial, gasA, GW, GH, tiles);
+
+  if (P.enable.nebula) {
+    for (const L of P.layers) {
+      setEnv(layerMaterial, L);
+      const u = layerMaterial.uniforms;
+      u.uCool.value.setRGB(L.cool[0], L.cool[1], L.cool[2]);
+      u.uMid.value.setRGB(L.mid[0], L.mid[1], L.mid[2]);
+      u.uHot.value.setRGB(L.hot[0], L.hot[1], L.hot[2]);
+      u.uRidgeScale.value = L.ridgeScale;
+      u.uThr.value = L.thr;
+      u.uSoft.value = L.soft;
+      u.uContrast.value = L.contrast;
+      u.uFilThr.value = L.filThr;
+      u.uFilSoft.value = L.filSoft;
+      u.uHaloAmt.value = L.haloAmt;
+      u.uAmount.value = L.amount;
+      u.uFrontAmt.value = L.frontAmt;
+      u.uHotAmt.value = L.hotAmt;
+      u.uExtAmt.value = L.extAmt;
+      u.uScatterAmt.value = L.scatterAmt;
+      composite(layerMaterial);
+    }
+    for (const L of P.lanes) {
+      setEnv(laneMaterial, L);
+      const u = laneMaterial.uniforms;
+      u.uTint.value.setRGB(L.tint[0], L.tint[1], L.tint[2]);
+      u.uWidth.value = L.width;
+      u.uGrain.value = L.grain;
+      u.uAmount.value = L.amount;
+      u.uScatter.value = L.scatter;
+      composite(laneMaterial);
+    }
+    composite(dustMaterial);
+  }
+  material.uniforms.uGas.value = src.texture;
+
   drawTiled(material, preview, PW, PH, tiles);
   quad.material = material;
 
@@ -1192,7 +1405,8 @@ export function buildSkybox(renderer, rng, opts = {}) {
      MEAN_CEIL and PEAK_CEIL are in the same linear units the sky is stored in,
      and are set against the fleet: a lit hull sits around 0.25 and its shadow
      side around 0.005, so a sky whose brightest region clears ~0.16 is
-     competing with the subject rather than sitting behind it. */
+     competing with the subject rather than sitting behind it.
+
      The mip chain has to be built before every probe, not after. The sky
      target carries a mipmapped min filter, and a mipmapped texture with no mip
      chain is *incomplete* — it samples as solid black, so the probe silently
@@ -1239,18 +1453,25 @@ export function buildSkybox(renderer, rng, opts = {}) {
   let swapped = !progressive;
   let torn = false;
 
+  /* The scratch targets that are not the final gas map, and every stage
+     program, are finished the moment pass A has run. The gas map itself has to
+     survive until the full-size star pass has finished reading it. */
+  const releaseGasScratch = () => {
+    (src === gasA ? gasB : gasA).dispose();
+    warpTarget.dispose();
+    for (const m of gasStages) m.dispose();
+  };
   const releaseBakeKit = () => {
     if (torn) return;
     torn = true;
-    gasTarget.dispose();
-    gasMaterial.dispose();
+    src.dispose();
     material.dispose();
     quad.geometry.dispose();
   };
+  releaseGasScratch();
   if (!progressive) {
     // The gas map has served its purpose the moment the star pass has read it.
-    gasTarget.dispose();
-    gasMaterial.dispose();
+    src.dispose();
   }
 
   const pal = P.palette;

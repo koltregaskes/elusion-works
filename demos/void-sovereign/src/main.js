@@ -397,6 +397,12 @@ async function main() {
     if (fx) fx.dispose();
     if (environment && environment.dispose) environment.dispose();
     world.dispose();
+    /* World deliberately no longer frees these: hull geometry and the fleet
+       batches are shared across every entity of a class, so releasing them on
+       one ship's death deleted the geometry every other ship of that class was
+       drawing from. They belong to the ships module, so teardown is ours. */
+    if (shipsMod && shipsMod.disposeFleetBatches) shipsMod.disposeFleetBatches();
+    if (shipsMod && shipsMod.disposeShipCache) shipsMod.disposeShipCache();
     if (audio) audio.dispose();
     engine.dispose();
   };

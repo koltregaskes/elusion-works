@@ -90,7 +90,7 @@ const PLANET_SCHEMES = [
    `OPENING_SHELL` is the radius the camera rig opens at, so the check is made
    from the worst point on that shell rather than from the hull. */
 const OPENING_SHELL = 4600;
-const LANDMARK_MAX_DEG = 26;
+const LANDMARK_MAX_DEG = 34;
 const ROCK_MAX_DEG = 22;
 const ROCK_CLEAR = 1500;
 
@@ -107,6 +107,36 @@ function subtendedFrom(points, pos, radius) {
     if (deg > worst) worst = deg;
   }
   return worst;
+}
+
+/**
+ * Slide `pos` directly away from whichever start it crowds until it subtends
+ * no more than `maxDeg` from either opening camera shell. Mutates and returns
+ * `pos`.
+ *
+ * Deterministic displacement rather than rejection sampling: re-rolling a
+ * random position until it happens to clear needs an escape hatch for the case
+ * where it never does, and that escape hatch is what let a landmark through at
+ * 139 degrees. Pushing always terminates and always satisfies the constraint.
+ * A couple of passes settle the case where moving away from one start crowds
+ * the other.
+ */
+function pushClear(points, pos, radius, maxDeg) {
+  const need = OPENING_SHELL + radius / Math.sin((maxDeg * 0.5 * Math.PI) / 180);
+  for (let pass = 0; pass < 3; pass++) {
+    let worstIdx = -1;
+    let worstGap = 0;
+    for (let i = 0; i < points.length; i++) {
+      const gap = need - _sub.copy(pos).sub(points[i]).length();
+      if (gap > worstGap) { worstGap = gap; worstIdx = i; }
+    }
+    if (worstIdx < 0) break;
+    const p = points[worstIdx];
+    _sub.copy(pos).sub(p);
+    if (_sub.lengthSq() < 1) _sub.set(1, 0.2, 0.4);
+    pos.copy(p).addScaledVector(_sub.normalize(), need);
+  }
+  return pos;
 }
 
 /* --------------------------------------------------------------------------- */
@@ -1521,19 +1551,14 @@ export class Environment {
       // Mirror them in pairs too — a 3 km landmark is cover, and cover on one
       // side of the map only is not a fair map.
       const c = clusters[(i * 2) % clusters.length];
-      const size = r.range(1100, 2600);
+      const size = r.range(900, 1900);
       scl.set(size * r.range(0.85, 1.2), size * r.range(0.6, 0.95), size * r.range(0.85, 1.3));
       const bound = Math.max(scl.x, scl.y, scl.z);
-      /* Try progressively further out until the rock is small enough in the
-         opening frame, then accept the last try — a landmark slightly too
-         close is survivable, an unplaced one is a missing scale cue. */
-      for (let attempt = 0; attempt < 12; attempt++) {
-        const dir = r.unitVector();
-        const rr = c.radius * r.range(1.2, 2.4) + bound * (0.6 + attempt * 0.55);
-        pos.set(c.position.x + dir.x * rr, c.position.y + dir.y * rr * 0.4, c.position.z + dir.z * rr);
-        if (i % 2 === 1) pos.negate();
-        if (attempt === 11 || subtendedFrom(starts, pos, bound) <= LANDMARK_MAX_DEG) break;
-      }
+      const dir = r.unitVector();
+      const rr = c.radius * r.range(1.2, 2.4) + bound * 1.4;
+      pos.set(c.position.x + dir.x * rr, c.position.y + dir.y * rr * 0.4, c.position.z + dir.z * rr);
+      if (i % 2 === 1) pos.negate();
+      pushClear(starts, pos, bound, LANDMARK_MAX_DEG);
       qt.set(r.gaussian(), r.gaussian(), r.gaussian(), r.gaussian()).normalize();
       m.compose(pos, qt, scl);
       lm.setMatrixAt(i, m);
@@ -1578,6 +1603,13 @@ export class Environment {
     const q = new THREE.Quaternion();
     const s = new THREE.Vector3();
     const p = new THREE.Vector3();
+    /* Derelicts are placed on a ring about the origin, which says nothing
+       about where the motherships are — one landed 756 m from the opening
+       camera and filled 66 degrees of the first frame. Same treatment as the
+       rocks; a dead hull is dressing and can go wherever it needs to. */
+    const sep = this.options.separation || 22000;
+    const home = new THREE.Vector3(-sep * 0.5, -900, -sep * 0.12);
+    const starts = [home, home.clone().negate()];
     for (let i = 0; i < count; i++) {
       const ang = r.range(0, Math.PI * 2);
       const rad = r.range(9000, 30000);
@@ -1585,6 +1617,7 @@ export class Environment {
       q.set(r.gaussian(), r.gaussian(), r.gaussian(), r.gaussian()).normalize();
       const len = r.range(240, 1500);
       s.set(len, len, len);
+      pushClear(starts, p, len * 0.6, ROCK_MAX_DEG);
       m.compose(p, q, s);
       mesh.setMatrixAt(i, m);
       const t = 0.65 + r.range(0, 0.5);

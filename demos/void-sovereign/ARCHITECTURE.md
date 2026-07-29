@@ -143,6 +143,10 @@ export const bus: {
 | `sel:changed` | `{ ids: number[] }` | CAMERA/UI → all |
 | `cmd:move` | `{ ids, point:Vector3, formation? }` | CAMERA/UI → SIM |
 | `cmd:attack` | `{ ids, targetId }` | CAMERA/UI → SIM |
+| `cmd:attackMove` | `{ ids, point, formation?, queue? }` | CAMERA/UI → SIM |
+| `cmd:guard` | `{ ids, targetId? \| point?, radius?, queue? }` | CAMERA/UI → SIM |
+| `cmd:patrol` | `{ ids, points[]? \| point?, formation?, queue? }` | CAMERA/UI → SIM |
+| `cmd:stop` | `{ ids }` | CAMERA/UI → SIM |
 | `cmd:stance` | `{ ids, stance }` | UI → SIM |
 | `cmd:formation` | `{ ids, formation }` | UI → SIM |
 | `cmd:build` | `{ team, classId }` | UI → SIM |

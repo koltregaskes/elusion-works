@@ -86,7 +86,9 @@ void main() {
      bloom smears into a 250-pixel white band, which is how a ring stops
      reading as a ring. Give it real width and less radiance instead. */
   float camDist = max( distance( cameraPosition, iCenter ), 1.0 );
-  float thickFloor = ( camDist * uPixelScale * 7.0 ) / max( R, 1.0 );
+  // Clamped: at small R the ratio explodes, and a floor that exceeds the
+  // envelope would fill it edge to edge.
+  float thickFloor = min( 0.018, ( camDist * uPixelScale * 5.0 ) / max( R, 1.0 ) );
 
   vRr = rr;
   vColor = iColor;
@@ -121,9 +123,9 @@ void main() {
      vRr is the interpolated radius as a fraction of the front, straight off
      the annulus — there is no disc here to accidentally fill. */
   float d = vRr - 1.0;
-  float lead = exp( -pow( max( d, 0.0 ) / ( thick * 0.55 ), 2.0 ) );
-  float trail = exp( -pow( max( -d, 0.0 ) / ( thick * 1.4 ), 1.25 ) );
-  float band = max( lead, trail * 0.42 );
+  float lead = exp( -pow( max( d, 0.0 ) / ( thick * 0.85 ), 2.0 ) );
+  float trail = exp( -pow( max( -d, 0.0 ) / ( thick * 1.8 ), 1.15 ) );
+  float band = max( lead, trail * 0.5 );
   float lip = exp( -pow( ( vRr - 1.02 ) / ( thick * 0.30 ), 2.0 ) );
 
   // Hard zero at both rims of the annulus so the mesh edge is never visible.
@@ -140,7 +142,7 @@ void main() {
      scene-linear, so this clears it and blooms — but a thin front at radiance
      12 blooms into a 200-pixel white band and stops reading as a front at all.
      Bright enough to glow, dim enough to stay a line. */
-  col *= vIntensity * uGain * ( 0.20 + 0.75 * lip + 0.35 * band );
+  col *= vIntensity * uGain * ( 0.16 + 1.6 * lip + 0.30 * band );
   gl_FragColor = vec4( col, a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -157,11 +159,16 @@ const RING_ATTRS = [
   { name: 'iSeed', size: 1, offset: 15 },
 ];
 
-/* Radial span of the annulus, as a fraction of the front radius. Wide enough
-   to hold the leading edge, its bloom, and the draining tail; narrow enough
-   that the ring never has an interior to fill. Shared with the shaders. */
-const RING_INNER = 0.62;
-const RING_OUTER = 1.18;
+/* Radial span of the annulus, as a fraction of the front radius.
+
+   Deliberately tight. This bounds the worst case by construction: even if the
+   band profile inside it were solid, the widest the front could ever draw is
+   23% of its own radius. Shape and thickness are then modulated *within* that
+   envelope, so no combination of distance, magnitude or thickness floor can
+   turn a shock front back into a disc — which is the failure this whole shape
+   exists to prevent. Shared with the shaders via #define. */
+const RING_INNER = 0.86;
+const RING_OUTER = 1.09;
 
 /** Flat annulus in the XY plane. uv.x = angle 0..1, uv.y = 0 inner, 1 outer. */
 function annulusGeometry(segments = 96) {
@@ -317,7 +324,7 @@ export class ExplosionFX {
     return [
       { t: 0.00, k: 'flash', size: R * 2.4, minPx: 13, life: 0.22, bright: 11.0 },
       { t: 0.00, k: 'sparks', n: 44 * N, speed: L * 16, size: L * 0.13, minPx: 2.6 },
-      { t: 0.00, k: 'ring', r0: R * 0.3, r1: ring, life: 0.46, thick: 0.045, intensity: 2.2 },
+      { t: 0.00, k: 'ring', r0: R * 0.3, r1: ring, life: 0.46, thick: 0.045, intensity: 1.50 },
       { t: 0.00, k: 'smoke', n: 3, size: R * 2.4, speed: L * 2.2, life: 1.4 },
       { t: 0.02, k: 'debris', n: 5, scale: 0.30, speed: L * 4.5 },
       { t: 0.03, k: 'embers', n: 22 * N, speed: L * 3.5, life: 1.8 },
@@ -338,12 +345,12 @@ export class ExplosionFX {
       { t: 0.62, k: 'vent', n: 1, duration: 1.1, speed: L * 2.6 },
       { t: 0.70, k: 'hullglow', duration: 0.30, size: L, bright: 3.2 },
       { t: 0.84, k: 'flash', size: R * 1.9, minPx: 52, life: 0.42, bright: 15.0 },
-      { t: 0.84, k: 'ring', r0: R * 0.3, r1: ring * 1.15, life: 0.9, thick: 0.030, intensity: 2.6 },
+      { t: 0.84, k: 'ring', r0: R * 0.3, r1: ring * 1.15, life: 0.9, thick: 0.030, intensity: 1.77 },
       { t: 0.84, k: 'sparks', n: 100 * N, speed: L * 7.0, size: L * 0.06, minPx: 2.6 },
       { t: 0.86, k: 'debris', n: 18, scale: 0.5, speed: L * 1.9 },
       { t: 0.86, k: 'embers', n: 70 * N, speed: L * 2.2, life: 3.6 },
       { t: 0.88, k: 'smoke', n: 8, size: L * 0.7, speed: L * 1.4, life: 4.0 },
-      { t: 1.06, k: 'ring', r0: R * 0.8, r1: ring * 1.6, life: 1.6, thick: 0.020, intensity: 1.3 },
+      { t: 1.06, k: 'ring', r0: R * 0.8, r1: ring * 1.6, life: 1.6, thick: 0.020, intensity: 0.88 },
       { t: 0.90, k: 'linger', duration: 5.0, rate: 11, size: L * 0.5 },
     ];
   }
@@ -377,7 +384,7 @@ export class ExplosionFX {
        along its whole length, which is the beat that makes the primary land. */
     ev.push({ t: 2.20, k: 'hullglow', duration: 0.95, size: L, bright: 2.2 });
     ev.push({ t: 2.62, k: 'flash', size: R * 0.7, minPx: 34, life: 0.38, bright: 8.0 });
-    ev.push({ t: 2.62, k: 'ring', r0: R * 0.2, r1: R * 1.2, life: 0.65, thick: 0.035, intensity: 1.6 });
+    ev.push({ t: 2.62, k: 'ring', r0: R * 0.2, r1: R * 1.2, life: 0.65, thick: 0.035, intensity: 1.09 });
     ev.push({ t: 2.64, k: 'sparks', n: 120 * N, speed: L * 1.6, size: L * 0.018, minPx: 2.6 });
     ev.push({ t: 2.66, k: 'hullglow', duration: 0.36, size: L * 1.05, bright: 5.5 });
 
@@ -390,13 +397,13 @@ export class ExplosionFX {
     ev.push({ t: 2.98, k: 'flash', size: R * 1.7, minPx: 110, life: 0.60, bright: 34.0 });
     ev.push({ t: 2.98, k: 'flash', size: R * 0.9, minPx: 60, life: 1.7, bright: 12.0, colour: FIRE });
     ev.push({ t: 3.00, k: 'flash', size: R * 2.6, minPx: 150, life: 0.30, bright: 6.0, colour: CORE });
-    ev.push({ t: 2.98, k: 'ring', r0: R * 0.35, r1: ring * 1.55, life: 1.6, thick: 0.022, intensity: 2.4, axis: 'hull' });
-    ev.push({ t: 3.02, k: 'ring', r0: R * 0.25, r1: ring * 1.05, life: 2.0, thick: 0.030, intensity: 1.7, axis: 'perp' });
+    ev.push({ t: 2.98, k: 'ring', r0: R * 0.35, r1: ring * 1.55, life: 1.6, thick: 0.022, intensity: 1.63, axis: 'hull' });
+    ev.push({ t: 3.02, k: 'ring', r0: R * 0.25, r1: ring * 1.05, life: 2.0, thick: 0.030, intensity: 1.16, axis: 'perp' });
     ev.push({ t: 2.99, k: 'sparks', n: 280 * N, speed: L * 3.4, size: L * 0.024, minPx: 3.0 });
     ev.push({ t: 3.00, k: 'debris', n: 48, scale: 1.0, speed: L * 0.75 });
     ev.push({ t: 3.02, k: 'embers', n: 240 * N, speed: L * 0.85, life: 8.0 });
     ev.push({ t: 3.04, k: 'smoke', n: 14, size: L * 0.42, speed: L * 0.5, life: 9.0 });
-    ev.push({ t: 3.30, k: 'ring', r0: R * 1.1, r1: ring * 2.1, life: 2.8, thick: 0.016, intensity: 1.2 });
+    ev.push({ t: 3.30, k: 'ring', r0: R * 1.1, r1: ring * 2.1, life: 2.8, thick: 0.016, intensity: 0.82 });
     ev.push({ t: 3.10, k: 'linger', duration: 14.0, rate: 20, size: L * 0.35 });
 
     ev.sort((a, b) => a.t - b.t);

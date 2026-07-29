@@ -451,6 +451,10 @@ export class World {
         rec = {
           batch: b,
           hasLod: typeof b.setLod === 'function',
+          // Preferred: the batch picks the level off the same thresholds the
+          // individual `THREE.LOD` path uses, so batched and unbatched hulls
+          // shed detail at identical ranges.
+          hasLodDistance: typeof b.setLodFromDistance === 'function',
           hasDamage: typeof b.setDamage === 'function',
         };
       }
@@ -505,11 +509,20 @@ export class World {
       const o = e.object3D;
       if (!o) continue;
       rec.batch.setMatrix(e._slot, o.matrix);
-      if (rec.hasLod && camPos) {
-        const lod = lodFor(e.radius, camPos.distanceTo(o.position));
-        if (lod !== e._lod) {
-          e._lod = lod;
-          rec.batch.setLod(e._slot, lod);
+      /* Batched hulls never pass through a `THREE.LOD`, and nothing else walks
+         the graph on their behalf — every slot would sit at level 0 for the
+         whole match unless the level is driven from here. This one line is the
+         difference between detail that sheds with distance and a scene that is
+         permanently triangle-bound. */
+      if (camPos) {
+        const d = camPos.distanceTo(o.position);
+        if (rec.hasLodDistance) rec.batch.setLodFromDistance(e._slot, d);
+        else if (rec.hasLod) {
+          const lod = lodFor(e.radius, d);
+          if (lod !== e._lod) {
+            e._lod = lod;
+            rec.batch.setLod(e._slot, lod);
+          }
         }
       }
       if (rec.hasDamage) {
