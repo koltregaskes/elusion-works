@@ -113,6 +113,19 @@ const yieldFrame = () =>
     setTimeout(finish, 60);
   });
 
+/* Announce a stage and let it actually paint BEFORE the work starts.
+
+   Awaiting a dynamic import is not enough: a promise resolution is a microtask
+   and does not guarantee a paint, so a label set immediately before a long
+   synchronous block could be replaced by the next label before the user ever
+   saw it. That is how the boot overlay came to read "Laying down keels…" while
+   the sky was baking, which sent someone hunting a hang in the ships module
+   that was actually 0 ms. Set, paint, then work. */
+async function stage(pct, text) {
+  boot.set(pct, text);
+  await yieldFrame();
+}
+
 async function main() {
   if (!hasWebGL2()) {
     fatal('Void Sovereign needs WebGL 2, which this browser or device does not provide.');
@@ -130,7 +143,7 @@ async function main() {
   });
 
   /* ---------------------------------------------------------------- engine */
-  boot.set(0.04, 'Spinning up the renderer…');
+  await stage(0.04, 'Spinning up the renderer…');
   let engine;
   try {
     engine = new Engine({ canvas, quality: QUALITY });
@@ -144,7 +157,7 @@ async function main() {
   await yieldFrame();
 
   /* -------------------------------------------------------------- textures */
-  boot.set(0.10, 'Printing hull plating…');
+  await stage(0.10, 'Printing hull plating…');
   const texturesMod = await tryImport('./render/textures.js', 'textures');
   if (texturesMod && texturesMod.initTextureLibrary) {
     try {
@@ -156,7 +169,7 @@ async function main() {
   vs.textures = texturesMod;
   await yieldFrame();
 
-  boot.set(0.20, 'Mixing paint and primer…');
+  await stage(0.20, 'Mixing paint and primer…');
   const materialsMod = await tryImport('./render/materials.js', 'materials');
   if (materialsMod && materialsMod.initMaterials) {
     try {
@@ -169,7 +182,7 @@ async function main() {
   await yieldFrame();
 
   /* ----------------------------------------------------------- environment */
-  boot.set(0.30, 'Painting the nebula…');
+  await stage(0.30, 'Painting the nebula…');
   const envMod = await tryImport('./render/environment.js', 'environment');
   let environment = null;
   if (envMod && envMod.Environment) {
@@ -191,7 +204,7 @@ async function main() {
   await yieldFrame();
 
   /* ----------------------------------------------------------------- ships */
-  boot.set(0.48, 'Laying down keels…');
+  await stage(0.48, 'Laying down keels…');
   const shipsMod = await tryImport('./ships/index.js', 'ships');
   if (shipsMod && shipsMod.warmShipCache) {
     try {
@@ -204,7 +217,7 @@ async function main() {
   await yieldFrame();
 
   /* -------------------------------------------------------------------- fx */
-  boot.set(0.62, 'Priming the ordnance…');
+  await stage(0.62, 'Priming the ordnance…');
   const fxMod = await tryImport('./fx/index.js', 'fx');
   let fx = null;
   if (fxMod && fxMod.FXSystem) {
@@ -223,7 +236,7 @@ async function main() {
   await yieldFrame();
 
   /* ----------------------------------------------------------------- world */
-  boot.set(0.72, 'Deploying the fleets…');
+  await stage(0.72, 'Deploying the fleets…');
   const worldMod = await tryImport('./sim/world.js', 'world');
   if (!worldMod || !worldMod.World) {
     fatal('The simulation failed to load.', loadErrors[loadErrors.length - 1]);
@@ -247,7 +260,7 @@ async function main() {
   await yieldFrame();
 
   /* -------------------------------------------------------- camera + input */
-  boot.set(0.82, 'Handing you the bridge…');
+  await stage(0.82, 'Handing you the bridge…');
   const cameraMod = await tryImport('./core/camera.js', 'camera');
   let cameraRig = null;
   if (cameraMod && cameraMod.CameraRig) {
@@ -297,7 +310,7 @@ async function main() {
   await yieldFrame();
 
   /* ----------------------------------------------------------------- audio */
-  boot.set(0.88, 'Opening the comms channel…');
+  await stage(0.88, 'Opening the comms channel…');
   const audioMod = await tryImport('./audio/index.js', 'audio');
   let audio = null;
   if (audioMod && audioMod.AudioSystem) {
@@ -317,7 +330,7 @@ async function main() {
   await yieldFrame();
 
   /* ------------------------------------------------------------------- HUD */
-  boot.set(0.92, 'Bringing the displays up…');
+  await stage(0.92, 'Bringing the displays up…');
   const hudMod = await tryImport('./ui/hud.js', 'hud');
   let hud = null;
   if (hudMod && hudMod.HUD) {
@@ -336,7 +349,7 @@ async function main() {
   await yieldFrame();
 
   /* ---------------------------------------------------------------- postfx */
-  boot.set(0.96, 'Grading the image…');
+  await stage(0.96, 'Grading the image…');
   const postMod = await tryImport('./render/postfx.js', 'postfx');
   let post = null;
   if (postMod && postMod.PostFX) {
@@ -406,6 +419,22 @@ async function main() {
     if (audio) audio.dispose();
     engine.dispose();
   };
+
+  /* Say so when a subsystem degraded.
+
+     Per-stage isolation keeps a broken module from blanking the canvas, which
+     is right — but it also means the game can run for hours quietly missing
+     its lighting or its audio with only a console-free `__VS.loadErrors` array
+     to show for it. That silence cost four iterations of chasing a nebula
+     bounce that was being reverted to defaults by an unrelated parse error
+     upstream. A degraded run must announce itself. */
+  if (loadErrors.length) {
+    const labels = [...new Set(loadErrors.map((e) => String(e.label).split(':')[0]))];
+    bus.emit('ui:toast', {
+      text: `Running degraded — ${labels.join(', ')} failed to load. See __VS.loadErrors.`,
+      kind: 'warning',
+    });
+  }
 
   boot.set(1, 'Ready.');
   loop.start();
