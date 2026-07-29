@@ -207,12 +207,16 @@ class Grid {
 let _nextId = 1;
 
 export class World {
-  constructor({ seed = 1337, engine = null, fx = null, options = {} } = {}) {
+  constructor({ seed = 1337, engine = null, fx = null, environment = null, options = {} } = {}) {
     this.seed = seed >>> 0 || 1;
     this.engine = engine;
     this.fx = fx;
     this.options = options;
-    this.environment = options.environment || null;
+    // The bootstrap passes `environment` at the top level; the harness puts it
+    // in `options`. Reading only one of the two meant the integrated build
+    // silently generated its own ore field and mined coordinates where ENV had
+    // drawn no rocks at all.
+    this.environment = options.environment || environment || null;
     this.headless = options.headless === true;
     this.fxEvents = options.fxEvents !== false;
     this.bounds = options.bounds || 30000;

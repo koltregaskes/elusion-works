@@ -109,12 +109,12 @@ void main() {
 
   /* Asymmetric: a hard leading edge with the energy piled against it and a
      long draining tail behind. A symmetric Gaussian reads as a smoke ring.
-     `vRr` is the interpolated radius as a fraction of the front, straight off
+     vRr is the interpolated radius as a fraction of the front, straight off
      the annulus — there is no disc here to accidentally fill. */
   float d = vRr - 1.0;
   float lead = exp( -pow( max( d, 0.0 ) / ( thick * 0.55 ), 2.0 ) );
-  float trail = exp( -pow( max( -d, 0.0 ) / ( thick * 2.6 ), 1.35 ) );
-  float band = max( lead, trail * 0.72 );
+  float trail = exp( -pow( max( -d, 0.0 ) / ( thick * 1.4 ), 1.25 ) );
+  float band = max( lead, trail * 0.42 );
   float lip = exp( -pow( ( vRr - 1.02 ) / ( thick * 0.30 ), 2.0 ) );
 
   // Hard zero at both rims of the annulus so the mesh edge is never visible.
@@ -127,7 +127,7 @@ void main() {
   /* Cheap stand-in for refraction: the leading lip goes cold-blue while the
      body stays hot, which is what a compressed shell actually looks like. */
   vec3 col = mix( vColor, vec3( 0.60, 0.78, 1.0 ), clamp( lip, 0.0, 1.0 ) * 0.7 );
-  col *= vIntensity * uGain * ( 0.45 + 4.4 * lip + 1.8 * band );
+  col *= vIntensity * uGain * ( 0.28 + 3.6 * lip + 0.9 * band );
   gl_FragColor = vec4( col, a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -249,7 +249,7 @@ export class ExplosionFX {
     return {
       L,
       R: L * 0.95,                                            // fireball radius
-      ring: L * 2.6,                                          // shock front
+      ring: L * 1.8,                                          // shock front
       T: Math.min(1.75, Math.max(0.4, Math.cbrt(L / 380))),   // timeline stretch
       N: Math.min(3.2, Math.max(0.35, Math.pow(L / 380, 0.55))), // particle mass
     };
@@ -304,7 +304,7 @@ export class ExplosionFX {
     return [
       { t: 0.00, k: 'flash', size: R * 2.4, minPx: 13, life: 0.22, bright: 11.0 },
       { t: 0.00, k: 'sparks', n: 44 * N, speed: L * 16, size: L * 0.13, minPx: 2.6 },
-      { t: 0.00, k: 'ring', r0: R * 0.3, r1: ring, life: 0.46, thick: 0.11, intensity: 1.9 },
+      { t: 0.00, k: 'ring', r0: R * 0.3, r1: ring, life: 0.46, thick: 0.045, intensity: 2.2 },
       { t: 0.00, k: 'smoke', n: 3, size: R * 2.4, speed: L * 2.2, life: 1.4 },
       { t: 0.02, k: 'debris', n: 5, scale: 0.30, speed: L * 4.5 },
       { t: 0.03, k: 'embers', n: 22 * N, speed: L * 3.5, life: 1.8 },
@@ -325,12 +325,12 @@ export class ExplosionFX {
       { t: 0.62, k: 'vent', n: 1, duration: 1.1, speed: L * 2.6 },
       { t: 0.70, k: 'hullglow', duration: 0.30, size: L, bright: 3.2 },
       { t: 0.84, k: 'flash', size: R * 1.9, minPx: 52, life: 0.42, bright: 15.0 },
-      { t: 0.84, k: 'ring', r0: R * 0.3, r1: ring * 1.15, life: 0.9, thick: 0.075, intensity: 2.4 },
+      { t: 0.84, k: 'ring', r0: R * 0.3, r1: ring * 1.15, life: 0.9, thick: 0.030, intensity: 2.6 },
       { t: 0.84, k: 'sparks', n: 100 * N, speed: L * 7.0, size: L * 0.06, minPx: 2.6 },
       { t: 0.86, k: 'debris', n: 18, scale: 0.5, speed: L * 1.9 },
       { t: 0.86, k: 'embers', n: 70 * N, speed: L * 2.2, life: 3.6 },
       { t: 0.88, k: 'smoke', n: 14, size: L * 1.6, speed: L * 1.4, life: 4.0 },
-      { t: 1.06, k: 'ring', r0: R * 0.8, r1: ring * 1.6, life: 1.6, thick: 0.05, intensity: 1.2 },
+      { t: 1.06, k: 'ring', r0: R * 0.8, r1: ring * 1.6, life: 1.6, thick: 0.020, intensity: 1.3 },
       { t: 0.90, k: 'linger', duration: 5.0, rate: 11, size: L * 0.5 },
     ];
   }
@@ -364,7 +364,7 @@ export class ExplosionFX {
        along its whole length, which is the beat that makes the primary land. */
     ev.push({ t: 2.20, k: 'hullglow', duration: 0.95, size: L, bright: 2.2 });
     ev.push({ t: 2.62, k: 'flash', size: R * 0.7, minPx: 34, life: 0.38, bright: 8.0 });
-    ev.push({ t: 2.62, k: 'ring', r0: R * 0.2, r1: R * 1.2, life: 0.65, thick: 0.09, intensity: 1.8 });
+    ev.push({ t: 2.62, k: 'ring', r0: R * 0.2, r1: R * 1.2, life: 0.65, thick: 0.035, intensity: 1.6 });
     ev.push({ t: 2.64, k: 'sparks', n: 120 * N, speed: L * 1.6, size: L * 0.018, minPx: 2.6 });
     ev.push({ t: 2.66, k: 'hullglow', duration: 0.36, size: L * 1.05, bright: 5.5 });
 
@@ -377,13 +377,13 @@ export class ExplosionFX {
     ev.push({ t: 2.98, k: 'flash', size: R * 1.7, minPx: 110, life: 0.60, bright: 34.0 });
     ev.push({ t: 2.98, k: 'flash', size: R * 0.9, minPx: 60, life: 1.7, bright: 12.0, colour: FIRE });
     ev.push({ t: 3.00, k: 'flash', size: R * 2.6, minPx: 150, life: 0.30, bright: 6.0, colour: CORE });
-    ev.push({ t: 2.98, k: 'ring', r0: R * 0.35, r1: ring * 1.55, life: 1.6, thick: 0.055, intensity: 3.0, axis: 'hull' });
-    ev.push({ t: 3.02, k: 'ring', r0: R * 0.25, r1: ring * 1.05, life: 2.0, thick: 0.075, intensity: 2.2, axis: 'perp' });
+    ev.push({ t: 2.98, k: 'ring', r0: R * 0.35, r1: ring * 1.55, life: 1.6, thick: 0.022, intensity: 2.6, axis: 'hull' });
+    ev.push({ t: 3.02, k: 'ring', r0: R * 0.25, r1: ring * 1.05, life: 2.0, thick: 0.030, intensity: 1.9, axis: 'perp' });
     ev.push({ t: 2.99, k: 'sparks', n: 280 * N, speed: L * 3.4, size: L * 0.024, minPx: 3.0 });
     ev.push({ t: 3.00, k: 'debris', n: 48, scale: 1.0, speed: L * 0.75 });
     ev.push({ t: 3.02, k: 'embers', n: 240 * N, speed: L * 0.85, life: 8.0 });
     ev.push({ t: 3.04, k: 'smoke', n: 32, size: L * 0.9, speed: L * 0.5, life: 9.0 });
-    ev.push({ t: 3.30, k: 'ring', r0: R * 1.1, r1: ring * 2.1, life: 2.8, thick: 0.035, intensity: 1.3 });
+    ev.push({ t: 3.30, k: 'ring', r0: R * 1.1, r1: ring * 2.1, life: 2.8, thick: 0.016, intensity: 1.2 });
     ev.push({ t: 3.10, k: 'linger', duration: 14.0, rate: 20, size: L * 0.35 });
 
     ev.sort((a, b) => a.t - b.t);

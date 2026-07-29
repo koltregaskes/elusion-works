@@ -1210,6 +1210,13 @@
   pointer-events: none;
 }
 
+/* Shares the top-centre band with the paused tag, so it steps down when the
+   simulation is frozen rather than stacking on top of it. */
+.vsh-root.is-paused .vsh-sensors__head,
+.vsh-root.is-paused .vsh-onboard {
+  transform: translate3d(-50%, 42px, 0);
+}
+
 .vsh-sensors__head {
   position: absolute;
   top: 78px;
@@ -1312,8 +1319,8 @@
 }
 
 .vsh-onboard::before {
-  inset: -18px -40px -20px -40px;
-  background: radial-gradient(74% 130% at 50% 50%, rgba(2, 6, 11, 0.86), rgba(2, 6, 11, 0) 78%);
+  inset: -18px -60px -20px -60px;
+  background: radial-gradient(58% 140% at 50% 50%, rgba(2, 6, 11, 0.9), rgba(2, 6, 11, 0.62) 58%, rgba(2, 6, 11, 0) 92%);
 }
 
 .vsh-onboard.is-gone {
@@ -1442,10 +1449,11 @@
 
 .vsh-paused__c {
   position: absolute;
-  width: 26px;
-  height: 26px;
+  width: 42px;
+  height: 42px;
   border: 0 solid var(--vsh-amber);
-  opacity: 0.75;
+  opacity: 0.9;
+  filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.9));
 }
 
 .vsh-paused__c--tl { top: 0; left: 0; border-top-width: 1px; border-left-width: 1px; }
@@ -1456,19 +1464,19 @@
 .vsh-paused__tag {
   position: absolute;
   left: 50%;
-  bottom: 84px;
+  top: 58px;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
+  align-items: baseline;
+  gap: 14px;
+  white-space: nowrap;
   transform: translate3d(-50%, 0, 0);
 }
 
 .vsh-paused__word {
   font-family: var(--vsh-mono);
-  font-size: 13px;
-  letter-spacing: 0.56em;
-  text-indent: 0.56em;
+  font-size: 12px;
+  letter-spacing: 0.5em;
+  text-indent: 0.5em;
   text-transform: uppercase;
   color: var(--vsh-amber);
 }

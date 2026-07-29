@@ -238,40 +238,6 @@ function spritePlume(size = 128) {
   return finishTexture(c);
 }
 
-/* Corner alpha must be effectively zero for a sprite to be usable as a soft
-   billboard. Reads four corners of whatever the texture is backed by; returns
-   false when the image cannot be sampled, which fails safe onto our own
-   generator rather than risking an opaque quad. */
-function hasSoftEdge(texture) {
-  const img = texture && texture.image;
-  if (!img) return false;
-  try {
-    if (img.data && img.data.length >= 4) {
-      const w = img.width | 0;
-      const h = img.height | 0;
-      if (!w || !h) return false;
-      const stride = img.data.length / (w * h);
-      if (stride < 4) return false;
-      const at = (x, y) => img.data[(y * w + x) * stride + 3];
-      const m = Math.max(at(0, 0), at(w - 1, 0), at(0, h - 1), at(w - 1, h - 1));
-      return m <= 8;
-    }
-    const w = img.width | 0;
-    const h = img.height | 0;
-    if (!w || !h) return false;
-    const c = document.createElement('canvas');
-    c.width = 2;
-    c.height = 2;
-    const g = c.getContext('2d', { willReadFrequently: true });
-    g.drawImage(img, 0, 0, w, h, 0, 0, 2, 2);
-    const d = g.getImageData(0, 0, 2, 2).data;
-    // A 2x2 box filter of a soft sprite still leaves the corners nearly clear.
-    return Math.max(d[3], d[7], d[11], d[15]) <= 96;
-  } catch (e) {
-    return false;
-  }
-}
-
 function noiseTexture(kind, size, rng) {
   const c = makeCanvas(size);
   const g = c.getContext('2d');
@@ -1148,28 +1114,24 @@ export class FXSystem {
     const mat = materials || MOD_MATERIALS;
 
     /* Billboard sprites are generated here rather than taken from
-       `render/textures.js`.
+       `render/textures.js`, deliberately.
 
-       Every FX sprite is a camera-facing quad, so its alpha *must* reach zero
-       before the quad edge. A sprite that is opaque at its border does not
-       render as a soft puff — it renders as a hard-edged card that punches a
-       flat white hole in the frame, and on the normal-blended smoke field that
-       card occludes the battle behind it. The texture library's atlas is built
-       for hull surfaces, where opacity is exactly what you want, so its sprites
-       are the wrong shape of asset for this job; taking them produced precisely
-       that failure. These generators are procedural canvas draws (no binary
-       assets, per §0) and the alpha ramp is the whole point of them.
+       A particle billboard is an *alpha profile* first and a picture second:
+       the shape of the falloff is the effect. The texture library's sprites
+       are authored for surface use and do not satisfy what this system needs
+       — its `flare` carries full alpha only inside the middle 16% of its
+       radius, with a baked-in blue tint, anamorphic streak and six spikes, so
+       an explosion drawn with it is 84% empty and cannot be tinted orange;
+       its `spark` runs its streak along U with hard, un-feathered edges across
+       V, which is 90 degrees from the axis this field stretches along and
+       renders as a square-cornered white bar.
 
-       `hasSoftEdge` is still applied to anything explicitly handed in, and the
-       shaders independently clamp alpha to zero at the quad edge
-       (`fxQuadMask`), so a square-cornered sprite cannot reach the screen by
-       any route. This failure mode is catastrophic rather than merely ugly, so
-       it gets three independent guards. */
+       These generators are procedural canvas draws (no binary assets, per §0)
+       whose RGB is flat white so the per-particle tint is the only colour, and
+       whose alpha reaches zero before the quad edge. The shaders additionally
+       clamp alpha at the quad edge (`fxQuadMask`), so a square-cornered sprite
+       cannot reach the screen by any route even if this changes. */
     const sprite = (kind, generate) => {
-      const explicit = textures && typeof textures.getSpriteTexture === 'function'
-        ? textures.getSpriteTexture(kind)
-        : null;
-      if (explicit && hasSoftEdge(explicit)) return explicit;
       const t = generate();
       this._ownedTextures.push(t);
       return t;

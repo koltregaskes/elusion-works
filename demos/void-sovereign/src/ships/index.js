@@ -19,6 +19,7 @@ import * as THREE from '../../vendor/three/build/three.module.js';
 import { SHIPS, ROLE, FAMILY } from './catalog.js';
 import { buildHullLevel, HULL_CLASSES } from './hulls.js';
 import { KIND } from './greeble.js';
+import { LAYER } from '../core/engine.js';
 
 /* ------------------------------------------------------- material bridge */
 
@@ -78,10 +79,13 @@ function callMat(fn, ...args) {
   }
 }
 
-function hullMaterial(team, family, instanced) {
+/* `length` drives plate density: the `bulwark` family spans a 46 m collector to
+   a 380 m destroyer, and without it both would be issued the same plating. */
+function hullMaterial(team, family, instanced, length) {
+  const opts = length ? { length } : undefined;
   const m = instanced
-    ? callMat(MATLIB && MATLIB.getInstancedHullMaterial, team, family)
-    : callMat(MATLIB && MATLIB.getHullMaterial, team, family);
+    ? callMat(MATLIB && MATLIB.getInstancedHullMaterial, team, family, opts)
+    : callMat(MATLIB && MATLIB.getHullMaterial, team, family, opts);
   if (m) return m;
   return fallbackMaterial(`hull:${team}:${family}:${instanced ? 1 : 0}`, () => {
     const c = TEAM_COLORS[team] || FALLBACK_TEAM_COLORS[0];
@@ -96,12 +100,20 @@ function hullMaterial(team, family, instanced) {
   });
 }
 
-function engineMaterial(team) {
-  const m = callMat(MATLIB && MATLIB.getEngineMaterial, team);
+/* `kind` is one of 'bell' | 'light' | 'window' | 'vent'. Bells take an axial
+   gradient off the 0..1 V the nozzle now writes; the rest are flat emitters. */
+function glowMaterial(team, kind) {
+  const m = callMat(MATLIB && MATLIB.getGlowMaterial, team, kind)
+    || callMat(MATLIB && MATLIB.getEngineMaterial, team);
   if (m) return m;
-  return fallbackMaterial(`engine:${team}`, () => {
+  return fallbackMaterial(`glow:${team}:${kind}`, () => {
     const c = TEAM_COLORS[team] || FALLBACK_TEAM_COLORS[0];
-    return new THREE.MeshBasicMaterial({ color: c.engine.clone(), toneMapped: false });
+    return new THREE.MeshBasicMaterial({
+      color: c.engine.clone(),
+      toneMapped: false,
+      // Additive emitters must never write depth: TAA and DoF read that buffer.
+      depthWrite: false,
+    });
   });
 }
 
@@ -176,25 +188,37 @@ function tagged(geo, material, kind, level) {
   return m;
 }
 
+/* Emissive submeshes go on LAYER.GLOW.
+   The near-scene bloom threshold is scene-referred at 2.8 linear, and a 4×
+   emissive of a mid hull grey is only ~2.0 — under the cut. So an emissive
+   left on the default layer produces no bloom at all, which at fleet range is
+   indistinguishable from having no emissive: it is exactly why 560 hulls
+   showed no drive glow. On the glow layer it blooms via a separate 0.6 cut
+   regardless of absolute level. */
+function asGlow(mesh) {
+  mesh.layers.set(LAYER.GLOW);
+  mesh.castShadow = false;
+  mesh.receiveShadow = false;
+  return mesh;
+}
+
 function levelGroup(asset, index, team) {
   const g = new THREE.Group();
   g.name = `${asset.classId}:L${index}`;
   g.userData.lodLevel = index;
   const geo = asset.levels[index];
   if (geo.hull) {
-    const mesh = tagged(geo.hull, hullMaterial(team, asset.def.family, false), KIND.HULL, index);
+    const mesh = tagged(geo.hull, hullMaterial(team, asset.def.family, false, asset.def.length), KIND.HULL, index);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     g.add(mesh);
   }
   if (geo.glass) g.add(tagged(geo.glass, glassMaterial(team), KIND.GLASS, index));
   if (geo.glow) {
-    // Self-lit: it must not take shadow, and it must not cast one either — a
-    // hangar throat that shadows the hull it is cut into looks broken.
-    const m = tagged(geo.glow, engineMaterial(team), KIND.GLOW, index);
-    m.castShadow = false;
-    m.receiveShadow = false;
-    g.add(m);
+    g.add(asGlow(tagged(geo.glow, glowMaterial(team, 'light'), KIND.GLOW, index)));
+  }
+  if (geo.bell) {
+    g.add(asGlow(tagged(geo.bell, glowMaterial(team, 'bell'), KIND.BELL, index)));
   }
   return g;
 }

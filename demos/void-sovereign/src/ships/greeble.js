@@ -1337,11 +1337,36 @@ export function applyWear(geo, opts = {}) {
  * greebles went into it.
  */
 export class Builder {
-  constructor(rng, detail = 0) {
+  /**
+   * @param {number} length hull length in metres, used to size the coarse
+   *        levels' cull threshold. Without it every LOD keeps every fitting
+   *        and the distant levels never actually get cheaper.
+   */
+  constructor(rng, detail = 0, length = 0) {
     this.rng = rng;
     this.detail = detail;
-    this.groups = { hull: [], glass: [], glow: [] };
+    this.length = length;
+    this.groups = { hull: [], glass: [], glow: [], bell: [] };
     this.teamRegions = [];
+    // Anything whose bounding diagonal is below this fraction of hull length
+    // is dropped at this level. One lever, applied to every class: at the
+    // range a level is chosen for, sub-threshold fittings are well under a
+    // pixel, so they are pure vertex cost.
+    this.cullAt = length * [0, 0.008, 0.030, 0.070][detail];
+  }
+
+  /** True if a part is too small to matter at this level. Emissive geometry is
+      never culled — a drive flame is the last thing that should vanish with
+      distance, not the first. */
+  tooSmall(geo, kind) {
+    if (!this.cullAt || kind === KIND.GLOW || kind === KIND.BELL) return false;
+    geo.computeBoundingBox();
+    const bb = geo.boundingBox;
+    if (!bb) return false;
+    const dx = bb.max.x - bb.min.x;
+    const dy = bb.max.y - bb.min.y;
+    const dz = bb.max.z - bb.min.z;
+    return Math.sqrt(dx * dx + dy * dy + dz * dz) < this.cullAt;
   }
 
   /** Register a bold team-colour region on the finished hull skin. */

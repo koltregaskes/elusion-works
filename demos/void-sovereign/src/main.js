@@ -296,8 +296,28 @@ async function main() {
   vs.input = input;
   await yieldFrame();
 
+  /* ----------------------------------------------------------------- audio */
+  boot.set(0.88, 'Opening the comms channel…');
+  const audioMod = await tryImport('./audio/index.js', 'audio');
+  let audio = null;
+  if (audioMod && audioMod.AudioSystem) {
+    try {
+      audio = new audioMod.AudioSystem({
+        seed: SEED,
+        engine,
+        world,
+        camera: cameraRig,
+      });
+    } catch (e) {
+      // Never fatal. A browser that blocks AudioContext must still get a game.
+      loadErrors.push({ label: 'audio', error: String(e.stack || e.message) });
+    }
+  }
+  vs.audio = audio;
+  await yieldFrame();
+
   /* ------------------------------------------------------------------- HUD */
-  boot.set(0.90, 'Bringing the displays up…');
+  boot.set(0.92, 'Bringing the displays up…');
   const hudMod = await tryImport('./ui/hud.js', 'hud');
   let hud = null;
   if (hudMod && hudMod.HUD) {
@@ -436,6 +456,29 @@ function makeFallbackCamera(engine) {
 /** Nudge the post stack down a tier if the frame rate sags for a sustained run. */
 function installAdaptiveQuality(loop, engine, post) {
   if (!post || !post.setQuality) return;
+
+  /* Prefer the post stack's own policy when it exposes one — it knows its real
+     per-pass costs and its own hysteresis (drops after 2.5 s under 48 fps,
+     climbs after 12 s over 58.5 fps), which is better informed than a frame
+     counter out here. `setQuality()` is documented safe to call at any time
+     and was verified leak-free across 20 tier changes. */
+  if (typeof post.suggestQuality === 'function') {
+    let cooldown = 300;
+    engine.registerRenderHook(() => {
+      if (cooldown > 0) {
+        cooldown--;
+        return;
+      }
+      const want = post.suggestQuality(loop.fps);
+      if (want && want !== engine.quality) {
+        post.setQuality(want);
+        engine.quality = want;
+        bus.emit('ui:toast', { text: `Detail set to ${want} to hold frame rate.`, kind: 'info' });
+      }
+    });
+    return;
+  }
+
   const tiers = ['low', 'medium', 'high', 'ultra'];
   let index = tiers.indexOf(engine.quality);
   let badFrames = 0;

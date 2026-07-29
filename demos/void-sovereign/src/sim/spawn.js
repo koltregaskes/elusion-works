@@ -20,6 +20,7 @@ const DEFAULT_SETUP = {
 };
 
 const _v = new THREE.Vector3();
+const _v2 = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const WORLD_FWD = new THREE.Vector3(0, 0, 1);
 
@@ -27,6 +28,100 @@ const WORLD_FWD = new THREE.Vector3(0, 0, 1);
 export function homePosition(team, separation, out) {
   const s = team === TEAM.PLAYER ? -1 : 1;
   return out.set(s * separation * 0.5, s * 900, s * separation * 0.12);
+}
+
+/* ------------------------------------------------------- start clearance */
+
+/* The opening frame is the whole first impression, and a scalar keep-out
+   radius is the wrong unit to protect it with. Two kilometres of clearance is
+   generous for a 300 m boulder and meaningless for a six-kilometre landmark,
+   which at the same range still fills half the view. What matters is how much
+   of the frame a body occupies from the start, so the rule is angular.
+
+   `OPENING_ANGLE` is the most of the sky an *opaque* body may take up as seen
+   from a mothership. It is deliberately not applied to ore seams: a resource
+   cluster is a porous swarm of small rocks you fly through and see past, and
+   its silhouette is the size of one rock, not of the cluster. ENV should pass
+   the radius of the thing that actually blocks the view.
+
+   ENV owns rock and landmark placement; this is the shared rule both sides
+   test against, exactly as `homePosition` already is. */
+export const OPENING_ANGLE = 0.52; // radians, ~30 degrees
+
+/* An ore seam is not a wall. You fly into it, mine inside it and see straight
+   through the gaps, so its silhouette is one rock rather than the whole swarm.
+   Seams are held to this much looser angle, which in practice means only the
+   hard no-overlap floor binds — close ore is exactly what the opening wants. */
+export const SEAM_ANGLE = 1.2; // radians, ~69 degrees
+
+/** Hard floor: nothing may physically intersect the mothership, ever. */
+const HARD_GAP = 600;
+
+const MOTHERSHIP_R = approxRadius('mothership');
+
+/** Angle a sphere of `radius` subtends at `distance`, in radians. */
+export function subtendedAngle(radius, distance) {
+  if (!(distance > 0)) return Math.PI;
+  const s = radius / distance;
+  return s >= 1 ? Math.PI : 2 * Math.asin(s);
+}
+
+/** Closest a body of `radius` may come to a start before it owns the frame. */
+export function minRangeFor(radius, limit = OPENING_ANGLE) {
+  const angular = radius / Math.sin(Math.max(0.02, limit) * 0.5);
+  const solid = MOTHERSHIP_R + radius + HARD_GAP;
+  return angular > solid ? angular : solid;
+}
+
+const _home = new THREE.Vector3();
+
+/**
+ * Metres by which a body of `radius` at `point` is too close to the nearest
+ * start, or 0 when it is clear. Checks both starts — the field is mirrored, so
+ * a body that is fine for one side must be fine for the other.
+ */
+export function startEncroachment(point, radius, separation = DEFAULT_SETUP.separation, limit = OPENING_ANGLE) {
+  const need = minRangeFor(radius, limit);
+  let worst = 0;
+  for (let t = 0; t < 2; t++) {
+    homePosition(t, separation, _home);
+    const short = need - _home.distanceTo(point);
+    if (short > worst) worst = short;
+  }
+  return worst;
+}
+
+export function clearOfStarts(point, radius, separation, limit) {
+  return startEncroachment(point, radius, separation, limit) <= 0;
+}
+
+/**
+ * Push `point` radially away from whichever start it crowds, in place.
+ * Deterministic, and mirror-safe: the mirrored twin of a nudged point is the
+ * nudge of the mirrored point, so a symmetric field stays symmetric.
+ */
+export function nudgeClearOfStarts(point, radius, separation = DEFAULT_SETUP.separation, limit = OPENING_ANGLE) {
+  const need = minRangeFor(radius, limit);
+  for (let pass = 0; pass < 2; pass++) {
+    let worstT = -1;
+    let worstShort = 0;
+    for (let t = 0; t < 2; t++) {
+      homePosition(t, separation, _home);
+      const short = need - _home.distanceTo(point);
+      if (short > worstShort) {
+        worstShort = short;
+        worstT = t;
+      }
+    }
+    if (worstT < 0) return point;
+    homePosition(worstT, separation, _home);
+    _v.subVectors(point, _home);
+    // Dead on the start: pick a stable outward direction rather than NaN.
+    if (_v.lengthSq() < 1) _v.set(worstT === 0 ? -1 : 1, 0.15, 0).normalize();
+    else _v.normalize();
+    point.copy(_home).addScaledVector(_v, need);
+  }
+  return point;
 }
 
 /**
@@ -40,8 +135,12 @@ export function generateResourceClusters(rng, opts = {}) {
   homePosition(TEAM.PLAYER, cfg.separation, home);
 
   const push = (x, y, z, radius, amount) => {
-    out.push(makeCluster(out.length, x, y, z, radius, amount));
-    out.push(makeCluster(out.length, -x, -y, -z, radius, amount));
+    // Keep the seam off the motherships, then mirror the *corrected* point so
+    // both sides get an identical opening whatever the nudge did.
+    _v2.set(x, y, z);
+    nudgeClearOfStarts(_v2, radius, cfg.separation, SEAM_ANGLE);
+    out.push(makeCluster(out.length, _v2.x, _v2.y, _v2.z, radius, amount));
+    out.push(makeCluster(out.length, -_v2.x, -_v2.y, -_v2.z, radius, amount));
   };
 
   // Two rich seams close to each home, so the opening is never a dice roll.
@@ -99,8 +198,17 @@ function makeCluster(id, x, y, z, radius, amount) {
   };
 }
 
-/** Pull seams from the Environment if it exposes any; otherwise make our own. */
+/**
+ * Pull seams from the Environment if it exposes any; otherwise make our own.
+ *
+ * ENV's records are adopted *in place* rather than copied. ENV fades and culls
+ * its rocks from `amount`, so a copy would leave a mined-out seam looking
+ * untouched for the whole match while the sim quietly emptied a different
+ * object. The returned array is new — only the records inside it are shared —
+ * so `World.dispose()` clearing it cannot reach into ENV's field.
+ */
 export function resolveResourceClusters(world, rng, opts) {
+  const cfg = Object.assign({}, DEFAULT_SETUP, opts);
   const env = world.environment;
   let raw = null;
   try {
@@ -111,16 +219,26 @@ export function resolveResourceClusters(world, rng, opts) {
   if (!raw || !raw.length) return generateResourceClusters(rng, opts);
 
   const out = [];
+  const violations = [];
   for (let i = 0; i < raw.length; i++) {
     const c = raw[i];
-    const p = c.position || c;
-    out.push(makeCluster(
-      i,
-      p.x, p.y, p.z,
-      c.radius || 1200,
-      c.amount || DEFAULT_SETUP.clusterAmount,
-    ));
+    if (!c || !c.position) continue;
+    c.id = out.length;
+    if (!(c.amount > 0)) c.amount = cfg.clusterAmount;
+    if (!(c.maxAmount > 0)) c.maxAmount = c.amount;
+    if (!(c.radius > 0)) c.radius = 1200;
+    c.miners = [0, 0];
+    c.threat = [0, 0];
+    const over = startEncroachment(c.position, c.radius, cfg.separation, SEAM_ANGLE);
+    if (over > 0) {
+      violations.push({ kind: 'cluster', index: i, radius: Math.round(c.radius), over: Math.round(over) });
+    }
+    out.push(c);
   }
+  // Placement is ENV's to fix — the rocks are already built by the time we see
+  // them, so moving the seam here would only desync ore from art. Record it so
+  // a harness can assert on it instead of it going out unnoticed.
+  world.fieldViolations = violations;
   return out;
 }
 

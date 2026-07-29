@@ -21,8 +21,12 @@ import { setNebulaBounce } from './materials.js';
 const QUALITY = {
   low: { clusters: 6, rocksPerCluster: 45, dust: 70, derelicts: 0, landmarks: 2, rockDetail: [1, 0] },
   medium: { clusters: 8, rocksPerCluster: 90, dust: 140, derelicts: 10, landmarks: 4, rockDetail: [2, 1] },
-  high: { clusters: 10, rocksPerCluster: 140, dust: 230, derelicts: 14, landmarks: 6, rockDetail: [3, 1] },
-  ultra: { clusters: 12, rocksPerCluster: 190, dust: 320, derelicts: 18, landmarks: 6, rockDetail: [3, 2] },
+  /* The low LOD was an 80-face icosahedron, which is a faceted blob rather
+     than a small rock — and since the high and low sets are on screen at the
+     same time, the two read as different materials. 320 faces costs almost
+     nothing instanced and keeps the field looking like one field. */
+  high: { clusters: 10, rocksPerCluster: 140, dust: 230, derelicts: 14, landmarks: 6, rockDetail: [3, 2] },
+  ultra: { clusters: 12, rocksPerCluster: 190, dust: 320, derelicts: 18, landmarks: 6, rockDetail: [4, 2] },
 };
 
 /* Gas-giant schemes. Restrained — bands are close in hue and separated by
@@ -75,6 +79,34 @@ const PLANET_SCHEMES = [
     warm: true,
   },
 ];
+
+/* How much of the sky a near-field body is allowed to cover as seen from the
+   opening camera shell around either mothership.
+
+   The opening frame is the single most important image in the demo (§3.9/P1)
+   and it is the one a scalar clearance radius cannot protect: a rock two
+   kilometres wide is still a wall at two kilometres. Expressed as an angle it
+   is one test that works for a 400 m boulder and a 3 km landmark alike.
+   `OPENING_SHELL` is the radius the camera rig opens at, so the check is made
+   from the worst point on that shell rather than from the hull. */
+const OPENING_SHELL = 4600;
+const LANDMARK_MAX_DEG = 26;
+const ROCK_CLEAR = 1500;
+
+const _sub = new THREE.Vector3();
+
+/** Worst-case angular diameter, in degrees, of a body of `radius` at `pos` as
+    seen from anywhere on the opening camera shell around any of `points`. */
+function subtendedFrom(points, pos, radius) {
+  let worst = 0;
+  for (const p of points) {
+    const d = _sub.copy(pos).sub(p).length() - OPENING_SHELL;
+    const ratio = radius / Math.max(d, radius * 1.0001);
+    const deg = 2 * Math.asin(Math.min(1, Math.max(0, ratio))) * 180 / Math.PI;
+    if (deg > worst) worst = deg;
+  }
+  return worst;
+}
 
 /* --------------------------------------------------------------------------- */
 
@@ -223,9 +255,20 @@ export class Environment {
 
     /* Depth haze. Deliberately a very dark, nebula-tinted colour: fog that
        tends toward grey turns the void into soup, fog that tends toward a dark
-       tint just bleeds contrast out of things that are kilometres away. */
-    const fogColour = this.sky.fillColour.clone().multiplyScalar(0.085);
-    fogColour.lerp(this.sky.nebulaColour, 0.25).multiplyScalar(0.85);
+       tint just bleeds contrast out of things that are kilometres away.
+
+       It is also pinned to the measured brightness of the sky behind it. The
+       fill and nebula colours handed back by the bake are *hue* references —
+       normalised so their brightest channel is 1 — so using them directly gave
+       a haze three to six times brighter than the sky it is meant to be
+       hiding things in. The visible result was that a rock twenty kilometres
+       out washed to a pale pink and a rock five kilometres out stayed
+       charcoal: the same material reading as two different ones in a single
+       frame, which is worse than having no haze at all. */
+    const fogColour = this.sky.fillColour.clone().lerp(this.sky.nebulaColour, 0.3);
+    const fogLum = 0.2126 * fogColour.r + 0.7152 * fogColour.g + 0.0722 * fogColour.b;
+    const skyLum = Math.max(1e-4, this.sky.averageLuminance);
+    fogColour.multiplyScalar(Math.min(0.09, (skyLum * 0.85) / Math.max(1e-4, fogLum)));
     const density = this.options.fogDensity !== undefined ? this.options.fogDensity : 5.6e-5;
     this.fog = new THREE.FogExp2(fogColour, density);
     engine.scene.fog = this.fog;
@@ -1129,8 +1172,12 @@ export class Environment {
        and they out-read every capital ship in the frame: two rocks were
        brighter, larger and higher-contrast than the whole fleet. Silhouette
        first (§3.1) means the rocks have to sit *under* the ships tonally, and
-       that is an albedo decision, not a lighting one. */
-    const rockColour = new THREE.Color(0.050, 0.046, 0.041).lerp(sky.palette.body, 0.12);
+       that is an albedo decision, not a lighting one.
+
+       The tint pulled from the sky is kept to a whisper. At 12% the rocks took
+       a visible hue from whatever the nebula was doing and stopped reading as
+       the same material from seed to seed; charcoal is charcoal. */
+    const rockColour = new THREE.Color(0.043, 0.040, 0.036).lerp(sky.palette.body, 0.06);
 
     const material = new THREE.MeshStandardMaterial({
       color: rockColour,
@@ -1182,17 +1229,63 @@ export class Environment {
            float bandFade(float freq, float foot) {
              return 1.0 - smoothstep(0.22, 0.80, freq * foot);
            }
-           /* Height field. Three bands: regolith mottling, ~100 m craters,
-              ~15 m boulders. The frequencies come from the rock's own radius,
-              so a 3 km landmark and a 15 m chip are not the same object at
-              different zoom levels (§3.4). */
-           float rockHeight(vec3 n, float radius, float foot) {
-             float h = fbm4e(n * 3.1) * 0.55;
-             float fC = clamp(radius / 110.0, 1.2, 26.0);
-             h += (ridge2e(n * fC) - 0.5) * 0.42 * bandFade(fC * 2.5, foot);
-             float fB = clamp(radius / 15.0, 4.0, 72.0);
-             h += gnoise(n * fB) * 0.22 * bandFade(fB, foot);
-             return h;
+
+           /* Relief, in METRES.
+
+              Two things here are load-bearing, and getting either wrong is what
+              turned this surface into dazzle camouflage on the last pass.
+
+              1. The height must come out in metres, the same space as
+                 vRockView, or the Mikkelsen gradient below is not the gradient
+                 of anything. A dimensionless height divided by a view-space
+                 determinant scales with 1/size, so the identical field
+                 perturbed a 15 m chip an order of magnitude harder than a 3 km
+                 landmark — which is exactly why a speckled wall and a smooth
+                 grey blob could appear in the same frame and not read as the
+                 same material.
+
+              2. Bands are specified by SLOPE, not by amplitude. Lambert sees
+                 slope, and a band of amplitude a at angular frequency f has a
+                 slope of about a*f whatever the rock's size. Specifying
+                 amplitudes let the top band run at three times the slope of
+                 the bottom one — every scale shouting at once, at uniform
+                 spatial frequency, which is the definition of noise rather
+                 than surface. Deriving a = slope/f forces the spectrum to fall
+                 as the frequency climbs, so form reads first and grain last. */
+           float slopeBand(float slope, float freq) { return slope / freq; }
+
+           float rockRelief(vec3 n, float radius, float foot) {
+             /* Basins. The contours of a smooth field, floored and given a low
+                rim: round-ish, overlapping, of genuinely different sizes. The
+                mesh carries the silhouette; this is what happens inside it, and
+                it is deliberately the only band with real amplitude.
+
+                The transfer functions are wide on purpose. A smoothstep
+                multiplies the underlying field's gradient by the reciprocal of
+                its width, so a band nominally specified at 0.13 of slope came
+                out nearer 0.5 and drew a hard black-to-white edge round every
+                basin. Wide windows keep the stated slope honest. */
+             float b = fbm3e(n * 2.35 + 41.0);
+             float basin = smoothstep(0.34, -0.58, b);
+             float rim = exp(-(b - 0.30) * (b - 0.30) * 7.0);
+             float h = (rim * 0.34 - basin * 0.90) * slopeBand(0.055, 2.35);
+
+             /* Broad undulation between the basins — mass wasting, slumped
+                debris, the shallow stuff that gives a terminator something to
+                travel across. */
+             h += fbm4e(n * 5.1) * slopeBand(0.040, 5.1);
+
+             /* Regolith, anchored at roughly 90 m of real wavelength so a
+                landmark and a boulder are not one object at two zoom levels. */
+             float fR = clamp(radius / 90.0, 2.0, 30.0);
+             h += fbm3e(n * fR + 7.0) * slopeBand(0.026, fR) * bandFade(fR, foot);
+
+             /* Grain, ~11 m. The first band to go and the last you should
+                notice; it exists so a close pass has something to resolve. */
+             float fG = clamp(radius / 11.0, 8.0, 140.0);
+             h += gnoise(n * fG) * slopeBand(0.014, fG) * bandFade(fG, foot);
+
+             return h * radius;
            }`,
         )
         .replace(
@@ -1202,9 +1295,15 @@ export class Environment {
              /* Tangent-free bump (Mikkelsen): build the surface gradient from
                 screen-space derivatives of the height and of the view-space
                 position. No tangent attribute, no normal map texture, and it
-                costs one height evaluation. */
+                costs one height evaluation.
+
+                No fudge factor on the gradient. With the height in metres the
+                formula is already exact, and it is exactness that makes the
+                detail compress toward a grazing angle and flatten into shadow
+                by itself, rather than sitting at the same contrast everywhere
+                on the body. */
              vec3 rn = normalize(vRockLocal);
-             float bh = rockHeight(rn, vRockSize, length(fwidth(rn)));
+             float bh = rockRelief(rn, vRockSize, length(fwidth(rn)));
              vec3 dpx = dFdx(vRockView);
              vec3 dpy = dFdy(vRockView);
              vec3 rr1 = cross(dpy, normal);
@@ -1212,7 +1311,7 @@ export class Environment {
              float det = dot(dpx, rr1);
              if (abs(det) > 1.0e-12) {
                vec3 grad = (rr1 * dFdx(bh) + rr2 * dFdy(bh)) / det;
-               normal = normalize(normal - grad * 0.55);
+               normal = normalize(normal - grad);
              }
            }`,
         )
@@ -1221,14 +1320,20 @@ export class Environment {
           `#include <roughnessmap_fragment>
            vec3 rkn3 = normalize(vRockLocal);
            float rkFoot = length(fwidth(rkn3));
-           float rkn = fbm3e(rkn3 * 4.2) * 0.5 + 0.5;
-           float rkf = clamp(vRockSize / 22.0, 5.0, 48.0);
-           float rkm = (gnoise(rkn3 * rkf) * 0.5 + 0.5 - 0.5) * bandFade(rkf, rkFoot) + 0.5;
-           roughnessFactor *= 0.84 + 0.22 * rkn;
-           /* Albedo variation stays narrow. Rock is monotonous; the contrast
-              in a real asteroid field comes from the terminator, not from
-              patchwork colour. */
-           diffuseColor.rgb *= 0.84 + 0.26 * mix(rkn, rkm, 0.40);`,
+           float rkn = fbm3e(rkn3 * 3.6) * 0.5 + 0.5;
+           /* Basin floors collect fine, darker, better-sorted regolith and the
+              exposed rims are brighter — the one albedo cue on a real airless
+              body that is worth having. Reusing the relief field rather than a
+              second independent noise is what keeps the colour agreeing with
+              the shape instead of fighting it. */
+           float rkb = fbm3e(rkn3 * 2.35 + 41.0);
+           float rkFloor = smoothstep(0.06, -0.30, rkb);
+           roughnessFactor *= 0.90 + 0.12 * rkn;
+           /* Albedo variation stays very narrow. Rock is monotonous: the
+              contrast in a real asteroid field comes from the terminator, not
+              from patchwork colour, and this band used to be wide enough to
+              read as camouflage all on its own. */
+           diffuseColor.rgb *= 0.94 + 0.09 * rkn - 0.06 * rkFloor;`,
         );
     };
     material.customProgramCacheKey = () => 'env-rock';
@@ -1249,16 +1354,38 @@ export class Environment {
     const scl = new THREE.Vector3();
     const pos = new THREE.Vector3();
 
+    /* A home seam sits 3.6–5.2 km out and the camera opens 4.6 km from the
+       hull, so without this the opening shell passes straight through the
+       field and the first frame is a boulder across the lens. The cluster
+       record SIM reads is untouched — only the visible rocks move — so this
+       costs nothing in economy terms. */
+    const starts = [home.clone(), home.clone().negate()];
+    const clearOfStarts = (p, radius) => {
+      for (const s of starts) {
+        if (_sub.copy(p).sub(s).length() < ROCK_CLEAR + radius) return false;
+      }
+      return true;
+    };
+
     for (let ci = 0; ci < clusters.length; ci++) {
       const c = clusters[ci];
       for (let i = 0; i < b.rocksPerCluster; i++) {
         const s = r.int(0, shapes - 1);
-        const dir = r.unitVector();
-        const rr = c.radius * Math.cbrt(r.next()) * r.range(0.75, 1.15);
-        pos.set(c.position.x + dir.x * rr, c.position.y + dir.y * rr * 0.55, c.position.z + dir.z * rr);
-        qt.set(r.gaussian(), r.gaussian(), r.gaussian(), r.gaussian()).normalize();
         const size = Math.pow(r.next(), 3.0) * 430 + 11;
         scl.set(size * r.range(0.7, 1.25), size * r.range(0.6, 1.1), size * r.range(0.75, 1.3));
+        const bound = Math.max(scl.x, scl.y, scl.z);
+        let placed = false;
+        for (let attempt = 0; attempt < 6 && !placed; attempt++) {
+          const dir = r.unitVector();
+          const rr = c.radius * Math.cbrt(r.next()) * r.range(0.75, 1.15);
+          pos.set(c.position.x + dir.x * rr, c.position.y + dir.y * rr * 0.55, c.position.z + dir.z * rr);
+          placed = clearOfStarts(pos, bound);
+        }
+        // A rock that will not clear the opening shell is simply not drawn:
+        // 140 per cluster means one fewer is invisible, and a rock in the lens
+        // is not.
+        if (!placed) continue;
+        qt.set(r.gaussian(), r.gaussian(), r.gaussian(), r.gaussian()).normalize();
         m.compose(pos, qt, scl);
         // Narrow: rock is monotonous, and a wide per-instance tint reads as
         // putty rather than as a field of the same material.
@@ -1320,26 +1447,48 @@ export class Environment {
     }
 
     /* ---- landmarks: a handful of genuinely multi-kilometre rocks. Nothing
-       sells the scale of a 380 m destroyer like parking it beside a 4 km one,
-       and nothing else in the near field is big enough to do that job. ---- */
-    const lmGeo = makeRockGeometry(r.fork(77), Math.min(4, dHigh + 1));
+       sells the scale of a 380 m destroyer like parking it beside a 3 km one,
+       and nothing else in the near field is big enough to do that job.
+
+       They are also, by a distance, the easiest thing in this file to ruin the
+       game's single most important frame with. Placed only relative to a
+       cluster, a landmark could and did land on top of a mothership: measured
+       across four seeds the opening camera sat 3.5 km *inside* one on two of
+       them, which is what produced the hard diagonal edge and the flat grey
+       veil across half the first frame — the near plane slicing a rock the
+       player is standing in — and on another seed one of these covered the
+       production panel.
+
+       A scalar clearance does not fix that, because the thing that matters is
+       how much of the sky the rock covers, not how far away it is: at 2.7 km a
+       2 km rock still fills the frame. So the test is the angle it subtends
+       from the opening camera shell around each start, and it is applied to
+       both starts because the field is mirrored. ---- */
+    const lmGeo = makeRockGeometry(r.fork(77), Math.min(5, dHigh + 2));
     const lmCount = b.landmarks;
     const lm = new THREE.InstancedMesh(lmGeo, material, lmCount);
     lm.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(lmCount * 3), 3);
     for (let i = 0; i < lmCount; i++) {
-      // Mirror them in pairs too — a 5 km landmark is cover, and cover on one
+      // Mirror them in pairs too — a 3 km landmark is cover, and cover on one
       // side of the map only is not a fair map.
       const c = clusters[(i * 2) % clusters.length];
-      const dir = r.unitVector();
-      const rr = c.radius * r.range(1.2, 2.4);
-      pos.set(c.position.x + dir.x * rr, c.position.y + dir.y * rr * 0.4, c.position.z + dir.z * rr);
-      if (i % 2 === 1) pos.negate();
+      const size = r.range(1100, 2600);
+      scl.set(size * r.range(0.85, 1.2), size * r.range(0.6, 0.95), size * r.range(0.85, 1.3));
+      const bound = Math.max(scl.x, scl.y, scl.z);
+      /* Try progressively further out until the rock is small enough in the
+         opening frame, then accept the last try — a landmark slightly too
+         close is survivable, an unplaced one is a missing scale cue. */
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const dir = r.unitVector();
+        const rr = c.radius * r.range(1.2, 2.4) + bound * (0.6 + attempt * 0.55);
+        pos.set(c.position.x + dir.x * rr, c.position.y + dir.y * rr * 0.4, c.position.z + dir.z * rr);
+        if (i % 2 === 1) pos.negate();
+        if (attempt === 11 || subtendedFrom(starts, pos, bound) <= LANDMARK_MAX_DEG) break;
+      }
       qt.set(r.gaussian(), r.gaussian(), r.gaussian(), r.gaussian()).normalize();
-      const size = r.range(1800, 5200);
-      scl.set(size * r.range(0.8, 1.2), size * r.range(0.55, 0.95), size * r.range(0.8, 1.3));
       m.compose(pos, qt, scl);
       lm.setMatrixAt(i, m);
-      const t = r.range(0.80, 1.16);
+      const t = r.range(0.86, 1.12);
       lm.setColorAt(i, new THREE.Color(t, t * 0.985, t * 0.955));
     }
     lm.instanceMatrix.needsUpdate = true;
@@ -1625,10 +1774,49 @@ function makeRockGeometry(rng, detail, sharedShape) {
     h = Math.max(0.35, h);
     pos.setXYZ(i, v.x * h * shape.axis[0], v.y * h * shape.axis[1], v.z * h * shape.axis[2]);
   }
-  geo.computeVertexNormals();
+  smoothNormals(geo);
   geo.computeBoundingSphere();
   geo.userData.shape = shape;
   return geo;
+}
+
+/* `IcosahedronGeometry` is a `PolyhedronGeometry`, and those are non-indexed:
+   every triangle carries its own three vertices. `computeVertexNormals()` on
+   one therefore produces *flat* normals however `flatShading` is set, and a
+   1,280-face rock filling the screen shows every one of its facets — polygon
+   edges across the silhouette and a visible crease inside it. That reads as
+   low-poly, which is one of the loudest "browser demo" tells there is.
+
+   Welding by position is safe here because the shared corners of a polyhedron
+   are computed from the same source values and displaced by the same pure
+   function of them, so the duplicates are bit-identical rather than merely
+   close. Quantising guards the case where they are not. */
+function smoothNormals(geo) {
+  geo.computeVertexNormals();
+  const pos = geo.attributes.position;
+  const nrm = geo.attributes.normal;
+  const acc = new Map();
+  for (let i = 0; i < pos.count; i++) {
+    const key =
+      Math.round(pos.getX(i) * 4096) + ',' +
+      Math.round(pos.getY(i) * 4096) + ',' +
+      Math.round(pos.getZ(i) * 4096);
+    let e = acc.get(key);
+    if (!e) acc.set(key, (e = [0, 0, 0]));
+    e[0] += nrm.getX(i);
+    e[1] += nrm.getY(i);
+    e[2] += nrm.getZ(i);
+  }
+  for (let i = 0; i < pos.count; i++) {
+    const key =
+      Math.round(pos.getX(i) * 4096) + ',' +
+      Math.round(pos.getY(i) * 4096) + ',' +
+      Math.round(pos.getZ(i) * 4096);
+    const e = acc.get(key);
+    const l = Math.hypot(e[0], e[1], e[2]) || 1;
+    nrm.setXYZ(i, e[0] / l, e[1] / l, e[2] / l);
+  }
+  nrm.needsUpdate = true;
 }
 
 /** A dead hull: a spine, a few blocks, a broken-off section. Silhouette only. */

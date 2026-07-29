@@ -382,6 +382,10 @@ export class PostFX {
     this._syncDefines();
     this._allocate();
     this._historyValid = false;
+    /* Drop the timing history. The scopes are sampled round-robin and smoothed,
+       so without this a tier that no longer runs a pass keeps reporting that
+       pass's last cost — high would show an SMAA figure it never paid. */
+    this._timer.results = Object.create(null);
   }
 
   resize(w, h) {

@@ -872,9 +872,12 @@ export class CameraRig {
            trying to stop. Instances below OCCLUDER_MIN_RADIUS fall out on their
            own, and this runs on a two-second cadence, not per frame.
 
-           A batch that rewrites its matrices every frame is a fleet, not
-           scenery; SIM owns those and `_collidersFor` already tracks them. */
-        if (o.instanceMatrix && o.instanceMatrix.usage === THREE.DynamicDrawUsage) continue;
+           Only the top level of the scene is walked, and that is what keeps
+           the fleet out: SIM's instanced batches hang under their own groups,
+           and `_collidersFor` already tracks those from the entity list. Draw
+           usage is deliberately *not* the discriminator — ENV marks its rock
+           fields dynamic so it can stream LOD, and those are precisely the
+           rocks that park themselves in front of the flagship. */
         const n = Math.min(o.count, MAX_SCANNED_INSTANCES);
         for (let k = 0; k < n; k++) {
           o.getMatrixAt(k, _m1);
@@ -939,10 +942,15 @@ export class CameraRig {
       let oz = o.z - camZ;
       const dc = Math.sqrt(ox * ox + oy * oy + oz * oz);
       if (dc <= o.r) return true;               // the camera is inside it
-      if (dc >= dist + o.r) continue;           // it is behind the subject
+      if (dc > dist * 4 + o.r) continue;        // genuinely backdrop, leave it
 
+      /* Something behind the subject does not hide it, but a rock face filling
+         the lower half of the frame still turns the flagship into a detail
+         standing on a dune. Backdrop bodies therefore have to be much larger
+         before they count — they have to be dominating the shot, not merely
+         present in it. */
       const half = Math.asin(clamp(o.r / dc, 0, 1));
-      if (half < minHalf) continue;             // too small on screen to matter
+      if (half < (dc > dist ? halfFov * 0.85 : minHalf)) continue;
 
       /* How far off the centre of the shot it sits. */
       ox /= dc; oy /= dc; oz /= dc;
@@ -988,10 +996,12 @@ export class CameraRig {
       }
       return;
     }
-    /* Nothing at this range works — the subject is buried. Come in close
-       enough to be inside whatever is wrapped around it. */
-    const tight = Math.max(this._minDistance(this._focusRadius), this._focusRadius * 2.6);
-    if (tight < dist * 0.8) {
+    /* Nothing at this range works — the subject is buried. Come in closer, so
+       the camera sits inside whatever is wrapped around it, but never more than
+       halve the shot: `focusOn` does not always know how big the subject is,
+       and a naive "get as close as allowed" lands the camera on its nose. */
+    const tight = Math.max(this._minDistance(this._focusRadius), this._focusRadius * 2.6, dist * 0.5);
+    if (tight < dist * 0.95) {
       this._logDist.target = clamp(Math.log(tight), this._logMin, this._logMax);
       if (instant) this._logDist.snap(this._logDist.target);
     }

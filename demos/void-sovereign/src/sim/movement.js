@@ -258,6 +258,23 @@ function orient(e, dt) {
       _axis.crossVectors(_fwd, _desFwd);
       if (_axis.lengthSq() < 1e-10) _axis.copy(_up); // exactly antipodal: pick a plane
       _axis.normalize();
+
+      /* Big course changes are made flat.
+
+         A raw shortest-arc rotation has no opinion about which plane it turns
+         in, and for a course reversal the cross product is numerical noise —
+         so a ship asked to come about would pick an arbitrary plane, often
+         looping vertically and finishing the manoeuvre inverted. No warship
+         does that. The heavier the hull the harder the turn is pulled into the
+         horizontal, so capitals come about like ships while fighters keep the
+         freedom to loop, which is theirs by right. */
+      if (angle > 1.2) {
+        const flat = 1 - Math.min(1, e.profile.lateral * 2.2);
+        if (flat > 0.01) {
+          _tmp2.copy(_up).multiplyScalar(_axis.dot(_up) >= 0 ? 1 : -1);
+          _axis.lerp(_tmp2, flat * Math.min(1, (angle - 1.2) / 0.8)).normalize();
+        }
+      }
       const step = Math.min(angle, e.turnRate * dt);
       _q.setFromAxisAngle(_axis, step);
       e.quaternion.premultiply(_q).normalize();
@@ -306,7 +323,22 @@ function thrust(e, dt) {
   // Forward axis: full acceleration ahead, weak retro.
   let along = (wantFwd - vFwd) / dt;
   const aMax = e.maxAccel;
-  const aMin = -aMax * prof.reverse - aMax * prof.brake * 0.35;
+  let aMin = -aMax * prof.reverse - aMax * prof.brake * 0.35;
+
+  /* Turning is not stopping.
+
+     A ship whose destination lies behind it has a demand pointing backwards,
+     and a naive flight model answers that by slamming into reverse: it brakes
+     to a near halt, pivots on the spot and accelerates away. That is the tell
+     the brief bans. A warship instead carries its way through the turn and
+     comes about in a wide arc, so braking authority is cut while the demand is
+     off the nose and restored as the hull swings onto it. Arrival still brakes
+     properly, because by then the mark is dead ahead. */
+  const desLen = _des.length();
+  if (desLen > 1e-4) {
+    const align = wantFwd / desLen;
+    if (align < 0.5) aMin *= 0.1 + 0.18 * Math.max(0, align + 0.5);
+  }
   if (along > aMax) along = aMax;
   else if (along < aMin) along = aMin;
   e.velocity.addScaledVector(_fwd, along * dt);

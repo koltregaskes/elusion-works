@@ -354,7 +354,7 @@ export class SfxLayer {
       o.type = 'square';
       o.frequency.value = steps[i];
       const a = this.ctx.createGain();
-      blip(a.gain, at, 0.17, 0.0012, 0.021);
+      blip(a.gain, at, 0.24, 0.0012, 0.021);
       o.connect(a);
       a.connect(g);
       o.start(at);
@@ -471,18 +471,23 @@ export class SfxLayer {
     const lp = this.ctx.createBiquadFilter();
     lp.type = 'lowpass';
     lp.frequency.value = 1400;
+    /* Level has to be set *after* the shaper. A tanh(9x) curve lifts anything
+       quiet almost to unity, so trimming the envelope alone moves this sound by
+       a fraction of a dB — which is how it ended up 12 dB above the rest of the
+       palette. The trim is the actual fader; the envelope only shapes it. */
+    const trim = this.ctx.createGain();
+    trim.gain.value = 0.38;
     g.connect(shaper);
     shaper.connect(lp);
-    lp.connect(this.audio.buses.ui.input);
+    lp.connect(trim);
+    trim.connect(this.audio.buses.ui.input);
     const srcs = [];
     for (let i = 0; i < 2; i++) {
       const o = this.ctx.createOscillator();
       o.type = 'square';
       o.frequency.value = 118 + i * 5.5;
       const a = this.ctx.createGain();
-      // Two short bursts, like a locked door being tried twice. Kept a few dB
-      // above the rest of the palette but nowhere near startling — the hard
-      // drive stage below already makes it the most abrasive sound in the set.
+      // Two short bursts, like a locked door being tried twice.
       blip(a.gain, t, 0.075, 0.003, 0.055);
       blip(a.gain, t + 0.085, 0.066, 0.003, 0.075);
       o.connect(a);
