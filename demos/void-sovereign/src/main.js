@@ -1,0 +1,428 @@
+import * as THREE from '../vendor/three/build/three.module.js';
+import { Engine } from './core/engine.js';
+import { Loop } from './core/loop.js';
+import { bus } from './core/events.js';
+import { makeRng } from './core/rng.js';
+
+/* Boot sequence.
+
+   Each subsystem is loaded in its own stage so a failure is isolated and
+   reportable rather than a blank canvas. Stages that can degrade (post-fx,
+   environment, HUD) do; the ones the game cannot exist without (engine, world)
+   are fatal. The boot overlay reports progress because procedural generation
+   of the skybox and hull atlases genuinely takes a moment. */
+
+const params = new URLSearchParams(location.search);
+
+const SEED = (() => {
+  const raw = params.get('seed');
+  if (raw !== null && raw !== '') {
+    const n = Number(raw);
+    if (Number.isFinite(n)) return Math.abs(Math.trunc(n)) || 1;
+    // Allow word seeds — hash them so ?seed=kharak is stable and shareable.
+    let h = 2166136261;
+    for (let i = 0; i < raw.length; i++) {
+      h ^= raw.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0) || 1;
+  }
+  return (Math.floor(Math.random() * 0xfffffff) + 1) >>> 0;
+})();
+
+const QUALITY = (() => {
+  const q = params.get('quality');
+  if (q && ['low', 'medium', 'high', 'ultra'].includes(q)) return q;
+  return autoQuality();
+})();
+
+/** Pick a starting tier from coarse device signals; the loop adapts from here. */
+function autoQuality() {
+  const mem = navigator.deviceMemory || 4;
+  const cores = navigator.hardwareConcurrency || 4;
+  const coarse = window.matchMedia('(pointer: coarse)').matches;
+  const small = Math.min(window.innerWidth, window.innerHeight) < 700;
+  if (coarse || small || mem <= 2 || cores <= 2) return 'low';
+  if (mem <= 4 || cores <= 4) return 'medium';
+  return 'high';
+}
+
+const boot = {
+  el: document.getElementById('vs-boot'),
+  bar: document.getElementById('vs-boot-bar'),
+  fill: document.getElementById('vs-boot-fill'),
+  status: document.getElementById('vs-boot-status'),
+  set(pct, text) {
+    if (this.fill) this.fill.style.transform = `scaleX(${Math.max(0, Math.min(1, pct))})`;
+    if (this.bar) this.bar.setAttribute('aria-valuenow', String(Math.round(pct * 100)));
+    if (this.status && text) this.status.textContent = text;
+  },
+  dismiss() {
+    if (!this.el) return;
+    this.el.classList.add('is-done');
+    const el = this.el;
+    setTimeout(() => el.remove(), 900);
+    this.el = null;
+  },
+};
+
+function fatal(message, detail) {
+  const el = document.getElementById('vs-fatal');
+  const d = document.getElementById('vs-fatal-detail');
+  if (d) d.textContent = message;
+  if (el) el.hidden = false;
+  if (boot.el) boot.el.remove();
+  const vs = window.__VS || (window.__VS = {});
+  vs.fatal = { message, detail: detail ? String(detail.stack || detail) : null };
+}
+
+function hasWebGL2() {
+  try {
+    const c = document.createElement('canvas');
+    return !!c.getContext('webgl2');
+  } catch (e) {
+    return false;
+  }
+}
+
+/** Load a module, returning null (and recording why) instead of throwing. */
+const loadErrors = [];
+async function tryImport(path, label) {
+  try {
+    return await import(path);
+  } catch (e) {
+    loadErrors.push({ label, path, error: String(e && e.message ? e.message : e) });
+    return null;
+  }
+}
+
+/** Give the browser a frame so the boot bar actually paints between stages. */
+const yieldFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
+
+async function main() {
+  if (!hasWebGL2()) {
+    fatal('Void Sovereign needs WebGL 2, which this browser or device does not provide.');
+    return;
+  }
+
+  const canvas = document.getElementById('vs-canvas');
+  const vs = (window.__VS = {
+    ready: false,
+    seed: SEED,
+    quality: QUALITY,
+    THREE,
+    bus,
+    loadErrors,
+  });
+
+  /* ---------------------------------------------------------------- engine */
+  boot.set(0.04, 'Spinning up the renderer…');
+  let engine;
+  try {
+    engine = new Engine({ canvas, quality: QUALITY });
+  } catch (e) {
+    fatal('The renderer failed to start on this device.', e);
+    return;
+  }
+  vs.engine = engine;
+  const rng = makeRng(SEED);
+  vs.rng = rng;
+  await yieldFrame();
+
+  /* -------------------------------------------------------------- textures */
+  boot.set(0.10, 'Printing hull plating…');
+  const texturesMod = await tryImport('./render/textures.js', 'textures');
+  if (texturesMod && texturesMod.initTextureLibrary) {
+    try {
+      texturesMod.initTextureLibrary(engine.renderer, rng.fork(11), { quality: QUALITY });
+    } catch (e) {
+      loadErrors.push({ label: 'textures:init', error: String(e.message) });
+    }
+  }
+  vs.textures = texturesMod;
+  await yieldFrame();
+
+  boot.set(0.20, 'Mixing paint and primer…');
+  const materialsMod = await tryImport('./render/materials.js', 'materials');
+  if (materialsMod && materialsMod.initMaterials) {
+    try {
+      materialsMod.initMaterials(engine.renderer, { quality: QUALITY, rng: rng.fork(12) });
+    } catch (e) {
+      loadErrors.push({ label: 'materials:init', error: String(e.message) });
+    }
+  }
+  vs.materials = materialsMod;
+  await yieldFrame();
+
+  /* ----------------------------------------------------------- environment */
+  boot.set(0.30, 'Painting the nebula…');
+  const envMod = await tryImport('./render/environment.js', 'environment');
+  let environment = null;
+  if (envMod && envMod.Environment) {
+    try {
+      environment = new envMod.Environment({
+        engine,
+        rng: rng.fork(21),
+        textures: texturesMod,
+        seed: SEED,
+        quality: QUALITY,
+      });
+      for (const light of environment.lights || []) engine.scene.add(light);
+    } catch (e) {
+      loadErrors.push({ label: 'environment', error: String(e.stack || e.message) });
+    }
+  }
+  if (!environment) installFallbackLighting(engine);
+  vs.environment = environment;
+  await yieldFrame();
+
+  /* ----------------------------------------------------------------- ships */
+  boot.set(0.48, 'Laying down keels…');
+  const shipsMod = await tryImport('./ships/index.js', 'ships');
+  if (shipsMod && shipsMod.warmShipCache) {
+    try {
+      shipsMod.warmShipCache(rng.fork(31));
+    } catch (e) {
+      loadErrors.push({ label: 'ships:warm', error: String(e.message) });
+    }
+  }
+  vs.ships = shipsMod;
+  await yieldFrame();
+
+  /* -------------------------------------------------------------------- fx */
+  boot.set(0.62, 'Priming the ordnance…');
+  const fxMod = await tryImport('./fx/index.js', 'fx');
+  let fx = null;
+  if (fxMod && fxMod.FXSystem) {
+    try {
+      fx = new fxMod.FXSystem({
+        engine,
+        materials: materialsMod,
+        textures: texturesMod,
+        quality: QUALITY,
+      });
+    } catch (e) {
+      loadErrors.push({ label: 'fx', error: String(e.stack || e.message) });
+    }
+  }
+  vs.fx = fx;
+  await yieldFrame();
+
+  /* ----------------------------------------------------------------- world */
+  boot.set(0.72, 'Deploying the fleets…');
+  const worldMod = await tryImport('./sim/world.js', 'world');
+  if (!worldMod || !worldMod.World) {
+    fatal('The simulation failed to load.', loadErrors[loadErrors.length - 1]);
+    return;
+  }
+  let world;
+  try {
+    world = new worldMod.World({
+      seed: SEED,
+      engine,
+      fx,
+      ships: shipsMod,
+      environment,
+      options: { difficulty: params.get('difficulty') || 'normal' },
+    });
+  } catch (e) {
+    fatal('The simulation failed to start.', e);
+    return;
+  }
+  vs.world = world;
+  await yieldFrame();
+
+  /* -------------------------------------------------------- camera + input */
+  boot.set(0.82, 'Handing you the bridge…');
+  const cameraMod = await tryImport('./core/camera.js', 'camera');
+  let cameraRig = null;
+  if (cameraMod && cameraMod.CameraRig) {
+    try {
+      cameraRig = new cameraMod.CameraRig({ engine, domElement: canvas, world });
+    } catch (e) {
+      loadErrors.push({ label: 'camera', error: String(e.stack || e.message) });
+    }
+  }
+  if (!cameraRig) cameraRig = makeFallbackCamera(engine);
+  vs.cameraRig = cameraRig;
+
+  // Open on the player's mothership rather than wherever the rig happens to
+  // start, framed far enough back that the hull reads at full length.
+  const playerBase = world.entities.get(world.teams[0].baseId);
+  if (playerBase && cameraRig.focusOn) {
+    cameraRig.focusOn(playerBase.position, playerBase.radius * 7.5, true);
+  }
+
+  const inputMod = await tryImport('./core/input.js', 'input');
+  let input = null;
+  if (inputMod && inputMod.InputController) {
+    try {
+      input = new inputMod.InputController({
+        engine,
+        domElement: canvas,
+        camera: cameraRig,
+        world,
+      });
+    } catch (e) {
+      loadErrors.push({ label: 'input', error: String(e.stack || e.message) });
+    }
+  }
+  vs.input = input;
+  await yieldFrame();
+
+  /* ------------------------------------------------------------------- HUD */
+  boot.set(0.90, 'Bringing the displays up…');
+  const hudMod = await tryImport('./ui/hud.js', 'hud');
+  let hud = null;
+  if (hudMod && hudMod.HUD) {
+    try {
+      hud = new hudMod.HUD({
+        engine,
+        world,
+        camera: cameraRig,
+        container: document.getElementById('vs-hud'),
+      });
+    } catch (e) {
+      loadErrors.push({ label: 'hud', error: String(e.stack || e.message) });
+    }
+  }
+  vs.hud = hud;
+  await yieldFrame();
+
+  /* ---------------------------------------------------------------- postfx */
+  boot.set(0.96, 'Grading the image…');
+  const postMod = await tryImport('./render/postfx.js', 'postfx');
+  let post = null;
+  if (postMod && postMod.PostFX) {
+    try {
+      post = new postMod.PostFX(engine);
+      if (post.setQuality) post.setQuality(QUALITY);
+      engine.setPostProcess(post);
+    } catch (e) {
+      loadErrors.push({ label: 'postfx', error: String(e.stack || e.message) });
+      engine.setPostProcess(null);
+    }
+  }
+  vs.post = post;
+
+  /* ------------------------------------------------------------- per-frame */
+  engine.registerRenderHook((dt, elapsed) => {
+    if (cameraRig && cameraRig.update) cameraRig.update(dt);
+    if (input && input.update) input.update(dt);
+    if (environment && environment.update) environment.update(dt, elapsed, engine.camera);
+    if (materialsMod && materialsMod.updateMaterials) materialsMod.updateMaterials(elapsed);
+    if (fx) fx.update(dt, elapsed, engine.camera);
+    if (hud) hud.update(dt);
+  });
+
+  const loop = new Loop({ engine, world, hz: 30 });
+  vs.loop = loop;
+
+  installAdaptiveQuality(loop, engine, post);
+
+  vs.restart = (seed) => {
+    const url = new URL(location.href);
+    url.searchParams.set('seed', String(seed || Math.floor(Math.random() * 0xfffffff) + 1));
+    location.href = url.toString();
+  };
+  bus.on('ui:restart', (p) => vs.restart(p && p.seed));
+
+  vs.skipIntro = () => {
+    boot.dismiss();
+    bus.emit('ui:skipIntro');
+  };
+
+  vs.dispose = () => {
+    loop.dispose();
+    if (hud) hud.dispose();
+    if (input && input.dispose) input.dispose();
+    if (fx) fx.dispose();
+    if (environment && environment.dispose) environment.dispose();
+    world.dispose();
+    engine.dispose();
+  };
+
+  boot.set(1, 'Ready.');
+  loop.start();
+
+  // Mark ready only after a real frame has rendered — the screenshot harness
+  // and any perf tooling both key off this.
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      vs.ready = true;
+      boot.dismiss();
+      bus.emit('ui:ready', { seed: SEED, quality: QUALITY });
+    }),
+  );
+}
+
+/* --------------------------------------------------------------- fallbacks */
+
+/** Enough light to see shapes if the environment module is unavailable. */
+function installFallbackLighting(engine) {
+  const key = new THREE.DirectionalLight(0xfff2e2, 3.2);
+  key.position.set(-0.55, 0.42, 0.72).multiplyScalar(20000);
+  engine.scene.add(key);
+  const fill = new THREE.HemisphereLight(0x2a4a6e, 0x0a0d18, 0.55);
+  engine.scene.add(fill);
+}
+
+/** A minimal orbit rig so the game is still playable if camera.js is missing. */
+function makeFallbackCamera(engine) {
+  const focus = new THREE.Vector3();
+  let distance = 6000;
+  let yaw = 0.6;
+  let pitch = 0.45;
+  engine.camera.position.set(0, distance * 0.5, distance);
+  return {
+    focusOn(point, d) {
+      focus.copy(point);
+      if (d) distance = d;
+    },
+    frameEntities() {},
+    setSensorsMode() {},
+    screenToWorldPlane: () => focus.clone(),
+    get distance() {
+      return distance;
+    },
+    update() {
+      const cp = Math.cos(pitch);
+      engine.camera.position.set(
+        focus.x + Math.sin(yaw) * cp * distance,
+        focus.y + Math.sin(pitch) * distance,
+        focus.z + Math.cos(yaw) * cp * distance,
+      );
+      engine.camera.lookAt(focus);
+    },
+  };
+}
+
+/** Nudge the post stack down a tier if the frame rate sags for a sustained run. */
+function installAdaptiveQuality(loop, engine, post) {
+  if (!post || !post.setQuality) return;
+  const tiers = ['low', 'medium', 'high', 'ultra'];
+  let index = tiers.indexOf(engine.quality);
+  let badFrames = 0;
+  let cooldown = 300; // let the first few seconds settle before judging
+
+  engine.registerRenderHook(() => {
+    if (cooldown > 0) {
+      cooldown--;
+      return;
+    }
+    if (loop.fps < 40 && index > 0) {
+      if (++badFrames > 180) {
+        index--;
+        post.setQuality(tiers[index]);
+        engine.quality = tiers[index];
+        badFrames = 0;
+        cooldown = 600;
+        bus.emit('ui:toast', { text: `Detail reduced to ${tiers[index]} to hold frame rate.`, kind: 'info' });
+      }
+    } else {
+      badFrames = Math.max(0, badFrames - 2);
+    }
+  });
+}
+
+main().catch((e) => fatal('Void Sovereign failed to start.', e));

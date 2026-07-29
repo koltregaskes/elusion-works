@@ -1,0 +1,258 @@
+# Void Sovereign — Handoff Pack
+
+**Read this first if you are a new session picking this project up.**
+Last updated: 2026-07-29.
+
+---
+
+## 0. What this is
+
+A **Homeworld-lineage, universe-scale 3D space RTS** running in a browser on
+Three.js, living at `demos/void-sovereign/` in the Elusion Works site repo.
+Skirmish ("random") mode only — no campaign. It must be genuinely *playable and
+fun*, not a tech demo with a pretty screenshot.
+
+**Hard constraint that shapes everything: zero binary art assets.** Every hull,
+texture, normal map, nebula, asteroid and sprite is generated procedurally at
+runtime from a single seed. `?seed=kharak` rebuilds the identical universe.
+
+### The four phases
+
+| Phase | Scope | Status |
+|---|---|---|
+| **1. Web** | Push WebGL 2 / Three.js as far as it goes. Fully playable, great UI/HUD, fluent control, AAA-grade look. | **IN PROGRESS** |
+| 2. Desktop app | Move to an executable once the browser is genuinely the limiting factor. | Not started |
+| 3. Real assets | Authored/generated art pipeline (Blender, image/video/audio MCPs) replacing pure procedural where it wins. | Not started |
+| 4. Optimisation | Dedicated profiling and tuning pass **on the target hardware**. | Deliberately deferred |
+
+**Phase 1 is not "done" until it is a 10/10 playable demo.** The bar and the
+test procedure are in §6.
+
+### Target hardware
+
+Owner-reported: a gaming laptop with a **"380-class" discrete GPU, ~2–3 years
+old**. Exact model still to be confirmed. Treat as **RTX 3080/4080-Laptop
+class, ~12 GB VRAM, 1440p**. Budget to **1440p60** with 1,000+ live units, and
+keep generated-texture VRAM under **~2.5 GB**.
+
+The development machine is a **mini-PC with an integrated Radeon 890M** and runs
+at roughly a third of target. **Never lower visual quality to make the dev box
+fast** — that is Phase 4's job, on the real machine.
+
+---
+
+## 1. Documents, in reading order
+
+| File | What it is |
+|---|---|
+| `ARCHITECTURE.md` | **The binding contract.** Frozen module APIs, canonical event table, per-agent file ownership, scale reference, visual direction (§3), perf policy (§0). Read all of it. |
+| `CRITIQUE-RUBRIC.md` | Gameplay/UX/feel rubric derived from real reviews of Homeworld 1–3, Deserts of Kharak, Sins, and modern RTS generally. Extends `ARCHITECTURE.md` §3 into everything §3 doesn't cover. |
+| `DESIGN.md` | Site-convention design token doc (colours, type, shapes). |
+| `HANDOFF.md` | This file. |
+
+---
+
+## 2. How to run and test it
+
+### Dev server
+The site's CSP is `script-src 'self'`, so it must be served over HTTP — opening
+`index.html` from the filesystem will not work.
+
+```bash
+node "C:/Users/KOLTRE~1/AppData/Local/Temp/claude/W--Websites-sites-elusion-works/028c42ed-ad10-42e9-b13f-325ee69dee45/scratchpad/serve.mjs"
+```
+
+Serves the repo root at `http://127.0.0.1:8899/`. The game is at
+`http://127.0.0.1:8899/demos/void-sovereign/`.
+(If that scratchpad is gone, the script is ~40 lines of `node:http` static
+serving with `cache-control: no-store` — trivial to recreate.)
+
+### Screenshot / smoke harness
+
+```bash
+node .local/shot.mjs <out.png> [--wait ms] [--w 1920] [--h 1080] [--seed N] \
+                     [--eval "js"] [--evalWait ms] [--url ...] [--skipIntro]
+```
+
+Prints a JSON report — fps, tick, entity count, credits per team, draw calls,
+console errors, page errors, failed requests — and **exits non-zero on any
+error**. Use it as the regression gate.
+
+### ⚠️ Playwright on this machine
+
+`chromium.launch()` with no options **fails** — the pinned browser build is not
+installed and `npx playwright install` stalls. Do not try to install it.
+
+`.local/shot.mjs` exports `findChromium()`, which locates the newest installed
+full Chromium under `%LOCALAPPDATA%/ms-playwright/chromium-*/chrome-win64/chrome.exe`
+and launches with `--headless=new --use-angle=default --ignore-gpu-blocklist`.
+This gives a **real GPU path** (`ANGLE / AMD Radeon 890M / D3D11`), so
+screenshots are representative rather than software-rendered. Copy that block
+into any new script.
+
+### Live debug handles
+
+`window.__VS` exposes `engine`, `world`, `cameraRig`, `input`, `hud`, `fx`,
+`environment`, `post`, `loop`, `bus`, `THREE`, `rng`, `seed`, `quality`,
+`loadErrors`, `ready`, plus `restart(seed)` and `dispose()`.
+
+Handy one-liners:
+```js
+window.__VS.bus.emit('ui:speed', { scale: 4 });                     // fast-forward
+window.__VS.world.spawn('destroyer', 1, new window.__VS.THREE.Vector3(x, y, z));
+window.__VS.cameraRig.focusOn(point, 4000, true);                   // frame something
+document.getElementById('vs-hud').style.display = 'none';           // judge the render alone
+window.__VS.engine.setPostProcess(null);                            // A/B the post stack
+```
+
+### Diagnostic probes in `.local/` (gitignored)
+| Script | Use |
+|---|---|
+| `probe-scene.mjs` | Dump the live scene graph of both scenes |
+| `probe-bisect.mjs` / `probe-bisect2.mjs` | Hide objects one at a time to attribute a visual artefact |
+| `probe-equirect.mjs` | Unwrap the baked sky into one lat/long image |
+| `probe-seam.mjs` | Measure sky discontinuities numerically against the local neighbourhood |
+| `probe-faces.mjs` | Cube-face contact sheet (historical — sky is equirect now) |
+
+---
+
+## 3. Current state
+
+**Boots clean.** ~53 fps at 1920×1080 on the dev box's integrated GPU, zero
+console errors, sim ticking, economy running, AI fighting.
+
+### Working
+- 13 ship classes, three hull families, procedural `BufferGeometry` with LODs.
+- Fixed 30 Hz sim with interpolated rendering; spatial hash; formations; stances.
+- Combat: firing arcs, projectile travel time, shields → armour → hull, weapon-vs-role affinity.
+- AI commander with its own economy — in an unattended soak it out-produced the idle player 14,685 to 5,360 and destroyed their fleet.
+- FX: tracers, impacts, burning hulls, debris, engine plumes.
+- HUD: production menu with affordability, resource/population/fleet-value bar, speed control.
+- Procedural sky: seeded nebula, galaxy band, magnitude-banded stars, 8 palettes.
+- Post stack installed and running.
+
+### Known-weak (as of this writing; agents are working these)
+- Hull tone reads muddy brown; team colours do not read at a glance.
+- Combat FX under-scaled at normal RTS camera distance; ion beam not visibly rendering.
+- Capital deaths lack weight.
+- Nebula reads flat/grey in-game.
+- Sensors Manager (Tab) not yet verified in the integrated build.
+- No thumbnail; **not yet added to the demo shelf** (`demos/index.html`) — deliberately, until quality justifies it.
+
+---
+
+## 4. How the work is organised
+
+Nine specialist agents, each owning a **disjoint file set** so parallel work
+cannot collide. The ownership table is in `ARCHITECTURE.md` §1 and is
+authoritative. An agent that needs a change outside its files reports it rather
+than editing.
+
+| Role | Owns |
+|---|---|
+| Materials | `src/render/textures.js`, `materials.js` |
+| Ships | `src/ships/index.js`, `hulls.js`, `greeble.js` |
+| Environment | `src/render/skybox.js`, `environment.js` |
+| VFX | `src/fx/*.js` |
+| Sim/AI | `src/sim/*.js` |
+| UI | `styles/hud.css`, `src/ui/*.js` |
+| Camera | `src/core/camera.js`, `input.js` |
+| PostFX | `src/render/postfx.js` |
+| Critic | Nothing — reads and files defects only |
+| **Integrator (main session)** | `index.html`, `src/main.js`, `src/core/*` (except camera/input), `src/ships/catalog.js`, `styles/shell.css`, all docs |
+
+The **critic agent** runs a loop: capture a fixed 9-shot set → judge against
+`ARCHITECTURE.md` §3 and `CRITIQUE-RUBRIC.md` → file a prioritised defect list
+naming the owning subsystem → wait for fixes → re-capture. It is instructed to
+default to "not good enough" and to get harsher, not softer, over time.
+
+> **Honesty note, and please preserve it:** the original brief asked the critic
+> to blind-compare screenshots side by side against the real Homeworld. It
+> cannot — fetching and displaying copyrighted game stills is out of bounds. It
+> judges against the written rubric and says so. Do not let a future session
+> quietly claim a comparison it did not run.
+
+---
+
+## 5. Hard-won knowledge — read before you "fix" these again
+
+**Sky is equirectangular, not a cubemap. Do not convert it back.**
+Hard straight lines were cutting across the sky. After bisecting the scene
+graph, post-processing, the HUD and the dust, the cause was **cube-map seams**:
+WebGL 2 has no seamless cube filtering (that's a desktop-GL feature), so
+bilinear taps clamp inside each face and all twelve cube edges show as steps —
+measured at 3–5 luminance units on a sky whose entire range is only 1–25.
+The bake is now a single equirect `WebGLRenderTarget` with
+`EquirectangularReflectionMapping` and `RepeatWrapping`, and the fragment shader
+reconstructs direction from lat/long per fragment.
+
+**Sky resolution is set by angular resolution, not memory.** `SIZE_BY_QUALITY`
+is map *height*; width is 2×. 2048 → 4096×2048 → ~0.088°/texel ≈ two screen
+pixels at 1080p/48° FOV. Drop below that and stars become blobs, because they
+are splatted at ~0.6 texels to stay band-limited.
+
+**Two scenes, deliberately.** `farScene` (backdrop, 10⁵–10⁹ m) renders first
+with its own non-translating camera and a huge far plane, then the depth buffer
+is cleared, then `scene` draws gameplay. Sharing one depth range with a 14 m
+interceptor destroys precision even with `logarithmicDepthBuffer`.
+`renderer.autoClear` is `false`; `engine.renderScenes()` owns the sequence.
+Any post-processing stack **must** call it rather than using a plain `RenderPass`.
+
+**Dust billboard atlas needs hand-built mips.** Cell borders must reach exactly
+zero alpha (a separable border window — an elliptical falloff alone fails when
+`stretch < 1`), and the mip chain must be generated **per cell**, or coarse mips
+smear neighbouring cells together and distant dust sheets resolve into visible
+rectangles.
+
+**Gas-layer early-outs must fade to zero.** `if (env > threshold)` is a
+performance win over the empty half of the sky, but `pow(dens, contrast)` with
+contrast < 1 lifts small densities hard, so a plain cutoff shows as a clipped
+edge. The envelope now smoothsteps to exactly zero at the threshold.
+
+**Watch for backticks inside GLSL template literals.** A comment containing
+`` `pow(...)` `` inside a JS template literal terminates the string and
+produces a baffling `Unexpected identifier 'pow'` attributed to the *importing*
+module, not the broken one.
+
+**Two of my diagnoses were wrong before the right one.** I flipped the cube face
+basis on faulty reasoning (three's `CubeCamera` uses standard orientations for
+WebGL — the original basis was correct), and I initially misread a
+seam-continuity measurement by comparing seam steps against *star* spikes
+instead of the local sky level. Measure against the local neighbourhood.
+
+---
+
+## 6. Definition of done for Phase 1
+
+Phase 1 ships when **all** of these hold:
+
+1. `node .local/shot.mjs` exits zero across at least 10 seeds — no console
+   errors, no page errors, no failed requests.
+2. Holds **60 fps at 1440p on the target laptop** with 1,000+ live units.
+   (Cannot be verified on the dev box — must be measured on the real machine.)
+3. The critic agent answers **YES** to "Would this pass as a shipped AAA space
+   RTS?" and can no longer name a BLOCKER or MAJOR defect.
+4. Every criterion in `CRITIQUE-RUBRIC.md` scores 8+/10, with the test procedure
+   for each actually run and recorded.
+5. A full skirmish is winnable *and losable* by a human player, and is genuinely
+   fun for 30–60 minutes.
+6. `DESIGN.md`, `ARCHITECTURE.md`, `CRITIQUE-RUBRIC.md` and this file are current.
+7. Thumbnail captured and the demo-shelf card added to `demos/index.html`
+   (remember to bump the index count in the header).
+
+**Report to the owner when Phase 1 is at 100%** — that is the signal to move to
+Phase 2 (desktop).
+
+---
+
+## 7. If you are resuming mid-flight
+
+1. Start the dev server (§2) and run `node .local/shot.mjs .local/shots/resume.png`
+   to confirm the build still boots.
+2. Read `ARCHITECTURE.md` fully, then §5 above.
+3. Check `git status` — **commit only `demos/void-sovereign/`**. The repo has
+   unrelated in-flight work (neon-seraph, cross-site-nav, cabinet styles) that
+   is not yours to commit.
+4. Re-dispatch the specialist agents from the table in §4. Give each one its own
+   previous report and its owned file list; they resume rather than restart.
+5. Keep the critic loop running throughout — it is the quality ratchet.
