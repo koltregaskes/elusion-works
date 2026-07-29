@@ -3,6 +3,13 @@ import { LAYER } from '../core/engine.js';
 import { makeRng, fbm2, fbm3, ridged3 } from '../core/rng.js';
 import { buildSkybox } from './skybox.js';
 import { setNebulaBounce } from './materials.js';
+import {
+  OPENING_ANGLE,
+  SEAM_ANGLE,
+  clearOfStarts,
+  homePosition,
+  nudgeClearOfStarts,
+} from '../sim/spawn.js';
 
 /* Everything that is not a ship.
 
@@ -80,61 +87,55 @@ const PLANET_SCHEMES = [
   },
 ];
 
-/* How much of the sky a near-field body is allowed to cover as seen from the
-   opening camera shell around either mothership.
+/* Opening-frame clearance.
 
-   The opening frame is the single most important image in the demo (§3.9/P1)
-   and it is the one a scalar clearance radius cannot protect: a rock two
-   kilometres wide is still a wall at two kilometres. Expressed as an angle it
-   is one test that works for a 400 m boulder and a 3 km landmark alike.
-   `OPENING_SHELL` is the radius the camera rig opens at, so the check is made
-   from the worst point on that shell rather than from the hull. */
-const OPENING_SHELL = 4600;
-const LANDMARK_MAX_DEG = 34;
-const ROCK_MAX_DEG = 22;
-const ROCK_CLEAR = 1500;
+   The single most important image in the demo (§3.9/P1) is also the one a
+   scalar keep-out radius cannot protect: two kilometres of clearance is
+   generous for a 300 m boulder and meaningless for a 3 km landmark, which at
+   the same range still fills half the view. The rule has to be angular.
 
-const _sub = new THREE.Vector3();
+   That rule is SIM's — `sim/spawn.js` exports it, the same way it already
+   exports `homePosition`, and both sides now test against the one definition
+   rather than each keeping a private copy that can drift. ENV's job is to pass
+   the radius of the thing that *actually blocks the view*: for an ore seam
+   that is one rock, not the whole swarm, because a seam is porous and you fly
+   through it, which is why `SEAM_ANGLE` is deliberately looser than
+   `OPENING_ANGLE`. */
 
-/** Worst-case angular diameter, in degrees, of a body of `radius` at `pos` as
-    seen from anywhere on the opening camera shell around any of `points`. */
-function subtendedFrom(points, pos, radius) {
-  let worst = 0;
-  for (const p of points) {
-    const d = _sub.copy(pos).sub(p).length() - OPENING_SHELL;
-    const ratio = radius / Math.max(d, radius * 1.0001);
-    const deg = 2 * Math.asin(Math.min(1, Math.max(0, ratio))) * 180 / Math.PI;
-    if (deg > worst) worst = deg;
-  }
-  return worst;
-}
+/* The clearance rule protects the frame as seen from the *mothership*, which
+   is not quite where the camera is: the rig opens about 4 km out, so a rock
+   that comfortably clears the hull can still be a couple of hundred metres
+   from the lens and fill 60 degrees of the opening shot — measured at exactly
+   that on one seed. Carving a thin shell out of the field at the opening orbit
+   radius costs a handful of the 140 rocks in a seam and nothing else. */
+const OPENING_SHELL = 4000;
+const SHELL_GAP = 900;
+
+const _cl = new THREE.Vector3();
 
 /**
- * Slide `pos` directly away from whichever start it crowds until it subtends
- * no more than `maxDeg` from either opening camera shell. Mutates and returns
- * `pos`.
+ * Put `pos` where it cannot own the opening frame: outside SIM's angular
+ * clearance from both starts, and off the sphere the camera rig opens on.
+ * Mutates and returns `pos`.
  *
- * Deterministic displacement rather than rejection sampling: re-rolling a
- * random position until it happens to clear needs an escape hatch for the case
- * where it never does, and that escape hatch is what let a landmark through at
- * 139 degrees. Pushing always terminates and always satisfies the constraint.
- * A couple of passes settle the case where moving away from one start crowds
- * the other.
+ * The nudge is looped rather than called once because moving a body away from
+ * one start can bring it toward the other, and SIM's helper takes a bounded
+ * number of passes by design. Looping to a fixed point here is cheap and means
+ * the field never ships a violation for the sake of one more iteration.
  */
-function pushClear(points, pos, radius, maxDeg) {
-  const need = OPENING_SHELL + radius / Math.sin((maxDeg * 0.5 * Math.PI) / 180);
-  for (let pass = 0; pass < 3; pass++) {
-    let worstIdx = -1;
-    let worstGap = 0;
-    for (let i = 0; i < points.length; i++) {
-      const gap = need - _sub.copy(pos).sub(points[i]).length();
-      if (gap > worstGap) { worstGap = gap; worstIdx = i; }
-    }
-    if (worstIdx < 0) break;
-    const p = points[worstIdx];
-    _sub.copy(pos).sub(p);
-    if (_sub.lengthSq() < 1) _sub.set(1, 0.2, 0.4);
-    pos.copy(p).addScaledVector(_sub.normalize(), need);
+function clearOpening(pos, radius, sep, limit) {
+  for (let i = 0; i < 8 && !clearOfStarts(pos, radius, sep, limit); i++) {
+    nudgeClearOfStarts(pos, radius, sep, limit);
+  }
+  const gap = radius + SHELL_GAP;
+  for (let t = 0; t < 2; t++) {
+    homePosition(t, sep, _cl);
+    const d = pos.distanceTo(_cl);
+    if (Math.abs(d - OPENING_SHELL) >= gap) continue;
+    // Always outward: inward is toward the mothership.
+    const want = OPENING_SHELL + gap;
+    if (d < 1) pos.set(_cl.x + want, _cl.y, _cl.z);
+    else pos.sub(_cl).multiplyScalar(want / d).add(_cl);
   }
   return pos;
 }
@@ -840,7 +841,20 @@ export class Environment {
             vec3 ice = mix(vec3(${f3(scheme.c)}), vec3(${f3(scheme.b)}), fine);
             ice = mix(vec3(dot(ice, vec3(0.2126, 0.7152, 0.0722))), ice, 0.42) * 0.62;
             vec3 col = ice * uSunColour * shade * phase * 0.52 + uFill * 0.06;
-            float alpha = clamp(dens * (0.50 + 0.50 * phase), 0.0, 1.0) * 0.70;
+            /* Opacity comes from optical depth, and from nothing else.
+
+               It used to be a raw density scaled by the phase term and then
+               capped at 0.70, which meant two things that were both wrong: the
+               densest ringlet was never more than about half opaque, so the
+               backdrop star field punched straight through the brightest part
+               of the rings and read as being drawn in front of them; and the
+               rings became *more* transparent as they turned away from the
+               star, which is a brightness effect being applied to geometry.
+               A real ring is genuinely opaque where it is thick — Saturn's B
+               ring runs an optical depth of one to two — so Beer's law it is,
+               and the phase term is left to do only its own job of saying how
+               much light scatters back toward the camera. */
+            float alpha = 1.0 - exp(-dens * 2.6);
             gl_FragColor = vec4(col, alpha);
           }`,
         transparent: true,
@@ -1154,12 +1168,26 @@ export class Environment {
        `sim/spawn.js: homePosition`). `separation` is passed through when SIM
        overrides the default. */
     const sep = this.options.separation || 22000;
-    const home = new THREE.Vector3(-sep * 0.5, -900, -sep * 0.12);
+    const home = homePosition(0, sep, new THREE.Vector3());
     const clusters = [];
 
+    /* Seams are nudged, not rejected. SIM measured several seeds opening with
+       a seam inside the frame-share limit — 249 m over on one, 614 m on
+       another — and it cannot move them itself, because by the time it reads
+       the field the rocks are already built around these centres. A radial
+       push of a few hundred metres is invisible in economy terms and is
+       applied before mirroring, so the field stays exactly symmetric. */
+    const _c = new THREE.Vector3();
     const pushPair = (x, y, z, radius, amount) => {
-      clusters.push(makeClusterRecord(x, y, z, radius, amount));
-      clusters.push(makeClusterRecord(-x, -y, -z, radius, amount));
+      _c.set(x, y, z);
+      /* Nudged against the *cluster* radius, not the radius of one rock.
+         SIM's own ledger measures a seam by the record's radius, so that is
+         the number both sides have to agree on — passing the smaller
+         single-rock figure satisfies the letter of the porous-seam note and
+         still leaves violations on the books. */
+      clearOpening(_c, radius, sep, SEAM_ANGLE);
+      clusters.push(makeClusterRecord(_c.x, _c.y, _c.z, radius, amount));
+      clusters.push(makeClusterRecord(-_c.x, -_c.y, -_c.z, radius, amount));
     };
 
     // Two rich home seams per side, so the opening is never a dice roll.
@@ -1432,18 +1460,15 @@ export class Environment {
        field and the first frame is a boulder across the lens. The cluster
        record SIM reads is untouched — only the visible rocks move — so this
        costs nothing in economy terms. */
-    const starts = [home.clone(), home.clone().negate()];
-    /* Two tests, because they catch different failures. The distance test
-       keeps rocks out of the hull's immediate volume; the angular one is what
-       stops a 400 m boulder that is technically 1.5 km from the mothership —
-       and so passes any scalar clearance — from still filling a third of the
-       opening frame, because the camera opens 4.6 km out and can be a few
-       hundred metres from it. */
-    const clearOfStarts = (p, radius) => {
-      for (const s of starts) {
-        if (_sub.copy(p).sub(s).length() < ROCK_CLEAR + radius) return false;
-      }
-      return subtendedFrom(starts, p, radius) <= ROCK_MAX_DEG;
+    /* True when the rock is not sitting on the sphere the camera opens on,
+       around either start. */
+    const mirrorHome = home.clone().negate();
+    const clearOfShell = (p, radius) => {
+      const gap = radius + SHELL_GAP;
+      return (
+        Math.abs(p.distanceTo(home) - OPENING_SHELL) > gap &&
+        Math.abs(p.distanceTo(mirrorHome) - OPENING_SHELL) > gap
+      );
     };
 
     for (let ci = 0; ci < clusters.length; ci++) {
@@ -1458,7 +1483,7 @@ export class Environment {
           const dir = r.unitVector();
           const rr = c.radius * Math.cbrt(r.next()) * r.range(0.75, 1.15);
           pos.set(c.position.x + dir.x * rr, c.position.y + dir.y * rr * 0.55, c.position.z + dir.z * rr);
-          placed = clearOfStarts(pos, bound);
+          placed = clearOfStarts(pos, bound, sep, SEAM_ANGLE) && clearOfShell(pos, bound);
         }
         // A rock that will not clear the opening shell is simply not drawn:
         // 140 per cluster means one fewer is invisible, and a rock in the lens
@@ -1558,7 +1583,8 @@ export class Environment {
       const rr = c.radius * r.range(1.2, 2.4) + bound * 1.4;
       pos.set(c.position.x + dir.x * rr, c.position.y + dir.y * rr * 0.4, c.position.z + dir.z * rr);
       if (i % 2 === 1) pos.negate();
-      pushClear(starts, pos, bound, LANDMARK_MAX_DEG);
+      // Opaque, so the strict angle — you fly through ore, not through a monolith.
+      clearOpening(pos, bound, sep, OPENING_ANGLE);
       qt.set(r.gaussian(), r.gaussian(), r.gaussian(), r.gaussian()).normalize();
       m.compose(pos, qt, scl);
       lm.setMatrixAt(i, m);
@@ -1608,8 +1634,6 @@ export class Environment {
        camera and filled 66 degrees of the first frame. Same treatment as the
        rocks; a dead hull is dressing and can go wherever it needs to. */
     const sep = this.options.separation || 22000;
-    const home = new THREE.Vector3(-sep * 0.5, -900, -sep * 0.12);
-    const starts = [home, home.clone().negate()];
     for (let i = 0; i < count; i++) {
       const ang = r.range(0, Math.PI * 2);
       const rad = r.range(9000, 30000);
@@ -1617,7 +1641,8 @@ export class Environment {
       q.set(r.gaussian(), r.gaussian(), r.gaussian(), r.gaussian()).normalize();
       const len = r.range(240, 1500);
       s.set(len, len, len);
-      pushClear(starts, p, len * 0.6, ROCK_MAX_DEG);
+      // The hull spans roughly 1.2 local units end to end, so 0.6 is its radius.
+      clearOpening(p, len * 0.6, sep, OPENING_ANGLE);
       m.compose(p, q, s);
       mesh.setMatrixAt(i, m);
       const t = 0.65 + r.range(0, 0.5);
@@ -1681,7 +1706,15 @@ export class Environment {
       const d = this._tmpV.copy(c.position).sub(cp).length();
       c._visible = d < 42000 + c.radius;
       c._high = d < 9000 + c.radius * 3;
-      key += c._visible ? (c._high ? 'H' : 'L') : '-';
+      /* Seams thin out as they are mined. SIM decrements `amount` on these
+         very records — they are adopted in place, not copied — so the field
+         can show its own state instead of a worked-out seam looking untouched
+         for the whole match. Quantised to sixteenths so this rebuilds the
+         instance buffers a handful of times over a seam's life rather than
+         every time a collector delivers. */
+      const frac = c.maxAmount > 0 ? Math.max(0, Math.min(1, c.amount / c.maxAmount)) : 1;
+      c._fill = Math.round(frac * 16) / 16;
+      key += c._visible ? (c._high ? 'H' : 'L') + c._fill.toFixed(2) : '-';
     }
     if (key === this._lodKey) return;
     this._lodKey = key;
@@ -1698,16 +1731,24 @@ export class Environment {
         if (!c._visible) continue;
         const range = set.ranges[ci];
         if (!range || !range.count) continue;
-        const mSlice = set.matrices.subarray(range.start * 16, (range.start + range.count) * 16);
-        const cSlice = set.colours.subarray(range.start * 3, (range.start + range.count) * 3);
+        /* A worked-out seam keeps a floor of rubble rather than vanishing:
+           the ore is gone, the rock is not, and an empty patch of space where
+           a landmark used to be would read as a culling bug. */
+        const shown = Math.max(
+          range.count > 0 ? 1 : 0,
+          Math.ceil(range.count * (0.22 + 0.78 * (c._fill === undefined ? 1 : c._fill))),
+        );
+        const n = Math.min(range.count, shown);
+        const mSlice = set.matrices.subarray(range.start * 16, (range.start + n) * 16);
+        const cSlice = set.colours.subarray(range.start * 3, (range.start + n) * 3);
         if (c._high) {
           hM.set(mSlice, nH * 16);
           hC.set(cSlice, nH * 3);
-          nH += range.count;
+          nH += n;
         } else {
           lM.set(mSlice, nL * 16);
           lC.set(cSlice, nL * 3);
-          nL += range.count;
+          nL += n;
         }
       }
       set.high.count = nH;
@@ -1806,6 +1847,7 @@ function makeClusterRecord(x, y, z, radius, amount) {
     maxAmount: Math.round(amount),
     _visible: true,
     _high: true,
+    _fill: 1,
   };
 }
 

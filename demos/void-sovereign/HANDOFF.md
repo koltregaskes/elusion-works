@@ -139,6 +139,30 @@ console errors, sim ticking, economy running, AI fighting.
 - Sensors Manager (Tab) not yet verified in the integrated build.
 - No thumbnail; **not yet added to the demo shelf** (`demos/index.html`) — deliberately, until quality justifies it.
 
+### Open items with no owning agent (transcripts lost — respawn to action)
+
+- **FX blast normalisation.** The doc comment says a fighter is `≈0.04`; the
+  formula `(L/380)^1.5` gives `0.007` and the bus actually carries **0.002**.
+  That mismatch already caused the camera's noise gate to be set five times too
+  high, swallowing the rumble phase of every capital death. Reconcile comment
+  and code. Separately, a frigate death (0.088) currently registers *smaller
+  than an ion lance* (0.16) — plausible, but confirm it is intentional rather
+  than a fall-out of the mass curve.
+- **Audio is locked to a stale capital-death script.** `src/audio/sfx.js` read
+  `fx/explosions.js`'s `_scriptCapital` directly and hardcoded those beats
+  (groan 0, secondaries `0.22 + (i/beats)*2.35`, crack 2.62, primary 2.98).
+  FX has since rebuilt the sequence to ~6 s with the primary at t≈3.0–6.4 s.
+  **Audio will be firing against timings that no longer exist.** The durable
+  fix is for audio to subscribe to `fx:blast` the way the camera now does,
+  rather than mirroring another module's internals.
+- **FX self-identified polish:** the shock front reads flat beige rather than
+  having a hot leading edge, and the plume has not been checked against the
+  mothership's corrected bell geometry (ships changed it after FX's last
+  engine tuning).
+- **UI:** `UNSHIPPED_CONTROLS` in `hud.js` still suppresses the "Shift + right
+  click — Queue the order" row. That suppression was correct when added but is
+  now stale — queueing is shipped and verified. Delete it and the row returns.
+
 ---
 
 ## 4. How the work is organised
@@ -244,6 +268,41 @@ Phase 1 ships when **all** of these hold:
 Phase 2 (desktop).
 
 ---
+
+## 5a. Control scheme
+
+Generated from `CONTROL_SCHEME` in `src/core/input.js`; `src/ui/hud.js` imports
+it, so the in-game help panel (`H`) updates itself. Reproduced here for the
+demo card and for anyone writing copy.
+
+| Group | Input | Action |
+|---|---|---|
+| **Time** | `Space` | Pause the battle — you can still select and give orders |
+| | `+` / `−` | Game speed: ¼, ½, ×1, ×2, ×4 |
+| | `H` | Controls panel |
+| **Selection** | Left click / drag | Select · band-select |
+| | `Shift` / `Ctrl` + click | Add to · toggle in selection |
+| | Double click | Every ship of that class on screen |
+| | `Ctrl` + `A` · `Esc` | Select whole fleet · clear |
+| **Orders** | Right click | Move (drag up/down for altitude) |
+| | Right click on enemy | Attack |
+| | `Shift` + any order | Queue it |
+| | `A` · `G` · `P` · `S` | Attack-move · guard · patrol · stop |
+| | `1`–`6` | Formation: delta, broad, claw, X, wall, sphere |
+| | `Z` / `X` / `C` | Stance: evasive, neutral, aggressive |
+| **Camera** | Right drag / middle drag | Orbit (`Alt`+right to orbit with a selection) |
+| | Wheel · `PgUp`/`PgDn` | Zoom (exponential) |
+| | Arrow keys · screen edge | Pan (`Shift` to hurry) |
+| | `Q` / `E` · `F` · `Tab` | Swing · focus selection · sensors manager |
+| **Groups** | `Ctrl`+`0`–`9` · `0`–`9` | Assign · recall (twice to focus) |
+| **Touch** | Drag · tap · pinch · long press | Orbit · select · zoom · move gizmo |
+
+**Why panning is on the arrow keys and not WASD.** `A` is attack-move and `S`
+is stop in every RTS a player has touched, and that collision is unresolvable
+while WASD holds the camera. Panning keeps arrows, the screen edge, `Q`/`E` and
+middle-drag orbit — in a camera this orbit-centric that is a small loss, and an
+attack-move you cannot reach is a missing verb. If this is ever revisited,
+revisit it as a rebinding feature rather than by reclaiming `A`.
 
 ## 6a. Publishing — how this actually goes live
 

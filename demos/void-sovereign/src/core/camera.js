@@ -23,36 +23,42 @@ import { bus } from './events.js';
 
 const DEG = Math.PI / 180;
 
-/* Death-shake beats, as [seconds after sim:death, share of full strength].
+/* Trauma produced by a blast of `strength` 1.0 going off in the camera's lap.
 
-   `fx/explosions.js` does not kill a big ship in one frame. A frigate takes a
-   hit, burns for most of a second, then goes; a capital walks secondaries along
-   its spine for over two seconds, buckles, and only then detonates — that last
-   flash is the frame the whole sequence exists for. Dumping all the trauma on
-   the death event put the punch three seconds before the picture it belonged
-   to, so the impulses are scheduled onto the same beats instead.
+   FX normalises `strength` so 1.0 is a destroyer's primary detonation, which
+   puts a fighter pop near 0.04 and a mothership near 5. The rig therefore needs
+   no ship-class table and no mirrored beat timings: it is handed the magnitude
+   and the moment, and a mothership simply saturates the clamp — which is
+   correct, because a mothership going up is as hard as the camera can be hit. */
+const SHAKE_GAIN = 1.8;
 
-   These mirror `_scriptBreak` and `_scriptCapital`. If the FX ever emits an
-   explicit blast event, read that instead and delete these tables. */
-const BREAK_BEATS = [[0, 0.34], [0.84, 1.0]];
-const CAPITAL_BEATS = [[0, 0.22], [1.05, 0.16], [1.85, 0.22], [2.62, 0.42], [2.98, 1.0], [3.14, 0.44]];
+/* FX's `radius` is the blast's *physical* reach — a destroyer's primary
+   measures 684 m, which is the fireball, not the range over which the event is
+   felt. Treating it as a hard cutoff meant the camera only shook when it was
+   already inside the explosion. You feel a capital go up from well outside the
+   fireball, so the felt range is a multiple of it, with a floor so that even a
+   small, tight blast close by registers. */
+const FELT_REACH = 10;
+const MIN_FELT_REACH = 2500;
 
-/* Length bands, matching the ones fx/explosions.js scripts against. Below the
-   first, a death is a pop: at a thousand live units the screen would never be
-   still if fighters moved the camera. */
-const POP_LENGTH = 45;
-const CAPITAL_LENGTH = 210;
-const MAX_PENDING_BLASTS = 36;
+/* Below this a blast is a firework, not an event. It exists so that a thousand
+   fighters dying across a battle line cannot sum into a permanent tremor.
 
-/* Turns the two sub-unity attenuators in addShake() back into a usable range;
-   see the note there. */
-const SHAKE_GAIN = 2.4;
+   Measured against what FX actually emits, rather than assumed: a fighter pop
+   is 0.002, a frigate's secondaries 0.014-0.041 and its primary 0.088, a
+   destroyer's secondaries 0.07 and its primary 1.0, an ion lance ~0.16. The
+   gate therefore has to sit an order of magnitude below the frigate, not just
+   under the destroyer — an earlier 0.08 silently swallowed the destroyer's
+   entire hull-failure rumble, which sits at 0.07. */
+const SHAKE_MIN_STRENGTH = 0.010;
 
-/* Displacement goes as trauma^SHAKE_CURVE. Squaring is the usual choice and it
-   does make a big hit hit hard, but it also erases everything below about a
-   third of full trauma — which is where the hull-failing rumble lives. 1.7
-   keeps the big/small contrast and lets the quiet beats be felt. */
-const SHAKE_CURVE = 1.7;
+/* Displacement goes as trauma^SHAKE_CURVE. Squaring is the usual choice, and it
+   was right when this rig invented its own magnitudes — the curve supplied the
+   dynamic range. FX now encodes that range in `strength` itself, spanning
+   0.002 to 11, so a steep curve double-counts it: at 1.7 a destroyer's
+   secondaries came out 96x below its primary and vanished. 1.3 keeps the
+   contrast emphatic while leaving the quiet beats visible. */
+const SHAKE_CURVE = 1.3;
 
 /* Just short of the pole. Going all the way to +/-90 makes `lookAt` pick an
    arbitrary roll and the view snaps a quarter turn — the classic gimbal flip. */
@@ -260,7 +266,6 @@ export class CameraRig {
     this._trauma = 0;
     this._shakeDir = new THREE.Vector3(0, 1, 0);
     this._shakeSeed = 0;
-    this._blasts = [];          // impulses waiting for their beat
 
     this._sensors = false;
     this._restore = null;
@@ -290,7 +295,7 @@ export class CameraRig {
         this.focusOn(p.point, p.distance, false);
       }),
       bus.on('ui:sensorsToggle', (p) => this.setSensorsMode(!!(p && p.open))),
-      bus.on('sim:death', (p) => this._onDeath(p)),
+      bus.on('fx:blast', (p) => this._onBlast(p)),
     ];
 
     /* Self-drive as a fallback. If main.js calls update() itself the guard in
@@ -583,26 +588,21 @@ export class CameraRig {
 
   /* ---------------------------------------------------------------- shake */
 
-  /** Directional, distance-scaled impulse. Also called directly by tests. */
-  addShake(point, radius = 100, strength = 1) {
+  /** Directional impulse from a blast. `reach` is the blast's range in metres
+      and `strength` is FX's normalised magnitude (1.0 = destroyer primary). */
+  addShake(point, reach = 3000, strength = 1) {
     if (this._reduced) return;
+    if (!(strength > SHAKE_MIN_STRENGTH)) return;
+
     const camPos = this.camera.position;
     const d = Math.max(1, _v1.copy(camPos).sub(point).length());
+    const r = Math.max(reach * FELT_REACH, MIN_FELT_REACH);
+    if (d > r) return;
 
-    /* Reach scales with the wreck: a mothership is felt from tens of
-       kilometres, a frigate from a few. Falloff is superlinear so the edge of
-       the reach is genuinely nothing rather than a faint permanent tremor.
-
-       SHAKE_GAIN exists because the two attenuators are both below one and
-       multiplying them left a destroyer at a natural viewing distance with
-       three percent of the available shake — technically present, invisible in
-       practice. The gain restores the near field and the clamp in `_trauma`
-       stops it running away when a mothership goes up in your face. */
-    const reach = radius * 40 + 1200;
-    if (d > reach) return;
-    const falloff = Math.pow(1 - d / reach, 1.6);
-    const size = clamp(0.35 + radius / 900, 0.35, 1.15);
-    const amp = falloff * size * strength * SHAKE_GAIN;
+    /* Superlinear falloff, so the edge of the reach is genuinely nothing
+       rather than a faint permanent tremor across the whole battle line. */
+    const falloff = Math.pow(1 - d / r, 1.6);
+    const amp = falloff * strength * SHAKE_GAIN;
     if (amp <= 0.002) return;
 
     this._shakeDir.copy(camPos).sub(point);
@@ -616,45 +616,19 @@ export class CameraRig {
   _stillness() {
     this._trauma = 0;
     this._swayGain.snap(0);
-    this._blasts.length = 0;
   }
 
-  _onDeath(p) {
-    const e = p && p.entity;
-    if (!e || !e.position) return;
-    const def = e.def || null;
-    const radius = e.radius || (def && def.length ? def.length * 0.55 : 10);
-    const length = (def && def.length) || radius * 2.2;
-    if (length < POP_LENGTH) return;
-    if (this._reduced) return;
-    if (this._blasts.length >= MAX_PENDING_BLASTS) return;
-
-    const beats = length < CAPITAL_LENGTH ? BREAK_BEATS : CAPITAL_BEATS;
-    for (let i = 0; i < beats.length; i++) {
-      this._blasts.push({
-        at: this._elapsed + beats[i][0],
-        delay: beats[i][0],
-        strength: beats[i][1],
-        radius,
-        point: new THREE.Vector3().copy(e.position),
-        /* The wreck keeps its momentum, so the blast is not where it died. */
-        drift: e.velocity ? new THREE.Vector3().copy(e.velocity) : null,
-      });
-    }
-  }
-
-  /** Release any scheduled impulse whose beat has arrived. */
-  _fireDueBlasts() {
-    const list = this._blasts;
-    for (let i = list.length - 1; i >= 0; i--) {
-      const b = list[i];
-      if (this._elapsed < b.at) continue;
-      list.splice(i, 1);
-      if (this._reduced) continue;
-      _v3.copy(b.point);
-      if (b.drift) _v3.addScaledVector(b.drift, b.delay);
-      this.addShake(_v3, b.radius, b.strength);
-    }
+  /* FX owns the choreography of a death — which beats land, how far apart, and
+     how hard. The rig used to mirror those tables and drifted out of sync the
+     moment FX retimed anything; now it just listens. Every source that is
+     allowed to shove the camera comes through this one channel, including
+     ion-lance ignition. */
+  _onBlast(p) {
+    if (!p || !p.point) return;
+    const s = typeof p.strength === 'number' ? p.strength : 1;
+    const r = typeof p.radius === 'number' ? p.radius : 3000;
+    if (!Number.isFinite(s) || !Number.isFinite(r)) return;
+    this.addShake(p.point, r, s);
   }
 
   /* --------------------------------------------------------------- update */
@@ -670,7 +644,6 @@ export class CameraRig {
     const step = clamp(dt || 0, 0, 0.1);
     this._elapsed += step;
     this._idle += step;
-    if (this._blasts.length) this._fireDueBlasts();
     this._apply(step);
   }
 
@@ -1102,7 +1075,6 @@ export class CameraRig {
     this._mq = null;
     this._colliders.length = 0;
     this._static.length = 0;
-    this._blasts.length = 0;
     this._follow = null;
     this.camera.near = this._nearBase;
     this.camera.far = this._farBase;

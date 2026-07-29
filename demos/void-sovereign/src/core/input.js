@@ -73,7 +73,11 @@ export const CONTROL_SCHEME = [
       ['Right click', 'Move to the point under the cursor'],
       ['Right drag up / down', 'Set the move altitude (disc + stalk gizmo)'],
       ['Right click on enemy', 'Attack'],
-      ['Shift + right click', 'Queue the order'],
+      ['Shift + any order', 'Queue it behind the current one'],
+      ['A', 'Attack-move to the cursor — engage anything met on the way'],
+      ['G', 'Guard the hull under the cursor, or hold that position'],
+      ['P', 'Patrol out to the cursor and back'],
+      ['S', 'Stop — cancel all queued orders'],
       ['1 – 6 (Shift or numpad)', 'Formation: delta, broad, claw, X, wall, sphere'],
       ['Z / X / C', 'Stance: evasive, neutral, aggressive'],
     ],
@@ -86,7 +90,7 @@ export const CONTROL_SCHEME = [
       ['Alt + right drag', 'Orbit, even with a selection'],
       ['Wheel', 'Zoom (exponential; Shift for coarse)'],
       ['Page Up / Page Down', 'Zoom without the wheel'],
-      ['W A S D / arrows', 'Pan across the focus plane'],
+      ['Arrow keys', 'Pan across the focus plane (Shift to hurry)'],
       ['Q / E', 'Swing the camera left / right'],
       ['Screen edge', 'Edge-scroll'],
       ['F', 'Focus and follow the selection'],
@@ -145,8 +149,14 @@ const _mid = { x: 0, y: 0 };
 const _ptA = new THREE.Vector3();
 const _ptB = new THREE.Vector3();
 
+/* Letters give orders, arrows move the camera.
+
+   WASD used to pan, but attack-move belongs on A in every RTS a player has
+   touched, and stop belongs on S — the collision is unresolvable while WASD
+   holds the camera. Panning keeps the arrows, the screen edge, Q/E and the
+   middle-drag orbit, which in a camera this orbit-centric is no real loss;
+   whereas an attack-move you cannot reach is a missing verb. */
 const PAN_KEYS = new Set([
-  'KeyW', 'KeyA', 'KeyS', 'KeyD',
   'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
   'ShiftLeft', 'ShiftRight',
 ]);
@@ -635,6 +645,10 @@ export class InputController {
       case 'KeyZ': this._setStance(STANCES[0]); return;
       case 'KeyX': this._setStance(STANCES[1]); return;
       case 'KeyC': this._setStance(STANCES[2]); return;
+      case 'KeyA': this._issueAttackMove(e.shiftKey); return;
+      case 'KeyG': this._issueGuard(e.shiftKey); return;
+      case 'KeyP': this._issuePatrol(e.shiftKey); return;
+      case 'KeyS': this._issueStop(); return;
       case 'Equal': case 'NumpadAdd': this._nudgeSpeed(1); return;
       case 'Minus': case 'NumpadSubtract': this._nudgeSpeed(-1); return;
       case 'PageUp': e.preventDefault(); this.rig.zoomBy(2); return;
@@ -755,6 +769,66 @@ export class InputController {
     const payload = { ids, point: point.clone(), queue: !!queue };
     if (this.formation) payload.formation = this.formation;
     bus.emit('cmd:move', payload);
+  }
+
+  /** World point under the cursor, on the selection's own horizontal plane.
+
+      The combat verbs are single keypresses rather than an armed cursor that
+      waits for a click: one press, one order, at the place you are already
+      looking. It is the faster half of the RTS idiom and it keeps the verb
+      honest on the bus — pressing A does something, immediately. Altitude is
+      the right-drag gizmo's job, and a plain move still gets you there. */
+  _cursorPoint(out) {
+    const r = this._rect();
+    const x = this._hoverX >= 0 ? this._hoverX : r.left + r.width * 0.5;
+    const y = this._hoverY >= 0 ? this._hoverY : r.top + r.height * 0.5;
+    const anchor = this._selectionCentroid(_v3) || this.rig.focusPoint;
+    const planeY = anchor.y;
+    this._toNdc(x, y, _ndc);
+    return this.rig.screenToWorldPlane(_ndc, planeY, out);
+  }
+
+  /** Emit a point-targeted order for the current selection. */
+  _issuePointOrder(type, queue, extra) {
+    const ids = this._commandIds();
+    if (!ids.length) return false;
+    const payload = { ids, point: this._cursorPoint(_v2).clone(), queue: !!queue };
+    if (this.formation) payload.formation = this.formation;
+    if (extra) Object.assign(payload, extra);
+    bus.emit(type, payload);
+    return true;
+  }
+
+  /* Move to the point, but fight anything met on the way — the helm goes to
+     combat while a target is live and comes straight back afterwards. */
+  _issueAttackMove(queue) {
+    this._issuePointOrder('cmd:attackMove', queue);
+  }
+
+  /* Patrol. The sim builds the circuit from where the ships are now. */
+  _issuePatrol(queue) {
+    this._issuePointOrder('cmd:patrol', queue);
+  }
+
+  /* Guard a friendly hull if the cursor is over one, otherwise guard the
+     ground — holding a seam is as common an order as escorting a carrier. */
+  _issueGuard(queue) {
+    const ids = this._commandIds();
+    if (!ids.length) return;
+    const friend = this._hoverX >= 0
+      ? this._pick(this._hoverX, this._hoverY, { team: this.team, radiusPx: PICK_PX })
+      : null;
+    if (friend && !this._selSet.has(friend.id)) {
+      bus.emit('cmd:guard', { ids, targetId: friend.id, queue: !!queue });
+      return;
+    }
+    this._issuePointOrder('cmd:guard', queue);
+  }
+
+  _issueStop() {
+    const ids = this._commandIds();
+    if (!ids.length) return;
+    bus.emit('cmd:stop', { ids });
   }
 
   _commitAttack(queue) {
@@ -1340,10 +1414,10 @@ export class InputController {
     const k = this._keys;
     let x = 0;
     let y = 0;
-    if (k.has('KeyA') || k.has('ArrowLeft')) x -= 1;
-    if (k.has('KeyD') || k.has('ArrowRight')) x += 1;
-    if (k.has('KeyW') || k.has('ArrowUp')) y -= 1;
-    if (k.has('KeyS') || k.has('ArrowDown')) y += 1;
+    if (k.has('ArrowLeft')) x -= 1;
+    if (k.has('ArrowRight')) x += 1;
+    if (k.has('ArrowUp')) y -= 1;
+    if (k.has('ArrowDown')) y += 1;
 
     if (x || y) {
       const boost = k.has('ShiftLeft') || k.has('ShiftRight') ? this.options.boostMultiplier : 1;
