@@ -481,25 +481,25 @@ function step(game, dt) {
  * Named vantage points. The review harness screenshots these so critiques compare like for
  * like across iterations. Each is [x, y, z, yawDeg, pitchDeg].
  *
- * SAMPLING NOTE. The sun sits at azimuth 252°, so a vantage's yaw decides whether it is looking
- * into the light or along it, and that single choice dominates how the frame reads. The original
- * list was written before the map was lit and happened to point eight of its ten entries within
- * 90° of the sun — almost every frame was backlit, with the foreground inside one large shadow
- * cast by the container wall.
+ * SAMPLING NOTE. A vantage's angle to the sun dominates how its frame reads, and the direction
+ * that shows shadows is the opposite of the intuitive one: with the sun *behind* the camera every
+ * object occludes its own shadow, whereas facing *into* the sun the shadows stretch toward the
+ * viewer and are fully visible.
  *
- * That skew produced a false review finding. Graders reported that nothing in the scene cast a
- * shadow and scored the lighting accordingly, when in fact disabling the cascades altered 45% of
- * the frame by more than 20 code values; they were simply never shown lit ground. A blind
- * critique is only as good as its sample.
+ * The original list was frontlit-heavy, so review frames systematically hid the shadowing. That
+ * produced a false finding — graders reported that nothing in the scene cast a shadow and marked
+ * the lighting down, when an A/B test showed that disabling the cascades alters 45% of the frame
+ * by more than 20 code values. A blind critique is only as good as its sample.
  *
- * The list is therefore balanced by lighting condition, not curated for flattery: `*Lit` entries
- * stand where an existing vantage stands and merely face the other way, so the comparison is
- * honest rather than a change of location to something prettier.
+ * The angles below are MEASURED, by dotting each vantage's forward vector against the direction
+ * to the sun in the running engine, not derived on paper. An earlier pass at this comment stated
+ * them from memory and got the sign backwards, which is exactly the mistake the measurement
+ * exists to prevent. Re-measure with scratchpad/yawprobe.mjs after moving the sun.
  *
- *   backlit, into the sun   sunline, containers, crane
- *   cross-lit               yard, depot, wide, terracesUp
- *   frontlit, sun behind    terraces, yardLit, depotLit
- *   interior                depotIn
+ *   backlit, shadows toward camera   yardBack 10°, depotBack 11°, terraces 52°
+ *   cross-lit                        depotIn 88°, yard 114°, gunclose 114°
+ *   frontlit, shadows hidden         depot 128°, terracesUp 133°, wide 150°,
+ *                                    crane 156°, sunline 167°, containers 172°
  */
 export const VANTAGES = {
   yard: [6, 1.75, 26, 186, -3],
@@ -512,11 +512,11 @@ export const VANTAGES = {
   containers: [18, 1.75, 4, 250, 0],
   wide: [42, 9.0, 34, 222, -10],
   gunclose: [6, 1.75, 26, 186, -3],
-  // Frontlit pair. Same standing positions as `yard` and `depot`, turned to put the sun behind
-  // the camera, which is the only way the long raking shadows the art direction is built around
-  // become visible at all.
-  yardLit: [6, 1.75, 26, 72, -2],
-  depotLit: [-34, 1.75, -8, 80, 0],
+  // Backlit pair, measured at 10° and 11° off the sun. Same standing positions as `yard` and
+  // `depot`, turned to face into the light, which is where the long raking shadows the art
+  // direction is built around actually become visible.
+  yardBack: [6, 1.75, 26, 72, -2],
+  depotBack: [-34, 1.75, -8, 80, 0],
 };
 
 function applyCaptureMode(game, params) {
