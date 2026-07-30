@@ -2767,38 +2767,59 @@ function buildHand(mats, side, cfg) {
      out straight past it, which is what "no fingers that wrap anything" was describing. */
   const curlK = clamp(0.034 / (wrap + 0.010), 0.70, 1.40);
 
+  /* ---- Hand scale, measured against the rig it lives on -----------------------------------
+   * These were authored at roughly half life size and that is the whole reason the glove read
+   * as "a bare rounded nub" rather than as a hand: the palm block was 42 mm across (an adult
+   * male palm breadth is 85-90 mm) and, worse, the four fingers were 12.4 mm in diameter on
+   * 9.9 mm centres — each digit overlapped its neighbours, so the four of them fused into a
+   * single mitten with no gap to cast the shadow line that separates them. On top of that the
+   * whole hand was *narrower than the forearm it was on* (cuff radius 25.5 mm against the
+   * sleeve's 30.5 mm wrist), which is exactly the silhouette a reviewer describes as a tapered
+   * capsule terminating in a stump: the hand cannot be the widest part of the arm if it is
+   * smaller than the wrist.
+   *
+   * So the bulk goes to life size — palm 62 mm across and 31 mm thick, fingers 14.4 mm on
+   * 14.5 mm centres so there is a real gap between them, cuff wider than the sleeve — while the
+   * *finger segment lengths and curl angles below are deliberately unchanged*, because those
+   * are what set the radius of the circle the fingertips close on, and that radius is solved
+   * against the handguard and the pistol grip (see `wrap` and the `gripSupport` anchor note in
+   * buildMk18). Growing the digits' cross-section seats the pads a millimetre deeper into the
+   * furniture, which is the right direction for a grip.
+   */
   // Palm: a chamfered wedge, thicker at the thenar side. Leather.
-  asm.add(chamferBox(0.042, 0.026, 0.078, { r: 0.010, bevel: 0.0038, curveSegments: 5 }), 'glovePalm', {
+  asm.add(chamferBox(0.062, 0.031, 0.090, { r: 0.012, bevel: 0.0044, curveSegments: 5 }), 'glovePalm', {
     p: [0, 0, 0.006],
     r: [0, 0, 0],
   });
   // Fabric back panel over the palm block — this is the panel split that gives the glove a
   // visible seam line instead of one continuous surface.
-  asm.add(chamferBox(0.0405, 0.0085, 0.070, { r: 0.0075, bevel: 0.0030, curveSegments: 5 }), 'glove', {
-    p: [0, 0.0105, 0.004],
+  asm.add(chamferBox(0.059, 0.0100, 0.080, { r: 0.0090, bevel: 0.0034, curveSegments: 5 }), 'glove', {
+    p: [0, 0.0128, 0.004],
   });
   // Raised seam piping around the panel edge, one strip each side. It is 1.4 mm proud, which
   // is enough to catch the key and read as stitching at viewmodel magnification.
-  asm.addMirrored(() => chamferBox(0.0026, 0.0034, 0.064, { r: 0.0011, bevel: 0.0008, curveSegments: 2 }), 'gloveHard', {
-    p: [0.0198, 0.0072, 0.004],
+  asm.addMirrored(() => chamferBox(0.0030, 0.0040, 0.074, { r: 0.0013, bevel: 0.0009, curveSegments: 2 }), 'gloveHard', {
+    p: [0.0288, 0.0088, 0.004],
   });
   // Back-of-hand knuckle guard.
-  asm.add(chamferBox(0.040, 0.0075, 0.052, { r: 0.0055, bevel: 0.0026, curveSegments: 4 }), 'gloveHard', {
-    p: [0, 0.0158, -0.004],
+  asm.add(chamferBox(0.058, 0.0088, 0.058, { r: 0.0065, bevel: 0.0030, curveSegments: 4 }), 'gloveHard', {
+    p: [0, 0.0186, -0.006],
     r: [-0.10, 0, 0],
   });
-  // Knuckle domes.
+  // Knuckle domes, one per finger and now on the *finger* centres, so the row of four bumps
+  // lines up with the four gaps below it and the two read as one structure.
   for (let i = 0; i < 4; i++) {
-    asm.add(latheY([[0.0055, 0], [0.0062, 0.0026], [0.0038, 0.0052], [1e-4, 0.0058]], 8), 'gloveHard', {
-      p: [(-0.0145 + i * 0.0097) * s, 0.018, -0.028],
+    asm.add(latheY([[0.0072, 0], [0.0080, 0.0032], [0.0049, 0.0064], [1e-4, 0.0072]], 8), 'gloveHard', {
+      p: [(-0.0218 + i * 0.0145) * s, 0.0212, -0.032],
     });
   }
   // Wrist cuff transition: a rolled fabric band, so the glove ends in a cuff rather than a
-  // polygonal cut where it meets the sleeve.
-  asm.add(latheZ([[0.0215, 0.036], [0.0250, 0.030], [0.0255, 0.020], [0.0225, 0.016], [0.0205, 0.016]], 14), 'cuff', null);
+  // polygonal cut where it meets the sleeve. Its outer radius has to *exceed* the sleeve's
+  // 30.5 mm wrist or the join steps inwards and the hand reads as thinner than the arm.
+  asm.add(latheZ([[0.0255, 0.036], [0.0300, 0.030], [0.0308, 0.020], [0.0268, 0.016], [0.0245, 0.016]], 14), 'cuff', null);
   // Wrist closure strap across the back of the cuff.
-  asm.add(chamferBox(0.040, 0.0040, 0.011, { r: 0.0016, bevel: 0.0010, curveSegments: 2 }), 'gloveHard', {
-    p: [0, 0.0155, 0.026],
+  asm.add(chamferBox(0.056, 0.0046, 0.012, { r: 0.0018, bevel: 0.0011, curveSegments: 2 }), 'gloveHard', {
+    p: [0, 0.0184, 0.026],
   });
 
   /* Four fingers, each two phalanges curled around whatever is being held.
@@ -2811,14 +2832,15 @@ function buildHand(mats, side, cfg) {
   const fingerPivot = new THREE.Vector3();
   let fasm = null;
   for (let i = 0; i < 4; i++) {
-    const fx = (-0.0148 + i * 0.0099) * s;
-    // Wider splay than before so the fingers read as four separate digits rather than one
-    // mitten — finger separation is explicitly what the silhouette was missing.
+    // 14.5 mm centres for a 14.4 mm digit: a hair of daylight between neighbours at rest, and
+    // the splay below opens it further towards the tips. The old 9.9 mm pitch on a 12.4 mm
+    // digit made them overlap, which is what fused the four into one mitten.
+    const fx = (-0.0218 + i * 0.0145) * s;
     const spread = (i - 1.5) * 0.085;
     const isTrigger = !!o.trigger && i === 0;
     // The trigger finger comes off the grip and lies almost straight along the trigger.
     const curl = isTrigger ? 0.3 : (1.02 + i * 0.06) * curlK;
-    const r0 = 0.0062 - i * 0.0004;
+    const r0 = 0.0072 - i * 0.0005;
     const yaw = isTrigger ? spread * s * 0.4 : spread * s;
     let tgt = asm;
     let ox = 0;
@@ -2829,7 +2851,7 @@ function buildHand(mats, side, cfg) {
       tgt = fasm;
       // Knuckle: the rear end of the proximal phalanx at rest. Everything below is authored in
       // hand space and then shifted so the group's origin lands on it.
-      fingerPivot.set(fx, -0.004, -0.031);
+      fingerPivot.set(fx, -0.0045, -0.033);
       ox = -fingerPivot.x;
       oy = -fingerPivot.y;
       oz = -fingerPivot.z;
@@ -2848,7 +2870,7 @@ function buildHand(mats, side, cfg) {
     });
     // Reinforced fingertip pad — leather, like the palm, so the grip surfaces match.
     const dc = curl * (isTrigger ? 1.05 : 1.32);
-    tgt.add(latheY([[0.0044, 0], [0.0048, 0.0022], [0.0028, 0.0044], [1e-4, 0.005]], 7), 'glovePalm', {
+    tgt.add(latheY([[0.0052, 0], [0.0057, 0.0025], [0.0033, 0.0050], [1e-4, 0.0057]], 7), 'glovePalm', {
       p: [
         fx + Math.sin(yaw) * 0.02 + ox,
         py - Math.sin(dc) * 0.022 + oy,
@@ -2858,23 +2880,37 @@ function buildHand(mats, side, cfg) {
     });
   }
 
-  // Thumb: two segments wrapping the far side of the grip.
-  asm.add(chamferBox(0.0135, 0.0125, 0.030, { r: 0.0052, bevel: 0.0024, curveSegments: 4 }), 'glove', {
-    p: [-0.020 * s, -0.006, -0.020],
+  /* Thumb: two segments wrapping the far side of the grip. Scaled and moved outboard with the
+     palm — a thumb sitting 20 mm off the centreline of a 62 mm palm is inside the hand, and an
+     invisible thumb is half of "no thumb wrap". At 29/42 mm it clears the palm's thenar edge
+     and its second segment crosses the front of whatever is being held, which is the read. */
+  asm.add(chamferBox(0.0165, 0.0150, 0.033, { r: 0.0064, bevel: 0.0028, curveSegments: 4 }), 'glove', {
+    p: [-0.029 * s, -0.007, -0.021],
     r: [-0.42 * curlK, 0.62 * s, 0.30 * s],
   });
-  asm.add(chamferBox(0.0118, 0.0110, 0.028, { r: 0.0046, bevel: 0.0022, curveSegments: 4 }), 'glovePalm', {
-    p: [-0.030 * s, -0.010, -0.043],
+  asm.add(chamferBox(0.0145, 0.0135, 0.031, { r: 0.0056, bevel: 0.0026, curveSegments: 4 }), 'glovePalm', {
+    p: [-0.042 * s, -0.011, -0.046],
     r: [-0.75 * curlK, 1.02 * s, 0.34 * s],
   });
 
   /* Vertex treatment per panel. The palm is polished by use and picks up no dust; the fabric
-     back is dusty on top and grimy underneath; the cuff is the dirtiest thing on the rig. */
+     back is dusty on top and grimy underneath; the cuff is the dirtiest thing on the rig.
+
+     `cuff` needs a gain and the others do not, because `mats.cuff` is authored with
+     `color: 0xffffff` — the arm's own cuff band carries all of its value in `bakeCamo`, so the
+     material deliberately contributes nothing. The wrist band built here went through
+     `bakeVertexTint` instead, whose default gain is 1.0, so it came out as a pure white
+     lambert: a 0.9 albedo rolled torus sitting at the wrist, the brightest surface anywhere in
+     the frame, and — being the nearest part of the hand to the camera — the one that occludes
+     the fingers. That is precisely the "tapered capsule terminating in a bare rounded white
+     nub" three reviews have reported. 0.085 matches the arm cuff's camo tones at gain 0.52
+     (~0.03-0.06 linear), which is where dirty webbing in this light belongs; the dust term
+     comes down with it so the ash on top stays a highlight rather than becoming the surface. */
   const tint = {
     glove: { grain: 0.13, wear: 0.05, dust: 0.13, grime: 0.22 },
     glovePalm: { grain: 0.1, wear: 0.09, grime: 0.3 },
     gloveHard: { grain: 0.09, wear: 0.13, dust: 0.1 },
-    cuff: { grain: 0.16, wear: 0.04, dust: 0.1, grime: 0.34 },
+    cuff: { grain: 0.16, wear: 0.04, dust: 0.05, grime: 0.34, gain: 0.085 },
   };
   const handRoot = new THREE.Group();
   handRoot.name = side > 0 ? 'handR' : 'handL';
@@ -3341,18 +3377,33 @@ function weaponDefs() {
       build: buildMk18,
       scale: 0.88,
       /* Hip *carry* pose in camera space, not an inspect pose.
-         Three things changed together and they only work together:
-         - pushed forward (-0.168 -> -0.268) so the whole weapon subtends less of the frame
-           and the pistol grip climbs back inside the 30 deg half-FOV. At the old distance
-           the firing hand sat 36 deg below the eye axis, i.e. off the bottom of the screen
-           entirely, which is why no trigger hand appears in any frame;
-         - pulled inboard (0.132 -> 0.106) and dropped, which walks the optic from x=0.79 to
-           about x=0.66 of screen width, clear of both the right edge and the ammo counter's
-           safe area at 16:9;
          - muzzle rotated down 4.9 deg (rotation.x is muzzle-*up*, so this goes negative) and
            kept outboard, so the barrel stays inside the lower-right quadrant instead of
-           running up-left across the middle of the playfield. Roll stays under 1.5 deg. */
-      hip: { p: [0.105, -0.104, -0.265], r: [-0.078, -0.105, 0.026] },
+           running up-left across the middle of the playfield. Roll stays under 1.5 deg.
+
+         ---- Carry distance, measured off an 800x450 capture ------------------------------
+         The engine's viewmodel camera runs 60 deg vertical, which at 16:9 is *91 deg
+         horizontal*: half-width at distance d is 1.026*d, half-height 0.577*d. That is a much
+         wider lens than the 55-70 deg horizontal a shooter normally reserves for a viewmodel,
+         so every centimetre of carry distance is worth far more screen area here than the
+         numbers suggest. At z = -0.265 the mk18's projected bounding box measured 831 px wide
+         and 920 px tall in an 800x450 frame: the receiver ran from x=477 to past the right
+         edge and the weapon owned the whole bottom half. That is a gun shouldered into the
+         lens, not one held at arm's length.
+
+         So the pose is now solved for a screen target instead of nudged. Wanted: the pose
+         origin at about 0.65 of frame width and 0.79 of frame height, i.e. NDC (+0.30, -0.575),
+         which is the middle of the bottom-right third. Inverting the projection at the new
+         carry distance gives x = 0.30 * 0.470 * 1.026 and y = -0.575 * 0.470 * 0.577. The
+         0.205 m of extra distance shrinks the weapon by 0.470/0.265 = 1.77x, which is what
+         puts the receiver back inside the frame; the drop and the outboard shift are what stop
+         that same pull-back from walking the gun into the middle of the playfield, where a
+         longer carry would otherwise centre it. The three numbers only work together.
+
+         `shoulderR/shoulderL` and the support-arm bone lengths below were re-solved with this:
+         the support hand now sits 0.735 m in front of the eye and a 0.594 m arm cannot reach
+         that far, which is exactly the "forearm stops before the hand" failure. */
+      hip: { p: [0.145, -0.156, -0.470], r: [-0.078, -0.105, 0.026] },
       adsZ: -0.135,
       recoil: {
         /* Viewmodel figures are the *peak* excursion of a single round, in radians; the
@@ -3393,7 +3444,9 @@ function weaponDefs() {
       viewFov: 57,
       build: buildVector,
       scale: 0.90,
-      hip: { p: [0.100, -0.100, -0.238], r: [-0.074, -0.100, 0.028] },
+      // Same screen-space solve as the mk18: NDC (+0.30, -0.575) at the new carry distance.
+      // The vector is the shortest of the three so it carries a little closer.
+      hip: { p: [0.136, -0.147, -0.443], r: [-0.074, -0.100, 0.028] },
       adsZ: -0.122,
       recoil: {
         pitch: 0.66 * DEG,
@@ -3428,7 +3481,8 @@ function weaponDefs() {
       viewFov: 54,
       build: buildDmr14,
       scale: 0.86,
-      hip: { p: [0.111, -0.108, -0.284], r: [-0.072, -0.098, 0.022] },
+      // Same screen-space solve; the dmr14 is the longest weapon so it carries furthest out.
+      hip: { p: [0.150, -0.162, -0.489], r: [-0.072, -0.098, 0.022] },
       adsZ: -0.150,
       recoil: {
         pitch: 3.20 * DEG,
@@ -3623,22 +3677,37 @@ export function createWeapon(game) {
   // arm is nearly extended, so matched lengths would make one of them look wrong.
   // The firing hand closes on a ~29 mm pistol grip and keeps its index finger on the trigger;
   // the support hand opens out around a ~50 mm handguard, palm up, in a C-clamp.
+  /* Bone lengths are a *reach budget*, not anatomy: nothing above mid-forearm is ever on
+     screen, so what these have to satisfy is that shoulder-to-anchor stays comfortably inside
+     upper + fore for every pose the weapon can be in. With the carry distance moved out to
+     0.47 m the support hand sits 0.735 m in front of the eye; the old 0.306 + 0.288 = 0.594 m
+     support arm could not reach it, `solveTwoBone` clamped, and the forearm stopped ~0.15 m
+     short of a hand that was still welded to the handguard — a floating gun with a stump on
+     the end of the sleeve. 0.330 + 0.310 = 0.640 m puts the solve at ~0.83 of full extension,
+     which is a braced arm with a visible elbow break rather than a straight line. */
   const armR = buildArm(mats, 1, { upper: 0.195, fore: 0.190 }, { wrap: 0.015, trigger: true });
-  const armL = buildArm(mats, -1, { upper: 0.306, fore: 0.288 }, { wrap: 0.026, palmUp: true });
+  const armL = buildArm(mats, -1, { upper: 0.330, fore: 0.310 }, { wrap: 0.026, palmUp: true });
   const armsGrp = new THREE.Group();
   armsGrp.name = 'arms';
   armsGrp.add(armR.group, armL.group);
   recoilGrp.add(armsGrp);
   applyLayer(armsGrp);
 
-  // Shoulder sockets in camera space. Behind the near plane, so the upper arms enter frame
-  // from off-screen rather than being sliced by it.
-  /* Both sockets moved forward and up with the carry pose below. The support socket in
-     particular has to sit forward enough that shoulder-to-handguard stays inside
-     upper + fore = 0.594 m: past that the IK clamps the wrist short of the grip anchor and
-     the forearm visibly stops before the hand, which is the "floating gun" read. */
-  const shoulderR = new THREE.Vector3(0.176, -0.238, 0.020);
-  const shoulderL = new THREE.Vector3(-0.115, -0.246, -0.030);
+  /* Shoulder sockets in camera space. These are IK roots, not anatomy — the only parts of the
+     arms the player ever sees are the forearm from roughly mid-shaft and the hand, so what
+     these numbers have to buy is (a) reach and (b) an elbow that stays out of frame.
+
+     Both sockets moved forward and well down with the carry pose above, and they have to move
+     *with* it: shoulder-to-anchor must stay inside upper + fore or `solveTwoBone` clamps the
+     wrist short of the grip anchor and the forearm visibly stops before the hand, which is the
+     "floating gun with a stump" read. Solved at the new carry distance:
+       support: 0.533 m of a 0.640 m arm (0.83 extension), elbow at NDC y = -1.43;
+       firing:  0.309 m of a 0.385 m arm (0.80 extension), elbow at NDC y = -1.45.
+     Both elbows are therefore below the bottom of the frame at 16:9 and the forearms enter
+     from off-screen instead of being sliced by the near plane. Dropping the sockets to
+     y = -0.30 is what keeps them there now that the hands are 5 cm lower. */
+  const shoulderR = new THREE.Vector3(0.185, -0.300, -0.195);
+  const shoulderL = new THREE.Vector3(-0.130, -0.310, -0.235);
   const poleR = new THREE.Vector3(0.62, -0.72, 0.30).normalize();
   const poleL = new THREE.Vector3(-0.30, -0.90, 0.20).normalize();
 
@@ -4788,8 +4857,10 @@ export function createWeapon(game) {
         handQuatL.slerp(_q1, channels.supportToBolt);
       }
       if (channels.supportOff > 0.001) {
-        // Inspect / sprint: the support hand comes off the gun and drops away.
-        _v1.set(-0.055, -0.28, -0.14);
+        // Inspect / sprint: the support hand comes off the gun and drops away. Moved out with
+        // the carry pose so it still reads as "down and away from the handguard" rather than
+        // "folded back behind the new shoulder socket".
+        _v1.set(-0.015, -0.332, -0.345);
         handTargetL.lerp(_v1, channels.supportOff);
       }
       // Sprint drops both hands a touch further and rolls the wrists in.

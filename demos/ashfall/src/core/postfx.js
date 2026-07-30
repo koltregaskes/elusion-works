@@ -16,7 +16,7 @@
  *     -> Motion blur  (velocity reconstruction, 8 taps, shutter 0.5, depth-rejected)
  *     -> DOF          (ADS only, hexagonal bokeh, 3-direction 2-pass)
  *     -> Bloom        (13-tap Karis downsample x6, 3x3 tent upsample x5)
- *     -> Composite    (dirt, CA, exposure, AgX, grade, vignette, CAS, sRGB) -> LDR buffer
+ *     -> Composite    (dirt, CA, vignette, exposure, AgX, CAS, grade, sRGB) -> LDR buffer
  *     -> FXAA 3.11    (spatial edge resolve, then grain + 8-bit dither)     -> screen
  *
  * The last stage is not skippable by quality. TAA is the temporal super-sampler and FXAA is
@@ -1049,6 +1049,43 @@ vec3 agx(vec3 colour) {
 
 /* ---- Scene fetch --------------------------------------------------------- */
 
+/* ---- Lens vignette ------------------------------------------------------
+ * This multiplies SCENE LIGHT, i.e. it is applied to the HDR before tone(), not to the
+ * display-referred result after it. That ordering is the whole point and it was measured:
+ *
+ * A vignette is a loss of *illuminance* — light that the barrel, the hood and the cos^4 law
+ * never delivered to the film. It is a constant factor on the light, so it costs a constant
+ * number of stops everywhere in the frame, and a highlight that was six stops over the
+ * shoulder is still four and a half stops over after it. Real photographs with heavy
+ * vignetting still have clipped white speculars in the corners.
+ *
+ * Applied after the tone curve, the same factor stops being constant in stops and becomes a
+ * ceiling. Measured on the delivered frames at the old ordering: multiplying display-linear
+ * by vig^2 cost 0.65 EV in the deep toe but 6.5 EV at the top of the curve, because the
+ * shoulder is nearly flat — everything from three stops over to infinity lands within a code
+ * value of each other, so scaling that plateau down simply moves it. The consequence was an
+ * exact, position-dependent white ceiling: 255 only inside r < 0.45, falling to 221 at r=0.7
+ * and 182 in the corners. Four vantages not pointed at the sun all measured a maximum scene
+ * luminance of 205-229 with nothing anywhere at 250+, because the sun disc, the rail
+ * speculars and the muzzle flash were all being held down by the lens rather than by their
+ * own brightness. The bloom threshold is calibrated in HDR against those hits reaching white.
+ *
+ * Moving the identical curve to the HDR side leaves the mid-tones where they were (measured:
+ * within 1-2 code values out to r=0.65, within 5 at r=0.8, because vig^2 at the corner
+ * happens to be almost exactly the mid-tone-matched stop loss of the old form) while letting
+ * anything genuinely over the shoulder clip to white anywhere in the frame. It also stops the
+ * vignette scaling the grade's own black pedestal, so masterLift's authored flare survives
+ * into the corners instead of being multiplied away.
+ *
+ * The shape and strength are unchanged: GRADE.vignette, smoothstep(0.30, 1.05, r), squared.
+ */
+float lensVignette(vec2 uv) {
+  vec2 vd = (uv - 0.5) * vec2(uAspect, 1.0);
+  float r = length(vd) * 1.41421356;   // ~1.0 at the corner of a 16:9 frame
+  float v = 1.0 - uVignette * smoothstep(0.30, 1.05, r);
+  return v * v;   // squared: a gentler shoulder near the centre, faster corner falloff
+}
+
 vec3 addBloom(vec3 c, vec2 uv) {
   vec3 b = sanitise(texture(tBloom, uv).rgb);
   // Lens dirt only becomes visible where light is actually scattering off it, so it
@@ -1070,7 +1107,10 @@ vec3 addBloom(vec3 c, vec2 uv) {
 vec3 hdrNeighbour(vec2 uv) {
   vec3 c = sanitise(texture(tColour, uv).rgb);
   c += sanitise(texture(tBloom, uv).rgb) * uBloomStrength;
-  return c;
+  // Vignetted at the neighbour's own uv, exactly as the centre tap is at its own: CAS derives
+  // its amplitude from the difference between the two, so a falloff applied to one and not the
+  // other would read as a permanent gradient for the sharpener to chase.
+  return c * lensVignette(uv);
 }
 
 vec3 hdrCentre(vec2 uv) {
@@ -1128,7 +1168,7 @@ vec3 hdrCentre(vec2 uv) {
   c.r = texture(tColour, uv + off).r;
   c.g = texture(tColour, uv).g;
   c.b = texture(tColour, uv - off).b;
-  return addBloom(sanitise(c), uv);
+  return addBloom(sanitise(c), uv) * lensVignette(uv);
 }
 
 vec3 tone(vec3 hdr) { return agx(hdr * uExposure); }
@@ -1185,11 +1225,10 @@ void main() {
   vec3 highT = mix(vec3(1.0), uSplitHighlight, uSplitStrength * smoothstep(0.35, 1.0, ls));
   c *= shadowT * highT;
 
-  /* --- Vignette ----------------------------------------------------------- */
-  vec2 vd = (vUv - 0.5) * vec2(uAspect, 1.0);
-  float r = length(vd) * 1.41421356;   // ~1.0 at the corner of a 16:9 frame
-  float vig = 1.0 - uVignette * smoothstep(0.30, 1.05, r);
-  c *= vig * vig;   // squared: a gentler shoulder near the centre, faster corner falloff
+  /* --- Vignette ------------------------------------------------------------
+   * Not here. lensVignette() is applied to the HDR inside hdrCentre()/hdrNeighbour(), before
+   * the tone curve — see the note above that function for the measurement. Applying it at this
+   * point is what gave the frame a position-dependent white ceiling. */
 
   /* --- Display transfer ---------------------------------------------------- */
   c = clamp(c, 0.0, 1.0);

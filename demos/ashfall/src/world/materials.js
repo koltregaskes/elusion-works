@@ -19,13 +19,17 @@
  *
  *   1. A detail normal blended at 8x UV with *reoriented normal mapping* (Barré-Brisebois &
  *      Hill), distance-faded so it dies before it can alias.
- *   2. A world-space up-facing ash/dust term. Ash settles on horizontal faces, lightens them
+ *   2. A world-space up-facing ash/dust term. Ash settles on horizontal faces, tints them
  *      towards PALETTE.dust, roughens them, and — critically — kills the metallic response,
  *      because a dust film is a dielectric. This is the single strongest cohesion trick in
- *      the whole renderer and it is what makes the map read as one place.
+ *      the whole renderer and it is what makes the map read as one place. The tint is
+ *      MULTIPLICATIVE and luminance-neutral: a dusting re-tints a surface, it never replaces
+ *      it, and treating it as a lerp towards a pale colour is what turned the yard white.
  *   3. Low-frequency world-space macro variation, which breaks tiling on large planes in a
  *      way no amount of texture-space work can (texture-space blotches tile with the texture;
- *      this does not).
+ *      this does not). It is sampled from a MIPPED tileable noise texture at world scale, not
+ *      evaluated analytically — an analytic noise has no screen-space footprint, so its
+ *      sub-pixel octaves alias into fixed-size speckle at every distance at once.
  *   4. Analytic exponential height fog with Henyey-Greenstein inscattering, driven from a
  *      SHARED uniform block (`materials.fogUniforms`) so `world/sky.js` mutates one object
  *      and every surface in the scene follows in lockstep.
@@ -3100,11 +3104,36 @@ const SURFACES = {
   gravel: { res: STD, relief: 0.095, build: bGravel, normal: 1.15, ao: 1.25, ash: 0.9, detail: 0.8, tile: 1.6, macro: 0.22, macroR: 0.26, meso: 0.16, mesoR: 0.26, grime: 0.5, streak: 0.1, edge: 0.3, edgeR: 0.18, triBlend: 0.45, aoOpts: { dirs: 8, steps: 6, cavity: 0.7 } },
   dirt: { res: STD, relief: 0.075, build: bDirt, normal: 1.15, ao: 1.15, ash: 0.8, detail: 0.8, tile: 2.4, macro: 0.23, macroR: 0.26, meso: 0.17, mesoR: 0.26, grime: 0.5, streak: 0.1, edge: 0.25, edgeR: 0.15, triBlend: 0.45, aoOpts: { dirs: 8, steps: 5, cavity: 0.6 } },
   tarpaulin: { res: STD, relief: 0.062, build: bTarpaulin, normal: 1.1, ao: 1.0, ash: 1.0, detail: 0.55, tile: 2.0, macro: 0.13, macroR: 0.12, meso: 0.075, mesoR: 0.11, grime: 0.45, streak: 0.5, edge: 0.3, edgeR: 0.12, aoOpts: { dirs: 8, steps: 5, cavity: 0.55 } },
-  // Viewmodel surfaces skip the world-space bands (they would swim as the weapon moves) but
-  // keep edge wear, which is most of what sells a used firearm.
-  gunmetal: { res: HERO, relief: 0.015, build: bGunmetal, normal: 0.8, ao: 0.7, ash: 0.22, detail: 0.34, tile: 0.35, view: true, edge: 0.7, edgeR: 0.22, metalKeep: 0.1, envBoost: 1.5, aoOpts: { dirs: 6, steps: 4, cavity: 0.45 } },
-  gunPolymer: { res: STD, relief: 0.026, build: bGunPolymer, normal: 1.05, ao: 0.8, ash: 0.22, detail: 0.34, tile: 0.3, view: true, edge: 0.45, edgeR: 0.2, aoOpts: { dirs: 8, steps: 5, cavity: 0.55 } },
-  gunWood: { res: STD, relief: 0.014, build: bGunWood, normal: 0.85, ao: 0.7, ash: 0.2, detail: 0.32, tile: 0.35, view: true, edge: 0.4, edgeR: 0.16, aoOpts: { dirs: 6, steps: 4, cavity: 0.5 } },
+  /*
+   * Viewmodel surfaces skip the world-space bands (they would swim as the weapon moves) but
+   * keep edge wear, which is most of what sells a used firearm.
+   *
+   * `tile` on these three was 0.35 / 0.30 / 0.35, and that was a world-scale number sitting on
+   * a viewmodel-scale part. `tile` is METRES PER TEXTURE PERIOD — level.js scales metre UVs by
+   * `1 / tileMetres(name)` and `materials.tileMetres()` is the contract every consumer reads —
+   * so 0.35 stretches ONE period of a 1024px map across 350 mm. An mk18 handguard is about
+   * 260 mm and a receiver about 220 mm, so every part of the weapon was getting a fraction of
+   * a period: the handguard rendered as one flat pale gradient and the receiver as a single
+   * mid-tone, with the bead blast, the mill marks, the mould stipple and the walnut pore all
+   * stretched past the point of being features at all.
+   *
+   * These are set at the scale the generators were actually authored for, checked at
+   * viewmodel distance (0.25-0.45 m from the view camera) rather than world distance:
+   *   gunmetal   0.050 m — bGunmetal's mill scratches are 0.0009 of a tile, so 45 microns:
+   *                        tooling marks. A 220 mm receiver now carries 4.4 periods.
+   *   gunPolymer 0.045 m — bGunPolymer lays 58 stipple pyramids across the tile, so 0.78 mm
+   *                        pitch, which is real moulded grip texture. At 0.30 it was 5.2 mm,
+   *                        i.e. chequer plate. A 260 mm handguard now carries 5.8 periods.
+   *   gunWood    0.075 m — bGunWood's pore field is 90 periods per tile, so 0.83 mm: open
+   *                        walnut grain. The ring figure lands at roughly 15 mm, which is
+   *                        about right for furniture cut from a small blank.
+   * `relief` is a fraction of the tile width, so it follows the tile down automatically and
+   * the normal maps keep the slopes they had; only the physical reading changes, from a
+   * 5 mm-deep bead blast (absurd) to 0.75 mm (right).
+   */
+  gunmetal: { res: HERO, relief: 0.015, build: bGunmetal, normal: 0.8, ao: 0.7, ash: 0.22, detail: 0.34, tile: 0.05, view: true, edge: 0.7, edgeR: 0.22, metalKeep: 0.1, envBoost: 1.5, aoOpts: { dirs: 6, steps: 4, cavity: 0.45 } },
+  gunPolymer: { res: STD, relief: 0.026, build: bGunPolymer, normal: 1.05, ao: 0.8, ash: 0.22, detail: 0.34, tile: 0.045, view: true, edge: 0.45, edgeR: 0.2, aoOpts: { dirs: 8, steps: 5, cavity: 0.55 } },
+  gunWood: { res: STD, relief: 0.014, build: bGunWood, normal: 0.85, ao: 0.7, ash: 0.2, detail: 0.32, tile: 0.075, view: true, edge: 0.4, edgeR: 0.16, aoOpts: { dirs: 6, steps: 4, cavity: 0.5 } },
   fabric: { res: STD, relief: 0.036, build: bFabric, normal: 1.05, ao: 1.0, ash: 0.35, detail: 0.45, tile: 0.6, view: true, edge: 0.25, edgeR: 0.08, aoOpts: { dirs: 8, steps: 5, cavity: 0.6 } },
   skin: { res: STD, relief: 0.02, build: bSkin, normal: 0.8, ao: 0.85, ash: 0.12, detail: 0.35, tile: 0.35, view: true, edge: 0.1, edgeR: 0.04, aoOpts: { dirs: 8, steps: 5, cavity: 0.55 } },
 };
@@ -3137,16 +3166,48 @@ uniform float uDetailStrength;
 uniform float uDetailFadeNear;
 uniform float uDetailFadeFar;
 
-uniform vec3  uDustColour;
+// The luminance-normalised ash tint. See FRAG_ASH: the dust film MULTIPLIES the substrate,
+// so this must not carry level of its own or it bleaches whatever it lands on.
+uniform vec3  uDustTint;
 uniform float uAshAmount;
 uniform float uAshSharpness;
 uniform float uAshRoughness;
-uniform float uAshNoiseScale;
 uniform float uAshMetalKeep;
+
+/**
+ * The world-space breakup sampler — the single source of every non-texture-space grunge band
+ * in FRAG_ASH (ash drift, meso, macro, wide, gravity streaks).
+ *
+ * This was three calls to an analytic hash fBm, and that was the single worst artefact in the
+ * shipped build. An analytic noise has no derivatives the hardware can act on, so its finest
+ * octave — 0.38 m for the meso band, 0.15 m for the streak band — kept its world size all the
+ * way to the horizon. Past the distance where that octave falls under a pixel it stops being
+ * a surface and becomes per-pixel hash: a high-frequency tan speckle, drawn at the same
+ * SCREEN size on the ballast at 4 m and the warehouse facade at 120 m, on every material in
+ * the frame at once, because FRAG_ASH is on every material in the frame at once.
+ *
+ * A texture fetch fixes it for free. vAshWorld is a varying, uBreakScale a uniform, so
+ * the product goes through exactly the same derivative chain as vUv does: the hardware
+ * computes the footprint, picks a mip, and the octaves that fall below a pixel are averaged
+ * away by the mip chain instead of aliasing. The bands the eye can actually resolve are
+ * untouched — that is the whole point of band-limiting rather than fading out.
+ *
+ * Channel layout, authored in breakupNoise below (all tileable, all balanced to the same
+ * distribution the analytic fBm had, so the authored strengths below still mean what they
+ * said):
+ *   R  fBm, 6 periods per tile, 3 octaves  — the fine band AND the macro band
+ *   G  fBm, 32 periods per tile, 2 octaves — the fine band's incommensurate companion
+ *   B  2 periods per tile, 1 octave        — the widest band
+ *   A  fBm, 10 periods per tile, 3 octaves — the gravity-streak band
+ * R is read at BOTH sampling scales — 10.2 m per tile and 90 m per tile — which is what lets
+ * two fetches carry four bands.
+ */
+uniform sampler2D uBreakup;
+uniform float uBreakScale;
+uniform float uStreakScale;
 
 uniform float uMacroStrength;
 uniform float uMacroScale;
-uniform float uMacroScale2;
 uniform float uMacroRough;
 uniform float uMesoStrength;
 uniform float uMesoRough;
@@ -3159,35 +3220,6 @@ uniform vec3  uOxideColour;
 uniform float uOxideStrength;
 uniform float uFogAmount;
 uniform float uSpecAAStrength;
-
-float ashHash21( vec2 p ) {
-  // Cheap, decorrelated, and stable across drivers (no sin() precision traps).
-  vec3 p3 = fract( vec3( p.xyx ) * 0.1031 );
-  p3 += dot( p3, p3.yzx + 33.33 );
-  return fract( ( p3.x + p3.y ) * p3.z );
-}
-
-float ashNoise2( vec2 p ) {
-  vec2 i = floor( p );
-  vec2 f = fract( p );
-  f = f * f * ( 3.0 - 2.0 * f );
-  float a = ashHash21( i );
-  float b = ashHash21( i + vec2( 1.0, 0.0 ) );
-  float c = ashHash21( i + vec2( 0.0, 1.0 ) );
-  float d = ashHash21( i + vec2( 1.0, 1.0 ) );
-  return mix( mix( a, b, f.x ), mix( c, d, f.x ), f.y );
-}
-
-float ashFbm2( vec2 p ) {
-  float s = 0.0;
-  float a = 0.5;
-  for ( int i = 0; i < 3; i ++ ) {
-    s += a * ashNoise2( p );
-    p *= 2.13;
-    a *= 0.5;
-  }
-  return s / 0.875;
-}
 
 // Reoriented normal mapping (Barré-Brisebois & Hill, 2012). Rotates the detail normal into
 // the base normal's frame instead of adding the two, which is why detail survives on steep
@@ -3369,12 +3401,18 @@ const FRAG_NORMAL_TRI = /* glsl */ `
  * Ash / world-space breakup / grunge / edge-wear / specular-AA block.
  * Runs after the normal is final, before lighting.
  *
- * Everything in here is deliberately WORLD-space and analytic. Texture-space detail is a
- * fixed number of texels per metre, so on a 100 m ground plane it is entirely gone by five
- * metres out — the mip chain has averaged it to its own mean and the surface reads as a flat
- * shaded polygon from the mid-ground to the horizon. The three bands below (macro ~15 m,
- * meso ~1.7 m, and the streak/grime/edge terms) do not mip, do not tile, and are what keeps
- * albedo and roughness varying at every distance the player can see.
+ * Everything in here is deliberately WORLD-space. Texture-space detail is a fixed number of
+ * texels per metre, so on a 100 m ground plane it is entirely gone by five metres out — the
+ * mip chain has averaged it to its own mean and the surface reads as a flat shaded polygon
+ * from the mid-ground to the horizon. The bands below (wide ~45 m, macro ~15 m, meso ~1.7 m,
+ * plus the streak/grime/edge terms) are tied to WORLD scale rather than to UV scale, so a
+ * surface twenty metres away still has a metre-scale story on it.
+ *
+ * They are no longer analytic. World-scale and un-mippable are two different things, and the
+ * shipped build conflated them: the bands were sampled from a hash fBm, which cannot be
+ * band-limited, so every octave that fell under a pixel aliased into per-pixel speckle. They
+ * now come from `uBreakup`, a mipped tileable noise texture sampled at world scale — same
+ * wavelengths, same amplitudes, but the hardware can pick a mip. See the uniform's comment.
  */
 const FRAG_ASH = /* glsl */ `
   {
@@ -3399,15 +3437,40 @@ const FRAG_ASH = /* glsl */ `
     float ashEdge = smoothstep( 0.52, 0.86, ashH ) * smoothstep( 0.58, 0.94, ashAOc );
     float ashCavity = ( 1.0 - smoothstep( 0.10, 0.60, ashH ) ) * ( 1.0 - smoothstep( 0.42, 0.90, ashAOc ) );
 
-    // Meso band, ~1.7 m and its two sub-octaves: compacted vs loose, damp vs dry, drifted
-    // vs swept. This is the band the eye reads as "surface" while moving.
-    float ashBreak = ashFbm2( vAshWorld.xz * uAshNoiseScale + vAshWorld.y * 0.11 );
-    // Macro band, ~15 m, plus a wide band four times coarser again (~65 m, i.e. most of the
-    // width of the yard). One band alone still repeats: it beats against itself at its own
-    // wavelength and the eye finds *that* period instead. Two incommensurate bands do not.
-    float ashMacroF = ashFbm2( vAshWorld.xz * uMacroScale + vAshWorld.y * 0.03 );
-    float ashMacroW = ashNoise2( vAshWorld.xz * uMacroScale * uMacroScale2 + 7.31 );
-    float ashMacro = clamp( ashMacroF * 0.6 + ashMacroW * 0.4, 0.0, 1.0 );
+    // Two fetches carry four bands. Both UVs are (varying * uniform), so both get real
+    // derivatives and therefore a real mip level; see uBreakup's comment.
+    //
+    // ashNearF: the tile spans ~10.2 m, so channel R's three octaves land on 1.7 / 0.85 /
+    //   0.43 m — the meso band, which is what the eye reads as "surface" while moving. The
+    //   vAshWorld.y term shifts the sample per storey so stacked floors of the admin block
+    //   do not get the identical dirt.
+    // ashWideF: the tile spans 90 m, about the depth of the whole map, so the SAME channel R
+    //   lands on 15 / 7.5 / 3.75 m (the macro band), channel B on 45 m (the wide band) and
+    //   channel G on 2.8 / 1.4 m.
+    // The vAshWorld.y offsets stay at a FIFTH of their own fetch's xz scale, as they were
+    // against the old analytic scales. Any larger and the band varies faster up a wall than
+    // along it, which prints vertical stripes on every facade in the map.
+    vec4 ashNearF = texture2D( uBreakup, vAshWorld.xz * uBreakScale + vAshWorld.y * 0.019 );
+    vec4 ashWideF = texture2D( uBreakup, vAshWorld.xz * uMacroScale + vAshWorld.y * 0.005 );
+
+    // A tiled texture repeats where an analytic hash did not, so the meso band is the sum of
+    // two fields of about the same wavelength read at INCOMMENSURATE tile sizes (10.2 m and
+    // 90 m). Neither period divides the other, so the sum has no period the eye can find —
+    // the same argument the two macro bands below have always used.
+    float ashBreak = clamp( ashNearF.r * 0.62 + ashWideF.g * 0.38, 0.0, 1.0 );
+    // Macro band, ~15 m, plus a wide band three times coarser again (45 m). One band alone
+    // still repeats: it beats against itself at its own wavelength and the eye finds *that*
+    // period instead. Two incommensurate bands do not.
+    float ashMacro = clamp( ashWideF.r * 0.6 + ashWideF.b * 0.4, 0.0, 1.0 );
+
+    // Hoisted out of the branch it is used in. A texture fetch under non-uniform control flow
+    // has undefined derivatives, and the derivatives ARE the fix — inside the branch the driver
+    // would be free to hand back mip 0 and put the speckle straight back on every vertical
+    // face in the frame. The fetch is cheap; the branch below still skips the maths.
+    float ashStreakN = texture2D(
+      uBreakup,
+      vec2( ( vAshWorld.x - vAshWorld.z ) * uStreakScale, vAshWorld.y * uStreakScale * 0.15 )
+    ).a;
 
     /* ---- 1. ash / dust film -------------------------------------------------- */
 
@@ -3435,11 +3498,30 @@ const FRAG_ASH = /* glsl */ `
     ashMask *= mix( 1.0, uAshMetalKeep, metalnessFactor * ( 0.45 + 0.55 * ashEdge ) );
     ashMask = clamp( ashMask, 0.0, 1.0 );
 
-    diffuseColor.rgb = mix( diffuseColor.rgb, uDustColour, ashMask * 0.84 );
-    // A dust film is a powder lying ON the surface, not a stain in it: it raises the albedo
-    // floor as well as pulling the hue. Squared so only the properly drifted texels lift,
-    // which keeps the effect as deposits rather than an overall exposure change.
-    diffuseColor.rgb += uDustColour * ( ashMask * ashMask * 0.10 );
+    // MULTIPLICATIVE, not a lerp towards a pale colour.
+    //
+    // This was mix( albedo, dustColour, ashMask * 0.84 ) plus an additive dust term, and
+    // that is what turned the yard into a snowfield. PALETTE.dust is 0.50 in linear
+    // luminance; ballast is 0.12 and dirt 0.12. Lerping 84% of the way from 0.12 to 0.50 does
+    // not dust the ground, it REPLACES it — measured albedo came out at 0.37 linear, three
+    // times what the palette authored, which under a 4.6 key at exposure 5.0 sits far enough
+    // up the AgX shoulder that the curve's own desaturation flattens the hue as well. Hence a
+    // wide render measuring R132 G125 B125 — luminance 127 and R-B of +7, i.e. a cold
+    // blue-white, on FULL-SUN ground under a #ffcf9a key.
+    //
+    // A dust film is a few microns of pale grey-brown powder lying ON a surface. It re-tints
+    // what is underneath and lifts it slightly; it cannot make dark ballast bright. uDustTint
+    // is PALETTE.dust divided by its own luminance — (1.14, 0.98, 0.75) — so at full coverage
+    // it rotates hue towards the ash and is arithmetically incapable of bleaching anything.
+    // On ballast that lands the sunlit ground at ~0.14 linear with R:B of 1.75 against the
+    // substrate's 1.28: warm ash-dusted ballast, which is what §4 asks for.
+    vec3 ashFilm = mix( vec3( 1.0 ), uDustTint, ashMask );
+    // The one term that is allowed to add level: powder does scatter more than the damp
+    // ballast under it. Squared in the mask so only properly drifted texels lift, and an
+    // order of magnitude smaller than the additive term it replaces — this is a deposit
+    // reading brighter, not an exposure change.
+    ashFilm *= 1.0 + ashMask * ashMask * 0.16;
+    diffuseColor.rgb *= ashFilm;
     roughnessFactor = mix( roughnessFactor, uAshRoughness, ashMask * 0.9 );
     // A dust film is a dielectric.
     metalnessFactor *= ( 1.0 - ashMask * 0.94 );
@@ -3471,7 +3553,6 @@ const FRAG_ASH = /* glsl */ `
     //     down a face and independent of UV layout; gated on verticality, so the ground plane
     //     and the whole horizontal half of the map skip it entirely.
     if ( uStreakStrength > 0.0 && ashSide > 0.08 ) {
-      float ashStreakN = ashFbm2( vec2( ( vAshWorld.x - vAshWorld.z ) * 1.6, vAshWorld.y * 0.24 ) );
       // Streaks start under a ledge and run out of dirt as they fall, so bias them into the
       // recesses of the height field and fade them with height above the run's origin.
       float streak = smoothstep( 0.50, 0.94, ashStreakN ) * ashSide * ashSide * uStreakStrength;
@@ -3598,7 +3679,21 @@ export function createMaterials(renderer, shadows) {
     uInscatterAnisotropy: { value: ATMOSPHERE.inscatterAnisotropy },
   };
 
-  const dustColour = new THREE.Color(PALETTE.dust);
+  /**
+   * PALETTE.dust, divided by its own Rec.709 luminance.
+   *
+   * The ash film is applied multiplicatively (see FRAG_ASH), which means the swatch must
+   * carry HUE ONLY. PALETTE.dust is 0.573 / 0.492 / 0.377 in linear, luminance 0.501; divided
+   * through, that is 1.14 / 0.98 / 0.75 — a pure warm rotation that leaves a surface's own
+   * level exactly where the generator put it. Every gram of level the dust adds is now in the
+   * one explicit lift term in the shader, where it can be read and bounded, instead of being
+   * smuggled in by lerping towards a bright colour.
+   */
+  const dustTint = new THREE.Color(PALETTE.dust);
+  {
+    const dl = dustTint.r * 0.2126 + dustTint.g * 0.7152 + dustTint.b * 0.0722;
+    dustTint.multiplyScalar(1 / Math.max(dl, 1e-4));
+  }
   // Grime and oxide are palette colours like everything else — nothing here invents a hue.
   const grimeColour = new THREE.Color(PALETTE.dirt).multiplyScalar(0.55);
   const oxideColour = new THREE.Color(PALETTE.rust);
@@ -3653,6 +3748,53 @@ export function createMaterials(renderer, shadows) {
     const data = heightToNormal(h, res, 0.105);
     const tex = makeTexture(data, res, false);
     return tex;
+  })();
+
+  /**
+   * The world-space breakup noise, shared by every material. Four tileable, decorrelated
+   * fields packed one per channel; FRAG_ASH reads it twice at two incommensurate world scales
+   * and once more for the streaks, and those three fetches replace every analytic noise call
+   * the fragment shader used to make.
+   *
+   * Why a texture at all, when the fields it holds are the definition of "procedural": because
+   * a sampler is the only thing in the pipeline that knows how big a texel is on screen.
+   * `makeTexture` gives it `generateMipmaps = true`, `LinearMipmapLinearFilter` minification
+   * and the hardware anisotropy cap (8 or 16 on anything this game will run on), so every
+   * octave that falls below a pixel is averaged out by the mip chain rather than aliasing into
+   * the orange confetti that was being drawn over the whole frame. The same fields evaluated
+   * in ALU cannot do this at any price.
+   *
+   * Frequencies are chosen so that channel R is useful at both sampling scales — see the
+   * layout note on the `uBreakup` uniform — and so that no channel's finest octave is under
+   * about six texels, below which the tile would be aliased before the sampler ever sees it.
+   *
+   * The `spread` values are not decoration. They set each field's standard deviation
+   * (balanceField spans mean +- spread sigma across 0..1), and every authored strength
+   * downstream — uMacroStrength, uMesoStrength, the ashDrift thresholds, the streak
+   * smoothstep — was tuned against the ~0.124 sigma of the three-octave value-noise fBm this
+   * replaces. 3.4 on the two fine channels and 2.6 on the single-octave wide channel put the
+   * *combined* sigma of ashBreak at 0.109 and of ashMacro at 0.118, both within 15% of what
+   * the analytic version delivered, so nothing downstream needs re-tuning.
+   */
+  const breakupNoise = (() => {
+    const res = 256;
+    const fine = fbmField(res, { seed: 0x4b17, freq: 6, octaves: 3, gain: 0.5, spread: 3.4 });
+    const companion = fbmField(res, { seed: 0x8d31, freq: 32, octaves: 2, gain: 0.5, spread: 3.4 });
+    const wide = fbmField(res, { seed: 0x1f6a, freq: 2, octaves: 1, spread: 2.6 });
+    const streak = fbmField(res, { seed: 0xc903, freq: 10, octaves: 3, gain: 0.5, spread: 4.0 });
+    const data = new Uint8Array(res * res * 4);
+    for (let i = 0; i < res * res; i++) {
+      const j = i * 4;
+      // Dithered: the macro band drives albedo by a few percent, and an 8-bit ramp read
+      // across sixty metres of ground would otherwise print visible contour steps.
+      data[j] = q8(fine[i], i);
+      data[j + 1] = q8(companion[i], i + 1);
+      data[j + 2] = q8(wide[i], i + 2);
+      data[j + 3] = q8(streak[i], i + 3);
+    }
+    // Linear data, not colour: no sRGB transfer, or the balanced 0..1 distributions this file
+    // depends on come back through the sampler bent into a curve.
+    return makeTexture(data, res, false);
   })();
 
   /* ------------------------------------------------------------------ */
@@ -3729,6 +3871,12 @@ export function createMaterials(renderer, shadows) {
       res,
       relief: def.relief,
       hasAlpha: !!ctx.op,
+      // Metres per texture period, published on the set as well as on `materials.tileMetres`
+      // so that a consumer holding only the textures can retile them correctly. player/
+      // weapon.js clones these maps and sets its own `repeat`, and that repeat is only right
+      // if it is derived from the part's span in metres over this number — a hard-coded
+      // repeat gives a 20 mm screw and a 260 mm handguard the same number of periods.
+      tile: def.tile ?? 2.0,
     };
     set.roughnessMap = set.ormMap;
     set.metalnessMap = set.ormMap;
@@ -3764,19 +3912,25 @@ export function createMaterials(renderer, shadows) {
       // it there is nothing but the mip-averaged base normal, and the transition used to land
       // squarely in the middle of the yard, where the eye reads it as the ground going flat.
       uDetailFadeFar: { value: def.view ? 1.6 : 30.0 },
-      uDustColour: { value: dustColour },
+      uBreakup: { value: breakupNoise },
+      // Tiles of `breakupNoise` per metre. 0.098 puts one tile across 10.2 m, and channel R
+      // carries six periods per tile, so its three octaves land on 1.7 / 0.85 / 0.43 m —
+      // exactly the meso band the ground was missing, and the same band the analytic fBm this
+      // replaces was authored for.
+      uBreakScale: { value: 0.098 },
+      // Horizontal tiles per metre for the gravity streaks; the vertical axis is 0.15x that,
+      // which is the same 0.62 m across / 4.2 m down stretch the streaks always had.
+      uStreakScale: { value: 0.16 },
+      uDustTint: { value: dustTint },
       uAshAmount: { value: def.ash ?? 1.0 },
       uAshSharpness: { value: 2.8 },
       uAshRoughness: { value: 0.95 },
-      // ~1.7 m fundamental. Its three octaves land on 1.7 / 0.8 / 0.37 m, which is exactly
-      // the meso band the ground was missing.
-      uAshNoiseScale: { value: 0.58 },
       uAshMetalKeep: { value: def.metalKeep ?? 0.15 },
       uMacroStrength: { value: def.view ? 0.0 : (def.macro ?? 0.075) },
-      uMacroScale: { value: 0.068 },
-      // Ratio of the wide band to the macro band: 0.068 * 0.23 is a ~64 m wavelength, about
-      // 25 times the tile size of the surfaces that carry it.
-      uMacroScale2: { value: 0.23 },
+      // One tile across 90 m, about the depth of the whole map. Channel R gives the 15 m
+      // macro band at this scale and channel B the 45 m wide band, so the two incommensurate
+      // macro octaves cost one fetch rather than two.
+      uMacroScale: { value: 0.0111 },
       uMacroRough: { value: def.view ? 0.0 : (def.macroR ?? 0.06) },
       uMesoStrength: { value: def.view ? 0.0 : (def.meso ?? 0.075) },
       uMesoRough: { value: def.view ? 0.0 : (def.mesoR ?? 0.09) },

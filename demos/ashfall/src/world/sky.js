@@ -699,6 +699,14 @@ const CLOUD_FRAG = /* glsl */ `
   uniform float uStretch;
   /** Cross-wind displacement of the streaks, i.e. vertical wind shear. */
   uniform float uShear;
+  /**
+   * Cross-wind wander of the band axis, modulated *along* the band. A shear is a translation
+   * along the band and so cannot change a band's width; this can, because its derivative in the
+   * cross-wind coordinate locally spreads and pinches the pitch.
+   */
+  uniform float uWander;
+  /** Zero-mean low-frequency density push along the band axis, so bands break up lengthwise. */
+  uniform float uBreakup;
   /** Amplitude of the fibrous detail that runs *along* the streaks. */
   uniform float uFibre;
   uniform float uAerial;
@@ -820,6 +828,18 @@ const CLOUD_FRAG = /* glsl */ `
     // cross-wind position. Without it the bands are parallel rulings; with it they feather and
     // fan the way a sheared cirrus deck actually does.
     wq.x += noised(vec2(wq.y * 0.55, uTime * 0.004)).x * uShear;
+    // ...but a shear is still a pure translation *along* the band, so every band keeps the same
+    // width and the pitch stays even. That is the other half of why the deck measured as
+    // evenly-spaced parallel rulings: a 1D compression of an isotropic field gives a comb.
+    // Displacing the *cross-wind* coordinate by a field that varies slowly along the band gives
+    // the widths back — where this displacement's cross-wind derivative is positive neighbouring
+    // bands spread apart, where it is negative they pinch together and merge. Frequencies are
+    // chosen in the pre-stretch frame: 0.055 along the wind is roughly three band-lengths, 0.20
+    // across it is about five band-widths, so a handful of adjacent bands share a phase and
+    // drift relative to each other rather than every band wobbling independently.
+    // The amplitude is held below 1/0.375 so the map stays injective and the bands cannot fold
+    // back through one another (quintic value noise has |d/dx| <= 1.875, hence 0.20 * 1.875).
+    wq.y += (noised(vec2(wq.x * 0.055, wq.y * 0.20 + 11.7)).x - 0.5) * uWander;
     vec2 qs = vec2(wq.x / max(uStretch, 0.05), wq.y);
 
     #if CLOUD_WARP
@@ -835,6 +855,20 @@ const CLOUD_FRAG = /* glsl */ `
 
     float dens = fbmMain(qs);
 
+    // Breakup along the band axis. Real sheared cirrus wastes away and re-forms down its length;
+    // it does not run unbroken from one side of the dome to the other. The modulation is much
+    // lower frequency than the band structure itself (0.38 along the stretched axis is ~2.6 band
+    // lengths, 0.26 across it means a small group of bands rises and falls together) so it opens
+    // and closes gaps rather than adding another octave of speckle - the fibre term below already
+    // owns the fine detail.
+    //
+    // Authored as a *zero-mean additive push* rather than a multiplicative field on purpose:
+    // value noise has mean 0.5, so (brk - 0.5) integrates to zero and the deck's average coverage
+    // is untouched. The coverage threshold below is calibrated against the raw fBm's median
+    // (0.48/0.14 puts that median at ~4% alpha) and that calibration has to survive this.
+    float brk = noised(vec2(qs.x * 0.38, qs.y * 0.26) + 31.4).x;
+    dens += uBreakup * (brk - 0.5);
+
     // Fibrous detail *along* the streaks only. Cirrus is combed: its fine structure runs
     // parallel to the bands. Making this detail isotropic collapses the whole effect straight
     // back into speckle, so the frequencies are deliberately lopsided.
@@ -847,7 +881,38 @@ const CLOUD_FRAG = /* glsl */ `
     // Capped: uncapped, the horizon bands - the whole point of the deck reaching that far -
     // widened their way straight back out of existence past ~15 km.
     float soft = uSoftness * (1.0 + min(t * 0.00040, 1.5));
-    float cov = smoothstep(uCoverage, uCoverage + soft, dens);
+
+    // ...and that softness alone is not enough, because it is authored in *density* units
+    // while the artefact is a *screen-space* one. The rate at which dens changes per pixel is nowhere near
+    // uniform over the deck: the ray-plane intersect puts ground metres per pixel up as
+    // 1/sin(alt)^2, and the 6:1 wind compression makes the field change several times faster
+    // across the bands than along them. Wherever that rate exceeds the authored half-width the
+    // step resolves inside a single pixel and the deck reads as hard-edged rulings - a column
+    // read of the previous build measured a step from (148,176,203) to warm tan with no gradient
+    // between them. Dropping softness from 0.30 to 0.14 is what fixed the flat-veil look and
+    // caused this; prefiltering analytically lets the low authored softness stay.
+    //
+    // The transition is kept centred exactly where it already was - half a softness above
+    // uCoverage - and only *widened*. Widening symmetrically about uCoverage instead would drag
+    // the fBm's median from ~4% alpha (clear) to ~50% and double the deck's apparent coverage.
+    float hw = 0.5 * soft;
+    float mid = uCoverage + hw;
+    // fwidth() = |dFdx| + |dFdy|, so it already runs ~1.4x the true per-pixel step; 0.75 of it
+    // as a half-width lands the edge at roughly one and a half pixels, which is soft enough to
+    // read as cloud and tight enough not to blur the wisps away.
+    //
+    // Capped for the same reason the distance widening above is capped: once the transition
+    // spans more than ~0.2 the step has resolved to the field's local mean, and widening further
+    // only drags the far deck toward a flat 50% and greys out the horizon band the deck
+    // reaching that far was for. max() is applied last, so a re-authored uSoftness always wins.
+    //
+    // fwidth is available here despite the note on the solar disc above: the ES 1.00 derivative
+    // builtins are implicitly enabled in a WebGL2 context, and materials.js already ships dFdx
+    // unguarded in a world material. The disc still uses uPixelAngle because there the footprint
+    // genuinely is a constant angle per pixel, so a uniform is exact and free; no uniform can
+    // express the footprint of this field.
+    float e = max(hw, min(fwidth(dens) * 0.75, 0.20));
+    float cov = smoothstep(mid - e, mid + e, dens);
     if (cov <= 0.002) discard;
 
     /* ---- Lighting ------------------------------------------------------- */
@@ -1294,6 +1359,24 @@ export function createSky(engine, materials) {
      * is ~2.4 km of along-wind offset across the deck.
      */
     cloudShear: 1.6,
+    /**
+     * Cross-wind wander of the band axis, in fBm units *before* the stretch, i.e. in band widths.
+     *
+     * The shear above fans the bands but cannot vary their width, because it slides them along
+     * their own axis. This is what stops the deck being an evenly-pitched comb: 0.9 of a band
+     * width of wander, varying over ~3 band lengths, spreads and pinches the pitch by about a
+     * third either way. Above ~2.6 the domain map stops being injective and bands fold through
+     * each other, which reads as a moire rather than as cloud.
+     */
+    cloudWander: 0.9,
+    /**
+     * Zero-mean low-frequency density push along the band axis, in raw fBm units.
+     *
+     * The coverage transition is 0.14 wide, so 0.17 (i.e. +-0.085) is enough to carry a band
+     * across the threshold and back and make it terminate part way along its length, without
+     * being so large it dissolves the band structure the stretch exists to create.
+     */
+    cloudBreakup: 0.17,
     /** Fibrous along-streak detail. Combed, not speckled. */
     cloudFibre: 0.40,
     /** Aerial-perspective rate, per metre. Gentler than before: the deck now reaches much further. */
@@ -1623,6 +1706,8 @@ export function createSky(engine, materials) {
     uFadeFar: { value: params.cloudFadeFar },
     uStretch: { value: params.cloudStretch },
     uShear: { value: params.cloudShear },
+    uWander: { value: params.cloudWander },
+    uBreakup: { value: params.cloudBreakup },
     uFibre: { value: params.cloudFibre },
     uAerial: { value: params.cloudAerial },
     uHorizonStart: { value: params.cloudHorizonStart },
@@ -2139,6 +2224,9 @@ export function createSky(engine, materials) {
     cloudUniforms.uHazeLuminance.value = params.hazeLuminance * skyBrightnessScale;
     cloudUniforms.uStretch.value = Math.max(params.cloudStretch, 0.05);
     cloudUniforms.uShear.value = params.cloudShear;
+    // Clamped at 2.6: past that the cross-wind warp folds and the deck moires (see cloudWander).
+    cloudUniforms.uWander.value = clamp(params.cloudWander, 0, 2.6);
+    cloudUniforms.uBreakup.value = clamp(params.cloudBreakup, 0, 0.45);
     cloudUniforms.uFibre.value = clamp(params.cloudFibre, 0, 1);
     cloudUniforms.uAerial.value = Math.max(params.cloudAerial, 0);
     cloudUniforms.uHorizonStart.value = Math.max(params.cloudHorizonStart, 1e-4);
