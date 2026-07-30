@@ -6,6 +6,7 @@
 <title>Golden Retriever Demo Breed Guide - Elusion Works</title>
 <meta name="description" content="Static Elusion Works demo breed-guide page for a Golden Retriever reference concept. Prototype facts are source-labelled and not veterinary advice.">
 <link rel="canonical" href="https://elusionworks.com/demos/golden/breed-guide.html">
+<link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Golden Retriever Demo Breed Guide - Elusion Works">
 <meta property="og:description" content="Static demo breed-guide page with source-labelled prototype facts. Not veterinary advice.">
@@ -22,7 +23,7 @@
 
 <div id="siteHeaderHost"></div>
 
-<main class="bg-page">
+<main id="main-content" class="bg-page" tabindex="-1">
   <div class="container">
 
     <!-- Mobile chips -->
@@ -82,18 +83,18 @@
             </div>
             <h1 class="h-1 reveal">Inside the<br>Golden Retriever</h1>
             <p class="lede reveal" style="transition-delay:.1s">Intelligent, affectionate, and eager to please — the Golden Retriever is one of the world's most recognisable companion breeds. This static demo uses labelled AKC/GRCA-style facts and should not be treated as veterinary or breed-club guidance.</p>
-            <button class="video-cta reveal" style="transition-delay:.2s" id="watchOverview" type="button">
+            <button class="video-cta reveal" style="transition-delay:.2s" id="watchOverview" type="button" aria-controls="videoModal" aria-expanded="false">
               <span class="play-circle"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><polygon points="6 4 20 12 6 20"/></svg></span>
               <span>Preview media slot</span>
               <span class="duration">Demo</span>
             </button>
 
             <!-- Reused video modal (same pattern as homepage) -->
-            <div id="videoModal" hidden style="position:fixed;inset:0;background:rgba(5,7,10,0.92);z-index:200;place-items:center;padding:24px;">
-              <button id="vmClose" aria-label="Close" style="position:absolute;top:24px;right:24px;width:44px;height:44px;border-radius:50%;border:1px solid var(--border-medium);color:var(--cream);background:rgba(5,7,10,0.5);display:grid;place-items:center;"></button>
+            <div id="videoModal" role="dialog" aria-modal="true" aria-labelledby="videoModalTitle" tabindex="-1" hidden style="position:fixed;inset:0;background:rgba(5,7,10,0.92);z-index:200;place-items:center;padding:24px;">
+              <button id="vmClose" aria-label="Close media preview" style="position:absolute;top:24px;right:24px;width:44px;height:44px;border-radius:50%;border:1px solid var(--border-medium);color:var(--cream);background:rgba(5,7,10,0.5);display:grid;place-items:center;"></button>
               <div style="max-width:980px;width:100%;aspect-ratio:16/9;border-radius:16px;background:#0a0e12;border:1px solid var(--border-subtle);display:grid;place-items:center;color:var(--text-secondary);">
                 <div style="text-align:center;padding:32px;">
-                  <div style="font-family:var(--ff-display);font-size:2rem;color:var(--cream);margin-bottom:8px;">Breed Overview</div>
+                  <div id="videoModalTitle" style="font-family:var(--ff-display);font-size:2rem;color:var(--cream);margin-bottom:8px;">Breed Overview</div>
                   <p style="margin:0 0 12px;">Prototype media slot for a possible breed overview reel.</p>
                   <p style="font-size:0.8rem;color:var(--text-muted);">No production film is published and no video claim is made for this demo.</p>
                 </div>
@@ -424,11 +425,16 @@
   // Wire up overview video modal
   const vm = document.getElementById('videoModal');
   const vmClose = document.getElementById('vmClose');
+  const watchOverview = document.getElementById('watchOverview');
   vmClose.innerHTML = I.close;
-  document.getElementById('watchOverview').addEventListener('click', () => { vm.hidden = false; vm.style.display = 'grid'; document.body.style.overflow = 'hidden'; });
-  vmClose.addEventListener('click', () => { vm.hidden = true; vm.style.display = 'none'; document.body.style.overflow = ''; });
-  vm.addEventListener('click', e => { if (e.target === vm) { vm.hidden = true; vm.style.display = 'none'; document.body.style.overflow = ''; } });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !vm.hidden) { vm.hidden = true; vm.style.display = 'none'; document.body.style.overflow = ''; } });
+  const videoDialog = GE.bindDialog({
+    dialog: vm,
+    trigger: watchOverview,
+    closeButton: vmClose,
+    initialFocus: vmClose,
+    display: 'grid',
+  });
+  vm.addEventListener('click', e => { if (e.target === vm) videoDialog.shut(); });
 
   // Fact sheet download — generate a printable PDF via window.print of a focused view
   const dlBtn = document.getElementById('dlBtn');

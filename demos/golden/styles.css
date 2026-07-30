@@ -97,6 +97,21 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   border-radius: 2px;
 }
 
+.skip-link {
+  position: fixed;
+  z-index: 1000;
+  top: 12px;
+  left: 12px;
+  padding: 10px 14px;
+  background: var(--primary);
+  color: var(--ink);
+  font-family: var(--ff-ui);
+  font-weight: 700;
+  transform: translateY(-160%);
+  transition: transform 0.18s ease;
+}
+.skip-link:focus { transform: translateY(0); }
+
 /* Layout */
 .container {
   width: 100%;
