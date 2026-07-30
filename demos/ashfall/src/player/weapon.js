@@ -2435,10 +2435,23 @@ function buildMk18(mats) {
       gripFire: [0, -0.052, -0.014],
       /* C-clamp on the handguard, solved rather than eyeballed. In the support hand's own
          frame the fingers wrap a circle centred 46 mm forward of and 36 mm below the palm
-         origin; converting that back through the anchor rotation and the 0.88 model scale
-         puts the anchor here, which lands the palm's metacarpal edge tangent to the 21.8 mm
-         (world) handguard and closes the fingertips on its far side. */
-      gripSupport: [-0.052, -0.041, -0.300],
+         origin; converting that back through the anchor rotation puts the anchor here, which
+         lands the palm's metacarpal edge tangent to the 21.8 mm handguard and closes the
+         fingertips on its far side.
+
+         Rolled 26 deg round the bore from the old dead-under position, and the position is
+         re-solved so the *same* wrap circle still lands on the same point of the handguard —
+         i.e. the grip is unchanged, only the clock angle at which the hand meets the bar. That
+         matters because the viewmodel camera is barely 17 deg above this hand and is looking
+         almost straight down the barrel: with the hand directly underneath, the handguard
+         occluded the entire finger row and all that survived was the back of the wrist, which
+         is why three reviews in a row reported a hand with no fingers. Rolled outboard, the
+         digits clear the handguard's silhouette and are seen side-on against the background.
+         Derivation, so the next person can move it: the wrap centre in model space is
+         `anchor + R(gripSupportRot) * (0.046, 0.036, 0)`; hold that constant, change the Z
+         term of the rotation, and re-solve the anchor. */
+      gripSupport: [-0.0667, -0.0195, -0.298],
+      gripSupportRot: [0.12, -0.06, -0.29],
       boltCatch: [-0.026, -0.022, -0.090],
       sight: [0, optic.sightAnchor.position.y, optic.sightAnchor.position.z],
       magGrab: [-0.028, -0.055, 0.004],
@@ -2727,8 +2740,10 @@ function buildDmr14(mats) {
       eject: [0.026, 0.008, rec.portZ],
       ejectDir: [0.88, 0.42, 0.18],
       gripFire: [0, -0.058, -0.020],
-      // Same C-clamp solve as the mk18, against the wooden forend's ~26 mm effective radius.
-      gripSupport: [-0.053, -0.044, -0.308],
+      // Same C-clamp solve as the mk18, against the wooden forend's ~26 mm effective radius,
+      // and rolled outboard by the same 26 deg for the same reason — see the mk18's note.
+      gripSupport: [-0.0677, -0.0225, -0.306],
+      gripSupportRot: [0.12, -0.06, -0.29],
       boltCatch: [-0.028, -0.024, -0.100],
       sight: [0, optic.sightAnchor.position.y, optic.sightAnchor.position.z],
       magGrab: [-0.028, -0.052, 0.006],
@@ -2778,47 +2793,49 @@ function buildHand(mats, side, cfg) {
    * capsule terminating in a stump: the hand cannot be the widest part of the arm if it is
    * smaller than the wrist.
    *
-   * So the bulk goes to life size — palm 62 mm across and 31 mm thick, fingers 14.4 mm on
-   * 14.5 mm centres so there is a real gap between them, cuff wider than the sleeve — while the
-   * *finger segment lengths and curl angles below are deliberately unchanged*, because those
-   * are what set the radius of the circle the fingertips close on, and that radius is solved
-   * against the handguard and the pistol grip (see `wrap` and the `gripSupport` anchor note in
-   * buildMk18). Growing the digits' cross-section seats the pads a millimetre deeper into the
-   * furniture, which is the right direction for a grip.
+   * So the bulk goes to life size and then ~10% past it — palm 68 mm across and 31 mm thick,
+   * fingers 15.8 mm on 15.8 mm centres — while the *finger segment lengths and curl angles
+   * below are deliberately unchanged*, because those are what set the radius of the circle the
+   * fingertips close on, and that radius is solved against the handguard and the pistol grip
+   * (see `wrap` and the `gripSupport` anchor note in buildMk18). Widening the digits'
+   * cross-section seats the pads a millimetre deeper into the furniture, which is the right
+   * direction for a grip. The deliberate oversize is the standard viewmodel cheat and it is
+   * earned here: at the carry distance the whole hand is only about 70 px across at 800x450,
+   * so a digit is 8-9 px and every millimetre of cross-section is a pixel of separation.
    */
   // Palm: a chamfered wedge, thicker at the thenar side. Leather.
-  asm.add(chamferBox(0.062, 0.031, 0.090, { r: 0.012, bevel: 0.0044, curveSegments: 5 }), 'glovePalm', {
+  asm.add(chamferBox(0.068, 0.031, 0.090, { r: 0.013, bevel: 0.0044, curveSegments: 5 }), 'glovePalm', {
     p: [0, 0, 0.006],
     r: [0, 0, 0],
   });
   // Fabric back panel over the palm block — this is the panel split that gives the glove a
   // visible seam line instead of one continuous surface.
-  asm.add(chamferBox(0.059, 0.0100, 0.080, { r: 0.0090, bevel: 0.0034, curveSegments: 5 }), 'glove', {
+  asm.add(chamferBox(0.065, 0.0100, 0.080, { r: 0.0095, bevel: 0.0034, curveSegments: 5 }), 'glove', {
     p: [0, 0.0128, 0.004],
   });
   // Raised seam piping around the panel edge, one strip each side. It is 1.4 mm proud, which
   // is enough to catch the key and read as stitching at viewmodel magnification.
   asm.addMirrored(() => chamferBox(0.0030, 0.0040, 0.074, { r: 0.0013, bevel: 0.0009, curveSegments: 2 }), 'gloveHard', {
-    p: [0.0288, 0.0088, 0.004],
+    p: [0.0316, 0.0088, 0.004],
   });
   // Back-of-hand knuckle guard.
-  asm.add(chamferBox(0.058, 0.0088, 0.058, { r: 0.0065, bevel: 0.0030, curveSegments: 4 }), 'gloveHard', {
+  asm.add(chamferBox(0.064, 0.0088, 0.058, { r: 0.0068, bevel: 0.0030, curveSegments: 4 }), 'gloveHard', {
     p: [0, 0.0186, -0.006],
     r: [-0.10, 0, 0],
   });
   // Knuckle domes, one per finger and now on the *finger* centres, so the row of four bumps
   // lines up with the four gaps below it and the two read as one structure.
   for (let i = 0; i < 4; i++) {
-    asm.add(latheY([[0.0072, 0], [0.0080, 0.0032], [0.0049, 0.0064], [1e-4, 0.0072]], 8), 'gloveHard', {
-      p: [(-0.0218 + i * 0.0145) * s, 0.0212, -0.032],
+    asm.add(latheY([[0.0079, 0], [0.0088, 0.0032], [0.0054, 0.0064], [1e-4, 0.0072]], 8), 'gloveHard', {
+      p: [(-0.0238 + i * 0.0158) * s, 0.0212, -0.032],
     });
   }
   // Wrist cuff transition: a rolled fabric band, so the glove ends in a cuff rather than a
   // polygonal cut where it meets the sleeve. Its outer radius has to *exceed* the sleeve's
   // 30.5 mm wrist or the join steps inwards and the hand reads as thinner than the arm.
-  asm.add(latheZ([[0.0255, 0.036], [0.0300, 0.030], [0.0308, 0.020], [0.0268, 0.016], [0.0245, 0.016]], 14), 'cuff', null);
+  asm.add(latheZ([[0.0270, 0.036], [0.0318, 0.030], [0.0326, 0.020], [0.0284, 0.016], [0.0260, 0.016]], 14), 'cuff', null);
   // Wrist closure strap across the back of the cuff.
-  asm.add(chamferBox(0.056, 0.0046, 0.012, { r: 0.0018, bevel: 0.0011, curveSegments: 2 }), 'gloveHard', {
+  asm.add(chamferBox(0.062, 0.0046, 0.012, { r: 0.0018, bevel: 0.0011, curveSegments: 2 }), 'gloveHard', {
     p: [0, 0.0184, 0.026],
   });
 
@@ -2832,15 +2849,16 @@ function buildHand(mats, side, cfg) {
   const fingerPivot = new THREE.Vector3();
   let fasm = null;
   for (let i = 0; i < 4; i++) {
-    // 14.5 mm centres for a 14.4 mm digit: a hair of daylight between neighbours at rest, and
-    // the splay below opens it further towards the tips. The old 9.9 mm pitch on a 12.4 mm
-    // digit made them overlap, which is what fused the four into one mitten.
-    const fx = (-0.0218 + i * 0.0145) * s;
-    const spread = (i - 1.5) * 0.085;
+    // 15.8 mm centres for a 15.8 mm digit: neighbours touch at the knuckle and separate along
+    // their length, which is what a real hand does and what puts a shadow line between them.
+    // The old 9.9 mm pitch on a 12.4 mm digit made them *overlap*, fusing four into a mitten.
+    const fx = (-0.0238 + i * 0.0158) * s;
+    // Splay widened with the pitch so the gaps keep opening towards the tips.
+    const spread = (i - 1.5) * 0.11;
     const isTrigger = !!o.trigger && i === 0;
     // The trigger finger comes off the grip and lies almost straight along the trigger.
     const curl = isTrigger ? 0.3 : (1.02 + i * 0.06) * curlK;
-    const r0 = 0.0072 - i * 0.0005;
+    const r0 = 0.0079 - i * 0.00055;
     const yaw = isTrigger ? spread * s * 0.4 : spread * s;
     let tgt = asm;
     let ox = 0;
@@ -2870,7 +2888,7 @@ function buildHand(mats, side, cfg) {
     });
     // Reinforced fingertip pad — leather, like the palm, so the grip surfaces match.
     const dc = curl * (isTrigger ? 1.05 : 1.32);
-    tgt.add(latheY([[0.0052, 0], [0.0057, 0.0025], [0.0033, 0.0050], [1e-4, 0.0057]], 7), 'glovePalm', {
+    tgt.add(latheY([[0.0057, 0], [0.0063, 0.0025], [0.0036, 0.0050], [1e-4, 0.0057]], 7), 'glovePalm', {
       p: [
         fx + Math.sin(yaw) * 0.02 + ox,
         py - Math.sin(dc) * 0.022 + oy,
@@ -2884,12 +2902,12 @@ function buildHand(mats, side, cfg) {
      palm — a thumb sitting 20 mm off the centreline of a 62 mm palm is inside the hand, and an
      invisible thumb is half of "no thumb wrap". At 29/42 mm it clears the palm's thenar edge
      and its second segment crosses the front of whatever is being held, which is the read. */
-  asm.add(chamferBox(0.0165, 0.0150, 0.033, { r: 0.0064, bevel: 0.0028, curveSegments: 4 }), 'glove', {
-    p: [-0.029 * s, -0.007, -0.021],
+  asm.add(chamferBox(0.0180, 0.0150, 0.033, { r: 0.0068, bevel: 0.0028, curveSegments: 4 }), 'glove', {
+    p: [-0.032 * s, -0.007, -0.021],
     r: [-0.42 * curlK, 0.62 * s, 0.30 * s],
   });
-  asm.add(chamferBox(0.0145, 0.0135, 0.031, { r: 0.0056, bevel: 0.0026, curveSegments: 4 }), 'glovePalm', {
-    p: [-0.042 * s, -0.011, -0.046],
+  asm.add(chamferBox(0.0159, 0.0135, 0.031, { r: 0.0060, bevel: 0.0026, curveSegments: 4 }), 'glovePalm', {
+    p: [-0.046 * s, -0.011, -0.046],
     r: [-0.75 * curlK, 1.02 * s, 0.34 * s],
   });
 
