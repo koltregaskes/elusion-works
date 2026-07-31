@@ -912,12 +912,19 @@ export class WeaponFX {
     this._beams.push(b);
 
     /* An ion lance firing is worth a nudge — same channel as death blasts so
-       the camera needs no bespoke listener (see ExplosionFX._blast). */
+       the camera needs no bespoke listener (see ExplosionFX._blast).
+
+       Normalised on that same scale, where 1.0 is a destroyer's primary
+       detonation. A discharge is a recoil tap on the ship that fired it, so it
+       sits an order of magnitude below that, and below a frigate's death
+       (0.187): a gun going off must not outweigh a ship coming apart. The
+       ionFrigate's 220-damage lance lands at 0.105, the cruiser's 340-damage
+       spinalIon at 0.135 — above a fighter pop (0.023), below a frigate. */
     if (ion) {
       bus.emit('fx:blast', {
         point: b.from.clone(),
         radius: Math.max(600, b.width * 90),
-        strength: 0.10 + dmg / 3400,
+        strength: 0.05 + dmg / 4000,
       });
     }
 

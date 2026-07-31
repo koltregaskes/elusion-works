@@ -71,14 +71,28 @@ const STANCES = SIM_STANCES.map((id) => ({
 
 const MAX_TOASTS = 5;
 const TOAST_LIFE = 4.6;
+/* Trouble stays up more than twice as long. A degraded-boot warning that
+   scrolls away in four seconds is a warning nobody received. */
+const TOAST_LIFE_ALERT = 11;
 
-/* `core/input.js` documents order queueing, but the simulation currently
-   clears `orderQueue` unconditionally on every `cmd:move` / `cmd:attack`, so
-   the promise is not kept. Rather than print a control the player cannot use,
-   the card drops the row until the sim agent lands the fix — at which point
-   this list goes back to empty and the row returns on its own.
-   Match is on the description text, which is the stable half of the pair. */
-const UNSHIPPED_CONTROLS = new Set(['Queue the order']);
+/* Emitters name a tone; the stylesheet ships three. Normalising here means a
+   sender that says `warning` or `error` still gets the red treatment instead
+   of falling through to plain grey — which is exactly how `main.js`'s
+   degraded-run notice, the one signal that a subsystem failed to load, was
+   arriving as an ordinary line of status text. */
+const TOAST_KINDS = {
+  warn: 'warn',
+  caution: 'warn',
+  alert: 'alert',
+  warning: 'alert',
+  error: 'alert',
+  danger: 'alert',
+  fail: 'alert',
+  good: 'good',
+  ok: 'good',
+  success: 'good',
+  info: '',
+};
 
 /* First-run onboarding. Three steps, each ticked off by an event the player
    actually caused, then the rail retires itself for good. This is deliberately
@@ -260,7 +274,9 @@ export class HUD {
     this._selDirty = false;
     this._buildDirty = false;
     this._sensorsSelf = false;
+    this.audio = null;
     this._audioLive = false;
+    this._audioOff = false;
     this._muted = false;
     this._helpOpen = false;
     this._overOpen = false;
@@ -304,7 +320,18 @@ export class HUD {
     this._measure();
     this._setIntro(intro);
     this._refreshStats(true);
-    if (audio && typeof audio.getSettings === 'function') this._syncAudio(audio.getSettings());
+    this.setAudio(audio);
+  }
+
+  /* The mixer needs one of two things to appear: an AudioSystem handed in
+     here, or a `ui:audioChanged` on the bus. `AudioSystem` only publishes that
+     event when a setting changes, so a build that constructs audio but does
+     not pass it has a working mix and no way to reach it — which is the state
+     this was found in. Exposed as a method as well as a constructor option so
+     the wiring can happen in either order. */
+  setAudio(audio) {
+    this.audio = audio && typeof audio.getSettings === 'function' ? audio : null;
+    if (this.audio) this._syncAudio(this.audio.getSettings());
   }
 
   /* ------------------------------------------------------------------ DOM */
@@ -414,10 +441,17 @@ export class HUD {
     // Promoted out of the "Groups & time" list, where it was one grey row.
     const hLede = el('p', 'vsh-help__lede', PAUSE_LEDE);
 
-    // Straight from `core/input.js`, so the card cannot drift from the handlers.
+    /* Straight from `core/input.js`, so the card cannot drift from the
+       handlers — every row it publishes is printed, including the four order
+       verbs and the shift-to-queue modifier. There is deliberately no filter
+       here: one used to suppress the queue row while the sim discarded the
+       flag, and it outlived both the bug and the wording it matched on, which
+       is the failure mode any such list has. If a control genuinely does not
+       work, take it out of `CONTROL_SCHEME`, where the handler can be seen
+       next to it. */
     const hGrid = el('div', 'vsh-help__grid');
     for (const block of CONTROL_SCHEME) {
-      const rows = block.rows.filter(([, d]) => !UNSHIPPED_CONTROLS.has(d));
+      const rows = block.rows;
       if (!rows.length) continue;
       const col = el('section', 'vsh-help__col');
       col.appendChild(el('p', 'vsh-help__grp', block.group));
@@ -430,15 +464,23 @@ export class HUD {
     }
 
     /* ------------------------------------------------------------- audio */
-    const audio = el('section', 'vsh-help__col vsh-audio');
-    audio.appendChild(el('p', 'vsh-help__grp', 'Audio'));
-    const muteRow = el('div', 'vsh-audio__row vsh-audio__row--mute');
+    /* Above the reference grid, not inside it.
+
+       As a column it flowed last in a newspaper layout of thirty-seven
+       read-only rows, and below 1280x720 that put it entirely under the fold
+       of a scroll box with no affordance — measured at 1280x720 and 1024x640.
+       It is also the only thing on this card a player can actually operate,
+       so it reads as a settings bank rather than another list. */
+    const audio = el('section', 'vsh-audio');
+    const aHead = el('div', 'vsh-audio__head');
+    aHead.appendChild(el('p', 'vsh-help__grp', 'Audio'));
     this.muteBtn = el('button', 'vsh-audio__mute', 'Sound on');
     this.muteBtn.type = 'button';
     this.muteBtn.setAttribute('aria-pressed', 'false');
-    muteRow.append(el('span', 'vsh-audio__k', 'Mute'), this.muteBtn);
-    audio.appendChild(muteRow);
+    aHead.appendChild(this.muteBtn);
+    audio.appendChild(aHead);
 
+    const bank = el('div', 'vsh-audio__bank');
     this.audioSliders = AUDIO_BUSES.map(([id, label]) => {
       const row = el('div', 'vsh-audio__row');
       const input = document.createElement('input');
@@ -451,13 +493,17 @@ export class HUD {
       input.dataset.bus = id;
       input.setAttribute('aria-label', `${label} volume`);
       row.append(el('span', 'vsh-audio__k', label), input);
-      audio.appendChild(row);
+      bank.appendChild(row);
       return { id, input };
     });
-    hGrid.appendChild(audio);
+    audio.appendChild(bank);
+
+    this.audioNote = el('p', 'vsh-audio__note', 'This browser is not giving us an audio device.');
+    this.audioNote.hidden = true;
+    audio.appendChild(this.audioNote);
     this.audioPanel = audio;
 
-    hInner.append(hHead, hLede, hGrid);
+    hInner.append(hHead, hLede, audio, hGrid);
     help.appendChild(hInner);
     this.help = help;
 
@@ -792,14 +838,30 @@ export class HUD {
   /* ------------------------------------------------------------------ audio */
 
   /* Called with whatever `getSettings()` returns. The first call is also what
-     reveals the panel — no audio system, no mixer. */
+     reveals the panel — no audio system, no mixer.
+
+     A system that reports `available: false` still gets the panel, greyed and
+     labelled: a browser that refuses to give us an AudioContext is a fact the
+     player is entitled to, and a silent game with no explanation reads as a
+     bug in ours. Controls that cannot do anything are disabled rather than
+     left live, which is the part that would actually be worse than nothing. */
   _syncAudio(s) {
     if (!s || typeof s !== 'object') return;
-    if (s.available === false) return;
     if (!this._audioLive) {
       this._audioLive = true;
       this.audioPanel.classList.add('is-live');
     }
+
+    const off = s.available === false;
+    if (off !== this._audioOff) {
+      this._audioOff = off;
+      this.audioPanel.classList.toggle('is-unavailable', off);
+      this.audioNote.hidden = !off;
+      this.muteBtn.disabled = off;
+      for (const sl of this.audioSliders) sl.input.disabled = off;
+    }
+    if (off) return;
+
     this._muted = !!s.muted;
     this.muteBtn.setAttribute('aria-pressed', String(this._muted));
     this.muteBtn.textContent = this._muted ? 'Muted' : 'Sound on';
@@ -1053,10 +1115,15 @@ export class HUD {
 
   toast(text, kind) {
     if (!text) return;
+    const tone = kind ? TOAST_KINDS[kind] : '';
+    const alert = tone === 'alert';
     const t = {
-      el: el('div', `vsh-toast${kind ? ` vsh-toast--${kind}` : ''}`, String(text)),
-      life: TOAST_LIFE,
+      el: el('div', `vsh-toast${tone ? ` vsh-toast--${tone}` : ''}`, String(text)),
+      life: alert ? TOAST_LIFE_ALERT : TOAST_LIFE,
     };
+    // Polite for status, assertive for trouble — the toast rail is one live
+    // region, so the urgent ones have to say so on the row itself.
+    if (alert) t.el.setAttribute('role', 'alert');
     this.toastEl.appendChild(t.el);
     this._toasts.push(t);
     // One frame later, so the transition has something to run from.
@@ -1256,6 +1323,7 @@ export class HUD {
     this._toasts.length = 0;
     this.root.classList.remove('vsh-root', 'is-paused');
     this.selection.clear();
+    this.audio = null;   // never outlive the AudioSystem we were handed
   }
 }
 

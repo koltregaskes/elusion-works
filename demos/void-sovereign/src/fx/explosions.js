@@ -45,6 +45,8 @@ varying float vEnv;
 varying float vThick;
 varying float vIntensity;
 varying float vSeed;
+varying float vAge;
+varying float vBlotch;
 varying float vFragW;
 
 void main() {
@@ -73,9 +75,19 @@ void main() {
      its distance-from-front directly with no length() and no discard. */
   float rr = mix( RING_INNER, RING_OUTER, uv.y );
 
-  // Ragged front: a real blast is not a perfect circle.
-  float wobble = texture2D( uNoise, vec2( uv.x + iSeed, iSeed * 3.1 ) ).b;
-  rr *= 1.0 + ( wobble - 0.5 ) * 0.10;
+  /* Ragged front: a real blast is neither a perfect circle nor evenly fed
+     round its circumference. One tap deforms the radius, a second at a higher
+     frequency modulates how much energy the front carries at that bearing.
+     Without the second the ring resolves into a neon hoop the moment the band
+     profile is tight enough to read as a front at all. Both taps tile in
+     uv.x, so there is no seam at the join. */
+  float w1 = texture2D( uNoise, vec2( uv.x + iSeed, iSeed * 3.1 ) ).b;
+  float w2 = texture2D( uNoise, vec2( uv.x * 3.0 - iSeed * 2.0, iSeed * 7.7 ) ).g;
+  rr *= 1.0 + ( w1 - 0.5 ) * 0.13 + ( w2 - 0.5 ) * 0.05;
+  // Value noise clusters hard around 0.5, so it needs a gain and a curve or the
+  // modulation is invisible.
+  float feed = w2 * 0.6 + w1 * 0.4;
+  vBlotch = clamp( 0.12 + 2.5 * pow( feed, 1.7 ), 0.12, 1.9 );
 
   float ang = uv.x * 6.2831853;
   vec3 wp = iCenter + ( t1 * cos( ang ) + t2 * sin( ang ) ) * ( rr * R );
@@ -95,6 +107,7 @@ void main() {
   vThick = max( iThick, thickFloor );
   vIntensity = iIntensity;
   vSeed = iSeed;
+  vAge = age;
   vEnv = alive * smoothstep( 0.0, 0.04, age ) * pow( 1.0 - age, 1.5 );
   vFragW = gl_Position.w;
   #include <logdepthbuf_vertex>
@@ -112,6 +125,8 @@ varying float vEnv;
 varying float vThick;
 varying float vIntensity;
 varying float vSeed;
+varying float vAge;
+varying float vBlotch;
 varying float vFragW;
 
 void main() {
@@ -121,28 +136,61 @@ void main() {
   /* Asymmetric: a hard leading edge with the energy piled against it and a
      long draining tail behind. A symmetric Gaussian reads as a smoke ring.
      vRr is the interpolated radius as a fraction of the front, straight off
-     the annulus — there is no disc here to accidentally fill. */
+     the annulus — there is no disc here to accidentally fill.
+
+     The two profiles must MULTIPLY. Combining them with max(), which is what
+     this did until now, pinned lead at 1 everywhere inside the front and trail
+     at 1 everywhere outside it, so the band was the whole annulus at full
+     alpha — a flat slab, and precisely the flat beige hoop the annulus shape
+     was introduced to prevent. The envelope bounded the damage; it could not
+     undo it. */
   float d = vRr - 1.0;
-  float lead = exp( -pow( max( d, 0.0 ) / ( thick * 0.85 ), 2.0 ) );
-  float trail = exp( -pow( max( -d, 0.0 ) / ( thick * 1.8 ), 1.15 ) );
-  float band = max( lead, trail * 0.5 );
-  float lip = exp( -pow( ( vRr - 1.02 ) / ( thick * 0.30 ), 2.0 ) );
+  float lead = exp( -pow( max( d, 0.0 ) / ( thick * 0.90 ), 2.0 ) );
+  // Plateau then fall, not a Gaussian: the gas immediately behind the front is
+  // still dense, and a front with no body behind it is a wireframe hoop.
+  float trail = exp( -pow( max( -d, 0.0 ) / ( thick * 3.0 ), 1.6 ) );
+  float band = lead * trail * vBlotch;
+  float lip = exp( -pow( ( vRr - 1.015 ) / ( thick * 0.32 ), 2.0 ) ) * vBlotch;
 
   // Hard zero at both rims of the annulus so the mesh edge is never visible.
   float rim = smoothstep( RING_INNER, RING_INNER + 0.06, vRr )
             * ( 1.0 - smoothstep( RING_OUTER - 0.06, RING_OUTER, vRr ) );
 
-  float a = clamp( band, 0.0, 1.0 ) * rim * vEnv * fxSoftFade( vFragW );
+  float a = clamp( band * 0.92 + lip * 0.5, 0.0, 1.0 ) * rim * vEnv * fxSoftFade( vFragW );
   if ( a <= 0.004 ) discard;
 
-  /* Cheap stand-in for refraction: the leading lip goes cold-blue while the
-     body stays hot, which is what a compressed shell actually looks like. */
-  vec3 col = mix( vColor, vec3( 0.60, 0.78, 1.0 ), clamp( lip, 0.0, 1.0 ) * 0.7 );
+  /* Colour is a temperature ramp in two directions at once.
+
+     Across the band: the shell piled against the leading edge is compressed
+     and white-hot, the gas immediately behind it has already expanded and
+     cooled through gold, and the drain-off at the back is soot. Along the
+     front's life: the whole ramp slides cool as it loses energy, so a capital
+     ring ends as grey smoke rather than holding one temperature for two full
+     seconds. One flat colour across the band was the other half of why this
+     read as beige. */
+  float behind = clamp( -d / ( thick * 3.4 ), 0.0, 1.0 );
+  float cool = smoothstep( 0.08, 0.80, vAge );
+
+  vec3 hot = mix( vec3( 1.00, 0.98, 0.95 ), vec3( 1.00, 0.76, 0.40 ), cool );
+  vec3 mid = mix( vec3( 1.00, 0.55, 0.18 ), vec3( 0.58, 0.28, 0.15 ), cool );
+  vec3 tail = mix( vec3( 0.42, 0.27, 0.21 ), vec3( 0.24, 0.22, 0.22 ), cool );
+
+  vec3 col = mix( hot, mid, smoothstep( 0.02, 0.30, behind ) );
+  col = mix( col, tail, smoothstep( 0.34, 0.95, behind ) );
+  // A trace of blue on the tip alone: gas compressed ahead of the flame front.
+  col = mix( col, vec3( 0.74, 0.86, 1.0 ), clamp( lip, 0.0, 1.0 ) * 0.22 * ( 1.0 - cool ) );
+  col *= vColor;
+
   /* Peak radiance is deliberately held near 4. The bloom prefilter cuts at 2.8
-     scene-linear, so this clears it and blooms — but a thin front at radiance
-     12 blooms into a 200-pixel white band and stops reading as a front at all.
-     Bright enough to glow, dim enough to stay a line. */
-  col *= vIntensity * uGain * ( 0.16 + 1.6 * lip + 0.30 * band );
+     scene-linear and the glow layer at 0.6, so this clears both and blooms —
+     but a thin front at radiance 12 blooms into a 200-pixel white band and
+     stops reading as a front at all. Bright enough to glow, dim enough to stay
+     a line. The body term is what stops the band being a dim grey smear
+     between two bright rims. */
+  /* pow() on the body, not a linear term: it piles the radiance against the
+     leading edge and lets the tail fall away, which is the difference between
+     a shock front and a glowing tube. */
+  col *= vIntensity * uGain * ( 0.20 + 1.45 * lip + 1.15 * pow( clamp( band, 0.0, 1.0 ), 1.7 ) );
   gl_FragColor = vec4( col, a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -194,6 +242,17 @@ function annulusGeometry(segments = 96) {
   g.setIndex(idx);
   return g;
 }
+
+/* How blast strength on the `fx:blast` bus scales with hull length.
+
+   Blast impulse goes as the cube root of yield, and yield goes as mass, so for
+   hulls of roughly uniform density the felt shove is linear in length. This is
+   pulled a little below linear so the 1,900 m mothership lands somewhere a
+   camera can still use: at exactly 1.0 it would be 5x a destroyer, and at the
+   L^1.5 this used to run at it was 11x, with a fighter at 0.002 — a 4,900:1
+   ladder whose bottom two thirds sat under any sane noise gate. At 0.8 the
+   whole fleet spans 178:1. See `_blast` for the measured table. */
+const SHAKE_EXP = 0.8;
 
 const WHITE = new THREE.Color(0xffffff);
 const CORE = new THREE.Color(0xfff2d8);
@@ -395,8 +454,10 @@ export class ExplosionFX {
        with it; a smaller, far hotter one blooms into the same area and keeps
        the nebula behind it. */
     ev.push({ t: 2.98, k: 'flash', size: R * 1.7, minPx: 110, life: 0.60, bright: 34.0 });
-    ev.push({ t: 2.98, k: 'flash', size: R * 0.9, minPx: 60, life: 1.7, bright: 12.0, colour: FIRE });
-    ev.push({ t: 3.00, k: 'flash', size: R * 2.6, minPx: 150, life: 0.30, bright: 6.0, colour: CORE });
+    // The next two are the same detonation seen through a slower, cooler shell.
+    // They carry no impulse of their own — the beat is one shove, not three.
+    ev.push({ t: 2.98, k: 'flash', size: R * 0.9, minPx: 60, life: 1.7, bright: 12.0, colour: FIRE, shake: 0 });
+    ev.push({ t: 3.00, k: 'flash', size: R * 2.6, minPx: 150, life: 0.30, bright: 6.0, colour: CORE, shake: 0 });
     ev.push({ t: 2.98, k: 'ring', r0: R * 0.35, r1: ring * 1.55, life: 1.6, thick: 0.022, intensity: 1.63, axis: 'hull' });
     ev.push({ t: 3.02, k: 'ring', r0: R * 0.25, r1: ring * 1.05, life: 2.0, thick: 0.030, intensity: 1.16, axis: 'perp' });
     ev.push({ t: 2.99, k: 'sparks', n: 280 * N, speed: L * 3.4, size: L * 0.024, minPx: 3.0 });
@@ -419,11 +480,39 @@ export class ExplosionFX {
   /* `fx:blast` — the one channel anything that shoves the camera goes through.
 
      Emitted on the beats of a death sequence that should be *felt*: each
-     secondary, the buckle, and the primary detonation. `strength` is
-     dimensionless and normalised so 1.0 is a destroyer's primary detonation,
-     which puts a fighter pop near 0.04 and a mothership near 5 — so a listener
-     never needs to know the ship class table. `radius` is the blast's reach in
-     metres, for distance falloff.
+     secondary, the buckle, and the primary detonation. `radius` is the blast's
+     reach in metres, for distance falloff. `strength` is dimensionless and
+     normalised so **1.0 is a destroyer's primary detonation**; a listener never
+     needs to know the ship class table.
+
+     These are measured off the bus, not derived on paper — the previous doc
+     comment quoted a fighter at 0.04 when the code produced 0.002, and a
+     consumer set its noise gate on the strength of that figure and swallowed
+     every capital rumble. Largest beat per class, and the range of the smaller
+     beats that lead up to it:
+
+       class             L(m)    peak    lead-in beats
+       scout               12    0.020   —
+       interceptor         14    0.023   —
+       bomber              20    0.031   —
+       corvette            34    0.047   —
+       collector           46    0.081   0.013 - 0.038
+       support frigate    115    0.170   0.027 - 0.079
+       assault frigate    130    0.187   0.030 - 0.087
+       ion frigate        140    0.198   0.031 - 0.093
+       destroyer          380    1.000   0.064 - 0.235
+       heavy cruiser      620    1.479   0.095 - 0.348
+       carrier            760    1.741   0.111 - 0.410
+       mothership       1,900    3.624   0.232 - 0.853
+
+     An ion lance discharge is 0.105 and a cruiser's spinal ion 0.135 (see
+     `weapons.js`). That is deliberately below a frigate's death and above a
+     fighter's: a gun going off must not outweigh a ship coming apart, which is
+     the one ordering this scale exists to assert. Everything else follows from
+     hull mass; nothing else is hand-placed.
+
+     Consumers: treat anything under ~0.02 as a tick that only matters within a
+     few hundred metres, and expect the ladder to span roughly 180:1.
 
      This exists so `core/camera.js` does not have to mirror the beat timings
      here; if these tables change, the shake follows automatically. */
@@ -431,7 +520,7 @@ export class ExplosionFX {
     bus.emit('fx:blast', {
       point: origin.clone(),
       radius,
-      strength: strength * Math.pow(seq.L / 380, 1.5),
+      strength: strength * Math.pow(seq.L / 380, SHAKE_EXP),
     });
   }
 
@@ -471,8 +560,13 @@ export class ExplosionFX {
         // Cooling shell: deep orange, slower, wider — the fireball's edge.
         f.flare.spawn(origin.x, origin.y, origin.z, V.x, V.y, V.z, ev.life * 2.1, 0,
           size * 0.5, size * 1.5, EMBER, ev.bright * 0.045, 0, 0);
-        // Brightness is a good proxy for how hard this beat should hit.
-        this._blast(seq, origin, seq.m.ring, ev.bright / 34);
+        /* Brightness is a good proxy for how hard a beat should hit — the
+           destroyer's primary is `bright: 34`, which is what anchors the scale
+           at 1.0. But a single beat built from three overlaid flares must put
+           one impulse on the bus, not three, or the anchor is a lie by a factor
+           of 1.5; `shake: 0` mutes the companions. */
+        const shake = ev.shake === undefined ? ev.bright / 34 : ev.shake;
+        if (shake > 0) this._blast(seq, origin, seq.m.ring, shake);
         break;
       }
 
@@ -643,7 +737,9 @@ export class ExplosionFX {
       cx: centre.x, cy: centre.y, cz: centre.z,
       nx: normal.x, ny: normal.y, nz: normal.z,
       start: this.ctx.now, life, r0, r1, thick, intensity,
-      r: 1.0, g: 0.92, b: 0.80,
+      // Per-ring tint hook, left neutral: the fragment stage owns the front's
+      // temperature ramp, and a warm constant here fought it to beige.
+      r: 1.0, g: 1.0, b: 1.0,
       seed: seq ? seq.rng.next() : this.ctx.rng.next(),
       vx: seq ? seq.vel.x : 0, vy: seq ? seq.vel.y : 0, vz: seq ? seq.vel.z : 0,
     });

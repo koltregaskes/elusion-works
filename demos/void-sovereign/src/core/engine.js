@@ -80,17 +80,75 @@ export class Engine {
     this.size = { w: 1, h: 1, dpr: 1 };
     this.frame = 0;
 
+    /* Failure surfacing. A silent dead canvas is the worst outcome available:
+       the page looks loaded, `ready` is true, and nothing moves. */
+    this.hookErrors = [];
+    this.contextLost = false;
+    this.onFailure = null; // set by main.js to surface this to the player
+
     this._onResize = () => this.resize();
     window.addEventListener('resize', this._onResize, { passive: true });
+
+    /* WebGL can take the context away at any moment — a driver reset, a laptop
+       switching GPUs, too many live contexts. Without this the page renders a
+       blank white canvas while still reporting itself healthy. */
+    this._onContextLost = (event) => {
+      event.preventDefault(); // required, or the context is never restorable
+      this.contextLost = true;
+      if (this.onFailure) {
+        this.onFailure(
+          'The graphics context was lost. This usually means the GPU driver reset, or another tab took the hardware.',
+          { kind: 'contextlost' },
+        );
+      }
+    };
+    this._onContextRestored = () => {
+      this.contextLost = false;
+    };
+    canvas.addEventListener('webglcontextlost', this._onContextLost, false);
+    canvas.addEventListener('webglcontextrestored', this._onContextRestored, false);
+
     this.resize();
   }
 
-  registerRenderHook(fn) {
-    this._hooks.push(fn);
+  registerRenderHook(fn, label = 'hook') {
+    const entry = { fn, label, failures: 0 };
+    this._hooks.push(entry);
     return () => {
-      const i = this._hooks.indexOf(fn);
+      const i = this._hooks.indexOf(entry);
       if (i >= 0) this._hooks.splice(i, 1);
     };
+  }
+
+  /* Run the per-frame hooks so one bad subsystem cannot take the whole game
+     with it. An unguarded loop meant a single throw — a mid-edit sensors view
+     calling a method that did not exist — aborted every hook after it *and*
+     the render call, so the canvas simply stopped updating while
+     `window.__VS.ready` still cheerfully reported true. That is the difference
+     between one ugly frame and a dead white page.
+
+     A hook that keeps throwing is detached rather than left to spam: three
+     strikes, then it is out and the player is told. */
+  _runHooks(dt, elapsed) {
+    for (let i = 0; i < this._hooks.length; i++) {
+      const h = this._hooks[i];
+      try {
+        h.fn(dt, elapsed);
+        if (h.failures) h.failures = 0;
+      } catch (err) {
+        h.failures++;
+        this.hookErrors.push({
+          label: h.label,
+          frame: this.frame,
+          error: String((err && err.stack) || err),
+        });
+        if (this.hookErrors.length > 40) this.hookErrors.shift();
+        if (h.failures >= 3) {
+          this._hooks.splice(i--, 1);
+          this._onHookDetached(h.label);
+        }
+      }
+    }
   }
 
   setPostProcess(pp) {
@@ -137,9 +195,10 @@ export class Engine {
   }
 
   render(dt, elapsed) {
+    if (this.contextLost) return;
     this.frame++;
     this.renderer.info.reset();
-    for (let i = 0; i < this._hooks.length; i++) this._hooks[i](dt, elapsed);
+    this._runHooks(dt, elapsed);
 
     if (this._post) {
       this._post.render(dt, elapsed);
@@ -160,8 +219,20 @@ export class Engine {
     };
   }
 
+  /** Override point for main.js; default keeps the failure at least visible. */
+  _onHookDetached(label) {
+    if (this.onFailure) {
+      this.onFailure(`The ${label} subsystem kept failing and has been switched off.`, {
+        kind: 'hook',
+        label,
+      });
+    }
+  }
+
   dispose() {
     window.removeEventListener('resize', this._onResize);
+    this.canvas.removeEventListener('webglcontextlost', this._onContextLost);
+    this.canvas.removeEventListener('webglcontextrestored', this._onContextRestored);
     if (this._post && this._post.dispose) this._post.dispose();
     this.renderer.dispose();
   }

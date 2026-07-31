@@ -1403,7 +1403,8 @@ export class FXSystem {
     // Ships built by ships/index.js carry their engine metadata somewhere on
     // the entity; take whichever the SHIPS agent settles on, else wait for an
     // explicit attachEngines().
-    const defs = e.engines
+    const defs = e._engines
+      || e.engines
       || (e.model && e.model.engines)
       || (e.object3D && e.object3D.userData && e.object3D.userData.engines);
     if (defs && defs.length) this.engines.attach(e, defs);

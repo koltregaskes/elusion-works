@@ -55,7 +55,9 @@ const DEFAULT_CHARACTER = CHARACTER[ROLE.CORVETTE];
 /* Cooldowns in seconds. A forty-ship selection is one crew answering for the
    group, not forty crews talking over each other. */
 const GLOBAL_COOLDOWN = 0.30;
-const KIND_COOLDOWN = { select: 1.5, move: 0.85, attack: 0.7, order: 1.1, build: 2.5, distress: 3.5 };
+const KIND_COOLDOWN = {
+  select: 1.5, move: 0.85, attack: 0.7, order: 1.1, stop: 0.6, build: 2.5, distress: 3.5,
+};
 const MAX_CONCURRENT = 2;
 
 export class VoiceLayer {
@@ -75,6 +77,13 @@ export class VoiceLayer {
     on('sel:changed', (p) => this._onSelect(p));
     on('cmd:move', (p) => this.bark(this._roleOf(p && p.ids), 'move', 'fall'));
     on('cmd:attack', (p) => this.bark(this._roleOf(p && p.ids), 'attack', 'rise'));
+    /* The combat verbs answer in their own register: attack-move goes out hot,
+       a guard reports in and settles, a patrol is routine, and a stop is the
+       shortest thing anyone says. */
+    on('cmd:attackMove', (p) => this.bark(this._roleOf(p && p.ids), 'attack', 'rise'));
+    on('cmd:guard', (p) => this.bark(this._roleOf(p && p.ids), 'order', 'riseFall'));
+    on('cmd:patrol', (p) => this.bark(this._roleOf(p && p.ids), 'order', 'flat'));
+    on('cmd:stop', (p) => this.bark(this._roleOf(p && p.ids), 'stop', 'fall', null, 0.5));
     on('cmd:formation', (p) => this.bark(this._roleOf(p && p.ids), 'order', 'flat'));
     on('cmd:stance', (p) => this.bark(this._roleOf(p && p.ids), 'order', 'flat'));
     on('sim:buildComplete', (p) => {
@@ -93,8 +102,10 @@ export class VoiceLayer {
    * @param {string} kind     cooldown bucket: select|move|attack|order|build|distress
    * @param {string} contour  fall|rise|riseFall|flat
    * @param {object} [at]     world position; omit for a non-positional bark
+   * @param {number} [brevity] 0..1 multiplier on the syllable count — a "stop"
+   *                           is answered in one word, not a sentence
    */
-  bark(role, kind, contour, at) {
+  bark(role, kind, contour, at, brevity) {
     if (!this.audio.running) return false;
     const now = this.ctx.currentTime;
     if (now - this._last.any < GLOBAL_COOLDOWN) return this._suppress();
@@ -107,7 +118,7 @@ export class VoiceLayer {
 
     this._last.any = now;
     this._last[kind] = now;
-    this._build(now + 0.001, role, kind, contour, at, v);
+    this._build(now + 0.001, role, kind, contour, at, v, brevity);
     this._counts.spoken++;
     // Voice sits above combat: everything else steps back a couple of dB while
     // somebody is talking, which is the whole reason it stays intelligible.
@@ -117,12 +128,13 @@ export class VoiceLayer {
 
   /* --------------------------------------------------------------- synthesis */
 
-  _build(t, role, kind, contour, at, voice) {
+  _build(t, role, kind, contour, at, voice, brevity) {
     const ctx = this.ctx;
     const ch = CHARACTER[role] || DEFAULT_CHARACTER;
     const rng = this.rng;
     const f0 = rng.range(ch.pitch[0], ch.pitch[1]);
-    const syllables = rng.int(ch.count[0], ch.count[1]);
+    const b = brevity === undefined ? 1 : clamp(brevity, 0.25, 1);
+    const syllables = Math.max(2, Math.round(rng.int(ch.count[0], ch.count[1]) * b));
 
     /* Output tail. Positional barks pan and attenuate; the fleet answering a
        selection does not, because that is the player's own comms panel. */
@@ -152,7 +164,7 @@ export class VoiceLayer {
       const send = ctx.createGain();
       send.gain.value = ch.room;
       outLevel.connect(send);
-      send.connect(this.audio.comms);
+      send.connect(this.audio.buses.voice.wet);
     }
 
     /* Radio chain. Saturation then the comms band: this is what makes a buzz

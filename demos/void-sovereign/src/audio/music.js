@@ -313,7 +313,7 @@ export class MusicLayer {
     const send = this.ctx.createGain();
     send.gain.value = 0.4;
     g.connect(send);
-    send.connect(this.audio.space);
+    send.connect(this.audio.buses.music.wet);
 
     const srcs = [];
     let deg = this.rng.pick([0, 2, 3, 4, 6]);
@@ -408,7 +408,7 @@ export class MusicLayer {
     g.connect(lp);
     lp.connect(this.out);
     lp.connect(send);
-    send.connect(this.audio.space);
+    send.connect(this.audio.buses.music.wet);
 
     const degrees = win ? [0, 2, 4, 5] : [0, 1, 3, 5];
     for (let n = 0; n < degrees.length; n++) {

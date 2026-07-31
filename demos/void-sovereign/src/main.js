@@ -479,6 +479,21 @@ async function main() {
   vs.post = post;
 
   /* ------------------------------------------------------------- per-frame */
+  /* Route engine-level failures somewhere a human will see them. A lost
+     context is fatal and gets the full panel; a detached hook is survivable
+     and gets a toast. */
+  engine.onFailure = (message, info) => {
+    if (info && info.kind === 'contextlost') {
+      vs.ready = false;
+      // The loop is created below this point, so it may legitimately not exist
+      // yet if the context is lost during boot.
+      if (vs.loop) vs.loop.stop();
+      fatal(message, null);
+      return;
+    }
+    bus.emit('ui:toast', { text: message, kind: 'warning' });
+  };
+
   engine.registerRenderHook((dt, elapsed) => {
     if (cameraRig && cameraRig.update) cameraRig.update(dt);
     if (input && input.update) input.update(dt);

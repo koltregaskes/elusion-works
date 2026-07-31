@@ -20,19 +20,35 @@ import { SHIPS } from '../ships/catalog.js';
    2. **It reuses the live camera projection** rather than running a second
       Three.js scene. The schematic and the 3D view are therefore always
       looking at the same thing; the camera rig dollies between them and the
-      blips stay welded to their hulls the whole way. */
+      blips stay welded to their hulls the whole way.
 
-/* The same three hues DESIGN.md publishes and hud.css declares. Resource
-   ochre is deliberately the quietest mark on the display: an ore field is
-   terrain, and terrain must never shout louder than a contact. */
+   3. **The 3D view underneath is reference, not subject, and terrain is not
+      even that.** Because this is one canvas over another it cannot hide what
+      the renderer drew — it can only push it back. Ships are bright enough to
+      survive the pull-down; a lit asteroid field was too, and a single rock
+      then read as a solid pale mass the size of a formation, with the hostile
+      fleet drawn on top of it and unreadable. Rock is therefore redrawn as a
+      schematic mark instead of being left to the renderer: `_occluders` puts
+      the void back under it, `_fields` states its extent by hatching. See
+      those two for the reasoning. */
+
+/* Exactly the two team hues DESIGN.md publishes, and white for everything
+   else — the same language `hud.css` states at the top of the file: cyan is
+   us, amber is them, red is trouble, white is the rest, held low.
+
+   Terrain used to be drawn in an ochre of its own. Three warm marks then
+   competed for one channel, and the ore rings out-read the hostile contacts
+   they had circles drawn around. It is neutral now: an ore field is ground,
+   and ground never out-shouts a contact. */
 const COL = {
   us: '#7fd8e8',
   usDim: 'rgba(127, 216, 232, 0.62)',
   them: '#e8a44a',
   themDim: 'rgba(232, 164, 74, 0.62)',
-  ore: 'rgba(196, 174, 118, 0.75)',
-  oreFill: 'rgba(196, 174, 118, 0.045)',
-  oreLine: 'rgba(196, 174, 118, 0.26)',
+  rockHatch: 'rgba(255, 255, 255, 0.06)',
+  rockLine: 'rgba(255, 255, 255, 0.17)',
+  rockStalk: 'rgba(255, 255, 255, 0.11)',
+  rockArc: 'rgba(255, 255, 255, 0.4)',
   grid: 'rgba(255, 255, 255, 0.085)',
   frame: 'rgba(255, 255, 255, 0.26)',
   ring: 'rgba(255, 255, 255, 0.16)',
@@ -61,6 +77,38 @@ const GRID_STEP = 5000;
 const MAX_CONTACTS = 1400;
 const MAX_LABELS = 14;
 const LEADER_PX = 9;
+const TAU = Math.PI * 2;
+
+/* Asteroid-field footprints.
+
+   `render/environment.js` scatters each rock at `cluster.radius * cbrt(u) *
+   [0.75, 1.15]`, so 1.15 is the honest edge of a seam. Its handful of
+   multi-kilometre landmarks sit further out again — roughly 1.2–2.4x the
+   radius plus their own bound — which is why the knock-down behind the
+   footprint fades out well past the hatched extent rather than stopping at
+   it. The rocks themselves are plain instanced meshes on `LAYER.DEFAULT`
+   with no schematic representation of their own; the cluster records are the
+   right source for a footprint, and the only one that is cheap. */
+const FOOT_SEAM = 1.15;
+const FOOT_HAZE = 4.6;
+const FOOT_MIN_PX = 7;
+const HATCH_PX = 10;
+/* Hatch lines per footprint. A field the camera is standing inside projects
+   several screens wide, and an unbounded loop over it would be the one place
+   this view could stall. */
+const HATCH_MAX = 44;
+
+/* The knock-down is composed at a quarter of display resolution and scaled up.
+
+   It is nothing but soft radial gradients — there is no detail in it to lose.
+   At a commander's distance six footprints each cover the whole viewport, so
+   at 1:1 this is ~12 Mpx of fill per frame at 1920x1080 against 0.8 Mpx plus
+   one upscale here. A/B on the dev box could not separate them because the
+   sensors view sits on a ~30 fps ceiling either way; the point is the worst
+   case on a machine that is not capped, with the camera inside a field.
+   Compositing the group once also stops two overlapping fields darkening
+   each other twice, which the per-footprint version did. */
+const OCC_DIV = 4;
 
 /* Above this many selected contacts the individual ticks collapse into one
    bracket, the same threshold logic the world-space marker layer uses. */
@@ -77,6 +125,10 @@ export class SensorsView {
     this.open = false;
     this._contacts = [];
     this._nContacts = 0;
+    this._foots = [];
+    this._nFoots = 0;
+    this._occ = null;   // quarter-scale knock-down buffer, built on first use
+    this._occ2d = null;
     this._dpr = 1;
 
     const el = document.createElement('section');
@@ -102,7 +154,7 @@ export class SensorsView {
     for (const [cls, text] of [
       ['us', 'Own fleet'],
       ['them', 'Hostile'],
-      ['ore', 'Resource'],
+      ['ore', 'Ore field'],
     ]) {
       const row = document.createElement('div');
       row.className = `vsh-legend vsh-legend--${cls}`;
@@ -174,8 +226,12 @@ export class SensorsView {
     /* The 3D view has to recede far enough that the schematic is unambiguously
        the subject — a nebula this bright will win any fight it is allowed to
        have. A flat pull-down plus a vignette: hulls survive as silhouettes,
-       the nebula does not survive as colour. */
-    g.fillStyle = 'rgba(3, 7, 12, 0.74)';
+       the nebula does not survive as colour.
+
+       0.80 rather than 0.74. The pull-down is effectively a brightness gate —
+       whatever is left has to be bright enough to clear it — and at 0.74 a
+       lit asteroid cleared it. Motherships, engine wash and beams still do. */
+    g.fillStyle = 'rgba(3, 7, 12, 0.80)';
     g.fillRect(-1, -1, w + 2, h + 2);
     const wash = g.createRadialGradient(w * 0.5, h * 0.46, Math.min(w, h) * 0.12, w * 0.5, h * 0.5, Math.max(w, h) * 0.78);
     wash.addColorStop(0, 'rgba(2, 5, 9, 0)');
@@ -183,10 +239,14 @@ export class SensorsView {
     g.fillStyle = wash;
     g.fillRect(-1, -1, w + 2, h + 2);
 
+    /* Terrain is knocked back before a single schematic mark is drawn, so the
+       lattice and every contact sit on one flat ground. */
+    this._footprints();
+    this._occluders(g);
     this._grid(g);
     this._rings(g);
+    this._fields(g);
     this._collect();
-    this._resources(g);
     this._stalks(g);
     this._blips(g);
     this._labels(g);
@@ -339,52 +399,186 @@ export class SensorsView {
     this._nContacts = n;
   }
 
-  /* Resource clusters read as ore fields with a depletion arc, because the
-     thing a commander needs to know is not "there is rock there" but "there
-     is rock left there". */
-  _resources(g) {
+  /** Project every cluster once; the knock-down and the footprint both read
+      this, and the radius no longer carries a pixel cap — a field the camera
+      is standing in genuinely does fill the display, and a schematic that
+      draws it as a 46 px token is lying about where the rock is. */
+  _footprints() {
     const clusters = this.ctx.resourceClusters();
-    if (!clusters || !clusters.length) return;
     const proj = this.ctx.proj;
+    const { w, h } = this.ctx.view;
+    const list = this._foots;
+    const lim = Math.max(w, h) * 1.6;
+    let n = 0;
 
-    for (let i = 0; i < clusters.length; i++) {
-      const c = clusters[i];
-      const p = c.position || c;
-      if (!p || !proj.project(p.x, p.y, p.z)) continue;
-      const sx = proj.sx;
-      const sy = proj.sy;
-      const r = Math.max(7, Math.min(46, ((c.radius || 1200) * proj.scaleK) / proj.cw));
+    if (clusters) {
+      for (let i = 0; i < clusters.length; i++) {
+        const c = clusters[i];
+        const p = c.position || c;
+        if (!p || !proj.project(p.x, p.y, p.z)) continue;
+        const sx = proj.sx;
+        const sy = proj.sy;
+        const px = ((c.radius || 1200) * FOOT_SEAM * proj.scaleK) / proj.cw;
+        const seam = Math.max(FOOT_MIN_PX, Math.min(lim, px));
+        const haze = Math.min(lim * 1.4, seam * (FOOT_HAZE / FOOT_SEAM));
+        if (sx + haze < -2 || sx - haze > w + 2) continue;
+        if (sy + haze < -2 || sy - haze > h + 2) continue;
 
-      g.fillStyle = COL.oreFill;
-      g.strokeStyle = COL.oreLine;
-      g.lineWidth = 1;
-      g.beginPath();
-      g.arc(sx, sy, r, 0, Math.PI * 2);
-      g.fill();
-      g.stroke();
-
-      const left = c.maxAmount > 0 ? Math.max(0, Math.min(1, c.amount / c.maxAmount)) : 1;
-      if (left < 0.999) {
-        g.strokeStyle = COL.ore;
-        g.lineWidth = 1.4;
-        g.beginPath();
-        g.arc(sx, sy, r, -Math.PI * 0.5, -Math.PI * 0.5 + Math.PI * 2 * left);
-        g.stroke();
-      }
-
-      // Its own altitude stalk — a cluster 4 km off the plane is a different
-      // proposition to one sitting on it.
-      if (Math.abs(p.y) > 60 && proj.project(p.x, 0, p.z)) {
-        g.strokeStyle = 'rgba(196, 174, 118, 0.16)';
-        g.lineWidth = 1;
-        g.beginPath();
-        g.moveTo(sx, sy);
-        g.lineTo(proj.sx, proj.sy);
-        g.moveTo(proj.sx - 4, proj.sy);
-        g.lineTo(proj.sx + 4, proj.sy);
-        g.stroke();
+        let f = list[n];
+        if (!f) {
+          f = { sx: 0, sy: 0, r: 0, haze: 0, left: 1, base: false, bx: 0, by: 0 };
+          list[n] = f;
+        }
+        f.sx = sx;
+        f.sy = sy;
+        f.r = seam;
+        f.haze = haze;
+        f.left = c.maxAmount > 0 ? Math.max(0, Math.min(1, c.amount / c.maxAmount)) : 1;
+        // Its own altitude stalk — a seam 4 km off the plane is a different
+        // proposition to one sitting on it.
+        f.base = Math.abs(p.y) > 60 && proj.project(p.x, 0, p.z);
+        if (f.base) {
+          f.bx = proj.sx;
+          f.by = proj.sy;
+        }
+        n++;
       }
     }
+    this._nFoots = n;
+  }
+
+  /* Put the void back under every rock field, before anything is drawn on it.
+
+     The schematic is one canvas over another, so it cannot hide the 3D view —
+     and a lit asteroid is the one object down there big and pale enough to
+     survive the base wash as a solid mass. One rock swallowed most of a
+     hostile fleet in a 353-contact capture: not by covering the blips, which
+     are painted on top of it, but by replacing the flat ground they are read
+     against with a textured grey shape the same size as the formation.
+
+     A soft radial knock-down rather than a hard disc, because the seam record
+     describes the ore, not the strays scattered a kilometre or two past it. */
+  _occluders(g) {
+    const list = this._foots;
+    const n = this._nFoots;
+    if (!n) return;
+    const { w, h } = this.ctx.view;
+
+    const cw = Math.max(1, Math.ceil(w / OCC_DIV));
+    const ch = Math.max(1, Math.ceil(h / OCC_DIV));
+    let off = this._occ;
+    if (!off) {
+      off = document.createElement('canvas');
+      this._occ = off;
+      this._occ2d = off.getContext('2d');
+    }
+    if (off.width !== cw || off.height !== ch) {
+      off.width = cw;
+      off.height = ch;
+    }
+    const o = this._occ2d;
+    if (!o) return;
+    o.clearRect(0, 0, cw, ch);
+
+    for (let i = 0; i < n; i++) {
+      const f = list[i];
+      const sx = f.sx / OCC_DIV;
+      const sy = f.sy / OCC_DIV;
+      const haze = f.haze / OCC_DIV;
+      const x0 = Math.max(0, sx - haze);
+      const y0 = Math.max(0, sy - haze);
+      const x1 = Math.min(cw, sx + haze);
+      const y1 = Math.min(ch, sy + haze);
+      if (x1 <= x0 || y1 <= y0) continue;
+
+      const grad = o.createRadialGradient(sx, sy, (f.r * 0.5) / OCC_DIV, sx, sy, haze);
+      grad.addColorStop(0, 'rgba(3, 7, 12, 0.92)');
+      grad.addColorStop(0.3, 'rgba(3, 7, 12, 0.72)');
+      grad.addColorStop(0.62, 'rgba(3, 7, 12, 0.34)');
+      grad.addColorStop(1, 'rgba(3, 7, 12, 0)');
+      o.fillStyle = grad;
+      // A clipped rectangle rather than an arc: outside `haze` the gradient is
+      // transparent anyway, and this bounds the work when a footprint is
+      // several screens across.
+      o.fillRect(x0, y0, x1 - x0, y1 - y0);
+    }
+
+    g.drawImage(off, 0, 0, w, h);
+  }
+
+  /* The field itself: hatched extent, hairline rim, and an arc for what is
+     left in the seam.
+
+     Hatching is the whole point. A filled disc asserts "solid — nothing
+     behind this", which is false of a rock field and takes the ground out
+     from under any contact drawn on it. A hatch asserts "occupied — read
+     through it", which is what a commander actually needs: the rock is in the
+     way of a hull, not of the display. */
+  _fields(g) {
+    const list = this._foots;
+    const n = this._nFoots;
+    if (!n) return;
+
+    g.lineWidth = 1;
+    for (let i = 0; i < n; i++) {
+      const f = list[i];
+      const span = f.r * 2;
+      // Spacing opens up on a large footprint so the line count stays bounded.
+      const step = Math.max(HATCH_PX, span / HATCH_MAX);
+      g.save();
+      g.beginPath();
+      g.arc(f.sx, f.sy, f.r, 0, TAU);
+      g.clip();
+      g.strokeStyle = COL.rockHatch;
+      g.beginPath();
+      /* 45 degrees is the one angle neither the 5 km lattice nor a range ring
+         runs at, so the hatch never doubles a line that is already there.
+
+         A line offset `d` from the top-left corner clears the circle unless
+         |r + d| < r*sqrt(2), so the sweep runs -2.5r to +0.5r. Anything
+         narrower leaves an unhatched crescent on the lower-left rim. */
+      for (let d = f.r * -2.5; d <= f.r * 0.5; d += step) {
+        g.moveTo(f.sx + d, f.sy - f.r);
+        g.lineTo(f.sx + d + span, f.sy + f.r);
+      }
+      g.stroke();
+      g.restore();
+    }
+
+    g.strokeStyle = COL.rockLine;
+    g.beginPath();
+    for (let i = 0; i < n; i++) {
+      const f = list[i];
+      g.moveTo(f.sx + f.r, f.sy);
+      g.arc(f.sx, f.sy, f.r, 0, TAU);
+    }
+    g.stroke();
+
+    /* What is left in the seam, on the rim. A worked-out field quietly loses
+       its arc and keeps its hatch — the ore runs out, the rock does not. */
+    g.strokeStyle = COL.rockArc;
+    g.lineWidth = 1.4;
+    g.beginPath();
+    for (let i = 0; i < n; i++) {
+      const f = list[i];
+      if (f.left >= 0.999 || f.left <= 0.002) continue;
+      g.moveTo(f.sx, f.sy - f.r);
+      g.arc(f.sx, f.sy, f.r, -Math.PI * 0.5, -Math.PI * 0.5 + TAU * f.left);
+    }
+    g.stroke();
+
+    g.strokeStyle = COL.rockStalk;
+    g.lineWidth = 1;
+    g.beginPath();
+    for (let i = 0; i < n; i++) {
+      const f = list[i];
+      if (!f.base) continue;
+      g.moveTo(f.sx, f.sy);
+      g.lineTo(f.bx, f.by);
+      g.moveTo(f.bx - 4, f.by);
+      g.lineTo(f.bx + 4, f.by);
+    }
+    g.stroke();
   }
 
   /** Every altitude stalk in one path. This is the whole point of the view. */
@@ -630,5 +824,14 @@ export class SensorsView {
     this.el.remove();
     this._contacts.length = 0;
     this._nContacts = 0;
+    this._foots.length = 0;
+    this._nFoots = 0;
+    // Zeroing the backing store is the only way to hand a canvas's pixels back.
+    if (this._occ) {
+      this._occ.width = 0;
+      this._occ.height = 0;
+      this._occ = null;
+      this._occ2d = null;
+    }
   }
 }

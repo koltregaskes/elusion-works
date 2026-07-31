@@ -82,6 +82,12 @@ const BLAST = { floor: 0.02, buckle: 0.12, primary: 0.38 };
    Anything longer than this and the player has already stopped believing it. */
 const UNATTENDED_AFTER = 0.6;
 
+/* A session cannot know how long it will run — that is the whole point — so it
+   reserves modestly and extends as beats arrive. Reserving the maximum up front
+   starves both the category cap and the voice pool: in a staged 200-ship battle
+   that cost 40% of the deaths and took the limiter out of the mix entirely. */
+const SESSION_INITIAL = { capital: 5, break: 4.5 };
+const SESSION_EXTEND = 2.2;
 /* Hard stops. A session that never sees its primary must not drone forever. */
 const SESSION_MAX = 13;
 const PRIMARY_DEADLINE = 9.5;
@@ -186,7 +192,7 @@ export class SfxLayer {
     this._blastStats = {
       blasts: 0, matched: 0, ignored: 0, sessions: 0,
       secondaries: 0, buckles: 0, primaries: 0, unattended: 0, expired: 0,
-      lastPrimaryDelay: 0,
+      lastOpenedAt: 0, lastPrimaryAt: 0, lastPrimaryDelay: 0,
     };
 
     this.buckets = {};
@@ -610,9 +616,17 @@ export class SfxLayer {
     return true;
   }
 
-  /** Stance: a two-note dyad whose interval encodes the stance. */
+  /**
+   * Stance: a two-note dyad whose interval encodes the stance.
+   *
+   * Deliberately soft, low and slow. Measured against the rest of the palette it
+   * was 0.94 cosine-similar to `formation` — both were short bright tonal
+   * clusters in the same octave, which is exactly the confusion the player would
+   * make. A posture is not a mechanism: this one swells under a lowpass instead
+   * of clicking, which moves it two octaves down the spectrum and out of the way.
+   */
   _stance(t, payload) {
-    const v = this._claimUi(0.3);
+    const v = this._claimUi(0.5);
     if (!v) return false;
     const name = payload && payload.stance ? String(payload.stance) : 'default';
     // Stable per-name interval so a given stance always sounds the same.
@@ -623,23 +637,31 @@ export class SfxLayer {
       for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
       semis = ((h % 13) + 13) % 13 - 6;
     }
-    const root = 587;
+    const root = 294;
     const g = this.ctx.createGain();
     g.gain.value = 1;
-    g.connect(this.audio.buses.ui.input);
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 1900;
+    lp.Q.value = 0.7;
+    g.connect(lp);
+    lp.connect(this.audio.buses.ui.input);
     const srcs = [];
     const freqs = [root, root * Math.pow(2, semis / 12)];
     for (let i = 0; i < freqs.length; i++) {
-      const at = t + i * 0.05;
+      const at = t + i * 0.065;
       const o = this.ctx.createOscillator();
-      o.setPeriodicWave(this._metalWave);
-      o.frequency.value = freqs[i];
+      o.setPeriodicWave(this._bellWave);
+      o.frequency.setValueAtTime(freqs[i], at);
+      // A touch of settle on the second note: the fleet taking up a posture.
+      o.detune.setValueAtTime(i ? 6 : 0, at);
+      o.detune.linearRampToValueAtTime(i ? -7 : 0, at + 0.3);
       const a = this.ctx.createGain();
-      blip(a.gain, at, 0.24, 0.003, 0.13);
+      blip(a.gain, at, 0.44, 0.016, 0.27);
       o.connect(a);
       a.connect(g);
       o.start(at);
-      o.stop(at + 0.2);
+      o.stop(at + 0.42);
       srcs.push(o);
     }
     v.bind(g, srcs);
@@ -682,7 +704,7 @@ export class SfxLayer {
     const send = this.ctx.createGain();
     send.gain.value = 0.28;
     g.connect(send);
-    send.connect(this.audio.comms);
+    send.connect(this.audio.buses.ui.wet);
     const srcs = [];
     const freqs = [392, 588, 784];
     for (let i = 0; i < freqs.length; i++) {
@@ -1034,6 +1056,12 @@ export class SfxLayer {
    * the beam burns, then a filter closing over a decaying sub.
    */
   _ion(t, at, size, opts) {
+    /* FX emits `fx:blast` on ion ignition too, with no hull-length term, which
+       would read as a buckle inside a nearby capital's death session. Mark it
+       before any early-out so the router steps over it whether or not the lance
+       itself survives the voice budget — the blast is emitted either way. */
+    this._ionMarks.push({ t: this.ctx.currentTime, x: at.x, y: at.y, z: at.z });
+    if (this._ionMarks.length > 6) this._ionMarks.shift();
     if (this._active.ion >= CATEGORY_CAP.ion) return this._cull();
     const sp = this.audio.spatial(at.x, at.y, at.z, size, 40000);
     if (!sp) return this._cull();
@@ -1055,7 +1083,7 @@ export class SfxLayer {
     const send = this.ctx.createGain();
     send.gain.value = 0.35;
     chain.amp.connect(send);
-    send.connect(this.audio.space);
+    send.connect(this.audio.buses.sfx.wet);
 
     const shaper = this.ctx.createWaveShaper();
     shaper.curve = this._drive;
@@ -1320,14 +1348,15 @@ export class SfxLayer {
 
   /**
    * @param {object} at   world position
-   * @param {number} size hull length. Tiers match fx/explosions.js exactly:
-   *                      <45 pop, <210 break, otherwise the four-second capital
-   *                      sequence.
+   * @param {number} size hull length. The tiers are a reading of the ship-length
+   *                      table, not a schedule: <45 m is one beat and is played
+   *                      outright; anything larger opens a session and lets
+   *                      `fx:blast` conduct it.
    */
   death(at, size) {
     if (!this.audio.running) return false;
-    if (size >= 210) return this._deathCapital(at, size);
-    if (size >= 45) return this._deathBreak(at, size);
+    if (size >= 210) return this._openDeath(at, size, 'capital');
+    if (size >= 45) return this._openDeath(at, size, 'break');
     return this._deathPop(at, size);
   }
 
@@ -1368,125 +1397,354 @@ export class SfxLayer {
     return true;
   }
 
+  /* ------------------------------------------------- blast-driven sequences */
+
   /**
-   * Frigate scale. Timed against `_scriptBreak`: hit at 0, secondaries at 0.22
-   * and 0.46, the hull letting go at 0.84, late ring at 1.06.
+   * Open a death sequence and wait for the picture.
+   *
+   * This used to schedule the whole thing at trigger time against a copy of
+   * `fx/explosions.js`'s beat table. FX then re-cut the capital death — same
+   * script, but stretched by the cube root of hull length, so a mothership now
+   * runs to roughly six seconds — and the audio kept firing its primary at a
+   * fixed 2.98 s, more than two seconds ahead of the flash. Mirroring another
+   * module's internals is the bug; the fix is to listen.
+   *
+   * So: this builds the chain, claims the voice and starts the bed. Every beat
+   * after that arrives on `fx:blast`.
    */
-  _deathBreak(at, size) {
-    if (this._active.death >= CATEGORY_CAP.death) return this._cull();
-    const sp = this.audio.spatial(at.x, at.y, at.z, size, 24000);
+  _openDeath(at, size, tier) {
+    const capital = tier === 'capital';
+    const cat = capital ? 'capitalDeath' : 'death';
+    if (this._active[cat] >= CATEGORY_CAP[cat]) return this._cull();
+    const sp = this.audio.spatial(at.x, at.y, at.z, size, capital ? 60000 : 24000);
     if (!sp) return this._cull();
     const t = this.ctx.currentTime + 0.001;
-    const v = this._claim(6, 4.2, sp.gain * 0.8);
+    const initial = SESSION_INITIAL[tier];
+    const v = this._claim(capital ? 10 : 6, initial, capital ? 1 : sp.gain * 0.8);
     if (!v) return this._cull();
-    this._hold('death', 4.2);
-    const chain = this.audio.positional('sfx', sp, 0.85);
+    // Held for the session's real lifetime, released in _sweepSessions.
+    this._active[cat]++;
+
+    // `late` keeps the detonation out of its own duck node — see index.js.
+    const chain = this.audio.positional('sfx', sp, capital ? 1.0 : 0.85, capital);
     const send = this.ctx.createGain();
-    send.gain.value = 0.3;
+    send.gain.value = capital ? 0.42 : 0.3;
     chain.amp.connect(send);
-    send.connect(this.audio.space);
+    send.connect(this.audio.buses.sfx.wet);
     const srcs = [];
 
-    this._crack(chain.input, srcs, t, 0.5, 0.9);
-    this._secondary(chain.input, srcs, t + 0.22, size * 0.45, 0.5);
-    this._secondary(chain.input, srcs, t + 0.46, size * 0.55, 0.6);
-    this._detonation(chain.input, srcs, t + 0.84, size, 0.85, 2.4);
-    this._shock(chain.input, srcs, t + 1.06, 1.4, 0.4);
+    const s = {
+      id: this._sessionSeq++,
+      tier,
+      cat,
+      capital,
+      size,
+      x: at.x,
+      y: at.y,
+      z: at.z,
+      /* Blast points walk the spine and carry the wreck's momentum, so the
+         match radius is the hull plus room for the drift of a long death. One
+         chain serves the whole session: a few hundred metres of walk is nothing
+         against a sixty-kilometre audible range, and re-panning every secondary
+         would cost more than it is worth. */
+      matchR2: Math.pow(Math.max(900, size * 1.5 + 600), 2),
+      expected: expectedBlast(size),
+      opened: t,
+      until: t + initial,
+      chain,
+      voice: v,
+      srcs,
+      relative: sp.gain,
+      heard: 0,
+      secondaries: 0,
+      buckled: false,
+      primaryAt: 0,
+      unattended: false,
+      // Tier shapes: how a beat's ordinal maps to its size and level.
+      progDiv: capital ? 12 : 2,
+      levelBase: capital ? 0.22 : 0.46,
+      levelSpan: capital ? 0.30 : 0.16,
+      sizeBase: capital ? 0.09 : 0.42,
+      sizeSpan: capital ? 0.11 : 0.14,
+      bed: null,
+    };
+    s.bed = capital ? this._capitalBed(s, t) : null;
 
     v.bind(chain.input, srcs);
-    this.audio.duck('music', 2.5, 0.5, 0.9);
+    this._sessions.push(s);
+    this._blastStats.sessions++;
+    this._blastStats.lastOpenedAt = t;
     this._counts.played++;
     return true;
   }
 
   /**
-   * Capital scale. Four seconds, matched beat for beat to `_scriptCapital`:
-   * the hull starts failing at 0, secondaries walk the spine from 0.22 to ~2.57,
-   * the ship gives up at 2.62, the primary goes at 2.98, the shockwave at 3.30.
-   * Subsonic content, a six-second tail, and it takes the rest of the mix down
-   * with it — dynamic range is the whole reason this sounds big.
+   * Act one, and deliberately without a schedule: something structural is
+   * failing and the sound says so until the picture says otherwise. The bed
+   * rises with the beats that actually arrive and is cut by the detonation, so
+   * a three-second death and a six-second one both end on the bang instead of
+   * guessing where it is.
    */
-  _deathCapital(at, size) {
-    if (this._active.capitalDeath >= CATEGORY_CAP.capitalDeath) return this._cull();
-    const sp = this.audio.spatial(at.x, at.y, at.z, size, 60000);
-    if (!sp) return this._cull();
-    const t = this.ctx.currentTime + 0.001;
-    const v = this._claim(10, 11, 1);
-    if (!v) return this._cull();
-    this._hold('capitalDeath', 11);
-    const scale = clamp(size / 900, 0.5, 2.4);
-    // `late` keeps the detonation out of its own duck node — see index.js.
-    const chain = this.audio.positional('sfx', sp, 1.0, true);
-    const send = this.ctx.createGain();
-    send.gain.value = 0.42;
-    chain.amp.connect(send);
-    send.connect(this.audio.space);
-    const srcs = [];
-
-    /* Act one: something structural is failing and you can hear it coming. */
+  _capitalBed(s, t) {
+    const scale = clamp(s.size / 900, 0.5, 2.4);
     const groan = this._noise(t, 'brown', 0.55);
     const gl = this.ctx.createBiquadFilter();
     gl.type = 'lowpass';
-    sweep(gl.frequency, t, 90, 260, 2.5);
+    gl.frequency.setValueAtTime(90, t);
+    gl.frequency.setTargetAtTime(280, t, 1.5);
     const gg = this.ctx.createGain();
     gg.gain.setValueAtTime(1e-4, t);
-    gg.gain.exponentialRampToValueAtTime(0.30, t + 1.6);
-    gg.gain.exponentialRampToValueAtTime(0.55, t + 2.9);
-    gg.gain.exponentialRampToValueAtTime(1e-4, t + 3.4);
+    gg.gain.setTargetAtTime(0.24, t, 0.9);
     groan.connect(gl);
     gl.connect(gg);
-    gg.connect(chain.input);
+    gg.connect(s.chain.input);
     groan.start(t, this.rng.range(0, 1.5));
-    groan.stop(t + 3.6);
-    srcs.push(groan);
+    groan.stop(t + SESSION_MAX);
+    s.srcs.push(groan);
 
-    // A slowly rising tone under it: the reactor losing containment.
+    // A rising tone under it: the reactor losing containment. It climbs with
+    // evidence — each secondary heard — rather than against a predicted clock.
     const dread = this.ctx.createOscillator();
     dread.type = 'sawtooth';
-    sweep(dread.frequency, t + 0.3, 36 / scale, 74 / scale, 2.6);
+    dread.frequency.setValueAtTime(36 / scale, t);
     const dl = this.ctx.createBiquadFilter();
     dl.type = 'lowpass';
     dl.frequency.value = 240;
     const dg = this.ctx.createGain();
-    dg.gain.setValueAtTime(1e-4, t + 0.3);
-    dg.gain.exponentialRampToValueAtTime(0.34, t + 2.9);
-    dg.gain.exponentialRampToValueAtTime(1e-4, t + 3.15);
+    dg.gain.setValueAtTime(1e-4, t);
+    dg.gain.setTargetAtTime(0.16, t + 0.3, 1.2);
     dread.connect(dl);
     dl.connect(dg);
-    dg.connect(chain.input);
-    dread.start(t + 0.3);
-    dread.stop(t + 3.3);
-    srcs.push(dread);
+    dg.connect(s.chain.input);
+    dread.start(t);
+    dread.stop(t + SESSION_MAX);
+    s.srcs.push(dread);
 
-    /* Secondaries walking the spine. Same distribution as the VFX script so the
-       two interleave convincingly without either owning the timeline. */
-    const beats = 10 + Math.round(this.rng.range(0, 4));
-    for (let i = 0; i < beats; i++) {
-      const bt = t + 0.22 + (i / beats) * 2.35 + this.rng.range(-0.05, 0.05);
-      this._secondary(chain.input, srcs, bt, size * (0.09 + 0.1 * (i / beats)), 0.22 + 0.3 * (i / beats));
+    return { groan, dread, groanGain: gg, dreadGain: dg, dreadOsc: dread, scale };
+  }
+
+  /** A beat landed: lean the bed into it. */
+  _bedPush(s, now, prog) {
+    const b = s.bed;
+    if (!b) return;
+    b.groanGain.gain.setTargetAtTime(lerp(0.24, 0.58, prog), now, 0.35);
+    b.dreadGain.gain.setTargetAtTime(lerp(0.16, 0.36, prog), now, 0.5);
+    b.dreadOsc.frequency.setTargetAtTime(lerp(36, 74, prog) / b.scale, now, 0.8);
+  }
+
+  /** The hull gives up: the bed jumps, because the next thing is the end. */
+  _bedBuckle(s, now) {
+    const b = s.bed;
+    if (!b) return;
+    b.groanGain.gain.setTargetAtTime(0.66, now, 0.12);
+    b.dreadGain.gain.setTargetAtTime(0.40, now, 0.15);
+    b.dreadOsc.frequency.setTargetAtTime(86 / b.scale, now, 0.2);
+  }
+
+  /** The detonation takes the bed with it — the silence under it is the point. */
+  _bedCut(s, at) {
+    const b = s.bed;
+    if (!b) return;
+    for (const g of [b.groanGain.gain, b.dreadGain.gain]) {
+      try {
+        g.cancelScheduledValues(at);
+        g.setValueAtTime(Math.max(1e-4, g.value), at);
+        g.exponentialRampToValueAtTime(1e-4, at + 0.3);
+      } catch (e) {
+        /* param already finalised by a steal */
+      }
+    }
+    for (const src of [b.groan, b.dread]) {
+      try {
+        src.stop(at + 0.45);
+      } catch (e) {
+        /* already stopped */
+      }
+    }
+  }
+
+  /* ---------------------------------------------------------- blast routing */
+
+  /**
+   * `fx:blast` — the channel FX publishes every beat that should be *felt* on.
+   * The camera rig already drives its shake from it; this is the same
+   * subscription doing the same job for the mix, and it is why nothing in this
+   * file knows or cares when a capital death's primary actually lands.
+   */
+  _onBlast(p) {
+    const st = this._blastStats;
+    st.blasts++;
+    if (!p || !p.point || !this.audio.running || !this._sessions.length) {
+      st.ignored++;
+      return;
+    }
+    const pt = p.point;
+    if (this._nearIon(pt)) {
+      st.ignored++;
+      return;
+    }
+    const s = this._match(pt);
+    if (!s) {
+      st.ignored++;
+      return;
+    }
+    // Relative to what this hull's *own* primary should measure, so one set of
+    // thresholds covers a 130 m frigate and a 1,900 m mothership.
+    const rel = (Number(p.strength) || 0) / s.expected;
+    if (rel < BLAST.floor) {
+      st.ignored++;
+      return;
+    }
+    st.matched++;
+    s.heard++;
+    const now = this.ctx.currentTime;
+
+    if (s.primaryAt > 0) {
+      // The flash is three overlapping beats; they are one detonation.
+      if (now - s.primaryAt < 0.45) return;
+      this._sessionSecondary(s, now, rel);
+      return;
+    }
+    if (rel >= BLAST.primary) {
+      this._sessionPrimary(s, now);
+      return;
+    }
+    if (rel >= BLAST.buckle && !s.buckled) {
+      this._sessionBuckle(s, now);
+      return;
+    }
+    this._sessionSecondary(s, now, rel);
+  }
+
+  /** Nearest open session, scored by its own match radius so the tighter wins. */
+  _match(pt) {
+    let best = null;
+    let bestScore = 1;
+    for (let i = 0; i < this._sessions.length; i++) {
+      const s = this._sessions[i];
+      const dx = pt.x - s.x;
+      const dy = pt.y - s.y;
+      const dz = pt.z - s.z;
+      const score = (dx * dx + dy * dy + dz * dz) / s.matchR2;
+      if (score < bestScore) {
+        bestScore = score;
+        best = s;
+      }
+    }
+    return best;
+  }
+
+  /** An ion lance emits on the same channel; we already voiced it from sim:fire. */
+  _nearIon(pt) {
+    const now = this.ctx.currentTime;
+    for (let i = this._ionMarks.length - 1; i >= 0; i--) {
+      const m = this._ionMarks[i];
+      if (now - m.t > ION_MARK_WINDOW) {
+        this._ionMarks.splice(i, 1);
+        continue;
+      }
+      const dx = pt.x - m.x;
+      const dy = pt.y - m.y;
+      const dz = pt.z - m.z;
+      if (dx * dx + dy * dy + dz * dz < ION_MARK_DIST2) return true;
+    }
+    return false;
+  }
+
+  /** Keep the reservation just ahead of the sequence, never far ahead of it. */
+  _extend(s, until) {
+    if (until <= s.until) return;
+    s.until = Math.min(until, s.opened + SESSION_MAX);
+    s.voice.hold(s.until);
+  }
+
+  _sessionSecondary(s, now, rel) {
+    s.secondaries++;
+    this._extend(s, now + SESSION_EXTEND);
+    const prog = clamp(s.secondaries / s.progDiv, 0, 1);
+    // `strength` says how hard this particular beat is; the running count says
+    // how far gone the ship is. Both belong in the sound.
+    const level = clamp(s.levelBase + s.levelSpan * prog + clamp(rel, 0, 0.3) * 0.4, 0.15, 0.85);
+    this._secondary(s.chain.input, s.srcs, now + 0.001,
+      s.size * (s.sizeBase + s.sizeSpan * prog), level);
+    this._bedPush(s, now, prog);
+    this._blastStats.secondaries++;
+  }
+
+  _sessionBuckle(s, now) {
+    s.buckled = true;
+    this._extend(s, now + SESSION_EXTEND);
+    this._crack(s.chain.input, s.srcs, now + 0.001, s.capital ? 0.6 : 0.5, s.capital ? 1.0 : 0.9);
+    this._bedBuckle(s, now);
+    this._blastStats.buckles++;
+  }
+
+  /** Everything below 60 Hz in this game lives here. */
+  _sessionPrimary(s, at) {
+    if (s.primaryAt > 0) return;
+    s.primaryAt = at;
+    const t = at + 0.001;
+    const tail = s.capital ? 6.0 : 2.4;
+    this._detonation(s.chain.input, s.srcs, t, s.size, s.capital ? 1.0 : 0.85, tail);
+    /* The shock front arrives after the flash — that is the one interval audio
+       still owns, because it is physics rather than a beat table. */
+    this._shock(s.chain.input, s.srcs, t + (s.capital ? 0.32 : 0.22),
+      s.capital ? 2.6 : 1.4, s.capital ? 0.85 : 0.4);
+    this._bedCut(s, at);
+
+    /* The detonation's own tail is the one length this file does know, so the
+       reservation can finally be exact. */
+    s.until = t + tail + 1.2;
+    s.voice.hold(s.until);
+
+    /* Dominate the mix, briefly, then give it back — on the detonation itself,
+       not on a timer started when the ship began dying. */
+    if (s.capital) {
+      if (s.relative > 0.25) {
+        this.audio.duck('sfx', 7 * s.relative, 0.55, 1.6);
+        this.audio.duck('music', 9 * s.relative, 0.9, 2.4);
+      }
+    } else {
+      this.audio.duck('music', 2.5, 0.5, 0.9);
     }
 
-    /* Act two: the ship gives up. */
-    this._crack(chain.input, srcs, t + 2.62, 0.6, 1.0);
+    this._blastStats.primaries++;
+    this._blastStats.lastPrimaryAt = at;
+    this._blastStats.lastPrimaryDelay = Math.round((at - s.opened) * 1000) / 1000;
+  }
 
-    /* Act three: primary detonation. Everything below 60 Hz lives here. */
-    this._detonation(chain.input, srcs, t + 2.98, size, 1.0, 6.0);
-    this._shock(chain.input, srcs, t + 3.30, 2.6, 0.85);
+  /**
+   * FX said nothing at all — disabled, or a quality mode that dropped the
+   * sequence. The death still has to land, so it lands: one crack and one
+   * detonation. Deliberately *not* a reconstruction of the visual script,
+   * because inventing beats nobody can see is how this drifted in the first
+   * place.
+   */
+  _sessionFallback(s, now) {
+    s.unattended = true;
+    this._crack(s.chain.input, s.srcs, now + 0.001, s.capital ? 0.6 : 0.5, 1.0);
+    this._sessionPrimary(s, now + (s.capital ? 0.35 : 0.25));
+    this._blastStats.unattended++;
+  }
 
-    v.bind(chain.input, srcs);
-
-    /* Dominate the mix, briefly, then give it back. Scheduled to land on the
-       primary rather than on the first groan. */
-    const relative = sp.gain;
-    if (relative > 0.25) {
-      setTimeout(() => {
-        if (!this.audio.running) return;
-        this.audio.duck('sfx', 7 * relative, 0.55, 1.6);
-        this.audio.duck('music', 9 * relative, 0.9, 2.4);
-      }, 2900);
+  /** Fallbacks, watchdogs and retirement. Called once per frame from update(). */
+  _sweepSessions(now) {
+    for (let i = this._sessions.length - 1; i >= 0; i--) {
+      const s = this._sessions[i];
+      if (!s.primaryAt) {
+        if (!s.heard && now - s.opened > UNATTENDED_AFTER) {
+          this._sessionFallback(s, now);
+        } else if (now - s.opened > PRIMARY_DEADLINE) {
+          // Beats are arriving but the ship will not finish dying. End it.
+          this._blastStats.expired++;
+          this._sessionPrimary(s, now);
+        }
+      }
+      if (now >= s.until) {
+        this._active[s.cat] = Math.max(0, this._active[s.cat] - 1);
+        this._sessions.splice(i, 1);
+      }
     }
-    this._counts.played++;
-    return true;
   }
 
   /* --------------------------------------------------- death sub-components */
@@ -1748,6 +2006,8 @@ export class SfxLayer {
       }
     }
 
+    this._sweepSessions(now);
+
     // Engagement heat decays; music.js reads it to decide what to play.
     this.heat = Math.max(0, this.heat - dt * 0.55);
     this.threat = Math.max(0, this.threat - dt * 0.3);
@@ -1950,7 +2210,7 @@ export class SfxLayer {
     const send = this.ctx.createGain();
     send.gain.value = 0.5;
     g.connect(send);
-    send.connect(this.audio.space);
+    send.connect(this.audio.buses.sfx.wet);
     const srcs = [];
     this._detonation(g, srcs, t, p && p.winner === 0 ? 1400 : 1900, 0.8, 6.5);
     this._shock(g, srcs, t + 0.4, 3.2, 0.7);
@@ -2010,12 +2270,17 @@ export class SfxLayer {
       pendingClusters: Object.keys(this.buckets).reduce((n, k) => n + this.buckets[k].clusters.length, 0),
       active: Object.assign({}, this._active),
       hullProximity: Math.round(this._hullNear * 100) / 100,
+      // `lastPrimaryDelay` is the gap between a hull dying and its detonation
+      // being *seen* to go. The old hardcoded sequence always said 2.98.
+      blast: Object.assign({ open: this._sessions.length }, this._blastStats),
     };
   }
 
   dispose() {
     for (const off of this._offs) off();
     this._offs.length = 0;
+    this._sessions.length = 0;
+    this._ionMarks.length = 0;
     const a = this._amb;
     if (a) {
       const now = this.ctx.currentTime;
@@ -2035,7 +2300,7 @@ export class SfxLayer {
 /* Re-exported so the test harness can drive every order sound by name without
    duplicating the list. Keep in sync with `order()`. */
 export const ORDER_KINDS = [
-  'select', 'move', 'moveQueued', 'attack', 'formation', 'stance',
-  'queued', 'complete', 'reject', 'cancel', 'sensorsOpen', 'sensorsClose',
-  'speed', 'focus', 'toast',
+  'select', 'move', 'moveQueued', 'attack', 'attackMove', 'guard', 'patrol',
+  'stop', 'formation', 'stance', 'queued', 'complete', 'reject', 'cancel',
+  'sensorsOpen', 'sensorsClose', 'speed', 'focus', 'toast',
 ];

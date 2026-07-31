@@ -1276,8 +1276,19 @@
 
 .vsh-legend--us { color: var(--vsh-cyan); }
 .vsh-legend--them { color: var(--vsh-amber); }
-.vsh-legend--ore { color: rgba(196, 174, 118, 0.72); }
-.vsh-legend--ore .vsh-legend__k { border-radius: 50%; }
+
+/* Terrain is white held low, like every other non-team mark, and the swatch
+   is hatched because that is exactly what the schematic draws — an occluder
+   you read through, not a token in a fourth hue competing with the enemy. */
+.vsh-legend--ore { color: var(--vsh-ink-40); }
+.vsh-legend--ore .vsh-legend__k {
+  border-radius: 50%;
+  background-image: repeating-linear-gradient(
+    45deg,
+    currentColor 0 0.5px,
+    transparent 0.5px 2.5px
+  );
+}
 
 /* Contact tally. DOM rather than canvas text, so it stays crisp at any DPR
    and inherits the same numerals as the rest of the HUD. */
@@ -1626,17 +1637,38 @@
 
 /* ------------------------------------------------------- 9b. audio mixer */
 /* Lives inside the controls card because that is where a player goes when
-   they stop to fiddle. Hidden until `src/audio/index.js` announces itself —
-   a mixer wired to nothing is worse than no mixer. */
+   they stop to fiddle — but above the reference grid, not as a column in it.
+   Flowed last in a three-then-two column newspaper layout it fell under the
+   fold of the card's scroll box at 1280x720 and below. Hidden until
+   `src/audio/index.js` announces itself: a mixer wired to nothing is worse
+   than no mixer. */
 .vsh-audio { display: none; }
-.vsh-audio.is-live { display: block; }
+.vsh-audio.is-live { display: block; margin: -6px 0 28px; }
+
+.vsh-audio__head {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+}
+
+.vsh-audio__head .vsh-help__grp { flex: 1 1 auto; }
+
+/* One line of five faders. They wrap rather than shrink, so a narrow card
+   stacks them instead of turning each into an unusable 30 px stub. */
+.vsh-audio__bank {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 28px;
+  margin-top: 10px;
+}
 
 .vsh-audio__row {
-  display: grid;
-  grid-template-columns: minmax(0, 74px) minmax(0, 1fr);
-  gap: 12px;
-  align-items: center;
-  padding: 4px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1 1 118px;
+  min-width: 104px;
+  max-width: 200px;
 }
 
 .vsh-audio__k {
@@ -1647,7 +1679,7 @@
 }
 
 .vsh-audio__mute {
-  justify-self: start;
+  flex: 0 0 auto;
   font-family: var(--vsh-mono);
   font-size: 9.5px;
   letter-spacing: 0.16em;
@@ -1711,6 +1743,22 @@
 .vsh-audio__slider:focus-visible {
   outline: 1px solid var(--vsh-cyan);
   outline-offset: 2px;
+}
+
+/* A browser that refuses an AudioContext gets told, not hidden from. Live
+   controls that cannot do anything are the thing worth avoiding, so they go
+   inert and the reason goes on the row underneath. */
+.vsh-audio.is-unavailable .vsh-audio__k,
+.vsh-audio.is-unavailable .vsh-audio__mute { color: var(--vsh-ink-24); }
+.vsh-audio.is-unavailable .vsh-audio__slider { opacity: 0.2; cursor: default; }
+
+.vsh-audio__note {
+  margin-top: 8px;
+  font-family: var(--vsh-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+  color: var(--vsh-amber);
 }
 
 /* --------------------------------------------------------------- 10. boot */

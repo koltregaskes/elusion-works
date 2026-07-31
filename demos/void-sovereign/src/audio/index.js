@@ -348,6 +348,13 @@ export class AudioSystem {
     this.buses.sfx.send(this.space, 0.16);
     this.buses.voice.send(this.comms, 0.28);
     this.buses.music.send(this.space, 0.1);
+
+    /* Per-sound wet destinations. Anything that wants its own reverb amount
+       posts to `bus.wet` rather than reaching past the fader to the convolver. */
+    this.buses.sfx.wetVol.connect(this.space);
+    this.buses.music.wetVol.connect(this.space);
+    this.buses.voice.wetVol.connect(this.comms);
+    this.buses.ui.wetVol.connect(this.comms);
   }
 
   /**
@@ -355,6 +362,14 @@ export class AudioSystem {
    *
    *   input     -> duck -> postDuck -> [inserts] -> volume -> preMaster
    *   lateInput ---------> postDuck
+   *   wet       -> wetVol -> (reverb)
+   *
+   * `wet` is where a single sound posts its own reverb send. It exists because
+   * a send taken straight off a voice's output node and wired to the convolver
+   * bypasses the user's fader entirely: with the music slider at zero the
+   * score's tail still arrived at the master, measured at −34 dBFS while
+   * auditing the "open space is silent" assertion. `wetVol` mirrors `volume`,
+   * so a bus turned down takes its reverb down with it.
    *
    * `lateInput` is the escape hatch for the thing that caused the duck. A
    * capital detonation ducks the sfx bus so the rest of the battle leans back
@@ -370,17 +385,22 @@ export class AudioSystem {
     duck.gain.value = 1;
     const postDuck = ctx.createGain();
     const volume = ctx.createGain();
+    const wet = ctx.createGain();
+    const wetVol = ctx.createGain();
     input.connect(duck);
     duck.connect(postDuck);
     lateInput.connect(postDuck);
     postDuck.connect(volume);
     volume.connect(this.preMaster);
+    wet.connect(wetVol);
     const b = {
       name,
       input,
       lateInput,
       volume,
       duck,
+      wet,
+      wetVol,
       _tail: postDuck,
       insert(node) {
         safeDisconnect(b._tail);
@@ -433,8 +453,15 @@ export class AudioSystem {
     setParam(this.masterVol.gain, curve(this.prefs.master) * dbToGain(TRIM_DB.master) * m, t, smooth);
     for (let i = 1; i < BUSES.length; i++) {
       const name = BUSES[i];
-      setParam(this.buses[name].volume.gain, curve(this.prefs[name]) * dbToGain(TRIM_DB[name]), t, smooth);
+      this._setBusGain(name, curve(this.prefs[name]) * dbToGain(TRIM_DB[name]), t, smooth);
     }
+  }
+
+  /** The fader and its wet twin always move together. */
+  _setBusGain(name, value, t, tau) {
+    const b = this.buses[name];
+    setParam(b.volume.gain, value, t, tau);
+    setParam(b.wetVol.gain, value, t, tau);
   }
 
   /* ------------------------------------------------------------- public API */
@@ -606,11 +633,11 @@ export class AudioSystem {
     if (this.sensorsOpen) this._presenceTarget *= 0.12;
     this.presence += (this._presenceTarget - this.presence) * clamp(dt * 2.2, 0, 1);
     const p = this.presence;
-    setParam(this.buses.sfx.volume.gain,
+    this._setBusGain('sfx',
       curve(this.prefs.sfx) * dbToGain(TRIM_DB.sfx) * lerp(0.06, 1, p), now, 0.12);
     setParam(this.sfxTone.frequency, lerp(900, 18000, p * p), now, 0.16);
     // The score comes forward as the battle recedes — it is what is left.
-    setParam(this.buses.music.volume.gain,
+    this._setBusGain('music',
       curve(this.prefs.music) * dbToGain(TRIM_DB.music) * lerp(1.35, 1, p), now, 0.3);
 
     this.sfx.update(dt, now);
@@ -785,6 +812,8 @@ export class AudioSystem {
       safeDisconnect(b.input);
       safeDisconnect(b.volume);
       safeDisconnect(b.duck);
+      safeDisconnect(b.wet);
+      safeDisconnect(b.wetVol);
     }
     safeDisconnect(this.space);
     safeDisconnect(this.spaceReturn);

@@ -113,10 +113,19 @@ void main() {
 
   float a;
   vec3 col;
-  if ( vShell > 0.5 ) {
+  if ( vShell > 1.5 ) {
+    /* The throat disc. vUv.y is the radius fraction here, not the axial one.
+       Hottest in the middle of the bore and gone before the rim, so the flange
+       stays hardware rather than becoming part of the flame. */
+    float rr = vUv.y;
+    float bore = pow( max( 1.0 - rr, 0.0 ), 1.4 );
+    a = ( 0.30 + 0.70 * bore ) * ( 1.0 - smoothstep( 0.62, 1.0, rr ) )
+      * mix( 0.45, 1.0, vThrottle ) * mix( 0.9, 1.1, turb ) * flick;
+    col = mix( uHot, vColor, smoothstep( 0.10, 0.90, rr ) ) * ( 1.15 + 0.85 * bore );
+  } else if ( vShell > 0.5 ) {
     // Inner shell: the hot choke. Short, near-white, barely turbulent.
     a = pow( max( 1.0 - t, 0.0 ), 2.4 ) * 1.35 * mix( 0.85, 1.0, flick );
-    col = mix( uHot, vColor, smoothstep( 0.0, 0.55, t ) ) * 1.55;
+    col = mix( uHot, vColor, smoothstep( 0.0, 0.48, t ) ) * 1.42;
   } else {
     a = body * rim * turb * flick * 0.55;
     col = mix( mix( uHot, vColor, 0.55 ), vColor * 0.75, smoothstep( 0.0, 0.7, t ) );
@@ -208,22 +217,50 @@ void main() {
 }
 `;
 
-/** Two concentric shells along +Z, nozzle at z=0, tip at z=1, radius 1. */
-function buildPlumeGeometry(radial = 12, rings = 8) {
+/* Two concentric shells plus a throat disc, along +Z, mouth at z=0, tip at
+   z=1, nominal radius 1.
+
+   Two things about the profile matter, and both were wrong against the
+   mothership's corrected bell:
+
+   1. It is **necked at the mouth**. A cone that is widest exactly at z=0 has to
+      be as wide as the bell to be visible at all, and anything that reads as
+      thrust then overhangs the lip flange — fire round the outside of the
+      nozzle rather than out of it. Starting at 62% and opening to full a short
+      way aft puts the widest point clear of the hardware and gives the plume a
+      throat, which is also what a real nozzle does once the flow is free.
+   2. Ring spacing is **biased toward the mouth**, because that is where all the
+      shape is. Eight evenly-spaced rings put one lonely vertex ring inside the
+      whole neck.
+
+   The throat disc is the third piece and it is the one that fixes the bell
+   read from astern: a cone is a surface, so end-on you look straight down the
+   bore and out the far side, and a mothership at station keeping showed eight
+   bright rims round eight black holes. A flat lit disc at the mouth plane
+   fills the bore and foreshortens away as the view goes tangential, which is
+   exactly how a bore behaves. */
+function buildPlumeGeometry(radial = 12, rings = 10) {
   const pos = [];
   const nrm = [];
   const uvs = [];
   const shell = [];
   const idx = [];
   const shells = [
-    { r: 1.0, exp: 0.62, tag: 0 },
-    { r: 0.44, exp: 0.9, tag: 1 },
+    // exp drives the taper. Below ~0.7 the cone holds most of its width for
+    // half its length and a capital's mains read as parallel searchlights.
+    { r: 1.0, exp: 0.76, neck: 0.62, tag: 0 },
+    { r: 0.46, exp: 0.98, neck: 0.70, tag: 1 },
   ];
+  const smooth01 = (x) => {
+    const c = x < 0 ? 0 : x > 1 ? 1 : x;
+    return c * c * (3 - 2 * c);
+  };
   let base = 0;
   for (const s of shells) {
     for (let i = 0; i <= rings; i++) {
-      const t = i / rings;
-      const r = s.r * Math.pow(Math.max(0, 1 - t), s.exp);
+      const t = Math.pow(i / rings, 1.25);
+      const neck = s.neck + (1 - s.neck) * smooth01(t / 0.20);
+      const r = s.r * neck * Math.pow(Math.max(0, 1 - t), s.exp);
       for (let j = 0; j <= radial; j++) {
         const a = (j / radial) * Math.PI * 2;
         const cx = Math.cos(a);
@@ -243,6 +280,26 @@ function buildPlumeGeometry(radial = 12, rings = 8) {
     }
     base = pos.length / 3;
   }
+
+  // Throat disc, tagged 2. uv.y is the radius fraction here, not the axial
+  // one; the fragment stage branches on aShell and reads it that way.
+  /* Held under the lip flange's inner radius (0.9 of the bell) for every
+     throttle: the disc sits exactly on the mouth plane, and the flange's rear
+     face is the same plane, so any overlap is coplanar and would z-fight. */
+  const discR = 0.70;
+  pos.push(0, 0, 0);
+  nrm.push(0, 0, -1);
+  uvs.push(0, 0);
+  shell.push(2);
+  for (let j = 0; j <= radial; j++) {
+    const a = (j / radial) * Math.PI * 2;
+    pos.push(Math.cos(a) * discR, Math.sin(a) * discR, 0);
+    nrm.push(0, 0, -1);
+    uvs.push(j / radial, 1);
+    shell.push(2);
+  }
+  for (let j = 0; j < radial; j++) idx.push(base, base + 1 + j, base + 2 + j);
+
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
@@ -344,7 +401,12 @@ void main() {
   float halo = pow( max( 1.0 - sqrt( r2 ), 0.0 ), 2.2 ) * 0.30;
   float a = ( core + halo ) * vGain * fxSoftFade( vFragW );
   if ( a <= 0.004 ) discard;
-  gl_FragColor = vec4( mix( vColor, vec3( 1.0 ), core * 0.45 ) * ( 1.4 + 2.2 * core ) * uGain, a );
+  /* Radiance is held just clear of the glow layer's 0.6 cut, not far above it.
+     These are two-pixel dots at strategic range: at the radiance they used to
+     carry, the bloom bled each lamp into its neighbours and a 70 m strake of
+     86 lamps down a mothership resolved into one continuous white bar — which
+     destroys the countable-spacing scale cue they exist to give (§3.4). */
+  gl_FragColor = vec4( mix( vColor, vec3( 1.0 ), core * 0.45 ) * ( 0.80 + 1.30 * core ) * uGain, a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -359,7 +421,11 @@ const LIGHT_ATTRS = [
   { name: 'iSeed', size: 1, offset: 9 },
 ];
 
-const LIGHT_RANGE = 16000;
+/* `hulls.js` sizes the strake pitch so a capital reads as a countable row of
+   lamps at 20 km; cutting the pass at 16 km threw that away 4 km short of the
+   distance it was built for. The batch is one draw call with a hard instance
+   cap, so the reach costs fill rate on two-pixel quads and nothing else. */
+const LIGHT_RANGE = 26000;
 
 const TRAIL_RANGE = 9000;
 
@@ -373,7 +439,7 @@ export class EngineFX {
     this.drawCalls = 3;
     this._entries = new Map();
 
-    this._plumeGeo = buildPlumeGeometry(12, 8);
+    this._plumeGeo = buildPlumeGeometry(12, 10);
     this._quadGeo = quadGeometry();
 
     this.core = ctx.instanceBatch({
@@ -417,7 +483,9 @@ export class EngineFX {
       capacity: ctx.budget.lights,
       vertexShader: LIGHT_VERT,
       fragmentShader: LIGHT_FRAG,
-      uniforms: { uMinPixels: { value: 1.9 } },
+      // A lamp needs to be a dot, not a spike: under ~2 px the bloom sees a
+      // point source and smears it wider than the gap to the next lamp.
+      uniforms: { uMinPixels: { value: 2.2 } },
       renderOrder: 12,
       softness: 6,
       nearFade: 8,
@@ -610,7 +678,13 @@ export class EngineFX {
         // capital's block runs proportionally further because its bells are
         // proportionally larger. One formula covers a 45x span of nozzle size.
         const len = r * (3.0 + 22.0 * throttle);
-        const wid = r * (0.92 + 0.30 * throttle);
+        /* Nominal radius, not the widest point: the necked profile peaks at
+           0.87 of this a fifth of the way aft. Full burn therefore tops out at
+           1.04 bell radii, just inside the 1.12 lip flange, so the plume fills
+           the mouth without ever spilling round the outside of the hardware.
+           The old 1.22 at full throttle overhung the flange by 9%, which read
+           as fire leaking round the nozzle rather than leaving it. */
+        const wid = r * (0.95 + 0.25 * throttle);
         const seed = (entry.seed + i * 0.317) % 1;
 
         const o = n * E_STRIDE;
@@ -626,7 +700,9 @@ export class EngineFX {
         cd[o + 16] = 0;
 
         for (let k = 0; k < E_STRIDE; k++) fd[o + k] = cd[o + k];
-        fd[o + 7] = r * (2.2 + 1.9 * throttle);
+        // Trimmed now the throat disc carries the bore: the flare is the halo
+        // around a lit nozzle, not the only thing lighting it.
+        fd[o + 7] = r * (1.9 + 1.7 * throttle);
         fd[o + 8] = fd[o + 7];
         fd[o + 9] = len;
         fd[o + 16] = 1;
