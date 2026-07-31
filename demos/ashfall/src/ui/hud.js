@@ -40,7 +40,14 @@
  *   [data-xp]            div.xp-pop > span.xp-amt, span.xp-tag
  *   [data-damage-dirs]   div.dmg-arc
  *   [data-ammo-pips]     i.pip
- *   [data-compass-track] span.ct-tick (.is-cardinal, .is-minor), span.ct-marker
+ *   [data-compass-track] span.ct-tick (.is-cardinal, .is-minor)
+ *                        span.ct-marker (.is-primary) > i.ct-pip + span.ct-label
+ *
+ * `.ct-marker.is-primary` is the nearest objective and is presentation-only. Anything the
+ * stylesheet hangs off it must not change the label's *metrics*: the marker collision pass
+ * measures each label once and then never reads layout again, so a rule that widens the
+ * primary marker would silently invalidate that measurement. Colour, shadow and opacity are
+ * safe; font-size, weight, tracking and padding are not.
  * ---------------------------------------------------------------------------
  */
 
@@ -249,6 +256,46 @@ const HUD = {
   damageArcLife: 1.6,
   calloutLife: 2.2,
   compassPxPerDeg: 2.45,
+  /* --- Objective markers on the compass strip -----------------------------
+   * Placing a marker purely by bearing is correct and unreadable. From much of the yard, The
+   * Depot and The Yard are barely 20° apart — 54 px on the strip, against labels that measure
+   * 58 and 65 px — so the two ran straight through each other and the compass read
+   * "THE DEPOTTHE YARD" in one weight and one colour. The numbers below are the budget the
+   * collision pass is allowed to spend fixing that.
+   */
+  markerFontPx: 8,
+  markerTrackEm: 0.14,
+  /**
+   * Clear space demanded between two label boxes. Measured off the delivered frames, the strip
+   * renders at about 6.4 px per character, so 8 px is a hair over one character of air — the
+   * least that reads as a gap rather than as a wide letter-space, and with the pip marking the
+   * start of the second label that is enough to break the run.
+   */
+  markerGapPx: 8,
+  /**
+   * Hard ceiling on how far a marker may be slid off its true bearing. 11 px is 4.5° at
+   * 2.45 px/deg — under the width of the needle's own tick, so the marker still points at the
+   * thing it names. Past that the pass stops lying about the bearing and starts fading
+   * instead, because a marker that is 20° wrong is worse than no marker.
+   */
+  markerMaxNudgePx: 11,
+  /**
+   * Residual overlap, after nudging, over which the lower-priority label fades to nothing.
+   * Residual is measured against the demanded gap, so a residual of `markerGapPx` is the point
+   * where the two label boxes actually touch and anything beyond it is glyphs crossing glyphs.
+   * 16 px puts the junior at a third of its level by the time the boxes touch and at zero
+   * before a single letter can overlap another — the pair collapses to one marker rather than
+   * ever printing the run this pass exists to prevent.
+   */
+  markerFadeSpanPx: 16,
+  /** Resting opacity of a marker that is not the nearest objective. */
+  markerJuniorAlpha: 0.62,
+  /**
+   * Share of a nudge paid by the higher-priority marker of a pair; the junior yields the rest.
+   * Does not apply to the nearest objective, which yields nothing and always sits on its true
+   * bearing.
+   */
+  markerSeniorYield: 0.25,
   minimapHz: 20,
   minimapRange: 42, // metres from the player to the edge of the disc
   blipLife: 1.5,
@@ -257,6 +304,28 @@ const HUD = {
   regenDelay: 4.5,
   regenRate: 24,
 };
+
+/**
+ * Approximate rendered width of an objective label, in px, without touching layout.
+ *
+ * The collision pass needs a width before the probe pass has run (and if the real measurement
+ * ever comes back zero, e.g. the strip is display:none at that instant), so it needs a number
+ * it can derive from the string alone. The tracking is added per character because
+ * letter-spacing appends after every glyph, including the last, and the pip plus its margin
+ * are a flat 7 px.
+ *
+ * 0.58em is the deliberately *pessimistic* advance: a genuinely condensed face runs about
+ * 0.45em for upper-case Latin, but ARCHITECTURE's webfont exception means the strip may well
+ * be set in whatever generic sans the platform has, and the delivered frames measure 0.62em
+ * for exactly that reason. Overestimating costs a few px of extra separation; underestimating
+ * lets two labels touch, which is the defect this whole pass exists to remove.
+ *
+ * `measureZoneMarkers` replaces it with the truth as soon as the HUD is on screen.
+ */
+function estimateMarkerWidth(text) {
+  const n = typeof text === 'string' ? text.length : 0;
+  return n * HUD.markerFontPx * (0.58 + HUD.markerTrackEm) + 7;
+}
 
 /* ========================================================================== */
 /* Factory                                                                    */
@@ -688,14 +757,15 @@ export function createHUD(game) {
       }
     }
 
-    // Objective markers: one per named zone, bearing recomputed at 10 Hz.
+    // Objective markers: one per named zone, bearing recomputed at 10 Hz and then put through
+    // the collision pass in `updateZoneMarkers`, which is what stops two zones on close
+    // bearings fusing into a single unreadable run of type.
     const zoneKeys = Object.keys(ZONES || {});
     for (let i = 0; i < zoneKeys.length; i++) {
       const z = ZONES[zoneKeys[i]];
       if (!z || !z.centre) continue;
       const m = doc.createElement('span');
       m.className = 'ct-marker';
-      m.textContent = String(z.label || zoneKeys[i]).toUpperCase();
       const ms = m.style;
       ms.position = 'absolute';
       ms.left = '50%';
@@ -703,14 +773,96 @@ export function createHUD(game) {
       ms.transform = 'translate(-50%,-50%)';
       ms.marginTop = '13px';
       ms.color = COL.accent;
-      ms.fontSize = '8px';
-      ms.letterSpacing = '0.14em';
+      ms.fontSize = `${HUD.markerFontPx}px`;
+      ms.letterSpacing = `${HUD.markerTrackEm}em`;
       ms.opacity = ALPHA_STR[70];
       ms.pointerEvents = 'none';
       ms.whiteSpace = 'nowrap';
+
+      // Every label opens with a pip. Separation is the collision pass's job, but the pass
+      // can only buy a few pixels before it starts lying about the bearing, and at 7 px of
+      // gap two runs of tracked upper-case still want to read as one word. A mark that is
+      // *not a letter* in front of each label is what makes the boundary unambiguous.
+      // It is a box rather than a bullet glyph on purpose: ARCHITECTURE's one webfont
+      // exception means the HUD has to survive the condensed fallback stack, and none of
+      // those faces can be promised to carry U+2022. A rotated square needs no font at all,
+      // and it echoes the minimap's blip so the two readouts share a language.
+      const pip = doc.createElement('i');
+      pip.className = 'ct-pip';
+      const ps2 = pip.style;
+      ps2.display = 'inline-block';
+      ps2.width = '3px';
+      ps2.height = '3px';
+      ps2.marginRight = '4px';
+      ps2.verticalAlign = 'middle';
+      ps2.background = COL.accent;
+      ps2.rotate = '45deg';
+      ps2.boxShadow = '0 0 3px rgba(0,0,0,0.9)';
+
+      const label = doc.createElement('span');
+      label.className = 'ct-label';
+      label.textContent = String(z.label || zoneKeys[i]).toUpperCase();
+
+      m.appendChild(pip);
+      m.appendChild(label);
       el.compassTrack.appendChild(m);
-      zoneMarkers.push({ node: m, cx: z.centre[0], cz: z.centre[2], tx: -999 });
+      zoneMarkers.push({
+        node: m,
+        pip,
+        cx: z.centre[0],
+        cz: z.centre[2],
+        tx: -999,
+        /** Measured once by `measureZoneMarkers`; estimated until then. */
+        w: estimateMarkerWidth(label.textContent),
+        alpha: -1,
+        colour: '',
+        primary: null,
+      });
     }
+  }
+
+  /* Collision-pass scratch. Sized to the marker count at build and never reallocated, so the
+     10 Hz pass below allocates nothing. `markX` is in px from the needle, not track space. */
+  const markCount = zoneMarkers.length;
+  const markX = new Float64Array(markCount || 1);
+  const markTrue = new Float64Array(markCount || 1);
+  const markD2 = new Float64Array(markCount || 1);
+  const markRank = new Int32Array(markCount || 1);
+  const markFade = new Float64Array(markCount || 1);
+  const markOrder = new Int32Array(markCount || 1);
+
+  /**
+   * Read each marker's rendered width. This is a layout read, so it is only ever called from
+   * the probe pass and from the font-loading callback below — never from `update`. The labels
+   * are static text, so one measurement holds for the life of the session; the only thing that
+   * can move it is a webfont arriving late and changing the metrics out from under the
+   * condensed fallback, which is exactly what `document.fonts.ready` tells us about.
+   */
+  function measureZoneMarkers() {
+    for (let i = 0; i < zoneMarkers.length; i++) {
+      const m = zoneMarkers[i];
+      let px = 0;
+      try {
+        px = m.node.offsetWidth || 0;
+      } catch {
+        px = 0;
+      }
+      // A zero here means the strip is not laid out yet; keep the estimate rather than
+      // collapsing every marker to width 0 and disabling the collision pass entirely.
+      if (px > 4) m.w = px;
+    }
+  }
+
+  try {
+    if (doc.fonts && doc.fonts.ready && typeof doc.fonts.ready.then === 'function') {
+      doc.fonts.ready
+        .then(() => {
+          if (!disposed && probed) measureZoneMarkers();
+        })
+        .catch(() => {});
+    }
+  } catch {
+    /* No CSS Font Loading API: the probe measurement stands. */
   }
 
   /* ====================================================================== */
@@ -1225,6 +1377,10 @@ export function createHUD(game) {
     );
     fallbackLayer(el.flash, rgbaOf(COL.blood, 0.85));
 
+    // The one place the objective labels are measured. Everything the collision pass does
+    // afterwards runs off these numbers, so it never reads layout again.
+    measureZoneMarkers();
+
     if (map.ctx && el.minimapCanvas && el.minimapCanvas.offsetWidth === 0) {
       el.minimapCanvas.style.width = '150px';
       el.minimapCanvas.style.height = '150px';
@@ -1672,19 +1828,156 @@ export function createHUD(game) {
     }
   }
 
+  /**
+   * Objective markers, positioned by bearing and then de-collided.
+   *
+   * Bearing alone is not enough. The Yard and The Depot are only a few degrees apart from most
+   * of the west side of the map, and two labels placed independently at 2.45 px/deg landed
+   * inside each other: the strip rendered "THE DEPOTTHE YARD", same weight, same accent
+   * colour, the D of one crossing the T of the other, with nothing to tell a reader where one
+   * label stopped. A compass that cannot be read at a glance is not a compass.
+   *
+   * So after positioning, the markers are sorted by screen x and swept as a chain. Priority is
+   * distance to the player — the objective you are closest to is the one you are acting on, so
+   * it wins every contest — and each overlapping pair is resolved with three tools in order of
+   * how much they cost the reader:
+   *
+   *  1. Nudge. Slide the pair apart to the minimum gap, the junior yielding the ground and the
+   *     nearest objective yielding none of it. Capped at `markerMaxNudgePx` against the true
+   *     bearing, so no marker is ever bent past 4.5°.
+   *  2. Fade. Whatever overlap survives the nudge fades the junior marker out over
+   *     `markerFadeSpanPx`. Dead-on bearings therefore collapse the pair to one marker rather
+   *     than printing two labels through each other.
+   *  3. Rank. The nearest objective is accent at full strength, the rest are dim and quieter,
+   *     so even a pair that clears the gap separates by colour and level as well as by space.
+   *
+   * Every step is a continuous function of bearing, which matters at 10 Hz: nothing pops as the
+   * player turns, and when two markers cross each other they are fully faded at the crossing.
+   *
+   * Widths come from `measureZoneMarkers`; this function never touches layout, never allocates,
+   * and writes only when a quantised value actually moved.
+   */
   function updateZoneMarkers(headingDeg) {
-    if (!zoneMarkers.length) return;
+    const n = zoneMarkers.length;
+    if (!n) return;
     const px = game?.player?.eye?.x ?? game?.camera?.position?.x ?? 0;
     const pz = game?.player?.eye?.z ?? game?.camera?.position?.z ?? 0;
-    for (let i = 0; i < zoneMarkers.length; i++) {
+
+    for (let i = 0; i < n; i++) {
       const m = zoneMarkers[i];
-      const bearing = Math.atan2(m.cx - px, -(m.cz - pz)) * RAD2DEG;
-      // Place the marker on the replica nearest the current heading so it never jumps.
-      const x = (headingDeg + wrap180(bearing - headingDeg)) * HUD.compassPxPerDeg;
-      const qx = Math.round(x);
+      const dx = m.cx - px;
+      const dz = m.cz - pz;
+      const bearing = Math.atan2(dx, -dz) * RAD2DEG;
+      // Relative to the needle. The track itself carries the heading, so this is exactly the
+      // marker's offset from the centre of the strip, which is the space collisions live in.
+      markTrue[i] = wrap180(bearing - headingDeg) * HUD.compassPxPerDeg;
+      markX[i] = markTrue[i];
+      markD2[i] = dx * dx + dz * dz;
+      markFade[i] = 0;
+      markOrder[i] = i;
+    }
+
+    // Priority: nearest zone is rank 0. n is the zone count (three), so the O(n^2) rank is
+    // cheaper than any sort and, unlike a sort, is stable against equal distances by index.
+    for (let i = 0; i < n; i++) {
+      let r = 0;
+      for (let j = 0; j < n; j++) {
+        if (markD2[j] < markD2[i] || (markD2[j] === markD2[i] && j < i)) r++;
+      }
+      markRank[i] = r;
+    }
+
+    // Left-to-right order. Insertion sort over the index array: in place, allocation-free, and
+    // near-free on an already-sorted list, which is what it sees on all but a few frames.
+    for (let i = 1; i < n; i++) {
+      const v = markOrder[i];
+      const key = markX[v];
+      let j = i - 1;
+      while (j >= 0 && markX[markOrder[j]] > key) {
+        markOrder[j + 1] = markOrder[j];
+        j--;
+      }
+      markOrder[j + 1] = v;
+    }
+
+    // 1. Nudge. Two relaxation sweeps: one pass fixes an isolated pair, and the second settles
+    //    the case where opening a pair pushes one of them into a third marker.
+    for (let pass = 0; pass < 2; pass++) {
+      for (let k = 1; k < n; k++) {
+        const a = markOrder[k - 1];
+        const b = markOrder[k];
+        const need = (zoneMarkers[a].w + zoneMarkers[b].w) * 0.5 + HUD.markerGapPx;
+        const over = need - (markX[b] - markX[a]);
+        if (over <= 0) continue;
+        const nudge = over < HUD.markerMaxNudgePx ? over : HUD.markerMaxNudgePx;
+        // The junior gives way. The nearest objective is a special case and yields *nothing*:
+        // it is the one the player is acting on, so its bearing stays exactly true, and since
+        // it is also the marker the eye is locked to it is the one whose sideways jump would
+        // be most obvious when two markers cross and the resolution flips sides.
+        const aYield =
+          markRank[a] === 0 ? 0
+            : markRank[b] === 0 ? 1
+              : markRank[a] > markRank[b] ? 1 - HUD.markerSeniorYield : HUD.markerSeniorYield;
+        markX[a] -= nudge * aYield;
+        markX[b] += nudge * (1 - aYield);
+      }
+    }
+
+    // The cap has to hold against the *true* bearing, not per sweep: two sweeps of an 11 px
+    // budget would otherwise compound into a 22 px lie. Clamping here rather than inside the
+    // sweep also keeps the nudge continuous — a marker that hits the rail simply stops, and
+    // whatever overlap that leaves is handed to the fade below.
+    for (let i = 0; i < n; i++) {
+      const lo = markTrue[i] - HUD.markerMaxNudgePx;
+      const hi = markTrue[i] + HUD.markerMaxNudgePx;
+      markX[i] = markX[i] < lo ? lo : markX[i] > hi ? hi : markX[i];
+    }
+
+    // 2. Fade, measured on the final geometry so it reflects what the nudge could not fix.
+    for (let k = 1; k < n; k++) {
+      const a = markOrder[k - 1];
+      const b = markOrder[k];
+      const need = (zoneMarkers[a].w + zoneMarkers[b].w) * 0.5 + HUD.markerGapPx;
+      const over = need - (markX[b] - markX[a]);
+      if (over <= 0) continue;
+      const junior = markRank[a] > markRank[b] ? a : b;
+      const f = clamp01(over / HUD.markerFadeSpanPx);
+      if (f > markFade[junior]) markFade[junior] = f;
+    }
+
+    // 3. Write. Back into track space, where the strip's own translation is undone.
+    const base = headingDeg * HUD.compassPxPerDeg;
+    for (let i = 0; i < n; i++) {
+      const m = zoneMarkers[i];
+      const qx = Math.round(base + markX[i]);
       if (m.tx !== qx) {
         m.tx = qx;
         m.node.style.translate = txStr(qx);
+      }
+
+      const primary = markRank[i] === 0;
+      const alpha = (primary ? 1 : HUD.markerJuniorAlpha) * (1 - markFade[i]);
+      const qa = Math.round(clamp01(alpha) * 100);
+      if (m.alpha !== qa) {
+        m.alpha = qa;
+        m.node.style.opacity = ALPHA_STR[qa];
+      }
+
+      // Colour and level only. Nothing here may change the label's width, or the measured
+      // widths the pass above runs on would stop describing what is on screen.
+      // Hazard accent for the objective you are closest to, bone white for the rest: two
+      // solid colours a hue apart, so a pair that only just clears the gap still separates.
+      // `COL.dim` is deliberately not used here — it carries its own 0.55 alpha, which would
+      // compound with the junior's opacity and put the label under the scrim.
+      const colour = primary ? COL.accent : COL.primary;
+      if (m.colour !== colour) {
+        m.colour = colour;
+        m.node.style.color = colour;
+        m.pip.style.background = colour;
+      }
+      if (m.primary !== primary) {
+        m.primary = primary;
+        m.node.classList.toggle('is-primary', primary);
       }
     }
   }

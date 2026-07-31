@@ -22,9 +22,12 @@
  *   2. A world-space up-facing ash/dust term. Ash settles on horizontal faces, tints them
  *      towards PALETTE.dust, roughens them, and — critically — kills the metallic response,
  *      because a dust film is a dielectric. This is the single strongest cohesion trick in
- *      the whole renderer and it is what makes the map read as one place. The tint is
- *      MULTIPLICATIVE and luminance-neutral: a dusting re-tints a surface, it never replaces
- *      it, and treating it as a lerp towards a pale colour is what turned the yard white.
+ *      the whole renderer and it is what makes the map read as one place. It is built from
+ *      two bounded parts, never from a lerp towards a bright colour — that is what turned
+ *      the yard into a snowfield: a MULTIPLICATIVE, luminance-neutral hue rotation that
+ *      cannot change any surface's level, plus a small coverage term towards the deposit's
+ *      OWN albedo, which is authored dark (0.23 linear luminance) so it lifts a substrate
+ *      darker than ash and can never bleach one that is brighter.
  *   3. Low-frequency world-space macro variation, which breaks tiling on large planes in a
  *      way no amount of texture-space work can (texture-space blotches tile with the texture;
  *      this does not). It is sampled from a MIPPED tileable noise texture at world scale, not
@@ -3169,6 +3172,10 @@ uniform float uDetailFadeFar;
 // The luminance-normalised ash tint. See FRAG_ASH: the dust film MULTIPLIES the substrate,
 // so this must not carry level of its own or it bleaches whatever it lands on.
 uniform vec3  uDustTint;
+// The deposit's own diffuse albedo, in linear. Deliberately DARK (0.22 luminance) — this is
+// the one term allowed to move a surface towards a fixed colour, so its level is the ceiling
+// on anything the ash can do to the frame. 0.263/0.226/0.172, luminance 0.23. See FRAG_ASH.
+uniform vec3  uDustAlbedo;
 uniform float uAshAmount;
 uniform float uAshSharpness;
 uniform float uAshRoughness;
@@ -3522,6 +3529,25 @@ const FRAG_ASH = /* glsl */ `
     // reading brighter, not an exposure change.
     ashFilm *= 1.0 + ashMask * ashMask * 0.16;
     diffuseColor.rgb *= ashFilm;
+
+    // COVERAGE. A pure hue rotation is safe but it is not the whole physical story: where the
+    // powder has genuinely drifted it stops being a film over the substrate and starts being
+    // the surface the light actually sees, so the albedo has to move towards the deposit's own
+    // rather than merely being tinted by it. Without this the ash can only ever scale what is
+    // underneath, which means dark ballast stays ballast-dark however deep the drift, and no
+    // per-surface ash scalar can reach the ~0.20 linear the art direction authors for the
+    // dusted ground — the knob has no range in the direction it is needed.
+    //
+    // It cannot reintroduce the snowfield, and that is a property of the target rather than of
+    // the weight: uDustAlbedo is 0.263/0.226/0.172 linear (luminance 0.23), DARKER than every
+    // substrate in the frame except the ballast, the dirt and the asphalt. Mixing towards it
+    // is therefore a lift only for surfaces that are darker than real ash and a slight
+    // darkening for everything above it — the exact opposite of lerping 84% of the way to a
+    // 0.50-luminance emission swatch, which is what bleached the yard. Bounded at 0.45 and
+    // squared in the mask so it lands in the drifts and stays out of the thin dusting: on
+    // ballast that is 0.163 linear at the mean coverage and 0.183 at full, warm at R-B +0.08.
+    diffuseColor.rgb = mix( diffuseColor.rgb, uDustAlbedo, ashMask * ashMask * 0.45 );
+
     roughnessFactor = mix( roughnessFactor, uAshRoughness, ashMask * 0.9 );
     // A dust film is a dielectric.
     metalnessFactor *= ( 1.0 - ashMask * 0.94 );
@@ -3694,6 +3720,19 @@ export function createMaterials(renderer, shadows) {
     const dl = dustTint.r * 0.2126 + dustTint.g * 0.7152 + dustTint.b * 0.0722;
     dustTint.multiplyScalar(1 / Math.max(dl, 1e-4));
   }
+  /**
+   * The ash deposit's own albedo — the target of FRAG_ASH's coverage mix, and the only colour
+   * in the block that carries level.
+   *
+   * PALETTE.dust is authored as a particle/smoke EMISSION colour: 0.573/0.492/0.377 linear,
+   * luminance 0.50, which is brighter than fresh snow and roughly four times what any surface
+   * in a rail yard reflects. Used unscaled as a diffuse target it does not dust the ground, it
+   * replaces it. Scaled to 0.45 it is 0.263/0.226/0.172 — the reflectance of real settled ash
+   * over ballast, still warm at R-B +0.09, and the same shader-side idiom grimeColour uses two
+   * lines below. The CPU texture generators keep using the full-strength C.dust from the linear
+   * palette table, so nothing baked into an albedo map changes.
+   */
+  const dustAlbedo = new THREE.Color(PALETTE.dust).multiplyScalar(0.45);
   // Grime and oxide are palette colours like everything else — nothing here invents a hue.
   const grimeColour = new THREE.Color(PALETTE.dirt).multiplyScalar(0.55);
   const oxideColour = new THREE.Color(PALETTE.rust);
@@ -3922,6 +3961,9 @@ export function createMaterials(renderer, shadows) {
       // which is the same 0.62 m across / 4.2 m down stretch the streaks always had.
       uStreakScale: { value: 0.16 },
       uDustTint: { value: dustTint },
+      // Shared by reference like every other palette colour here — one Color for the whole
+      // material set, so nothing is allocated per material and nothing per frame.
+      uDustAlbedo: { value: dustAlbedo },
       uAshAmount: { value: def.ash ?? 1.0 },
       uAshSharpness: { value: 2.8 },
       uAshRoughness: { value: 0.95 },
