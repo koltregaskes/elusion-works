@@ -128,6 +128,198 @@ function glassMaterial(team) {
   }));
 }
 
+/* ------------------------------------------------------ distant impostor */
+
+/* Iteration 5 measured a 560-hull fleet and found no silhouette in it: at
+   5,000 m every ship produced the same bright teardrop whether it was a 14 m
+   interceptor or a 130 m frigate, and at 16,000 m the fleet was pure glow.
+
+   The cause is not the LOD cull. Measured on the built geometry, the primary
+   loft survives at every level — a level-3 hull still has a bounding box
+   exactly `SHIPS[id].length` long. What fails is screen coverage:
+
+     LOD 3 begins at 70 hull lengths, which at a 48 deg FOV is 17 px wide
+     for *every* class, and runs down from there. An interceptor at 5 km is
+     3.4 px and at 16 km is 1.06 px — under one pixel. A physically lit hull
+     that small averages to a value indistinguishable from the void, and the
+     drive bloom, which is a fixed screen size, then writes straight over it.
+
+   So the coarse levels stop trying to be lit models and become a deliberate
+   mark: one key-lit term with a hard terminator and a floor under the shadow
+   side, at a value chosen to sit across the range the backdrop occupies. The
+   lit side reads against the void, the shadow side reads against the nebula,
+   and the ship is a shape either way instead of a value that happens to
+   average into the background. A floor on the painted size then stops a
+   fighter dissolving below one pixel. That floor only binds under ~2.3 px, so
+   it never touches a frigate or a capital and the ranking by hull length —
+   which is the whole of §3.4 — survives.
+
+   This costs nothing. It replaces the hull material at the coarse levels
+   rather than adding a pass, so the draw-call count is unchanged, and one
+   `dot()` is cheaper per fragment than the PBR path it displaces. */
+
+/** Levels at or beyond this draw as impostors. 2 == under ~55 screen px. */
+const IMPOSTOR_LOD = 2;
+/** Minimum painted diameter, in device pixels, for an impostor hull. */
+const IMPOSTOR_MIN_PX = 2.3;
+/** Ceiling on the size floor, so nothing balloons out at 60 km. */
+const IMPOSTOR_MAX_GROW = 2.4;
+/** Canopy glass stops resolving well before the blockout does. */
+const GLASS_MAX_LOD = 1;
+/** Shadow-side floor. Deep, but never zero — a hole reads as nothing. */
+const IMPOSTOR_FILL = 0.20;
+
+/* Shared uniform objects: one write per frame serves every impostor material.
+   `uPxScale` is pixels per metre at one metre of view depth; `uKeyDir` is the
+   key star in view space. */
+const _impostorPx = { value: 600 };
+const _impostorKey = { value: new THREE.Vector3(0, 0, 1) };
+const _vp = new THREE.Vector4();
+const _dbSize = new THREE.Vector2();
+const _keyWorld = new THREE.Vector3(0, 0, 1);
+let _keyFound = false;
+let _keyCountdown = 0;
+
+/* The key star belongs to [ENV] and its direction is not on any frozen API, so
+   read it out of the scene rather than duplicating a constant that would then
+   silently drift. Read-only, and only every couple of seconds. */
+function scanKeyLight(scene) {
+  if (!scene || !scene.traverseVisible) return;
+  let best = null;
+  let bestPower = -1;
+  scene.traverseVisible((o) => {
+    if (!o.isDirectionalLight) return;
+    const c = o.color;
+    const power = o.intensity * (c ? c.r + c.g + c.b : 1);
+    if (power > bestPower) { bestPower = power; best = o; }
+  });
+  if (!best) return;
+  best.getWorldPosition(_keyWorld);
+  if (best.target) {
+    const t = new THREE.Vector3();
+    best.target.getWorldPosition(t);
+    _keyWorld.sub(t);
+  }
+  if (_keyWorld.lengthSq() < 1e-9) _keyWorld.set(0, 0, 1);
+  _keyWorld.normalize();
+  _keyFound = true;
+}
+
+/* Object3D.onBeforeRender fires once per mesh per pass, and it is the only
+   hook into the frame that SHIPS owns — nothing here may reach into main.js. */
+function impostorBeforeRender(renderer, scene, camera) {
+  if (!renderer || !camera || !camera.isPerspectiveCamera) return;
+
+  let h = 0;
+  if (typeof renderer.getCurrentViewport === 'function') {
+    renderer.getCurrentViewport(_vp);
+    h = _vp.w;
+  }
+  if (!(h > 0)) h = renderer.getDrawingBufferSize(_dbSize).y;
+  // projectionMatrix[1][1] is 1 / tan( fovY / 2 ); half the viewport height in
+  // device pixels turns that into pixels per metre at one metre of depth. Taken
+  // from the matrix rather than from camera.fov so a post stack that renders at
+  // a reduced scale, or jitters the projection for TAA, is followed exactly.
+  _impostorPx.value = camera.projectionMatrix.elements[5] * h * 0.5;
+
+  if (_keyCountdown-- <= 0) {
+    scanKeyLight(scene);
+    _keyCountdown = _keyFound ? 120 : 8;
+  }
+  _impostorKey.value.copy(_keyWorld).transformDirection(camera.matrixWorldInverse);
+}
+
+const IMPOSTOR_PARS = /* glsl */`
+uniform float uPxScale;
+uniform float uBoundR;
+uniform float uMinPxR;
+uniform float uMaxGrow;
+uniform float uFill;
+uniform vec3 uKeyDir;
+varying float vFace;
+`;
+
+/* Runs immediately after <project_vertex>, so `mvPosition` is the view-space
+   position and gl_Position has not yet been touched by the log-depth chunk. */
+const IMPOSTOR_VERT = /* glsl */`
+{
+  vec4 vsCtr = vec4( 0.0, 0.0, 0.0, 1.0 );
+  #ifdef USE_INSTANCING
+    vsCtr = instanceMatrix * vsCtr;
+  #endif
+  vsCtr = modelViewMatrix * vsCtr;
+
+  float vsDepth = max( 1.0, -vsCtr.z );
+  float vsPxR = uBoundR * uPxScale / vsDepth;
+  float vsGrow = clamp( uMinPxR / max( vsPxR, 1e-4 ), 1.0, uMaxGrow );
+
+  vec4 vsPos = mvPosition;
+  /* Lateral only. Every vertex keeps the depth it already had, so a widened
+     hull can never push itself in front of its own drive bells and kill the
+     glow that carries team colour at this range. */
+  vsPos.xy = vsCtr.xy + ( mvPosition.xy - vsCtr.xy ) * vsGrow;
+  gl_Position = projectionMatrix * vsPos;
+
+  mat3 vsNm = normalMatrix;
+  #ifdef USE_INSTANCING
+    mat3 vsIm = mat3( instanceMatrix );
+    vec3 vsSq = vec3( dot( vsIm[ 0 ], vsIm[ 0 ] ), dot( vsIm[ 1 ], vsIm[ 1 ] ), dot( vsIm[ 2 ], vsIm[ 2 ] ) );
+    vsNm = vsNm * mat3( vsIm[ 0 ] / vsSq.x, vsIm[ 1 ] / vsSq.y, vsIm[ 2 ] / vsSq.z );
+  #endif
+  vec3 vsN = normalize( vsNm * normal );
+  float vsNdl = clamp( dot( vsN, uKeyDir ), 0.0, 1.0 );
+  /* One key light, hard terminator, deep but never black on the shadow side —
+     §3.2 stated in the only two numbers a mark this small can carry. */
+  vFace = uFill + ( 1.0 - uFill ) * ( vsNdl * vsNdl * ( 3.0 - 2.0 * vsNdl ) );
+}
+`;
+
+const _impostorCache = new Map();
+
+/**
+ * The mark a hull becomes once it is a few tens of pixels wide or less.
+ * One material per (class, team) — they all compile to the same program, and
+ * the per-class uniform is the bounding radius the size floor works from.
+ */
+function impostorMaterial(team, classId, radius) {
+  const key = `${team}:${classId}`;
+  const hit = _impostorCache.get(key);
+  if (hit) return hit;
+
+  const pal = TEAM_COLORS[team] || FALLBACK_TEAM_COLORS[0];
+  // Bone grey, straddling the backdrop: lit side above the brightest gas,
+  // shadow side below it. The team lean is deliberately small — §3.3, colour
+  // comes from the engines and the trim, never from the hull.
+  const colour = new THREE.Color(0x8d949c);
+  colour.lerp(pal.secondary, 0.16);
+
+  const uniforms = {
+    uPxScale: _impostorPx,
+    uKeyDir: _impostorKey,
+    uBoundR: { value: Math.max(1e-3, radius) },
+    uMinPxR: { value: IMPOSTOR_MIN_PX * 0.5 },
+    uMaxGrow: { value: IMPOSTOR_MAX_GROW },
+    uFill: { value: IMPOSTOR_FILL },
+  };
+
+  const m = new THREE.MeshBasicMaterial({ color: colour, fog: false });
+  m.userData.impostor = true;
+  m.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>\n${IMPOSTOR_PARS}`)
+      .replace('#include <project_vertex>', `#include <project_vertex>\n${IMPOSTOR_VERT}`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vFace;')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n\tdiffuseColor.rgb *= vFace;');
+  };
+  // Every impostor shares one program; only the uniforms differ.
+  m.customProgramCacheKey = () => 'vs-impostor';
+
+  _impostorCache.set(key, m);
+  return m;
+}
+
 /* -------------------------------------------------------------- LOD table */
 
 /* Multipliers on hull length. A 14 m interceptor drops to the blockout at
@@ -145,12 +337,25 @@ const LOD_HYSTERESIS = 0.08;
  * individual path uses; an unbatched fighter and a batched one at the same
  * range must not be drawing different geometry.
  */
-export function pickLod(classId, distance) {
+export function pickLod(classId, distance, current = -1) {
   const def = SHIPS[classId];
   if (!def) return 0;
   const t = distance / def.length;
-  for (let i = LOD_STEPS.length - 1; i > 0; i--) if (t >= LOD_STEPS[i]) return i;
-  return 0;
+  let want = 0;
+  for (let i = LOD_STEPS.length - 1; i > 0; i--) {
+    if (t >= LOD_STEPS[i]) { want = i; break; }
+  }
+  /* Hysteresis. `THREE.LOD` gets this for free; the batched path has to be
+     given it, and it matters more here than it used to, because level 2 is
+     where the hull swaps to the impostor shading. A ship parked on the
+     boundary would otherwise change shading model every frame. */
+  if (current >= 0 && want !== current) {
+    const edge = LOD_STEPS[want > current ? want : current];
+    if (want > current ? t < edge * (1 + LOD_HYSTERESIS) : t > edge * (1 - LOD_HYSTERESIS)) {
+      return current;
+    }
+  }
+  return want;
 }
 
 /* ------------------------------------------------------------------ cache */
@@ -224,13 +429,21 @@ function levelGroup(asset, index, team) {
   g.name = `${asset.classId}:L${index}`;
   g.userData.lodLevel = index;
   const geo = asset.levels[index];
+  const impostor = index >= IMPOSTOR_LOD;
   if (geo.hull) {
-    const mesh = tagged(geo.hull, hullMaterial(team, asset.def.family, false, asset.def.length), KIND.HULL, index);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
+    const mat = impostor
+      ? impostorMaterial(team, asset.classId, asset.radius)
+      : hullMaterial(team, asset.def.family, false, asset.def.length);
+    const mesh = tagged(geo.hull, mat, KIND.HULL, index);
+    // A dilated hull must not cast a dilated shadow, and at this size there is
+    // nothing in the shadow worth having.
+    mesh.castShadow = !impostor;
+    mesh.receiveShadow = !impostor;
+    mesh.userData.impostor = impostor;
+    if (impostor) mesh.onBeforeRender = impostorBeforeRender;
     g.add(mesh);
   }
-  if (geo.glass) g.add(tagged(geo.glass, glassMaterial(team), KIND.GLASS, index));
+  if (geo.glass && index <= GLASS_MAX_LOD) g.add(tagged(geo.glass, glassMaterial(team), KIND.GLASS, index));
   if (geo.glow) {
     g.add(asGlow(tagged(geo.glow, glowMaterial(team, 'light'), KIND.GLOW, index)));
   }
@@ -491,12 +704,24 @@ class FleetBatch {
         im.userData.lodLevel = i;
         im.userData.emissive = kind === KIND.GLOW || kind === KIND.BELL;
         if (im.userData.emissive) asGlow(im);
+        if (material.userData && material.userData.impostor) {
+          im.userData.impostor = true;
+          im.onBeforeRender = impostorBeforeRender;
+        }
         this.group.add(im);
         level.parts.push({ mesh: im, damage: dmg, kind });
       };
 
-      make(geo.hull, hullMaterial(this.team, this.asset.def.family, true, this.asset.def.length), KIND.HULL, true);
-      make(geo.glass, glassMaterial(this.team), KIND.GLASS, false);
+      const impostor = i >= IMPOSTOR_LOD;
+      make(
+        geo.hull,
+        impostor
+          ? impostorMaterial(this.team, this.classId, this.asset.radius)
+          : hullMaterial(this.team, this.asset.def.family, true, this.asset.def.length),
+        KIND.HULL,
+        !impostor,
+      );
+      if (i <= GLASS_MAX_LOD) make(geo.glass, glassMaterial(this.team), KIND.GLASS, false);
       make(geo.glow, glowMaterial(this.team, 'light'), KIND.GLOW, false);
       make(geo.bell, glowMaterial(this.team, 'bell'), KIND.BELL, false);
       this.levels.push(level);

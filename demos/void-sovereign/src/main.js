@@ -565,6 +565,19 @@ async function main() {
     });
   }
 
+  /* A listener that throws is now contained by the bus rather than killing the
+     fan-out, but contained is not the same as fine — it still means a feature
+     is silently absent. Check once the game has settled and say so. */
+  setTimeout(() => {
+    if (!bus.errors.length) return;
+    const types = [...new Set(bus.errors.map((e) => e.type))];
+    bus.emit('ui:toast', {
+      text: `Some event handlers are failing (${types.join(', ')}). See __VS.busErrors.`,
+      kind: 'warning',
+    });
+  }, 8000);
+  Object.defineProperty(vs, 'busErrors', { get: () => bus.errors });
+
   boot.set(1, 'Ready.');
   loop.start();
 

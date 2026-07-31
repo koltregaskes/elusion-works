@@ -1,5 +1,6 @@
 import * as THREE from '../../vendor/three/build/three.module.js';
 import { bus } from './events.js';
+import { makeRng } from './rng.js';
 
 /* Focus-orbit camera rig.
 
@@ -184,6 +185,13 @@ const _p1 = new THREE.Vector3();
 const _q1 = new THREE.Quaternion();
 const _s1 = new THREE.Vector3();
 const _try = new THREE.Vector3();
+const _right = new THREE.Vector3();
+const _up = new THREE.Vector3();
+const _sun = new THREE.Vector3();
+const _axA = new THREE.Vector3();
+const _axB = new THREE.Vector3();
+const _cam = new THREE.Vector3();
+const _rel = new THREE.Vector3();
 
 /* Anything smaller than this cannot hide a capital ship and is not worth
    orbiting around; the rock fields are full of them. Anything larger than the
@@ -202,6 +210,58 @@ const HARVEST_INTERVAL_MS = 2000;
    in the way when its angular radius from the camera exceeds this share of the
    frame's half-height *and* it overlaps the middle of the shot. */
 const OCCLUSION_FRACTION = 0.25;
+
+/* ------------------------------------------------------------ opening shot */
+
+/* The first frame of a run is the single most-seen image in the demo, so the
+   rig composes it rather than being handed a distance.
+
+   Four numbers were measured on the same opening frame and they do not agree:
+   a world-axis Box3 projects to 806 px, the oriented local box to 620 px, this
+   rig's own report to 573 px, and the pixels actually painted to 455 px — 24%
+   of a 1920 px frame. The Box3 figures are inflated because a 1,900 m hull
+   yawed 30 degrees is not a brick; the honest number is the projection of the
+   *geometry*, which measures 484 px on the same frame and is what `_spanAt`
+   computes. Everything below is stated against that measure. */
+const OPENING = {
+  /* Share of frame width the hero's projected geometry should span. The rubric
+     asks for a painted silhouette of 45-55%; painted runs ~6% under the
+     geometric span because the unlit flank does not clear the difference
+     threshold, so aim a little over the middle of the band. */
+  fill: 0.52,
+  /* And never further out than this, whatever the fill solve wants. Framing off
+     hull length is the constraint that stops a wide hull being flown into and a
+     narrow one being left as a speck. */
+  hullMultipleMin: 1.0,
+  hullMultipleMax: 1.2,
+
+  /* Angle between the view direction and the direction to the star, at the
+     subject. 90 degrees is pure side-light; 180 is the star directly behind the
+     camera and a flat, shadowless hull. This band keeps a hard terminator with
+     the lit flank facing the camera, and it is the constraint ENV asked for.
+
+     Crucially the camera is aimed *from* the seeded sun rather than seeded
+     independently, so the relative angle holds however ENV moves the star. ENV
+     must not close the loop by aiming the star at the camera. */
+  sunAngleMin: 104 * DEG,
+  sunAngleMax: 134 * DEG,
+
+  /* Elevation band. Slightly below the equator is allowed — a capital read from
+     just under its belt line looms, which is the whole point of a hero shot. */
+  pitchMin: -0.06,
+  pitchMax: 0.46,
+
+  /* Where the silhouette's centre sits, as a share of the frame away from the
+     middle. Dead centre is tidy rather than arresting. */
+  offsetX: 0.115,
+  offsetY: 0.055,
+
+  /* Phases tried around the sun cone, and how many hull vertices the fill solve
+     samples. 2,400 points over an 892k-vertex hull settle the extent to well
+     inside a pixel and cost a fraction of a millisecond, once, at boot. */
+  phases: 36,
+  samples: 2400,
+};
 
 /* Candidate offsets, in radians, searched in order when the shot is blocked.
    Yaw first and in both directions, because swinging sideways preserves the
@@ -270,6 +330,19 @@ export class CameraRig {
     this._sensors = false;
     this._restore = null;
     this._trans = null;
+
+    /* Opening shot. `_composed` latches the moment the rig either composes the
+       hero frame or the player touches the camera, so a later `ui:focus` can
+       never re-stage the boot shot mid-battle. The offset that takes the
+       subject off dead centre lives on its own gain and slides back to a
+       centred orbit as soon as the player takes over — an off-centre focus is
+       a composition, not a control scheme. */
+    this._composed = false;
+    this._composeX = 0;
+    this._composeY = 0;
+    this._composeGain = new Spring(0, 1.8);
+    this._hullPts = null;
+    this._openingReport = null;
 
     /* Reduced motion kills the two things that move without being asked to:
        idle sway and impact shake. Deliberate motion — orbit, zoom, focus, the
@@ -349,6 +422,13 @@ export class CameraRig {
 
   focusOn(point, distance, instant = false) {
     if (!point) return;
+    /* The bootstrap asks for the hero frame by focusing the player's flagship
+       with a distance derived from hull length. The rig takes that as the cue,
+       not as the shot: composition is a camera concern, and the distance it
+       needs depends on the approach angle, the aspect ratio and the dynamic
+       FOV — none of which the bootstrap can see. */
+    if (this._composeOpening(point, instant)) return;
+    this._releaseCompose();
     this._cancelTransition();
     this._follow = null;
     this._focus.target.set(point.x, point.y, point.z);
@@ -372,6 +452,7 @@ export class CameraRig {
   frameEntities(entities, instant = false) {
     const list = this._toList(entities);
     if (!list.length) return;
+    this._releaseCompose();
 
     _v1.set(0, 0, 0);
     for (const e of list) {
@@ -424,6 +505,7 @@ export class CameraRig {
   /** dx/dy in CSS pixels. Angular, so the feel is identical at every zoom. */
   orbitBy(dxPx, dyPx) {
     const s = this.options.orbitSensitivity;
+    this._releaseCompose();
     this._cancelTransition();
     this._yaw.target -= dxPx * s;
     this._pitch.target = clamp(this._pitch.target + dyPx * s, -PITCH_LIMIT, PITCH_LIMIT);
@@ -434,6 +516,7 @@ export class CameraRig {
       +dx is screen-right, +dy is screen-down. */
   panScreen(dxPx, dyPx) {
     if (!dxPx && !dyPx) return;
+    this._releaseCompose();
     this._cancelTransition();
     this._follow = null;
 
@@ -456,6 +539,7 @@ export class CameraRig {
 
   /** Shift the focus by a world-space vector (used by touch two-finger pan). */
   panWorld(v) {
+    this._releaseCompose();
     this._cancelTransition();
     this._follow = null;
     this._focus.target.add(v);
@@ -467,6 +551,7 @@ export class CameraRig {
       the Homeworld camera. */
   zoomBy(steps, ndc = null) {
     if (!steps) return;
+    this._releaseCompose();
     this._cancelTransition();
 
     const before = this._logDist.target;
@@ -489,12 +574,337 @@ export class CameraRig {
     this._idle = 0;
   }
 
+  /* --------------------------------------------------------- opening shot */
+
+  /** The composed opening frame, for anyone measuring it. Null until it runs. */
+  get openingShot() {
+    return this._openingReport;
+  }
+
+  /** Give the off-centre composition back and latch the opening as spent. */
+  _releaseCompose() {
+    this._composed = true;
+    this._composeGain.target = 0;
+  }
+
+  /* The player's flagship, if the world can name it. `teams[0]` matches what
+     the bootstrap frames; a rig handed no world simply has no hero. */
+  _hero() {
+    const w = this.world;
+    if (!w || !w.entities || !w.teams || !w.teams[0]) return null;
+    const e = w.entities.get ? w.entities.get(w.teams[0].baseId) : null;
+    if (!e || e.alive === false || !e.object3D || !e.position) return null;
+    return e;
+  }
+
+  /* Camera-space right/up for a view direction. `_basis` predates this and
+     returns an up vector that points the other way — harmless where it is used
+     (symmetric noise) and wrong everywhere composition matters, so anything
+     that has to agree with the screen uses this one. Matches Three's `lookAt`:
+     z = dir, x = up_world x z, y = z x x. */
+  _camBasis(dir, right, up) {
+    right.set(dir.z, 0, -dir.x);
+    if (right.lengthSq() < 1e-8) right.set(1, 0, 0);
+    right.normalize();
+    up.crossVectors(dir, right).normalize();
+  }
+
+  /* World-space sample of the hero's hull, taken once.
+
+     Only the finest LOD level is walked: `THREE.LOD` leaves every level visible
+     until its first `update()`, which has not happened yet at boot, and three
+     copies of the same hull would triple the work for an identical extent. */
+  _samplePoints(root) {
+    const out = [];
+    const budget = OPENING.samples;
+    const meshes = [];
+    const walk = (node) => {
+      if (!node || node.visible === false) return;
+      if (node.isLOD && node.levels && node.levels.length) {
+        walk(node.levels[0].object);
+        return;
+      }
+      if (node.isMesh && node.geometry && node.geometry.attributes &&
+          node.geometry.attributes.position) {
+        meshes.push(node);
+      }
+      const kids = node.children;
+      for (let i = 0; i < kids.length; i++) walk(kids[i]);
+    };
+    root.updateWorldMatrix(true, true);
+    walk(root);
+    if (!meshes.length) return null;
+
+    let total = 0;
+    for (const m of meshes) total += m.geometry.attributes.position.count;
+    if (!total) return null;
+    const stride = Math.max(1, Math.ceil(total / budget));
+
+    for (const m of meshes) {
+      const pos = m.geometry.attributes.position;
+      for (let i = 0; i < pos.count; i += stride) {
+        _p1.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld);
+        if (!Number.isFinite(_p1.x) || !Number.isFinite(_p1.y) || !Number.isFinite(_p1.z)) continue;
+        out.push(_p1.x, _p1.y, _p1.z);
+      }
+    }
+    return out.length >= 12 ? out : null;
+  }
+
+  /* Direction from the battle toward the star, read off whichever directional
+     light ENV installed. Returns false if the scene has no key light, in which
+     case the opening simply falls back to a seeded absolute azimuth. */
+  _sunDir(out) {
+    const scene = this.engine && this.engine.scene;
+    if (!scene) return false;
+    let best = null;
+    let bestI = -Infinity;
+    for (let i = 0; i < scene.children.length; i++) {
+      const o = scene.children[i];
+      if (!o || !o.isDirectionalLight) continue;
+      const inten = typeof o.intensity === 'number' ? o.intensity : 0;
+      if (inten <= bestI) continue;
+      bestI = inten;
+      best = o;
+    }
+    if (!best) return false;
+    out.copy(best.position);
+    if (best.target && best.target.isObject3D) out.sub(best.target.position);
+    if (out.lengthSq() < 1e-9) return false;
+    out.normalize();
+    return true;
+  }
+
+  /* FOV the rig will settle at for a given distance. Shared with `_apply` so a
+     framing solved here cannot disagree with the frame that gets rendered. */
+  _fovAt(dist) {
+    const zt = clamp01(
+      (Math.log(Math.max(1, dist)) - Math.log(600)) / (Math.log(60000) - Math.log(600)),
+    );
+    return clamp(this.baseFov - 3.5 * (1 - zt) + 6.0 * zt, 38, 62);
+  }
+
+  /* Screen extent of a point cloud from a candidate pose, in NDC. `w` and `h`
+     come back as shares of the frame (1.0 = edge to edge), and `cx`/`cy` locate
+     the silhouette's centre so the composition offset can be measured from the
+     shape rather than from the entity's origin. */
+  _spanAt(pts, focus, dir, dist, fovDeg, out) {
+    const tanV = Math.tan(fovDeg * DEG * 0.5);
+    const tanH = tanV * Math.max(0.2, this.camera.aspect);
+    _cam.copy(focus).addScaledVector(dir, dist);
+    this._camBasis(dir, _right, _up);
+
+    let x0 = Infinity; let x1 = -Infinity; let y0 = Infinity; let y1 = -Infinity;
+    for (let i = 0; i < pts.length; i += 3) {
+      _rel.set(pts[i] - _cam.x, pts[i + 1] - _cam.y, pts[i + 2] - _cam.z);
+      /* Depth along the view axis; the camera looks down -dir. */
+      const f = -(_rel.x * dir.x + _rel.y * dir.y + _rel.z * dir.z);
+      if (f < 1) continue;
+      const x = (_rel.x * _right.x + _rel.y * _right.y + _rel.z * _right.z) / (f * tanH);
+      const y = (_rel.x * _up.x + _rel.y * _up.y + _rel.z * _up.z) / (f * tanV);
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
+    if (x1 < x0) return null;
+    out.w = (x1 - x0) * 0.5;
+    out.h = (y1 - y0) * 0.5;
+    out.cx = (x0 + x1) * 0.5;
+    out.cy = (y0 + y1) * 0.5;
+    return out;
+  }
+
+  /* Distance at which the hull spans `OPENING.fill` of the frame, held inside
+     the hull-length band. Span goes as 1/distance to first order, so a handful
+     of secant steps converge; the FOV is re-derived each step because it rides
+     the zoom and would otherwise be solved against the wrong lens. */
+  _solveFill(pts, focus, dir, hullLength) {
+    const lo = hullLength * OPENING.hullMultipleMin;
+    const hi = hullLength * OPENING.hullMultipleMax;
+    const span = { w: 0, h: 0, cx: 0, cy: 0 };
+    let d = clamp(hullLength * 1.08, lo, hi);
+    let got = 0;
+    for (let i = 0; i < 8; i++) {
+      const s = this._spanAt(pts, focus, dir, d, this._fovAt(d), span);
+      if (!s || !(s.w > 1e-4)) break;
+      got = s.w;
+      const next = clamp(d * (s.w / OPENING.fill), lo, hi);
+      if (Math.abs(next - d) < 0.5) { d = next; break; }
+      d = next;
+    }
+    return { dist: d, fill: got };
+  }
+
+  /* Aim the shot.
+
+     The camera sits on a cone about the direction to the star, at a seeded
+     half-angle inside the lighting band, and at a seeded phase around it. That
+     is what makes the seed change the framing without ever changing the
+     view-to-sun angle out of the band ENV needs — the two used to be randomised
+     independently, which is how six seeds produced a byte-identical opening
+     frame with a 7x spread in hull luminance. */
+  _aimOpening(focus, hero, rng) {
+    const haveSun = this._sunDir(_sun);
+    const alpha = Math.PI - rng.range(OPENING.sunAngleMin, OPENING.sunAngleMax);
+
+    if (!haveSun) {
+      /* No key light to aim from: a seeded absolute approach, which at least
+         still varies the shot. */
+      _sun.set(Math.sin(rng.range(-Math.PI, Math.PI)), 0.3, Math.cos(rng.range(-Math.PI, Math.PI)))
+        .normalize();
+    }
+
+    /* Orthonormal frame about the sun axis. */
+    _axA.set(0, 1, 0);
+    if (Math.abs(_sun.y) > 0.94) _axA.set(1, 0, 0);
+    _axA.crossVectors(_sun, _axA).normalize();
+    _axB.crossVectors(_sun, _axA).normalize();
+
+    const sa = Math.sin(alpha);
+    const ca = Math.cos(alpha);
+    const n = OPENING.phases;
+    const start = rng.int(0, n - 1);
+    const step = rng.chance(0.5) ? 1 : n - 1;   // both directions round the cone
+
+    const ok = [];
+    for (let i = 0; i < n; i++) {
+      const psi = (((start + i * step) % n) / n) * Math.PI * 2;
+      const cp = Math.cos(psi);
+      const sp = Math.sin(psi);
+      _try.set(
+        _sun.x * ca + (_axA.x * cp + _axB.x * sp) * sa,
+        _sun.y * ca + (_axA.y * cp + _axB.y * sp) * sa,
+        _sun.z * ca + (_axA.z * cp + _axB.z * sp) * sa,
+      ).normalize();
+      const pitch = Math.asin(clamp(_try.y, -1, 1));
+      if (pitch < OPENING.pitchMin || pitch > OPENING.pitchMax) continue;
+      ok.push({ yaw: Math.atan2(_try.x, _try.z), pitch });
+    }
+    if (!ok.length) {
+      /* The star is close enough to the pole that no point on the cone lands in
+         the elevation band. Take the shallowest candidate rather than refusing
+         to compose — a slightly high shot beats no hero frame at all. */
+      const psi = (start / n) * Math.PI * 2;
+      _try.set(
+        _sun.x * ca + (_axA.x * Math.cos(psi) + _axB.x * Math.sin(psi)) * sa,
+        _sun.y * ca + (_axA.y * Math.cos(psi) + _axB.y * Math.sin(psi)) * sa,
+        _sun.z * ca + (_axA.z * Math.cos(psi) + _axB.z * Math.sin(psi)) * sa,
+      ).normalize();
+      ok.push({
+        yaw: Math.atan2(_try.x, _try.z),
+        pitch: clamp(Math.asin(clamp(_try.y, -1, 1)), OPENING.pitchMin, OPENING.pitchMax),
+      });
+    }
+
+    /* Seeded pick, then walk the rest in order if a rock is parked in the shot.
+       Occlusion is checked at the hull-length distance the fill solve will land
+       near, which is close enough for a test that is about angles. */
+    const pick = rng.int(0, ok.length - 1);
+    const probe = (hero.def && hero.def.length ? hero.def.length : 1900) * 1.1;
+    const list = this._occluderList(focus, probe);
+    for (let i = 0; i < ok.length; i++) {
+      const cand = ok[(pick + i) % ok.length];
+      const cp = Math.cos(cand.pitch);
+      _try.set(Math.sin(cand.yaw) * cp, Math.sin(cand.pitch), Math.cos(cand.yaw) * cp).normalize();
+      if (list.length && this._sightBlocked(focus, _try, probe, list, hero.radius || 0)) continue;
+      return cand;
+    }
+    return ok[pick];
+  }
+
+  /** Static plus entity occluders near a focus, as the flat records the sight
+      test wants. Shared by `_clearView` and the opening aim. */
+  _occluderList(focus, dist) {
+    this._colliderTick = 0;
+    const world = this._collidersFor(focus, dist);
+    const out = this._harvestStatic().slice();
+    for (let i = 0; i < world.length; i++) {
+      const e = world[i];
+      const p = e.position || (e.object3D && e.object3D.position);
+      if (!p) continue;
+      /* The subject is not its own obstruction. */
+      if (_v3.copy(p).sub(focus).lengthSq() < 1e-2) continue;
+      out.push({ x: p.x, y: p.y, z: p.z, r: (e.radius || 0) * 1.1 });
+    }
+    return out;
+  }
+
+  /* Compose the hero frame. Returns false if this is not that call, in which
+     case `focusOn` carries on as it always did. */
+  _composeOpening(point, instant) {
+    if (this._composed || !instant) return false;
+    const hero = this._hero();
+    if (!hero) return false;
+    /* Only the boot framing of the flagship itself qualifies. */
+    const reach = Math.max(200, (hero.radius || 0) * 1.5);
+    if (_v3.copy(hero.position).sub(point).lengthSq() > reach * reach) return false;
+
+    const pts = this._samplePoints(hero.object3D);
+    if (!pts) return false;
+    const hullLength = (hero.def && hero.def.length) || (hero.radius || 900) * 2;
+
+    const seed = (this.world && this.world.seed) || 1337;
+    const rng = makeRng((seed ^ 0x5f3a91) >>> 0);
+    const aim = this._aimOpening(hero.position, hero, rng);
+
+    const cp = Math.cos(aim.pitch);
+    _dir.set(Math.sin(aim.yaw) * cp, Math.sin(aim.pitch), Math.cos(aim.yaw) * cp).normalize();
+    const solved = this._solveFill(pts, hero.position, _dir, hullLength);
+
+    /* Put the lit flank into the open half of the frame: the star's screen-side
+       decides which way the subject is pushed, so the shot always reads as the
+       hull turning into the light rather than away from it. */
+    this._camBasis(_dir, _right, _up);
+    const sunRight = this._sunDir(_sun) ? _sun.dot(_right) : 0;
+    const side = sunRight >= 0 ? -1 : 1;
+
+    const span = { w: 0, h: 0, cx: 0, cy: 0 };
+    const s = this._spanAt(pts, hero.position, _dir, solved.dist, this._fovAt(solved.dist), span);
+    const wantX = side * OPENING.offsetX * 2;
+    const wantY = OPENING.offsetY * 2;       // NDC +y is up; sit a touch high
+    this._composeX = wantX - (s ? s.cx : 0);
+    this._composeY = wantY - (s ? s.cy : 0);
+    this._composeGain.snap(1);
+    this._composed = true;
+
+    this._cancelTransition();
+    this._follow = null;
+    this._focus.target.copy(hero.position);
+    this._focus.snap(this._focus.target);
+    this._focusRadius = hero.radius || 0;
+    this._yaw.snap(aim.yaw);
+    this._pitch.snap(clamp(aim.pitch, -PITCH_LIMIT, PITCH_LIMIT));
+    this._logDist.snap(clamp(Math.log(solved.dist), this._logMin, this._logMax));
+    this._clear.snap(0);
+    /* Snap the lens too, or the first second of the demo is spent gliding from
+       the default FOV to the one the framing was solved against. */
+    this._fov.snap(this._fovAt(solved.dist));
+    this.camera.fov = this._fov.value;
+    this.camera.updateProjectionMatrix();
+    this._idle = 0;
+    this._apply(0);
+
+    this._openingReport = {
+      seed,
+      yaw: aim.yaw,
+      pitch: aim.pitch,
+      distance: solved.dist,
+      hullMultiple: solved.dist / hullLength,
+      fill: solved.fill,
+      offsetX: wantX,
+      offsetY: wantY,
+    };
+    return true;
+  }
+
   /* ---------------------------------------------------------- sensors view */
 
   setSensorsMode(open) {
     const want = !!open;
     if (want === this._sensors) return;
     this._sensors = want;
+    this._releaseCompose();
 
     if (want) {
       this._restore = {
@@ -694,6 +1104,21 @@ export class CameraRig {
     _v1.copy(focus).addScaledVector(_dir, eff);
     _look.copy(focus);
 
+    /* Opening composition. The subject is taken off dead centre by aiming past
+       it rather than by moving the camera, so the framing distance the shot was
+       solved for survives. It rides its own gain and slides back to a centred
+       orbit the moment the player takes the camera — an off-centre pivot is a
+       lovely still and a confusing thing to orbit around. */
+    this._composeGain.step(dt);
+    const cg = this._composeGain.value;
+    if (cg > 0.001) {
+      const tanV = Math.tan(cam.fov * DEG * 0.5);
+      const tanH = tanV * Math.max(0.2, cam.aspect);
+      this._camBasis(_dir, _right, _up);
+      _look.addScaledVector(_right, -this._composeX * eff * tanH * cg);
+      _look.addScaledVector(_up, -this._composeY * eff * tanV * cg);
+    }
+
     /* Idle life. Amplitude is in *pixels*, so it is exactly as subtle at 8 m
        as at 80 km. Fades in only once the player has stopped touching it. */
     let roll = 0;
@@ -756,9 +1181,8 @@ export class CameraRig {
       const inst = moved / Math.max(dt, 1e-4);
       this._moveSpeed += (inst - this._moveSpeed) * clamp01(dt * 6);
     }
-    const zt = clamp01((Math.log(eff) - Math.log(600)) / (Math.log(60000) - Math.log(600)));
     const st = clamp01(this._moveSpeed / Math.max(1, eff * 1.6));
-    this._fov.target = clamp(this.baseFov - 3.5 * (1 - zt) + 6.0 * zt + 4.5 * st, 38, 62);
+    this._fov.target = clamp(this._fovAt(eff) + 4.5 * st, 38, 62);
     this._fov.step(dt);
     if (Math.abs(cam.fov - this._fov.value) > 0.01) {
       cam.fov = this._fov.value;
@@ -942,14 +1366,7 @@ export class CameraRig {
   _clearView(instant) {
     const focus = this._focus.target;
     const dist = Math.exp(this._logDist.target);
-    this._colliderTick = 0;          // reframing is rare; do not trust a stale scan
-    const world = this._collidersFor(focus, dist);
-    const list = this._harvestStatic().concat(
-      world.map((e) => {
-        const p = e.position || (e.object3D && e.object3D.position);
-        return p ? { x: p.x, y: p.y, z: p.z, r: (e.radius || 0) * 1.1 } : null;
-      }).filter(Boolean),
-    );
+    const list = this._occluderList(focus, dist);
     if (!list.length) return;
 
     const yaw0 = this._yaw.target;

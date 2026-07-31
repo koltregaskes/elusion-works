@@ -111,7 +111,7 @@ void main() {
 
   // Sharp leading shell plus a decaying wash behind it.
   float shell = exp( -pow( d / 0.26, 2.0 ) );
-  float wash = smoothstep( 0.0, -0.75, d ) * 0.30 * ( 1.0 - vAge );
+  float wash = smoothstep( 0.0, -0.55, d ) * 0.20 * ( 1.0 - vAge );
 
   // Tangent frame about the hit: cells radiate from the impact, not a pole.
   vec3 up = abs( vHit.y ) < 0.9 ? vec3( 0.0, 1.0, 0.0 ) : vec3( 1.0, 0.0, 0.0 );
@@ -131,9 +131,12 @@ void main() {
   float excite = ( shell + wash ) * cell;
   float hot = exp( -pow( ang / 0.17, 2.0 ) ) * pow( 1.0 - vAge, 2.4 ) * 1.5;
   // The rim only announces itself at the moment of impact, then it is gone.
-  float rimFlash = fres * exp( -vAge * 7.0 ) * 0.35;
+  // It traces the whole silhouette, so it is the first thing that reads as a
+  // bubble when several hits overlap — kept brief and low.
+  float rimFlash = fres * exp( -vAge * 11.0 ) * 0.20;
 
-  float lattice = grid * 0.85 + 0.28;
+  // The unexcited lattice must be genuinely dark, not a dim standing grid.
+  float lattice = grid * 0.92 + 0.16;
   float a = ( excite * lattice * mix( 0.42, 1.0, fres ) + hot + rimFlash )
           * vStrength * pow( 1.0 - vAge, 1.3 );
   a *= fxSoftFade( vFragW );
@@ -158,6 +161,15 @@ const SHIELD_ATTRS = [
 ];
 
 const WHITE = new THREE.Color(0xffffff);
+
+/* Concurrent excitations allowed on one hull.
+
+   A capital under sustained fire raises a `sim:damage` every few frames, and
+   these instances blend additively over the same sphere: eight of them at once
+   stop being a lattice lighting under an impact and become exactly the glowing
+   bubble this effect exists to avoid — fresnel rim and all. Three is enough to
+   read as several hits at once and not enough to saturate. */
+const MAX_PER_ENTITY = 3;
 
 export class ShieldFX {
   constructor(ctx) {
@@ -208,6 +220,20 @@ export class ShieldFX {
 
     if (this._hits.length >= this.batch.capacity) this._hits.shift();
 
+    // Recycle this hull's oldest excitation rather than laying another one over
+    // the top of it (see MAX_PER_ENTITY).
+    let mine = 0;
+    for (let i = 0; i < this._hits.length; i++) if (this._hits[i].entity === e) mine++;
+    while (mine >= MAX_PER_ENTITY) {
+      for (let i = 0; i < this._hits.length; i++) {
+        if (this._hits[i].entity === e) {
+          this._hits.splice(i, 1);
+          break;
+        }
+      }
+      mine--;
+    }
+
     const amount = Math.max(1, p.amount || 10);
     const team = ctx.teamColour(e.team || 0);
     this._col.copy(team.trim).lerp(team.light, 0.35);
@@ -222,7 +248,11 @@ export class ShieldFX {
       life: 0.42 + Math.min(0.34, amount * 0.0016),
       strength: Math.min(1.7, 0.5 + Math.sqrt(amount) * 0.075),
       seed: ctx.rng.next(),
-      span: 1.9 + Math.min(1.5, amount * 0.004),
+      /* How far round the sphere the excitation runs, in radians. Held under
+         two so even an ion lance leaves the far side of the hull dark: a front
+         that reaches the opposite pole has lit the whole bubble, which is the
+         one thing this is not allowed to do. */
+      span: 1.15 + Math.min(0.8, amount * 0.003),
       colour: this._col.clone(),
     });
 

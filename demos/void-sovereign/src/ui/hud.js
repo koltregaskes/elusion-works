@@ -1120,6 +1120,7 @@ export class HUD {
     const t = {
       el: el('div', `vsh-toast${tone ? ` vsh-toast--${tone}` : ''}`, String(text)),
       life: alert ? TOAST_LIFE_ALERT : TOAST_LIFE,
+      alert,
     };
     // Polite for status, assertive for trouble — the toast rail is one live
     // region, so the urgent ones have to say so on the row itself.
@@ -1128,9 +1129,13 @@ export class HUD {
     this._toasts.push(t);
     // One frame later, so the transition has something to run from.
     requestAnimationFrame(() => t.el.classList.add('is-live'));
+    /* Over the cap, the oldest ordinary line goes first and trouble goes last.
+       Otherwise the degraded-boot warning is the very thing evicted by the
+       five routine "hull ready" notices that follow it. */
     while (this._toasts.length > MAX_TOASTS) {
-      const old = this._toasts.shift();
-      old.el.remove();
+      let i = this._toasts.findIndex((x) => !x.alert);
+      if (i < 0) i = 0;
+      this._toasts.splice(i, 1)[0].el.remove();
     }
   }
 

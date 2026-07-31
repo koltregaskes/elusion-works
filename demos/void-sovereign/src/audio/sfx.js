@@ -61,21 +61,40 @@ const HULL_LEVEL = 0.09;
 
 /* ------------------------------------------------------------ death sessions */
 
-/* Everything below is the contract of the `fx:blast` payload, not a copy of any
-   FX table. FX publishes `{ point, radius, strength }` on every beat of a death
-   that is meant to be *felt* — each secondary, the buckle, the primary — and
-   normalises `strength` so 1.0 is a 380 m destroyer's primary detonation, rising
-   as (L/380)^1.5. Given only the hull length we already have from `sim:death`,
-   that is enough to know what "big" means for this particular ship without
-   knowing when any of it happens.
-   Measured on the bus: fighter 0.002, frigate secondary 0.014, frigate primary
-   0.088, destroyer secondary 0.07, destroyer primary 1.0, ion lance ~0.16. */
-const BLAST_REF_LENGTH = 380;
+/* FX publishes `{ point, radius, strength }` on every beat of a death that is
+   meant to be *felt* — each secondary, the buckle, the primary. That channel is
+   the contract; how `strength` is normalised across hull sizes is not.
+   Mid-refactor it changed from (L/380)^1.5 to (L/380)^0.8 under a parallel
+   agent, which silently demoted a mothership's detonation to a secondary in an
+   earlier draft of this file that had the old exponent baked in.
+   So nothing here knows the normalisation.
 
-/* Fractions of a session's own expected primary. Chosen against the measured
-   spread above with margin at both ends: a frigate's primary is 0.44 of its
-   expected and a destroyer's buckle 0.24 of its own, so the two never cross. */
-const BLAST = { floor: 0.02, buckle: 0.12, primary: 0.38 };
+   Instead each session measures its *own* unit — the smallest beat it has heard,
+   which is always one of the walking secondaries — and classifies everything
+   against that. Every beat in one death carries the same hull factor, so those
+   ratios survive any rescaling: measured, a capital's primary is 15.6× its unit
+   and its buckle 3.7×, a frigate's primary 6.3×. The thresholds sit in the gaps.
+
+   The one absolute is a hard floor that keeps a distant fighter's pop from being
+   read as part of a capital's death. */
+const BLAST = { hardFloor: 0.0025, unitFloor: 0.4, buckle: 2.2, primary: 4.5 };
+
+/* `radius` is the blast's physical reach in metres, and every beat of one death
+   carries a reach set by the hull that is dying — measured at 1.4–1.9× its
+   length across secondaries, buckle and primary alike. That makes it the way to
+   tell whose beat this is: without the check, a corvette dying inside a
+   destroyer's match radius drags the session's unit down to its own 0.01, and
+   the destroyer's very next secondary reads as 7× the unit and detonates the
+   ship two seconds early. Observed, not hypothetical.
+
+   Measured, every beat of one death reports 1.4–1.9× the hull's length, so the
+   band below both clears its own sequence with margin and excludes a frigate's
+   beats from a destroyer's session. */
+const BLAST_RADIUS_BAND = { min: 0.8, max: 3.5 };
+
+/* A session past its detonation is in its tail. If another hull dies close by,
+   its sequence belongs to the newer session, not the one that is finishing. */
+const SPENT_SESSION_PENALTY = 6;
 
 /* If FX never speaks — disabled, or a quality mode that drops the sequence —
    the death still has to land. One compact detonation, not a fabricated script.
@@ -87,7 +106,9 @@ const UNATTENDED_AFTER = 0.6;
    starves both the category cap and the voice pool: in a staged 200-ship battle
    that cost 40% of the deaths and took the limiter out of the mix entirely. */
 const SESSION_INITIAL = { capital: 5, break: 4.5 };
-const SESSION_EXTEND = 2.2;
+/* Generous enough to ride out a frame stall between beats — losing the session
+   mid-sequence costs the detonation, which is the one thing that must land. */
+const SESSION_EXTEND = 3.2;
 /* Hard stops. A session that never sees its primary must not drone forever. */
 const SESSION_MAX = 13;
 const PRIMARY_DEADLINE = 9.5;
@@ -97,11 +118,6 @@ const PRIMARY_DEADLINE = 9.5;
    lance from `sim:fire`, so mark it and let the router step over it. */
 const ION_MARK_WINDOW = 0.3;
 const ION_MARK_DIST2 = 500 * 500;
-
-/** How big this hull's primary detonation should register on the blast bus. */
-function expectedBlast(size) {
-  return Math.pow(Math.max(1, size) / BLAST_REF_LENGTH, 1.5);
-}
 
 /** Growing cluster of near-simultaneous events at roughly one place. */
 class Cluster {
@@ -1448,7 +1464,9 @@ export class SfxLayer {
          against a sixty-kilometre audible range, and re-panning every secondary
          would cost more than it is worth. */
       matchR2: Math.pow(Math.max(900, size * 1.5 + 600), 2),
-      expected: expectedBlast(size),
+      // The quietest beat heard so far. Secondaries are the floor of every
+      // sequence, so this settles within the first beat or two and then holds.
+      unit: 0,
       opened: t,
       until: t + initial,
       chain,
@@ -1579,19 +1597,23 @@ export class SfxLayer {
       return;
     }
     const pt = p.point;
-    if (this._nearIon(pt)) {
+    const strength = Number(p.strength) || 0;
+    if (strength < BLAST.hardFloor || this._nearIon(pt)) {
       st.ignored++;
       return;
     }
-    const s = this._match(pt);
+    const radius = Number(p.radius) || 0;
+    const s = this._match(pt, radius);
     if (!s) {
       st.ignored++;
       return;
     }
-    // Relative to what this hull's *own* primary should measure, so one set of
-    // thresholds covers a 130 m frigate and a 1,900 m mothership.
-    const rel = (Number(p.strength) || 0) / s.expected;
-    if (rel < BLAST.floor) {
+    // Calibrate on this session's own quietest beat, so the thresholds below
+    // hold for a 130 m frigate and a 1,900 m mothership alike — and keep
+    // holding if FX renormalises the scale again.
+    if (!s.unit || strength < s.unit) s.unit = strength;
+    const ratio = strength / s.unit;
+    if (ratio < BLAST.unitFloor) {
       st.ignored++;
       return;
     }
@@ -1602,30 +1624,38 @@ export class SfxLayer {
     if (s.primaryAt > 0) {
       // The flash is three overlapping beats; they are one detonation.
       if (now - s.primaryAt < 0.45) return;
-      this._sessionSecondary(s, now, rel);
+      this._sessionSecondary(s, now, ratio);
       return;
     }
-    if (rel >= BLAST.primary) {
+    if (ratio >= BLAST.primary) {
       this._sessionPrimary(s, now);
       return;
     }
-    if (rel >= BLAST.buckle && !s.buckled) {
+    if (ratio >= BLAST.buckle && !s.buckled) {
       this._sessionBuckle(s, now);
       return;
     }
-    this._sessionSecondary(s, now, rel);
+    this._sessionSecondary(s, now, ratio);
   }
 
-  /** Nearest open session, scored by its own match radius so the tighter wins. */
-  _match(pt) {
+  /**
+   * Nearest open session, scored by its own match radius so the tighter wins —
+   * and only sessions whose hull could plausibly have thrown a blast this big.
+   */
+  _match(pt, radius) {
     let best = null;
     let bestScore = 1;
     for (let i = 0; i < this._sessions.length; i++) {
       const s = this._sessions[i];
+      if (radius > 0
+        && (radius < s.size * BLAST_RADIUS_BAND.min || radius > s.size * BLAST_RADIUS_BAND.max)) {
+        continue;
+      }
       const dx = pt.x - s.x;
       const dy = pt.y - s.y;
       const dz = pt.z - s.z;
-      const score = (dx * dx + dy * dy + dz * dz) / s.matchR2;
+      let score = (dx * dx + dy * dy + dz * dz) / s.matchR2;
+      if (s.primaryAt > 0) score = score * SPENT_SESSION_PENALTY + 0.35;
       if (score < bestScore) {
         bestScore = score;
         best = s;
@@ -1658,13 +1688,14 @@ export class SfxLayer {
     s.voice.hold(s.until);
   }
 
-  _sessionSecondary(s, now, rel) {
+  _sessionSecondary(s, now, ratio) {
     s.secondaries++;
     this._extend(s, now + SESSION_EXTEND);
     const prog = clamp(s.secondaries / s.progDiv, 0, 1);
-    // `strength` says how hard this particular beat is; the running count says
-    // how far gone the ship is. Both belong in the sound.
-    const level = clamp(s.levelBase + s.levelSpan * prog + clamp(rel, 0, 0.3) * 0.4, 0.15, 0.85);
+    // How hard this beat was relative to the sequence's own floor says how big
+    // it is; the running count says how far gone the ship is. Both belong.
+    const level = clamp(s.levelBase + s.levelSpan * prog + clamp((ratio - 1) * 0.1, 0, 0.22),
+      0.15, 0.85);
     this._secondary(s.chain.input, s.srcs, now + 0.001,
       s.size * (s.sizeBase + s.sizeSpan * prog), level);
     this._bedPush(s, now, prog);

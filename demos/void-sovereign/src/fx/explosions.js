@@ -76,21 +76,35 @@ void main() {
   float rr = mix( RING_INNER, RING_OUTER, uv.y );
 
   /* Ragged front: a real blast is neither a perfect circle nor evenly fed
-     round its circumference. One tap deforms the radius, a second at a higher
-     frequency modulates how much energy the front carries at that bearing.
-     Without the second the ring resolves into a neon hoop the moment the band
-     profile is tight enough to read as a front at all. Both taps tile in
-     uv.x, so there is no seam at the join. */
+     round its circumference. One tap deforms the front radius, a second at a
+     higher frequency modulates how much energy the front carries at that
+     bearing. Without the second the ring resolves into a neon hoop the moment
+     the band profile is tight enough to read as a front at all. Both taps tile
+     in uv.x, so there is no seam at the join.
+
+     The deformation multiplies the world radius and deliberately does NOT
+     touch vRr. Folding it into vRr — which is what this used to do — pushed
+     the front out past RING_OUTER wherever the wobble was positive, and the
+     fragment stage's rim envelope, whose whole job is to hide the mesh edge,
+     then punched holes in the brightest part of the front. Keeping the profile
+     coordinate clean lets the raggedness go as deep as it likes. */
   float w1 = texture2D( uNoise, vec2( uv.x + iSeed, iSeed * 3.1 ) ).b;
   float w2 = texture2D( uNoise, vec2( uv.x * 3.0 - iSeed * 2.0, iSeed * 7.7 ) ).g;
-  rr *= 1.0 + ( w1 - 0.5 ) * 0.13 + ( w2 - 0.5 ) * 0.05;
+  float w3 = texture2D( uNoise, vec2( uv.x * 7.0 + iSeed * 4.0, iSeed * 1.9 ) ).r;
+  /* Three octaves, weighted so no single one dominates. Put the amplitude on
+     the fundamental alone and the front stops being a circle at all — it turns
+     into a five-petalled blob. The read wanted here is a front that is plainly
+     circular and plainly not machined. */
+  float ragged = 1.0 + ( w1 - 0.5 ) * 0.050
+                     + ( w2 - 0.5 ) * 0.060
+                     + ( w3 - 0.5 ) * 0.035;
   // Value noise clusters hard around 0.5, so it needs a gain and a curve or the
   // modulation is invisible.
   float feed = w2 * 0.6 + w1 * 0.4;
   vBlotch = clamp( 0.12 + 2.5 * pow( feed, 1.7 ), 0.12, 1.9 );
 
   float ang = uv.x * 6.2831853;
-  vec3 wp = iCenter + ( t1 * cos( ang ) + t2 * sin( ang ) ) * ( rr * R );
+  vec3 wp = iCenter + ( t1 * cos( ang ) + t2 * sin( ang ) ) * ( rr * R * ragged );
   gl_Position = projectionMatrix * viewMatrix * vec4( wp, 1.0 );
 
   /* Screen floor on the band, as a fraction of the front radius. A shock front
@@ -148,7 +162,7 @@ void main() {
   float lead = exp( -pow( max( d, 0.0 ) / ( thick * 0.90 ), 2.0 ) );
   // Plateau then fall, not a Gaussian: the gas immediately behind the front is
   // still dense, and a front with no body behind it is a wireframe hoop.
-  float trail = exp( -pow( max( -d, 0.0 ) / ( thick * 3.0 ), 1.6 ) );
+  float trail = exp( -pow( max( -d, 0.0 ) / ( thick * 2.2 ), 1.6 ) );
   float band = lead * trail * vBlotch;
   float lip = exp( -pow( ( vRr - 1.015 ) / ( thick * 0.32 ), 2.0 ) ) * vBlotch;
 
@@ -168,7 +182,7 @@ void main() {
      ring ends as grey smoke rather than holding one temperature for two full
      seconds. One flat colour across the band was the other half of why this
      read as beige. */
-  float behind = clamp( -d / ( thick * 3.4 ), 0.0, 1.0 );
+  float behind = clamp( -d / ( thick * 2.6 ), 0.0, 1.0 );
   float cool = smoothstep( 0.08, 0.80, vAge );
 
   vec3 hot = mix( vec3( 1.00, 0.98, 0.95 ), vec3( 1.00, 0.76, 0.40 ), cool );
@@ -190,7 +204,7 @@ void main() {
   /* pow() on the body, not a linear term: it piles the radiance against the
      leading edge and lets the tail fall away, which is the difference between
      a shock front and a glowing tube. */
-  col *= vIntensity * uGain * ( 0.20 + 1.45 * lip + 1.15 * pow( clamp( band, 0.0, 1.0 ), 1.7 ) );
+  col *= vIntensity * uGain * ( 0.12 + 1.45 * lip + 1.15 * pow( clamp( band, 0.0, 1.0 ), 1.7 ) );
   gl_FragColor = vec4( col, a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
