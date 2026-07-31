@@ -111,6 +111,124 @@ body.vs-body {
   color: var(--vs-dim);
 }
 
+/* Pre-match setup.
+
+   Lives on the boot card because generation takes seconds anyway — the choice
+   costs the player no time they were not already spending. It also fixes the
+   genre's chronic onboarding problem: difficulty and seed used to be URL
+   parameters only, so a visitor could not pick an easier opponent without
+   editing the address bar. */
+
+.vs-setup {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1.6rem 2.4rem;
+  margin: 0 0 2.6rem;
+  padding: 1.6rem 0 0;
+  border-top: 1px solid var(--vs-faint);
+}
+
+.vs-setup-label {
+  display: block;
+  margin: 0 0 0.6rem;
+  font-family: var(--vs-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--vs-dim);
+}
+
+.vs-setup-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.vs-setup-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.5em 0.7em;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--vs-faint);
+  border-radius: 0;
+  color: var(--vs-ink);
+  font-family: var(--vs-mono);
+  font-size: 0.82rem;
+  letter-spacing: 0.06em;
+}
+
+.vs-setup-input:focus-visible {
+  border-color: var(--vs-cyan);
+  outline: none;
+}
+
+.vs-setup-btn,
+.vs-setup-choice button {
+  padding: 0.5em 0.85em;
+  background: transparent;
+  border: 1px solid var(--vs-faint);
+  border-radius: 0;
+  color: var(--vs-dim);
+  font-family: var(--vs-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease;
+}
+
+.vs-setup-btn:hover,
+.vs-setup-choice button:hover {
+  color: var(--vs-ink);
+  border-color: rgba(223, 232, 242, 0.4);
+}
+
+.vs-setup-choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.vs-setup-choice button[aria-checked='true'] {
+  color: var(--vs-void);
+  background: var(--vs-cyan);
+  border-color: var(--vs-cyan);
+}
+
+.vs-setup-hint {
+  margin: 0.6rem 0 0;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: rgba(223, 232, 242, 0.34);
+}
+
+.vs-boot-footer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.vs-launch {
+  padding: 0.7em 1.6em;
+  background: var(--vs-cyan);
+  border: 1px solid var(--vs-cyan);
+  border-radius: 0;
+  color: var(--vs-void);
+  font-family: var(--vs-mono);
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: opacity 160ms ease;
+}
+
+.vs-launch[disabled] {
+  opacity: 0.3;
+  cursor: default;
+}
+
 .vs-boot-progress {
   position: relative;
   height: 1px;

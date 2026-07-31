@@ -56,10 +56,45 @@
           every hull, every nebula, every asteroid — is generated in your browser
           from a single seed.
         </p>
+        <div class="vs-setup" id="vs-setup">
+          <div class="vs-setup-field">
+            <label class="vs-setup-label" for="vs-setup-seed">Seed</label>
+            <div class="vs-setup-row">
+              <input class="vs-setup-input" id="vs-setup-seed" type="text" inputmode="text"
+                     autocomplete="off" spellcheck="false" aria-describedby="vs-setup-seed-hint" />
+              <button class="vs-setup-btn" id="vs-setup-reroll" type="button">Reroll</button>
+            </div>
+            <p class="vs-setup-hint" id="vs-setup-seed-hint">Rebuilds the same universe every time.</p>
+          </div>
+
+          <div class="vs-setup-field">
+            <span class="vs-setup-label" id="vs-setup-diff-label">Opponent</span>
+            <div class="vs-setup-choice" role="radiogroup" aria-labelledby="vs-setup-diff-label" id="vs-setup-difficulty">
+              <button type="button" role="radio" aria-checked="false" data-value="easy">Cautious</button>
+              <button type="button" role="radio" aria-checked="true" data-value="normal">Even</button>
+              <button type="button" role="radio" aria-checked="false" data-value="hard">Relentless</button>
+            </div>
+            <p class="vs-setup-hint">Never cheats on resources. Cautious is handicapped, not blind.</p>
+          </div>
+
+          <div class="vs-setup-field">
+            <span class="vs-setup-label" id="vs-setup-qual-label">Detail</span>
+            <div class="vs-setup-choice" role="radiogroup" aria-labelledby="vs-setup-qual-label" id="vs-setup-quality">
+              <button type="button" role="radio" aria-checked="false" data-value="low">Low</button>
+              <button type="button" role="radio" aria-checked="false" data-value="medium">Medium</button>
+              <button type="button" role="radio" aria-checked="true" data-value="high">High</button>
+              <button type="button" role="radio" aria-checked="false" data-value="ultra">Ultra</button>
+            </div>
+          </div>
+        </div>
+
         <div class="vs-boot-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="vs-boot-bar">
           <div class="vs-boot-progress-fill" id="vs-boot-fill"></div>
         </div>
-        <p class="vs-boot-status" id="vs-boot-status">Waking the shipyard…</p>
+        <div class="vs-boot-footer">
+          <p class="vs-boot-status" id="vs-boot-status">Waking the shipyard…</p>
+          <button class="vs-launch" id="vs-launch" type="button" disabled hidden>Take command</button>
+        </div>
         <noscript>
           <p class="vs-boot-status">This demo needs JavaScript and WebGL 2.</p>
         </noscript>

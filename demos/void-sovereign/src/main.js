@@ -66,6 +66,118 @@ const boot = {
   },
 };
 
+/* Pre-match setup on the boot card.
+
+   Deliberately does NOT gate the default path: generation starts immediately
+   and the game launches itself the moment it is ready, exactly as before, so
+   a visitor who wants to just look at it waits for nothing and every existing
+   screenshot harness keeps working unchanged.
+
+   It only waits for an explicit "Take command" if the player actually touches
+   a control — at which point they have declared an interest in choosing, and
+   auto-launching out from under them would be rude.
+
+   Any change reloads with new parameters. Generation has already started by
+   the time the card is on screen, and all three settings are consumed during
+   it — the seed feeds every generator, quality sizes the atlases and the sky,
+   and difficulty is read when `World` is constructed. Re-running the boot is
+   the honest way to apply them, and it now costs a few seconds rather than
+   the thirty it once did. */
+const setup = {
+  touched: false,
+  seed: params.get('seed') || '',
+  difficulty: params.get('difficulty') || 'normal',
+  quality: params.get('quality') || '',
+  _onLaunch: null,
+
+  init(seedValue, qualityValue) {
+    const root = document.getElementById('vs-setup');
+    const launch = document.getElementById('vs-launch');
+    if (!root || !launch) return;
+
+    this.seed = String(this.seed || seedValue);
+    this.quality = this.quality || qualityValue;
+
+    const seedInput = document.getElementById('vs-setup-seed');
+    if (seedInput) {
+      seedInput.value = this.seed;
+      seedInput.addEventListener('input', () => {
+        this.seed = seedInput.value.trim();
+        this._touch();
+      });
+    }
+
+    const reroll = document.getElementById('vs-setup-reroll');
+    if (reroll && seedInput) {
+      reroll.addEventListener('click', () => {
+        this.seed = String((Math.floor(Math.random() * 0xfffffff) + 1) >>> 0);
+        seedInput.value = this.seed;
+        this._touch();
+      });
+    }
+
+    this._group('vs-setup-difficulty', this.difficulty, (v) => {
+      this.difficulty = v;
+      this._touch();
+    });
+    this._group('vs-setup-quality', this.quality, (v) => {
+      this.quality = v;
+      this._touch();
+    });
+
+    launch.addEventListener('click', () => this._launch());
+    this._launchEl = launch;
+  },
+
+  _group(id, current, onPick) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const buttons = Array.from(el.querySelectorAll('button[data-value]'));
+    const paint = (value) => {
+      for (const b of buttons) b.setAttribute('aria-checked', String(b.dataset.value === value));
+    };
+    paint(current);
+    for (const b of buttons) {
+      b.addEventListener('click', () => {
+        paint(b.dataset.value);
+        onPick(b.dataset.value);
+      });
+    }
+  },
+
+  _touch() {
+    if (this.touched) return;
+    this.touched = true;
+    if (this._launchEl) this._launchEl.hidden = false;
+  },
+
+  /** Called once generation finishes. Returns true if it handled the launch. */
+  onReady(fn) {
+    this._onLaunch = fn;
+    if (this._launchEl) this._launchEl.disabled = false;
+    if (!this.touched) return false; // default path: caller auto-launches
+    return true;
+  },
+
+  _launch() {
+    const activeDifficulty = params.get('difficulty') || 'normal';
+    const changed =
+      this.seed !== String(SEED) ||
+      (this.quality && this.quality !== QUALITY) ||
+      this.difficulty !== activeDifficulty;
+
+    if (changed) {
+      const url = new URL(location.href);
+      if (this.seed) url.searchParams.set('seed', this.seed);
+      if (this.quality) url.searchParams.set('quality', this.quality);
+      url.searchParams.set('difficulty', this.difficulty);
+      location.href = url.toString();
+      return;
+    }
+    if (this._onLaunch) this._onLaunch();
+  },
+};
+
 function fatal(message, detail) {
   const el = document.getElementById('vs-fatal');
   const d = document.getElementById('vs-fatal-detail');
@@ -131,6 +243,8 @@ async function main() {
     fatal('Void Sovereign needs WebGL 2, which this browser or device does not provide.');
     return;
   }
+
+  setup.init(SEED, QUALITY);
 
   const canvas = document.getElementById('vs-canvas');
   const vs = (window.__VS = {
@@ -445,8 +559,16 @@ async function main() {
   const markReady = () => {
     if (vs.ready) return;
     vs.ready = true;
-    boot.dismiss();
-    bus.emit('ui:ready', { seed: SEED, quality: QUALITY });
+    // If the player has touched the setup controls, hold the card until they
+    // say go. Otherwise launch straight in, as it always has.
+    const held = setup.onReady(() => {
+      boot.dismiss();
+      bus.emit('ui:ready', { seed: SEED, quality: QUALITY });
+    });
+    if (!held) {
+      boot.dismiss();
+      bus.emit('ui:ready', { seed: SEED, quality: QUALITY });
+    }
   };
   requestAnimationFrame(() => requestAnimationFrame(markReady));
   setTimeout(markReady, 1500);

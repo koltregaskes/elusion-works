@@ -16,10 +16,13 @@
       the mixer is a handful of chattering clusters at the right places in the
       stereo field, which is also how a real battle actually sounds.
 
-   3. WEIGHT. A capital death is a four-second staged sequence with subsonic
-      content and a six-second tail, timed against fx/explosions.js, and it ducks
-      the entire rest of the mix while it happens. That contrast is the whole
-      point: nothing else in the game is allowed to be that loud.
+   3. WEIGHT. A capital death is a staged sequence with subsonic content and a
+      six-second tail, and it ducks the entire rest of the mix while it happens.
+      That contrast is the whole point: nothing else in the game is allowed to be
+      that loud. Its beats are *driven by `fx:blast`*, not by a copy of the FX
+      beat table — see `_onBlast`. The previous version mirrored
+      `fx/explosions.js`'s internal script and silently went two seconds out of
+      sync the moment FX re-cut it.
 
    Ambience is deliberately almost nothing — a brown-noise floor two dozen dB
    under everything, a hull resonance that only appears when the camera is
@@ -55,6 +58,44 @@ const RATE = { capitalGun: 14, spawn: 3, resource: 0.5 };
    about 45 dB above the void floor, and that headroom is the whole aesthetic. */
 const VOID_LEVEL = 0.012;
 const HULL_LEVEL = 0.09;
+
+/* ------------------------------------------------------------ death sessions */
+
+/* Everything below is the contract of the `fx:blast` payload, not a copy of any
+   FX table. FX publishes `{ point, radius, strength }` on every beat of a death
+   that is meant to be *felt* — each secondary, the buckle, the primary — and
+   normalises `strength` so 1.0 is a 380 m destroyer's primary detonation, rising
+   as (L/380)^1.5. Given only the hull length we already have from `sim:death`,
+   that is enough to know what "big" means for this particular ship without
+   knowing when any of it happens.
+   Measured on the bus: fighter 0.002, frigate secondary 0.014, frigate primary
+   0.088, destroyer secondary 0.07, destroyer primary 1.0, ion lance ~0.16. */
+const BLAST_REF_LENGTH = 380;
+
+/* Fractions of a session's own expected primary. Chosen against the measured
+   spread above with margin at both ends: a frigate's primary is 0.44 of its
+   expected and a destroyer's buckle 0.24 of its own, so the two never cross. */
+const BLAST = { floor: 0.02, buckle: 0.12, primary: 0.38 };
+
+/* If FX never speaks — disabled, or a quality mode that drops the sequence —
+   the death still has to land. One compact detonation, not a fabricated script.
+   Anything longer than this and the player has already stopped believing it. */
+const UNATTENDED_AFTER = 0.6;
+
+/* Hard stops. A session that never sees its primary must not drone forever. */
+const SESSION_MAX = 13;
+const PRIMARY_DEADLINE = 9.5;
+
+/* An ion lance emits on the same channel with no hull-length term (~0.16), which
+   would read as a buckle inside a nearby capital's session. We already voice the
+   lance from `sim:fire`, so mark it and let the router step over it. */
+const ION_MARK_WINDOW = 0.3;
+const ION_MARK_DIST2 = 500 * 500;
+
+/** How big this hull's primary detonation should register on the blast bus. */
+function expectedBlast(size) {
+  return Math.pow(Math.max(1, size) / BLAST_REF_LENGTH, 1.5);
+}
 
 /** Growing cluster of near-simultaneous events at roughly one place. */
 class Cluster {
@@ -138,6 +179,16 @@ export class SfxLayer {
     this._last = { capitalGun: 0, spawn: 0, resource: 0, toast: 0 };
     this._counts = { fire: 0, played: 0, culled: 0 };
 
+    /* Open death sequences waiting on `fx:blast` to tell them what happens next. */
+    this._sessions = [];
+    this._sessionSeq = 1;
+    this._ionMarks = [];
+    this._blastStats = {
+      blasts: 0, matched: 0, ignored: 0, sessions: 0,
+      secondaries: 0, buckles: 0, primaries: 0, unattended: 0, expired: 0,
+      lastPrimaryDelay: 0,
+    };
+
     this.buckets = {};
     for (const k of Object.keys(BUCKETS)) this.buckets[k] = new Coalescer(BUCKETS[k]);
 
@@ -165,6 +216,13 @@ export class SfxLayer {
     on('sel:changed', (p) => this._onSelect(p));
     on('cmd:move', (p) => this.order(p && p.queue ? 'moveQueued' : 'move', p));
     on('cmd:attack', (p) => this.order('attack', p));
+    /* A/G/P/S are single keypresses that issue an order at the cursor with no
+       confirming click, so their sound is the *only* thing that says which verb
+       just went out. They get four unmistakably different shapes. */
+    on('cmd:attackMove', (p) => this.order('attackMove', p));
+    on('cmd:guard', (p) => this.order('guard', p));
+    on('cmd:patrol', (p) => this.order('patrol', p));
+    on('cmd:stop', (p) => this.order('stop', p));
     on('cmd:formation', () => this.order('formation'));
     on('cmd:stance', (p) => this.order('stance', p));
     on('cmd:build', (p) => this._onBuild(p));
@@ -178,6 +236,9 @@ export class SfxLayer {
     on('sim:buildComplete', (p) => this._onBuildComplete(p));
     on('sim:resourceChanged', (p) => this._onResource(p));
     on('sim:gameOver', (p) => this._onGameOver(p));
+
+    /* --- the picture. Death beats are taken from FX rather than predicted. --- */
+    on('fx:blast', (p) => this._onBlast(p));
 
     /* --- interface --- */
     on('ui:sensorsToggle', (p) => this.order(p && p.open ? 'sensorsOpen' : 'sensorsClose'));
@@ -205,7 +266,11 @@ export class SfxLayer {
       case 'select': return this._select(t, payload);
       case 'move': return this._move(t, 0);
       case 'moveQueued': return this._move(t, 1);
-      case 'attack': return this._attack(t);
+      case 'attack': return this._attack(t, payload);
+      case 'attackMove': return this._attackMove(t, payload);
+      case 'guard': return this._guard(t, payload);
+      case 'patrol': return this._patrol(t, payload);
+      case 'stop': return this._stop(t);
       case 'formation': return this._formation(t);
       case 'stance': return this._stance(t, payload);
       case 'queued': return this._queued(t);
@@ -290,7 +355,7 @@ export class SfxLayer {
   }
 
   /** Attack: harder, lower, saturated. Reads as an instruction, not a chime. */
-  _attack(t) {
+  _attack(t, payload) {
     const v = this._claimUi(0.26);
     if (!v) return false;
     const g = this.ctx.createGain();
@@ -331,8 +396,188 @@ export class SfxLayer {
     n.start(t);
     n.stop(t + 0.06);
     srcs.push(n);
+    if (payload && payload.queue) this._queueTick(g, srcs, t + 0.15);
     v.bind(g, srcs);
     return true;
+  }
+
+  /**
+   * Attack-move: the move gesture with the attack's teeth. The falling pair
+   * says "go there", a saturated stab under the second note says "and shoot".
+   * Neither half alone is either sound, which is the point — it must not be
+   * mistaken for a plain move when it is the order that starts the battle.
+   */
+  _attackMove(t, payload) {
+    const v = this._claimUi(0.42);
+    if (!v) return false;
+    const g = this.ctx.createGain();
+    g.gain.value = 1;
+    g.connect(this.audio.buses.ui.input);
+    const srcs = [];
+
+    // Falling pair, a fourth below the plain move so the two never confuse.
+    const notes = [698, 466];
+    for (let i = 0; i < notes.length; i++) {
+      const at = t + i * 0.07;
+      const o = this.ctx.createOscillator();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(notes[i], at);
+      const a = this.ctx.createGain();
+      blip(a.gain, at, 0.34 * (i === 0 ? 1 : 0.82), 0.004, 0.11);
+      o.connect(a);
+      a.connect(g);
+      o.start(at);
+      o.stop(at + 0.17);
+      srcs.push(o);
+    }
+
+    // The teeth: a short saturated stab arriving with the second note.
+    const stabAt = t + 0.07;
+    const shaper = this.ctx.createWaveShaper();
+    shaper.curve = this._drive;
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    sweep(bp.frequency, stabAt, 900, 380, 0.1);
+    bp.Q.value = 1.7;
+    shaper.connect(bp);
+    bp.connect(g);
+    const o = this.ctx.createOscillator();
+    o.type = 'sawtooth';
+    sweep(o.frequency, stabAt, 466, 300, 0.1);
+    const a = this.ctx.createGain();
+    blip(a.gain, stabAt, 0.17, 0.002, 0.11);
+    o.connect(a);
+    a.connect(shaper);
+    o.start(stabAt);
+    o.stop(stabAt + 0.18);
+    srcs.push(o);
+
+    if (payload && payload.queue) this._queueTick(g, srcs, t + 0.21);
+    v.bind(g, srcs);
+    return true;
+  }
+
+  /**
+   * Guard: the only sustained order in the palette. A held fifth with a slow
+   * tremolo — nothing decays, because nothing is going anywhere.
+   */
+  _guard(t, payload) {
+    const v = this._claimUi(0.6);
+    if (!v) return false;
+    const g = this.ctx.createGain();
+    g.gain.value = 1;
+    g.connect(this.audio.buses.ui.input);
+    const srcs = [];
+    const freqs = [349, 523];
+    for (let i = 0; i < freqs.length; i++) {
+      const o = this.ctx.createOscillator();
+      o.setPeriodicWave(this._metalWave);
+      o.frequency.value = freqs[i];
+      const a = this.ctx.createGain();
+      adsr(a.gain, t, {
+        peak: 0.20 * (i === 0 ? 1 : 0.7), attack: 0.014, decay: 0.05,
+        sustain: 0.78, hold: 0.24, release: 0.16,
+      });
+      o.connect(a);
+      a.connect(g);
+      o.start(t);
+      o.stop(t + 0.55);
+      srcs.push(o);
+    }
+    // Tremolo: a held dyad without it reads as a stuck note rather than a watch.
+    const trem = this.ctx.createOscillator();
+    trem.type = 'sine';
+    trem.frequency.value = 7.5;
+    const tremAmt = this.ctx.createGain();
+    tremAmt.gain.value = 0.22;
+    trem.connect(tremAmt);
+    tremAmt.connect(g.gain);
+    trem.start(t);
+    trem.stop(t + 0.55);
+    srcs.push(trem);
+    if (payload && payload.queue) this._queueTick(g, srcs, t + 0.42);
+    v.bind(g, srcs);
+    return true;
+  }
+
+  /** Patrol: there and back again. A closed loop, so the figure returns home. */
+  _patrol(t, payload) {
+    const v = this._claimUi(0.4);
+    if (!v) return false;
+    const g = this.ctx.createGain();
+    g.gain.value = 1;
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 4200;
+    g.connect(lp);
+    lp.connect(this.audio.buses.ui.input);
+    const srcs = [];
+    const notes = [587, 784, 587];
+    for (let i = 0; i < notes.length; i++) {
+      const at = t + i * 0.072;
+      const o = this.ctx.createOscillator();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(notes[i], at);
+      const a = this.ctx.createGain();
+      blip(a.gain, at, 0.26 * (i === 1 ? 1 : 0.86), 0.003, 0.075);
+      o.connect(a);
+      a.connect(g);
+      o.start(at);
+      o.stop(at + 0.13);
+      srcs.push(o);
+    }
+    if (payload && payload.queue) this._queueTick(g, srcs, t + 0.29);
+    v.bind(g, srcs);
+    return true;
+  }
+
+  /** Stop: one damped thud with no tail. The sound of something being put down. */
+  _stop(t) {
+    const v = this._claimUi(0.28);
+    if (!v) return false;
+    const g = this.ctx.createGain();
+    g.gain.value = 1;
+    g.connect(this.audio.buses.ui.input);
+    const srcs = [];
+    const o = this.ctx.createOscillator();
+    o.type = 'sine';
+    sweep(o.frequency, t, 208, 96, 0.07);
+    const a = this.ctx.createGain();
+    blip(a.gain, t, 0.42, 0.002, 0.085);
+    o.connect(a);
+    a.connect(g);
+    o.start(t);
+    o.stop(t + 0.16);
+    srcs.push(o);
+    // A chuff of noise closing fast: the damping is what makes it a full stop.
+    const n = this._noise(t, 'white', 0.8);
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    sweep(lp.frequency, t, 2600, 320, 0.06);
+    const ng = this.ctx.createGain();
+    blip(ng.gain, t, 0.20, 0.001, 0.05);
+    n.connect(lp);
+    lp.connect(ng);
+    ng.connect(g);
+    n.start(t, this.rng.range(0, 1.5));
+    n.stop(t + 0.12);
+    srcs.push(n);
+    v.bind(g, srcs);
+    return true;
+  }
+
+  /** Shared "…and it is on the end of the queue" marker. */
+  _queueTick(dest, srcs, t) {
+    const o = this.ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = 1568;
+    const a = this.ctx.createGain();
+    blip(a.gain, t, 0.10, 0.001, 0.03);
+    o.connect(a);
+    a.connect(dest);
+    o.start(t);
+    o.stop(t + 0.06);
+    srcs.push(o);
   }
 
   /** Formation: a three-step mechanical ratchet. Nothing else clicks like it. */
