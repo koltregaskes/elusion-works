@@ -131,13 +131,42 @@ console errors, sim ticking, economy running, AI fighting.
 - Procedural sky: seeded nebula, galaxy band, magnitude-banded stars, 8 palettes.
 - Post stack installed and running.
 
-### Known-weak (as of this writing; agents are working these)
-- Hull tone reads muddy brown; team colours do not read at a glance.
-- Combat FX under-scaled at normal RTS camera distance; ion beam not visibly rendering.
-- Capital deaths lack weight.
-- Nebula reads flat/grey in-game.
-- Sensors Manager (Tab) not yet verified in the integrated build.
-- No thumbnail; **not yet added to the demo shelf** (`demos/index.html`) — deliberately, until quality justifies it.
+### Measured (dev box: mini-PC, integrated Radeon 890M, ~⅓ of target)
+
+| Metric | Value |
+|---|---|
+| Boot, end to end | 5.4–13.4 s (was 30–33 s) |
+| Draw calls, 32 entities | 84–87 |
+| Draw calls, 100 / 500 / 1,000 batched | **85, flat** |
+| Draw calls at FX peak stress | 60 (16 of them FX) |
+| Peak stress content | 366 tracers · 40 beams · 183 death sequences · 13,685 particles · 900 debris |
+| Sim tick | avg 0.196 ms, p99 0.5, peak 4.9, zero NaN |
+| Order latency | selection 2.2–6.0 ms · move 25.7–27.5 ms · attack 22.1–23.9 ms |
+| Terminator | mothership shadow p02 0.066 sRGB vs lit p90 0.542 (~1:25 linear) |
+| Asteroid local contrast | 2.09–2.76 (was 19.79) |
+| Console / page errors | zero across 10 seeds |
+
+Latency caveat that must travel with those numbers: any figure for a *visible*
+change means **"on the very next rendered frame"** — the instrument cannot
+resolve finer than one frame at ~30 fps here. Bus figures are exact.
+
+### Closed
+Instancing (2.9 → 0.029 draw calls per unit) · fleet LOD driven · terminator ·
+team colour at hero and fleet range · nebula structure · asteroid dazzle ·
+boot time · opening frame · explosion disc · tracers · order queueing ·
+order integrity · tactical pause · attack-move/guard/patrol/stop · sensors
+manager (was never opening — `Tab` was double-bound) · audio.
+
+### Still open
+- Critic verdict is **NO** as of iteration 4; iteration 5 is running against a
+  substantially changed build.
+- Fleet-scale read at 560 hulls — all three inputs (glow layer, LOD, rocks)
+  have changed since it was last judged, so it needs re-measuring.
+- A reported anamorphic star flare that **environment has measured as
+  symmetric** (aspect 0.18–1.01, never wider than tall) and postfx has disabled
+  in all tiers. Something else draws it, or it is not there. Unresolved.
+- No thumbnail; **not on the demo shelf** — deliberately, until quality
+  justifies it. See §6a.
 
 ### Open items with no owning agent (transcripts lost — respawn to action)
 
