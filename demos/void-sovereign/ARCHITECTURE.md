@@ -158,7 +158,7 @@ export const bus: {
 | `ui:audioVolume` | `{ bus:'master'\|'music'\|'sfx'\|'ui'\|'voice', value:0..1 }` | UI → AUDIO |
 | `ui:audioMute` | `{ muted:boolean }` | UI → AUDIO |
 | `ui:audioChanged` | `{ master, music, sfx, ui, voice, muted, available, running }` | AUDIO → UI |
-| `fx:blast` | `{ point:Vector3, radius, strength }` | FX → CAMERA |
+| `fx:blast` | `{ point:Vector3, radius, strength }` | FX → CAMERA, AUDIO |
 
 ### `core/engine.js`
 ```js

@@ -468,7 +468,7 @@ export function makeInstanceBatch(ctx, opts) {
 
 const P_STRIDE = 20;
 /* 0..2 pos | 3..5 vel | 6..9 spawn,life,drag,spin | 10..11 size0,size1
-   12..14 colour | 15..18 rot0,brightness,stretch,seed | 19 pad */
+   12..14 colour | 15..18 rot0,brightness,stretch,seed | 19 capPx */
 
 const PARTICLE_VERT = /* glsl */ `
 #include <common>
@@ -480,6 +480,7 @@ attribute vec4 iParams;
 attribute vec2 iSize;
 attribute vec3 iColor;
 attribute vec4 iFade;
+attribute float iCap;
 
 uniform float uTime;
 uniform float uAlphaPow;
@@ -492,6 +493,7 @@ varying float vAlpha;
 varying float vFragW;
 varying float vSeed;
 varying float vClamp;
+varying float vSpread;
 
 void main() {
   float t = uTime - iParams.x;
@@ -507,10 +509,18 @@ void main() {
   float dist = max( -mv.z, 1.0 );
 
   float natural = mix( iSize.x, iSize.y, age );
-  float floorSize = dist * uPixelScale * uMinPixels;
+  /* Optional per-particle ceiling on the field's screen floor, in pixels.
+     Zero means "no ceiling", which is what every effect that is genuinely a
+     one-off event uses. The ceiling exists for the effects that fire hundreds
+     of times a second across a fleet — a muzzle flash and a round landing —
+     where a flat floor paints a 14 m interceptor's gun the same 10 px disc as
+     a capital's, and the battle turns into an even carpet of white. */
+  float cap = iCap > 0.0 ? min( uMinPixels, iCap ) : uMinPixels;
+  float floorSize = dist * uPixelScale * cap;
   float size = max( natural, floorSize );
   // 0 when the sprite is at its own size, 1 when the pixel floor is carrying it.
   vClamp = clamp( 1.0 - natural / max( size, 0.0001 ), 0.0, 1.0 );
+  vSpread = pow( clamp( natural / max( size, 0.0001 ), 0.05, 1.0 ), 0.30 );
   size *= alive;
 
   vec2 q;
@@ -555,6 +565,7 @@ varying float vAlpha;
 varying float vFragW;
 varying float vSeed;
 varying float vClamp;
+varying float vSpread;
 
 void main() {
   #include <logdepthbuf_fragment>
@@ -564,7 +575,7 @@ void main() {
   float a = fxSharpen( texel.a, vClamp ) * fxQuadMask( vUv )
           * vAlpha * uOpacity * fxSoftFade( vFragW );
   if ( a <= 0.0025 ) discard;
-  gl_FragColor = vec4( vColor * texel.rgb * uGain * ( 1.0 + uClampLift * vClamp ), a );
+  gl_FragColor = vec4( vColor * texel.rgb * uGain * ( 1.0 + uClampLift * vClamp ) * vSpread, a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -618,6 +629,7 @@ export class ParticleField {
     geo.setAttribute('iSize', new THREE.InterleavedBufferAttribute(ib, 2, 10));
     geo.setAttribute('iColor', new THREE.InterleavedBufferAttribute(ib, 3, 12));
     geo.setAttribute('iFade', new THREE.InterleavedBufferAttribute(ib, 4, 15));
+    geo.setAttribute('iCap', new THREE.InterleavedBufferAttribute(ib, 1, 19));
     geo.instanceCount = 0;
     // Particles move on the GPU, so a CPU bounding sphere is a lie. Never cull.
     geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), Infinity);
@@ -656,8 +668,9 @@ export class ParticleField {
     ctx.scene.add(this.mesh);
   }
 
-  /** Positional args on purpose: this is called thousands of times a second. */
-  spawn(px, py, pz, vx, vy, vz, life, drag, size0, size1, colour, brightness, stretch, spin) {
+  /** Positional args on purpose: this is called thousands of times a second.
+      `capPx` is optional and defaults to no ceiling. */
+  spawn(px, py, pz, vx, vy, vz, life, drag, size0, size1, colour, brightness, stretch, spin, capPx) {
     let slot;
     if (this.count < this.capacity) {
       slot = this.count++;
@@ -693,6 +706,7 @@ export class ParticleField {
     d[o + 16] = brightness;
     d[o + 17] = stretch || 0;
     d[o + 18] = (slot * 0.618034) % 1;
+    d[o + 19] = capPx || 0;
     this._death[slot] = now + life;
     this._touch(slot);
     return slot;

@@ -177,13 +177,20 @@ manager (was never opening — `Tab` was double-bound) · audio.
   and code. Separately, a frigate death (0.088) currently registers *smaller
   than an ion lance* (0.16) — plausible, but confirm it is intentional rather
   than a fall-out of the mass curve.
-- **Audio is locked to a stale capital-death script.** `src/audio/sfx.js` read
-  `fx/explosions.js`'s `_scriptCapital` directly and hardcoded those beats
-  (groan 0, secondaries `0.22 + (i/beats)*2.35`, crack 2.62, primary 2.98).
-  FX has since rebuilt the sequence to ~6 s with the primary at t≈3.0–6.4 s.
-  **Audio will be firing against timings that no longer exist.** The durable
-  fix is for audio to subscribe to `fx:blast` the way the camera now does,
-  rather than mirroring another module's internals.
+- ~~Audio locked to a stale capital-death script.~~ **CLOSED.** `sfx.js` now
+  conducts the death from `fx:blast` with no reads of FX internals at all.
+  Worth keeping the diagnosis, because it explains how the coupling survived a
+  rebuild of the very thing it was coupled to: **a destroyer is the one hull
+  where the old hardcoded 2.98 s was right — measured +0.001 s.** Carrier was
+  +0.77 s and mothership +2.12 s. The bug was invisible on precisely the case
+  anyone would test first.
+  A second-order version of the same mistake nearly shipped: the first fix
+  still *mirrored* FX's `(L/380)^1.5` normalisation to size its thresholds, so
+  when that was reconciled to `^0.8` a mothership's detonation was silently
+  demoted to a secondary. It is now scale-invariant — each session calibrates
+  on its own quietest beat and classifies by ratio, so a renormalisation
+  requires no re-tuning. **Mirroring a constant is the same bug as mirroring a
+  timing.**
 - **FX self-identified polish:** the shock front reads flat beige rather than
   having a hot leading edge, and the plume has not been checked against the
   mothership's corrected bell geometry (ships changed it after FX's last

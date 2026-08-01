@@ -26,11 +26,17 @@ const DEG = Math.PI / 180;
 
 /* Trauma produced by a blast of `strength` 1.0 going off in the camera's lap.
 
-   FX normalises `strength` so 1.0 is a destroyer's primary detonation, which
-   puts a fighter pop near 0.04 and a mothership near 5. The rig therefore needs
-   no ship-class table and no mirrored beat timings: it is handed the magnitude
-   and the moment, and a mothership simply saturates the clamp — which is
-   correct, because a mothership going up is as hard as the camera can be hit. */
+   FX normalises `strength` so 1.0 is a destroyer's primary detonation. Measured
+   off the bus after FX moved to `(L/380)^0.8`: interceptor 0.023, assault
+   frigate 0.187, destroyer 1.000, cruiser 1.479, carrier 1.741, mothership
+   3.624, ion lance 0.105-0.135. The rig therefore needs no ship-class table and
+   no mirrored beat timings: it is handed the magnitude and the moment.
+
+   Every class from the destroyer up saturates the clamp at point-blank range
+   (1.0 x 1.8 already exceeds it), so at zero distance a destroyer and a
+   mothership shove the camera identically and only the falloff separates them.
+   That was equally true of the old scale, so it is not a regression — but it is
+   the next thing to fix here if the ladder is ever judged too flat. */
 const SHAKE_GAIN = 1.8;
 
 /* FX's `radius` is the blast's *physical* reach — a destroyer's primary
@@ -42,23 +48,48 @@ const SHAKE_GAIN = 1.8;
 const FELT_REACH = 10;
 const MIN_FELT_REACH = 2500;
 
-/* Below this a blast is a firework, not an event. It exists so that a thousand
-   fighters dying across a battle line cannot sum into a permanent tremor.
+/* Below this a blast is a firework, not an event. It exists so that a dogfight
+   on top of the camera cannot hold a permanent low tremor: trauma decays at
+   1.05/s, so ten ungated fighter pops a second inside the felt reach would sit
+   at 0.1-0.4 trauma indefinitely, which is 1-8 px of continuous wobble.
 
-   Measured against what FX actually emits, rather than assumed: a fighter pop
-   is 0.002, a frigate's secondaries 0.014-0.041 and its primary 0.088, a
-   destroyer's secondaries 0.07 and its primary 1.0, an ion lance ~0.16. The
-   gate therefore has to sit an order of magnitude below the frigate, not just
-   under the destroyer — an earlier 0.08 silently swallowed the destroyer's
-   entire hull-failure rumble, which sits at 0.07. */
-const SHAKE_MIN_STRENGTH = 0.010;
+   Re-placed after FX rescaled to `(L/380)^0.8`. The old 0.010 was set when a
+   fighter pop measured 0.002; a fighter now measures **0.023** and was clearing
+   the gate on every kill. The band the gate has to thread, from FX's figures:
+
+     interceptor        0.023   must not register
+     frigate secondary  ~0.030  lost, and accepted — see below
+     destroyer secondary ~0.07  must survive: an earlier 0.08 swallowed the
+                                destroyer's entire hull-failure rumble
+     ion lance          0.105   must register
+     assault frigate    0.187   must register
+
+   0.035 keeps a factor of 1.5 over a fighter and 2 under the destroyer's
+   rumble. It costs the quietest beats of a frigate's sequence, which are a
+   fifth of that frigate's own primary and are not the event.
+
+   Honesty note: the primaries above are FX's measurements. The *secondary*
+   figures are inferred from the within-sequence ratios of the old scale, on the
+   grounds that the rescale changed the per-class normalisation and not the mix
+   of beats inside a sequence. `.local/blastscale.mjs` was written to measure
+   them directly and could not — `world.destroy()` removes an entity without
+   running the death choreography, so only three stray 0.0204 beats came back
+   across all thirteen classes. If FX ever publishes measured secondaries,
+   re-check this number against them. */
+const SHAKE_MIN_STRENGTH = 0.035;
 
 /* Displacement goes as trauma^SHAKE_CURVE. Squaring is the usual choice, and it
    was right when this rig invented its own magnitudes — the curve supplied the
-   dynamic range. FX now encodes that range in `strength` itself, spanning
-   0.002 to 11, so a steep curve double-counts it: at 1.7 a destroyer's
-   secondaries came out 96x below its primary and vanished. 1.3 keeps the
-   contrast emphatic while leaving the quiet beats visible. */
+   dynamic range. FX now encodes that range in `strength` itself, so a steep
+   curve double-counts it: at 1.7 a destroyer's secondaries came out 96x below
+   its primary and vanished.
+
+   1.3 was chosen against a 5,500:1 span and the span is now 178:1, so the
+   argument for softening it further has weakened — but it has not reversed, and
+   the ladder it produces on the new figures is still right: a frigate primary
+   lands at roughly a quarter of a destroyer's, a destroyer's own rumble at a
+   twentieth. Left alone deliberately; the flat top end is the clamp's doing,
+   not the curve's, and `SHAKE_GAIN` is where that would be fixed. */
 const SHAKE_CURVE = 1.3;
 
 /* Just short of the pole. Going all the way to +/-90 makes `lookAt` pick an
@@ -229,7 +260,7 @@ const OPENING = {
      stops the same solve cropping the masts off a hull that happens to present
      itself diagonally — measured at 1,200 px of a 1,080 px frame before it
      existed. Whichever axis binds first sets the distance. */
-  fillW: 0.515,
+  fillW: 0.52,
   fillH: 0.88,
   /* Silhouette must stay inside this share of the frame once the composition
      offset is applied, which is what caps the offset on a big presentation. */

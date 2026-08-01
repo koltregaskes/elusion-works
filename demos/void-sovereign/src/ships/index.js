@@ -100,8 +100,27 @@ function hullMaterial(team, family, instanced, length) {
   });
 }
 
-/* `kind` is one of 'bell' | 'light' | 'window' | 'vent'. Bells take an axial
-   gradient off the 0..1 V the nozzle now writes; the rest are flat emitters. */
+/* `kind` is one of 'bell' | 'light' | 'window' | 'vent'.
+   The rest are flat emitters; bells are meant to take an axial gradient.
+
+   ── OPEN CONTRACT, for whoever owns render/materials.js ──────────────────
+   The bell geometry ships a clean axial ramp and nothing reads it.
+   `greeble.js:engineNozzle()` runs `axialV()` over both bell parts, writing
+   **uv.y = 0 at the throat, 1 at the mouth**. Measured on the merged `bell`
+   group of every class at every LOD (`.local/bellramp.mjs`): uv.y spans
+   exactly 0..1, mean 0.5, and survives the merge.
+
+   `getGlowMaterial(team,'bell')` currently derives heat from `dot( N, V )`
+   and carries a comment saying hull geometry "arrives merged and unwrapped".
+   For the bell group that is not true. `GLOW_KINDS.bell` is specified as
+   "hot throat falling to the team's drive colour at the lip", so the term it
+   wants is:
+
+       heat = pow( 1.0 - vUv.y, uSharp );
+
+   Until it does, the bore reads dead off-axis and only the lip ring lights,
+   which is why FX has had to paper the throat over with a sprite from
+   outside. SHIPS cannot fix this — materials.js is not ours to edit. */
 function glowMaterial(team, kind) {
   const m = callMat(MATLIB && MATLIB.getGlowMaterial, team, kind)
     || callMat(MATLIB && MATLIB.getEngineMaterial, team);
@@ -304,6 +323,10 @@ function impostorMaterial(team, classId, radius) {
 
   const m = new THREE.MeshBasicMaterial({ color: colour, fog: false });
   m.userData.impostor = true;
+  // Exposed so a probe can sweep the size floor and the fill without a rebuild.
+  // `uPxScale` and `uKeyDir` are the shared objects — writing them here would
+  // hit every class at once, which is exactly what a sweep wants.
+  m.userData.impostorUniforms = uniforms;
   m.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     shader.vertexShader = shader.vertexShader
@@ -968,6 +991,11 @@ export function shipStats(classId) {
     glowTris: tri(lvl0.glow),
     glassTris: tri(lvl0.glass),
     teamMaskPct: mask ? Math.round((masked / mask.count) * 1000) / 10 : 0,
+    // Which levels have dropped to the impostor, and the screen size each level
+    // is chosen for — the two numbers an art audit needs to know whether it is
+    // looking at a lit hull or a mark.
+    impostorFrom: IMPOSTOR_LOD,
+    lodOnsetPx: LOD_STEPS.map((s) => (s > 0 ? Math.round((1080 / (2 * Math.tan(Math.PI * 24 / 180))) / s) : null)),
     greebleSize: Math.round(0.35 * Math.pow(asset.def.length / 14, 0.45) * 100) / 100,
     hardpoints: asset.hardpoints.length,
     engines: asset.engines.length,
@@ -989,6 +1017,11 @@ export function disposeShipCache() {
   _cache.clear();
   for (const m of _fallbackCache.values()) m.dispose();
   _fallbackCache.clear();
+  // The impostors are ours, not [MAT]'s, so nothing else will free them.
+  for (const m of _impostorCache.values()) m.dispose();
+  _impostorCache.clear();
+  _keyFound = false;
+  _keyCountdown = 0;
 }
 
 export { HULL_CLASSES };

@@ -184,13 +184,22 @@ const PALETTES = [
    they approach it, so the branch is a pure performance win and never visible. */
 const ENV_CUTOFF = 0.0016;
 
-/* Map HEIGHT in texels; width is twice this. Sized for angular resolution, not
-   memory: stars are splatted at ~0.6 texels, so texel size sets how big a star
-   can be on screen. 2048 high gives 360/4096 = 0.088 deg per texel, which is
-   about two screen pixels at 1080p/48deg FOV — the point where stars read as
-   points rather than blobs. Ultra deliberately matches high; going further
-   costs a lot of VRAM (a 4096x2048 RGBA16F map with mips is already ~89 MB)
-   and buys nothing. */
+/* Map HEIGHT in texels; width is twice this.
+
+   This used to be set by the star field, and the reasoning was wrong in a way
+   worth recording. Stars were splatted into the map at ~0.6 texels of sigma,
+   so the smallest a star could be on screen was one texel — and a texel of a
+   4096x2048 map is 0.088 deg, which at 1080p/48deg FOV is three and a half
+   screen pixels, not the two the note claimed. Worse, sRGB encoding widens the
+   measured half-max by about 40% again, so the field measured 5-6 px per star
+   and a crop showed *square* blobs: bilinear magnification of a texel-scale
+   Gaussian. No map resolution anyone would ship fixes that, because the
+   resampling is the artefact.
+
+   Resolvable stars are therefore not baked at all any more — see
+   `buildStarField` — and what remains in the map is gas, which has no feature
+   finer than about a third of a degree. The size below is now set by the gas
+   alone, and the gas is itself shaded at half this and upsampled. */
 const SIZE_BY_QUALITY = { low: 768, medium: 1024, high: 2048, ultra: 2048 };
 
 /* --------------------------------------------------------------------------- */
@@ -228,12 +237,6 @@ vec3 hash33(vec3 p) {
   p = fract(p * vec3(0.1031, 0.1030, 0.0973));
   p += dot(p, p.yxz + 33.33);
   return fract((p.xxy + p.yxx) * p.zyx) * 2.0 - 1.0;
-}
-
-vec4 hash44(vec4 p) {
-  p = fract(p * vec4(0.1031, 0.1030, 0.0973, 0.1099));
-  p += dot(p, p.wzxy + 33.33);
-  return fract((p.xxyz + p.yzzw) * p.zywx);
 }
 
 /* Gradient (Perlin-style) value noise, [-1,1]. Grid artefacts are broken up by
@@ -637,10 +640,15 @@ void main() {
 `;
 }
 
-/** Pass B: stars at full resolution, absorbed by the gas pass, plus the gas. */
-function buildSkyFragment(P) {
-  const on = P.enable;
+/** Pass B: the gas, resampled to the final map with its exposure ceilings.
 
+    Stars used to live here too. They do not any more: a star splatted into a
+    texel-resolution map and then magnified onto the screen is a square blob
+    whatever the map's size, and the field measured 5-6 px of half-max against
+    a ~2 px intent. Everything that reads as an individual star is now drawn as
+    a screen-space point by `buildStarField`, at a size set in pixels rather
+    than in texels. */
+function buildSkyFragment(P) {
   return /* glsl */ `
 precision highp float;
 
@@ -648,120 +656,11 @@ varying vec2 vUv;
 
 #define PI 3.141592653589793
 
-uniform float uStarSigma;   // minimum star sigma, in texels
-uniform float uStarGain;
 uniform float uGasGain;     // per-seed exposure ceiling, set after probing
 uniform float uGasSat;      // per-seed saturation ceiling
 uniform sampler2D uGas;
 
-${NOISE_GLSL}
-
-const vec3 BAND_AXIS = vec3(${f3(P.bandAxis)});
-const vec3 EXT = vec3(${f3(P.dustExt)});
-
-/* ---- star fields ---------------------------------------------------------
-
-   Stars live on a 3D lattice wrapped round the surface of the unit cube. A
-   plain per-face 2D grid would tear at the cube seams; a 3D lattice does not,
-   because the 3x3x3 neighbourhood is continuous across every edge and corner.
-   Cells are kept only if their jittered point lands within 0.4 cells of the
-   cube surface, which both bounds the neighbourhood search and keeps the
-   surface density uniform. Acceptance is weighted by 1/|c|^3 so the cube-to-
-   sphere distortion does not pile stars into the eight corners. */
-
-vec3 starMain(vec3 d, float sig) {
-  vec3 acc = vec3(0.0);
-  vec3 c = d / max(abs(d.x), max(abs(d.y), abs(d.z)));
-  vec3 gi = floor(c * ${num(P.starCells)});
-  float sg2 = sig * sig;
-  for (int z = -1; z <= 1; z++) {
-    for (int y = -1; y <= 1; y++) {
-      for (int x = -1; x <= 1; x++) {
-        vec3 cell = gi + vec3(float(x), float(y), float(z));
-        vec4 h = hash44(vec4(cell, ${num(P.starSalt)}));
-        vec3 sp = (cell + h.yzw) * ${num(1 / P.starCells)};
-        float mx = max(abs(sp.x), max(abs(sp.y), abs(sp.z)));
-        if (abs(mx - 1.0) > ${num(0.4 / P.starCells)}) continue;
-        float len = length(sp);
-        vec3 sd = sp / len;
-        float lat = dot(sd, BAND_AXIS);
-        float conc = 0.42 + 1.30 * exp(-(lat * lat) * ${num(1 / (2 * P.starBandW * P.starBandW))});
-        if (h.x * len * len * len > ${num(P.starDensity)} * conc) continue;
-        vec4 g = hash44(vec4(cell, ${num(P.starSalt + 31.7)}));
-        vec3 dl = d - sd;
-        /* A wide magnitude range is what makes a field read as a sky rather
-           than as a spray of identical dots: the top percentile has to be an
-           order of magnitude above the median, not twice it. */
-        float mag = ${num(P.starMag)} * (0.008 + pow(g.x, ${num(P.starMagPow)}) * 3.4);
-        acc += starTint(pow(g.y, 1.9)) * mag * exp(-dot(dl, dl) / sg2);
-      }
-    }
-  }
-  return acc;
-}
-
-vec3 starBright(vec3 d, float sig) {
-  vec3 acc = vec3(0.0);
-  vec3 c = d / max(abs(d.x), max(abs(d.y), abs(d.z)));
-  vec3 gi = floor(c * ${num(P.brightCells)});
-  for (int z = -1; z <= 1; z++) {
-    for (int y = -1; y <= 1; y++) {
-      for (int x = -1; x <= 1; x++) {
-        vec3 cell = gi + vec3(float(x), float(y), float(z));
-        vec4 h = hash44(vec4(cell, ${num(P.brightSalt)}));
-        vec3 sp = (cell + h.yzw) * ${num(1 / P.brightCells)};
-        float mx = max(abs(sp.x), max(abs(sp.y), abs(sp.z)));
-        if (abs(mx - 1.0) > ${num(0.4 / P.brightCells)}) continue;
-        float len = length(sp);
-        vec3 sd = sp / len;
-        if (h.x * len * len * len > ${num(P.brightDensity)}) continue;
-        vec4 g = hash44(vec4(cell, ${num(P.brightSalt + 53.1)}));
-        vec3 dl = d - sd;
-        float r2 = dot(dl, dl);
-        float bm = ${num(P.brightMag)} * (0.20 + pow(g.x, 3.4) * 3.2);
-        float core = exp(-r2 / (sig * sig * 1.30));
-        float halo = 0.030 * exp(-sqrt(r2) / (sig * 6.0));
-        // Four-point diffraction, oriented per star so they do not all align.
-        vec3 up0 = abs(sd.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
-        vec3 t1 = normalize(cross(up0, sd));
-        vec3 t2 = cross(sd, t1);
-        float a = g.z * 6.2831853;
-        float ca = cos(a);
-        float sa = sin(a);
-        vec3 s1 = t1 * ca + t2 * sa;
-        vec3 s2 = t2 * ca - t1 * sa;
-        float p1 = dot(dl, s1);
-        float p2 = dot(dl, s2);
-        float wsp = sig * 0.46;
-        float lsp = sig * 6.0;
-        float spike = exp(-abs(p1) / lsp) * exp(-(p2 * p2) / (wsp * wsp))
-                    + exp(-abs(p2) / lsp) * exp(-(p1 * p1) / (wsp * wsp));
-        acc += starTint(pow(g.y, 2.6)) * bm * (core + halo + spike * ${num(P.spikeAmt)} * step(${num(P.spikeThresh)}, bm));
-      }
-    }
-  }
-  return acc;
-}
-
 void main() {
-  /* Lat/long -> direction, per fragment. It has to be done here rather than
-     interpolated: a direction lerped across the quad is not a unit vector and
-     the whole sky would shear. Convention matches three's equirect sampler. */
-  float lon = (vUv.x * 2.0 - 1.0) * PI;
-  float lat = (vUv.y - 0.5) * PI;
-  float cl = cos(lat);
-  vec3 d = normalize(vec3(cl * sin(lon), sin(lat), cl * cos(lon)));
-
-  /* Star sigma is derived from the local texel footprint, which on an equirect
-     map stretches badly towards the poles. Taking the length of fwidth(d)
-     keeps every star band-limited for the texels it actually occupies. */
-  float texel = max(1.0e-7, length(fwidth(d)));
-  float sig = texel * uStarSigma;
-
-  /* Stars sit behind everything, so they pick up every layer's extinction —
-     which the gas pass has already accumulated into one optical depth. */
-  vec3 stars = ${on.stars ? '(starMain(d, sig) + starBright(d, sig)) * uStarGain' : 'vec3(0.0)'};
-
   /* Exposure and saturation ceilings, applied to the gas only.
 
      The layer amounts are drawn per seed from wide ranges, and the palettes
@@ -772,14 +671,11 @@ void main() {
      subject in the ships, and a backdrop cannot out-read the thing it is
      behind. These two numbers are measured from the first bake and applied on
      a second one — the program is already compiled by then, so the correction
-     costs a few milliseconds rather than another compile.
-
-     Stars are deliberately left alone: their budget is already set low on
-     purpose, and dimming them with the gas would only make the sky emptier. */
+     costs a few milliseconds rather than another compile. */
   vec4 gas = texture2D(uGas, vUv);
   vec3 gasCol = gas.rgb * uGasGain;
   gasCol = mix(vec3(dot(gasCol, vec3(0.2126, 0.7152, 0.0722))), gasCol, uGasSat);
-  vec3 col = stars * exp(-EXT * gas.a) + gasCol;
+  vec3 col = gasCol;
 
   /* A hair of ambient so the void is deep charcoal-blue rather than a dead
      zero — pure #000 reads as a hole punched in the frame. */
@@ -798,6 +694,178 @@ void main() {
   gl_Position = vec4(position.xy, 0.0, 1.0);
 }
 `;
+
+/* ---------------------------------------------------------------------------
+   Resolvable stars.
+
+   These are geometry, not texels. A star baked into an equirectangular map is
+   stored at best as a one-texel Gaussian and then magnified onto the screen by
+   whatever the ratio of texel size to pixel size happens to be — at 4096x2048
+   and 48 degrees of FOV that is three and a half, and the result measured 5-6
+   px of half-max and looked, in a crop, like a soft square. Drawn as a point
+   the size is set in pixels directly, so a star is ~2 px wherever the camera
+   points and however large the map is, and it cannot alias under rotation
+   because it is resampled every frame rather than filtered from a texture.
+
+   Distances: the cloud sits at 2.2e9 m, outside the planet, its rings and the
+   star quad, inside `farCamera`'s 1e10 far plane. Depth is tested but not
+   written, so a backdrop body in front of a star occludes it.
+   --------------------------------------------------------------------------- */
+
+const STAR_RADIUS = 2.2e9;
+
+/** CPU twin of the black-body ramp in NOISE_GLSL. t = 0 hot blue-white .. 1 cool red. */
+function starTintRgb(t, out) {
+  const ss = (a, b, x) => {
+    const u = Math.min(1, Math.max(0, (x - a) / (b - a)));
+    return u * u * (3 - 2 * u);
+  };
+  const mix = (a, b, k) => a + (b - a) * k;
+  let r = 0.70, g = 0.80, b = 1.00;
+  let k = ss(0.00, 0.30, t);
+  r = mix(r, 1.00, k); g = mix(g, 1.00, k); b = mix(b, 0.99, k);
+  k = ss(0.30, 0.62, t);
+  r = mix(r, 1.00, k); g = mix(g, 0.93, k); b = mix(b, 0.80, k);
+  k = ss(0.62, 0.85, t);
+  r = mix(r, 1.00, k); g = mix(g, 0.80, k); b = mix(b, 0.55, k);
+  k = ss(0.85, 1.00, t);
+  r = mix(r, 1.00, k); g = mix(g, 0.58, k); b = mix(b, 0.40, k);
+  out[0] = r; out[1] = g; out[2] = b;
+  return out;
+}
+
+const STAR_VERTEX = /* glsl */ `
+#include <common>
+#include <logdepthbuf_pars_vertex>
+attribute vec3 aTint;
+attribute float aMag;
+uniform float uSize;
+uniform float uGain;
+uniform float uOcclude;
+uniform sampler2D uSky;
+varying vec3 vColour;
+
+void main() {
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  gl_Position = projectionMatrix * mv;
+
+  /* Gas in front of a star dims it. The bake no longer carries the stars, so
+     that depth cue has to be reconstructed: one fetch of the sky map along the
+     star's own direction, which is the gas column it sits behind. Emission is
+     not extinction, but the two are strongly correlated in this sky and the
+     visible outcome — stars fading out across a bright complex, surviving in
+     the empty half — is the one that matters. */
+  vec3 d = normalize(position);
+  vec2 uv = vec2(atan(d.x, d.z) / (2.0 * PI) + 0.5, asin(clamp(d.y, -1.0, 1.0)) / PI + 0.5);
+  vec3 gas = texture2D(uSky, uv).rgb;
+  float gl = dot(gas, vec3(0.2126, 0.7152, 0.0722));
+
+  vColour = aTint * aMag * uGain * exp(-gl * uOcclude);
+  /* Constant, in framebuffer pixels. Magnitude is carried by brightness alone:
+     letting it drive the disc as well is what makes a field read as bokeh, and
+     the post stack's bloom already gives the bright ones their spread. */
+  gl_PointSize = uSize;
+  #include <logdepthbuf_vertex>
+}
+`;
+
+const STAR_FRAGMENT = /* glsl */ `
+#include <common>
+#include <logdepthbuf_pars_fragment>
+uniform float uSigma;
+varying vec3 vColour;
+
+void main() {
+  #include <logdepthbuf_fragment>
+  /* gl_PointCoord spans the quad, so q = 1 is half the point size in pixels.
+     uSigma is in those same units. */
+  vec2 q = gl_PointCoord * 2.0 - 1.0;
+  float r2 = dot(q, q);
+  if (r2 > 1.0) discard;
+  float a = exp(-r2 / (uSigma * uSigma));
+  gl_FragColor = vec4(vColour * a, 1.0);
+}
+`;
+
+/**
+ * Build the point-source star field for a baked sky.
+ * @returns {{ points: THREE.Points, material: THREE.ShaderMaterial,
+ *             geometry: THREE.BufferGeometry, aboveThreshold: number }}
+ */
+function buildStarField(P, rng, dpr) {
+  const n = P.starCount;
+  const pos = new Float32Array(n * 3);
+  const tint = new Float32Array(n * 3);
+  const mag = new Float32Array(n);
+  const axis = new THREE.Vector3().fromArray(P.bandAxis);
+  const sw2 = 2 * P.starBandW * P.starBandW;
+  const rgb = [0, 0, 0];
+  const v = new THREE.Vector3();
+  const peak = 1 + P.starBandAmt;
+
+  let above = 0;
+  for (let i = 0; i < n; i++) {
+    /* Rejection-sample toward the galactic band. The cap on attempts is there
+       so a pathological band width can never spin: falling through to the last
+       candidate costs one slightly-misplaced star. */
+    for (let a = 0; a < 24; a++) {
+      const u = rng.unitVector();
+      v.set(u.x, u.y, u.z);
+      const lat = v.dot(axis);
+      const conc = 1 + P.starBandAmt * Math.exp(-(lat * lat) / sw2);
+      if (rng.next() * peak <= conc) break;
+    }
+    pos[i * 3] = v.x * STAR_RADIUS;
+    pos[i * 3 + 1] = v.y * STAR_RADIUS;
+    pos[i * 3 + 2] = v.z * STAR_RADIUS;
+
+    /* Euclidean number counts: N(>F) proportional to F^-1.5, which inverts to
+       F = floor * u^(-2/3). That is what gives a handful of genuinely bright
+       stars over a great many faint ones — the spread real skies have and a
+       uniform spray of identical dots does not. Capped so no single star can
+       run away with the exposure. */
+    const f = Math.min(2.2, P.starFloor * Math.pow(Math.max(1e-4, rng.next()), -2 / 3));
+    mag[i] = f;
+    if (f > 0.024) above++;
+
+    starTintRgb(Math.pow(rng.next(), 1.9), rgb);
+    tint[i * 3] = rgb[0];
+    tint[i * 3 + 1] = rgb[1];
+    tint[i * 3 + 2] = rgb[2];
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geometry.setAttribute('aTint', new THREE.BufferAttribute(tint, 3));
+  geometry.setAttribute('aMag', new THREE.BufferAttribute(mag, 1));
+  geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), STAR_RADIUS * 1.01);
+
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      /* 8 device pixels of quad with a 0.275 sigma puts the linear half-max at
+         1.8 px and the sRGB-encoded half-max — what a peak finder measures —
+         at 2-3 px, which is the stated intent. */
+      uSize: { value: 8 * Math.max(1, dpr || 1) },
+      uSigma: { value: 0.275 },
+      uGain: { value: 1 },
+      uOcclude: { value: P.starOcclude },
+      uSky: { value: null },
+    },
+    vertexShader: STAR_VERTEX,
+    fragmentShader: STAR_FRAGMENT,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    depthTest: true,
+    toneMapped: false,
+  });
+
+  const points = new THREE.Points(geometry, material);
+  points.frustumCulled = false;
+  points.renderOrder = -10;   // behind every backdrop body
+  points.name = 'env:stars';
+  return { points, material, geometry, aboveThreshold: above };
+}
 
 /* ---------------------------------------------------------------------------
    Parameter generation
@@ -1109,22 +1177,24 @@ function generateParams(rng, opts) {
     sunDir,
     sunCol: mul(pal.key, 0.42),
 
-    /* Star budget. Deliberately far below what the field can carry: with a
-       nebula this strong the stars are texture, not subject. Too many bright
-       ones and the sky reads as confetti and the auto-exposure chases them
-       instead of the gas. */
-    starCells: 55,
-    starSalt: rng.range(1, 900),
-    starDensity: rng.range(0.20, 0.30),
+    /* Star budget.
+
+       `starFloor` is the flux of the faintest star drawn and it is the only
+       number that sets how busy the sky looks, because the counts follow a
+       Euclidean law: the number of stars brighter than F goes as F^-1.5, so
+       the population above the ~0.024 of scene linear that reads as 40/255 is
+       `starCount * (starFloor / 0.024)^1.5`. At the values below that is
+       roughly 400 over the whole sphere, and a 48-degree frame sees about
+       3.4% of the sphere — call it a dozen, two dozen looking along the band.
+       §3.5 makes emptiness the subject; the sky must never out-busy the fleet.
+
+       `starBandW` concentrates them toward the galactic band so the field has
+       structure rather than being a uniform spray. */
+    starCount: 9000,
+    starFloor: rng.range(0.0026, 0.0036),
     starBandW: bandW * rng.range(2.2, 3.2),
-    starMag: rng.range(0.16, 0.24),
-    starMagPow: rng.range(6.5, 8.5),
-    brightCells: 4,
-    brightSalt: rng.range(1, 900),
-    brightDensity: rng.range(0.055, 0.095),
-    brightMag: rng.range(0.85, 1.45),
-    spikeAmt: rng.range(0.045, 0.085),
-    spikeThresh: rng.range(2.6, 3.4),
+    starBandAmt: rng.range(1.0, 1.5),
+    starOcclude: rng.range(9.0, 15.0),
 
     voidCol: [
       pal.haze[0] * 0.045 + 0.0009,
@@ -1160,17 +1230,16 @@ export function buildSkybox(renderer, rng, opts = {}) {
   const W = size * 2;
   const H = size;
 
-  /* Two star maps, not one.
+  /* Progressive refinement, kept but no longer needed by default.
 
-     The full 4096x2048 star pass is several seconds of fragment work even on
-     the target machine, and it used to run as one synchronous block in the
-     Environment constructor — the page simply stopped for the duration and the
-     boot bar lied about which stage it was on. So: bake a half-size map
-     synchronously, hand that back immediately so the game is playable, and
-     fill the full-size map a tile at a time from the render loop. ENV swaps
-     the texture over when it completes. The preview is a real sky, just with
-     softer stars, and at half size it costs a quarter of the time. */
-  const progressive = size >= 1024 && opts.progressive !== false;
+     Pass B used to be the expensive one — a full-resolution star field, several
+     seconds of fragment work even on the target machine — so it ran a tile at a
+     time from the render loop rather than stopping the page. With the stars
+     drawn as geometry, pass B is one texture fetch and a mix per texel: a few
+     milliseconds at 4096x2048, against a second full-size render target for the
+     privilege of splitting it. So it is off unless asked for, and `refined` is
+     true from the first frame. */
+  const progressive = opts.progressive === true && size >= 1024;
   const PW = progressive ? W >> 1 : W;
   const PH = progressive ? H >> 1 : H;
 
@@ -1188,6 +1257,15 @@ export function buildSkybox(renderer, rng, opts = {}) {
     });
     rt.texture.colorSpace = THREE.LinearSRGBColorSpace;
     rt.texture.mapping = THREE.EquirectangularReflectionMapping;
+    /* Anisotropic filtering, not the default 1.
+
+       A sky drawn on the inside of a sphere is sampled at a grazing angle over
+       most of the frame, and an isotropic sampler answers that by picking a mip
+       coarse enough for the *long* axis of the footprint. On a lat/long map
+       that is worst near the poles, where a texel is a sliver. At anisotropy 1
+       the gas lost a mip level or two across the top and bottom of the frame
+       and softened visibly against the same gas near the horizon. */
+    rt.texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
     rt.texture.name = 'skybox:' + P.palette.name;
     return rt;
   };
@@ -1265,10 +1343,6 @@ export function buildSkybox(renderer, rng, opts = {}) {
 
   const material = new THREE.ShaderMaterial({
     uniforms: {
-      // Roughly one texel of standard deviation: below ~0.5 the splat stops
-      // being band-limited and the field starts to crawl when the camera turns.
-      uStarSigma: { value: 0.62 },
-      uStarGain: { value: 1.0 },
       uGasGain: { value: 1.0 },
       uGasSat: { value: 1.0 },
       uGas: { value: gasA.texture },
@@ -1440,6 +1514,10 @@ export function buildSkybox(renderer, rng, opts = {}) {
   renderer.setScissor(prevScissor.x, prevScissor.y, prevScissor.z, prevScissor.w);
   renderer.setRenderTarget(prevTarget);
 
+  /* ---- resolvable stars, as geometry ------------------------------------ */
+  const stars = buildStarField(P, r, renderer.getPixelRatio());
+  stars.material.uniforms.uSky.value = preview.texture;
+
   /* ---- progressive refinement of the full-size map ---------------------- */
 
   /* One chunk per frame. The grid is sized so a chunk is a few milliseconds on
@@ -1559,6 +1637,7 @@ export function buildSkybox(renderer, rng, opts = {}) {
         buildMips(target);
         result.texture = target.texture;
         result.renderTarget = target;
+        stars.material.uniforms.uSky.value = target.texture;
         swapped = true;
         flipped = true;
       }
@@ -1588,7 +1667,14 @@ export function buildSkybox(renderer, rng, opts = {}) {
     average: probe.mean.clone(),
     averageLuminance: probe.luminance,
     size,
+    /** Point-source stars. ENV adds this to `farScene` and owns its layer. */
+    starField: stars.points,
+    starsAboveThreshold: stars.aboveThreshold,
+    bandAxis: new THREE.Vector3().fromArray(P.bandAxis),
     dispose() {
+      if (stars.points.parent) stars.points.parent.remove(stars.points);
+      stars.geometry.dispose();
+      stars.material.dispose();
       target.dispose();
       if (preview !== target) preview.dispose();
       releaseBakeKit();

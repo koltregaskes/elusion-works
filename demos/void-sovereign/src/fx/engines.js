@@ -601,6 +601,17 @@ export class EngineFX {
     for (const d of defs) entry.centre.add(d.pos);
     entry.centre.multiplyScalar(1 / defs.length);
     entry.lights = this._readLights(entity);
+
+    /* Hull length drives both halves of the scale cue, so resolve it once per
+       attach rather than per nozzle per frame. */
+    const L = def.length || (entity.radius || 10) * 2.2;
+    entry.L = L;
+    entry.gain = lengthGain(L);
+    const capPx = ceilingPixels(L);
+    entry.flareCapPx = capPx;
+    /* The cone is a solid, not a billboard, so the same ceiling on its radius
+       reads much heavier. Hold it under the flare's. */
+    entry.plumeCapPx = capPx * 0.65;
     this._entries.set(entity.id, entry);
   }
 
@@ -617,6 +628,10 @@ export class EngineFX {
     // Fixture size tracks hull size but sub-linearly: a mothership's lamps are
     // bigger than a fighter's, not 135x bigger, which is what sells the scale.
     const size = Math.min(4.2, Math.max(0.22, Math.pow(L, 0.62) * 0.055));
+    // Lamps sit well under the drive glow's ceiling: they are navigation
+    // fixtures, not emitters, and at fleet range a fighter should not carry
+    // two-pixel lamps on a one-pixel hull.
+    const capPx = ceilingPixels(L) * 0.45;
     const out = [];
     /* Take every lamp up to a generous cap. Running-light *spacing* is the
        scale cue (§3.4) — 86 lamps at 70 m pitch is what says "1.9 km" — so
@@ -632,6 +647,7 @@ export class EngineFX {
         pos: new THREE.Vector3(l.pos.x, l.pos.y, l.pos.z),
         r: c ? c.r : 1, g: c ? c.g : 0.86, b: c ? c.b : 0.72,
         size,
+        capPx,
         period: l.period > 0 ? l.period : 0,
         phase: ((entity.id * 0.6180339887 + i * 0.2393) % 1) * (l.period > 0 ? l.period : 1),
         seed: (i * 0.618034) % 1,
@@ -692,6 +708,7 @@ export class EngineFX {
           ld[o + 7] = l.phase;
           ld[o + 8] = l.period;
           ld[o + 9] = l.seed;
+          ld[o + 10] = l.capPx;
           ln++;
         }
       }
@@ -736,10 +753,16 @@ export class EngineFX {
         q.copy(d.quat).premultiply(oq);
 
         const r = d.radius * scale;
-        // A fighter at full burn trails roughly its own length of flame; a
-        // capital's block runs proportionally further because its bells are
-        // proportionally larger. One formula covers a 45x span of nozzle size.
-        const len = r * (3.0 + 22.0 * throttle);
+        /* A fighter at full burn trails roughly its own length of flame; a
+           capital's block runs proportionally further because its bells are
+           proportionally larger. One formula covers a 45x span of nozzle size.
+
+           `entry.gain` is the correction for bells running as L^0.8 rather
+           than L: without it a 130 m frigate's plume was only 5.9x an
+           interceptor's, against a 9.3x difference in hull length, and once
+           the screen floor levelled what was left the two classes painted the
+           same mark at fleet range. */
+        const len = r * (3.0 + 22.0 * throttle) * entry.gain;
         /* Nominal radius, not the widest point: the necked profile peaks at
            0.87 of this a fifth of the way aft. Full burn therefore tops out at
            1.04 bell radii, just inside the 1.12 lip flange, so the plume fills
@@ -758,15 +781,16 @@ export class EngineFX {
         cd[o + 10] = team.engine.r; cd[o + 11] = team.engine.g; cd[o + 12] = team.engine.b;
         cd[o + 13] = seed;
         cd[o + 14] = throttle;
-        cd[o + 15] = 0;
+        cd[o + 15] = entry.plumeCapPx;
         cd[o + 16] = 0;
 
         for (let k = 0; k < E_STRIDE; k++) fd[o + k] = cd[o + k];
         // Trimmed now the throat disc carries the bore: the flare is the halo
         // around a lit nozzle, not the only thing lighting it.
-        fd[o + 7] = r * (1.9 + 1.7 * throttle);
+        fd[o + 7] = r * (1.9 + 1.7 * throttle) * entry.gain;
         fd[o + 8] = fd[o + 7];
         fd[o + 9] = len;
+        fd[o + 15] = entry.flareCapPx;
         fd[o + 16] = 1;
         n++;
       }

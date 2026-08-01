@@ -249,6 +249,13 @@ export class InputController {
         this._selSet = new Set(this._selection);
       }),
       bus.on('ui:sensorsToggle', (p) => { this._sensorsOpen = !!(p && p.open); }),
+      /* `ui:audioMute` carries the state to move to, not a toggle, so the one
+         module that owns the keyboard has to track what the mixer is doing —
+         whether the player last used M, the mute button or a slider. */
+      bus.on('ui:audioChanged', (p) => {
+        if (p && typeof p.muted === 'boolean') this._muted = p.muted;
+        if (p && typeof p.available === 'boolean') this._audioAvailable = p.available;
+      }),
     ];
 
     /* Self-drive as a fallback; main.js calling update() first wins the frame. */
@@ -649,6 +656,7 @@ export class InputController {
       case 'KeyG': this._issueGuard(e.shiftKey); return;
       case 'KeyP': this._issuePatrol(e.shiftKey); return;
       case 'KeyS': this._issueStop(); return;
+      case 'KeyM': this._toggleMute(); return;
       case 'Equal': case 'NumpadAdd': this._nudgeSpeed(1); return;
       case 'Minus': case 'NumpadSubtract': this._nudgeSpeed(-1); return;
       case 'PageUp': e.preventDefault(); this.rig.zoomBy(2); return;
@@ -1478,23 +1486,4 @@ export class InputController {
 
     this._clearLongPress();
     for (const off of this._offs) off();
-    this._offs.length = 0;
-    if (this._offHook) this._offHook();
-    this._offHook = null;
-
-    for (const m of this._overlays) {
-      if (m && m.parent) m.parent.remove(m);
-    }
-    this._overlays.length = 0;
-    this._gizGeo.dispose();
-    this._bandGeo.dispose();
-    this._material.dispose();
-    this._materialDark.dispose();
-
-    this._keys.clear();
-    this._touches.clear();
-    this._groups.clear();
-  }
-}
-
-export default InputController;
+    this._of

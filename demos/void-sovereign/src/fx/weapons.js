@@ -155,6 +155,7 @@ varying float vKind;
 varying float vShell;
 varying float vFragW;
 varying float vClamp;
+varying float vSpread;
 
 void main() {
   float span = max( iTime.y, 0.0001 );
@@ -183,10 +184,21 @@ void main() {
   side = sl > 1e-4 ? side / sl : vec3( 1.0, 0.0, 0.0 );
 
   float shellW = aShell < 0.5 ? 4.6 : ( aShell < 1.5 ? 1.75 : 0.52 );
-  float shellPx = aShell < 0.5 ? 20.0 : ( aShell < 1.5 ? 8.0 : 3.0 );
+  /* Screen floors, cut hard from 20/8/3.
 
-  // Fatten toward the impact end: the beam is dumping into something.
-  float belly = 1.0 + 0.55 * smoothstep( 0.55, 1.0, along ) + 0.25 * ( 1.0 - smoothstep( 0.0, 0.18, along ) );
+     Those were tuned on a hero shot where the lance is the subject and the
+     frame holds two ships. In a 560-hull fleet action the same numbers draw a
+     20 px halo round an 8 px white bar across the whole frame, and the beam
+     becomes the brightest object in shot by a wide margin with no muzzle, no
+     impact and no falloff to place it. Legible still, but a line rather than
+     a scratch. */
+  float shellPx = aShell < 0.5 ? 9.0 : ( aShell < 1.5 ? 4.0 : 1.6 );
+
+  /* Taper along the length, then bulb at the impact: the lance leaves the
+     barrel at full bore, thins over the run, and fattens where it is dumping
+     into a hull. A constant-width beam is a scratch on the lens. */
+  float lean = mix( 1.0, 0.68, smoothstep( 0.02, 0.72, along ) );
+  float belly = lean + 0.55 * smoothstep( 0.60, 1.0, along ) + 0.25 * ( 1.0 - smoothstep( 0.0, 0.18, along ) );
 
   float natural = iTime.z * shellW * belly
                 * mix( 0.18, 1.0, charge )
@@ -194,6 +206,9 @@ void main() {
   float floorW = dist * uPixelScale * shellPx;
   float w = max( natural, floorW );
   vClamp = clamp( 1.0 - natural / max( w, 0.0001 ), 0.0, 1.0 );
+  // Radiance falls as the floor spreads the beam over more pixels than it
+  // physically occupies, so a distant lance reads as distant.
+  vSpread = pow( clamp( natural / max( w, 0.0001 ), 0.05, 1.0 ), 0.35 );
   w *= step( 0.001, env );
 
   // Sub-metre instability. Enough to look like contained plasma, not enough
@@ -233,6 +248,7 @@ varying float vKind;
 varying float vShell;
 varying float vFragW;
 varying float vClamp;
+varying float vSpread;
 
 void main() {
   #include <logdepthbuf_fragment>
@@ -248,7 +264,15 @@ void main() {
   // Ends: the throat at the muzzle and the splash on the hull both run hot.
   float muzzle = pow( max( 1.0 - along * 4.0, 0.0 ), 2.0 );
   float splash = pow( max( ( along - 0.78 ) / 0.22, 0.0 ), 1.6 );
-  float ends = muzzle * 1.3 + splash * 1.8;
+  float ends = muzzle * 1.6 + splash * 2.2;
+
+  /* Opacity taper. A lance is not a uniform bar: it is brightest in the throat
+     and at the point of contact, and the long run between them is the dim
+     part. Without this the beam is a hard-edged white scratch of constant
+     value from one edge of frame to the other, with nothing to say which end
+     is the gun and which is the target. */
+  float taper = mix( 1.0, 0.38, smoothstep( 0.03, 0.66, along ) )
+              + 0.55 * smoothstep( 0.80, 1.0, along );
 
   float shape;
   vec3 col;
@@ -272,10 +296,10 @@ void main() {
     col = vColor * ( 0.30 + 0.62 * ends );
   }
 
-  float a = clamp( shape, 0.0, 1.0 ) * vEnv * fxSoftFade( vFragW );
+  float a = clamp( shape * taper, 0.0, 1.0 ) * vEnv * fxSoftFade( vFragW );
   if ( a <= 0.004 ) discard;
 
-  gl_FragColor = vec4( col * vIntensity * uGain, a );
+  gl_FragColor = vec4( col * vIntensity * uGain * vSpread * taper, a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -524,6 +548,20 @@ const EXHAUST_ATTRS = [
 const FLAK_BURST = new THREE.Color(0xffb264);
 const FLAK_SMOKE = new THREE.Color(0x6b6259);
 const HOT_WHITE = new THREE.Color(0xffffff);
+
+/* Screen ceiling, in pixels, for the two effects that fire hundreds of times a
+   second in a fleet action: a gun going off and a round landing.
+
+   The flare field's 5 px floor is right for a one-off event and wrong for a
+   carpet of them — at 560 hulls it painted every muzzle and every impact the
+   same 10 px disc regardless of whether the gun was on a 14 m interceptor or a
+   380 m destroyer, and the battle became an even wash of white with no
+   silhouette left in it. Sized off weapon damage, which is the only proxy for
+   calibre the FX layer is given. A 10-damage autocannon lands at 3.2 px, a
+   220-damage lance at 10 px. */
+function shotCeiling(damage) {
+  return Math.min(11, Math.max(2.4, 1.4 + Math.sqrt(Math.max(1, damage)) * 0.58));
+}
 
 /** Sim rate (ARCHITECTURE §0). Tracer length is quoted in sim ticks of travel. */
 const SIM_HZ = 30;
@@ -1011,14 +1049,16 @@ export class WeaponFX {
     const rng = ctx.rng;
     const f = ctx.fields;
     const size = (5.0 + 4.4 * Math.sqrt(Math.max(1, damage))) * gain;
+    const capPx = shotCeiling(damage);
 
     this._col2.copy(team.trim).lerp(HOT_WHITE, 0.55);
     // Core flash, then a coloured cone blown down the barrel line.
     f.flare.spawn(from.x, from.y, from.z, 0, 0, 0, 0.085, 0,
-      size, size * 0.3, HOT_WHITE, 5.0, 0, 0);
+      size, size * 0.3, HOT_WHITE, 5.0, 0, 0, capPx);
     f.flare.spawn(
       from.x + dx * size * 0.3, from.y + dy * size * 0.3, from.z + dz * size * 0.3,
       dx * 42, dy * 42, dz * 42, 0.17, 4, size * 0.8, size * 2.0, this._col2, 2.6, 0, 0,
+      capPx * 1.3,
     );
     const n = Math.max(3, Math.round(5 * ctx.qscale));
     for (let i = 0; i < n; i++) {
@@ -1081,10 +1121,11 @@ export class WeaponFX {
         this._v.set(-t.dx * inv, -t.dy * inv, -t.dz * inv);
         this._v2.set(t.ex, t.ey, t.ez);
         const mag = Math.min(5.0, 0.9 + Math.sqrt(t.damage) * 0.26);
+        const capPx = shotCeiling(t.damage);
         ctx.fields.flare.spawn(t.ex, t.ey, t.ez, 0, 0, 0, 0.11, 0,
-          mag * 12, mag * 2.6, HOT_WHITE, 4.4, 0, 0);
+          mag * 12, mag * 2.6, HOT_WHITE, 4.4, 0, 0, capPx);
         ctx.fields.flare.spawn(t.ex, t.ey, t.ez, 0, 0, 0, 0.26, 0,
-          mag * 4, mag * 18, FLAK_BURST, 1.9, 0, 0);
+          mag * 4, mag * 18, FLAK_BURST, 1.9, 0, 0, capPx * 1.4);
         this._sparkBurst(this._v2, this._v, Math.round(8 + mag * 4), 0.6, 80 + t.damage * 1.2, mag * 1.9);
       }
     }
