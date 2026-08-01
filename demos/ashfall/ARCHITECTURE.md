@@ -19,7 +19,11 @@ handling and synthesised audio.
    `index.html`; that link is gone. `styles.css` section 0 embeds a 42-glyph Barlow Condensed
    subset as base64 `woff2` (~12 KB across three weights) under the family `Ashfall Display`,
    and `--font-mono` / `--font-body` fall through to `ui-monospace` and `system-ui`. The demo
-   now loads and renders correctly offline, behind a CSP, and with no webfonts installed.
+   now loads and renders correctly offline and with no webfonts installed. One deployment note:
+   the faces are `data:` URIs, so a Content-Security-Policy must allow `font-src data:` —
+   `font-src 'self'` alone rejects them and the HUD falls back to the system stack. That is a
+   graceful degradation rather than a break, but it is the whole point of the embed, so a
+   policy that blocks it is worth catching.
    The exception was worth removing on evidence, not principle: the fetch failed in every
    headless capture, so five rounds of visual review graded HUD typography that no reviewer
    was actually seeing.

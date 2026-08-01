@@ -376,7 +376,27 @@ void main() {
   float viewDist = linearDepth(depth, uNearFar.x, uNearFar.y);
   float worldDist = linearDepth(texture(tDepthWorld, uv).x, uNearFar.x, uNearFar.y);
   float nearFade = smoothstep(uNearCut * 0.3, uNearCut, viewDist);   // fallback only
-  float vm = uHasWorldDepth > 0.5 ? step(viewDist, worldDist * 0.85) // 1 = viewmodel pixel
+
+  /* The mask is "composited depth DIFFERS from world depth", not "composited depth is NEARER".
+   * A nearer-than test assumes the gun is always in front of what it covers, and it is not: the
+   * viewmodel pass clears depth, so standing against a wall at 1 m still draws the weapon at its
+   * ~2 m apparent depth. The nearer-test then classified those texels as world and handed the
+   * ghost straight back, worst exactly where the player is in cover and looking at the gun.
+   *
+   * A bare difference test would over-fire, though, because NOPREPASS is not just the optic: the
+   * sky dome, clouds, dust motes, bulbs, flames, the light shafts, dirty glass and every particle
+   * system are on it too, and none of them appear in the world depth buffer. Stripping their
+   * temporal AA would trade a viewmodel ghost for sky banding and crawling particles.
+   *
+   * So difference is gated by the band the viewmodel can physically occupy. Beyond uNearCut the
+   * test cannot fire at all, which is where all of that NOPREPASS world content lives. Inside it,
+   * a texel whose composited depth matches the prepass is world geometry that simply happens to
+   * be close, and it keeps its full history. NOPREPASS content nearer than uNearCut — a muzzle
+   * flash, a mote against the lens — does lose most of its history, which is a fair trade on
+   * geometry that lives two or three frames anyway. */
+  float depthDiff = abs(viewDist - worldDist) / max(worldDist, 0.05);
+  float inBand = 1.0 - step(uNearCut, viewDist);
+  float vm = uHasWorldDepth > 0.5 ? inBand * step(0.02, depthDiff)   // 1 = viewmodel pixel
                                   : 1.0 - nearFade;
 
   // min(), deliberately not mix(): this term may only ever SHORTEN the history, never lengthen

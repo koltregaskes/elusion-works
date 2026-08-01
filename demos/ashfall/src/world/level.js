@@ -4072,16 +4072,31 @@ export function createLevel(scene, materials, game) {
      * no seam shows at the bearing.
      */
     const zWall = ADMIN.wall * 0.5 - 1.5;
-    for (let i = -4; i <= 4; i++) {
-      // These are structural: identical geometry on a constant 2.2 m centre is *correct*, and
+    /*
+     * Bracket centres come from the window row, not from a round number. `winRow` puts its
+     * `count` centres at half-integer multiples of `span / count`, so the piers *between* the
+     * windows fall on the whole-integer multiples — exactly, not approximately. The old fixed
+     * 2.2 m centre had no relationship to that pitch and four of its nine feet (-6.6, -2.2,
+     * 2.2, 6.6) landed inside a window reveal, where `punchedWall` emits no masonry at all:
+     * the corbel pad and the end of the strut were bearing on a hole.
+     *
+     * i runs to +/-3 rather than +/-2: the outermost window centre is at 2.5 pitches, so 3
+     * pitches is still solid wall and it keeps the run at +/-8.75 m, matching the old +/-8.8
+     * span under a 9.6 m slab. Stopping at 2 would have left 3.8 m of unsupported cantilever
+     * at each end, trading a hidden defect for a visible one.
+     */
+    const bracketPitch = (W - 1.5) / 6;
+    for (let i = -3; i <= 3; i++) {
+      // These are structural: identical geometry on a constant centre is *correct*, and
       // jittering the angle or the spacing would read as subsidence, not as variation. Only
       // the concrete tone moves, the way the floor-slab bays above already do.
+      const bx = i * bracketPitch;
       const tone = 0.9 + hash2(i + 7, 3) * 0.2;
       const tt = [T.concreteWorn[0] * tone, T.concreteWorn[1] * tone, T.concreteWorn[2] * tone];
-      strut(gCon, i * 2.2, -0.2, zWall + 0.85, i * 2.2, -1.15, zWall - 0.06, 0.11, tt, 0.014);
+      strut(gCon, bx, -0.2, zWall + 0.85, bx, -1.15, zWall - 0.06, 0.11, tt, 0.014);
       // The bearing the foot now needs: a cast-in corbel pad standing proud of the wall face,
       // deep enough that the end of the strut is inside it rather than butted against brick.
-      chamferBox(gCon, i * 2.2, -1.15, zWall + 0.02, 0.22, 0.13, 0.11, tt, 0.012);
+      chamferBox(gCon, bx, -1.15, zWall + 0.02, 0.22, 0.13, 0.11, tt, 0.012);
     }
     popX();
     solidBox(cx, f1 - 0.1, balZ, 9.6, 0.12, 1.55, 'concrete', 0, { walkTop: true });
@@ -4513,12 +4528,27 @@ export function createLevel(scene, materials, game) {
      * i * 5.7) plus both ends, so a pier can never land on a stencil.
      */
     /**
-     * The bricked-up opening sits in the bay between the piers at -14.35 and -8.65. -12.75
-     * rather than the bay centre because the recess has to miss everything `dressWalls`
-     * already paints on this plane: the bay numeral at -11.5, the coping run-off wash at -9.9
-     * and the fixing wash at -13.84 would all be left floating 0.12 m in front of it.
+     * The bricked-up opening sits in the bay between the piers at -14.35 and -8.65.
+     *
+     * Solving its position needs care, because `dressWalls` paints this same plane from a
+     * frame turned through PI (`place(cx, 0, DOCK.z0, Math.PI)`, and `buildDock` places with
+     * no yaw at all), so a dressing-local x of L is dock-local -L. Reading the dressing list
+     * without mirroring it — which is how -12.75 was first chosen — lands the opening on the
+     * mirror image of the gap it was aimed at. Mirrored into this frame the face carries:
+     *
+     *   bay numerals   17.0 - i * 5.7   ->  17.0, 11.3, 5.6, -0.1, -5.8, -11.5, -17.2
+     *   coping washes  numeral - 1.4    ->  15.6,  9.9, 4.2, -1.5, -7.2, -12.9, -18.6
+     *   fixing washes  numeral + 1.4    ->  18.4, 12.7, 7.0,  1.3, -4.4, -10.1, -15.8
+     *
+     * -12.75 put the 1.0 m opening across -13.25..-12.25 and so swallowed the coping wash at
+     * -12.9: between y 0.92 and 1.05 it sat inside the projecting lintel, and below that it
+     * floated 0.12 m off the recessed infill.
+     *
+     * -10.1 is the answer. The clear run in this bay is -11.3 (right edge of the numeral at
+     * -11.5) to -8.93 (face of the pier at -8.65), and the widest thing here is the lintel at
+     * 1.24 m, which leaves 0.6 m of margin at each end.
      */
-    const doorX = -12.75;
+    const doorX = -10.1;
     const doorHW = 0.5;
     const doorTop = 0.92;
     const doorLin = 0.13; // lintel depth, so the head of the opening reads as built, not cut
@@ -4555,19 +4585,28 @@ export function createLevel(scene, materials, game) {
       const tone = 0.86 + hash2(i, 23) * 0.26;
       chamferBox(gCon, px, 0.3, -hd - 0.34, (hw * 2 / 28) * 0.5 - 0.03, 0.03, 0.17, [T.concrete[0] * tone, T.concrete[1] * tone, T.concrete[2] * tone], 0.012);
     }
-    // Weep pipes at 3 m centres, laid along local Z so 0.04 m of each one stands out of the
-    // brick. They sit clear of both the numerals and the piers by construction.
+    /* Weep pipes at 3 m centres, laid along local Z so 0.04 m of each one stands out of the
+     * brick. They sit clear of both the numerals and the piers by construction.
+     *
+     * Height is set by the cable trough, not by the pipe. The trough and its lids stand to
+     * y 0.33 and reach out to z -hd-0.17, which is *in front of* the plane the stains are
+     * drawn on — so a weep at 0.5 m put four fifths of its streak inside the trough where
+     * nothing could see it. At 0.78 the pipe clears the lids and the stain below it has
+     * 0.45 m of open brick to run down before it reaches them. */
+    const WEEP_Y = 0.78;
     for (let i = 0; i < 14; i++) {
       const px = -hw + 1.5 + i * 3.0;
-      place(px, 0.5, -hd - 0.11, 0, Math.PI * 0.5);
+      place(px, WEEP_Y, -hd - 0.11, 0, Math.PI * 0.5);
       tube(gR, 0.035, 0.035, 0.22, 6, T.rustDeep, false, false, 0.006);
       popX();
     }
     // The staining under each weep. `rustWash` draws in local XY facing +Z and this face looks
     // down -Z, so the streaks need the face's own frame, turned through PI like `dressWalls`.
+    // Length is capped so the longest streak `rustWash` can draw (len * 1.25) still stops
+    // above the trough lids rather than disappearing behind them.
     place(0, 0, -hd - 0.18, Math.PI);
     for (let i = 0; i < 14; i++) {
-      rustWash(gB, hw - 1.5 - i * 3.0, 0.44, 0.42, 0.13, 3, 0.012, T.rustWash, 8790 + i);
+      rustWash(gB, hw - 1.5 - i * 3.0, WEEP_Y - 0.06, 0.3, 0.13, 3, 0.012, T.rustWash, 8790 + i);
     }
     popX();
     // Platform surface in 3 m bays with real joints.
@@ -4603,7 +4642,14 @@ export function createLevel(scene, materials, game) {
      * extent. The column length is derived from it rather than written out, so the two cannot
      * drift apart again.
      */
-    const colTop = DOCK.h + 3.7 - 0.5 * 0.5;
+    // One declaration each, because three separate pieces read them: the column height, the
+    // knee brace's far-chord target, and the girder call itself. They were literals repeated
+    // across all three, which is precisely the drift this comment was written to prevent.
+    const TRUSS_Y = DOCK.h + 3.7;
+    const TRUSS_DEPTH = 0.5;
+    const TRUSS_WIDTH = 3.0;
+    const trussZ = cz - hd + 2.4;
+    const colTop = TRUSS_Y - TRUSS_DEPTH * 0.5;
     const colH = colTop - DOCK.h;
     const colY = DOCK.h + colH * 0.5;
     for (let i = 0; i < cols; i++) {
@@ -4639,13 +4685,14 @@ export function createLevel(scene, materials, game) {
        * the truss (the girder is 3.0 m wide about cz - hd + 2.4, so that chord is at
        * cz - hd + 3.9), which is the only other piece of real geometry to land on.
        */
-      strut(gS, 0, DOCK.h + 1.6 - colY, 0.06, 0, colH * 0.5, 2.9, 0.05, T.steelPainted, 0.008);
+      strut(gS, 0, DOCK.h + 1.6 - colY, 0.06, 0, colH * 0.5,
+        trussZ + TRUSS_WIDTH * 0.5 - (cz - hd + 1.0), 0.05, T.steelPainted, 0.008);
       popX();
       solidBox(px, colY, cz - hd + 1.0, 0.16, colH * 0.5, 0.16, 'metal', 0, { cover: false });
     }
-    place(cx, DOCK.h + 3.7, cz - hd + 2.4, 0, 0, 0);
+    place(cx, TRUSS_Y, trussZ, 0, 0, 0);
     place(0, 0, 0, Math.PI * 0.5);
-    latticeGirder(gS, DOCK.x1 - DOCK.x0 - 2, 0.5, 3.0, 16, 0.045, 0.028, T.steelPainted);
+    latticeGirder(gS, DOCK.x1 - DOCK.x0 - 2, TRUSS_DEPTH, TRUSS_WIDTH, 16, 0.045, 0.028, T.steelPainted);
     popX();
     popX();
     for (let i = 0; i < 20; i++) {
@@ -7810,8 +7857,18 @@ export function createLevel(scene, materials, game) {
         stencilText(gB, String(i + 1), px, 0.66, 0.08, T.paint, 0.19);
         rustWash(gB, px + 1.4, DOCK.h - 0.04, 0.62, 0.35, 3, 0.19, T.grime, 8601 + i);
       }
-      for (let i = 0; i < 8; i++) {
-        rustWash(gB, -19.4 + i * 5.54, DOCK.h - 0.05, 0.55, 0.22, 3, 0.19, T.rustWash, 8640 + i);
+      /* Fixing washes, one per bay at 1.4 m to the left of each numeral — the mirror of the
+       * coping wash 1.4 m to its right, so each bay carries a matched pair.
+       *
+       * They used to run on their own 5.54 m pitch, deliberately drifting against the 5.7 m
+       * bay rhythm. That was a reasonable choice when the face was flat, and it stopped being
+       * one when the face was bayed by piers: the drift walks into the pier line and three of
+       * the eight (-2.78, 2.76 and 8.3, against pier centres -2.75, 2.95 and 8.65) ended up
+       * inside a 0.28 m half-width pier and were simply not drawn. No phase offset fixes a
+       * drifting pitch — it re-collides further along the run — so they now share the bay
+       * pitch and sit a guaranteed 1.45 m from the nearest pier face. */
+      for (let i = 0; i < 7; i++) {
+        rustWash(gB, -18.4 + i * 5.7, DOCK.h - 0.05, 0.55, 0.22, 3, 0.19, T.rustWash, 8640 + i);
       }
       pockMarks(gB, 6.0, 0.6, 4.0, 0.42, 18, 0.19, 8620, 0, 0);
       popX();

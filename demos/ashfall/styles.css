@@ -134,6 +134,11 @@
    DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
    FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
    OTHER DEALINGS IN THE FONT SOFTWARE.
+
+   DEPLOYMENT NOTE: these three faces are `data:` URIs, so any Content-Security-Policy on the
+   host has to allow `font-src data:`. A policy of `font-src 'self'` rejects them — the page
+   still works and the stacks below fall through to the platform, but the condensed HUD the
+   embed exists to guarantee is exactly what is lost, silently. See ARCHITECTURE.md rule 3.
  */
 
 @font-face {
