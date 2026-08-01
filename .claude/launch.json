@@ -5,7 +5,7 @@
       "name": "void-sovereign",
       "runtimeExecutable": "node",
       "runtimeArgs": ["demos/void-sovereign/tools/dev-server.mjs"],
-      "port": 8899,
+      "port": 8900,
       "autoPort": true
     }
   ]
