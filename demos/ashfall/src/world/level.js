@@ -4051,11 +4051,37 @@ export function createLevel(scene, materials, game) {
     const gw = G('woodPlank');
     chamferBox(gw, 0, 1.03, 1.45, 9.65, 0.035, 0.14, T.woodDark, 0.012);
     for (let i = -5; i <= 5; i++) {
-      chamferBox(gCon, i * 1.6, 0.06, 1.45, 0.06, 0.05, 0.11, T.concreteDark, 0.006);
+      // Three of the eleven slots are lifted clear of the slab edge and given a projecting
+      // spout. At 0.06 they sit behind the slab's own shadow line and are invisible from the
+      // yard, which is what left the balustrade reading as one unbroken 19 m band.
+      const spout = i === -3 || i === 0 || i === 3;
+      chamferBox(gCon, i * 1.6, spout ? 0.14 : 0.06, 1.45, 0.06, 0.05, 0.11, T.concreteDark, 0.006);
+      if (spout) chamferBox(gCon, i * 1.6, 0.14, 1.56, 0.09, 0.05, 0.12, T.concreteWorn, 0.008);
     }
-    // Supporting brackets under the slab.
+    /**
+     * Supporting brackets under the slab.
+     *
+     * They used to run from the slab down to local z = -0.35, which is 0.95 m short of the
+     * wall — nine concrete struts terminating in open air under a cantilever. The wall's outer
+     * face is at world z = ADMIN.z1 + ADMIN.wall * 0.5, which in this frame is `zWall`.
+     *
+     * Simply stretching the old strut to the wall would give a 1.1 m drop over a 2.5 m run,
+     * i.e. a 24-degree diagonal, which is a prop leaning on a building rather than a bracket
+     * carrying one. The head is pulled inboard to 0.85 m out from the wall instead, so the
+     * same 0.95 m drop makes a 48-degree bracket, and the foot runs 0.06 m into the brick so
+     * no seam shows at the bearing.
+     */
+    const zWall = ADMIN.wall * 0.5 - 1.5;
     for (let i = -4; i <= 4; i++) {
-      strut(gCon, i * 2.2, -0.2, 1.3, i * 2.2, -1.3, -0.35, 0.11, T.concreteWorn, 0.014);
+      // These are structural: identical geometry on a constant 2.2 m centre is *correct*, and
+      // jittering the angle or the spacing would read as subsidence, not as variation. Only
+      // the concrete tone moves, the way the floor-slab bays above already do.
+      const tone = 0.9 + hash2(i + 7, 3) * 0.2;
+      const tt = [T.concreteWorn[0] * tone, T.concreteWorn[1] * tone, T.concreteWorn[2] * tone];
+      strut(gCon, i * 2.2, -0.2, zWall + 0.85, i * 2.2, -1.15, zWall - 0.06, 0.11, tt, 0.014);
+      // The bearing the foot now needs: a cast-in corbel pad standing proud of the wall face,
+      // deep enough that the end of the strut is inside it rather than butted against brick.
+      chamferBox(gCon, i * 2.2, -1.15, zWall + 0.02, 0.22, 0.13, 0.11, tt, 0.012);
     }
     popX();
     solidBox(cx, f1 - 0.1, balZ, 9.6, 0.12, 1.55, 'concrete', 0, { walkTop: true });
@@ -4465,15 +4491,85 @@ export function createLevel(scene, materials, game) {
     const gCon = G('concreteRough');
     const gS = G('metalPainted');
     const gC = G('corrugatedSteel');
+    const gR = G('metalRust');
     const cx = (DOCK.x0 + DOCK.x1) * 0.5;
     const cz = (DOCK.z0 + DOCK.z1) * 0.5;
     const hw = (DOCK.x1 - DOCK.x0) * 0.5;
     const hd = (DOCK.z1 - DOCK.z0) * 0.5;
 
     place(cx, 0, cz);
-    // Brick face to the track, with engineering-brick copings and rubbed edges.
-    chamferBox(gB, 0, DOCK.h * 0.5, -hd, hw, DOCK.h * 0.5, 0.18, T.brick, 0.02);
-    chamferBox(gCon, 0, DOCK.h + 0.03, -hd - 0.08, hw + 0.05, 0.05, 0.28, T.concreteWorn, 0.018);
+    /**
+     * The brick face to the track: 42 m of it, the largest single plane in the map, which §4
+     * forbids being bare and unbroken. It is now bayed by piers at 5.7 m centres.
+     *
+     * The panel itself stays exactly on its original plane rather than being recessed. Every
+     * stencil, rust wash and pock mark `dressWalls` paints on this face is authored at zOff
+     * 0.19 from DOCK.z0, i.e. 0.01 m proud of the panel's outer skin — pushing the panel back
+     * would leave all of them floating in front of it. So the relief is made the other way
+     * round: the panel holds its plane and the piers stand 0.24 m proud of it, which reads
+     * identically and keeps the existing dressing glued down.
+     *
+     * Pier centres are the midpoints between the seven bay numerals (dock-local x = -17.2 +
+     * i * 5.7) plus both ends, so a pier can never land on a stencil.
+     */
+    /**
+     * The bricked-up opening sits in the bay between the piers at -14.35 and -8.65. -12.75
+     * rather than the bay centre because the recess has to miss everything `dressWalls`
+     * already paints on this plane: the bay numeral at -11.5, the coping run-off wash at -9.9
+     * and the fixing wash at -13.84 would all be left floating 0.12 m in front of it.
+     */
+    const doorX = -12.75;
+    const doorHW = 0.5;
+    const doorTop = 0.92;
+    const doorLin = 0.13; // lintel depth, so the head of the opening reads as built, not cut
+    // Panel, split either side of the opening. Left run, then right run.
+    chamferBox(gB, (-hw + doorX - doorHW) * 0.5, DOCK.h * 0.5, -hd, (doorX - doorHW + hw) * 0.5, DOCK.h * 0.5, 0.18, T.brick, 0.02);
+    chamferBox(gB, (doorX + doorHW + hw) * 0.5, DOCK.h * 0.5, -hd, (hw - doorX - doorHW) * 0.5, DOCK.h * 0.5, 0.18, T.brick, 0.02);
+    // Spandrel over the lintel, so the opening is a hole through the wall rather than a notch.
+    chamferBox(gB, doorX, (doorTop + doorLin + DOCK.h) * 0.5, -hd, doorHW, (DOCK.h - doorTop - doorLin) * 0.5, 0.18, T.brick, 0.02);
+    // The infill: later, paler brick set 0.12 back in the reveal, under a concrete lintel. One
+    // asymmetric event on a face that is otherwise a rhythm — this is what stops it repeating.
+    chamferBox(gB, doorX, doorTop * 0.5, -hd + 0.06, doorHW - 0.01, doorTop * 0.5, 0.12, T.brickPale, 0.012);
+    chamferBox(gCon, doorX, doorTop + doorLin * 0.5, -hd - 0.06, doorHW + 0.12, doorLin * 0.5, 0.18, T.concreteWorn, 0.012);
+    // Piers: 0.56 m wide, 0.24 m proud, one per bay. Tone varies per pier — the only variation
+    // a structural rhythm is allowed, since jittering the spacing would read as subsidence.
+    for (let i = 0; i < 8; i++) {
+      const px = -20.05 + i * 5.7; // -20.05 .. 19.85 on 5.7 m centres
+      const tone = 0.9 + hash2(i, 21) * 0.2;
+      chamferBox(gB, px, DOCK.h * 0.5, -hd - 0.12, 0.28, DOCK.h * 0.5, 0.3, [T.brick[0] * tone, T.brick[1] * tone, T.brick[2] * tone], 0.02);
+    }
+    // Coping, pushed out and deepened so it oversails the piers by 0.10 instead of being
+    // punched through by them, and still covers the back of the panel.
+    chamferBox(gCon, 0, DOCK.h + 0.03, -hd - 0.16, hw + 0.05, 0.05, 0.36, T.concreteWorn, 0.018);
+    /**
+     * Trackside cable trough at the foot of the wall, continuous, with segmented lids so the
+     * top edge reads as precast units rather than one extrusion. Kept to 0.33 m tall so it
+     * clears the bottom of the painted bay numerals at y 0.38.
+     *
+     * Deliberately *not* in the collision set: it stands in the track lane, and giving it
+     * cover/step collision would snag AI pathing against the dock exclusion in `walkableAt`.
+     */
+    chamferBox(gCon, 0, 0.14, -hd - 0.34, hw, 0.14, 0.16, T.concreteWorn, 0.02);
+    for (let i = 0; i < 28; i++) {
+      const px = -hw + (i + 0.5) * (hw * 2 / 28);
+      const tone = 0.86 + hash2(i, 23) * 0.26;
+      chamferBox(gCon, px, 0.3, -hd - 0.34, (hw * 2 / 28) * 0.5 - 0.03, 0.03, 0.17, [T.concrete[0] * tone, T.concrete[1] * tone, T.concrete[2] * tone], 0.012);
+    }
+    // Weep pipes at 3 m centres, laid along local Z so 0.04 m of each one stands out of the
+    // brick. They sit clear of both the numerals and the piers by construction.
+    for (let i = 0; i < 14; i++) {
+      const px = -hw + 1.5 + i * 3.0;
+      place(px, 0.5, -hd - 0.11, 0, Math.PI * 0.5);
+      tube(gR, 0.035, 0.035, 0.22, 6, T.rustDeep, false, false, 0.006);
+      popX();
+    }
+    // The staining under each weep. `rustWash` draws in local XY facing +Z and this face looks
+    // down -Z, so the streaks need the face's own frame, turned through PI like `dressWalls`.
+    place(0, 0, -hd - 0.18, Math.PI);
+    for (let i = 0; i < 14; i++) {
+      rustWash(gB, hw - 1.5 - i * 3.0, 0.44, 0.42, 0.13, 3, 0.012, T.rustWash, 8790 + i);
+    }
+    popX();
     // Platform surface in 3 m bays with real joints.
     for (let i = 0; i < 14; i++) {
       for (let j = 0; j < 3; j++) {
@@ -4500,15 +4596,52 @@ export function createLevel(scene, materials, game) {
 
     // Canopy: columns, a lattice truss and sheeting with pieces missing.
     const cols = 8;
+    /**
+     * Truss soffit. The girder is centred at DOCK.h + 3.7 and `latticeGirder` reads its third
+     * argument as the *full* depth, so its bottom chords are at DOCK.h + 3.45 — not
+     * DOCK.h + 3.2, which is what the half-depth reads as if you take `depth` for a half
+     * extent. The column length is derived from it rather than written out, so the two cannot
+     * drift apart again.
+     */
+    const colTop = DOCK.h + 3.7 - 0.5 * 0.5;
+    const colH = colTop - DOCK.h;
+    const colY = DOCK.h + colH * 0.5;
     for (let i = 0; i < cols; i++) {
       const px = DOCK.x0 + 1.6 + (i / (cols - 1)) * (DOCK.x1 - DOCK.x0 - 3.2);
-      place(px, DOCK.h, cz - hd + 1.0);
-      tube(gS, 0.1, 0.12, 3.6, 10, T.steelPainted, false, false, 0.01);
-      place(0, 1.9, 0.6, 0, 0, -0.35);
-      chamferBox(gS, 0, 0, 0, 0.05, 0.05, 0.9, T.steelPainted, 0.008);
+      /**
+       * `tube` centres on the local origin, so the old call — origin on the deck, height 3.6 —
+       * buried 1.8 m of column inside the platform and stopped the visible part well short of
+       * the truss. The frame is now the column's mid-height, so it runs deck to soffit.
+       */
+      place(px, colY, cz - hd + 1.0);
+      tube(gS, 0.1, 0.12, colH, 12, T.steelPainted, false, false, 0.01);
+      // Base: pad, grouted plate, holding-down bolts — the triple every mast base carries, at
+      // canopy-column scale. Nothing vertical in this map meets a floor at a bare cylinder.
+      const yBase = DOCK.h - colY;
+      chamferBox(gCon, 0, yBase + 0.06, 0, 0.28, 0.06, 0.28, T.concreteWorn, 0.014);
+      chamferBox(gS, 0, yBase + 0.145, 0, 0.21, 0.025, 0.21, T.steelDark, 0.008);
+      for (let sx = -1; sx <= 1; sx += 2) {
+        for (let sz = -1; sz <= 1; sz += 2) {
+          chamferBox(gS, sx * 0.15, yBase + 0.2, sz * 0.15, 0.026, 0.03, 0.026, T.steelDark, 0.005);
+        }
+      }
+      // External cable duct up one face, on saddles. This is what actually stops the column
+      // reading as a primitive: a smooth extruded cylinder has no silhouette to catch the sun.
+      chamferBox(gS, 0.12, 0, 0, 0.035, colH * 0.47, 0.06, T.steelDark, 0.006);
+      for (let k = -1; k <= 1; k += 2) {
+        chamferBox(gS, 0.12, k * colH * 0.29, 0, 0.055, 0.03, 0.075, T.steelDark, 0.004);
+      }
+      // Cap plate where the column meets the near bottom chord.
+      chamferBox(gS, 0, colH * 0.5 - 0.025, 0, 0.16, 0.025, 0.16, T.steelDark, 0.008);
+      /**
+       * Knee brace. The old head tie was a horizontal 1.8 m stub at mid-height that ended in
+       * open air; this runs from the column at DOCK.h + 1.6 up to the *far* bottom chord of
+       * the truss (the girder is 3.0 m wide about cz - hd + 2.4, so that chord is at
+       * cz - hd + 3.9), which is the only other piece of real geometry to land on.
+       */
+      strut(gS, 0, DOCK.h + 1.6 - colY, 0.06, 0, colH * 0.5, 2.9, 0.05, T.steelPainted, 0.008);
       popX();
-      popX();
-      solidBox(px, DOCK.h + 1.8, cz - hd + 1.0, 0.16, 1.8, 0.16, 'metal', 0, { cover: false });
+      solidBox(px, colY, cz - hd + 1.0, 0.16, colH * 0.5, 0.16, 'metal', 0, { cover: false });
     }
     place(cx, DOCK.h + 3.7, cz - hd + 2.4, 0, 0, 0);
     place(0, 0, 0, Math.PI * 0.5);

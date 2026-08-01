@@ -748,10 +748,21 @@ export function createHUD(game) {
         ts.transform = 'translate(-50%,-50%)';
         // Built once, so a direct string is fine here; the caches exist for per-frame writes.
         ts.translate = `${(xDeg * HUD.compassPxPerDeg).toFixed(1)}px 0`;
-        ts.color = cardinal ? COL.primary : COL.dim;
+        // Solid fill on both ranks. `COL.dim` is deliberately not used here for the same reason
+        // it is refused in `updateZoneMarkers` (see the note by the `COL.accent : COL.primary`
+        // pick there): PALETTE.hudDim carries its own 0.55 alpha, which multiplies into the
+        // element opacity below and left the intercardinals at an effective 0.34 — a grey smudge
+        // over sky, with the --ink-outline ring scaled down with it. Element opacity must be the
+        // only alpha in play.
+        ts.color = COL.primary;
         ts.fontSize = cardinal ? '12px' : '10px';
         ts.letterSpacing = '0.08em';
-        ts.opacity = cardinal ? ALPHA_STR[100] : ALPHA_STR[62];
+        // 0.78, not 0.62: at 0.62 x 0.55 the fill sat *at* sky luminance (1.04:1) and only the
+        // 1px soft shadow held the letterform together. 0.78 solid puts the fill ~1.6:1 over mid
+        // sky and, more importantly, recovers the ink outline to 0.76 effective so the glyph is
+        // carved rather than blurred. Rank is carried by size (10 vs 12 px) plus this 0.78-to-1.00
+        // step; weight stays at the .ct-tick 700 the outline needs at this size.
+        ts.opacity = cardinal ? ALPHA_STR[100] : ALPHA_STR[78];
         ts.pointerEvents = 'none';
         el.compassTrack.appendChild(tick);
       }

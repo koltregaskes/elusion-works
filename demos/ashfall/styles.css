@@ -17,6 +17,159 @@
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
+   0. Display face
+
+   The HUD is set in Barlow Condensed, and it is embedded here as three base64
+   woff2 subsets rather than linked. This is the only way the demo can honour
+   ARCHITECTURE §3 (no external assets, nothing over the network) and still have
+   a real display face: a linked webfont is the first thing to vanish offline,
+   behind a CSP or with the CDN blocked, and when it vanished every fallback in
+   the old stack resolved to DejaVu Sans on Linux — a wide humanist grotesque
+   with a serifed figure one, which is what the review caught.
+
+   Each face carries exactly U+0020, U+002B, U+002D, U+002E, U+002F, U+0030-0039,
+   U+0041-005A and U+00D7 — the whole repertoire hud.js and menu.js can write
+   into a display-face node, since every one of them is uppercased in CSS. Three
+   weights are shipped because the HUD asks for 500, 600 and 700 by name and
+   synthetic bolding would smear the stencil weight. ~3 KB each.
+
+   Anything outside that repertoire (hud.js's U+2303 headshot mark, say) falls
+   through per-glyph to the system tail still named in --font-display, so an
+   unexpected character renders rather than tofuing.
+
+   Licence: SIL Open Font License 1.1, which permits redistribution of the font
+   software, modified or not, as part of a larger work. Full text follows.
+   -------------------------------------------------------------------------- */
+
+/* Copyright 2017 The Barlow Project Authors (https://github.com/jpt/barlow)
+   
+   This Font Software is licensed under the SIL Open Font License, Version 1.1.
+   This license is copied below, and is also available with a FAQ at:
+   http://scripts.sil.org/OFL
+   
+   
+   -----------------------------------------------------------
+   SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+   -----------------------------------------------------------
+   
+   PREAMBLE
+   The goals of the Open Font License (OFL) are to stimulate worldwide
+   development of collaborative font projects, to support the font creation
+   efforts of academic and linguistic communities, and to provide a free and
+   open framework in which fonts may be shared and improved in partnership
+   with others.
+   
+   The OFL allows the licensed fonts to be used, studied, modified and
+   redistributed freely as long as they are not sold by themselves. The
+   fonts, including any derivative works, can be bundled, embedded, 
+   redistributed and/or sold with any software provided that any reserved
+   names are not used by derivative works. The fonts and derivatives,
+   however, cannot be released under any other type of license. The
+   requirement for fonts to remain under this license does not apply
+   to any document created using the fonts or their derivatives.
+   
+   DEFINITIONS
+   "Font Software" refers to the set of files released by the Copyright
+   Holder(s) under this license and clearly marked as such. This may
+   include source files, build scripts and documentation.
+   
+   "Reserved Font Name" refers to any names specified as such after the
+   copyright statement(s).
+   
+   "Original Version" refers to the collection of Font Software components as
+   distributed by the Copyright Holder(s).
+   
+   "Modified Version" refers to any derivative made by adding to, deleting,
+   or substituting -- in part or in whole -- any of the components of the
+   Original Version, by changing formats or by porting the Font Software to a
+   new environment.
+   
+   "Author" refers to any designer, engineer, programmer, technical
+   writer or other person who contributed to the Font Software.
+   
+   PERMISSION & CONDITIONS
+   Permission is hereby granted, free of charge, to any person obtaining
+   a copy of the Font Software, to use, study, copy, merge, embed, modify,
+   redistribute, and sell modified and unmodified copies of the Font
+   Software, subject to the following conditions:
+   
+   1) Neither the Font Software nor any of its individual components,
+   in Original or Modified Versions, may be sold by itself.
+   
+   2) Original or Modified Versions of the Font Software may be bundled,
+   redistributed and/or sold with any software, provided that each copy
+   contains the above copyright notice and this license. These can be
+   included either as stand-alone text files, human-readable headers or
+   in the appropriate machine-readable metadata fields within text or
+   binary files as long as those fields can be easily viewed by the user.
+   
+   3) No Modified Version of the Font Software may use the Reserved Font
+   Name(s) unless explicit written permission is granted by the corresponding
+   Copyright Holder. This restriction only applies to the primary font name as
+   presented to the users.
+   
+   4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+   Software shall not be used to promote, endorse or advertise any
+   Modified Version, except to acknowledge the contribution(s) of the
+   Copyright Holder(s) and the Author(s) or with their explicit written
+   permission.
+   
+   5) The Font Software, modified or unmodified, in part or in whole,
+   must be distributed entirely under this license, and must not be
+   distributed under any other license. The requirement for fonts to
+   remain under this license does not apply to any document created
+   using the Font Software.
+   
+   TERMINATION
+   This license becomes null and void if any of the above conditions are
+   not met.
+   
+   DISCLAIMER
+   THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+   OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+   COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+   INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+   DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+   FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+   OTHER DEALINGS IN THE FONT SOFTWARE.
+ */
+
+@font-face {
+  font-family: 'Ashfall Display';
+  font-style: normal;
+  font-weight: 500;
+  /* Barlow Condensed Medium 1.408, subset to the 42 glyphs the interface can
+     produce. No swap to guard against: the face is decoded from this stylesheet,
+     so it is available the moment the sheet parses. */
+  font-display: block;
+  src: url('data:font/woff2;base64,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') format('woff2');
+}
+
+@font-face {
+  font-family: 'Ashfall Display';
+  font-style: normal;
+  font-weight: 600;
+  /* Barlow Condensed SemiBold 1.408, subset to the 42 glyphs the interface can
+     produce. No swap to guard against: the face is decoded from this stylesheet,
+     so it is available the moment the sheet parses. */
+  font-display: block;
+  src: url('data:font/woff2;base64,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') format('woff2');
+}
+
+@font-face {
+  font-family: 'Ashfall Display';
+  font-style: normal;
+  font-weight: 700;
+  /* Barlow Condensed Bold 1.408, subset to the 42 glyphs the interface can
+     produce. No swap to guard against: the face is decoded from this stylesheet,
+     so it is available the moment the sheet parses. */
+  font-display: block;
+  src: url('data:font/woff2;base64,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') format('woff2');
+}
+
+/* --------------------------------------------------------------------------
    1. Tokens
    -------------------------------------------------------------------------- */
 
@@ -120,34 +273,34 @@
   --scrim-ink: color-mix(in srgb, var(--ink-900) 62%, var(--shadow-cool));
 
   /* --- Type ---
-     index.html links Barlow Condensed / IBM Plex Mono / Inter, but that link is
-     the one external asset in a project whose whole premise is that there are
-     none, and it is the first thing to disappear: offline, behind a CSP, or with
-     the CDN blocked. The delivered capture is exactly that case, and the old
-     stack fell straight past 'Arial Narrow' and 'Helvetica Neue' (neither of
-     which exists on Linux) into the platform grotesque, so MK18, SCORE, KILLS,
-     STAND and the compass cardinals set as wide body copy on a render.
+     'Ashfall Display' is the embedded Barlow Condensed subset defined in §0. It
+     is first, and it is the face that actually renders: nothing about it depends
+     on the network, so the HUD is genuinely condensed offline, behind a CSP and
+     on a machine with no webfonts installed. That is the whole point of the
+     embed — the previous stack named condensed families that do not exist on
+     Linux, fell through all of them to DejaVu Sans, and set MK18, SCORE, KILLS,
+     STAND and the compass cardinals as wide body copy on the delivered capture.
 
-     These stacks are therefore written to work with no webfont at all. Each one
-     names the genuinely condensed faces that actually ship on each platform —
-     Arial Narrow on Windows, Helvetica Neue Condensed on macOS, Liberation Sans
-     Narrow / Nimbus Sans Narrow / DejaVu Sans Condensed on Linux, Roboto
-     Condensed on Android — before reaching a generic, and --font-stretch-hud
-     asks fontconfig for the narrow width of any family that carries one as a
-     width axis rather than a separate name. Tracking throughout the HUD has come
-     down with it (display labels 0.26-0.44em -> 0.12-0.2em, .mono 0.1 -> 0.055em)
-     because wide tracking on a wide fallback stops a short label reading as one
-     word; the condensed faces still need less of it than a grotesque does. */
-  --font-display: 'Barlow Condensed', 'Oswald', 'Roboto Condensed', 'Arial Narrow',
-    'Helvetica Neue Condensed', 'Helvetica Neue', 'Liberation Sans Narrow',
-    'Nimbus Sans Narrow', 'DejaVu Sans Condensed', 'Encode Sans Condensed',
-    system-ui, sans-serif;
+     The system tail stays behind it and is not decoration. The subset carries
+     only the 42 glyphs the interface can produce; anything else — hud.js's
+     U+2303 headshot mark is the live example — falls through per-glyph to a
+     platform face and renders instead of tofuing. Same reason --font-mono and
+     --font-body keep their full stacks: nothing is embedded for them, so their
+     first real hit is whatever the platform has.
+
+     There is no font-stretch anywhere in the HUD any more. It existed to ask
+     fontconfig for a narrow width of a fallback family, which was always inert
+     (DejaVu Sans has no width axis) and is now meaningless — the family in front
+     is condensed by design, not by axis. Tracking below is tuned against Barlow
+     Condensed at its real width, not against a grotesque standing in for it. */
+  --font-display: 'Ashfall Display', 'Barlow Condensed', 'Oswald',
+    'Roboto Condensed', 'Arial Narrow', 'Helvetica Neue Condensed',
+    'Helvetica Neue', 'Liberation Sans Narrow', 'Nimbus Sans Narrow',
+    'DejaVu Sans Condensed', 'Encode Sans Condensed', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas,
     'Roboto Mono', 'DejaVu Sans Mono', 'Liberation Mono', 'Courier New', monospace;
   --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto,
     'Helvetica Neue', 'Liberation Sans', Arial, sans-serif;
-  /* Applied wherever --font-display is. Harmless on a family with one width. */
-  --font-stretch-hud: condensed;
 
   /* --- Metrics. One unit, clamped so the HUD holds from 1280 to 3440. --- */
   --u: clamp(11px, 0.63vw, 21px);
@@ -298,30 +451,30 @@ body:not(.ashfall-ready)::after {
    3. Type utilities
    -------------------------------------------------------------------------- */
 
-/* The mono face is for figures — ammo, health, score values, the debug readout —
-   where the tabular width is doing real work. No condensed monospace ships on
-   any platform, so the fallback is always wider than IBM Plex Mono; 0.1em on top
-   of that pushed the HUD numerals into a spaced-out ledger. 0.055em keeps the
-   grouping without letting digits collide when the webfont is absent. */
+/* The mono face is what is left over once the figures moved to the display face
+   below: the debug readout, the reload keycap and the kill-feed mark. Nothing
+   is embedded for it, so it is always a platform monospace and always wider
+   than IBM Plex Mono would have been — 0.055em rather than the 0.1em the mono
+   HUD numerals once carried, which had turned them into a spaced-out ledger. */
 .mono {
   font-family: var(--font-mono);
-  /* .hud sets condensed on the root; no monospace has a narrow width, and asking
-     for one only risks fontconfig substituting a different family entirely. */
+  /* Belt and braces against any inherited width axis. No monospace has a narrow
+     width, and asking for one only risks fontconfig substituting a different
+     family entirely. */
   font-stretch: normal;
   font-variant-numeric: tabular-nums lining-nums;
   font-feature-settings: 'tnum' 1, 'lnum' 1, 'zero' 1;
   letter-spacing: 0.055em;
 }
 
-/* Short uppercase labels are not figures, and in the fallback they suffer most
-   from a wide mono. They take the condensed display face instead, which is what
-   makes the HUD read as stencilled military type rather than as HTML text. */
+/* Short uppercase labels are not figures, and a wide mono is the worst thing to
+   set them in. They take the condensed display face instead, which is what makes
+   the HUD read as stencilled military type rather than as HTML text. */
 .hud .label,
 .health-stance,
 .minimap-zone,
 .streak {
   font-family: var(--font-display);
-  font-stretch: var(--font-stretch-hud);
 }
 
 /*
@@ -329,18 +482,17 @@ body:not(.ashfall-ready)::after {
  *
  * A reviewer caught two faults that both trace back to routing numerals through --font-mono.
  * First, the ammo block already sets the display face, so "30" and "/210" sat side by side in
- * two visibly different typefaces. Second, when the webfont is unavailable the mono fallback
- * resolves to DejaVu Sans Mono, whose default zero is slashed, so every zero on screen read as
- * a programmer's zero - which no shipped shooter uses.
+ * two visibly different typefaces. Second, --font-mono is never embedded, so it resolves to a
+ * platform monospace — DejaVu Sans Mono on Linux, whose default zero is slashed, so every zero
+ * on screen read as a programmer's zero, which no shipped shooter uses.
  *
  * `tabular-nums` gives the same non-jittering columns that the mono face was there for, without
- * either problem. `slashed-zero` is explicitly disabled for any fallback that offers it as a
- * feature rather than as its default glyph.
+ * either problem — Barlow Condensed's figures are tabular under `tnum` and its zero is unslashed.
+ * `slashed-zero` stays explicitly disabled for any face that offers it as a feature.
  */
 .score-row .val,
 .health-meta [data-health-value] {
   font-family: var(--font-display);
-  font-stretch: var(--font-stretch-hud);
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'zero' 0;
 }
@@ -367,7 +519,6 @@ body:not(.ashfall-ready)::after {
   user-select: none;
   -webkit-user-select: none;
   font-family: var(--font-display);
-  font-stretch: var(--font-stretch-hud);
   font-size: var(--u);
   color: var(--hud-primary);
   contain: layout style;
@@ -766,12 +917,10 @@ body.hide-hud .hud {
   display: block;
   white-space: nowrap;
   font-family: var(--font-display);
-  font-stretch: var(--font-stretch-hud);
   font-size: 1.15em;
   font-weight: 600;
-  /* 0.16em was drawn for Barlow Condensed; the fallback is wider to begin with,
-     so the prompt was breaking into loose characters. */
-  letter-spacing: 0.12em;
+  /* Drawn against Barlow Condensed, which is now the face that renders. */
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--hud-primary);
   text-shadow: var(--ink-outline);
@@ -878,11 +1027,10 @@ body.hide-hud .hud {
 }
 
 /* hud.js sets the tick size and tracking inline (12px/10px at 0.08em), so weight
-   and shadow are the only levers here. Cardinals go to 700: at 12px in a fallback
-   grotesque, 600 was not enough weight to hold the ink outline. */
+   and shadow are the only levers here. Cardinals stay at 700: Barlow Condensed
+   at 12px is a narrow stroke, and 600 does not hold the ink outline. */
 .compass-track .ct-tick {
   font-family: var(--font-display);
-  font-stretch: var(--font-stretch-hud);
   font-weight: 700;
   text-transform: uppercase;
   text-shadow: var(--ink-outline);
@@ -893,7 +1041,6 @@ body.hide-hud .hud {
    case in the HUD. They take the full outline, not the soft one. */
 .compass-track .ct-marker {
   font-family: var(--font-display);
-  font-stretch: var(--font-stretch-hud);
   font-weight: 600;
   text-transform: uppercase;
   text-shadow: var(--ink-outline);
@@ -1040,7 +1187,7 @@ body.hide-hud .hud {
   color: var(--hud-dim);
   font-size: 0.96em;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.15em;
   text-transform: uppercase;
 }
 
@@ -1130,17 +1277,17 @@ body.hide-hud .hud {
   min-width: clamp(150px, 12vw, 260px);
 }
 
-/* MK18 / VECTOR / DMR14. 0.28em was Barlow Condensed tracking; on the fallback
-   the capture showed "M K 1 8" as four separate glyphs. 0.16em (and the matching
-   indent, which pays back the trailing space so the block still rags right)
-   holds it together as a designation while keeping the stencilled feel. */
+/* MK18 / VECTOR / DMR14. The 0.16em the wide fallback needed is too tight for
+   the real condensed face — five narrow glyphs at 13px close into a single mark.
+   0.22em opens it back into a designation without going all the way to the
+   0.28em originally drawn. The matching indent pays back the trailing
+   letter-space so the block still rags right against the ammo figures. */
 .weapon-name {
   font-family: var(--font-display);
-  font-stretch: var(--font-stretch-hud);
   font-size: 1em;
   font-weight: 600;
-  letter-spacing: 0.16em;
-  text-indent: 0.16em;
+  letter-spacing: 0.22em;
+  text-indent: 0.22em;
   text-transform: uppercase;
   color: var(--hud-dim);
   text-shadow: var(--ink-outline);
@@ -1152,7 +1299,6 @@ body.hide-hud .hud {
   align-items: baseline;
   gap: 0.18em;
   font-family: var(--font-display);
-  font-stretch: var(--font-stretch-hud);
   font-variant-numeric: tabular-nums lining-nums;
   line-height: 0.9;
   text-shadow: var(--ink-outline);
@@ -1160,17 +1306,18 @@ body.hide-hud .hud {
 
 .ammo-mag {
   font-family: var(--font-display);
-  font-stretch: var(--font-stretch-hud);
   font-size: 3.4em;
   font-weight: 700;
-  letter-spacing: -0.015em;
+  /* The negative was pulling a wide fallback's digits back together. Barlow
+     Condensed Bold is already tight at this size; a hair of positive keeps the
+     figures apart when the magazine is in three digits. */
+  letter-spacing: 0.008em;
   color: var(--hud-primary);
   transition: color 120ms linear;
 }
 
 .ammo-sep {
   font-family: var(--font-display);
-  font-stretch: var(--font-stretch-hud);
   font-size: 1.5em;
   font-weight: 500;
   color: var(--hud-dim);
@@ -1179,7 +1326,6 @@ body.hide-hud .hud {
 
 .ammo-reserve {
   font-family: var(--font-display);
-  font-stretch: var(--font-stretch-hud);
   font-size: 1.55em;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -1209,10 +1355,9 @@ body.hide-hud .hud {
   display: block;
   margin-top: 0.5em;
   font-family: var(--font-display);
-  font-stretch: var(--font-stretch-hud);
   font-size: 1.02em;
   font-weight: 600;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--hud-accent);
   text-shadow: var(--ink-outline);
@@ -1271,6 +1416,13 @@ body.hide-hud .hud {
    10. HUD — minimap
    -------------------------------------------------------------------------- */
 
+/* The disc is the whole widget. There are deliberately no corner brackets and no
+   outset cardinal ring: four L's floating 9px clear of a circle enclosed nothing,
+   implied a rectangular reticle, and wrapped the heaviest element in the frame in
+   55px of empty margin — which is why the top-left corner was reading as a
+   sci-fi asset pack rather than as instrumentation. Everything that remains is
+   drawn inside this box, so the block footprint is the disc plus the zone label
+   under it, and no rule in here may add an outset pseudo-element. */
 .minimap {
   position: relative;
   width: clamp(132px, 10.5vw, 220px);
@@ -1292,7 +1444,12 @@ body.hide-hud .hud {
     0 2px 10px rgba(0, 0, 0, 0.45);
 }
 
-/* Ring, cardinal ticks and the scanline sheen. */
+/* The rim itself and the scanline sheen — both drawn inside the disc, so they
+   cost the block no footprint. The conic cardinal ring that used to sit at
+   inset: -5px is gone: its four nubs projected past the rim, enclosed nothing,
+   and over the bright sky in the depot capture they read as dead pixels rather
+   than as compass indices. North is drawn into the canvas by hud.js with
+   MAP_COL.north, and E/S/W are set in real glyphs by .compass. */
 .minimap-frame {
   position: absolute;
   inset: 0;
@@ -1301,28 +1458,6 @@ body.hide-hud .hud {
   box-shadow:
     inset 0 0 0 1px var(--hairline-strong),
     inset 0 0 0 4px rgba(6, 5, 4, 0.35);
-}
-
-.minimap-frame::before {
-  content: '';
-  position: absolute;
-  inset: -5px;
-  border-radius: 50%;
-  background: conic-gradient(
-    from -1.6deg,
-    var(--hud-primary) 0 3.2deg,
-    rgba(0, 0, 0, 0) 3.2deg 88.4deg,
-    var(--hud-primary) 88.4deg 91.6deg,
-    rgba(0, 0, 0, 0) 91.6deg 176.8deg,
-    var(--hud-primary) 176.8deg 180deg,
-    rgba(0, 0, 0, 0) 180deg 268.4deg,
-    var(--hud-primary) 268.4deg 271.6deg,
-    rgba(0, 0, 0, 0) 271.6deg 360deg
-  );
-  -webkit-mask-image: radial-gradient(closest-side, transparent 0 87%, #000 89%);
-  mask-image: radial-gradient(closest-side, transparent 0 87%, #000 89%);
-  opacity: 0.75;
-  filter: var(--drop);
 }
 
 .minimap-frame::after {
@@ -1347,39 +1482,23 @@ body.hide-hud .hud {
   mix-blend-mode: screen;
 }
 
-/* Square corner brackets around the round map. Eight gradient slivers, no images. */
-.minimap::before {
-  content: '';
-  position: absolute;
-  inset: -9px;
-  pointer-events: none;
-  --b: var(--hairline-strong);
-  background:
-    linear-gradient(var(--b), var(--b)) left top / 1px 13px no-repeat,
-    linear-gradient(var(--b), var(--b)) left top / 13px 1px no-repeat,
-    linear-gradient(var(--b), var(--b)) right top / 1px 13px no-repeat,
-    linear-gradient(var(--b), var(--b)) right top / 13px 1px no-repeat,
-    linear-gradient(var(--b), var(--b)) left bottom / 1px 13px no-repeat,
-    linear-gradient(var(--b), var(--b)) left bottom / 13px 1px no-repeat,
-    linear-gradient(var(--b), var(--b)) right bottom / 1px 13px no-repeat,
-    linear-gradient(var(--b), var(--b)) right bottom / 13px 1px no-repeat;
-  filter: var(--drop);
-}
-
+/* THE YARD / THE DEPOT / THE TERRACES. Two words at 0.26em in a wide mono fell
+   apart completely under the minimap in the capture. On the embedded condensed
+   face 0.2em at 600 is where the two words still read as one phrase but ten
+   narrow caps do not clot; the opaque dim keeps it readable when the map is over
+   pale gravel rather than over ink. */
 .minimap-zone {
   position: absolute;
   left: 50%;
-  bottom: -1.85em;
+  /* Was -1.85em, which cleared the bracket line rather than the rim. With the
+     brackets gone this is the same optical gap measured from the disc edge. */
+  bottom: -1.35em;
   transform: translateX(-50%);
   white-space: nowrap;
-  /* THE YARD / THE DEPOT / THE TERRACES. Two words at 0.26em in a wide mono
-     fell apart completely under the minimap in the capture; the condensed face
-     at 0.16em and 600 gives it back its shape, and the opaque dim keeps it
-     readable when the map is over the pale gravel rather than over ink. */
   font-size: 0.76em;
   font-weight: 600;
-  letter-spacing: 0.16em;
-  text-indent: 0.16em;
+  letter-spacing: 0.2em;
+  text-indent: 0.2em;
   text-transform: uppercase;
   color: var(--hud-dim);
   text-shadow: var(--ink-outline);
@@ -1422,13 +1541,14 @@ body.hide-hud .hud {
 
 /* SCORE / KILLS. Measured at 1.13:1 against the sky in the delivered frame: the
    alpha dim had composited them away and the tracking had stretched five letters
-   across the corner. Condensed face, 0.16em, 600, and the opaque dim. */
+   across the corner. Embedded condensed face, 0.2em, 600, and the opaque dim —
+   five caps this narrow want back the air the wide fallback could not take. */
 .score-row .label {
   color: var(--hud-dim);
   font-weight: 600;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.2em;
   /* Cancel the trailing letter-space so the two columns rag right cleanly. */
-  margin-right: -0.16em;
+  margin-right: -0.2em;
   font-size: 0.98em;
 }
 
@@ -1447,8 +1567,8 @@ body.hide-hud .hud {
   padding: 0.14em 0.55em;
   font-size: 0.8em;
   font-weight: 600;
-  letter-spacing: 0.14em;
-  text-indent: 0.14em;
+  letter-spacing: 0.17em;
+  text-indent: 0.17em;
   text-transform: uppercase;
   color: var(--ink-900);
   background: var(--hud-accent);
@@ -1496,17 +1616,16 @@ body.hide-hud .hud {
    every edge of its own box regardless of how wide the row's text runs, so the
    fill underneath it can be any shape and still cannot show a step. The right
    border tick stays a hard 2 px line on purpose — it is a drawn mark, the same
-   language as the minimap brackets, not a scrim pretending not to be one. */
+   language as the minimap rim, not a scrim pretending not to be one. */
 .kf-row {
   position: relative;
   display: flex;
   align-items: baseline;
   padding: 0.16em 0.6em 0.2em;
   font-family: var(--font-display);
-  font-stretch: var(--font-stretch-hud);
   font-size: 1em;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
   border-right: 2px solid var(--hairline);
   text-shadow: var(--ink-outline-soft);
@@ -1557,11 +1676,10 @@ body.hide-hud .hud {
   opacity: 0;
   white-space: nowrap;
   font-family: var(--font-display);
-  font-stretch: var(--font-stretch-hud);
   font-size: 2.15em;
   font-weight: 700;
-  letter-spacing: 0.12em;
-  text-indent: 0.12em;
+  letter-spacing: 0.15em;
+  text-indent: 0.15em;
   text-transform: uppercase;
   line-height: 1;
   color: var(--hud-primary);
@@ -1604,10 +1722,9 @@ body.hide-hud .hud {
 
 .xp-pop {
   font-family: var(--font-display);
-  font-stretch: var(--font-stretch-hud);
   font-size: 1.12em;
   font-weight: 600;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
   text-shadow: var(--ink-outline);
   will-change: transform, opacity;
@@ -1798,7 +1915,6 @@ body.hide-hud .hud {
 .title-main {
   display: block;
   font-family: var(--font-display);
-  font-stretch: var(--font-stretch-hud);
   font-size: clamp(84px, 11.5vw, 250px);
   font-weight: 700;
   letter-spacing: -0.012em;
@@ -1870,7 +1986,6 @@ body.hide-hud .hud {
 .page-title {
   margin: 0 0 clamp(18px, 1.8vw, 38px);
   font-family: var(--font-display);
-  font-stretch: var(--font-stretch-hud);
   font-size: clamp(34px, 3.4vw, 74px);
   font-weight: 700;
   letter-spacing: 0.01em;
@@ -1925,7 +2040,6 @@ body.hide-hud .hud {
   min-width: 10.5em;
   padding: 0.82em 1.5em 0.78em;
   font-family: var(--font-display);
-  font-stretch: var(--font-stretch-hud);
   font-size: clamp(15px, 1.02vw, 23px);
   font-weight: 600;
   letter-spacing: 0.14em;
@@ -2198,7 +2312,6 @@ body.hide-hud .hud {
 .segment-opt {
   padding: 0.62em 0.5em 0.58em;
   font-family: var(--font-display);
-  font-stretch: var(--font-stretch-hud);
   font-size: clamp(12px, 0.76vw, 17px);
   font-weight: 600;
   letter-spacing: 0.1em;
@@ -2505,7 +2618,6 @@ body.hide-hud .hud {
 .loading-title {
   margin: 0 0 clamp(16px, 1.6vw, 30px);
   font-family: var(--font-display);
-  font-stretch: var(--font-stretch-hud);
   font-size: clamp(28px, 2.4vw, 52px);
   font-weight: 700;
   letter-spacing: 0.26em;
@@ -2590,7 +2702,6 @@ body.hide-hud .hud {
 .error-card h2 {
   margin: 0 0 0.55em;
   font-family: var(--font-display);
-  font-stretch: var(--font-stretch-hud);
   font-size: clamp(22px, 1.7vw, 34px);
   font-weight: 700;
   letter-spacing: 0.03em;

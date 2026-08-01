@@ -32,12 +32,26 @@
     <meta name="twitter:image" content="https://elusionworks.com/demos/ashfall/thumbnail.png" />
 
     <link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
+    <!--
+      No webfont link. This used to pull Barlow Condensed, IBM Plex Mono and Inter from
+      fonts.googleapis.com, and it was the single external asset in the whole demo.
+
+      It went for three reasons, in order of weight:
+        1. It did not work where it mattered. Every headless capture in five review rounds hit
+           ERR_CONNECTION_RESET on it, so every frame ever graded rendered the HUD in the
+           platform grotesque. A reviewer read the ammo counter's "foot-serifed 1s and balloon
+           0s" and correctly called it a system default — we had been grading a font we never
+           shipped to the frame.
+        2. The face that actually carries the interface is now local. styles.css section 0
+           embeds a 42-glyph Barlow Condensed subset as base64 woff2, ~12 KB for all three
+           weights, so the condensed numerals render offline, behind a CSP, and on a machine
+           with no webfonts installed.
+        3. Mono and body never needed the network. Their stacks fall to ui-monospace and
+           system-ui, which are good on every platform the demo targets.
+
+      What is left is a render-blocking third-party request that buys two nice-to-have faces.
+      A shipped game does not wait on a CDN to draw its HUD.
+    -->
     <link rel="stylesheet" href="styles.css" />
   </head>
 

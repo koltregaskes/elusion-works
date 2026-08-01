@@ -3015,14 +3015,21 @@ function buildHand(mats, side, cfg) {
      lambert: a 0.9 albedo rolled torus sitting at the wrist, the brightest surface anywhere in
      the frame, and — being the nearest part of the hand to the camera — the one that occludes
      the fingers. That is precisely the "tapered capsule terminating in a bare rounded white
-     nub" three reviews have reported. 0.085 matches the arm cuff's camo tones at gain 0.52
-     (~0.03-0.06 linear), which is where dirty webbing in this light belongs; the dust term
-     comes down with it so the ash on top stays a highlight rather than becoming the surface. */
+     nub" three reviews have reported. The gain matches the arm cuff's camo tones, which is
+     where dirty webbing in this light belongs; the dust term comes down with it so the ash on
+     top stays a highlight rather than becoming the surface.
+
+     Retuned from 0.085 to 0.040 when the arm cuff went from CUFF_WEBBING at gain 0.52 to
+     gain 0.30. These two rings are butted end to end at the wrist and have to move together —
+     leaving this one at 0.085 while the arm band dropped to 0.016 linear would have put a
+     ring 5x brighter than its neighbour at the join, which is the white-nub defect coming
+     straight back. 0.040 is the same 0.47 factor the arm band took, so the relationship the
+     previous pass established between the two survives the darkening intact. */
   const tint = {
     glove: { grain: 0.13, wear: 0.05, dust: 0.13, grime: 0.22 },
     glovePalm: { grain: 0.1, wear: 0.09, grime: 0.3 },
     gloveHard: { grain: 0.09, wear: 0.13, dust: 0.1 },
-    cuff: { grain: 0.16, wear: 0.04, dust: 0.05, grime: 0.34, gain: 0.085 },
+    cuff: { grain: 0.16, wear: 0.04, dust: 0.05, grime: 0.34, gain: 0.04 },
   };
   const handRoot = new THREE.Group();
   handRoot.name = side > 0 ? 'handR' : 'handL';
@@ -3037,6 +3044,60 @@ function buildHand(mats, side, cfg) {
   }
   return { group: handRoot, triggerFinger };
 }
+
+/* ========================================================================== */
+/* Sleeve and cuff camo — authored here, not borrowed from art.js             */
+/* ========================================================================== */
+
+/**
+ * The forearm is the only cloth in the frame that sits *adjacent to the weapon*, and that
+ * adjacency is the only thing these hexes are chosen against — not the ground, not the world.
+ *
+ * The previous set was [gunPolymer, dirt, railGreen, woodWeathered, weeds], and two things
+ * were wrong with it. First, PALETTE.woodWeathered (#6b5a45) and PALETTE.dirt (#6b5a44)
+ * differ by one code value in blue, so the list was really four tones with the same brown
+ * counted twice; `bakeCamo`'s index weighting is trapezoidal (the blotch field is 0.6 U +
+ * 0.4 V, which puts indices 0..4 at a measured 8 / 25 / 33 / 25 / 8 %), so the duplicated brown
+ * owned 48% of the sleeve on its own. Second, every surviving tone was warm: the weighted
+ * mean measured linear (0.100, 0.087, 0.052), R > G > B — the same ratio family as
+ * `mats.tan` (0.117, 0.090, 0.049) and `mats.polymer`. A limb and the furniture it is holding
+ * shared one albedo family, so the arm read as a second gun tube rather than as a person.
+ *
+ * These are module-local rather than PALETTE entries because a sleeve is a garment, not a
+ * world surface: art.js's hexes are shared with level geometry and cannot be re-aimed at the
+ * viewmodel without moving the map with them.
+ *
+ * Ordered for the trapezoid. The darkest and coolest drab takes index 2, where a third of the
+ * vertices land; the two 25% slots take mid drabs; the single warm tone is exiled to index
+ * 0's 8%. Weighted mean, linear: (0.064, 0.074, 0.054) — G > R, a drab olive rather than a
+ * khaki, so the sleeve separates from the furniture by hue as well as by value.
+ */
+const SLEEVE_CAMO = [
+  '#6d6047', //  8% — the one warm patch left in the pattern, a faded coyote
+  '#4a5340', // 24% — drab olive
+  '#2f3835', // 35% — dominant: the darkest and coolest drab in the set
+  '#454e4a', // 24% — grey-green, cooler again than the olive
+  '#5e6552', //  8% — pale drab, the sun-bleached patches
+];
+
+/**
+ * Wrist webbing. This band is the hard horizontal break that says "sleeve ends, glove
+ * begins" — the cuff line the review asks for — so it has to be unambiguously the darkest
+ * ring on the rig rather than another shade of the sleeve.
+ *
+ * Three tones, and the same trapezoid over three slots puts 54% of the vertices on index 1,
+ * so index 1 is where the darkness has to live. The old list had PALETTE.dirt there: the
+ * cuff came out the same brown as the sleeve at a similar value and produced no break at all.
+ *
+ * Weighted mean 0.054 linear, which at gain 0.30 lands the band at a measured 0.0162 against
+ * the sleeve's 0.0283 — a 0.80-stop step at the wrist, dark enough to read as a hard edge and
+ * still far enough off zero not to punch a hole in the silhouette.
+ */
+const CUFF_WEBBING = [
+  '#525c53', // 23% — the top of the roll, where the key catches it
+  '#363f3c', // 54% — dominant: dark charcoal-drab webbing
+  '#262c2d', // 23% — the shadowed underside of the roll
+];
 
 /**
  * A full arm: sleeve cuff + tapered forearm + upper arm + hand, ready for two-bone IK.
@@ -3063,15 +3124,25 @@ function buildArm(mats, side, lengths, cfg) {
   );
   fore.frustumCulled = false;
 
-  /* Multicam-ish camo baked straight into the sleeve vertex colours.
-     The gain is the important number. These tones are authored in art.js for world surfaces
-     seen through 30 m of ash; on a sleeve 0.4 m from the eye taking the key head-on there is
-     no atmosphere to knock them back, and at gain 1.0 the forearm measured *brighter* than
-     the sunlit ground behind it — the arm read as a light source rather than as cloth in the
-     scene. 0.58 puts it where cloth in that light belongs: clearly darker than the sand. */
-  const tones = [PALETTE.gunPolymer, PALETTE.dirt, PALETTE.railGreen, PALETTE.woodWeathered, PALETTE.weeds];
-  bakeCamo(upper.geometry, tones, { gain: 0.58, dust: 0.30, grime: 0.35 });
-  bakeCamo(fore.geometry, tones, { gain: 0.58, dust: 0.36, grime: 0.32 });
+  /* Multicam-ish camo baked straight into the sleeve vertex colours — see SLEEVE_CAMO above
+     for the tones. The gain is the important number, and what it is measured *against* is
+     what changed here.
+
+     0.58 was chosen to hold the sleeve under the sunlit sand behind it. That is the wrong
+     reference: the forearm is never judged against the ground, it is judged against the
+     handguard and the buttstock 60 mm away from it, taking the identical key, with no fog,
+     no shadowing and no depth cue between them. At 0.58 the sleeve's mean linear albedo was
+     0.050 against mats.polymer's 0.071 and mats.tan's 0.092. Once the warm key and AgX's
+     shoulder are applied to both, that half-stop gap closes to nothing, and the arm and the
+     furniture landed on the same value — the arm stopped reading as a limb.
+
+     0.40 puts the weighted mean at a measured 0.0283 linear: 0.40x the polymer and 0.31x the
+     tan, 1.34 and 1.71 stops of albedo separation respectively. Albedo is the one channel that survives both the warm
+     key and the tone map, so it is where the separation has to be bought; the hue rotation
+     in SLEEVE_CAMO buys the rest. Roughness cannot help — mats.sleeve is already at 0.95,
+     the top of the cloth band. */
+  bakeCamo(upper.geometry, SLEEVE_CAMO, { gain: 0.4, dust: 0.3, grime: 0.35 });
+  bakeCamo(fore.geometry, SLEEVE_CAMO, { gain: 0.4, dust: 0.36, grime: 0.32 });
 
   // Cuff: a rolled band at the wrist end of the forearm, darker fabric, its own material so
   // it does not share the sleeve's tiling.
@@ -3082,7 +3153,13 @@ function buildArm(mats, side, lengths, cfg) {
     }),
     mats.cuff
   );
-  bakeCamo(cuff.geometry, [PALETTE.gunPolymer, PALETTE.dirt, PALETTE.gunRubber], { gain: 0.52, grime: 0.4 });
+  /* The band exists to be a value step, so it is baked as one: CUFF_WEBBING's dark tone sits
+     on the 54% index and the gain comes down from 0.52 to 0.30. The old band did carry half a
+     stop (0.035 against a 0.050 sleeve), but it carried it in the *same brown*: same hue, and
+     a value delta no larger than the sleeve's own dust and grime variation, so it read as
+     shading rather than as an edge. The new band is 0.0162 against 0.0283, 0.80 of a stop,
+     and cool where the sleeve is olive — a break in hue and value at once. */
+  bakeCamo(cuff.geometry, CUFF_WEBBING, { gain: 0.3, grime: 0.4 });
   cuff.position.y = lengths.fore - 0.033;
   cuff.frustumCulled = false;
   fore.add(cuff);
