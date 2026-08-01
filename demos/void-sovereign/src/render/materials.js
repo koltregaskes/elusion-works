@@ -603,10 +603,21 @@ vObjNormal = objectNormal;
    nebula fill keeps its hue where the star does not reach. */
 const CHROMA = { direct: 0.86, indirect: 0.26 };
 
-/* Terminator shaping — see HULL_TERMINATOR. `pivot` is the cosine held fixed,
-   and it is set near the middle of what the opening framing actually delivers
-   so the change reads as contrast rather than as an exposure shift. */
-const TERMINATOR = { gamma: 1.85, pivot: 0.70 };
+/* Terminator shaping — see HULL_TERMINATOR. `pivot` is the crossover cosine:
+   faces above it are lifted, faces below it dropped, and it is held at its
+   unshaped value so the pair reads as contrast rather than as exposure.
+
+   Both numbers are measured, not chosen (.local/matablate.mjs, `pivot` set).
+   Gamma is the contrast and the sweep is monotonic, so it was set by where the
+   picture stopped improving rather than by where the number did. The pivot is
+   the interesting one: at 0.70 — the middle of the cosine range the opening
+   framing actually delivers — the hull only ever got darker, because on the
+   seeds where the key is lateral most of the visible hull sits *below* that
+   crossover. Dropping it to 0.48 puts the crossover under the bulk of the lit
+   face, so the same shaping lifts the lit side instead of only deepening the
+   shadow: on the darkest of the seven seeds it moved p75 from 0.35 to 0.42 and
+   p90 from 0.49 to 0.58 while the shadow floor stayed put at p10 0.066. */
+const TERMINATOR = { gamma: 2.0, pivot: 0.48 };
 const termGain = () => Math.pow(TERMINATOR.pivot, 1 - TERMINATOR.gamma);
 
 let store = null;
@@ -962,7 +973,7 @@ const GLOW_KINDS = {
      others: the bore is meant to stay live well up its length, and the mouth
      is meant to be almost pure faction colour. */
   /* `pull` is a mitigation, not the fix — see the note below GLOW_KINDS. */
-  bell: { core: 0xfff4e2, useEngine: true, gain: 3.4, sharp: 1.35, rim: 0.92, axial: true, pull: 0.0012 },
+  bell: { core: 0xfff4e2, useEngine: true, gain: 3.4, sharp: 1.35, rim: 0.92, axial: true, pull: 0.002 },
   // faction running light: near-white centre, team colour off-axis
   light: { core: 0xffffff, useLight: true, gain: 2.1, sharp: 1.6, rim: 0.55 },
   // warm interior seen through a window bay — deliberately below bloom

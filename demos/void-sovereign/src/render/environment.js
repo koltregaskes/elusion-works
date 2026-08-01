@@ -1348,10 +1348,8 @@ export class Environment {
       envMapIntensity: 0.30,
       fog: true,
     });
-    this._rockBounce = rockBounce;
     material.onBeforeCompile = (shader) => {
       shader.uniforms.uRockBounce = { value: rockBounce };
-      this._rockShader = shader;
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',

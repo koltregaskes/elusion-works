@@ -246,10 +246,24 @@ The bake is now a single equirect `WebGLRenderTarget` with
 `EquirectangularReflectionMapping` and `RepeatWrapping`, and the fragment shader
 reconstructs direction from lat/long per fragment.
 
-**Sky resolution is set by angular resolution, not memory.** `SIZE_BY_QUALITY`
-is map *height*; width is 2×. 2048 → 4096×2048 → ~0.088°/texel ≈ two screen
-pixels at 1080p/48° FOV. Drop below that and stars become blobs, because they
-are splatted at ~0.6 texels to stay band-limited.
+**Stars are not baked into the sky map, and must not be put back.** This note
+previously claimed sky resolution had to be chosen so baked stars stayed sharp
+— *"~0.088°/texel ≈ two screen pixels at 1080p/48° FOV"*. **That arithmetic was
+wrong**: a texel of a 4096×2048 map is about **3.5** screen pixels at 1080p/48°,
+not two. A star stored as a ~1-texel Gaussian and then magnified 3.5× is a
+square blob **at any map size**, so no amount of resolution or density tuning
+could ever have fixed the "bokeh snowstorm" — and two passes spent trying.
+
+Resolvable stars are now a `THREE.Points` cloud in `farScene` at 2.2e9 m, sized
+in framebuffer pixels, with magnitudes drawn from the Euclidean law
+`N(>F) ∝ F^-1.5` that a real sky obeys, and attenuated by a vertex-shader fetch
+of the sky map so gas still occludes them. One extra draw call. The baked map
+now carries **only gas**, which is low-frequency, so its resolution is a memory
+decision rather than a sharpness one — there is a documented ~67 MB VRAM saving
+available by baking at 1024×512 and upsampling.
+
+Set the sky texture's anisotropy to `renderer.capabilities.getMaxAnisotropy()`;
+at `anisotropy: 1` grazing-angle sampling picks a coarse mip and smears the gas.
 
 **Two scenes, deliberately.** `farScene` (backdrop, 10⁵–10⁹ m) renders first
 with its own non-translating camera and a huge far plane, then the depth buffer
