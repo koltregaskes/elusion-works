@@ -203,7 +203,8 @@ ${COMMON}
 
 uniform sampler2D tCurrent;
 uniform sampler2D tHistory;
-uniform sampler2D tDepth;
+uniform sampler2D tDepth;       // composited: world + viewmodel
+uniform sampler2D tDepthWorld;  // prepass, world only — no viewmodel in it
 uniform mat4 uInvViewProj;   // current frame, JITTER REMOVED
 uniform mat4 uPrevViewProj;  // previous frame, JITTER REMOVED
 uniform vec2 uTexel;
@@ -213,6 +214,7 @@ uniform float uFeedback;
 uniform float uHistoryValid;
 uniform float uClipGamma;
 uniform float uNearCut;
+uniform float uHasWorldDepth;
 
 /**
  * 5-tap optimised Catmull-Rom. A plain bilinear history fetch is a box filter applied every
@@ -351,14 +353,59 @@ void main() {
   feedback = mix(feedback, 0.60, clamp(velPixels * 0.25, 0.0, 1.0));
   feedback = mix(feedback, 0.35, clamp((velPixels - 4.0) / 6.0, 0.0, 1.0));
 
-  // Near-field guard. The viewmodel is drawn with a *different* projection into the shared
-  // depth buffer, so linearising its depth with the world camera's planes gives an apparent
-  // distance rather than a real one, and its reprojected velocity is only approximate.
-  // uNearCut is the apparent depth the weapon can reach (derived from engine.viewDepthParams);
-  // inside it, shorten the history so the gun stays crisp instead of trailing.
+  /* --- Viewmodel guard ----------------------------------------------------
+   * The viewmodel is drawn with a *different* projection into the shared depth buffer, so
+   * linearising its depth with the world camera's planes gives an apparent distance, not a real
+   * one, and its reprojected velocity is fiction by construction. Taking history there is what
+   * rendered the forearm, the receiver and the stock as half-transparent double exposures with
+   * banded ghost copies down their length.
+   *
+   * So the guard is a real mask now, not a depth-band heuristic. The prepass writes a
+   * world-only depth buffer (engine.targets.normal.depthTexture); any texel whose composited
+   * depth is markedly nearer than the world depth at the same texel is covered by the
+   * viewmodel. That is the identical test FRAG_SSAO uses to keep the world's AO out of the
+   * weapon, so the two passes agree on where the gun is.
+   *
+   * Known and accepted side effect: meshes tagged NOPREPASS (the optic glass) have no entry in
+   * the world depth buffer, so they classify as viewmodel and give up most of their temporal
+   * AA. That costs a little edge quality on the glass element and cannot reintroduce a ghost.
+   *
+   * uNearCut / nearFade survive only as the fallback for a machine with no prepass, and
+   * uNearCut is now derived from the band the viewmodel actually occupies (params.taaNearCut,
+   * ~2.6 m apparent) rather than borrowed from the deliberately over-covering DOF near field. */
   float viewDist = linearDepth(depth, uNearFar.x, uNearFar.y);
-  float nearFade = smoothstep(uNearCut * 0.3, uNearCut, viewDist);
-  feedback = mix(0.80, feedback, nearFade);
+  float worldDist = linearDepth(texture(tDepthWorld, uv).x, uNearFar.x, uNearFar.y);
+  float nearFade = smoothstep(uNearCut * 0.3, uNearCut, viewDist);   // fallback only
+
+  /* The mask is "composited depth DIFFERS from world depth", not "composited depth is NEARER".
+   * A nearer-than test assumes the gun is always in front of what it covers, and it is not: the
+   * viewmodel pass clears depth, so standing against a wall at 1 m still draws the weapon at its
+   * ~2 m apparent depth. The nearer-test then classified those texels as world and handed the
+   * ghost straight back, worst exactly where the player is in cover and looking at the gun.
+   *
+   * A bare difference test would over-fire, though, because NOPREPASS is not just the optic: the
+   * sky dome, clouds, dust motes, bulbs, flames, the light shafts, dirty glass and every particle
+   * system are on it too, and none of them appear in the world depth buffer. Stripping their
+   * temporal AA would trade a viewmodel ghost for sky banding and crawling particles.
+   *
+   * So difference is gated by the band the viewmodel can physically occupy. Beyond uNearCut the
+   * test cannot fire at all, which is where all of that NOPREPASS world content lives. Inside it,
+   * a texel whose composited depth matches the prepass is world geometry that simply happens to
+   * be close, and it keeps its full history. NOPREPASS content nearer than uNearCut — a muzzle
+   * flash, a mote against the lens — does lose most of its history, which is a fair trade on
+   * geometry that lives two or three frames anyway. */
+  float depthDiff = abs(viewDist - worldDist) / max(worldDist, 0.05);
+  float inBand = 1.0 - step(uNearCut, viewDist);
+  float vm = uHasWorldDepth > 0.5 ? inBand * step(0.02, depthDiff)   // 1 = viewmodel pixel
+                                  : 1.0 - nearFade;
+
+  // min(), deliberately not mix(): this term may only ever SHORTEN the history, never lengthen
+  // it. The old "mix(0.80, feedback, nearFade)" reinstated 0.80 on top of a velocity ramp that
+  // had already fallen to 0.35, which is what smeared near-field cover into horizontal ribbons
+  // and left a hard straight ghost edge where a beam silhouette had been a frame earlier.
+  // 0.20 kills the viewmodel ghost in ~2 frames while leaving the gun a trace of temporal AA;
+  // if the procedural hard edges on the receiver alias, raise to 0.30 — do not go above 0.40.
+  feedback = min(feedback, mix(1.0, 0.20, vm));
 
   // Reject anything that reprojects off-screen or behind the previous camera. There is no
   // history for it; using the edge-clamped texel is what smears a bright streak inwards
@@ -373,14 +420,19 @@ void main() {
    * that now sits at prevUV is at a markedly different range, whatever colour is stored there
    * belongs to something else and reusing it is precisely how a thin mast drags a needle
    * straight through the horizon line, and how sky leaks over the skyline as the camera turns.
-   * 2%..8% relative, so ordinary slope and grazing-angle ground never trips it. Faded out by
-   * nearFade over the viewmodel band: the weapon's depth was written with the *viewmodel*
-   * projection, so its reprojected UV is approximate by construction and this test would fire
-   * on it constantly, stripping the gun of its antialiasing for no gain. */
+   * 2%..8% relative, so ordinary slope and grazing-angle ground never trips it.
+   *
+   * Gated off on viewmodel pixels *only* — not over a whole near depth band, which is what it
+   * used to be. The original rationale survives and still applies to those texels: the weapon's
+   * depth was written with the viewmodel projection, so its reprojected UV is approximate and
+   * this test would fire on it every frame for no gain (and those texels now take almost no
+   * history anyway). What it must not do is switch itself off over several metres of real world
+   * geometry, because that is precisely the near-field cover — foreground beams, rails, the
+   * sandbag pile — that was ghosting during a turn. */
   vec2 prevUVc = clamp(prevUV, vec2(0.0), vec2(1.0));
   float prevDist = linearDepth(texture(tDepth, prevUVc).x, uNearFar.x, uNearFar.y);
   float depthRel = abs(prevDist - viewDist) / max(viewDist, 0.05);
-  feedback *= 1.0 - nearFade * smoothstep(0.02, 0.08, depthRel);
+  feedback *= 1.0 - (1.0 - vm) * smoothstep(0.02, 0.08, depthRel);
 
   // How far the history had to be dragged to fit the box. Heavy clipping means the pixel is
   // genuinely new content, so trust it less. The old 1.6/0.55 pair still left a heavily-clipped
@@ -1222,13 +1274,39 @@ void main() {
   // time, at the very end of the pipe, so nothing downstream can undo it.
   float ls = clamp(l, 0.0, 1.0);
   vec3 shadowT = mix(vec3(1.0), uSplitShadow, uSplitStrength * (1.0 - smoothstep(0.0, 0.45, ls)));
-  vec3 highT = mix(vec3(1.0), uSplitHighlight, uSplitStrength * smoothstep(0.35, 1.0, ls));
+  // The highlight weight is a *hump*, not a ramp to 1.0. Ramping meant PALETTE.sun's unit-luma
+  // tint (1.466 / 0.915 / 0.474) arrived at full strength exactly at ls = 1.0, where there is no
+  // headroom left: the only pixels that ever reached the ceiling — the sky — hit it in red
+  // first (measured 251/235/217 with blue pinned flat at 212 across R = 249..255), so the top
+  // end hue-shifted instead of desaturating. Releasing the tint back to neutral above ls 0.80
+  // keeps §4's warm key where it is actually legible, in the upper mid-tones, and lets the
+  // brightest values resolve neutral, which is what a film shoulder does.
+  vec3 highT = mix(vec3(1.0), uSplitHighlight,
+                   uSplitStrength * smoothstep(0.35, 0.75, ls) * (1.0 - smoothstep(0.80, 1.0, ls)));
   c *= shadowT * highT;
 
   /* --- Vignette ------------------------------------------------------------
    * Not here. lensVignette() is applied to the HDR inside hdrCentre()/hdrNeighbour(), before
    * the tone curve — see the note above that function for the measurement. Applying it at this
    * point is what gave the frame a position-dependent white ceiling. */
+
+  /* --- Highlight gamut compression ----------------------------------------
+   * A bare per-channel clamp is a hard clip in each primary independently, so an over-driven
+   * pixel pins whichever channel crosses 1.0 first and the hue rotates on the way to white —
+   * the sun-facing sky went red before it went bright. Real film has no primaries to pin: it
+   * desaturates towards white as it enters the shoulder. Rolling the excess towards the
+   * pixel's OWN luminance reproduces that: a pixel with peak just over 1.0 barely moves, one
+   * driven hard resolves to neutral white.
+   *
+   * t -> 0 continuously as peak -> 1, so this is C0 with the untouched sub-unity population and
+   * adds no visible seam. Below 1.0 it is exactly a no-op, which is why the grade, the contrast
+   * pivot and art.js's masterLift calibration are all untouched by it. */
+  float peak = max(c.r, max(c.g, c.b));
+  if (peak > 1.0) {
+    float lw = luma(c);
+    float t = clamp((peak - 1.0) / max(peak - lw, EPS), 0.0, 1.0);
+    c = mix(c, vec3(lw), t);
+  }
 
   /* --- Display transfer ---------------------------------------------------- */
   c = clamp(c, 0.0, 1.0);
@@ -1601,6 +1679,13 @@ export function createPostFX(engine, game) {
      * of the rifle in ADS: it sits much further back in apparent depth than it looks.
      */
     dofNearKeep: 5.4,
+    /**
+     * Apparent depth of the band TAA treats as possibly-viewmodel when there is no prepass depth
+     * to build a real mask from. Deliberately *not* dofNearKeep: the DOF near field uses an 0.8 m
+     * extent so it over-covers on purpose, and reusing it here disabled the disocclusion test
+     * over roughly 5 m of real world geometry. 0.4 m of extent is the weapon itself.
+     */
+    taaNearCut: 2.6,
     /** Peak bokeh radius in half-res texels. */
     dofRadius: 14.0,
     dofStrength: 1.0,
@@ -1653,6 +1738,10 @@ export function createPostFX(engine, game) {
       // 0.8 m covers the muzzle of a carbine held at a low ready plus the arms; beyond that
       // the mapping runs away towards the far plane and would sterilise the whole mid-ground.
       params.dofNearKeep = viewmodelApparentDepth(vm.near, vm.far, wn, wf, 0.8);
+      // TAA guards only the band the viewmodel actually occupies, so its fallback mask does not
+      // swallow metres of world geometry. 0.4 m of extent is the weapon and the arms without the
+      // deliberate DOF over-cover. ~2.58 m apparent.
+      params.taaNearCut = viewmodelApparentDepth(vm.near, vm.far, wn, wf, 0.4);
     }
   }
 
@@ -1748,6 +1837,8 @@ export function createPostFX(engine, game) {
     tCurrent: { value: null },
     tHistory: { value: null },
     tDepth: { value: null },
+    tDepthWorld: { value: null },
+    uHasWorldDepth: { value: 0 },
     uInvViewProj: { value: new THREE.Matrix4() },
     uPrevViewProj: { value: new THREE.Matrix4() },
     uTexel: { value: new THREE.Vector2() },
@@ -2153,9 +2244,12 @@ export function createPostFX(engine, game) {
     uDofComposite.uNearKeep.value = params.dofNearKeep;
     uDofBlur.uMaxRadius.value = params.dofRadius;
 
-    // TAA can afford to guard the whole viewmodel band; motion blur only guards the front of
-    // it, so nearby cover still smears when the player whips the camera round.
-    uTaa.uNearCut.value = params.dofNearKeep;
+    // TAA identifies the viewmodel from the world depth buffer, so this is only the no-prepass
+    // fallback band and it is kept tight to the weapon itself — a wide band there would strip
+    // near-field world cover of its disocclusion test. Motion blur is a separate pass with its
+    // own tuning and still guards only the front of the DOF near field, so nearby cover keeps
+    // smearing when the player whips the camera round, which is what motion blur is for.
+    uTaa.uNearCut.value = Math.min(params.taaNearCut, params.dofNearKeep);
     uMotion.uNearCut.value = params.dofNearKeep * 0.6;
   }
 
@@ -2197,7 +2291,7 @@ export function createPostFX(engine, game) {
 
   /* --- The chain ---------------------------------------------------------- */
 
-  function runTAA(hdrTexture, depthTexture) {
+  function runTAA(hdrTexture, depthTexture, worldDepthTexture) {
     const write = targets.history[historyIndex];
     const read = targets.history[1 - historyIndex];
     if (!write || !read) return hdrTexture;
@@ -2205,6 +2299,11 @@ export function createPostFX(engine, game) {
     uTaa.tCurrent.value = hdrTexture;
     uTaa.tHistory.value = read.texture;
     uTaa.tDepth.value = depthTexture;
+    // The prepass depth has no viewmodel in it; the difference between the two buffers *is* the
+    // viewmodel mask. Bind the composited buffer when there is no prepass so the sampler is
+    // always complete, and let uHasWorldDepth pick the fallback path in the shader.
+    uTaa.tDepthWorld.value = worldDepthTexture || depthTexture;
+    uTaa.uHasWorldDepth.value = worldDepthTexture ? 1 : 0;
     uTaa.uHistoryValid.value = historyValid ? 1 : 0;
     uTaa.uTexel.value.set(1 / width, 1 / height);
     uTaa.uResolution.value.set(width, height);
@@ -2550,7 +2649,7 @@ export function createPostFX(engine, game) {
 
     /* 1. TAA */
     if (features.taa && params.taaEnabled && depthTexture && debugMode === 0) {
-      colour = runTAA(colour, depthTexture);
+      colour = runTAA(colour, depthTexture, worldDepthTexture);
     } else {
       historyValid = false;
     }

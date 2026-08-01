@@ -15,10 +15,18 @@ handling and synthesised audio.
 3. No external assets. No `.gltf`, `.png`, `.jpg`, `.mp3`, no CDN, no `fetch()`.
    All geometry is built procedurally, all textures are generated at runtime into
    `CanvasTexture`/`DataTexture`, all audio is synthesised with the WebAudio API.
-   **One documented exception:** `index.html` links three webfonts for the interface. No module
-   may depend on them — `styles.css` carries a condensed system fallback stack so the HUD reads
-   correctly with the fonts blocked or absent. Nothing the renderer touches may ever load over
-   the network.
+   **No exceptions.** This rule used to carve out three Google webfonts linked from
+   `index.html`; that link is gone. `styles.css` section 0 embeds a 42-glyph Barlow Condensed
+   subset as base64 `woff2` (~12 KB across three weights) under the family `Ashfall Display`,
+   and `--font-mono` / `--font-body` fall through to `ui-monospace` and `system-ui`. The demo
+   now loads and renders correctly offline and with no webfonts installed. One deployment note:
+   the faces are `data:` URIs, so a Content-Security-Policy must allow `font-src data:` —
+   `font-src 'self'` alone rejects them and the HUD falls back to the system stack. That is a
+   graceful degradation rather than a break, but it is the whole point of the embed, so a
+   policy that blocks it is worth catching.
+   The exception was worth removing on evidence, not principle: the fetch failed in every
+   headless capture, so five rounds of visual review graded HUD typography that no reviewer
+   was actually seeing.
 4. Units are metres, Y is up, Z is the depth axis. `1.0 === 1 metre`.
 5. Target 60 fps at 1080p on integrated graphics at the `medium` quality preset.
    Budget: < 300 draw calls, < 900k triangles visible.

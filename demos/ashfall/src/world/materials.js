@@ -1390,8 +1390,32 @@ function bConcreteRough(ctx) {
 
     // Height: broad form from blotch, aggregate lumps, board grain, then carve the joints,
     // cracks, pits, tie holes and spalled patches out.
-    let hv = 0.5 + (blotch[i] - 0.5) * 0.26 + (pebbles[i] - 0.5) * 0.36 + (grain[i] - 0.5) * 0.2 + (fine[i] - 0.5) * 0.08;
-    hv += (board[i] - 0.5) * 0.09;
+    //
+    // The aggregate lives UNDER the trowelled skin, so it can only show in the *height* field
+    // where the skin has gone. Running the pebble field ungated across the whole face at a
+    // flat 0.36 was the single cause of the "cottage cheese" read: one isotropic blob field
+    // at one scale with no direction and no macro structure, identical on the terraces upper
+    // band, the lintels, the yard perimeter panels and the slabs, so four substances read as
+    // one substance. The albedo already gates its aggregate on `spall`/`exposed` (below); the
+    // height field simply was not using the same gate.
+    //
+    // The residual is 0.07 rather than 0 on purpose. concreteRough is also the floor-slab
+    // surface (SLAB_ZONES in level.js), and a power-floated slab with a literally flat height
+    // field loses the burnished/`traffic` roughness response further down, which is the thing
+    // that makes a walking lane read at all.
+    const skin = 1 - clamp01(spall * 1.4 + pit * 0.8);
+    let hv =
+      0.5 +
+      (blotch[i] - 0.5) * 0.26 +
+      (pebbles[i] - 0.5) * lerp(0.34, 0.07, skin) +
+      (grain[i] - 0.5) * 0.2 +
+      (fine[i] - 0.5) * 0.08;
+    // The mould face, not the mix, is what the eye should read on a cast wall. `board` is fBm
+    // at freq 5 stretched 1/9, i.e. correctly horizontal — it just never had the authority to
+    // beat the isotropic terms. At 0.22 it becomes the dominant signal, which is what gives
+    // the surface an axis and lets the cold joint, the seams, the tie holes and the cracks
+    // stay legible against it instead of being lost in blob noise.
+    hv += (board[i] - 0.5) * 0.22;
     hv += (mL - 0.5) * 0.1; // whole regions of the face sit slightly proud or shy
     hv -= bandJoint * 0.1;
     hv -= seam * 0.16;
@@ -1412,9 +1436,12 @@ function bConcreteRough(ctx) {
     // The decisive macro layer, applied at a swing the eye can actually read. This is the one
     // term that stops a 2.5 m tile repeated across a 40 m wall from looking like wallpaper.
     tint(ctx, i, lerp(0.79, 1.2, mL));
-    // Two lifts, two batches of cement. A few percent is all it takes, and it is the single
-    // cheapest way to say "this was built in stages".
-    tint(ctx, i, liftTone[i] > 0.5 ? 1.045 : 0.965);
+    // Two lifts, two batches of cement, and now that the height field is board-form rather
+    // than blob noise the band has to carry its share of the macro read. At 1.045/0.965 the
+    // swing was 8% peak to peak, which measured as nothing on a 40 m elevation seen from the
+    // yard. 1.07/0.94 is ~14% — still inside what two batches of the same mix plausibly
+    // differ by, but visible at gameplay distance, which is the whole point of a lift line.
+    tint(ctx, i, liftTone[i] > 0.5 ? 1.07 : 0.94);
     paint(ctx, i, stained, wear * 0.75);
     // Board-form grain: the shuttering timber prints its own grain into the face, which is a
     // strongly horizontal signal and the fastest way to tell cast concrete from grey noise.
@@ -2220,11 +2247,44 @@ function bCorrugatedSteel(ctx) {
       lap[i] = 1 - smoothstep(res * 0.004, res * 0.012, Math.min(d, res - d));
     }
   }
-  // Nucleation map: fixings, their washers, the lap and the water paths running off them.
+  /*
+   * The water line. This is the one thing a real weathered sheet has that this map did not:
+   * the bottom ~300 mm of a panel sits in whatever ran down it and whatever splashed up off
+   * the ground, so that is where the coating goes first and where the sheet eventually rots
+   * through. It is also the strongest *horizontal* event available, which is what breaks the
+   * purely vertical, purely periodic read the panel had.
+   *
+   * V orientation: level.js `corrugated()` emits v = 0 at y0 (the panel's bottom edge) and
+   * v = h at y1, `gv` passes UVs straight through, and the maps are DataTextures (flipY is
+   * false), so data row 0 IS the bottom of the panel. streakField and bleedField agree — both
+   * start high in y and march towards y = 0, i.e. downhill. So the soak lives at LOW v.
+   *
+   * Made wrap-safe rather than one-sided. V repeats every `tile` = 2.4 m and the taller
+   * panels (level.js builds a 6.4 m one) wrap ~2.7 times, so a band that is 1 at v = 0 and 0
+   * at v = 1 would print a hard albedo step across every tile seam. The signed distance form
+   * below feathers the top edge of the band over 1.4% of V (~34 mm) so the function is
+   * continuous around the wrap and reads as the wet line under a sheet lap.
+   */
+  const soak = new Float32Array(N);
+  for (let y = 0; y < res; y++) {
+    const v = y / res;
+    const d0 = v < 0.5 ? v : v - 1;
+    for (let x = 0; x < res; x++) {
+      const i = y * res + x;
+      // Wobbled per column by the dent field so the line is a tide mark, not a ruled edge.
+      const d = d0 + (dents[i] - 0.5) * 0.03;
+      soak[i] = (1 - smoothstep(0, 0.16, d)) * smoothstep(-0.014, 0, d);
+    }
+  }
+
+  // Nucleation map: fixings, their washers, the lap, the water paths running off them, and
+  // the standing water at the foot of the sheet.
   const screwRun = bleedField(screws, res, { run: 0.11, spread: res * 0.005, seed: seed + 71 });
   const nucleate = new Float32Array(N);
   for (let i = 0; i < N; i++) {
-    nucleate[i] = clamp01(screws[i] * 0.6 + washers[i] * 1.0 + lap[i] * 0.85 + screwRun[i] * 0.6 + smoothstep(0.45, 0.9, macroL[i]) * 0.3);
+    nucleate[i] = clamp01(
+      screws[i] * 0.6 + washers[i] * 1.0 + lap[i] * 0.85 + screwRun[i] * 0.6 + smoothstep(0.45, 0.9, macroL[i]) * 0.3 + soak[i] * 0.7,
+    );
   }
   const rust = rustField(res, { seed: seed + 13, cells: 9, coverage: 0.3, warp: 0.07, bias: nucleate, biasAmt: 1.25 });
 
@@ -2244,13 +2304,56 @@ function bCorrugatedSteel(ctx) {
     const profile = lerp(0.5 + s * 0.5, trap, 0.65);
     const valley = 1 - profile; // rust and dirt collect in the valleys
 
-    let hv = 0.2 + profile * 0.62 + (dents[i] - 0.5) * 0.08 + (grain[i] - 0.5) * 0.04;
-    hv += screws[i] * 0.1;
-    hv -= washers[i] * 0.03;
-    hv += lap[i] * 0.05; // the upper sheet stands off by its own thickness
+    /*
+     * Height. The rib used to own this channel (0.2 + profile * 0.62), and that was wrong
+     * twice over.
+     *
+     * First, the rib is MODELLED — level.js `corrugated()` builds it as real geometry on
+     * every panel that has one — so putting it in the height map re-states it at a pitch
+     * (tile / RIBS = 2.4 / 8 = 0.30 m) that cannot match the geometry's 0.24 / 0.26 /
+     * 0.28-0.30 m, which is where the moire in the wide shot comes from.
+     *
+     * Second, the shared ash pass consumes this channel: FRAG_ASH derives ashEdge from
+     * smoothstep(0.52, 0.86, height) and its comment budgets that term at 4-30% of texels.
+     * A trapezoidal wave sitting between 0.2 and 0.82 put the whole crown of every rib over
+     * 0.52 — measured at 31.7% of texels firing the term at better than a quarter strength,
+     * 27.9% at better than half — so edge wear stopped being wear and became a second base
+     * albedo painted in vertical stripes.
+     *
+     * Centred near 0.5 with the manufactured detail — the fixings, the lap, the dents — as
+     * the dominant signal, ashEdge now fires on those highs only. SURFACES.corrugatedSteel
+     * keeps relief 0.125 / normal 1.1: the visible rib comes from the mesh, and the faint
+     * 0.10 term here is only for the few panels that use this material flat.
+     *
+     * Measured, because the budget is the whole point of the change. With the rib removed and
+     * the dent amplitude left where it was, ashEdge collapsed to 0.4% of texels and ashCavity
+     * to 2.7% — i.e. the panel lost its edge wear and cavity grime outright, which is as much
+     * a regression as the stripe was. The height field has to keep real *aperiodic* contrast,
+     * so the dent and grain amplitudes come up to carry what the rib was carrying. At the
+     * numbers below: ashEdge 31.7% -> 12.3% of texels, ashCavity 18.5% -> 8.8%, gradX
+     * 0.0133 -> 0.0072 and the Y/X gradient ratio 0.17 -> 1.01, i.e. the map no longer has a
+     * preferred axis at all and the ribs the eye sees are the ones the mesh actually has.
+     */
+    let hv = 0.51 + (profile - 0.5) * 0.1 + (dents[i] - 0.5) * 0.44 + (grain[i] - 0.5) * 0.12;
+    hv += screws[i] * 0.26;
+    hv -= washers[i] * 0.09;
+    hv += lap[i] * 0.13; // the upper sheet stands off by its own thickness
     ctx.h[i] = clamp01(hv);
 
-    const rustAmt = clamp01(rust.core[i] * (0.35 + valley * 1.1) + rust.halo[i] * valley * 0.6 + screwRun[i] * 0.35);
+    /*
+     * Wetness. Everything that weathers this sheet used to be gated on `valley`, which is a
+     * pure vertical square wave — so the rust, the deep rust, the streaks, the grime, the
+     * roughness and the metalness all ran as continuous full-height stripes that never broke,
+     * and the panel read as a barcode rather than as steel.
+     *
+     * Water does collect in the valleys, but it collects far harder in a dent that holds it
+     * and in the dirt film that wicks it, and it pools at the foot of the sheet. Those three
+     * are aperiodic, so the mask they make has no period the eye can find, while still being
+     * valley-biased where the valleys matter.
+     */
+    const wet = clamp01(valley * 0.4 + smoothstep(0.32, 0.8, dents[i]) * 0.45 + smoothstep(0.5, 0.9, grime[i]) * 0.25);
+
+    const rustAmt = clamp01(rust.core[i] * (0.35 + wet * 1.1) + rust.halo[i] * wet * 0.6 + screwRun[i] * 0.35);
     const base = mixc(painted, bare, 0.35);
     ctx.ar[i] = base[0];
     ctx.ag[i] = base[1];
@@ -2258,25 +2361,38 @@ function bCorrugatedSteel(ctx) {
     tint(ctx, i, lerp(0.9, 1.08, dents[i]));
     tint(ctx, i, lerp(0.85, 1.15, macroL[i])); // one end of the run has weathered harder
     paint(ctx, i, rustC, rustAmt * 0.85);
-    paint(ctx, i, deepC, clamp01(rust.scale[i] * valley * 1.4) * 0.7);
-    paint(ctx, i, mixc(rustC, C.dirt, 0.5), streaks[i] * valley * 0.55);
+    paint(ctx, i, deepC, clamp01(rust.scale[i] * wet * 1.4) * 0.7);
+    // Rotted through at the water line. This is the horizontal event the panel was missing:
+    // it terminates every vertical run at a specific height instead of letting them fall off
+    // the bottom of the sheet. Weighted by the same macro band that decides which end of a
+    // run weathered harder, so the rot is a tide mark with a history rather than a ruled line.
+    paint(ctx, i, deepC, soak[i] * 0.45 * (0.55 + 0.45 * macroL[i]));
+    paint(ctx, i, mixc(rustC, C.dirt, 0.5), streaks[i] * wet * 0.55);
     paint(ctx, i, shade(bare, 1.1), screws[i] * 0.65);
     paint(ctx, i, mixc(rustC, deepC, 0.5), washers[i] * 0.6);
     paint(ctx, i, mixc(rustC, deepC, 0.6), lap[i] * 0.5); // the capillary trap rots first
-    paint(ctx, i, C.dirt, clamp01(grime[i] - 0.5) * valley * 0.5);
-    paint(ctx, i, dustC, clamp01(profile - 0.75) * 0.28); // dust on the rib crowns
+    paint(ctx, i, C.dirt, clamp01(grime[i] - 0.5) * wet * 0.5);
+    // Dust settles on whatever stands proud — but keyed to the aperiodic dent field, not to
+    // `profile`. The rib crowns are modelled geometry at a pitch this map cannot match, so an
+    // albedo band locked to the texture's own rib is exactly the beat that made the unrusted
+    // sheet in the depot read as a venetian blind. The rib survives in the height term above
+    // and, softened, in the roughness below; it no longer paints a stripe.
+    paint(ctx, i, dustC, clamp01(dents[i] - 0.6) * 0.5);
 
     const l = lum(ctx, i);
     let r = 0.4;
     r += (grain[i] - 0.5) * 0.08;
     r = lerp(r, 0.94, rustAmt);
-    r -= smoothstep(0.55, 0.95, profile) * (1 - rustAmt) * 0.16; // rain-washed rib crowns
-    r += clamp01(grime[i] - 0.5) * valley * 0.2;
+    // Rain-washed rib crowns, broken along the rib by the dent field. Left as a roughness-only
+    // cue: it is the last thing carrying the rib on the flat panels, and a gloss band reads far
+    // more weakly than an albedo band, so it can stay periodic as long as it is not continuous.
+    r -= smoothstep(0.55, 0.95, profile) * (0.35 + 0.65 * dents[i]) * (1 - rustAmt) * 0.16;
+    r += clamp01(grime[i] - 0.5) * wet * 0.2;
     r += (0.5 - macroL[i]) * 2.0 * 0.08;
     r -= screws[i] * 0.16;
     r += (l - 0.35) * 0.06;
     ctx.rg[i] = clamp01(r);
-    ctx.mt[i] = clamp01(1 - rustAmt * 0.85 - clamp01(grime[i] - 0.5) * valley * 0.4);
+    ctx.mt[i] = clamp01(1 - rustAmt * 0.85 - clamp01(grime[i] - 0.5) * wet * 0.4);
   }
 }
 
