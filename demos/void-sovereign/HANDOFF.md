@@ -168,6 +168,48 @@ manager (was never opening — `Tab` was double-bound) · audio.
 - No thumbnail; **not on the demo shelf** — deliberately, until quality
   justifies it. See §6a.
 
+### Known-good next wins (measured, cheap, no owner)
+
+- **Battle damage is fully wired and has no producer.** `aDamage` is *not*
+  unread as previously recorded — `HULL_VERT_PARS` declares it and `HULL_BODY`
+  consumes it via `vAttr.x`, so scorch, exposed hot metal and flickering cracks
+  are all implemented. `ships/index.js:727` allocates the attribute as zeros
+  and **nothing ever writes it**. Battle damage appears the moment SIM writes
+  per-instance values from `entity.hull / entity.maxHull`. This is the highest
+  visible-quality-per-effort item left in the project.
+- **The mothership's dark engine bore is a hole in the geometry, not shading.**
+  `greeble.js::engineNozzle()` lofts the `KIND.BELL` emitter cone with
+  `capEnd: false`, so the throat is a literal hole at r < 0.42r — which is what
+  FX's throat disc is actually covering. **Do not remove that disc until the
+  throat is capped.** Separately, the `KIND.HULL` recess cone sits 0.06–1.31 m
+  from the emitter on a 14.2 m bell and z-fights it; it is redundant (the
+  emitter already provides that surface) and dropping it would let
+  `uDepthPull` go too.
+- **ENV has fill headroom back.** With the new terminator shaping carrying the
+  lit side, `hullAmbient 0.20→0.13`, `env:fill 0.42→0.30`, `env:ambient
+  0.075→0.05` costs 1–9% of median hull luminance and buys **+5–19%
+  interquartile contrast** (going further, to 0.10/0.24/0.04, takes the worst
+  seed from 4.06 to 5.41).
+- **Two terminator laws coexist for the same ship** — the L2/L3 impostor uses
+  `smoothstep(N·L)` with a flat fill, the close-range hull uses
+  `pow(N·L, 2.0)·1.61` plus bounce, so there is a value step at the L1→L2
+  boundary. `setHullTerminator(gamma, pivot)` is exported if they should agree.
+  The impostor's hand-picked grey should also derive from
+  `getFamilyAverages()` rather than drifting from the plate atlas.
+
+### Cross-lane measurement hazard
+
+**Record the environment alongside any art measurement.** A materials baseline
+was invalidated mid-flight when ENV's sun-elevation clamp landed: every seed
+moved 9–10° of elevation between the baseline and the result run, silently
+turning an A/B into a comparison of two different scenes. `.local/matseed.mjs`
+now dumps `sunElevDeg`, the four light intensities and the live hull uniforms
+into every record. Do the same for anything cross-lane.
+
+Related: **the critic's seven-seed luminance table goes stale quickly.** It has
+already been superseded twice by concurrent lighting work. Re-measure rather
+than quoting it.
+
 ### Open items with no owning agent (transcripts lost — respawn to action)
 
 - **FX blast normalisation.** The doc comment says a fighter is `≈0.04`; the

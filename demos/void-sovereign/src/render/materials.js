@@ -607,17 +607,17 @@ const CHROMA = { direct: 0.86, indirect: 0.26 };
    faces above it are lifted, faces below it dropped, and it is held at its
    unshaped value so the pair reads as contrast rather than as exposure.
 
-   Both numbers are measured, not chosen (.local/matablate.mjs, `pivot` set).
-   Gamma is the contrast and the sweep is monotonic, so it was set by where the
-   picture stopped improving rather than by where the number did. The pivot is
-   the interesting one: at 0.70 — the middle of the cosine range the opening
-   framing actually delivers — the hull only ever got darker, because on the
-   seeds where the key is lateral most of the visible hull sits *below* that
-   crossover. Dropping it to 0.48 puts the crossover under the bulk of the lit
-   face, so the same shaping lifts the lit side instead of only deepening the
-   shadow: on the darkest of the seven seeds it moved p75 from 0.35 to 0.42 and
-   p90 from 0.49 to 0.58 while the shadow floor stayed put at p10 0.066. */
-const TERMINATOR = { gamma: 2.0, pivot: 0.48 };
+   Both numbers are measured, not chosen (.local/matablate.mjs, `pivot` set),
+   and the pivot is the interesting one because it is not monotonic. Too high
+   and the shaping only ever darkens: on the seeds where the key is lateral
+   most of the visible hull sits below the crossover, so at 0.90 the darkest
+   seed lost a fifth of its median *and* came out flatter than unshaped.
+   Too low and the gain it implies drives the whole hull into the tone-map
+   knee, which re-flattens it at the bright end instead of the dark one — at
+   0.48 the most frontally lit seed measured an interquartile ratio of 2.22,
+   worse than doing nothing. 0.62 is near the top of a shallow optimum that
+   held on both the brightest and the darkest seed. */
+const TERMINATOR = { gamma: 2.0, pivot: 0.62 };
 const termGain = () => Math.pow(TERMINATOR.pivot, 1 - TERMINATOR.gamma);
 
 let store = null;
@@ -962,17 +962,18 @@ export function getEngineMaterial(team) {
    drive plume. Team keying lives here so a bell and a spine light cannot drift
    apart from the trim they sit next to.
 
-   Gains are quoted against a lit hull, which sits near 0.13 in linear light:
-   a bell at 3.6 is roughly 28x that and blooms hard, a running light at 2.1
-   blooms softly, a window at 0.9 does not bloom at all. */
+   Gains are quoted against a lit hull, which sits near 0.2 in linear light
+   once the terminator gain above is included: a bell at 3.4 is roughly 17x
+   that and blooms hard, a running light at 2.1 blooms softly, a window at 0.9
+   does not bloom at all. */
 const GLOW_KINDS = {
   /* Hot throat falling to the team's drive colour at the lip. `axial` is the
      one that takes its gradient from the geometry rather than from the view —
      see the note above GLOW_FRAG. `sharp` and `rim` are quoted against that
      ramp, not against a view-facing term, so they do not transfer to the
      others: the bore is meant to stay live well up its length, and the mouth
-     is meant to be almost pure faction colour. */
-  /* `pull` is a mitigation, not the fix — see the note below GLOW_KINDS. */
+     is meant to be almost pure faction colour. `pull` is a mitigation for
+     someone else's coincident surface, not a fix — see the block below. */
   bell: { core: 0xfff4e2, useEngine: true, gain: 3.4, sharp: 1.35, rim: 0.92, axial: true, pull: 0.002 },
   // faction running light: near-white centre, team colour off-axis
   light: { core: 0xffffff, useLight: true, gain: 2.1, sharp: 1.6, rim: 0.55 },
@@ -1002,8 +1003,8 @@ const GLOW_KINDS = {
    A depth pull of 0.05% of view depth takes bore-over-lip luminance from 0.51
    to 0.82, and 0.2% reaches 0.88 and plateaus (.local/bellpull.mjs). That
    sub-metre knee is the confirmation: this is coincidence, not a hull slab in
-   the way. So the value below is deliberately small — enough to win a tie,
-   far too little to punch through anything real.
+   the way. So GLOW_KINDS.bell.pull is deliberately small — enough to win a
+   tie, far too little to punch through anything real.
 
    The proper fix is in greeble.js and belongs to SHIPS: the emitter cone
    already provides the funnel surface, so the KIND.HULL recess cone is either

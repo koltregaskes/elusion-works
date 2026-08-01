@@ -223,6 +223,8 @@ const _axA = new THREE.Vector3();
 const _axB = new THREE.Vector3();
 const _cam = new THREE.Vector3();
 const _rel = new THREE.Vector3();
+const _n1 = new THREE.Vector3();
+const _nm = new THREE.Matrix3();
 
 /* Anything smaller than this cannot hide a capital ship and is not worth
    orbiting around; the rock fields are full of them. Anything larger than the
@@ -277,10 +279,33 @@ const OPENING = {
      the lit flank facing the camera, and it is the constraint ENV asked for.
 
      Crucially the camera is aimed *from* the seeded sun rather than seeded
-     independently, so the relative angle holds however ENV moves the star. ENV
-     must not close the loop by aiming the star at the camera. */
+     independently, so the relative angle holds however ENV moves the star. The
+     star's azimuth stays uniformly seeded and ENV must not close the loop by
+     aiming it at the camera; only this end of the relationship is constrained.
+
+     The band is deliberately *not* narrowed to chase hull brightness, and that
+     was tested rather than assumed. Raising the floor to 116 degrees and
+     re-measuring the two seeds that sit at the bottom of the band:
+
+       nightbloom   view-to-sun 108.7 -> 118.9, hull p50 0.138 -> 0.186
+       coldwater    view-to-sun 106.0 -> 117.2, hull p50 0.328 -> 0.360,
+                    but painted silhouette 55.0% -> 57.1%, out of the 45-55 band
+
+     So narrowing costs seeded variety and framing, and still does not lift the
+     dark seed over 0.25. The angle is also not the discriminator it looks like:
+     coldwater sits at 106 degrees, lower than nightbloom, and measures 0.328.
+     `litWeight` below addresses what the camera can actually control; the rest
+     of nightbloom's deficit is in the key/fill for that palette, which is ENV's
+     to own. Evidence is in `.local/sil-lit1.json` and `.local/sil-band.json`. */
   sunAngleMin: 104 * DEG,
   sunAngleMax: 134 * DEG,
+
+  /* How hard a dim approach is penalised in the aim search, and the mean
+     clamped-Lambert value over camera-facing hull samples at which a candidate
+     stops being penalised at all. One-sided: a well-lit approach pays nothing,
+     so this can only ever break the framing score's ties toward the light. */
+  litWeight: 0.55,
+  litTarget: 0.42,
 
   /* Elevation band. Slightly below the equator is allowed — a capital read from
      just under its belt line looms, which is the whole point of a hero shot. */
@@ -655,9 +680,15 @@ export class CameraRig {
 
      Only the finest LOD level is walked: `THREE.LOD` leaves every level visible
      until its first `update()`, which has not happened yet at boot, and three
-     copies of the same hull would triple the work for an identical extent. */
+     copies of the same hull would triple the work for an identical extent.
+
+     Normals come back alongside the positions because the aim search needs to
+     know which way each sample faces — the framing solve only needs where the
+     hull is, but choosing between equally well-framed approaches needs to know
+     which of them the star is actually on. */
   _samplePoints(root) {
     const out = [];
+    const nrm = [];
     const budget = OPENING.samples;
     const meshes = [];
     const walk = (node) => {
@@ -683,15 +714,63 @@ export class CameraRig {
 
     for (const m of meshes) {
       const pos = m.geometry.attributes.position;
+      const nAttr = m.geometry.attributes.normal;
+      /* Normals need the inverse-transpose, not the world matrix — a hull built
+         with any non-uniform scale would otherwise report normals that are not
+         perpendicular to it, and light the wrong flank. */
+      if (nAttr) _nm.getNormalMatrix(m.matrixWorld);
       const want = Math.max(OPENING.samplesPerMesh, Math.round((budget * pos.count) / total));
       const stride = Math.max(1, Math.ceil(pos.count / want));
       for (let i = 0; i < pos.count; i += stride) {
         _p1.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld);
         if (!Number.isFinite(_p1.x) || !Number.isFinite(_p1.y) || !Number.isFinite(_p1.z)) continue;
+        if (nAttr) {
+          _n1.fromBufferAttribute(nAttr, i).applyMatrix3(_nm);
+          if (_n1.lengthSq() < 1e-12) _n1.set(0, 1, 0);
+          _n1.normalize();
+        } else {
+          _n1.set(0, 0, 0);          // no normals: every sample reads unlit
+        }
         out.push(_p1.x, _p1.y, _p1.z);
+        nrm.push(_n1.x, _n1.y, _n1.z);
       }
     }
-    return out.length >= 12 ? out : null;
+    if (out.length < 12) return null;
+    out.n = nrm;
+    return out;
+  }
+
+  /* Mean clamped Lambert over the hull samples that face the camera — a proxy
+     for "how lit does this approach leave the visible hull", computed without
+     rendering anything.
+
+     It exists because the framing score alone cannot see lighting, and within
+     the view-to-sun band that ENV constrained, the outcome still split: their
+     measurement put well-placed seeds at hull medians of 0.31-0.43 and the
+     worst at 0.138. Vertex samples are not area-weighted, so this is a
+     monotonic proxy rather than a photometric prediction — which is all a
+     comparison between candidate angles needs. */
+  _litFraction(pts, focus, dir, dist) {
+    const nrm = pts.n;
+    if (!nrm || !this._sunDir(_sun)) return 1;      // nothing to choose between
+    _cam.copy(focus).addScaledVector(dir, dist);
+
+    let lit = 0;
+    let seen = 0;
+    for (let i = 0; i < pts.length; i += 3) {
+      const nx = nrm[i];
+      const ny = nrm[i + 1];
+      const nz = nrm[i + 2];
+      const vx = _cam.x - pts[i];
+      const vy = _cam.y - pts[i + 1];
+      const vz = _cam.z - pts[i + 2];
+      const vl = Math.sqrt(vx * vx + vy * vy + vz * vz) || 1;
+      if ((nx * vx + ny * vy + nz * vz) / vl <= 0) continue;   // back-facing
+      seen++;
+      const ndl = nx * _sun.x + ny * _sun.y + nz * _sun.z;
+      if (ndl > 0) lit += ndl;
+    }
+    return seen ? lit / seen : 0;
   }
 
   /* Direction from the battle toward the star, read off whichever directional
@@ -857,6 +936,7 @@ export class CameraRig {
        two seeds with different stars get visibly different shots. */
     const list = this._occluderList(focus, hullLength * 1.1);
     const stride = Math.max(1, Math.floor(ok.length / OPENING.candidates));
+    const probes = [];
     let best = null;
     for (let i = 0; i < ok.length; i += stride) {
       const cand = ok[i];
@@ -888,14 +968,32 @@ export class CameraRig {
          read, which is what ARCHITECTURE §3.1 asks for. */
       const wr = fit.w / OPENING.fillW;
       let score = wr > 1 ? 2.5 * Math.log(wr) : -Math.log(Math.max(1e-6, wr));
+
+      /* And how lit the shot is, which the framing score cannot see. One-sided
+         and normalised, so a candidate at or above the target pays nothing and
+         a black one pays `litWeight`. ENV owns the star's elevation and its
+         azimuth stays uniformly seeded; this is the camera choosing where to
+         stand relative to whatever star it was given. */
+      const lit = this._litFraction(pts, focus, _try, fit.dist);
+      score += OPENING.litWeight *
+        Math.max(0, OPENING.litTarget - lit) / OPENING.litTarget;
+
       if (list.length && this._sightBlocked(focus, _try, fit.dist, list, hero.radius || 0)) {
         score += 10;   // a rock across the shot loses to any clear angle
       }
+      probes.push({
+        yaw: +cand.yaw.toFixed(3),
+        pitch: +cand.pitch.toFixed(3),
+        w: +fit.w.toFixed(3),
+        lit: +lit.toFixed(3),
+        score: +score.toFixed(3),
+      });
       if (!best || score < best.score) {
-        best = { yaw: cand.yaw, pitch: cand.pitch, score, fit };
+        best = { yaw: cand.yaw, pitch: cand.pitch, score, fit, lit };
       }
     }
-    return best || { yaw: ok[0].yaw, pitch: ok[0].pitch, score: 0, fit: null };
+    this._probes = probes;
+    return best || { yaw: ok[0].yaw, pitch: ok[0].pitch, score: 0, fit: null, lit: 0 };
   }
 
   /** Static plus entity occluders near a focus, as the flat records the sight
@@ -982,8 +1080,12 @@ export class CameraRig {
       hullMultiple: solved.dist / hullLength,
       fillW: solved.w,
       fillH: solved.h,
+      lit: typeof aim.lit === 'number' ? aim.lit : null,
       offsetX: wantX,
       offsetY: wantY,
+      /* Every angle the search looked at, so a capture harness can show what
+         was on offer rather than only what was taken. */
+      candidates: this._probes || null,
     };
     return true;
   }
