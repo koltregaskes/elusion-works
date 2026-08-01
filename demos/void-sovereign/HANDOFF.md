@@ -284,6 +284,26 @@ fingerprint. Run it after every edit — it also catches ordinary parse failures
 that `node --check` cannot, because `--check` parses `.js` as CommonJS here and
 `import` masks everything behind an unrelated error.
 
+**Projected measurements have produced three phantom defects. Measure in world
+space, or measure painted pixels — never a projected bounding box.**
+
+1. "The mothership's long axis is X" — a **world-axis** AABB taken on a *yawed*
+   hull. It described that ship's heading, not its model axes. Withdrawn after
+   re-measuring on `buildShipModel()` output before rotation: all 13 classes are
+   long-axis Z with bbox length to spec within 0.5 m.
+2. "The hero ship is 42% of frame width" — a projected AABB again, inflated 77%
+   over the **true painted silhouette** (455 px, 23.7%). Three methods
+   disagreed; only frame-difference was right. Use `.local/silhouette.mjs`.
+3. "The destroyer's bounding box is 77,665 × 12,255" — projected pixels, not
+   world units. Verified directly: destroyer 66 × 108 × **380** against a spec
+   of 380, mothership 838 × 1266 × **1900** against 1900, all finite, every
+   class exact. A bbox that straddles the camera plane projects to garbage, so
+   the number was a harness artefact and the geometry was never wrong.
+
+A projected box is not a measurement of an object; it is a measurement of an
+object *and* a camera. If the camera is anywhere near the subject, it tells you
+about the camera.
+
 **Two of my diagnoses were wrong before the right one.** I flipped the cube face
 basis on faulty reasoning (three's `CubeCamera` uses standard orientations for
 WebGL — the original basis was correct), and I initially misread a
