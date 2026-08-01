@@ -799,6 +799,92 @@ function addEdgeHighlight(asm, cfg) {
 /* Materials                                                                  */
 /* ========================================================================== */
 
+/* --- Texture density: derived from the library, never typed in ------------
+ *
+ * WHY THIS IS DERIVED. `world/materials.js` publishes METRES PER TEXTURE PERIOD for every
+ * surface — `materials.tileMetres(name)`, mirrored onto each texture set as `.tile`. That is
+ * the §3.4 contract and it is the single source of truth for how dense a surface reads;
+ * `world/level.js` honours it by scaling its metre-space UVs by `1 / tileMetres(name)`.
+ *
+ * This file used to hold its own hard-coded repeats (4 to 22) instead, i.e. a *copy* of a
+ * number that lives somewhere else. The copy then diverged: when the gun tiles were corrected
+ * from a world-scale 0.35 / 0.30 / 0.35 m down to 0.050 / 0.045 / 0.075 m, the world changed
+ * and the weapon did not, and the viewmodel shipped as flat untextured plastic in front of a
+ * world full of grime. That is the third time this project has been bitten by a value copied
+ * away from its source (the duplicate sun, the stale viewmodel lights), and the fix is always
+ * the same: the consumer DERIVES, it does not hold a copy.
+ *
+ * So: do not reintroduce a literal repeat here. If a band genuinely wants a different density
+ * from the library's, say so with a documented multiplier ON TOP of the derived value, so the
+ * coupling survives.
+ */
+
+/**
+ * Metres per texture period for a world surface, read back from the material library.
+ * `materials.tileMetres()` is the published accessor; the texture set carries the same number
+ * as `.tile` for a consumer that only holds the maps. Deliberately no hard-coded default: if
+ * the library is not there, we return null and skip the map entirely, which is the honest
+ * outcome — inventing a density here is exactly how the divergence started.
+ */
+function tileMetresOf(game, name) {
+  try {
+    const lib = game.materials;
+    if (!lib) return null;
+    if (typeof lib.tileMetres === 'function') {
+      const t = lib.tileMetres(name);
+      if (t > 0) return t;
+    }
+    const set = lib.getTextures ? lib.getTextures(name) : null;
+    if (set && set.tile > 0) return set.tile;
+  } catch {
+    /* fall through */
+  }
+  return null;
+}
+
+/**
+ * The one deliberate departure from the library's density, and it is a departure with a
+ * reason rather than a tuned number.
+ *
+ * `fabric` is published at 0.60 m per period because its world consumers are tarpaulins and
+ * sandbag hessian, where one period across a 600 mm bag is right. `bFabric` lays 84 threads
+ * across a tile, so at 0.60 m a thread is 7.1 mm — a thread you could get a finger under.
+ * The cloth on the viewmodel is a nomex glove and a sleeve 0.35 m from the eye, whose weave is
+ * about 1 mm. 7x is that ratio and nothing else: it takes the same map to garment scale.
+ * Applied as a multiplier, so retuning `fabric` in the library still moves every cloth surface
+ * on the arms.
+ */
+const CLOTH_WEAVE_SCALE = 7;
+
+/**
+ * Texture repeat for one viewmodel band, derived from the published metres-per-period and the
+ * real size of the parts in that band.
+ *
+ * `part.span` is the reference part's size in metres, so `span / tile` is the number of texture
+ * periods that must fall across its face — a 0.22 m receiver against gunmetal's 0.050 m period
+ * gets 4.4. Converting that into a `Texture.repeat` needs the part's UV extent, and this file
+ * builds geometry in two conventions:
+ *
+ *   - ExtrudeGeometry — `chamferBox`, `plate`, `microPlate`, `knurlGeo`, i.e. nearly everything
+ *     on the weapon and the hands — takes its UVs straight from shape space, so they are in
+ *     METRES, the same space level.js works in. A `span`-metre part has a `span`-wide UV
+ *     footprint and the repeat that delivers the periods is therefore `1 / tile`.
+ *   - LatheGeometry / TorusGeometry — the sleeve and cuff tubes — normalise to 0..1, so the UV
+ *     footprint is 1 whatever the part measures and the repeat IS the period count. Flagged
+ *     with `unitUv`.
+ *
+ * A batch can mix the two; the flag names whichever convention carries that band's large
+ * readable faces, which are the surfaces the density is being judged on.
+ */
+function deriveRepeat(game, from, part) {
+  const tile = tileMetresOf(game, from);
+  if (!(tile > 0)) return null;
+  const span = part.span;
+  if (!(span > 0)) return null;
+  const periods = (span / tile) * (part.density === undefined ? 1 : part.density);
+  return part.unitUv ? periods : periods / span;
+}
+
 /**
  * Borrow a procedural map from world/materials.js if that module built successfully.
  * Cloning a Texture shares the GPU `source` but gives us private repeat/offset, so we can
@@ -828,8 +914,12 @@ function buildMaterials(game) {
     const m = new THREE.MeshStandardMaterial(
       Object.assign({ vertexColors: true, envMapIntensity: 1.0, side: THREE.FrontSide }, params)
     );
-    if (borrow) {
-      const rp = borrow.repeat || 6;
+    // Derived from `materials.tileMetres(borrow.from)` and the band's real part span — see
+    // `deriveRepeat`. Null means the material library never built, in which case there is no
+    // map to retile anyway and the band falls back to its authored flat colour plus the baked
+    // vertex tint.
+    const rp = borrow ? deriveRepeat(game, borrow.from, borrow) : null;
+    if (borrow && rp) {
       const nm = borrowMap(game, borrow.from, 'normalMap', rp);
       const rm = borrowMap(game, borrow.from, 'roughnessMap', rp);
       if (nm) {
@@ -845,7 +935,7 @@ function buildMaterials(game) {
         // is a weave, not a moulded colour. `albedoGain` compensates for the map already
         // carrying most of the surface value, and is applied only when the map really arrived,
         // so the no-materials-module fallback still gets a correctly dark flat colour.
-        const am = borrowMap(game, borrow.from, 'map', borrow.albedoRepeat || rp);
+        const am = borrowMap(game, borrow.from, 'map', rp);
         if (am) {
           m.map = am;
           m.color.multiplyScalar(borrow.albedoGain !== undefined ? borrow.albedoGain : 1);
@@ -912,7 +1002,7 @@ function buildMaterials(game) {
       metalness: 0.86,
       roughness: 0.46,
       envMapIntensity: ENV_METAL,
-    }, { from: 'gunmetal', repeat: 7, normalScale: 0.4 }),
+    }, { from: 'gunmetal', span: 0.22, normalScale: 0.4 }),
 
     /* Rail: the same alloy, but every slot corner has been worn back to bright metal by
        mounts going on and off, so it runs a touch brighter and tighter than the receiver. */
@@ -921,7 +1011,7 @@ function buildMaterials(game) {
       metalness: 0.90,
       roughness: 0.38,
       envMapIntensity: ENV_METAL,
-    }, { from: 'gunmetal', repeat: 5, normalScale: 0.30 }),
+    }, { from: 'gunmetal', span: 0.20, normalScale: 0.30 }),
 
     /* Barrel: manganese phosphate over steel. Noticeably *rougher* and darker than the
        receiver — the phosphate conversion coating is a matte crystalline surface, and that
@@ -931,7 +1021,7 @@ function buildMaterials(game) {
       metalness: 0.92,
       roughness: 0.60,
       envMapIntensity: ENV_METAL,
-    }, { from: 'gunmetal', repeat: 11, normalScale: 0.34 }),
+    }, { from: 'gunmetal', span: 0.26, normalScale: 0.34 }),
 
     /* Optic housing: type-III anodised tube, the tightest finish on the gun. */
     opticBody: make('opticBody', {
@@ -939,7 +1029,7 @@ function buildMaterials(game) {
       metalness: 0.88,
       roughness: 0.32,
       envMapIntensity: ENV_METAL * 1.1,
-    }, { from: 'gunmetal', repeat: 9, normalScale: 0.26 }),
+    }, { from: 'gunmetal', span: 0.11, normalScale: 0.26 }),
 
     /* Wear points: charging-handle latch, bolt face, mag-catch, safety detent, broken edges,
        the muzzle crown. Real bright steel — the only genuinely shiny surfaces on the weapon,
@@ -962,7 +1052,7 @@ function buildMaterials(game) {
       metalness: 0.30,
       roughness: 0.93,
       envMapIntensity: ENV_METAL * 0.35,
-    }, { from: 'gunmetal', repeat: 16, normalScale: 0.5 }),
+    }, { from: 'gunmetal', span: 0.05, normalScale: 0.5 }),
 
     /* Polymer that a hand has actually been on: the handguard where the C-clamp lands, the
        backstrap, the magazine spine. Skin oil fills the moulding texture and polishes it, so
@@ -974,7 +1064,7 @@ function buildMaterials(game) {
       metalness: 0.0,
       roughness: 0.46,
       envMapIntensity: ENV_POLY * 1.15,
-    }, { from: 'gunPolymer', repeat: 10, normalScale: 0.34 }),
+    }, { from: 'gunPolymer', span: 0.09, normalScale: 0.34 }),
 
     /* Handguard / stock polymer: moulded, matte, and a dielectric — its specular is the
        fixed 4% F0, so pushing roughness right up is the only way to kill the sheen.
@@ -990,7 +1080,7 @@ function buildMaterials(game) {
       metalness: 0.0,
       roughness: 0.74,
       envMapIntensity: ENV_POLY,
-    }, { from: 'gunPolymer', repeat: 8, normalScale: 0.75 }),
+    }, { from: 'gunPolymer', span: 0.26, normalScale: 0.75 }),
 
     /* Grip polymer: aggressive stipple, near-fully rough. */
     grip: make('grip', {
@@ -998,7 +1088,7 @@ function buildMaterials(game) {
       metalness: 0.0,
       roughness: 0.90,
       envMapIntensity: ENV_POLY * 0.85,
-    }, { from: 'gunPolymer', repeat: 18, normalScale: 1.1 }),
+    }, { from: 'gunPolymer', span: 0.088, normalScale: 1.1 }),
 
     /* Tan furniture — the vector reads warmer than the mk18 at a glance. */
     tan: make('tan', {
@@ -1006,7 +1096,7 @@ function buildMaterials(game) {
       metalness: 0.0,
       roughness: 0.68,
       envMapIntensity: ENV_POLY,
-    }, { from: 'gunPolymer', repeat: 9, normalScale: 0.6 }),
+    }, { from: 'gunPolymer', span: 0.20, normalScale: 0.6 }),
 
     /* Oiled walnut for the dmr14 — satin, the one warm dielectric with a real sheen. */
     wood: make('wood', {
@@ -1014,7 +1104,7 @@ function buildMaterials(game) {
       metalness: 0.0,
       roughness: 0.44,
       envMapIntensity: ENV_POLY,
-    }, { from: 'gunWood', repeat: 4, normalScale: 0.6 }),
+    }, { from: 'gunWood', span: 0.30, normalScale: 0.6 }),
 
     /* Buttpad, eyecup, cheek riser pad. Rubber is the matte extreme of the set. */
     rubber: make('rubber', {
@@ -1022,7 +1112,7 @@ function buildMaterials(game) {
       metalness: 0.0,
       roughness: 0.97,
       envMapIntensity: ENV_POLY * 0.6,
-    }, { from: 'gunPolymer', repeat: 22, normalScale: 1.2 }),
+    }, { from: 'gunPolymer', span: 0.045, normalScale: 1.2 }),
 
     /* Brass, for the round visible at the port and the follower witness holes. */
     brass: make('brass', {
@@ -1039,7 +1129,7 @@ function buildMaterials(game) {
       metalness: 0.0,
       roughness: 0.88,
       envMapIntensity: ENV_CLOTH,
-    }, { from: 'fabric', repeat: 12, normalScale: 0.85, albedo: true, albedoRepeat: 12, albedoGain: 2.8 }),
+    }, { from: 'fabric', span: 0.065, density: CLOTH_WEAVE_SCALE, normalScale: 0.85, albedo: true, albedoGain: 2.8 }),
 
     /* Glove, palm and finger pads: goat leather. Much smoother than the fabric back, and
        polished further where it actually grips — the roughness map supplies that variation. */
@@ -1048,7 +1138,7 @@ function buildMaterials(game) {
       metalness: 0.0,
       roughness: 0.44,
       envMapIntensity: ENV_CLOTH * 1.4,
-    }, { from: 'fabric', repeat: 16, normalScale: 0.30, albedo: true, albedoRepeat: 16, albedoGain: 3.4 }),
+    }, { from: 'fabric', span: 0.068, density: CLOTH_WEAVE_SCALE, normalScale: 0.30, albedo: true, albedoGain: 3.4 }),
 
     /* Knuckle guards and finger reinforcement — moulded TPR, between leather and fabric. */
     gloveHard: make('gloveHard', {
@@ -1056,7 +1146,7 @@ function buildMaterials(game) {
       metalness: 0.0,
       roughness: 0.58,
       envMapIntensity: ENV_CLOTH * 1.2,
-    }, { from: 'gunPolymer', repeat: 14, normalScale: 0.9 }),
+    }, { from: 'gunPolymer', span: 0.064, normalScale: 0.9 }),
 
     /* Sleeve, camouflaged via vertex colour. The albedo is *entirely* the baked camo, so the
        material colour stays white and `bakeCamo`'s gain controls the level. */
@@ -1065,7 +1155,9 @@ function buildMaterials(game) {
       metalness: 0.0,
       roughness: 0.95,
       envMapIntensity: ENV_CLOTH,
-    }, { from: 'fabric', repeat: 3.2, normalScale: 0.55 }),
+      // The sleeve is `limbGeometry`, a lathe: 0..1 UVs, so the repeat is the period count
+      // across a 0.28 m forearm directly rather than periods per metre.
+    }, { from: 'fabric', span: 0.28, density: CLOTH_WEAVE_SCALE, unitUv: true, normalScale: 0.55 }),
 
     /* Cuff / wrist webbing: heavier weave than the sleeve, and dirtier. */
     cuff: make('cuff', {
@@ -1073,7 +1165,9 @@ function buildMaterials(game) {
       metalness: 0.0,
       roughness: 0.93,
       envMapIntensity: ENV_CLOTH * 0.8,
-    }, { from: 'fabric', repeat: 2.4, normalScale: 0.8 }),
+      // Also a lathe. The cuff is short but wide, so its dominant UV extent is the 0.205 m
+      // circumference the weave wraps round, not the 20 mm of profile.
+    }, { from: 'fabric', span: 0.205, density: CLOTH_WEAVE_SCALE, unitUv: true, normalScale: 0.8 }),
 
     /* Hazard-yellow selector markings and the odd stencilled detail. */
     marking: make('marking', {

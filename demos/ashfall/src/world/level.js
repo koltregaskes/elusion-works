@@ -1622,15 +1622,41 @@ export function createLevel(scene, materials, game) {
     const o = opts || {};
     const dens = o.density === undefined ? 1 : o.density;
     const spread = o.spread === undefined ? 1 : o.spread;
+    /*
+     * `opts.clear` is `[x, z, r]`: a circle the heap is not allowed to put anything inside.
+     *
+     * It exists because density is the wrong control for the depot spoil and cutting it twice
+     * proved that. The unreadable near field there was never a count problem — it was that the
+     * heap's toe reaches the doorway the player stands in, so the *nearest* pieces sit inside a
+     * metre and a half of the lens, where a single 1.5 m slab is a third of the frame and
+     * overlaps everything behind it. Thinning the heap removes pieces uniformly, which takes
+     * away the readable mid-ground and leaves the giants exactly where they were.
+     *
+     * Cutting a bite out of the side facing the door fixes the actual geometry, and it is also
+     * the more honest story: a gang clearing a blocked doorway shovels the spoil back off the
+     * threshold, they do not thin it evenly across the yard.
+     */
+    const cl = o.clear;
+    const clr2 = cl ? cl[2] * cl[2] : 0;
+    const inClear = (px, pz) => {
+      if (!cl) return false;
+      const dx = px - cl[0];
+      const dz = pz - cl[1];
+      return dx * dx + dz * dz < clr2;
+    };
     const r2 = mulberry32(seedN);
     const nSlab = Math.round(radius * radius * (lod > 0 ? 3.2 : 1.8) * dens);
     for (let i = 0; i < nSlab; i++) {
       const a = r2() * Math.PI * 2;
-      const rr = Math.sqrt(r2()) * radius;
+      // The slab tier honours `spread` too. It used to throw to the full nominal radius while
+      // every finer tier was being pulled in, which is backwards: the slabs are the pieces big
+      // enough to matter at close range, so they are the ones that most need pulling in.
+      const rr = Math.sqrt(r2()) * radius * spread;
       const f = 1 - rr / radius;
       const y = f * f * height * (0.35 + r2() * 0.6);
       const s = lerp(1.25, 0.55, rr / radius) * (0.7 + r2() * 0.7);
       const tone = 0.72 + r2() * 0.45;
+      if (inClear(cx + Math.cos(a) * rr, cz + Math.sin(a) * rr)) continue;
       addInstance(
         slabSet,
         cx + Math.cos(a) * rr,
@@ -1653,6 +1679,7 @@ export function createLevel(scene, materials, game) {
       const f = clamp(1 - rr / radius, 0, 1);
       const y = f * f * height * (0.4 + r2() * 0.65);
       const tone = 0.68 + r2() * 0.5;
+      if (inClear(cx + Math.cos(a) * rr, cz + Math.sin(a) * rr)) continue;
       addInstance(
         chunkSet,
         cx + Math.cos(a) * rr,
@@ -1672,6 +1699,7 @@ export function createLevel(scene, materials, game) {
       const f = clamp(1 - rr / radius, 0, 1);
       const y = f * f * height * (0.3 + r2() * 0.7);
       const tone = 0.7 + r2() * 0.5;
+      if (inClear(cx + Math.cos(a) * rr, cz + Math.sin(a) * rr)) continue;
       addInstance(
         brickSet,
         cx + Math.cos(a) * rr,
@@ -1693,6 +1721,7 @@ export function createLevel(scene, materials, game) {
       const f = clamp(1 - rr / radius, 0, 1);
       const y = f * f * height * (0.25 + r2() * 0.6);
       const tone = 0.68 + r2() * 0.55;
+      if (inClear(cx + Math.cos(a) * rr, cz + Math.sin(a) * rr)) continue;
       addInstance(
         stoneSet,
         cx + Math.cos(a) * rr,
@@ -4589,8 +4618,22 @@ export function createLevel(scene, materials, game) {
      * spoil. Half the pieces and a 0.66 spread pull the toe (and its dust fillet) back inside
      * four metres and leave gaps between the slabs for the props below to sit in. It loses
      * nothing as cover: the ramp and the box colliders that make it climbable are separate.
+     *
+     * Halving it a second time was tried and rendered, and it did not work either — which is
+     * what identified the real fault. Density is a uniform control and the fault is not
+     * uniform: the heap's centre is 2.77 m from that eye and its slab tier threw to the full
+     * 3.6 m radius, so the *nearest* pieces sat inside a metre of the lens, where one 1.5 m
+     * slab is a third of the frame and occludes everything behind it. Thinning removes the
+     * readable mid-ground and leaves the giants exactly where they were.
+     *
+     * So the density comes back up to 0.34 and the fix moves to `clear`: a 3.0 m circle on the
+     * doorway at (-33.9, -7.7) that the heap may put nothing inside. Nearest piece to the eye
+     * is now 2.6 m rather than 0.9 m, the mass starts at a distance the eye can resolve, and
+     * the props below have somewhere to stand. The spread comes back to 0.8 for the same
+     * reason — with the toe cut off the doorway, the rest of the heap wants its full body.
      */
-    rubblePile(setSlab, setBrick, -31.6, DEPOT.z1 + 1.4, 3.6, 1.4, 601, T.concreteWorn, { density: 0.5, spread: 0.66 });
+    rubblePile(setSlab, setBrick, -31.6, DEPOT.z1 + 1.4, 3.6, 1.4, 601, T.concreteWorn,
+      { density: 0.34, spread: 0.8, clear: [-33.9, -7.7, 3.0] });
     rubblePile(setSlab, setBrick, ADMIN.x0 - 1.5, ADMIN.z1 - 3.0, 5.6, 2.4, 602, T.concreteWorn);
     rubblePile(setSlab, setBrick, ADMIN.x0 + 3.5, ADMIN.z1 - 3.2, 4.4, 3.6, 603, T.concreteWorn);
     rubblePile(setSlab, setBrick, DEPOT.x0 - 2.0, -28.0, 3.4, 1.2, 604, T.concreteWorn);
@@ -4810,7 +4853,15 @@ export function createLevel(scene, materials, game) {
 
     // Two big slabs stood on edge against each other, the way a clearance gang leans them out
     // of the way. Rebar out of the broken faces gives the pile its only hard, thin silhouette.
-    const leans = [[-32.9, -5.1, 0.55, 1.02, 2.3], [-32.2, -5.6, -0.35, -0.86, 2.0], [-29.9, -7.1, 1.25, 0.95, 1.9]];
+    /*
+     * Pulled back and cut down. At scale 2.3 and 2.0, 2.9 m from the depot eye, the first two
+     * of these were the two pale masses that filled the left half of the frame: a 1.9 m plate
+     * at three metres subtends about a third of the width, and two of them overlapping is the
+     * "impossible to tell whether it is rubble, sandbags or spoil" finding almost by itself.
+     * At 1.5 and 1.3, four metres out and outside the cleared circle round the doorway, they
+     * read as what they are — slabs levered out of a floor and leaned out of the way.
+     */
+    const leans = [[-32.4, -4.1, 0.55, 1.02, 1.5], [-31.4, -4.6, -0.35, -0.86, 1.3], [-29.9, -7.2, 1.25, 0.95, 1.55]];
     for (let i = 0; i < leans.length; i++) {
       const L = leans[i];
       const tone = 0.82 + hash2(i, 41) * 0.3;
@@ -4909,24 +4960,26 @@ export function createLevel(scene, materials, game) {
       return f * f * 1.4;
     };
 
-    // On the crest at 1.5 m, 33% across: a drum on its side, half sunk. The nearest thing to
-    // the lens in the whole frame and the only horizontal cylinder in it, so it is what sets
-    // the scale everything behind it gets measured against.
-    addInstance(setDrum, -32.8, groundY(-32.8, -6.8) + heapY(1.22) * 0.5 + 0.235, -6.8,
+    // 44% across, 3.7 m out: a drum on its side, half sunk. The only horizontal cylinder in the
+    // frame, so it is what sets the scale everything behind it gets measured against. It used to
+    // stand at (-32.8, -6.8), which is 1.5 m from the lens and inside the cleared circle round
+    // the doorway — at that range a 0.6 m drum is a featureless bar across the bottom of frame.
+    addInstance(setDrum, -32.2, groundY(-32.2, -4.8) + heapY(2.05) * 0.5 + 0.235, -4.8,
       2.42, Math.PI * 0.5, 0.06, 1, [T.rustDeep[0] * 1.12, T.rustDeep[1] * 1.02, T.rustDeep[2] * 0.98]);
     // The slabs and the pallet ride the heap's own ramp collider like every other piece of
     // rubble here, but this one is a waist-wide steel cylinder standing where the ramp has
     // already flattened out — walking through it would be worse than the mass it is breaking.
-    solidBox(-32.8, 0.29, -6.8, 0.45, 0.29, 0.45, 'metal');
+    solidBox(-32.2, 0.29, -4.8, 0.45, 0.29, 0.45, 'metal');
 
-    // Deeper into the crest at 2.6 m, 19% across: a floor slab levered out and stood on edge,
-    // rebar out of the fracture. Same rest-height maths as the `leans` above, with the foot
-    // buried 0.4 m into spoil that is 0.93 m deep at that radius.
+    // 19% across: a floor slab levered out and stood on edge, rebar out of the fracture. Same
+    // rest-height maths as the `leans` above. Moved from (-31.0, -6.3) at scale 2.0 — which put
+    // a 1.7 m plate 2.6 m from the eye, i.e. the other half of the pale mass — out to 3.6 m at
+    // 1.4, where the whole silhouette including the rebar fits inside the frame and reads.
     {
-      const s = 2.0;
+      const s = 1.4;
       const rz = 0.9;
       const rest = (0.42 * Math.abs(Math.sin(rz)) + 0.1 * Math.abs(Math.cos(rz))) * s;
-      addInstance(setSlab, -31.0, 0.40 + rest * 0.72, -6.3, 1.86, 0, rz, s,
+      addInstance(setSlab, -30.9, 0.34 + rest * 0.72, -6.2, 1.86, 0, rz, s,
         [T.concreteWorn[0] * 0.74, T.concreteWorn[1] * 0.75, T.concreteWorn[2] * 0.8]);
     }
 
@@ -4941,6 +4994,111 @@ export function createLevel(scene, materials, game) {
     // bars, the hardest edge and the lowest value on the approach, and the piece that stops
     // the spoil and the apron reading as one continuous grey from the yard side.
     sleeperStack(-28.2, -5.0, 1.24, 3, 6391);
+
+    /*
+     * Five more readables through the gaps the cleared toe opened up.
+     *
+     * The rule the last pass had right and did not go far enough with: the eye cannot accept a
+     * mass until it has named something inside it. With the pieces above moved back out of the
+     * lens, the props on this heap project to 16, 19, 21, 44, 38 and 48% of frame width, which
+     * leaves 5, 23, 27, 36 and 41 empty. These five are solved against the same camera (eye
+     * (-34, 1.75, -8), 75° vertical, 16:9) to fill exactly those, so there is a nameable object
+     * every four or five percent right across the band the heap occupies.
+     *
+     * Heights come off `rubblePile`'s own profile, y = (1 - r/3.6)^2 * 1.4, and are deliberately
+     * under-set: a piece sunk a hand into rubble is what rubble does, a piece floating a hand
+     * over it is the error the eye catches instantly. None of them carries a collider — they
+     * ride the heap's existing ramp like every other piece of dressing on it, and a decorative
+     * prop that can catch the player's capsule is worse than no prop at all.
+     */
+    const heapH = (rr) => {
+      const f = clamp(1 - rr / 3.6, 0, 1);
+      return f * f * 1.4;
+    };
+    // 36% across, on the crest: a length of pipe laid square across the sightline. A straight
+    // unbroken cylinder is the one silhouette broken concrete can never imitate, and lying
+    // across the view it also draws a horizontal the eye can measure the heap's depth against.
+    addInstance(setPipe, -31.8, groundY(-31.8, -5.4) + heapH(1.22) * 0.82 + 0.06, -5.4, -2.79, 0, 0.06, 1.15,
+      [T.rust[0] * 1.05, T.rust[1] * 0.92, T.rust[2] * 0.88]);
+    // 5% across, out on the east toe where the spoil is only a hand deep: a second, shorter
+    // length at a different angle, so the two read as scrap off a load and not as a fence.
+    addInstance(setPipe, -29.4, groundY(-29.4, -6.4) + heapH(2.21) * 0.8 + 0.042, -6.4, -1.05, 0, -0.09, 0.78,
+      [T.rustDeep[0] * 1.1, T.rustDeep[1] * 1.0, T.rustDeep[2] * 0.96]);
+    // 27% across: an oil drum stood upright in the spoil. Vertical, dark and a perfect circle
+    // in plan — three properties nothing else on the heap has.
+    addInstance(setDrum, -30.2, groundY(-30.2, -5.0) + heapH(2.13) * 0.72, -5.0, 1.24, 0, 0.05, 1,
+      [T.railGreen[0] * 0.92, T.railGreen[1] * 0.92, T.railGreen[2] * 0.94]);
+    dustSkirt(-30.2, -5.0, 0.62, 0.09, 6401, null);
+    // 41% across: a floor slab levered out and stood on edge with its rebar showing, angled
+    // away from the 19% one so the two do not read as a pair of the same object.
+    {
+      const s = 1.7;
+      const rz = -0.82;
+      const rest = (0.42 * Math.abs(Math.sin(rz)) + 0.1 * Math.abs(Math.cos(rz))) * s;
+      addInstance(setSlab, -31.4, groundY(-31.4, -4.2) + heapH(2.41) * 0.7 + rest * 0.7, -4.2, 0.42, 0, rz, s,
+        [T.concreteWorn[0] * 0.82, T.concreteWorn[1] * 0.8, T.concreteWorn[2] * 0.78]);
+      dustSkirt(-31.4, -4.2, 0.7, 0.085, 6402, null);
+    }
+    // Two pallets flat on the apron at 23%, six metres out and clear of the spool, the offcuts
+    // and the sleeper stack: horizontal slots at the far edge of the mass, which is what tells
+    // the eye the heap has a far edge at all.
+    for (let k = 0; k < 2; k++) {
+      const tone = 0.74 + hash2(k, 83) * 0.44;
+      addInstance(setPallet, -27.4 + (hash2(k, 19) - 0.5) * 0.12, groundY(-27.4, -3.6) + k * 0.145,
+        -3.6 + (hash2(k, 23) - 0.5) * 0.12, 2.35 + (hash2(k, 29) - 0.5) * 0.1, 0, 0, 1,
+        [T.wood[0] * tone, T.wood[1] * tone, T.wood[2] * tone]);
+    }
+    // Grit and paper banked into the lee of the heap's east toe, which is what blends spoil
+    // into apron. Without it the mass ends on a line and reads as a model sitting on a floor.
+    gravelDrift(-28.6, -3.4, -28.2, -7.8, 1, 6403, 2.4);
+    litterCatch(-28.9, -6.9, 0.32, lod > 0 ? 4 : 2, 6404);
+
+    /*
+     * The cleared threshold itself, which the `clear` circle above would otherwise leave as
+     * three metres of bare apron in the closest part of the frame — trading one finding for the
+     * other. Everything here is deliberately low: swept fines, the scrape the shovel left, and
+     * one barrow. Nothing over knee height, or the mass comes straight back.
+     */
+    {
+      const r2c = mulberry32(6411);
+      // The push line: where the spoil was shoved back to. Grit banks on its inside face.
+      // Eight segments, so the divisor is the segment count and not the last index — dividing
+      // by 7 put the final segment's far end at 1.48 rad, a third of a radian past the arc.
+      for (let i = 0; i < 8; i++) {
+        const a = -1.15 + (i / 8) * 2.3;
+        const x0 = -33.9 + Math.cos(a) * 2.72;
+        const z0 = -7.7 + Math.sin(a) * 2.72;
+        const a1 = -1.15 + ((i + 1) / 8) * 2.3;
+        gravelDrift(x0, z0, -33.9 + Math.cos(a1) * 2.72, -7.7 + Math.sin(a1) * 2.72, -1, 6412 + i, 2.6);
+      }
+      // What the shovel missed, sized so no piece can dominate at a metre and a half.
+      for (let i = 0; i < 26; i++) {
+        const a = r2c() * 6.28;
+        const rr = 0.9 + Math.sqrt(r2c()) * 1.75;
+        const px = -33.9 + Math.cos(a) * rr;
+        const pz = -7.7 + Math.sin(a) * rr;
+        if (pz < -7.9) continue; // behind the door line, where nothing is visible anyway
+        const tone = 0.7 + r2c() * 0.5;
+        if (r2c() < 0.72) {
+          addInstance(stoneSet, px, groundY(px, pz) + 0.015, pz, r2c() * 6.28,
+            (r2c() - 0.5) * 1.6, (r2c() - 0.5) * 1.6, 0.55 + r2c() * 0.75,
+            [T.gravel[0] * tone, T.gravel[1] * tone, T.gravel[2] * tone]);
+        } else {
+          addInstance(chunkSet, px, groundY(px, pz) + 0.07, pz, r2c() * 6.28,
+            (r2c() - 0.5) * 1.2, (r2c() - 0.5) * 1.2, 0.45 + r2c() * 0.3,
+            [T.concreteWorn[0] * tone, T.concreteWorn[1] * tone, T.concreteWorn[2] * tone]);
+        }
+      }
+      // The scrape: dust dragged in an arc by the blade, and the diesel off whatever pushed it.
+      place(-32.9, groundY(-32.9, -6.5) + 0.009, -6.5, 0.5);
+      blobXZ(GT('dirt', 0.35), 1.5, 0.5, 6431, [T.dirt[0] * 1.06, T.dirt[1] * 1.02, T.dirt[2] * 0.94], 11, 0);
+      popX();
+      oilStain(-33.2, -5.9, 0.85, 0.6, 0.4, 6432, 0.0106);
+      // One barrow standing where the gang left it: a nameable object in the nearest two metres
+      // of frame, at 39% across, and the piece that explains the cleared ground it stands on.
+      wheelbarrow(-32.4, -5.9, 1.9, 6441);
+      litterCatch(-34.2, -6.6, 0.32, lod > 0 ? 4 : 2, 6442);
+    }
   }
 
   /* ---------------------------------------------------------------------- */
@@ -5438,6 +5596,42 @@ export function createLevel(scene, materials, game) {
     popX();
   });
 
+  /**
+   * A snapped kerbstone, half-battered, laid along local X.
+   *
+   * Hard-edged and unmistakably man-made, which is the entire reason it exists. A floor dressed
+   * only with organic scatter still reads as noise however much of it there is — the eye needs a
+   * handful of pieces whose shape it can *name* before it will accept the grit around them as
+   * ground rather than as a texture, and a kerb profile names itself from twenty metres.
+   */
+  const setKerbFrag = inst('kerbfrag', 'concretePanel', (g) => {
+    chamferBox(g, 0, 0.075, 0, 0.3, 0.075, 0.0625, T.white, 0.012);
+    // The batter along the top front arris: the one line that says "kerb" and not "block".
+    place(0, 0.146, -0.05, 0, 0, -0.62);
+    chamferBox(g, 0, 0, 0, 0.3, 0.014, 0.03, grey(0.95), 0.006);
+    popX();
+    // The break: a stepped lobe off one end, never a saw cut.
+    place(0.3, 0.05, 0.012, 0.26, 0.2, 0.34);
+    chamferBox(g, 0, 0, 0, 0.055, 0.05, 0.045, grey(0.86), 0.01);
+    popX();
+  });
+
+  /**
+   * A 1.5 m length of pipe with a flange collar at one end, lying along local X.
+   *
+   * The only unbroken straight cylinder in the debris vocabulary. Broken concrete has no
+   * silhouette the eye can name, so a heap made purely of it collapses into one mass; a pipe
+   * laid across that mass is what tells the eye where one object stops and the next starts.
+   */
+  const setPipe = inst('pipe', 'metalRust', (g) => {
+    place(0, 0, 0, 0, 0, Math.PI * 0.5);
+    tube(g, 0.058, 0.058, 1.5, 8, T.white, false, false, 0.006);
+    popX();
+    place(-0.735, 0, 0, 0, 0, Math.PI * 0.5);
+    tube(g, 0.095, 0.095, 0.028, 8, grey(0.78), true, true, 0.005);
+    popX();
+  });
+
   /* --- flat ground work --------------------------------------------------- */
 
   /** An irregular flat patch: the shape every stain, scorch mark and puddle is cut from. */
@@ -5457,8 +5651,11 @@ export function createLevel(scene, materials, game) {
    * Oil. A hard black core inside two softer haloes, because a spill wicks outwards into the
    * fines and a single flat ellipse reads as a sticker.
    */
-  function oilStain(x, z, r, squash, yaw, seedN) {
-    place(x, groundY(x, z) + 0.01, z, yaw);
+  function oilStain(x, z, r, squash, yaw, seedN, yOff) {
+    // `yOff` exists so the open-bay pass can lay its own spills without ever landing coplanar
+    // with one of the hand-placed stains below. Two flat blobs at the same height z-fight, and
+    // the fight is far more visible than either stain.
+    place(x, groundY(x, z) + (yOff === undefined ? 0.01 : yOff), z, yaw);
     const g = GT('asphalt', 0.35);
     const r2 = mulberry32(seedN);
     for (let k = 0; k < 3; k++) {
@@ -5491,7 +5688,10 @@ export function createLevel(scene, materials, game) {
     if (len < 1) return;
     const yaw = runYaw(x1 - x0, z1 - z0);
     const r2 = mulberry32(seedN);
-    place((x0 + x1) * 0.5, 0.011, (z0 + z1) * 0.5, yaw);
+    // `opts.y` lets a second family of ruts run at its own height. Every rut is a flat quad at
+    // a fixed world Y, so two that cross at the same height z-fight along the crossing; the
+    // open-bay ruts therefore sit 0.6 mm over the hand-placed ones and can cross them freely.
+    place((x0 + x1) * 0.5, o.y === undefined ? 0.011 : o.y, (z0 + z1) * 0.5, yaw);
     const g = GT('asphalt', 0.35);
     const segs = Math.max(4, Math.round(len / 1.6));
     const half = gauge * 0.5;
@@ -6659,17 +6859,29 @@ export function createLevel(scene, materials, game) {
         [30.4, -4.8, 30.0, -12.2],
         [38.2, -5.0, 44.4, -11.2],
       ],
-      ruts: [[35.4, -5.4, 44.6, -8.6]],
+      /*
+       * Three ruts, not one. The single rut this bay used to carry ran from (35.4, -5.4) to
+       * (44.6, -8.6), which is off the right edge of the terraces frame entirely — so the one
+       * vantage the finding was written against saw none of it. The two added here are placed
+       * *in* that frame: one reversing into the middle bay between the 30.6 and 34.6 markings,
+       * one running along the admin frontage six metres ahead of the spawn, stopping short of
+       * the 9105 crater at (38, -10.5) rather than driving through its lip.
+       */
+      // The two shell craters and the burst emplacement in this rect own no collider, so at the
+      // raised density the fill would otherwise scatter grit straight through their bowls.
+      avoid: [[22.5, -8.5, 2.7], [38.0, -10.5, 2.5], [21.8, -12.8, 2.0]],
+      ruts: [[35.4, -5.4, 44.6, -8.6], [32.6, -4.9, 32.5, -11.4], [25.0, -12.5, 34.5, -12.6]],
       marks: [
-        [22.4, -5.5, 43.8, -5.7, 0.1, 0.36],
-        [26.6, -6.4, 26.6, -11.4, 0.085, 0.52],
-        [30.6, -6.4, 30.6, -11.4, 0.085, 0.58],
-        [34.6, -6.4, 34.6, -11.4, 0.085, 0.64],
-        [38.6, -6.4, 38.6, -11.4, 0.085, 0.7],
+        [22.4, -5.5, 43.8, -5.7, 0.1, 0.3],
+        [26.6, -6.4, 26.6, -11.4, 0.085, 0.44],
+        [30.6, -6.4, 30.6, -11.4, 0.085, 0.5],
+        [34.6, -6.4, 34.6, -11.4, 0.085, 0.56],
+        [38.6, -6.4, 38.6, -11.4, 0.085, 0.62],
       ],
-      drains: [[24.6, -6.7, 0.4], [41.4, -7.3, 0.15]],
-      patches: 4,
-      anchors: 3,
+      // The third cover sits between the 26.6 and 30.6 markings, clear of the new rut at 32.6.
+      drains: [[24.6, -6.7, 0.4], [41.4, -7.3, 0.15], [28.4, -9.6, 1.05]],
+      patches: 6,
+      anchors: 4,
     },
     {
       // The depot's north apron: the strip between the shed wall and the ballast of road 5.
@@ -6678,10 +6890,12 @@ export function createLevel(scene, materials, game) {
       rect: [-49.4, -7.3, -22.8, -4.6],
       lines: [[-47.0, -6.9, -24.0, -7.1], [-42.0, -5.4, -38.5, -7.2]],
       avoid: [[-31.6, -6.6, 3.2]],
-      marks: [[-46.6, -4.9, -25.0, -5.1, 0.095, 0.5]],
-      drains: [[-44.2, -5.4, 0.9]],
-      patches: 2,
-      anchors: 1,
+      // Stops at x -36.5: any further east and the rut runs into the blast spoil at (-31.6, -6.6).
+      ruts: [[-46.5, -5.2, -36.5, -5.4]],
+      marks: [[-46.6, -4.9, -25.0, -5.1, 0.095, 0.42]],
+      drains: [[-44.2, -5.4, 0.9], [-27.0, -6.2, 0.3]],
+      patches: 3,
+      anchors: 2,
     },
     {
       // The depot's east approach: the long open bay between the shed's east elevation and
@@ -6694,12 +6908,16 @@ export function createLevel(scene, materials, game) {
         [-9.0, -11.0, -9.6, -32.4],
         [-16.2, -30.4, -5.2, -27.2],
       ],
-      avoid: [[-16.5, -25.0, 2.6], [-20.6, -22.5, 1.6]],
-      ruts: [[-15.4, -12.6, -14.6, -30.0]],
-      marks: [[-16.0, -13.4, -4.4, -13.6, 0.09, 0.62]],
-      drains: [[-6.2, -13.2, 1.3]],
-      patches: 3,
-      anchors: 3,
+      // The 8751 scaffold bundle at (-20.6, -22.5) used to be listed here and could never fire:
+      // its west edge is 3.2 m outside this rect's x0, and it stands its own collider anyway.
+      avoid: [[-16.5, -25.0, 2.6], [-17.0, -12.5, 2.7]],
+      // The second run keeps east of x -13: the 9101 crater sits at (-17, -12.5) with a 2.8 m
+      // lip and a flat rut laid over a depression is the clearest possible tell.
+      ruts: [[-15.4, -12.6, -14.6, -30.0], [-13.0, -11.6, -4.2, -11.9]],
+      marks: [[-16.0, -13.4, -4.4, -13.6, 0.09, 0.52]],
+      drains: [[-6.2, -13.2, 1.3], [-12.4, -20.6, 0.8]],
+      patches: 4,
+      anchors: 4,
     },
     {
       // THE YARD, the four 8 m bays between the running lines. The container rows stand on
@@ -6709,8 +6927,10 @@ export function createLevel(scene, materials, game) {
       wear: 0.8,
       rect: [-42.0, 0.7, 41.0, 3.3],
       lines: [[-8.6, 0.5, -8.6, 3.5], [-24.0, 0.7, -24.0, 3.3], [14.0, 0.7, 14.4, 3.3]],
+      // The 9203 burst emplacement carries no collider of its own.
+      avoid: [[13.1, 3.2, 2.9]],
       patches: 1,
-      anchors: 2,
+      anchors: 3,
     },
     {
       seed: 9605,
@@ -6722,17 +6942,23 @@ export function createLevel(scene, materials, game) {
     },
     {
       seed: 9606,
-      wear: 0.75,
+      wear: 0.78,
       rect: [-42.0, 16.7, 39.0, 19.3],
-      lines: [[-8.6, 16.5, -8.6, 19.5], [6.0, 16.7, 6.4, 19.3]],
-      anchors: 2,
+      lines: [[-8.6, 16.5, -8.6, 19.5], [6.0, 16.7, 6.4, 19.3], [-30.0, 16.7, -30.0, 19.3]],
+      patches: 1,
+      anchors: 3,
     },
     {
+      // The apron the `yardBack` vantage stands on and looks straight down: its near ground is
+      // this strip, so it gets the same treatment as the terraces forecourt rather than the
+      // thinner dressing the other inter-road bays carry.
       seed: 9607,
-      wear: 0.75,
+      wear: 0.82,
       rect: [-41.0, 24.7, 37.0, 27.3],
-      lines: [[-8.6, 24.5, -8.6, 27.5], [-26.0, 24.7, -26.0, 27.3], [10.0, 24.7, 10.4, 27.3]],
-      anchors: 2,
+      lines: [[-8.6, 24.5, -8.6, 27.5], [-26.0, 24.7, -26.0, 27.3], [10.0, 24.7, 10.4, 27.3], [2.0, 24.7, 2.2, 27.3]],
+      drains: [[-4.4, 26.0, 0.6]],
+      patches: 2,
+      anchors: 3,
     },
     {
       // The north-east outer bay behind the dock, which the wide vantage looks straight down.
@@ -6836,7 +7062,7 @@ export function createLevel(scene, materials, game) {
   ];
 
   /** Species weights, refilled in place — this runs a thousand times at load, so no garbage. */
-  const _bayW = [0, 0, 0, 0, 0, 0, 0];
+  const _bayW = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
   /** Distance from (x, z) to the nearest of a bay's desire lines. */
   function desireDist(x, z, lines) {
@@ -6899,13 +7125,16 @@ export function createLevel(scene, materials, game) {
   function bayPiece(x, z, wear, r2) {
     const y = groundY(x, z);
     const tone = 0.58 + r2() * 0.62;
-    _bayW[0] = 0.30 + 0.22 * wear; // grit
-    _bayW[1] = 0.34 - 0.27 * wear; // growth
-    _bayW[2] = 0.09 + 0.11 * wear; // litter
-    _bayW[3] = 0.07 + 0.05 * wear; // scrap steel
-    _bayW[4] = 0.08; // timber
-    _bayW[5] = 0.07; // brick
+    _bayW[0] = 0.26 + 0.18 * wear; // grit drift
+    _bayW[1] = 0.30 - 0.24 * wear; // growth
+    _bayW[2] = 0.08 + 0.10 * wear; // litter
+    _bayW[3] = 0.06 + 0.05 * wear; // scrap steel
+    _bayW[4] = 0.07; // timber
+    _bayW[5] = 0.06; // brick
     _bayW[6] = 0.05 - 0.02 * wear; // broken concrete
+    _bayW[7] = 0.05; // kerb fragment
+    _bayW[8] = 0.03 + 0.04 * wear; // pipe / bar
+    _bayW[9] = 0.13 + 0.15 * wear; // flat ground tone
     let total = 0;
     for (let i = 0; i < _bayW.length; i++) total += _bayW[i];
     let pick = r2() * total;
@@ -6917,10 +7146,19 @@ export function createLevel(scene, materials, game) {
 
     if (k === 0) {
       // Grit, never one stone: a 7 cm pebble at eight metres is a pixel, a handful is a drift.
-      const n = 3 + ((r2() * 3) | 0);
+      // The stones now ride a thin dirt blob rather than sitting on bare hardstanding. That
+      // blob is the important half: a pebble is a few pixels of silhouette and contributes
+      // nothing to how the *ground* reads, whereas half a square metre of value break is
+      // exactly what a plane is missing, and it costs nine triangles.
+      const rr = 0.42 + r2() * 0.48;
+      place(x, y + 0.006 + r2() * 0.0016, z, r2() * 6.28);
+      blobXZ(GT('dirt', 0.35), rr, 0.6 + r2() * 0.5, (r2() * 1e6) | 0,
+        [T.gravel[0] * tone * 1.04, T.gravel[1] * tone, T.gravel[2] * tone * 0.96], 9, 0);
+      popX();
+      const n = 4 + ((r2() * 5) | 0);
       for (let s = 0; s < n; s++) {
-        const px = x + (r2() - 0.5) * 0.95;
-        const pz = z + (r2() - 0.5) * 0.95;
+        const px = x + (r2() - 0.5) * rr * 2.1;
+        const pz = z + (r2() - 0.5) * rr * 2.1;
         addInstance(
           stoneSet, px, groundY(px, pz) + 0.015, pz,
           r2() * 6.28, (r2() - 0.5) * 1.6, (r2() - 0.5) * 1.6,
@@ -6977,13 +7215,73 @@ export function createLevel(scene, materials, game) {
         addInstance(setBrick, px, groundY(px, pz) + 0.035, pz, r2() * 6.28, (r2() - 0.5) * 0.9, (r2() - 0.5) * 0.9,
           0.8 + r2() * 0.55, [T.brick[0] * tone, T.brick[1] * tone, T.brick[2] * tone]);
       }
-    } else {
+    } else if (k === 6) {
       addInstance(
         chunkSet, x, y + 0.09, z,
         r2() * 6.28, (r2() - 0.5) * 1.3, (r2() - 0.5) * 1.3,
         0.7 + r2() * 0.9,
         [T.concreteWorn[0] * tone, T.concreteWorn[1] * tone, T.concreteWorn[2] * tone]
       );
+    } else if (k === 7) {
+      // A kerb out of the edging, dragged clear and dumped. Half of them keep a stub of the
+      // bedding mortar, which is why the second one lands hard against the first.
+      const yaw = r2() * 6.28;
+      addInstance(setKerbFrag, x, y, z, yaw, 0, (r2() - 0.5) * 0.5, 0.85 + r2() * 0.45,
+        [T.kerb[0] * tone, T.kerb[1] * tone, T.kerb[2] * tone]);
+      if (r2() < 0.45) {
+        const px = x + Math.cos(yaw) * 0.42 + (r2() - 0.5) * 0.2;
+        const pz = z - Math.sin(yaw) * 0.42 + (r2() - 0.5) * 0.2;
+        // Rolled onto its back, not stood on end: the roll is about local X, which keeps the
+        // 0.6 m length lying along the ground. A Z rotation would stand it upright like a post.
+        addInstance(setKerbFrag, px, groundY(px, pz) + 0.06, pz, yaw + (r2() - 0.5) * 0.7,
+          1.5 + r2() * 0.3, 0, 0.8 + r2() * 0.4,
+          [T.kerb[0] * tone * 0.94, T.kerb[1] * tone * 0.94, T.kerb[2] * tone]);
+      }
+      dustSkirt(x, z, 0.5, 0.045, (r2() * 1e6) | 0, null);
+    } else if (k === 8) {
+      // A length of pipe or a bar off a load, with the grit that has banked along its lee.
+      // The pipe is modelled on its axis, so the lift has to scale with it or a big one floats.
+      const ps = 0.7 + r2() * 0.55;
+      addInstance(setPipe, x, y + 0.05 * ps, z, r2() * 6.28, 0, (r2() - 0.5) * 0.12,
+        ps, [T.rust[0] * tone, T.rust[1] * tone, T.rust[2] * tone]);
+      if (r2() < 0.5) {
+        const px = x + (r2() - 0.5) * 0.9;
+        const pz = z + (r2() - 0.5) * 0.9;
+        addInstance(setOffcut, px, groundY(px, pz) + 0.03, pz, r2() * 6.28, 0, (r2() - 0.5) * 0.25,
+          0.8 + r2() * 0.6, [T.rustDeep[0] * tone, T.rustDeep[1] * tone, T.rustDeep[2] * tone]);
+      }
+    } else {
+      /*
+       * Ground tone, and this is the species the "bare unbroken plane" finding is really about.
+       *
+       * Every other entry in this table is a *prop*: it has a silhouette, it is a few pixels
+       * across at eight metres, and a hundred of them still leave the floor between them one
+       * flat value. What a working surface actually has is large-scale tonal variation — the
+       * dark polish traffic grinds into a desire line, the pale drift of ash and fines that
+       * settles either side of it — and that is area, not objects.
+       *
+       * Nine triangles buys a square metre of it, so this is by a wide margin the cheapest
+       * thing in the pass and the one doing the most work. It follows the same wear term as
+       * everything else, which is what stops it reading as a stain applied at random: dark on
+       * the line where the tyres are, pale off it where nothing has been driven in years.
+       */
+      const onLine = wear > 0.52;
+      const rr = 0.55 + r2() * (onLine ? 0.75 : 0.6);
+      // The polish never goes below about half: `T.grime` is already a 0.59 multiplier, so
+      // 0.6 x 0.59 lands at 0.35 of the surface under it — a clear value break, and still short
+      // of the black hole a harder number would punch in the floor.
+      const tn = onLine ? 0.6 + r2() * 0.3 : 0.92 + r2() * 0.3;
+      const tt = onLine
+        ? [T.grime[0] * tn, T.grime[1] * tn, T.grime[2] * tn * 1.05]
+        : [T.dirt[0] * tn, T.dirt[1] * tn, T.dirt[2] * tn * 0.95];
+      // Two bands, never one height: the polish rides under the tyre ruts at 0.011 and the
+      // drift rides over them, and each piece is jittered inside its band so two overlapping
+      // blobs can never come out coplanar.
+      const yb = (onLine ? 0.0086 : 0.0122) + r2() * 0.0016;
+      place(x, y + yb, z, r2() * 6.28);
+      blobXZ(onLine ? GT('asphalt', 0.35) : GT('dirt', 0.35), rr, 0.4 + r2() * 0.55,
+        (r2() * 1e6) | 0, tt, 9, 0);
+      popX();
     }
   }
 
@@ -7071,7 +7369,7 @@ export function createLevel(scene, materials, game) {
     if (bay.ruts) {
       for (let i = 0; i < bay.ruts.length; i++) {
         const R = bay.ruts[i];
-        tyreTrack(R[0], R[1], R[2], R[3], 2.0, bay.seed + 30 + i, { wander: 0.14 });
+        tyreTrack(R[0], R[1], R[2], R[3], 2.0, bay.seed + 30 + i, { wander: 0.14, y: 0.0116 });
       }
     }
     if (bay.marks) {
@@ -7087,6 +7385,23 @@ export function createLevel(scene, materials, game) {
         manhole(d[0], d[1], d[2]);
         gravelDrift(d[0] - 0.5, d[1] - 0.52, d[0] + 0.5, d[1] - 0.52, -1, bay.seed + 80 + i, 1.6);
       }
+    }
+
+    /*
+     * Oil where the traffic stands, as opposed to the hand-placed stains in `dressGround`,
+     * which mark where the *machines* stood. A spill is a consequence of a route, so it belongs
+     * on the desire line and not in a table. Laid at 0.0104 so it can never come out coplanar
+     * with one of those hand-placed stains, which sit at the default 0.01.
+     */
+    const spills = bay.spills === undefined ? Math.round(2.4 * (bay.wear === undefined ? 1 : bay.wear)) : bay.spills;
+    for (let i = 0; i < spills; i++) {
+      const L = bay.lines[(r2() * bay.lines.length) | 0];
+      const f = 0.12 + r2() * 0.76;
+      const px = lerp(L[0], L[2], f) + (r2() - 0.5) * 1.4;
+      const pz = lerp(L[1], L[3], f) + (r2() - 0.5) * 1.4;
+      if (px < rect[0] || px > rect[2] || pz < rect[1] || pz > rect[3]) continue;
+      if (!bayOpen(bay, px, pz, 0.8)) continue;
+      oilStain(px, pz, 0.65 + r2() * 0.85, 0.5 + r2() * 0.45, r2() * 3.14, bay.seed + 160 + i, 0.0104);
     }
 
     // Patches follow the routes, because that is where the services were laid.
@@ -7147,20 +7462,46 @@ export function createLevel(scene, materials, game) {
           [T.concreteWorn[0] * tone, T.concreteWorn[1] * tone, T.concreteWorn[2] * tone]);
         dustSkirt(px, pz, 0.78, 0.1, seedN + 3, null);
       }
+
+      /*
+       * The drift behind the anchor. Whatever the anchor is, it is the first thing the wind has
+       * met in twenty metres of open bay, so grit banks against its windward face and paper
+       * piles in its lee — and that, rather than the prop itself, is what stops it looking
+       * dropped onto the floor. It also puts a second, softer mass at every anchor, which is
+       * what gives the bay a rhythm of light and dark instead of one even speckle.
+       */
+      litterCatch(px + Math.cos(yaw) * 0.95, pz - Math.sin(yaw) * 0.95, yaw, lod > 0 ? 3 : 2, seedN + 5);
+      gravelDrift(
+        px - Math.cos(yaw + 1.57) * 0.8, pz + Math.sin(yaw + 1.57) * 0.8,
+        px + Math.cos(yaw + 1.57) * 0.8, pz - Math.sin(yaw + 1.57) * 0.8,
+        1, seedN + 6, 2.2
+      );
     }
   }
 
   function fillBay(bay) {
     const rect = bay.rect;
     const r2 = mulberry32(bay.seed);
-    // 1.15 m is about the largest cell that still guarantees no bare metre survives inside a
-    // bay at full wear, and small enough that the jitter kills the grid before the eye finds it.
-    const CELL = 1.15;
+    /*
+     * 0.92 m, down from 1.15.
+     *
+     * 1.15 was set from the geometry of the cell — the largest spacing that leaves no bare
+     * metre — and that reasoning was wrong, because "no bare metre" is not the bar. A native-
+     * resolution render of the terraces forecourt at 1.15 came back with roughly one piece per
+     * two square metres and it still read as an unbroken plane with chips on it: at eight
+     * metres a 10 cm stone is four pixels, so sparse small props do not make ground read as
+     * inhabited, they make it read as clean ground with litter. The bar is *coverage*, which
+     * needs both a shorter spacing and the flat tonal species added above.
+     *
+     * 0.92 is 1.56x the cell count for the same rects. Measured, the whole pass lands under
+     * 70k triangles, most of it instanced.
+     */
+    const CELL = 0.92;
     const nx = Math.max(1, Math.round((rect[2] - rect[0]) / CELL));
     const nz = Math.max(1, Math.round((rect[3] - rect[1]) / CELL));
     const cw = (rect[2] - rect[0]) / nx;
     const cd = (rect[3] - rect[1]) / nz;
-    const gate = lod > 1 ? 1 : lod > 0 ? 0.72 : 0.44;
+    const gate = lod > 1 ? 1 : lod > 0 ? 0.86 : 0.5;
     const bw = bay.wear === undefined ? 1 : bay.wear;
     for (let ix = 0; ix < nx; ix++) {
       for (let iz = 0; iz < nz; iz++) {
@@ -7170,7 +7511,7 @@ export function createLevel(scene, materials, game) {
         // a working surface has no edge — it just gets cleaner until it is growing over.
         const d = desireDist(x, z, bay.lines);
         const wear = Math.exp(-(d * d) / 18);
-        if (r2() > (0.24 + 0.62 * wear) * bw * gate) continue;
+        if (r2() > (0.34 + 0.58 * wear) * bw * gate) continue;
         if (!bayOpen(bay, x, z, 0.5)) continue;
         bayPiece(x, z, wear, r2);
       }
