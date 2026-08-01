@@ -523,7 +523,14 @@ on desktop, `low` on touch devices.
 
 | | low | medium | high | ultra |
 |---|---|---|---|---|
-| render scale | 0.7 | 0.85 | 1.0 | 1.0 |
+| render divisor | 2 | 1 | 1 | 1 |
+
+Render scale is an integer **divisor** of the backbuffer, not a fractional multiplier. A
+fractional scale meant the internal buffer was not a whole-pixel map of the backbuffer, and the
+final blit resampled the whole 3D image through a bilinear filter while the DOM HUD drawn over
+it did not — which read as "the 3D is soft but the interface is crisp" in review after review.
+`renderer.setSize` must be given the **backbuffer** size so the final post pass writes at native
+resolution; the internal targets are then derived from it by the divisor.
 | shadow cascades / size | 2 / 512 | 3 / 1024 | 4 / 2048 | 4 / 2048 |
 | TAA | off | on | on | on |
 | SSAO | off | 8 tap | 16 tap | 16 tap |

@@ -1458,8 +1458,17 @@ export function createLevel(scene, materials, game) {
    * Lay a sandbag emplacement along a polyline. Bags are placed individually with header and
    * stretcher courses alternating, plus per-bag jitter, exactly as they would be filled and
    * stacked on site.
+   *
+   * `opts.slump` (0..1, default 0) robs bags off the *top* of the run, position by position,
+   * so the crest steps up and down instead of ruling a flat line. It is top-down on purpose:
+   * dropping bags at random would leave the ones above them floating, and a wall of sacks with
+   * holes through the middle of it is a physics bug, not a story. A part-dismantled crest is
+   * the honest way to take mass out of an emplacement that is too dense to read — and it costs
+   * the emplacement no cover, because the collider is sized off the courses that remain
+   * standing at the tallest point.
    */
-  function sandbagWall(set, pts, courses, seedN) {
+  function sandbagWall(set, pts, courses, seedN, opts) {
+    const slump = (opts && opts.slump) || 0;
     const r2 = mulberry32(seedN);
     for (let s = 0; s < pts.length - 1; s++) {
       const ax = pts[s][0];
@@ -1481,6 +1490,14 @@ export function createLevel(scene, materials, game) {
           const jx = (r2() - 0.5) * 0.05;
           const jz = (r2() - 0.5) * 0.05;
           const tone = 0.86 + r2() * 0.28;
+          // Robbed after the randoms are drawn, never before: the bags that stay have to land
+          // exactly where they landed in the intact wall, or the two read as different walls
+          // rather than as the same one part dismantled. `hash2` and not `r2` for the same
+          // reason — the crest profile must not depend on how many bags came before it.
+          if (slump > 0) {
+            const robbed = clamp(Math.round(slump * courses * (0.3 + 1.4 * hash2(i, s * 31 + 7))), 0, courses - 1);
+            if (c >= courses - robbed) continue;
+          }
           addInstance(
             set,
             x + jx + Math.sin(dirY) * inset * 0,
@@ -1589,10 +1606,24 @@ export function createLevel(scene, materials, game) {
    * Scatter a rubble pile in three size tiers — slabs, fist-sized chunks, gravel fines —
    * with the big pieces at the base and the grading getting finer up the cone, plus a dust
    * fillet round the foot so nothing intersects the floor at a bare crease.
+   *
+   * `opts.density` scales all four tiers and `opts.spread` scales how far past the nominal
+   * radius the finer tiers and the dust fillet throw. Both default to 1, so every pile that
+   * does not pass them is bit-for-bit what it was.
+   *
+   * They exist because density and readability pull against each other and the balance is
+   * not the same everywhere. A heap seen across the yard wants every piece it can get; a heap
+   * the player is standing *in* — the depot approach pile is 2.8 m from that vantage's eye —
+   * turns into one undifferentiated pale mass filling the lower third of the frame, and no
+   * amount of extra rubble fixes that, because the problem is that nothing in it has a
+   * silhouette the eye can name. Past a certain count the pieces stop reading as pieces.
    */
-  function rubblePile(slabSet, brickSet, cx, cz, radius, height, seedN, tintBase) {
+  function rubblePile(slabSet, brickSet, cx, cz, radius, height, seedN, tintBase, opts) {
+    const o = opts || {};
+    const dens = o.density === undefined ? 1 : o.density;
+    const spread = o.spread === undefined ? 1 : o.spread;
     const r2 = mulberry32(seedN);
-    const nSlab = Math.round(radius * radius * (lod > 0 ? 3.2 : 1.8));
+    const nSlab = Math.round(radius * radius * (lod > 0 ? 3.2 : 1.8) * dens);
     for (let i = 0; i < nSlab; i++) {
       const a = r2() * Math.PI * 2;
       const rr = Math.sqrt(r2()) * radius;
@@ -1615,10 +1646,10 @@ export function createLevel(scene, materials, game) {
       );
     }
     // Mid tier.
-    const nChunk = Math.round(radius * radius * (lod > 0 ? 5 : 2.4));
+    const nChunk = Math.round(radius * radius * (lod > 0 ? 5 : 2.4) * dens);
     for (let i = 0; i < nChunk; i++) {
       const a = r2() * Math.PI * 2;
-      const rr = Math.sqrt(r2()) * radius * 1.1;
+      const rr = Math.sqrt(r2()) * radius * 1.1 * spread;
       const f = clamp(1 - rr / radius, 0, 1);
       const y = f * f * height * (0.4 + r2() * 0.65);
       const tone = 0.68 + r2() * 0.5;
@@ -1634,10 +1665,10 @@ export function createLevel(scene, materials, game) {
         [tintBase[0] * tone, tintBase[1] * tone, tintBase[2] * tone]
       );
     }
-    const nBrick = Math.round(radius * radius * (lod > 0 ? 6 : 3));
+    const nBrick = Math.round(radius * radius * (lod > 0 ? 6 : 3) * dens);
     for (let i = 0; i < nBrick; i++) {
       const a = r2() * Math.PI * 2;
-      const rr = Math.sqrt(r2()) * radius * 1.15;
+      const rr = Math.sqrt(r2()) * radius * 1.15 * spread;
       const f = clamp(1 - rr / radius, 0, 1);
       const y = f * f * height * (0.3 + r2() * 0.7);
       const tone = 0.7 + r2() * 0.5;
@@ -1655,10 +1686,10 @@ export function createLevel(scene, materials, game) {
     }
     // Fines: gravel spilling well past the toe of the heap, which is what actually blends a
     // pile into the floor.
-    const nFine = Math.round(radius * radius * (lod > 1 ? 9 : lod > 0 ? 5 : 2));
+    const nFine = Math.round(radius * radius * (lod > 1 ? 9 : lod > 0 ? 5 : 2) * dens);
     for (let i = 0; i < nFine; i++) {
       const a = r2() * Math.PI * 2;
-      const rr = Math.sqrt(r2()) * radius * 1.6;
+      const rr = Math.sqrt(r2()) * radius * 1.6 * spread;
       const f = clamp(1 - rr / radius, 0, 1);
       const y = f * f * height * (0.25 + r2() * 0.6);
       const tone = 0.68 + r2() * 0.55;
@@ -1674,7 +1705,7 @@ export function createLevel(scene, materials, game) {
         [tintBase[0] * tone, tintBase[1] * tone, tintBase[2] * tone]
       );
     }
-    dustSkirt(cx, cz, radius * 1.08, Math.min(0.34, height * 0.34), seedN + 77, null);
+    dustSkirt(cx, cz, radius * 1.08 * spread, Math.min(0.34, height * 0.34) * spread, seedN + 77, null);
   }
 
   /* --- chain-link fence ---------------------------------------------------- */
@@ -4487,7 +4518,12 @@ export function createLevel(scene, materials, game) {
     sandbagWall(setSack, [[-17.5, -16.0], [-13.0, -16.0]], 4, 502);
     sandbagWall(setSack, [[26.0, ADMIN.z1 + 1.0], [31.0, ADMIN.z1 + 1.0]], 3, 503);
     sandbagWall(setSack, [[6.0, DOCK.z0 - 1.2], [11.0, DOCK.z0 - 1.2]], 3, 504);
-    sandbagWall(setSack, [[-11.0, 1.5], [-11.0, 5.5]], 4, 505);
+    // The depot-approach emplacement, robbed down. It is the one emplacement that stands in
+    // the near field of the depot vantage, where it was adding another few dozen rounded pale
+    // lumps to a frame that already could not tell rubble from sacks. Half its mass gone off
+    // the crest gives the run a stepped silhouette and lets the drums and the barrier beside
+    // it be the things the eye lands on.
+    sandbagWall(setSack, [[-11.0, 1.5], [-11.0, 5.5]], 4, 505, { slump: 0.42 });
     sandbagWall(setSack, [[13.0, 26.0], [17.5, 26.0], [17.5, 29.5]], 3, 506);
 
     // Jersey barriers: chicanes on both flanking routes.
@@ -4545,7 +4581,16 @@ export function createLevel(scene, materials, game) {
     }
 
     // Rubble piles, tied to the damage: the depot blast hole, the admin corner, shelled walls.
-    rubblePile(setSlab, setBrick, -31.6, DEPOT.z1 + 1.4, 3.6, 1.4, 601, T.concreteWorn);
+    /*
+     * 601 is the depot blast spoil, and it is the only heap in the map the player stands
+     * inside: the depot vantage's eye is 2.8 m from its centre, so at full density its fines
+     * threw to 5.8 m and it rendered as one undifferentiated pale-grey mass across the whole
+     * width of the lower frame — impossible to read as rubble rather than as sandbags or
+     * spoil. Half the pieces and a 0.66 spread pull the toe (and its dust fillet) back inside
+     * four metres and leave gaps between the slabs for the props below to sit in. It loses
+     * nothing as cover: the ramp and the box colliders that make it climbable are separate.
+     */
+    rubblePile(setSlab, setBrick, -31.6, DEPOT.z1 + 1.4, 3.6, 1.4, 601, T.concreteWorn, { density: 0.5, spread: 0.66 });
     rubblePile(setSlab, setBrick, ADMIN.x0 - 1.5, ADMIN.z1 - 3.0, 5.6, 2.4, 602, T.concreteWorn);
     rubblePile(setSlab, setBrick, ADMIN.x0 + 3.5, ADMIN.z1 - 3.2, 4.4, 3.6, 603, T.concreteWorn);
     rubblePile(setSlab, setBrick, DEPOT.x0 - 2.0, -28.0, 3.4, 1.2, 604, T.concreteWorn);
@@ -4557,6 +4602,8 @@ export function createLevel(scene, materials, game) {
     solidBox(-8.0, 0.45, 36.0, 2.2, 0.45, 2.2, 'concrete', 0, { cover: true });
     solidBox(44, 0.55, 26.0, 3.0, 0.55, 3.0, 'concrete', 0, { cover: true });
     solidBox(2.0, 0.45, -22.0, 2.6, 0.45, 2.6, 'concrete', 0, { cover: true });
+
+    depotApproachProps();
 
     // Burnt-out car and a second wreck by the depot apron.
     burntCar(14.5, 27.5, 0.55);
@@ -4738,6 +4785,162 @@ export function createLevel(scene, materials, game) {
     tarp(8.5, DOCK.h + 1.0, DOCK.z0 + 3.5, 3.4, 2.6, 0.05, 0.28, 813);
 
     groundClutter();
+  }
+
+  /**
+   * Hard-edged, nameable props threaded through the depot blast spoil.
+   *
+   * The heap on its own failed §4's detail bar in a way more rubble could never have fixed.
+   * Every piece in it is a broken lump of the same material at the same value, so at two to
+   * eight metres the whole thing resolves as one pale mass with no scale in it — the frame
+   * cannot say whether it is rubble, sandbags or spoil, and an eye that cannot name a shape
+   * stops looking at it. Readability beats density: what the pile needed was not detail but
+   * *contrast*, so half the rubble came out (see the 601 call above) and these went into the
+   * gaps.
+   *
+   * Every one of them is chosen for silhouette rather than for fidelity — a drum is a
+   * cylinder, a pallet is a slot-sided rectangle, a barrier is a battered trapezium, a slab
+   * stood on edge is a plate with rebar out of the fracture. Each reads at a glance and at any
+   * range, each is a different value and a different material family from the concrete around
+   * it, and between them they give the near field the scale cue it had none of. They sit at
+   * z >= -7.3 so the lorry route along the shed's north wall stays open.
+   */
+  function depotApproachProps() {
+    const r2 = mulberry32(0x6301);
+
+    // Two big slabs stood on edge against each other, the way a clearance gang leans them out
+    // of the way. Rebar out of the broken faces gives the pile its only hard, thin silhouette.
+    const leans = [[-32.9, -5.1, 0.55, 1.02, 2.3], [-32.2, -5.6, -0.35, -0.86, 2.0], [-29.9, -7.1, 1.25, 0.95, 1.9]];
+    for (let i = 0; i < leans.length; i++) {
+      const L = leans[i];
+      const tone = 0.82 + hash2(i, 41) * 0.3;
+      // A slab on edge is half its length tall, so its centre has to rise with the tilt or the
+      // plate sinks through the floor. The 0.72 buries the foot of it in the spoil, which is
+      // where a slab levered out of a floor ends up and is also what stops it needing a
+      // collider: like every other piece of rubble in the map this is dressing standing on the
+      // heap's own ramp, not a second obstacle bolted on top of it.
+      const rest = (0.42 * Math.abs(Math.sin(L[3])) + 0.1 * Math.abs(Math.cos(L[3]))) * L[4];
+      addInstance(setSlab, L[0], groundY(L[0], L[1]) + rest * 0.72, L[1], L[2], 0, L[3], L[4],
+        [T.concreteWorn[0] * tone, T.concreteWorn[1] * tone, T.concreteWorn[2] * tone]);
+      dustSkirt(L[0], L[1], 0.72, 0.09, 6320 + i, null);
+    }
+
+    // A cable drum on its edge in the spoil: the one perfect circle anywhere in the frame.
+    cableSpool(-30.4, -4.5, 0.85, 0.82, 6331);
+
+    // Drums. Two upright and one rolled, in painted metal, so the mass gets a saturated hit
+    // and three unmistakable cylinders at knee height.
+    const drums = [[-34.2, -4.3, 0, T.rust], [-33.5, -3.6, 0, T.railGreen], [-35.1, -5.3, 1, T.steelPainted]];
+    for (let i = 0; i < drums.length; i++) {
+      const d = drums[i];
+      const tone = 0.72 + hash2(i, 53) * 0.5;
+      const tt = [d[3][0] * tone, d[3][1] * tone, d[3][2] * tone];
+      if (d[2]) {
+        addInstance(setDrum, d[0], groundY(d[0], d[1]) + 0.295, d[1], hash2(i, 9) * 6.28, Math.PI * 0.5, 0, 1, tt);
+        solidBox(d[0], 0.3, d[1], 0.45, 0.3, 0.45, 'metal');
+      } else {
+        addInstance(setDrum, d[0], groundY(d[0], d[1]), d[1], hash2(i, 17) * 6.28, 0, 0, 1, tt);
+        solidBox(d[0], 0.45, d[1], 0.31, 0.45, 0.31, 'metal');
+      }
+    }
+    dustSkirt(-34.3, -4.4, 1.5, 0.12, 6341, null);
+
+    // A pallet stack with one leaning off it: horizontal slots, which is a shape nothing else
+    // in a rubble heap has.
+    for (let k = 0; k < 4; k++) {
+      const tone = 0.72 + hash2(k, 61) * 0.5;
+      addInstance(setPallet, -28.5 + (hash2(k, 3) - 0.5) * 0.09, groundY(-28.5, -6.3) + k * 0.145,
+        -6.3 + (hash2(k, 7) - 0.5) * 0.09, 0.62 + (hash2(k, 11) - 0.5) * 0.07, 0, 0, 1,
+        [T.wood[0] * tone, T.wood[1] * tone, T.wood[2] * tone]);
+    }
+    addInstance(setPallet, -27.8, groundY(-28.5, -6.3) + 0.5, -6.9, 1.1, 0, 1.3, 1, T.woodDark);
+    solidBox(-28.5, 0.29, -6.3, 0.62, 0.29, 0.42, 'wood', 0.62, { cover: false });
+    dustSkirt(-28.5, -6.3, 0.95, 0.1, 6351, null);
+
+    // A barrier dragged clear of the doorway, and the litter and offcuts that collect behind
+    // anything that stops the wind.
+    addInstance(setJersey, -35.4, 0, -6.4, 0.32, 0, 0, 1, [T.concrete[0] * 0.94, T.concrete[1] * 0.94, T.concrete[2] * 0.96]);
+    solidBox(-35.4, 0.44, -6.4, 0.32, 0.44, 1.2, 'concrete', 0.32, { cover: true });
+    timberOffcuts(-29.6, -3.7, 6, 6361);
+    litterCatch(-34.9, -5.9, 0.32, lod > 0 ? 4 : 2, 6371);
+    for (let i = 0; i < 3; i++) {
+      const a = r2() * 6.28;
+      const px = -31.6 + Math.cos(a) * (2.4 + r2() * 1.1);
+      const pz = -6.6 + Math.sin(a) * (2.4 + r2() * 1.1);
+      if (pz < -7.3) continue;
+      addInstance(setOffcut, px, groundY(px, pz) + 0.03, pz, r2() * 6.28, (r2() - 0.5) * 0.3, (r2() - 0.5) * 0.25,
+        0.9 + r2() * 0.7, [T.rust[0] * (0.7 + r2() * 0.5), T.rust[1] * 0.9, T.rust[2] * 0.9]);
+    }
+
+    /*
+     * The crest, which is the part of the heap the depot vantage is actually looking at.
+     *
+     * Everything above is correct and almost none of it lands, for two separate reasons that
+     * were both found by projecting the props through that camera (eye (-34, 1.75, -8),
+     * 75° vertical, 16:9) rather than by eye.
+     *
+     *  1. *Framing.* The barrier falls off the right edge, the pallet stack sits at 1.5% of
+     *     frame width on the extreme left margin, and all three drums land at 66% across and
+     *     67% down — underneath the viewmodel. Only the lean slabs are in frame.
+     *
+     *  2. *Occlusion, and this is the one that matters.* The eye is 2.8 m from the centre of a
+     *     3.6 m heap, i.e. standing on its own toe, so the crest 2.1 m ahead rises to about
+     *     1.3 m and everything beyond it is behind a wall. A prop on the far flank at 4 m puts
+     *     its top on a sight ray that passes the crest line at 1.12 m — half a metre under the
+     *     spoil. Ringing the heap with readables therefore cannot work from here; the props
+     *     have to be *on* the crest, inside the 10–45% band the mass actually fills.
+     *
+     * Positions are solved rather than guessed: sampled over the heap and kept only where the
+     * projected x lands in that band, the range is 1.4–3.2 m, and nothing comes within 1.15 m
+     * of a prop that is already there. Heights come off `rubblePile`'s own profile,
+     * y = (1 - r/R)^2 * H with R = 3.6 and H = 1.4 for pile 601, and are then deliberately
+     * under-set — a piece sunk a hand's depth into rubble is what rubble does, a piece
+     * floating a hand's depth over it is the one error the eye catches instantly. Nothing
+     * exceeds 1.2 m off the deck either, so a player standing where the camera stands still
+     * sees over the heap.
+     *
+     * They are also the darkest things in the near field, and that is doing as much work as
+     * the silhouettes. The mass reads as one object because every piece in it is broken
+     * concrete at the same value; rust, creosote and weathered deal are three different value
+     * families, and a value break is what tells the eye where one object stops.
+     */
+    const heapY = (rr) => {
+      const f = clamp(1 - rr / 3.6, 0, 1);
+      return f * f * 1.4;
+    };
+
+    // On the crest at 1.5 m, 33% across: a drum on its side, half sunk. The nearest thing to
+    // the lens in the whole frame and the only horizontal cylinder in it, so it is what sets
+    // the scale everything behind it gets measured against.
+    addInstance(setDrum, -32.8, groundY(-32.8, -6.8) + heapY(1.22) * 0.5 + 0.235, -6.8,
+      2.42, Math.PI * 0.5, 0.06, 1, [T.rustDeep[0] * 1.12, T.rustDeep[1] * 1.02, T.rustDeep[2] * 0.98]);
+    // The slabs and the pallet ride the heap's own ramp collider like every other piece of
+    // rubble here, but this one is a waist-wide steel cylinder standing where the ramp has
+    // already flattened out — walking through it would be worse than the mass it is breaking.
+    solidBox(-32.8, 0.29, -6.8, 0.45, 0.29, 0.45, 'metal');
+
+    // Deeper into the crest at 2.6 m, 19% across: a floor slab levered out and stood on edge,
+    // rebar out of the fracture. Same rest-height maths as the `leans` above, with the foot
+    // buried 0.4 m into spoil that is 0.93 m deep at that radius.
+    {
+      const s = 2.0;
+      const rz = 0.9;
+      const rest = (0.42 * Math.abs(Math.sin(rz)) + 0.1 * Math.abs(Math.cos(rz))) * s;
+      addInstance(setSlab, -31.0, 0.40 + rest * 0.72, -6.3, 1.86, 0, rz, s,
+        [T.concreteWorn[0] * 0.74, T.concreteWorn[1] * 0.75, T.concreteWorn[2] * 0.8]);
+    }
+
+    // Out on the north flank, where the toe is only a hand deep: a pallet on edge tipped back
+    // against the spoil. Five deck boards with daylight between them, a shape no piece of
+    // broken concrete can imitate. Behind the crest from the depot vantage, but this heap is
+    // approached from the yard as often as it is stood on, and that is the face that sees it.
+    addInstance(setPallet, -29.9, groundY(-29.9, -5.5) + 0.42, -5.5, 0.86, 0, 1.25, 1, T.woodDark);
+    dustSkirt(-29.9, -5.5, 0.8, 0.09, 6381, null);
+
+    // Creosoted sleepers stacked clear of the heap on the apron proper: dead-black horizontal
+    // bars, the hardest edge and the lowest value on the approach, and the piece that stops
+    // the spoil and the apron reading as one continuous grey from the yard side.
+    sleeperStack(-28.2, -5.0, 1.24, 3, 6391);
   }
 
   /* ---------------------------------------------------------------------- */
@@ -6399,6 +6602,586 @@ export function createLevel(scene, materials, game) {
     }
   }
 
+  /* ====================================================================== */
+  /* 14e. Set dressing — the open bays                                       */
+  /* ====================================================================== */
+
+  /**
+   * Everything above this point dresses *edges*. Ash banks against walls, grit drifts into
+   * kerbs, weeds grow in the lee of a container, litter catches on the first thing that stops
+   * it — all true, all correct, and all of it clinging to the map's cover and its structure.
+   * The consequence was that the middle of every open bay came out bare: measured off the
+   * terraces vantage, roughly 25 x 15 m of the player's near field carried six thumb-sized
+   * dark chips and nothing else, which is fifteen metres of walkable nothing in the frame a
+   * player looks at first. No shipped map has that.
+   *
+   * This pass fills the interiors. Three rules, and the second is the one that matters.
+   *
+   *  1. **Everything rides in a bucket or an instance set that already exists.** Not one new
+   *     material, not one new draw call: grit, tufts, litter, scrap, timber, brick and chunk
+   *     go through the sets the density pass already built, and the flat work (reinstatement
+   *     patches, painted line remnants) goes into the triplanar `asphalt` and the
+   *     `concretePanel` buffers. Measured, the whole pass is under twenty thousand triangles,
+   *     which is less than the depot heap gave back.
+   *
+   *  2. **Density follows the desire lines, and so does the *kind*.** A uniform scatter over
+   *     an open bay is not detail, it is noise with a seed — it reads as procedural at a
+   *     glance because real ground is never evenly dirty. Every bay therefore carries the
+   *     lines the traffic actually takes through it, and the fill probability decays as a
+   *     Gaussian away from them. The mix rotates with the same term: on the line the traffic
+   *     grinds the surface to grit, drags litter along and shakes scrap off a load, and kills
+   *     anything trying to grow; three metres off it nothing has been touched in years, so
+   *     that is where the tufts are. Density and species both fall out of one number.
+   *
+   *  3. **Nothing lands on top of anything.** Every candidate is tested against the live
+   *     collider list — which by the time this runs is the whole map — plus the ballast
+   *     shoulders, which stand 0.26 m proud and which `groundY` knows nothing about, and the
+   *     building footprints, which own their own dressing.
+   */
+
+  /**
+   * The open bays. `rect` is [x0, z0, x1, z1]; `lines` are the desire lines through it;
+   * `wear` scales the whole bay's density; `ruts`, `marks`, `drains` and `patches` are the
+   * man-made work laid on top of the scatter, and `avoid` is for masses that carry no collider
+   * (a rubble heap, a crater) and would otherwise get grit scattered through them.
+   */
+  const OPEN_BAYS = [
+    {
+      // THE TERRACES forecourt: the hardstanding between the yard road and the admin block.
+      // This is the bare 25 x 15 m the finding measured, and it is the first thing the
+      // terraces spawn sees.
+      seed: 9601,
+      wear: 1.0,
+      rect: [20.6, -13.4, 45.2, -4.6],
+      lines: [
+        [20.8, -8.8, 34.0, -10.6],
+        [22.0, -12.2, 44.2, -12.4],
+        [30.4, -4.8, 30.0, -12.2],
+        [38.2, -5.0, 44.4, -11.2],
+      ],
+      ruts: [[35.4, -5.4, 44.6, -8.6]],
+      marks: [
+        [22.4, -5.5, 43.8, -5.7, 0.1, 0.36],
+        [26.6, -6.4, 26.6, -11.4, 0.085, 0.52],
+        [30.6, -6.4, 30.6, -11.4, 0.085, 0.58],
+        [34.6, -6.4, 34.6, -11.4, 0.085, 0.64],
+        [38.6, -6.4, 38.6, -11.4, 0.085, 0.7],
+      ],
+      drains: [[24.6, -6.7, 0.4], [41.4, -7.3, 0.15]],
+      patches: 4,
+      anchors: 3,
+    },
+    {
+      // The depot's north apron: the strip between the shed wall and the ballast of road 5.
+      seed: 9602,
+      wear: 0.95,
+      rect: [-49.4, -7.3, -22.8, -4.6],
+      lines: [[-47.0, -6.9, -24.0, -7.1], [-42.0, -5.4, -38.5, -7.2]],
+      avoid: [[-31.6, -6.6, 3.2]],
+      marks: [[-46.6, -4.9, -25.0, -5.1, 0.095, 0.5]],
+      drains: [[-44.2, -5.4, 0.9]],
+      patches: 2,
+      anchors: 1,
+    },
+    {
+      // The depot's east approach: the long open bay between the shed's east elevation and
+      // the northern container group. Two flanking routes cross it, so it is walked hard.
+      seed: 9603,
+      wear: 1.0,
+      rect: [-17.4, -33.6, -3.6, -10.6],
+      lines: [
+        [-16.6, -11.4, -4.4, -11.6],
+        [-9.0, -11.0, -9.6, -32.4],
+        [-16.2, -30.4, -5.2, -27.2],
+      ],
+      avoid: [[-16.5, -25.0, 2.6], [-20.6, -22.5, 1.6]],
+      ruts: [[-15.4, -12.6, -14.6, -30.0]],
+      marks: [[-16.0, -13.4, -4.4, -13.6, 0.09, 0.62]],
+      drains: [[-6.2, -13.2, 1.3]],
+      patches: 3,
+      anchors: 3,
+    },
+    {
+      // THE YARD, the four 8 m bays between the running lines. The container rows stand on
+      // their midlines out at the ends, so what this dresses is the open lane in the middle
+      // of each — the ground the player crosses under the crane.
+      seed: 9604,
+      wear: 0.8,
+      rect: [-42.0, 0.7, 41.0, 3.3],
+      lines: [[-8.6, 0.5, -8.6, 3.5], [-24.0, 0.7, -24.0, 3.3], [14.0, 0.7, 14.4, 3.3]],
+      patches: 1,
+      anchors: 2,
+    },
+    {
+      seed: 9605,
+      wear: 0.8,
+      rect: [-42.0, 8.7, 41.0, 11.3],
+      lines: [[-8.6, 8.5, -8.6, 11.5], [-19.0, 8.7, -19.0, 11.3], [12.0, 8.7, 12.4, 11.3]],
+      patches: 1,
+      anchors: 2,
+    },
+    {
+      seed: 9606,
+      wear: 0.75,
+      rect: [-42.0, 16.7, 39.0, 19.3],
+      lines: [[-8.6, 16.5, -8.6, 19.5], [6.0, 16.7, 6.4, 19.3]],
+      anchors: 2,
+    },
+    {
+      seed: 9607,
+      wear: 0.75,
+      rect: [-41.0, 24.7, 37.0, 27.3],
+      lines: [[-8.6, 24.5, -8.6, 27.5], [-26.0, 24.7, -26.0, 27.3], [10.0, 24.7, 10.4, 27.3]],
+      anchors: 2,
+    },
+    {
+      // The north-east outer bay behind the dock, which the wide vantage looks straight down.
+      seed: 9608,
+      wear: 0.9,
+      rect: [28.0, 32.6, 46.6, 40.4],
+      lines: [[28.6, 34.8, 45.2, 33.6], [34.0, 33.2, 34.2, 39.6]],
+      ruts: [[29.0, 36.4, 44.4, 35.0]],
+      marks: [[30.0, 39.0, 45.4, 38.6, 0.1, 0.6]],
+      drains: [[31.4, 34.0, 0.7]],
+      patches: 2,
+      anchors: 2,
+    },
+    {
+      // The admin approach road, the terraces' western flanking route.
+      seed: 9609,
+      wear: 1.0,
+      rect: [12.9, -33.2, 19.1, -18.8],
+      lines: [[15.6, -33.0, 16.0, -18.9]],
+      marks: [[15.8, -32.4, 16.0, -19.4, 0.095, 0.66], [18.5, -32.0, 18.6, -19.6, 0.085, 0.5]],
+      drains: [[13.8, -24.6, 0.2]],
+      patches: 2,
+      anchors: 1,
+    },
+    /*
+     * The three bays below extend the table above rather than adding a second pass — same
+     * `fillBay`, same instance sets, same rules. They were found by walking the shipped
+     * vantages against the nine rects above and asking which open ground *no* rect reaches:
+     *
+     *  - the yard road itself, which the first pass dressed either side of and then left bare
+     *    down the middle;
+     *  - the south-central field, which is the whole near ground of the `sunline` vantage;
+     *  - the outer yard west of the dock, which `wide` looks straight across.
+     *
+     * None of the three overlaps an existing rect, so no square metre is scattered twice.
+     */
+    {
+      // THE YARD ROAD. `ROAD_ZONES` makes x -22..20, z -9..-3 asphalt, and it is the spine
+      // every route in the map joins: the depot apron feeds it, both terraces flanks leave
+      // off it, and the boarded crossings step off it. The first pass put grit in both kerbs
+      // (7401/7402) and litter along the z = -6 line and then stopped, so the carriageway —
+      // 40 m of it, dead centre of the depot and sunline frames — was the cleanest surface in
+      // a bombed freight yard. A road is the one piece of ground guaranteed to be filthy, so
+      // this runs at full wear with its lines laid straight down the running direction.
+      seed: 9610,
+      wear: 1.0,
+      rect: [-21.4, -8.9, 18.8, -4.8],
+      lines: [
+        [-21.0, -6.4, 18.4, -6.1],
+        [-21.0, -8.2, -5.6, -8.0],
+        [-2.2, -6.6, 16.0, -6.0],
+      ],
+      // The spools, the crossing approach and the two manhole covers `groundClutter` already
+      // put down here carry no collider tall enough for `bayClear` to see, or none at all.
+      avoid: [[-14.5, -6.9, 1.5], [-13.0, -7.6, 1.3], [-8.5, -6.4, 2.2], [-12.0, -6.2, 0.8], [8.0, -6.2, 0.8]],
+      marks: [
+        [-20.0, -4.95, 17.6, -4.85, 0.1, 0.45],
+        [-20.2, -8.75, -6.2, -8.65, 0.1, 0.55],
+        [2.0, -8.75, 17.6, -8.7, 0.1, 0.5],
+      ],
+      patches: 4,
+      // The carriageway is 4 m deep and the desire lines run down all of it, so `dressBay`'s
+      // "more than 2.2 m off a line" test will reject most candidates and place one or two.
+      // That is the correct answer for a road: nothing stands in a live traffic lane.
+      anchors: 2,
+    },
+    {
+      // The south-central field between the depot's east approach and the admin road. The
+      // `sunline` vantage stands at (-2, -14) and looks east down it, so this is that frame's
+      // entire near ground; it is also the open half of the southern flanking route.
+      seed: 9611,
+      wear: 0.85,
+      rect: [-3.2, -32.4, 12.2, -14.2],
+      lines: [[-2.8, -15.0, 11.8, -16.2], [4.0, -14.4, 5.2, -31.8], [-2.6, -30.6, 9.0, -28.4]],
+      // 605 is a rubble heap and the spool and the tyres are low: none of them owns a collider
+      // this pass can see, and grit scattered through a heap reads as a bug.
+      avoid: [[2.0, -22.0, 4.3], [4.5, -17.5, 1.4], [-2.5, -18.0, 1.5]],
+      ruts: [[6.6, -15.2, 7.4, -30.8]],
+      marks: [[-2.4, -14.6, 11.6, -15.0, 0.09, 0.6]],
+      // Clear of the x = 10.5 container column, whose boxes reach out to x 9.15.
+      drains: [[7.8, -20.4, 1.1]],
+      patches: 3,
+      anchors: 3,
+    },
+    {
+      // The outer yard north of road 1 and west of the dock. Nothing structural stands in it,
+      // which is exactly why it was bare: the edge-dressing passes had no edges to work off
+      // between the container block at x -38 and the dock ramp at x -16.
+      seed: 9612,
+      wear: 0.7,
+      rect: [-45.6, 32.8, -18.4, 40.4],
+      lines: [[-45.0, 34.6, -19.0, 34.2], [-28.0, 33.0, -27.4, 39.8]],
+      // Kept south of z 35.4: the two-wide container block sits on z 36.65 and its boxes are
+      // 2.438 m across, so a rut any further north would run underneath them.
+      ruts: [[-44.0, 34.9, -21.0, 34.1]],
+      marks: [[-44.6, 39.2, -20.0, 39.0, 0.1, 0.62]],
+      drains: [[-24.6, 33.6, 1.5]],
+      patches: 2,
+      anchors: 3,
+    },
+  ];
+
+  /** Species weights, refilled in place — this runs a thousand times at load, so no garbage. */
+  const _bayW = [0, 0, 0, 0, 0, 0, 0];
+
+  /** Distance from (x, z) to the nearest of a bay's desire lines. */
+  function desireDist(x, z, lines) {
+    let best = 1e9;
+    for (let i = 0; i < lines.length; i++) {
+      const L = lines[i];
+      const dx = L[2] - L[0];
+      const dz = L[3] - L[1];
+      const dd = dx * dx + dz * dz;
+      const t = dd > 1e-6 ? clamp(((x - L[0]) * dx + (z - L[1]) * dz) / dd, 0, 1) : 0;
+      const ex = x - (L[0] + dx * t);
+      const ez = z - (L[1] + dz * t);
+      const d = Math.sqrt(ex * ex + ez * ez);
+      if (d < best) best = d;
+    }
+    return best;
+  }
+
+  /**
+   * Is (x, z) open ground? Tested against the live collider list rather than against a hand
+   * table of exclusions, because this pass runs last and the collider list by then *is* the
+   * map — which means a prop added anywhere else in this file is automatically respected here
+   * without anybody having to remember to come back and update a rectangle.
+   */
+  function bayClear(x, z, margin) {
+    for (let i = 0; i < colliders.length; i++) {
+      const c = colliders[i];
+      // Kerbs, ducts and the odd low kerb-height slab are dressed over, not walked round.
+      if (c.max.y < 0.14) continue;
+      if (x > c.min.x - margin && x < c.max.x + margin && z > c.min.z - margin && z < c.max.z + margin) return false;
+    }
+    // Ballast shoulders stand 0.26 m proud and `groundY` knows nothing about them, so anything
+    // planted on a crest is buried to its neck in stone. Same for the depot spur.
+    for (let i = 0; i < TRACK_Z.length; i++) if (Math.abs(z - TRACK_Z[i]) < 2.5) return false;
+    if (Math.abs(z - SPUR_Z) < 2.5 && x > DEPOT.x1 - 1) return false;
+    // Interiors and the dock deck own their own dressing and sit at their own levels.
+    if (inRect(x, z, [DEPOT.x0 - 0.6, DEPOT.z0 - 0.6, DEPOT.x1 + 0.6, DEPOT.z1 + 0.6])) return false;
+    if (inRect(x, z, [ADMIN.x0 - 0.6, ADMIN.z0 - 0.6, ADMIN.x1 + 0.6, ADMIN.z1 + 0.6])) return false;
+    if (inRect(x, z, [DOCK.x0 - 0.4, DOCK.z0 - 0.4, DOCK.x1 + 0.4, DOCK.z1])) return false;
+    return true;
+  }
+
+  /** `bayClear` plus the bay's own list of collider-free masses to stay out of. */
+  function bayOpen(bay, x, z, margin) {
+    if (bay.avoid) {
+      for (let i = 0; i < bay.avoid.length; i++) {
+        const a = bay.avoid[i];
+        const dx = x - a[0];
+        const dz = z - a[1];
+        if (dx * dx + dz * dz < a[2] * a[2]) return false;
+      }
+    }
+    return bayClear(x, z, margin);
+  }
+
+  /**
+   * One piece of area fill. `wear` is 1 on a desire line and decays away from it, and it
+   * picks the species as well as gating the amount — see rule 2 above.
+   */
+  function bayPiece(x, z, wear, r2) {
+    const y = groundY(x, z);
+    const tone = 0.58 + r2() * 0.62;
+    _bayW[0] = 0.30 + 0.22 * wear; // grit
+    _bayW[1] = 0.34 - 0.27 * wear; // growth
+    _bayW[2] = 0.09 + 0.11 * wear; // litter
+    _bayW[3] = 0.07 + 0.05 * wear; // scrap steel
+    _bayW[4] = 0.08; // timber
+    _bayW[5] = 0.07; // brick
+    _bayW[6] = 0.05 - 0.02 * wear; // broken concrete
+    let total = 0;
+    for (let i = 0; i < _bayW.length; i++) total += _bayW[i];
+    let pick = r2() * total;
+    let k = 0;
+    while (k < _bayW.length - 1 && pick > _bayW[k]) {
+      pick -= _bayW[k];
+      k++;
+    }
+
+    if (k === 0) {
+      // Grit, never one stone: a 7 cm pebble at eight metres is a pixel, a handful is a drift.
+      const n = 3 + ((r2() * 3) | 0);
+      for (let s = 0; s < n; s++) {
+        const px = x + (r2() - 0.5) * 0.95;
+        const pz = z + (r2() - 0.5) * 0.95;
+        addInstance(
+          stoneSet, px, groundY(px, pz) + 0.015, pz,
+          r2() * 6.28, (r2() - 0.5) * 1.6, (r2() - 0.5) * 1.6,
+          0.5 + r2() * 1.05,
+          [T.gravel[0] * tone, T.gravel[1] * tone, T.gravel[2] * tone]
+        );
+      }
+    } else if (k === 1) {
+      // Growth, through the cracks. Tufts are taller and read at range; weeds fill under them.
+      const n = 1 + ((r2() * 2) | 0);
+      for (let s = 0; s < n; s++) {
+        const px = x + (r2() - 0.5) * 0.7;
+        const pz = z + (r2() - 0.5) * 0.7;
+        addInstance(
+          r2() < 0.45 ? setWeed : setTuft, px, groundY(px, pz), pz,
+          r2() * 6.28, 0, 0,
+          0.6 + r2() * 0.85,
+          [T.weeds[0] * tone, T.weeds[1] * tone, T.weeds[2] * tone]
+        );
+      }
+    } else if (k === 2) {
+      addInstance(
+        setLitter, x, y + 0.012, z,
+        r2() * 6.28, (r2() - 0.5) * 0.45, (r2() - 0.5) * 0.45,
+        0.6 + r2() * 0.7,
+        [T.paper[0] * tone, T.paper[1] * tone, T.paper[2] * tone]
+      );
+    } else if (k === 3) {
+      addInstance(
+        setScrap, x, y + 0.02, z,
+        r2() * 6.28, 0, (r2() - 0.5) * 0.3,
+        0.6 + r2() * 1.15,
+        [T.rust[0] * tone, T.rust[1] * tone, T.rust[2] * tone]
+      );
+    } else if (k === 4) {
+      addInstance(
+        setDebris, x, y + 0.02, z,
+        r2() * 6.28, 0, (r2() - 0.5) * 0.3,
+        0.5 + r2() * 1.1,
+        [T.wood[0] * tone, T.wood[1] * tone, T.wood[2] * tone]
+      );
+      if (r2() < 0.35) {
+        const px = x + (r2() - 0.5) * 0.6;
+        const pz = z + (r2() - 0.5) * 0.6;
+        addInstance(setOffcut, px, groundY(px, pz) + 0.03, pz, r2() * 6.28, 0, (r2() - 0.5) * 0.2,
+          0.7 + r2() * 0.6, [T.rust[0] * tone, T.rust[1] * tone, T.rust[2] * tone]);
+      }
+    } else if (k === 5) {
+      // Bricks come off a wall in twos and threes, never singly.
+      const n = 1 + ((r2() * 3) | 0);
+      for (let s = 0; s < n; s++) {
+        const px = x + (r2() - 0.5) * 0.55;
+        const pz = z + (r2() - 0.5) * 0.55;
+        addInstance(setBrick, px, groundY(px, pz) + 0.035, pz, r2() * 6.28, (r2() - 0.5) * 0.9, (r2() - 0.5) * 0.9,
+          0.8 + r2() * 0.55, [T.brick[0] * tone, T.brick[1] * tone, T.brick[2] * tone]);
+      }
+    } else {
+      addInstance(
+        chunkSet, x, y + 0.09, z,
+        r2() * 6.28, (r2() - 0.5) * 1.3, (r2() - 0.5) * 1.3,
+        0.7 + r2() * 0.9,
+        [T.concreteWorn[0] * tone, T.concreteWorn[1] * tone, T.concreteWorn[2] * tone]
+      );
+    }
+  }
+
+  /**
+   * A reinstatement patch: the rectangle a service trench was sawn out of the hardstanding and
+   * filled back in, plus the seal bleeding a hand's width past the cut.
+   *
+   * Deliberately the one hard-edged, straight-sided thing this pass lays down. Everything else
+   * here is organic scatter, and a floor made only of scatter still reads as noise however
+   * much of it there is — the eye needs a man-made straight line per bay to measure the space
+   * against, and a patch also explains where the drains and the ducts run.
+   */
+  function surfacePatch(x, z, hx, hz, yaw, seedN) {
+    const g = GT('asphalt', 0.35);
+    const r2 = mulberry32(seedN);
+    place(x, groundY(x, z), z, yaw);
+    // The seal: one size up, ragged, and paler because the bitumen has bloomed to grey.
+    const st = mixTint(T.grime, T.asphalt, 0.55);
+    _bp.length = 0;
+    for (let i = 0; i < 4; i++) {
+      const sx = i === 0 || i === 3 ? -1 : 1;
+      const sz = i < 2 ? -1 : 1;
+      _bp.push(sx * (hx + 0.07 + r2() * 0.1), 0.014, sz * (hz + 0.07 + r2() * 0.1));
+    }
+    gpoly(g, _bp, 0, 1, 0, st);
+    // The patch itself: darker, fresher, and sitting a couple of millimetres proud of it.
+    _bp.length = 0;
+    for (let i = 0; i < 4; i++) {
+      const sx = i === 0 || i === 3 ? -1 : 1;
+      const sz = i < 2 ? -1 : 1;
+      _bp.push(sx * hx * (0.94 + r2() * 0.09), 0.0165, sz * hz * (0.94 + r2() * 0.09));
+    }
+    gpoly(g, _bp, 0, 1, 0, [T.grime[0] * 0.82, T.grime[1] * 0.82, T.grime[2] * 0.86]);
+    popX();
+  }
+
+  /**
+   * What is left of a painted marking. Emitted as dashes with a wear-out probability, because
+   * a line on a working surface goes in the wheel tracks first and survives at the edges — a
+   * continuous line reads as freshly laid, which is the opposite of the story.
+   *
+   * Rides in the `concretePanel` buffer, where a bright tint off `T.paint` lands as chalky
+   * white; on the asphalt buffer the same tint would only ever be dark grey.
+   */
+  function paintedLine(x0, z0, x1, z1, w, gone, seedN) {
+    const len = Math.hypot(x1 - x0, z1 - z0);
+    if (len < 0.5) return;
+    const yaw = runYaw(x1 - x0, z1 - z0);
+    const g = G('concretePanel');
+    const r2 = mulberry32(seedN);
+    const segs = Math.max(2, Math.round(len / 0.62));
+    place((x0 + x1) * 0.5, 0, (z0 + z1) * 0.5, yaw);
+    for (let i = 0; i < segs; i++) {
+      const f0 = i / segs;
+      const f1 = (i + 1) / segs;
+      const skip = r2() < gone;
+      const hw = w * (0.62 + r2() * 0.5);
+      const tone = 0.6 + r2() * 0.44;
+      if (skip) continue;
+      const a = -len * 0.5 + f0 * len + 0.04;
+      const b = -len * 0.5 + f1 * len - 0.04;
+      // The run is yawed, so local Y is still world Y and the strip can follow the ground.
+      const ya = groundY(lerp(x0, x1, f0), lerp(z0, z1, f0)) + 0.019;
+      const yb = groundY(lerp(x0, x1, f1), lerp(z0, z1, f1)) + 0.019;
+      _bp.length = 0;
+      _bp.push(a, ya, -hw, b, yb, -hw, b, yb, hw, a, ya, hw);
+      gpoly(g, _bp, 0, 1, 0, [T.paint[0] * tone, T.paint[1] * tone, T.paint[2] * tone]);
+    }
+    popX();
+  }
+
+  /**
+   * The man-made half of a bay: the ruts down its desire lines, the markings, the drain covers
+   * and the patches, plus two or three pieces of yard furniture with real height.
+   *
+   * The anchors are the part that stops the bay reading as a *textured* plane rather than an
+   * inhabited one. Scatter gives the ground grain; only something knee-high gives it parallax,
+   * a cast shadow at 8° of key elevation, and a scale reference. They go where the traffic
+   * does not, because that is the only place anybody would leave something standing.
+   */
+  function dressBay(bay) {
+    const r2 = mulberry32(bay.seed + 977);
+    const rect = bay.rect;
+
+    if (bay.ruts) {
+      for (let i = 0; i < bay.ruts.length; i++) {
+        const R = bay.ruts[i];
+        tyreTrack(R[0], R[1], R[2], R[3], 2.0, bay.seed + 30 + i, { wander: 0.14 });
+      }
+    }
+    if (bay.marks) {
+      for (let i = 0; i < bay.marks.length; i++) {
+        const m = bay.marks[i];
+        paintedLine(m[0], m[1], m[2], m[3], m[4], m[5], bay.seed + 60 + i);
+      }
+    }
+    if (bay.drains) {
+      for (let i = 0; i < bay.drains.length; i++) {
+        const d = bay.drains[i];
+        if (!bayOpen(bay, d[0], d[1], 0.6)) continue;
+        manhole(d[0], d[1], d[2]);
+        gravelDrift(d[0] - 0.5, d[1] - 0.52, d[0] + 0.5, d[1] - 0.52, -1, bay.seed + 80 + i, 1.6);
+      }
+    }
+
+    // Patches follow the routes, because that is where the services were laid.
+    const patches = bay.patches || 0;
+    for (let i = 0; i < patches; i++) {
+      const L = bay.lines[(r2() * bay.lines.length) | 0];
+      const f = 0.16 + r2() * 0.68;
+      const px = lerp(L[0], L[2], f) + (r2() - 0.5) * 2.4;
+      const pz = lerp(L[1], L[3], f) + (r2() - 0.5) * 2.4;
+      if (px < rect[0] || px > rect[2] || pz < rect[1] || pz > rect[3]) continue;
+      if (!bayOpen(bay, px, pz, 0.9)) continue;
+      surfacePatch(px, pz, 0.55 + r2() * 1.05, 0.38 + r2() * 0.62,
+        runYaw(L[2] - L[0], L[3] - L[1]) + (r2() - 0.5) * 0.3, bay.seed + 100 + i);
+    }
+
+    const anchors = bay.anchors === undefined ? 0 : bay.anchors;
+    for (let i = 0; i < anchors; i++) {
+      let px = 0;
+      let pz = 0;
+      let ok = false;
+      for (let a = 0; a < 16 && !ok; a++) {
+        px = lerp(rect[0] + 1.4, rect[2] - 1.4, r2());
+        pz = lerp(rect[1] + 1.0, rect[3] - 1.0, r2());
+        ok = desireDist(px, pz, bay.lines) > 2.2 && bayOpen(bay, px, pz, 1.8);
+      }
+      if (!ok) continue;
+      const seedN = bay.seed + 130 + i * 7;
+      const yaw = r2() * 6.28;
+      const kind = (r2() * 5) | 0;
+      if (kind === 0) {
+        tyrePile(px, pz, 4 + ((r2() * 3) | 0), seedN);
+      } else if (kind === 1) {
+        timberOffcuts(px, pz, lod > 0 ? 7 : 4, seedN);
+        addInstance(setCone, px + 0.9, groundY(px + 0.9, pz - 0.6), pz - 0.6, yaw, 0, 0, 1, grey(0.9 + r2() * 0.3));
+      } else if (kind === 2) {
+        jerryRow(px, pz, yaw, 3 + ((r2() * 2) | 0), seedN);
+        litterCatch(px + 0.7, pz + 0.5, yaw, lod > 0 ? 3 : 2, seedN + 1);
+      } else if (kind === 3) {
+        // A short pallet stack with one leaning off it. Slot-sided, so it reads instantly.
+        const n = 3 + ((r2() * 3) | 0);
+        for (let k = 0; k < n; k++) {
+          const tone = 0.72 + hash2(seedN + k, 6) * 0.5;
+          addInstance(setPallet, px + (hash2(k, seedN) - 0.5) * 0.1, groundY(px, pz) + k * 0.145,
+            pz + (hash2(k, seedN + 5) - 0.5) * 0.1, yaw + (hash2(k, seedN + 9) - 0.5) * 0.08, 0, 0, 1,
+            [T.wood[0] * tone, T.wood[1] * tone, T.wood[2] * tone]);
+        }
+        addInstance(setPallet, px + Math.cos(yaw) * 0.78, groundY(px, pz) + 0.5, pz - Math.sin(yaw) * 0.78,
+          yaw + 0.5, 0, 1.3, 1, T.woodDark);
+        solidBox(px, groundY(px, pz) + n * 0.0725, pz, 0.62, n * 0.0725, 0.42, 'wood', yaw, { cover: false });
+        dustSkirt(px, pz, 0.92, 0.09, seedN + 2, null);
+      } else {
+        // A slab levered out of the surface and left on edge, with its rebar showing.
+        const s = 1.5 + r2() * 0.7;
+        const rz = (r2() < 0.5 ? -1 : 1) * (0.7 + r2() * 0.45);
+        const rest = (0.42 * Math.abs(Math.sin(rz)) + 0.1 * Math.abs(Math.cos(rz))) * s;
+        const tone = 0.8 + r2() * 0.32;
+        addInstance(setSlab, px, groundY(px, pz) + rest * 0.74, pz, yaw, 0, rz, s,
+          [T.concreteWorn[0] * tone, T.concreteWorn[1] * tone, T.concreteWorn[2] * tone]);
+        dustSkirt(px, pz, 0.78, 0.1, seedN + 3, null);
+      }
+    }
+  }
+
+  function fillBay(bay) {
+    const rect = bay.rect;
+    const r2 = mulberry32(bay.seed);
+    // 1.15 m is about the largest cell that still guarantees no bare metre survives inside a
+    // bay at full wear, and small enough that the jitter kills the grid before the eye finds it.
+    const CELL = 1.15;
+    const nx = Math.max(1, Math.round((rect[2] - rect[0]) / CELL));
+    const nz = Math.max(1, Math.round((rect[3] - rect[1]) / CELL));
+    const cw = (rect[2] - rect[0]) / nx;
+    const cd = (rect[3] - rect[1]) / nz;
+    const gate = lod > 1 ? 1 : lod > 0 ? 0.72 : 0.44;
+    const bw = bay.wear === undefined ? 1 : bay.wear;
+    for (let ix = 0; ix < nx; ix++) {
+      for (let iz = 0; iz < nz; iz++) {
+        const x = rect[0] + (ix + 0.12 + r2() * 0.76) * cw;
+        const z = rect[1] + (iz + 0.12 + r2() * 0.76) * cd;
+        // Gaussian, not linear: a linear falloff leaves a visible edge to the dirty band, and
+        // a working surface has no edge — it just gets cleaner until it is growing over.
+        const d = desireDist(x, z, bay.lines);
+        const wear = Math.exp(-(d * d) / 18);
+        if (r2() > (0.24 + 0.62 * wear) * bw * gate) continue;
+        if (!bayOpen(bay, x, z, 0.5)) continue;
+        bayPiece(x, z, wear, r2);
+      }
+    }
+    dressBay(bay);
+  }
+
+  function openBays() {
+    for (let i = 0; i < OPEN_BAYS.length; i++) fillBay(OPEN_BAYS[i]);
+  }
+
   /** Walls: rainwater goods, services, fittings, signage, stencils and the stains off them. */
   function dressWalls() {
     /* --- the depot ------------------------------------------------------- */
@@ -6793,6 +7576,9 @@ export function createLevel(scene, materials, game) {
     dressYard();
     dressOverhead();
     dressDamage();
+    // Last, and it has to be last: the open-bay fill tests every candidate against the live
+    // collider list, so everything above has to have finished putting its props down first.
+    openBays();
     resetX();
   }
 

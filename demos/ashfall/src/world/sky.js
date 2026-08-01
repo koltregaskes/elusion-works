@@ -699,6 +699,14 @@ const CLOUD_FRAG = /* glsl */ `
   uniform float uStretch;
   /** Cross-wind displacement of the streaks, i.e. vertical wind shear. */
   uniform float uShear;
+  /**
+   * Cross-wind wander of the band axis, modulated *along* the band. A shear is a translation
+   * along the band and so cannot change a band's width; this can, because its derivative in the
+   * cross-wind coordinate locally spreads and pinches the pitch.
+   */
+  uniform float uWander;
+  /** Zero-mean low-frequency density push along the band axis, so bands break up lengthwise. */
+  uniform float uBreakup;
   /** Amplitude of the fibrous detail that runs *along* the streaks. */
   uniform float uFibre;
   uniform float uAerial;
@@ -737,17 +745,39 @@ const CLOUD_FRAG = /* glsl */ `
   // Loop bounds are preprocessor constants, never function parameters: GLSL ES 1.00 requires a
   // constant expression there, so the octave count arrives as a #define and the shadow taps get
   // their own fixed-depth variant.
-  float fbmMain(vec2 p) {
+  //
+  // fp is the per-pixel sampling footprint of p, in noise-domain units (see the fwidth(qs) block
+  // in main). Each octave is faded out as its own period approaches that footprint, which is the
+  // analytic-LOD half of a mip chain: an octave that cannot be resolved is not sampled at all
+  // rather than being point-sampled above Nyquist and folded back down into moire. This fBm has
+  // equal derivative per octave (gain 0.5, lacunarity 2.03), so the top octave contributes as
+  // much per-pixel slope as the fundamental and is what turned the coverage step into a
+  // one-pixel-wide edge; band-limiting here is what lets the step widen back out into cloud.
+  //
+  // The weight goes into norm as well as sum, so a killed octave costs the field its detail and
+  // not its level: the result converges to the local mean of the surviving octaves instead of
+  // dimming toward zero and dragging the whole far deck under the coverage threshold.
+  float fbmMain(vec2 p, float fp) {
     float sum = 0.0;
     float amp = 0.5;
     float norm = 0.0;
+    float freq = 1.0;
     for (int i = 0; i < CLOUD_OCTAVES; i++) {
-      sum += amp * noised(p).x;
-      norm += amp;
+      // fp * freq is cycles per pixel. 0.25..0.50 fades the octave out between a quarter and a
+      // half cycle per pixel, i.e. it is gone by Nyquist and already fading before it.
+      float w = 1.0 - smoothstep(0.25, 0.50, fp * freq);
+      sum += amp * w * noised(p).x;
+      norm += amp * w;
       p = M2 * p * 2.03;
+      freq *= 2.03;
       amp *= 0.5;
     }
-    return sum / max(norm, 1e-4);
+    // Degenerate case: the footprint is so large that every octave is killed (the last degree
+    // above the horizon, where t runs away). Return the field's mean rather than 0, so the far
+    // deck resolves to a flat sheet that aerial perspective then dissolves, instead of punching
+    // a dark hole in the horizon band.
+    if (norm < 1e-4) return 0.5;
+    return sum / norm;
   }
 
   float fbm3(vec2 p) {
@@ -820,6 +850,18 @@ const CLOUD_FRAG = /* glsl */ `
     // cross-wind position. Without it the bands are parallel rulings; with it they feather and
     // fan the way a sheared cirrus deck actually does.
     wq.x += noised(vec2(wq.y * 0.55, uTime * 0.004)).x * uShear;
+    // ...but a shear is still a pure translation *along* the band, so every band keeps the same
+    // width and the pitch stays even. That is the other half of why the deck measured as
+    // evenly-spaced parallel rulings: a 1D compression of an isotropic field gives a comb.
+    // Displacing the *cross-wind* coordinate by a field that varies slowly along the band gives
+    // the widths back — where this displacement's cross-wind derivative is positive neighbouring
+    // bands spread apart, where it is negative they pinch together and merge. Frequencies are
+    // chosen in the pre-stretch frame: 0.055 along the wind is roughly three band-lengths, 0.20
+    // across it is about five band-widths, so a handful of adjacent bands share a phase and
+    // drift relative to each other rather than every band wobbling independently.
+    // The amplitude is held below 1/0.375 so the map stays injective and the bands cannot fold
+    // back through one another (quintic value noise has |d/dx| <= 1.875, hence 0.20 * 1.875).
+    wq.y += (noised(vec2(wq.x * 0.055, wq.y * 0.20 + 11.7)).x - 0.5) * uWander;
     vec2 qs = vec2(wq.x / max(uStretch, 0.05), wq.y);
 
     #if CLOUD_WARP
@@ -833,13 +875,54 @@ const CLOUD_FRAG = /* glsl */ `
       qs += curl * uWarp;
     #endif
 
-    float dens = fbmMain(qs);
+    // Per-pixel sampling footprint of the *noise domain*, in fBm units. Taken on qs and not on
+    // dens on purpose: qs is post-stretch, post-shear, post-wander, post-curl, so its screen
+    // derivative is exactly the footprint of the field about to be sampled — including the 6:1
+    // uStretch anisotropy, which makes the field change several times faster across the bands
+    // than along them. fwidth of the *output* can only ever measure an already-aliased result.
+    //
+    // Clamped because t goes as 1/sin(altitude) and runs away at the horizon: without the cap a
+    // single row of pixels would carry a footprint of thousands of fBm units and the smoothsteps
+    // below would be evaluated on numbers large enough to lose precision.
+    float fpx = fwidth(qs.x);
+    float fpy = fwidth(qs.y);
+    float fpm = clamp(max(fpx, fpy), 0.0, 8.0);
+
+    float dens = fbmMain(qs, fpm);
+
+    // Breakup along the band axis. Real sheared cirrus wastes away and re-forms down its length;
+    // it does not run unbroken from one side of the dome to the other. The modulation is much
+    // lower frequency than the band structure itself (0.38 along the stretched axis is ~2.6 band
+    // lengths, 0.26 across it means a small group of bands rises and falls together) so it opens
+    // and closes gaps rather than adding another octave of speckle - the fibre term below already
+    // owns the fine detail.
+    //
+    // Authored as a *zero-mean additive push* rather than a multiplicative field on purpose:
+    // value noise has mean 0.5, so (brk - 0.5) integrates to zero and the deck's average coverage
+    // is untouched. uCoverage is calibrated against the whole *distribution* of the field this
+    // term is part of (see the param comment), so its mean has to survive.
+    //
+    // Band-limited on the same rule as the octaves above. It is the lowest-frequency term in the
+    // shader so it is the last thing to go, but it is zero-mean and additive: once its period
+    // drops under a pixel it contributes pure variance and nothing else, and fading its amplitude
+    // out is exactly the right answer.
+    float brkLod = 1.0 - smoothstep(0.25, 0.50, max(fpx * 0.38, fpy * 0.26));
+    float brk = noised(vec2(qs.x * 0.38, qs.y * 0.26) + 31.4).x;
+    dens += uBreakup * brkLod * (brk - 0.5);
 
     // Fibrous detail *along* the streaks only. Cirrus is combed: its fine structure runs
     // parallel to the bands. Making this detail isotropic collapses the whole effect straight
     // back into speckle, so the frequencies are deliberately lopsided.
+    //
+    // At 9.0 cross-wind this is the highest-frequency term in the shader by a factor of two, so
+    // it is the first thing that has to go as the footprint grows — but it is driven off the
+    // footprint rather than hard-limited to a lower frequency, because overhead it is correctly
+    // resolved and it is what combs the deck. A fixed lower frequency would flatten the texture
+    // where it reads and still alias past a few kilometres.
+    float fibLod = 1.0 - smoothstep(0.25, 0.50, fpy * 9.0);
     float fib = noised(vec2(qs.x * 2.7, qs.y * 9.0)).x;
-    dens *= 1.0 - uFibre * 0.5 + uFibre * fib;
+    float fAmp = uFibre * fibLod;
+    dens *= 1.0 - fAmp * 0.5 + fAmp * fib;
 
     // Coverage threshold. Softness controls the wispiness of the edges; a hard step here is
     // the classic "cotton wool cut out with scissors" tell. The transition widens with distance
@@ -847,7 +930,43 @@ const CLOUD_FRAG = /* glsl */ `
     // Capped: uncapped, the horizon bands - the whole point of the deck reaching that far -
     // widened their way straight back out of existence past ~15 km.
     float soft = uSoftness * (1.0 + min(t * 0.00040, 1.5));
-    float cov = smoothstep(uCoverage, uCoverage + soft, dens);
+
+    // ...and that softness alone is not enough, because it is authored in *density* units
+    // while the artefact is a *screen-space* one. The rate at which dens changes per pixel is nowhere near
+    // uniform over the deck: the ray-plane intersect puts ground metres per pixel up as
+    // 1/sin(alt)^2, and the 6:1 wind compression makes the field change several times faster
+    // across the bands than along them. Wherever that rate exceeds the authored half-width the
+    // step resolves inside a single pixel and the deck reads as hard-edged rulings - a column
+    // read of an earlier build measured a step from (148,176,203) to warm tan with no gradient
+    // between them. Dropping softness from 0.30 to 0.14 is what fixed the flat-veil look and
+    // caused this; prefiltering analytically lets the low authored softness stay.
+    //
+    // This is now the *final* edge-antialiasing term rather than a band-aid over an aliased
+    // field: with the octave rolloff above, dens is band-limited before it gets here, so
+    // fwidth(dens) measures a real gradient instead of the residual of a field being point-
+    // sampled past Nyquist, and it collapses to hw over most of the deck.
+    //
+    // The transition is kept centred exactly where it already was - half a softness above
+    // uCoverage - and only *widened*. Widening symmetrically about uCoverage instead would drop
+    // the whole transition half a softness lower and roughly double the deck's apparent coverage.
+    float hw = 0.5 * soft;
+    float mid = uCoverage + hw;
+    // fwidth() = |dFdx| + |dFdy|, so it already runs ~1.4x the true per-pixel step; 0.75 of it
+    // as a half-width lands the edge at roughly one and a half pixels, which is soft enough to
+    // read as cloud and tight enough not to blur the wisps away.
+    //
+    // Capped for the same reason the distance widening above is capped: once the transition
+    // spans more than ~0.2 the step has resolved to the field's local mean, and widening further
+    // only drags the far deck toward a flat 50% and greys out the horizon band the deck
+    // reaching that far was for. max() is applied last, so a re-authored uSoftness always wins.
+    //
+    // fwidth is available here despite the note on the solar disc above: the ES 1.00 derivative
+    // builtins are implicitly enabled in a WebGL2 context, and materials.js already ships dFdx
+    // unguarded in a world material. The disc still uses uPixelAngle because there the footprint
+    // genuinely is a constant angle per pixel, so a uniform is exact and free; no uniform can
+    // express the footprint of this field.
+    float e = max(hw, min(fwidth(dens) * 0.75, 0.20));
+    float cov = smoothstep(mid - e, mid + e, dens);
     if (cov <= 0.002) discard;
 
     /* ---- Lighting ------------------------------------------------------- */
@@ -882,7 +1001,16 @@ const CLOUD_FRAG = /* glsl */ `
     // below with the beam raking past them and only the cool zenith filling the shadow. Keying
     // both terms off view altitude is a cheap stand-in for a real cloud normal, and it puts the
     // same warm-key/cool-shadow split on the deck that section 4 puts on the ground.
-    float topness = smoothstep(0.06, 0.62, up);
+    //
+    // The ramp is deliberately low. The eye is at 1.75 m under a 620 m deck, so *every* visible
+    // part of it is seen from underneath — but "underside" in the lighting sense means the warm
+    // dust band is the dominant fill, and that is only true within a few degrees of the horizon
+    // where the band actually subtends anything. At 0.06..0.62 topness only reached 0.29 at 15
+    // degrees and 0.71 at 25, which handed uAmbUnder (strongly warm) the entire lower two thirds
+    // of the dome in every direction and left the anti-solar sky with no cool mass at all. At
+    // 0.02..0.34 the crossover sits at ~10 degrees, so the horizon glow keeps its warm underside
+    // and the mid dome picks up the cool zenith fill that section 4 needs it to have.
+    float topness = smoothstep(0.02, 0.34, up);
 
     vec3 sunLit = uSunColour * (trans * phase * uSunVisibility * mix(1.35, 0.55, topness));
     vec3 ambient = mix(uAmbUnder, uAmbTop, topness) * (0.34 + 0.34 * up);
@@ -892,7 +1020,14 @@ const CLOUD_FRAG = /* glsl */ `
     // with it, the compressed horizon bands dissolve into the dust layer, which is exactly what
     // they should do. Gentler than before because the deck now reaches much further out.
     float aerial = 1.0 - exp(-t * uAerial);
-    col = mix(col, uHazeColour * uHazeLuminance, aerial * 0.85);
+    // ...but t is the plane-intersect distance and nothing else, so it is still 1051 m at 36
+    // degrees of elevation and the term was dropping 9% of the warm horizon dust onto the highest
+    // cloud in the frame. The dust is a *layer*: a ray climbing out of it leaves it almost
+    // immediately, so the amount of it between the eye and the cloud collapses with altitude.
+    // Gating on (1 - up)^2 mirrors the hazeGate the dome itself already applies and is what keeps
+    // the anti-solar deck from being tinted warm at every elevation.
+    float aerialGate = (1.0 - up) * (1.0 - up);
+    col = mix(col, uHazeColour * uHazeLuminance, aerial * aerialGate * 0.85);
 
     float alpha = cov * uOpacity * horizonFade * distFade;
     gl_FragColor = vec4(col, clamp(alpha, 0.0, 1.0));
@@ -1033,9 +1168,20 @@ const GODRAY_FRAG = /* glsl */ `
     vec2 uv = vUv;
     vec2 delta = (uv - uSunUV) * (uDensity * uStride / float(GR_SAMPLES));
 
-    // Jittering the march start by up to one step converts the ~SAMPLES concentric banding
-    // artefacts of a cheap radial blur into noise, which TAA then eats for free.
-    uv -= delta * (hash12(gl_FragCoord.xy) * uJitter);
+    // Jittering the march start by up to one step is what breaks the ~SAMPLES concentric banding
+    // artefacts of a cheap radial blur. What it must not do is trade that banding for white noise:
+    // the offset is keyed on gl_FragCoord.xy alone, so it is *static* across frames, and a static
+    // per-pixel pattern is precisely the thing TAA converges *onto* rather than averaging away.
+    // With hash12 here the shafts carried a fixed 1-2 pixel salt-and-pepper residual that survived
+    // the whole post chain and then got stamped over every material in the frame by the composite.
+    //
+    // Jimenez interleaved gradient noise instead: low-discrepancy, so it decorrelates the march
+    // start just as well over a 3x3 neighbourhood, but spatially *correlated*, so what is left
+    // over between adjacent pixels is a smooth gradient rather than per-pixel hash. The magic
+    // constants are the published ones; the fract(52.98 * fract(dot(...))) form is what keeps it
+    // well-distributed at large fragment coordinates.
+    float grIGN = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+    uv -= delta * (grIGN * uJitter);
 
     vec3 acc = vec3(0.0);
     float illum = 1.0;
@@ -1050,13 +1196,50 @@ const GODRAY_FRAG = /* glsl */ `
   }
 `;
 
+/**
+ * Separable 3-tap [1 2 1] blur, half resolution.
+ *
+ * Belt and braces for the single-pass god-ray path: without the refine pass there is nothing
+ * downstream that touches the march's start-jitter residual, and postfx composites the shaft
+ * buffer additively over the whole frame, so any per-pixel residual in it becomes per-pixel
+ * residual on every material in the image. Two of these cost a few hundred microseconds at half
+ * res and are unconditionally cheaper than the refine pass they stand in for. Never runs on a
+ * two-pass preset, where pass 2 already resolves the jitter properly.
+ */
+const GODRAY_BLUR_FRAG = /* glsl */ `
+  precision highp float;
+  varying vec2 vUv;
+  uniform sampler2D tSrc;
+  uniform vec2 uStep;
+  void main() {
+    vec3 c = texture2D(tSrc, vUv).rgb * 0.5;
+    c += texture2D(tSrc, vUv + uStep).rgb * 0.25;
+    c += texture2D(tSrc, vUv - uStep).rgb * 0.25;
+    gl_FragColor = vec4(c, 1.0);
+  }
+`;
+
 /* ========================================================================== */
 /* Quality presets (ARCHITECTURE.md §5)                                       */
 /* ========================================================================== */
 
+/**
+ * `godrayPasses` is not a quality dial, it is a correctness one. Pass 2 is the only thing that
+ * removes pass 1's start jitter (it re-marches the already-jittered buffer with uJitter = 0), so
+ * a single-pass preset ships the raw jitter residual straight into postfx's composite, where it
+ * lands on every pixel of the frame as a static 1-2 px speckle that reads as sensor noise on the
+ * materials rather than as anything to do with light shafts.
+ *
+ * `medium` was the only preset that both enabled god rays and skipped that pass. It now runs two
+ * passes, and pays for them by dropping from 12 samples to 8: a two-pass 8-sample march is
+ * cheaper than a one-pass 12-sample one (16 taps against 12 is more taps, but they are half-res
+ * dependent-free texture fetches with far better cache coherence than pass 1's long stride) and
+ * the second pass fills the gaps between the first pass's taps, so the result is closer to 64
+ * effective samples than to 8.
+ */
 const SKY_QUALITY = {
   low: { godray: 0, godraySamples: 10, godrayPasses: 1, cloudOctaves: 3, cloudWarp: 0, cloudShadow: 0, dust: 0.35, domeSeg: [48, 24] },
-  medium: { godray: 0.5, godraySamples: 12, godrayPasses: 1, cloudOctaves: 4, cloudWarp: 1, cloudShadow: 1, dust: 0.6, domeSeg: [56, 28] },
+  medium: { godray: 0.5, godraySamples: 8, godrayPasses: 2, cloudOctaves: 4, cloudWarp: 1, cloudShadow: 1, dust: 0.6, domeSeg: [56, 28] },
   high: { godray: 0.5, godraySamples: 16, godrayPasses: 2, cloudOctaves: 5, cloudWarp: 1, cloudShadow: 2, dust: 1.0, domeSeg: [64, 32] },
   ultra: { godray: 1.0, godraySamples: 24, godrayPasses: 2, cloudOctaves: 6, cloudWarp: 1, cloudShadow: 2, dust: 1.4, domeSeg: [72, 36] },
 };
@@ -1272,13 +1455,30 @@ export function createSky(engine, materials) {
      *
      * The previous 0.54 / 0.30 pair did the opposite — a wide transition on a high threshold
      * gives a low-alpha veil over the entire dome and nothing that reads as a cloud, which is
-     * why the deck measured as absent while still greying out the zenith. At 0.48 / 0.14 the
-     * fBm's median lands at ~4% alpha (i.e. clear) and its upper third at 70-90% (i.e. cloud).
+     * why the deck measured as absent while still greying out the zenith.
+     *
+     * 0.48 was then chosen on the median alone: with a half-width of 0.07 the transition is
+     * centred on 0.55, the field's median is 0.498, and that does land the median at ~4% alpha.
+     * The mistake is that the median says nothing about coverage when the transition is narrower
+     * than the distribution. Sampling the actual field (5 octaves, plus the breakup and fibre
+     * terms) gives mean 0.50 with a standard deviation of 0.147 — more than twice the half-width
+     * — so at 0.48 fully 32% of the dome sits above 70% alpha and only half of it is genuinely
+     * clear. Measured, depot came back at alpha ~1.0 edge to edge and sunline's "clear" half at
+     * 40-50%, which is what erased the sky's own gradient and cost section 4 its cool anchor.
+     *
+     * 0.62 puts the transition at 0.69, i.e. 1.3 standard deviations up: 82% of the dome is
+     * genuinely uncovered, ~9% is solid band, and what is left in between is the wisp. That is a
+     * high thin deck rather than an overcast, and it is what lets the anti-solar sky be blue.
      */
-    cloudCoverage: 0.48,
+    cloudCoverage: 0.62,
     cloudSoftness: 0.14,
-    /** Raised: at 0.78, under aerial perspective, the deck was being swamped by the haze band. */
-    cloudOpacity: 0.94,
+    /**
+     * Raised from 0.78 originally because, under aerial perspective, the deck was being swamped
+     * by the haze band. Eased back a little now that the aerial term is altitude-gated and no
+     * longer swamps anything: at 0.94 a solid band was completely opaque, so a single band across
+     * a vantage removed the sky from that whole part of the frame.
+     */
+    cloudOpacity: 0.90,
     cloudWarp: 0.55,
     cloudAbsorb: 1.35,
     /**
@@ -1294,6 +1494,24 @@ export function createSky(engine, materials) {
      * is ~2.4 km of along-wind offset across the deck.
      */
     cloudShear: 1.6,
+    /**
+     * Cross-wind wander of the band axis, in fBm units *before* the stretch, i.e. in band widths.
+     *
+     * The shear above fans the bands but cannot vary their width, because it slides them along
+     * their own axis. This is what stops the deck being an evenly-pitched comb: 0.9 of a band
+     * width of wander, varying over ~3 band lengths, spreads and pinches the pitch by about a
+     * third either way. Above ~2.6 the domain map stops being injective and bands fold through
+     * each other, which reads as a moire rather than as cloud.
+     */
+    cloudWander: 0.9,
+    /**
+     * Zero-mean low-frequency density push along the band axis, in raw fBm units.
+     *
+     * The coverage transition is 0.14 wide, so 0.17 (i.e. +-0.085) is enough to carry a band
+     * across the threshold and back and make it terminate part way along its length, without
+     * being so large it dissolves the band structure the stretch exists to create.
+     */
+    cloudBreakup: 0.17,
     /** Fibrous along-streak detail. Combed, not speckled. */
     cloudFibre: 0.40,
     /** Aerial-perspective rate, per metre. Gentler than before: the deck now reaches much further. */
@@ -1623,6 +1841,8 @@ export function createSky(engine, materials) {
     uFadeFar: { value: params.cloudFadeFar },
     uStretch: { value: params.cloudStretch },
     uShear: { value: params.cloudShear },
+    uWander: { value: params.cloudWander },
+    uBreakup: { value: params.cloudBreakup },
     uFibre: { value: params.cloudFibre },
     uAerial: { value: params.cloudAerial },
     uHorizonStart: { value: params.cloudHorizonStart },
@@ -1862,6 +2082,22 @@ export function createSky(engine, materials) {
     vertexShader: FS_VERT,
     fragmentShader: GODRAY_FRAG,
     defines: { GR_SAMPLES: preset.godraySamples },
+    depthWrite: false,
+    depthTest: false,
+    toneMapped: false,
+  });
+
+  // Only ever bound on the single-pass path — see GODRAY_BLUR_FRAG. Uniforms are allocated once
+  // and written in place, so the guard costs no allocation in the frame loop.
+  const godrayBlurUniforms = {
+    tSrc: { value: null },
+    uStep: { value: new THREE.Vector2() },
+  };
+  const godrayBlurMaterial = new THREE.ShaderMaterial({
+    name: 'AshfallGodrayBlur',
+    uniforms: godrayBlurUniforms,
+    vertexShader: FS_VERT,
+    fragmentShader: GODRAY_BLUR_FRAG,
     depthWrite: false,
     depthTest: false,
     toneMapped: false,
@@ -2128,10 +2364,17 @@ export function createSky(engine, materials) {
     // Two separate ambients, not one blend: the top of the deck only ever sees the cool zenith,
     // the underside sees the bright warm dust band. Handing the shader a single averaged fill is
     // what made the deck one flat sheet with no warm/cool relationship in it.
+    //
+    // The 10% is a *hue* blend — a hint of dust in the zenith fill — and the level is applied
+    // afterwards. Doing it the other way round (lerping two already-levelled colours) is not the
+    // same operation and is not a 10% anything: hazeLuminance is 1.10 against zenithLuminance's
+    // 0.185, so a 10% by-value lerp toward the horizon supplied ~90% of uAmbTop's red channel and
+    // handed the shader a neutral grey (R-B -7 in sRGB) under the name "cool zenith fill". Blend
+    // then scale gives lin(0.021, 0.037, 0.064), i.e. R-B -31, which is a zenith.
     cloudUniforms.uAmbTop.value
       .copy(colZenith)
-      .multiplyScalar(params.zenithLuminance * skyBrightnessScale)
-      .lerp(_colC.copy(colHorizon).multiplyScalar(params.hazeLuminance * skyBrightnessScale), 0.10);
+      .lerp(_colC.copy(colHorizon), 0.10)
+      .multiplyScalar(params.zenithLuminance * skyBrightnessScale);
     cloudUniforms.uAmbUnder.value
       .copy(colHorizon)
       .multiplyScalar(params.hazeLuminance * skyBrightnessScale * 0.85)
@@ -2139,6 +2382,9 @@ export function createSky(engine, materials) {
     cloudUniforms.uHazeLuminance.value = params.hazeLuminance * skyBrightnessScale;
     cloudUniforms.uStretch.value = Math.max(params.cloudStretch, 0.05);
     cloudUniforms.uShear.value = params.cloudShear;
+    // Clamped at 2.6: past that the cross-wind warp folds and the deck moires (see cloudWander).
+    cloudUniforms.uWander.value = clamp(params.cloudWander, 0, 2.6);
+    cloudUniforms.uBreakup.value = clamp(params.cloudBreakup, 0, 0.45);
     cloudUniforms.uFibre.value = clamp(params.cloudFibre, 0, 1);
     cloudUniforms.uAerial.value = Math.max(params.cloudAerial, 0);
     cloudUniforms.uHorizonStart.value = Math.max(params.cloudHorizonStart, 1e-4);
@@ -2387,6 +2633,16 @@ export function createSky(engine, materials) {
       godrayUniforms.uDecay.value = Math.pow(clamp(params.godrayDecay, 0.5, 0.9999), 1 / preset.godraySamples);
       godrayUniforms.uIntensity.value = grOut;
       blit(godrayMaterial, godray.blurB);
+    } else if (godray.blurA) {
+      // Single pass: nothing downstream resolves the march's start jitter, and postfx composites
+      // this buffer additively over the entire frame, so it must never ship raw. One separable
+      // 3-tap at half resolution. blurA is otherwise unused on this path, so it is free scratch.
+      godrayBlurUniforms.tSrc.value = godray.blurB.texture;
+      godrayBlurUniforms.uStep.value.set(1 / Math.max(godray.w, 1), 0);
+      blit(godrayBlurMaterial, godray.blurA);
+      godrayBlurUniforms.tSrc.value = godray.blurA.texture;
+      godrayBlurUniforms.uStep.value.set(0, 1 / Math.max(godray.h, 1));
+      blit(godrayBlurMaterial, godray.blurB);
     }
 
     /* ---- Restore -------------------------------------------------------- */
@@ -2627,6 +2883,7 @@ export function createSky(engine, materials) {
     sunProxyMaterial.dispose();
     occMaterial.dispose();
     godrayMaterial.dispose();
+    godrayBlurMaterial.dispose();
     releaseGodrayTargets();
     if (envRT) envRT.dispose();
     if (pmrem) pmrem.dispose();

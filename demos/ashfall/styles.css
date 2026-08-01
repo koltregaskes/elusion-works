@@ -105,6 +105,20 @@
   --hairline: rgba(232, 228, 220, 0.14);
   --hairline-strong: rgba(232, 228, 220, 0.28);
 
+  /* --- Scrim ink: the one colour every HUD scrim is made of. ---
+     Not a flat black. Two things are asked of a scrim: buy a stop of separation
+     under type that is sitting on the dusk sky, and be invisible when the same
+     readout is over ground already in shadow. A near-black (the old scrims used
+     rgba(6,8,11)) does the first and fails the second — measured on terraces the
+     top-right corner is already at luminance 20, and a black wash there just
+     digs a hole. This is --ink-900 carried most of the way to --shadow-cool, so
+     it lands at rgb(22,26,31): over the 156-luminance sky at 0.4 alpha it pulls
+     the background to ~104, and over 20-luminance ground it moves it to 23,
+     which is below the threshold of visibility. It is also the same cool cast
+     the renderer puts in every shadow (ARCHITECTURE §4), so the scrims sit in
+     the image rather than on it. */
+  --scrim-ink: color-mix(in srgb, var(--ink-900) 62%, var(--shadow-cool));
+
   /* --- Type ---
      index.html links Barlow Condensed / IBM Plex Mono / Inter, but that link is
      the one external asset in a project whose whole premise is that there are
@@ -381,6 +395,95 @@ body:not(.ashfall-ready)::after {
 
 body.hide-hud .hud {
   display: none;
+}
+
+/* --------------------------------------------------------------------------
+   4b. HUD — readout scrims
+   --------------------------------------------------------------------------
+
+   The scrims are real and they have to stay: --hud-dim over the dusk sky is a
+   1.13:1 readout, and the ink outline alone cannot carry 8 px accent type. What
+   was wrong was where they lived.
+
+   Each readout used to carry its own scrim as a background on its own box, and
+   every one of those gradients was sized smaller than the box it was painted
+   in — .scoreline::before was `ellipse 78% 96% at 88% 34%`, so at the top of
+   its own border box the gradient was still at 0.278 alpha and at the right
+   edge still at 0.358. The border box then clipped it. That is precisely the
+   fault measured in yardLit.png: a 1 px step at y=10 (155 -> 117, predicted
+   115) and again at y=67, with a right edge dying ten pixels short of the
+   frame. A translucent div, exactly as described. The compass strip had the
+   same arithmetic vertically (0.339 alpha clipped at its top edge, 0.245 at its
+   bottom) and it measures as a 34-luminance step at y=12 and y=50.
+
+   So the scrims moved off the readouts and into screen space. This layer is
+   inset 0 on a HUD that is itself inset 0, which means its only boundaries are
+   the boundaries of the frame — there is no element edge left for a gradient to
+   be clipped against, at any viewport size, whatever the readouts do with their
+   own box. Each wash is positioned off --pad-t / --pad-r and sized in em (the
+   HUD's em is --u, so the washes scale with the readouts they back), and every
+   one of them reaches zero alpha well inside the picture on the sides that face
+   into the frame. On the sides that face the frame edge they run off it, which
+   is what a corner vignette does and is the one thing that guarantees no
+   floating edge; it also lands them on top of the .hud-scan vignette rather
+   than fighting it.
+
+   Held in custom properties so the small-viewport rule can drop the compass
+   wash without restating the corner wash. */
+.hud {
+  /* Top centre, behind the compass. Centred on --pad-t * 0.62 + 2.2em, which is
+     the compass box centre pushed 0.5em down to sit between the cardinals and
+     the objective markers 13 px below them — the markers are 8 px accent type
+     over open sky and are the worst case in the interface. ry 3.4em puts zero
+     alpha a hair above the frame top and ~24 px below the strip, so the ramp
+     out of the bottom of the wash is 1.7 luminance per pixel. The old step was
+     34 in one pixel. rx tracks the strip's own clamp so the wash dies at the
+     same place the strip's mask fades the ruler out. The plateau runs to 44%
+     rather than falling away immediately: the datum and the graduations sit
+     1.3em above the cardinals and were the one thing that came out of this
+     worse than the flat fill until the shoulder was pushed out to cover them
+     (0.28 -> 0.38 alpha under the ruler). */
+  --scrim-compass: radial-gradient(
+    ellipse clamp(150px, 16vw, 290px) 3.4em at 50%
+      calc(var(--pad-t) * 0.62 + 2.2em),
+    color-mix(in srgb, var(--scrim-ink) 46%, transparent) 0%,
+    color-mix(in srgb, var(--scrim-ink) 38%, transparent) 44%,
+    color-mix(in srgb, var(--scrim-ink) 16%, transparent) 74%,
+    transparent 100%
+  );
+
+  /* Top right, behind SCORE / KILLS. The block is right-ragged and grows
+     leftwards as the figures do, so the wash is anchored to the corner rather
+     than to the block: centre 3.5em in from the type's right margin, 2em below
+     the top one, which is the middle of the two rows at every clamp of --u.
+     rx 9em / ry 4.6em reaches zero ~4em left of and ~5em below the block, and
+     leaves the frame at 0.10 alpha over the top edge and 0.27 over the right —
+     a corner falloff, not a panel. Peak 0.52 takes the sky behind the labels
+     from 156 to ~104, which is a little over twice the separation the old flat
+     fill was giving them. */
+  --scrim-score: radial-gradient(
+    ellipse 9em 4.6em at calc(100% - var(--pad-r) - 3.5em)
+      calc(var(--pad-t) + 2em),
+    color-mix(in srgb, var(--scrim-ink) 52%, transparent) 0%,
+    color-mix(in srgb, var(--scrim-ink) 46%, transparent) 34%,
+    color-mix(in srgb, var(--scrim-ink) 24%, transparent) 66%,
+    color-mix(in srgb, var(--scrim-ink) 6%, transparent) 88%,
+    transparent 100%
+  );
+}
+
+.hud::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--scrim-compass), var(--scrim-score);
+  /* The readouts these back fade by 0.42 (.hud-corner) and 0.55 (.compass) when
+     the sights come up. Split the difference so the backing goes with them
+     instead of hanging over an empty corner during ADS. */
+  opacity: calc(1 - var(--ads, 0) * 0.5);
+  transition: opacity 120ms linear;
 }
 
 .hud-layer {
@@ -687,17 +790,25 @@ body.hide-hud .hud {
   height: 3.4em;
   z-index: 5;
   opacity: calc(1 - var(--ads, 0) * 0.55);
-  /* The strip sits at the top of the frame, which in this map is almost always
-     open sky — the brightest thing in the image and within a hair of the type's
-     own luminance. This scrim buys back a stop of separation under the cardinals
-     and the graduations. It is inside the element's own mask, so it fades out at
-     the same rate as the ruler and never shows an edge. */
-  background: radial-gradient(
-    ellipse 58% 130% at 50% 34%,
-    rgba(6, 8, 11, 0.44) 0%,
-    rgba(6, 8, 11, 0.24) 52%,
-    rgba(6, 8, 11, 0) 100%
-  );
+
+  /* No background. The strip still needs a scrim — it sits at the top of the
+     frame, which on this map is open sky, the brightest thing in the image and
+     within a hair of the type's own luminance — but it cannot carry one itself.
+     The strip is 3.4em tall and its content fills it: the datum sits 0.5em down,
+     the ruler runs 0.5em to 1.0em, the cardinals are centred, and the objective
+     markers hang 13 px below that. There is no room inside the box for a
+     gradient to both cover that and fade to nothing before the edge, which is
+     why the version that shipped was still at 0.339 alpha where its own border
+     box cut it off — the 34-luminance step measured at y=12 and y=50. The wash
+     is now --scrim-compass on .hud::before, in screen space, where it has the
+     whole frame to fade into and no box to be clipped by. Do not put a
+     background back here.
+
+     The mask stays: it is what fades the ruler and the cardinals out at the ends
+     of the strip instead of guillotining them. `no-repeat` is load-bearing —
+     .compass-track::before is a 2400 px ruler that overflows this box by a long
+     way, and the initial `repeat` tiles the mask, which would let the ruler
+     reappear in the next tile across. */
   -webkit-mask-image: linear-gradient(
     to right,
     transparent 0%,
@@ -706,6 +817,8 @@ body.hide-hud .hud {
     transparent 100%
   );
   mask-image: linear-gradient(to right, transparent 0%, #000 13%, #000 87%, transparent 100%);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
 }
 
 /* The datum the whole strip hangs from. */
@@ -1287,26 +1400,18 @@ body.hide-hud .hud {
 
 /* This block is the one the contrast measurement failed on: it lives in the top
    right corner, which on this map is sky in almost every frame. The opaque dim
-   and the heavier outline do most of the work; this is the last stop, a soft
-   corner scrim that pulls the sky down behind the two rows. Decorative only —
-   absolutely positioned behind the text, so nothing in the layout moves. */
-.scoreline::before {
-  content: '';
-  position: absolute;
-  right: -0.9em;
-  top: -0.9em;
-  left: -2.4em;
-  bottom: -0.9em;
-  z-index: -1;
-  pointer-events: none;
-  background: radial-gradient(
-    ellipse 78% 96% at 88% 34%,
-    rgba(6, 8, 11, 0.42) 0%,
-    rgba(6, 8, 11, 0.2) 55%,
-    rgba(6, 8, 11, 0) 100%
-  );
-}
+   and the heavier outline do most of the work; the backing that finishes the job
+   is --scrim-score on .hud::before.
 
+   It used to be a ::before on this element, and that is what a critic read as
+   "a flat grey rectangle with a hard top edge, a hard bottom edge and a hard
+   right edge that stops ten pixels short of the screen border". The gradient was
+   sized to 78% x 96% of a box it had to fill, so it was still at 0.278 alpha
+   where the box cut it at the top, 0.139 at the bottom and 0.358 at the right —
+   and the right edge could never reach the frame because the box was inset by
+   --pad-r. A scrim tied to this block's border box cannot be fixed by retuning
+   the stops; the box is the fault. `position: relative` is kept only so the
+   text-shadow stack and any future badge have a positioning context. */
 .score-row {
   display: flex;
   align-items: baseline;
@@ -1382,7 +1487,18 @@ body.hide-hud .hud {
   pointer-events: none;
 }
 
+/* Rows come and go, so this scrim cannot live in screen space the way the score
+   and compass washes do — a permanent dark patch under an empty kill feed is
+   worse than no scrim at all. It gets the same fault fixed a different way: the
+   wash moves to a pseudo-element that holds no text, and that element is masked
+   with `closest-side`, whose ending shape is by definition exactly half the box
+   on each axis. That is the one radial-gradient sizing that is provably zero at
+   every edge of its own box regardless of how wide the row's text runs, so the
+   fill underneath it can be any shape and still cannot show a step. The right
+   border tick stays a hard 2 px line on purpose — it is a drawn mark, the same
+   language as the minimap brackets, not a scrim pretending not to be one. */
 .kf-row {
+  position: relative;
   display: flex;
   align-items: baseline;
   padding: 0.16em 0.6em 0.2em;
@@ -1392,10 +1508,28 @@ body.hide-hud .hud {
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  background: linear-gradient(to left, rgba(10, 9, 8, 0.58), rgba(10, 9, 8, 0.2));
   border-right: 2px solid var(--hairline);
   text-shadow: var(--ink-outline-soft);
   will-change: transform, opacity;
+}
+
+.kf-row::before {
+  content: '';
+  position: absolute;
+  inset: -0.62em -1.9em -0.62em -2.8em;
+  z-index: -1;
+  pointer-events: none;
+  /* Heavier under the target name at the right, thinning to the left, which is
+     how the eye reads the row. */
+  background: linear-gradient(
+    to left,
+    color-mix(in srgb, var(--scrim-ink) 54%, transparent),
+    color-mix(in srgb, var(--scrim-ink) 18%, transparent)
+  );
+  -webkit-mask-image: radial-gradient(closest-side, #000 0%, #000 46%, transparent 100%);
+  mask-image: radial-gradient(closest-side, #000 0%, #000 46%, transparent 100%);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
 }
 
 .kf-src,
@@ -2574,6 +2708,12 @@ body.menu-closed .back-link {
     display: none;
   }
 
+  /* The strip is gone, so its backing has to go with it or it reads as a smudge
+     over nothing. The corner wash stays; SCORE / KILLS are still there. */
+  .hud {
+    --scrim-compass: none;
+  }
+
   .health {
     width: min(46vw, 220px);
   }
@@ -2651,7 +2791,11 @@ body.menu-closed .back-link {
     border: 1px solid CanvasText;
   }
 
+  /* Forced colours repaints the type against a system background, so the scrims
+     have nothing left to do and would only muddy it. */
   .hud-scan,
+  .hud::before,
+  .kf-row::before,
   body.ashfall::after,
   .menu::after {
     display: none;
