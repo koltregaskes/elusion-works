@@ -128,6 +128,11 @@ function shardGeometry() {
 }
 
 const SPARK = new THREE.Color(0xffb070);
+/* Torn structure is not painted. Char, bare alloy and shadowed plate are what
+   a hull section actually shows once it is off the ship, and mixing toward
+   them per chunk is what stops a wreck field reading as one tin of paint. */
+const CHAR = new THREE.Color(0x22201e);
+const BARE = new THREE.Color(0x6a6660);
 
 export class DebrisFX {
   constructor(ctx) {
@@ -160,6 +165,7 @@ export class DebrisFX {
     this._q = new THREE.Quaternion();
     this._axis = new THREE.Vector3();
     this._col = new THREE.Color();
+    this._col2 = new THREE.Color();
   }
 
   get count() { return this._chunks.length; }
@@ -182,25 +188,63 @@ export class DebrisFX {
     const size = Math.max(0.4, opts.size || 2);
     const spread = opts.spread || size * 4;
     const speed = opts.speed || 30;
-    this._col.copy(opts.colour || ctx.teamColors[0].primary).multiplyScalar(0.55);
+
+    /* Base tone is the hull's own average albedo where MAT can supply it, and
+       the team livery only as a fallback. Held well down: wreckage is the
+       darkest thing in a death sequence, and it has to stay under the embers
+       and the flash or the whole wreck reads as pale gravel lit from nowhere. */
+    const hull = opts.hull || opts.colour || ctx.teamColors[0].primary;
+    const base = this._col2.copy(hull);
+
+    /* A few large keel sections, then a heavy tail of smaller pieces. A hull
+       does not shatter evenly — it breaks along frames, so the eye expects two
+       or three recognisable structural spans among the rubble. Without them a
+       capital's wreck is a uniform radial spray of identical chunks. */
+    const keelCount = Math.max(0, Math.round(opts.keelCount || 0));
+    const keelLength = opts.keelLength || 0;
 
     for (let i = 0; i < count; i++) {
       if (this._chunks.length >= cap) this._chunks.shift();
-      const p = rng.ballPoint(spread);
+      const isKeel = i < keelCount && keelLength > 0;
+      // Keel sections stay near the wreck's core and travel slowly; they carry
+      // the mass, so they must not be flung out with the light debris.
+      const p = rng.ballPoint(isKeel ? spread * 0.45 : spread);
       const dirLen = Math.max(1e-4, Math.hypot(p.x, p.y, p.z));
-      const kick = speed * rng.range(0.25, 1.0);
-      const jitter = speed * 0.22;
+      const kick = speed * (isKeel ? rng.range(0.08, 0.30) : rng.range(0.25, 1.0));
+      const jitter = speed * (isKeel ? 0.06 : 0.22);
 
       // Long thin sections read as hull plating; keep one axis dominant.
-      const s = size * rng.range(0.55, 1.9);
-      const stretch = rng.range(1.4, 3.4);
-      const axis = rng.int(0, 2);
-      const sx = s * (axis === 0 ? stretch : rng.range(0.55, 1.0));
-      const sy = s * (axis === 1 ? stretch : rng.range(0.55, 1.0));
-      const sz = s * (axis === 2 ? stretch : rng.range(0.55, 1.0));
+      let sx; let sy; let sz;
+      if (isKeel) {
+        // Scale is a radius on a roughly unit shard, so half the span.
+        const long = keelLength * rng.range(0.62, 1.0) * 0.5;
+        const thin = long * rng.range(0.11, 0.22);
+        const axis = rng.int(0, 2);
+        sx = axis === 0 ? long : thin * rng.range(0.7, 1.4);
+        sy = axis === 1 ? long : thin * rng.range(0.7, 1.4);
+        sz = axis === 2 ? long : thin * rng.range(0.7, 1.4);
+      } else {
+        /* Power-law rather than uniform: mostly small, occasionally large.
+           A flat rng.range(0.55, 1.9) is why every chunk measured the same. */
+        const s = size * (0.30 + 2.5 * Math.pow(rng.next(), 2.4));
+        const stretch = rng.range(1.4, 3.4);
+        const axis = rng.int(0, 2);
+        sx = s * (axis === 0 ? stretch : rng.range(0.45, 1.0));
+        sy = s * (axis === 1 ? stretch : rng.range(0.45, 1.0));
+        sz = s * (axis === 2 ? stretch : rng.range(0.45, 1.0));
+      }
+
+      /* Per-chunk tone. Scorched on one piece, bare alloy on the next, most of
+         them simply dark. Biased low so the field sits below the embers. */
+      const t = rng.next();
+      this._col.copy(base);
+      if (t < 0.34) this._col.lerp(CHAR, rng.range(0.35, 0.80));
+      else if (t > 0.82) this._col.lerp(BARE, rng.range(0.25, 0.55));
+      this._col.multiplyScalar(0.20 + 0.42 * Math.pow(rng.next(), 1.3));
 
       const spinAxis = rng.unitVector();
-      const life = rng.range(24, 44);
+      // Big structure tumbles for longer than it burns.
+      const life = isKeel ? rng.range(40, 58) : rng.range(24, 44);
 
       this._chunks.push({
         px: origin.x + p.x,
@@ -213,11 +257,15 @@ export class DebrisFX {
           new THREE.Vector3(spinAxis.x, spinAxis.y, spinAxis.z), rng.range(0, Math.PI * 2),
         ),
         ax: spinAxis.x, ay: spinAxis.y, az: spinAxis.z,
-        spin: rng.range(0.25, 2.4) * (3.5 / Math.max(1.2, s)),
+        // Angular momentum per unit mass: a 300 m keel section rotates slowly,
+        // a 4 m fragment cartwheels. Same rule, no special case.
+        spin: rng.range(0.25, 2.4) * (3.5 / Math.max(1.2, Math.max(sx, sy, sz))),
         sx, sy, sz,
         r: this._col.r, g: this._col.g, b: this._col.b,
         birth: ctx.now,
         life,
+        // Thermal mass: big sections stay hot along their torn edges far longer.
+        cool: isKeel ? 9.0 : 3.2,
         seed: rng.next(),
         heat: 1,
         nextSpark: ctx.now + rng.range(0, 0.4),
@@ -251,7 +299,7 @@ export class DebrisFX {
       c.pz += c.vz * dt;
       q.setFromAxisAngle(axis.set(c.ax, c.ay, c.az), c.spin * dt);
       c.quat.premultiply(q);
-      c.heat = Math.exp(-age / 3.2);
+      c.heat = Math.exp(-age / (c.cool || 3.2));
 
       if (c.heat > 0.34 && emit > 0 && now >= c.nextSpark) {
         c.nextSpark = now + rng.range(0.25, 0.9);

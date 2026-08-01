@@ -130,6 +130,9 @@ export class SensorsView {
     this._occ = null;   // quarter-scale knock-down buffer, built on first use
     this._occ2d = null;
     this._dpr = 1;
+    this._fails = 0;    // consecutive draw failures; three retires the view
+    this._dead = false;
+    this._lastError = null;
 
     const el = document.createElement('section');
     el.className = 'vsh-sensors';
@@ -210,11 +213,42 @@ export class SensorsView {
 
   /* --------------------------------------------------------------- draw */
 
+  /* This runs inside the engine's render hook on every single frame, so it is
+     not allowed to throw. A transient mid-edit state once put a
+     `this._footprints is not a function` through `HUD.update` into the hook and
+     killed every subsequent frame: draw calls went to zero and the canvas
+     stopped updating while the page still reported itself ready. The engine now
+     detaches a hook that throws three times, so that particular failure can no
+     longer take the game down — but a schematic that vanishes mid-battle is
+     still a defect, and the reading layer is exactly the wrong place to find
+     out that something upstream changed shape.
+
+     So: one boundary here, and the view retires itself politely rather than
+     spraying the same exception 60 times a second. */
   update() {
-    if (!this.open) return;
+    if (!this.open || this._dead) return;
     const g = this.c2d;
     if (!g) return;
+    try {
+      this._draw(g);
+      this._fails = 0;
+    } catch (err) {
+      this._onDrawFailure(err);
+    }
+  }
 
+  _onDrawFailure(err) {
+    this._fails = (this._fails || 0) + 1;
+    if (this._fails < 3) return;
+    this._dead = true;
+    this._clear();
+    const say = this.ctx && typeof this.ctx.toast === 'function' ? this.ctx.toast : null;
+    if (say) say('Sensors Manager stopped — the 3D view is unaffected', 'alert');
+    /* Kept for anyone with the console open; never printed. */
+    this._lastError = String((err && err.stack) || err);
+  }
+
+  _draw(g) {
     const { w, h } = this.ctx.view;
     const dpr = this._dpr || 1;
     if (this.canvas.width !== Math.round(w * dpr)) this.resize();
@@ -239,6 +273,10 @@ export class SensorsView {
     g.fillStyle = wash;
     g.fillRect(-1, -1, w + 2, h + 2);
 
+    /* Everything from here to the matching restore is chart, and the chart does
+       not run under the panels. */
+    const clipped = this._chartClip(g, w, h);
+
     /* Terrain is knocked back before a single schematic mark is drawn, so the
        lattice and every contact sit on one flat ground. */
     this._footprints();
@@ -251,8 +289,49 @@ export class SensorsView {
     this._blips(g);
     this._labels(g);
     this._selection(g);
+
+    if (clipped) g.restore();
+    /* The rule is the view's own furniture, not a contact, so it is drawn
+       outside the inset — and lifted clear of whatever is in the bottom-left
+       rather than clipped away by it. */
     this._scale(g, w, h);
     this._tally();
+  }
+
+  /* Inset the chart by the HUD's opaque panels.
+
+     One canvas over another cannot hide what the renderer drew and it cannot
+     hide what the DOM draws on top either: blips and ore-field circles were
+     running underneath the PRODUCTION list, which reads as the schematic
+     leaking rather than as a panel sitting over it.
+
+     An even-odd path — the viewport, then each panel — clips to
+     viewport-minus-panels in one call. The alternative, rescaling the schematic
+     into the free area, was rejected: `core/input.js` owns the marquee and picks
+     against the *live camera projection*, so moving a blip away from its hull's
+     real screen position would make band-select in the Sensors Manager select
+     the wrong ships. The weld to the projection is the whole design. */
+  _chartClip(g, w, h) {
+    const get = this.ctx && this.ctx.panelRects;
+    const rects = typeof get === 'function' ? get() : null;
+    if (!rects || !rects.length || typeof Path2D !== 'function') return false;
+
+    const p = new Path2D();
+    p.rect(-2, -2, w + 4, h + 4);
+    let used = 0;
+    for (let i = 0; i < rects.length; i++) {
+      const r = rects[i];
+      if (!r || !(r.w > 0) || !(r.h > 0)) continue;
+      /* A panel that has grown to most of the screen is not an inset, it is a
+         mistake; leave the chart whole rather than clip it to nothing. */
+      if (r.w * r.h > w * h * 0.42) continue;
+      p.rect(r.x, r.y, r.w, r.h);
+      used++;
+    }
+    if (!used) return false;
+    g.save();
+    g.clip(p, 'evenodd');
+    return true;
   }
 
   /* Project a world-space segment, clipped to the near plane. */
@@ -341,8 +420,17 @@ export class SensorsView {
     const list = this._contacts;
     let n = 0;
 
-    for (const e of ctx.entities()) {
-      if (e.alive === false) continue;
+    /* `entities()` is the HUD's accessor over the live world; a torn-down or
+       not-yet-attached world hands back something that is not iterable, and
+       this pass runs every frame. */
+    const src = typeof ctx.entities === 'function' ? ctx.entities() : null;
+    if (!src || typeof src[Symbol.iterator] !== 'function') {
+      this._nContacts = 0;
+      return;
+    }
+
+    for (const e of src) {
+      if (!e || e.alive === false) continue;
       if (n >= MAX_CONTACTS) break;
       const p = (e.object3D && e.object3D.position) || e.position;
       if (!p || !proj.project(p.x, p.y, p.z)) continue;
@@ -367,7 +455,7 @@ export class SensorsView {
       c.big = c.mark.kind === 'ring' || c.mark.kind === 'base';
       c.sx = sx;
       c.sy = sy;
-      c.sel = ctx.selection.has(e.id);
+      c.sel = !!(ctx.selection && ctx.selection.has(e.id));
       c.hurt = e.maxHull > 0 ? e.hull / e.maxHull : 1;
 
       // Altitude stalk: only worth drawing once a hull is clear of the plane.
@@ -404,18 +492,23 @@ export class SensorsView {
       is standing in genuinely does fill the display, and a schematic that
       draws it as a 46 px token is lying about where the rock is. */
   _footprints() {
-    const clusters = this.ctx.resourceClusters();
+    /* The cluster records come from SIM by way of the HUD's tolerant reader, so
+       the shape is not this module's to guarantee. Anything missing degrades to
+       "no ore fields drawn", which is a duller schematic and not a dead one. */
+    const src = this.ctx.resourceClusters;
+    const clusters = typeof src === 'function' ? src() : null;
     const proj = this.ctx.proj;
     const { w, h } = this.ctx.view;
     const list = this._foots;
     const lim = Math.max(w, h) * 1.6;
     let n = 0;
 
-    if (clusters) {
+    if (clusters && clusters.length) {
       for (let i = 0; i < clusters.length; i++) {
         const c = clusters[i];
+        if (!c) continue;
         const p = c.position || c;
-        if (!p || !proj.project(p.x, p.y, p.z)) continue;
+        if (!p || !Number.isFinite(p.x) || !proj.project(p.x, p.y, p.z)) continue;
         const sx = proj.sx;
         const sy = proj.sy;
         const px = ((c.radius || 1200) * FOOT_SEAM * proj.scaleK) / proj.cw;
@@ -792,7 +885,20 @@ export class SensorsView {
     if (px < 24 || px > w * 0.6) return;
 
     const x0 = 26;
-    const y0 = h - 78;
+    /* Above whatever the HUD has parked in the bottom-left — the roster appears
+       the moment anything is selected, and a scale bar sitting on its baseline
+       reads as part of it. */
+    let y0 = h - 78;
+    const get = this.ctx && this.ctx.panelRects;
+    const rects = typeof get === 'function' ? get() : null;
+    if (rects) {
+      for (let i = 0; i < rects.length; i++) {
+        const r = rects[i];
+        if (!r || r.x > w * 0.5) continue;      // left-hand furniture only
+        y0 = Math.min(y0, r.y - 12);
+      }
+    }
+    y0 = Math.max(60, y0);
     g.strokeStyle = COL.faint;
     g.lineWidth = 1;
     g.beginPath();

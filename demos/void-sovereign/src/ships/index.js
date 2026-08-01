@@ -185,8 +185,13 @@ const IMPOSTOR_MIN_PX = 2.3;
 const IMPOSTOR_MAX_GROW = 2.4;
 /** Canopy glass stops resolving well before the blockout does. */
 const GLASS_MAX_LOD = 1;
-/** Shadow-side floor. Deep, but never zero — a hole reads as nothing. */
-const IMPOSTOR_FILL = 0.20;
+/** Shadow-side floor. Deep, but never zero — a hole reads as nothing.
+    Chosen against measured backdrops: with the base below, the shadow side
+    lands near 22/255 and the lit side near 75/255, while the nebula around
+    the fleet runs 12–94. So the hull sits *inside* the backdrop's range and
+    reads dark against gas and light against void, rather than picking one and
+    disappearing into the other half of the sky. */
+const IMPOSTOR_FILL = 0.10;
 
 /* Shared uniform objects: one write per frame serves every impostor material.
    `uPxScale` is pixels per metre at one metre of view depth; `uKeyDir` is the
@@ -306,10 +311,11 @@ function impostorMaterial(team, classId, radius) {
   if (hit) return hit;
 
   const pal = TEAM_COLORS[team] || FALLBACK_TEAM_COLORS[0];
-  // Bone grey, straddling the backdrop: lit side above the brightest gas,
-  // shadow side below it. The team lean is deliberately small — §3.3, colour
-  // comes from the engines and the trim, never from the hull.
-  const colour = new THREE.Color(0x8d949c);
+  // Bone grey, pitched to straddle the backdrop rather than sit above it —
+  // a hull brighter than the brightest gas stops being a silhouette. The team
+  // lean is deliberately small: §3.3, colour comes from the engines and the
+  // trim, never from the plating.
+  const colour = new THREE.Color(0x6d747c);
   colour.lerp(pal.secondary, 0.16);
 
   const uniforms = {

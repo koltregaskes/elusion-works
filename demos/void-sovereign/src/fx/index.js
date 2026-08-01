@@ -1245,6 +1245,22 @@ export class FXSystem {
       teamColour(team) {
         return ctx.teamColors[team] || ctx.teamColors[0];
       },
+      /* What colour is this hull actually made of?
+
+         `render/materials.js` derives a per-family average albedo from the
+         plate atlas in linear light, which is the honest answer — the team
+         primary is livery, not material, and wreckage tinted from it came out
+         a uniform pale tan that read as gravel rather than as torn ship.
+         Null until MAT has run, and callers fall back to the team colour. */
+      hullPalette(family) {
+        if (!mat || typeof mat.getFamilyAverages !== 'function') return null;
+        let avgs = null;
+        try { avgs = mat.getFamilyAverages(); } catch (e) { return null; }
+        if (!avgs) return null;
+        const a = avgs[family] || avgs.bulwark || avgs[Object.keys(avgs)[0]];
+        if (!a || !a.colour) return null;
+        return new THREE.Color(a.colour[0], a.colour[1], a.colour[2]);
+      },
     };
     this.ctx = ctx;
 

@@ -238,14 +238,29 @@ export class Environment {
 
     /* --- geometry of the system: where the star, the planet and the nebula
        sit relative to one another. Chosen before anything is built so the
-       lighting, the visible star and the planet's terminator all agree. --- */
-    const sunFrom = new THREE.Vector3(
-      r.gaussian(0, 1),
-      r.gaussian(0, 0.55),
-      r.gaussian(0, 1),
-    ).normalize();
-    if (Math.abs(sunFrom.y) < 0.10) sunFrom.y += 0.14 * (sunFrom.y >= 0 ? 1 : -1);
-    sunFrom.normalize();
+       lighting, the visible star and the planet's terminator all agree. ---
+
+       The AZIMUTH is free and fully seeded, and it must stay that way: the
+       camera rig aims its opening shot off this vector (`OPENING.sunAngleMin`
+       /`Max` in `core/camera.js`, a 104-134 degree band between the view
+       direction and the direction to the star) so that the relative angle is
+       fixed however the star moves. If ENV also aimed the star at the camera
+       the loop would close, the seed would stop mattering, and every match
+       would open on the same frame. So ENV owns the star and only the star.
+
+       The ELEVATION is not free. It ran +/-65 degrees, and a key 38 degrees
+       *below* the battle plane against a camera whose pitch is clamped to
+       -3..+26 lights the underside of every hull and leaves the decks — the
+       surfaces actually facing the lens — in shadow. That is uplighting, and
+       it is one of the two reasons hull luminance was a lottery. A key wants
+       to be above its subject; the band below keeps a little variety (a low,
+       raking, near-horizon star is a good look) without ever going under it
+       far enough to invert the read. */
+    const sunAz = r.range(-Math.PI, Math.PI);
+    const sunElev = Math.max(-0.16, Math.min(0.74, r.gaussian(0.40, 0.20)));
+    const ce = Math.cos(sunElev);
+    const sunFrom = new THREE.Vector3(Math.sin(sunAz) * ce, Math.sin(sunElev), Math.cos(sunAz) * ce)
+      .normalize();
     this.sunDirection = sunFrom.clone(); // from the battle *toward* the star
 
     this._buildSky();
@@ -273,6 +288,15 @@ export class Environment {
     engine.farScene.background = this.sky.texture;
     engine.farScene.backgroundIntensity = 1.0;
 
+    /* Resolvable stars are geometry now, not texels — see `skybox.js`. They go
+       in the backdrop scene at 2.2e9 m, behind the planet and the star quad but
+       inside `farCamera`'s far plane, and they test depth without writing it so
+       a backdrop body in front of one occludes it. */
+    if (this.sky.starField) {
+      this.sky.starField.layers.enable(LAYER.BACKDROP);
+      engine.farScene.add(this.sky.starField);
+    }
+
     /* The sky is also the environment probe. Hulls pick up a nebula-coloured
        bounce on their shadow side for free, which is exactly the "cold fill
        from the nebula" the visual direction asks for.
@@ -280,10 +304,18 @@ export class Environment {
        Kept deliberately low. An IBL from a sky this saturated is an
        omnidirectional light, and omnidirectional light is precisely what
        destroys a terminator. The nebula's job is to tint the shadow side, not
-       to fill it in. */
+       to fill it in.
+
+       "Low" is not the same as "off", though, and the balance had drifted too
+       far the other way: measured over the true painted silhouette of the hero
+       mothership across seven seeds, the shadow side floored at 0.025-0.041 of
+       sRGB. That is a hull disappearing into the void rather than turning away
+       from the light, and on the four darkest seeds it took the *median* down
+       with it. The floor wanted is 0.06-0.09 — read as black at a glance, but
+       with the form still legible in it. */
     engine.scene.environment = this.sky.texture;
     engine.scene.environmentIntensity =
-      this.options.environmentIntensity !== undefined ? this.options.environmentIntensity : 0.16;
+      this.options.environmentIntensity !== undefined ? this.options.environmentIntensity : 0.25;
 
     /* Depth haze. Deliberately a very dark, nebula-tinted colour: fog that
        tends toward grey turns the void into soup, fog that tends toward a dark
@@ -324,9 +356,17 @@ export class Environment {
 
        The fill is tinted and *dim* rather than neutral and strong. A saturated
        fill at low intensity leaves a grey hull grey while still telling you
-       what colour the sky behind it is; a bright one repaints the fleet. */
+       what colour the sky behind it is; a bright one repaints the fleet.
+
+       The numbers below are the second half of the opening-luminance fix. The
+       key is up a little and the bounce is up rather more, which raises the
+       shadow floor toward 0.06-0.09 sRGB and — because the seeds that were
+       dark were dark in their *shadow* — compresses the spread across seeds
+       without touching the terminator, whose ratio is set by key-over-fill and
+       is roughly preserved (4.9 against ~0.95 of everything else, near enough
+       5:1 in linear light, which is 2.0-2.5 stops of encoded separation). */
     const keyColour = sky.keyColour.clone();
-    const key = new THREE.DirectionalLight(keyColour, this.options.keyIntensity || 4.6);
+    const key = new THREE.DirectionalLight(keyColour, this.options.keyIntensity || 4.9);
     key.position.copy(this.sunDirection).multiplyScalar(50000);
     key.target.position.set(0, 0, 0);
     key.castShadow = false; // a 60 km ortho frustum buys nothing but texels
@@ -341,7 +381,7 @@ export class Environment {
     const hemi = new THREE.HemisphereLight(
       sky.nebulaColour.clone(),
       sky.fillColour.clone().multiplyScalar(0.45),
-      this.options.fillIntensity || 0.19,
+      this.options.fillIntensity || 0.34,
     );
     hemi.position.set(0, 1, 0);
     hemi.name = 'env:fill';
@@ -365,7 +405,7 @@ export class Environment {
     engine.scene.add(rim.target);
     this.rimLight = rim;
 
-    const amb = new THREE.AmbientLight(sky.ambientColour.clone(), 0.022);
+    const amb = new THREE.AmbientLight(sky.ambientColour.clone(), 0.055);
     amb.name = 'env:ambient';
     engine.scene.add(amb);
     this.ambientLight = amb;
@@ -379,7 +419,7 @@ export class Environment {
       setNebulaBounce(
         sky.bounceKey || sky.nebulaColour,
         sky.bounceFill || sky.fillColour,
-        this.options.hullAmbient !== undefined ? this.options.hullAmbient : 0.085,
+        this.options.hullAmbient !== undefined ? this.options.hullAmbient : 0.155,
         this.options.hullRim !== undefined ? this.options.hullRim : 0.52,
       );
     } catch (err) {
@@ -1820,6 +1860,11 @@ export class Environment {
     if (this._planetGroup && this._planetGroup.parent) this._planetGroup.parent.remove(this._planetGroup);
     if (this._moon && this._moon.parent) this._moon.parent.remove(this._moon);
     if (this._star && this._star.parent) this._star.parent.remove(this._star);
+    // The star field's geometry and material belong to the sky; sky.dispose()
+    // detaches and frees them. Only the parenting is ENV's to undo here.
+    if (this.sky.starField && this.sky.starField.parent) {
+      this.sky.starField.parent.remove(this.sky.starField);
+    }
 
     for (const d of this._disposables) {
       if (d && d.dispose) d.dispose();

@@ -164,7 +164,13 @@ void main() {
   // still dense, and a front with no body behind it is a wireframe hoop.
   float trail = exp( -pow( max( -d, 0.0 ) / ( thick * 2.2 ), 1.6 ) );
   float band = lead * trail * vBlotch;
-  float lip = exp( -pow( ( vRr - 1.015 ) / ( thick * 0.32 ), 2.0 ) ) * vBlotch;
+  /* The hot leading edge. This was 0.32 of the band thickness, which on a
+     3.4 km capital front is about 17 metres — comfortably sub-pixel, so the
+     one part of the shock that is supposed to be white-hot never reached the
+     screen and the whole ring resolved to the flat beige of its own body.
+     Widened to a bit over half the band, which the thickness floor already
+     guarantees is several pixels across at any range. */
+  float lip = exp( -pow( ( vRr - 1.012 ) / ( thick * 0.58 ), 2.0 ) ) * vBlotch;
 
   // Hard zero at both rims of the annulus so the mesh edge is never visible.
   float rim = smoothstep( RING_INNER, RING_INNER + 0.06, vRr )
@@ -191,6 +197,11 @@ void main() {
 
   vec3 col = mix( hot, mid, smoothstep( 0.02, 0.30, behind ) );
   col = mix( col, tail, smoothstep( 0.34, 0.95, behind ) );
+  /* Drive the leading edge back to white before anything else touches it. The
+     temperature ramp across the band is correct but it is a ramp between two
+     warm colours; without a hard white edge on the front itself the eye has
+     nothing to read as a shock and takes the average, which is beige. */
+  col = mix( col, vec3( 1.0, 0.96, 0.88 ), clamp( lip, 0.0, 1.0 ) * mix( 0.72, 0.30, cool ) );
   // A trace of blue on the tip alone: gas compressed ahead of the flame front.
   col = mix( col, vec3( 0.74, 0.86, 1.0 ), clamp( lip, 0.0, 1.0 ) * 0.22 * ( 1.0 - cool ) );
   col *= vColor;
@@ -204,7 +215,7 @@ void main() {
   /* pow() on the body, not a linear term: it piles the radiance against the
      leading edge and lets the tail fall away, which is the difference between
      a shock front and a glowing tube. */
-  col *= vIntensity * uGain * ( 0.12 + 1.45 * lip + 1.15 * pow( clamp( band, 0.0, 1.0 ), 1.7 ) );
+  col *= vIntensity * uGain * ( 0.12 + 2.30 * lip + 1.05 * pow( clamp( band, 0.0, 1.0 ), 1.7 ) );
   gl_FragColor = vec4( col, a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -373,6 +384,9 @@ export class ExplosionFX {
       i: 0,
       rng: ctx.rng.fork((entity.id || 1) * 7919),
       team: ctx.teamColour(entity.team || 0),
+      // The dead ship's own plating, not its livery. Falls back to the team
+      // primary when MAT has not run (standalone FX test page).
+      hull: (ctx.hullPalette && ctx.hullPalette(def.palette)) || null,
       events: null,
     };
 
@@ -420,7 +434,7 @@ export class ExplosionFX {
       { t: 0.84, k: 'flash', size: R * 1.9, minPx: 52, life: 0.42, bright: 15.0 },
       { t: 0.84, k: 'ring', r0: R * 0.3, r1: ring * 1.15, life: 0.9, thick: 0.030, intensity: 1.77 },
       { t: 0.84, k: 'sparks', n: 100 * N, speed: L * 7.0, size: L * 0.06, minPx: 2.6 },
-      { t: 0.86, k: 'debris', n: 18, scale: 0.5, speed: L * 1.9 },
+      { t: 0.86, k: 'debris', n: 18, scale: 0.5, speed: L * 1.9, keel: 2 },
       { t: 0.86, k: 'embers', n: 70 * N, speed: L * 2.2, life: 3.6 },
       { t: 0.88, k: 'smoke', n: 8, size: L * 0.7, speed: L * 1.4, life: 4.0 },
       { t: 1.06, k: 'ring', r0: R * 0.8, r1: ring * 1.6, life: 1.6, thick: 0.020, intensity: 0.88 },
@@ -467,15 +481,21 @@ export class ExplosionFX {
        fill the frame just greys the image out and drags auto-exposure down
        with it; a smaller, far hotter one blooms into the same area and keeps
        the nebula behind it. */
-    ev.push({ t: 2.98, k: 'flash', size: R * 1.7, minPx: 110, life: 0.60, bright: 34.0 });
+    /* The screen floor scales with hull length as well as the world size does.
+       A flat 110 px floor gave a mothership and a destroyer the same guaranteed
+       core, so the biggest death in the game could measure smaller on screen
+       than a background star's bloom cross. sqrt(L/380) keeps the ladder
+       sub-linear: destroyer 110 px, carrier 156, mothership 246. */
+    const primaryPx = Math.round(110 * Math.sqrt(L / 380));
+    ev.push({ t: 2.98, k: 'flash', size: R * 1.7, minPx: primaryPx, life: 0.60, bright: 34.0, core: 0.62 });
     // The next two are the same detonation seen through a slower, cooler shell.
     // They carry no impulse of their own — the beat is one shove, not three.
-    ev.push({ t: 2.98, k: 'flash', size: R * 0.9, minPx: 60, life: 1.7, bright: 12.0, colour: FIRE, shake: 0 });
-    ev.push({ t: 3.00, k: 'flash', size: R * 2.6, minPx: 150, life: 0.30, bright: 6.0, colour: CORE, shake: 0 });
+    ev.push({ t: 2.98, k: 'flash', size: R * 0.9, minPx: Math.round(primaryPx * 0.55), life: 1.7, bright: 12.0, colour: FIRE, shake: 0 });
+    ev.push({ t: 3.00, k: 'flash', size: R * 2.6, minPx: Math.round(primaryPx * 1.36), life: 0.30, bright: 6.0, colour: CORE, shake: 0 });
     ev.push({ t: 2.98, k: 'ring', r0: R * 0.35, r1: ring * 1.55, life: 1.6, thick: 0.022, intensity: 1.63, axis: 'hull' });
     ev.push({ t: 3.02, k: 'ring', r0: R * 0.25, r1: ring * 1.05, life: 2.0, thick: 0.030, intensity: 1.16, axis: 'perp' });
     ev.push({ t: 2.99, k: 'sparks', n: 280 * N, speed: L * 3.4, size: L * 0.024, minPx: 3.0 });
-    ev.push({ t: 3.00, k: 'debris', n: 48, scale: 1.0, speed: L * 0.75 });
+    ev.push({ t: 3.00, k: 'debris', n: 48, scale: 1.0, speed: L * 0.75, keel: 4 });
     ev.push({ t: 3.02, k: 'embers', n: 240 * N, speed: L * 0.85, life: 8.0 });
     ev.push({ t: 3.04, k: 'smoke', n: 14, size: L * 0.42, speed: L * 0.5, life: 9.0 });
     ev.push({ t: 3.30, k: 'ring', r0: R * 1.1, r1: ring * 2.1, life: 2.8, thick: 0.016, intensity: 0.82 });
@@ -565,9 +585,13 @@ export class ExplosionFX {
            because every texel past the sprite's alpha shoulder still clears the
            tone curve. Small and searing, then large and dim, is the difference
            between an explosion and a lens flare. */
-        // Core: smallest, hottest, gone first. This is what drives bloom.
+        /* Core: smallest, hottest, gone first. This is what drives bloom, and
+           therefore what the eye measures the death by — so a primary
+           detonation overrides the default fraction and keeps two thirds of
+           the envelope rather than a third of it. */
+        const coreK = ev.core === undefined ? 0.40 : ev.core;
         f.flare.spawn(origin.x, origin.y, origin.z, V.x, V.y, V.z, ev.life * 0.42, 0,
-          size * 0.40, size * 0.14, WHITE, ev.bright, 0, 0);
+          size * coreK, size * coreK * 0.35, WHITE, ev.bright, 0, 0);
         // Body: expands and cools through gold.
         f.flare.spawn(origin.x, origin.y, origin.z, V.x, V.y, V.z, ev.life, 0,
           size * 0.32, size, col, ev.bright * 0.14, 0, 0);
@@ -702,6 +726,12 @@ export class ExplosionFX {
           spread: seq.L * 0.30,
           speed: ev.speed,
           colour: seq.team.primary,
+          hull: seq.hull,
+          /* Structural spans, 15-25% of hull length, on the beat where the
+             ship actually breaks. Only the main break throws them: the
+             lead-in bursts are plating coming off, not the keel letting go. */
+          keelCount: ev.keel || 0,
+          keelLength: seq.L * 0.25,
           rng,
         });
         break;

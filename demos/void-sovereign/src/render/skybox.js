@@ -311,15 +311,6 @@ float ridge3(vec3 p) {
 vec3 desat(vec3 c, float k) {
   return mix(vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))), c, k);
 }
-
-/* Rough black-body ramp. t = 0 hot blue-white .. 1 cool red. */
-vec3 starTint(float t) {
-  vec3 c = mix(vec3(0.70, 0.80, 1.00), vec3(1.00, 1.00, 0.99), smoothstep(0.00, 0.30, t));
-  c = mix(c, vec3(1.00, 0.93, 0.80), smoothstep(0.30, 0.62, t));
-  c = mix(c, vec3(1.00, 0.80, 0.55), smoothstep(0.62, 0.85, t));
-  c = mix(c, vec3(1.00, 0.58, 0.40), smoothstep(0.85, 1.00, t));
-  return c;
-}
 `;
 
 /* ---------------------------------------------------------------------------
@@ -1225,7 +1216,7 @@ export function buildSkybox(renderer, rng, opts = {}) {
   const tiles = Math.max(1, opts.tiles || (size >= 2048 ? 6 : size >= 1024 ? 3 : 1));
 
   const P = generateParams(r, opts);
-  P.enable = Object.assign({ nebula: true, stars: true, band: true }, opts.layers || {});
+  P.enable = Object.assign({ nebula: true, band: true }, opts.layers || {});
 
   const W = size * 2;
   const H = size;

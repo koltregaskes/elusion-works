@@ -53,6 +53,7 @@ export const CONTROL_SCHEME = [
       ['Space', 'Pause the battle — you can still select and give orders'],
       ['+ / −', 'Game speed: ¼, ½, ×1, ×2, ×4'],
       ['H', 'This panel'],
+      ['M', 'Mute or unmute all sound'],
     ],
   },
   {
@@ -238,6 +239,13 @@ export class InputController {
     };
     this._band = { active: false, x0: 0, y0: 0, x1: 0, y1: 0 };
 
+    /* Mirrored from `ui:audioChanged`. Assumed unmuted until audio says
+       otherwise: a build with no AudioSystem at all should still answer M with
+       something honest rather than silently doing nothing. */
+    this._muted = false;
+    this._audioSeen = false;
+    this._audioAvailable = true;
+
     this._buildOverlay();
     this._bind();
 
@@ -253,8 +261,10 @@ export class InputController {
          module that owns the keyboard has to track what the mixer is doing —
          whether the player last used M, the mute button or a slider. */
       bus.on('ui:audioChanged', (p) => {
-        if (p && typeof p.muted === 'boolean') this._muted = p.muted;
-        if (p && typeof p.available === 'boolean') this._audioAvailable = p.available;
+        if (!p) return;
+        if (typeof p.muted === 'boolean') this._muted = p.muted;
+        if (typeof p.available === 'boolean') this._audioAvailable = p.available;
+        if (typeof p.master === 'number') this._audioSeen = true;
       }),
     ];
 
@@ -709,6 +719,27 @@ export class InputController {
       this._speedIndex = 0;
     }
     bus.emit('ui:speed', { scale: SPEED_STEPS[this._speedIndex] });
+  }
+
+  /* Mute is the one audio control that has to be reachable without opening a
+     panel — it is the key a player hits when someone walks into the room, and
+     going looking for it is exactly the moment they close the tab instead.
+
+     The event carries the target state rather than a toggle, so this sends the
+     opposite of whatever the mixer last announced. `ui:audioChanged` comes back
+     from AudioSystem and drives every surface, so the top-bar glyph and the
+     mixer button agree however the player got here. */
+  _toggleMute() {
+    if (!this._audioAvailable) {
+      bus.emit('ui:toast', { text: 'No audio device available', kind: 'warn' });
+      return;
+    }
+    /* Until `ui:audioChanged` has been heard, `_muted` is an assumption and a
+       preference persisted from a previous session may contradict it. The
+       payload-free form of the event is a toggle, so the module that owns the
+       state answers rather than being told something wrong. */
+    if (this._audioSeen) bus.emit('ui:audioMute', { muted: !this._muted });
+    else bus.emit('ui:audioMute');
   }
 
   _nudgeSpeed(dir) {
@@ -1486,4 +1517,23 @@ export class InputController {
 
     this._clearLongPress();
     for (const off of this._offs) off();
-    this._of
+    this._offs.length = 0;
+    if (this._offHook) this._offHook();
+    this._offHook = null;
+
+    for (const m of this._overlays) {
+      if (m && m.parent) m.parent.remove(m);
+    }
+    this._overlays.length = 0;
+    this._gizGeo.dispose();
+    this._bandGeo.dispose();
+    this._material.dispose();
+    this._materialDark.dispose();
+
+    this._keys.clear();
+    this._touches.clear();
+    this._groups.clear();
+  }
+}
+
+export default InputController;

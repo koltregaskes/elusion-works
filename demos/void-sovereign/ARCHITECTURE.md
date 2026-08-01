@@ -305,7 +305,30 @@ callers**. Make it real, and consume it.
 
 **Target: draw calls must be roughly flat in unit count.** 1,000 units should
 cost tens of calls for the fleet, not thousands. Report measured calls at 100 /
-500 / 1,000 entities.
+500 / 1,000 entities. *(Measured: 87 / 87 / 87.)*
+
+**LOD thresholds are multiples of hull length, and that is correct — do not
+"fix" it.** It means a 14 m fighter reaches the coarsest tier at ~980 m while a
+1,900 m mothership does not until far further out. That is exactly right:
+LOD should follow *screen-space* size, and a fighter at 980 m subtends the same
+angle as a mothership at 133 km. A consequence that looks like a defect and is
+not: "triangles per ship" barely falls with distance across a mixed fleet
+(5,561 → 5,275 from 1.2 km to 30 km), because the small classes bottomed out
+early and have nowhere left to go.
+
+The real headroom is that the coarsest tier still costs ~958 triangles for a
+hull painting one pixel. A billboard-only tier below L3 would collect it.
+**That is a Phase 4 item** under §0's optimise-last rule — it is a saving, not
+a correctness or architecture problem.
+
+**At L2/L3 hulls bind an unlit impostor material, not the lit PBR hull.** The
+reason is contrast, not geometry: the primary loft survives at full spec length
+at every LOD level (an L3 interceptor bbox is still 14.00 m), so nothing was
+missing. A PBR hull a few pixels across simply averages into the backdrop while
+the drive bloom — fixed in screen space — writes over it. The impostor is one
+key-lit term with a hard terminator and a floored shadow side, pitched to
+*straddle* the measured nebula range (12–94/255) so it reads dark against gas
+and light against void.
 
 ### `fx/index.js` [FX]
 ```js

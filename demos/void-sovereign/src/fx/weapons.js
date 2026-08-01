@@ -699,10 +699,11 @@ export class WeaponFX {
 
     // White core, then an orange bloom: the difference between "hit" and
     // "nothing happened" at four kilometres.
+    const capPx = shotCeiling(amount);
     f.flare.spawn(pt.x, pt.y, pt.z, 0, 0, 0, 0.13, 0,
-      mag * 11, mag * 2.4, HOT_WHITE, 4.2, 0, 0);
+      mag * 11, mag * 2.4, HOT_WHITE, 4.2, 0, 0, capPx);
     f.flare.spawn(pt.x, pt.y, pt.z, 0, 0, 0, 0.30, 0,
-      mag * 4, mag * 20, FLAK_BURST, 2.0, 0, 0);
+      mag * 4, mag * 20, FLAK_BURST, 2.0, 0, 0, capPx * 1.4);
     this._sparkBurst(pt, n, Math.round(8 + mag * 4), 0.55, 60 + amount * 0.9, mag * 2.0);
 
     if (amount > 25) {

@@ -106,13 +106,21 @@ const TOAST_KINDS = {
    The panel stays hidden until audio announces itself — either by the `audio`
    constructor option or by the first `ui:audioChanged` — because a mixer that
    silently does nothing is worse than no mixer. */
+/* Third value is `AudioSystem`'s own DEFAULT_PREFS, mirrored so the bank can be
+   shown before the first `ui:audioChanged` arrives without displaying a
+   position that is simply wrong. See `_revealAudio` for why that matters. */
 const AUDIO_BUSES = [
-  ['master', 'Master'],
-  ['music', 'Music'],
-  ['sfx', 'Effects'],
-  ['ui', 'Interface'],
-  ['voice', 'Comms'],
+  ['master', 'Master', 0.8],
+  ['music', 'Music', 0.7],
+  ['sfx', 'Effects', 0.85],
+  ['ui', 'Interface', 0.75],
+  ['voice', 'Comms', 0.9],
 ];
+
+/* If the mixer is shown optimistically and the player operates it, a working
+   AudioSystem answers on the same tick. Nothing back inside this window means
+   there is nothing listening, and the bank says so instead of pretending. */
+const AUDIO_REPLY_MS = 500;
 
 const ONBOARD_KEY = 'vs.onboarded.v1';
 /* A hard ceiling as well as the event triggers: whatever the player is doing,
@@ -277,6 +285,8 @@ export class HUD {
     this.audio = null;
     this._audioLive = false;
     this._audioOff = false;
+    this._audioConfirmed = false;
+    this._audioProbe = null;
     this._muted = false;
     this._helpOpen = false;
     this._overOpen = false;
@@ -307,6 +317,7 @@ export class HUD {
       toast: (text, kind) => this.toast(text, kind),
       teamState: () => this._readTeam(),
       resourceClusters: () => this._clusters(),
+      panelRects: () => this._panelRects(),
     };
 
     this._buildDom();
@@ -332,6 +343,43 @@ export class HUD {
   setAudio(audio) {
     this.audio = audio && typeof audio.getSettings === 'function' ? audio : null;
     if (this.audio) this._syncAudio(this.audio.getSettings());
+    else this._revealAudio();
+  }
+
+  /* Show the mixer without having been handed an AudioSystem.
+
+     `main.js` constructs `AudioSystem` and constructs the HUD, and does not
+     introduce them — so `audio` is null here in the shipped build and the
+     original rule ("no mixer until audio announces itself") left the strongest
+     system in the game with no surface at all. `AudioSystem` only publishes
+     `ui:audioChanged` when something *changes*, so waiting for it is waiting
+     for a control the player cannot reach to be used.
+
+     Passing `audio` into the HUD is one line in `main.js` and is the right fix;
+     it is not this module's file. Until then the bank is shown on the
+     assumption that audio exists — true whenever `audio/index.js` loaded at all
+     — seeded with that module's own defaults so the positions are right rather
+     than invented, and corrected by the first real `ui:audioChanged`, which
+     also carries any preference persisted from a previous session.
+
+     If the assumption is wrong, `_expectAudioReply` finds out the first time
+     the player touches anything and the bank relabels itself as unavailable. */
+  _revealAudio() {
+    if (this._audioLive) return;
+    this._audioLive = true;
+    this.audioPanel.classList.add('is-live');
+    this.muteGlyph.classList.add('is-live');
+  }
+
+  /* Emitted a control event while still unconfirmed: give the bus one window to
+     answer before believing there is anything on the other end. */
+  _expectAudioReply() {
+    if (this._audioConfirmed || this._audioProbe) return;
+    this._audioProbe = setTimeout(() => {
+      this._audioProbe = null;
+      if (this._audioConfirmed) return;
+      this._syncAudio({ available: false });
+    }, AUDIO_REPLY_MS);
   }
 
   /* ------------------------------------------------------------------ DOM */
@@ -387,6 +435,17 @@ export class HUD {
     });
     speedStat.appendChild(speedRow);
     fleet.appendChild(speedStat);
+
+    /* Sound state, always on screen.
+
+       The mixer lives on the H card because five sliders are a settings bank,
+       not a HUD element — but mute is the control a player reaches for when
+       someone walks into the room, and one they will not go hunting for. So the
+       state is permanently legible and one click from changing, and the card
+       keeps the detail. Hidden until audio announces itself, for the same
+       reason the mixer is: a control that silently does nothing is worse than
+       no control. */
+    fleet.appendChild(this._buildMuteGlyph());
 
     top.append(res, fleet);
     this._add(root, el('div', 'vsh-top__rule')).setAttribute('aria-hidden', 'true');
@@ -481,7 +540,7 @@ export class HUD {
     audio.appendChild(aHead);
 
     const bank = el('div', 'vsh-audio__bank');
-    this.audioSliders = AUDIO_BUSES.map(([id, label]) => {
+    this.audioSliders = AUDIO_BUSES.map(([id, label, dflt]) => {
       const row = el('div', 'vsh-audio__row');
       const input = document.createElement('input');
       input.type = 'range';
@@ -489,7 +548,7 @@ export class HUD {
       input.min = '0';
       input.max = '1';
       input.step = '0.02';
-      input.value = '0.8';
+      input.value = String(dflt);
       input.dataset.bus = id;
       input.setAttribute('aria-label', `${label} volume`);
       row.append(el('span', 'vsh-audio__k', label), input);
@@ -597,6 +656,55 @@ export class HUD {
     this.over = over;
   }
 
+  /* Drawn rather than typed: a glyph font would be a binary asset, and "MUTE"
+     as a word reads as a button you press to mute rather than a state you are
+     in. The cone is always there and the two arcs cross-fade to a slash, so the
+     shape changes silhouette at a glance and does not depend on colour alone. */
+  _buildMuteGlyph() {
+    const NS = 'http://www.w3.org/2000/svg';
+    const b = el('button', 'vsh-mute');
+    b.type = 'button';
+    b.setAttribute('aria-pressed', 'false');
+    b.setAttribute('aria-label', 'Mute all sound (M)');
+
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+
+    const cone = document.createElementNS(NS, 'path');
+    cone.setAttribute('d', 'M4 9.5h3.6L12 5.4v13.2L7.6 14.5H4z');
+    cone.setAttribute('class', 'vsh-mute__cone');
+    svg.appendChild(cone);
+
+    const waves = document.createElementNS(NS, 'g');
+    waves.setAttribute('class', 'vsh-mute__waves');
+    for (const d of ['M15.4 9.1a4.1 4.1 0 0 1 0 5.8', 'M18 6.5a7.8 7.8 0 0 1 0 11']) {
+      const p = document.createElementNS(NS, 'path');
+      p.setAttribute('d', d);
+      waves.appendChild(p);
+    }
+    svg.appendChild(waves);
+
+    const slash = document.createElementNS(NS, 'g');
+    slash.setAttribute('class', 'vsh-mute__slash');
+    for (const d of ['M15.6 9.6l5.2 5.2', 'M20.8 9.6l-5.2 5.2']) {
+      const p = document.createElementNS(NS, 'path');
+      p.setAttribute('d', d);
+      slash.appendChild(p);
+    }
+    svg.appendChild(slash);
+
+    b.appendChild(svg);
+    /* A live region rather than a tooltip: a screen reader has to be told the
+       sound went off, and `aria-pressed` alone is only read on focus. */
+    this.muteState = el('span', 'vsh-sr', 'Sound on');
+    this.muteState.setAttribute('aria-live', 'polite');
+    b.appendChild(this.muteState);
+    this.muteGlyph = b;
+    return b;
+  }
+
   _stat(parent, label, value) {
     const s = el('div', 'vsh-stat');
     s.append(el('span', 'vsh-stat__k', label));
@@ -696,6 +804,7 @@ export class HUD {
       const t = ev.target;
       if (!t || !t.dataset || !t.dataset.bus) return;
       bus.emit('ui:audioVolume', { bus: t.dataset.bus, value: Number(t.value) });
+      this._expectAudioReply();
     };
     this.audioPanel.addEventListener('input', this._onSlide);
 
@@ -735,8 +844,14 @@ export class HUD {
       this._obRetire();
       return;
     }
-    if (t.closest('.vsh-audio__mute')) {
-      bus.emit('ui:audioMute', { muted: !this._muted });
+    if (t.closest('.vsh-audio__mute') || t.closest('.vsh-mute')) {
+      /* Before the mixer has heard from AudioSystem the HUD does not know the
+         true state — a preference persisted from a previous session may say
+         muted while this thinks otherwise. The payload-free form of the event
+         is a toggle, which lets the system that owns the truth answer. */
+      if (this._audioConfirmed) bus.emit('ui:audioMute', { muted: !this._muted });
+      else bus.emit('ui:audioMute');
+      this._expectAudioReply();
       return;
     }
     const cmd = t.closest('.vsh-cmd');
@@ -847,9 +962,16 @@ export class HUD {
      left live, which is the part that would actually be worse than nothing. */
   _syncAudio(s) {
     if (!s || typeof s !== 'object') return;
-    if (!this._audioLive) {
-      this._audioLive = true;
-      this.audioPanel.classList.add('is-live');
+    this._revealAudio();
+    /* Anything with a bus level in it came from a live AudioSystem, so the
+       optimistic reveal is now confirmed and the probe can stand down. A
+       `{ available: false }` from the probe itself must not confirm. */
+    if (typeof s.master === 'number') {
+      this._audioConfirmed = true;
+      if (this._audioProbe) {
+        clearTimeout(this._audioProbe);
+        this._audioProbe = null;
+      }
     }
 
     const off = s.available === false;
@@ -858,14 +980,25 @@ export class HUD {
       this.audioPanel.classList.toggle('is-unavailable', off);
       this.audioNote.hidden = !off;
       this.muteBtn.disabled = off;
+      this.muteGlyph.disabled = off;
+      this.muteGlyph.classList.toggle('is-unavailable', off);
       for (const sl of this.audioSliders) sl.input.disabled = off;
     }
-    if (off) return;
+    if (off) {
+      this.muteGlyph.setAttribute('aria-label', 'Audio unavailable in this browser');
+      this.muteState.textContent = 'No audio device';
+      return;
+    }
 
     this._muted = !!s.muted;
     this.muteBtn.setAttribute('aria-pressed', String(this._muted));
     this.muteBtn.textContent = this._muted ? 'Muted' : 'Sound on';
     this.audioPanel.classList.toggle('is-muted', this._muted);
+    this.muteGlyph.setAttribute('aria-pressed', String(this._muted));
+    this.muteGlyph.setAttribute('aria-label',
+      this._muted ? 'Unmute all sound (M)' : 'Mute all sound (M)');
+    this.muteGlyph.classList.toggle('is-muted', this._muted);
+    this.muteState.textContent = this._muted ? 'Sound muted' : 'Sound on';
     for (const sl of this.audioSliders) {
       const v = num(s[sl.id], undefined);
       // Never fight the control the player is currently dragging.
@@ -1056,6 +1189,42 @@ export class HUD {
       q.push({ classId, progress: Math.max(0, Math.min(1, progress)) });
     }
     return s;
+  }
+
+  /* Where the opaque panels are, in root-relative CSS pixels.
+
+     The Sensors Manager is one canvas laid over another, so it cannot know what
+     is on top of it — and it was drawing blips and ore-field circles underneath
+     the production list, which reads as a rendering bug rather than as a panel.
+     It insets its chart by these rects instead.
+
+     Only the two blocks with their own scrim are reported. The palette and the
+     toast rail are hairline type over the void with nothing behind them, and
+     cutting the lattice around those would invent an edge where there is none.
+     `getBoundingClientRect` is not cheap enough for a per-frame call, so this is
+     re-measured on a slow cadence and whenever the layout changes. */
+  _panelRects() {
+    const now = performance.now();
+    if (this._rectsAt !== undefined && now - this._rectsAt < 250) return this._rects;
+    this._rectsAt = now;
+    const out = this._rects || (this._rects = []);
+    out.length = 0;
+    const base = this.root.getBoundingClientRect();
+    for (const node of [this.build && this.build.el, this.roster && this.roster.el]) {
+      if (!node || !node.classList.contains('is-live')) continue;
+      const r = node.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) continue;
+      /* Grown by the local scrim, which is what actually darkens the void
+         behind the panel — the element box alone leaves marks sitting on the
+         gradient's shoulder. */
+      out.push({
+        x: r.left - base.left - 18,
+        y: r.top - base.top - 14,
+        w: r.width + 40,
+        h: r.height + 40,
+      });
+    }
+    return out;
   }
 
   _clusters() {
@@ -1316,6 +1485,7 @@ export class HUD {
     if (this._onResize) window.removeEventListener('resize', this._onResize);
     if (this._ro) this._ro.disconnect();
     if (this._bootTimer) clearTimeout(this._bootTimer);
+    if (this._audioProbe) clearTimeout(this._audioProbe);
 
     this.roster.dispose();
     this.markers.dispose();

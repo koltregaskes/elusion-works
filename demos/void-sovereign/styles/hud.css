@@ -556,6 +556,82 @@
 /* Paused is a state you must not be able to miss. */
 .vsh-speed__b[data-speed='0'][aria-pressed='true'] { color: var(--vsh-amber); }
 
+/* ------------------------------------------------------- 2b. sound state */
+/* The one audio control that is always on screen. The five-bus mixer is on the
+   H card where a settings bank belongs; this is the state readout and the
+   panic key, so it lives in the bar and never scrolls.
+
+   Hidden until `ui:audioChanged` proves there is something to control — a mute
+   button on a build with no AudioContext is worse than no button. */
+.vsh-mute {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-left: 4px;
+  color: var(--vsh-ink-40);
+  pointer-events: auto;
+  transition: color 0.15s linear;
+}
+
+.vsh-mute.is-live { display: flex; }
+.vsh-mute:hover { color: var(--vsh-ink-64); }
+
+.vsh-mute svg {
+  width: 17px;
+  height: 17px;
+  overflow: visible;
+}
+
+.vsh-mute__cone {
+  fill: currentColor;
+  stroke: none;
+}
+
+.vsh-mute__waves,
+.vsh-mute__slash {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  transition: opacity 0.15s linear;
+}
+
+/* Two states, two silhouettes — the arcs and the cross never both show, so the
+   glyph is legible without relying on the colour change. */
+.vsh-mute__slash { opacity: 0; }
+.vsh-mute.is-muted { color: var(--vsh-red); }
+.vsh-mute.is-muted .vsh-mute__waves { opacity: 0; }
+.vsh-mute.is-muted .vsh-mute__slash { opacity: 1; }
+
+.vsh-mute.is-unavailable {
+  color: var(--vsh-ink-24);
+  cursor: default;
+}
+
+.vsh-mute.is-unavailable .vsh-mute__waves { opacity: 0; }
+.vsh-mute.is-unavailable .vsh-mute__slash { opacity: 0.5; }
+
+/* Announced to a screen reader, invisible to everyone else. */
+.vsh-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vsh-mute,
+  .vsh-mute__waves,
+  .vsh-mute__slash { transition: none; }
+}
+
 /* ----------------------------------------------------------- 3. bottom deck */
 /* The bottom padding clears the shell's "← Demos" exit link, which sits in the
    bottom-left corner at z-index 60. Nothing of ours may land on top of it. */
