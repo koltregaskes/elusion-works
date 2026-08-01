@@ -262,10 +262,20 @@ performance win over the empty half of the sky, but `pow(dens, contrast)` with
 contrast < 1 lifts small densities hard, so a plain cutoff shows as a clipped
 edge. The envelope now smoothsteps to exactly zero at the threshold.
 
-**Watch for backticks inside GLSL template literals.** A comment containing
-`` `pow(...)` `` inside a JS template literal terminates the string and
-produces a baffling `Unexpected identifier 'pow'` attributed to the *importing*
-module, not the broken one.
+**Watch for backticks inside GLSL template literals — this is the single most
+expensive recurring bug in the project.** A shader comment referring to
+`` `someUniform` `` terminates the JS template literal and silently truncates
+the shader. It has been introduced **four times**, and every time it presents
+as a mystery: the parse error is thrown by an unrelated line, often in a
+*different* module that merely imports the broken one, naming an identifier
+that looks nothing like the cause. It has nulled the entire FX system (reported
+as a `RING_INNER` undeclared identifier) and taken out `environment.js`.
+
+**`node .local/syntax-check.mjs` now detects it.** A GLSL-looking template
+literal whose contents end inside an unclosed block comment is exactly the
+fingerprint. Run it after every edit — it also catches ordinary parse failures
+that `node --check` cannot, because `--check` parses `.js` as CommonJS here and
+`import` masks everything behind an unrelated error.
 
 **Two of my diagnoses were wrong before the right one.** I flipped the cube face
 basis on faulty reasoning (three's `CubeCamera` uses standard orientations for
