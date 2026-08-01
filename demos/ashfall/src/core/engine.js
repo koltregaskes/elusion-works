@@ -12,6 +12,13 @@
  * renderer keeps `NoToneMapping` and why every intermediate target is tagged
  * `LinearSRGBColorSpace` — a tone curve or an sRGB encode applied here would be applied twice.
  *
+ * But this file still owns the *resolution* postfx resolves into, because `renderer.setSize`
+ * lives here: two sizes, not one. `engine.backbuffer` is the canvas drawing buffer at exactly
+ * css x dpr, and it is what render target `null` writes; `engine.size` is the internal buffer
+ * the scene and the post chain run at, the backbuffer divided by the preset's integer divisor.
+ * Keeping the backbuffer at css x dpr is what stops the browser bilinear-stretching the canvas
+ * element under a crisp DOM HUD — see the QUALITY table for the full account.
+ *
  * ---------------------------------------------------------------------------------------
  * LAYERS
  * ---------------------------------------------------------------------------------------
@@ -77,17 +84,46 @@ const _clearRead = new THREE.Color();
 /* -------------------------------------------------------------------------- */
 
 /**
- * `renderScale` is the internal-buffer multiplier from the preset table. `dprCap` bounds
- * `devicePixelRatio` so a 3x phone panel cannot ask for a 9-megapixel buffer.
+ * `renderDivisor` is the internal-buffer reduction, expressed as an **integer divisor of the
+ * backbuffer** rather than as a fractional multiplier. That is deliberate, and it is the whole
+ * point of this table's shape.
+ *
+ * The frame ends with postfx drawing a fullscreen triangle into render target `null` — the
+ * canvas backbuffer — and the browser then scales that backbuffer to whatever CSS box the
+ * canvas element occupies. So the backbuffer must *be* the CSS box in device pixels; if it is
+ * not, every 3D pixel in the delivered frame has been through a bilinear stretch that the DOM
+ * HUD sitting on top of it never sees. A render scale of 0.85 at 800x450 asked for a 680x382.5
+ * buffer: non-integer, rounded to 680x382, and then smeared back up to 800x450 by the
+ * compositor. Edges spread over 3 to 5 pixels, TAA's sub-pixel work was thrown away on the way
+ * out, and the viewmodel — which should be the sharpest thing on screen — came back the softest
+ * object in the frame while the HUD text beside it stayed pin-sharp. An integer divisor plus a
+ * backbuffer sized at exactly css x dpr (see `resize`) removes that: divisor 1 is a guaranteed
+ * 1:1 pixel-for-pixel resolve with no resample anywhere in the chain.
+ *
+ * medium is therefore 1 (it was 0.85). At the §5 target — 1080p on integrated graphics — the
+ * 15% linear saving was buying back about 28% of the pixels while costing the entire image its
+ * lens, and that is not a trade the art direction can absorb. Resolution is allowed to be spent
+ * below medium, not at it.
+ *
+ * low keeps a divisor of 2: an exact 2:1 magnification, so texel centres land on pixel centres
+ * and the upscale is a clean integer ratio rather than an arbitrary fraction. (The one caveat
+ * is an odd backbuffer, where the `ceil` below leaves the ratio a sub-texel shy of exactly 2 —
+ * still an order of magnitude tighter than 1/0.85.) low also runs no prepass, so SSAO, DOF and
+ * motion blur are off and there really is a quarter of the shading work to do: that preset is a
+ * lifeboat for hardware that cannot hold 60, not a quality tier anyone should ship screenshots
+ * from. Any future sub-1.0 tier belongs here as an integer divisor, or behind a sharpening
+ * resolve in postfx — never as a plain fractional stretch.
+ *
+ * `dprCap` bounds `devicePixelRatio` so a 3x phone panel cannot ask for a 9-megapixel buffer.
  * `detailNormals` adds a normal-map fetch to the prepass: worth it on hardware that can
  * afford 16-tap SSAO, because AO that follows the bumps in the concrete is the difference
  * between a rendered surface and a painted one.
  */
 const QUALITY = {
-  low: { renderScale: 0.7, dprCap: 2, prepass: false, detailNormals: false, alphaTest: false },
-  medium: { renderScale: 0.85, dprCap: 2, prepass: true, detailNormals: false, alphaTest: true },
-  high: { renderScale: 1.0, dprCap: 2, prepass: true, detailNormals: true, alphaTest: true },
-  ultra: { renderScale: 1.0, dprCap: 2, prepass: true, detailNormals: true, alphaTest: true },
+  low: { renderDivisor: 2, dprCap: 2, prepass: false, detailNormals: false, alphaTest: false },
+  medium: { renderDivisor: 1, dprCap: 2, prepass: true, detailNormals: false, alphaTest: true },
+  high: { renderDivisor: 1, dprCap: 2, prepass: true, detailNormals: true, alphaTest: true },
+  ultra: { renderDivisor: 1, dprCap: 2, prepass: true, detailNormals: true, alphaTest: true },
 };
 
 const DEFAULT_QUALITY = 'high';
@@ -654,27 +690,44 @@ export function createEngine(canvas, quality = DEFAULT_QUALITY) {
 
   const size = { w: 1, h: 1, dpr: 1 };
   const cssSize = { w: 1, h: 1 };
+  /** Drawing-buffer size of the canvas — css x dpr. What the final post pass resolves into. */
+  const backbuffer = { w: 1, h: 1 };
   const resizeListeners = new Set();
 
   function resize(cssW, cssH) {
     const w = Math.max(1, Math.floor(cssW || canvas.clientWidth || window.innerWidth || 1));
     const h = Math.max(1, Math.floor(cssH || canvas.clientHeight || window.innerHeight || 1));
 
-    // Internal resolution = css size x preset render scale x device pixel ratio (capped).
     const dpr = Math.min(window.devicePixelRatio || 1, preset.dprCap);
-    const iw = Math.max(1, Math.round(w * preset.renderScale * dpr));
-    const ih = Math.max(1, Math.round(h * preset.renderScale * dpr));
+
+    // The backbuffer is the CSS box in device pixels, exactly — never the render scale. postfx
+    // ends by drawing into target `null`, i.e. here, and anything smaller than css x dpr would
+    // be resampled by the browser on its way to the screen: a bilinear stretch applied to every
+    // 3D pixel and to none of the DOM HUD. Both are integers by construction, so the canvas
+    // element is a 1:1 map of its drawing buffer at dpr 1 and the standard HiDPI map above it.
+    const bw = Math.max(1, Math.round(w * dpr));
+    const bh = Math.max(1, Math.round(h * dpr));
+
+    // Internal (scene + post chain) resolution: the backbuffer divided by the preset's integer
+    // divisor. Derived from the backbuffer rather than from the CSS size so divisor 1 gives
+    // internal === backbuffer identically — no rounding, no half-texel, no resample. `ceil`
+    // keeps a divisor > 1 from ever magnifying by more than the divisor on an odd backbuffer.
+    const div = Math.max(1, Math.round(preset.renderDivisor || 1));
+    const iw = div === 1 ? bw : Math.max(1, Math.ceil(bw / div));
+    const ih = div === 1 ? bh : Math.max(1, Math.ceil(bh / div));
 
     cssSize.w = w;
     cssSize.h = h;
+    backbuffer.w = bw;
+    backbuffer.h = bh;
     size.w = iw;
     size.h = ih;
     size.dpr = dpr;
 
     // updateStyle=false: we set the CSS box ourselves because styles.css may not have loaded
     // a rule for the canvas, and a canvas with no CSS size falls back to its attribute size,
-    // which at 0.7 render scale would letterbox the game.
-    renderer.setSize(iw, ih, false);
+    // which on a HiDPI panel would overflow the viewport.
+    renderer.setSize(bw, bh, false);
     canvas.style.width = `${w}px`;
     canvas.style.height = `${h}px`;
 
@@ -1011,7 +1064,8 @@ export function createEngine(canvas, quality = DEFAULT_QUALITY) {
     if (name === engine.quality) return;
     engine.quality = name;
     preset = qualityOf(name);
-    engine.renderScale = preset.renderScale;
+    engine.renderDivisor = preset.renderDivisor;
+    engine.renderScale = 1 / preset.renderDivisor;
     prepass.state.detailNormals = preset.detailNormals;
     prepass.state.alphaTest = preset.alphaTest;
     // Force the exclusion cache to rebuild — geometry may have been swapped with the preset.
@@ -1095,6 +1149,11 @@ export function createEngine(canvas, quality = DEFAULT_QUALITY) {
     size,
     /** CSS pixel size of the canvas box. `size` is the internal buffer, which is what postfx wants. */
     cssSize,
+    /**
+     * Drawing-buffer size, css x dpr. The final post pass resolves at this resolution; with
+     * `renderDivisor === 1` it equals `size`, and the frame reaches the screen unresampled.
+     */
+    backbuffer,
 
     targets,
     /** False when EXT_color_buffer_float / _half_float were both missing and we fell back to RGBA8. */
@@ -1112,7 +1171,10 @@ export function createEngine(canvas, quality = DEFAULT_QUALITY) {
     viewDepthParams: { near: CAMERA.viewmodelNear, far: CAMERA.viewmodelFar },
 
     quality: qualityName,
-    renderScale: preset.renderScale,
+    /** Integer backbuffer divisor for the internal buffer. 1 = native, no resample. */
+    renderDivisor: preset.renderDivisor,
+    /** Same thing as the multiplier the old preset table exposed, for read-only consumers. */
+    renderScale: 1 / preset.renderDivisor,
     frame: 0,
     contextLost: false,
     debug: false,

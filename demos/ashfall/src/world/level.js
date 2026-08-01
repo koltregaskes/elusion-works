@@ -4871,6 +4871,76 @@ export function createLevel(scene, materials, game) {
       addInstance(setOffcut, px, groundY(px, pz) + 0.03, pz, r2() * 6.28, (r2() - 0.5) * 0.3, (r2() - 0.5) * 0.25,
         0.9 + r2() * 0.7, [T.rust[0] * (0.7 + r2() * 0.5), T.rust[1] * 0.9, T.rust[2] * 0.9]);
     }
+
+    /*
+     * The crest, which is the part of the heap the depot vantage is actually looking at.
+     *
+     * Everything above is correct and almost none of it lands, for two separate reasons that
+     * were both found by projecting the props through that camera (eye (-34, 1.75, -8),
+     * 75° vertical, 16:9) rather than by eye.
+     *
+     *  1. *Framing.* The barrier falls off the right edge, the pallet stack sits at 1.5% of
+     *     frame width on the extreme left margin, and all three drums land at 66% across and
+     *     67% down — underneath the viewmodel. Only the lean slabs are in frame.
+     *
+     *  2. *Occlusion, and this is the one that matters.* The eye is 2.8 m from the centre of a
+     *     3.6 m heap, i.e. standing on its own toe, so the crest 2.1 m ahead rises to about
+     *     1.3 m and everything beyond it is behind a wall. A prop on the far flank at 4 m puts
+     *     its top on a sight ray that passes the crest line at 1.12 m — half a metre under the
+     *     spoil. Ringing the heap with readables therefore cannot work from here; the props
+     *     have to be *on* the crest, inside the 10–45% band the mass actually fills.
+     *
+     * Positions are solved rather than guessed: sampled over the heap and kept only where the
+     * projected x lands in that band, the range is 1.4–3.2 m, and nothing comes within 1.15 m
+     * of a prop that is already there. Heights come off `rubblePile`'s own profile,
+     * y = (1 - r/R)^2 * H with R = 3.6 and H = 1.4 for pile 601, and are then deliberately
+     * under-set — a piece sunk a hand's depth into rubble is what rubble does, a piece
+     * floating a hand's depth over it is the one error the eye catches instantly. Nothing
+     * exceeds 1.2 m off the deck either, so a player standing where the camera stands still
+     * sees over the heap.
+     *
+     * They are also the darkest things in the near field, and that is doing as much work as
+     * the silhouettes. The mass reads as one object because every piece in it is broken
+     * concrete at the same value; rust, creosote and weathered deal are three different value
+     * families, and a value break is what tells the eye where one object stops.
+     */
+    const heapY = (rr) => {
+      const f = clamp(1 - rr / 3.6, 0, 1);
+      return f * f * 1.4;
+    };
+
+    // On the crest at 1.5 m, 33% across: a drum on its side, half sunk. The nearest thing to
+    // the lens in the whole frame and the only horizontal cylinder in it, so it is what sets
+    // the scale everything behind it gets measured against.
+    addInstance(setDrum, -32.8, groundY(-32.8, -6.8) + heapY(1.22) * 0.5 + 0.235, -6.8,
+      2.42, Math.PI * 0.5, 0.06, 1, [T.rustDeep[0] * 1.12, T.rustDeep[1] * 1.02, T.rustDeep[2] * 0.98]);
+    // The slabs and the pallet ride the heap's own ramp collider like every other piece of
+    // rubble here, but this one is a waist-wide steel cylinder standing where the ramp has
+    // already flattened out — walking through it would be worse than the mass it is breaking.
+    solidBox(-32.8, 0.29, -6.8, 0.45, 0.29, 0.45, 'metal');
+
+    // Deeper into the crest at 2.6 m, 19% across: a floor slab levered out and stood on edge,
+    // rebar out of the fracture. Same rest-height maths as the `leans` above, with the foot
+    // buried 0.4 m into spoil that is 0.93 m deep at that radius.
+    {
+      const s = 2.0;
+      const rz = 0.9;
+      const rest = (0.42 * Math.abs(Math.sin(rz)) + 0.1 * Math.abs(Math.cos(rz))) * s;
+      addInstance(setSlab, -31.0, 0.40 + rest * 0.72, -6.3, 1.86, 0, rz, s,
+        [T.concreteWorn[0] * 0.74, T.concreteWorn[1] * 0.75, T.concreteWorn[2] * 0.8]);
+    }
+
+    // Out on the north flank, where the toe is only a hand deep: a pallet on edge tipped back
+    // against the spoil. Five deck boards with daylight between them, a shape no piece of
+    // broken concrete can imitate. Behind the crest from the depot vantage, but this heap is
+    // approached from the yard as often as it is stood on, and that is the face that sees it.
+    addInstance(setPallet, -29.9, groundY(-29.9, -5.5) + 0.42, -5.5, 0.86, 0, 1.25, 1, T.woodDark);
+    dustSkirt(-29.9, -5.5, 0.8, 0.09, 6381, null);
+
+    // Creosoted sleepers stacked clear of the heap on the apron proper: dead-black horizontal
+    // bars, the hardest edge and the lowest value on the approach, and the piece that stops
+    // the spoil and the apron reading as one continuous grey from the yard side.
+    sleeperStack(-28.2, -5.0, 1.24, 3, 6391);
   }
 
   /* ---------------------------------------------------------------------- */
@@ -6686,6 +6756,82 @@ export function createLevel(scene, materials, game) {
       drains: [[13.8, -24.6, 0.2]],
       patches: 2,
       anchors: 1,
+    },
+    /*
+     * The three bays below extend the table above rather than adding a second pass — same
+     * `fillBay`, same instance sets, same rules. They were found by walking the shipped
+     * vantages against the nine rects above and asking which open ground *no* rect reaches:
+     *
+     *  - the yard road itself, which the first pass dressed either side of and then left bare
+     *    down the middle;
+     *  - the south-central field, which is the whole near ground of the `sunline` vantage;
+     *  - the outer yard west of the dock, which `wide` looks straight across.
+     *
+     * None of the three overlaps an existing rect, so no square metre is scattered twice.
+     */
+    {
+      // THE YARD ROAD. `ROAD_ZONES` makes x -22..20, z -9..-3 asphalt, and it is the spine
+      // every route in the map joins: the depot apron feeds it, both terraces flanks leave
+      // off it, and the boarded crossings step off it. The first pass put grit in both kerbs
+      // (7401/7402) and litter along the z = -6 line and then stopped, so the carriageway —
+      // 40 m of it, dead centre of the depot and sunline frames — was the cleanest surface in
+      // a bombed freight yard. A road is the one piece of ground guaranteed to be filthy, so
+      // this runs at full wear with its lines laid straight down the running direction.
+      seed: 9610,
+      wear: 1.0,
+      rect: [-21.4, -8.9, 18.8, -4.8],
+      lines: [
+        [-21.0, -6.4, 18.4, -6.1],
+        [-21.0, -8.2, -5.6, -8.0],
+        [-2.2, -6.6, 16.0, -6.0],
+      ],
+      // The spools, the crossing approach and the two manhole covers `groundClutter` already
+      // put down here carry no collider tall enough for `bayClear` to see, or none at all.
+      avoid: [[-14.5, -6.9, 1.5], [-13.0, -7.6, 1.3], [-8.5, -6.4, 2.2], [-12.0, -6.2, 0.8], [8.0, -6.2, 0.8]],
+      marks: [
+        [-20.0, -4.95, 17.6, -4.85, 0.1, 0.45],
+        [-20.2, -8.75, -6.2, -8.65, 0.1, 0.55],
+        [2.0, -8.75, 17.6, -8.7, 0.1, 0.5],
+      ],
+      patches: 4,
+      // The carriageway is 4 m deep and the desire lines run down all of it, so `dressBay`'s
+      // "more than 2.2 m off a line" test will reject most candidates and place one or two.
+      // That is the correct answer for a road: nothing stands in a live traffic lane.
+      anchors: 2,
+    },
+    {
+      // The south-central field between the depot's east approach and the admin road. The
+      // `sunline` vantage stands at (-2, -14) and looks east down it, so this is that frame's
+      // entire near ground; it is also the open half of the southern flanking route.
+      seed: 9611,
+      wear: 0.85,
+      rect: [-3.2, -32.4, 12.2, -14.2],
+      lines: [[-2.8, -15.0, 11.8, -16.2], [4.0, -14.4, 5.2, -31.8], [-2.6, -30.6, 9.0, -28.4]],
+      // 605 is a rubble heap and the spool and the tyres are low: none of them owns a collider
+      // this pass can see, and grit scattered through a heap reads as a bug.
+      avoid: [[2.0, -22.0, 4.3], [4.5, -17.5, 1.4], [-2.5, -18.0, 1.5]],
+      ruts: [[6.6, -15.2, 7.4, -30.8]],
+      marks: [[-2.4, -14.6, 11.6, -15.0, 0.09, 0.6]],
+      // Clear of the x = 10.5 container column, whose boxes reach out to x 9.15.
+      drains: [[7.8, -20.4, 1.1]],
+      patches: 3,
+      anchors: 3,
+    },
+    {
+      // The outer yard north of road 1 and west of the dock. Nothing structural stands in it,
+      // which is exactly why it was bare: the edge-dressing passes had no edges to work off
+      // between the container block at x -38 and the dock ramp at x -16.
+      seed: 9612,
+      wear: 0.7,
+      rect: [-45.6, 32.8, -18.4, 40.4],
+      lines: [[-45.0, 34.6, -19.0, 34.2], [-28.0, 33.0, -27.4, 39.8]],
+      // Kept south of z 35.4: the two-wide container block sits on z 36.65 and its boxes are
+      // 2.438 m across, so a rut any further north would run underneath them.
+      ruts: [[-44.0, 34.9, -21.0, 34.1]],
+      marks: [[-44.6, 39.2, -20.0, 39.0, 0.1, 0.62]],
+      drains: [[-24.6, 33.6, 1.5]],
+      patches: 2,
+      anchors: 3,
     },
   ];
 
