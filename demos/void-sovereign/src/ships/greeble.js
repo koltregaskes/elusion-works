@@ -567,8 +567,18 @@ export function engineNozzle(r, opts = {}) {
   // running back up the recess to just inside the lip, and it is what the
   // bloom pass and the FX plume both key off.
   //
-  // V is remapped 0 at the throat to 1 at the mouth so [MAT] can run an axial
-  // gradient down the bell rather than a view-facing one.
+  // V is remapped to a clean 0..1 ramp — **0 at the throat, 1 at the mouth** —
+  // so the emitter material can run an axial gradient down the bore rather
+  // than a view-facing one. Measured on the merged `bell` group at every LOD:
+  // uv.y spans exactly 0..1, mean 0.5, and survives the merge (.local/bellramp.mjs).
+  //
+  // The consumer is `getGlowMaterial(team, 'bell')` in render/materials.js,
+  // which currently derives heat from `dot( N, V )` and states that hull
+  // geometry "arrives merged and unwrapped". For the bell group that is not
+  // true. GLOW_KINDS.bell wants the hot core at the throat, so the term it
+  // should be using is `heat = pow( 1.0 - vUv.y, uSharp )`. Until it does, the
+  // bell is bright at the lip and dead up the bore, and the FX plume has to
+  // paper over it with a throat disc from outside.
   const cone = loft(
     [
       { z: 0, pts: ngonSection(r * 0.8, sides, { rot: Math.PI / sides }) },

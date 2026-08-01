@@ -224,11 +224,16 @@ const OCCLUSION_FRACTION = 0.25;
    *geometry*, which measures 484 px on the same frame and is what `_spanAt`
    computes. Everything below is stated against that measure. */
 const OPENING = {
-  /* Share of frame width the hero's projected geometry should span. The rubric
-     asks for a painted silhouette of 45-55%; painted runs ~6% under the
-     geometric span because the unlit flank does not clear the difference
-     threshold, so aim a little over the middle of the band. */
-  fill: 0.52,
+  /* Share of frame the hero's projected geometry should span. The rubric asks
+     for a painted silhouette of 45-55% of the width; the height cap is what
+     stops the same solve cropping the masts off a hull that happens to present
+     itself diagonally — measured at 1,200 px of a 1,080 px frame before it
+     existed. Whichever axis binds first sets the distance. */
+  fillW: 0.515,
+  fillH: 0.88,
+  /* Silhouette must stay inside this share of the frame once the composition
+     offset is applied, which is what caps the offset on a big presentation. */
+  margin: 0.97,
   /* And never further out than this, whatever the fill solve wants. Framing off
      hull length is the constraint that stops a wide hull being flown into and a
      narrow one being left as a speck. */
@@ -254,13 +259,20 @@ const OPENING = {
   /* Where the silhouette's centre sits, as a share of the frame away from the
      middle. Dead centre is tidy rather than arresting. */
   offsetX: 0.115,
-  offsetY: 0.055,
+  offsetY: 0.035,
 
-  /* Phases tried around the sun cone, and how many hull vertices the fill solve
-     samples. 2,400 points over an 892k-vertex hull settle the extent to well
-     inside a pixel and cost a fraction of a millisecond, once, at boot. */
+  /* Phases tried around the sun cone, how many of those are actually framed and
+     scored, and how many hull vertices the fill solve samples.
+
+     The sample budget is shared out per mesh with a floor, not strided across
+     the concatenation: at a flat 2,400 the 892k-vertex hull swallowed the whole
+     budget and the four small meshes got single figures, which under-reported
+     the vertical extent by 12% against a dense read and let a hull come in at
+     94% of frame height while the solve believed it was at 84%. */
   phases: 36,
-  samples: 2400,
+  candidates: 7,
+  samples: 9000,
+  samplesPerMesh: 64,
 };
 
 /* Candidate offsets, in radians, searched in order when the shot is blocked.
@@ -638,10 +650,11 @@ export class CameraRig {
     let total = 0;
     for (const m of meshes) total += m.geometry.attributes.position.count;
     if (!total) return null;
-    const stride = Math.max(1, Math.ceil(total / budget));
 
     for (const m of meshes) {
       const pos = m.geometry.attributes.position;
+      const want = Math.max(OPENING.samplesPerMesh, Math.round((budget * pos.count) / total));
+      const stride = Math.max(1, Math.ceil(pos.count / want));
       for (let i = 0; i < pos.count; i += stride) {
         _p1.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld);
         if (!Number.isFinite(_p1.x) || !Number.isFinite(_p1.y) || !Number.isFinite(_p1.z)) continue;
@@ -715,25 +728,33 @@ export class CameraRig {
     return out;
   }
 
-  /* Distance at which the hull spans `OPENING.fill` of the frame, held inside
-     the hull-length band. Span goes as 1/distance to first order, so a handful
-     of secant steps converge; the FOV is re-derived each step because it rides
-     the zoom and would otherwise be solved against the wrong lens. */
+  /* Distance at which the hull just fills the target rectangle, held inside the
+     hull-length band. Whichever axis binds first wins, so a hull presented
+     diagonally is pushed out until it fits rather than cropped at 52% of the
+     width. Span goes as 1/distance to first order, so a handful of secant steps
+     converge; the FOV is re-derived each step because it rides the zoom and
+     would otherwise be solved against the wrong lens. */
   _solveFill(pts, focus, dir, hullLength) {
     const lo = hullLength * OPENING.hullMultipleMin;
     const hi = hullLength * OPENING.hullMultipleMax;
     const span = { w: 0, h: 0, cx: 0, cy: 0 };
     let d = clamp(hullLength * 1.08, lo, hi);
-    let got = 0;
+    let w = 0;
+    let h = 0;
     for (let i = 0; i < 8; i++) {
       const s = this._spanAt(pts, focus, dir, d, this._fovAt(d), span);
       if (!s || !(s.w > 1e-4)) break;
-      got = s.w;
-      const next = clamp(d * (s.w / OPENING.fill), lo, hi);
+      w = s.w;
+      h = s.h;
+      const ratio = Math.max(s.w / OPENING.fillW, s.h / OPENING.fillH);
+      const next = clamp(d * ratio, lo, hi);
       if (Math.abs(next - d) < 0.5) { d = next; break; }
       d = next;
     }
-    return { dist: d, fill: got };
+    /* How far off the ideal frame this approach lands once the band has had its
+       say. 1.0 is exact; the aim search minimises |ln| of it. */
+    const ratio = Math.max(w / OPENING.fillW, h / OPENING.fillH);
+    return { dist: d, w, h, ratio: ratio > 0 ? ratio : 1 };
   }
 
   /* Aim the shot.
@@ -744,7 +765,7 @@ export class CameraRig {
      view-to-sun angle out of the band ENV needs — the two used to be randomised
      independently, which is how six seeds produced a byte-identical opening
      frame with a 7x spread in hull luminance. */
-  _aimOpening(focus, hero, rng) {
+  _aimOpening(focus, hero, rng, pts, hullLength) {
     const haveSun = this._sunDir(_sun);
     const alpha = Math.PI - rng.range(OPENING.sunAngleMin, OPENING.sunAngleMax);
 
@@ -797,20 +818,30 @@ export class CameraRig {
       });
     }
 
-    /* Seeded pick, then walk the rest in order if a rock is parked in the shot.
-       Occlusion is checked at the hull-length distance the fill solve will land
-       near, which is close enough for a test that is about angles. */
-    const pick = rng.int(0, ok.length - 1);
-    const probe = (hero.def && hero.def.length ? hero.def.length : 1900) * 1.1;
-    const list = this._occluderList(focus, probe);
-    for (let i = 0; i < ok.length; i++) {
-      const cand = ok[(pick + i) % ok.length];
+    /* Frame a spread of the surviving phases and keep the one that composes
+       best: the hull's projected aspect changes enormously round the cone —
+       broadside against nose-on is the difference between filling the frame and
+       being pushed to the far end of the distance band — so the approach is
+       chosen on the picture it makes, not on the first angle that is legal. The
+       seed still decides which phases are looked at and breaks every tie, so
+       two seeds with different stars get visibly different shots. */
+    const list = this._occluderList(focus, hullLength * 1.1);
+    const stride = Math.max(1, Math.floor(ok.length / OPENING.candidates));
+    let best = null;
+    for (let i = 0; i < ok.length; i += stride) {
+      const cand = ok[i];
       const cp = Math.cos(cand.pitch);
       _try.set(Math.sin(cand.yaw) * cp, Math.sin(cand.pitch), Math.cos(cand.yaw) * cp).normalize();
-      if (list.length && this._sightBlocked(focus, _try, probe, list, hero.radius || 0)) continue;
-      return cand;
+      const fit = this._solveFill(pts, focus, _try, hullLength);
+      let score = Math.abs(Math.log(fit.ratio));
+      if (list.length && this._sightBlocked(focus, _try, fit.dist, list, hero.radius || 0)) {
+        score += 10;   // a rock across the shot loses to any clear angle
+      }
+      if (!best || score < best.score) {
+        best = { yaw: cand.yaw, pitch: cand.pitch, score, fit };
+      }
     }
-    return ok[pick];
+    return best || { yaw: ok[0].yaw, pitch: ok[0].pitch, score: 0, fit: null };
   }
 
   /** Static plus entity occluders near a focus, as the flat records the sight
@@ -846,11 +877,11 @@ export class CameraRig {
 
     const seed = (this.world && this.world.seed) || 1337;
     const rng = makeRng((seed ^ 0x5f3a91) >>> 0);
-    const aim = this._aimOpening(hero.position, hero, rng);
+    const aim = this._aimOpening(hero.position, hero, rng, pts, hullLength);
 
     const cp = Math.cos(aim.pitch);
     _dir.set(Math.sin(aim.yaw) * cp, Math.sin(aim.pitch), Math.cos(aim.yaw) * cp).normalize();
-    const solved = this._solveFill(pts, hero.position, _dir, hullLength);
+    const solved = aim.fit || this._solveFill(pts, hero.position, _dir, hullLength);
 
     /* Put the lit flank into the open half of the frame: the star's screen-side
        decides which way the subject is pushed, so the shot always reads as the
@@ -861,8 +892,12 @@ export class CameraRig {
 
     const span = { w: 0, h: 0, cx: 0, cy: 0 };
     const s = this._spanAt(pts, hero.position, _dir, solved.dist, this._fovAt(solved.dist), span);
-    const wantX = side * OPENING.offsetX * 2;
-    const wantY = OPENING.offsetY * 2;       // NDC +y is up; sit a touch high
+    /* The offset is a composition, not a licence to push the subject off the
+       edge — it gives back whatever the silhouette needs to stay in frame. */
+    const offX = Math.min(OPENING.offsetX, Math.max(0, (OPENING.margin - solved.w) * 0.5));
+    const offY = Math.min(OPENING.offsetY, Math.max(0, (OPENING.margin - solved.h) * 0.5));
+    const wantX = side * offX * 2;
+    const wantY = offY * 2;                  // NDC +y is up; sit a touch high
     this._composeX = wantX - (s ? s.cx : 0);
     this._composeY = wantY - (s ? s.cy : 0);
     this._composeGain.snap(1);
@@ -891,7 +926,8 @@ export class CameraRig {
       pitch: aim.pitch,
       distance: solved.dist,
       hullMultiple: solved.dist / hullLength,
-      fill: solved.fill,
+      fillW: solved.w,
+      fillH: solved.h,
       offsetX: wantX,
       offsetY: wantY,
     };

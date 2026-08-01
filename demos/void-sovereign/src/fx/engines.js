@@ -17,7 +17,7 @@ vec3 qrot( vec4 q, vec3 v ) {
 }
 `;
 
-/* 0..2 pos | 3..6 quat | 7..9 scale | 10..12 colour | 13..16 seed,throttle,hot,flare */
+/* 0..2 pos | 3..6 quat | 7..9 scale | 10..12 colour | 13..16 seed,throttle,capPx,flare */
 const E_STRIDE = 17;
 
 const PLUME_VERT = /* glsl */ `
@@ -44,20 +44,37 @@ varying float vThrottle;
 varying float vSeed;
 varying float vFragW;
 varying float vClamp;
+varying float vSpread;
 
 void main() {
-  /* Screen floor on the plume radius. An interceptor nozzle is 0.64 m across;
-     at three kilometres that is a fifth of a pixel, so a whole fighter wing
-     under full burn would show nothing at all. Scale the cone up — length with
-     it, so the shape stays a cone rather than a disc — until it is at least a
-     couple of pixels wide. */
+  /* Screen floor on the plume radius, under a **per-class ceiling**.
+
+     The floor exists because an interceptor nozzle is 0.64 m across, which at
+     three kilometres is a fifth of a pixel — a whole fighter wing under full
+     burn would show nothing at all. But a floor alone is a levelling device:
+     it lifts every drive in the fleet to exactly the same number of pixels, so
+     at 560 hulls a 14 m interceptor and a 130 m ion frigate painted the
+     identical mark and the fleet read as ~250 clone teardrops with no
+     silhouette anywhere in frame (§3.1, §3.4).
+
+     iMisc.z carries the ceiling in pixels, derived on the CPU from hull
+     length. Whichever of the two is smaller wins, so the floor still rescues
+     the effect from invisibility but can never inflate a fighter past a couple
+     of pixels. */
   vec3 scale = iScale;
   float camDist = max( distance( cameraPosition, iPos ), 1.0 );
-  float floorR = camDist * uPixelScale * uMinPixels;
+  float floorR = camDist * uPixelScale * min( uMinPixels, iMisc.z );
   float k = max( 1.0, floorR / max( scale.x, 0.0001 ) );
   vClamp = clamp( 1.0 - 1.0 / k, 0.0, 1.0 );
+  /* Energy, not just size. A point source smeared over a minimum disc has to
+     lose peak radiance or the smallest hulls end up the brightest things in a
+     fleet action. Exponent well below the physical 2.0 — full inverse-square
+     would take a distant fighter back to nothing. */
+  vSpread = pow( clamp( 1.0 / k, 0.03, 1.0 ), 0.40 );
   scale.xy *= k;
-  scale.z *= mix( 1.0, k, 0.35 );
+  // Was 0.35: with the ceiling in place the cone no longer needs as much
+  // length compensation, and less of it keeps a fighter's plume short.
+  scale.z *= mix( 1.0, k, 0.22 );
 
   vec3 local = position * scale;
   vec3 wp = qrot( iQuat, local ) + iPos;
@@ -95,6 +112,7 @@ varying float vThrottle;
 varying float vSeed;
 varying float vFragW;
 varying float vClamp;
+varying float vSpread;
 
 void main() {
   #include <logdepthbuf_fragment>
@@ -132,9 +150,10 @@ void main() {
   }
 
   // Once the pixel floor is doing the work the cone is a smear a few pixels
-  // across; concentrate it and drive it harder so it still reads as thrust.
+  // across; concentrate it so it still reads as thrust — but scale radiance
+  // back by the spread factor, or the fleet's smallest hulls burn brightest.
   a = fxSharpen( a, vClamp * 0.8 );
-  col *= uGain * ( 1.0 + 1.1 * vClamp );
+  col *= uGain * ( 1.0 + 1.1 * vClamp ) * vSpread;
 
   a *= smoothstep( 0.0, 0.02, vThrottle );
   a *= fxSoftFade( vFragW );
@@ -165,6 +184,7 @@ varying vec3 vColor;
 varying float vGain;
 varying float vFragW;
 varying float vClamp;
+varying float vSpread;
 
 void main() {
   vec3 axis = qrot( iQuat, vec3( 0.0, 0.0, 1.0 ) );
@@ -174,8 +194,15 @@ void main() {
 
   float pulse = 0.92 + 0.08 * sin( uTime * 33.0 + iMisc.x * 19.0 );
   float natural = iScale.x * iMisc.w * pulse;
-  float size = max( natural, dist * uPixelScale * uMinPixels );
+  /* Per-class ceiling on the screen floor (iMisc.z, pixels). Without it the
+     nozzle flare is the single worst offender at fleet scale: it is a
+     billboard, so the floor sets its *area*, and a 4 px floor on a 14 m hull
+     that is itself only 1 px across at 16 km paints a glow eight times the
+     size of the ship. The ceiling holds a fighter to ~2 px however far away it
+     gets, which is what lets the silhouette outlive the glow. */
+  float size = max( natural, dist * uPixelScale * min( uMinPixels, iMisc.z ) );
   vClamp = clamp( 1.0 - natural / max( size, 0.0001 ), 0.0, 1.0 );
+  vSpread = pow( clamp( natural / max( size, 0.0001 ), 0.03, 1.0 ), 0.40 );
 
   mv.xy += position.xy * size;
   gl_Position = projectionMatrix * mv;
@@ -202,6 +229,7 @@ varying vec3 vColor;
 varying float vGain;
 varying float vFragW;
 varying float vClamp;
+varying float vSpread;
 
 void main() {
   #include <logdepthbuf_fragment>
@@ -211,7 +239,7 @@ void main() {
   /* Mostly team colour with a white-hot centre, not the other way round: the
      drive is the strongest colour signal a ship gives at range (§3.3). */
   vec3 hot = mix( vColor, vec3( 1.0 ), 0.16 + 0.55 * pow( texel.a, 3.0 ) );
-  gl_FragColor = vec4( hot * texel.rgb * 2.1 * uGain * ( 1.0 + 0.75 * vClamp ), a );
+  gl_FragColor = vec4( hot * texel.rgb * 2.1 * uGain * ( 1.0 + 0.75 * vClamp ) * vSpread, a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -337,7 +365,7 @@ const PLUME_ATTRS = [
    which is exactly where the scale read matters most. */
 
 const L_STRIDE = 12;
-/* 0..2 pos | 3..5 rgb | 6 size | 7 phase | 8 period | 9 seed | 10..11 pad */
+/* 0..2 pos | 3..5 rgb | 6 size | 7 phase | 8 period | 9 seed | 10 capPx | 11 pad */
 
 const LIGHT_VERT = /* glsl */ `
 #include <common>
@@ -349,6 +377,7 @@ attribute float iSize;
 attribute float iPhase;
 attribute float iPeriod;
 attribute float iSeed;
+attribute float iCap;
 
 uniform float uTime;
 uniform float uPixelScale;
@@ -370,13 +399,19 @@ void main() {
     blink = 0.12 + 0.88 * exp( -ph * 7.0 ) + 0.35 * exp( -abs( ph - 0.5 ) * 26.0 );
   }
 
-  float size = max( iSize, dist * uPixelScale * uMinPixels );
+  /* Same per-class ceiling as the plume. Lamp *spacing* down a capital is the
+     scale cue these exist for, so the floor has to hold for a mothership — but
+     a 14 m interceptor carrying 2.2 px lamps at 16 km, where its whole hull is
+     one pixel, is the scale cue running backwards. */
+  float floorPx = min( uMinPixels, iCap );
+  float natural = iSize;
+  float size = max( natural, dist * uPixelScale * floorPx );
   mv.xy += position.xy * size;
   gl_Position = projectionMatrix * mv;
 
   vUv = uv;
   vColor = iColor;
-  vGain = blink;
+  vGain = blink * pow( clamp( natural / max( size, 0.0001 ), 0.06, 1.0 ), 0.30 );
   vFragW = gl_Position.w;
   #include <logdepthbuf_vertex>
 }
@@ -419,6 +454,7 @@ const LIGHT_ATTRS = [
   { name: 'iPhase', size: 1, offset: 7 },
   { name: 'iPeriod', size: 1, offset: 8 },
   { name: 'iSeed', size: 1, offset: 9 },
+  { name: 'iCap', size: 1, offset: 10 },
 ];
 
 /* `hulls.js` sizes the strake pitch so a capital reads as a countable row of
@@ -432,6 +468,32 @@ const TRAIL_RANGE = 9000;
 /* Station-keeping glow floor. Small enough to read as "hot, idle", large
    enough that a parked mothership is not twelve dead holes. */
 const IDLE_THROTTLE = 0.14;
+
+/* Per-class screen ceiling for the drive glow, in pixels, from hull length.
+
+   The pixel *floor* is what makes a distant effect legible; this is the
+   companion ceiling that stops the floor levelling the fleet. Anchored so a
+   14 m interceptor tops out at 2 px — beyond about 8 km the hull itself is
+   under 2 px, so the glow stays the same order as the thing emitting it —
+   and rising sub-linearly to ~14 px for a 1,900 m mothership, whose flare is
+   carried by its own physical size long before the floor is in play.
+
+     interceptor  14 m -> 2.0 px      frigate  130 m -> 4.9 px
+     corvette     34 m -> 2.9 px      destroyer 380 m -> 7.5 px
+     collector    46 m -> 3.2 px      mothership 1900 m -> 14.3 px */
+function ceilingPixels(L) {
+  return Math.min(16, Math.max(1.5, 2.0 * Math.pow(Math.max(L, 4) / 14, 0.40)));
+}
+
+/* Plume length and flare radius scale with the *bell*, and bells run roughly
+   as L^0.8 — so a 130 m frigate's plume was only 5.9x an interceptor's when
+   the hull is 9.3x longer. This closes the gap without touching the bell
+   geometry, which the mothership's corrected lip flange depends on. Normalised
+   at frigate scale and clamped at both ends so a capital does not grow a
+   kilometre-long tail. */
+function lengthGain(L) {
+  return Math.min(1.55, Math.max(0.62, Math.pow(Math.max(L, 4) / 130, 0.22)));
+}
 
 export class EngineFX {
   constructor(ctx) {

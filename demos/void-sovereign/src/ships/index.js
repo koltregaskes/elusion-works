@@ -528,9 +528,13 @@ export function buildInstancedBatch(classId, team = 0, count = 1, rng = null) {
     parts.push(im);
   };
 
-  push(geo.hull, hullMaterial(team, asset.def.family, true), true, KIND.HULL);
+  push(geo.hull, hullMaterial(team, asset.def.family, true, asset.def.length), true, KIND.HULL);
   push(geo.glass, glassMaterial(team), false, KIND.GLASS);
-  push(geo.glow, engineMaterial(team), false, KIND.GLOW);
+  // Was `engineMaterial(team)`, which is not a symbol in this module — the
+  // first call would have thrown. This entry point has no callers (SIM uses
+  // getFleetBatch), which is why it never surfaced.
+  push(geo.glow, glowMaterial(team, 'light'), false, KIND.GLOW);
+  push(geo.bell, glowMaterial(team, 'bell'), false, KIND.BELL);
 
   const _c = new THREE.Color();
   return {
@@ -833,9 +837,12 @@ class FleetBatch {
     this.addToLevel(slot, want);
   }
 
-  /** Convenience wrapper so the caller never has to hold the LOD table. */
+  /** Convenience wrapper so the caller never has to hold the LOD table. The
+      slot's current level is fed back in so `pickLod` can apply hysteresis —
+      SIM has no idea what level a slot is on, and should not have to. */
   setLodFromDistance(slot, distance) {
-    this.setLod(slot, pickLod(this.classId, distance));
+    if (slot < 0 || slot >= this.capacity) return;
+    this.setLod(slot, pickLod(this.classId, distance, this.slotLevel[slot]));
   }
 
   setColor(slot, colour) {
