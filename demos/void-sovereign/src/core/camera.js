@@ -863,27 +863,31 @@ export class CameraRig {
       const cp = Math.cos(cand.pitch);
       _try.set(Math.sin(cand.yaw) * cp, Math.sin(cand.pitch), Math.cos(cand.yaw) * cp).normalize();
       const fit = this._solveFill(pts, focus, _try, hullLength);
-      /* Scored on the *combined* fit — whichever of width or height binds — and
-         two more obvious-looking objectives were measured and rejected, so
-         please do not re-derive them:
+      /* Scored on the achieved *width*, asymmetrically. Three objectives were
+         measured across six seeds before this one; please do not re-derive them:
 
+         · Combined width-or-height fit. Looks right and is not: a hull taken
+           nose-on is tall and narrow, so it hits the height cap while only 40%
+           of the frame wide, and a combined ratio scores that as a perfect fit.
+           Measured 26-54% painted, with one seed opening on a tower.
          · Combined fit plus a bonus for landscape presentations. "Widest wins"
-           also means "needs the most distance", and the 1.2x hull-length
-           ceiling then binds on five of six seeds: painted silhouette 48-63%,
-           out of the 45-55% the rubric asks for. Capping the bonus so it could
-           only break near-ties was worse still (26-57%), because the cap let a
-           nose-on candidate with a nominally perfect fit win outright.
-         · Scoring on width alone, on the reasoning that width is what the
-           rubric measures. It overshoots for the same reason: when no approach
-           can reach the width target inside the distance band, the closest is
-           always the widest, and emberfall came out at 62.5%.
+           also means "needs the most distance", so the 1.2x hull-length ceiling
+           bound on five of six seeds and the silhouette went to 48-63%. Capping
+           the bonus to break only near-ties was worse again — the cap let the
+           nose-on candidate win outright.
+         · Symmetric width error. Right shape, but when no approach can reach
+           the target inside the distance band the nearest is always the widest,
+           and that put emberfall at 62.5%.
 
-         Combined scoring is what keeps the band, because it lets a narrower
-         presentation win when a broad one would have to overshoot to be framed
-         at all. The cost is that a hull can be chosen nose-on and read as a
-         tower rather than a ship — worth revisiting, but only by widening the
-         distance band, not by reweighting this. */
-      let score = Math.abs(Math.log(fit.ratio));
+         So: width, with overshoot weighted 2.5x. Undershooting reads as a hull
+         with room around it; overshooting reads as a hull that has been flown
+         into and cropped, and it is the failure the distance ceiling actively
+         pushes towards. Weighting the two differently is what keeps the band at
+         both ends without needing a separate aspect term — preferring the
+         approach whose *width* lands on target already prefers the broadside
+         read, which is what ARCHITECTURE §3.1 asks for. */
+      const wr = fit.w / OPENING.fillW;
+      let score = wr > 1 ? 2.5 * Math.log(wr) : -Math.log(Math.max(1e-6, wr));
       if (list.length && this._sightBlocked(focus, _try, fit.dist, list, hero.radius || 0)) {
         score += 10;   // a rock across the shot loses to any clear angle
       }

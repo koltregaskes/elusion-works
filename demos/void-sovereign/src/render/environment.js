@@ -253,11 +253,15 @@ export class Environment {
        -3..+26 lights the underside of every hull and leaves the decks — the
        surfaces actually facing the lens — in shadow. That is uplighting, and
        it is one of the two reasons hull luminance was a lottery. A key wants
-       to be above its subject; the band below keeps a little variety (a low,
-       raking, near-horizon star is a good look) without ever going under it
-       far enough to invert the read. */
+       to be above its subject, and higher rather than lower: measured over the
+       hero silhouette, moving the band from a mean of 23 degrees to 32 raised
+       the median on the two worst seeds by 10-15% at no cost to the shadow
+       floor, because the surface a camera pitched up at 15-26 degrees actually
+       sees most of is the top deck. The band below keeps a little variety —
+       a low, raking, near-horizon star is a good look — without ever going
+       under the subject far enough to invert the read. */
     const sunAz = r.range(-Math.PI, Math.PI);
-    const sunElev = Math.max(-0.16, Math.min(0.74, r.gaussian(0.62, 0.16)));
+    const sunElev = Math.max(0.05, Math.min(0.92, r.gaussian(0.55, 0.18)));
     const ce = Math.cos(sunElev);
     const sunFrom = new THREE.Vector3(Math.sin(sunAz) * ce, Math.sin(sunElev), Math.cos(sunAz) * ce)
       .normalize();
@@ -1540,7 +1544,7 @@ export class Environment {
               from patchwork colour, and this band used to be wide enough to
               read as camouflage all on its own. */
            diffuseColor.rgb *= (0.94 + 0.09 * rkn - 0.06 * rkFloor)
-                             * (0.55 + 0.45 * vRockAo);`,
+                             * (0.62 + 0.38 * vRockAo);`,
         )
         .replace(
           '#include <lights_fragment_end>',
@@ -1564,7 +1568,7 @@ export class Environment {
               is what gives a heap of rocks contact shading instead of a pile
               of independently-lit spheres. */
            {
-             float ind = 0.30 * (0.25 + 0.75 * vRockAo);
+             float ind = 0.42 * (0.35 + 0.65 * vRockAo);
              irradiance *= uRockBounce * ind;
              iblIrradiance *= uRockBounce * ind;
            }
@@ -1660,10 +1664,17 @@ export class Environment {
          and shipped as a float per instance. O(n^2) inside a seam is 140^2,
          which is nothing at load and saves a shadow map that §0 does not want.
 
-         `dr` is clamped to the rock's own radius so a huge neighbour cannot
-         drive the term past one; the shading uses it on the indirect term and
-         a little on albedo, never on direct light, because the key already
-         does its own occlusion by facing away. */
+         The term must be a real solid angle, not a proximity score. A sphere of
+         radius R at distance d covers about R^2/(4 d^2) of the sky, and the
+         first version left off the quarter and searched out to four times the
+         summed radii — which in a 1.5 km seam is the whole seam. Every rock
+         came back pinned at the 0.2 floor, so the field was uniformly darkened
+         rather than shaded, which is the same mistake as having no AO at all
+         with a brightness penalty attached.
+
+         Occlusion is applied to the indirect term and a little to albedo, never
+         to direct light: the key already does its own occlusion by facing
+         away. */
       for (let i = 0; i < near.length; i++) {
         const a = near[i];
         let occ = 0;
@@ -1672,11 +1683,11 @@ export class Environment {
           const o = near[j];
           const dx = a.x - o.x, dy = a.y - o.y, dz = a.z - o.z;
           const d2 = dx * dx + dy * dy + dz * dz;
-          const reach = (a.r + o.r) * 4;
+          const reach = (a.r + o.r) * 3;
           if (d2 > reach * reach || d2 < 1) continue;
-          occ += Math.min(1, (o.r * o.r) / d2);
+          occ += 0.25 * Math.min(1, (o.r * o.r) / d2);
         }
-        a.ao = Math.max(0.20, 1 / (1 + occ * 1.35));
+        a.ao = Math.max(0.35, 1 / (1 + occ * 1.0));
       }
     }
 

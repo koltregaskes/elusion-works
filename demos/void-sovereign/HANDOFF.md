@@ -346,6 +346,7 @@ demo card and for anyone writing copy.
 | **Time** | `Space` | Pause the battle — you can still select and give orders |
 | | `+` / `−` | Game speed: ¼, ½, ×1, ×2, ×4 |
 | | `H` | Controls panel |
+| | `M` | Mute / unmute (mixer sits above the reference grid) |
 | **Selection** | Left click / drag | Select · band-select |
 | | `Shift` / `Ctrl` + click | Add to · toggle in selection |
 | | Double click | Every ship of that class on screen |

@@ -961,7 +961,8 @@ const GLOW_KINDS = {
      ramp, not against a view-facing term, so they do not transfer to the
      others: the bore is meant to stay live well up its length, and the mouth
      is meant to be almost pure faction colour. */
-  bell: { core: 0xfff4e2, useEngine: true, gain: 3.4, sharp: 1.7, rim: 0.92, axial: true },
+  /* `pull` is a mitigation, not the fix — see the note below GLOW_KINDS. */
+  bell: { core: 0xfff4e2, useEngine: true, gain: 3.4, sharp: 1.35, rim: 0.92, axial: true, pull: 0.0012 },
   // faction running light: near-white centre, team colour off-axis
   light: { core: 0xffffff, useLight: true, gain: 2.1, sharp: 1.6, rim: 0.55 },
   // warm interior seen through a window bay — deliberately below bloom
@@ -970,9 +971,46 @@ const GLOW_KINDS = {
   vent: { core: 0xffb070, tint: 0xd04a18, gain: 0.55, sharp: 1.8, rim: 0.40 },
 };
 
+/* ── Why the bell carries a depth pull, and who owns the real fix ──────────
+
+   Giving the bell its axial ramp turned out not to be sufficient on its own,
+   because the bore was never a shading problem in the first place. Measured
+   end-on with FX hidden (.local/bellshot.mjs): flatten the bell material to
+   one flat colour and it paints the lip ring and nothing else. Turn depth
+   testing off and it paints the entire bore. Turn depth testing back on and
+   hide only the hero's own hull group and it paints the entire bore again.
+
+   So the emitter cone is present, front-facing and correctly shaded, and it
+   is losing the depth test to hull geometry from its own nozzle.
+   engineNozzle() builds a KIND.HULL recess cone (0.88r to 0.42r over z 0 to
+   1.25r) and nests the KIND.BELL emitter cone inside it (0.80r to 0.42r over
+   z 0.1r to 1.28r). Measured on the built buffers (.local/bellblock.mjs) the
+   two surfaces are between 0.06 m and 1.31 m apart on a 14.2 m bell and they
+   cross near half radius — textbook coincident surfaces, and the hull wins.
+
+   A depth pull of 0.05% of view depth takes bore-over-lip luminance from 0.51
+   to 0.82, and 0.2% reaches 0.88 and plateaus (.local/bellpull.mjs). That
+   sub-metre knee is the confirmation: this is coincidence, not a hull slab in
+   the way. So the value below is deliberately small — enough to win a tie,
+   far too little to punch through anything real.
+
+   The proper fix is in greeble.js and belongs to SHIPS: the emitter cone
+   already provides the funnel surface, so the KIND.HULL recess cone is either
+   redundant or wants pulling back by a metre. Until that lands this material
+   is resolving someone else's tie, and FX's throat disc should stay. */
+
+/* uDepthPull scales the view-space position toward the eye. Perspective
+   projection is invariant under scaling along the eye ray, so the pixel does
+   not move by even a subpixel — only its depth does. That is the only handle
+   an emitter has for winning against the housing it is recessed into, and
+   polygonOffset is not an alternative here: the log-depth chunk writes
+   gl_FragDepth, and the rasteriser's offset is discarded when a shader does
+   that. Quoted as a fraction of view depth so one value serves a 14 m bell at
+   fifty metres and at five kilometres. */
 const GLOW_VERT = /* glsl */`
 #include <common>
 #include <logdepthbuf_pars_vertex>
+uniform float uDepthPull;
 varying vec3 vGlowN;
 varying vec3 vGlowV;
 #ifdef VS_GLOW_AXIAL
@@ -992,6 +1030,7 @@ void main() {
   #ifdef VS_GLOW_AXIAL
     vGlowT = uv.y;
   #endif
+  mv.xyz *= 1.0 - uDepthPull;
   gl_Position = projectionMatrix * mv;
   #include <logdepthbuf_vertex>
 }
@@ -1095,6 +1134,7 @@ export function getGlowMaterial(team, kind) {
       uTime: SHARED_TIME,
       uPhase: { value: 0 },
       uPeriod: { value: 0 },
+      uDepthPull: { value: spec.pull || 0 },
     },
     vertexShader: GLOW_VERT,
     fragmentShader: GLOW_FRAG,

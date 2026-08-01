@@ -454,6 +454,9 @@ async function main() {
         world,
         camera: cameraRig,
         container: document.getElementById('vs-hud'),
+        // Without this the mixer is unreachable: the HUD falls back to guessing
+        // defaults and cannot read a persisted mute preference.
+        audio,
       });
     } catch (e) {
       loadErrors.push({ label: 'hud', error: String(e.stack || e.message) });
