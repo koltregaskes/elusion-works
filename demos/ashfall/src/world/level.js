@@ -5062,11 +5062,13 @@ export function createLevel(scene, materials, game) {
     {
       const r2c = mulberry32(6411);
       // The push line: where the spoil was shoved back to. Grit banks on its inside face.
+      // Eight segments, so the divisor is the segment count and not the last index — dividing
+      // by 7 put the final segment's far end at 1.48 rad, a third of a radian past the arc.
       for (let i = 0; i < 8; i++) {
-        const a = -1.15 + (i / 7) * 2.3;
+        const a = -1.15 + (i / 8) * 2.3;
         const x0 = -33.9 + Math.cos(a) * 2.72;
         const z0 = -7.7 + Math.sin(a) * 2.72;
-        const a1 = -1.15 + ((i + 1) / 7) * 2.3;
+        const a1 = -1.15 + ((i + 1) / 8) * 2.3;
         gravelDrift(x0, z0, -33.9 + Math.cos(a1) * 2.72, -7.7 + Math.sin(a1) * 2.72, -1, 6412 + i, 2.6);
       }
       // What the shovel missed, sized so no piece can dominate at a metre and a half.
@@ -6906,7 +6908,9 @@ export function createLevel(scene, materials, game) {
         [-9.0, -11.0, -9.6, -32.4],
         [-16.2, -30.4, -5.2, -27.2],
       ],
-      avoid: [[-16.5, -25.0, 2.6], [-20.6, -22.5, 1.6], [-17.0, -12.5, 2.7]],
+      // The 8751 scaffold bundle at (-20.6, -22.5) used to be listed here and could never fire:
+      // its west edge is 3.2 m outside this rect's x0, and it stands its own collider anyway.
+      avoid: [[-16.5, -25.0, 2.6], [-17.0, -12.5, 2.7]],
       // The second run keeps east of x -13: the 9101 crater sits at (-17, -12.5) with a 2.8 m
       // lip and a flat rut laid over a depression is the clearest possible tell.
       ruts: [[-15.4, -12.6, -14.6, -30.0], [-13.0, -11.6, -4.2, -11.9]],
