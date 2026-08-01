@@ -575,7 +575,11 @@ void main() {
   float a = fxSharpen( texel.a, vClamp ) * fxQuadMask( vUv )
           * vAlpha * uOpacity * fxSoftFade( vFragW );
   if ( a <= 0.0025 ) discard;
-  gl_FragColor = vec4( vColor * texel.rgb * uGain * ( 1.0 + uClampLift * vClamp ) * vSpread, a );
+  /* The spread dim applies to emissive fields only. Soot is normal-blended, so
+     scaling its colour would turn distant smoke black rather than making it
+     contribute less light — the same reason uClampLift is zero for it. */
+  float spread = uClampLift > 0.0 ? vSpread : 1.0;
+  gl_FragColor = vec4( vColor * texel.rgb * uGain * ( 1.0 + uClampLift * vClamp ) * spread, a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }

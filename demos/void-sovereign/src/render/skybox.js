@@ -815,9 +815,9 @@ function buildStarField(P, rng, dpr) {
        stars over a great many faint ones — the spread real skies have and a
        uniform spray of identical dots does not. Capped so no single star can
        run away with the exposure. */
-    const f = Math.min(2.2, P.starFloor * Math.pow(Math.max(1e-4, rng.next()), -2 / 3));
+    const f = Math.min(3.2, P.starFloor * Math.pow(Math.max(1e-4, rng.next()), -2 / 3));
     mag[i] = f;
-    if (f > 0.024) above++;
+    if (f > 0.106) above++;   // ~40/255 once tone-mapped and encoded
 
     starTintRgb(Math.pow(rng.next(), 1.9), rgb);
     tint[i * 3] = rgb[0];
@@ -1170,21 +1170,27 @@ function generateParams(rng, opts) {
 
     /* Star budget.
 
-       `starFloor` is the flux of the faintest star drawn and it is the only
-       number that sets how busy the sky looks, because the counts follow a
-       Euclidean law: the number of stars brighter than F goes as F^-1.5, so
-       the population above the ~0.024 of scene linear that reads as 40/255 is
-       `starCount * (starFloor / 0.024)^1.5`. At the values below that is
-       roughly 400 over the whole sphere, and a 48-degree frame sees about
-       3.4% of the sphere — call it a dozen, two dozen looking along the band.
-       §3.5 makes emptiness the subject; the sky must never out-busy the fleet.
+       Counts follow the Euclidean law a real sky does — the number of stars
+       brighter than flux F goes as F^-1.5 — so two numbers fix the whole
+       field. `starCount` is the total drawn, `starFloor` the flux of the
+       faintest, and everything else follows: the population above the ~0.106
+       of scene units that renders as 40/255 is `starCount * (starFloor /
+       0.106)^1.5`, and the brightest is about `starFloor * starCount^(2/3)`.
+
+       At the values below that is ~450 sources above 40/255 over the whole
+       sphere and ~7,500 visible at all. A 48-degree frame sees 3.4% of the
+       sphere, so about fifteen stars that read as stars and a couple of
+       hundred faint ones behind them — a sky, not confetti. §3.5 makes
+       emptiness the subject and the backdrop must never out-busy the fleet;
+       the previous baked field put 59-266 sources over that threshold in a
+       single frame.
 
        `starBandW` concentrates them toward the galactic band so the field has
        structure rather than being a uniform spray. */
-    starCount: 9000,
-    starFloor: rng.range(0.0026, 0.0036),
+    starCount: rng.int(3600, 4400),
+    starFloor: rng.range(0.0138, 0.0172),
     starBandW: bandW * rng.range(2.2, 3.2),
-    starBandAmt: rng.range(1.0, 1.5),
+    starBandAmt: rng.range(0.65, 1.05),
     starOcclude: rng.range(9.0, 15.0),
 
     voidCol: [

@@ -257,7 +257,7 @@ export class Environment {
        raking, near-horizon star is a good look) without ever going under it
        far enough to invert the read. */
     const sunAz = r.range(-Math.PI, Math.PI);
-    const sunElev = Math.max(-0.16, Math.min(0.74, r.gaussian(0.40, 0.20)));
+    const sunElev = Math.max(-0.16, Math.min(0.74, r.gaussian(0.62, 0.16)));
     const ce = Math.cos(sunElev);
     const sunFrom = new THREE.Vector3(Math.sin(sunAz) * ce, Math.sin(sunElev), Math.cos(sunAz) * ce)
       .normalize();
@@ -363,10 +363,10 @@ export class Environment {
        shadow floor toward 0.06-0.09 sRGB and — because the seeds that were
        dark were dark in their *shadow* — compresses the spread across seeds
        without touching the terminator, whose ratio is set by key-over-fill and
-       is roughly preserved (4.9 against ~0.95 of everything else, near enough
-       5:1 in linear light, which is 2.0-2.5 stops of encoded separation). */
+       is roughly preserved (5.2 against ~1.15 of everything else, near enough
+       4.5:1 in linear light, which is 2.0-2.5 stops of encoded separation). */
     const keyColour = sky.keyColour.clone();
-    const key = new THREE.DirectionalLight(keyColour, this.options.keyIntensity || 4.9);
+    const key = new THREE.DirectionalLight(keyColour, this.options.keyIntensity || 5.2);
     key.position.copy(this.sunDirection).multiplyScalar(50000);
     key.target.position.set(0, 0, 0);
     key.castShadow = false; // a 60 km ortho frustum buys nothing but texels
@@ -381,7 +381,7 @@ export class Environment {
     const hemi = new THREE.HemisphereLight(
       sky.nebulaColour.clone(),
       sky.fillColour.clone().multiplyScalar(0.45),
-      this.options.fillIntensity || 0.34,
+      this.options.fillIntensity || 0.42,
     );
     hemi.position.set(0, 1, 0);
     hemi.name = 'env:fill';
@@ -405,7 +405,7 @@ export class Environment {
     engine.scene.add(rim.target);
     this.rimLight = rim;
 
-    const amb = new THREE.AmbientLight(sky.ambientColour.clone(), 0.055);
+    const amb = new THREE.AmbientLight(sky.ambientColour.clone(), 0.075);
     amb.name = 'env:ambient';
     engine.scene.add(amb);
     this.ambientLight = amb;
@@ -419,7 +419,7 @@ export class Environment {
       setNebulaBounce(
         sky.bounceKey || sky.nebulaColour,
         sky.bounceFill || sky.fillColour,
-        this.options.hullAmbient !== undefined ? this.options.hullAmbient : 0.155,
+        this.options.hullAmbient !== undefined ? this.options.hullAmbient : 0.20,
         this.options.hullRim !== undefined ? this.options.hullRim : 0.52,
       );
     } catch (err) {
@@ -683,11 +683,23 @@ export class Environment {
           float ndl = dot(N, uSunDir);
           float ndv = max(dot(N, V), 0.0);
 
-          /* Hard terminator with a couple of degrees of atmospheric wrap, then
-             a night side that is genuinely night: a gas giant with no moonlight
-             is lit only by whatever the nebula throws at it. */
-          float lit = smoothstep(-0.075, 0.085, ndl);
-          float shade = lit * (0.10 + 0.90 * clamp(ndl, 0.0, 1.0));
+          /* Terminator with real atmospheric wrap, then a night side that is
+             genuinely night: a gas giant with no moonlight is lit only by
+             whatever the nebula throws at it.
+
+             The previous form multiplied a narrow smoothstep by clamp(ndl),
+             and clamp() has a first derivative discontinuity at zero. On a
+             disc this wide that showed as a crease along the terminator — a
+             step rather than a gradient, which is what "1-px terminator" was
+             describing. A Lambert wrap has no such corner: it is smooth
+             through zero by construction, and WRAP sets how far past the
+             geometric terminator the light carries. 0.085 is about five
+             degrees, which is the right order for a deep hydrogen atmosphere
+             and is what the twilight band below rides on. */
+          const float WRAP = 0.085;
+          float wrapped = clamp((ndl + WRAP) / (1.0 + WRAP), 0.0, 1.0);
+          float lit = smoothstep(0.0, 0.055, wrapped);
+          float shade = lit * (0.06 + 0.94 * wrapped * wrapped);
           shade *= mix(0.58, 1.0, pow(ndv, 0.40));   // limb darkening
 
           /* Ring shadow. March the local surface point toward the star and see
@@ -710,18 +722,26 @@ export class Environment {
           col += albedo * uFill * 0.085;             // nebula bounce, night side included
           col += uFill * 0.010;
 
-          /* Twilight: the last couple of degrees before the terminator run
-             through the atmosphere at a grazing angle, so they redden. Without
-             this the terminator is a clean arc and reads as a stencil. */
+          /* Twilight: the last few degrees before the terminator run through
+             the atmosphere at a grazing angle, so they redden. Without this the
+             terminator is a clean arc and reads as a stencil. */
           float twi = lit * (1.0 - smoothstep(0.0, 0.30, ndl));
           col += albedo * ATMO.zyx * twi * 0.28;
 
           /* Thin atmospheric limb over the disc — forward-scattering haze that
              only shows where the air is edge-on *and* lit. Past the terminator
              it must go to zero, or the glow wraps the unlit limb and the whole
-             thing reads as a sprite behind a ball. */
+             thing reads as a sprite behind a ball.
+
+             Desaturated, and that is not a taste call. ATMO is a Rayleigh blue
+             by construction; laid at full chroma over amber or rust cloud tops
+             it summed to a violet-magenta edge that exists nowhere in the
+             palette and read as chromatic aberration on the lit limb. Real
+             limb haze at this thickness is close to white with a blue bias —
+             it is scattering *everything*, just the short end slightly more. */
+          vec3 rimTint = mix(vec3(dot(ATMO, vec3(0.2126, 0.7152, 0.0722))), ATMO, 0.42);
           float rim = pow(1.0 - ndv, 3.4);
-          col += ATMO * rim * smoothstep(-0.04, 0.34, ndl) * 0.62;
+          col += rimTint * rim * smoothstep(-0.04, 0.34, ndl) * 0.50;
 
           gl_FragColor = vec4(col, 1.0);
         }`,
@@ -959,7 +979,13 @@ export class Environment {
                edge of the light rather than as flat texture. */
             vec3 pert = normalize(N + vec3(m, cr - 0.5, m * 0.6) * 0.16);
             float ndl = dot(pert, uSunDir);
-            float lit = smoothstep(-0.06, 0.09, ndl) * (0.18 + 0.82 * clamp(ndl, 0.0, 1.0));
+            /* An airless body gets a hard terminator, but not a discontinuous
+               one: the same clamp() corner that creased the gas giant is worse
+               here because the moon is only a couple of degrees across, so the
+               whole terminator falls inside a handful of pixels. A narrow wrap
+               keeps it hard and keeps it smooth. */
+            float mw = clamp((ndl + 0.045) / 1.045, 0.0, 1.0);
+            float lit = smoothstep(0.0, 0.03, mw) * (0.14 + 0.86 * mw);
             vec3 col = base * uSunColour * lit * 1.5 + base * uFill * 0.20 + uFill * 0.012;
             gl_FragColor = vec4(col, 1.0);
           }`,
@@ -1293,7 +1319,19 @@ export class Environment {
        The tint pulled from the sky is kept to a whisper. At 12% the rocks took
        a visible hue from whatever the nebula was doing and stopped reading as
        the same material from seed to seed; charcoal is charcoal. */
-    const rockColour = new THREE.Color(0.043, 0.040, 0.036).lerp(sky.palette.body, 0.06);
+    const rockColour = new THREE.Color(0.034, 0.032, 0.029).lerp(sky.palette.body, 0.06);
+
+    /* The shadow side of a rock is nebula-lit, not neutral.
+
+       sky.bounceFill is the sky's own shadow-side colour, normalised to a hue
+       by the bake, so this both tints the indirect term and — because it is
+       applied as a colour rather than a grey — stops a field of charcoal
+       reading as a field of putty. */
+    const rockBounce = (sky.bounceFill || sky.fillColour).clone();
+    {
+      const m = Math.max(rockBounce.r, rockBounce.g, rockBounce.b, 1e-4);
+      rockBounce.multiplyScalar(1 / m);
+    }
 
     const material = new THREE.MeshStandardMaterial({
       color: rockColour,
@@ -1306,16 +1344,25 @@ export class Environment {
       envMapIntensity: 0.30,
       fog: true,
     });
+    this._rockBounce = rockBounce;
     material.onBeforeCompile = (shader) => {
+      shader.uniforms.uRockBounce = { value: rockBounce };
+      this._rockShader = shader;
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
-          '#include <common>\nvarying vec3 vRockLocal;\nvarying vec3 vRockView;\nvarying float vRockSize;',
+          `#include <common>
+           varying vec3 vRockLocal;
+           varying vec3 vRockView;
+           varying float vRockSize;
+           varying float vRockAo;
+           attribute float aAo;`,
         )
         .replace(
           '#include <begin_vertex>',
           `#include <begin_vertex>
            vRockLocal = position;
+           vRockAo = aAo;
            /* Metres, recovered from the instance matrix, so surface detail can
               be specified in metres rather than in unit-sphere space. Without
               it a 12 m boulder and a 3 km landmark carry identical craters and
@@ -1351,6 +1398,8 @@ export class Environment {
            varying vec3 vRockLocal;
            varying vec3 vRockView;
            varying float vRockSize;
+           varying float vRockAo;
+           uniform vec3 uRockBounce;
            ${NOISE_GLSL}
            /* A detail band is only worth evaluating while the screen still has
               the pixels to resolve it. The foot argument is the angular
@@ -1387,6 +1436,18 @@ export class Environment {
                  as the frequency climbs, so form reads first and grain last. */
            float slopeBand(float slope, float freq) { return slope / freq; }
 
+           /* Basin frequency in cycles per unit sphere, anchored to a real
+              wavelength. This is the band that carries the size cue.
+
+              It used to be the constant 2.35, and that is why a 2.8 km
+              landmark and a 200 m boulder wore identical speckle: every rock
+              got the same number of basins across it whatever its diameter, so
+              the only thing distinguishing the two on screen was how many
+              pixels they covered. Anchoring the basins at roughly 240 m of
+              wavelength gives a chip one smooth hollow and a landmark eight,
+              which is the whole of what makes size read. */
+           float basinFreq(float radius) { return clamp(radius / 240.0, 1.5, 8.0); }
+
            float rockRelief(vec3 n, float radius, float foot) {
              /* Basins. The contours of a smooth field, floored and given a low
                 rim: round-ish, overlapping, of genuinely different sizes. The
@@ -1398,23 +1459,26 @@ export class Environment {
                 its width, so a band nominally specified at 0.13 of slope came
                 out nearer 0.5 and drew a hard black-to-white edge round every
                 basin. Wide windows keep the stated slope honest. */
-             float b = fbm3e(n * 2.35 + 41.0);
+             float fB = basinFreq(radius);
+             float b = fbm3e(n * fB + 41.0);
              float basin = smoothstep(0.26, -0.46, b);
              float rim = exp(-(b - 0.24) * (b - 0.24) * 13.0);
-             float h = (rim * 0.36 - basin * 0.92) * slopeBand(0.19, 2.35);
+             float h = (rim * 0.36 - basin * 0.92) * slopeBand(0.19, fB);
 
              /* A second, smaller crater population. Real fields are dominated
                 by the small end of the size distribution; one band of craters
                 all the same size is the giveaway of a procedural surface. */
-             float b2 = fbm3e(n * 6.1 + 88.0);
+             float fB2 = fB * 2.7;
+             float b2 = fbm3e(n * fB2 + 88.0);
              float basin2 = smoothstep(0.22, -0.40, b2);
              float rim2 = exp(-(b2 - 0.21) * (b2 - 0.21) * 15.0);
-             h += (rim2 * 0.34 - basin2 * 0.88) * slopeBand(0.115, 6.1) * bandFade(6.1, foot);
+             h += (rim2 * 0.34 - basin2 * 0.88) * slopeBand(0.115, fB2) * bandFade(fB2, foot);
 
              /* Broad undulation between the basins — mass wasting, slumped
                 debris, the shallow stuff that gives a terminator something to
                 travel across. */
-             h += fbm4e(n * 5.1) * slopeBand(0.090, 5.1);
+             float fU = clamp(radius / 130.0, 2.2, 13.0);
+             h += fbm4e(n * fU) * slopeBand(0.090, fU);
 
              /* Regolith, anchored at roughly 90 m of real wavelength so a
                 landmark and a boulder are not one object at two zoom levels. */
@@ -1466,15 +1530,45 @@ export class Environment {
               exposed rims are brighter — the one albedo cue on a real airless
               body that is worth having. Reusing the relief field rather than a
               second independent noise is what keeps the colour agreeing with
-              the shape instead of fighting it. */
-           float rkb = fbm3e(rkn3 * 2.35 + 41.0);
+              the shape instead of fighting it, so this must use the same
+              size-anchored frequency the relief does. */
+           float rkb = fbm3e(rkn3 * basinFreq(vRockSize) + 41.0);
            float rkFloor = smoothstep(0.06, -0.30, rkb);
            roughnessFactor *= 0.90 + 0.12 * rkn;
            /* Albedo variation stays very narrow. Rock is monotonous: the
               contrast in a real asteroid field comes from the terminator, not
               from patchwork colour, and this band used to be wide enough to
               read as camouflage all on its own. */
-           diffuseColor.rgb *= 0.94 + 0.09 * rkn - 0.06 * rkFloor;`,
+           diffuseColor.rgb *= (0.94 + 0.09 * rkn - 0.06 * rkFloor)
+                             * (0.55 + 0.45 * vRockAo);`,
+        )
+        .replace(
+          '#include <lights_fragment_end>',
+          `/* Indirect light, cut hard and tinted.
+
+              A rock is a 4%-albedo body in vacuum: its shadow side is lit by
+              the nebula and by nothing else, and the ratio between the two
+              sides is the only thing that says "rock" rather than "putty".
+              Measured before this, a boulder's lit side and its shadow side
+              were 2.4:1 in *encoded* terms — sRGB compresses a 7:1 linear
+              ratio to that — which is why the field read as uniformly mid-grey
+              with no terminator and, on the seeds where the key raked away
+              from the camera, as near-black with blown specks. The fix is not
+              to relight it, it is to stop filling the shadow in.
+
+              ROCK_INDIRECT is applied to the ambient, hemisphere and IBL terms
+              only. Direct light from the key is untouched, so the terminator
+              gets deeper without the lit side getting darker.
+
+              vRockAo is the per-boulder occlusion from its neighbours, which
+              is what gives a heap of rocks contact shading instead of a pile
+              of independently-lit spheres. */
+           {
+             float ind = 0.30 * (0.25 + 0.75 * vRockAo);
+             irradiance *= uRockBounce * ind;
+             iblIrradiance *= uRockBounce * ind;
+           }
+           #include <lights_fragment_end>`,
         );
     };
     material.customProgramCacheKey = () => 'env-rock';
@@ -1513,6 +1607,10 @@ export class Environment {
 
     for (let ci = 0; ci < clusters.length; ci++) {
       const c = clusters[ci];
+      /* Everything already placed in this seam, so a new rock can be tested
+         against it twice: once to stop it being buried inside a neighbour, and
+         once afterwards to work out how much sky its neighbours take away. */
+      const near = [];
       for (let i = 0; i < b.rocksPerCluster; i++) {
         const s = r.int(0, shapes - 1);
         const size = Math.pow(r.next(), 3.0) * 430 + 11;
@@ -1524,6 +1622,18 @@ export class Environment {
           const rr = c.radius * Math.cbrt(r.next()) * r.range(0.75, 1.15);
           pos.set(c.position.x + dir.x * rr, c.position.y + dir.y * rr * 0.55, c.position.z + dir.z * rr);
           placed = clearOfStarts(pos, bound, sep, SEAM_ANGLE) && clearOfShell(pos, bound);
+          /* Rocks were free to sit inside one another, and at close range the
+             intersection curve of two ellipsoids is a hard, obviously-analytic
+             line across both of them. Half the sum of the bounds still allows
+             a natural-looking overlap of contact and rubble without letting
+             one boulder disappear into the next. */
+          if (!placed) continue;
+          for (let j = 0; j < near.length; j++) {
+            const o = near[j];
+            const dx = pos.x - o.x, dy = pos.y - o.y, dz = pos.z - o.z;
+            const min = (bound + o.r) * 0.5;
+            if (dx * dx + dy * dy + dz * dz < min * min) { placed = false; break; }
+          }
         }
         // A rock that will not clear the opening shell is simply not drawn:
         // 140 per cluster means one fewer is invisible, and a rock in the lens
@@ -1534,8 +1644,39 @@ export class Environment {
         // Narrow: rock is monotonous, and a wide per-instance tint reads as
         // putty rather than as a field of the same material.
         const tint = r.range(0.78, 1.22);
-        perShapeInstances[s].push({ cluster: ci, matrix: m.clone(), tint });
+        const rec = { cluster: ci, matrix: m.clone(), tint, ao: 1, x: pos.x, y: pos.y, z: pos.z, r: bound };
+        near.push(rec);
+        perShapeInstances[s].push(rec);
         totalPerShape[s]++;
+      }
+
+      /* Per-boulder ambient occlusion, as an instance attribute.
+
+         Without it a heap of rocks is a set of independently-lit spheres that
+         happen to overlap: nothing darkens where two of them meet, so the
+         crevices between boulders are as bright as the outsides and the heap
+         reads as one flat mass. This is the cheapest honest approximation —
+         the solid angle a neighbour subtends, summed — computed once at build
+         and shipped as a float per instance. O(n^2) inside a seam is 140^2,
+         which is nothing at load and saves a shadow map that §0 does not want.
+
+         `dr` is clamped to the rock's own radius so a huge neighbour cannot
+         drive the term past one; the shading uses it on the indirect term and
+         a little on albedo, never on direct light, because the key already
+         does its own occlusion by facing away. */
+      for (let i = 0; i < near.length; i++) {
+        const a = near[i];
+        let occ = 0;
+        for (let j = 0; j < near.length; j++) {
+          if (j === i) continue;
+          const o = near[j];
+          const dx = a.x - o.x, dy = a.y - o.y, dz = a.z - o.z;
+          const d2 = dx * dx + dy * dy + dz * dz;
+          const reach = (a.r + o.r) * 4;
+          if (d2 > reach * reach || d2 < 1) continue;
+          occ += Math.min(1, (o.r * o.r) / d2);
+        }
+        a.ao = Math.max(0.20, 1 / (1 + occ * 1.35));
       }
     }
 
@@ -1560,12 +1701,14 @@ export class Environment {
 
       const matrices = new Float32Array(list.length * 16);
       const colours = new Float32Array(list.length * 3);
+      const aos = new Float32Array(list.length);
       for (let i = 0; i < list.length; i++) {
         list[i].matrix.toArray(matrices, i * 16);
         const t = list[i].tint;
         colours[i * 3] = t;
         colours[i * 3 + 1] = t * 0.985;
         colours[i * 3 + 2] = t * 0.96;
+        aos[i] = list[i].ao;
       }
 
       const geoHigh = makeRockGeometry(r.fork(1000 + s), dHigh);
@@ -1573,10 +1716,20 @@ export class Environment {
 
       const meshHigh = new THREE.InstancedMesh(geoHigh, material, list.length);
       const meshLow = new THREE.InstancedMesh(geoLow, material, list.length);
+      const aoAttribs = [];
       for (const mesh of [meshHigh, meshLow]) {
         mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(list.length * 3), 3);
         mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
         mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        /* The LOD pass repacks instances between the two meshes every time the
+           camera crosses a distance band, so the occlusion attribute has to
+           travel with the matrix rather than being indexed by slot. It lives on
+           the geometry because that is the only place an instanced attribute
+           can live, and each LOD level has its own geometry. */
+        const ao = new THREE.InstancedBufferAttribute(new Float32Array(list.length), 1);
+        ao.setUsage(THREE.DynamicDrawUsage);
+        mesh.geometry.setAttribute('aAo', ao);
+        aoAttribs.push(ao);
         mesh.frustumCulled = false;
         mesh.count = 0;
         mesh.visible = false;
@@ -1586,7 +1739,10 @@ export class Environment {
         engine.scene.add(mesh);
       }
 
-      this._rockSets.push({ high: meshHigh, low: meshLow, matrices, colours, ranges });
+      this._rockSets.push({
+        high: meshHigh, low: meshLow, matrices, colours, aos, ranges,
+        aoHigh: aoAttribs[0], aoLow: aoAttribs[1],
+      });
       this._disposables.push(geoHigh, geoLow);
     }
 
@@ -1612,6 +1768,12 @@ export class Environment {
     const lmCount = b.landmarks;
     const lm = new THREE.InstancedMesh(lmGeo, material, lmCount);
     lm.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(lmCount * 3), 3);
+    /* Landmarks share the rock material, so they must carry `aAo` or the
+       attribute defaults to zero and every one of them renders black. They sit
+       outside their seam by construction, so they are barely occluded. */
+    const lmAo = new Float32Array(lmCount);
+    lmAo.fill(0.92);
+    lmGeo.setAttribute('aAo', new THREE.InstancedBufferAttribute(lmAo, 1));
     for (let i = 0; i < lmCount; i++) {
       // Mirror them in pairs too — a 3 km landmark is cover, and cover on one
       // side of the map only is not a fair map.
@@ -1766,6 +1928,8 @@ export class Environment {
       const lM = set.low.instanceMatrix.array;
       const hC = set.high.instanceColor.array;
       const lC = set.low.instanceColor.array;
+      const hA = set.aoHigh.array;
+      const lA = set.aoLow.array;
       for (let ci = 0; ci < clusters.length; ci++) {
         const c = clusters[ci];
         if (!c._visible) continue;
@@ -1781,13 +1945,16 @@ export class Environment {
         const n = Math.min(range.count, shown);
         const mSlice = set.matrices.subarray(range.start * 16, (range.start + n) * 16);
         const cSlice = set.colours.subarray(range.start * 3, (range.start + n) * 3);
+        const aSlice = set.aos.subarray(range.start, range.start + n);
         if (c._high) {
           hM.set(mSlice, nH * 16);
           hC.set(cSlice, nH * 3);
+          hA.set(aSlice, nH);
           nH += n;
         } else {
           lM.set(mSlice, nL * 16);
           lC.set(cSlice, nL * 3);
+          lA.set(aSlice, nL);
           nL += n;
         }
       }
@@ -1799,6 +1966,8 @@ export class Environment {
       set.low.instanceMatrix.needsUpdate = true;
       set.high.instanceColor.needsUpdate = true;
       set.low.instanceColor.needsUpdate = true;
+      set.aoHigh.needsUpdate = true;
+      set.aoLow.needsUpdate = true;
     }
   }
 

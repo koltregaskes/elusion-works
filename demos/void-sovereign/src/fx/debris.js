@@ -82,11 +82,21 @@ void main() {
   float wrap = max( dot( n, -uKeyDir ), 0.0 );
   vec3 col = vColor * ( uKeyColor * ( 0.045 + 0.95 * ndl ) + uFill * ( 0.16 + 0.30 * wrap ) );
 
-  // Torn edges glow longest: grazing angles keep the heat.
-  float edge = pow( 1.0 - abs( dot( n, viewDir ) ), 2.2 );
-  float seam = smoothstep( 0.55, 0.95, fract( length( vLocal ) * 5.3 + vSeed * 4.0 ) );
-  float glow = vHeat * ( 0.16 + edge * 1.5 + seam * 0.45 * vHeat );
-  vec3 hot = mix( vec3( 1.0, 0.30, 0.05 ), vec3( 1.0, 0.93, 0.78 ), vHeat );
+  /* Torn edges and seams glow; whole faces do not.
+
+     This carried a flat 0.16 * vHeat over the entire surface, in a colour that
+     ran to near-white at full heat, at up to 2.0 intensity — which is several
+     times the hull albedo underneath it. The result was that every chunk in a
+     capital's wreck was washed to the same pale warm tone for the first six
+     seconds, whatever it was made of and however big it was: the "pale tan
+     gravel" read. Cooling metal is incandescent, so the ramp now runs deep
+     red through orange and never reaches white, the full-surface term is gone,
+     and the heat curve is squared so the wash falls away rather than lingering. */
+  float heat = pow( clamp( vHeat, 0.0, 1.0 ), 1.7 );
+  float edge = pow( 1.0 - abs( dot( n, viewDir ) ), 2.6 );
+  float seam = smoothstep( 0.62, 0.97, fract( length( vLocal ) * 5.3 + vSeed * 4.0 ) );
+  float glow = heat * ( edge * 0.85 + seam * 0.55 * heat );
+  vec3 hot = mix( vec3( 0.85, 0.13, 0.02 ), vec3( 1.0, 0.62, 0.24 ), heat );
   col += hot * glow;
 
   gl_FragColor = vec4( col, 1.0 );
@@ -226,12 +236,27 @@ export class DebrisFX {
       } else {
         /* Power-law rather than uniform: mostly small, occasionally large.
            A flat rng.range(0.55, 1.9) is why every chunk measured the same. */
-        const s = size * (0.30 + 2.5 * Math.pow(rng.next(), 2.4));
+        const s = size * (0.25 + 1.9 * Math.pow(rng.next(), 2.6));
         const stretch = rng.range(1.4, 3.4);
         const axis = rng.int(0, 2);
         sx = s * (axis === 0 ? stretch : rng.range(0.45, 1.0));
         sy = s * (axis === 1 ? stretch : rng.range(0.45, 1.0));
         sz = s * (axis === 2 ? stretch : rng.range(0.45, 1.0));
+        /* Hold the tail clear of keel scale. Without this the largest ordinary
+           fragment reached 60% of hull length and the keel sections had nothing
+           to stand out against — the whole point of having them. */
+        if (keelLength > 0) {
+          /* Scale is a radius, so this caps the ordinary tail at about 11% of
+             hull length end to end — comfortably under the 15-25% the keel
+             sections occupy, which is what makes them read as structure rather
+             than as the top of a continuous size distribution. */
+          const lim = keelLength * 0.22;
+          const longest = Math.max(sx, sy, sz);
+          if (longest > lim) {
+            const k = lim / longest;
+            sx *= k; sy *= k; sz *= k;
+          }
+        }
       }
 
       /* Per-chunk tone. Scorched on one piece, bare alloy on the next, most of

@@ -156,6 +156,7 @@ uniform vec3  uNebulaKey;
 uniform vec3  uNebulaFill;
 uniform vec2  uBounce;
 uniform vec2  uChroma;
+uniform vec2  uTerm;
 
 varying vec3 vObjPos;
 varying vec3 vObjNormal;
@@ -454,6 +455,55 @@ const HULL_BODY = /* glsl */`
 diffuseColor.rgb *= vsAlbedo;
 `;
 
+/* ---------------------------------------------------------- terminator
+
+   §3.2 asks for one key light with a *hard* terminator, and a Lambertian
+   cosine does not give one. Measured on the hero mothership across seven
+   seeds, the middle half of the hull spanned only 2.0-3.5x in encoded value
+   and the ship read as a grey model under a softbox rather than as a solid
+   object with a lit face and a dark one.
+
+   The instinct is to blame the shadow-side lifts, and that instinct is wrong:
+   killing every one of them at once — this material's hemispheric bounce, its
+   fresnel rim, the env map, and ENV's own hemisphere and ambient lights —
+   moved the interquartile ratio from 2.83 to 3.54 and the median by 0.02
+   (`.local/matablate.mjs`). The flatness is not fill. It is that the opening
+   camera sits 46-76 degrees off the key, so almost every visible face has a
+   cosine somewhere between 0.3 and 0.8, and Lambert maps that whole band into
+   a narrow, uniform mid-grey.
+
+   So the cosine is shaped rather than the fill trimmed. `uTerm` is
+   (gamma, gain): the incident light is scaled so that N.L behaves as
+   pow(N.L, gamma) * gain, with gain chosen to hold a pivot cosine fixed.
+   Faces above the pivot are pushed into the tone-map knee and settle into one
+   even lit value; faces below it fall away fast, so the transition happens
+   over a narrow band of angle instead of across the whole hull. Faces the key
+   never reaches are untouched — the bounce still owns them, and "lifted,
+   never black" survives intact.
+
+   It is applied to the incident light rather than to the diffuse result on
+   purpose. The specular lobe is shaped with it, which matters more than it
+   sounds: at 46-76 degrees off-key a broad GGX lobe on a roughness-0.49 hull
+   is a grazing wash across every surface at once, and it was flattening the
+   image alongside the diffuse.
+
+   gamma = 1 with gain = 1 is exactly stock Lambert, which is what makes this
+   safe to dial from a probe. */
+const HULL_TERMINATOR = /* glsl */`
+void RE_Direct_VS( const in IncidentLight directLight, const in vec3 geometryPosition,
+    const in vec3 geometryNormal, const in vec3 geometryViewDir,
+    const in vec3 geometryClearcoatNormal, const in PhysicalMaterial material,
+    inout ReflectedLight reflectedLight ) {
+  IncidentLight vsLight = directLight;
+  float vsNdL = saturate( dot( geometryNormal, directLight.direction ) );
+  vsLight.color *= vsNdL > 1e-4 ? pow( vsNdL, uTerm.x - 1.0 ) * uTerm.y : 0.0;
+  RE_Direct_Physical( vsLight, geometryPosition, geometryNormal, geometryViewDir,
+    geometryClearcoatNormal, material, reflectedLight );
+}
+#undef RE_Direct
+#define RE_Direct RE_Direct_VS
+`;
+
 const HULL_AO = /* glsl */`
 reflectedLight.indirectDiffuse *= vsAO;
 reflectedLight.indirectSpecular *= mix( 1.0, vsAO, 0.6 );
@@ -553,6 +603,12 @@ vObjNormal = objectNormal;
    nebula fill keeps its hue where the star does not reach. */
 const CHROMA = { direct: 0.86, indirect: 0.26 };
 
+/* Terminator shaping — see HULL_TERMINATOR. `pivot` is the cosine held fixed,
+   and it is set near the middle of what the opening framing actually delivers
+   so the change reads as contrast rather than as an exposure shift. */
+const TERMINATOR = { gamma: 1.85, pivot: 0.70 };
+const termGain = () => Math.pow(TERMINATOR.pivot, 1 - TERMINATOR.gamma);
+
 let store = null;
 
 function hullUniforms(team, family, opts) {
@@ -610,6 +666,7 @@ function hullUniforms(team, family, opts) {
     uNebulaFill: { value: NEBULA.fill.clone() },
     uBounce: { value: new THREE.Vector2(NEBULA.ambient, NEBULA.rim) },
     uChroma: { value: new THREE.Vector2(CHROMA.direct, CHROMA.indirect) },
+    uTerm: { value: new THREE.Vector2(TERMINATOR.gamma, termGain()) },
     uModelScale: { value: opts.modelScale === undefined ? 1 : opts.modelScale },
   };
 }
@@ -624,6 +681,12 @@ function patchHull(material, uniforms, flags) {
 
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>\n${HULL_PARS}`)
+      // After the physical chunk, so RE_Direct_Physical exists to delegate to
+      // and the #define it installs is the one being overridden.
+      .replace(
+        '#include <lights_physical_pars_fragment>',
+        `#include <lights_physical_pars_fragment>\n${HULL_TERMINATOR}`,
+      )
       .replace('#include <map_fragment>', HULL_BODY)
       .replace('#include <color_fragment>', '')
       .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = vsRough;')
@@ -748,20 +811,24 @@ export function getInstancedHullMaterial(team, family, opts) {
 
 /* ------------------------------------------------------------ engine glow */
 
-/* This material is applied by ships/index.js to the `glow` group, which is not
-   a plume — the plume belongs to FX. It is the *emitter inside the bell*: an
-   inward cone running up the recess plus a thin lip ring. Two consequences,
-   both learned the hard way:
+/* Fallback emitter, kept for the case where ships/ cannot reach
+   `getGlowMaterial()`. The shipped path is `getGlowMaterial(team, 'bell')`
+   below; this one differs only in that it drives its churn from the fragment's
+   own local position rather than from the geometry's axial ramp.
 
-     - the geometry's UVs are hull-space, measured at -1.1 to 1.38 rather than
-       0..1, so anything that reads `uv` as a position along a column renders
-       the whole bell at the hot end and it goes flat white. Everything here is
-       driven by the view-facing term instead, which needs no UVs at all and
-       happens to be exactly the right gradient: looking into a bell is looking
-       at its throat.
-     - it is the largest piece of team colour on a ship seen from astern, so it
-       is keyed to TEAM_COLORS[n].engine and only the very throat is allowed to
-       reach white. A bell that blows out to white has no faction in it. */
+   Historical note, because it caused a real defect: this material was written
+   when the bell's UVs were hull-space — measured at -1.1 to 1.38 rather than
+   0..1 — so reading `uv` as a position along the bore rendered the whole
+   assembly at the hot end and it went flat white. That is no longer true.
+   `greeble.js::engineNozzle()` now runs `axialV()` over both bell parts and
+   the merged group carries a clean 0..1 ramp, 0 at the throat and 1 at the
+   mouth. The shipped emitter takes its gradient from that; see the block above
+   GLOW_FRAG. Do not reinstate the old belief from this comment.
+
+   What has not changed: the bell is the largest piece of team colour on a ship
+   seen from astern, so it is keyed to TEAM_COLORS[n].engine and only the very
+   throat is allowed to reach white. A bell that blows out to white has no
+   faction in it. */
 
 const BELL_VERT = /* glsl */`
 #include <common>
@@ -888,8 +955,13 @@ export function getEngineMaterial(team) {
    a bell at 3.6 is roughly 28x that and blooms hard, a running light at 2.1
    blooms softly, a window at 0.9 does not bloom at all. */
 const GLOW_KINDS = {
-  // hot throat falling to the team's drive colour at the lip
-  bell: { core: 0xfff4e2, useEngine: true, gain: 3.6, sharp: 2.6, rim: 0.30 },
+  /* Hot throat falling to the team's drive colour at the lip. `axial` is the
+     one that takes its gradient from the geometry rather than from the view —
+     see the note above GLOW_FRAG. `sharp` and `rim` are quoted against that
+     ramp, not against a view-facing term, so they do not transfer to the
+     others: the bore is meant to stay live well up its length, and the mouth
+     is meant to be almost pure faction colour. */
+  bell: { core: 0xfff4e2, useEngine: true, gain: 3.4, sharp: 1.7, rim: 0.92, axial: true },
   // faction running light: near-white centre, team colour off-axis
   light: { core: 0xffffff, useLight: true, gain: 2.1, sharp: 1.6, rim: 0.55 },
   // warm interior seen through a window bay — deliberately below bloom
@@ -903,6 +975,9 @@ const GLOW_VERT = /* glsl */`
 #include <logdepthbuf_pars_vertex>
 varying vec3 vGlowN;
 varying vec3 vGlowV;
+#ifdef VS_GLOW_AXIAL
+  varying float vGlowT;
+#endif
 void main() {
   vec3 n = normal;
   vec4 mv;
@@ -914,6 +989,9 @@ void main() {
   #endif
   vGlowN = normalize( normalMatrix * n );
   vGlowV = normalize( - mv.xyz );
+  #ifdef VS_GLOW_AXIAL
+    vGlowT = uv.y;
+  #endif
   gl_Position = projectionMatrix * mv;
   #include <logdepthbuf_vertex>
 }
@@ -933,13 +1011,41 @@ uniform float uPhase;
 uniform float uPeriod;
 varying vec3 vGlowN;
 varying vec3 vGlowV;
+#ifdef VS_GLOW_AXIAL
+  varying float vGlowT;
+#endif
 
 void main() {
-  /* Looking straight down the axis of a bell means looking at the throat, so
-     the view-facing term *is* the heat gradient — no UVs needed, which matters
-     because hull geometry arrives merged and unwrapped. */
+#ifdef VS_GLOW_AXIAL
+  /* The bell takes its heat gradient from the geometry, because the geometry
+     ships one. greeble.js::engineNozzle() runs axialV() over the emitter cone
+     and the lip ring, writing v = 0 at the throat and v = 1 at the mouth, and
+     .local/bellramp.mjs measures that ramp surviving the merge on every class
+     at every LOD — 0..1 exactly, mean 0.5.
+
+     No backticks in this comment, and none in any other shader literal in this
+     file: one inside a GLSL template terminates the string and silently
+     truncates the shader. See HANDOFF.md §5 — it has cost this project four
+     separate debugging sessions, and it cost this one a fifth.
+
+     The view-facing term this replaces was not a weaker version of the same
+     thing, it was a different gradient. Both bell parts present a nearly
+     face-on normal to a camera astern, so dot(N,V) is near-constant up the
+     whole bore: the emitter cone read flat and the lip ring — a true face-on
+     annulus — read at full heat. End-on that is eight bright rims around eight
+     dead bores, which is why FX had to paper the throat over with a sprite
+     from outside. An axial ramp puts the hot core where the physics puts it,
+     at the narrow end, and it holds up from every angle rather than only from
+     dead astern. */
+  float heat = pow( 1.0 - clamp( vGlowT, 0.0, 1.0 ), uSharp );
+#else
+  /* Everything that is not a bell is a flat emitter on the hull surface — a
+     running light, a window bay, a vent grille — and for those the view-facing
+     term is the right one: they are brightest looked at square on and fall off
+     as they turn away, which is exactly what a recessed emitter does. */
   float ndv = clamp( dot( normalize( vGlowN ), normalize( vGlowV ) ), 0.0, 1.0 );
   float heat = pow( ndv, uSharp );
+#endif
   vec3 c = mix( uRim, uCore, mix( heat, 1.0, 1.0 - uRimMix ) );
   float pulse = uPeriod > 0.0
     ? 0.35 + 0.65 * smoothstep( 0.55, 0.95, sin( ( uTime / uPeriod + uPhase ) * 6.2831853 ) * 0.5 + 0.5 )
@@ -974,6 +1080,11 @@ export function getGlowMaterial(team, kind) {
       : new THREE.Color(spec.tint === undefined ? spec.core : spec.tint);
 
   const mat = new THREE.ShaderMaterial({
+    /* One define, not a uniform branch: the two gradients are compiled apart,
+       and three folds `defines` into the program cache key on its own, so the
+       bell and the running lights stay two programs and four materials rather
+       than one program that tests a flag per fragment. */
+    defines: spec.axial ? { VS_GLOW_AXIAL: '' } : {},
     uniforms: {
       uCore: { value: new THREE.Color(spec.core) },
       uRim: { value: rim },
@@ -1113,6 +1224,25 @@ export function setHullChroma(direct, indirect) {
   for (const mat of store.materials) {
     const u = mat.userData.uniforms;
     if (u && u.uChroma) u.uChroma.value.set(CHROMA.direct, CHROMA.indirect);
+  }
+}
+
+/**
+ * How hard the key's terminator is. `gamma` steepens the cosine falloff and
+ * `pivot` is the cosine held at its unshaped value, so raising gamma trades
+ * mid-tones for separation without moving the exposure of the lit face.
+ * `setHullTerminator(1, p)` restores stock Lambert exactly.
+ * @param {number} gamma 1 = off, 1.5–2.2 useful, clamped to 1..4
+ * @param {number} [pivot] cosine held fixed, 0.35..0.95
+ */
+export function setHullTerminator(gamma, pivot) {
+  if (gamma !== undefined) TERMINATOR.gamma = Math.max(1, Math.min(4, gamma));
+  if (pivot !== undefined) TERMINATOR.pivot = Math.max(0.35, Math.min(0.95, pivot));
+  if (!store) return;
+  const g = termGain();
+  for (const mat of store.materials) {
+    const u = mat.userData.uniforms;
+    if (u && u.uTerm) u.uTerm.value.set(TERMINATOR.gamma, g);
   }
 }
 

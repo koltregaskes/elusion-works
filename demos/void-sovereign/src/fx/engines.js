@@ -70,7 +70,7 @@ void main() {
      lose peak radiance or the smallest hulls end up the brightest things in a
      fleet action. Exponent well below the physical 2.0 — full inverse-square
      would take a distant fighter back to nothing. */
-  vSpread = pow( clamp( 1.0 / k, 0.03, 1.0 ), 0.40 );
+  vSpread = pow( clamp( 1.0 / k, 0.03, 1.0 ), 0.52 );
   scale.xy *= k;
   // Was 0.35: with the ceiling in place the cone no longer needs as much
   // length compensation, and less of it keeps a fighter's plume short.
@@ -202,7 +202,12 @@ void main() {
      gets, which is what lets the silhouette outlive the glow. */
   float size = max( natural, dist * uPixelScale * min( uMinPixels, iMisc.z ) );
   vClamp = clamp( 1.0 - natural / max( size, 0.0001 ), 0.0, 1.0 );
-  vSpread = pow( clamp( natural / max( size, 0.0001 ), 0.03, 1.0 ), 0.40 );
+  /* Exponent tuned against the backdrop, not in the abstract: ENV measures the
+     nebula gas around a fleet at 12-94 of 255, and SHIPS lands its impostor at
+     22 shadow / 75 lit inside that range. Anything brighter than the top of the
+     band wins against the hull whatever size it is, so a heavily floored drive
+     has to come down in radiance as well as in area. */
+  vSpread = pow( clamp( natural / max( size, 0.0001 ), 0.03, 1.0 ), 0.52 );
 
   mv.xy += position.xy * size;
   gl_Position = projectionMatrix * mv;
@@ -609,9 +614,12 @@ export class EngineFX {
     entry.gain = lengthGain(L);
     const capPx = ceilingPixels(L);
     entry.flareCapPx = capPx;
-    /* The cone is a solid, not a billboard, so the same ceiling on its radius
-       reads much heavier. Hold it under the flare's. */
-    entry.plumeCapPx = capPx * 0.65;
+    /* The cone is a solid, and its ceiling is a *radius* where the flare's is
+       a full quad width, so the same number draws twice as wide. Half it, and
+       the two effects cover the same span: an interceptor's drive is then
+       about 2 px across at any range, against the 2.3 px hull that SHIPS
+       floors its impostor to. */
+    entry.plumeCapPx = capPx * 0.5;
     this._entries.set(entity.id, entry);
   }
 

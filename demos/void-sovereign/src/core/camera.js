@@ -384,7 +384,6 @@ export class CameraRig {
     this._composeX = 0;
     this._composeY = 0;
     this._composeGain = new Spring(0, 1.8);
-    this._hullPts = null;
     this._openingReport = null;
 
     /* Reduced motion kills the two things that move without being asked to:
@@ -864,6 +863,26 @@ export class CameraRig {
       const cp = Math.cos(cand.pitch);
       _try.set(Math.sin(cand.yaw) * cp, Math.sin(cand.pitch), Math.cos(cand.yaw) * cp).normalize();
       const fit = this._solveFill(pts, focus, _try, hullLength);
+      /* Scored on the *combined* fit — whichever of width or height binds — and
+         two more obvious-looking objectives were measured and rejected, so
+         please do not re-derive them:
+
+         · Combined fit plus a bonus for landscape presentations. "Widest wins"
+           also means "needs the most distance", and the 1.2x hull-length
+           ceiling then binds on five of six seeds: painted silhouette 48-63%,
+           out of the 45-55% the rubric asks for. Capping the bonus so it could
+           only break near-ties was worse still (26-57%), because the cap let a
+           nose-on candidate with a nominally perfect fit win outright.
+         · Scoring on width alone, on the reasoning that width is what the
+           rubric measures. It overshoots for the same reason: when no approach
+           can reach the width target inside the distance band, the closest is
+           always the widest, and emberfall came out at 62.5%.
+
+         Combined scoring is what keeps the band, because it lets a narrower
+         presentation win when a broad one would have to overshoot to be framed
+         at all. The cost is that a hull can be chosen nose-on and read as a
+         tower rather than a ship — worth revisiting, but only by widening the
+         distance band, not by reweighting this. */
       let score = Math.abs(Math.log(fit.ratio));
       if (list.length && this._sightBlocked(focus, _try, fit.dist, list, hero.radius || 0)) {
         score += 10;   // a rock across the shot loses to any clear angle

@@ -276,21 +276,28 @@ export class SensorsView {
     /* Everything from here to the matching restore is chart, and the chart does
        not run under the panels. */
     const clipped = this._chartClip(g, w, h);
-
-    /* Terrain is knocked back before a single schematic mark is drawn, so the
-       lattice and every contact sit on one flat ground. */
-    this._footprints();
-    this._occluders(g);
-    this._grid(g);
-    this._rings(g);
-    this._fields(g);
-    this._collect();
-    this._stalks(g);
-    this._blips(g);
-    this._labels(g);
-    this._selection(g);
-
-    if (clipped) g.restore();
+    try {
+      /* Terrain is knocked back before a single schematic mark is drawn, so the
+         lattice and every contact sit on one flat ground. */
+      this._footprints();
+      this._occluders(g);
+      this._grid(g);
+      this._rings(g);
+      this._fields(g);
+      this._collect();
+      this._stalks(g);
+      this._blips(g);
+      this._labels(g);
+      this._selection(g);
+    } finally {
+      /* `finally`, not a trailing call. A throw between the save and the restore
+         would strand the clip on the 2D context — `setTransform` resets the
+         matrix on the next frame but not the clip region, so the drawable area
+         would shrink a little further every frame and `_clear` would stop being
+         able to clear. Three frames of that before the guard retires the view is
+         three frames too many. */
+      if (clipped) g.restore();
+    }
     /* The rule is the view's own furniture, not a contact, so it is drawn
        outside the inset — and lifted clear of whatever is in the bottom-left
        rather than clipped away by it. */
