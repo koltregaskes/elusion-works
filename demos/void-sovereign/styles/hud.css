@@ -12,6 +12,27 @@
      white  = everything else, held between 6% and 88% opacity
    ========================================================================== */
 
+/* `hidden` must actually hide. This is not defensive habit — it is a shipped
+   bug being closed.
+
+   `[hidden] { display: none }` is a *user-agent* rule, so any author `display`
+   declaration outranks it. Three classes here set `display: grid` and so kept
+   painting while carrying the attribute: `.vsh-chip` showed roster entries for
+   ships the player had just deselected, complete with frozen health bars, and
+   because the update pass skips hidden chips those ghosts never refreshed;
+   `.vsh-q` left phantom production entries beside a correct "Yard idle";
+   `.vsh-item` was latent and would have gone the same way.
+
+   Scoped to the HUD and marked important on purpose: a per-class patch would
+   have to be remembered every time someone adds a `display` rule, and this bug
+   was found by a critic reading back computed styles, not by anything that
+   would fail a normal test. An assertion on the `hidden` attribute alone
+   passes throughout. */
+.vs-hud [hidden],
+.vsh-root [hidden] {
+  display: none !important;
+}
+
 .vsh-root {
   /* Exactly the three hues DESIGN.md publishes, and no others. Enemy amber and
      warning red used to be a shade apart from the shipped tokens, which put
