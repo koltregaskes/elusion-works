@@ -2272,7 +2272,12 @@ export function createPostFX(engine, game) {
     // own tuning and still guards only the front of the DOF near field, so nearby cover keeps
     // smearing when the player whips the camera round, which is what motion blur is for.
     uTaa.uNearCut.value = Math.min(params.taaNearCut, params.dofNearKeep);
-    uTaa.uVmFeedback.value = params.taaVmFeedback;
+    // Clamped because `params` is public and this one feeds a mix() weight. Anything below 0
+    // makes the final `mix(curT, clipped, feedback)` extrapolate rather than blend, which does
+    // not read as "less history" — it reads as ringing and out-of-gamut pixels on the weapon.
+    // NaN would propagate through the whole resolve, so a non-finite value falls back to 0.
+    const vmFb = Number.isFinite(params.taaVmFeedback) ? params.taaVmFeedback : 0.0;
+    uTaa.uVmFeedback.value = Math.min(1.0, Math.max(0.0, vmFb));
     uMotion.uNearCut.value = params.dofNearKeep * 0.6;
   }
 
