@@ -6,9 +6,10 @@ Playable Three.js delivery-game demo for the Elusion Works cabinet.
 
 - Public path: `/demos/cyberpunk-messenger/`
 - Owning source: private `koltregaskes/cyberpunk-messenger` repository
-- Source revision: `b6be3cae330fbdeb0c7ed816e8edb5da37e97a8b`
+- Source revision: `58ddb98d6db1eb8cdaaa3d2ffd0c42ea1a3971c6`
 - Build command: `npm run build:elusion`
 - The hashed JavaScript, CSS, GLB and title artwork are generated release files. Do not hand-edit them in this repository.
+- `release-manifest.json` is the byte-count and SHA-256 contract for every shipped payload file; CI rejects missing, changed, unreferenced or stale files.
 - The title-screen Demos link resolves one level up to `/demos/`.
 
 ## Visual system
@@ -26,8 +27,8 @@ link on the title screen, not as a site header over gameplay.
 
 ## Performance
 
-The default renderer selects a low profile for reduced-data mode, devices with
-4 GB of reported memory or less, or devices with four reported logical
-processors or fewer. `?quality=low` and `?quality=standard` provide deterministic
-review overrides. The profile changes rendering cost only; movement, collision,
-dialogue, timings and objectives remain shared.
+The default renderer selects a low profile for reduced-data mode, coarse mobile
+viewports, devices with 4 GB of reported memory or less, or devices with four
+reported logical processors or fewer. `?quality=low` and `?quality=standard`
+provide deterministic review overrides. The profile changes rendering cost
+only; movement, collision, dialogue, timings and objectives remain shared.
