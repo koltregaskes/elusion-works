@@ -94,7 +94,11 @@ if (!existsSync(manifestPath)) {
     .filter((path) => path.endsWith(".js"))
     .map((path) => readFileSync(join(payloadRoot, path), "utf8"))
     .join("\n");
-  const references = `${routeHtml}\n${javascript}`;
+  const stylesheets = payloadFiles
+    .filter((path) => path.endsWith(".css"))
+    .map((path) => readFileSync(join(payloadRoot, path), "utf8"))
+    .join("\n");
+  const references = `${routeHtml}\n${javascript}\n${stylesheets}`;
   for (const path of listedFiles.keys()) {
     if (path === "index.html") continue;
     const basename = path.split("/").at(-1);
