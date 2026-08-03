@@ -215,6 +215,7 @@ uniform float uHistoryValid;
 uniform float uClipGamma;
 uniform float uNearCut;
 uniform float uHasWorldDepth;
+uniform float uVmFeedback;
 
 /**
  * 5-tap optimised Catmull-Rom. A plain bilinear history fetch is a box filter applied every
@@ -399,13 +400,30 @@ void main() {
   float vm = uHasWorldDepth > 0.5 ? inBand * step(0.02, depthDiff)   // 1 = viewmodel pixel
                                   : 1.0 - nearFade;
 
-  // min(), deliberately not mix(): this term may only ever SHORTEN the history, never lengthen
-  // it. The old "mix(0.80, feedback, nearFade)" reinstated 0.80 on top of a velocity ramp that
-  // had already fallen to 0.35, which is what smeared near-field cover into horizontal ribbons
-  // and left a hard straight ghost edge where a beam silhouette had been a frame earlier.
-  // 0.20 kills the viewmodel ghost in ~2 frames while leaving the gun a trace of temporal AA;
-  // if the procedural hard edges on the receiver alias, raise to 0.30 — do not go above 0.40.
-  feedback = min(feedback, mix(1.0, 0.20, vm));
+  /* min(), deliberately not mix(): this term may only ever SHORTEN the history, never lengthen
+   * it. The original "mix(0.80, feedback, nearFade)" reinstated 0.80 on top of a velocity ramp
+   * that had already fallen to 0.35, which is what smeared near-field cover into horizontal
+   * ribbons and left a hard ghost edge where a beam silhouette had been a frame earlier.
+   *
+   * uVmFeedback is 0. Not "low" — zero, and the distinction is the whole point.
+   *
+   * The first attempt at this set it to 0.20, on the reasoning that a short history still buys
+   * the gun a little temporal AA. That is wrong, and an A/B on the yard vantage settled it:
+   * at 0.20 the ballast, the rail and the sleepers were all plainly readable through the
+   * receiver and magazine; at 0.0 the weapon is opaque. 0.20 did not look like 20% of a ghost,
+   * it looked like a see-through gun, and two independent reviewers called it exactly that.
+   *
+   * The reason is that "a little history" is not a little blur here. Everywhere else in the
+   * frame history is a *better estimate of the same surface*, because reprojection lands it on
+   * that surface. On the viewmodel there are no motion vectors at all — the gun is drawn with
+   * its own projection and reprojected with the world camera's — so history is not a noisier
+   * sample of the receiver, it is a sample of whatever the receiver was covering last frame.
+   * Blending 20% of that is 20% of the background, composited over the gun. It is alpha, not
+   * antialiasing, and no amount of tuning turns one into the other.
+   *
+   * The gun does not go unantialiased: FXAA and CAS both run after the resolve and are purely
+   * spatial, so the viewmodel keeps edge treatment without keeping a memory. */
+  feedback = min(feedback, mix(1.0, uVmFeedback, vm));
 
   // Reject anything that reprojects off-screen or behind the previous camera. There is no
   // history for it; using the edge-clamped texel is what smears a bright streak inwards
@@ -1686,6 +1704,9 @@ export function createPostFX(engine, game) {
      * over roughly 5 m of real world geometry. 0.4 m of extent is the weapon itself.
      */
     taaNearCut: 2.6,
+    // Viewmodel TAA history. It has no valid motion vectors — see the viewmodel guard in
+    // FRAG_TAA — so any history it keeps is a copy of where the gun used to be.
+    taaVmFeedback: 0.0,
     /** Peak bokeh radius in half-res texels. */
     dofRadius: 14.0,
     dofStrength: 1.0,
@@ -1848,6 +1869,7 @@ export function createPostFX(engine, game) {
     uHistoryValid: { value: 0 },
     uClipGamma: { value: 1.0 },
     uNearCut: { value: 4.0 },
+    uVmFeedback: { value: params.taaVmFeedback },
   };
 
   const uSsao = {
@@ -2250,6 +2272,7 @@ export function createPostFX(engine, game) {
     // own tuning and still guards only the front of the DOF near field, so nearby cover keeps
     // smearing when the player whips the camera round, which is what motion blur is for.
     uTaa.uNearCut.value = Math.min(params.taaNearCut, params.dofNearKeep);
+    uTaa.uVmFeedback.value = params.taaVmFeedback;
     uMotion.uNearCut.value = params.dofNearKeep * 0.6;
   }
 
