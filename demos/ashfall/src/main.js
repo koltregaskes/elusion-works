@@ -113,6 +113,11 @@ function detectQuality() {
   if (touch) return 'low';
   const mem = navigator.deviceMemory || 8;
   const cores = navigator.hardwareConcurrency || 8;
+  // Inclusive on purpose: a machine reporting exactly 4 GB or exactly 4 logical cores is not a
+  // machine that wants four shadow cascades, and `deviceMemory` is coarsely quantised anyway
+  // (it reports 4 for a wide range of real hardware). Same argument as the `medium` default
+  // below — the cost of guessing one tier low is two clicks in the pause menu; the cost of
+  // guessing one tier high is a player concluding the demo is broken.
   if (mem <= 4 || cores <= 4) return 'low';
   /*
    * `medium`, not `high`, and the reason is that neither `deviceMemory` nor

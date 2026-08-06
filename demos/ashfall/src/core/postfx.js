@@ -2360,7 +2360,11 @@ export function createPostFX(engine, game) {
     // NaN would propagate through the whole resolve, so a non-finite value falls back to 0.
     const vmFb = Number.isFinite(params.taaVmFeedback) ? params.taaVmFeedback : 0.0;
     uTaa.uVmFeedback.value = Math.min(1.0, Math.max(0.0, vmFb));
-    uMotion.uNearCut.value = params.dofNearKeep * 0.6;
+    // The calibrated band, not a fraction of the DOF keep. `dofNearKeep` is itself derived as
+    // band / 0.45, so `dofNearKeep * 0.6` was the band times 1.33 — close enough to look right
+    // and wrong enough to matter, and it also drove the *fallback* path on a machine with no
+    // prepass. All four viewmodel guards now read the same number.
+    uMotion.uNearCut.value = params.taaNearCut;
   }
 
   /* --- Size sync ---------------------------------------------------------- */
@@ -2414,18 +2418,6 @@ export function createPostFX(engine, game) {
     // always complete, and let uHasWorldDepth pick the fallback path in the shader.
     uTaa.tDepthWorld.value = worldDepthTexture || depthTexture;
     uTaa.uHasWorldDepth.value = worldDepthTexture ? 1 : 0;
-    // Motion blur and both DOF stages need the identical mask, so they take identical inputs.
-    // Three passes reconstruct something per-pixel from a depth buffer the viewmodel shares but
-    // does not belong in; all three were guarding with a depth band, and all three were wrong in
-    // the same way. One mask, one source of truth.
-    uMotion.tDepthWorld.value = worldDepthTexture || depthTexture;
-    uMotion.uHasWorldDepth.value = worldDepthTexture ? 1 : 0;
-    uDofPre.tDepthWorld.value = worldDepthTexture || depthTexture;
-    uDofPre.uHasWorldDepth.value = worldDepthTexture ? 1 : 0;
-    uDofPre.uVmCut.value = params.taaNearCut;
-    uDofComposite.tDepthWorld.value = worldDepthTexture || depthTexture;
-    uDofComposite.uHasWorldDepth.value = worldDepthTexture ? 1 : 0;
-    uDofComposite.uVmCut.value = params.taaNearCut;
     uTaa.uHistoryValid.value = historyValid ? 1 : 0;
     uTaa.uTexel.value.set(1 / width, 1 / height);
     uTaa.uResolution.value.set(width, height);
@@ -2768,6 +2760,26 @@ export function createPostFX(engine, game) {
     renderer.autoClear = false;
 
     let colour = hdr.texture;
+
+    /* --- Shared viewmodel mask inputs -------------------------------------
+     * Bound here, per frame, and deliberately NOT inside runTAA(). Motion blur and DOF use the
+     * same mask, but they do not share TAA's fate: `runTAA` is skipped whenever TAA is off in
+     * the settings menu or a debug view is active, and both of those leave motion blur and DOF
+     * running. Binding from inside it left them on uHasWorldDepth = 0 — silently back on the
+     * broad depth-band fallback that put ballast through the player's sleeve in the first
+     * place, and with FRAG_MOTION sampling an unbound tDepthWorld before reaching its own
+     * fallback branch. Caught in review; it would not have shown up in any capture, because
+     * every capture runs with TAA on. */
+    const vmDepth = worldDepthTexture || depthTexture;
+    const vmHas = worldDepthTexture ? 1 : 0;
+    uMotion.tDepthWorld.value = vmDepth;
+    uMotion.uHasWorldDepth.value = vmHas;
+    uDofPre.tDepthWorld.value = vmDepth;
+    uDofPre.uHasWorldDepth.value = vmHas;
+    uDofPre.uVmCut.value = params.taaNearCut;
+    uDofComposite.tDepthWorld.value = vmDepth;
+    uDofComposite.uHasWorldDepth.value = vmHas;
+    uDofComposite.uVmCut.value = params.taaNearCut;
 
     /* 1. TAA */
     if (features.taa && params.taaEnabled && depthTexture && debugMode === 0) {
