@@ -1,6 +1,7 @@
 import * as THREE from '../../vendor/three/build/three.module.js';
 import { bus } from '../core/events.js';
-import { ROLE, damageAffinity } from '../ships/catalog.js';
+import { ROLE, damageAffinity, VETERANCY, veterancyTier } from '../ships/catalog.js';
+import { formationEffect } from './formations.js';
 import {
   setNavArrive,
   setNavSeek,
@@ -28,16 +29,53 @@ export const STANCE = {
 };
 
 /* Stance tuning: how far a ship looks for trouble, how far it will stray from
-   its station to get it, and whether it shoots at all. */
+   its station to get it, and what that costs.
+
+   Homeworld 1's stances were a genuine trade — aggressive bought roughly +30%
+   damage and +35% range at the cost of survivability, evasive traded offence
+   for staying alive. Every one of the four here fires. An "evasive" that
+   silently meant *do not shoot* was not a stance, it was a mislabelled suicide
+   button: a wing set to it lost 21–0 having dealt exactly zero damage, twice,
+   and nothing in the game said so. Evasive now means what it says — run, keep
+   the range open, shoot back badly — which is a decision a player can make on
+   purpose.
+
+   `damage` scales outgoing fire; `incoming` scales damage taken. */
 const STANCE_CFG = {
-  [STANCE.AGGRESSIVE]: { scan: 1.0, leash: 9000, chase: true, fire: true, standoff: 0.6 },
-  [STANCE.NEUTRAL]: { scan: 0.72, leash: 3200, chase: true, fire: true, standoff: 0.78 },
-  [STANCE.PASSIVE]: { scan: 0.42, leash: 260, chase: false, fire: true, standoff: 0.95 },
-  [STANCE.EVASIVE]: { scan: 0.5, leash: 0, chase: false, fire: false, standoff: 1.6 },
+  [STANCE.AGGRESSIVE]: {
+    scan: 1.0, leash: 9000, chase: true, fire: true, standoff: 0.6,
+    damage: 1.15, incoming: 1.10,
+    label: 'Aggressive · +15% damage, +10% damage taken, hunts across the map',
+  },
+  [STANCE.NEUTRAL]: {
+    scan: 0.72, leash: 3200, chase: true, fire: true, standoff: 0.78,
+    damage: 1.0, incoming: 1.0,
+    label: 'Neutral · fights what comes to it, holds near its station',
+  },
+  [STANCE.PASSIVE]: {
+    scan: 0.42, leash: 260, chase: false, fire: true, standoff: 0.95,
+    damage: 0.95, incoming: 0.92,
+    label: 'Passive · holds station and returns fire, −5% damage, −8% damage taken',
+  },
+  [STANCE.EVASIVE]: {
+    scan: 0.5, leash: 0, chase: false, fire: true, standoff: 1.6,
+    damage: 0.5, incoming: 0.72,
+    label: 'Evasive · breaks away and returns fire, −50% damage, −28% damage taken',
+  },
 };
 
 export function stanceConfig(stance) {
   return STANCE_CFG[stance] || STANCE_CFG[STANCE.NEUTRAL];
+}
+
+/** `{ id, label, damage, incoming }` for every stance — for the HUD. */
+export function stanceEffects() {
+  const out = [];
+  for (const id in STANCE_CFG) {
+    const c = STANCE_CFG[id];
+    out.push({ id, label: c.label, damage: c.damage, incoming: c.incoming });
+  }
+  return out;
 }
 
 /* An attack-move, guard or patrol order is an instruction to go looking for a
@@ -151,9 +189,66 @@ export function initCombatState(e) {
   e.lastHitTick = -99999;
   e.lastAttackerId = -1;
   e.engageRange = maxWeaponRange(e.def);
+  /* Where an attack run breaks off, as a fraction of weapon reach. A torpedo
+     bomber releases at range; a dogfighter closes to the hull. Zero means
+     "close" and is the default for anything that does not say otherwise. */
+  e.releaseFrac = defs.length && defs[0].releaseAt ? defs[0].releaseAt : 0;
+
+  /* Veterancy. `vetScore` is lifetime kill value, not a kill count: shooting
+     down twenty scouts is not the same as killing a destroyer. */
+  e.vetScore = 0;
+  e.vetTier = 0;
+  /* Combined stance x formation x veterancy modifiers, refreshed once a tick.
+     Kept as two plain numbers so the hot paths — projectile spawn and the
+     damage pipeline — stay a single multiply. */
+  e.outScale = 1;
+  e.inScale = 1;
+
   // How dangerous this hull is to an unarmed hauler. Read by the economy so a
   // collector runs from an interceptor wing but not from a passing picket.
   e.threatScore = dpsAgainst(e.def, ROLE.RESOURCE);
+}
+
+/**
+ * Recompute an entity's outgoing/incoming damage scales.
+ *
+ * Structures and haulers keep no formation, so they get stance and veterancy
+ * only — a mothership does not become tougher because a wing near it happens
+ * to be in sphere.
+ */
+export function refreshModifiers(e) {
+  const s = stanceConfig(e.stance);
+  const vet = VETERANCY[e.vetTier] || VETERANCY[0];
+  let out = s.damage * vet.damage;
+  let inc = s.incoming;
+  if (e.role !== ROLE.STRUCTURE && e.formation) {
+    const f = formationEffect(e.formation);
+    out *= f.damage;
+    inc *= f.incoming;
+  }
+  e.outScale = out;
+  e.inScale = inc;
+}
+
+/**
+ * Credit a kill and promote if it earns one.
+ *
+ * A promotion raises maximum hull, and the ship is healed by the same amount
+ * rather than the fraction — a veteran that had been shot to pieces does not
+ * get a free repair out of it, it gets the extra plating it earned.
+ */
+export function creditKill(killer, victim) {
+  if (!killer || !killer.alive || killer.team === victim.team) return;
+  if (killer.vetScore === undefined) return;
+  // Value, not count. A scout is worth a twentieth of a destroyer.
+  killer.vetScore += (victim.def.cost || 40) / 180;
+  const tier = veterancyTier(killer.vetScore);
+  if (tier === killer.vetTier) return;
+  const before = killer.maxHull;
+  killer.vetTier = tier;
+  killer.maxHull = killer.def.hull * VETERANCY[tier].hull;
+  killer.hull += killer.maxHull - before;
+  refreshModifiers(killer);
 }
 
 export function maxWeaponRange(def) {
@@ -289,11 +384,13 @@ function fireWeapon(world, e, ws, target) {
   const rng = world.rngCombat;
   const emit = world.fxEvents;
 
+  const scale = e.outScale === undefined ? 1 : e.outScale;
+
   if (w.type === 'ion' || w.type === 'beam') {
     // Beams lock on and burn. Damage is applied over beamDuration so a target
     // can die mid-cut, which is the whole drama of an ion frigate.
     ws.beamLeft = w.beamDuration || 1.2;
-    ws.beamDps = (w.damage * hp) / ws.beamLeft;
+    ws.beamDps = (w.damage * hp * scale) / ws.beamLeft;
     ws.beamTick = 0;
     ws.targetId = target.id;
     ws.beamHp = ws.muzzle;
@@ -322,7 +419,11 @@ function fireWeapon(world, e, ws, target) {
   const kind = kindOf(w.type);
   const life = Math.min(9, (w.range / speed) * 1.5 + 0.4);
   const spread = w.spread || 0;
-  const burst = kind === PT.FLAK ? 120 + (e.radius || 10) * 0.4 : 0;
+  /* Flak burst radius is a property of the shell, not of the ship that fired
+     it. Deriving it from the shooter's hull gave a mothership a 538 m splash
+     with no falloff, which one-shot whole wings on contact and is the single
+     reason committed strike craft evaporated against capitals. */
+  const burst = kind === PT.FLAK ? (w.burstRadius || 140) : 0;
   const turn = kind === PT.MISSILE ? 1.5 : 0;
 
   for (let k = 0; k < hp; k++) {
@@ -343,7 +444,7 @@ function fireWeapon(world, e, ws, target) {
       _a.x * speed + e.velocity.x * 0.35,
       _a.y * speed + e.velocity.y * 0.35,
       _a.z * speed + e.velocity.z * 0.35,
-      w.damage, life, kind, e.team, e.id, target.id, turn, burst,
+      w.damage * scale, life, kind, e.team, e.id, target.id, turn, burst,
     );
     if (emit) {
       bus.emit('sim:fire', {
@@ -369,7 +470,8 @@ const _nrm = new THREE.Vector3();
  */
 export function applyDamage(world, target, raw, weaponType, shooter, fromX, fromY, fromZ) {
   if (!target.alive || raw <= 0) return 0;
-  let amount = raw * damageAffinity(weaponType, target.role);
+  let amount = raw * damageAffinity(weaponType, target.role) *
+    (target.inScale === undefined ? 1 : target.inScale);
   if (amount <= 0) return 0;
 
   const emit = world.fxEvents;
@@ -430,14 +532,26 @@ let _burstZ = 0;
 let _burstR = 0;
 let _burstShooter = null;
 
+/* A flak shell is a cloud of fragments, not a uniform kill sphere. Full damage
+   at the burst point falling to a quarter at the fringe is what makes a
+   formation choice worth making: a wing that arrives spread genuinely eats
+   less than a wing that arrives stacked, and the player can see it happen. */
+const BURST_EDGE = 0.25;
+
 function burstVisitor(n) {
   if (!n.alive || n.team === _burstTeam) return;
   const dx = n.position.x - _burstX;
   const dy = n.position.y - _burstY;
   const dz = n.position.z - _burstZ;
   const reach = _burstR + n.radius;
-  if (dx * dx + dy * dy + dz * dz > reach * reach) return;
-  applyDamage(_burstWorld, n, _burstDmg, 'flak', _burstShooter, _burstX, _burstY, _burstZ);
+  const d2 = dx * dx + dy * dy + dz * dz;
+  if (d2 > reach * reach) return;
+  const t = reach > 1e-3 ? Math.sqrt(d2) / reach : 0;
+  const falloff = 1 - (1 - BURST_EDGE) * t;
+  applyDamage(
+    _burstWorld, n, _burstDmg * falloff, 'flak', _burstShooter,
+    _burstX, _burstY, _burstZ,
+  );
 }
 
 /** Segment (p -> p+d) against sphere (c, r). Returns t in [0,1] or -1. */
@@ -557,8 +671,21 @@ function attackRun(world, e, target, dt) {
     target.position.z - e.position.z,
   );
   const dist = _a.length();
-  const breakAt = target.radius + e.radius + 150;
-  const reformAt = breakAt + reach * 0.8 + 420;
+  /* Where the run breaks off.
+
+     A dogfighter closes to the hull; that is what a dogfight is. A torpedo
+     bomber does not. Measuring the break-off from hull clearance alone gave
+     every strike craft an interceptor's geometry, so a bomber with 1.9 km of
+     stand-off ordnance flew to 1.2 km from a mothership's *centre* — deep
+     inside the flak envelope — to deliver a weapon it could have released
+     from outside it. The anti-capital half of the affinity table was written
+     down and then never happened. `releaseAt` is the fix, and it is per
+     weapon: the ordnance decides the geometry. */
+  const clearance = target.radius + e.radius + 150;
+  const breakAt = e.releaseFrac > 0
+    ? Math.max(clearance, reach * e.releaseFrac)
+    : clearance;
+  const reformAt = breakAt + reach * 0.45 + 380;
 
   e.runTimer -= dt;
 
@@ -638,7 +765,15 @@ function standOff(world, e, target) {
     e.position.z - target.position.z,
   );
   const dist = _a.length();
-  const want = Math.max(target.radius + e.radius + 250, reach * cfg.standoff);
+  /* Hold the range the gun was built for.
+     `cfg.standoff` alone let an aggressive order park an ion frigate at 60% of
+     its reach — 2,645 m from a destroyer that out-ranges it from 4,077 — which
+     threw away the only advantage the ship has and is exactly the "capitals
+     that nose up close and just trade fire instead of exploiting range"
+     failure. A weapon that says where it wants to be fought from now gets to
+     say it; the stance can push a ship further out, never further in. */
+  const frac = e.releaseFrac > 0 ? Math.max(e.releaseFrac, cfg.standoff) : cfg.standoff;
+  const want = Math.max(target.radius + e.radius + 250, reach * frac);
   if (dist > 1e-3) _a.multiplyScalar(1 / dist);
   else _a.set(0, 0, 1);
 
@@ -694,7 +829,7 @@ function supportBehaviour(world, e, dt) {
   _repBest = null;
 
   if (patient) {
-    patient.hull = Math.min(patient.maxHull, patient.hull + (e.def.repairRate || 60) * dt);
+    world.repairAt(patient, (e.def.repairRate || 60) * dt);
     e.repairTargetId = patient.id;
   } else {
     e.repairTargetId = -1;
@@ -783,8 +918,14 @@ export function updateCombat(world, dt) {
     if (e.hull < e.maxHull && e.role !== ROLE.STRUCTURE && tick - e.lastHitTick > 120 &&
         (tick + e.id) % 10 === 0) {
       const yard = nearestOwnYard(world, e);
-      if (yard) e.hull = Math.min(e.maxHull, e.hull + e.maxHull * 0.014 * dt * 10);
+      if (yard) world.repairAt(e, e.maxHull * 0.014 * dt * 10);
     }
+
+    /* Stance, formation and veterancy fold into two numbers, refreshed here so
+       the projectile spawn and the damage pipeline stay one multiply each.
+       Staggered across hulls: none of the three inputs changes faster than a
+       fifth of a second and a thousand table lookups a tick buys nothing. */
+    if ((tick + e.id) % 6 === 0 || e.outScale === undefined) refreshModifiers(e);
 
     const ws = e.weapons;
     if (!ws || ws.length === 0) continue;
@@ -893,10 +1034,13 @@ export function updateCombat(world, dt) {
       continue;
     }
 
+    /* Evasive breaks away and keeps shooting. The guns were already serviced
+       above — this only takes the helm, which is the whole of the stance: it
+       never chases, never closes, and pays for that in accuracy. */
     if (e.stance === STANCE.EVASIVE) {
       const threat = findTarget(world, e, null, e.def.sensorRange * 0.5);
       evade(world, e, threat);
-      e.engaged = false;
+      e.engaged = !!target;
       continue;
     }
 

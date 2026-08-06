@@ -68,9 +68,20 @@ void main() {
   vClamp = clamp( 1.0 - 1.0 / k, 0.0, 1.0 );
   /* Energy, not just size. A point source smeared over a minimum disc has to
      lose peak radiance or the smallest hulls end up the brightest things in a
-     fleet action. Exponent well below the physical 2.0 — full inverse-square
-     would take a distant fighter back to nothing. */
-  vSpread = pow( clamp( 1.0 / k, 0.03, 1.0 ), 0.52 );
+     fleet action.
+
+     The exponent is the whole argument. The floor multiplies the plume's
+     *radius* by k, so it paints k-squared the area; radiance therefore has to
+     fall as k to the minus p, and the effect's total emitted energy grows as
+     k^(2-p). At the p=0.52 this used to carry, a fighter's drive at 3 km
+     (k≈6.5) put out 22x the energy of the physical plume, and 1,861 of those
+     beat 560 hulls without any single one of them looking wrong. p=0.85 leaves
+     energy growing as k^1.15 — still rising with distance, so the floor keeps
+     doing the job it exists for, but no longer faster than the count of ships
+     the camera is collecting into frame.
+
+     p=0 at k=1 by construction: nothing about a close-up drive changes. */
+  vSpread = pow( clamp( 1.0 / k, 0.02, 1.0 ), 0.85 );
   scale.xy *= k;
   // Was 0.35: with the ceiling in place the cone no longer needs as much
   // length compensation, and less of it keeps a fighter's plume short.
@@ -149,11 +160,25 @@ void main() {
     col = mix( mix( uHot, vColor, 0.55 ), vColor * 0.75, smoothstep( 0.0, 0.7, t ) );
   }
 
-  // Once the pixel floor is doing the work the cone is a smear a few pixels
-  // across; concentrate it so it still reads as thrust — but scale radiance
-  // back by the spread factor, or the fleet's smallest hulls burn brightest.
+  /* Once the pixel floor is doing the work the cone is a smear a few pixels
+     across; concentrate it so it still reads as thrust. Sharpening the alpha
+     curve is a *shape* operation and stays at full strength — it is what makes
+     a distant drive a hot dot rather than a grey smudge. The radiance lift that
+     used to sit beside it was an *energy* operation pulling against vSpread,
+     and between them the floor still gained brightness with distance. Kept only
+     as a token so the core does not read flat. */
   a = fxSharpen( a, vClamp * 0.8 );
-  col *= uGain * ( 1.0 + 1.1 * vClamp ) * vSpread;
+  /* Bleed the white-hot core out as the floor takes over.
+
+     Every shell above mixes toward uHot, which is very nearly white, and that
+     is right for a bell you can see into. Two pixels across it is wrong twice:
+     white is the brightest a colour can be for a given magnitude, and it is the
+     one colour that says nothing about whose fleet you are looking at — which
+     is the read §3.3 asks the drive to carry at range. Rescaling to the team
+     colour at the same magnitude drops luminance 46% for the player's cyan and
+     59% for the enemy's amber, and buys a fleet that is legibly two sides. */
+  col = mix( col, vColor * dot( col, vec3( 0.3333 ) ), vClamp * 0.8 );
+  col *= uGain * ( 1.0 + 0.25 * vClamp ) * vSpread;
 
   a *= smoothstep( 0.0, 0.02, vThrottle );
   a *= fxSoftFade( vFragW );
@@ -206,8 +231,10 @@ void main() {
      nebula gas around a fleet at 12-94 of 255, and SHIPS lands its impostor at
      22 shadow / 75 lit inside that range. Anything brighter than the top of the
      band wins against the hull whatever size it is, so a heavily floored drive
-     has to come down in radiance as well as in area. */
-  vSpread = pow( clamp( natural / max( size, 0.0001 ), 0.03, 1.0 ), 0.52 );
+     has to come down in radiance as well as in area. Held at the same 0.85 as
+     the cone so the two halves of one drive never disagree about how far away
+     it is. */
+  vSpread = pow( clamp( natural / max( size, 0.0001 ), 0.02, 1.0 ), 0.85 );
 
   mv.xy += position.xy * size;
   gl_Position = projectionMatrix * mv;
@@ -242,9 +269,12 @@ void main() {
   float a = fxSharpen( texel.a, vClamp ) * fxQuadMask( vUv ) * vGain * fxSoftFade( vFragW );
   if ( a <= 0.003 ) discard;
   /* Mostly team colour with a white-hot centre, not the other way round: the
-     drive is the strongest colour signal a ship gives at range (§3.3). */
-  vec3 hot = mix( vColor, vec3( 1.0 ), 0.16 + 0.55 * pow( texel.a, 3.0 ) );
-  gl_FragColor = vec4( hot * texel.rgb * 2.1 * uGain * ( 1.0 + 0.75 * vClamp ) * vSpread, a );
+     drive is the strongest colour signal a ship gives at range (§3.3). The
+     white centre is retired as the screen floor takes over, for the same reason
+     the cone's is — see PLUME_FRAG. */
+  float white = ( 0.16 + 0.55 * pow( texel.a, 3.0 ) ) * ( 1.0 - 0.8 * vClamp );
+  vec3 hot = mix( vColor, vec3( 1.0 ), white );
+  gl_FragColor = vec4( hot * texel.rgb * 1.8 * uGain * ( 1.0 + 0.25 * vClamp ) * vSpread, a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -739,7 +769,11 @@ export class EngineFX {
              width and life is enough to break that up. */
           const j = 0.75 + 0.5 * entry.seed;
           const r = Math.max(2.0, Math.min(16, (e.radius || 8) * 0.44 * j));
-          const life = (0.42 + 0.28 * ctx.qscale) * j;
+          /* Was 0.42 + 0.28q, which at 600 m/s put 630 m of ribbon behind a
+             14 m interceptor — forty-five hull lengths, and at fleet range a
+             field of them reads as straight scratches across the frame rather
+             than as ships moving. Twenty-odd hull lengths still streaks. */
+          const life = (0.30 + 0.20 * ctx.qscale) * j;
           entry.trail = trails.acquire(team.engine, r, life, Math.max(5, r * 2.4));
         } else if (!want && entry.trail) {
           trails.detach(entry.trail);

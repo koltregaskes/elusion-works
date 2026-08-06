@@ -55,6 +55,7 @@ export const SHIPS = {
     squadSize: 3,
     modelSeed: 1101,
     description: 'Long-range sensor picket. Fast, blind-spot free, barely armed.',
+    counteredBy: 'Anything that can catch it. It is not meant to fight.',
     silhouette: 'M12 2 L20 17 L12 14 L4 17 Z',
     weapons: [
       {
@@ -87,6 +88,7 @@ export const SHIPS = {
     squadSize: 5,
     modelSeed: 2203,
     description: 'Squadron fighter. Owns the space between capitals.',
+    counteredBy: 'Flak. Assault frigates and corvette autocannon shred them.',
     silhouette: 'M12 2 L15 9 L22 15 L18 16 L12 12 L6 16 L2 15 L9 9 Z',
     weapons: [
       {
@@ -105,25 +107,35 @@ export const SHIPS = {
     role: ROLE.FIGHTER,
     family: FAMILY.LANCER,
     length: 20,
-    hull: 260,
-    armour: 0.12,
+    hull: 340,
+    armour: 0.18,
     shield: 0,
-    speed: 400,
-    accel: 240,
+    speed: 430,
+    accel: 250,
     turnRate: 1.5,
     rollRate: 1.9,
-    cost: 95,
-    buildTime: 13,
+    cost: 120,
+    buildTime: 15,
     popCost: 1,
     sensorRange: 4000,
     squadSize: 4,
     modelSeed: 3307,
-    description: 'Strike craft with hull-cracking ordnance. Helpless against fighters.',
+    description: 'Torpedo bomber. Releases at stand-off range and turns away; the only strike craft that threatens a capital. Helpless against fighters.',
+    counteredBy: 'Fighters, and any flak escort. Never send them unscreened.',
     silhouette: 'M12 3 L16 8 L21 10 L21 14 L14 13 L12 20 L10 13 L3 14 L3 10 L8 8 Z',
     weapons: [
       {
-        id: 'plasmaLance', type: WEAPON_TYPE.MISSILE, damage: 78, rate: 0.55, range: 1500,
+        id: 'plasmaLance', type: WEAPON_TYPE.MISSILE, damage: 96, rate: 0.8, range: 1900,
         spread: 0.01, projectileSpeed: 900, arcDeg: 14, hardpoints: 2,
+        /* Stand-off ordnance. `releaseAt` is the fraction of reach at which the
+           run breaks off: a torpedo bomber launches and turns, it does not fly
+           down a capital's throat. See `attackRun` in sim/combat.js.
+
+           0.65 is chosen against the flak envelope, not for comfort. It puts
+           the release point inside every capital's flak reach but only for the
+           run-in and the turn — so a lone capital still hurts a wing badly,
+           and a capital with a screening frigate beside it still kills one. */
+        releaseAt: 0.65,
         preferredTargets: [ROLE.FRIGATE, ROLE.CAPITAL, ROLE.STRUCTURE],
       },
     ],
@@ -152,11 +164,13 @@ export const SHIPS = {
     squadSize: 3,
     modelSeed: 4409,
     description: 'Gunship. Heavy autocannon, enough armour to sit in the fire.',
+    counteredBy: 'Frigate batteries and anything with a heavy gun. It closes, so it eats them.',
     silhouette: 'M12 2 L15 6 L15 13 L19 16 L19 20 L5 20 L5 16 L9 13 L9 6 Z',
     weapons: [
       {
         id: 'twinAuto', type: WEAPON_TYPE.KINETIC, damage: 16, rate: 4.2, range: 1600,
         spread: 0.02, projectileSpeed: 2400, arcDeg: 45, hardpoints: 2,
+        releaseAt: 0.45,
         preferredTargets: [ROLE.FIGHTER, ROLE.CORVETTE, ROLE.RESOURCE],
       },
     ],
@@ -183,13 +197,15 @@ export const SHIPS = {
     sensorRange: 6000,
     squadSize: 3,
     modelSeed: 5511,
-    description: 'Salvo launcher. Erases fighter screens, stings capitals.',
+    description: 'Stand-off salvo launcher. Outranges everything its own size and never closes; helpless once fighters are on top of it.',
+    counteredBy: 'Interceptors. Anything fast enough to get inside 2.4 km beats it.',
     silhouette: 'M12 2 L14 7 L20 9 L20 19 L16 17 L12 21 L8 17 L4 19 L4 9 L10 7 Z',
     weapons: [
       {
-        id: 'swarmPods', type: WEAPON_TYPE.MISSILE, damage: 13, rate: 1.5, range: 2400,
+        id: 'swarmPods', type: WEAPON_TYPE.MISSILE, damage: 15, rate: 1.7, range: 2400,
         spread: 0.06, projectileSpeed: 1100, arcDeg: 70, hardpoints: 4,
-        preferredTargets: [ROLE.FIGHTER, ROLE.CORVETTE, ROLE.FRIGATE],
+        releaseAt: 0.85,
+        preferredTargets: [ROLE.CORVETTE, ROLE.FRIGATE, ROLE.CAPITAL],
       },
     ],
     buildableBy: ['carrier', 'mothership'],
@@ -216,7 +232,8 @@ export const SHIPS = {
     sensorRange: 6500,
     squadSize: 1,
     modelSeed: 6613,
-    description: 'The line of battle. Turreted broadside, flak umbrella.',
+    description: 'The line of battle, and the fleet\'s flak umbrella. A capital without one of these beside it is a target.',
+    counteredBy: 'Ion frigates and capitals. It cannot out-range them.',
     silhouette: 'M12 2 L16 5 L17 12 L20 15 L20 21 L4 21 L4 15 L7 12 L8 5 Z',
     weapons: [
       {
@@ -224,9 +241,12 @@ export const SHIPS = {
         spread: 0.012, projectileSpeed: 2200, arcDeg: 150, hardpoints: 3,
         preferredTargets: [ROLE.FRIGATE, ROLE.CORVETTE, ROLE.CAPITAL],
       },
+      /* The escort's screen is deliberately denser per credit than anything a
+         capital carries for itself. Screening is a job you bring a ship for. */
       {
-        id: 'flakScreen', type: WEAPON_TYPE.FLAK, damage: 11, rate: 3.2, range: 1400,
-        spread: 0.09, projectileSpeed: 1900, arcDeg: 200, hardpoints: 2,
+        id: 'flakScreen', type: WEAPON_TYPE.FLAK, damage: 11, rate: 3.6, range: 1900,
+        spread: 0.09, projectileSpeed: 1900, arcDeg: 200, hardpoints: 3,
+        burstRadius: 135,
         preferredTargets: [ROLE.FIGHTER],
       },
     ],
@@ -254,11 +274,20 @@ export const SHIPS = {
     squadSize: 1,
     modelSeed: 7717,
     description: 'A gun with a ship built behind it. Cuts capitals in half; cannot track fighters.',
+    counteredBy: 'Fighters. Its lance cannot track them and it has nothing else.',
     silhouette: 'M12 1 L13 10 L16 13 L16 22 L8 22 L8 13 L11 10 Z',
     weapons: [
+      /* The roster needs two answers to a capital or it has one, and a bomber
+         wing was becoming the only one. At 220 damage this gun delivered 0.14
+         raw dps per credit against a capital against the bomber's 1.66 — an
+         order of magnitude adrift of the ship whose entire description is
+         "cuts capitals in half". */
       {
-        id: 'ionLance', type: WEAPON_TYPE.ION, damage: 220, rate: 0.28, range: 4200,
+        id: 'ionLance', type: WEAPON_TYPE.ION, damage: 300, rate: 0.32, range: 4800,
         spread: 0.0, projectileSpeed: 0, arcDeg: 18, hardpoints: 1, beamDuration: 1.6,
+        /* Fights from the edge of its reach. 4,200 m against a destroyer's
+           4,000 was not a range advantage, it was a rounding error. */
+        releaseAt: 0.9,
         preferredTargets: [ROLE.CAPITAL, ROLE.FRIGATE, ROLE.STRUCTURE],
       },
     ],
@@ -287,11 +316,13 @@ export const SHIPS = {
     repairRate: 90,
     repairRange: 1800,
     description: 'Keeps a fleet alive between engagements. Repair beams, no offence.',
+    counteredBy: 'Everything. Escort it or lose it, and losing it costs the fleet.',
     silhouette: 'M12 3 L18 6 L18 13 L21 16 L21 20 L3 20 L3 16 L6 13 L6 6 Z',
     weapons: [
       {
         id: 'pointDefence', type: WEAPON_TYPE.FLAK, damage: 7, rate: 4.0, range: 1100,
         spread: 0.1, projectileSpeed: 1900, arcDeg: 260, hardpoints: 2,
+        burstRadius: 110,
         preferredTargets: [ROLE.FIGHTER],
       },
     ],
@@ -320,16 +351,19 @@ export const SHIPS = {
     squadSize: 1,
     modelSeed: 8819,
     description: 'Fleet spine. Trades broadsides with anything short of a cruiser.',
+    counteredBy: 'Ion frigates and massed bombers. Its own flak will not save it alone.',
     silhouette: 'M12 1 L15 4 L16 11 L19 14 L20 22 L4 22 L5 14 L8 11 L9 4 Z',
     weapons: [
       {
         id: 'heavyBattery', type: WEAPON_TYPE.KINETIC, damage: 95, rate: 0.9, range: 4000,
         spread: 0.008, projectileSpeed: 2000, arcDeg: 170, hardpoints: 4,
+        releaseAt: 0.8,
         preferredTargets: [ROLE.CAPITAL, ROLE.FRIGATE, ROLE.STRUCTURE],
       },
       {
-        id: 'flakCurtain', type: WEAPON_TYPE.FLAK, damage: 14, rate: 3.6, range: 1600,
+        id: 'flakCurtain', type: WEAPON_TYPE.FLAK, damage: 12, rate: 3.6, range: 1600,
         spread: 0.1, projectileSpeed: 1900, arcDeg: 300, hardpoints: 4,
+        burstRadius: 150,
         preferredTargets: [ROLE.FIGHTER, ROLE.CORVETTE],
       },
     ],
@@ -357,11 +391,13 @@ export const SHIPS = {
     squadSize: 1,
     modelSeed: 9923,
     description: 'The end of most arguments. Twin ion spinal mounts, wall of flak.',
+    counteredBy: 'A committed bomber wing, or another cruiser. Nothing cheap.',
     silhouette: 'M12 1 L16 3 L17 9 L20 12 L21 23 L3 23 L4 12 L7 9 L8 3 Z',
     weapons: [
       {
         id: 'spinalIon', type: WEAPON_TYPE.ION, damage: 340, rate: 0.22, range: 4800,
         spread: 0, projectileSpeed: 0, arcDeg: 40, hardpoints: 2, beamDuration: 2.0,
+        releaseAt: 0.88,
         preferredTargets: [ROLE.CAPITAL, ROLE.STRUCTURE, ROLE.FRIGATE],
       },
       {
@@ -370,8 +406,9 @@ export const SHIPS = {
         preferredTargets: [ROLE.CAPITAL, ROLE.FRIGATE],
       },
       {
-        id: 'flakWall', type: WEAPON_TYPE.FLAK, damage: 16, rate: 4.0, range: 1800,
-        spread: 0.11, projectileSpeed: 1900, arcDeg: 330, hardpoints: 6,
+        id: 'flakWall', type: WEAPON_TYPE.FLAK, damage: 13, rate: 4.0, range: 1800,
+        spread: 0.11, projectileSpeed: 1900, arcDeg: 330, hardpoints: 4,
+        burstRadius: 175,
         preferredTargets: [ROLE.FIGHTER, ROLE.CORVETTE],
       },
     ],
@@ -402,6 +439,7 @@ export const SHIPS = {
     harvestRate: 32,
     capacity: 320,
     description: 'Cuts ore from asteroids and hauls it home. Defend it or lose the game.',
+    counteredBy: 'Any warship at all. This is what raids are for.',
     silhouette: 'M6 4 H18 V10 L21 13 V19 H3 V13 L6 10 Z',
     weapons: [],
     buildableBy: ['carrier', 'mothership'],
@@ -430,11 +468,13 @@ export const SHIPS = {
     modelSeed: 2718,
     producer: true,
     description: 'Forward production. Extends your reach across the field.',
+    counteredBy: 'Bombers and ion frigates. Kill the yards and the fleet stops.',
     silhouette: 'M3 6 H21 V11 H18 V18 H6 V11 H3 Z',
     weapons: [
       {
-        id: 'defenceGrid', type: WEAPON_TYPE.FLAK, damage: 15, rate: 3.4, range: 1900,
+        id: 'defenceGrid', type: WEAPON_TYPE.FLAK, damage: 13, rate: 3.4, range: 1900,
         spread: 0.1, projectileSpeed: 1900, arcDeg: 340, hardpoints: 6,
+        burstRadius: 170,
         preferredTargets: [ROLE.FIGHTER, ROLE.CORVETTE],
       },
     ],
@@ -465,6 +505,7 @@ export const SHIPS = {
     producer: true,
     isBase: true,
     description: 'Everything you have. Lose it and the fleet has nowhere to go.',
+    counteredBy: 'A fleet. Nothing less has ever cracked one.',
     silhouette: 'M12 1 L17 4 V9 H21 V15 H17 V22 H7 V15 H3 V9 H7 V4 Z',
     weapons: [
       {
@@ -472,9 +513,14 @@ export const SHIPS = {
         spread: 0.006, projectileSpeed: 2100, arcDeg: 360, hardpoints: 6,
         preferredTargets: [ROLE.CAPITAL, ROLE.FRIGATE],
       },
+      /* A mothership screens itself, but badly for its size: ten batteries that
+         delete a strike wing in two seconds mean the anti-capital half of the
+         affinity table never happens, and the game loses a whole verb. The
+         bastion punishes anything that lingers; it is not a wing-eraser. */
       {
-        id: 'bastionFlak', type: WEAPON_TYPE.FLAK, damage: 20, rate: 4.4, range: 2200,
-        spread: 0.11, projectileSpeed: 1900, arcDeg: 360, hardpoints: 10,
+        id: 'bastionFlak', type: WEAPON_TYPE.FLAK, damage: 15, rate: 4.0, range: 2200,
+        spread: 0.11, projectileSpeed: 1900, arcDeg: 360, hardpoints: 8,
+        burstRadius: 210,
         preferredTargets: [ROLE.FIGHTER, ROLE.CORVETTE],
       },
     ],
@@ -514,6 +560,39 @@ export function damageAffinity(weaponType, targetRole) {
   if (!row) return 1;
   const v = row[targetRole];
   return v === undefined ? 1 : v;
+}
+
+/** The whole affinity table, for a UI that wants to show the matchup grid. */
+export function affinityTable() {
+  return AFFINITY;
+}
+
+/* ------------------------------------------------------------------ veterancy
+
+   A hull that survives its fights gets better at them. This is the cheapest
+   available answer to "a fight lost is a fleet lost": once a wing has history,
+   withdrawing it is worth something, and the fleet a player is flying at minute
+   25 is not the fleet they were flying at minute 5.
+
+   Kept deliberately small. Veterancy is a reason to preserve ships, not a
+   reason the first fight decides the match. */
+export const VETERANCY = [
+  { at: 0, name: '', damage: 1.00, hull: 1.00 },
+  { at: 2, name: 'Blooded', damage: 1.08, hull: 1.06 },
+  { at: 6, name: 'Veteran', damage: 1.16, hull: 1.12 },
+  { at: 14, name: 'Elite', damage: 1.25, hull: 1.20 },
+];
+
+/** Veterancy tier index for a lifetime kill-value score. */
+export function veterancyTier(score) {
+  let t = 0;
+  for (let i = VETERANCY.length - 1; i > 0; i--) {
+    if (score >= VETERANCY[i].at) {
+      t = i;
+      break;
+    }
+  }
+  return t;
 }
 
 /** Rough visual bounding radius, used before a model exists. */

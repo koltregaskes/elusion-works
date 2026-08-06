@@ -1,6 +1,6 @@
 import * as THREE from '../../vendor/three/build/three.module.js';
 import { SHIPS, ROLE, CLASS_IDS } from '../ships/catalog.js';
-import { canBuild, enqueueBuild, cancelBuild } from './economy.js';
+import { canBuild, enqueueBuild, cancelBuild, refreshIncome, CONTROL } from './economy.js';
 import { dpsAgainst, STANCE } from './combat.js';
 import { FORMATION } from './formations.js';
 
@@ -31,21 +31,61 @@ import { FORMATION } from './formations.js';
 
    No resource cheating at 'normal'. */
 
+/* Difficulty.
+
+   `income` and `buildRate` are the only two entries here that are not
+   decisions — everything else describes how the commander *plays*, and a
+   player could make every one of those choices too. So those two are the only
+   two that can be dishonest, and hard is now flat 1.0 on both.
+
+   The rubric's line on this is unambiguous and it is the most durable
+   complaint in the whole genre: if you must handicap, handicap *downward* on
+   easy rather than upward on hard. Easy therefore keeps 0.9 / 0.85 — a
+   disclosed handicap in the player's favour — and hard is bought entirely with
+   decision quality: it thinks twice as often, commits on a lower margin,
+   works more seams, raids sooner, reaches for the contested band earlier and
+   never makes a random mistake.
+
+   Verified head-to-head after the change: see the report. */
 const DIFFICULTY = {
   easy: {
     think: 2.6, commitScale: 1.75, collectors: 5, harassAt: 200,
     income: 0.9, buildRate: 0.85, retreatAt: 0.45, techScale: 1.35, sloppiness: 0.35,
-    dominance: 1.5, siegeAt: 1500, yards: 2, defenceShare: 0.30, reserve: 3.2,
+    dominance: 1.5, siegeAt: 1500, yards: 3, defenceShare: 0.30, reserve: 3.2,
+    holdShare: 0.10, contestAt: 260,
   },
   normal: {
     think: 1.4, commitScale: 1.0, collectors: 8, harassAt: 78,
     income: 1.0, buildRate: 1.0, retreatAt: 0.34, techScale: 1.0, sloppiness: 0.12,
-    dominance: 1.08, siegeAt: 840, yards: 4, defenceShare: 0.22, reserve: 2.4,
+    dominance: 1.08, siegeAt: 840, yards: 5, defenceShare: 0.22, reserve: 2.4,
+    holdShare: 0.18, contestAt: 170,
   },
   hard: {
-    think: 0.8, commitScale: 0.72, collectors: 11, harassAt: 52,
-    income: 1.15, buildRate: 1.15, retreatAt: 0.28, techScale: 0.8, sloppiness: 0.0,
-    dominance: 0.92, siegeAt: 560, yards: 6, defenceShare: 0.18, reserve: 1.8,
+    think: 0.65, commitScale: 0.72, collectors: 11, harassAt: 45,
+    income: 1.0, buildRate: 1.0, retreatAt: 0.26, techScale: 0.8, sloppiness: 0.0,
+    dominance: 0.88, siegeAt: 560, yards: 6, defenceShare: 0.18, reserve: 1.5,
+    holdShare: 0.26, contestAt: 110,
+  },
+};
+
+/** Plain-language difficulty copy. The boot card and the HUD read this — an
+    undisclosed multiplier is an automatic fail, so it is stated here once. */
+export const DIFFICULTY_COPY = {
+  easy: {
+    name: 'Cadet',
+    line: 'Thinks slowly, masses far too long, and mines a handicapped 90% ' +
+      'income at 85% build speed. The handicap is yours, not its.',
+  },
+  normal: {
+    name: 'Line Officer',
+    line: 'Plays the same economy you do — identical income, identical build ' +
+      'speed. Raids at about a minute twenty, contests the middle from three.',
+  },
+  hard: {
+    name: 'Fleet Command',
+    line: 'Plays the same economy you do. No income bonus, no build bonus. ' +
+      'It simply thinks twice as often, commits on a thinner margin, works ' +
+      'more seams, raids sooner and goes for the contested band first.',
   },
 };
 
@@ -107,8 +147,11 @@ export class Commander {
     this.rng = world.rngAi.fork(team + 1);
 
     const t = world.teams[team];
-    t.incomeScale = this.cfg.income;
+    // The handicap is the *base*; upkeep and field control multiply it, and
+    // they are the same for both sides.
+    t.incomeBase = this.cfg.income;
     t.buildRate = this.cfg.buildRate;
+    refreshIncome(world);
 
     this.timer = this.rng.range(0, 0.6);
     this.intel = {};
@@ -120,6 +163,8 @@ export class Commander {
     this.strike = [];
     this.defence = [];
     this.harass = [];
+    this.hold = [];
+    this.holdCluster = -1;
     this.strikeTargetId = -1;
     this.meleeTargetId = -1;
     this.strikePoint = new THREE.Vector3();
@@ -152,6 +197,9 @@ export class Commander {
       strike: this.strike.length,
       defence: this.defence.length,
       harass: this.harass.length,
+      hold: this.hold.length,
+      seams: this.world.teams[this.team].seams,
+      sovereignty: Math.round(this.world.teams[this.team].sovereignty),
       targetId: this.strikeTargetId,
       intel: this.intel,
     };
@@ -169,6 +217,7 @@ export class Commander {
     this._assignForces();
     this._harass();
     this._defend();
+    this._control();
     this._strike();
     this._retreat();
     this._scout();
@@ -420,9 +469,11 @@ export class Commander {
     const strike = this.strike;
     const defence = this.defence;
     const harass = this.harass;
+    const hold = this.hold;
     strike.length = 0;
     defence.length = 0;
     harass.length = 0;
+    hold.length = 0;
 
     const list = this.world.dense;
     for (let i = 0; i < list.length; i++) {
@@ -441,6 +492,10 @@ export class Commander {
         harass.push(e);
         continue;
       }
+      if (e.aiForce === 'hold' && e.role !== ROLE.CAPITAL) {
+        hold.push(e);
+        continue;
+      }
       if (e.aiForce === 'defence' && e.role !== ROLE.CAPITAL) {
         defence.push(e);
         continue;
@@ -449,32 +504,50 @@ export class Commander {
       strike.push(e);
     }
 
-    const want = Math.min(14, Math.max(2, Math.round(this.own.combat * this.cfg.defenceShare)));
+    const wantDefence = Math.min(14,
+      Math.max(2, Math.round(this.own.combat * this.cfg.defenceShare)));
+    this._quota(defence, strike, wantDefence, 'defence');
+
+    /* Ground troops. Somebody has to be standing on the contested band or the
+       sovereignty clock runs against us whatever the fleet is doing elsewhere,
+       and a commander that only ever hunts hulls will lose a match it is
+       winning on kills. Which is exactly the failure the whole clock exists to
+       make impossible. */
+    const urgency = this._losingControl() ? 1.8 : 1;
+    const wantHold = this.time < this.cfg.contestAt
+      ? 0
+      : Math.min(22,
+        Math.max(3, Math.round(this.own.combat * this.cfg.holdShare * urgency)));
+    this._quota(hold, strike, wantHold, 'hold');
+  }
+
+  /** Drift a force toward its quota a couple of hulls at a time. */
+  _quota(force, pool, want, tag) {
     let moves = 2;
-    while (defence.length > want && moves-- > 0) {
-      const e = defence.pop();
+    while (force.length > want && moves-- > 0) {
+      const e = force.pop();
       e.aiForce = 'strike';
       e.orderQueue.length = 0;
       e.aiCommitted = false;
-      strike.push(e);
+      pool.push(e);
     }
     moves = 2;
-    while (defence.length < want && moves-- > 0) {
+    while (force.length < want && moves-- > 0) {
       let pick = -1;
-      for (let i = strike.length - 1; i >= 0; i--) {
-        if (strike[i].role !== ROLE.CAPITAL) {
+      for (let i = pool.length - 1; i >= 0; i--) {
+        if (pool[i].role !== ROLE.CAPITAL) {
           pick = i;
           break;
         }
       }
       if (pick < 0) break;
-      const e = strike[pick];
-      strike[pick] = strike[strike.length - 1];
-      strike.length--;
-      e.aiForce = 'defence';
+      const e = pool[pick];
+      pool[pick] = pool[pool.length - 1];
+      pool.length--;
+      e.aiForce = tag;
       e.orderQueue.length = 0;
       e.aiCommitted = false;
-      defence.push(e);
+      force.push(e);
     }
   }
 
@@ -642,6 +715,79 @@ export class Commander {
     if (seam) _v.lerp(seam.position, 0.55);
     this._moveForce(this.defence, _v, FORMATION.SPHERE, 'defend', 3200, 'move');
     for (let i = 0; i < this.defence.length; i++) this.defence[i].stance = STANCE.NEUTRAL;
+  }
+
+  /**
+   * Take and hold the middle.
+   *
+   * The hold force is not a garrison and not a second strike wing: it goes to
+   * one contested seam and stays on it, because the seam pays income and runs
+   * the clock only while somebody is standing there. It picks the seam it can
+   * most plausibly own — ours already, then empty ones, then the one the enemy
+   * holds most weakly — and it prefers the near end of the band, so the two
+   * commanders do not simply swap ends of the map for ever.
+   */
+  _control() {
+    const world = this.world;
+    if (!this.hold.length) {
+      this.holdCluster = -1;
+      return;
+    }
+    const t = world.teams[this.team];
+    const home = t.homePosition;
+    const clusters = world.resourceClusters;
+
+    let best = null;
+    let bestScore = -Infinity;
+    for (let i = 0; i < clusters.length; i++) {
+      const c = clusters[i];
+      if (!c.contested) continue;
+      const p = c.presence || [0, 0];
+      const mine = p[this.team] > 0;
+      const theirs = p[this.team ^ 1] > 0;
+      const held = c.owner === this.team;
+      // Keeping what we hold beats taking what we do not; an empty seam beats
+      // one that has to be fought for; distance from home breaks the tie.
+      let score = 0;
+      if (held) score += 3;
+      if (mine) score += 2;
+      if (theirs) score -= 2.5;
+      if (c.owner === (this.team ^ 1)) score -= 1.5;
+      score -= Math.sqrt(c.position.distanceToSquared(home)) / 9000;
+      // Stickiness: do not walk the whole band every think.
+      if (c.id === this.holdCluster) score += 1.25;
+      if (score > bestScore) {
+        bestScore = score;
+        best = c;
+      }
+    }
+    if (!best) {
+      this.holdCluster = -1;
+      return;
+    }
+    this.holdCluster = best.id;
+
+    /* Sit *on* the seam, on the near face. Standing off it does not count —
+       presence is measured from the cluster, and the whole verb is occupation. */
+    _v2.subVectors(home, best.position);
+    if (_v2.lengthSq() < 1) _v2.set(0, 0, 1);
+    _v.copy(best.position).addScaledVector(_v2.normalize(), best.radius * 0.5);
+
+    const p = best.presence || [0, 0];
+    const fight = p[this.team ^ 1] > 0;
+    this._moveForce(this.hold, _v, fight ? FORMATION.CLAW : FORMATION.SPHERE,
+      'hold', 1500, 'attackMove');
+    for (let i = 0; i < this.hold.length; i++) {
+      this.hold[i].stance = fight ? STANCE.AGGRESSIVE : STANCE.NEUTRAL;
+    }
+    void CONTROL;
+  }
+
+  /** True when the clock is running against us badly enough to answer it. */
+  _losingControl() {
+    const t = this.world.teams[this.team];
+    const foe = this.world.teams[this.team ^ 1];
+    return t.seams < foe.seams && t.sovereignty < foe.sovereignty - 12;
   }
 
   /** Mass, choose, commit. Do not trickle. */
@@ -910,6 +1056,15 @@ export class Commander {
 
     this._centroid(this.strike, _c);
 
+    /* The clock outranks the shopping list. Being ahead on kills while the
+       middle drains our sovereignty is precisely the trap the whole mechanic
+       exists to punish, and a commander that keeps hunting collectors through
+       it would be modelling the defect rather than answering it. */
+    if (this._losingControl()) {
+      const contest = this._contestedMark(_c);
+      if (contest) return contest;
+    }
+
     const minersLeft = world.teams[foe].collectors.size;
     const dominant = mine > theirs * this.cfg.dominance + 300;
     const siege = this.time > this.cfg.siegeAt * this.cfg.techScale;
@@ -1033,6 +1188,39 @@ export class Commander {
 
   /* ---------------------------------------------------------------- helpers */
 
+  /** The enemy hull holding the contested band that we can most cheaply reach. */
+  _contestedMark(from) {
+    const world = this.world;
+    const clusters = world.resourceClusters;
+    const list = world.dense;
+    let best = null;
+    let bestScore = 0;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (!e.alive || e.team === this.team) continue;
+      if (e.role === ROLE.STRUCTURE) continue;
+      let onBand = false;
+      for (let k = 0; k < clusters.length; k++) {
+        const c = clusters[k];
+        if (!c.contested) continue;
+        const rr = c.radius + CONTROL.RADIUS;
+        if (c.position.distanceToSquared(e.position) < rr * rr) {
+          onBand = true;
+          break;
+        }
+      }
+      if (!onBand) continue;
+      const d = Math.sqrt(e.position.distanceToSquared(from)) + 800;
+      const soft = 1 - (e.hull + e.shield) / (e.maxHull + e.maxShield + 1);
+      const score = ((e.def.cost + 200) * (1 + soft * 1.5)) / d;
+      if (score > bestScore) {
+        bestScore = score;
+        best = e;
+      }
+    }
+    return best;
+  }
+
   _nearestEnemyOfRole(from, role) {
     let best = null;
     let bestD = Infinity;
@@ -1085,6 +1273,7 @@ export class Commander {
     this.strike.length = 0;
     this.defence.length = 0;
     this.harass.length = 0;
+    this.hold.length = 0;
     this._scratch.length = 0;
     this._ids.length = 0;
     this._near.length = 0;

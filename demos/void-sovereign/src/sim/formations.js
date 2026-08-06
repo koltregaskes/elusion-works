@@ -46,6 +46,63 @@ export function formationTightness(role) {
   return t === undefined ? 0.6 : t;
 }
 
+/* ------------------------------------------------------------------- effects
+
+   Homeworld 1 gave formations real numbers and Homeworld 2 took them away;
+   every retrospective names that as a loss. Six shapes that change where hulls
+   sit but not what happens are six identical formations.
+
+   Two rules govern these values:
+
+     * They are small. A formation is a lean, not a win condition — the wrong
+       shape should cost you an edge, never the engagement.
+     * They are stated. `label` is the text the HUD shows, and it is the whole
+       point: a bonus the player cannot read is indistinguishable from no bonus
+       at all. Anything added here must be surfaced.
+
+   `damage` scales outgoing fire, `incoming` scales damage taken, `speed`
+   scales throttle. The geometry does its own work on top of these — a shape
+   that spreads a wing genuinely eats fewer flak bursts — which is why the
+   stated numbers can stay modest. */
+const EFFECT = {
+  [FORMATION.DELTA]: {
+    damage: 1.0, incoming: 1.0, speed: 1.12,
+    label: 'Delta · +12% closing speed',
+  },
+  [FORMATION.WALL]: {
+    damage: 1.10, incoming: 0.96, speed: 0.94,
+    label: 'Wall · +10% damage, −4% damage taken, slower',
+  },
+  [FORMATION.SPHERE]: {
+    damage: 0.94, incoming: 0.86, speed: 0.96,
+    label: 'Sphere · −14% damage taken, −6% damage',
+  },
+  [FORMATION.CLAW]: {
+    damage: 1.14, incoming: 1.06, speed: 1.0,
+    label: 'Claw · +14% damage, +6% damage taken',
+  },
+  [FORMATION.BROAD]: {
+    damage: 1.06, incoming: 0.98, speed: 1.0,
+    label: 'Broad · +6% damage, wide frontage',
+  },
+  [FORMATION.X]: {
+    damage: 1.0, incoming: 0.94, speed: 1.06,
+    label: 'X · −6% damage taken, +6% speed',
+  },
+};
+
+const NEUTRAL_EFFECT = { damage: 1, incoming: 1, speed: 1, label: '' };
+
+/** Stated combat modifiers for a formation. Never null. */
+export function formationEffect(formation) {
+  return EFFECT[formation] || NEUTRAL_EFFECT;
+}
+
+/** `{ id, label, damage, incoming, speed }` for every shape — for the HUD. */
+export function formationEffects() {
+  return FORMATION_IDS.map((id) => Object.assign({ id }, EFFECT[id] || NEUTRAL_EFFECT));
+}
+
 const GOLDEN = Math.PI * (3 - Math.sqrt(5));
 
 /** Base spacing for a set of entities: big enough that nothing intersects. */

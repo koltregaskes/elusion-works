@@ -12,6 +12,39 @@ import { setNavArrive, setNavHold, setFacePoint } from './movement.js';
 
 export const HARVEST = { SEEK: 0, CUT: 1, RETURN: 2, UNLOAD: 3 };
 
+/* --------------------------------------------------------------- field control
+
+   The midline band in `spawn.js` has always been the most interesting geography
+   on the map — richer ore, equidistant, indefensible — and until now it was
+   worth exactly its ore and nothing else. There was therefore no reason to hold
+   ground: a fleet that won a fight could go home and lose nothing by it, which
+   is most of why winning every engagement 12:1 for half an hour bought a player
+   nothing at all.
+
+   Holding a contested seam now does two things: it pays, and it runs a clock.
+   Both are continuous and both are visible, and neither of them scales with how
+   well the opponent is doing — this is a race for ground, not a rubber band. */
+export const CONTROL = {
+  /** Metres past a cluster's own radius that count as standing on it. */
+  RADIUS: 3400,
+  /** Seconds of unopposed presence to take a neutral seam. */
+  CAPTURE: 22,
+  /** Income multiplier per held contested seam. */
+  INCOME_PER_SEAM: 0.09,
+  /** Presence advantage below which a seam is genuinely deadlocked. */
+  DEADZONE: 0.22,
+  /** Share of capture rate at which an abandoned seam drifts back to neutral. */
+  DECAY: 0.28,
+};
+
+/* Upkeep. Company of Heroes' brake, and the reason it is the one the
+   literature keeps naming: it is passive, continuous and has no threshold to
+   fall off. A lean fleet earns full rate; a maxed one earns about two thirds.
+   Nothing is ever taken away, so it never reads as a punishment for winning —
+   it just means the fiftieth interceptor is worth less than the fifth. */
+const UPKEEP_FREE_POP = 50;
+const UPKEEP_K = 0.0045;
+
 /* Anything below this much damage-per-second against a hauler is a picket, not
    a raid. A collector that downs tools every time an enemy scout drifts past
    has stopped being an economy. */
@@ -268,6 +301,120 @@ export function addCredits(world, team, delta) {
   t.credits += delta;
   if (t.credits < 0) t.credits = 0;
   bus.emit('sim:resourceChanged', { team, credits: t.credits, delta });
+}
+
+/* ---------------------------------------------------------------- control */
+
+/**
+ * Who is standing on the contested band, and what that is worth.
+ *
+ * Presence is armed, mobile hulls only. A collector does not take ground and a
+ * mothership does not go and sit on a seam, so neither counts: taking the
+ * middle costs warships that are then not somewhere else, which is the whole
+ * point of the decision.
+ *
+ * Control is a per-cluster float in [-1, 1] — negative to team 0, positive to
+ * team 1 — and it is a tug-of-war, not a switch. Presence is measured in fleet
+ * *value*, so the seam swings toward whoever is genuinely winning the fight
+ * over it and only deadlocks when the two sides are close to matched.
+ *
+ * Freezing the seam whenever both sides had a hull inside it was tried first
+ * and it simply moved the stalemate: a permanently deadlocked band meant the
+ * clock never ran and the match still could not resolve. Winning the fight in
+ * the middle has to *take* the middle, or none of this converts.
+ *
+ * A seam stays yours once taken — you keep ground until somebody pushes you
+ * off it — but an abandoned one drifts back to neutral, so the middle cannot
+ * be claimed at minute five and banked.
+ */
+export function updateControl(world, dt) {
+  const clusters = world.resourceClusters;
+  if (!clusters.length) return;
+
+  // Presence is rebuilt on the same stagger as the threat map below.
+  if (world.tickCount % 15 === 0) {
+    for (let i = 0; i < clusters.length; i++) {
+      const c = clusters[i];
+      if (!c.contested) continue;
+      if (!c.presence) c.presence = [0, 0];
+      c.presence[0] = 0;
+      c.presence[1] = 0;
+    }
+    const list = world.dense;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (!e.alive || e.role === ROLE.STRUCTURE || e.role === ROLE.RESOURCE) continue;
+      if (!e.weapons || !e.weapons.length) continue;
+      // Value, not hulls: twenty scouts do not hold ground against a destroyer.
+      const w = e.def.cost || 40;
+      for (let k = 0; k < clusters.length; k++) {
+        const c = clusters[k];
+        if (!c.contested) continue;
+        const rr = c.radius + CONTROL.RADIUS;
+        if (c.position.distanceToSquared(e.position) < rr * rr) c.presence[e.team] += w;
+      }
+    }
+  }
+
+  const rate = 1 / CONTROL.CAPTURE;
+  const seams = [0, 0];
+  for (let i = 0; i < clusters.length; i++) {
+    const c = clusters[i];
+    if (!c.contested) continue;
+    if (c.control === undefined) c.control = 0;
+    const p = c.presence || (c.presence = [0, 0]);
+    const total = p[0] + p[1];
+    if (total <= 0) {
+      // Nobody is standing on it. Ground you walked away from is not yours.
+      const decay = rate * CONTROL.DECAY * dt;
+      if (c.control > decay) c.control -= decay;
+      else if (c.control < -decay) c.control += decay;
+      else c.control = 0;
+    } else {
+      const bias = (p[1] - p[0]) / total; // -1 all ours, +1 all theirs
+      const mag = Math.abs(bias);
+      if (mag > CONTROL.DEADZONE) {
+        c.control = Math.max(-1, Math.min(1, c.control + Math.sign(bias) * mag * rate * dt));
+      }
+    }
+    const owner = c.control <= -0.999 ? 0 : c.control >= 0.999 ? 1 : -1;
+    if (owner >= 0) seams[owner]++;
+    if (c.owner !== owner) {
+      const was = c.owner;
+      c.owner = owner;
+      if (was !== undefined) announceSeam(world, owner, was);
+    }
+  }
+  world.teams[0].seams = seams[0];
+  world.teams[1].seams = seams[1];
+  refreshIncome(world);
+}
+
+function announceSeam(world, owner, was) {
+  if (!world.notify) return;
+  const me = world.humanTeam;
+  if (owner === me) {
+    world._alert('seamTaken', 'Contested seam secured', 'good', 20);
+  } else if (was === me) {
+    world._alert('seamLost', 'Contested seam lost', 'warn', 20);
+  }
+}
+
+/**
+ * Fold the three income terms into the one number the haulers are paid at.
+ *
+ * Kept separate all the way to here so the HUD can show a player *why* their
+ * income is what it is. An economy that silently halves itself is the same
+ * defect as an AI that silently doubles its own.
+ */
+export function refreshIncome(world) {
+  for (let i = 0; i < world.teams.length; i++) {
+    const t = world.teams[i];
+    const over = Math.max(0, t.popUsed - UPKEEP_FREE_POP);
+    t.upkeepScale = 1 / (1 + over * UPKEEP_K);
+    t.controlScale = 1 + t.seams * CONTROL.INCOME_PER_SEAM;
+    t.incomeScale = (t.incomeBase || 1) * t.upkeepScale * t.controlScale;
+  }
 }
 
 /* ------------------------------------------------------------ production */

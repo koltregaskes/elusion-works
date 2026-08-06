@@ -11,12 +11,22 @@ import { SHIPS, TEAM, approxRadius } from '../ships/catalog.js';
 /* Field size is a balance decision, not a cosmetic one: a fleet big enough to
    crack a mothership costs roughly 25k, so each side must be able to pull
    somewhere north of 80k over a match or the game cannot be won by anybody. */
+/* The field is deliberately smaller than a match consumes comfortably. Two
+   sides pull somewhere north of 80k each over a long game against a field of
+   about 226k, of which the contested band holds 40% — so the home seams thin
+   out first and the last act is forced onto the middle, which is the only
+   place left with ore in it. That is the third act: it is geography doing the
+   work, not a script and not a timer.
+
+   At the old 298k nothing ever ran out. A 60-minute match ended with 140k
+   still in the ground and both sides sitting on 30k of unspendable credits,
+   and an economy nobody can exhaust is an economy with no decisions in it. */
 const DEFAULT_SETUP = {
   separation: 22000, // metres between the two motherships
   clustersPerSide: 4,
   contestedClusters: 4,
-  clusterAmount: 21000,
-  homeAmount: 24000,
+  clusterAmount: 16000,
+  homeAmount: 18000,
 };
 
 const _v = new THREE.Vector3();
@@ -57,6 +67,18 @@ export const SEAM_ANGLE = 0.62; // radians, ~35.5 degrees
 
 /** Hard floor: nothing may physically intersect the mothership, ever. */
 const HARD_GAP = 600;
+
+/* How even a seam's two home distances must be to count as no-man's land.
+
+   Strict on purpose. The midline ring is exactly equidistant by construction
+   (ratio 1.00); the mirrored expansion seams reach 0.69–0.76 and must not
+   qualify, because they come in pairs that each favour one side and would make
+   the size of the contested band — and therefore the pace of the sovereignty
+   clock — a property of the seed rather than of the design. */
+const CONTESTED_RATIO = 0.82;
+
+/** Largest home-distance imbalance a contested seam may carry and still be fair. */
+export const SEAM_BIAS_LIMIT = 0.08;
 
 const MOTHERSHIP_R = approxRadius('mothership');
 
@@ -170,20 +192,108 @@ export function generateResourceClusters(rng, opts = {}) {
     );
   }
 
-  // Contested band on the midline: symmetric by construction.
+  /* Contested band.
+
+     This used to be a ring drawn in *world* axes and the comment above it said
+     "symmetric by construction". It was not. The two starts do not lie on a
+     world axis, so the ring sat lopsided across the midline: on one measured
+     seed three of the four midline seams were nearer team 1 and one was nearer
+     team 0. That is a quiet, permanent advantage to one side, and once holding
+     the band ran a clock it stopped being cosmetic — team 1 won all five
+     mirror matches, every one of them on sovereignty.
+
+     The band is now a ring in the plane that perpendicularly bisects the two
+     starts, so every seam on it is exactly equidistant from both homes by
+     construction rather than by hope. */
+  const homeB = new THREE.Vector3();
+  homePosition(TEAM.ENEMY, cfg.separation, homeB);
+  const axis = new THREE.Vector3().subVectors(homeB, home).normalize();
+  const u = new THREE.Vector3(0, 1, 0);
+  if (Math.abs(axis.dot(u)) > 0.9) u.set(1, 0, 0);
+  u.crossVectors(axis, u).normalize();
+  const w = new THREE.Vector3().crossVectors(axis, u).normalize();
+
   for (let i = 0; i < cfg.contestedClusters; i++) {
-    const a = (i / cfg.contestedClusters) * Math.PI * 2;
-    const d = rng.range(2500, 7000);
+    const a = (i / cfg.contestedClusters) * Math.PI * 2 + rng.range(0, 0.7);
+    const d = rng.range(3400, 8200);
+    const radius = rng.range(1300, 2000);
+    _v2.copy(u).multiplyScalar(Math.cos(a) * d).addScaledVector(w, Math.sin(a) * d * 0.72);
+    // A no-op at these ranges, but the mothership-clearance rule is absolute.
+    nudgeClearOfStarts(_v2, radius, cfg.separation, SEAM_ANGLE);
     out.push(makeCluster(
-      out.length,
-      Math.cos(a) * d * 0.35,
-      Math.sin(a) * d * 0.55,
-      Math.sin(a * 1.7) * d,
-      rng.range(1300, 2000),
-      cfg.clusterAmount * 1.4,
+      out.length, _v2.x, _v2.y, _v2.z, radius, cfg.clusterAmount * 1.4,
     ));
   }
 
+  return out;
+}
+
+/**
+ * How lopsided a contested seam is: 0 when both starts are exactly as far
+ * away, 1 when it sits on top of one of them. Any midline seam above about
+ * 0.08 is a standing advantage to one side, because holding the band runs the
+ * sovereignty clock.
+ */
+export function seamBias(point, separation = DEFAULT_SETUP.separation) {
+  const a = homePosition(0, separation, new THREE.Vector3());
+  const b = homePosition(1, separation, new THREE.Vector3());
+  const dA = point.distanceTo(a);
+  const dB = point.distanceTo(b);
+  const sum = dA + dB;
+  return sum > 1 ? Math.abs(dA - dB) / sum : 0;
+}
+
+/**
+ * Flag the seams that belong to neither side.
+ *
+ * A cluster is contested when it is roughly equidistant from both starts. That
+ * is a geometric test rather than a flag set at generation time on purpose:
+ * ENV may supply the field instead of `generateResourceClusters`, and the
+ * midline band has to be identifiable either way. It is the ground the match
+ * is fought over — `sim/economy.js` turns standing on it into income, and
+ * `sim/world.js` turns holding it into a clock.
+ */
+export function markContested(clusters, separation = DEFAULT_SETUP.separation) {
+  const a = homePosition(0, separation, new THREE.Vector3());
+  const b = homePosition(1, separation, new THREE.Vector3());
+  let n = 0;
+  for (let i = 0; i < clusters.length; i++) {
+    const c = clusters[i];
+    if (!c || !c.position) continue;
+    /* Scale-free: neither side is meaningfully closer. A raw distance band
+       would depend on the separation and on how far out the seam sits, and
+       would classify a distant expansion seam as midline just for being far
+       from everything. Measured across seeds this cleanly separates the
+       midline ring (0.58–0.93) from the home seams (0.16–0.27). */
+    const dA = c.position.distanceTo(a);
+    const dB = c.position.distanceTo(b);
+    const contested = Math.min(dA, dB) / Math.max(1, Math.max(dA, dB)) > CONTESTED_RATIO;
+    c.contested = contested;
+    c.control = 0;
+    c.owner = -1;
+    c.presence = [0, 0];
+    if (contested) n++;
+  }
+  return n;
+}
+
+/**
+ * Contested seams that are meaningfully nearer one start than the other.
+ *
+ * `generateResourceClusters` cannot produce one; ENV's field can, and ENV owns
+ * placement, so this is recorded rather than corrected — the same contract
+ * `startEncroachment` already uses. A harness can assert on it.
+ */
+export function contestedBias(clusters, separation = DEFAULT_SETUP.separation) {
+  const out = [];
+  for (let i = 0; i < clusters.length; i++) {
+    const c = clusters[i];
+    if (!c || !c.contested) continue;
+    const bias = seamBias(c.position, separation);
+    if (bias > SEAM_BIAS_LIMIT) {
+      out.push({ index: i, bias: Math.round(bias * 1000) / 1000 });
+    }
+  }
   return out;
 }
 
@@ -303,6 +413,8 @@ export function setupSkirmish(world, opts = {}) {
 
   world.resourceClusters = resolveResourceClusters(world, rng.fork(2), cfg);
   world.separation = cfg.separation;
+  world.contestedSeams = markContested(world.resourceClusters, cfg.separation);
+  world.seamBiasViolations = contestedBias(world.resourceClusters, cfg.separation);
 
   for (let t = 0; t < 2; t++) {
     const base = seedTeam(world, t, cfg, rng.fork(11 + t));

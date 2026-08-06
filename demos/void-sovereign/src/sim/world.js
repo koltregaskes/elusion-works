@@ -12,8 +12,12 @@ import {
   setFacePoint,
   NAV,
 } from './movement.js';
-import { initCombatState, updateCombat, ProjectileField, STANCE, maxWeaponRange } from './combat.js';
-import { initEconomyState, updateEconomy, enqueueBuild, cancelBuild } from './economy.js';
+import {
+  initCombatState, updateCombat, ProjectileField, STANCE, maxWeaponRange, creditKill,
+} from './combat.js';
+import {
+  initEconomyState, updateEconomy, enqueueBuild, cancelBuild, updateControl,
+} from './economy.js';
 import { assignFormation, formationOffsets, formationWorld, spacingFor, FORMATION, formationTightness } from './formations.js';
 import { setupSkirmish } from './spawn.js';
 import { Commander } from './ai.js';
@@ -29,6 +33,44 @@ import { Commander } from './ai.js';
    Hulls larger than the grid pad (destroyers and up) live in a short linear
    list instead of the grid: there are never many of them, and inserting a
    1.9 km mothership into forty cells would cost more than scanning six. */
+
+/* --------------------------------------------------------- match resolution
+
+   Numbers that decide the *shape* of a skirmish rather than the outcome of any
+   one fight. They are gathered here, and every one of them is stated to the
+   player somewhere, because an undisclosed pacing rule is indistinguishable
+   from the game cheating. */
+
+/** Seconds before the sovereignty clock starts. The opening stays an opening. */
+const SOVEREIGNTY_GRACE = 240;
+
+/** Sovereignty lost per second by a side that holds none of the contested
+    band while the other holds all of it — about four and a half minutes. The
+    rate scales with the *share* of the band held, not the raw seam count, so
+    a seed that puts six seams on the midline runs the same clock as one that
+    puts four. Measured across seeds this lands a control-decided match at
+    roughly minute 26–36, inside the rubric's 30–60 window and well clear of
+    the base-destruction route, which stays the faster win when you can take
+    it. */
+const SOVEREIGNTY_RATE = 0.25;
+
+/** Share of the drain rate at which the side holding the band recovers. */
+const SOVEREIGNTY_RECOVERY = 0.3;
+
+/** Thresholds that get a line to the player. */
+const SOVEREIGNTY_WARN = [75, 50, 25, 10];
+
+/** A hull rebuilt from nothing costs this share of a new one. */
+const REPAIR_COST_FRACTION = 0.32;
+
+/** Below this in warships, with no yards and no miners, a side is finished. */
+const BROKEN_FLEET_VALUE = 1400;
+
+const VICTORY_COPY = {
+  base: 'The mothership is gone.',
+  sovereignty: 'The contested field decided it.',
+  attrition: 'No yards, no miners, no fleet left to rebuild with.',
+};
 
 /* Grid: 24^3 cells of 2.6 km covers a 62.4 km cube — the playable volume. */
 const GRID_DIM = 24;
@@ -236,6 +278,14 @@ export class World {
     this.time = 0;
     this.over = false;
     this.winner = -1;
+    this.endReason = '';
+
+    /* Which side a human is playing, so combat alerts are sent to them and not
+       to the commander. -1 in an AI-versus-AI harness silences them entirely. */
+    this.humanTeam = options.humanTeam === undefined ? 0 : options.humanTeam;
+    this.notify = options.notify !== false && this.humanTeam >= 0;
+    this._alertAt = {};
+    this._sovWarned = [0, 0];
 
     this.resourceClusters = [];
     this.separation = 22000;
@@ -549,19 +599,159 @@ export class World {
     this._pendingRemoval = true;
     const t = this.teams[e.team];
     t.losses++;
-    if (killer) this.teams[killer.team].kills++;
+    if (killer) {
+      this.teams[killer.team].kills++;
+      creditKill(killer, e);
+    }
+    this._deathAlert(e, killer);
     bus.emit('sim:death', { entity: e, killer: killer || null });
   }
 
-  /** Public removal by id. Silent — no death event, no kill credit. */
+  /**
+   * Public removal by id. Silent — no death event, no kill credit — and it
+   * takes this hull's rounds out of the sky with it.
+   *
+   * Without that last part a harness that tears an arena down and builds
+   * another one gets the previous fight's ordnance sweeping the new one: the
+   * projectile field is cleared by neither `destroy` nor `_compact`, and a
+   * missile with a dead shooter is perfectly happy to keep flying.
+   */
   destroy(id) {
     const e = this.entities.get(id);
     if (!e) return;
     e.alive = false;
+    e._silent = true;
     this._pendingRemoval = true;
   }
 
+  /** Drop every round in flight. For arena resets, not for gameplay. */
+  clearProjectiles() {
+    this.projectiles.clear();
+  }
+
+  /** Remove in-flight rounds fired by, or aimed at, one entity. */
+  _purgeProjectiles(id) {
+    const P = this.projectiles;
+    for (let i = 0; i < P.count; i++) {
+      if (P.shooter[i] === id) {
+        P.removeAt(i--);
+        continue;
+      }
+      if (P.target[i] === id) P.target[i] = -1;
+    }
+  }
+
+  /* --------------------------------------------------------------- repair */
+
+  /**
+   * Restore hull, and bill for it.
+   *
+   * Free repair makes attrition free, and attrition being free is most of why
+   * a lost engagement costs nothing and a won one buys nothing. The rate is
+   * deliberately gentle — a hull rebuilt from nothing costs about a third of a
+   * new one, so withdrawing a mauled destroyer is always better value than
+   * replacing it, which is exactly the decision that should exist.
+   */
+  repairAt(e, amount) {
+    if (!e.alive || amount <= 0) return 0;
+    const room = e.maxHull - e.hull;
+    if (room <= 0) return 0;
+    let give = amount < room ? amount : room;
+    const t = this.teams[e.team];
+    const price = ((e.def.cost || 0) * REPAIR_COST_FRACTION) / Math.max(1, e.maxHull);
+    if (price > 0) {
+      const afford = t.credits / price;
+      if (afford < give) give = afford;
+      if (give <= 0) return 0;
+      const spend = give * price;
+      t.credits -= spend;
+      t.repairSpend += spend;
+    }
+    e.hull += give;
+    return give;
+  }
+
+  /* --------------------------------------------------------------- alerts */
+
+  /**
+   * One line to the player, at most this often.
+   *
+   * `sim/` emitted no player-facing notification of any kind: a match with 866
+   * kills, 73 losses and 57 raids on the player's home produced production
+   * toasts and nothing else. The fix is not to emit 866 toasts. Every alert
+   * here is rate-limited by key, and the keys are chosen so the ones that
+   * repeat (raids, seams changing hands) are throttled hard while the ones
+   * that cannot repeat (a capital dying, the sovereignty clock) are not.
+   */
+  _alert(key, text, kind, minGap) {
+    if (!this.notify) return;
+    const last = this._alertAt[key];
+    const gap = minGap === undefined ? 30 : minGap;
+    if (last !== undefined && this.time - last < gap) return;
+    this._alertAt[key] = this.time;
+    bus.emit('ui:toast', { text, kind: kind || 'info' });
+  }
+
+  _deathAlert(e, killer) {
+    if (!this.notify) return;
+    const mine = e.team === this.humanTeam;
+    const def = e.def;
+    if (def.isBase) return; // the game-over line says this better
+    if (def.producer) {
+      this._alert(
+        mine ? 'lostYard' : 'killedYard',
+        mine ? `${def.name} lost` : `Enemy ${def.name.toLowerCase()} destroyed`,
+        mine ? 'alarm' : 'good',
+        0,
+      );
+      return;
+    }
+    if (e.role === ROLE.CAPITAL) {
+      this._alert(
+        mine ? 'lostCapital' : 'killedCapital',
+        mine ? `${def.name} lost` : `Enemy ${def.name.toLowerCase()} destroyed`,
+        mine ? 'warn' : 'good',
+        6,
+      );
+      return;
+    }
+    if (mine && e.role === ROLE.RESOURCE) {
+      this._alert('lostCollector', 'Collector destroyed', 'warn', 45);
+    }
+    void killer;
+  }
+
+  /** Somebody is shooting something of the player's. Throttled hard. */
+  _threatAlerts() {
+    if (!this.notify) return;
+    const team = this.humanTeam;
+    const t = this.teams[team];
+    const recent = 90; // ticks — three seconds
+    const base = this.entities.get(t.baseId);
+    if (base && base.alive && this.tickCount - base.lastHitTick < recent) {
+      this._alert('homeAttack', 'Mothership under attack', 'alarm', 25);
+      return;
+    }
+    for (const id of t.producers) {
+      const p = this.entities.get(id);
+      if (!p || !p.alive || p.id === t.baseId) continue;
+      if (this.tickCount - p.lastHitTick < recent) {
+        this._alert('yardAttack', `${p.def.name} under attack`, 'alarm', 25);
+        return;
+      }
+    }
+    for (const id of t.collectors) {
+      const c = this.entities.get(id);
+      if (!c || !c.alive) continue;
+      if (this.tickCount - c.lastHitTick < recent) {
+        this._alert('minersAttack', 'Collectors under attack', 'warn', 35);
+        return;
+      }
+    }
+  }
+
   _release(e) {
+    if (e._silent) this._purgeProjectiles(e.id);
     const t = this.teams[e.team];
     t.count--;
     t.popUsed = Math.max(0, t.popUsed - (e.def.popCost || 0));
@@ -1179,6 +1369,7 @@ export class World {
     this.grid.rebuild(this.dense);
 
     this._updateOrders(dt);
+    updateControl(this, dt);
     updateEconomy(this, dt);
     for (let i = 0; i < this._commanders.length; i++) this._commanders[i].update(dt);
     updateCombat(this, dt);
@@ -1186,6 +1377,8 @@ export class World {
     updateIntegration(this, dt);
 
     this._compact();
+    this._sovereignty(dt);
+    if (this.tickCount % 15 === 0) this._threatAlerts();
     this._checkVictory();
 
     bus.emit('sim:tick', { tick: this.tickCount, dt });
@@ -1195,6 +1388,82 @@ export class World {
     this.stats.projectiles = this.projectiles.count;
   }
 
+  /**
+   * The sovereignty clock.
+   *
+   * A skirmish whose only win condition is "grind down the largest object on
+   * the map" has one shape, and a 30-minute stalemate at a 12:1 kill ratio is
+   * the worst outcome it can produce. This is the second condition, and it is
+   * deliberately not a timer, a score or a rubber band: it is *map control*,
+   * measured on the contested band that `spawn.js` already puts across the
+   * midline and that until now was only ore.
+   *
+   * Hold more of the middle than your opponent and their sovereignty drains at
+   * a rate set by the margin — four seams to none is about four and a half
+   * minutes, one seam of margin is nearly twenty. So a side that wins fights
+   * and *stays where it won them* converts that into a clock the other side
+   * must answer, and a side that is behind on fleet value can still answer it
+   * by taking ground rather than by winning a set-piece it would lose.
+   *
+   * The grace period matters as much as the rate: nothing drains for the first
+   * four minutes, so the opening is still an opening.
+   */
+  _sovereignty(dt) {
+    if (this.over) return;
+    if (this.time < SOVEREIGNTY_GRACE) return;
+    const a = this.teams[0].seams;
+    const b = this.teams[1].seams;
+    if (a === b) return;
+    const total = this.contestedSeams || Math.max(1, a + b);
+    const leader = a > b ? 0 : 1;
+    const share = Math.min(1, Math.abs(a - b) / total);
+    const loser = this.teams[leader ^ 1];
+    const before = loser.sovereignty;
+    loser.sovereignty = Math.max(0, before - share * SOVEREIGNTY_RATE * dt);
+
+    /* The side holding the middle claws its own losses back, slowly. Without
+       this the clock is a ratchet: a fleet that gives up the band at minute
+       eight and takes it back at minute twenty is still on the same losing
+       trajectory, which is the "destined to gradually lose" feeling the whole
+       anti-snowball literature is written against. Recovery is deliberately
+       far slower than the drain, so retaking ground stops the bleeding while
+       only sustained control actually wins. */
+    const held = this.teams[leader];
+    if (held.sovereignty < 100) {
+      held.sovereignty = Math.min(
+        100, held.sovereignty + share * SOVEREIGNTY_RATE * SOVEREIGNTY_RECOVERY * dt,
+      );
+    }
+
+    if (!this.notify) return;
+    const mine = loser.id === this.humanTeam;
+    for (let i = 0; i < SOVEREIGNTY_WARN.length; i++) {
+      const mark = SOVEREIGNTY_WARN[i];
+      const bit = 1 << i;
+      // Once per threshold per side, ever. Sovereignty recovers, so a plain
+      // downward-crossing test would re-announce every swing of the band.
+      if (this._sovWarned[loser.id] & bit) continue;
+      if (!(before > mark && loser.sovereignty <= mark)) continue;
+      this._sovWarned[loser.id] |= bit;
+      if (mine) {
+        bus.emit('ui:toast', {
+          text: `Sovereignty ${mark}% — the contested seams are theirs. Take them back.`,
+          kind: mark <= 25 ? 'alarm' : 'warn',
+        });
+      } else {
+        bus.emit('ui:toast', { text: `Enemy sovereignty down to ${mark}%`, kind: 'good' });
+      }
+    }
+  }
+
+  /**
+   * Three ways a match ends, and the third is the one that was missing.
+   *
+   * Base destruction. Sovereignty exhausted. And a called result: once a side
+   * has no yards, no collectors and nothing left worth calling a fleet, it
+   * cannot come back, and making the player spend twenty minutes hunting the
+   * last collector to prove it is the standard tail on a single-condition RTS.
+   */
   _checkVictory() {
     if (this.over) return;
     const aliveBase = [false, false];
@@ -1202,12 +1471,58 @@ export class World {
       const base = this.entities.get(this.teams[t].baseId);
       aliveBase[t] = !!(base && base.alive);
     }
-    if (aliveBase[0] && aliveBase[1]) return;
+
+    let winner = null;
+    let reason = '';
+    if (!aliveBase[0] || !aliveBase[1]) {
+      reason = 'base';
+      winner = aliveBase[0] ? 0 : aliveBase[1] ? 1 : -1;
+    } else if (this.teams[0].sovereignty <= 0 || this.teams[1].sovereignty <= 0) {
+      reason = 'sovereignty';
+      const a = this.teams[0].sovereignty;
+      const b = this.teams[1].sovereignty;
+      winner = a <= 0 && b <= 0 ? -1 : a <= 0 ? 1 : 0;
+    } else if (this.tickCount % 30 === 0) {
+      for (let t = 0; t < 2 && winner === null; t++) {
+        if (this._isBroken(t)) {
+          reason = 'attrition';
+          winner = t ^ 1;
+        }
+      }
+    }
+    if (winner === null) return;
+
     this.over = true;
-    if (aliveBase[0]) this.winner = 0;
-    else if (aliveBase[1]) this.winner = 1;
-    else this.winner = -1;
-    bus.emit('sim:gameOver', { winner: this.winner });
+    this.winner = winner;
+    this.endReason = reason;
+    bus.emit('sim:gameOver', { winner: this.winner, reason });
+    if (this.notify) {
+      const won = this.winner === this.humanTeam;
+      const line = this.winner < 0
+        ? 'Mutual annihilation.'
+        : won ? 'Victory.' : 'Defeat.';
+      bus.emit('ui:toast', {
+        text: `${line} ${VICTORY_COPY[reason] || ''}`.trim(),
+        kind: won ? 'good' : 'alarm',
+      });
+    }
+  }
+
+  /** No yards, no miners, no fleet: there is no route back from here. */
+  _isBroken(team) {
+    const t = this.teams[team];
+    if (t.collectors.size > 0) return false;
+    let producers = 0;
+    let combat = 0;
+    for (let i = 0; i < this.dense.length; i++) {
+      const e = this.dense[i];
+      if (!e.alive || e.team !== team) continue;
+      if (e.def.producer) producers++;
+      else if (e.role !== ROLE.RESOURCE && e.role !== ROLE.STRUCTURE) combat += e.def.cost;
+    }
+    if (producers > 1) return false; // a carrier still standing is a way back
+    if (t.credits > SHIPS.collector.cost * 2) return false;
+    return combat < BROKEN_FLEET_VALUE;
   }
 
   syncTransforms(alpha) {
@@ -1287,7 +1602,25 @@ function makeTeam(id, options) {
     harvested: 0,
     count: 0,
     buildRate: 1,
+
+    /* Income is three separate things multiplied together, and they are kept
+       apart on purpose so the HUD can state each one.
+
+         incomeBase   difficulty handicap. 1.0 unless the player asked for easy.
+         upkeepScale  the anti-snowball brake — a bigger fleet earns less per
+                      tonne, continuously, with no threshold to fall off.
+         controlScale what the fleet earned by holding the contested band.
+
+       `incomeScale` is the product and is what the economy actually charges. */
+    incomeBase: 1,
+    upkeepScale: 1,
+    controlScale: 1,
     incomeScale: 1,
+
+    /* Field control. `seams` is how many contested clusters this side holds. */
+    seams: 0,
+    sovereignty: 100,
+    repairSpend: 0,
   };
 }
 

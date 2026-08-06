@@ -784,12 +784,15 @@ uniform float uTime;
 uniform float uPixelScale;
 uniform float uMinPixels;
 uniform float uTaper;
+uniform float uSpreadPow;
+uniform vec2 uFar;        // fade start, fade end in metres; y <= 0 disables
 
 varying vec3 vColor;
 varying float vAlpha;
 varying float vFragW;
 varying vec2 vUv;
 varying float vClamp;
+varying float vSpread;
 
 void main() {
   float age = uTime - aBirth;
@@ -803,16 +806,38 @@ void main() {
   float sl = length( side );
   side = sl > 1e-5 ? side / sl : vec3( 0.0 );
 
+  float floorW = dist * uPixelScale * uMinPixels;
   float natural = aWidth * mix( 1.0, k, uTaper );
-  float w = max( natural, dist * uPixelScale * uMinPixels );
+  float w = max( natural, floorW );
   vClamp = clamp( 1.0 - natural / max( w, 0.0001 ), 0.0, 1.0 );
+  /* The energy compensation the plume, the nozzle flare and the running lights
+     all carry, and that this batch was the only one missing. Same argument: the
+     width floor multiplies the ribbon's painted area, so radiance has to come
+     down or a fleet's trails gain energy with every kilometre the camera pulls
+     back. Measured at the 5 km rung, trails were 45% of every pixel over 110 —
+     the largest single contributor in the frame, and the one nobody had looked
+     at because the bisect that found "the engines" hid the plume and the flare
+     under one regex and never isolated this.
+
+     Taken from the *untapered* width on purpose. Using the tapered one folds
+     the age ramp into the exponent and the tail goes black long before the
+     alpha ramp means it to, which shortens every trail in the game rather than
+     dimming the distant ones. */
+  vSpread = pow( clamp( aWidth / max( max( aWidth, floorW ), 0.0001 ), 0.02, 1.0 ), uSpreadPow );
   w *= live;
 
   vec3 p = position + side * ( aSide * w * 0.5 );
   gl_Position = projectionMatrix * viewMatrix * vec4( p, 1.0 );
 
+  /* Engine trails are gated off on the CPU past a fixed range, which pops:
+     pull the camera out through it and a whole wing's streaks vanish in one
+     frame. Ramp them out ahead of the gate instead. It also takes the far half
+     of a closing fleet out of the bright population, which is where trails were
+     doing the most damage to the hull read. */
+  float farFade = uFar.y > 0.0 ? 1.0 - smoothstep( uFar.x, uFar.y, dist ) : 1.0;
+
   vColor = aColor;
-  vAlpha = aAlpha * k * k * live;
+  vAlpha = aAlpha * k * k * live * farFade;
   vUv = vec2( aSide * 0.5 + 0.5, k );
   vFragW = gl_Position.w;
   #include <logdepthbuf_vertex>
@@ -833,6 +858,7 @@ varying float vAlpha;
 varying float vFragW;
 varying vec2 vUv;
 varying float vClamp;
+varying float vSpread;
 
 void main() {
   #include <logdepthbuf_fragment>
@@ -841,7 +867,7 @@ void main() {
   float core = exp( -across * across * 18.0 ) * uCore;
   float a = vAlpha * uOpacity * ( shape + core ) * fxSoftFade( vFragW );
   if ( a <= 0.0025 ) discard;
-  gl_FragColor = vec4( vColor * ( 1.0 + core * 1.4 ) * uGain * ( 1.0 + uClampLift * vClamp ), a );
+  gl_FragColor = vec4( vColor * ( 1.0 + core * 1.4 ) * uGain * ( 1.0 + uClampLift * vClamp ) * vSpread, a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -861,7 +887,13 @@ export class RibbonField {
       minPixels = 0,
       renderOrder = 9,
       softness = 24,
-      clampLift = blending === THREE.NormalBlending ? 0.0 : 0.9,
+      clampLift = blending === THREE.NormalBlending ? 0.0 : 0.25,
+      /* Additive ribbons pay the same energy tax as every other additive batch.
+         A normal-blended one cannot — it composites *over* the backdrop rather
+         than adding to it, so dimming a floored missile smoke trail with
+         distance simply deletes it. */
+      spreadPow = blending === THREE.NormalBlending ? 0.0 : 0.85,
+      farFade = null,
     } = opts;
 
     this.ctx = ctx;
@@ -919,6 +951,8 @@ export class RibbonField {
           uPixelScale: { value: 0.001 },
           uMinPixels: { value: minPixels },
           uClampLift: { value: clampLift },
+          uSpreadPow: { value: spreadPow },
+          uFar: { value: new THREE.Vector2(farFade ? farFade[0] : 0, farFade ? farFade[1] : 0) },
         },
         softUniforms(),
       ),
@@ -1296,7 +1330,23 @@ export class FXSystem {
          craft, not the loudest thing in a fleet action. */
       trail: new RibbonField(ctx, {
         name: 'trail', capacity: budget.trails, segments: 30,
-        core: 0.85, taper: 0.95, minPixels: 1.4, opacity: 0.8,
+        /* core and opacity multiply, and the head used to land at 3.9x the team
+           engine colour — which clips to white and throws away the one strong
+           colour signal a ship gives at range (§3.3). At 1.6x it still reads as
+           a hot streak but stays cyan or amber instead of going to paper.
+
+           1.2 px, not 1.4: the width floor is what stops a streak disappearing,
+           and a hairline does that. At 1.4 a wing at fleet range painted bars
+           wider than they needed to be, and area is energy.
+
+           farFade is a pop fix, not a dimmer. It ends just under EngineFX's own
+           9 km trail gate so the hard cut never shows, and starts late enough to
+           leave the streaks intact across the whole engagement band — at
+           [4500, 8800] it deleted them from the 5 km fleet rung outright, which
+           throws away the read this batch exists for (see the file header: the
+           streaks should arrive before the hulls resolve). */
+        core: 0.6, taper: 0.95, minPixels: 1.2, opacity: 0.55,
+        farFade: [7000, 8800],
         renderOrder: 11, softness: 16,
       }),
       smokeTrail: new RibbonField(ctx, {
