@@ -113,8 +113,28 @@ function detectQuality() {
   if (touch) return 'low';
   const mem = navigator.deviceMemory || 8;
   const cores = navigator.hardwareConcurrency || 8;
-  if (mem <= 4 || cores <= 4) return 'medium';
-  return 'high';
+  // Inclusive on purpose: a machine reporting exactly 4 GB or exactly 4 logical cores is not a
+  // machine that wants four shadow cascades, and `deviceMemory` is coarsely quantised anyway
+  // (it reports 4 for a wide range of real hardware). Same argument as the `medium` default
+  // below — the cost of guessing one tier low is two clicks in the pause menu; the cost of
+  // guessing one tier high is a player concluding the demo is broken.
+  if (mem <= 4 || cores <= 4) return 'low';
+  /*
+   * `medium`, not `high`, and the reason is that neither `deviceMemory` nor
+   * `hardwareConcurrency` says anything at all about the GPU. This used to return `high` for
+   * any machine with more than 4 GB and more than 4 cores, which is essentially every desktop
+   * and laptop made in the last decade — including every one of them running on integrated
+   * graphics. ARCHITECTURE.md rule 5 sets the target as "60 fps at 1080p on integrated
+   * graphics at the `medium` quality preset", so `medium` is the tier that was actually
+   * designed to be the default, and the detector was quietly overriding it. A player on a
+   * gaming laptop reported the result as "incredibly slow".
+   *
+   * Guessing upward is the wrong direction to be wrong in: a player who lands on `medium` and
+   * has headroom sees a smooth demo and can raise it in the pause menu in two clicks, whereas
+   * a player who lands on `high` and does not sees a slideshow and concludes the demo is
+   * broken. F3 shows a live fps readout so the choice can be made on a number.
+   */
+  return 'medium';
 }
 
 function readSettings() {

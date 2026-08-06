@@ -71,9 +71,21 @@ const DEFAULT_SUN_DIR = new THREE.Vector3(
 
 const PRESETS = {
   //                cascades  map   taps  search  contact  maxPenumbra (texels)
+  /*
+   * `cascades` is the expensive column and it is easy to under-read: each cascade is a full
+   * re-render of every shadow-casting object in the map. At 4 cascades the level's ~1M
+   * triangles are submitted five times a frame (four shadow passes plus the main pass) before
+   * the normal/roughness prepass is counted, which is where the ~7M triangles/frame the
+   * capture harness reports actually comes from. `high` dropping to 3 removes a whole
+   * submission of the entire map, and 1536 rather than 2048 takes another 44% off the shadow
+   * fill, for a penumbra difference that needs a still frame and intent to see.
+   *
+   * `ultra` keeps 4 at 2048. It exists for someone who wants the best still image out of the
+   * demo and knows what they are asking for.
+   */
   low: { cascades: 2, mapSize: 512, taps: 4, search: 4, contact: false, maxPenumbra: 1.6 },
   medium: { cascades: 3, mapSize: 1024, taps: 6, search: 5, contact: false, maxPenumbra: 2.0 },
-  high: { cascades: 4, mapSize: 2048, taps: 8, search: 6, contact: true, maxPenumbra: 6.0 },
+  high: { cascades: 3, mapSize: 1536, taps: 8, search: 6, contact: true, maxPenumbra: 6.0 },
   ultra: { cascades: 4, mapSize: 2048, taps: 12, search: 8, contact: true, maxPenumbra: 8.0 },
 };
 
