@@ -115,14 +115,22 @@ const _clearRead = new THREE.Color();
  * resolve in postfx — never as a plain fractional stretch.
  *
  * `dprCap` bounds `devicePixelRatio` so a 3x phone panel cannot ask for a 9-megapixel buffer.
+ * It is 1 everywhere except `ultra`, and that is the single largest performance decision in
+ * this file. It used to be 2 on every tier, which on a HiDPI laptop panel — where
+ * `devicePixelRatio` is 2 — quadrupled the pixel count of the main pass *and* of every stage
+ * of the post chain behind it: TAA, SSAO, motion blur, DOF, bloom, FXAA and CAS all pay it.
+ * A player on a gaming laptop reported the demo as "incredibly slow", and a 4x fill cost that
+ * buys supersampling nobody asked for is the first thing that should go. `ultra` keeps it,
+ * because opting into `ultra` is opting into exactly that.
+ *
  * `detailNormals` adds a normal-map fetch to the prepass: worth it on hardware that can
  * afford 16-tap SSAO, because AO that follows the bumps in the concrete is the difference
  * between a rendered surface and a painted one.
  */
 const QUALITY = {
-  low: { renderDivisor: 2, dprCap: 2, prepass: false, detailNormals: false, alphaTest: false },
-  medium: { renderDivisor: 1, dprCap: 2, prepass: true, detailNormals: false, alphaTest: true },
-  high: { renderDivisor: 1, dprCap: 2, prepass: true, detailNormals: true, alphaTest: true },
+  low: { renderDivisor: 2, dprCap: 1, prepass: false, detailNormals: false, alphaTest: false },
+  medium: { renderDivisor: 1, dprCap: 1, prepass: true, detailNormals: false, alphaTest: true },
+  high: { renderDivisor: 1, dprCap: 1, prepass: true, detailNormals: true, alphaTest: true },
   ultra: { renderDivisor: 1, dprCap: 2, prepass: true, detailNormals: true, alphaTest: true },
 };
 
