@@ -38,10 +38,11 @@ function loadBindings() {
   try {
     const stored = JSON.parse(localStorage.getItem(BINDINGS_KEY) || '{}');
     for (const k of Object.keys(stored)) {
-      // Only actions this build knows, only well-formed code lists. A stale or hand-edited
-      // entry must degrade to the default, never to a dead control.
+      // Only actions this build knows, only well-formed code lists; malformed entries degrade
+      // to the default. An EMPTY list is well-formed: it means the player deliberately left
+      // the action unbound (its only code was captured by another action).
       if (k in out && Array.isArray(stored[k]) && stored[k].every((c) => typeof c === 'string')) {
-        if (stored[k].length) out[k] = stored[k].slice();
+        out[k] = stored[k].slice();
       }
     }
   } catch {
@@ -97,11 +98,18 @@ export function createInput(canvas) {
       for (let i = 0; i < b.length; i++) if (releasedThisFrame.has(b[i])) return true;
       return false;
     },
-    /** Replace an action's binding and persist. Empty/invalid codes restore the default. */
+    /**
+     * Replace an action's binding and persist. An empty list is a deliberate unbind and is
+     * honoured as such — restoring the default here would silently resurrect a code the
+     * player just gave to another action, making one physical control drive two actions.
+     * Passing null/undefined restores the default.
+     */
     rebind(name, codes) {
       if (!(name in DEFAULT_BINDINGS)) return;
-      const clean = (codes || []).filter((c) => typeof c === 'string' && c);
-      this.bindings[name] = clean.length ? clean : DEFAULT_BINDINGS[name].slice();
+      const clean = codes == null
+        ? DEFAULT_BINDINGS[name].slice()
+        : codes.filter((c) => typeof c === 'string' && c);
+      this.bindings[name] = clean;
       try {
         const store = {};
         for (const k of Object.keys(this.bindings)) store[k] = this.bindings[k];

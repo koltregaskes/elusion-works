@@ -4453,18 +4453,10 @@ export function createWeapon(game) {
   }
 
   /**
-   * Local edge detection — kept as belt-and-braces, with a history worth reading.
-   *
-   * This latch exists because `main.js` used to call `input.update(dt)` at the *top* of the
-   * frame, clearing the edge sets before any subsystem ran. Whoever wrote this detected that,
-   * documented it here, and worked around it locally — which meant weapon switching worked
-   * while mouse look and jump (which read the same dead edges elsewhere) stayed broken for
-   * every player, all the way to a playtest report. The ordering is now corrected upstream
-   * (the clear runs at end-of-frame; see the comment in main.js's step()), so
-   * `input.pressed()` works again and this latch is redundant — but it is cheap, it cannot
-   * double-fire (both paths are true on the same frame, OR'd), and it documents the failure.
-   * The lesson it carries: when a subsystem discovers a frame-order bug, fix the frame, not
-   * the subsystem.
+   * Local edge latch, kept as belt-and-braces alongside input.actionPressed(). Both paths are
+   * true on the same frame and are OR'd, so they cannot double-fire; if the frame's input
+   * ordering ever regresses (see the clear-ordering comment in main.js), weapon actions keep
+   * working off held state while the regression is found.
    */
   const held = { weapon1: false, weapon2: false, weapon3: false, reload: false, inspect: false, left: false, right: false };
 
