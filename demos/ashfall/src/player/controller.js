@@ -152,11 +152,6 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const approach = (k, dt) => 1 - Math.exp(-k * dt);
 const smootherstep = (t) => t * t * t * (t * (t * 6 - 15) + 10);
 
-/** Key test that does not allocate a closure per frame. */
-function held(keys, code) {
-  return !!(keys && keys.has(code));
-}
-
 /** Used only when the level failed to build; keeps the demo playable on a flat plane. */
 const FALLBACK_BOUNDS = {
   min: new THREE.Vector3(-MAP.width / 2, 0, -MAP.depth / 2),
@@ -1338,21 +1333,20 @@ export function createPlayer(game) {
     forward.copy(_fwd);
 
     /* --- input axes ------------------------------------------------------ */
-    const keys = inp?.keys;
     let fAxis = 0;
     let sAxis = 0;
     if (!dead && locked) {
-      if (held(keys, 'KeyW') || held(keys, 'ArrowUp')) fAxis += 1;
-      if (held(keys, 'KeyS') || held(keys, 'ArrowDown')) fAxis -= 1;
-      if (held(keys, 'KeyD') || held(keys, 'ArrowRight')) sAxis += 1;
-      if (held(keys, 'KeyA') || held(keys, 'ArrowLeft')) sAxis -= 1;
+      // Actions, not codes — bindings live in core/input.js and the player can remap them.
+      if (inp.actionDown?.('forward')) fAxis += 1;
+      if (inp.actionDown?.('back')) fAxis -= 1;
+      if (inp.actionDown?.('right')) sAxis += 1;
+      if (inp.actionDown?.('left')) sAxis -= 1;
     }
-    const jumpPressed = !dead && !!inp?.pressed?.('Space');
+    const jumpPressed = !dead && !!inp?.actionPressed?.('jump');
     const crouchWas = crouchHeld;
-    crouchHeld =
-      !dead && (held(keys, 'ControlLeft') || held(keys, 'ControlRight') || held(keys, 'KeyC'));
+    crouchHeld = !dead && !!inp?.actionDown?.('crouch');
     if (crouchHeld && !crouchWas) crouchDip.v -= 1.4; // anticipation on the way down
-    const sprintKey = held(keys, 'ShiftLeft') || held(keys, 'ShiftRight');
+    const sprintKey = !!inp?.actionDown?.('sprint');
 
     const ads = !!game?.weapon?.ads || (game?.weapon?.adsProgress ?? 0) > 0.35;
     const adsAmount = clamp(game?.weapon?.adsProgress ?? (ads ? 1 : 0), 0, 1);

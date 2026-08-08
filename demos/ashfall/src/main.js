@@ -461,12 +461,6 @@ function safeUpdate(game, key, dt) {
 function step(game, dt) {
   const playing = game.state.mode === 'playing' || game.capture;
 
-  try {
-    game.input.update(dt);
-  } catch (err) {
-    reportError('input.update', err);
-  }
-
   if (playing) {
     for (const key of SUBSYSTEMS) safeUpdate(game, key, dt);
   } else {
@@ -487,6 +481,20 @@ function step(game, dt) {
   }
 
   safeUpdate(game, 'hud', dt);
+
+  /*
+   * The input clear runs LAST, after every consumer. JavaScript is single-threaded, so DOM
+   * events are only ever delivered between frames; clearing at the top of the frame wipes
+   * every accumulated mouse delta and key edge one line before the first subsystem can read
+   * them. Held state survives a top-of-frame clear, so movement and hold-to-fire keep working
+   * while look and all edge-triggered actions go dead — do not reorder this without driving
+   * the real rAF loop with between-frame events (scratchpad realloop.mjs) to prove it.
+   */
+  try {
+    game.input.update(dt);
+  } catch (err) {
+    reportError('input.update', err);
+  }
 
   if (game.state.hitFlash > 0) {
     game.state.hitFlash = Math.max(0, game.state.hitFlash - dt * 1.6);
