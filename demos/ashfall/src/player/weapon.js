@@ -4453,34 +4453,39 @@ export function createWeapon(game) {
   }
 
   /**
-   * Local edge detection.
+   * Local edge detection — kept as belt-and-braces, with a history worth reading.
    *
-   * `main.js` calls `input.update(dt)` at the *top* of the frame, which clears the
-   * edge sets and zeroes the deltas before any subsystem runs, so `input.pressed()` is
-   * empty by the time we get here. The persistent state (`keys`, `mouse.left/right`) is
-   * untouched though, so we latch it ourselves. We still honour `input.pressed()` when it
-   * does report an edge, in case the ordering is ever corrected upstream.
+   * This latch exists because `main.js` used to call `input.update(dt)` at the *top* of the
+   * frame, clearing the edge sets before any subsystem ran. Whoever wrote this detected that,
+   * documented it here, and worked around it locally — which meant weapon switching worked
+   * while mouse look and jump (which read the same dead edges elsewhere) stayed broken for
+   * every player, all the way to a playtest report. The ordering is now corrected upstream
+   * (the clear runs at end-of-frame; see the comment in main.js's step()), so
+   * `input.pressed()` works again and this latch is redundant — but it is cheap, it cannot
+   * double-fire (both paths are true on the same frame, OR'd), and it documents the failure.
+   * The lesson it carries: when a subsystem discovers a frame-order bug, fix the frame, not
+   * the subsystem.
    */
-  const held = { Digit1: false, Digit2: false, Digit3: false, KeyR: false, KeyF: false, left: false, right: false };
+  const held = { weapon1: false, weapon2: false, weapon3: false, reload: false, inspect: false, left: false, right: false };
 
-  function edge(input, code) {
-    const now = !!(input.down && input.down(code));
-    const was = held[code];
-    held[code] = now;
-    return (now && !was) || !!(input.pressed && input.pressed(code));
+  function edge(input, action) {
+    const now = !!(input.actionDown ? input.actionDown(action) : false);
+    const was = held[action];
+    held[action] = now;
+    return (now && !was) || !!(input.actionPressed && input.actionPressed(action));
   }
 
   function readInput() {
     const input = game.input;
     if (!input) return;
 
-    if (edge(input, 'Digit1')) switchTo('mk18');
-    if (edge(input, 'Digit2')) switchTo('vector');
-    if (edge(input, 'Digit3')) switchTo('dmr14');
+    if (edge(input, 'weapon1')) switchTo('mk18');
+    if (edge(input, 'weapon2')) switchTo('vector');
+    if (edge(input, 'weapon3')) switchTo('dmr14');
     if (input.mouse && input.mouse.wheel) cycleWeapon(input.mouse.wheel > 0 ? 1 : -1);
 
-    if (edge(input, 'KeyR')) reload();
-    if (edge(input, 'KeyF') && !state.reloading && !state.switching && !anim.clip) {
+    if (edge(input, 'reload')) reload();
+    if (edge(input, 'inspect') && !state.reloading && !state.switching && !anim.clip) {
       playClip(
         clipInspect(),
         (ev) => {
@@ -4492,16 +4497,15 @@ export function createWeapon(game) {
       sfx('inspect', { weapon: state.current ? state.current.id : null });
     }
 
-    const m = input.mouse;
-    if (m) {
-      const nowLeft = !!m.left || !!m.leftPressed;
-      if (nowLeft && !held.left) triggerDown();
-      else if (!nowLeft && held.left) triggerUp();
-      held.left = nowLeft;
-      held.right = !!m.right;
-      // ADS is a hold, unless capture mode has forced it.
-      state.ads = state.adsForced !== null ? state.adsForced : held.right;
-    }
+    // Fire and ADS are actions too (default Mouse0 / Mouse2), so a player who wants trigger
+    // on a side button or ADS on a key gets it from the same rebind screen as everything else.
+    const nowLeft = !!input.actionDown?.('fire') || !!input.actionPressed?.('fire');
+    if (nowLeft && !held.left) triggerDown();
+    else if (!nowLeft && held.left) triggerUp();
+    held.left = nowLeft;
+    held.right = !!input.actionDown?.('ads');
+    // ADS is a hold, unless capture mode has forced it.
+    state.ads = state.adsForced !== null ? state.adsForced : held.right;
   }
 
   function triggerDown() {

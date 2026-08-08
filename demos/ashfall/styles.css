@@ -2332,6 +2332,47 @@ body.hide-hud .hud {
   transition: color 120ms linear, background-color 120ms linear;
 }
 
+/* --- Binding rows -------------------------------------------------------- */
+/* One button per action. It reads as a value until clicked, then becomes the capture target;
+   `is-listening` borrows the accent so "the game is waiting for your key" is unmissable. */
+.bind-btn {
+  min-width: 11em;
+  padding: 0.62em 0.9em 0.58em;
+  font-family: var(--font-display);
+  font-size: clamp(12px, 0.76vw, 17px);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-indent: 0.1em;
+  text-transform: uppercase;
+  line-height: 1;
+  text-align: center;
+  color: var(--menu-primary);
+  background: color-mix(in srgb, var(--menu-primary) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--menu-primary) 26%, transparent);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  transition: color 120ms linear, background-color 120ms linear, border-color 120ms linear;
+}
+
+.bind-btn:hover,
+.bind-btn:focus-visible {
+  background: color-mix(in srgb, var(--menu-primary) 16%, transparent);
+  border-color: color-mix(in srgb, var(--menu-primary) 48%, transparent);
+  outline: none;
+}
+
+.bind-btn.is-listening {
+  color: var(--menu-accent);
+  border-color: color-mix(in srgb, var(--menu-accent) 70%, transparent);
+  background: color-mix(in srgb, var(--menu-accent) 12%, transparent);
+  animation: bind-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes bind-pulse {
+  50% { border-color: color-mix(in srgb, var(--menu-accent) 28%, transparent); }
+}
+
 .segment-opt + .segment-opt {
   box-shadow: inset 1px 0 0 var(--hairline);
 }

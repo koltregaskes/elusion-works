@@ -461,12 +461,6 @@ function safeUpdate(game, key, dt) {
 function step(game, dt) {
   const playing = game.state.mode === 'playing' || game.capture;
 
-  try {
-    game.input.update(dt);
-  } catch (err) {
-    reportError('input.update', err);
-  }
-
   if (playing) {
     for (const key of SUBSYSTEMS) safeUpdate(game, key, dt);
   } else {
@@ -487,6 +481,33 @@ function step(game, dt) {
   }
 
   safeUpdate(game, 'hud', dt);
+
+  /*
+   * Input clear goes LAST, and the position is the whole point.
+   *
+   * `input.update()` zeroes the mouse deltas and clears the edge-trigger sets. It used to run
+   * at the top of this function, which reads as "start the frame with fresh input" and is
+   * exactly backwards: JavaScript is single-threaded, so DOM events can only be delivered
+   * *between* frames. Everything the player did since the previous frame was therefore wiped
+   * one line before the first subsystem could read it. Held state (`keys`, `mouse.left`)
+   * survives the clear, which is what made the bug so credible in play: WASD and hold-to-fire
+   * worked while mouse look and every edge-triggered action — jump, weapon switch, the mouse
+   * wheel — were dead. A playtester's "I can't get the mouse look up [working], and I don't
+   * think the spacebar jump is working" was this line's position, nothing else.
+   *
+   * Two reasons it survived so long, both worth remembering:
+   *  - The gameplay harness steps `player.update()` directly and manages the clear itself, so
+   *    every one of its 13 checks (including jump) passed against an ordering the shipped loop
+   *    never had. A harness that reimplements the loop verifies the harness.
+   *  - weapon.js DISCOVERED this bug, documented it in a comment, and worked around it with a
+   *    local edge latch instead of fixing the ordering here — so weapon switching worked, the
+   *    diagnosis was sitting in the codebase all along, and the game looked "mostly fine".
+   */
+  try {
+    game.input.update(dt);
+  } catch (err) {
+    reportError('input.update', err);
+  }
 
   if (game.state.hitFlash > 0) {
     game.state.hitFlash = Math.max(0, game.state.hitFlash - dt * 1.6);
