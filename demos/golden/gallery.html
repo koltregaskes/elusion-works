@@ -6,6 +6,7 @@
 <title>Gallery Demo - Golden | Elusion Works</title>
 <meta name="description" content="Static Elusion Works gallery demo for the Golden concept site, using prototype/generated image assets and client-side filters.">
 <link rel="canonical" href="https://elusionworks.com/demos/golden/gallery.html">
+<link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Gallery Demo - Golden | Elusion Works">
 <meta property="og:description" content="Static Elusion Works gallery demo using prototype/generated image assets and client-side filters.">
@@ -230,7 +231,7 @@
 
 <div id="siteHeaderHost"></div>
 
-<main class="gp-page">
+<main id="main-content" class="gp-page" tabindex="-1">
   <div class="container">
 
     <header class="gp-head">
@@ -271,7 +272,7 @@
 </main>
 
 <!-- Lightbox -->
-<div class="lb" id="lightbox" role="dialog" aria-modal="true" aria-label="Image viewer" hidden>
+<div class="lb" id="lightbox" role="dialog" aria-modal="true" aria-labelledby="lbCap" tabindex="-1" hidden>
   <div class="lb-stage">
     <div class="lb-image-wrap">
       <img id="lbImg" alt="">
@@ -321,7 +322,7 @@
   function render(filter) {
     visible = filter === 'all' ? IMGS.slice() : IMGS.filter(i => i.cat === filter);
     grid.innerHTML = visible.map((it, i) => `
-      <a class="gp-tile" data-index="${i}" href="${it.src}">
+      <a class="gp-tile" data-index="${i}" href="${it.src}" aria-haspopup="dialog" aria-controls="lightbox">
         <img src="${it.src}" alt="${it.cap}" loading="lazy">
         <div class="expand-ic">${I.expand}</div>
         <div class="overlay">
@@ -366,7 +367,18 @@
   const lbCount = document.getElementById('lbCount');
   document.getElementById('lbPrev').innerHTML = I.arrowLeft;
   document.getElementById('lbNext').innerHTML = I.arrowSm;
-  document.getElementById('lbClose').innerHTML = I.close;
+  const lbClose = document.getElementById('lbClose');
+  lbClose.innerHTML = I.close;
+  const lightboxDialog = GE.bindDialog({
+    dialog: lb,
+    trigger: grid,
+    closeButton: lbClose,
+    initialFocus: lbClose,
+    openClass: 'open',
+    closeDelay: 350,
+    setExpanded: false,
+    autoOpen: false,
+  });
 
   function show(i) {
     if (!visible.length) return;
@@ -380,24 +392,18 @@
   }
   function open(i) {
     show(i);
-    lb.hidden = false;
-    requestAnimationFrame(() => lb.classList.add('open'));
-    document.body.style.overflow = 'hidden';
+    lightboxDialog.open();
   }
-  function close() {
-    lb.classList.remove('open');
-    lb.hidden = true;
-    document.body.style.overflow = '';
-  }
+  const close = lightboxDialog.shut;
 
   grid.addEventListener('click', e => {
     const t = e.target.closest('.gp-tile'); if (!t) return;
     e.preventDefault();
+    t.focus();
     open(parseInt(t.dataset.index, 10));
   });
   document.getElementById('lbPrev').addEventListener('click', () => show(current - 1));
   document.getElementById('lbNext').addEventListener('click', () => show(current + 1));
-  document.getElementById('lbClose').addEventListener('click', close);
   lb.addEventListener('click', e => { if (e.target === lb) close(); });
   document.addEventListener('keydown', e => {
     if (!lb.classList.contains('open')) return;

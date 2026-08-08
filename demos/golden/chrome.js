@@ -40,6 +40,105 @@
 
   window.GE_SVG = SVG;
 
+  const FOCUSABLE = [
+    'a[href]',
+    'button:not([disabled])',
+    'input:not([disabled])',
+    'select:not([disabled])',
+    'textarea:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])',
+  ].join(',');
+
+  function bindDialog({
+    dialog,
+    trigger,
+    closeButton,
+    initialFocus = closeButton,
+    openClass = '',
+    closeDelay = 0,
+    display = '',
+    setExpanded = true,
+    autoOpen = true,
+    onClose = null,
+  }) {
+    if (!dialog || !trigger) return null;
+
+    let restoreFocus = trigger;
+    let hideTimer = null;
+
+    function focusableItems() {
+      return [...dialog.querySelectorAll(FOCUSABLE)].filter((element) => (
+        !element.hidden
+        && !element.closest('[hidden]')
+        && element.getAttribute('aria-hidden') !== 'true'
+        && element.getClientRects().length > 0
+      ));
+    }
+
+    function open() {
+      if (hideTimer) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+      restoreFocus = document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : trigger;
+      dialog.hidden = false;
+      if (display) dialog.style.display = display;
+      if (setExpanded) trigger.setAttribute('aria-expanded', 'true');
+      document.body.style.overflow = 'hidden';
+      (initialFocus || focusableItems()[0] || dialog).focus();
+      if (openClass) requestAnimationFrame(() => dialog.classList.add(openClass));
+    }
+
+    function shut() {
+      if (dialog.hidden) return;
+      if (openClass) dialog.classList.remove(openClass);
+      if (setExpanded) trigger.setAttribute('aria-expanded', 'false');
+      document.body.style.overflow = '';
+      if (onClose) onClose();
+      const finish = () => {
+        dialog.hidden = true;
+        if (display) dialog.style.display = 'none';
+      };
+      if (closeDelay > 0) {
+        hideTimer = setTimeout(finish, closeDelay);
+      } else {
+        finish();
+      }
+      if (restoreFocus && restoreFocus.isConnected) restoreFocus.focus();
+    }
+
+    dialog.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        shut();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const items = focusableItems();
+      if (!items.length) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    });
+
+    if (autoOpen) trigger.addEventListener('click', open);
+    if (closeButton) closeButton.addEventListener('click', shut);
+
+    return { open, shut };
+  }
+
   // ---------- Header ----------
   function buildHeader(activePage) {
     // Order matches sections on the homepage, with cross-page destinations at the end.
@@ -52,6 +151,7 @@
       { label: 'Breed Guide',  href: 'breed-guide.html',     key: 'breed'    },
     ];
     return `
+      <a class="skip-link" href="#main-content">Skip to content</a>
       <header class="site-header" id="siteHeader">
         <div class="container">
           <a href="index.html" class="brand-mark" aria-label="Golden Encyclopedia home">
@@ -67,7 +167,7 @@
           </div>
         </div>
       </header>
-      <div class="mobile-menu" id="mobileMenu" role="dialog" aria-modal="true" aria-label="Mobile menu">
+      <div class="mobile-menu" id="mobileMenu" role="dialog" aria-modal="true" aria-label="Mobile menu" tabindex="-1" hidden>
         <button class="close-btn" id="menuClose" aria-label="Close menu">${SVG.close}</button>
         <nav>
           ${navItems.map((n, i) => `<a href="${n.href}"><span>0${i + 1}</span> ${n.label}</a>`).join('')}
@@ -230,20 +330,15 @@
     const menu = document.getElementById('mobileMenu');
     const close = document.getElementById('menuClose');
     if (!btn || !menu) return;
-    function open() {
-      menu.classList.add('open');
-      btn.setAttribute('aria-expanded', 'true');
-      document.body.style.overflow = 'hidden';
-    }
-    function shut() {
-      menu.classList.remove('open');
-      btn.setAttribute('aria-expanded', 'false');
-      document.body.style.overflow = '';
-    }
-    btn.addEventListener('click', open);
-    close && close.addEventListener('click', shut);
-    menu.querySelectorAll('a').forEach(a => a.addEventListener('click', shut));
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') shut(); });
+    const controller = bindDialog({
+      dialog: menu,
+      trigger: btn,
+      closeButton: close,
+      initialFocus: close,
+      openClass: 'open',
+      closeDelay: 220,
+    });
+    menu.querySelectorAll('a').forEach(a => a.addEventListener('click', controller.shut));
   }
 
   // ---------- Search ----------
@@ -280,23 +375,21 @@
     if (!btn || !overlay || !input) return;
     let activeIdx = -1;
     let currentItems = [];
+    const controller = bindDialog({
+      dialog: overlay,
+      trigger: btn,
+      closeButton: close,
+      initialFocus: input,
+      openClass: 'open',
+      closeDelay: 220,
+      onClose: () => {
+        input.value = '';
+        render('');
+      },
+    });
 
-    function open() {
-      overlay.hidden = false;
-      btn.setAttribute('aria-expanded', 'true');
-      document.body.style.overflow = 'hidden';
-      requestAnimationFrame(() => {
-        overlay.classList.add('open');
-        input.focus();
-      });
-    }
     function shut() {
-      overlay.classList.remove('open');
-      btn.setAttribute('aria-expanded', 'false');
-      document.body.style.overflow = '';
-      setTimeout(() => { overlay.hidden = true; }, 200);
-      input.value = '';
-      render('');
+      controller.shut();
     }
     function score(q, item) {
       q = q.toLowerCase();
@@ -343,13 +436,10 @@
       activeIdx = i;
     }
 
-    btn.addEventListener('click', open);
     scrim && scrim.addEventListener('click', shut);
-    close && close.addEventListener('click', shut);
     input.addEventListener('input', e => render(e.target.value));
     input.addEventListener('keydown', e => {
-      if (e.key === 'Escape') { shut(); }
-      else if (e.key === 'ArrowDown') { e.preventDefault(); if (currentItems.length) highlight(Math.min(activeIdx + 1, currentItems.length - 1)); }
+      if (e.key === 'ArrowDown') { e.preventDefault(); if (currentItems.length) highlight(Math.min(activeIdx + 1, currentItems.length - 1)); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); if (currentItems.length) highlight(Math.max(activeIdx - 1, 0)); }
       else if (e.key === 'Enter') {
         if (activeIdx >= 0 && currentItems[activeIdx]) { window.location.href = currentItems[activeIdx].url; }
@@ -358,7 +448,7 @@
     });
     document.addEventListener('keydown', e => {
       if (e.key === '/' && !overlay.classList.contains('open') && !/^(input|textarea)$/i.test((document.activeElement && document.activeElement.tagName) || '')) {
-        e.preventDefault(); open();
+        e.preventDefault(); controller.open();
       }
     });
   }
@@ -372,6 +462,7 @@
   // ---------- Public mount ----------
   window.GE = {
     SVG,
+    bindDialog,
     mountChrome(activeKey) {
       const headHost = document.getElementById('siteHeaderHost');
       const footHost = document.getElementById('siteFooterHost');

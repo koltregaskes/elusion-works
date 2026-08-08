@@ -87,3 +87,40 @@ jobs:
             exit 1
           fi
           echo "No leaked workstation paths found."
+
+      - name: Verify Golden demo launch guards
+        run: node scripts/verify-golden-structure.mjs
+
+  golden-browser:
+    name: Golden demo browser regression
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install Playwright
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+
+      - name: Start static preview
+        run: |
+          python3 -m http.server 4173 --bind 127.0.0.1 > /tmp/elusion-works-preview.log 2>&1 &
+          for attempt in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:4173/demos/golden/ > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/elusion-works-preview.log
+          exit 1
+
+      - name: Verify Golden routes and interactions
+        env:
+          GOLDEN_BASE_URL: http://127.0.0.1:4173/demos/golden/
+        run: node scripts/verify-golden-browser.mjs
