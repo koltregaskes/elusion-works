@@ -97,6 +97,13 @@ const setup = {
 
     this.seed = String(this.seed || seedValue);
     this.quality = this.quality || qualityValue;
+    /* Baselines for "did the player change anything", captured as the RAW
+       values this run actually started from. Comparing against the normalised
+       SEED is wrong for word seeds: ?seed=kharak hashes to a number, the raw
+       text never equals String(SEED), and "Take command" reloads the same URL
+       forever instead of starting the game. */
+    this._seed0 = this.seed;
+    this._quality0 = this.quality;
 
     const seedInput = document.getElementById('vs-setup-seed');
     if (seedInput) {
@@ -162,8 +169,8 @@ const setup = {
   _launch() {
     const activeDifficulty = params.get('difficulty') || 'normal';
     const changed =
-      this.seed !== String(SEED) ||
-      (this.quality && this.quality !== QUALITY) ||
+      this.seed !== this._seed0 ||
+      (this.quality && this.quality !== this._quality0) ||
       this.difficulty !== activeDifficulty;
 
     if (changed) {

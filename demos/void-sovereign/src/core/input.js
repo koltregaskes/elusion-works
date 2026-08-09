@@ -633,6 +633,17 @@ export class InputController {
     const code = e.code;
     const mod = e.ctrlKey || e.metaKey;
 
+    /* Tab and Space belong to whichever control has focus. Claiming them at
+       window level made every HUD button unreachable by keyboard: Tab could
+       never move focus off a speed button or the mute glyph, and Space
+       activated the pause instead of the focused button. Game bindings apply
+       only when focus is on the page body or the canvas. */
+    const onControl =
+      e.target instanceof Element &&
+      e.target !== document.body &&
+      e.target.closest('button, a, [role="button"], [role="radio"], [tabindex]');
+    if (onControl && (code === 'Tab' || code === 'Space' || code === 'Enter')) return;
+
     if (code === 'Tab') {
       e.preventDefault();
       this._toggleSensors();

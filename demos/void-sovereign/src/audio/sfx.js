@@ -2015,6 +2015,12 @@ export class SfxLayer {
   /* ------------------------------------------------------------- per-frame */
 
   update(dt, now) {
+    /* Sessions must be swept even before start(): death() gates only on the
+       context running, so a capital dying in the window between the context
+       resuming and start() building the ambience beds opens a session whose
+       category slot is otherwise never released — and once the cap is reached,
+       every later capital death in the match is silently culled. */
+    this._sweepSessions(now);
     if (!this._started) return;
 
     // Flush any coalesced clusters whose window has closed.
@@ -2036,8 +2042,6 @@ export class SfxLayer {
         }
       }
     }
-
-    this._sweepSessions(now);
 
     // Engagement heat decays; music.js reads it to decide what to play.
     this.heat = Math.max(0, this.heat - dt * 0.55);
