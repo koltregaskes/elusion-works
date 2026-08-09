@@ -129,11 +129,11 @@ const GUNS = {
     crack: { f: 4200, q: 0.8, g: 3.60, dur: 0.0075 },
     // The broadband snap triple: 5.56 keeps its full highpass edge.
     snap: { mode: 'hp', scale: 1.0 },
-    ss: { f: 7400, f2: 2300, q: 1.5, g: 0.62, dec: 0.0072 },
+    ss: { f: 7400, f2: 2300, q: 1.5, g: 0.85, dec: 0.0072 },
     body: [
       { t: 0.0000, type: 'lowpass', f: 900, f2: 420, q: 6.0, g: 0.46, atk: 0.0012, dec: 0.105 },
-      { t: 0.0016, type: 'bandpass', f: 1950, f2: 1150, q: 2.6, g: 1.80, atk: 0.0008, dec: 0.062 },
-      { t: 0.0035, type: 'lowpass', f: 420, f2: 190, q: 2.2, g: 0.44, atk: 0.0020, dec: 0.200 },
+      { t: 0.0016, type: 'bandpass', f: 2050, f2: 1200, q: 2.6, g: 2.35, atk: 0.0008, dec: 0.062 },
+      { t: 0.0035, type: 'lowpass', f: 420, f2: 190, q: 2.2, g: 0.38, atk: 0.0020, dec: 0.200 },
     ],
     thump: { f0: 132, f1: 56, dur: 0.150, g: 0.42, wave: 'triangle' },
     cycle: [
@@ -142,33 +142,33 @@ const GUNS = {
       { t: 0.0315, kind: 'buffer', f: 1080, g: 0.300, spring: 1620 },
       { t: 0.0580, kind: 'return', f: 2450, g: 0.265 },
     ],
-    tail: { f: 620, q: 0.9, g: 0.36, dec: 0.34 },
+    tail: { f: 620, q: 0.9, g: 0.31, dec: 0.34 },
     hp: 60,
   },
   // VECTOR .45 — blunter and darker, very fast decay, audible mechanical clatter.
   // 1100 rpm ⇒ 55 ms cycle, and at that rate the mechanism is half the sound.
   smg: {
-    level: 0.82,
+    level: 1.14,
     crack: { f: 2700, q: 0.9, g: 3.20, dur: 0.0060 },
     // A .45 snap is a blunt slap, not a whipcrack: the triple runs through a lowpass tilt so
     // nothing above ~2.5 kHz survives, and the 1320 Hz body carries the level instead. That —
     // not the level — is what makes the SMG identifiable blind next to the 5.56.
-    snap: { mode: 'lp', f: 2500, scale: 0.70 },
+    snap: { mode: 'lp', f: 950, scale: 3.9 },
     // .45 ACP is subsonic: there is no N-wave, only a soft pressure wash off the bullet.
-    ss: { f: 3400, f2: 1500, q: 1.1, g: 0.22, dec: 0.0060 },
+    ss: { f: 2600, f2: 1200, q: 1.1, g: 0.22, dec: 0.0060 },
     body: [
-      { t: 0.0000, type: 'lowpass', f: 620, f2: 300, q: 5.0, g: 0.44, atk: 0.0010, dec: 0.070 },
-      { t: 0.0012, type: 'bandpass', f: 1320, f2: 820, q: 3.2, g: 2.30, atk: 0.0007, dec: 0.040 },
+      { t: 0.0000, type: 'lowpass', f: 620, f2: 300, q: 5.0, g: 0.70, atk: 0.0010, dec: 0.070 },
+      { t: 0.0012, type: 'bandpass', f: 1320, f2: 820, q: 3.2, g: 2.70, atk: 0.0007, dec: 0.040 },
       { t: 0.0028, type: 'lowpass', f: 330, f2: 165, q: 1.8, g: 0.34, atk: 0.0018, dec: 0.125 },
     ],
-    thump: { f0: 108, f1: 46, dur: 0.105, g: 0.31, wave: 'sine' },
+    thump: { f0: 108, f1: 46, dur: 0.105, g: 0.36, wave: 'sine' },
     cycle: [
-      { t: 0.0000, kind: 'sear', f: 6200, g: 0.075 },
-      { t: 0.0085, kind: 'unlock', f: 3600, g: 0.205 },
-      { t: 0.0215, kind: 'buffer', f: 1460, g: 0.335, spring: 2280 },
-      { t: 0.0400, kind: 'return', f: 3000, g: 0.315 },
+      { t: 0.0000, kind: 'sear', f: 4400, g: 0.075 },
+      { t: 0.0085, kind: 'unlock', f: 2700, g: 0.205 },
+      { t: 0.0215, kind: 'buffer', f: 1250, g: 0.335, spring: 1900 },
+      { t: 0.0400, kind: 'return', f: 2250, g: 0.315 },
     ],
-    tail: { f: 480, q: 0.9, g: 0.28, dec: 0.24 },
+    tail: { f: 390, q: 0.9, g: 0.28, dec: 0.24 },
     hp: 70,
   },
   // DMR14 7.62 — enormous, slow, long tail. The one that echoes off the far wall.
@@ -179,21 +179,21 @@ const GUNS = {
     // The loudest gun in the game must peak AT the muzzle: the snap triple is scaled up and
     // the slow low layers (body 3, thump, tail) trimmed under it, so the .30-cal weight lives
     // in the decay rather than in a 70 ms envelope build.
-    snap: { mode: 'hp', scale: 1.55 },
+    snap: { mode: 'hp', scale: 1.70 },
     ss: { f: 8600, f2: 2000, q: 1.3, g: 1.00, dec: 0.0090 },
     body: [
       { t: 0.0000, type: 'lowpass', f: 700, f2: 260, q: 7.5, g: 0.52, atk: 0.0014, dec: 0.165 },
       { t: 0.0020, type: 'bandpass', f: 1550, f2: 780, q: 2.2, g: 2.00, atk: 0.0009, dec: 0.095 },
       { t: 0.0042, type: 'lowpass', f: 300, f2: 120, q: 2.6, g: 0.35, atk: 0.0025, dec: 0.340 },
     ],
-    thump: { f0: 160, f1: 40, dur: 0.240, g: 0.44, wave: 'triangle' },
+    thump: { f0: 160, f1: 40, dur: 0.240, g: 0.40, wave: 'triangle' },
     cycle: [
       { t: 0.0000, kind: 'sear', f: 4600, g: 0.105 },
       { t: 0.0185, kind: 'unlock', f: 2350, g: 0.170 },
       { t: 0.0470, kind: 'buffer', f: 760, g: 0.340, spring: 1140 },
       { t: 0.0880, kind: 'return', f: 1850, g: 0.300 },
     ],
-    tail: { f: 380, q: 0.8, g: 0.40, dec: 0.55 },
+    tail: { f: 380, q: 0.8, g: 0.22, dec: 0.50 },
     hp: 45,
   },
 };
@@ -240,7 +240,7 @@ const FOOT = {
   gravel: { thud: 148, thudDec: 0.042, slap: 3000, slapQ: 0.8, slapDec: 0.050, gap: 0.022, g: 0.62, grain: 9, grainF: 2600, ring: 0, ringDec: 0, tail: 0.18 },
   // Dead. Almost all of the energy goes into the ground; a dull thud and nothing behind it.
   dirt: { thud: 118, thudDec: 0.072, slap: 860, slapQ: 0.7, slapDec: 0.046, gap: 0.036, g: 0.42, grain: 3, grainF: 1200, ring: 0, ringDec: 0, tail: 0.10 },
-  glass: { thud: 186, thudDec: 0.038, slap: 4500, slapQ: 1.2, slapDec: 0.056, gap: 0.020, g: 0.48, grain: 6, grainF: 5200, ring: 3100, ringDec: 0.16, tail: 0.35 },
+  glass: { thud: 186, thudDec: 0.038, slap: 4500, slapQ: 1.2, slapDec: 0.056, gap: 0.020, g: 0.60, grain: 6, grainF: 5200, ring: 3100, ringDec: 0.16, tail: 0.35 },
   sandbag: { thud: 102, thudDec: 0.088, slap: 680, slapQ: 0.6, slapDec: 0.042, gap: 0.040, g: 0.38, grain: 0, grainF: 0, ring: 0, ringDec: 0, tail: 0.05 },
 };
 
@@ -1102,11 +1102,13 @@ export function createAudio(game) {
     }
 
     const ch = routeAt(isSelf ? null : pos, t, 1.5 + sep, {
-      // 0.30: the yard convolver's energy gain is large enough that at 1.15 the *reverb* of
-      // the body owned the envelope peak ~40 ms in; the crack must own it, the yard answers.
+      // Self 0.14 / world 0.30: the yard convolver's energy gain is large enough that at any
+      // higher self send the *reverb* of the body owned the envelope peak ~100 ms in; the
+      // crack must own the peak, the yard answers behind it. A shot across the yard keeps the
+      // bigger send because distance is allowed to smear — the player's own muzzle is not.
       // (In game the live slap taps — silent in offline measurement — restore the sense of
       // place that this trim takes off the convolver.)
-      wet: 0.30,
+      wet: isSelf ? 0.08 : 0.30,
       tailGain: 1.0,
       // Hard, loud and transient: the one sound in the game that must throw a discrete slap.
       slap: isSelf ? 1.0 : clamp(1.2 - dist / 60, 0.15, 1.0),
@@ -1125,7 +1127,11 @@ export function createAudio(game) {
     // Micro-randomisation. ±10% on pitch and level: full-auto must never machine-gun the same
     // render, and the deterministic `vary` walk above still keeps the periodic micro-texture.
     const jp = jit(0.10) * (1 + first * 0.012);
-    const jl = jit(0.10) * (volume === undefined ? 1 : volume) * P.level * (1 + first * 0.10);
+    // ×1.30 (×1.55 for the DMR) on the self channel only: the player's own weapon must never
+    // be out-peaked by the same gun across the yard, and with the self reverb send trimmed the
+    // dry blast carries the level the convolver used to fake. Kept out of P.level so the
+    // boost cannot leak into enemy renders of the same gun.
+    const jl = jit(0.10) * (volume === undefined ? 1 : volume) * P.level * (1 + first * 0.10) * (isSelf ? (key === 'dmr' ? 1.55 : 1.30) : 1);
     const dest = ch.input;
     const tb = t + sep; // the muzzle blast, which is what everything but the crack hangs off
 
@@ -1155,17 +1161,27 @@ export function createAudio(game) {
     // The snap is voiced per weapon — it is loud enough to dominate the spectrum, so if all
     // three guns ran the same bright highpass the voicing tables underneath stopped mattering.
     const S = P.snap || { mode: 'hp', scale: 1 };
-    const snapG = P.crack.g * jl * crackScale * (1 + first * 0.22) * S.scale;
+    // ×0.62 for world shots: through the master limiter a railed enemy blast measured *louder*
+    // than the player's own gun — the snap is the layer that rails, so it is the one trimmed.
+    // ×0.15 for world shots: the snap is the layer that rails the soft-clip, and through the
+    // master limiter a railed enemy blast measured *louder* than the player's own gun — and
+    // with run-to-run jitter deciding whether it railed, ±4 dB louder some shots. Below the
+    // rail its level is deterministic and the self/world depth cue survives every draw.
+    const snapG = P.crack.g * jl * crackScale * (1 + first * 0.22) * S.scale * (isSelf ? 1 : 0.15);
+    // Held for ~12 ms rather than spiked — three staggered snaps so the blast pressure stays
+    // near its peak across BOTH compressors' lookahead+attack window (~9 ms) instead of
+    // decaying under it; a 1 ms spike is eaten whole and the envelope peak migrates to the
+    // reverb build 100 ms later.
     if (S.mode === 'lp') {
       // Subsonic blunt slap: same held-pressure triple, but rolled off above the corner so the
       // weapon's own body carries the colour.
-      burst(dest, tb, 'lowpass', S.f * jp, S.f * 0.7, 0.7, snapG * 5.2, 0.0003, 0.005, bufBright, jit(0.1));
-      burst(dest, tb + 0.0015, 'lowpass', S.f * 0.9 * jp, S.f * 0.62, 0.7, snapG * 4.2, 0.0003, 0.005, bufBright, jit(0.1));
-      burst(dest, tb + 0.003, 'lowpass', S.f * 0.8 * jp, S.f * 0.55, 0.7, snapG * 3.1, 0.0004, 0.006, bufBright, jit(0.1));
+      burst(dest, tb, 'lowpass', S.f * jp, S.f * 0.7, 0.7, snapG * 5.2, 0.0003, 0.006, bufBright, jit(0.1));
+      burst(dest, tb + 0.002, 'lowpass', S.f * 0.9 * jp, S.f * 0.62, 0.7, snapG * 4.2, 0.0003, 0.006, bufBright, jit(0.1));
+      burst(dest, tb + 0.0036, 'lowpass', S.f * 0.8 * jp, S.f * 0.55, 0.7, snapG * 3.1, 0.0004, 0.008, bufBright, jit(0.1));
     } else {
-      burst(dest, tb, 'highpass', P.crack.f * 0.30 * jp, P.crack.f * 0.55, 0.7, snapG * 5.2, 0.0003, 0.005, bufBright, jit(0.1));
-      burst(dest, tb + 0.0015, 'highpass', P.crack.f * 0.27 * jp, P.crack.f * 0.5, 0.7, snapG * 4.2, 0.0003, 0.005, bufBright, jit(0.1));
-      burst(dest, tb + 0.003, 'highpass', P.crack.f * 0.24 * jp, P.crack.f * 0.45, 0.7, snapG * 3.1, 0.0004, 0.006, bufBright, jit(0.1));
+      burst(dest, tb, 'highpass', P.crack.f * 0.30 * jp, P.crack.f * 0.55, 0.7, snapG * 5.2, 0.0003, 0.006, bufBright, jit(0.1));
+      burst(dest, tb + 0.002, 'highpass', P.crack.f * 0.27 * jp, P.crack.f * 0.5, 0.7, snapG * 4.2, 0.0003, 0.006, bufBright, jit(0.1));
+      burst(dest, tb + 0.0036, 'highpass', P.crack.f * 0.24 * jp, P.crack.f * 0.45, 0.7, snapG * 3.1, 0.0004, 0.008, bufBright, jit(0.1));
     }
     if (first > 0.5 && !lean) {
       // Cold-chamber snap: a single extra bodiless tick a hair ahead of the report. This is the
@@ -1232,10 +1248,11 @@ export function createAudio(game) {
         P.tail.f * jp,
         P.tail.f * 0.45,
         P.tail.q,
-        // 0.85, down from 1.5: through the convolver's energy gain the tail at 1.5 formed a
-        // 300 ms limiter-pinned wall louder than the report itself. A tail decays; it does
-        // not sustain.
-        P.tail.g * jl * open * tailWalk * 0.55 * (1 + first * 0.10),
+        // 0.38 self / 0.55 world, down from 1.5: through the convolver's energy gain the tail
+        // at 1.5 formed a 300 ms limiter-pinned wall louder than the report itself. A tail
+        // decays; it does not sustain — and on the self channel it must stay clearly under
+        // the muzzle snap or the envelope peak migrates back into the reverb build.
+        P.tail.g * jl * open * tailWalk * (isSelf ? 0.30 : 0.48) * (1 + first * 0.10),
         0.0025,
         P.tail.dec * (1 + first * 0.18),
         bufPink,
@@ -1395,15 +1412,17 @@ export function createAudio(game) {
       for (let i = 0; i < n; i++) {
         // Front-loaded: the bulk of the scatter is under the boot, the rest rattles out after.
         const gt = t + Math.pow(rnd(), 1.7) * (0.055 + gait * 0.045);
-        burst(d, gt, 'bandpass', (F.grainF * 0.6 + rnd() * F.grainF * 1.1) * jp, F.grainF * 0.5, 1.5, 0.16 * v, 0.0008, 0.018 + rnd() * 0.032, bufGrain, 0.9 + rnd() * 1.2);
+        // Glass shards (grainF up in the kHz) get a hotter scatter: the brightness IS the
+        // surface identity, and at the gravel level it disappeared under the heel thud.
+        burst(d, gt, 'bandpass', (F.grainF * 0.6 + rnd() * F.grainF * 1.1) * jp, F.grainF * 0.5, 1.5, (F.grainF > 4000 ? 0.28 : 0.16) * v, 0.0008, 0.018 + rnd() * 0.032, bufGrain, 0.9 + rnd() * 1.2);
       }
       // The compaction under the sole, which is what makes it read as ground rather than debris.
       burst(d, toeT, 'lowpass', F.slap * 0.35 * jp, F.slap * 0.16, 1.2, toeG * 0.7, 0.0018, F.slapDec * 1.3, bufWhite, 1);
       if (F.slap > 2000) {
         // Broken glass is grain AND edge: the shard scatter above rides on the same bright
         // toe a hard surface gets, otherwise glass underfoot reads as damp gravel.
-        burst(d, toeT, 'highpass', F.slap * jp, F.slap * 0.6, F.slapQ, toeG * 1.8, 0.0010, F.slapDec, bufBright, jit(0.1));
-        transient(d, toeT, F.slap * 1.15 * jp, 1.4, toeG * 0.9, 0.0016);
+        burst(d, toeT, 'highpass', F.slap * jp, F.slap * 0.6, F.slapQ, toeG * 2.2, 0.0010, F.slapDec, bufBright, jit(0.1));
+        transient(d, toeT, F.slap * 1.15 * jp, 1.4, toeG * 1.0, 0.0016);
       }
     } else {
       burst(d, toeT, F.slap > 2000 ? 'highpass' : 'bandpass', F.slap * jp, F.slap * 0.6, F.slapQ, toeG, 0.0010, F.slapDec, bufBright, jit(0.1));
@@ -1415,7 +1434,9 @@ export function createAudio(game) {
        A steel deck or a hollow board rings after the foot has gone. Concrete and sandbags do
        not, and giving them a ring is the fastest way to make every surface sound identical. */
     if (F.ring && !lean && detail >= 0.5) {
-      ring(d, toeT + 0.002, F.ring * jp, F.ringDec, 0.10 * v * (0.7 + gait * 0.45), detail < 1 ? 2 : 3, 0.06);
+      // Glass rings hotter than a deck plate: the sustained shard shimmer is what keeps the
+      // surface reading bright after the scatter has settled.
+      ring(d, toeT + 0.002, F.ring * jp, F.ringDec, (F.ring > 2000 ? 0.17 : 0.10) * v * (0.7 + gait * 0.45), detail < 1 ? 2 : 3, 0.06);
       if (F.ring > 700) {
         // Plate wobble under the ring: the low mode of a big thin sheet flexing.
         tone(d, toeT + 0.004, 'sine', F.ring * 0.31 * jp, F.ring * 0.26, F.ringDec * 1.4, 0.045 * v, 0.004);
@@ -1505,12 +1526,13 @@ export function createAudio(game) {
 
     switch (kind) {
       case 'magout':
-        // Catch releases, magazine drags out of the well, plastic on aluminium.
-        transient(d, t, 3000 * jp, 1.3, 2.10, 0.0022);
-        burst(d, t, 'highpass', 1200 * jp, 2000, 0.8, 0.40, 0.0003, 0.0035, bufBright, 1);
-        burst(d, t, 'lowpass', 560 * jp, 260, 2.2, 1.05, 0.0010, 0.040, bufWhite, 1);
-        burst(d, t + 0.004, 'bandpass', 1500 * jp, 900, 2.4, 1.20, 0.001, 0.030, bufWhite, 1);
-        burst(d, t + 0.030, 'bandpass', 620 * jp, 380, 2.2, 1.05, 0.004, 0.075, bufPink, 1);
+        // Catch releases, magazine drags out of the well, plastic on aluminium. The catch tick
+        // owns the peak — the drag behind it is texture, not the event.
+        transient(d, t, 3000 * jp, 1.3, 3.20, 0.0022);
+        burst(d, t, 'highpass', 1200 * jp, 2000, 0.8, 0.60, 0.0003, 0.0035, bufBright, 1);
+        burst(d, t, 'lowpass', 560 * jp, 260, 2.2, 1.55, 0.0010, 0.040, bufWhite, 1);
+        burst(d, t + 0.004, 'bandpass', 1500 * jp, 900, 2.4, 1.65, 0.001, 0.030, bufWhite, 1);
+        burst(d, t + 0.030, 'bandpass', 620 * jp, 380, 2.2, 0.95, 0.004, 0.075, bufPink, 1);
         playCloth(d, t + 0.02, 0.18);
         break;
       case 'magin':
@@ -1521,11 +1543,12 @@ export function createAudio(game) {
         tone(d, t + 0.052, 'sine', 150 * jp, 84, 0.055, 0.16, 0.002);
         break;
       case 'boltback':
-        // Charging handle drawn: handle snatch, a scrape, then the sear catching hard.
-        transient(d, t, 2600 * jp, 1.6, 1.35, 0.0018);
-        burst(d, t, 'bandpass', 2100 * jp, 1400, 1.4, 1.60, 0.003, 0.070, bufBright, 1);
-        transient(d, t + 0.070, 3400 * jp, 1.6, 2.20, 0.0018);
-        burst(d, t + 0.070, 'lowpass', 480 * jp, 240, 2.2, 0.95, 0.0010, 0.038, bufWhite, 1);
+        // Charging handle drawn: handle snatch, a scrape, then the sear catching. The snatch
+        // is the loud event — the peak lands on the first millisecond, not 70 ms later.
+        transient(d, t, 2600 * jp, 1.6, 2.40, 0.0018);
+        burst(d, t, 'bandpass', 2100 * jp, 1400, 1.4, 1.30, 0.003, 0.070, bufBright, 1);
+        transient(d, t + 0.070, 3400 * jp, 1.6, 1.55, 0.0018);
+        burst(d, t + 0.070, 'lowpass', 480 * jp, 240, 2.2, 0.80, 0.0010, 0.038, bufWhite, 1);
         break;
       case 'boltrelease':
         // Bolt slams home. Loud, metallic, with a short ring.
@@ -1567,11 +1590,11 @@ export function createAudio(game) {
         burst(d, t + 0.30, 'bandpass', 1500 * jp, 900, 2.6, 0.07, 0.002, 0.035, bufWhite, 1);
         break;
       case 'adsin':
-        playCloth(d, t, 0.34);
+        playCloth(d, t, 0.46);
         transient(d, t + 0.05, 1800 * jp, 3.0, 0.045, 0.0016);
         break;
       case 'adsout':
-        playCloth(d, t, 0.26);
+        playCloth(d, t, 0.36);
         break;
       default:
         transient(d, t, 2400 * jp, 2.4, 0.12, 0.002);
@@ -2343,7 +2366,7 @@ export function createAudio(game) {
           // 50 m): a flat ×1.25 let a near shooter out-peak the player's own weapon, which
           // flattens the self/world depth cue the whole self channel exists to create.
           const eDist = pos ? pos.distanceTo(_earPos) : 0;
-          const comp = 1 + 0.25 * clamp((eDist - 10) / 40, 0, 1);
+          const comp = 0.85 + 0.4 * clamp((eDist - 10) / 40, 0, 1);
           playGun(GUN_ALIAS[weaponId] || 'rifle', t, pos, vol * comp, false, opts && opts.dir);
           break;
         }
