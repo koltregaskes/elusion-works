@@ -9,6 +9,7 @@ const indexPath = join(demosRoot, "index.html");
 const sitemapPath = join(root, "sitemap.xml");
 const payloadRoot = join(demosRoot, "cyberpunk-messenger");
 const manifestPath = join(payloadRoot, "release-manifest.json");
+const permittedPayloadExtras = new Set(["DESIGN.md", "release-manifest.json"]);
 const indexHtml = readFileSync(indexPath, "utf8");
 const sitemapXml = readFileSync(sitemapPath, "utf8");
 
@@ -69,7 +70,7 @@ if (!existsSync(manifestPath)) {
   const listedFiles = new Map(manifest.files.map((file) => [file.path, file]));
   const payloadFiles = listFiles(payloadRoot)
     .map((path) => relative(payloadRoot, path).split(sep).join("/"))
-    .filter((path) => path !== "DESIGN.md" && path !== "release-manifest.json")
+    .filter((path) => !permittedPayloadExtras.has(path))
     .sort();
 
   for (const path of payloadFiles) {
