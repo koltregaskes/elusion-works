@@ -1,0 +1,2960 @@
+/* ==========================================================================
+   Ashfall — presentation layer.
+
+   Owns every visual decision for the HUD, the front end, the loading screen and
+   the error card. `src/ui/hud.js` and `src/ui/menu.js` only toggle classes, set
+   custom properties and write text; nothing in this file is created by them and
+   nothing here fights the inline values they write per frame.
+
+   Palette and tuning constants below mirror `src/world/art.js` exactly. If a
+   value changes there, change it here and nowhere else. The two UI modules also
+   push the live palette onto [data-hud] / [data-menu] as --hud-* / --menu-*, so
+   the tokens below are the pre-boot defaults and the fallback if a module fails.
+
+   The whole look is the same warm/cool split the renderer is composed around:
+   ash-white type, a low warm key, cool sky-blue shadow, and one saturated hit
+   (hazard yellow) reserved for things that matter.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   0. Display face
+
+   The HUD is set in Barlow Condensed, and it is embedded here as three base64
+   woff2 subsets rather than linked. This is the only way the demo can honour
+   ARCHITECTURE §3 (no external assets, nothing over the network) and still have
+   a real display face: a linked webfont is the first thing to vanish offline,
+   behind a CSP or with the CDN blocked, and when it vanished every fallback in
+   the old stack resolved to DejaVu Sans on Linux — a wide humanist grotesque
+   with a serifed figure one, which is what the review caught.
+
+   Each face carries exactly U+0020, U+002B, U+002D, U+002E, U+002F, U+0030-0039,
+   U+0041-005A and U+00D7 — the whole repertoire hud.js and menu.js can write
+   into a display-face node, since every one of them is uppercased in CSS. Three
+   weights are shipped because the HUD asks for 500, 600 and 700 by name and
+   synthetic bolding would smear the stencil weight. ~3 KB each.
+
+   Anything outside that repertoire (hud.js's U+2303 headshot mark, say) falls
+   through per-glyph to the system tail still named in --font-display, so an
+   unexpected character renders rather than tofuing.
+
+   Licence: SIL Open Font License 1.1, which permits redistribution of the font
+   software, modified or not, as part of a larger work. Full text follows.
+   -------------------------------------------------------------------------- */
+
+/* Copyright 2017 The Barlow Project Authors (https://github.com/jpt/barlow)
+   
+   This Font Software is licensed under the SIL Open Font License, Version 1.1.
+   This license is copied below, and is also available with a FAQ at:
+   http://scripts.sil.org/OFL
+   
+   
+   -----------------------------------------------------------
+   SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+   -----------------------------------------------------------
+   
+   PREAMBLE
+   The goals of the Open Font License (OFL) are to stimulate worldwide
+   development of collaborative font projects, to support the font creation
+   efforts of academic and linguistic communities, and to provide a free and
+   open framework in which fonts may be shared and improved in partnership
+   with others.
+   
+   The OFL allows the licensed fonts to be used, studied, modified and
+   redistributed freely as long as they are not sold by themselves. The
+   fonts, including any derivative works, can be bundled, embedded, 
+   redistributed and/or sold with any software provided that any reserved
+   names are not used by derivative works. The fonts and derivatives,
+   however, cannot be released under any other type of license. The
+   requirement for fonts to remain under this license does not apply
+   to any document created using the fonts or their derivatives.
+   
+   DEFINITIONS
+   "Font Software" refers to the set of files released by the Copyright
+   Holder(s) under this license and clearly marked as such. This may
+   include source files, build scripts and documentation.
+   
+   "Reserved Font Name" refers to any names specified as such after the
+   copyright statement(s).
+   
+   "Original Version" refers to the collection of Font Software components as
+   distributed by the Copyright Holder(s).
+   
+   "Modified Version" refers to any derivative made by adding to, deleting,
+   or substituting -- in part or in whole -- any of the components of the
+   Original Version, by changing formats or by porting the Font Software to a
+   new environment.
+   
+   "Author" refers to any designer, engineer, programmer, technical
+   writer or other person who contributed to the Font Software.
+   
+   PERMISSION & CONDITIONS
+   Permission is hereby granted, free of charge, to any person obtaining
+   a copy of the Font Software, to use, study, copy, merge, embed, modify,
+   redistribute, and sell modified and unmodified copies of the Font
+   Software, subject to the following conditions:
+   
+   1) Neither the Font Software nor any of its individual components,
+   in Original or Modified Versions, may be sold by itself.
+   
+   2) Original or Modified Versions of the Font Software may be bundled,
+   redistributed and/or sold with any software, provided that each copy
+   contains the above copyright notice and this license. These can be
+   included either as stand-alone text files, human-readable headers or
+   in the appropriate machine-readable metadata fields within text or
+   binary files as long as those fields can be easily viewed by the user.
+   
+   3) No Modified Version of the Font Software may use the Reserved Font
+   Name(s) unless explicit written permission is granted by the corresponding
+   Copyright Holder. This restriction only applies to the primary font name as
+   presented to the users.
+   
+   4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+   Software shall not be used to promote, endorse or advertise any
+   Modified Version, except to acknowledge the contribution(s) of the
+   Copyright Holder(s) and the Author(s) or with their explicit written
+   permission.
+   
+   5) The Font Software, modified or unmodified, in part or in whole,
+   must be distributed entirely under this license, and must not be
+   distributed under any other license. The requirement for fonts to
+   remain under this license does not apply to any document created
+   using the Font Software.
+   
+   TERMINATION
+   This license becomes null and void if any of the above conditions are
+   not met.
+   
+   DISCLAIMER
+   THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+   OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+   COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+   INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+   DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+   FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+   OTHER DEALINGS IN THE FONT SOFTWARE.
+
+   DEPLOYMENT NOTE: these three faces are `data:` URIs, so any Content-Security-Policy on the
+   host has to allow `font-src data:`. A policy of `font-src 'self'` rejects them — the page
+   still works and the stacks below fall through to the platform, but the condensed HUD the
+   embed exists to guarantee is exactly what is lost, silently. See ARCHITECTURE.md rule 3.
+ */
+
+@font-face {
+  font-family: 'Ashfall Display';
+  font-style: normal;
+  font-weight: 500;
+  /* Barlow Condensed Medium 1.408, subset to the 42 glyphs the interface can
+     produce. No swap to guard against: the face is decoded from this stylesheet,
+     so it is available the moment the sheet parses. */
+  font-display: block;
+  src: url('data:font/woff2;base64,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') format('woff2');
+}
+
+@font-face {
+  font-family: 'Ashfall Display';
+  font-style: normal;
+  font-weight: 600;
+  /* Barlow Condensed SemiBold 1.408, subset to the 42 glyphs the interface can
+     produce. No swap to guard against: the face is decoded from this stylesheet,
+     so it is available the moment the sheet parses. */
+  font-display: block;
+  src: url('data:font/woff2;base64,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') format('woff2');
+}
+
+@font-face {
+  font-family: 'Ashfall Display';
+  font-style: normal;
+  font-weight: 700;
+  /* Barlow Condensed Bold 1.408, subset to the 42 glyphs the interface can
+     produce. No swap to guard against: the face is decoded from this stylesheet,
+     so it is available the moment the sheet parses. */
+  font-display: block;
+  src: url('data:font/woff2;base64,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') format('woff2');
+}
+
+/* --------------------------------------------------------------------------
+   1. Tokens
+   -------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: dark;
+
+  /* --- Light (art.js PALETTE) --- */
+  --sun: #ffcf9a;
+  --sun-core: #fff1dd;
+  --sky-zenith: #3f6f9e;
+  --sky-horizon: #d8c3a4;
+  --ground-bounce: #7a6647;
+  --shadow-cool: #2a3644;
+
+  /* --- Surfaces --- */
+  --concrete-lit: #8d8880;
+  --concrete-shadow: #4a5460;
+  --concrete-stained: #6f6a62;
+  --asphalt: #3c3a38;
+  --brick: #7a5548;
+  --brick-painted: #8d8578;
+  --plaster: #a89e8e;
+  --rust: #8a4a28;
+  --rust-deep: #5c2f1a;
+  --steel-painted: #5a6159;
+  --steel-bare: #7d8288;
+  --rail-green: #3d4a3f;
+  --tarp-blue: #2d4a63;
+  --hazard-yellow: #c8a02c;
+  --wood-weathered: #6b5a45;
+  --sandbag: #8b7c5e;
+  --dirt: #6b5a44;
+  --gravel: #6e6963;
+  --weeds: #5c6340;
+  --glass: #8fa3aa;
+
+  /* --- Gun --- */
+  --gunmetal: #33363a;
+  --gun-polymer: #2b2d2a;
+  --gun-tan: #8a7a5c;
+  --gun-rubber: #1d1e1f;
+  --brass: #b08a3e;
+
+  /* --- FX --- */
+  --muzzle-core: #fff6d8;
+  --muzzle-edge: #ff9a3c;
+  --tracer: #ffb347;
+  --tracer-enemy: #7fd4ff;
+  --blood: #7a1512;
+  --smoke: #b9b0a4;
+  --dust: #c9bca6;
+  --spark: #ffcf7a;
+  --ember: #ff7a2c;
+
+  /* --- UI (art.js PALETTE, UI block) --- */
+  --hud-primary: #e8e4dc;
+  /* Opaque on purpose, and the one token that deliberately does not mirror
+     art.js. art.js ships hudDim as rgba(232,228,220,0.55), which means the dim
+     labels composite toward whatever is behind them: measured on the sunline
+     frame, SCORE and KILLS came out at 1.13:1 against the sky directly behind
+     them, i.e. invisible. #b4b0a8 is that same ash hue flattened against the
+     ink, so it reads as the same step down the ramp but can never dissolve into
+     a bright background. It is re-asserted on .hud / .menu below because the UI
+     modules push the art.js alpha inline. */
+  --hud-dim: #b4b0a8;
+  --hud-accent: #c8a02c;
+  --hud-danger: #d64b3a;
+  --hud-friendly: #6fb3d4;
+  --hud-blood: #7a1512;
+
+  --menu-primary: var(--hud-primary);
+  --menu-dim: var(--hud-dim);
+  --menu-accent: var(--hud-accent);
+  --menu-danger: var(--hud-danger);
+
+  /* --- Grade (art.js GRADE), reused so the DOM sits in the same image --- */
+  --grade-vignette: 0.34;
+  --grade-grain: 0.028;
+  --grade-contrast: 1.09;
+
+  /* --- Ink: the page behind everything. Matches <meta name="theme-color">. --- */
+  --ink-900: #0a0908;
+  --ink-800: #12100d;
+  --ink-700: #191713;
+  --ink-600: #23201b;
+  --hairline: rgba(232, 228, 220, 0.14);
+  --hairline-strong: rgba(232, 228, 220, 0.28);
+
+  /* --- Scrim ink: the one colour every HUD scrim is made of. ---
+     Not a flat black. Two things are asked of a scrim: buy a stop of separation
+     under type that is sitting on the dusk sky, and be invisible when the same
+     readout is over ground already in shadow. A near-black (the old scrims used
+     rgba(6,8,11)) does the first and fails the second — measured on terraces the
+     top-right corner is already at luminance 20, and a black wash there just
+     digs a hole. This is --ink-900 carried most of the way to --shadow-cool, so
+     it lands at rgb(22,26,31): over the 156-luminance sky at 0.4 alpha it pulls
+     the background to ~104, and over 20-luminance ground it moves it to 23,
+     which is below the threshold of visibility. It is also the same cool cast
+     the renderer puts in every shadow (ARCHITECTURE §4), so the scrims sit in
+     the image rather than on it. */
+  --scrim-ink: color-mix(in srgb, var(--ink-900) 62%, var(--shadow-cool));
+
+  /* --- Type ---
+     'Ashfall Display' is the embedded Barlow Condensed subset defined in §0. It
+     is first, and it is the face that actually renders: nothing about it depends
+     on the network, so the HUD is genuinely condensed offline, behind a CSP and
+     on a machine with no webfonts installed. That is the whole point of the
+     embed — the previous stack named condensed families that do not exist on
+     Linux, fell through all of them to DejaVu Sans, and set MK18, SCORE, KILLS,
+     STAND and the compass cardinals as wide body copy on the delivered capture.
+
+     The system tail stays behind it and is not decoration. The subset carries
+     only the 42 glyphs the interface can produce; anything else — hud.js's
+     U+2303 headshot mark is the live example — falls through per-glyph to a
+     platform face and renders instead of tofuing. Same reason --font-mono and
+     --font-body keep their full stacks: nothing is embedded for them, so their
+     first real hit is whatever the platform has.
+
+     There is no font-stretch anywhere in the HUD any more. It existed to ask
+     fontconfig for a narrow width of a fallback family, which was always inert
+     (DejaVu Sans has no width axis) and is now meaningless — the family in front
+     is condensed by design, not by axis. Tracking below is tuned against Barlow
+     Condensed at its real width, not against a grotesque standing in for it. */
+  --font-display: 'Ashfall Display', 'Barlow Condensed', 'Oswald',
+    'Roboto Condensed', 'Arial Narrow', 'Helvetica Neue Condensed',
+    'Helvetica Neue', 'Liberation Sans Narrow', 'Nimbus Sans Narrow',
+    'DejaVu Sans Condensed', 'Encode Sans Condensed', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas,
+    'Roboto Mono', 'DejaVu Sans Mono', 'Liberation Mono', 'Courier New', monospace;
+  --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Helvetica Neue', 'Liberation Sans', Arial, sans-serif;
+
+  /* --- Metrics. One unit, clamped so the HUD holds from 1280 to 3440. --- */
+  --u: clamp(11px, 0.63vw, 21px);
+  --gutter: clamp(20px, 1.9vw, 46px);
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --pad-t: calc(var(--gutter) + var(--safe-t));
+  --pad-r: calc(var(--gutter) + var(--safe-r));
+  --pad-b: calc(var(--gutter) + var(--safe-b));
+  --pad-l: calc(var(--gutter) + var(--safe-l));
+
+  /* --- Legibility over any background: a dark outline + a soft drop. ---
+     Ash-grey type sits at roughly the same luminance as the dusk sky, so the
+     outline, not the fill colour, is what carries the contrast: it puts a near
+     black edge under every stroke and takes the local ratio from ~1.4:1 to
+     ~9:1 whether the glyph is over sky or over ground. The old version leaned
+     on four 0.7-alpha 1px offsets, which vanished on thin small type over the
+     bright horizon; the ring is now near opaque and backed by a 4px halo that
+     darkens the sky immediately around the letterforms. */
+  --ink-outline:
+    0 0 1px rgba(6, 5, 4, 0.98), 1px 0 1px rgba(6, 5, 4, 0.92), -1px 0 1px rgba(6, 5, 4, 0.92),
+    0 1px 1px rgba(6, 5, 4, 0.92), 0 -1px 1px rgba(6, 5, 4, 0.92),
+    0 0 4px rgba(0, 0, 0, 0.72), 0 2px 8px rgba(0, 0, 0, 0.55);
+  --ink-outline-soft:
+    0 0 1px rgba(6, 5, 4, 0.95), 0 0 3px rgba(0, 0, 0, 0.65), 0 1px 5px rgba(0, 0, 0, 0.55);
+  --drop:
+    drop-shadow(0 0 1px rgba(6, 5, 4, 0.98)) drop-shadow(0 0 3px rgba(0, 0, 0, 0.6))
+    drop-shadow(0 1px 4px rgba(0, 0, 0, 0.55));
+
+  /* --- Motion --- */
+  --ease-punch: cubic-bezier(0.2, 0.9, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --t-fast: 90ms;
+  --t-punch: 180ms;
+  --t-ui: 240ms;
+}
+
+/* Film grain, generated in-document. No network, no image file. */
+:root {
+  --grain-tile: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E");
+}
+
+/* --------------------------------------------------------------------------
+   2. Page shell
+   -------------------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  background: var(--ink-900);
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+body.ashfall {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+  background: var(--ink-900);
+  color: var(--hud-primary);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* The `hidden` attribute is the primary show/hide channel for both UI modules,
+   and almost every hook below sets an explicit `display`. This must win. */
+[hidden] {
+  display: none !important;
+}
+
+#viewport {
+  position: fixed;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--ink-900);
+  outline: none;
+  touch-action: none;
+  z-index: 0;
+}
+
+/* Pointer is locked during play; hide the arrow so nothing floats over the sight. */
+body.menu-closed {
+  cursor: none;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--hud-accent) 55%, transparent);
+  color: var(--ink-900);
+}
+
+/* Film grain over the live 3D background.
+   It lives on <body> rather than inside .menu on purpose: .menu has a z-index and
+   therefore forms a stacking context, and `mix-blend-mode` can only reach the
+   backdrop of its own stacking context. Hung off the body it blends against the
+   canvas itself, which is the only place the grain means anything. */
+body.ashfall::after {
+  content: '';
+  position: fixed;
+  inset: -120px;
+  z-index: 45;
+  pointer-events: none;
+  background-image: var(--grain-tile);
+  background-size: 180px 180px;
+  background-repeat: repeat;
+  opacity: 0;
+  mix-blend-mode: overlay;
+  transition: opacity 420ms linear;
+}
+
+body.menu-open::after,
+body:not(.ashfall-ready)::after {
+  opacity: calc(var(--grade-grain) * 9);
+  animation: grain-shift 640ms steps(6) infinite;
+}
+
+/* Shared focus treatment. Ring is drawn inside so clipped shapes keep it. */
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--menu-accent);
+  outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   3. Type utilities
+   -------------------------------------------------------------------------- */
+
+/* The mono face is what is left over once the figures moved to the display face
+   below: the debug readout, the reload keycap and the kill-feed mark. Nothing
+   is embedded for it, so it is always a platform monospace and always wider
+   than IBM Plex Mono would have been — 0.055em rather than the 0.1em the mono
+   HUD numerals once carried, which had turned them into a spaced-out ledger. */
+.mono {
+  font-family: var(--font-mono);
+  /* Belt and braces against any inherited width axis. No monospace has a narrow
+     width, and asking for one only risks fontconfig substituting a different
+     family entirely. */
+  font-stretch: normal;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: 'tnum' 1, 'lnum' 1, 'zero' 1;
+  letter-spacing: 0.055em;
+}
+
+/* Short uppercase labels are not figures, and a wide mono is the worst thing to
+   set them in. They take the condensed display face instead, which is what makes
+   the HUD read as stencilled military type rather than as HTML text. */
+.hud .label,
+.health-stance,
+.minimap-zone,
+.streak {
+  font-family: var(--font-display);
+}
+
+/*
+ * Figures use the condensed display face with tabular figures, NOT the mono face.
+ *
+ * A reviewer caught two faults that both trace back to routing numerals through --font-mono.
+ * First, the ammo block already sets the display face, so "30" and "/210" sat side by side in
+ * two visibly different typefaces. Second, --font-mono is never embedded, so it resolves to a
+ * platform monospace — DejaVu Sans Mono on Linux, whose default zero is slashed, so every zero
+ * on screen read as a programmer's zero, which no shipped shooter uses.
+ *
+ * `tabular-nums` gives the same non-jittering columns that the mono face was there for, without
+ * either problem — Barlow Condensed's figures are tabular under `tnum` and its zero is unslashed.
+ * `slashed-zero` stays explicitly disabled for any face that offers it as a feature.
+ */
+.score-row .val,
+.health-meta [data-health-value] {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'zero' 0;
+}
+
+.hud,
+.menu,
+.loading {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* --------------------------------------------------------------------------
+   4. HUD — root and full-screen state layers
+   -------------------------------------------------------------------------- */
+
+/* The HUD is set in the condensed display face from the root down. Everything
+   that wants the mono face asks for it (.mono, or a rule below); nothing in the
+   interface should ever inherit --font-body, which is what made the labels in
+   the capture read as a paragraph rather than as instrumentation. */
+.hud {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  font-family: var(--font-display);
+  font-size: var(--u);
+  color: var(--hud-primary);
+  contain: layout style;
+
+  /* Defaults for everything the HUD module drives. Present so the stylesheet is
+     coherent before the first frame and if the module is stubbed out. */
+  --health: 1;
+  --damage: 0;
+  --ads: 0;
+  --streak: 0;
+}
+
+/* The one place this stylesheet overrules a UI module, and it is deliberate.
+   hud.js and menu.js mirror art.js onto [data-hud] / [data-menu] every boot, and
+   art.js's hudDim is an alpha. An alpha cannot be made legible: over the sunline
+   sky it composites to within 1.13:1 of the background no matter what shadow is
+   under it. Author !important beats an inline non-important declaration, so the
+   opaque token wins here without either module needing to change. Every other
+   palette value the modules write is still theirs. */
+.hud,
+.menu {
+  --hud-dim: #b4b0a8 !important;
+  --menu-dim: #b4b0a8 !important;
+}
+
+body.hide-hud .hud {
+  display: none;
+}
+
+/* --------------------------------------------------------------------------
+   4b. HUD — readout scrims
+   --------------------------------------------------------------------------
+
+   The scrims are real and they have to stay: --hud-dim over the dusk sky is a
+   1.13:1 readout, and the ink outline alone cannot carry 8 px accent type. What
+   was wrong was where they lived.
+
+   Each readout used to carry its own scrim as a background on its own box, and
+   every one of those gradients was sized smaller than the box it was painted
+   in — .scoreline::before was `ellipse 78% 96% at 88% 34%`, so at the top of
+   its own border box the gradient was still at 0.278 alpha and at the right
+   edge still at 0.358. The border box then clipped it. That is precisely the
+   fault measured in yardLit.png: a 1 px step at y=10 (155 -> 117, predicted
+   115) and again at y=67, with a right edge dying ten pixels short of the
+   frame. A translucent div, exactly as described. The compass strip had the
+   same arithmetic vertically (0.339 alpha clipped at its top edge, 0.245 at its
+   bottom) and it measures as a 34-luminance step at y=12 and y=50.
+
+   So the scrims moved off the readouts and into screen space. This layer is
+   inset 0 on a HUD that is itself inset 0, which means its only boundaries are
+   the boundaries of the frame — there is no element edge left for a gradient to
+   be clipped against, at any viewport size, whatever the readouts do with their
+   own box. Each wash is positioned off --pad-t / --pad-r and sized in em (the
+   HUD's em is --u, so the washes scale with the readouts they back), and every
+   one of them reaches zero alpha well inside the picture on the sides that face
+   into the frame. On the sides that face the frame edge they run off it, which
+   is what a corner vignette does and is the one thing that guarantees no
+   floating edge; it also lands them on top of the .hud-scan vignette rather
+   than fighting it.
+
+   Held in custom properties so the small-viewport rule can drop the compass
+   wash without restating the corner wash. */
+.hud {
+  /* Top centre, behind the compass. Centred on --pad-t * 0.62 + 2.2em, which is
+     the compass box centre pushed 0.5em down to sit between the cardinals and
+     the objective markers 13 px below them — the markers are 8 px accent type
+     over open sky and are the worst case in the interface. ry 3.4em puts zero
+     alpha a hair above the frame top and ~24 px below the strip, so the ramp
+     out of the bottom of the wash is 1.7 luminance per pixel. The old step was
+     34 in one pixel. rx tracks the strip's own clamp so the wash dies at the
+     same place the strip's mask fades the ruler out. The plateau runs to 44%
+     rather than falling away immediately: the datum and the graduations sit
+     1.3em above the cardinals and were the one thing that came out of this
+     worse than the flat fill until the shoulder was pushed out to cover them
+     (0.28 -> 0.38 alpha under the ruler). */
+  --scrim-compass: radial-gradient(
+    ellipse clamp(150px, 16vw, 290px) 3.4em at 50%
+      calc(var(--pad-t) * 0.62 + 2.2em),
+    color-mix(in srgb, var(--scrim-ink) 46%, transparent) 0%,
+    color-mix(in srgb, var(--scrim-ink) 38%, transparent) 44%,
+    color-mix(in srgb, var(--scrim-ink) 16%, transparent) 74%,
+    transparent 100%
+  );
+
+  /* Top right, behind SCORE / KILLS. The block is right-ragged and grows
+     leftwards as the figures do, so the wash is anchored to the corner rather
+     than to the block: centre 3.5em in from the type's right margin, 2em below
+     the top one, which is the middle of the two rows at every clamp of --u.
+     rx 9em / ry 4.6em reaches zero ~4em left of and ~5em below the block, and
+     leaves the frame at 0.10 alpha over the top edge and 0.27 over the right —
+     a corner falloff, not a panel. Peak 0.52 takes the sky behind the labels
+     from 156 to ~104, which is a little over twice the separation the old flat
+     fill was giving them. */
+  --scrim-score: radial-gradient(
+    ellipse 9em 4.6em at calc(100% - var(--pad-r) - 3.5em)
+      calc(var(--pad-t) + 2em),
+    color-mix(in srgb, var(--scrim-ink) 52%, transparent) 0%,
+    color-mix(in srgb, var(--scrim-ink) 46%, transparent) 34%,
+    color-mix(in srgb, var(--scrim-ink) 24%, transparent) 66%,
+    color-mix(in srgb, var(--scrim-ink) 6%, transparent) 88%,
+    transparent 100%
+  );
+}
+
+.hud::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--scrim-compass), var(--scrim-score);
+  /* The readouts these back fade by 0.42 (.hud-corner) and 0.55 (.compass) when
+     the sights come up. Split the difference so the backing goes with them
+     instead of hanging over an empty corner during ADS. */
+  opacity: calc(1 - var(--ads, 0) * 0.5);
+  transition: opacity 120ms linear;
+}
+
+.hud-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  will-change: opacity;
+}
+
+/* Blood vignette. Intensity is the module's opacity write; --damage mirrors it so
+   the shape can react as well as the strength. */
+.hud-damage {
+  opacity: var(--damage, 0);
+  z-index: 1;
+  background:
+    radial-gradient(
+      ellipse 88% 78% at 50% 52%,
+      rgba(0, 0, 0, 0) 30%,
+      color-mix(in srgb, var(--hud-blood) 42%, transparent) 66%,
+      color-mix(in srgb, var(--hud-blood) 78%, transparent) 88%,
+      color-mix(in srgb, var(--hud-blood) 94%, transparent) 100%
+    ),
+    radial-gradient(
+      ellipse 130% 60% at 50% 108%,
+      color-mix(in srgb, var(--hud-blood) 55%, transparent) 0%,
+      rgba(0, 0, 0, 0) 60%
+    );
+}
+
+/* Low-health heartbeat. The module writes the cardiac envelope into opacity; the
+   scale breath here only widens the pinch so the beat is felt at the edges. */
+.hud-lowhealth {
+  opacity: 0;
+  z-index: 2;
+  background: radial-gradient(
+    ellipse 96% 86% at 50% 50%,
+    rgba(0, 0, 0, 0) 42%,
+    color-mix(in srgb, var(--hud-danger) 26%, transparent) 78%,
+    color-mix(in srgb, var(--hud-danger) 46%, transparent) 100%
+  );
+}
+
+.hud.is-low-health .hud-lowhealth {
+  animation: lowhealth-breathe 1.9s ease-in-out infinite;
+}
+
+@keyframes lowhealth-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.035);
+  }
+}
+
+/* Instant hit flash. */
+.hud-flash {
+  opacity: 0;
+  z-index: 3;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--hud-blood) 70%, transparent),
+    color-mix(in srgb, var(--hud-blood) 92%, transparent)
+  );
+}
+
+/* Optical sheen: a very faint scanline and a corner falloff so the DOM sits in
+   the same glass as the render rather than on top of it. Deliberately near the
+   threshold of visibility. */
+.hud-scan {
+  z-index: 0;
+  opacity: 0.55;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.014) 0 1px,
+      rgba(0, 0, 0, 0) 1px 3px
+    ),
+    radial-gradient(
+      ellipse 120% 105% at 50% 50%,
+      rgba(0, 0, 0, 0) 58%,
+      rgba(6, 8, 12, calc(var(--grade-vignette) * 0.42)) 100%
+    );
+  animation: scan-drift 9s linear infinite;
+}
+
+@keyframes scan-drift {
+  from {
+    background-position: 0 0, 0 0;
+  }
+  to {
+    background-position: 0 3px, 0 0;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   5. HUD — centre: crosshair, hitmarker, interact prompt
+   -------------------------------------------------------------------------- */
+
+.hud-centre {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  z-index: 6;
+  pointer-events: none;
+}
+
+.crosshair {
+  position: relative;
+  width: 0;
+  height: 0;
+
+  /* --ch-gap is written by hud.js in px (half the arm gap). --ch-spread /
+     --ch-flare / --ch-tint arrive as 0..1. --spread is the readable alias. */
+  --spread: var(--ch-spread, 0);
+  --ch-offset: calc(var(--ch-gap, 5px) + var(--spread) * 5px);
+  --ch-arm: calc(1px + 9px * (1 - var(--spread) * 0.28));
+  --ch-thick: 2px;
+  --ch-colour: var(--hud-ch-colour, var(--hud-primary));
+
+  opacity: calc(1 - var(--ads, 0));
+  filter: var(--drop);
+  transition: opacity 60ms linear;
+}
+
+.ch-arm {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  border-radius: 1px;
+  background: var(--ch-colour);
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.9);
+}
+
+/* Anchor with `transform`, offset with the independent `translate` property, so
+   the two compose instead of overwriting each other. hud.js probes --ch-gap and
+   stands down as soon as it sees these react. */
+.ch-t,
+.ch-b {
+  width: var(--ch-thick);
+  height: var(--ch-arm);
+}
+
+.ch-l,
+.ch-r {
+  width: var(--ch-arm);
+  height: var(--ch-thick);
+}
+
+.ch-t {
+  transform: translate(-50%, -100%);
+  translate: 0 calc(var(--ch-offset) * -1);
+}
+
+.ch-b {
+  transform: translate(-50%, 0);
+  translate: 0 var(--ch-offset);
+}
+
+.ch-l {
+  transform: translate(-100%, -50%);
+  translate: calc(var(--ch-offset) * -1) 0;
+}
+
+.ch-r {
+  transform: translate(0, -50%);
+  translate: var(--ch-offset) 0;
+}
+
+.ch-dot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: var(--ch-colour);
+  transform: translate(-50%, -50%);
+  opacity: calc(0.35 + 0.65 * var(--ch-tint, 0));
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.9);
+}
+
+.crosshair.is-firing .ch-arm {
+  box-shadow: 0 0 3px rgba(0, 0, 0, 0.9), 0 0 6px color-mix(in srgb, var(--muzzle-edge) 45%, transparent);
+}
+
+.crosshair.is-ads {
+  opacity: 0;
+}
+
+/* Hit / kill confirmation reads on the reticle too, not only on the marker. */
+.crosshair.is-hit .ch-dot,
+.crosshair.is-kill .ch-dot {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.6);
+}
+
+/* --- Hitmarker ---------------------------------------------------------- */
+
+.hitmarker {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  z-index: 2;
+  filter: var(--drop);
+  --hm-reach: 11px;
+}
+
+.hitmarker span {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  width: 2px;
+  height: 10px;
+  border-radius: 1px;
+  background: var(--hud-primary);
+}
+
+.hitmarker span:nth-child(1) {
+  transform: translate(-50%, -50%) rotate(-45deg) translateY(calc(var(--hm-reach) * -1));
+}
+.hitmarker span:nth-child(2) {
+  transform: translate(-50%, -50%) rotate(45deg) translateY(calc(var(--hm-reach) * -1));
+}
+.hitmarker span:nth-child(3) {
+  transform: translate(-50%, -50%) rotate(135deg) translateY(calc(var(--hm-reach) * -1));
+}
+.hitmarker span:nth-child(4) {
+  transform: translate(-50%, -50%) rotate(-135deg) translateY(calc(var(--hm-reach) * -1));
+}
+
+/* The kill marker is longer, heavier and sits closer: a solid X, not a tick. */
+.hitmarker.is-kill {
+  --hm-reach: 9px;
+}
+
+.hitmarker.is-kill span {
+  width: 3px;
+  height: 13px;
+}
+
+/* Headshot: the module hides the lower pair, leaving a chevron. Sharpen it. */
+.hitmarker.is-head {
+  --hm-reach: 12px;
+}
+
+/* Punch. The module drives the container's independent `scale`; this animates
+   `transform`, which multiplies with it, so the two never fight. */
+.hitmarker.is-hit,
+.hitmarker.is-kill {
+  animation: hitmarker-punch var(--t-punch) var(--ease-punch);
+}
+
+@keyframes hitmarker-punch {
+  0% {
+    transform: scale(0.6) rotate(-6deg);
+  }
+  55% {
+    transform: scale(1.06) rotate(1deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+/* --- Interact prompt ---------------------------------------------------- */
+
+.interact-prompt {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 4.4em);
+  transform: translateX(-50%);
+  display: block;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-size: 1.15em;
+  font-weight: 600;
+  /* Drawn against Barlow Condensed, which is now the face that renders. */
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--hud-primary);
+  text-shadow: var(--ink-outline);
+}
+
+/* --------------------------------------------------------------------------
+   6. HUD — compass
+   -------------------------------------------------------------------------- */
+
+.compass {
+  position: absolute;
+  top: calc(var(--pad-t) * 0.62);
+  left: 50%;
+  transform: translateX(-50%);
+  width: clamp(320px, 30vw, 620px);
+  height: 3.4em;
+  z-index: 5;
+  opacity: calc(1 - var(--ads, 0) * 0.55);
+
+  /* No background. The strip still needs a scrim — it sits at the top of the
+     frame, which on this map is open sky, the brightest thing in the image and
+     within a hair of the type's own luminance — but it cannot carry one itself.
+     The strip is 3.4em tall and its content fills it: the datum sits 0.5em down,
+     the ruler runs 0.5em to 1.0em, the cardinals are centred, and the objective
+     markers hang 13 px below that. There is no room inside the box for a
+     gradient to both cover that and fade to nothing before the edge, which is
+     why the version that shipped was still at 0.339 alpha where its own border
+     box cut it off — the 34-luminance step measured at y=12 and y=50. The wash
+     is now --scrim-compass on .hud::before, in screen space, where it has the
+     whole frame to fade into and no box to be clipped by. Do not put a
+     background back here.
+
+     The mask stays: it is what fades the ruler and the cardinals out at the ends
+     of the strip instead of guillotining them. `no-repeat` is load-bearing —
+     .compass-track::before is a 2400 px ruler that overflows this box by a long
+     way, and the initial `repeat` tiles the mask, which would let the ruler
+     reappear in the next tile across. */
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    #000 13%,
+    #000 87%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(to right, transparent 0%, #000 13%, #000 87%, transparent 100%);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+/* The datum the whole strip hangs from. */
+.compass::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0.5em;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--hairline-strong) 16%,
+    var(--hairline-strong) 84%,
+    transparent
+  );
+}
+
+.compass-track {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  will-change: transform;
+}
+
+/* Graduated ruler. It has to live on the track so it scrolls with the heading,
+   and it has to be far wider than the strip because the track translates by up
+   to +-441 px (180 deg x hud.js's 2.45 px/deg). The tile is centred rather than
+   left-aligned so a major graduation always lands exactly on the needle. */
+.compass-track::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  width: 2400px;
+  margin-left: -1200px;
+  top: 0.5em;
+  height: 0.5em;
+  background-image:
+    linear-gradient(
+      to right,
+      transparent 0 calc(50% - 0.5px),
+      var(--hud-primary) calc(50% - 0.5px) calc(50% + 0.5px),
+      transparent calc(50% + 0.5px)
+    ),
+    linear-gradient(
+      to right,
+      transparent 0 calc(50% - 0.5px),
+      var(--hud-dim) calc(50% - 0.5px) calc(50% + 0.5px),
+      transparent calc(50% + 0.5px)
+    );
+  /* 15 deg majors and 5 deg minors at 2.45 px per degree. */
+  background-size: 36.75px 100%, 12.25px 55%;
+  background-position: center top, center top;
+  background-repeat: repeat-x, repeat-x;
+  opacity: 0.72;
+}
+
+/* hud.js sets the tick size and tracking inline (12px/10px at 0.08em), so weight
+   and shadow are the only levers here. Cardinals stay at 700: Barlow Condensed
+   at 12px is a narrow stroke, and 600 does not hold the ink outline. */
+.compass-track .ct-tick {
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  text-shadow: var(--ink-outline);
+  line-height: 1;
+}
+
+/* Objective markers are 8px accent-coloured text over sky — the single worst
+   case in the HUD. They take the full outline, not the soft one. */
+.compass-track .ct-marker {
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-transform: uppercase;
+  text-shadow: var(--ink-outline);
+  line-height: 1;
+}
+
+/* The fixed bearing needle. Its tip lands on the datum line at 0.5em. */
+.compass-needle {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 11px;
+  height: 0.5em;
+  min-height: 5px;
+  transform: translateX(-50%);
+  background: var(--hud-accent);
+  clip-path: polygon(50% 100%, 0 0, 100% 0);
+  filter: var(--drop);
+  z-index: 2;
+}
+
+.compass-needle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  width: 1px;
+  height: 0.5em;
+  background: linear-gradient(to bottom, var(--hud-accent), transparent);
+  transform: translateX(-50%);
+  opacity: 0.7;
+}
+
+/* --------------------------------------------------------------------------
+   7. HUD — corners
+   -------------------------------------------------------------------------- */
+
+.hud-corner {
+  position: absolute;
+  z-index: 4;
+  opacity: calc(1 - var(--ads, 0) * 0.42);
+  transition: opacity 120ms linear;
+}
+
+.hud-tl {
+  top: var(--pad-t);
+  left: var(--pad-l);
+}
+
+.hud-tr {
+  top: var(--pad-t);
+  right: var(--pad-r);
+  text-align: right;
+}
+
+.hud-bl {
+  bottom: var(--pad-b);
+  left: var(--pad-l);
+}
+
+.hud-br {
+  bottom: var(--pad-b);
+  right: var(--pad-r);
+  text-align: right;
+}
+
+/* --------------------------------------------------------------------------
+   8. HUD — health
+   -------------------------------------------------------------------------- */
+
+.health {
+  width: clamp(180px, 15.5vw, 340px);
+}
+
+.health-bar {
+  position: relative;
+  height: 0.62em;
+  min-height: 7px;
+  background: linear-gradient(
+    to bottom,
+    rgba(10, 9, 8, 0.62),
+    rgba(10, 9, 8, 0.42)
+  );
+  box-shadow:
+    inset 0 0 0 1px rgba(6, 5, 4, 0.75),
+    0 1px 4px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  /* Militarised parallelogram; the cut edge points into the screen. */
+  clip-path: polygon(0 0, 100% 0, calc(100% - 0.5em) 100%, 0 100%);
+}
+
+.health-bar > i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-color: var(--hud-primary);
+  background-image: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.22),
+    rgba(255, 255, 255, 0) 45%,
+    rgba(0, 0, 0, 0.22)
+  );
+  transform-origin: left center;
+  will-change: transform;
+}
+
+/* Segmentation sits on the track, above the fill, so the notches stay put while
+   the fill scales. Ten segments, with a heavier mark at the halfway point. */
+.health-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(to right, transparent calc(50% - 1px), rgba(6, 5, 4, 0.85) calc(50% - 1px), rgba(6, 5, 4, 0.85) calc(50% + 1px), transparent calc(50% + 1px)),
+    repeating-linear-gradient(
+      to right,
+      rgba(0, 0, 0, 0) 0 calc(10% - 2px),
+      rgba(6, 5, 4, 0.72) calc(10% - 2px) 10%
+    );
+}
+
+.health-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1em;
+  margin-top: 0.42em;
+  font-size: 0.78em;
+  letter-spacing: 0.1em;
+  text-shadow: var(--ink-outline);
+}
+
+.health-meta [data-health-value] {
+  font-size: 1.35em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--hud-primary);
+}
+
+/* STAND / CROUCH / SPRINT. Condensed face, and 600 so the opaque dim grey still
+   carries weight next to the health figure beside it. */
+.health-stance {
+  color: var(--hud-dim);
+  font-size: 0.96em;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.health.is-regen .health-bar > i {
+  box-shadow: 0 0 10px color-mix(in srgb, var(--hud-friendly) 60%, transparent);
+}
+
+.health.is-critical [data-health-value] {
+  color: var(--hud-danger);
+  animation: critical-pulse 0.9s ease-in-out infinite;
+}
+
+.health.is-critical .health-bar {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--hud-danger) 55%, transparent),
+    0 0 12px color-mix(in srgb, var(--hud-danger) 30%, transparent);
+}
+
+@keyframes critical-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* --- Directional damage arcs -------------------------------------------- */
+
+.hud-damage-dirs {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 7;
+}
+
+/* hud.js builds a border-drawn blade inside each arc as a self-sufficient
+   fallback. This stylesheet supersedes it with a masked conic wedge, which
+   holds its weight at any radius. `display` is never written inline on the
+   blade, so hiding it here is safe and reversible. */
+.dmg-arc > span {
+  display: none;
+}
+
+.dmg-arc::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: clamp(190px, 17vw, 340px);
+  height: clamp(190px, 17vw, 340px);
+  transform: translate(-50%, -50%);
+  background: conic-gradient(
+    from -19deg,
+    color-mix(in srgb, var(--hud-danger) 92%, transparent) 0deg,
+    color-mix(in srgb, var(--hud-danger) 55%, transparent) 19deg,
+    color-mix(in srgb, var(--hud-danger) 92%, transparent) 38deg,
+    rgba(0, 0, 0, 0) 38.2deg 360deg
+  );
+  -webkit-mask-image: radial-gradient(
+    closest-side,
+    transparent 0 63%,
+    #000 71%,
+    #000 84%,
+    transparent 92%
+  );
+  mask-image: radial-gradient(
+    closest-side,
+    transparent 0 63%,
+    #000 71%,
+    #000 84%,
+    transparent 92%
+  );
+  filter: drop-shadow(0 0 6px rgba(0, 0, 0, 0.7));
+}
+
+/* --------------------------------------------------------------------------
+   9. HUD — weapon and ammunition
+   -------------------------------------------------------------------------- */
+
+.weapon-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15em;
+  min-width: clamp(150px, 12vw, 260px);
+}
+
+/* MK18 / VECTOR / DMR14. The 0.16em the wide fallback needed is too tight for
+   the real condensed face — five narrow glyphs at 13px close into a single mark.
+   0.22em opens it back into a designation without going all the way to the
+   0.28em originally drawn. The matching indent pays back the trailing
+   letter-space so the block still rags right against the ammo figures. */
+.weapon-name {
+  font-family: var(--font-display);
+  font-size: 1em;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-indent: 0.22em;
+  text-transform: uppercase;
+  color: var(--hud-dim);
+  text-shadow: var(--ink-outline);
+  line-height: 1;
+}
+
+.ammo {
+  display: flex;
+  align-items: baseline;
+  gap: 0.18em;
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums lining-nums;
+  line-height: 0.9;
+  text-shadow: var(--ink-outline);
+}
+
+.ammo-mag {
+  font-family: var(--font-display);
+  font-size: 3.4em;
+  font-weight: 700;
+  /* The negative was pulling a wide fallback's digits back together. Barlow
+     Condensed Bold is already tight at this size; a hair of positive keeps the
+     figures apart when the magazine is in three digits. */
+  letter-spacing: 0.008em;
+  color: var(--hud-primary);
+  transition: color 120ms linear;
+}
+
+.ammo-sep {
+  font-family: var(--font-display);
+  font-size: 1.5em;
+  font-weight: 500;
+  color: var(--hud-dim);
+  transform: translateY(-0.12em) skewX(-10deg);
+}
+
+.ammo-reserve {
+  font-family: var(--font-display);
+  font-size: 1.55em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--hud-dim);
+  transform: translateY(-0.1em);
+}
+
+/* --- Pip strip ---------------------------------------------------------- */
+
+.ammo-pips {
+  display: block;
+  height: 9px;
+  margin-top: 0.35em;
+  margin-right: -2px;
+  line-height: 0;
+  filter: var(--drop);
+}
+
+.ammo-pips .pip {
+  transform: skewX(-16deg);
+  transition: opacity 90ms linear;
+}
+
+/* --- Reload ------------------------------------------------------------- */
+
+.reload-prompt {
+  display: block;
+  margin-top: 0.5em;
+  font-family: var(--font-display);
+  font-size: 1.02em;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--hud-accent);
+  text-shadow: var(--ink-outline);
+}
+
+.reload-prompt b {
+  display: inline-block;
+  margin-left: 0.35em;
+  padding: 0.05em 0.4em;
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--ink-900);
+  background: var(--hud-accent);
+}
+
+.reload-bar {
+  display: block;
+  width: clamp(120px, 9vw, 200px);
+  height: 3px;
+  margin-top: 0.55em;
+  background: rgba(10, 9, 8, 0.6);
+  box-shadow: inset 0 0 0 1px rgba(6, 5, 4, 0.7);
+  overflow: hidden;
+}
+
+.reload-bar > i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-color: var(--hud-friendly);
+  transform-origin: left center;
+  will-change: transform;
+}
+
+/* State reinforcement beyond colour, which hud.js already writes inline. */
+.weapon-block.is-low .ammo-mag {
+  text-shadow: var(--ink-outline), 0 0 12px color-mix(in srgb, var(--hud-accent) 55%, transparent);
+}
+
+.weapon-block.is-empty .ammo-mag {
+  text-shadow: var(--ink-outline), 0 0 14px color-mix(in srgb, var(--hud-danger) 60%, transparent);
+  animation: critical-pulse 0.7s steps(2, jump-none) infinite;
+}
+
+.weapon-block.is-reloading .weapon-name {
+  color: var(--hud-accent);
+}
+
+.weapon-block.is-reloading .ammo {
+  opacity: 0.62;
+}
+
+/* --------------------------------------------------------------------------
+   10. HUD — minimap
+   -------------------------------------------------------------------------- */
+
+/* The disc is the whole widget. There are deliberately no corner brackets and no
+   outset cardinal ring: four L's floating 9px clear of a circle enclosed nothing,
+   implied a rectangular reticle, and wrapped the heaviest element in the frame in
+   55px of empty margin — which is why the top-left corner was reading as a
+   sci-fi asset pack rather than as instrumentation. Everything that remains is
+   drawn inside this box, so the block footprint is the disc plus the zone label
+   under it, and no rule in here may add an outset pseudo-element. */
+.minimap {
+  position: relative;
+  width: clamp(132px, 10.5vw, 220px);
+  height: clamp(132px, 10.5vw, 220px);
+}
+
+.minimap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(12, 14, 16, 0.62),
+    rgba(8, 9, 11, 0.78)
+  );
+  box-shadow:
+    inset 0 0 22px rgba(0, 0, 0, 0.6),
+    0 2px 10px rgba(0, 0, 0, 0.45);
+}
+
+/* The rim itself and the scanline sheen — both drawn inside the disc, so they
+   cost the block no footprint. The conic cardinal ring that used to sit at
+   inset: -5px is gone: its four nubs projected past the rim, enclosed nothing,
+   and over the bright sky in the depot capture they read as dead pixels rather
+   than as compass indices. North is drawn into the canvas by hud.js with
+   MAP_COL.north, and E/S/W are set in real glyphs by .compass. */
+.minimap-frame {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow:
+    inset 0 0 0 1px var(--hairline-strong),
+    inset 0 0 0 4px rgba(6, 5, 4, 0.35);
+}
+
+.minimap-frame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(232, 228, 220, 0.035) 0 1px,
+      rgba(0, 0, 0, 0) 1px 4px
+    ),
+    linear-gradient(
+      148deg,
+      rgba(232, 228, 220, 0.09) 0%,
+      rgba(232, 228, 220, 0) 38%,
+      rgba(232, 228, 220, 0) 70%,
+      rgba(111, 179, 212, 0.06) 100%
+    );
+  mix-blend-mode: screen;
+}
+
+/* THE YARD / THE DEPOT / THE TERRACES. Two words at 0.26em in a wide mono fell
+   apart completely under the minimap in the capture. On the embedded condensed
+   face 0.2em at 600 is where the two words still read as one phrase but ten
+   narrow caps do not clot; the opaque dim keeps it readable when the map is over
+   pale gravel rather than over ink. */
+.minimap-zone {
+  position: absolute;
+  left: 50%;
+  /* Was -1.85em, which cleared the bracket line rather than the rim. With the
+     brackets gone this is the same optical gap measured from the disc edge. */
+  bottom: -1.35em;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 0.76em;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-indent: 0.2em;
+  text-transform: uppercase;
+  color: var(--hud-dim);
+  text-shadow: var(--ink-outline);
+}
+
+/* --------------------------------------------------------------------------
+   11. HUD — scoreline and streak
+   -------------------------------------------------------------------------- */
+
+.scoreline {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.18em;
+  text-shadow: var(--ink-outline);
+}
+
+/* This block is the one the contrast measurement failed on: it lives in the top
+   right corner, which on this map is sky in almost every frame. The opaque dim
+   and the heavier outline do most of the work; the backing that finishes the job
+   is --scrim-score on .hud::before.
+
+   It used to be a ::before on this element, and that is what a critic read as
+   "a flat grey rectangle with a hard top edge, a hard bottom edge and a hard
+   right edge that stops ten pixels short of the screen border". The gradient was
+   sized to 78% x 96% of a box it had to fill, so it was still at 0.278 alpha
+   where the box cut it at the top, 0.139 at the bottom and 0.358 at the right —
+   and the right edge could never reach the frame because the box was inset by
+   --pad-r. A scrim tied to this block's border box cannot be fixed by retuning
+   the stops; the box is the fault. `position: relative` is kept only so the
+   text-shadow stack and any future badge have a positioning context. */
+.score-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 0.85em;
+  font-size: 0.78em;
+}
+
+/* SCORE / KILLS. Measured at 1.13:1 against the sky in the delivered frame: the
+   alpha dim had composited them away and the tracking had stretched five letters
+   across the corner. Embedded condensed face, 0.2em, 600, and the opaque dim —
+   five caps this narrow want back the air the wide fallback could not take. */
+.score-row .label {
+  color: var(--hud-dim);
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  /* Cancel the trailing letter-space so the two columns rag right cleanly. */
+  margin-right: -0.2em;
+  font-size: 0.98em;
+}
+
+.score-row .val {
+  min-width: 3.6ch;
+  text-align: right;
+  font-size: 1.35em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--hud-primary);
+}
+
+.streak {
+  display: block;
+  margin-top: 0.32em;
+  padding: 0.14em 0.55em;
+  font-size: 0.8em;
+  font-weight: 600;
+  letter-spacing: 0.17em;
+  text-indent: 0.17em;
+  text-transform: uppercase;
+  color: var(--ink-900);
+  background: var(--hud-accent);
+  clip-path: polygon(0.55em 0, 100% 0, 100% 100%, 0 100%);
+  text-shadow: none;
+  animation: streak-in 260ms var(--ease-out);
+}
+
+@keyframes streak-in {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   12. HUD — kill feed
+   -------------------------------------------------------------------------- */
+
+.killfeed {
+  position: absolute;
+  top: calc(var(--pad-t) + clamp(72px, 5.6vw, 128px));
+  right: var(--pad-r);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.28em;
+  z-index: 4;
+  pointer-events: none;
+}
+
+/* Rows come and go, so this scrim cannot live in screen space the way the score
+   and compass washes do — a permanent dark patch under an empty kill feed is
+   worse than no scrim at all. It gets the same fault fixed a different way: the
+   wash moves to a pseudo-element that holds no text, and that element is masked
+   with `closest-side`, whose ending shape is by definition exactly half the box
+   on each axis. That is the one radial-gradient sizing that is provably zero at
+   every edge of its own box regardless of how wide the row's text runs, so the
+   fill underneath it can be any shape and still cannot show a step. The right
+   border tick stays a hard 2 px line on purpose — it is a drawn mark, the same
+   language as the minimap rim, not a scrim pretending not to be one. */
+.kf-row {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  padding: 0.16em 0.6em 0.2em;
+  font-family: var(--font-display);
+  font-size: 1em;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  border-right: 2px solid var(--hairline);
+  text-shadow: var(--ink-outline-soft);
+  will-change: transform, opacity;
+}
+
+.kf-row::before {
+  content: '';
+  position: absolute;
+  inset: -0.62em -1.9em -0.62em -2.8em;
+  z-index: -1;
+  pointer-events: none;
+  /* Heavier under the target name at the right, thinning to the left, which is
+     how the eye reads the row. */
+  background: linear-gradient(
+    to left,
+    color-mix(in srgb, var(--scrim-ink) 54%, transparent),
+    color-mix(in srgb, var(--scrim-ink) 18%, transparent)
+  );
+  -webkit-mask-image: radial-gradient(closest-side, #000 0%, #000 46%, transparent 100%);
+  mask-image: radial-gradient(closest-side, #000 0%, #000 46%, transparent 100%);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+.kf-src,
+.kf-tgt {
+  font-weight: 600;
+}
+
+.kf-mark {
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+}
+
+/* --------------------------------------------------------------------------
+   13. HUD — callouts and XP
+   -------------------------------------------------------------------------- */
+
+.callout {
+  position: absolute;
+  left: 50%;
+  top: 26%;
+  transform: translateX(-50%);
+  z-index: 6;
+  opacity: 0;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-size: 2.15em;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-indent: 0.15em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: var(--hud-primary);
+  text-shadow: var(--ink-outline);
+  will-change: transform, opacity;
+}
+
+.callout::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -0.34em;
+  width: 62%;
+  height: 1px;
+  transform: translateX(-50%);
+  background: linear-gradient(to right, transparent, currentColor, transparent);
+  opacity: 0.5;
+}
+
+.callout.is-good {
+  color: var(--hud-accent);
+}
+
+.callout.is-danger {
+  color: var(--hud-danger);
+}
+
+.xp-stack {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1em;
+  pointer-events: none;
+}
+
+.xp-pop {
+  font-family: var(--font-display);
+  font-size: 1.12em;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  text-shadow: var(--ink-outline);
+  will-change: transform, opacity;
+}
+
+.xp-amt {
+  font-variant-numeric: tabular-nums;
+}
+
+.xp-tag {
+  font-family: var(--font-mono);
+  font-size: 0.74em;
+  letter-spacing: 0.1em;
+}
+
+/* --------------------------------------------------------------------------
+   14. HUD — debug readout
+   -------------------------------------------------------------------------- */
+
+.debug-panel {
+  position: absolute;
+  left: var(--pad-l);
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0;
+  padding: 0.75em 1em;
+  z-index: 8;
+  max-width: 30ch;
+  font-size: 0.72em;
+  line-height: 1.65;
+  letter-spacing: 0.04em;
+  white-space: pre;
+  color: var(--hud-primary);
+  background: rgba(8, 8, 8, 0.72);
+  border-left: 2px solid var(--hud-accent);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+/* --------------------------------------------------------------------------
+   15. Menu — shell, vignette, grain
+   -------------------------------------------------------------------------- */
+
+.menu {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  color: var(--menu-primary);
+  transition: opacity 380ms var(--ease-out);
+  --menu-fade: 1;
+}
+
+/* The live 3D flythrough is the background. These two layers are the grade the
+   render does not do: a vignette pulled from GRADE.vignette and film grain
+   pulled from GRADE.grainAmount, so the front end sits in the same photograph. */
+.menu-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    linear-gradient(
+      to right,
+      rgba(6, 8, 11, 0.82) 0%,
+      rgba(6, 8, 11, 0.5) 34%,
+      rgba(6, 8, 11, 0.12) 62%,
+      rgba(6, 8, 11, 0.45) 100%
+    ),
+    radial-gradient(
+      ellipse 105% 95% at 50% 45%,
+      rgba(0, 0, 0, 0) 40%,
+      rgba(4, 6, 9, calc(var(--grade-vignette) * 1.55)) 82%,
+      rgba(3, 4, 7, calc(var(--grade-vignette) * 2.3)) 100%
+    ),
+    linear-gradient(to top, rgba(6, 8, 11, 0.72), rgba(0, 0, 0, 0) 34%);
+}
+
+@keyframes grain-shift {
+  0% {
+    transform: translate(0, 0);
+  }
+  16.6% {
+    transform: translate(-14px, 9px);
+  }
+  33.3% {
+    transform: translate(11px, -13px);
+  }
+  50% {
+    transform: translate(-9px, -7px);
+  }
+  66.6% {
+    transform: translate(13px, 11px);
+  }
+  83.3% {
+    transform: translate(-12px, 4px);
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+/* A single slow horizontal sheen. Reads as a projector, not as a web page. */
+.menu::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.016) 0 1px,
+    rgba(0, 0, 0, 0) 1px 3px
+  );
+  opacity: 0.7;
+}
+
+.menu.is-closed {
+  pointer-events: none;
+}
+
+.menu-page {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: var(--pad-t) var(--pad-r) var(--pad-b) var(--pad-l);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.menu-page.is-active {
+  opacity: 1;
+  pointer-events: auto;
+  animation: page-in 320ms var(--ease-out);
+}
+
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Title is left-aligned against the yard; every other page is a centred column. */
+.menu-page[data-page='title'] {
+  align-items: flex-start;
+}
+
+.menu-page[data-page='settings'],
+.menu-page[data-page='controls'],
+.menu-page[data-page='pause'],
+.menu-page[data-page='dead'] {
+  align-items: center;
+}
+
+/* --------------------------------------------------------------------------
+   16. Menu — title block
+   -------------------------------------------------------------------------- */
+
+.title-block {
+  max-width: min(46rem, 52vw);
+  padding-left: clamp(0px, 3vw, 60px);
+}
+
+.eyebrow {
+  margin: 0 0 clamp(10px, 1vw, 20px);
+  font-size: clamp(10px, 0.62vw, 14px);
+  font-weight: 500;
+  letter-spacing: 0.3em;
+  text-indent: 0.3em;
+  text-transform: uppercase;
+  color: var(--menu-accent);
+  text-shadow: var(--ink-outline-soft);
+}
+
+.game-title {
+  margin: 0;
+  line-height: 0.84;
+}
+
+.title-main {
+  display: block;
+  font-family: var(--font-display);
+  font-size: clamp(84px, 11.5vw, 250px);
+  font-weight: 700;
+  letter-spacing: -0.012em;
+  text-transform: uppercase;
+  color: var(--menu-primary);
+  background: linear-gradient(
+    174deg,
+    var(--sun-core) 0%,
+    var(--menu-primary) 34%,
+    color-mix(in srgb, var(--menu-primary) 72%, var(--concrete-shadow)) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 3px 22px rgba(0, 0, 0, 0.62));
+}
+
+.title-rule {
+  display: block;
+  width: clamp(220px, 26vw, 520px);
+  height: 1px;
+  margin-top: clamp(14px, 1.4vw, 30px);
+  background: linear-gradient(
+    to right,
+    var(--menu-accent) 0 clamp(34px, 3.5vw, 74px),
+    var(--hairline-strong) clamp(34px, 3.5vw, 74px) 100%
+  );
+}
+
+.tagline {
+  max-width: 34ch;
+  margin: clamp(16px, 1.5vw, 30px) 0 clamp(26px, 2.4vw, 48px);
+  font-family: var(--font-body);
+  font-size: clamp(14px, 0.92vw, 21px);
+  font-weight: 400;
+  line-height: 1.55;
+  color: color-mix(in srgb, var(--menu-primary) 74%, transparent);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+}
+
+.menu-note {
+  margin: clamp(20px, 1.8vw, 36px) 0 0;
+  font-size: clamp(10px, 0.6vw, 13px);
+  letter-spacing: 0.12em;
+  color: var(--menu-dim);
+  text-shadow: var(--ink-outline-soft);
+}
+
+.menu-note b {
+  font-weight: 600;
+  color: var(--menu-primary);
+}
+
+.menu-foot {
+  position: absolute;
+  left: var(--pad-l);
+  right: var(--pad-r);
+  bottom: var(--pad-b);
+  display: flex;
+  justify-content: space-between;
+  gap: 2em;
+  font-size: clamp(9px, 0.55vw, 12px);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--menu-primary) 40%, transparent);
+  text-shadow: var(--ink-outline-soft);
+}
+
+.page-title {
+  margin: 0 0 clamp(18px, 1.8vw, 38px);
+  font-family: var(--font-display);
+  font-size: clamp(34px, 3.4vw, 74px);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  line-height: 0.95;
+  color: var(--menu-primary);
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.6);
+}
+
+.page-title--danger {
+  color: var(--menu-danger);
+}
+
+.death-note {
+  margin: 0 0 clamp(20px, 2vw, 40px);
+  font-size: clamp(13px, 0.85vw, 19px);
+  color: color-mix(in srgb, var(--menu-primary) 68%, transparent);
+  text-align: center;
+}
+
+/* --------------------------------------------------------------------------
+   17. Menu — buttons
+   -------------------------------------------------------------------------- */
+
+.menu-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: clamp(8px, 0.7vw, 16px);
+}
+
+.menu-page[data-page='settings'] .menu-actions,
+.menu-page[data-page='controls'] .menu-actions,
+.menu-page[data-page='pause'] .menu-actions,
+.menu-page[data-page='dead'] .menu-actions {
+  justify-content: center;
+}
+
+.menu-page[data-page='pause'] .menu-actions,
+.menu-page[data-page='dead'] .menu-actions {
+  flex-direction: column;
+  align-items: stretch;
+  min-width: min(360px, 80vw);
+}
+
+.btn {
+  --btn-cut: 11px;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.1em;
+  min-width: 10.5em;
+  padding: 0.82em 1.5em 0.78em;
+  font-family: var(--font-display);
+  font-size: clamp(15px, 1.02vw, 23px);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: var(--menu-primary);
+  background: rgba(16, 17, 18, 0.62);
+  border: 0;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  backdrop-filter: blur(6px) saturate(0.9);
+  -webkit-backdrop-filter: blur(6px) saturate(0.9);
+  clip-path: polygon(
+    0 0,
+    100% 0,
+    100% calc(100% - var(--btn-cut)),
+    calc(100% - var(--btn-cut)) 100%,
+    0 100%
+  );
+  box-shadow: inset 0 0 0 1px var(--hairline-strong);
+  transition:
+    background-color var(--t-fast) linear,
+    color var(--t-fast) linear,
+    box-shadow var(--t-fast) linear,
+    transform var(--t-fast) var(--ease-punch);
+}
+
+/* Leading tick: a small accent mark that grows on hover. */
+.btn::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--menu-accent);
+  transform: scaleY(0.28);
+  transform-origin: center;
+  transition: transform 140ms var(--ease-out);
+}
+
+.btn:hover,
+.btn:focus-visible {
+  color: #fff;
+  background: rgba(30, 28, 24, 0.78);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--menu-accent) 72%, transparent);
+}
+
+.btn:hover::before,
+.btn:focus-visible::before {
+  transform: scaleY(1);
+}
+
+.btn:focus-visible {
+  outline: none;
+  box-shadow:
+    inset 0 0 0 2px var(--menu-accent),
+    0 0 0 1px rgba(0, 0, 0, 0.8);
+}
+
+.btn:active {
+  transform: translateY(1px) scale(0.988);
+  background: rgba(44, 39, 30, 0.85);
+  transition-duration: 40ms;
+}
+
+/* `.btn` is a flex container, so text-indent cannot pay back the trailing
+   letter-space. Cancel it on the label instead, or the caption sits left of centre. */
+.btn > span {
+  margin-right: -0.14em;
+}
+
+.btn b {
+  font-family: var(--font-mono);
+  font-size: 0.72em;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--menu-accent);
+  opacity: 0.85;
+}
+
+.btn-primary {
+  color: var(--ink-900);
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--menu-accent) 96%, #fff),
+    var(--menu-accent)
+  );
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--menu-accent) 60%, #fff);
+}
+
+.btn-primary::before {
+  background: var(--ink-900);
+  opacity: 0.35;
+}
+
+.btn-primary:hover,
+.btn-primary:focus-visible {
+  color: var(--ink-900);
+  background: linear-gradient(to bottom, #f0cc63, color-mix(in srgb, var(--menu-accent) 88%, #fff));
+  box-shadow:
+    inset 0 0 0 1px #f5dc90,
+    0 0 26px color-mix(in srgb, var(--menu-accent) 34%, transparent);
+}
+
+.btn-primary b {
+  color: var(--ink-900);
+  opacity: 0.6;
+}
+
+.btn-quiet {
+  color: var(--menu-dim);
+  background: rgba(12, 12, 12, 0.42);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+
+.btn-quiet:hover,
+.btn-quiet:focus-visible {
+  color: var(--menu-primary);
+}
+
+/* --------------------------------------------------------------------------
+   18. Menu — settings
+   -------------------------------------------------------------------------- */
+
+.settings-grid {
+  width: min(920px, 88vw);
+  max-height: min(62vh, 640px);
+  margin-bottom: clamp(18px, 1.8vw, 34px);
+  padding: 0 clamp(6px, 0.8vw, 18px) 0 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--hairline-strong) transparent;
+}
+
+.settings-grid::-webkit-scrollbar {
+  width: 6px;
+}
+
+.settings-grid::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.settings-grid::-webkit-scrollbar-thumb {
+  background: var(--hairline-strong);
+}
+
+.setting-group {
+  margin: clamp(18px, 1.6vw, 32px) 0 clamp(6px, 0.6vw, 12px);
+}
+
+.setting-group:first-child {
+  margin-top: 0;
+}
+
+.setting-group-title {
+  display: flex;
+  align-items: center;
+  gap: 0.9em;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: clamp(10px, 0.6vw, 13px);
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-indent: 0.22em;
+  text-transform: uppercase;
+  color: var(--menu-accent);
+}
+
+.setting-group-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--hairline);
+}
+
+.setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(180px, 300px);
+  align-items: center;
+  gap: clamp(10px, 1.2vw, 26px);
+  padding: clamp(9px, 0.85vw, 17px) 0;
+  border-bottom: 1px solid rgba(232, 228, 220, 0.07);
+  transition: opacity 160ms linear;
+}
+
+.setting:last-child {
+  border-bottom: 0;
+}
+
+.setting-text {
+  min-width: 0;
+}
+
+.setting-label {
+  display: block;
+  font-family: var(--font-body);
+  font-size: clamp(13px, 0.82vw, 18px);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--menu-primary);
+}
+
+.setting-hint,
+.setting-note {
+  margin: 0.22em 0 0;
+  font-size: clamp(11px, 0.66vw, 14px);
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--menu-primary) 48%, transparent);
+}
+
+.setting-note {
+  color: var(--menu-danger);
+}
+
+.setting-value {
+  justify-self: end;
+  min-width: 5.5ch;
+  text-align: right;
+  font-size: clamp(11px, 0.68vw, 15px);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--menu-accent);
+}
+
+.setting-control {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  min-width: 0;
+}
+
+.setting.is-unavailable {
+  opacity: 0.4;
+}
+
+.setting.is-unavailable .setting-control {
+  pointer-events: none;
+}
+
+/* --- Segmented buttons --------------------------------------------------- */
+
+.segment {
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  width: 100%;
+  background: rgba(10, 10, 10, 0.5);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  isolation: isolate;
+}
+
+/* Sliding indicator: --count lives on the group, --index on the row above it. */
+.segment::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: -1;
+  width: calc(100% / var(--count, 1));
+  background: color-mix(in srgb, var(--menu-accent) 88%, transparent);
+  transform: translateX(calc(var(--index, 0) * 100%));
+  transition: transform 190ms var(--ease-out);
+}
+
+.segment-opt {
+  padding: 0.62em 0.5em 0.58em;
+  font-family: var(--font-display);
+  font-size: clamp(12px, 0.76vw, 17px);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-indent: 0.1em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: color-mix(in srgb, var(--menu-primary) 62%, transparent);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  transition: color 120ms linear, background-color 120ms linear;
+}
+
+/* --- Binding rows -------------------------------------------------------- */
+/* One button per action. It reads as a value until clicked, then becomes the capture target;
+   `is-listening` borrows the accent so "the game is waiting for your key" is unmissable. */
+.bind-btn {
+  min-width: 11em;
+  padding: 0.62em 0.9em 0.58em;
+  font-family: var(--font-display);
+  font-size: clamp(12px, 0.76vw, 17px);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-indent: 0.1em;
+  text-transform: uppercase;
+  line-height: 1;
+  text-align: center;
+  color: var(--menu-primary);
+  background: color-mix(in srgb, var(--menu-primary) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--menu-primary) 26%, transparent);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  transition: color 120ms linear, background-color 120ms linear, border-color 120ms linear;
+}
+
+.bind-btn:hover,
+.bind-btn:focus-visible {
+  background: color-mix(in srgb, var(--menu-primary) 16%, transparent);
+  border-color: color-mix(in srgb, var(--menu-primary) 48%, transparent);
+  outline: none;
+}
+
+.bind-btn.is-listening {
+  color: var(--menu-accent);
+  border-color: color-mix(in srgb, var(--menu-accent) 70%, transparent);
+  background: color-mix(in srgb, var(--menu-accent) 12%, transparent);
+  animation: bind-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes bind-pulse {
+  50% { border-color: color-mix(in srgb, var(--menu-accent) 28%, transparent); }
+}
+
+.segment-opt + .segment-opt {
+  box-shadow: inset 1px 0 0 var(--hairline);
+}
+
+.segment-opt:hover {
+  color: var(--menu-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.segment-opt.is-selected {
+  color: var(--ink-900);
+}
+
+.segment-opt:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--menu-accent);
+  color: var(--menu-primary);
+}
+
+.segment-opt.is-selected:focus-visible {
+  color: var(--ink-900);
+  box-shadow: inset 0 0 0 2px var(--ink-900);
+}
+
+/* --- Range sliders ------------------------------------------------------- */
+
+.slider {
+  width: 100%;
+  height: 22px;
+  margin: 0;
+  background: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.slider:focus-visible {
+  outline: none;
+}
+
+.slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 0;
+  background: linear-gradient(
+    to right,
+    var(--menu-accent) 0 calc(var(--fill, 0) * 100%),
+    rgba(232, 228, 220, 0.16) calc(var(--fill, 0) * 100%) 100%
+  );
+  box-shadow: inset 0 0 0 1px rgba(6, 5, 4, 0.5);
+}
+
+.slider::-moz-range-track {
+  height: 4px;
+  border-radius: 0;
+  background: linear-gradient(
+    to right,
+    var(--menu-accent) 0 calc(var(--fill, 0) * 100%),
+    rgba(232, 228, 220, 0.16) calc(var(--fill, 0) * 100%) 100%
+  );
+  box-shadow: inset 0 0 0 1px rgba(6, 5, 4, 0.5);
+}
+
+.slider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 8px;
+  height: 18px;
+  margin-top: -7px;
+  border: 0;
+  border-radius: 0;
+  background: var(--menu-primary);
+  box-shadow: 0 0 0 1px rgba(6, 5, 4, 0.8), 0 2px 6px rgba(0, 0, 0, 0.5);
+  transition: background-color 100ms linear, transform 100ms var(--ease-punch);
+}
+
+.slider::-moz-range-thumb {
+  width: 8px;
+  height: 18px;
+  border: 0;
+  border-radius: 0;
+  background: var(--menu-primary);
+  box-shadow: 0 0 0 1px rgba(6, 5, 4, 0.8), 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.slider:hover::-webkit-slider-thumb {
+  background: #fff;
+  transform: scaleY(1.12);
+}
+
+.slider:hover::-moz-range-thumb {
+  background: #fff;
+}
+
+.slider:focus-visible::-webkit-slider-thumb {
+  background: var(--menu-accent);
+  box-shadow: 0 0 0 2px var(--menu-accent), 0 0 0 4px rgba(6, 5, 4, 0.85);
+}
+
+.slider:focus-visible::-moz-range-thumb {
+  background: var(--menu-accent);
+  box-shadow: 0 0 0 2px var(--menu-accent), 0 0 0 4px rgba(6, 5, 4, 0.85);
+}
+
+.slider:active::-webkit-slider-thumb {
+  transform: scaleY(0.94);
+}
+
+/* --- Switches ------------------------------------------------------------ */
+
+.switch {
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  line-height: 0;
+}
+
+.switch-track {
+  position: relative;
+  display: block;
+  width: 46px;
+  height: 22px;
+  background: rgba(10, 10, 10, 0.55);
+  box-shadow: inset 0 0 0 1px var(--hairline-strong);
+  transition: background-color 150ms linear, box-shadow 150ms linear;
+}
+
+.switch-knob {
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  display: block;
+  width: 16px;
+  height: 16px;
+  background: color-mix(in srgb, var(--menu-primary) 55%, transparent);
+  translate: calc(var(--on, 0) * 24px) 0;
+  transition: translate 170ms var(--ease-out), background-color 150ms linear;
+}
+
+.switch.is-on .switch-track,
+.setting.is-on .switch-track {
+  background: color-mix(in srgb, var(--menu-accent) 26%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--menu-accent) 70%, transparent);
+}
+
+.switch.is-on .switch-knob,
+.setting.is-on .switch-knob {
+  background: var(--menu-accent);
+}
+
+.switch:hover .switch-track {
+  box-shadow: inset 0 0 0 1px var(--menu-primary);
+}
+
+.switch:focus-visible .switch-track {
+  outline: 2px solid var(--menu-accent);
+  outline-offset: 2px;
+}
+
+.switch:active .switch-knob {
+  transform: scaleX(1.25);
+}
+
+/* --- Crosshair colour swatches ------------------------------------------ */
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  padding: 0.4em 0.6em;
+  font-family: var(--font-mono);
+  font-size: clamp(10px, 0.6vw, 13px);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--menu-primary) 62%, transparent);
+  background: rgba(10, 10, 10, 0.45);
+  border: 0;
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  transition: color 120ms linear, box-shadow 120ms linear;
+}
+
+.swatch-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--swatch, var(--menu-primary));
+  box-shadow: 0 0 0 1px rgba(6, 5, 4, 0.8), 0 0 7px var(--swatch, var(--menu-primary));
+}
+
+.swatch:hover {
+  color: var(--menu-primary);
+}
+
+.swatch.is-selected {
+  color: var(--menu-primary);
+  box-shadow: inset 0 0 0 1px var(--menu-accent);
+}
+
+.swatch:focus-visible {
+  outline: 2px solid var(--menu-accent);
+  outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   19. Menu — controls reference
+   -------------------------------------------------------------------------- */
+
+.controls-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  gap: clamp(4px, 0.5vw, 12px) clamp(20px, 2.4vw, 52px);
+  width: min(880px, 88vw);
+  margin: 0 0 clamp(22px, 2.2vw, 44px);
+}
+
+.controls-list > div {
+  display: grid;
+  grid-template-columns: minmax(9.5em, auto) 1fr;
+  align-items: baseline;
+  gap: 1.2em;
+  padding: 0.5em 0;
+  border-bottom: 1px solid rgba(232, 228, 220, 0.07);
+}
+
+.controls-list dt {
+  font-size: clamp(11px, 0.68vw, 15px);
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--menu-accent);
+}
+
+.controls-list dd {
+  margin: 0;
+  font-size: clamp(12px, 0.78vw, 17px);
+  color: color-mix(in srgb, var(--menu-primary) 76%, transparent);
+}
+
+/* --------------------------------------------------------------------------
+   20. Loading screen
+   -------------------------------------------------------------------------- */
+
+.loading {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 46%, #17140f 0%, var(--ink-900) 72%),
+    var(--ink-900);
+  transition: opacity 640ms var(--ease-out), visibility 0s linear 640ms;
+}
+
+.loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: var(--grain-tile);
+  background-size: 180px 180px;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+}
+
+.loading.is-done {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.loading-inner {
+  width: min(420px, 76vw);
+  text-align: center;
+}
+
+.loading-title {
+  margin: 0 0 clamp(16px, 1.6vw, 30px);
+  font-family: var(--font-display);
+  font-size: clamp(28px, 2.4vw, 52px);
+  font-weight: 700;
+  letter-spacing: 0.26em;
+  text-indent: 0.26em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: var(--hud-primary);
+  opacity: 0.94;
+}
+
+.loading-bar {
+  position: relative;
+  height: 2px;
+  background: rgba(232, 228, 220, 0.12);
+  overflow: hidden;
+}
+
+.loading-bar > i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(to right, var(--hud-accent), var(--sun));
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 320ms var(--ease-out);
+  will-change: transform;
+}
+
+.loading-label {
+  margin: clamp(12px, 1.1vw, 22px) 0 0;
+  font-size: clamp(10px, 0.58vw, 13px);
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-indent: 0.2em;
+  text-transform: uppercase;
+  color: var(--hud-dim);
+}
+
+.loading-label::after {
+  content: '';
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  margin-left: 0.6em;
+  vertical-align: 0.06em;
+  background: var(--hud-accent);
+  animation: load-blink 1.1s steps(2, jump-none) infinite;
+}
+
+@keyframes load-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.1;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   21. Error card
+   -------------------------------------------------------------------------- */
+
+.error-card {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 60;
+  width: min(620px, 90vw);
+  max-height: 76vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: clamp(20px, 2vw, 36px);
+  background: rgba(14, 12, 11, 0.95);
+  border-left: 3px solid var(--hud-danger);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.error-card h2 {
+  margin: 0 0 0.55em;
+  font-family: var(--font-display);
+  font-size: clamp(22px, 1.7vw, 34px);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: var(--hud-danger);
+}
+
+.error-card p {
+  margin: 0 0 1.1em;
+  font-size: clamp(13px, 0.8vw, 16px);
+  line-height: 1.6;
+  color: color-mix(in srgb, var(--hud-primary) 76%, transparent);
+}
+
+.error-card ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: clamp(11px, 0.66vw, 14px);
+  line-height: 1.55;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--hud-primary) 62%, transparent);
+}
+
+.error-card li {
+  padding: 0.5em 0 0.5em 1.1em;
+  border-top: 1px solid rgba(232, 228, 220, 0.09);
+  text-indent: -1.1em;
+  word-break: break-word;
+}
+
+.error-card li::before {
+  content: '× ';
+  color: var(--hud-danger);
+}
+
+/* --------------------------------------------------------------------------
+   22. Back link
+   -------------------------------------------------------------------------- */
+
+.back-link {
+  position: fixed;
+  left: var(--pad-l);
+  top: var(--pad-t);
+  z-index: 35;
+  padding: 0.45em 0.9em 0.42em;
+  font-family: var(--font-mono);
+  font-size: clamp(10px, 0.6vw, 13px);
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--menu-dim);
+  background: rgba(10, 10, 10, 0.42);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  transition: color var(--t-fast) linear, box-shadow var(--t-fast) linear, opacity var(--t-ui) linear;
+}
+
+.back-link:hover,
+.back-link:focus-visible {
+  color: var(--menu-primary);
+  box-shadow: inset 0 0 0 1px var(--hairline-strong);
+}
+
+/* In play the chrome goes away entirely. */
+body.menu-closed .back-link {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+   23. Adaptation
+   -------------------------------------------------------------------------- */
+
+/* Ultrawide: stop the title running away from the eye and cap the HUD spread. */
+@media (min-width: 2600px) {
+  .title-block {
+    max-width: 40vw;
+  }
+
+  .compass {
+    width: clamp(520px, 24vw, 760px);
+  }
+}
+
+@media (max-width: 1100px) {
+  .setting {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 10px;
+  }
+
+  .setting-control {
+    grid-column: 1 / -1;
+    justify-content: stretch;
+  }
+
+  .setting-control > .segment,
+  .setting-control > .slider {
+    width: 100%;
+  }
+
+  .title-block {
+    max-width: 92vw;
+    padding-left: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .minimap,
+  .compass,
+  .debug-panel {
+    display: none;
+  }
+
+  /* The strip is gone, so its backing has to go with it or it reads as a smudge
+     over nothing. The corner wash stays; SCORE / KILLS are still there. */
+  .hud {
+    --scrim-compass: none;
+  }
+
+  .health {
+    width: min(46vw, 220px);
+  }
+}
+
+/* Coarse pointers get bigger hit targets; the game itself is desktop-first. */
+@media (hover: none) and (pointer: coarse) {
+  .btn {
+    padding: 1em 1.6em;
+  }
+
+  .segment-opt {
+    padding: 0.85em 0.5em;
+  }
+
+  body.menu-closed {
+    cursor: auto;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   24. Reduced motion — keep every state readable, drop the decoration
+   -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  body.ashfall::after,
+  .hud-scan,
+  .hud.is-low-health .hud-lowhealth,
+  .health.is-critical [data-health-value],
+  .weapon-block.is-empty .ammo-mag,
+  .loading-label::after,
+  .menu-page.is-active,
+  .streak {
+    animation: none !important;
+  }
+
+  /* The hitmarker punch is feedback, not decoration, so it stays — but shortened
+     and without the rotation. */
+  .hitmarker.is-hit,
+  .hitmarker.is-kill {
+    animation-duration: 90ms;
+    animation-name: hitmarker-punch-flat;
+  }
+
+  body.menu-open::after {
+    opacity: calc(var(--grade-grain) * 6);
+  }
+
+  *,
+  *::before,
+  *::after {
+    transition-duration: 1ms !important;
+  }
+}
+
+@keyframes hitmarker-punch-flat {
+  0% {
+    transform: scale(0.78);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   25. Forced colours — the HUD must survive a high-contrast mode
+   -------------------------------------------------------------------------- */
+
+@media (forced-colors: active) {
+  .btn,
+  .segment-opt,
+  .swatch,
+  .switch-track {
+    forced-color-adjust: none;
+    border: 1px solid CanvasText;
+  }
+
+  /* Forced colours repaints the type against a system background, so the scrims
+     have nothing left to do and would only muddy it. */
+  .hud-scan,
+  .hud::before,
+  .kf-row::before,
+  body.ashfall::after,
+  .menu::after {
+    display: none;
+  }
+}

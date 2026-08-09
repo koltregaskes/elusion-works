@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Abyssal Relay | Hadal Signal Observatory</title>
+    <meta
+      name="description"
+      content="Descend through the hadal zone, tune an impossible transmission, and follow the signal beneath the last mapped depth."
+    />
+    <meta name="theme-color" content="#050706" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data:; media-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests"
+    />
+    <meta property="og:title" content="Abyssal Relay" />
+    <meta property="og:description" content="The ocean answered. Descend, tune, decode." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://elusionworks.com/demos/abyssal-relay/" />
+    <meta property="og:image" content="https://elusionworks.com/demos/abyssal-relay/thumbnail.webp" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href="https://elusionworks.com/demos/abyssal-relay/" />
+    <link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="preload" as="image" href="assets/abyssal-relay-poster.webp" type="image/webp" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to the signal</a>
+
+    <div class="sonar-cursor" aria-hidden="true"><span></span></div>
+
+    <header class="site-header" data-header>
+      <a class="wordmark" href="#top" aria-label="Abyssal Relay home">
+        <span class="wordmark-mark" aria-hidden="true"></span>
+        <span>AR / 09</span>
+      </a>
+      <p class="header-status"><span aria-hidden="true"></span> Relay online</p>
+      <button
+        class="sound-toggle"
+        type="button"
+        data-sound-toggle
+        aria-pressed="false"
+        aria-label="Enable sonar audio"
+      >
+        <span class="sound-toggle-bars" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-sound-label>Sonar audio off</span>
+      </button>
+    </header>
+
+    <main id="main-content">
+      <section class="hero" id="top" aria-labelledby="hero-title">
+        <video
+          class="hero-video"
+          data-hero-video
+          autoplay
+          muted
+          loop
+          playsinline
+          preload="metadata"
+          poster="assets/abyssal-relay-poster.webp"
+          aria-label="A research submersible crossing an illuminated hadal trench"
+        >
+          <source src="assets/abyssal-relay-loop.mp4?v=motion2" type="video/mp4" />
+        </video>
+        <canvas class="hero-particles" data-particle-canvas aria-hidden="true"></canvas>
+        <div class="hero-shade" aria-hidden="true"></div>
+
+        <div class="hero-copy">
+          <p class="kicker reveal-line">Hadal signal observatory / North Atlantic</p>
+          <h1 id="hero-title" class="hero-title" aria-label="Abyssal Relay">
+            <span aria-hidden="true">Abyssal</span>
+            <span aria-hidden="true">Relay</span>
+          </h1>
+          <p class="hero-statement reveal-line">The ocean answered.</p>
+          <a class="descent-link reveal-line" href="#descent">
+            <span>Begin descent</span>
+            <span class="descent-link-icon" aria-hidden="true">↓</span>
+          </a>
+        </div>
+
+        <div class="hero-telemetry" aria-label="Current expedition telemetry">
+          <div><span>Vessel</span><strong>HADAL / 09</strong></div>
+          <div><span>Target</span><strong>47.20 kHz</strong></div>
+          <div><span>Depth</span><strong>10,943 m</strong></div>
+        </div>
+
+        <p class="scroll-cue" aria-hidden="true"><span></span> Scroll to descend</p>
+      </section>
+
+      <section class="descent" id="descent" data-descent aria-labelledby="descent-title">
+        <div class="descent-sticky">
+          <canvas class="descent-canvas" data-descent-canvas aria-hidden="true"></canvas>
+          <div class="depth-ruler" aria-hidden="true">
+            <span>0</span><span>2,500</span><span>5,000</span><span>7,500</span><span>10,000</span>
+          </div>
+
+          <div class="descent-heading">
+            <p class="kicker">Expedition 09 / Live descent</p>
+            <h2 id="descent-title">Below the<br />last map.</h2>
+          </div>
+
+          <div class="depth-readout" aria-live="off">
+            <span data-depth>00000</span>
+            <small>metres</small>
+          </div>
+
+          <div class="submersible" data-submersible aria-hidden="true">
+            <img
+              class="submersible-model"
+              src="assets/hadal-09-submersible.webp"
+              alt=""
+              width="2000"
+              height="1125"
+              decoding="async"
+            />
+            <span class="sub-light"></span>
+            <span class="sub-pulse"></span>
+          </div>
+
+          <div class="descent-chapters" data-chapters>
+            <article class="is-active" data-at="0.08">
+              <span>01 / Sunlight terminus</span>
+              <p>Colour leaves first. Pressure takes its place.</p>
+            </article>
+            <article data-at="0.37">
+              <span>02 / Midnight water</span>
+              <p>Every lamp below us turns toward the signal.</p>
+            </article>
+            <article data-at="0.66">
+              <span>03 / Hadal threshold</span>
+              <p>A repeating structure appears inside the noise.</p>
+            </article>
+            <article data-at="0.88">
+              <span>04 / Relay field</span>
+              <p>The transmission is older than the trench.</p>
+            </article>
+          </div>
+
+          <div class="descent-progress" aria-hidden="true"><span data-progress></span></div>
+        </div>
+      </section>
+
+      <section class="tuner" id="tuner" aria-labelledby="tuner-title">
+        <div class="tuner-intro">
+          <p class="kicker">Transmission 47-A</p>
+          <h2 id="tuner-title">Find the voice<br />inside the noise.</h2>
+          <p>Move through the band. The relay will hold when your frequency matches the pulse.</p>
+        </div>
+
+        <div class="instrument" data-instrument>
+          <div class="instrument-topline">
+            <p><span class="status-light" data-lock-light></span><span data-lock-copy>Searching spectrum</span></p>
+            <output for="frequency" data-frequency>41.00 kHz</output>
+          </div>
+
+          <canvas class="waveform" data-waveform aria-label="Live signal waveform"></canvas>
+
+          <div class="frequency-control">
+            <label for="frequency">Hydrophone frequency</label>
+            <input
+              id="frequency"
+              type="range"
+              min="38"
+              max="54"
+              value="41"
+              step="0.01"
+              data-frequency-control
+            />
+            <div class="frequency-scale" aria-hidden="true">
+              <span>38</span><span>42</span><span>46</span><span>50</span><span>54</span>
+            </div>
+          </div>
+
+          <div class="signal-transcript" data-transcript aria-live="polite">
+            <span>Recovered fragment / cycle 7,004</span>
+            <p>YOU ARE NOT DESCENDING. YOU ARE RETURNING.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="revelation" aria-labelledby="revelation-title">
+        <div class="revelation-image" aria-hidden="true"></div>
+        <div class="revelation-grid" aria-hidden="true"></div>
+        <div class="revelation-copy">
+          <p class="kicker">Object 47 / classification withdrawn</p>
+          <h2 id="revelation-title">The ocean<br />remembered us.</h2>
+          <p>
+            At 10,943 metres, HADAL / 09 found a machine transmitting our oldest navigation sequence back toward the surface.
+          </p>
+        </div>
+        <dl class="object-data">
+          <div><dt>Material</dt><dd>Unknown ceramic lattice</dd></div>
+          <div><dt>Signal age</dt><dd>At least 12,800 years</dd></div>
+          <div><dt>Response</dt><dd>Awaiting operator</dd></div>
+        </dl>
+      </section>
+
+      <section class="finale" aria-labelledby="finale-title">
+        <p class="kicker">Expedition 10 / Recruitment open</p>
+        <h2 id="finale-title">Follow the<br /><em>signal.</em></h2>
+        <button class="finale-action" type="button" data-restart>
+          <span>Replay the descent</span>
+          <span aria-hidden="true">↗</span>
+        </button>
+        <a class="back-link" href="../">Return to Elusion Works demos</a>
+        <p class="finale-coordinate">54° 14' 31" N / 18° 26' 02" W</p>
+      </section>
+    </main>
+
+    <audio
+      data-signal-audio
+      src="assets/abyssal-relay-sonar.mp3"
+      preload="metadata"
+      loop
+      aria-hidden="true"
+    ></audio>
+  </body>
+</html>

@@ -57,8 +57,11 @@ function setupThemeToggle() {
 
   const button = document.querySelector("[data-theme-toggle]");
   if (!button) return;
+  let transitionInFlight = false;
 
-  button.addEventListener("click", () => {
+  button.addEventListener("click", async () => {
+    if (transitionInFlight) return;
+
     const next = root.getAttribute("data-theme") === "light" ? "dark" : "light";
 
     if (!document.startViewTransition || reducedMotion.matches) {
@@ -74,8 +77,12 @@ function setupThemeToggle() {
       Math.max(cy, window.innerHeight - cy),
     );
 
-    const transition = document.startViewTransition(() => applyTheme(next));
-    transition.ready.then(() => {
+    transitionInFlight = true;
+    button.setAttribute("aria-busy", "true");
+
+    try {
+      const transition = document.startViewTransition(() => applyTheme(next));
+      await transition.ready;
       root.animate(
         [
           { clipPath: `circle(0 at ${cx}px ${cy}px)` },
@@ -87,7 +94,13 @@ function setupThemeToggle() {
           pseudoElement: "::view-transition-new(root)",
         },
       );
-    });
+      await transition.finished;
+    } catch {
+      applyTheme(next);
+    } finally {
+      transitionInFlight = false;
+      button.removeAttribute("aria-busy");
+    }
   });
 }
 
@@ -247,37 +260,7 @@ function setupCountUps(stats) {
     const fallback = Number(counter.getAttribute("data-count-to") ?? "0");
     const target = Number(values[index] ?? fallback);
     counter.setAttribute("data-count-to", String(target));
-
-    const run = () => {
-      if (reducedMotion.matches) {
-        counter.textContent = String(target);
-        return;
-      }
-
-      const start = performance.now();
-      const duration = 1100;
-      const tick = (time) => {
-        const progress = Math.min(1, (time - start) / duration);
-        const eased = 1 - Math.pow(1 - progress, 3);
-        counter.textContent = String(Math.round(target * eased));
-        if (progress < 1) requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    };
-
-    if ("IntersectionObserver" in window) {
-      let started = false;
-      const observer = new IntersectionObserver(([entry]) => {
-        if (entry.isIntersecting && !started) {
-          started = true;
-          run();
-          observer.disconnect();
-        }
-      }, { threshold: 0.35 });
-      observer.observe(counter);
-    } else {
-      run();
-    }
+    counter.textContent = String(target);
   });
 }
 
@@ -404,9 +387,11 @@ async function boot() {
   setupMagnetics();
   setupPlateTilt();
 
-  const feed = await loadFeed();
-  renderTicker(feed.ticker);
-  setupCountUps(feed.stats);
+  if (document.querySelector("[data-ticker], [data-count-to]")) {
+    const feed = await loadFeed();
+    renderTicker(feed.ticker);
+    setupCountUps(feed.stats);
+  }
 }
 
 boot();

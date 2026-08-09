@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>laptop_teardown.step — exploded views</title>
+<link rel="stylesheet" href="ui.css" />
+<style>
+  #panel { width: 300px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="topbar">
+  <div class="crumbs">
+    <a href="index.html">workspaces</a><span class="sep">›</span>
+    <a href="index.html">exploded-views</a><span class="sep">›</span>
+    <span class="here">laptop_teardown.step</span>
+  </div>
+  <div class="spacer"></div>
+  <span class="ver">0.4.0</span>
+  <a class="iconbtn" href="solar.html" title="Solar system demo">🪐</a>
+  <a class="iconbtn" href="engine.html" title="Turbofan engine demo">🛩️</a>
+  <button class="iconbtn" id="themeBtn" title="Toggle dark / light">◐</button>
+</div>
+
+<div id="hint">left-drag orbit · right-drag pan · scroll zoom · click a part</div>
+
+<div id="panel">
+  <div class="sec">Animation</div>
+  <select id="animSel">
+    <option value="teardown">Full teardown</option>
+    <option value="hinge">Lid hinge open / close</option>
+    <option value="fans">Fan spin only</option>
+  </select>
+  <div class="btnrow">
+    <button class="btn primary" id="playBtn">▶ Play</button>
+    <button class="btn" id="resetBtn">↺ Reset</button>
+  </div>
+  <div class="sliderrow">
+    <div class="top"><label>Time</label><span class="val" id="timeVal">0.00s</span></div>
+    <input type="range" id="timeSlider" min="0" max="10" step="0.01" value="0" />
+  </div>
+  <div class="sliderrow">
+    <div class="top"><label>Speed</label><span class="val" id="speedVal">1.00x</span></div>
+    <input type="range" id="speedSlider" min="0.1" max="3" step="0.05" value="1" />
+  </div>
+  <div class="sliderrow">
+    <div class="top"><label>Explode</label><span class="val" id="explodeVal">0.00</span></div>
+    <input type="range" id="explodeSlider" min="0" max="1" step="0.005" value="0" />
+  </div>
+
+  <div class="sec">Parts</div>
+  <div id="partToggles"></div>
+  <div class="row">
+    <label>Highlight silicon</label>
+    <span class="switch"><input type="checkbox" id="hlSilicon" /><span class="tr"></span></span>
+  </div>
+
+  <div class="sec">Display</div>
+  <div class="row" style="display:block; padding-top:2px;">
+    <label style="display:block; margin-bottom:5px;">Style</label>
+    <select id="styleSel">
+      <option value="solid">Solid</option>
+      <option value="xray">X-ray</option>
+      <option value="wire">Wireframe</option>
+    </select>
+  </div>
+  <div class="row">
+    <label>Edge lines</label>
+    <span class="switch"><input type="checkbox" id="tEdges" checked /><span class="tr"></span></span>
+  </div>
+  <div class="row">
+    <label>Auto-rotate</label>
+    <span class="switch"><input type="checkbox" id="autoRotate" /><span class="tr"></span></span>
+  </div>
+
+  <div class="sec">Clip</div>
+  <div class="sliderrow">
+    <div class="top"><label>x</label><span class="val" id="clipXVal">170 mm</span></div>
+    <input type="range" id="clipX" min="-17" max="17" step="0.1" value="17" />
+  </div>
+  <div class="sliderrow">
+    <div class="top"><label>y</label><span class="val" id="clipYVal">320 mm</span></div>
+    <input type="range" id="clipY" min="-5" max="32" step="0.05" value="32" />
+  </div>
+  <div class="sliderrow">
+    <div class="top"><label>z</label><span class="val" id="clipZVal">120 mm</span></div>
+    <input type="range" id="clipZ" min="-12" max="12" step="0.1" value="12" />
+  </div>
+
+  <div class="btnrow" style="margin-top:10px;">
+    <button class="btn" id="copyBtn">⧉ Copy parameters</button>
+    <button class="btn" id="pasteBtn">⇪ Paste</button>
+  </div>
+</div>
+
+<div id="infochip">
+  <h4><span class="dot"></span><span id="chipName"></span></h4>
+  <p id="chipInfo"></p>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+/* ---------- renderer / scene ---------- */
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.localClippingEnabled = true;
+app.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.1, 600);
+camera.position.set(21, 14, 29);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 2.5, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.screenSpacePanning = true;
+controls.maxDistance = 150;
+controls.minDistance = 4;
+
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x556070, 0.4));
+const dlight = new THREE.DirectionalLight(0xffffff, 1.0);
+dlight.position.set(18, 32, 14);
+scene.add(dlight);
+
+/* ---------- clip planes ---------- */
+const clipX = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 17);
+const clipY = new THREE.Plane(new THREE.Vector3(0, -1, 0), 32);
+const clipZ = new THREE.Plane(new THREE.Vector3(0, 0, -1), 12);
+const CLIPS = [clipX, clipY, clipZ];
+
+/* ---------- materials ---------- */
+const EDGE_THEME = {
+  light: { color: 0x2b323d, opacity: 0.45 },
+  dark:  { color: 0x0c1015, opacity: 0.58 },
+};
+const baseEdgeMat = new THREE.LineBasicMaterial({ color: EDGE_THEME.dark.color, transparent: true, opacity: EDGE_THEME.dark.opacity });
+
+const M = (color, rough = 0.5, metal = 0.1, extra = {}) =>
+  new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal, ...extra });
+
+const mats = {
+  caseAl:  M(0xc6ccd4, 0.42, 0.6),
+  caseIn:  M(0xb4bbc4, 0.5, 0.45),
+  deckAl:  M(0xcfd5dc, 0.42, 0.6),
+  dark:    M(0x2a2f37, 0.55, 0.2),
+  key:     M(0x32373f, 0.62, 0.12),
+  keyWell: M(0x9aa1ab, 0.6, 0.2),
+  pad:     M(0xdde1e6, 0.18, 0.45),
+  pcb:     M(0x1f6440, 0.55, 0.1),
+  pcbDark: M(0x174a30, 0.55, 0.1),
+  chip:    M(0x23272e, 0.4, 0.3),
+  chipLid: M(0xaeb6c0, 0.32, 0.75),
+  shield:  M(0xb9c0c8, 0.38, 0.7),
+  copper:  M(0xd97f2e, 0.4, 0.8),
+  accent:  M(0xff7a1a, 0.45, 0.3),
+  fin:     M(0xc3c9d1, 0.4, 0.7),
+  fanBody: M(0x343a43, 0.55, 0.2),
+  blade:   M(0x4a515b, 0.5, 0.3),
+  batt:    M(0x474e58, 0.5, 0.15),
+  battLbl: M(0x8a92a0, 0.6, 0.05),
+  spk:     M(0x3a4049, 0.6, 0.1),
+  ram:     M(0x1a5236, 0.5, 0.1),
+  port:    M(0x6a7280, 0.4, 0.6),
+  hingeM:  M(0x8a919b, 0.4, 0.7),
+  cableA:  M(0xd9dde2, 0.7, 0),
+  cableB:  M(0x2a2f37, 0.7, 0),
+  ribbon:  M(0xd0a96a, 0.6, 0),
+  pad2:    M(0xff9c4a, 0.7, 0),
+  white:   M(0xe8ebef, 0.5, 0.2),
+};
+
+/* ---------- helpers ---------- */
+function withEdges(mesh, threshold = 22) {
+  const e = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, threshold), baseEdgeMat);
+  e.raycast = () => {};
+  mesh.add(e);
+  return mesh;
+}
+function box(w, h, d, mat, x = 0, y = 0, z = 0, edges = true) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z);
+  return edges ? withEdges(m) : m;
+}
+function cyl(rt, rb, h, mat, x = 0, y = 0, z = 0, seg = 28, edges = true) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat);
+  m.position.set(x, y, z);
+  return edges ? withEdges(m) : m;
+}
+function roundedShape(w, d, r) {
+  const s = new THREE.Shape(); const x = w / 2, z = d / 2;
+  s.moveTo(-x + r, -z);
+  s.lineTo(x - r, -z); s.absarc(x - r, -z + r, r, -Math.PI / 2, 0);
+  s.lineTo(x, z - r);  s.absarc(x - r, z - r, r, 0, Math.PI / 2);
+  s.lineTo(-x + r, z); s.absarc(-x + r, z - r, r, Math.PI / 2, Math.PI);
+  s.lineTo(-x, -z + r); s.absarc(-x + r, -z + r, r, Math.PI, 1.5 * Math.PI);
+  return s;
+}
+function plate(w, d, h, r, mat, x = 0, y = 0, z = 0) {
+  const g = new THREE.ExtrudeGeometry(roundedShape(w, d, r), { depth: h, bevelEnabled: false, curveSegments: 10 });
+  g.rotateX(-Math.PI / 2);
+  const m = new THREE.Mesh(g, mat);
+  m.position.set(x, y, z);
+  return withEdges(m, 30);
+}
+function plateRing(w, d, r, wall, h, mat, x = 0, y = 0, z = 0) {
+  const s = roundedShape(w, d, r);
+  s.holes.push(roundedShape(w - wall * 2, d - wall * 2, Math.max(0.15, r - wall)));
+  const g = new THREE.ExtrudeGeometry(s, { depth: h, bevelEnabled: false, curveSegments: 10 });
+  g.rotateX(-Math.PI / 2);
+  const m = new THREE.Mesh(g, mat);
+  m.position.set(x, y, z);
+  return withEdges(m, 30);
+}
+function tube(points, radius, mat) {
+  const curve = new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(...p)));
+  return new THREE.Mesh(new THREE.TubeGeometry(curve, 40, radius, 10, false), mat);
+}
+
+/* ---------- parts ----------
+   Real ultrabook proportions, units = cm. Base 31.5 × 22 × ~1.6 closed.
+   `order` = teardown stagger order, TOP-DOWN (0 lifts first).
+   Explode offsets preserve the physical stacking order so parts never
+   pass through each other. */
+const parts = [];
+function addPart(name, info, explode, order, build) {
+  const g = new THREE.Group();
+  build(g);
+  g.userData = { name, info, explode: new THREE.Vector3(...explode), order, base: g.position.clone(), visible: true };
+  scene.add(g);
+  parts.push(g);
+  return g;
+}
+
+/* Screws — bottom, leave last */
+addPart('Screws (8× Torx T5)', 'Eight Torx screws. No glue, no snap-clips — the whole machine opens with one driver.', [0, -3.5, 0], 14, g => {
+  const spots = [[-13.4, -9.6], [0, -9.9], [13.4, -9.6], [-14.6, 0], [14.6, 0], [-13.4, 9.6], [0, 9.9], [13.4, 9.6]];
+  for (const [x, z] of spots) {
+    g.add(cyl(0.22, 0.22, 0.1, mats.shield, x, -0.2, z, 16));
+    g.add(cyl(0.12, 0.12, 0.3, mats.dark, x, 0.0, z, 10));
+  }
+});
+
+/* Bottom case */
+addPart('Bottom case', 'One-piece CNC aluminium bottom: 2.2 mm plate, machined rim, rubber feet, rear exhaust slots.', [0, -2.4, 0], 13, g => {
+  g.add(plate(31.5, 22, 0.22, 1.4, mats.caseAl, 0, 0, 0));
+  g.add(plateRing(31.1, 21.6, 1.25, 0.4, 1.05, mats.caseIn, 0, 0.22, 0));
+  for (const [x, z] of [[-12.8, -8.8], [12.8, -8.8], [-12.8, 8.8], [12.8, 8.8]])
+    g.add(cyl(0.7, 0.7, 0.12, mats.dark, x, -0.06, z, 18));
+  for (let i = -8; i <= 8; i++)
+    g.add(box(0.8, 0.16, 0.5, mats.dark, i * 1.05, 0.85, -10.65));
+  // screw bosses
+  for (const [x, z] of [[-13.4, -9.6], [13.4, -9.6], [-13.4, 9.6], [13.4, 9.6]])
+    g.add(cyl(0.3, 0.3, 0.5, mats.caseIn, x, 0.45, z, 12));
+});
+
+/* Battery */
+addPart('Battery (62 Wh)', 'Four flat lithium-polymer cells, 5.5 mm thin, with stretch-release adhesive pull tabs.', [0, -1.3, 0], 12, g => {
+  for (const x of [-8.55, -2.85, 2.85, 8.55]) g.add(box(5.45, 0.5, 6.8, mats.batt, x, 0.6, 5.3));
+  g.add(box(22.4, 0.04, 6.0, mats.battLbl, 0, 0.87, 5.3));
+  g.add(box(1.3, 0.22, 0.6, mats.dark, 0, 0.55, 1.75));        // connector
+  g.add(box(0.55, 0.03, 1.3, mats.accent, -5.7, 0.89, 8.2));   // pull tabs
+  g.add(box(0.55, 0.03, 1.3, mats.accent, 5.7, 0.89, 8.2));
+  g.add(cyl(0.14, 0.14, 0.12, mats.shield, -11.5, 0.4, 2.3, 10)); // mount screws
+  g.add(cyl(0.14, 0.14, 0.12, mats.shield, 11.5, 0.4, 2.3, 10));
+});
+
+/* Speakers */
+addPart('Speakers', 'Slim side-firing drivers in sealed enclosures, squeezed between the battery and the chassis wall.', [0, -1.1, 0], 11, g => {
+  for (const s of [-1, 1]) {
+    g.add(box(1.5, 0.75, 5.2, mats.spk, s * 13.55, 0.78, 4.5));
+    g.add(box(1.1, 0.04, 4.4, mats.dark, s * 13.55, 1.17, 4.5));
+    g.add(cyl(0.42, 0.42, 0.06, mats.shield, s * 13.55, 1.2, 5.6, 18));
+  }
+});
+
+/* Wireless + antennas */
+addPart('Wireless module + antennas', 'Wi-Fi 7 card with two coax antenna runs routed along the chassis wall, away from the noisy board.', [0, 1.45, 0], 9, g => {
+  g.add(box(1.7, 0.12, 1.4, mats.pcbDark, -11.6, 0.92, -2.6));
+  g.add(box(1.3, 0.07, 1.0, mats.chipLid, -11.6, 1.02, -2.6));
+  g.add(tube([[-11.2, 1.0, -2.6], [-12.9, 1.0, -5.6], [-13.6, 1.05, -9.4]], 0.07, mats.cableA));
+  g.add(tube([[-11.4, 1.0, -2.1], [-13.4, 0.95, 1.6], [-13.9, 1.0, 7.4]], 0.07, mats.cableB));
+});
+
+/* SSD */
+addPart('SSD (M.2 2280)', '2 TB NVMe drive on an orange thermal pad. Controller, DRAM cache and two NAND packages.', [0, 2.45, 0], 6, g => {
+  g.add(box(6.2, 0.05, 2.0, mats.pad2, 10.4, 0.9, -3.2));
+  g.add(box(6.0, 0.1, 1.9, mats.ram, 10.4, 0.98, -3.2));
+  g.add(box(1.2, 0.09, 1.3, mats.chip, 8.6, 1.08, -3.2));      // controller
+  g.add(box(0.7, 0.07, 0.9, mats.chip, 9.8, 1.07, -3.2));      // DRAM
+  g.add(box(1.3, 0.09, 1.4, mats.chip, 11.2, 1.08, -3.2));     // NAND
+  g.add(box(1.3, 0.09, 1.4, mats.chip, 12.7, 1.08, -3.2));     // NAND
+  g.add(cyl(0.16, 0.16, 0.12, mats.shield, 13.6, 1.0, -3.2, 10));
+});
+
+/* RAM */
+addPart('Memory (2× SO-DIMM)', 'Two DDR5 SO-DIMMs — socketed, not soldered. Eight memory ICs and an SPD chip per stick.', [0, 2.45, 0], 5, g => {
+  for (const dz of [-0.8, 0.8]) {
+    g.add(box(5.2, 0.1, 1.35, mats.ram, 4.9, 0.98, -4.0 + dz));
+    for (let i = 0; i < 8; i++)
+      g.add(box(0.52, 0.07, 0.55, mats.chip, 3.0 + (i % 4) * 0.66 + (i > 3 ? 2.85 : 0), 1.07, -4.0 + dz + (i > 3 ? 0 : 0)));
+    g.add(box(0.3, 0.06, 0.3, mats.chip, 7.2, 1.06, -4.0 + dz));
+  }
+  g.add(box(1.7, 0.015, 0.8, mats.white, 5.6, 1.06, -4.8));    // sticker
+});
+
+/* Processors */
+addPart('Processors (CPU + GPU)', 'CPU package and discrete GPU die, flip-chip mounted. ~25 billion transistors between them.', [0, 2.1, 0], 7, g => {
+  g.add(box(2.8, 0.06, 2.8, mats.pcbDark, -1.2, 0.94, -6.2));
+  g.add(box(1.9, 0.1, 1.9, mats.chip, -1.2, 1.02, -6.2));
+  for (let i = 0; i < 6; i++) g.add(box(0.16, 0.05, 0.3, mats.chipLid, -2.0 + i * 0.32, 0.95, -4.65));
+  g.add(box(2.4, 0.06, 2.4, mats.pcbDark, -5.6, 0.94, -6.2));
+  g.add(box(1.6, 0.1, 1.6, mats.chip, -5.6, 1.02, -6.2));
+  for (let i = 0; i < 4; i++) g.add(box(0.16, 0.05, 0.3, mats.chipLid, -6.1 + i * 0.32, 0.95, -4.85));
+});
+
+/* Cooling */
+const rotors = [];
+addPart('Cooling system', 'Copper cold plate, twin 4 mm heatpipes, fin stacks at the exhaust, two 13-blade blower fans.', [0, 3.0, 0], 4, g => {
+  g.add(box(7.2, 0.14, 3.0, mats.copper, -3.4, 1.14, -6.2));
+  g.add(tube([[-6.9, 1.16, -6.2], [-8.8, 1.14, -6.9], [-9.9, 1.05, -9.2]], 0.14, mats.copper));
+  g.add(tube([[0.1, 1.16, -6.2], [5.4, 1.18, -6.4], [8.9, 1.1, -6.9], [9.9, 1.02, -9.2]], 0.14, mats.copper));
+  for (const s of [-1, 1]) {
+    for (let i = 0; i < 14; i++)
+      g.add(box(0.04, 0.5, 1.8, mats.fin, s * 9.0 + s * i * 0.13, 0.95, -9.95));
+    const fg = new THREE.Group();
+    fg.position.set(s * 10.6, 0.92, -6.8);
+    fg.add(cyl(2.35, 2.35, 0.55, mats.fanBody, 0, 0, 0, 40));
+    const rotor = new THREE.Group();
+    for (let i = 0; i < 13; i++) {
+      const hold = new THREE.Group();
+      hold.rotation.y = (i / 13) * Math.PI * 2;
+      const b = box(0.16, 0.34, 1.5, mats.blade, 0, 0, 1.25);
+      b.rotation.y = 0.5;
+      hold.add(b);
+      rotor.add(hold);
+    }
+    rotor.add(cyl(0.5, 0.5, 0.4, mats.accent, 0, 0.1, 0, 20));
+    rotor.position.y = 0.08;
+    fg.add(rotor);
+    rotors.push(rotor);
+    g.add(fg);
+    g.add(tube([[s * 8.3, 0.7, -5.0], [s * 6.8, 0.65, -3.4]], 0.05, mats.cableB)); // fan cable
+  }
+});
+
+/* Motherboard */
+addPart('Motherboard', '10-layer PCB: CPU/GPU power stages, EMI shields, CMOS cell and the full I/O row. Every signal crosses here.', [0, 1.2, 0], 8, g => {
+  g.add(plate(27.5, 7.8, 0.14, 0.6, mats.pcb, 0, 0.78, -6.1));
+  const ics = [[-12.4, -8.9, 1.1, 0.9], [-10.4, -8.6, 0.7, 0.7], [-8.6, -9.2, 1.0, 0.6], [-12.5, -7.0, 0.6, 0.6],
+               [3.0, -8.7, 0.7, 0.6], [8.4, -8.5, 0.9, 0.6], [12.3, -8.8, 0.8, 0.8], [12.7, -7.2, 0.55, 0.55],
+               [6.1, -8.4, 1.05, 0.7], [1.1, -8.8, 0.6, 0.5], [-4.2, -8.3, 0.8, 0.55], [-1.8, -8.2, 0.55, 0.55],
+               [9.7, -7.4, 0.6, 0.8], [0.4, -7.3, 0.75, 0.5], [-7.2, -7.8, 0.5, 0.5], [4.4, -7.5, 0.5, 0.4]];
+  for (const [x, z, w, d] of ics) g.add(box(w, 0.09, d, mats.chip, x, 0.965, z));
+  for (let i = 0; i < 10; i++) g.add(box(0.42, 0.24, 0.42, mats.dark, -8.3 + i * 0.62, 1.04, -5.05)); // VRM chokes
+  for (let i = 0; i < 12; i++) g.add(cyl(0.09, 0.09, 0.2, mats.shield, -8.2 + i * 0.5, 1.0, -4.55, 8)); // caps
+  g.add(box(4.6, 0.12, 2.2, mats.shield, -11.8, 0.98, -4.4));   // EMI shield
+  g.add(box(3.4, 0.12, 1.9, mats.shield, 11.4, 0.98, -5.6));    // EMI shield
+  g.add(cyl(0.55, 0.55, 0.16, mats.shield, 7.6, 1.0, -2.9, 20)); // CMOS cell
+  for (const x of [-6.5, -3.2, 3.2, 6.5]) g.add(box(0.9, 0.22, 0.42, mats.white, x, 1.0, -2.55)); // connectors
+  for (const [x, z] of [[-13.2, -9.5], [13.2, -9.5], [-13.2, -2.7], [13.2, -2.7]])
+    g.add(cyl(0.14, 0.14, 0.2, mats.dark, x, 0.9, z, 8));        // standoff screws
+  // I/O — left: 2× USB-C, HDMI, audio; right: USB-C, USB-A
+  g.add(box(1.0, 0.3, 0.8, mats.port, -14.7, 1.0, -8.6));
+  g.add(box(1.0, 0.3, 0.8, mats.port, -14.7, 1.0, -7.4));
+  g.add(box(1.0, 0.42, 1.5, mats.port, -14.7, 1.0, -5.6));
+  const jack = cyl(0.26, 0.26, 0.9, mats.port, -14.7, 1.0, -4.0, 14);
+  jack.rotation.z = Math.PI / 2;
+  g.add(jack);
+  g.add(box(1.0, 0.3, 0.8, mats.port, 14.7, 1.0, -8.6));
+  g.add(box(1.0, 0.45, 1.4, mats.port, 14.7, 1.0, -6.7));
+});
+
+/* Ribbon cables */
+addPart('Ribbon cables', 'Flat flex cables: board → trackpad, board → keyboard controller, with orange ZIF latches.', [0, 1.7, 0], 10, g => {
+  g.add(box(2.4, 0.025, 3.6, mats.ribbon, 0, 0.9, 0.2));
+  g.add(box(2.6, 0.08, 0.32, mats.accent, 0, 0.92, -1.6));
+  g.add(box(2.6, 0.08, 0.32, mats.accent, 0, 0.92, 2.0));
+  g.add(box(1.7, 0.025, 1.9, mats.ribbon, -5.8, 0.9, -0.9));
+  g.add(box(1.9, 0.08, 0.3, mats.accent, -5.8, 0.92, -1.85));
+});
+
+/* Keyboard deck */
+addPart('Keyboard deck', '2.5 mm aluminium top case with machined keyboard well, speaker grilles and power button.', [0, 4.6, 0], 3, g => {
+  g.add(plate(31.5, 22, 0.32, 1.4, mats.deckAl, 0, 1.27, 0));
+  g.add(box(26.8, 0.05, 10.4, mats.keyWell, 0, 1.595, -4.7));
+  const dot = new THREE.CylinderGeometry(0.055, 0.055, 0.05, 8);
+  const inst = new THREE.InstancedMesh(dot, mats.dark, 168);
+  const m4 = new THREE.Matrix4();
+  let k = 0;
+  for (const s of [-1, 1])
+    for (let r = 0; r < 28; r++)
+      for (let c = 0; c < 3; c++) {
+        m4.setPosition(s * (14.05 + c * 0.32), 1.6, -9.4 + r * 0.34);
+        inst.setMatrixAt(k++, m4);
+      }
+  g.add(inst);
+  g.add(cyl(0.42, 0.42, 0.06, mats.dark, 12.9, 1.615, -9.55, 20));
+});
+
+/* Trackpad */
+addPart('Trackpad', 'Edge-to-edge glass haptic trackpad — it never moves; a voice-coil actuator fakes the click.', [0, 5.6, 0], 2, g => {
+  g.add(box(11.8, 0.1, 7.2, mats.pad, 0, 1.62, 5.55));
+  g.add(box(11.3, 0.02, 6.7, mats.white, 0, 1.685, 5.55));
+});
+
+/* Keycaps */
+addPart('Keycaps', '76 low-profile keycaps, 1 mm travel, scissor mechanisms. Lifted off they look like a tiny city.', [0, 6.4, 0], 1, g => {
+  const rows = [
+    { z: -9.55, d: 0.85, ws: Array(13).fill(1.78) },
+    { z: -8.3, d: 1.35, ws: [...Array(12).fill(1.78), 2.8] },
+    { z: -6.65, d: 1.35, ws: [2.5, ...Array(12).fill(1.78)] },
+    { z: -5.0, d: 1.35, ws: [2.75, ...Array(11).fill(1.78), 2.0] },
+    { z: -3.35, d: 1.35, ws: [3.45, ...Array(10).fill(1.78), 3.15] },
+    { z: -1.7, d: 1.35, ws: [1.9, 1.9, 1.9, 1.9, 8.6, 1.9, 1.9, 1.9, 1.9] },
+  ];
+  for (const row of rows) {
+    const total = row.ws.reduce((a, b) => a + b, 0) + (row.ws.length - 1) * 0.14;
+    let x = -total / 2;
+    for (const w of row.ws) {
+      g.add(box(w - 0.1, 0.16, row.d, mats.key, x + w / 2, 1.72, row.z));
+      x += w + 0.14;
+    }
+  }
+});
+
+/* Display assembly */
+let hingeGroup = null;
+addPart('Display assembly', '14″ 3:2 120 Hz panel, 4 mm lid, slim bezels, webcam. The hinge is rated for 25,000 cycles.', [0, 8.5, -2], 0, g => {
+  g.position.set(0, 1.45, -10.7);
+  const barrel = cyl(0.3, 0.3, 24, mats.hingeM, 0, 0, 0.1, 18);
+  barrel.rotation.z = Math.PI / 2;
+  g.add(barrel);
+  g.add(box(1.8, 0.45, 1.1, mats.hingeM, -9.5, -0.25, 0.25));
+  g.add(box(1.8, 0.45, 1.1, mats.hingeM, 9.5, -0.25, 0.25));
+  const lid = new THREE.Group();
+  const back = new THREE.Mesh(
+    new THREE.ExtrudeGeometry(roundedShape(31, 20.8, 1.3), { depth: 0.4, bevelEnabled: false, curveSegments: 10 }),
+    mats.caseAl
+  );
+  back.geometry.translate(0, 10.4, -0.4);
+  withEdges(back, 30);
+  lid.add(back);
+  // slim bezels
+  lid.add(box(31, 0.6, 0.1, mats.dark, 0, 20.45, 0.05));
+  lid.add(box(31, 0.85, 0.1, mats.dark, 0, 0.47, 0.05));
+  lid.add(box(0.5, 19.8, 0.1, mats.dark, -15.25, 10.4, 0.05));
+  lid.add(box(0.5, 19.8, 0.1, mats.dark, 15.25, 10.4, 0.05));
+  // screen — restrained dark wallpaper with a code editor mock
+  const cv = document.createElement('canvas');
+  cv.width = 768; cv.height = 480;
+  const cx = cv.getContext('2d');
+  const gr = cx.createLinearGradient(0, 0, 768, 480);
+  gr.addColorStop(0, '#10151e'); gr.addColorStop(0.6, '#16233a'); gr.addColorStop(1, '#2b3d5c');
+  cx.fillStyle = gr; cx.fillRect(0, 0, 768, 480);
+  cx.fillStyle = 'rgba(255,255,255,0.04)';
+  for (let x = 0; x < 768; x += 48) cx.fillRect(x, 0, 1, 480);
+  for (let y = 0; y < 480; y += 48) cx.fillRect(0, y, 768, 1);
+  cx.fillStyle = 'rgba(16,21,30,0.85)';
+  cx.beginPath(); cx.roundRect(90, 70, 430, 300, 8); cx.fill();
+  cx.strokeStyle = 'rgba(140,160,190,0.5)'; cx.lineWidth = 1.5;
+  cx.beginPath(); cx.roundRect(90, 70, 430, 300, 8); cx.stroke();
+  cx.fillStyle = 'rgba(140,160,190,0.25)'; cx.fillRect(90, 70, 430, 26);
+  const lines = [200, 120, 260, 170, 310, 90, 230, 280, 150, 200];
+  lines.forEach((w, i) => {
+    cx.fillStyle = ['rgba(255,140,60,0.55)', 'rgba(120,180,255,0.5)', 'rgba(180,200,220,0.35)'][i % 3];
+    cx.fillRect(110 + (i % 2) * 22, 112 + i * 24, w, 7);
+  });
+  cx.fillStyle = 'rgba(16,21,30,0.85)';
+  cx.beginPath(); cx.roundRect(550, 130, 160, 200, 8); cx.fill();
+  cx.strokeStyle = 'rgba(140,160,190,0.5)';
+  cx.beginPath(); cx.roundRect(550, 130, 160, 200, 8); cx.stroke();
+  cx.fillStyle = 'rgba(255,255,255,0.5)';
+  cx.font = '600 17px Inter, sans-serif';
+  cx.fillText('exploded-views', 330, 452);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const screen = new THREE.Mesh(
+    new THREE.PlaneGeometry(29.8, 19.0),
+    new THREE.MeshStandardMaterial({ map: tex, roughness: 0.22, metalness: 0, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.55 })
+  );
+  screen.position.set(0, 10.35, 0.105);
+  lid.add(screen);
+  const cam = cyl(0.12, 0.12, 0.05, mats.dark, 0, 20.42, 0.11, 10);
+  cam.rotation.x = Math.PI / 2;
+  lid.add(cam);
+  const logo = box(2.0, 2.0, 0.06, mats.accent, 0, 10.4, -0.44);
+  lid.add(logo);
+  lid.rotation.x = THREE.MathUtils.degToRad(-15);
+  g.add(lid);
+  hingeGroup = lid;
+});
+const OPEN_DEG = -15, CLOSED_DEG = 89;
+
+/* clone materials per mesh/line, wire clipping planes */
+parts.forEach(g => g.traverse(o => {
+  if (o.isMesh || o.isLineSegments) {
+    o.userData.part = g;
+    o.material = o.material.clone();
+    o.material.clippingPlanes = CLIPS;
+  }
+}));
+
+/* ---------- state ---------- */
+const state = {
+  anim: 'teardown', playing: false, time: 0, speed: 1, explode: 0, manual: false,
+  style: 'solid', silicon: false, edges: true, theme: 'dark',
+};
+const DUR = { teardown: 0.4 * parts.length + 1.6, hinge: 3, fans: 10 };
+const siliconNames = new Set(['Motherboard', 'Processors (CPU + GPU)', 'Memory (2× SO-DIMM)', 'SSD (M.2 2280)']);
+
+const smooth = t => t * t * (3 - 2 * t);
+const clamp01 = v => Math.max(0, Math.min(1, v));
+const setPartExplode = (g, e) => g.position.copy(g.userData.base).addScaledVector(g.userData.explode, smooth(e));
+
+function applyAnim() {
+  const t = state.time;
+  if (state.anim === 'teardown' && !state.manual) {
+    parts.forEach(g => setPartExplode(g, clamp01((t - g.userData.order * 0.4) / 1.6)));
+    state.explode = clamp01(t / DUR.teardown);
+  } else {
+    parts.forEach(g => setPartExplode(g, state.explode));
+  }
+  if (state.anim === 'hinge') {
+    const cycle = clamp01(t / DUR.hinge);
+    hingeGroup.rotation.x = THREE.MathUtils.degToRad(
+      THREE.MathUtils.lerp(OPEN_DEG, CLOSED_DEG, Math.sin(cycle * Math.PI))
+    );
+  }
+  ui.timeSlider.value = t;
+  ui.timeVal.textContent = t.toFixed(2) + 's';
+  ui.explodeSlider.value = state.explode;
+  ui.explodeVal.textContent = Number(state.explode).toFixed(2);
+}
+
+/* ---------- styles ---------- */
+function applyStyle() {
+  const edgeTheme = EDGE_THEME[state.theme];
+  parts.forEach(g => {
+    const dim = state.silicon && !siliconNames.has(g.userData.name);
+    g.traverse(o => {
+      if (o.isLineSegments) {
+        o.material.color.setHex(edgeTheme.color);
+        o.visible = state.edges && state.style !== 'wire';
+        o.material.opacity = dim || state.style === 'xray' ? 0.12 : edgeTheme.opacity;
+      } else if (o.isMesh) {
+        const mt = o.material;
+        mt.wireframe = state.style === 'wire';
+        const xray = state.style === 'xray' || dim;
+        mt.transparent = xray;
+        mt.opacity = xray ? (dim ? 0.09 : 0.3) : 1;
+        mt.depthWrite = !xray;
+      }
+    });
+  });
+}
+
+/* ---------- selection ---------- */
+const ray = new THREE.Raycaster();
+const ptr = new THREE.Vector2();
+let selected = null;
+const chip = document.getElementById('infochip');
+
+function setSelected(g) {
+  if (selected) selected.traverse(o => { if (o.isMesh && o.material.emissive) o.material.emissive.setHex(0x000000); });
+  selected = g;
+  if (g) {
+    g.traverse(o => { if (o.isMesh && o.material.emissive) { o.material.emissive.setHex(0xff6a00); o.material.emissiveIntensity = 0.22; } });
+    document.getElementById('chipName').textContent = g.userData.name;
+    document.getElementById('chipInfo').textContent = g.userData.info;
+    chip.classList.add('show');
+  } else chip.classList.remove('show');
+}
+
+let downAt = null;
+renderer.domElement.addEventListener('pointerdown', e => { downAt = [e.clientX, e.clientY]; });
+renderer.domElement.addEventListener('pointerup', e => {
+  if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 5) return;
+  ptr.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  ray.setFromCamera(ptr, camera);
+  const hits = ray.intersectObjects(scene.children, true)
+    .filter(h => h.object.userData.part && h.object.userData.part.userData.visible);
+  setSelected(hits.length ? hits[0].object.userData.part : null);
+});
+
+/* ---------- UI ---------- */
+const $ = id => document.getElementById(id);
+const ui = {
+  timeSlider: $('timeSlider'), timeVal: $('timeVal'),
+  speedSlider: $('speedSlider'), speedVal: $('speedVal'),
+  explodeSlider: $('explodeSlider'), explodeVal: $('explodeVal'),
+  playBtn: $('playBtn'), animSel: $('animSel'),
+};
+ui.timeSlider.max = DUR.teardown;
+
+function setAnim(a) {
+  state.anim = a;
+  state.time = 0; state.playing = false; state.manual = false;
+  ui.timeSlider.max = DUR[a];
+  ui.playBtn.textContent = '▶ Play';
+  if (a !== 'hinge') hingeGroup.rotation.x = THREE.MathUtils.degToRad(OPEN_DEG);
+  applyAnim();
+}
+ui.animSel.addEventListener('change', e => setAnim(e.target.value));
+ui.playBtn.addEventListener('click', () => {
+  state.playing = !state.playing;
+  state.manual = false;
+  if (state.playing && state.time >= DUR[state.anim] - 1e-3 && state.anim !== 'fans') state.time = 0;
+  ui.playBtn.textContent = state.playing ? '❚❚ Pause' : '▶ Play';
+});
+$('resetBtn').addEventListener('click', () => {
+  state.time = 0; state.playing = false; state.manual = false; state.explode = 0;
+  ui.playBtn.textContent = '▶ Play'; applyAnim();
+});
+ui.timeSlider.addEventListener('input', e => { state.time = +e.target.value; state.playing = false; state.manual = false; ui.playBtn.textContent = '▶ Play'; applyAnim(); });
+ui.speedSlider.addEventListener('input', e => { state.speed = +e.target.value; ui.speedVal.textContent = state.speed.toFixed(2) + 'x'; });
+ui.explodeSlider.addEventListener('input', e => { state.explode = +e.target.value; state.manual = true; state.playing = false; ui.playBtn.textContent = '▶ Play'; applyAnim(); });
+
+$('styleSel').addEventListener('change', e => { state.style = e.target.value; applyStyle(); });
+$('hlSilicon').addEventListener('change', e => { state.silicon = e.target.checked; applyStyle(); });
+$('tEdges').addEventListener('change', e => { state.edges = e.target.checked; applyStyle(); });
+$('autoRotate').addEventListener('change', e => { controls.autoRotate = e.target.checked; controls.autoRotateSpeed = 1.2; });
+
+function wireClip(slider, valEl, plane) {
+  $(slider).addEventListener('input', e => {
+    plane.constant = +e.target.value;
+    $(valEl).textContent = (plane.constant * 10).toFixed(0) + ' mm';
+  });
+}
+wireClip('clipX', 'clipXVal', clipX);
+wireClip('clipY', 'clipYVal', clipY);
+wireClip('clipZ', 'clipZVal', clipZ);
+
+const togglesDiv = $('partToggles');
+parts.forEach((g, i) => {
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.innerHTML = `<label>${g.userData.name.replace(/ \(.*\)/, '')}</label>
+    <span class="switch"><input type="checkbox" checked data-i="${i}" /><span class="tr"></span></span>`;
+  row.querySelector('input').addEventListener('change', e => {
+    g.visible = e.target.checked;
+    g.userData.visible = e.target.checked;
+    if (!e.target.checked && selected === g) setSelected(null);
+  });
+  togglesDiv.appendChild(row);
+});
+
+$('copyBtn').addEventListener('click', async () => {
+  const data = {
+    ...state, parts: parts.map(p => p.userData.visible),
+    clips: [clipX.constant, clipY.constant, clipZ.constant],
+    cam: camera.position.toArray(), target: controls.target.toArray(),
+  };
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(data));
+    $('copyBtn').textContent = '✓ Copied';
+    setTimeout(() => $('copyBtn').textContent = '⧉ Copy parameters', 1200);
+  } catch {}
+});
+$('pasteBtn').addEventListener('click', async () => {
+  try {
+    const d = JSON.parse(await navigator.clipboard.readText());
+    ui.animSel.value = d.anim; setAnim(d.anim);
+    Object.assign(state, { time: d.time, speed: d.speed, explode: d.explode, style: d.style, silicon: d.silicon, edges: d.edges, manual: d.manual });
+    $('styleSel').value = state.style; $('hlSilicon').checked = state.silicon; $('tEdges').checked = state.edges;
+    ui.speedSlider.value = state.speed; ui.speedVal.textContent = state.speed.toFixed(2) + 'x';
+    if (d.clips) {
+      [clipX.constant, clipY.constant, clipZ.constant] = d.clips;
+      $('clipX').value = d.clips[0]; $('clipY').value = d.clips[1]; $('clipZ').value = d.clips[2];
+      $('clipXVal').textContent = (d.clips[0] * 10).toFixed(0) + ' mm';
+      $('clipYVal').textContent = (d.clips[1] * 10).toFixed(0) + ' mm';
+      $('clipZVal').textContent = (d.clips[2] * 10).toFixed(0) + ' mm';
+    }
+    if (d.cam) camera.position.fromArray(d.cam);
+    if (d.target) controls.target.fromArray(d.target);
+    (d.parts || []).forEach((v, i) => {
+      if (parts[i]) { parts[i].visible = v; parts[i].userData.visible = v; togglesDiv.querySelectorAll('input')[i].checked = v; }
+    });
+    applyStyle(); applyAnim();
+  } catch {}
+});
+
+/* ---------- theme ---------- */
+function setTheme(t) {
+  state.theme = t;
+  document.documentElement.dataset.theme = t;
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  scene.background = new THREE.Color(bg);
+  applyStyle();
+}
+$('themeBtn').addEventListener('click', () => setTheme(state.theme === 'dark' ? 'light' : 'dark'));
+setTheme('dark');
+
+/* ---------- loop ---------- */
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if (state.playing) {
+    state.time += dt * state.speed;
+    const D = DUR[state.anim];
+    if (state.time >= D) {
+      if (state.anim === 'fans') state.time %= D;
+      else { state.time = D; state.playing = false; ui.playBtn.textContent = '▶ Play'; }
+    }
+    applyAnim();
+    rotors.forEach(r => r.rotation.y += 22 * state.speed * dt);
+  }
+  controls.update();
+  renderer.render(scene, camera);
+}
+applyAnim();
+applyStyle();
+animate();
+window.__dbg = { scene, renderer, camera, state, parts, controls };
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

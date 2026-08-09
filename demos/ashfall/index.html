@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Ashfall — Elusion Works</title>
+    <meta
+      name="description"
+      content="Ashfall is a browser-native first-person shooter built on Three.js: HDR rendering, cascaded shadows, temporal anti-aliasing, procedural PBR materials and synthesised audio, with no external assets."
+    />
+    <meta name="theme-color" content="#12100d" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta name="robots" content="index,follow" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="canonical" href="https://elusionworks.com/demos/ashfall/" />
+
+    <meta property="og:title" content="Ashfall — Elusion Works" />
+    <meta
+      property="og:description"
+      content="A browser-native first-person shooter in Three.js. HDR pipeline, cascaded shadows, TAA, procedural materials, synthesised audio, zero external assets."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://elusionworks.com/demos/ashfall/" />
+    <meta property="og:image" content="https://elusionworks.com/demos/ashfall/thumbnail.png" />
+    <meta property="og:image:alt" content="Ashfall first-person shooter demo preview." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Ashfall — Elusion Works" />
+    <meta
+      name="twitter:description"
+      content="A browser-native first-person shooter in Three.js, built entirely from procedural geometry, materials and audio."
+    />
+    <meta name="twitter:image" content="https://elusionworks.com/demos/ashfall/thumbnail.png" />
+
+    <link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg" />
+    <!--
+      No webfont link. This used to pull Barlow Condensed, IBM Plex Mono and Inter from
+      fonts.googleapis.com, and it was the single external asset in the whole demo.
+
+      It went for three reasons, in order of weight:
+        1. It did not work where it mattered. Every headless capture in five review rounds hit
+           ERR_CONNECTION_RESET on it, so every frame ever graded rendered the HUD in the
+           platform grotesque. A reviewer read the ammo counter's "foot-serifed 1s and balloon
+           0s" and correctly called it a system default — we had been grading a font we never
+           shipped to the frame.
+        2. The face that actually carries the interface is now local. styles.css section 0
+           embeds a 42-glyph Barlow Condensed subset as base64 woff2, ~12 KB for all three
+           weights, so the condensed numerals render offline, behind a CSP, and on a machine
+           with no webfonts installed.
+        3. Mono and body never needed the network. Their stacks fall to ui-monospace and
+           system-ui, which are good on every platform the demo targets.
+
+      What is left is a render-blocking third-party request that buys two nice-to-have faces.
+      A shipped game does not wait on a CDN to draw its HUD.
+    -->
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+
+  <body class="ashfall">
+    <!--
+      DOM contract for src/ui/hud.js and src/ui/menu.js.
+
+      Neither module may create top-level structure; both bind to the hooks below with
+      `querySelector('[data-…]')` and update text, classes and CSS custom properties only.
+      styles.css owns every visual decision. Anything animated must move via `transform` or
+      `opacity` so the HUD never triggers layout.
+    -->
+
+    <canvas id="viewport" aria-label="Ashfall game viewport"></canvas>
+
+    <!-- ================= HUD ================= -->
+    <div class="hud" id="hud" data-hud aria-hidden="true">
+      <!-- Full-screen state layers -->
+      <div class="hud-layer hud-damage" data-damage-vignette></div>
+      <div class="hud-layer hud-lowhealth" data-lowhealth></div>
+      <div class="hud-layer hud-flash" data-flash></div>
+      <div class="hud-layer hud-scan" aria-hidden="true"></div>
+
+      <!-- Directional damage arcs are injected here, one element per active source -->
+      <div class="hud-damage-dirs" data-damage-dirs></div>
+
+      <!-- Centre -->
+      <div class="hud-centre">
+        <div class="crosshair" data-crosshair>
+          <span class="ch-arm ch-t"></span>
+          <span class="ch-arm ch-r"></span>
+          <span class="ch-arm ch-b"></span>
+          <span class="ch-arm ch-l"></span>
+          <span class="ch-dot"></span>
+        </div>
+        <div class="hitmarker" data-hitmarker>
+          <span></span><span></span><span></span><span></span>
+        </div>
+        <div class="interact-prompt" data-interact hidden></div>
+      </div>
+
+      <!-- Compass strip -->
+      <div class="compass" data-compass>
+        <div class="compass-track" data-compass-track></div>
+        <div class="compass-needle"></div>
+      </div>
+
+      <!-- Bottom left: health + stance -->
+      <div class="hud-corner hud-bl">
+        <div class="health" data-health>
+          <div class="health-bar"><i data-health-fill></i></div>
+          <div class="health-meta">
+            <span class="mono" data-health-value>100</span>
+            <span class="mono health-stance" data-stance>STAND</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom right: weapon + ammo -->
+      <div class="hud-corner hud-br">
+        <div class="weapon-block" data-weapon>
+          <div class="weapon-name" data-weapon-name>MK18</div>
+          <div class="ammo">
+            <span class="ammo-mag mono" data-ammo-mag>30</span>
+            <span class="ammo-sep">/</span>
+            <span class="ammo-reserve mono" data-ammo-reserve>210</span>
+          </div>
+          <div class="ammo-pips" data-ammo-pips></div>
+          <div class="reload-prompt" data-reload-prompt hidden>Reload <b>R</b></div>
+          <div class="reload-bar" data-reload-bar hidden><i></i></div>
+        </div>
+      </div>
+
+      <!-- Top left: minimap -->
+      <div class="hud-corner hud-tl">
+        <div class="minimap" data-minimap>
+          <canvas data-minimap-canvas width="360" height="360"></canvas>
+          <div class="minimap-frame"></div>
+          <div class="minimap-zone mono" data-zone>THE YARD</div>
+        </div>
+      </div>
+
+      <!-- Top right: score + streak -->
+      <div class="hud-corner hud-tr">
+        <div class="scoreline">
+          <div class="score-row">
+            <span class="mono label">SCORE</span><span class="mono val" data-score>0</span>
+          </div>
+          <div class="score-row">
+            <span class="mono label">KILLS</span><span class="mono val" data-kills>0</span>
+          </div>
+          <div class="streak mono" data-streak hidden></div>
+        </div>
+      </div>
+
+      <!-- Kill feed -->
+      <ul class="killfeed" data-killfeed></ul>
+
+      <!-- Centre-screen callouts and XP pops -->
+      <div class="callout" data-callout></div>
+      <div class="xp-stack" data-xp></div>
+
+      <!-- Debug readout, toggled with F3 -->
+      <pre class="debug-panel mono" data-debug hidden></pre>
+    </div>
+
+    <!-- ================= MENU ================= -->
+    <div class="menu" id="menu" data-menu>
+      <div class="menu-vignette"></div>
+
+      <section class="menu-page is-active" data-page="title">
+        <div class="title-block">
+          <p class="eyebrow mono">Elusion Works / interactive</p>
+          <h1 class="game-title">
+            <span class="title-main">ASHFALL</span>
+            <span class="title-rule"></span>
+          </h1>
+          <p class="tagline">
+            Freight yard 14. One hour to dusk. The line is already inside the wire.
+          </p>
+          <div class="menu-actions">
+            <button class="btn btn-primary" data-action="play" type="button">
+              <span>Deploy</span><b class="mono">↵</b>
+            </button>
+            <button class="btn" data-action="settings" type="button">Settings</button>
+            <button class="btn" data-action="controls" type="button">Controls</button>
+          </div>
+          <p class="menu-note mono">
+            Click to lock the pointer. Press <b>Esc</b> at any time to release it.
+          </p>
+        </div>
+        <footer class="menu-foot mono">
+          <span data-build>Three.js r185 / WebGL2</span>
+          <span data-perf-note></span>
+        </footer>
+      </section>
+
+      <section class="menu-page" data-page="settings" hidden>
+        <h2 class="page-title">Settings</h2>
+        <div class="settings-grid" data-settings></div>
+        <div class="menu-actions">
+          <button class="btn" data-action="back" type="button">Back</button>
+        </div>
+      </section>
+
+      <section class="menu-page" data-page="controls" hidden>
+        <h2 class="page-title">Controls</h2>
+        <dl class="controls-list">
+          <div><dt class="mono">W A S D</dt><dd>Move</dd></div>
+          <div><dt class="mono">Mouse</dt><dd>Look</dd></div>
+          <div><dt class="mono">LMB</dt><dd>Fire</dd></div>
+          <div><dt class="mono">RMB</dt><dd>Aim down sight</dd></div>
+          <div><dt class="mono">Shift</dt><dd>Sprint</dd></div>
+          <div><dt class="mono">Ctrl / C</dt><dd>Crouch, slide while sprinting</dd></div>
+          <div><dt class="mono">Space</dt><dd>Jump, vault ledges</dd></div>
+          <div><dt class="mono">R</dt><dd>Reload</dd></div>
+          <div><dt class="mono">1 2 3 / Wheel</dt><dd>Change weapon</dd></div>
+          <div><dt class="mono">F</dt><dd>Inspect weapon</dd></div>
+          <div><dt class="mono">F3</dt><dd>Performance readout</dd></div>
+          <div><dt class="mono">Esc</dt><dd>Pause</dd></div>
+        </dl>
+        <div class="menu-actions">
+          <button class="btn" data-action="back" type="button">Back</button>
+        </div>
+      </section>
+
+      <section class="menu-page" data-page="pause" hidden>
+        <h2 class="page-title">Paused</h2>
+        <div class="menu-actions">
+          <button class="btn btn-primary" data-action="resume" type="button">Resume</button>
+          <button class="btn" data-action="settings" type="button">Settings</button>
+          <button class="btn" data-action="controls" type="button">Controls</button>
+          <button class="btn btn-quiet" data-action="quit" type="button">Back to title</button>
+        </div>
+      </section>
+
+      <section class="menu-page" data-page="dead" hidden>
+        <h2 class="page-title page-title--danger">You were killed</h2>
+        <p class="death-note" data-death-note></p>
+        <div class="menu-actions">
+          <button class="btn btn-primary" data-action="respawn" type="button">Redeploy</button>
+          <button class="btn" data-action="quit" type="button">Back to title</button>
+        </div>
+      </section>
+    </div>
+
+    <!-- ================= LOADING ================= -->
+    <div class="loading" id="loading">
+      <div class="loading-inner">
+        <p class="loading-title mono">ASHFALL</p>
+        <div class="loading-bar"><i data-load-bar></i></div>
+        <p class="loading-label mono" data-load-label>Starting</p>
+      </div>
+    </div>
+
+    <!-- ================= ERRORS ================= -->
+    <div class="error-card" id="error-card" hidden role="alert">
+      <h2>Something failed to start</h2>
+      <p>
+        Ashfall needs WebGL2. If your browser supports it, the details below say which
+        subsystem gave up.
+      </p>
+      <ul data-errors class="mono"></ul>
+    </div>
+
+    <noscript>
+      <div class="error-card" style="display: block">
+        <h2>JavaScript required</h2>
+        <p>Ashfall is a real-time 3D demo and needs JavaScript enabled.</p>
+      </div>
+    </noscript>
+
+    <a class="back-link" href="../">← All demos</a>
+
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>

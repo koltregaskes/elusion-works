@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-GB" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -38,373 +38,276 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600;800&family=Outfit:wght@500;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="../showcase-pages.css" />
+    <link rel="stylesheet" href="../styles/cabinet.css?v=20260725b" />
+    <link rel="stylesheet" href="../styles/motion.css?v=20260725b" />
   </head>
-  <body class="showcase-page theme-demos">
+  <body id="top" class="ew-demos-page">
     <a class="skip-link" href="#main-content">Skip to content</a>
 
-    <div class="page-shell">
-      <header class="masthead">
-        <div class="masthead-inner">
-          <a class="brand-link" href="../">
-            <img src="../assets/elusion-mark.svg" alt="" width="46" height="46" />
-            <span class="brand-copy">
-              <span>Elusion</span>
-              <strong>Works</strong>
-            </span>
+    <header class="ew-header">
+      <div class="ew-header-inner">
+        <a class="ew-brand ew-magnet" href="../" aria-label="Elusion Works home">
+          <img src="../assets/img/frontdoor/elusion-mark.svg" alt="" width="42" height="42" />
+          <span class="ew-brand-copy">
+            <span class="ew-brand-root">Elusion</span>
+            <strong>Works</strong>
+          </span>
+        </a>
+
+        <nav class="ew-nav" aria-label="Primary">
+          <a class="ew-magnet" href="../">Home</a>
+          <a class="ew-magnet" href="#demo-index" aria-current="page">Demos</a>
+          <a class="ew-magnet" href="../experiments/">Experiments</a>
+          <a class="ew-magnet" href="../design-notes/">Design notes</a>
+        </nav>
+
+        <div class="ew-header-actions">
+          <a class="ew-pill ew-pill-ghost ew-index-link ew-magnet" href="#demo-index" aria-label="Open the 11-item Demo Index">
+            <span>Demo index</span>
+            <span class="ew-index-count" aria-hidden="true">11</span>
           </a>
-
-          <nav class="masthead-nav" aria-label="Demos routes">
-            <a href="../">Home</a>
-            <a href="../experiments/">Experiments</a>
-            <a href="../design-notes/">Design Notes</a>
-            <a href="neon-seraph/">Neon Seraph</a>
-            <a href="atmosphere/">Atmosphere</a>
-            <a href="golden/">Golden</a>
-            <a href="nexus-aetherial/">Nexus Aetherial</a>
-            <a href="solar-system-field-lab/">Field Lab</a>
-            <a href="solar-system/">Solar System</a>
-            <a href="last-cartridge/">Last Cartridge</a>
-            <a href="chronicles-of-bone/">Chronicles of Bone</a>
-            <a href="nebula-architect/">Nebula Architect</a>
-          </nav>
         </div>
-      </header>
+      </div>
+    </header>
 
-      <main id="main-content">
-        <section class="hero-panel">
-          <div class="hero-grid">
-            <div class="hero-copy">
-              <p class="eyebrow">Elusion Works demos</p>
-              <h1 class="hero-title">A simple shelf for public website prototypes.</h1>
-              <p>
-                This page keeps the demos findable while the collection is still young. Each entry can be a full mini-site, a visual prototype, or a working experiment before it earns a bigger home.
-              </p>
+    <button
+      class="ew-pill ew-pill-ghost ew-theme-toggle ew-magnet"
+      type="button"
+      data-theme-toggle
+      aria-label="Toggle colour theme"
+      aria-pressed="false"
+    >
+      <span class="ew-theme-toggle-icon" aria-hidden="true"></span>
+      <span class="ew-theme-toggle-label">Dark</span>
+    </button>
 
-              <div class="chip-row" aria-label="Demos summary">
-                <span class="chip">09 public prototypes</span>
-                <span class="chip">Static-first</span>
-                <span class="chip">Full mini-sites welcome</span>
-              </div>
-
-              <div class="link-row">
-                <a class="text-link" href="neon-seraph/">Open Neon Seraph</a>
-                <a class="text-link" href="atmosphere/">Open Atmosphere</a>
-                <a class="text-link" href="nexus-aetherial/">Open Nexus Aetherial</a>
-                <a class="text-link" href="solar-system-field-lab/">Open Field Lab</a>
-                <a class="text-link" href="golden/">Open Golden</a>
-                <a class="text-link" href="solar-system/">Open Solar System</a>
-                <a class="text-link" href="last-cartridge/">Open Last Cartridge</a>
-                <a class="text-link" href="chronicles-of-bone/">Open Chronicles of Bone</a>
-                <a class="text-link" href="nebula-architect/">Open Nebula Architect</a>
-                <a class="text-link" href="../">Back to Elusion Works</a>
-              </div>
-            </div>
-
-            <div class="hero-stage demo-hero-stage" aria-hidden="true">
-              <img
-                src="neon-seraph/thumbnail.webp"
-                alt=""
-                width="1200"
-                height="675"
-                loading="eager"
-                decoding="async"
-              />
-              <aside class="demo-hero-note">
-                <p class="note-label">Newest demo</p>
-                <p>Neon Seraph is a cinematic AAA-style cyberpunk game landing page with a real procedural trailer loop, isometric district scanner, faction dossiers, and launch CTA surface.</p>
-              </aside>
-            </div>
-          </div>
-        </section>
-
-        <section class="section-panel" aria-labelledby="demos-heading">
-          <div class="section-heading">
-            <span class="section-index">01</span>
-            <div>
-              <p class="eyebrow">Available demos</p>
-              <h2 class="section-title" id="demos-heading">The public demo library.</h2>
-            </div>
-          </div>
-
-          <div class="surface-grid demo-grid">
-            <a class="surface-card demo-card" href="neon-seraph/">
-              <figure class="demo-card-media">
-                <img
-                  src="neon-seraph/thumbnail.webp"
-                  alt="Neon Seraph cyberpunk game landing page trailer frame."
-                  width="1200"
-                  height="675"
-                  loading="lazy"
-                  decoding="async"
-                />
-              </figure>
-              <div class="meta-row">
-                <span class="meta-pill">Game landing page</span>
-                <span class="meta-pill">Video hero</span>
-              </div>
-              <h3>Neon Seraph</h3>
-              <p>A cinematic AAA-style isometric cyberpunk action game landing page with an original procedural trailer loop, tactical district scanner, faction dossiers, loadout carousel and launch/watchlist surface.</p>
-              <div class="surface-stats">
-                <span class="surface-stat">Video loop</span>
-                <span class="surface-stat">District scanner</span>
-                <span class="surface-stat">Faction tabs</span>
-                <span class="surface-stat">Static mini-site</span>
-              </div>
-              <span class="timeline-link">Open demo</span>
-            </a>
-
-            <a class="surface-card demo-card" href="atmosphere/">
-              <figure class="demo-card-media">
-                <img
-                  src="atmosphere/thumbnail.png"
-                  alt="Atmosphere local solar and weather analyzer demo preview."
-                  width="1200"
-                  height="675"
-                  loading="lazy"
-                  decoding="async"
-                />
-              </figure>
-              <div class="meta-row">
-                <span class="meta-pill">Weather demo</span>
-                <span class="meta-pill">Future app</span>
-              </div>
-              <h3>Atmosphere</h3>
-              <p>A local solar and weather analyzer with a reactive sky, draggable sun dial, Weather Underground setup surface, station-style panels, map bearing mockup, and floating virtual-time playback.</p>
-              <div class="surface-stats">
-                <span class="surface-stat">Solar dial</span>
-                <span class="surface-stat">Weather panels</span>
-                <span class="surface-stat">Map setup</span>
-                <span class="surface-stat">Static app demo</span>
-              </div>
-              <span class="timeline-link">Open demo</span>
-            </a>
-
-            <a class="surface-card demo-card" href="nexus-aetherial/">
-              <figure class="demo-card-media">
-                <img
-                  src="nexus-aetherial/thumbnail.webp"
-                  alt="Nexus Aetherial model reference desk demo preview."
-                  width="1200"
-                  height="675"
-                  loading="lazy"
-                  decoding="async"
-                />
-              </figure>
-              <div class="meta-row">
-                <span class="meta-pill">Reference demo</span>
-                <span class="meta-pill">Interactive</span>
-              </div>
-              <h3>Nexus Aetherial</h3>
-              <p>A modern AI reference desk prototype with a live console, cognitive compare matrix, model anatomy explainer, expandable dossier cabinet, benchmark digest and theme/tweak controls.</p>
-              <div class="surface-stats">
-                <span class="surface-stat">Compare matrix</span>
-                <span class="surface-stat">Anatomy explainer</span>
-                <span class="surface-stat">Dossier cabinet</span>
-                <span class="surface-stat">Static mini-site</span>
-              </div>
-              <span class="timeline-link">Open demo</span>
-            </a>
-
-            <a class="surface-card demo-card" href="golden/">
-              <figure class="demo-card-media">
-                <img
-                src="golden/assets/golden/hero_main_dog_crop_900.webp"
-                  alt="Golden Retriever hero artwork from the Golden demo."
-                  width="1200"
-                  height="900"
-                  loading="lazy"
-                  decoding="async"
-                />
-              </figure>
-              <div class="meta-row">
-                <span class="meta-pill">Website demo</span>
-                <span class="meta-pill">Golden Retriever</span>
-              </div>
-              <h3>Golden</h3>
-              <p>A premium breed encyclopedia concept with a cinematic hero, image-led sections, gallery, guide pages, and shared chrome. It is a prototype, not a live publication.</p>
-              <div class="surface-stats">
-                <span class="surface-stat">Homepage</span>
-                <span class="surface-stat">Breed guide</span>
-                <span class="surface-stat">Gallery</span>
-                <span class="surface-stat">Static mini-site</span>
-              </div>
-              <span class="timeline-link">Open demo</span>
-            </a>
-
-            <a class="surface-card demo-card" href="solar-system-field-lab/">
-              <figure class="demo-card-media">
-                <img
-                  src="solar-system-field-lab/thumbnail.webp"
-                  alt="Solar System Field Lab interactive orbit preview."
-                  width="1200"
-                  height="675"
-                  loading="lazy"
-                  decoding="async"
-                />
-              </figure>
-              <div class="meta-row">
-                <span class="meta-pill">STEM demo</span>
-                <span class="meta-pill">Three.js</span>
-              </div>
-              <h3>Solar System Field Lab</h3>
-              <p>A dark-mode mission-science lab with a live 3D orbit canvas, compressed/log/honest distance modes, fullscreen flyby, searchable planet explorer, scale calculator, quiz, and procedural planet pages.</p>
-              <div class="surface-stats">
-                <span class="surface-stat">3D orbit lab</span>
-                <span class="surface-stat">Planet pages</span>
-                <span class="surface-stat">Scale shock</span>
-                <span class="surface-stat">Browser prototype</span>
-              </div>
-              <span class="timeline-link">Open demo</span>
-            </a>
-
-            <a class="surface-card demo-card" href="solar-system/">
-              <figure class="demo-card-media">
-                <img
-                  src="solar-system/assets/social/solar-system-field-lab-og.png"
-                  alt="Solar System Field Lab mission-control preview."
-                  width="1200"
-                  height="630"
-                  loading="lazy"
-                  decoding="async"
-                />
-              </figure>
-              <div class="meta-row">
-                <span class="meta-pill">STEM demo</span>
-                <span class="meta-pill">Interactive</span>
-              </div>
-              <h3>Solar System Learning Demo</h3>
-              <p>The earlier static education mini-site with an orbit lab, planet explorer, comparison tools, scale model, dwarf planet dock, quiz, and visible NASA/JPL/IAU source notes.</p>
-              <div class="surface-stats">
-                <span class="surface-stat">Orbit lab</span>
-                <span class="surface-stat">Planet explorer</span>
-                <span class="surface-stat">Scale model</span>
-                <span class="surface-stat">Static mini-site</span>
-              </div>
-              <span class="timeline-link">Open demo</span>
-            </a>
-
-            <a class="surface-card demo-card" href="last-cartridge/">
-              <figure class="demo-card-media">
-                <img
-                  src="last-cartridge/assets/reference/homepage-reference-mockup.png"
-                  alt="The Last Cartridge dark retro-futurist website preview."
-                  width="1440"
-                  height="3400"
-                  loading="lazy"
-                  decoding="async"
-                />
-              </figure>
-              <div class="meta-row">
-                <span class="meta-pill">Artefact demo</span>
-                <span class="meta-pill">Interactive</span>
-              </div>
-              <h3>The Last Cartridge</h3>
-              <p>A cinematic digital artefact exhibition for a fictional lost 16-bit cartridge, with boot sequence, world hotspots, recovered profiles, gameplay stills, soundtrack fragments and archive objects.</p>
-              <div class="surface-stats">
-                <span class="surface-stat">Boot overlay</span>
-                <span class="surface-stat">World map</span>
-                <span class="surface-stat">Archive gallery</span>
-                <span class="surface-stat">Static mini-site</span>
-              </div>
-              <span class="timeline-link">Open demo</span>
-            </a>
-
-            <a class="surface-card demo-card" href="chronicles-of-bone/">
-              <figure class="demo-card-media">
-                <img
-                  src="chronicles-of-bone/thumbnail.webp"
-                  alt="Chronicles of Bone cinematic showcase preview."
-                  width="1200"
-                  height="675"
-                  loading="lazy"
-                  decoding="async"
-                />
-              </figure>
-              <div class="meta-row">
-                <span class="meta-pill">Cinematic demo</span>
-                <span class="meta-pill">Interactive</span>
-              </div>
-              <h3>Chronicles of Bone</h3>
-              <p>A single-page horizontally-scrolling cinematic showcase for a fictional feature film, doubling as a quiet portrait of the modern director's toolkit across five acts.</p>
-              <div class="surface-stats">
-                <span class="surface-stat">Five acts</span>
-                <span class="surface-stat">Horizontal nav</span>
-                <span class="surface-stat">Interactive tweaks</span>
-                <span class="surface-stat">Browser prototype</span>
-              </div>
-              <span class="timeline-link">Open demo</span>
-            </a>
-
-            <a class="surface-card demo-card" href="nebula-architect/">
-              <figure class="demo-card-media">
-                <img
-                  src="nebula-architect/thumbnail.png"
-                  alt="Nebula Architect space biosphere simulator demo preview."
-                  width="1200"
-                  height="675"
-                  loading="lazy"
-                  decoding="async"
-                />
-              </figure>
-              <div class="meta-row">
-                <span class="meta-pill">Space tech</span>
-                <span class="meta-pill">Interactive</span>
-              </div>
-              <h3>Nebula Architect</h3>
-              <p>A cinematic space-tech geodesic dome habitat designer utilizing real-time physics algorithms, draggable vector radar diagnostics, and multi-beat narrative video loop players.</p>
-              <div class="surface-stats">
-                <span class="surface-stat">Vector radar</span>
-                <span class="surface-stat">Physics engines</span>
-                <span class="surface-stat">5 timeline beats</span>
-                <span class="surface-stat">Static app demo</span>
-              </div>
-              <span class="timeline-link">Open demo</span>
-            </a>
-          </div>
-        </section>
-      </main>
-
-      <footer class="footer-panel footer-panel--estate footer-panel--wide">
-        <div class="footer-brand">
-          <p class="footer-title">Elusion Works demos</p>
-          <p class="footer-copy">A lightweight public shelf for prototype websites and interactive front-end studies.</p>
-          <p class="footer-legal">&copy; 2026 Elusion Works / Kol Tregaskes</p>
-        </div>
-
-        <nav class="footer-group" aria-label="Footer main pages">
-          <p class="footer-group-title">Main</p>
-          <a class="footer-link" href="../">Home</a>
-          <a class="footer-link" href="../experiments/">Experiments</a>
-          <a class="footer-link" href="../design-notes/">Design Notes</a>
-          <a class="footer-link" href="../creative-radar/">Creative Radar</a>
-        </nav>
-        <nav class="footer-group" aria-label="Footer demos">
-          <p class="footer-group-title">Demos</p>
-          <a class="footer-link" href="atmosphere/">Atmosphere</a>
-          <a class="footer-link" href="golden/">Golden</a>
-          <a class="footer-link" href="nexus-aetherial/">Nexus Aetherial</a>
-          <a class="footer-link" href="solar-system-field-lab/">Solar System Field Lab</a>
-          <a class="footer-link" href="solar-system/">Solar System</a>
-          <a class="footer-link" href="last-cartridge/">Last Cartridge</a>
-          <a class="footer-link" href="chronicles-of-bone/">Chronicles of Bone</a>
-          <a class="footer-link" href="nebula-architect/">Nebula Architect</a>
-        </nav>
-        <nav class="footer-group" aria-label="Footer projects">
-          <p class="footer-group-title">Projects</p>
-          <a class="footer-link" href="https://koltregaskes.com/">Kol's Korner</a>
-          <a class="footer-link" href="https://theairesourcehub.com/">AI Resource Hub</a>
-          <a class="footer-link" href="https://axylusion.com/">Axy Lusion</a>
-          <a class="footer-link" href="https://ghostinthemodels.com/">Ghost in the Models</a>
-          <a class="footer-link" href="https://koltregaskesphotography.com/">KT Photography</a>
-        </nav>
-        <nav class="footer-group" aria-label="Footer contact and social">
-          <p class="footer-group-title">Contact</p>
-          <a class="footer-link" href="https://github.com/koltregaskes" target="_blank" rel="noopener noreferrer">GitHub</a>
-          <a class="footer-link" href="https://x.com/koltregaskes" target="_blank" rel="noopener noreferrer">X / Twitter</a>
-          <a class="footer-link" href="../security.txt">Security</a>
-        </nav>
-      </footer>
+    <div class="ew-cursor" aria-hidden="true">
+      <div class="ew-cursor-dot"></div>
+      <div class="ew-cursor-ring"></div>
     </div>
+    <div class="ew-spotlight" aria-hidden="true"></div>
+    <div class="ew-scroll-rail" aria-hidden="true">
+      <div class="ew-scroll-rail-fill"></div>
+      <div class="ew-scroll-rail-tick"><span class="ew-mono">Scroll</span></div>
+    </div>
+
+    <main id="main-content" class="ew-demos">
+      <section class="ew-demos-intro" aria-labelledby="demos-heading">
+        <div>
+          <span class="ew-mono ew-eyebrow">Elusion Works / Demo shelf</span>
+          <h1 class="ew-demos-title" id="demos-heading" data-split-heading>
+            Eleven small worlds. <em>No waiting room.</em>
+          </h1>
+        </div>
+        <p class="ew-demos-deck">
+          Website prototypes, interactive studies and playable ideas. Each card opens
+          the work directly. No duplicate directory, no ceremonial hero, no faffing.
+        </p>
+      </section>
+
+      <section class="ew-cabinet ew-demos-cabinet" id="demo-index" aria-label="Demo index">
+        <div class="ew-cabinet-head">
+          <div>
+            <span class="ew-mono ew-eyebrow">Available now</span>
+            <h2 class="ew-section-title">Open a prototype.</h2>
+          </div>
+          <span class="ew-cabinet-hint">Image-led studies / each one opens directly</span>
+        </div>
+
+        <div class="ew-cabinet-grid ew-demos-grid">
+          <article class="ew-plate ew-demo-card ew-demo-card--wide" data-kind="game">
+            <span class="ew-plate-halo" aria-hidden="true"></span>
+            <a class="ew-plate-link" href="ashfall/" aria-label="Open Ashfall"></a>
+            <div class="ew-plate-media">
+              <div class="ew-plate-frame">
+                <img src="ashfall/thumbnail.webp" alt="" width="1200" height="675" loading="eager" decoding="async" />
+                <span class="ew-plate-shade"></span><span class="ew-plate-sheen" aria-hidden="true"></span>
+              </div>
+            </div>
+            <div class="ew-plate-meta">
+              <div class="ew-plate-meta-row"><span class="ew-mono ew-plate-kind">Real-time 3D</span><span class="ew-status ew-status-live">Playable</span></div>
+              <h3 class="ew-plate-name">Ashfall</h3>
+              <p class="ew-plate-blurb">A browser-native first-person shooter built on Three.js with no external assets, every texture, mesh and sound generated at runtime.</p>
+              <div class="ew-plate-footer"><span class="ew-mono ew-plate-family">Newest demo</span><span class="ew-plate-cta">Launch <span class="ew-cta-arrow">-&gt;</span></span></div>
+            </div>
+          </article>
+
+          <article class="ew-plate ew-demo-card ew-demo-card--wide" data-kind="game">
+            <span class="ew-plate-halo" aria-hidden="true"></span>
+            <a class="ew-plate-link" href="https://koltregaskes.github.io/nitro-circuit-overdrive/" aria-label="Open Nitro Circuit Overdrive"></a>
+            <div class="ew-plate-media">
+              <div class="ew-plate-frame">
+                <img src="nitro-circuit-overdrive/thumbnail.webp" alt="" width="1200" height="675" loading="eager" decoding="async" />
+                <span class="ew-plate-shade"></span><span class="ew-plate-sheen" aria-hidden="true"></span>
+              </div>
+            </div>
+            <div class="ew-plate-meta">
+              <div class="ew-plate-meta-row"><span class="ew-mono ew-plate-kind">Real-time 3D</span><span class="ew-status ew-status-live">Playable</span></div>
+              <h3 class="ew-plate-name">Nitro Circuit Overdrive</h3>
+              <p class="ew-plate-blurb">A 2.5D top-down arcade racer on Three.js — three cups across twelve tracks, Time Trial ghosts, Elimination, liveries and a photo mode.</p>
+              <div class="ew-plate-footer"><span class="ew-mono ew-plate-family">Arcade racer</span><span class="ew-plate-cta">Race <span class="ew-cta-arrow">-&gt;</span></span></div>
+            </div>
+          </article>
+
+          <article class="ew-plate ew-demo-card ew-demo-card--wide" data-kind="tool">
+            <span class="ew-plate-halo" aria-hidden="true"></span>
+            <a class="ew-plate-link" href="exploded-views/" aria-label="Open Exploded Views"></a>
+            <div class="ew-plate-media">
+              <div class="ew-plate-frame">
+                <img src="exploded-views/thumbnail.webp" alt="" width="1200" height="675" loading="eager" decoding="async" />
+                <span class="ew-plate-shade"></span><span class="ew-plate-sheen" aria-hidden="true"></span>
+              </div>
+            </div>
+            <div class="ew-plate-meta">
+              <div class="ew-plate-meta-row"><span class="ew-mono ew-plate-kind">Interactive 3D</span><span class="ew-status ew-status-live">Technical</span></div>
+              <h3 class="ew-plate-name">Exploded Views</h3>
+              <p class="ew-plate-blurb">Laptop, orrery and turbofan explorers with live explode, X-ray and section controls.</p>
+              <div class="ew-plate-footer"><span class="ew-mono ew-plate-family">Technical study</span><span class="ew-plate-cta">Open <span class="ew-cta-arrow">-&gt;</span></span></div>
+            </div>
+          </article>
+
+          <article class="ew-plate ew-demo-card ew-demo-card--standard" data-kind="tool">
+            <span class="ew-plate-halo" aria-hidden="true"></span>
+            <a class="ew-plate-link" href="abyssal-relay/" aria-label="Open Abyssal Relay"></a>
+            <div class="ew-plate-media">
+              <div class="ew-plate-frame">
+                <img src="abyssal-relay/thumbnail.webp" alt="" width="1200" height="675" loading="eager" decoding="async" />
+                <span class="ew-plate-shade"></span><span class="ew-plate-sheen" aria-hidden="true"></span>
+              </div>
+            </div>
+            <div class="ew-plate-meta">
+              <div class="ew-plate-meta-row"><span class="ew-mono ew-plate-kind">Cinematic experience</span><span class="ew-status ew-status-in-progress">Interactive</span></div>
+              <h3 class="ew-plate-name">Abyssal Relay</h3>
+              <p class="ew-plate-blurb">Hadal expedition with a scroll-driven descent, live bathymetric signal field and tactile hydrophone tuner.</p>
+              <div class="ew-plate-footer"><span class="ew-mono ew-plate-family">Cinematic study</span><span class="ew-plate-cta">Enter <span class="ew-cta-arrow">-&gt;</span></span></div>
+            </div>
+          </article>
+
+          <article class="ew-plate ew-demo-card ew-demo-card--standard" data-kind="tool">
+            <span class="ew-plate-halo" aria-hidden="true"></span>
+            <a class="ew-plate-link" href="atmosphere/" aria-label="Open Atmosphere"></a>
+            <div class="ew-plate-media"><div class="ew-plate-frame"><img src="atmosphere/thumbnail.png" alt="" width="1200" height="675" loading="lazy" decoding="async" /><span class="ew-plate-shade"></span><span class="ew-plate-sheen" aria-hidden="true"></span></div></div>
+            <div class="ew-plate-meta">
+              <div class="ew-plate-meta-row"><span class="ew-mono ew-plate-kind">Weather interface</span><span class="ew-status ew-status-in-progress">Interactive</span></div>
+              <h3 class="ew-plate-name">Atmosphere</h3>
+              <p class="ew-plate-blurb">Reactive sky, draggable solar dial, station panels and virtual-time playback.</p>
+              <div class="ew-plate-footer"><span class="ew-mono ew-plate-family">App study</span><span class="ew-plate-cta">Open <span class="ew-cta-arrow">-&gt;</span></span></div>
+            </div>
+          </article>
+
+          <article class="ew-plate ew-demo-card ew-demo-card--standard" data-kind="tool">
+            <span class="ew-plate-halo" aria-hidden="true"></span>
+            <a class="ew-plate-link" href="nexus-aetherial/" aria-label="Open Nexus Aetherial"></a>
+            <div class="ew-plate-media"><div class="ew-plate-frame"><img src="nexus-aetherial/thumbnail.webp" alt="" width="1200" height="675" loading="lazy" decoding="async" /><span class="ew-plate-shade"></span><span class="ew-plate-sheen" aria-hidden="true"></span></div></div>
+            <div class="ew-plate-meta">
+              <div class="ew-plate-meta-row"><span class="ew-mono ew-plate-kind">AI reference desk</span><span class="ew-status ew-status-live">Interactive</span></div>
+              <h3 class="ew-plate-name">Nexus Aetherial</h3>
+              <p class="ew-plate-blurb">Model comparison matrix, anatomy explainer, dossier cabinet and benchmark digest.</p>
+              <div class="ew-plate-footer"><span class="ew-mono ew-plate-family">Interface study</span><span class="ew-plate-cta">Open <span class="ew-cta-arrow">-&gt;</span></span></div>
+            </div>
+          </article>
+
+          <article class="ew-plate ew-demo-card ew-demo-card--standard" data-kind="website">
+            <span class="ew-plate-halo" aria-hidden="true"></span>
+            <a class="ew-plate-link" href="golden/" aria-label="Open Golden"></a>
+            <div class="ew-plate-media"><div class="ew-plate-frame"><img src="golden/assets/golden/hero_main_dog_crop_900.webp" alt="" width="1200" height="900" loading="lazy" decoding="async" /><span class="ew-plate-shade"></span><span class="ew-plate-sheen" aria-hidden="true"></span></div></div>
+            <div class="ew-plate-meta">
+              <div class="ew-plate-meta-row"><span class="ew-mono ew-plate-kind">Breed guide</span><span class="ew-status ew-status-live">Mini-site</span></div>
+              <h3 class="ew-plate-name">Golden</h3>
+              <p class="ew-plate-blurb">An image-led Golden Retriever encyclopaedia concept with guide and gallery pages.</p>
+              <div class="ew-plate-footer"><span class="ew-mono ew-plate-family">Website study</span><span class="ew-plate-cta">Open <span class="ew-cta-arrow">-&gt;</span></span></div>
+            </div>
+          </article>
+
+          <article class="ew-plate ew-demo-card ew-demo-card--wide" data-kind="game">
+            <span class="ew-plate-halo" aria-hidden="true"></span>
+            <a class="ew-plate-link" href="solar-system-field-lab/" aria-label="Open Solar System Field Lab"></a>
+            <div class="ew-plate-media"><div class="ew-plate-frame"><img src="solar-system-field-lab/thumbnail.webp" alt="" width="1200" height="675" loading="lazy" decoding="async" /><span class="ew-plate-shade"></span><span class="ew-plate-sheen" aria-hidden="true"></span></div></div>
+            <div class="ew-plate-meta">
+              <div class="ew-plate-meta-row"><span class="ew-mono ew-plate-kind">3D science lab</span><span class="ew-status ew-status-live">Playable</span></div>
+              <h3 class="ew-plate-name">Solar System Field Lab</h3>
+              <p class="ew-plate-blurb">Live orbit canvas, planet explorer, scale calculator, flyby and quiz.</p>
+              <div class="ew-plate-footer"><span class="ew-mono ew-plate-family">Three.js study</span><span class="ew-plate-cta">Launch <span class="ew-cta-arrow">-&gt;</span></span></div>
+            </div>
+          </article>
+
+          <article class="ew-plate ew-demo-card ew-demo-card--compact" data-kind="tool">
+            <span class="ew-plate-halo" aria-hidden="true"></span>
+            <a class="ew-plate-link" href="solar-system/" aria-label="Open Solar System Learning Demo"></a>
+            <div class="ew-plate-media"><div class="ew-plate-frame"><img src="solar-system/assets/social/solar-system-field-lab-og.png" alt="" width="1200" height="630" loading="lazy" decoding="async" /><span class="ew-plate-shade"></span><span class="ew-plate-sheen" aria-hidden="true"></span></div></div>
+            <div class="ew-plate-meta">
+              <div class="ew-plate-meta-row"><span class="ew-mono ew-plate-kind">STEM mini-site</span><span class="ew-status ew-status-in-progress">Earlier study</span></div>
+              <h3 class="ew-plate-name">Solar System Learning Demo</h3>
+              <p class="ew-plate-blurb">Orbit lab, planet explorer and source-led scale tools.</p>
+              <div class="ew-plate-footer"><span class="ew-mono ew-plate-family">Education</span><span class="ew-plate-cta">Open <span class="ew-cta-arrow">-&gt;</span></span></div>
+            </div>
+          </article>
+
+          <article class="ew-plate ew-demo-card ew-demo-card--standard" data-kind="game">
+            <span class="ew-plate-halo" aria-hidden="true"></span>
+            <a class="ew-plate-link" href="last-cartridge/" aria-label="Open The Last Cartridge"></a>
+            <div class="ew-plate-media"><div class="ew-plate-frame"><img src="last-cartridge/assets/reference/homepage-reference-mockup.png" alt="" width="1440" height="3400" loading="lazy" decoding="async" /><span class="ew-plate-shade"></span><span class="ew-plate-sheen" aria-hidden="true"></span></div></div>
+            <div class="ew-plate-meta">
+              <div class="ew-plate-meta-row"><span class="ew-mono ew-plate-kind">Digital artefact</span><span class="ew-status ew-status-live">Interactive</span></div>
+              <h3 class="ew-plate-name">The Last Cartridge</h3>
+              <p class="ew-plate-blurb">A lost 16-bit cartridge exhibition with boot sequence, map and recovered archive.</p>
+              <div class="ew-plate-footer"><span class="ew-mono ew-plate-family">Cinematic study</span><span class="ew-plate-cta">Boot <span class="ew-cta-arrow">-&gt;</span></span></div>
+            </div>
+          </article>
+
+          <article class="ew-plate ew-demo-card ew-demo-card--wide" data-kind="website">
+            <span class="ew-plate-halo" aria-hidden="true"></span>
+            <a class="ew-plate-link" href="chronicles-of-bone/" aria-label="Open Chronicles of Bone"></a>
+            <div class="ew-plate-media"><div class="ew-plate-frame"><img src="chronicles-of-bone/thumbnail.webp" alt="" width="1200" height="675" loading="lazy" decoding="async" /><span class="ew-plate-shade"></span><span class="ew-plate-sheen" aria-hidden="true"></span></div></div>
+            <div class="ew-plate-meta">
+              <div class="ew-plate-meta-row"><span class="ew-mono ew-plate-kind">Film showcase</span><span class="ew-status ew-status-live">Five acts</span></div>
+              <h3 class="ew-plate-name">Chronicles of Bone</h3>
+              <p class="ew-plate-blurb">A horizontally scrolling cinematic portrait of a fictional feature film.</p>
+              <div class="ew-plate-footer"><span class="ew-mono ew-plate-family">Editorial study</span><span class="ew-plate-cta">Watch <span class="ew-cta-arrow">-&gt;</span></span></div>
+            </div>
+          </article>
+
+          <article class="ew-plate ew-demo-card ew-demo-card--standard" data-kind="tool">
+            <span class="ew-plate-halo" aria-hidden="true"></span>
+            <a class="ew-plate-link" href="nebula-architect/" aria-label="Open Nebula Architect"></a>
+            <div class="ew-plate-media"><div class="ew-plate-frame"><img src="nebula-architect/thumbnail.png" alt="" width="1200" height="675" loading="lazy" decoding="async" /><span class="ew-plate-shade"></span><span class="ew-plate-sheen" aria-hidden="true"></span></div></div>
+            <div class="ew-plate-meta">
+              <div class="ew-plate-meta-row"><span class="ew-mono ew-plate-kind">Space-tech app</span><span class="ew-status ew-status-live">Interactive</span></div>
+              <h3 class="ew-plate-name">Nebula Architect</h3>
+              <p class="ew-plate-blurb">Geodesic habitat designer with vector diagnostics and narrative video beats.</p>
+              <div class="ew-plate-footer"><span class="ew-mono ew-plate-family">Simulation study</span><span class="ew-plate-cta">Open <span class="ew-cta-arrow">-&gt;</span></span></div>
+            </div>
+          </article>
+        </div>
+        <div class="ew-march" aria-hidden="true"></div>
+      </section>
+    </main>
+
+    <footer class="ew-footer">
+      <div class="ew-footer-inner ew-demos-footer">
+        <div class="ew-footer-brand">
+          <p class="ew-footer-title">Elusion Works</p>
+          <p class="ew-footer-copy">The demos live here. The wider studio index lives one click away.</p>
+        </div>
+        <nav class="ew-footer-group" aria-label="Footer main pages">
+          <p>Explore</p>
+          <a href="../">Studio home</a>
+          <a href="../experiments/">Experiments</a>
+          <a href="../design-notes/">Design notes</a>
+        </nav>
+        <nav class="ew-footer-group" aria-label="Footer contact">
+          <p>Contact</p>
+          <a href="https://github.com/koltregaskes" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="https://x.com/koltregaskes" target="_blank" rel="noopener noreferrer">X / Twitter</a>
+          <a href="../security.txt">Security</a>
+        </nav>
+      </div>
+      <div class="ew-footer-base">
+        <span class="ew-mono">&copy; 2026 Elusion Works / by Kol Tregaskes</span>
+        <a class="ew-mono" href="#top">Back to top</a>
+      </div>
+    </footer>
+
+    <script type="module" src="../scripts/cabinet.js?v=20260725b"></script>
   </body>
 </html>

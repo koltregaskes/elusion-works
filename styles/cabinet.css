@@ -126,7 +126,9 @@ em { font-style: normal; background-image: linear-gradient(transparent 60%, colo
   max-width: var(--max-w); margin: 0 auto;
   display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 24px;
   padding: 12px 18px;
-  background: color-mix(in oklab, var(--bg-1) 96%, var(--copper) 4%);
+  background:
+    linear-gradient(90deg, color-mix(in oklab, var(--copper) 16%, transparent), transparent 22%),
+    color-mix(in oklab, var(--bg-1) 96%, var(--copper) 4%);
   border: 1px solid var(--line-strong); border-radius: var(--r-pill);
   box-shadow: 0 8px 24px rgba(0,0,0,0.22);
 }
@@ -140,6 +142,44 @@ html[data-theme="light"] .ew-brand img { filter: invert(1) brightness(0.18); }
 .ew-nav a { font-family: "IBM Plex Mono", monospace; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--fg-3); transition: color 180ms; }
 .ew-nav a:hover { color: var(--fg-1); }
 .ew-header-actions { display: flex; gap: 8px; }
+.ew-index-link {
+  padding-right: 7px;
+  border-color: color-mix(in oklab, var(--copper) 40%, var(--line-strong));
+}
+.ew-index-count {
+  display: inline-grid;
+  min-width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--copper);
+  color: var(--bg-0);
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.ew-stat-marquee .ew-mini-marquee-track {
+  display: flex;
+  width: 100%;
+}
+.ew-stat-marquee .ew-mini-marquee-item {
+  flex: 0 0 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.ew-cabinet:target .ew-cabinet-head,
+.ew-plate:target {
+  outline: 1px solid color-mix(in oklab, var(--copper) 72%, var(--line-strong));
+  outline-offset: 7px;
+}
+.ew-plate:target {
+  scroll-margin-top: 132px;
+}
+.ew-cabinet:target .ew-section-title,
+.ew-plate:target .ew-plate-name {
+  color: var(--copper);
+}
 
 /* Pills and chips */
 .ew-pill {
@@ -169,8 +209,11 @@ button.ew-pill {
   margin: 22px auto; max-width: var(--max-w); padding: 0 var(--gutter);
 }
 .ew-hero-inner {
-  position: relative; padding: 56px 48px 32px;
-  background: var(--panel-warm); border: 1px solid var(--line-strong);
+  position: relative; padding: 64px 48px 34px;
+  background:
+    linear-gradient(135deg, color-mix(in oklab, var(--copper) 12%, transparent), transparent 34%),
+    var(--panel-warm);
+  border: 1px solid color-mix(in oklab, var(--copper) 28%, var(--line-strong));
   border-radius: 40px; box-shadow: var(--shadow-lg); overflow: hidden;
 }
 .ew-hero-grid {
@@ -189,12 +232,12 @@ button.ew-pill {
 .ew-hero-meta { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; flex-wrap: wrap; }
 .ew-hero-h1 {
   font-family: "Outfit", system-ui; font-weight: 500; letter-spacing: -0.05em;
-  font-size: clamp(2.8rem, 5.4vw, 5rem);
-  line-height: 0.96; margin: 0 0 18px; max-width: 1100px;
+  font-size: clamp(3rem, 6.2vw, 5.9rem);
+  line-height: 0.9; margin: 0 0 22px; max-width: 1180px;
   text-wrap: balance; color: var(--fg-1);
 }
 .ew-hero-sub {
-  font-size: 1.1rem; color: var(--fg-3); max-width: 720px; margin: 0 0 32px;
+  font-size: 1.06rem; line-height: 1.65; color: var(--fg-3); max-width: 760px; margin: 0 0 34px;
 }
 
 /* Ticker */
@@ -413,6 +456,72 @@ html[data-theme="light"] .ew-plate-poster { opacity: 0.88; filter: invert(0.85) 
 }
 @keyframes ew-march { from { background-position: 0 0; } to { background-position: 28px 0; } }
 
+/* Demos use the same cabinet language as the studio home, without a second hero shell. */
+.ew-demos {
+  position: relative;
+  z-index: 1;
+}
+.ew-demos-intro {
+  max-width: var(--max-w);
+  margin: 70px auto 42px;
+  padding: 0 var(--gutter);
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.55fr);
+  align-items: end;
+  gap: clamp(28px, 6vw, 92px);
+}
+.ew-demos-title {
+  max-width: 980px;
+  margin: 16px 0 0;
+  color: var(--fg-1);
+  font-family: "Outfit", system-ui;
+  font-size: clamp(3.3rem, 7.2vw, 7rem);
+  font-weight: 500;
+  letter-spacing: -0.065em;
+  line-height: 0.86;
+  text-wrap: balance;
+}
+.ew-demos-title em {
+  color: var(--copper);
+  font-style: normal;
+}
+.ew-demos-deck {
+  max-width: 40rem;
+  margin: 0;
+  padding: 0 0 6px 20px;
+  border-left: 1px solid color-mix(in oklab, var(--copper) 48%, var(--line-strong));
+  color: var(--fg-3);
+  font-size: 1.02rem;
+  line-height: 1.7;
+}
+.ew-demos-cabinet {
+  margin-top: 0;
+}
+.ew-demo-card--wide { grid-column: span 4; grid-row: span 2; }
+.ew-demo-card--standard { grid-column: span 2; grid-row: span 2; }
+.ew-demo-card--compact { grid-column: span 2; grid-row: span 1; }
+.ew-demo-card--compact .ew-plate-blurb { display: none; }
+.ew-demo-card .ew-plate-frame img {
+  object-position: center;
+}
+/*
+ * Two thumbnails need their crop biased upward. These were keyed off grid position, which
+ * silently retargets the wrong cards whenever a demo is added or reordered: inserting Ashfall
+ * at the head moved Golden from child 5 to 6 and The Last Cartridge from 8 to 9, so the rules
+ * landed on Nexus Aetherial and the Solar System learning demo instead. Keying off the image
+ * source ties each rule to the artwork it was measured against, so it survives reordering.
+ */
+.ew-demo-card .ew-plate-frame img[src^='golden/'] {
+  object-position: center 30%;
+}
+/* 1440x3400 page mockup: without this it centre-crops to the middle of a tall image. */
+.ew-demo-card .ew-plate-frame img[src^='last-cartridge/'] {
+  object-position: center 12%;
+}
+.ew-demos-footer {
+  grid-template-columns: minmax(0, 1.7fr) repeat(2, minmax(150px, 0.65fr));
+}
+
 
 
 /* Footer */
@@ -491,6 +600,19 @@ html[data-theme="light"] .ew-plate-poster { opacity: 0.88; filter: invert(0.85) 
     flex-direction: column;
     gap: 10px;
   }
+
+  .ew-cabinet-grid .ew-plate {
+    grid-column: span 3 !important;
+  }
+  .ew-demos-intro {
+    grid-template-columns: 1fr;
+    align-items: start;
+    margin-top: 52px;
+    gap: 24px;
+  }
+  .ew-demos-deck {
+    max-width: 48rem;
+  }
 }
 
 @media (max-width: 720px) {
@@ -563,6 +685,16 @@ html[data-theme="light"] .ew-plate-poster { opacity: 0.88; filter: invert(0.85) 
   .ew-footer-base {
     flex-direction: column;
     gap: 8px;
+  }
+
+  .ew-demos-intro {
+    margin: 38px auto 30px;
+  }
+  .ew-demos-title {
+    font-size: clamp(3rem, 16vw, 4.7rem);
+  }
+  .ew-demos-deck {
+    padding-left: 14px;
   }
 }
 
