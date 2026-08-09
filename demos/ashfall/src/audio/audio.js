@@ -94,6 +94,22 @@ const SPEED_OF_SOUND = 343.0; // m/s — drives the propagation delay
 const MAX_VOICES = 108;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const rnd = Math.random;
+
+/**
+ * Per-frame AudioParam driver for the update path. setTargetAtTime keeps the glide (a direct
+ * .value write per frame is a 60 Hz staircase, audible as zipper on anything sustained), but
+ * every call appends an automation event to the param's timeline, and the update path would
+ * otherwise append to a dozen timelines at frame rate for a whole session. Most frames are
+ * steady state, so skip the call when the target has not meaningfully moved — the event
+ * already on the timeline is still gliding to the same value. The tolerance is relative with
+ * an absolute floor so it serves gains (~0..1) and filter frequencies (~10^2..10^4) alike.
+ */
+function glide(param, target, t, tc) {
+  const last = param._ashTarget;
+  if (last !== undefined && Math.abs(target - last) <= Math.max(1e-4, Math.abs(last) * 1e-3)) return;
+  param._ashTarget = target;
+  param.setTargetAtTime(target, t, tc);
+}
 /** Symmetric jitter helper: `jit(0.03)` → 0.97 .. 1.03. */
 const jit = (amount) => 1 + (rnd() * 2 - 1) * amount;
 
@@ -1197,8 +1213,6 @@ export function createAudio(game) {
     // the band the less of the click survives), so the edge that owns the shot's first
     // millisecond is bright noise through a wide-open highpass — this is what puts the
     // envelope peak at the muzzle instead of 40 ms later on the reverb build.
-    // Held for ~5 ms rather than spiked — three staggered snaps so the blast pressure stays
-    // near its peak across the compressors' lookahead window instead of decaying under it.
     // The snap is voiced per weapon — it is loud enough to dominate the spectrum, so if all
     // three guns ran the same bright highpass the voicing tables underneath stopped mattering.
     const S = P.snap || { mode: 'hp', scale: 1 };
@@ -1328,18 +1342,14 @@ export function createAudio(game) {
         P.tail.f * jp,
         P.tail.f * 0.45,
         P.tail.q,
-        // 0.38 self / 0.55 world, down from 1.5: through the convolver's energy gain the tail
+        // 0.30 self / 0.40 world, down from 1.5: through the convolver's energy gain the tail
         // at 1.5 formed a 300 ms limiter-pinned wall louder than the report itself. A tail
-        // decays; it does not sustain — and on the self channel it must stay clearly under
-        // the muzzle snap or the envelope peak migrates back into the reverb build.
-        // World tails: 0.42 for the dmr rather than 0.48. Its tail is the heaviest of the
-        // three and at 0.48 its build out-crested the world snap transient (~85 ms attack on
-        // enemyShot.dmr) unless that transient was pushed loud enough to invert the mix
-        // against the player's own shot. Trimming the competitor keeps both measurements.
-        // World tail 0.40, all classes: at 0.48 the tail's ~80-100 ms build raced the world
-        // crest transient inside the per-shot jitter band, and the measured enemy attack was
-        // bimodal across draws. The crest must win every draw, and it cannot simply be made
-        // hotter without out-peaking the player's own shot, so the competitor comes down.
+        // decays; it does not sustain. On the self channel it must stay clearly under the
+        // muzzle snap or the envelope peak migrates back into the reverb build; on the world
+        // channel its ~80-100 ms build must lose to the crest transient on EVERY draw of the
+        // per-shot jitter, or the measured enemy attack goes bimodal — and the crest cannot
+        // simply be made hotter without out-peaking the player's own shot, so the competitor
+        // comes down instead.
         P.tail.g * jl * open * tailWalk * (isSelf ? 0.30 : 0.40) * (1 + first * 0.10),
         0.0025,
         P.tail.dec * (1 + first * 0.18),
@@ -1516,9 +1526,14 @@ export function createAudio(game) {
       burst(d, toeT, 'lowpass', F.slap * 0.35 * jp, F.slap * 0.16, 1.2, toeG * 0.7, 0.0018, F.slapDec * 1.3, bufWhite, 1);
       if (F.slap > 2000) {
         // Broken glass is grain AND edge: the shard scatter above rides on the same bright
-        // toe a hard surface gets, otherwise glass underfoot reads as damp gravel.
-        burst(d, toeT, 'highpass', F.slap * jp, F.slap * 0.6, F.slapQ, toeG * 2.2, 0.0010, F.slapDec, bufBright, jit(0.1));
-        transient(d, toeT, F.slap * 1.15 * jp, 1.4, toeG * 1.0, 0.0016);
+        // toe a hard surface gets, otherwise glass underfoot reads as damp gravel. Gravel's
+        // slap is also >2000, but its identity is the stone scatter — at the full glass gain
+        // this toe dragged gravel towards glass, while deleting it outright collapsed gravel
+        // to a dirt-like thud (centroid 1400 Hz → 110 Hz). Ring separates the two: glass
+        // (ring 3100) gets the hot edge, ringless ballast gets an ordinary hard-surface toe.
+        const hot = F.ring > 0;
+        burst(d, toeT, 'highpass', F.slap * jp, F.slap * 0.6, F.slapQ, toeG * (hot ? 2.2 : 0.9), 0.0010, F.slapDec, bufBright, jit(0.1));
+        transient(d, toeT, F.slap * 1.15 * jp, 1.4, toeG * (hot ? 1.0 : 0.4), 0.0016);
       }
     } else {
       burst(d, toeT, F.slap > 2000 ? 'highpass' : 'bandpass', F.slap * jp, F.slap * 0.6, F.slapQ, toeG, 0.0010, F.slapDec, bufBright, jit(0.1));
@@ -2474,7 +2489,7 @@ export function createAudio(game) {
           // The direction matters: it decides whether the player gets a supersonic crack ahead
           // of the report or just the report. That is the difference between "being shot at"
           // and "hearing shooting", and it is the most useful thing this module can tell them.
-          // Compensation for the reverb-send trim is distance-dependent (1.0 near → 1.25 at
+          // Compensation for the reverb-send trim is distance-dependent (0.85 near → 1.25 at
           // 50 m): a flat ×1.25 let a near shooter out-peak the player's own weapon, which
           // flattens the self/world depth cue the whole self channel exists to create.
           const eDist = pos ? pos.distanceTo(_earPos) : 0;
@@ -2911,17 +2926,17 @@ export function createAudio(game) {
       const L = ctx.listener;
       if (L) {
         if (L.positionX) {
-          // setTargetAtTime rather than a hard set: a 400 deg/s flick otherwise zippers the
-          // HRTF convolution audibly.
-          L.positionX.setTargetAtTime(_earPos.x, t, 0.014);
-          L.positionY.setTargetAtTime(_earPos.y, t, 0.014);
-          L.positionZ.setTargetAtTime(_earPos.z, t, 0.014);
-          L.forwardX.setTargetAtTime(_earFwd.x, t, 0.014);
-          L.forwardY.setTargetAtTime(_earFwd.y, t, 0.014);
-          L.forwardZ.setTargetAtTime(_earFwd.z, t, 0.014);
-          L.upX.setTargetAtTime(_earUp.x, t, 0.014);
-          L.upY.setTargetAtTime(_earUp.y, t, 0.014);
-          L.upZ.setTargetAtTime(_earUp.z, t, 0.014);
+          // glide (setTargetAtTime) rather than a hard set: a 400 deg/s flick otherwise
+          // zippers the HRTF convolution audibly.
+          glide(L.positionX, _earPos.x, t, 0.014);
+          glide(L.positionY, _earPos.y, t, 0.014);
+          glide(L.positionZ, _earPos.z, t, 0.014);
+          glide(L.forwardX, _earFwd.x, t, 0.014);
+          glide(L.forwardY, _earFwd.y, t, 0.014);
+          glide(L.forwardZ, _earFwd.z, t, 0.014);
+          glide(L.upX, _earUp.x, t, 0.014);
+          glide(L.upY, _earUp.y, t, 0.014);
+          glide(L.upZ, _earUp.z, t, 0.014);
         } else if (L.setPosition) {
           L.setPosition(_earPos.x, _earPos.y, _earPos.z);
           L.setOrientation(_earFwd.x, _earFwd.y, _earFwd.z, _earUp.x, _earUp.y, _earUp.z);
@@ -2991,25 +3006,23 @@ export function createAudio(game) {
        second one is what walking towards a wall actually does. */
     const nearDelay = clamp((reflectNear * 2) / SPEED_OF_SOUND, 0.008, 0.24);
     const farDelay = clamp((reflectFar * 2) / SPEED_OF_SOUND, 0.05, 0.62);
-    slapNear.delay.delayTime.setTargetAtTime(nearDelay, t, 0.35);
-    slapFar.delay.delayTime.setTargetAtTime(farDelay, t, 0.45);
+    glide(slapNear.delay.delayTime, nearDelay, t, 0.35);
+    glide(slapFar.delay.delayTime, farDelay, t, 0.45);
     // A close hard surface throws back a lot; the far boundary of an open yard throws back a
     // slap you can hear but not much energy. Indoors the convolver owns the space instead.
     const slapOpen = 1 - indoor * 0.65;
-    // setTargetAtTime throughout, like the delayTimes above: a direct .value write per frame
-    // is a 60 Hz gain staircase, audible as zipper on anything sustained running through it.
-    slapNear.gain.gain.setTargetAtTime(clamp((1 - reflectNear / PROBE_MAX) * 0.75, 0.05, 0.75) * slapOpen, t, 0.05);
-    slapFar.gain.gain.setTargetAtTime(clamp(0.30 * (0.35 + openness), 0.05, 0.45) * slapOpen, t, 0.05);
-    slapFB.gain.setTargetAtTime(0.20 * slapOpen * openness, t, 0.05);
+    glide(slapNear.gain.gain, clamp((1 - reflectNear / PROBE_MAX) * 0.75, 0.05, 0.75) * slapOpen, t, 0.05);
+    glide(slapFar.gain.gain, clamp(0.30 * (0.35 + openness), 0.05, 0.45) * slapOpen, t, 0.05);
+    glide(slapFB.gain, 0.20 * slapOpen * openness, t, 0.05);
     // Reflections off ash-covered steel are dull; off a close concrete wall they are not.
-    slapNear.filter.frequency.setTargetAtTime(900 + (1 - reflectNear / PROBE_MAX) * 1400, t, 0.05);
+    glide(slapNear.filter.frequency, 900 + (1 - reflectNear / PROBE_MAX) * 1400, t, 0.05);
 
     /* --- ambience side-chain and reverb trim -------------------------------- */
     ambDuckLevel *= Math.exp(-dt * 3.2);
     if (ambDuckLevel < 0.002) ambDuckLevel = 0;
     // The JS-side state decays exactly as before; only the write is smoothed — a per-frame
     // .value write staircased the wind bed audibly during duck recovery.
-    ambDuck.gain.setTargetAtTime(1 - ambDuckLevel * 0.62, t, 0.03);
+    glide(ambDuck.gain, 1 - ambDuckLevel * 0.62, t, 0.03);
     gunActivity *= Math.exp(-dt * 1.1);
     if (gunActivity < 0.002) gunActivity = 0;
 
@@ -3017,33 +3030,33 @@ export function createAudio(game) {
     // which in practice means footsteps, the one thing the player cannot afford to lose. Pulling
     // the returns back as the guns work keeps the space without letting it fill in.
     const tailTrim = 1 - gunActivity * 0.28;
-    returnFar.gain.setTargetAtTime((0.62 + (1 - indoor) * 0.45) * tailTrim, t, 0.05);
-    returnClose.gain.setTargetAtTime((0.06 + indoor * 0.70) * tailTrim, t, 0.05);
+    glide(returnFar.gain, (0.62 + (1 - indoor) * 0.45) * tailTrim, t, 0.05);
+    glide(returnClose.gain, (0.06 + indoor * 0.70) * tailTrim, t, 0.05);
     // A hard interior is brighter close in; the yard tail is dustier.
-    sendFarIn.frequency.setTargetAtTime(4200 - indoor * 900, t, 0.05);
-    sendCloseIn.frequency.setTargetAtTime(5200 + indoor * 1800, t, 0.05);
+    glide(sendFarIn.frequency, 4200 - indoor * 900, t, 0.05);
+    glide(sendCloseIn.frequency, 5200 + indoor * 1800, t, 0.05);
 
     /* --- concussion recovery ---------------------------------------------- */
     if (ducking > 0.0005) {
       // ~2.5 s to functionally clear; exponential so the first second is the dramatic part.
-      // setTargetAtTime (20-30 ms constant), not a hard set: the LP sweeping 20 kHz→700 Hz in
+      // glide (20-30 ms constant), not a hard set: the LP sweeping 20 kHz→700 Hz in
       // per-frame steps was the most exposed staircase in the mix, worst on a frame hitch.
       ducking *= Math.exp(-dt * 1.65);
       if (ducking < 0.0005) ducking = 0;
-      duckGain.gain.setTargetAtTime(1 - ducking * 0.84, t, 0.025);
-      duckLP.frequency.setTargetAtTime(20000 * Math.pow(0.035, ducking), t, 0.025);
+      glide(duckGain.gain, 1 - ducking * 0.84, t, 0.025);
+      glide(duckLP.frequency, 20000 * Math.pow(0.035, ducking), t, 0.025);
       duckDirty = true;
     } else if (duckDirty) {
       duckDirty = false;
-      duckGain.gain.setTargetAtTime(1, t, 0.03);
-      duckLP.frequency.setTargetAtTime(20000, t, 0.03);
+      glide(duckGain.gain, 1, t, 0.03);
+      glide(duckLP.frequency, 20000, t, 0.03);
     }
 
     /* --- ambience --------------------------------------------------------- */
     const playing = gm && gm.state && gm.state.mode === 'playing';
     const wantAmb = playing ? 1 : 0.55;
     ambienceMode += (wantAmb - ambienceMode) * (1 - Math.exp(-1.2 * dt));
-    ambienceBus.gain.setTargetAtTime(muted ? 0 : ambienceMode, t, 0.04);
+    glide(ambienceBus.gain, muted ? 0 : ambienceMode, t, 0.04);
 
     /* Exposure. The wind is a property of where the player is stood, not a loop that plays.
        Out on the open rails all three wind beds are up and the wire is singing; step behind a
@@ -3053,12 +3066,12 @@ export function createAudio(game) {
     const exposure = clamp(openness * (1 - indoor * 0.85), 0, 1);
     // Bounded so the fully-exposed case stays close to the level the bed was originally mixed
     // at: exposure changes the *balance* between the three beds, it does not turn the wind up.
-    if (windLowGain) windLowGain.gain.setTargetAtTime(0.085 + exposure * 0.075, t, 0.05);
-    if (windGustGain) windGustGain.gain.setTargetAtTime(0.018 + exposure * 0.042, t, 0.05);
+    if (windLowGain) glide(windLowGain.gain, 0.085 + exposure * 0.075, t, 0.05);
+    if (windGustGain) glide(windGustGain.gain, 0.018 + exposure * 0.042, t, 0.05);
     // Wire needs real exposure before it starts: it is the cue for "out in the open", so it
     // must not be audible from anywhere sheltered. Squared, so the onset is late and definite.
-    if (windWireGain) windWireGain.gain.setTargetAtTime(0.0135 * exposure * exposure, t, 0.05);
-    if (windInsideGain) windInsideGain.gain.setTargetAtTime(0.055 * indoor * (1 - exposure * 0.5), t, 0.05);
+    if (windWireGain) glide(windWireGain.gain, 0.0135 * exposure * exposure, t, 0.05);
+    if (windInsideGain) glide(windInsideGain.gain, 0.055 * indoor * (1 - exposure * 0.5), t, 0.05);
 
     /* --- practical fixtures ------------------------------------------------ */
     if (!fixturesScanned && ambienceBuilt && gm && gm.level) {
