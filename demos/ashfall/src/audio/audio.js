@@ -152,8 +152,10 @@ const GUNS = {
     crack: { f: 2700, q: 0.9, g: 3.20, dur: 0.0060 },
     // A .45 snap is a blunt slap, not a whipcrack: the triple runs through a lowpass tilt so
     // nothing above ~2.5 kHz survives, and the 1320 Hz body carries the level instead. That —
-    // not the level — is what makes the SMG identifiable blind next to the 5.56.
-    snap: { mode: 'lp', f: 950, scale: 3.9 },
+    // not the level — is what makes the SMG identifiable blind next to the 5.56. Scale is
+    // tuned for the bufWhite feed so the measured peak tracks `level` within ~1 dB of the
+    // other two guns (bufBright through the 950 Hz corner needed 3.9 and still starved).
+    snap: { mode: 'lp', f: 950, scale: 1.5 },
     // .45 ACP is subsonic: there is no N-wave, only a soft pressure wash off the bullet.
     ss: { f: 2600, f2: 1200, q: 1.1, g: 0.22, dec: 0.0060 },
     body: [
@@ -179,7 +181,11 @@ const GUNS = {
     // The loudest gun in the game must peak AT the muzzle: the snap triple is scaled up and
     // the slow low layers (body 3, thump, tail) trimmed under it, so the .30-cal weight lives
     // in the decay rather than in a 70 ms envelope build.
-    snap: { mode: 'hp', scale: 1.70 },
+    // 1.88, up from 1.70: at 1.70 the dmr's crack beat its own tail build by under a dB, so
+    // per-shot +/-10% jitter made the measured attack bimodal (1-5 ms or ~160 ms depending on
+    // the draw). The crest needs margin over the tail across the whole jitter range, and the
+    // self-tail trim below buys it from the other side.
+    snap: { mode: 'hp', scale: 1.88 },
     ss: { f: 8600, f2: 2000, q: 1.3, g: 1.00, dec: 0.0090 },
     body: [
       { t: 0.0000, type: 'lowpass', f: 700, f2: 260, q: 7.5, g: 0.52, atk: 0.0014, dec: 0.165 },
@@ -389,6 +395,24 @@ export function createAudio(game) {
    * apart. For the interior it is dense and inside 30 ms.
    */
   function makeIR(seconds, decayK, ers, damp0, damp1, buildMs, preMs) {
+    /*
+     * Seeded, deliberately. The IR used to be drawn from Math.random per module load, and
+     * peak normalisation does not fix what that does: a convolver's return level follows the
+     * IR's total ENERGY, not its peak, so one hot sample in one load's draw quietened the
+     * whole room while the next load's draw ran it several dB hotter. Every session played in
+     * a different-loudness yard, and every crest-vs-reverb margin in the mix was a lottery —
+     * measured attacks on world gunshots swung between 25 ms and 160 ms across runs of the
+     * offline harness with no code change at all. A fixed seed makes the room an authored
+     * asset: the same walls for every player, every load, every measurement.
+     */
+    let irSeed = (Math.floor(seconds * 1000) * 2654435761) >>> 0 || 1;
+    const irRnd = () => {
+      irSeed = (irSeed + 0x6d2b79f5) >>> 0;
+      let z = irSeed;
+      z = Math.imul(z ^ (z >>> 15), 1 | z);
+      z = (z + Math.imul(z ^ (z >>> 7), 61 | z)) ^ z;
+      return ((z ^ (z >>> 14)) >>> 0) / 4294967296;
+    };
     const len = Math.max(64, Math.floor(seconds * rate));
     const buf = ctx.createBuffer(2, len, rate);
     const build = Math.max(1, (buildMs / 1000) * rate);
@@ -406,7 +430,7 @@ export function createAudio(game) {
         const env = Math.exp(-decayK * t);
         // Damping coefficient falls with time: the tail gets progressively darker.
         const coef = damp0 + (damp1 - damp0) * Math.min(1, t / seconds);
-        z += ((rnd() * 2 - 1) - z) * coef;
+        z += ((irRnd() * 2 - 1) - z) * coef;
         const ramp = Math.min(1, (i - pre) / build);
         d[i] = z * env * ramp;
       }
@@ -421,7 +445,7 @@ export function createAudio(game) {
         const n = Math.max(4, Math.floor(0.0012 * rate));
         let zz = 0;
         for (let k = 0; k < n && idx + k < len; k++) {
-          zz += ((rnd() * 2 - 1) - zz) * 0.55;
+          zz += ((irRnd() * 2 - 1) - zz) * 0.55;
           d[idx + k] += zz * er[1] * wide * Math.exp(-k / (n * 0.4));
         }
       }
@@ -909,6 +933,7 @@ export function createAudio(game) {
 
   let indoor = 0; // 0 outdoors, 1 fully enclosed
   let ducking = 0; // 0 clear, 1 fully concussed
+  let duckDirty = false; // concussion params need one final settle write after recovery
   /** Distance to the nearest reflector and to the far boundary, from the horizontal probes. */
   let reflectNear = 12;
   let reflectFar = 26;
@@ -959,7 +984,11 @@ export function createAudio(game) {
     // one. Distant sources send more, because that is what "far away in a big space" means.
     const distFactor = spatialise ? clamp(0.35 + dist / 55, 0.35, 1.7) : 0.42;
     const wetScale = (opts && opts.wet !== undefined ? opts.wet : 1) * distFactor;
-    ch.sFar.gain.setValueAtTime(clamp(0.32 * wetScale * (1 - indoor * 0.68), 0, 2.2), t);
+    // `noFar`: viewmodel-close sounds (reload stages, clicks two inches from the ear) opt out
+    // of the 1.1 s yard convolver entirely — even at wet 0.05 the fixed distFactor plus the
+    // outdoor returnFar put a low-level one-second space behind every catch and click. The
+    // short-room sClose send and the live slap taps carry what little "place" they need.
+    ch.sFar.gain.setValueAtTime(opts && opts.noFar ? 0 : clamp(0.32 * wetScale * (1 - indoor * 0.68), 0, 2.2), t);
     ch.sClose.gain.setValueAtTime(clamp(0.10 * wetScale * (0.14 + indoor * 1.55), 0, 2.2), t);
     // Slap-back: only hard, loud, transient things throw a usable discrete reflection, so this
     // is opt-in per sound rather than a blanket send. A near surface returns more of it.
@@ -1108,13 +1137,25 @@ export function createAudio(game) {
       // bigger send because distance is allowed to smear — the player's own muzzle is not.
       // (In game the live slap taps — silent in offline measurement — restore the sense of
       // place that this trim takes off the convolver.)
-      wet: isSelf ? 0.08 : 0.30,
+      // The lp-snap gun (the .45) sends a touch less: its blast energy is nearly all below
+      // the reverb-send tilt's corner, so at the hp guns' wet its own yard return built back
+      // over the muzzle peak ~100 ms in.
+      // World wet 0.18, down from 0.30: the convolver return of a distant report built to
+      // within a dB of its own crack ~100 ms later and kept taking the envelope peak. The
+      // world shot already carries an explicit tail layer for the hang; the room send only
+      // needs to glue it, not double it.
+      wet: isSelf ? ((P.snap && P.snap.mode === 'lp') ? 0.045 : 0.08) : 0.18,
       tailGain: 1.0,
       // Hard, loud and transient: the one sound in the game that must throw a discrete slap.
       slap: isSelf ? 1.0 : clamp(1.2 - dist / 60, 0.15, 1.0),
       pan: isSelf ? (rnd() * 2 - 1) * 0.07 : 0,
     });
     if (!ch) return;
+
+    // Pre-softClip pad on the world channel (-2.5 dB on the dry path): with the snap restored
+    // at near range the summed blast would rail the soft-clip again, so the whole dry channel
+    // is padded uniformly rather than the transient layer being cut back out.
+    if (!isSelf) ch.dry.gain.setValueAtTime(0.75, t);
 
     // `routeAt` set the channel's propagation delay from the full distance, which is right for
     // the muzzle blast. Everything below is scheduled relative to that, so the crack is pulled
@@ -1131,7 +1172,7 @@ export function createAudio(game) {
     // be out-peaked by the same gun across the yard, and with the self reverb send trimmed the
     // dry blast carries the level the convolver used to fake. Kept out of P.level so the
     // boost cannot leak into enemy renders of the same gun.
-    const jl = jit(0.10) * (volume === undefined ? 1 : volume) * P.level * (1 + first * 0.10) * (isSelf ? (key === 'dmr' ? 1.55 : 1.30) : 1);
+    const jl = jit(0.10) * (volume === undefined ? 1 : volume) * P.level * (1 + first * 0.10) * (isSelf ? (key === 'dmr' ? 1.55 : key === 'smg' ? 1.30 : 1.30) : 1);
     const dest = ch.input;
     const tb = t + sep; // the muzzle blast, which is what everything but the crack hangs off
 
@@ -1161,23 +1202,62 @@ export function createAudio(game) {
     // The snap is voiced per weapon — it is loud enough to dominate the spectrum, so if all
     // three guns ran the same bright highpass the voicing tables underneath stopped mattering.
     const S = P.snap || { mode: 'hp', scale: 1 };
-    // ×0.62 for world shots: through the master limiter a railed enemy blast measured *louder*
-    // than the player's own gun — the snap is the layer that rails, so it is the one trimmed.
-    // ×0.15 for world shots: the snap is the layer that rails the soft-clip, and through the
-    // master limiter a railed enemy blast measured *louder* than the player's own gun — and
-    // with run-to-run jitter deciding whether it railed, ±4 dB louder some shots. Below the
-    // rail its level is deterministic and the self/world depth cue survives every draw.
-    const snapG = P.crack.g * jl * crackScale * (1 + first * 0.22) * S.scale * (isSelf ? 1 : 0.15);
+    // World snap trim is distance-dependent, not flat: a rifle report at 14 m is a whipcrack,
+    // and a flat ×0.15 gutted the transient layer entirely — the envelope peak built under the
+    // body/reverb instead. Lerp 0.85 at ≤10 m down to 0.15 at ≥60 m; the rail the flat trim
+    // existed to stop is handled by padding the whole world dry channel ~2.5 dB (below), which
+    // keeps the transient/body ratio intact instead of deleting the edge.
+    const worldSnap = isSelf ? 1 : clamp(0.85 - (dist - 10) * 0.014, 0.15, 0.85);
+    // Two independent knobs for a world shot: the flat crest transient (owns the attack
+    // measurement, must not swing with per-class snap scale or the mix cap) and the snap
+    // triple (owns loudness colour, capped so no class's world report out-peaks the player).
+    const worldBase = P.crack.g * jl * crackScale * (1 + first * 0.22) * worldSnap;
+    const snapG = worldBase * (isSelf ? S.scale : Math.min(S.scale, 0.85));
     // Held for ~12 ms rather than spiked — three staggered snaps so the blast pressure stays
     // near its peak across BOTH compressors' lookahead+attack window (~9 ms) instead of
     // decaying under it; a 1 ms spike is eaten whole and the envelope peak migrates to the
     // reverb build 100 ms later.
+    if (!isSelf) {
+      // A held blunt transient right at the muzzle instant, below the distance lowpass's
+      // corner so every weapon class keeps it at range. Without this the rifle's world shot
+      // measured a 94 ms attack: its bright hp crack died in the distance filter and the
+      // envelope peak built on the reverb tail instead. The dmr survived on its hotter,
+      // brighter crack; this makes the early crest structural rather than incidental.
+      // 0.95/0.5, not hotter: at 1.25 the enemy dmr's world peak rose to -3.7 dBFS, 2.3 dB
+      // OVER the player's own -6.0 — the exact mix inversion round two fixed. The crest only
+      // has to beat the tail build, not the player's muzzle.
+      // Gain deliberately excludes S.scale (divided back out): the crest must scale with the
+      // class's crack, not with the per-class snap multiplier — the dmr's 1.70 was lifting
+      // its world peak over the player's own shot, the exact mix inversion round two fixed.
+      // It only has to beat the (trimmed) tail build, and 1.05x base does with margin.
+      transient(dest, tb + 0.0004, 900 * jp, 0.9, worldBase * 1.2, 0.0030);
+      transient(dest, tb + 0.0034, 760 * jp, 0.9, worldBase * 0.62, 0.0034);
+    }
     if (S.mode === 'lp') {
       // Subsonic blunt slap: same held-pressure triple, but rolled off above the corner so the
-      // weapon's own body carries the colour.
-      burst(dest, tb, 'lowpass', S.f * jp, S.f * 0.7, 0.7, snapG * 5.2, 0.0003, 0.006, bufBright, jit(0.1));
-      burst(dest, tb + 0.002, 'lowpass', S.f * 0.9 * jp, S.f * 0.62, 0.7, snapG * 4.2, 0.0003, 0.006, bufBright, jit(0.1));
-      burst(dest, tb + 0.0036, 'lowpass', S.f * 0.8 * jp, S.f * 0.55, 0.7, snapG * 3.1, 0.0004, 0.008, bufBright, jit(0.1));
+      // weapon's own body carries the colour. Fed from bufWhite, not bufBright: differentiated
+      // noise (+6 dB/oct) through a 950 Hz lowpass arrives spectrally starved and the layer
+      // that owns the peak in the other two guns could never carry it — the .45 measured 3.5 dB
+      // *under* the 5.56 despite the louder voicing-table level. Flat noise keeps its energy
+      // below the corner, and S.scale is retuned against the harness to match.
+      // Trailing bursts run leaner than the hp triple (2.4/1.3 vs 4.2/3.1): sub-950 Hz noise
+      // passes the 4.2 kHz reverb-send tilt untouched, so at hp-triple gains the snap's own
+      // yard return built to within a dB of the dry peak ~40 ms later and took the envelope
+      // back off the muzzle. The first burst alone holds the peak across the lookahead.
+      // The peak itself rides a 2 ms blunt transient at 1.6 kHz — a click carries almost no
+      // energy, so it beats the bus compressor's RMS detector and leaves the reverb send
+      // alone, where the sustained LP noise (however hot) is compressed flat AND builds a
+      // yard return that takes the envelope peak back off the muzzle.
+      transient(dest, tb + 0.0004, 1600 * jp, 0.8, snapG * 1.55, 0.0026);
+      // Wide (Q 0.5) low-mid bandpass, not a pure lowpass, for the first burst: sub-corner
+      // noise alone has no crest — the sample peak of a 6 ms window of <950 Hz noise is tiny
+      // however hot the gain — so the peak-owning burst keeps 0.4–2.5 kHz skirts. Still
+      // nothing above ~2.5 kHz: the .45 stays blunt, it just stops being flat-topped.
+      tone(dest, tb, 'sine', 780 * jp, 640, 0.0045, snapG * 0.115, 0.0005);
+      burst(dest, tb, 'highpass', 900 * jp, 1600, 0.8, snapG * 2.6, 0.0003, 0.003, bufBright, jit(0.1));
+      burst(dest, tb, 'lowpass', S.f * jp, S.f * 0.7, 0.7, snapG * 4.3, 0.0003, 0.006, bufWhite, jit(0.1));
+      burst(dest, tb + 0.002, 'lowpass', S.f * 0.9 * jp, S.f * 0.62, 0.7, snapG * 1.6, 0.0003, 0.006, bufWhite, jit(0.1));
+      burst(dest, tb + 0.0036, 'lowpass', S.f * 0.8 * jp, S.f * 0.55, 0.7, snapG * 0.9, 0.0004, 0.008, bufWhite, jit(0.1));
     } else {
       burst(dest, tb, 'highpass', P.crack.f * 0.30 * jp, P.crack.f * 0.55, 0.7, snapG * 5.2, 0.0003, 0.006, bufBright, jit(0.1));
       burst(dest, tb + 0.002, 'highpass', P.crack.f * 0.27 * jp, P.crack.f * 0.5, 0.7, snapG * 4.2, 0.0003, 0.006, bufBright, jit(0.1));
@@ -1252,7 +1332,15 @@ export function createAudio(game) {
         // at 1.5 formed a 300 ms limiter-pinned wall louder than the report itself. A tail
         // decays; it does not sustain — and on the self channel it must stay clearly under
         // the muzzle snap or the envelope peak migrates back into the reverb build.
-        P.tail.g * jl * open * tailWalk * (isSelf ? 0.30 : 0.48) * (1 + first * 0.10),
+        // World tails: 0.42 for the dmr rather than 0.48. Its tail is the heaviest of the
+        // three and at 0.48 its build out-crested the world snap transient (~85 ms attack on
+        // enemyShot.dmr) unless that transient was pushed loud enough to invert the mix
+        // against the player's own shot. Trimming the competitor keeps both measurements.
+        // World tail 0.40, all classes: at 0.48 the tail's ~80-100 ms build raced the world
+        // crest transient inside the per-shot jitter band, and the measured enemy attack was
+        // bimodal across draws. The crest must win every draw, and it cannot simply be made
+        // hotter without out-peaking the player's own shot, so the competitor comes down.
+        P.tail.g * jl * open * tailWalk * (isSelf ? 0.30 : 0.40) * (1 + first * 0.10),
         0.0025,
         P.tail.dec * (1 + first * 0.18),
         bufPink,
@@ -1382,8 +1470,12 @@ export function createAudio(game) {
     // (tail < 0.15) send zero and decay dry inside ~300 ms.
     const dead = F.tail < 0.15;
     const ch = routeAt(pos, t, 0.65, {
-      wet: dead ? 0 : 0.03 + F.tail * 0.12,
-      slap: dead ? 0 : F.tail * 0.35 * detail,
+      wet: dead ? 0 : (0.03 + F.tail * 0.12) * (heavy ? 0.6 : 1),
+      // The slap return is an early reflection ~60-120 ms out. On a heavy landing the send is
+      // driven hard enough that on hot jitter draws the echo crested within 90% of the heel
+      // itself, which is where `land`'s bimodal 74-124 ms measured attack came from. A body
+      // hitting the ground does not echo louder than it hits.
+      slap: dead ? 0 : F.tail * 0.35 * detail * (heavy ? 0.35 : 1),
     });
     if (!ch) return;
     const d = ch.input;
@@ -1394,10 +1486,14 @@ export function createAudio(game) {
        had both; a metronomic heel is the tell of a synthesised walk). */
     const jh = jit(0.10);
     const heelT = t + rnd() * 0.007;
-    burst(d, heelT, 'lowpass', F.thud * jh, F.thud * 0.40, 2.0, 1.90 * v, 0.0008, F.thudDec * (heavy ? 1.65 : 1), bufPink, jit(0.08));
-    tone(d, heelT, 'sine', F.thud * 0.50 * jh, F.thud * 0.27, F.thudDec * 1.35, 0.85 * v, 0.0015);
+    // Heavy (a landing): the heel pair is boosted ~5 dB so the boots-hitting-ground contact
+    // owns the envelope peak — a hard landing that peaks an eighth of a second later on the
+    // trailing gear pile reads as a dropped duffel bag, not a drop.
+    const hw = heavy ? 1.8 : 1;
+    burst(d, heelT, 'lowpass', F.thud * jh, F.thud * 0.40, 2.0, 1.90 * v * hw, 0.0008, F.thudDec * (heavy ? 1.65 : 1), bufPink, jit(0.08));
+    tone(d, heelT, 'sine', F.thud * 0.50 * jh, F.thud * 0.27, F.thudDec * 1.35, 0.85 * v * hw, 0.0015);
     // A hard surface answers the heel with a genuine edge, immediately — not 30 ms later.
-    if (F.slap > 1200) transient(d, heelT, F.slap * 0.6 * jh, 1.2, 0.55 * v, 0.0018);
+    if (F.slap > 1200) transient(d, heelT, F.slap * 0.6 * jh, 1.2, 0.55 * v * hw, 0.0018);
 
     /* --- toe ----------------------------------------------------------------
        A walk rolls heel-to-toe over about 30 ms. A sprint lands nearly flat, so the interval
@@ -1455,13 +1551,19 @@ export function createAudio(game) {
        kit answering it. Both are synced to the step because that is when the body decelerates
        and everything hanging off it keeps going. */
     if (!lean && detail >= 0.5) {
-      playCloth(d, t + 0.010, 0.24 * v * (0.55 + gait * 0.85) * detail);
+      // Halved for a landing: playCloth's attack is deliberately slow, so at full amount on
+      // a heavy hit its envelope peaked ~100 ms after the boots on some jitter draws and the
+      // measured attack of `land` was bimodal (1.5 ms or ~105 ms depending on the roll).
+      playCloth(d, t + 0.010, (heavy ? 0.12 : 0.24) * v * (0.55 + gait * 0.85) * detail);
       // 0.30·v, down from 0.50: per this layer's own comment it is texture that must sit
       // *under* the step, and at 0.50 the kit rattle was where the step's peak landed.
-      playGear(d, t + 0.014, 0.30 * v * (0.40 + gait * 1.15) * detail);
-      if (gait > 0.78 && detail >= 1) {
+      // Halved again for a landing — the trailing kit must never out-peak the heel contact.
+      playGear(d, t + 0.014, (heavy ? 0.10 : 0.30) * v * (0.40 + gait * 1.15) * detail);
+      if (gait > 0.78 && detail >= 1 && !heavy) {
         // Sprinting, the kit swings between the steps as well as on them. The offset is half a
-        // step, derived from the same stride model the controller drives the bob with.
+        // step, derived from the same stride model the controller drives the bob with. A
+        // landing is not a stride — `land` arrives with speed 6, so gait≈1 fired this delayed
+        // swing at t+~0.11 s and the gear pile out-peaked the boots. Skipped for heavy.
         const off = 0.25 / (0.95 + 1.35 * clamp(gait, 0, 1));
         playGear(d, t + off, 0.26 * v);
         playCloth(d, t + off, 0.15 * v);
@@ -1503,7 +1605,7 @@ export function createAudio(game) {
 
   /** 2D cloth for viewmodel actions (ADS, raise, inspect). */
   function selfCloth(t, amount) {
-    const ch = routeAt(null, t, 0.3, { wet: 0.15 });
+    const ch = routeAt(null, t, 0.3, { wet: 0.15, noFar: true });
     if (ch) playCloth(ch.input, t, amount);
   }
 
@@ -1516,10 +1618,11 @@ export function createAudio(game) {
     // Heavier gun, lower-pitched hardware.
     const key = GUN_ALIAS[weaponId] || 'rifle';
     const mass = key === 'dmr' ? 0.82 : key === 'smg' ? 1.18 : 1.0;
-    // Wet 0.15: a buckle two inches from the ear does not get a yard behind it. The stage
-    // levels below are normalised into a −18…−12 dBFS band so one reload reads as one action,
-    // and in every stage the transient — not the cloth swell — carries the peak.
-    const ch = routeAt(null, t, 0.6, { wet: 0.05 });
+    // noFar: a buckle two inches from the ear does not get a yard behind it — the short room
+    // send alone. The stage levels below are normalised into a −18…−12 dBFS band so one reload
+    // reads as one action, and in every stage the transient — not the cloth swell — carries
+    // the peak.
+    const ch = routeAt(null, t, 0.6, { wet: 0.05, noFar: true });
     if (!ch) return;
     const d = ch.input;
     const jp = jit(0.04) * mass;
@@ -1529,10 +1632,12 @@ export function createAudio(game) {
         // Catch releases, magazine drags out of the well, plastic on aluminium. The catch tick
         // owns the peak — the drag behind it is texture, not the event.
         transient(d, t, 3000 * jp, 1.3, 3.20, 0.0022);
-        burst(d, t, 'highpass', 1200 * jp, 2000, 0.8, 0.60, 0.0003, 0.0035, bufBright, 1);
+        burst(d, t, 'highpass', 1200 * jp, 2000, 0.8, 1.15, 0.0003, 0.0035, bufBright, 1);
         burst(d, t, 'lowpass', 560 * jp, 260, 2.2, 1.55, 0.0010, 0.040, bufWhite, 1);
-        burst(d, t + 0.004, 'bandpass', 1500 * jp, 900, 2.4, 1.65, 0.001, 0.030, bufWhite, 1);
-        burst(d, t + 0.030, 'bandpass', 620 * jp, 380, 2.2, 0.95, 0.004, 0.075, bufPink, 1);
+        burst(d, t + 0.004, 'bandpass', 1500 * jp, 900, 2.4, 1.35, 0.001, 0.030, bufWhite, 1);
+        // 0.40: at 0.95 and again at 0.55 this drag burst crested within 90% of the catch
+        // tick 34 ms late (measured, after2/after3) and took the envelope peak off the front.
+        burst(d, t + 0.030, 'bandpass', 620 * jp, 380, 2.2, 0.40, 0.004, 0.075, bufPink, 1);
         playCloth(d, t + 0.02, 0.18);
         break;
       case 'magin':
@@ -1544,11 +1649,18 @@ export function createAudio(game) {
         break;
       case 'boltback':
         // Charging handle drawn: handle snatch, a scrape, then the sear catching. The snatch
-        // is the loud event — the peak lands on the first millisecond, not 70 ms later.
+        // is the loud event. A Q=1.6 bandpass eats most of a click, so the snatch gets the
+        // same treatment the gunshot snap got — a short broadband highpass burst stacked on
+        // the bandpass transient — and the t+0.070 sear pair sits ~4 dB under it, so charging
+        // reads snatch-then-catch instead of soft-grab-loud-clack.
         transient(d, t, 2600 * jp, 1.6, 2.40, 0.0018);
+        burst(d, t, 'highpass', 1000 * jp, 1800, 0.8, 1.60, 0.0003, 0.0040, bufBright, 1);
+        burst(d, t, 'lowpass', 620 * jp, 300, 2.0, 1.10, 0.0008, 0.026, bufWhite, 1);
         burst(d, t, 'bandpass', 2100 * jp, 1400, 1.4, 1.30, 0.003, 0.070, bufBright, 1);
-        transient(d, t + 0.070, 3400 * jp, 1.6, 1.55, 0.0018);
-        burst(d, t + 0.070, 'lowpass', 480 * jp, 240, 2.2, 0.80, 0.0010, 0.038, bufWhite, 1);
+        // 0.68/0.34, down from 0.95/0.48: "~4 dB under" left the crest inside the +/-10%
+        // per-shot jitter band and the measured attack was bimodal (0.4 ms or 71 ms by draw).
+        transient(d, t + 0.070, 3400 * jp, 1.6, 0.68, 0.0018);
+        burst(d, t + 0.070, 'lowpass', 480 * jp, 240, 2.2, 0.34, 0.0010, 0.038, bufWhite, 1);
         break;
       case 'boltrelease':
         // Bolt slams home. Loud, metallic, with a short ring.
@@ -2884,16 +2996,20 @@ export function createAudio(game) {
     // A close hard surface throws back a lot; the far boundary of an open yard throws back a
     // slap you can hear but not much energy. Indoors the convolver owns the space instead.
     const slapOpen = 1 - indoor * 0.65;
-    slapNear.gain.gain.value = clamp((1 - reflectNear / PROBE_MAX) * 0.75, 0.05, 0.75) * slapOpen;
-    slapFar.gain.gain.value = clamp(0.30 * (0.35 + openness), 0.05, 0.45) * slapOpen;
-    slapFB.gain.value = 0.20 * slapOpen * openness;
+    // setTargetAtTime throughout, like the delayTimes above: a direct .value write per frame
+    // is a 60 Hz gain staircase, audible as zipper on anything sustained running through it.
+    slapNear.gain.gain.setTargetAtTime(clamp((1 - reflectNear / PROBE_MAX) * 0.75, 0.05, 0.75) * slapOpen, t, 0.05);
+    slapFar.gain.gain.setTargetAtTime(clamp(0.30 * (0.35 + openness), 0.05, 0.45) * slapOpen, t, 0.05);
+    slapFB.gain.setTargetAtTime(0.20 * slapOpen * openness, t, 0.05);
     // Reflections off ash-covered steel are dull; off a close concrete wall they are not.
-    slapNear.filter.frequency.value = 900 + (1 - reflectNear / PROBE_MAX) * 1400;
+    slapNear.filter.frequency.setTargetAtTime(900 + (1 - reflectNear / PROBE_MAX) * 1400, t, 0.05);
 
     /* --- ambience side-chain and reverb trim -------------------------------- */
     ambDuckLevel *= Math.exp(-dt * 3.2);
     if (ambDuckLevel < 0.002) ambDuckLevel = 0;
-    ambDuck.gain.value = 1 - ambDuckLevel * 0.62;
+    // The JS-side state decays exactly as before; only the write is smoothed — a per-frame
+    // .value write staircased the wind bed audibly during duck recovery.
+    ambDuck.gain.setTargetAtTime(1 - ambDuckLevel * 0.62, t, 0.03);
     gunActivity *= Math.exp(-dt * 1.1);
     if (gunActivity < 0.002) gunActivity = 0;
 
@@ -2901,29 +3017,33 @@ export function createAudio(game) {
     // which in practice means footsteps, the one thing the player cannot afford to lose. Pulling
     // the returns back as the guns work keeps the space without letting it fill in.
     const tailTrim = 1 - gunActivity * 0.28;
-    returnFar.gain.value = (0.62 + (1 - indoor) * 0.45) * tailTrim;
-    returnClose.gain.value = (0.06 + indoor * 0.70) * tailTrim;
+    returnFar.gain.setTargetAtTime((0.62 + (1 - indoor) * 0.45) * tailTrim, t, 0.05);
+    returnClose.gain.setTargetAtTime((0.06 + indoor * 0.70) * tailTrim, t, 0.05);
     // A hard interior is brighter close in; the yard tail is dustier.
-    sendFarIn.frequency.value = 4200 - indoor * 900;
-    sendCloseIn.frequency.value = 5200 + indoor * 1800;
+    sendFarIn.frequency.setTargetAtTime(4200 - indoor * 900, t, 0.05);
+    sendCloseIn.frequency.setTargetAtTime(5200 + indoor * 1800, t, 0.05);
 
     /* --- concussion recovery ---------------------------------------------- */
     if (ducking > 0.0005) {
       // ~2.5 s to functionally clear; exponential so the first second is the dramatic part.
+      // setTargetAtTime (20-30 ms constant), not a hard set: the LP sweeping 20 kHz→700 Hz in
+      // per-frame steps was the most exposed staircase in the mix, worst on a frame hitch.
       ducking *= Math.exp(-dt * 1.65);
       if (ducking < 0.0005) ducking = 0;
-      duckGain.gain.value = 1 - ducking * 0.84;
-      duckLP.frequency.value = 20000 * Math.pow(0.035, ducking);
-    } else if (duckGain.gain.value !== 1) {
-      duckGain.gain.value = 1;
-      duckLP.frequency.value = 20000;
+      duckGain.gain.setTargetAtTime(1 - ducking * 0.84, t, 0.025);
+      duckLP.frequency.setTargetAtTime(20000 * Math.pow(0.035, ducking), t, 0.025);
+      duckDirty = true;
+    } else if (duckDirty) {
+      duckDirty = false;
+      duckGain.gain.setTargetAtTime(1, t, 0.03);
+      duckLP.frequency.setTargetAtTime(20000, t, 0.03);
     }
 
     /* --- ambience --------------------------------------------------------- */
     const playing = gm && gm.state && gm.state.mode === 'playing';
     const wantAmb = playing ? 1 : 0.55;
     ambienceMode += (wantAmb - ambienceMode) * (1 - Math.exp(-1.2 * dt));
-    ambienceBus.gain.value = muted ? 0 : ambienceMode;
+    ambienceBus.gain.setTargetAtTime(muted ? 0 : ambienceMode, t, 0.04);
 
     /* Exposure. The wind is a property of where the player is stood, not a loop that plays.
        Out on the open rails all three wind beds are up and the wire is singing; step behind a
@@ -2933,12 +3053,12 @@ export function createAudio(game) {
     const exposure = clamp(openness * (1 - indoor * 0.85), 0, 1);
     // Bounded so the fully-exposed case stays close to the level the bed was originally mixed
     // at: exposure changes the *balance* between the three beds, it does not turn the wind up.
-    if (windLowGain) windLowGain.gain.value = 0.085 + exposure * 0.075;
-    if (windGustGain) windGustGain.gain.value = 0.018 + exposure * 0.042;
+    if (windLowGain) windLowGain.gain.setTargetAtTime(0.085 + exposure * 0.075, t, 0.05);
+    if (windGustGain) windGustGain.gain.setTargetAtTime(0.018 + exposure * 0.042, t, 0.05);
     // Wire needs real exposure before it starts: it is the cue for "out in the open", so it
     // must not be audible from anywhere sheltered. Squared, so the onset is late and definite.
-    if (windWireGain) windWireGain.gain.value = 0.0135 * exposure * exposure;
-    if (windInsideGain) windInsideGain.gain.value = 0.055 * indoor * (1 - exposure * 0.5);
+    if (windWireGain) windWireGain.gain.setTargetAtTime(0.0135 * exposure * exposure, t, 0.05);
+    if (windInsideGain) windInsideGain.gain.setTargetAtTime(0.055 * indoor * (1 - exposure * 0.5), t, 0.05);
 
     /* --- practical fixtures ------------------------------------------------ */
     if (!fixturesScanned && ambienceBuilt && gm && gm.level) {
