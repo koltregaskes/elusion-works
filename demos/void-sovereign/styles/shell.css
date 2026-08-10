@@ -1,0 +1,336 @@
+/* Page shell: canvas stage, boot card, fatal card, exit link.
+   Owned by index.html + src/main.js. The HUD's own styling lives in hud.css
+   and is layered on top of this. */
+
+:root {
+  --vs-void: #04070c;
+  --vs-ink: #dfe8f2;
+  --vs-dim: rgba(223, 232, 242, 0.52);
+  --vs-faint: rgba(223, 232, 242, 0.16);
+  --vs-cyan: #7fd8e8;
+  --vs-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --vs-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--vs-void);
+  color: var(--vs-ink);
+  font-family: var(--vs-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+body.vs-body {
+  position: fixed;
+  inset: 0;
+  overscroll-behavior: none;
+  touch-action: none;
+}
+
+.vs-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+#vs-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  outline: none;
+  cursor: crosshair;
+}
+
+/* The HUD container must not eat pointer events by default — individual
+   controls inside it opt back in. */
+.vs-hud {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ------------------------------------------------------------------- boot */
+
+.vs-boot {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 6vmin;
+  background:
+    radial-gradient(120% 90% at 50% 40%, rgba(18, 34, 52, 0.55), transparent 70%),
+    var(--vs-void);
+  opacity: 1;
+  transition: opacity 700ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.vs-boot.is-done {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.vs-boot-inner {
+  width: min(46rem, 100%);
+  text-align: left;
+}
+
+.vs-boot-eyebrow {
+  margin: 0 0 1.6rem;
+  font-family: var(--vs-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: var(--vs-dim);
+}
+
+.vs-boot-title {
+  margin: 0 0 1.2rem;
+  font-size: clamp(2.6rem, 8vw, 5.4rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 0.95;
+  color: #fff;
+}
+
+.vs-boot-deck {
+  margin: 0 0 3rem;
+  max-width: 34rem;
+  font-size: 1rem;
+  line-height: 1.65;
+  color: var(--vs-dim);
+}
+
+/* Pre-match setup.
+
+   Lives on the boot card because generation takes seconds anyway — the choice
+   costs the player no time they were not already spending. It also fixes the
+   genre's chronic onboarding problem: difficulty and seed used to be URL
+   parameters only, so a visitor could not pick an easier opponent without
+   editing the address bar. */
+
+.vs-setup {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1.6rem 2.4rem;
+  margin: 0 0 2.6rem;
+  padding: 1.6rem 0 0;
+  border-top: 1px solid var(--vs-faint);
+}
+
+.vs-setup-label {
+  display: block;
+  margin: 0 0 0.6rem;
+  font-family: var(--vs-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--vs-dim);
+}
+
+.vs-setup-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.vs-setup-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.5em 0.7em;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--vs-faint);
+  border-radius: 0;
+  color: var(--vs-ink);
+  font-family: var(--vs-mono);
+  font-size: 0.82rem;
+  letter-spacing: 0.06em;
+}
+
+.vs-setup-input:focus-visible {
+  border-color: var(--vs-cyan);
+  outline: none;
+}
+
+.vs-setup-btn,
+.vs-setup-choice button {
+  padding: 0.5em 0.85em;
+  background: transparent;
+  border: 1px solid var(--vs-faint);
+  border-radius: 0;
+  color: var(--vs-dim);
+  font-family: var(--vs-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease;
+}
+
+.vs-setup-btn:hover,
+.vs-setup-choice button:hover {
+  color: var(--vs-ink);
+  border-color: rgba(223, 232, 242, 0.4);
+}
+
+.vs-setup-choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.vs-setup-choice button[aria-checked='true'] {
+  color: var(--vs-void);
+  background: var(--vs-cyan);
+  border-color: var(--vs-cyan);
+}
+
+.vs-setup-hint {
+  margin: 0.6rem 0 0;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: rgba(223, 232, 242, 0.34);
+}
+
+.vs-boot-footer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.vs-launch {
+  padding: 0.7em 1.6em;
+  background: var(--vs-cyan);
+  border: 1px solid var(--vs-cyan);
+  border-radius: 0;
+  color: var(--vs-void);
+  font-family: var(--vs-mono);
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: opacity 160ms ease;
+}
+
+.vs-launch[disabled] {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.vs-boot-progress {
+  position: relative;
+  height: 1px;
+  background: var(--vs-faint);
+  overflow: hidden;
+}
+
+.vs-boot-progress-fill {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, var(--vs-cyan), #fff);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  transition: transform 420ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.vs-boot-status {
+  margin: 1rem 0 0;
+  font-family: var(--vs-mono);
+  font-size: 0.76rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vs-dim);
+}
+
+/* ------------------------------------------------------------------ fatal */
+
+.vs-fatal {
+  position: absolute;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: 6vmin;
+  background: var(--vs-void);
+}
+
+.vs-fatal[hidden] {
+  display: none;
+}
+
+.vs-fatal-inner {
+  max-width: 34rem;
+}
+
+.vs-fatal-inner h2 {
+  margin: 0 0 0.9rem;
+  font-size: clamp(1.5rem, 4vw, 2.2rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.vs-fatal-inner p {
+  margin: 0 0 2rem;
+  color: var(--vs-dim);
+  line-height: 1.7;
+}
+
+.vs-fatal-back {
+  font-family: var(--vs-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vs-cyan);
+  text-decoration: none;
+  border-bottom: 1px solid currentColor;
+  padding-bottom: 0.2em;
+}
+
+/* ------------------------------------------------------------------- exit */
+
+.vs-exit {
+  position: absolute;
+  z-index: 60;
+  left: max(1.1rem, env(safe-area-inset-left));
+  bottom: max(1.1rem, env(safe-area-inset-bottom));
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.45em 0.2em;
+  font-family: var(--vs-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--vs-dim);
+  text-decoration: none;
+  transition: color 200ms ease;
+}
+
+.vs-exit:hover,
+.vs-exit:focus-visible {
+  color: var(--vs-ink);
+}
+
+:focus-visible {
+  outline: 1px solid var(--vs-cyan);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vs-boot,
+  .vs-boot-progress-fill {
+    transition-duration: 1ms;
+  }
+}

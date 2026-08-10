@@ -1,0 +1,2130 @@
+/* ==========================================================================
+   VOID SOVEREIGN — HUD
+   A thin vector overlay. Hairlines, mono numerals, corner ticks, negative
+   space. No filled panels sit over the void; where contrast is needed a soft
+   directional scrim fades in from an edge. Everything animates on transform
+   and opacity only, because the marker layer runs every frame with hundreds
+   of projected positions and cannot afford layout.
+
+   Colour is a language, not decoration:
+     cyan   = us            amber = them
+     red    = trouble, and only trouble
+     white  = everything else, held between 6% and 88% opacity
+   ========================================================================== */
+
+/* `hidden` must actually hide. This is not defensive habit — it is a shipped
+   bug being closed.
+
+   `[hidden] { display: none }` is a *user-agent* rule, so any author `display`
+   declaration outranks it. Three classes here set `display: grid` and so kept
+   painting while carrying the attribute: `.vsh-chip` showed roster entries for
+   ships the player had just deselected, complete with frozen health bars, and
+   because the update pass skips hidden chips those ghosts never refreshed;
+   `.vsh-q` left phantom production entries beside a correct "Yard idle";
+   `.vsh-item` was latent and would have gone the same way.
+
+   Scoped to the HUD and marked important on purpose: a per-class patch would
+   have to be remembered every time someone adds a `display` rule, and this bug
+   was found by a critic reading back computed styles, not by anything that
+   would fail a normal test. An assertion on the `hidden` attribute alone
+   passes throughout. */
+.vs-hud [hidden],
+.vsh-root [hidden] {
+  display: none !important;
+}
+
+.vsh-root {
+  /* Exactly the three hues DESIGN.md publishes, and no others. Enemy amber and
+     warning red used to be a shade apart from the shipped tokens, which put
+     three warm hues on screen doing two jobs. */
+  --vsh-cyan: #7fd8e8;
+  --vsh-cyan-deep: #2c8ea1;
+  --vsh-amber: #e8a44a;
+  --vsh-amber-deep: #a46a1f;
+  --vsh-red: #ff6b4a;
+  --vsh-good: #9ff0c4;
+  --vsh-w: 255, 255, 255;
+
+  /* The hairline-on-void language has no fallback when the void is not dark —
+     a white asteroid field behind the production menu turned it white on
+     white. A tight halo on every glyph costs nothing, adds no chrome, and
+     survives any backdrop. Panels are still forbidden; this is not one. */
+  --vsh-halo: 0 1px 2px rgba(0, 0, 0, 0.92), 0 0 8px rgba(0, 0, 0, 0.72);
+
+  --vsh-ink-06: rgba(var(--vsh-w), 0.06);
+  --vsh-ink-10: rgba(var(--vsh-w), 0.10);
+  --vsh-ink-16: rgba(var(--vsh-w), 0.16);
+  --vsh-ink-24: rgba(var(--vsh-w), 0.24);
+  --vsh-ink-40: rgba(var(--vsh-w), 0.40);
+  --vsh-ink-64: rgba(var(--vsh-w), 0.64);
+  --vsh-ink-88: rgba(var(--vsh-w), 0.88);
+
+  --vsh-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --vsh-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --vsh-gut: 26px;
+  --vsh-deck: 48px;                       /* clearance for the "← Demos" link */
+  --vsh-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Position/z-index/pointer-events are set by the page shell (styles/shell.css).
+     Repeated here only so the HUD still lays out correctly in a bare test host.
+     `contain` keeps every per-frame transform write off the page's layout tree. */
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  font-family: var(--vsh-sans);
+  color: var(--vsh-ink-88);
+  text-shadow: var(--vsh-halo);          /* inherited by every glyph below */
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  contain: layout paint style;
+}
+
+/* Vector marks need the same protection, and there are only ever a couple of
+   dozen of them on screen. */
+.vsh-chip__icon,
+.vsh-item__icon,
+.vsh-q__ring {
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
+}
+
+.vsh-root *,
+.vsh-root *::before,
+.vsh-root *::after {
+  box-sizing: border-box;
+}
+
+/* `:where()` keeps this reset at zero specificity for the tag part, so a
+   component rule like `.vsh-cmd { font-size: 10px }` still wins. Without it
+   `font: inherit` quietly resets every button back to 16px. */
+.vsh-root :where(button) {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.vsh-root :focus-visible {
+  outline: 1px solid var(--vsh-cyan);
+  outline-offset: 3px;
+}
+
+/* Shared micro-typography ------------------------------------------------- */
+.vsh-label {
+  font-family: var(--vsh-mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--vsh-ink-40);
+  white-space: nowrap;
+}
+
+.vsh-num {
+  font-family: var(--vsh-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+  letter-spacing: 0.02em;
+}
+
+/* --------------------------------------------------------------- 0. scrims */
+/* Soft directional washes, never boxes. Two corners and the top edge, so the
+   numerals hold against a bright nebula without walling off the void. */
+.vsh-root__scrim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(to bottom, rgba(2, 7, 12, 0.72), rgba(2, 7, 12, 0) 13%),
+    radial-gradient(76% 50% at 0% 100%, rgba(2, 7, 12, 0.7), rgba(2, 7, 12, 0) 74%),
+    radial-gradient(66% 52% at 100% 100%, rgba(2, 7, 12, 0.7), rgba(2, 7, 12, 0) 74%);
+  opacity: 0.94;
+}
+
+/* ------------------------------------------------------ 1. world marker layer */
+/* Stacking order inside the HUD, low to high:
+   scrim 0 · markers 1 · sensors 2 · bars 3 · help 4 · boot 9 · game over 10.
+   The two hosts are created before the bars so DOM order agrees with paint
+   order even where z-index is left to auto. */
+.vsh-host {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.vsh-host--markers { z-index: 1; }
+.vsh-host--sensors { z-index: 2; }
+
+.vsh-layer,
+.vsh-layer__pips {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.vsh-layer[hidden] {
+  display: none;
+}
+
+/* A distant or over-numerous contact: one node, one transform. The whole
+   fleet-scale budget rests on this element being as cheap as it looks. */
+.vsh-pip {
+  position: absolute;
+  left: -2.5px;
+  top: -2.5px;
+  width: 5px;
+  height: 5px;
+  border: 1px solid var(--vsh-cyan);
+  opacity: 0;
+  transition: opacity 0.14s linear;
+}
+
+.vsh-pip.is-live { opacity: 0.8; }
+.vsh-pip--low { border-color: var(--vsh-red); opacity: 1; }
+/* Red means *we* are in trouble. A hostile in trouble is still a hostile, so
+   it keeps the enemy hue — these rules come last and win deliberately. */
+.vsh-pip--enemy,
+.vsh-pip--enemy.vsh-pip--low { border-color: var(--vsh-amber); }
+
+/* Selection bracket. The root is a zero-size anchor at the projected centre;
+   the four corner ticks translate outward from it. Nothing is ever scaled, so
+   a bracket around a 1,900 m mothership has the same 1px stroke as one around
+   an interceptor. */
+.vsh-brk {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  color: var(--vsh-cyan);
+  opacity: 0;
+  transition: opacity 0.16s linear;
+}
+
+.vsh-brk.is-live {
+  opacity: 0.92;
+}
+
+.vsh-brk.is-hit {
+  color: var(--vsh-red);
+}
+
+/* Same rule as the pips: an enemy bracket never turns red, whatever is
+   happening to it. One hue for them, one hue for trouble. */
+.vsh-brk--enemy,
+.vsh-brk--enemy.is-hit {
+  color: var(--vsh-amber);
+}
+
+.vsh-brk__c {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 9px;
+  height: 9px;
+  border: 0 solid currentColor;
+}
+
+.vsh-brk__c--tl { border-top-width: 1px; border-left-width: 1px; }
+.vsh-brk__c--tr { border-top-width: 1px; border-right-width: 1px; }
+.vsh-brk__c--bl { border-bottom-width: 1px; border-left-width: 1px; }
+.vsh-brk__c--br { border-bottom-width: 1px; border-right-width: 1px; }
+
+/* Small brackets get shorter ticks and drop the readout, because a 3px hull
+   bar under a 20px box is a smudge rather than information. */
+.vsh-brk--sm .vsh-brk__c {
+  width: 5px;
+  height: 5px;
+}
+
+.vsh-brk--sm .vsh-brk__hp,
+.vsh-brk--sm .vsh-brk__sh {
+  display: none;
+}
+
+/* Health readout. Fills scale on X so no width is ever written, and both bars
+   take the bracket's team colour so hull damage never reads as "ours". */
+.vsh-brk__hp,
+.vsh-brk__sh {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 30px;
+  height: 2px;
+  transform-origin: 0 50%;
+  background: rgba(var(--vsh-w), 0.13);
+  overflow: hidden;
+}
+
+.vsh-brk__sh {
+  height: 1px;
+  background: rgba(var(--vsh-w), 0.10);
+}
+
+.vsh-brk__hpf,
+.vsh-brk__shf {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 50%;
+  background: currentColor;
+  opacity: 0.6;
+}
+
+.vsh-brk__shf {
+  opacity: 0.95;
+}
+
+.vsh-brk--low .vsh-brk__hpf {
+  background: var(--vsh-red);
+  opacity: 0.95;
+}
+
+.vsh-brk--enemy.vsh-brk--low .vsh-brk__hpf {
+  background: var(--vsh-amber);
+}
+
+/* Group bracket — the fallback when a selection is too large to draw one by
+   one. Same corner-tick construction, plus a count. */
+.vsh-brk--group {
+  color: var(--vsh-cyan);
+  opacity: 0.7;
+}
+
+.vsh-brk--group .vsh-brk__c {
+  width: 16px;
+  height: 16px;
+}
+
+.vsh-brk--group .vsh-brk__hp,
+.vsh-brk--group .vsh-brk__sh {
+  display: none;
+}
+
+.vsh-brk__count {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding-left: 4px;
+  font-family: var(--vsh-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--vsh-ink-64);
+  white-space: nowrap;
+}
+
+/* Target reticle — four inward ticks on a slow rotation. */
+.vsh-ret {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  color: var(--vsh-amber);
+  opacity: 0;
+  transition: opacity 0.2s linear;
+}
+
+.vsh-ret.is-live { opacity: 0.68; }
+.vsh-ret--threat { color: var(--vsh-red); }
+
+.vsh-ret__c {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 6px;
+  height: 6px;
+  border: 0 solid currentColor;
+}
+
+.vsh-ret__c--tl { border-top-width: 1px; border-left-width: 1px; }
+.vsh-ret__c--tr { border-top-width: 1px; border-right-width: 1px; }
+.vsh-ret__c--bl { border-bottom-width: 1px; border-left-width: 1px; }
+.vsh-ret__c--br { border-bottom-width: 1px; border-right-width: 1px; }
+
+/* Move-order marker: a ring of ticks at the destination, a hairline stalk
+   dropped to the reference plane, and a dash where it lands. */
+.vsh-ord {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  color: var(--vsh-cyan);
+  opacity: 0;
+}
+
+.vsh-ord--attack { color: var(--vsh-red); }
+
+.vsh-ord__ring {
+  position: absolute;
+  left: -9px;
+  top: -9px;
+  width: 18px;
+  height: 18px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  opacity: 0.85;
+}
+
+.vsh-ord__cross {
+  position: absolute;
+  left: -0.5px;
+  top: -14px;
+  width: 1px;
+  height: 28px;
+  background: currentColor;
+  opacity: 0.45;
+}
+
+.vsh-ord__cross--h {
+  left: -14px;
+  top: -0.5px;
+  width: 28px;
+  height: 1px;
+}
+
+.vsh-ord__stalk {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.4;
+  transform-origin: 0 0;
+}
+
+.vsh-ord__base {
+  position: absolute;
+  left: -6px;
+  top: 0;
+  width: 12px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.55;
+}
+
+/* --------------------------------------------------------------- 2. top bar */
+.vsh-top {
+  z-index: 3;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 18px var(--vsh-gut) 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.vsh-top__rule {
+  z-index: 3;
+  position: absolute;
+  left: var(--vsh-gut);
+  right: var(--vsh-gut);
+  top: 62px;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    var(--vsh-ink-24),
+    var(--vsh-ink-06) 22%,
+    var(--vsh-ink-06) 78%,
+    var(--vsh-ink-24)
+  );
+}
+
+.vsh-res {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+
+.vsh-res__mark {
+  position: relative;
+  width: 7px;
+  padding-left: 0;
+  font-family: var(--vsh-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  color: var(--vsh-ink-40);
+  align-self: center;
+}
+
+/* corner tick instead of a border box */
+.vsh-res__mark::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-left: 1px solid var(--vsh-cyan);
+  border-top: 1px solid var(--vsh-cyan);
+  opacity: 0.7;
+}
+
+.vsh-res__credits {
+  font-family: var(--vsh-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 27px;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  color: var(--vsh-ink-88);
+  text-shadow: var(--vsh-halo), 0 0 18px rgba(127, 216, 232, 0.18);
+}
+
+.vsh-res__unit {
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  color: var(--vsh-ink-24);
+  margin-left: 2px;
+}
+
+.vsh-res__rate {
+  font-family: var(--vsh-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--vsh-ink-40);
+}
+
+.vsh-res__rate.is-up { color: var(--vsh-good); }
+.vsh-res__rate.is-down { color: var(--vsh-amber); }
+
+.vsh-fleet {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+
+.vsh-stat {
+  min-width: 92px;
+  padding: 0 15px;
+  border-left: 1px solid var(--vsh-ink-10);
+  text-align: right;
+}
+
+.vsh-stat:first-child { border-left: 0; }
+.vsh-stat:last-child { padding-right: 0; }
+.vsh-stat--speed { min-width: 132px; }
+
+.vsh-stat__k {
+  display: block;
+  font-family: var(--vsh-mono);
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--vsh-ink-24);
+  margin-bottom: 5px;
+}
+
+.vsh-stat__v {
+  display: block;
+  font-family: var(--vsh-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  color: var(--vsh-ink-64);
+  line-height: 1;
+}
+
+.vsh-stat__v em {
+  font-style: normal;
+  color: var(--vsh-ink-24);
+}
+
+.vsh-stat.is-warn .vsh-stat__v { color: var(--vsh-amber); }
+.vsh-stat.is-alert .vsh-stat__v { color: var(--vsh-red); }
+
+/* The one warm readout in the bar. Amber means "them" everywhere else in the
+   game, so the hostile tally wears it too — including its rule and label. */
+.vsh-stat--foe { border-left-color: rgba(255, 180, 84, 0.24); }
+.vsh-stat--foe .vsh-stat__k { color: rgba(255, 180, 84, 0.42); }
+.vsh-stat--foe .vsh-stat__v { color: var(--vsh-amber); }
+
+.vsh-speed {
+  display: flex;
+  gap: 5px;
+  justify-content: flex-end;
+}
+
+.vsh-speed__b {
+  font-family: var(--vsh-mono);
+  font-size: 12px;
+  line-height: 1;
+  letter-spacing: 0;
+  color: var(--vsh-ink-40);
+  padding: 1px 1px 2px;
+  min-width: 15px;
+  transition: color 0.15s linear;
+}
+
+.vsh-speed__b:hover { color: var(--vsh-ink-64); }
+.vsh-speed__b[aria-pressed='true'] {
+  color: var(--vsh-cyan);
+  box-shadow: inset 0 -1px 0 0 currentColor;
+}
+
+/* Paused is a state you must not be able to miss. */
+.vsh-speed__b[data-speed='0'][aria-pressed='true'] { color: var(--vsh-amber); }
+
+/* ------------------------------------------------------- 2b. sound state */
+/* The one audio control that is always on screen. The five-bus mixer is on the
+   H card where a settings bank belongs; this is the state readout and the
+   panic key, so it lives in the bar and never scrolls.
+
+   Hidden until `ui:audioChanged` proves there is something to control — a mute
+   button on a build with no AudioContext is worse than no button. */
+.vsh-mute {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-left: 4px;
+  color: var(--vsh-ink-40);
+  pointer-events: auto;
+  transition: color 0.15s linear;
+}
+
+.vsh-mute.is-live { display: flex; }
+.vsh-mute:hover { color: var(--vsh-ink-64); }
+
+.vsh-mute svg {
+  width: 17px;
+  height: 17px;
+  overflow: visible;
+}
+
+.vsh-mute__cone {
+  fill: currentColor;
+  stroke: none;
+}
+
+.vsh-mute__waves,
+.vsh-mute__slash {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  transition: opacity 0.15s linear;
+}
+
+/* Two states, two silhouettes — the arcs and the cross never both show, so the
+   glyph is legible without relying on the colour change. */
+.vsh-mute__slash { opacity: 0; }
+.vsh-mute.is-muted { color: var(--vsh-red); }
+.vsh-mute.is-muted .vsh-mute__waves { opacity: 0; }
+.vsh-mute.is-muted .vsh-mute__slash { opacity: 1; }
+
+.vsh-mute.is-unavailable {
+  color: var(--vsh-ink-24);
+  cursor: default;
+}
+
+.vsh-mute.is-unavailable .vsh-mute__waves { opacity: 0; }
+.vsh-mute.is-unavailable .vsh-mute__slash { opacity: 0.5; }
+
+/* Announced to a screen reader, invisible to everyone else. */
+.vsh-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vsh-mute,
+  .vsh-mute__waves,
+  .vsh-mute__slash { transition: none; }
+}
+
+/* ----------------------------------------------------------- 3. bottom deck */
+/* The bottom padding clears the shell's "← Demos" exit link, which sits in the
+   bottom-left corner at z-index 60. Nothing of ours may land on top of it. */
+.vsh-bottom {
+  z-index: 3;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 0 var(--vsh-gut) var(--vsh-deck);
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 22px;
+}
+
+.vsh-bottom__col {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: 0;
+}
+
+.vsh-bottom__col--left { flex: 1 1 34%; align-items: flex-start; }
+.vsh-bottom__col--mid { flex: 0 0 auto; align-items: center; }
+.vsh-bottom__col--right { flex: 1 1 34%; align-items: flex-end; }
+
+/* Local scrims. The corner washes on `.vsh-root__scrim` cover the general
+   case; these sit directly behind the two densest blocks so they hold even
+   over a lit asteroid. Both are gradients that fade to nothing — there is no
+   edge anywhere, so neither reads as a panel. */
+.vsh-roster::before,
+.vsh-build::before,
+.vsh-card::before,
+.vsh-onboard::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.vsh-roster::before {
+  inset: -18px -46px -34px -40px;
+  background: radial-gradient(112% 104% at 0% 100%, rgba(2, 6, 11, 0.86), rgba(2, 6, 11, 0) 74%);
+}
+
+.vsh-build::before {
+  inset: -20px -40px -34px -48px;
+  background: radial-gradient(112% 104% at 100% 100%, rgba(2, 6, 11, 0.86), rgba(2, 6, 11, 0) 74%);
+}
+
+/* -------------------------------------------------------------- 4. roster */
+.vsh-roster {
+  position: relative;
+  width: 100%;
+  max-width: 460px;
+  opacity: 0;
+  transform: translate3d(0, 8px, 0);
+  transition: opacity 0.2s var(--vsh-ease), transform 0.2s var(--vsh-ease);
+}
+
+.vsh-roster.is-live {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.vsh-roster__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding-bottom: 7px;
+  margin-bottom: 7px;
+  border-bottom: 1px solid var(--vsh-ink-16);
+}
+
+.vsh-roster__n {
+  font-family: var(--vsh-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 16px;
+  color: var(--vsh-ink-88);
+  line-height: 1;
+}
+
+.vsh-roster__meta {
+  margin-left: auto;
+  font-family: var(--vsh-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--vsh-ink-24);
+}
+
+.vsh-roster__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 18px;
+}
+
+.vsh-chip {
+  display: grid;
+  grid-template-columns: 22px auto;
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  row-gap: 3px;
+  align-items: center;
+  padding: 4px 6px 5px 2px;
+  transition: opacity 0.14s linear;
+  opacity: 0.78;
+}
+
+.vsh-chip:hover,
+.vsh-chip.is-active {
+  opacity: 1;
+}
+
+.vsh-chip.is-active .vsh-chip__name { color: var(--vsh-cyan); }
+
+.vsh-chip__icon {
+  grid-row: 1 / span 2;
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: var(--vsh-cyan);
+  stroke-width: 1.1;
+  stroke-linejoin: round;
+  opacity: 0.85;
+}
+
+.vsh-chip__top {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.vsh-chip__n {
+  font-family: var(--vsh-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: var(--vsh-ink-88);
+  line-height: 1;
+  min-width: 18px;
+  text-align: right;
+}
+
+.vsh-chip__name {
+  font-family: var(--vsh-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vsh-ink-40);
+  white-space: nowrap;
+  transition: color 0.14s linear;
+}
+
+.vsh-chip__bars {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  min-width: 86px;
+}
+
+.vsh-bar {
+  position: relative;
+  display: block;
+  height: 2px;
+  background: rgba(var(--vsh-w), 0.10);
+  overflow: hidden;
+}
+
+.vsh-bar--shield { height: 1px; }
+
+.vsh-bar__fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 50%;
+  background: var(--vsh-cyan);
+  opacity: 0.75;
+  transition: transform 0.18s linear;
+}
+
+.vsh-bar--shield .vsh-bar__fill { background: rgba(143, 232, 255, 0.55); }
+.vsh-bar.is-low .vsh-bar__fill { background: var(--vsh-red); opacity: 0.9; }
+
+/* ------------------------------------------------------------- 5. palette */
+/* `stretch` is what aligns the two rows: it makes each row as wide as the
+   widest, so "Stance" and "Formation" share a left edge and their buttons
+   share a first column instead of each row centring independently. */
+.vsh-palette {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 9px;
+}
+
+.vsh-palette__row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  opacity: 0;
+  transform: translate3d(0, 6px, 0);
+  transition: opacity 0.18s var(--vsh-ease), transform 0.18s var(--vsh-ease);
+  pointer-events: none;
+}
+
+.vsh-palette__row.is-live {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  pointer-events: auto;
+}
+
+/* Fixed and right-aligned, so "Stance" and "Formation" share a left edge and
+   both rows of buttons start on the same column. */
+.vsh-palette__k {
+  flex: 0 0 70px;
+  width: 70px;
+  font-family: var(--vsh-mono);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  text-align: right;
+  color: var(--vsh-ink-24);
+  margin-right: 10px;
+}
+
+.vsh-cmd {
+  position: relative;
+  padding: 4px 9px 5px;
+  font-family: var(--vsh-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vsh-ink-40);
+  transition: color 0.14s linear;
+}
+
+.vsh-cmd::after {
+  content: '';
+  position: absolute;
+  left: 9px;
+  right: 9px;
+  bottom: 1px;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: 50% 50%;
+  transition: transform 0.18s var(--vsh-ease);
+}
+
+.vsh-cmd:hover { color: var(--vsh-ink-64); }
+.vsh-cmd:hover::after { transform: scaleX(0.5); }
+
+.vsh-cmd[aria-pressed='true'] {
+  color: var(--vsh-cyan);
+}
+
+.vsh-cmd[aria-pressed='true']::after { transform: scaleX(1); }
+
+.vsh-cmd__key {
+  display: block;
+  margin-top: 3px;
+  font-size: 8px;
+  letter-spacing: 0.18em;
+  color: var(--vsh-ink-16);
+}
+
+.vsh-palette__util {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  justify-content: center;   /* the rows stretch; this one stays centred */
+}
+
+/* --------------------------------------------------------------- 6. build */
+.vsh-build {
+  position: relative;
+  width: 100%;
+  max-width: 430px;
+  opacity: 0;
+  transform: translate3d(0, 8px, 0);
+  transition: opacity 0.2s var(--vsh-ease), transform 0.2s var(--vsh-ease);
+  pointer-events: none;
+}
+
+.vsh-build.is-live {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  pointer-events: auto;
+}
+
+.vsh-build__head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding-bottom: 7px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--vsh-ink-16);
+}
+
+.vsh-build__title {
+  font-family: var(--vsh-mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--vsh-ink-40);
+}
+
+/* One yard-wide state, said once. White, not amber: amber is the enemy, and a
+   population cap is bookkeeping rather than a threat. */
+.vsh-build__status {
+  font-family: var(--vsh-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vsh-ink-40);
+  opacity: 0;
+  transition: opacity 0.16s linear;
+}
+
+.vsh-build__status.is-live { opacity: 1; }
+
+.vsh-build__tabs {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+.vsh-tab {
+  font-family: var(--vsh-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vsh-ink-24);
+  padding: 2px 6px 3px;
+  transition: color 0.14s linear;
+}
+
+.vsh-tab:hover { color: var(--vsh-ink-64); }
+
+.vsh-tab[aria-pressed='true'] {
+  color: var(--vsh-cyan);
+  box-shadow: inset 0 -1px 0 0 currentColor;
+}
+
+.vsh-build__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px 22px;
+}
+
+.vsh-item {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 9px;
+  padding: 4px 4px 4px 0;
+  text-align: left;
+  transition: opacity 0.14s linear;
+  opacity: 0.8;
+}
+
+.vsh-item:hover:not([disabled]) { opacity: 1; }
+
+.vsh-item[disabled] {
+  cursor: not-allowed;
+  opacity: 0.44;
+}
+
+.vsh-item__icon {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: var(--vsh-cyan);
+  stroke-width: 1.1;
+  stroke-linejoin: round;
+  opacity: 0.8;
+}
+
+.vsh-item[disabled] .vsh-item__icon { stroke: rgba(var(--vsh-w), 0.4); }
+
+.vsh-item__name {
+  font-family: var(--vsh-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vsh-ink-64);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vsh-item__sub {
+  grid-column: 2 / span 2;
+  font-family: var(--vsh-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: rgba(var(--vsh-w), 0.32);
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+.vsh-item__sub.is-blocked { color: rgba(var(--vsh-w), 0.55); }
+
+.vsh-item__cost {
+  font-family: var(--vsh-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--vsh-ink-64);
+}
+
+/* ------------------------------------------------------------ 6b. ship card */
+/* What a class is *for*. The counter lines are computed from the same
+   affinity table combat.js applies, so they cannot drift from the balance. */
+.vsh-card {
+  position: absolute;
+  bottom: calc(100% + 22px);
+  width: min(330px, 78vw);
+  padding-top: 9px;
+  border-top: 1px solid var(--vsh-ink-24);
+  opacity: 0;
+  visibility: hidden;
+  transform: translate3d(0, 5px, 0);
+  transition: opacity 0.16s var(--vsh-ease), transform 0.16s var(--vsh-ease),
+    visibility 0s linear 0.16s;
+  pointer-events: none;
+}
+
+.vsh-card--right { right: 0; }
+.vsh-card--left { left: 0; }
+
+.vsh-card.is-live {
+  opacity: 1;
+  visibility: visible;
+  transform: translate3d(0, 0, 0);
+  transition: opacity 0.16s var(--vsh-ease), transform 0.16s var(--vsh-ease), visibility 0s;
+}
+
+.vsh-card::before {
+  inset: -16px -28px -26px -28px;
+  background:
+    radial-gradient(96% 82% at 50% 52%, rgba(2, 6, 11, 0.95), rgba(2, 6, 11, 0.7) 62%, rgba(2, 6, 11, 0) 92%);
+}
+
+.vsh-card__head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.vsh-card__name {
+  font-family: var(--vsh-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--vsh-ink-88);
+}
+
+.vsh-card__cost {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--vsh-cyan);
+}
+
+.vsh-card__meta {
+  margin: 0 0 7px;
+  font-family: var(--vsh-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vsh-ink-24);
+}
+
+.vsh-card__desc {
+  margin: 0 0 9px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--vsh-ink-64);
+}
+
+.vsh-card__counters {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-top: 7px;
+  border-top: 1px solid var(--vsh-ink-06);
+}
+
+.vsh-card__counters[hidden] { display: none; }
+
+.vsh-card__row {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+}
+
+.vsh-card__row[hidden] { display: none; }
+
+.vsh-card__k {
+  font-family: var(--vsh-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--vsh-ink-40);
+}
+
+.vsh-card__v {
+  font-family: var(--vsh-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  color: var(--vsh-ink-64);
+}
+
+.vsh-card__row--strong .vsh-card__v { color: var(--vsh-cyan); }
+.vsh-card__row--weak .vsh-card__v { color: rgba(var(--vsh-w), 0.34); }
+
+.vsh-build__queue {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--vsh-ink-10);
+}
+
+.vsh-build__qempty {
+  font-family: var(--vsh-mono);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: var(--vsh-ink-16);
+  text-transform: uppercase;
+}
+
+.vsh-q {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  transition: opacity 0.14s linear;
+  opacity: 0.85;
+}
+
+.vsh-q:hover { opacity: 1; }
+
+.vsh-q__ring {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+
+.vsh-q__track {
+  fill: none;
+  stroke: rgba(var(--vsh-w), 0.12);
+  stroke-width: 1;
+}
+
+.vsh-q__arc {
+  fill: none;
+  stroke: var(--vsh-cyan);
+  stroke-width: 1.4;
+  stroke-linecap: butt;
+}
+
+.vsh-q__code {
+  position: relative;
+  font-family: var(--vsh-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.06em;
+  color: var(--vsh-ink-64);
+}
+
+.vsh-q:hover .vsh-q__code { color: var(--vsh-red); }
+.vsh-q:hover .vsh-q__arc { stroke: var(--vsh-red); }
+
+.vsh-q__more {
+  font-family: var(--vsh-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--vsh-ink-24);
+}
+
+/* --------------------------------------------------------------- 7. toasts */
+.vsh-toasts {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 5px;
+  min-height: 0;
+}
+
+.vsh-toast {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 3px 0;
+  font-family: var(--vsh-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--vsh-ink-64);
+  white-space: nowrap;
+  opacity: 0;
+  transform: translate3d(-10px, 0, 0);
+  transition: opacity 0.22s var(--vsh-ease), transform 0.22s var(--vsh-ease);
+}
+
+.vsh-toast.is-live {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.vsh-toast::before {
+  content: '';
+  width: 14px;
+  height: 1px;
+  flex: 0 0 14px;
+  background: currentColor;
+  opacity: 0.55;
+}
+
+.vsh-toast--warn { color: var(--vsh-amber); }
+.vsh-toast--alert { color: var(--vsh-red); }
+.vsh-toast--good { color: var(--vsh-good); }
+
+/* ----------------------------------------------------------- 8. sensors UI */
+/* The schematic never takes a pointer event. `core/input.js` keeps the
+   marquee, the pick radius and the move gizmo in sensors mode, which is what
+   makes band-select, attack orders, orbit and zoom all survive the switch. */
+.vsh-sensors {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.28s var(--vsh-ease), visibility 0s linear 0.28s;
+}
+
+.vsh-sensors.is-open {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.28s var(--vsh-ease), visibility 0s;
+}
+
+.vsh-sensors__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Shares the top-centre band with the paused tag, so it steps down when the
+   simulation is frozen rather than stacking on top of it. */
+.vsh-root.is-paused .vsh-sensors__head,
+.vsh-root.is-paused .vsh-onboard {
+  transform: translate3d(-50%, 42px, 0);
+}
+
+.vsh-sensors__head {
+  position: absolute;
+  top: 78px;
+  left: 50%;
+  transform: translate3d(-50%, 0, 0);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  pointer-events: none;
+}
+
+.vsh-sensors__title {
+  font-family: var(--vsh-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.52em;
+  text-indent: 0.52em;
+  text-transform: uppercase;
+  color: var(--vsh-ink-64);
+}
+
+.vsh-sensors__hint {
+  font-family: var(--vsh-mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  color: var(--vsh-ink-24);
+}
+
+.vsh-sensors__legend {
+  position: absolute;
+  left: var(--vsh-gut);
+  top: 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.vsh-legend {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-family: var(--vsh-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vsh-ink-40);
+}
+
+.vsh-legend__k {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border: 1px solid currentColor;
+}
+
+.vsh-legend--us { color: var(--vsh-cyan); }
+.vsh-legend--them { color: var(--vsh-amber); }
+
+/* Terrain is white held low, like every other non-team mark, and the swatch
+   is hatched because that is exactly what the schematic draws — an occluder
+   you read through, not a token in a fourth hue competing with the enemy. */
+.vsh-legend--ore { color: var(--vsh-ink-40); }
+.vsh-legend--ore .vsh-legend__k {
+  border-radius: 50%;
+  background-image: repeating-linear-gradient(
+    45deg,
+    currentColor 0 0.5px,
+    transparent 0.5px 2.5px
+  );
+}
+
+/* Contact tally. DOM rather than canvas text, so it stays crisp at any DPR
+   and inherits the same numerals as the rest of the HUD. */
+.vsh-sensors__tally {
+  position: absolute;
+  right: var(--vsh-gut);
+  top: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.vsh-tally {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+}
+
+.vsh-tally--us { color: var(--vsh-cyan); }
+.vsh-tally--them { color: var(--vsh-amber); }
+
+/* --------------------------------------------------- 8b. first-run rail */
+/* Three steps, ticked off by doing them, then gone for good — it retires on
+   the first order landing, because someone who has selected a fleet and sent
+   it somewhere is playing the game. A thin strip under the top rule, not a
+   block in the middle: it is transient, so it must not own the composition
+   while it is up. The alternative — one panel listing thirty-two controls —
+   is the reliable way to make a new player close an RTS. */
+.vsh-onboard {
+  z-index: 3;
+  position: absolute;
+  left: 50%;
+  top: 86px;
+  width: min(760px, calc(100% - var(--vsh-gut) * 2));
+  transform: translate3d(-50%, 0, 0);
+  transition: opacity 0.5s var(--vsh-ease), transform 0.5s var(--vsh-ease);
+  pointer-events: none;
+}
+
+.vsh-onboard::before {
+  inset: -18px -60px -20px -60px;
+  background: radial-gradient(58% 140% at 50% 50%, rgba(2, 6, 11, 0.9), rgba(2, 6, 11, 0.62) 58%, rgba(2, 6, 11, 0) 92%);
+}
+
+.vsh-onboard.is-gone {
+  opacity: 0;
+  transform: translate3d(-50%, -10px, 0);
+}
+
+.vsh-onboard.is-mute {
+  opacity: 0;
+  transition: opacity 0.22s var(--vsh-ease);
+}
+
+.vsh-onboard__head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding-bottom: 6px;
+  margin-bottom: 9px;
+  border-bottom: 1px solid var(--vsh-ink-10);
+}
+
+.vsh-onboard__k {
+  margin: 0;
+  font-family: var(--vsh-mono);
+  font-size: 9px;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: var(--vsh-cyan);
+  opacity: 0.8;
+}
+
+.vsh-onboard__rows {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px 22px;
+}
+
+.vsh-onboard__row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  transition: opacity 0.3s linear;
+}
+
+.vsh-onboard__n {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--vsh-ink-40);
+}
+
+.vsh-onboard__t {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--vsh-ink-88);
+}
+
+/* A tick that replaces the number rather than crowding it. */
+.vsh-onboard__tick {
+  position: absolute;
+  left: 0;
+  top: 5px;
+  width: 9px;
+  height: 5px;
+  border-left: 1px solid var(--vsh-cyan);
+  border-bottom: 1px solid var(--vsh-cyan);
+  transform: rotate(-45deg) scale(0.4);
+  opacity: 0;
+  transition: opacity 0.2s linear, transform 0.2s var(--vsh-ease);
+}
+
+.vsh-onboard__row.is-done { opacity: 0.42; }
+.vsh-onboard__row.is-done .vsh-onboard__n { opacity: 0; }
+.vsh-onboard__row.is-done .vsh-onboard__tick {
+  opacity: 1;
+  transform: rotate(-45deg) scale(1);
+}
+
+.vsh-onboard__row.is-done .vsh-onboard__t {
+  text-decoration: line-through;
+  text-decoration-color: var(--vsh-ink-16);
+}
+
+/* The one feature in the build that is genuinely worth advertising. */
+.vsh-onboard__note {
+  margin: 10px 0 0;
+  font-family: var(--vsh-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  color: var(--vsh-ink-40);
+}
+
+.vsh-onboard__skip {
+  margin-left: auto;
+  font-family: var(--vsh-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vsh-ink-40);
+  transition: color 0.15s linear;
+}
+
+.vsh-onboard__skip:hover { color: var(--vsh-cyan); }
+.vsh-onboard.is-gone .vsh-onboard__skip { pointer-events: none; }
+
+/* ------------------------------------------------------- 8c. paused state */
+/* A frozen sim with no indicator reads as a crash. Corner ticks and one word;
+   deliberately no dimming, because the whole selling point is that you can
+   still read the battlefield and command it while it is stopped. */
+.vsh-paused {
+  z-index: 4;
+  position: absolute;
+  inset: 12px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s var(--vsh-ease), visibility 0s linear 0.2s;
+  pointer-events: none;
+}
+
+.vsh-paused.is-open {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.2s var(--vsh-ease), visibility 0s;
+}
+
+.vsh-paused__c {
+  position: absolute;
+  width: 42px;
+  height: 42px;
+  border: 0 solid var(--vsh-amber);
+  opacity: 0.9;
+  filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.9));
+}
+
+.vsh-paused__c--tl { top: 0; left: 0; border-top-width: 1px; border-left-width: 1px; }
+.vsh-paused__c--tr { top: 0; right: 0; border-top-width: 1px; border-right-width: 1px; }
+.vsh-paused__c--bl { bottom: 0; left: 0; border-bottom-width: 1px; border-left-width: 1px; }
+.vsh-paused__c--br { bottom: 0; right: 0; border-bottom-width: 1px; border-right-width: 1px; }
+
+.vsh-paused__tag {
+  position: absolute;
+  left: 50%;
+  top: 58px;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  white-space: nowrap;
+  transform: translate3d(-50%, 0, 0);
+}
+
+.vsh-paused__word {
+  font-family: var(--vsh-mono);
+  font-size: 12px;
+  letter-spacing: 0.5em;
+  text-indent: 0.5em;
+  text-transform: uppercase;
+  color: var(--vsh-amber);
+}
+
+.vsh-paused__sub {
+  font-family: var(--vsh-mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--vsh-ink-40);
+}
+
+/* --------------------------------------------------------------- 9. help */
+/* Centred, with its own scrim. A docked rail collided with the production
+   menu at every width we ship at, and this is a card you stop and read. */
+.vsh-help {
+  z-index: 4;
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 4vmin var(--vsh-gut);
+  background: radial-gradient(120% 90% at 50% 50%, rgba(3, 7, 12, 0.86), rgba(0, 0, 0, 0.94));
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.22s var(--vsh-ease), visibility 0s linear 0.22s;
+  pointer-events: none;
+}
+
+.vsh-help.is-open {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.22s var(--vsh-ease), visibility 0s;
+  pointer-events: auto;
+}
+
+.vsh-help__inner {
+  width: min(1080px, 100%);
+  max-height: 88vh;
+  overflow-y: auto;
+  transform: translate3d(0, 10px, 0);
+  transition: transform 0.28s var(--vsh-ease);
+  scrollbar-width: thin;
+}
+
+.vsh-help.is-open .vsh-help__inner {
+  transform: translate3d(0, 0, 0);
+}
+
+.vsh-help__head {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding-bottom: 12px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--vsh-ink-16);
+}
+
+.vsh-help__eyebrow {
+  font-family: var(--vsh-mono);
+  font-size: 9px;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: var(--vsh-ink-24);
+  margin: 0;
+}
+
+.vsh-help__title {
+  font-family: var(--vsh-mono);
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--vsh-ink-88);
+  margin: 0;
+}
+
+.vsh-help__close {
+  margin-left: auto;
+  font-family: var(--vsh-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vsh-ink-24);
+  transition: color 0.15s linear;
+}
+
+.vsh-help__close:hover { color: var(--vsh-cyan); }
+
+/* Tactical pause promoted out of the control list, where it was one grey row
+   among thirty-two and nobody ever found it. */
+.vsh-help__lede {
+  max-width: 76ch;
+  margin: -8px 0 26px;
+  padding-left: 14px;
+  border-left: 1px solid var(--vsh-cyan);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--vsh-ink-64);
+}
+
+/* Newspaper columns rather than a grid: the five groups are different lengths
+   and CSS balances them better than any fixed layout would. */
+.vsh-help__grid {
+  column-count: 3;
+  column-gap: 46px;
+}
+
+.vsh-help__col {
+  break-inside: avoid;
+  page-break-inside: avoid;
+  margin-bottom: 22px;
+}
+
+.vsh-help__grp {
+  font-family: var(--vsh-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--vsh-cyan);
+  opacity: 0.55;
+  margin: 0 0 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--vsh-ink-06);
+}
+
+.vsh-help__row {
+  display: grid;
+  grid-template-columns: minmax(0, 130px) minmax(0, 1fr);
+  gap: 12px;
+  padding: 3px 0;
+  align-items: baseline;
+}
+
+.vsh-help__k {
+  font-family: var(--vsh-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  color: var(--vsh-ink-64);
+}
+
+.vsh-help__d {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--vsh-ink-40);
+}
+
+/* ------------------------------------------------------- 9b. audio mixer */
+/* Lives inside the controls card because that is where a player goes when
+   they stop to fiddle — but above the reference grid, not as a column in it.
+   Flowed last in a three-then-two column newspaper layout it fell under the
+   fold of the card's scroll box at 1280x720 and below. Hidden until
+   `src/audio/index.js` announces itself: a mixer wired to nothing is worse
+   than no mixer. */
+.vsh-audio { display: none; }
+.vsh-audio.is-live { display: block; margin: -6px 0 28px; }
+
+.vsh-audio__head {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+}
+
+.vsh-audio__head .vsh-help__grp { flex: 1 1 auto; }
+
+/* One line of five faders. They wrap rather than shrink, so a narrow card
+   stacks them instead of turning each into an unusable 30 px stub. */
+.vsh-audio__bank {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 28px;
+  margin-top: 10px;
+}
+
+.vsh-audio__row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1 1 118px;
+  min-width: 104px;
+  max-width: 200px;
+}
+
+.vsh-audio__k {
+  font-family: var(--vsh-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  color: var(--vsh-ink-64);
+}
+
+.vsh-audio__mute {
+  flex: 0 0 auto;
+  font-family: var(--vsh-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vsh-cyan);
+  transition: color 0.15s linear;
+}
+
+.vsh-audio__mute[aria-pressed='true'] { color: var(--vsh-red); }
+
+.vsh-audio.is-muted .vsh-audio__slider { opacity: 0.35; }
+
+/* A hairline track and a single tick for a thumb — no native chrome, and no
+   rounded corners anywhere, per DESIGN.md. */
+.vsh-audio__slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 12px;
+  margin: 0;
+  background: none;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: opacity 0.15s linear;
+}
+
+.vsh-audio__slider::-webkit-slider-runnable-track {
+  height: 1px;
+  background: var(--vsh-ink-16);
+}
+
+.vsh-audio__slider::-moz-range-track {
+  height: 1px;
+  background: var(--vsh-ink-16);
+}
+
+.vsh-audio__slider::-moz-range-progress {
+  height: 1px;
+  background: var(--vsh-cyan);
+}
+
+.vsh-audio__slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 2px;
+  height: 11px;
+  margin-top: -5px;
+  border: 0;
+  border-radius: 0;
+  background: var(--vsh-cyan);
+}
+
+.vsh-audio__slider::-moz-range-thumb {
+  width: 2px;
+  height: 11px;
+  border: 0;
+  border-radius: 0;
+  background: var(--vsh-cyan);
+}
+
+.vsh-audio__slider:focus-visible {
+  outline: 1px solid var(--vsh-cyan);
+  outline-offset: 2px;
+}
+
+/* A browser that refuses an AudioContext gets told, not hidden from. Live
+   controls that cannot do anything are the thing worth avoiding, so they go
+   inert and the reason goes on the row underneath. */
+.vsh-audio.is-unavailable .vsh-audio__k,
+.vsh-audio.is-unavailable .vsh-audio__mute { color: var(--vsh-ink-24); }
+.vsh-audio.is-unavailable .vsh-audio__slider { opacity: 0.2; cursor: default; }
+
+.vsh-audio__note {
+  margin-top: 8px;
+  font-family: var(--vsh-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+  color: var(--vsh-amber);
+}
+
+/* --------------------------------------------------------------- 10. boot */
+.vsh-boot {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(120% 90% at 50% 46%, #05090f 0%, #010306 62%, #000 100%);
+  pointer-events: auto;
+  opacity: 1;
+  transition: opacity 0.7s var(--vsh-ease);
+}
+
+.vsh-boot.is-done {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.vsh-boot[hidden] { display: none; }
+
+.vsh-boot__inner {
+  width: min(620px, 74vw);
+  text-align: left;
+}
+
+.vsh-boot__eyebrow {
+  font-family: var(--vsh-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.44em;
+  text-transform: uppercase;
+  color: var(--vsh-ink-24);
+  margin-bottom: 20px;
+}
+
+.vsh-boot__title {
+  font-family: var(--vsh-mono);
+  font-size: clamp(30px, 4.6vw, 62px);
+  font-weight: 400;
+  letter-spacing: 0.3em;
+  line-height: 1;
+  color: var(--vsh-ink-88);
+  margin: 0 0 18px;
+  text-indent: 0.3em;
+  text-shadow: 0 0 40px rgba(143, 232, 255, 0.14);
+}
+
+.vsh-boot__sub {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--vsh-ink-40);
+  max-width: 46ch;
+  margin: 0 0 34px;
+}
+
+.vsh-boot__bar {
+  position: relative;
+  height: 1px;
+  background: var(--vsh-ink-10);
+  margin-bottom: 10px;
+}
+
+.vsh-boot__fill {
+  position: absolute;
+  inset: 0;
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  background: linear-gradient(to right, var(--vsh-cyan-deep), var(--vsh-cyan));
+  transition: transform 0.3s var(--vsh-ease);
+}
+
+.vsh-boot__foot {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+
+.vsh-boot__step {
+  font-family: var(--vsh-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--vsh-ink-40);
+}
+
+.vsh-boot__pct {
+  margin-left: auto;
+  font-family: var(--vsh-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: var(--vsh-ink-64);
+}
+
+.vsh-boot__skip {
+  margin-top: 30px;
+  font-family: var(--vsh-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--vsh-ink-24);
+  opacity: 0;
+  transition: opacity 0.4s var(--vsh-ease), color 0.15s linear;
+}
+
+.vsh-boot__skip.is-live { opacity: 1; }
+.vsh-boot__skip:hover { color: var(--vsh-cyan); }
+
+/* ----------------------------------------------------------- 11. game over */
+.vsh-over {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: 6vmin var(--vsh-gut);
+  background: radial-gradient(100% 80% at 50% 50%, rgba(2, 5, 9, 0.82), rgba(0, 0, 0, 0.94));
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.5s var(--vsh-ease), visibility 0s linear 0.5s;
+  pointer-events: none;
+}
+
+.vsh-over.is-open {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.5s var(--vsh-ease), visibility 0s;
+  pointer-events: auto;
+}
+
+.vsh-over__inner {
+  width: min(560px, 100%);
+}
+
+.vsh-over__eyebrow {
+  font-family: var(--vsh-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: var(--vsh-ink-24);
+  margin-bottom: 14px;
+}
+
+.vsh-over__title {
+  font-family: var(--vsh-mono);
+  font-size: clamp(24px, 3.2vw, 40px);
+  font-weight: 400;
+  letter-spacing: 0.22em;
+  color: var(--vsh-ink-88);
+  margin: 0 0 26px;
+  line-height: 1.1;
+}
+
+.vsh-over--lost .vsh-over__title { color: var(--vsh-red); }
+.vsh-over--won .vsh-over__title { color: var(--vsh-cyan); }
+
+.vsh-over__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  border-top: 1px solid var(--vsh-ink-16);
+  margin-bottom: 28px;
+}
+
+.vsh-over__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 18px 9px 0;
+  border-bottom: 1px solid var(--vsh-ink-06);
+}
+
+.vsh-over__k {
+  font-family: var(--vsh-mono);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--vsh-ink-24);
+}
+
+.vsh-over__v {
+  font-family: var(--vsh-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  color: var(--vsh-ink-64);
+}
+
+.vsh-over__restart {
+  position: relative;
+  padding: 9px 26px 10px;
+  font-family: var(--vsh-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--vsh-cyan);
+  border: 1px solid var(--vsh-ink-24);
+  transition: border-color 0.18s linear, color 0.18s linear;
+}
+
+.vsh-over__restart:hover {
+  border-color: var(--vsh-cyan);
+}
+
+/* ------------------------------------------------------- 12. responsive */
+@media (max-width: 1420px) {
+  .vsh-root { --vsh-gut: 20px; }
+  .vsh-roster { max-width: 380px; }
+  .vsh-build { max-width: 400px; }
+  .vsh-res__credits { font-size: 23px; }
+  .vsh-stat { min-width: 74px; padding: 0 11px; }
+  .vsh-stat--speed { min-width: 122px; }
+  .vsh-help__grid { column-count: 2; column-gap: 38px; }
+
+  /* The palette is the greedy column at this width; giving it back ~80 px is
+     what stops "ASSAULT CORVETTE" truncating in the production menu. */
+  .vsh-cmd { padding: 4px 6px 5px; letter-spacing: 0.1em; }
+  .vsh-cmd::after { left: 6px; right: 6px; }
+  .vsh-palette__k { flex-basis: 58px; width: 58px; margin-right: 8px; }
+  .vsh-item__name { font-size: 9.5px; letter-spacing: 0.05em; }
+  .vsh-item { column-gap: 7px; }
+}
+
+@media (max-width: 1120px) {
+  .vsh-build__grid { grid-template-columns: minmax(0, 1fr); }
+  .vsh-bottom { gap: 14px; }
+  .vsh-roster__list { gap: 2px 12px; }
+}
+
+@media (max-width: 760px) {
+  .vsh-help__grid { column-count: 1; }
+  .vsh-onboard__rows { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Short viewports: the production menu is the tallest thing in the HUD and it
+   is what runs out of room first, so it loses padding before anything else. */
+@media (max-height: 820px) {
+  .vsh-root { --vsh-deck: 42px; }
+  .vsh-item { padding-top: 2px; padding-bottom: 2px; }
+  .vsh-item__icon { width: 20px; height: 20px; }
+  .vsh-build__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .vsh-build__queue { min-height: 30px; margin-top: 6px; padding-top: 6px; }
+  .vsh-sensors__head { top: 62px; }
+  .vsh-sensors__legend,
+  .vsh-sensors__tally { top: 80px; }
+}
+
+/* --------------------------------------------------- 13. reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .vsh-root *,
+  .vsh-root *::before,
+  .vsh-root *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .vsh-roster,
+  .vsh-build,
+  .vsh-palette__row,
+  .vsh-toast,
+  .vsh-card,
+  .vsh-help__inner {
+    transform: none !important;
+  }
+
+  .vsh-sensors__head { transform: translate3d(-50%, 0, 0) !important; }
+  .vsh-onboard,
+  .vsh-onboard.is-gone { transform: translate3d(-50%, 0, 0) !important; }
+  .vsh-onboard__row.is-done .vsh-onboard__tick { transform: rotate(-45deg) !important; }
+}
