@@ -28,12 +28,14 @@ import { SensorsView } from './sensors.js';
 
    **The keyboard belongs to `core/input.js`.** That module is the single
    owner of the control scheme; every key the player presses arrives here as a
-   bus event instead. The HUD binds exactly one key — Escape, to dismiss the
-   controls card, which input.js knows nothing about. Anything else would be
-   handled twice: two Tab handlers cancelled each other out and the Sensors
-   Manager never opened. The palette buttons and the formation/stance/speed
-   readouts mirror `cmd:*` / `ui:speed` so the surface always agrees with the
-   keyboard, whichever one the player used. */
+   bus event instead. The HUD binds **no** keys at all. It used to claim
+   Escape to dismiss the controls card; Escape is now the pause key and it is
+   arbitrated by `ui/shell.js`, which calls `closeOverlays()` here before it
+   opens its own menu. Anything else would be handled twice: two Tab handlers
+   cancelled each other out and the Sensors Manager never opened. The palette
+   buttons and the formation/stance/speed readouts mirror `cmd:*` / `ui:speed`
+   so the surface always agrees with the keyboard, whichever one the player
+   used. */
 
 /* Ordered to match `core/input.js`: Shift+1 … Shift+6 walk this list. */
 const FORMATION_LABELS = {
@@ -291,6 +293,11 @@ export class HUD {
     this._helpOpen = false;
     this._overOpen = false;
     this._introDone = false;
+    this._objLive = false;
+    this._fleetHulls = 0;
+    // Frozen at the whistle so the shell's end card reports the match, not the
+    // world as it stands by the time somebody reads the card.
+    this._final = null;
 
     this._teamCache = { credits: 0, income: 0, pop: 0, popCap: 0, queued: 0, queue: [] };
     this._stats = { built: 0, lost: 0, kills: 0, earned: 0, start: performance.now() };
@@ -447,7 +454,7 @@ export class HUD {
        no control. */
     fleet.appendChild(this._buildMuteGlyph());
 
-    top.append(res, fleet);
+    top.append(res, this._buildObjective(), fleet);
     this._add(root, el('div', 'vsh-top__rule')).setAttribute('aria-hidden', 'true');
 
     /* -------------------------------------------------------- bottom deck */
@@ -509,18 +516,8 @@ export class HUD {
        work, take it out of `CONTROL_SCHEME`, where the handler can be seen
        next to it. */
     const hGrid = el('div', 'vsh-help__grid');
-    for (const block of CONTROL_SCHEME) {
-      const rows = block.rows;
-      if (!rows.length) continue;
-      const col = el('section', 'vsh-help__col');
-      col.appendChild(el('p', 'vsh-help__grp', block.group));
-      for (const [k, d] of rows) {
-        const row = el('div', 'vsh-help__row');
-        row.append(el('span', 'vsh-help__k', k), el('span', 'vsh-help__d', d));
-        col.appendChild(row);
-      }
-      hGrid.appendChild(col);
-    }
+    this.helpGrid = hGrid;
+    this._fillControlGrid();
 
     /* ------------------------------------------------------------- audio */
     /* Above the reference grid, not inside it.
@@ -639,21 +636,149 @@ export class HUD {
     boot.appendChild(bi);
     this.boot = boot;
 
-    /* ---------------------------------------------------------- game over */
-    const over = this._add(root, el('section', 'vsh-over'));
-    over.setAttribute('role', 'dialog');
-    over.setAttribute('aria-modal', 'true');
-    over.setAttribute('aria-label', 'Skirmish complete');
-    over.setAttribute('aria-hidden', 'true');
-    const oi = el('div', 'vsh-over__inner');
-    oi.append(el('p', 'vsh-over__eyebrow', 'Skirmish complete'));
-    this.overTitle = el('h2', 'vsh-over__title', 'Fleet lost');
-    this.overStats = el('div', 'vsh-over__stats');
-    this.overRestart = el('button', 'vsh-over__restart', 'New skirmish');
-    this.overRestart.type = 'button';
-    oi.append(this.overTitle, this.overStats, this.overRestart);
-    over.appendChild(oi);
-    this.over = over;
+    /* The end-of-match card used to be built here. It moved to `ui/shell.js`
+       when the shell took ownership of the game lifecycle: it needs the three
+       `sim:gameOver` reasons in plain English and a "Play again" that rebuilds
+       the world in place, and neither is the HUD's business. */
+  }
+
+  /* The standing objective readout.
+
+     `sim/economy.js` has run a seam-control tug-of-war and `sim/world.js` a
+     sovereignty clock since they were written, and neither has ever appeared
+     on screen. A second victory condition the player cannot see is not a
+     victory condition — it is the game ending for a reason nobody can name.
+
+     Three things, in the one gap the top bar had left: what the objective is
+     right now in a sentence, how close each side is to losing, and how much of
+     the contested band is actually yours. Styling lives in `styles/shell.css`
+     because `styles/hud.css` is not this lane's file; the class names stay in
+     this module's namespace so it can move back in one paste. */
+  /* Rebuilt, not built once.
+
+     `CONTROL_SCHEME` is derived from the live binding table in `core/input.js`
+     and is rebuilt in place whenever a key is rebound. Printing it a single
+     time at construction meant the card kept naming the old key for the rest
+     of the session — measured showing `S` while the binding was already
+     `KeyK`. It was correct again on the next reload, which is exactly the kind
+     of defect that survives casual testing. Re-run on `options:changed`. */
+  _fillControlGrid() {
+    const grid = this.helpGrid;
+    if (!grid) return;
+    grid.textContent = '';
+    for (const block of CONTROL_SCHEME) {
+      const rows = block.rows;
+      if (!rows.length) continue;
+      const col = el('section', 'vsh-help__col');
+      col.appendChild(el('p', 'vsh-help__grp', block.group));
+      for (const [k, d] of rows) {
+        const row = el('div', 'vsh-help__row');
+        row.append(el('span', 'vsh-help__k', k), el('span', 'vsh-help__d', d));
+        col.appendChild(row);
+      }
+      grid.appendChild(col);
+    }
+  }
+
+  _buildObjective() {
+    const wrap = el('div', 'vsh-obj');
+    wrap.setAttribute('aria-live', 'off');
+    wrap.append(el('span', 'vsh-obj__k', 'Objective'));
+    this.objLine = el('span', 'vsh-obj__line', 'Take their Mothership, or take the middle.');
+    wrap.appendChild(this.objLine);
+
+    const meters = el('div', 'vsh-obj__meters');
+    const meter = (side, label) => {
+      const m = el('div', `vsh-obj__m vsh-obj__m--${side}`);
+      m.append(el('span', 'vsh-obj__mk', label));
+      const bar = el('div', 'vsh-obj__bar');
+      const fill = el('i', 'vsh-obj__fill');
+      bar.appendChild(fill);
+      const n = el('span', 'vsh-obj__n vsh-num', '100');
+      m.append(bar, n);
+      m.setAttribute('aria-label', `${label} sovereignty`);
+      meters.appendChild(m);
+      return { root: m, fill, n };
+    };
+    this.objUs = meter('us', 'You');
+    this.objThem = meter('them', 'Them');
+    this.objSeams = el('span', 'vsh-obj__seams', '');
+    meters.appendChild(this.objSeams);
+    wrap.appendChild(meters);
+    this.objEl = wrap;
+    return wrap;
+  }
+
+  /* Grace period before the sovereignty clock starts, mirrored from
+     `SOVEREIGNTY_GRACE` in `sim/world.js`, which does not export it. The
+     readout stops trusting this the moment it sees real drain, so a drift in
+     the sim shows up as an early switch to "draining" rather than as a lie. */
+  _objGrace() {
+    return 240;
+  }
+
+  _refreshObjective() {
+    if (!this.objEl) return;
+    const w = this.world;
+    const teams = w && w.teams;
+    if (!teams || teams.length < 2) return;
+
+    const us = teams[this.team];
+    const them = teams[this.team ^ 1];
+    if (!us || them === undefined) return;
+
+    const sovUs = num(us.sovereignty, 100);
+    const sovThem = num(them.sovereignty, 100);
+    const seamsUs = num(us.seams, 0);
+    const seamsThem = num(them.seams, 0);
+    const total = num(w.contestedSeams, seamsUs + seamsThem);
+
+    if (!this._objLive) {
+      this._objLive = true;
+      this.objEl.classList.add('is-live');
+    }
+
+    this.objUs.fill.style.transform = `scaleX(${(sovUs / 100).toFixed(3)})`;
+    this.objThem.fill.style.transform = `scaleX(${(sovThem / 100).toFixed(3)})`;
+    const nUs = String(Math.ceil(sovUs));
+    const nThem = String(Math.ceil(sovThem));
+    if (this.objUs.n.textContent !== nUs) this.objUs.n.textContent = nUs;
+    if (this.objThem.n.textContent !== nThem) this.objThem.n.textContent = nThem;
+    this.objUs.root.classList.toggle('is-alert', sovUs <= 25);
+
+    const seamText = total > 0 ? `Seams ${seamsUs}/${total}` : '';
+    if (this.objSeams.textContent !== seamText) {
+      this.objSeams.replaceChildren();
+      if (total > 0) {
+        this.objSeams.append(
+          document.createTextNode('Seams '),
+          el('b', null, String(seamsUs)),
+          document.createTextNode(`/${total}`),
+        );
+      }
+    }
+
+    const t = num(w.time, 0);
+    const drained = sovUs < 99.99 || sovThem < 99.99;
+    const left = Math.max(0, this._objGrace() - t);
+    let line;
+    if (!drained && left > 0) {
+      const mm = Math.floor(left / 60);
+      const ss = String(Math.floor(left % 60)).padStart(2, '0');
+      line = `Sovereignty clock starts in ${mm}:${ss} — take the middle before it does`;
+    } else if (seamsUs > seamsThem) {
+      line = 'You hold the middle · their sovereignty is draining';
+    } else if (seamsThem > seamsUs) {
+      line = 'They hold the middle · your sovereignty is draining';
+    } else {
+      line = 'The middle is level · take a seam, or take their Mothership';
+    }
+    if (this.objLine.textContent !== line) this.objLine.textContent = line;
+    this.objEl.setAttribute(
+      'title',
+      `Win by destroying their Mothership, by draining their sovereignty to zero, `
+        + `or by breaking their fleet entirely. Your sovereignty ${nUs}%, theirs ${nThem}%.`,
+    );
   }
 
   /* Drawn rather than typed: a glyph font would be a binary asset, and "MUTE"
@@ -743,7 +868,7 @@ export class HUD {
         this._hint('stance', 'Under fire · Z, X and C set the fleet stance', 'warn');
       }
     });
-    on('sim:gameOver', (p) => this._onGameOver(p));
+    on('sim:gameOver', () => this._onGameOver());
     on('ui:toast', (p) => this._onToastEvent(p));
     on('cmd:move', (p) => {
       if (p && p.point) this.markers.addOrder(p.point, 'move');
@@ -780,22 +905,20 @@ export class HUD {
       this._setSensors(!!(p && p.open), true);
     });
     on('ui:audioChanged', (p) => this._syncAudio(p));
+    /* A rebind changes what this card should say. `core/input.js` emits
+       `bindings.<action>` for a single rebind and a bare `bindings` for a
+       reset to defaults, so match the prefix and take both. */
+    on('options:changed', (p) => {
+      const key = p && p.key;
+      if (typeof key === 'string' && key.indexOf('bindings') === 0) {
+        this._fillControlGrid();
+      }
+    });
     on('ui:progress', (p) => p && this.setLoadProgress(p.value, p.label));
     on('ui:ready', (p) => {
       if (p && p.seed !== undefined) this.seed = p.seed;
       this.finishLoading();
     });
-
-    /* Escape is the only key the HUD claims: it dismisses the controls card,
-       which `core/input.js` has no idea exists. It deliberately does not
-       preventDefault or touch the selection — input.js clears that. */
-    this._onKey = (ev) => {
-      if (ev.key !== 'Escape' || !this._helpOpen) return;
-      const t = ev.target;
-      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || ''))) return;
-      this.setHelp(false);
-    };
-    window.addEventListener('keydown', this._onKey);
 
     this._onClick = (ev) => this._click(ev);
     this.root.addEventListener('click', this._onClick);
@@ -830,10 +953,6 @@ export class HUD {
     }
     if (t.closest('.vsh-help__close')) {
       this.setHelp(false);
-      return;
-    }
-    if (t.closest('.vsh-over__restart')) {
-      this._restart();
       return;
     }
     if (t.closest('.vsh-boot__skip')) {
@@ -1271,6 +1390,8 @@ export class HUD {
     this.statValue.value.textContent = value.toLocaleString('en-GB');
     this.statHulls.value.textContent = String(hulls);
     this.statFoes.value.textContent = String(foes);
+    this._fleetHulls = hulls;
+    this._refreshObjective();
 
     if (force) {
       this._creditsTarget = t.credits;
@@ -1367,49 +1488,62 @@ export class HUD {
 
   /* ------------------------------------------------------------- game over */
 
-  _onGameOver(p) {
+  /* The end-of-match card belongs to `ui/shell.js` now — it is the lifecycle
+     owner, it has the three plain-English endings and it is what "Play again"
+     has to talk to in order to rebuild without a page reload. All the HUD does
+     here is retire the first-run rail and freeze the numbers it has been
+     accumulating so `matchStats()` reports the state at the whistle rather
+     than whatever the world has decayed to by the time the card is read. */
+  _onGameOver() {
     if (this._overOpen) return;
     this._overOpen = true;
     this._obRetire();
-    const won = p && p.winner === this.team;
-    this.over.classList.add('is-open');
-    this.over.setAttribute('aria-hidden', 'false');
-    this.over.classList.toggle('vsh-over--won', !!won);
-    this.over.classList.toggle('vsh-over--lost', !won);
-    this.overTitle.textContent = won ? 'Sovereignty established' : 'Fleet lost';
+    this._final = this.matchStats();
+  }
 
+  /**
+   * Everything the end-of-match screen needs, in one plain object. Public
+   * because the shell owns that screen and this module owns the counters.
+   */
+  matchStats() {
+    if (this._final) return this._final;
     const mine = [];
     for (const e of this.ctx.entities()) {
       if (e.alive !== false && e.team === this.team) mine.push(e);
     }
-    const secs = Math.max(0, (performance.now() - this._stats.start) / 1000);
-    const mm = String(Math.floor(secs / 60)).padStart(2, '0');
-    const ss = String(Math.floor(secs % 60)).padStart(2, '0');
-
-    const rows = [
-      ['Hulls commissioned', String(this._stats.built)],
-      ['Hulls lost', String(this._stats.lost)],
-      ['Hostiles destroyed', String(this._stats.kills)],
-      ['Resources gathered', Math.round(this._stats.earned).toLocaleString('en-GB')],
-      ['Fleet remaining', `${mine.length} · ${totalFleetValue(mine).toLocaleString('en-GB')} RU`],
-      ['Duration', `${mm}:${ss}`],
-    ];
-    const frag = document.createDocumentFragment();
-    for (const [k, v] of rows) {
-      const row = el('div', 'vsh-over__row');
-      row.append(el('span', 'vsh-over__k', k), el('span', 'vsh-over__v vsh-num', v));
-      frag.appendChild(row);
-    }
-    this.overStats.replaceChildren(frag);
-    this.overRestart.focus({ preventScroll: true });
+    /* Sim time, not wall-clock. A match that spent four minutes in the pause
+       menu did not last four minutes longer, and `world.time` only advances on
+       ticks the loop actually ran. */
+    const simTime = this.world && typeof this.world.time === 'number' ? this.world.time : null;
+    const duration = simTime !== null
+      ? simTime
+      : Math.max(0, (performance.now() - this._stats.start) / 1000);
+    return {
+      built: this._stats.built,
+      losses: this._stats.lost,
+      kills: this._stats.kills,
+      harvested: Math.round(this._stats.earned),
+      fleetHulls: mine.length,
+      fleetValue: totalFleetValue(mine),
+      duration,
+    };
   }
 
-  _restart() {
-    const seed = (Math.random() * 0x7fffffff) | 0;
-    this.over.classList.remove('is-open');
-    this.over.setAttribute('aria-hidden', 'true');
-    this._overOpen = false;
-    bus.emit('ui:restart', { seed });
+  /**
+   * Close whatever the HUD has open, topmost first. Returns true if something
+   * was closed. `ui/shell.js` calls this before it opens the pause menu, which
+   * is the whole of the Escape arbitration the contract asks for.
+   */
+  closeOverlays() {
+    if (this._helpOpen) {
+      this.setHelp(false);
+      return true;
+    }
+    if (this.sensors && this.sensors.open) {
+      this._setSensors(false, false);
+      return true;
+    }
+    return false;
   }
 
   /* ---------------------------------------------------------------- update */
@@ -1479,7 +1613,6 @@ export class HUD {
   dispose() {
     for (const off of this._offs) off();
     this._offs.length = 0;
-    window.removeEventListener('keydown', this._onKey);
     this.root.removeEventListener('click', this._onClick);
     this.audioPanel.removeEventListener('input', this._onSlide);
     if (this._onResize) window.removeEventListener('resize', this._onResize);
