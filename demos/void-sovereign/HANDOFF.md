@@ -278,6 +278,28 @@ default to "not good enough" and to get harsher, not softer, over time.
 
 ## 5. Hard-won knowledge — read before you "fix" these again
 
+**Prove which code path actually runs before you believe a fix landed.** This
+has now cost the project twice, and both times the code was correct.
+
+The first was `setFleetScene()`: never called, so the batch root was unparented
+and the fleet did not draw at all. It invalidated a "draw calls are flat"
+claim that had already been reported as good news.
+
+The second was the contested band. `generateResourceClusters` + `markContested`
+in `sim/spawn.js` produce 4–8 contested clusters on every seed — measured over
+40 seeds, histogram `{4:30, 6:9, 8:1}`, mean 4.55, not one seed with none. But
+`resolveResourceClusters` prefers `environment.resourceClusters` when present,
+and it is *always* present. Measured in the running world, **5 seeds in 8 had
+zero contested clusters**, which made the sovereignty victory condition
+unreachable and the whole seam economy inert — on the majority of matches, the
+mechanic written specifically to stop 12:1 stalemates was not running at all.
+A previous agent's fix for mirror-match bias went into that same bypassed path.
+
+The tell in both cases was that the unit-level measurement was clean and the
+integrated measurement was never taken. A generator that produces the right
+answer is not evidence that anything consumes it. Measure the field the running
+game actually uses.
+
 **Sky is equirectangular, not a cubemap. Do not convert it back.**
 Hard straight lines were cutting across the sky. After bisecting the scene
 graph, post-processing, the HUD and the dust, the cause was **cube-map seams**:

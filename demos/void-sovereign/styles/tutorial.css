@@ -1,0 +1,856 @@
+/* Tutorial rail + codex reference. Lane C.
+
+   Same visual language as the boot card and the HUD: hairlines, corner ticks,
+   IBM Plex Mono for every label and number, Inter for prose, radius 0
+   everywhere, and no filled panel over the 3D view. Where a surface has to be
+   legible over a bright nebula it uses a soft directional wash rather than a
+   box — see `.vst-card::before`.
+
+   The stylesheet is injected by `src/ui/tutorial.js` rather than linked from
+   index.html, because index.html belongs to Lane A. `style-src 'self'` allows
+   it; nothing here is inline. */
+
+.vst-root {
+  --vst-void: var(--vs-void, #04070c);
+  --vst-ink: var(--vs-ink, #dfe8f2);
+  --vst-dim: var(--vs-dim, rgba(223, 232, 242, 0.52));
+  --vst-faint: var(--vs-faint, rgba(223, 232, 242, 0.16));
+  --vst-cyan: var(--vs-cyan, #7fd8e8);
+  --vst-amber: #ffb454;
+  --vst-good: #8fe8b0;
+  --vst-mono: var(--vs-mono, 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace);
+  --vst-sans: var(--vs-sans, 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif);
+
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  font-family: var(--vst-sans);
+  color: var(--vst-ink);
+}
+
+.vst-root [hidden] {
+  display: none !important;
+}
+
+.vst-root button {
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.vst-root :focus-visible {
+  outline: 1px solid var(--vst-cyan);
+  outline-offset: 3px;
+}
+
+/* Shared micro-typography. Mono, wide tracking, upper case — the game's voice. */
+.vst-k {
+  margin: 0;
+  font-family: var(--vst-mono);
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: rgba(223, 232, 242, 0.42);
+}
+
+/* --------------------------------------------------------------- 1. the rail */
+
+/* Left edge, vertically centred: the one band of the frame the HUD leaves
+   alone. Top centre belongs to the sensors head and the paused tag, the bottom
+   deck to the roster, palette and yards, bottom-left to the toast stack. */
+.vst-card {
+  position: absolute;
+  left: max(1.2rem, env(safe-area-inset-left));
+  top: 50%;
+  transform: translateY(-50%);
+  width: clamp(16rem, 21vw, 21rem);
+  max-height: min(30rem, 76vh);
+  display: flex;
+  flex-direction: column;
+  padding: 0 0 0 0.9rem;
+  border-left: 1px solid var(--vst-faint);
+  pointer-events: auto;
+  opacity: 0;
+  transition: opacity 420ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.vst-card.is-live {
+  opacity: 1;
+}
+
+/* The rail belongs to the match. Any shell state other than `playing` puts a
+   full-bleed overlay on top, and the rail's body text was legible straight
+   through it. Wins over `is-live` on purpose, and takes the same fade so
+   pausing does not snap. `visibility` rather than `display` keeps the
+   transition, and hides it from the accessibility tree while off stage so a
+   screen reader is not read a tutorial step over the pause menu. */
+.vst-card.vst-offstage {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 200ms cubic-bezier(0.4, 0, 0.2, 1),
+    visibility 0s linear 200ms;
+}
+
+/* Local wash so mono at 0.62rem survives a bright nebula. Never a box. */
+.vst-card::before {
+  content: '';
+  position: absolute;
+  inset: -1.6rem -3rem -1.6rem -2rem;
+  z-index: -1;
+  background: radial-gradient(
+    58% 52% at 22% 50%,
+    rgba(4, 7, 12, 0.82),
+    rgba(4, 7, 12, 0) 78%
+  );
+  pointer-events: none;
+}
+
+.vst-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.75rem;
+}
+
+.vst-card__count {
+  font-family: var(--vst-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  color: rgba(223, 232, 242, 0.34);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Progress: one hairline, split into as many ticks as there are steps. */
+.vst-track {
+  display: flex;
+  gap: 3px;
+  margin-bottom: 1.1rem;
+}
+
+.vst-track__t {
+  flex: 1 1 0;
+  height: 1px;
+  background: var(--vst-faint);
+  transition: background-color 300ms ease;
+}
+
+.vst-track__t.is-done {
+  background: rgba(127, 216, 232, 0.55);
+}
+
+.vst-track__t.is-now {
+  background: var(--vst-cyan);
+}
+
+.vst-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--vst-faint) transparent;
+}
+
+.vst-step__title {
+  margin: 0 0 0.5rem;
+  font-size: 1.02rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  color: #fff;
+}
+
+.vst-step__text {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: var(--vst-dim);
+}
+
+.vst-step__text em {
+  font-style: normal;
+  color: var(--vst-ink);
+}
+
+/* An escalating nudge, shown only if a step has been open a while. Amber, so
+   it reads as "you may be stuck" rather than as another instruction. */
+.vst-step__nudge {
+  margin: 0.7rem 0 0;
+  font-size: 0.74rem;
+  line-height: 1.55;
+  color: rgba(255, 180, 84, 0.78);
+}
+
+.vst-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.9rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vst-keys li {
+  padding: 0.28em 0.55em;
+  border: 1px solid var(--vst-faint);
+  font-family: var(--vst-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vst-ink);
+  white-space: nowrap;
+}
+
+/* The steps behind and ahead. Deliberately quiet — this is orientation, not a
+   second instruction competing with the live one. */
+.vst-list {
+  margin: 1.2rem 0 0;
+  padding: 0.9rem 0 0;
+  border-top: 1px solid var(--vst-faint);
+  list-style: none;
+  display: grid;
+  gap: 0.34rem;
+}
+
+.vst-list__r {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-family: var(--vst-mono);
+  font-size: 0.63rem;
+  letter-spacing: 0.06em;
+  color: rgba(223, 232, 242, 0.3);
+}
+
+.vst-list__m {
+  width: 0.9em;
+  flex: 0 0 auto;
+  color: rgba(223, 232, 242, 0.26);
+  font-variant-numeric: tabular-nums;
+}
+
+.vst-list__r.is-done .vst-list__m {
+  color: var(--vst-cyan);
+}
+
+.vst-list__r.is-done {
+  color: rgba(223, 232, 242, 0.44);
+}
+
+.vst-list__r.is-now {
+  color: var(--vst-ink);
+}
+
+.vst-list__r.is-now .vst-list__m {
+  color: var(--vst-cyan);
+}
+
+.vst-actions {
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+  margin-top: 1.1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--vst-faint);
+}
+
+.vst-btn {
+  position: relative;
+  padding: 0.2em 0;
+  font-family: var(--vst-mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vst-dim);
+  transition: color 160ms ease;
+}
+
+.vst-btn::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  transition: transform 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.vst-btn:hover {
+  color: var(--vst-ink);
+}
+
+.vst-btn:hover::after {
+  transform: scaleX(1);
+}
+
+.vst-btn--go {
+  color: var(--vst-cyan);
+}
+
+.vst-btn--skip {
+  margin-left: auto;
+  color: rgba(223, 232, 242, 0.34);
+}
+
+/* ----------------------------------------------------- 2. completion card */
+
+.vst-done .vst-step__title {
+  color: var(--vst-cyan);
+}
+
+.vst-win {
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.vst-win__r {
+  display: grid;
+  gap: 0.16rem;
+}
+
+.vst-win__k {
+  font-family: var(--vst-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--vst-cyan);
+}
+
+.vst-win__v {
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: var(--vst-dim);
+}
+
+/* -------------------------------------------------------- 3. codex overlay */
+
+/* Only used when there is no shell to host the panel. When `shell.registerPanel`
+   is available the same content is mounted into the shell's own container and
+   none of this applies. */
+.vst-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: start center;
+  padding: clamp(1.5rem, 5vh, 4rem) clamp(1rem, 5vw, 4rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background:
+    radial-gradient(120% 90% at 50% 30%, rgba(18, 34, 52, 0.5), transparent 70%),
+    rgba(4, 7, 12, 0.96);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 260ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.vst-overlay.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.vst-overlay__inner {
+  width: min(62rem, 100%);
+}
+
+.vst-overlay__close {
+  position: sticky;
+  top: 0;
+  float: right;
+  padding: 0.3em 0;
+  font-family: var(--vst-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--vst-dim);
+}
+
+.vst-overlay__close:hover {
+  color: var(--vst-cyan);
+}
+
+/* --------------------------------------------------------------- 4. codex */
+
+.vsc {
+  --vsc-ink: var(--vs-ink, #dfe8f2);
+  --vsc-dim: var(--vs-dim, rgba(223, 232, 242, 0.52));
+  --vsc-faint: var(--vs-faint, rgba(223, 232, 242, 0.16));
+  --vsc-cyan: var(--vs-cyan, #7fd8e8);
+  --vsc-amber: #ffb454;
+  --vsc-mono: var(--vs-mono, 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace);
+  --vsc-sans: var(--vs-sans, 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif);
+  font-family: var(--vsc-sans);
+  color: var(--vsc-ink);
+}
+
+.vsc [hidden] {
+  display: none !important;
+}
+
+.vsc button {
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.vsc :focus-visible {
+  outline: 1px solid var(--vsc-cyan);
+  outline-offset: 3px;
+}
+
+.vsc__eyebrow {
+  margin: 0 0 0.7rem;
+  font-family: var(--vsc-mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: rgba(223, 232, 242, 0.42);
+}
+
+.vsc__title {
+  margin: 0 0 1.6rem;
+  font-size: clamp(1.6rem, 3.4vw, 2.4rem);
+  font-weight: 700;
+  letter-spacing: -0.028em;
+  line-height: 1;
+  color: #fff;
+}
+
+.vsc__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.4rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--vsc-faint);
+  margin-bottom: 1.8rem;
+}
+
+.vsc__tab {
+  position: relative;
+  padding-bottom: 0.55rem;
+  margin-bottom: -0.75rem;
+  font-family: var(--vsc-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(223, 232, 242, 0.4);
+  transition: color 160ms ease;
+}
+
+.vsc__tab::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--vsc-cyan);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.vsc__tab:hover {
+  color: var(--vsc-ink);
+}
+
+.vsc__tab[aria-selected='true'] {
+  color: var(--vsc-cyan);
+}
+
+.vsc__tab[aria-selected='true']::after {
+  transform: scaleX(1);
+}
+
+.vsc__panel[hidden] {
+  display: none;
+}
+
+.vsc__lede {
+  max-width: 44rem;
+  margin: 0 0 2rem;
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: var(--vsc-dim);
+}
+
+.vsc__lede strong {
+  font-weight: 500;
+  color: var(--vsc-ink);
+}
+
+.vsc__h {
+  margin: 2.4rem 0 1rem;
+  font-family: var(--vsc-mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: rgba(223, 232, 242, 0.42);
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid var(--vsc-faint);
+}
+
+.vsc__h:first-child {
+  margin-top: 0;
+}
+
+.vsc__p {
+  max-width: 44rem;
+  margin: 0 0 1rem;
+  font-size: 0.84rem;
+  line-height: 1.7;
+  color: var(--vsc-dim);
+}
+
+/* Victory conditions and other definition lists. */
+.vsc__defs {
+  display: grid;
+  gap: 1.2rem;
+  margin: 0 0 1rem;
+  padding: 0;
+}
+
+.vsc__def {
+  display: grid;
+  gap: 0.3rem;
+  max-width: 46rem;
+}
+
+.vsc__def dt {
+  font-family: var(--vsc-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vsc-cyan);
+}
+
+.vsc__def dd {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.65;
+  color: var(--vsc-dim);
+}
+
+/* Live readouts. Always labelled as live, because a number that came out of the
+   running match is worth more than one that was typed into a document. */
+.vsc__live {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 2.2rem;
+  margin: 0 0 1.4rem;
+  padding: 0.9rem 0;
+  border-top: 1px solid var(--vsc-faint);
+  border-bottom: 1px solid var(--vsc-faint);
+}
+
+.vsc__cell {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.35rem 0;
+}
+
+.vsc__cell dt {
+  font-family: var(--vsc-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(223, 232, 242, 0.34);
+}
+
+.vsc__cell dd {
+  margin: 0;
+  font-family: var(--vsc-mono);
+  font-size: 0.92rem;
+  letter-spacing: 0.02em;
+  color: var(--vsc-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.vsc__cell--foe dd {
+  color: var(--vsc-amber);
+}
+
+/* ------------------------------------------------------------ 4b. roster */
+
+.vsc__roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  margin: 0 0 1.6rem;
+}
+
+.vsc__role {
+  padding: 0.34em 0.7em;
+  border: 1px solid var(--vsc-faint);
+  font-family: var(--vsc-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(223, 232, 242, 0.44);
+  transition: color 160ms ease, border-color 160ms ease;
+}
+
+.vsc__role:hover {
+  color: var(--vsc-ink);
+  border-color: rgba(223, 232, 242, 0.36);
+}
+
+.vsc__role[aria-pressed='true'] {
+  color: var(--vs-void, #04070c);
+  background: var(--vsc-cyan);
+  border-color: var(--vsc-cyan);
+}
+
+.vsc__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+  gap: 1px;
+  background: var(--vsc-faint);
+  border: 1px solid var(--vsc-faint);
+}
+
+.vsc-ship {
+  display: grid;
+  gap: 0.55rem;
+  padding: 1.1rem 1.2rem 1.2rem;
+  background: var(--vs-void, #04070c);
+}
+
+.vsc-ship[hidden] {
+  display: none;
+}
+
+.vsc-ship__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.8rem;
+}
+
+.vsc-ship__icon {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  fill: none;
+  stroke: rgba(223, 232, 242, 0.6);
+  stroke-width: 1.1;
+  stroke-linejoin: round;
+}
+
+.vsc-ship__id {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.vsc-ship__name {
+  margin: 0;
+  font-size: 0.94rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: #fff;
+}
+
+.vsc-ship__role {
+  margin: 0.16rem 0 0;
+  font-family: var(--vsc-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(223, 232, 242, 0.38);
+}
+
+.vsc-ship__cost {
+  flex: 0 0 auto;
+  text-align: right;
+  font-family: var(--vsc-mono);
+  font-size: 0.78rem;
+  color: var(--vsc-cyan);
+  font-variant-numeric: tabular-nums;
+}
+
+.vsc-ship__cost span {
+  display: block;
+  font-size: 0.56rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(223, 232, 242, 0.3);
+}
+
+.vsc-ship__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.1rem;
+  margin: 0;
+  font-family: var(--vsc-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  color: rgba(223, 232, 242, 0.46);
+  font-variant-numeric: tabular-nums;
+}
+
+.vsc-ship__stats b {
+  font-weight: 500;
+  color: var(--vsc-ink);
+}
+
+.vsc-ship__desc {
+  margin: 0;
+  font-size: 0.79rem;
+  line-height: 1.6;
+  color: var(--vsc-dim);
+}
+
+.vsc-ship__rows {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.2rem 0 0;
+}
+
+.vsc-ship__row {
+  display: grid;
+  grid-template-columns: 5.6rem 1fr;
+  gap: 0.7rem;
+  align-items: baseline;
+}
+
+.vsc-ship__k {
+  font-family: var(--vsc-mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(223, 232, 242, 0.3);
+}
+
+.vsc-ship__v {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: rgba(223, 232, 242, 0.62);
+}
+
+.vsc-ship__row--weak .vsc-ship__k {
+  color: rgba(255, 180, 84, 0.55);
+}
+
+.vsc-ship__row--weak .vsc-ship__v {
+  color: rgba(255, 180, 84, 0.82);
+}
+
+/* ---------------------------------------------------------- 4c. affinity */
+
+.vsc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--vsc-mono);
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.vsc-table caption {
+  margin-bottom: 0.8rem;
+  text-align: left;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  font-family: var(--vsc-sans);
+  color: var(--vsc-dim);
+}
+
+.vsc-table th,
+.vsc-table td {
+  padding: 0.5em 0.7em;
+  border: 1px solid var(--vsc-faint);
+  text-align: right;
+}
+
+.vsc-table th {
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 0.56rem;
+  color: rgba(223, 232, 242, 0.38);
+}
+
+.vsc-table th[scope='row'] {
+  text-align: left;
+  color: var(--vsc-ink);
+}
+
+.vsc-table td {
+  color: rgba(223, 232, 242, 0.44);
+}
+
+.vsc-table td.is-strong {
+  color: var(--vsc-cyan);
+}
+
+.vsc-table td.is-weak {
+  color: rgba(255, 180, 84, 0.7);
+}
+
+.vsc__scroll {
+  overflow-x: auto;
+  padding-bottom: 0.4rem;
+}
+
+/* ------------------------------------------------------------ 5. responsive */
+
+@media (max-width: 1180px) {
+  .vst-card {
+    width: clamp(14rem, 26vw, 18rem);
+    max-height: min(24rem, 60vh);
+  }
+
+  .vst-list {
+    display: none;
+  }
+}
+
+@media (max-width: 860px) {
+  .vst-card {
+    top: auto;
+    bottom: 32vh;
+    transform: none;
+    width: min(22rem, calc(100vw - 2.4rem));
+  }
+}
+
+/* The rail is vertically centred, which collides with nothing at 1280x720 —
+   but a very short window is a different problem, so shed the step list and
+   let the body scroll rather than overrunning the frame. */
+@media (max-height: 700px) {
+  .vst-card {
+    max-height: 64vh;
+  }
+
+  .vst-list {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vst-card,
+  .vst-overlay,
+  .vst-track__t,
+  .vst-btn::after,
+  .vsc__tab::after {
+    transition-duration: 1ms;
+  }
+}

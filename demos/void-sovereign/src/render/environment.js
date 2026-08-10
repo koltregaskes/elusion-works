@@ -4,11 +4,15 @@ import { makeRng, fbm2, fbm3, ridged3 } from '../core/rng.js';
 import { buildSkybox } from './skybox.js';
 import { setNebulaBounce } from './materials.js';
 import {
+  DEFAULT_SETUP,
   OPENING_ANGLE,
+  OPENING_SHELL,
   SEAM_ANGLE,
+  SHELL_GAP,
   clearOfStarts,
+  clearOpening,
+  generateResourceClusters,
   homePosition,
-  nudgeClearOfStarts,
 } from '../sim/spawn.js';
 
 /* Everything that is not a ship.
@@ -23,8 +27,18 @@ import {
    the nebula occupies one part of the sky, the star another, the planet a
    third, and the rest is black. Emptiness is the subject. */
 
-/* Cluster counts are rounded up to an even number in `_buildAsteroids`: the
-   field is mirrored through the origin, so seams always come in pairs. */
+/* `clusters` is a *rock* budget, not a field-layout decision.
+
+   The seam layout is SIM's — `sim/spawn.js: generateResourceClusters` — and it
+   is the same on every quality setting, because how many seams there are and
+   how much ore is in them is balance, and a player who turns the detail down
+   must not get a different game. What quality buys here is how densely each
+   seam is populated: `_buildAsteroids` divides this budget by the number of
+   seams SIM asked for, so `clusters * rocksPerCluster` rocks are attempted per
+   tier however the field is laid out. Measured placed counts on seed 1337 are
+   276 / 716 / 1347 / 2135 against attempts of 276 / 720 / 1404 / 2280 — the
+   shortfall is the opening-shell and overlap rejections below, which have
+   always dropped a handful. */
 const QUALITY = {
   low: { clusters: 6, rocksPerCluster: 45, dust: 70, derelicts: 0, landmarks: 2, rockDetail: [1, 0] },
   medium: { clusters: 8, rocksPerCluster: 90, dust: 140, derelicts: 10, landmarks: 4, rockDetail: [2, 1] },
@@ -102,43 +116,11 @@ const PLANET_SCHEMES = [
    through it, which is why `SEAM_ANGLE` is deliberately looser than
    `OPENING_ANGLE`. */
 
-/* The clearance rule protects the frame as seen from the *mothership*, which
-   is not quite where the camera is: the rig opens about 4 km out, so a rock
-   that comfortably clears the hull can still be a couple of hundred metres
-   from the lens and fill 60 degrees of the opening shot — measured at exactly
-   that on one seed. Carving a thin shell out of the field at the opening orbit
-   radius costs a handful of the 140 rocks in a seam and nothing else. */
-const OPENING_SHELL = 4000;
-const SHELL_GAP = 900;
-
-const _cl = new THREE.Vector3();
-
-/**
- * Put `pos` where it cannot own the opening frame: outside SIM's angular
- * clearance from both starts, and off the sphere the camera rig opens on.
- * Mutates and returns `pos`.
- *
- * The nudge is looped rather than called once because moving a body away from
- * one start can bring it toward the other, and SIM's helper takes a bounded
- * number of passes by design. Looping to a fixed point here is cheap and means
- * the field never ships a violation for the sake of one more iteration.
- */
-function clearOpening(pos, radius, sep, limit) {
-  for (let i = 0; i < 8 && !clearOfStarts(pos, radius, sep, limit); i++) {
-    nudgeClearOfStarts(pos, radius, sep, limit);
-  }
-  const gap = radius + SHELL_GAP;
-  for (let t = 0; t < 2; t++) {
-    homePosition(t, sep, _cl);
-    const d = pos.distanceTo(_cl);
-    if (Math.abs(d - OPENING_SHELL) >= gap) continue;
-    // Always outward: inward is toward the mothership.
-    const want = OPENING_SHELL + gap;
-    if (d < 1) pos.set(_cl.x + want, _cl.y, _cl.z);
-    else pos.sub(_cl).multiplyScalar(want / d).add(_cl);
-  }
-  return pos;
-}
+/* The opening-shell correction (`clearOpening`, `OPENING_SHELL`, `SHELL_GAP`)
+   used to live here, because ENV placed the seams and had to apply it. SIM
+   places them now, so the rule moved to `sim/spawn.js` with the rest of the
+   clearance contract and ENV imports it for the landmarks and derelicts it
+   still positions itself. */
 
 /* --------------------------------------------------------------------------- */
 
@@ -1223,88 +1205,47 @@ export class Environment {
 
     /* ---- cluster layout ----
 
-       SIM adopts these verbatim as the resource field when ENV provides them
-       (`sim/spawn.js: resolveResourceClusters`), so the layout is a balance
-       decision, not a dressing one. It has to satisfy the same contract SIM's
-       own fallback does:
+       Not ENV's to decide. SIM adopts these records verbatim as the resource
+       field (`sim/spawn.js: resolveResourceClusters`) — the same objects, by
+       identity, so miners decrement the very `amount` the rocks fade from — and
+       what a seam is worth, how many there are and above all *where the
+       contested band sits* are balance, not dressing.
 
-         - mirror-symmetric through the origin, so neither side gets a better
-           opening from the seed;
-         - two rich seams within a short haul of each mothership;
-         - expansion seams further out that cost a warship to hold;
-         - a contested band straddling the midline to fight over.
+       ENV used to lay out its own field to the same written spec, and the two
+       implementations drifted in the one place it mattered. ENV mirrored every
+       seam through the origin and called the result symmetric. It is: the two
+       starts are also reflections through the origin, so a seam and its twin
+       have exactly swapped home distances. That makes the *pair* fair and every
+       individual seam lopsided, and `markContested` — rightly — asks whether a
+       single seam is equidistant, because a seam you can only hold by being
+       nearer to it than your opponent is not no-man's land. Result: a contested
+       band on three seeds in eight, no sovereignty clock on the other five, and
+       one of the three victory conditions quietly unreachable. SIM's own
+       generator, which builds the band as a ring in the plane perpendicularly
+       bisecting the two starts, was correct the whole time and never ran.
 
-       The two motherships sit at +/- (separation/2) along X (see
-       `sim/spawn.js: homePosition`). `separation` is passed through when SIM
-       overrides the default. */
-    const sep = this.options.separation || 22000;
+       So it runs. ENV asks for the field and builds rocks around what it gets.
+       There is now one definition and nothing left to drift.
+
+       `separation` is passed through when SIM overrides the default; both
+       sides read the same default from `DEFAULT_SETUP` when it does not. */
+    const sep = this.options.separation || DEFAULT_SETUP.separation;
     const home = homePosition(0, sep, new THREE.Vector3());
-    const clusters = [];
-
-    /* Seams are nudged, not rejected. SIM measured several seeds opening with
-       a seam inside the frame-share limit — 249 m over on one, 614 m on
-       another — and it cannot move them itself, because by the time it reads
-       the field the rocks are already built around these centres. A radial
-       push of a few hundred metres is invisible in economy terms and is
-       applied before mirroring, so the field stays exactly symmetric. */
-    const _c = new THREE.Vector3();
-    const pushPair = (x, y, z, radius, amount) => {
-      _c.set(x, y, z);
-      /* Nudged against the *cluster* radius, not the radius of one rock.
-         SIM's own ledger measures a seam by the record's radius, so that is
-         the number both sides have to agree on — passing the smaller
-         single-rock figure satisfies the letter of the porous-seam note and
-         still leaves violations on the books. */
-      clearOpening(_c, radius, sep, SEAM_ANGLE);
-      clusters.push(makeClusterRecord(_c.x, _c.y, _c.z, radius, amount));
-      clusters.push(makeClusterRecord(-_c.x, -_c.y, -_c.z, radius, amount));
-    };
-
-    // Two rich home seams per side, so the opening is never a dice roll.
-    for (let i = 0; i < 2; i++) {
-      const a = (i / 2) * Math.PI * 2 + r.range(0, Math.PI);
-      const d = r.range(3600, 5200);
-      pushPair(
-        home.x + Math.cos(a) * d,
-        home.y + r.range(-900, 900),
-        home.z + Math.sin(a) * d,
-        r.range(950, 1500),
-        r.range(22000, 26000),
-      );
-    }
-
-    // Everything is built in mirrored pairs, so the budget is spent in pairs.
-    const pairs = Math.max(3, Math.round(b.clusters / 2));
-    const contested = Math.max(1, Math.floor((pairs - 2) / 2));
-    const expansions = Math.max(0, pairs - 2 - contested);
-
-    for (let i = 0; i < expansions; i++) {
-      const a = r.range(0, Math.PI * 2);
-      const d = r.range(8000, 12500);
-      pushPair(
-        home.x * 0.55 + Math.cos(a) * d,
-        r.range(-2600, 2600),
-        home.z * 0.55 + Math.sin(a) * d,
-        r.range(1200, 1900),
-        r.range(19000, 23000),
-      );
-    }
-
-    // Contested band on the midline. Symmetric by construction: each is
-    // generated in one half and mirrored, so the pair straddles the middle.
-    for (let i = 0; i < contested; i++) {
-      const a = (i / contested) * Math.PI + r.range(-0.25, 0.25);
-      const d = r.range(2500, 7000);
-      pushPair(
-        Math.cos(a) * d * 0.35,
-        Math.sin(a) * d * 0.55,
-        Math.sin(a * 1.7) * d,
-        r.range(1400, 2100),
-        r.range(28000, 32000),
-      );
-    }
+    /* Its own fork. The rock stream below must not shift because the seam
+       layout changed shape — and, more to the point, must not silently reshape
+       the whole field the next time SIM tunes the economy. */
+    const clusters = generateResourceClusters(this.rng.fork(0x5EA3), { separation: sep });
+    for (const c of clusters) adoptClusterRecord(c);
 
     this._clusters = clusters;
+
+    /* Quality buys rock density, not a different map (see QUALITY above), so
+       the per-tier instance budget is divided by however many seams SIM asked
+       for rather than multiplying a fixed count by them. */
+    const rocksPerCluster = Math.max(
+      8,
+      Math.round((b.rocksPerCluster * b.clusters) / Math.max(1, clusters.length)),
+    );
 
     /* ---- base shapes. Four is plenty: per-instance rotation and non-uniform
        scale do most of the work of making a field look varied. ---- */
@@ -1613,7 +1554,7 @@ export class Environment {
          against it twice: once to stop it being buried inside a neighbour, and
          once afterwards to work out how much sky its neighbours take away. */
       const near = [];
-      for (let i = 0; i < b.rocksPerCluster; i++) {
+      for (let i = 0; i < rocksPerCluster; i++) {
         const s = r.int(0, shapes - 1);
         const size = Math.pow(r.next(), 3.0) * 430 + 11;
         scl.set(size * r.range(0.7, 1.25), size * r.range(0.6, 1.1), size * r.range(0.75, 1.3));
@@ -2060,18 +2001,18 @@ export class Environment {
    Procedural geometry helpers
    =========================================================================== */
 
-/** One resource seam. SIM reads `position`, `radius` and `amount` and may
-    decrement `amount` in place as miners work it. */
-function makeClusterRecord(x, y, z, radius, amount) {
-  return {
-    position: new THREE.Vector3(x, y, z),
-    radius,
-    amount: Math.round(amount),
-    maxAmount: Math.round(amount),
-    _visible: true,
-    _high: true,
-    _fill: 1,
-  };
+/** Add ENV's render state to one of SIM's seam records.
+
+    The record stays SIM's — position, radius and ore are its numbers, and it
+    decrements `amount` in place as miners work the seam. All ENV keeps here is
+    what it needs to draw it: culling, LOD tier and how much rock is left. */
+function adoptClusterRecord(c) {
+  c.amount = Math.round(c.amount);
+  c.maxAmount = Math.round(c.maxAmount);
+  c._visible = true;
+  c._high = true;
+  c._fill = 1;
+  return c;
 }
 
 /** Deformed icosahedron: fBm lumps, ridged crags, a few impact craters. */

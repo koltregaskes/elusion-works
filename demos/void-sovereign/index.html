@@ -34,6 +34,7 @@
     <link rel="stylesheet" href="styles/shell.css" />
     <link rel="stylesheet" href="styles/hud.css" />
     <link rel="modulepreload" href="src/main.js" />
+    <link rel="modulepreload" href="src/ui/shell.js" />
     <link rel="modulepreload" href="vendor/three/build/three.module.js" />
   </head>
 
@@ -46,59 +47,32 @@
     <!-- The HUD builds itself into this container. Owned by src/ui/hud.js. -->
     <div class="vs-hud" id="vs-hud" aria-live="polite"></div>
 
-    <!-- Boot overlay. Driven by src/main.js, removed once the first frame lands. -->
-    <div class="vs-boot" id="vs-boot">
-      <div class="vs-boot-inner">
-        <p class="vs-boot-eyebrow">Elusion Works</p>
-        <h1 class="vs-boot-title">Void Sovereign</h1>
-        <p class="vs-boot-deck">
-          Fleet command at universe scale. Everything you are about to see —
-          every hull, every nebula, every asteroid — is generated in your browser
-          from a single seed.
-        </p>
-        <div class="vs-setup" id="vs-setup">
-          <div class="vs-setup-field">
-            <label class="vs-setup-label" for="vs-setup-seed">Seed</label>
-            <div class="vs-setup-row">
-              <input class="vs-setup-input" id="vs-setup-seed" type="text" inputmode="text"
-                     autocomplete="off" spellcheck="false" aria-describedby="vs-setup-seed-hint" />
-              <button class="vs-setup-btn" id="vs-setup-reroll" type="button">Reroll</button>
-            </div>
-            <p class="vs-setup-hint" id="vs-setup-seed-hint">Rebuilds the same universe every time.</p>
-          </div>
-
-          <div class="vs-setup-field">
-            <span class="vs-setup-label" id="vs-setup-diff-label">Opponent</span>
-            <div class="vs-setup-choice" role="radiogroup" aria-labelledby="vs-setup-diff-label" id="vs-setup-difficulty">
-              <button type="button" role="radio" aria-checked="false" data-value="easy">Cautious</button>
-              <button type="button" role="radio" aria-checked="true" data-value="normal">Even</button>
-              <button type="button" role="radio" aria-checked="false" data-value="hard">Relentless</button>
-            </div>
-            <p class="vs-setup-hint">Cautious is handicapped, not blind. Relentless earns 15% more and builds 15% faster.</p>
-          </div>
-
-          <div class="vs-setup-field">
-            <span class="vs-setup-label" id="vs-setup-qual-label">Detail</span>
-            <div class="vs-setup-choice" role="radiogroup" aria-labelledby="vs-setup-qual-label" id="vs-setup-quality">
-              <button type="button" role="radio" aria-checked="false" data-value="low">Low</button>
-              <button type="button" role="radio" aria-checked="false" data-value="medium">Medium</button>
-              <button type="button" role="radio" aria-checked="true" data-value="high">High</button>
-              <button type="button" role="radio" aria-checked="false" data-value="ultra">Ultra</button>
-            </div>
-          </div>
+    <!-- The game shell: title, setup, briefing, loading, pause and end-of-match.
+         Owned by src/ui/shell.js, which adopts the title screen below rather
+         than rebuilding it — a wordmark that only appears once a megabyte of
+         Three.js has parsed is the first thing a visitor judges. Every other
+         screen is built lazily by the module. -->
+    <div class="vs-shell" id="vs-shell" data-state="title">
+      <section class="vs-screen vs-screen--title is-active" data-screen="title" aria-label="Void Sovereign">
+        <div class="vs-screen__inner">
+          <p class="vs-eyebrow">Elusion Works</p>
+          <h1 class="vs-title">Void Sovereign</h1>
+          <p class="vs-deck">
+            Fleet command at universe scale. Every hull, every nebula and every
+            asteroid in the match ahead is generated in your browser from a
+            single seed.
+          </p>
+          <nav class="vs-menu" aria-label="Main menu">
+            <button class="vs-menu__b is-primary" type="button" data-act="new" data-autofocus="true">
+              New game
+            </button>
+            <a class="vs-menu__b vs-menu__b--exit" href="../">Back to the demo shelf</a>
+          </nav>
+          <noscript>
+            <p class="vs-status">This demo needs JavaScript and WebGL 2.</p>
+          </noscript>
         </div>
-
-        <div class="vs-boot-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="vs-boot-bar">
-          <div class="vs-boot-progress-fill" id="vs-boot-fill"></div>
-        </div>
-        <div class="vs-boot-footer">
-          <p class="vs-boot-status" id="vs-boot-status">Waking the shipyard…</p>
-          <button class="vs-launch" id="vs-launch" type="button" disabled hidden>Take command</button>
-        </div>
-        <noscript>
-          <p class="vs-boot-status">This demo needs JavaScript and WebGL 2.</p>
-        </noscript>
-      </div>
+      </section>
     </div>
 
     <!-- Shown only if the engine cannot start at all. -->
@@ -110,7 +84,7 @@
       </div>
     </div>
 
-    <a class="vs-exit" href="../" aria-label="Back to the Elusion Works demo shelf">
+    <a class="vs-exit" id="vs-exit" href="../" aria-label="Back to the Elusion Works demo shelf">
       <span aria-hidden="true">←</span> Demos
     </a>
 
