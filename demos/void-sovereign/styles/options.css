@@ -1,0 +1,429 @@
+/* ==========================================================================
+   VOID SOVEREIGN — OPTIONS
+   The controls, audio and gameplay panel. Same language as the boot card and
+   the HUD: hairlines, mono type, square corners, one cyan accent, colour used
+   as meaning rather than decoration. No filled panels, no gloss, nothing that
+   boxes the void in.
+
+   The HUD's tokens are scoped to `.vsh-root` and this panel is mounted inside
+   the shell, not the HUD — so the same values are declared here rather than
+   invented again. Keep the two in step.
+   ========================================================================== */
+
+.vso-root {
+  --vso-cyan: #7fd8e8;
+  --vso-amber: #e8a44a;
+  --vso-w: 255, 255, 255;
+
+  --vso-ink-06: rgba(var(--vso-w), 0.06);
+  --vso-ink-10: rgba(var(--vso-w), 0.10);
+  --vso-ink-16: rgba(var(--vso-w), 0.16);
+  --vso-ink-24: rgba(var(--vso-w), 0.24);
+  --vso-ink-40: rgba(var(--vso-w), 0.40);
+  --vso-ink-64: rgba(var(--vso-w), 0.64);
+  --vso-ink-88: rgba(var(--vso-w), 0.88);
+
+  --vso-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --vso-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --vso-halo: 0 1px 2px rgba(0, 0, 0, 0.92), 0 0 8px rgba(0, 0, 0, 0.72);
+  --vso-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* No height of its own and no scroll of its own: the shell's panel body is
+     already a scroll port, and a scroll box inside a scroll box gives you two
+     bars and a card that moves when you did not ask it to. */
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+  font-family: var(--vso-sans);
+  color: var(--vso-ink-88);
+  text-shadow: var(--vso-halo);
+  pointer-events: auto;
+  -webkit-font-smoothing: antialiased;
+}
+
+.vso-root *,
+.vso-root *::before,
+.vso-root *::after {
+  box-sizing: border-box;
+}
+
+.vso-root [hidden] {
+  display: none !important;
+}
+
+/* `:where()` so the reset carries no specificity of its own — the component
+   rules below are plain single-class selectors, and a `.vso-root button` reset
+   would otherwise out-rank every one of them. It did, and it silently ate the
+   key caps' borders and the tab padding. */
+.vso-root :where(button) {
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  font: inherit;
+  text-shadow: inherit;
+  cursor: pointer;
+}
+
+.vso-root :focus-visible {
+  outline: 1px solid var(--vso-cyan);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------- tabs */
+/* A rule under the row, and the live tab lifting a cyan hairline out of it —
+   the same trick the HUD uses for the selected roster class. No pills. */
+
+.vso-tabs {
+  display: flex;
+  gap: 26px;
+  border-bottom: 1px solid var(--vso-ink-16);
+}
+
+.vso-tab {
+  position: relative;
+  padding: 0 0 9px;
+  font-family: var(--vso-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--vso-ink-40);
+  transition: color 0.15s linear;
+}
+
+.vso-tab::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: var(--vso-cyan);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  transition: transform 0.22s var(--vso-ease);
+}
+
+.vso-tab:hover { color: var(--vso-ink-64); }
+
+.vso-tab[aria-selected='true'] {
+  color: var(--vso-cyan);
+}
+
+.vso-tab[aria-selected='true']::after {
+  transform: scaleX(1);
+}
+
+/* ------------------------------------------------------------------- body */
+
+.vso-panel:focus-visible {
+  outline: none;
+}
+
+.vso-lede {
+  max-width: 76ch;
+  margin: 0 0 22px;
+  padding-left: 14px;
+  border-left: 1px solid var(--vso-cyan);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--vso-ink-64);
+}
+
+.vso-panel {
+  display: grid;
+  align-content: start;
+  gap: 4px 46px;
+}
+
+/* Controls is a reference card — thirty short rows in named groups — so it
+   takes as many columns as the width honestly allows: one at 1280×720 where
+   vertical room is the scarce thing, two above that. Audio and gameplay are a
+   handful of wide controls and read as a single column; flowed into two, the
+   mute switch ended up floating alone beside the faders it belongs to. */
+.vso-panel--wide {
+  grid-template-columns: repeat(auto-fit, minmax(min(26rem, 100%), 1fr));
+}
+
+.vso-panel--single {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 46rem;
+}
+
+.vso-lede,
+.vso-foot {
+  grid-column: 1 / -1;
+}
+
+.vso-grp {
+  break-inside: avoid;
+  margin-bottom: 20px;
+}
+
+.vso-grp__name {
+  margin: 0 0 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--vso-ink-06);
+  font-family: var(--vso-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--vso-cyan);
+  opacity: 0.55;
+}
+
+.vso-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 14px;
+  padding: 4px 0;
+}
+
+.vso-row__label {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--vso-ink-64);
+}
+
+.vso-row__note {
+  grid-column: 1 / -1;
+  margin: 2px 0 4px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--vso-ink-24);
+}
+
+/* The answer to what the player just pressed, under the row they pressed it
+   on. Amber for "not that key" and cyan for "done" — the same colour language
+   as the rest of the build, where cyan is us and amber is attention. */
+.vso-row__msg {
+  grid-column: 1 / -1;
+  margin: 3px 0 5px;
+  padding-left: 9px;
+  border-left: 1px solid currentColor;
+  font-family: var(--vso-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  letter-spacing: 0.03em;
+  color: var(--vso-amber);
+}
+
+.vso-row__msg.is-ok { color: var(--vso-cyan); }
+.vso-row__msg.is-warn { color: var(--vso-amber); }
+
+/* --------------------------------------------------------------- key caps */
+
+.vso-key {
+  min-width: 92px;
+  padding: 5px 10px;
+  border: 1px solid var(--vso-ink-16);
+  font-family: var(--vso-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-align: center;
+  color: var(--vso-ink-88);
+  transition: color 0.15s linear, border-color 0.15s linear;
+}
+
+.vso-key:hover {
+  color: var(--vso-cyan);
+  border-color: var(--vso-cyan);
+}
+
+.vso-key--fixed {
+  color: var(--vso-ink-24);
+  border-style: dashed;
+  border-color: var(--vso-ink-10);
+  cursor: default;
+}
+
+/* Armed. Amber rather than cyan: cyan is "us" everywhere else in this build,
+   and a state that swallows the keyboard has earned a colour of its own. */
+.vso-key.is-capturing,
+.vso-key.is-capturing:hover {
+  color: var(--vso-amber);
+  border-color: var(--vso-amber);
+  animation: vso-arm 1.15s steps(2, jump-none) infinite;
+}
+
+@keyframes vso-arm {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* ---------------------------------------------------------------- sliders */
+
+/* Stacked, full width. A mixer is set by ear against a readout, and a 200 px
+   stub of a track is harder to place than a long one. */
+.vso-bank {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.vso-field {
+  margin-bottom: 18px;
+}
+
+.vso-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vso-slider__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.vso-slider__k {
+  font-size: 11.5px;
+  color: var(--vso-ink-64);
+}
+
+.vso-slider__v {
+  font-family: var(--vso-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--vso-ink-40);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A hairline track and a single tick for a thumb — no native chrome, and no
+   rounded corners anywhere, per DESIGN.md. */
+.vso-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 14px;
+  margin: 0;
+  background: none;
+  cursor: pointer;
+  transition: opacity 0.15s linear;
+}
+
+.vso-range::-webkit-slider-runnable-track { height: 1px; background: var(--vso-ink-16); }
+.vso-range::-moz-range-track { height: 1px; background: var(--vso-ink-16); }
+.vso-range::-moz-range-progress { height: 1px; background: var(--vso-cyan); }
+
+.vso-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 2px;
+  height: 12px;
+  margin-top: -5.5px;
+  border: 0;
+  border-radius: 0;
+  background: var(--vso-cyan);
+}
+
+.vso-range::-moz-range-thumb {
+  width: 2px;
+  height: 12px;
+  border: 0;
+  border-radius: 0;
+  background: var(--vso-cyan);
+}
+
+.vso-range:disabled {
+  opacity: 0.2;
+  cursor: default;
+}
+
+/* --------------------------------------------------------------- switches */
+
+.vso-row--switch {
+  padding: 6px 0;
+}
+
+.vso-switch {
+  min-width: 92px;
+  padding: 5px 10px;
+  border: 1px solid var(--vso-ink-16);
+  font-family: var(--vso-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--vso-ink-40);
+  transition: color 0.15s linear, border-color 0.15s linear;
+}
+
+.vso-switch:hover { color: var(--vso-ink-88); border-color: var(--vso-ink-40); }
+
+.vso-switch[aria-checked='true'] {
+  color: var(--vso-cyan);
+  border-color: var(--vso-cyan);
+}
+
+.vso-switch:disabled {
+  color: var(--vso-ink-24);
+  border-color: var(--vso-ink-10);
+  cursor: default;
+}
+
+/* ------------------------------------------------------------ foot, notes */
+
+.vso-foot {
+  display: flex;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--vso-ink-06);
+}
+
+.vso-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--vso-ink-16);
+  font-family: var(--vso-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--vso-ink-40);
+  transition: color 0.15s linear, border-color 0.15s linear;
+}
+
+.vso-btn:hover { color: var(--vso-cyan); border-color: var(--vso-cyan); }
+
+.vso-note {
+  margin: 6px 0 0;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--vso-ink-24);
+}
+
+/* The live region. Reserved height so a message arriving does not shove the
+   card downward, and directly under the tabs so it is on screen whatever the
+   host has scrolled to. */
+.vso-status {
+  min-height: 1.3em;
+  margin: -6px 0 0;
+  font-family: var(--vso-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  line-height: 1.4;
+  color: var(--vso-amber);
+}
+
+@media (max-width: 900px) {
+  .vso-root { gap: 14px; }
+  .vso-tabs { gap: 18px; }
+  .vso-key,
+  .vso-switch { min-width: 78px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vso-tab::after,
+  .vso-key,
+  .vso-switch,
+  .vso-btn { transition-duration: 1ms; }
+  .vso-key.is-capturing { animation: none; }
+}
