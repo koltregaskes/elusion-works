@@ -278,6 +278,33 @@ default to "not good enough" and to get harsher, not softer, over time.
 
 ## 5. Hard-won knowledge — read before you "fix" these again
 
+**Fix your instrument before you tune anything.** A whole round of pacing work
+was spent tuning against numbers that turned out to be noise, and the noise was
+entirely mine.
+
+The tell: the same seed, same settings, run three times, gave 17.2, 14.0 and
+35.0 minutes with different winners. Two harness faults, both invisible until
+measured. The render loop advanced the sim while the harness waited for the
+match to become ready, and only then took over and injected the second
+commander — so every run began manual ticking from a different state with the
+opponent joining late by a varying amount. And state persisted between matches
+inside one page, so the first match in a page did not match later ones.
+
+The sim itself is exactly reproducible: same seed, fresh page, three runs,
+identical duration, winner, seams and entity count. **If a measurement varies,
+suspect the harness before the code.** Every soak now records
+`ticksBeforeTakeover`, which must be 0, and uses a fresh page per seed.
+
+**Entity ids are behaviour, not labels — reset them with the world.** `ai.js`
+picks sensor sources with `(e.id & 3) === 0`, `combat.js` sets the flee timer
+from `e.id % 7` and the retarget phase from `e.id % 13`. The id counter was
+module-level and survived a world rebuild, so a restart numbered its ships from
+wherever the last match stopped and all three phases shifted. The result was a
+restart that could not reproduce its own seed, on a demo whose entire pitch is
+that everything derives from one seed. A tick-0 diff was byte-identical and the
+runs still forked inside 30 ticks — the state looked right and the *phase* was
+wrong. If you add another `id %` anywhere, this constraint comes with it.
+
 **Prove which code path actually runs before you believe a fix landed.** This
 has now cost the project twice, and both times the code was correct.
 
