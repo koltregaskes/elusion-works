@@ -87,8 +87,23 @@ export const PALETTE = {
   hudFriendly: '#6fb3d4',
 };
 
-/** Sun elevation in degrees. 8° is the golden-hour rake the whole scene is composed around. */
-export const SUN_ELEVATION = 8.0;
+/**
+ * Sun elevation in degrees.
+ *
+ * 8° was chosen as "the most raking light possible" and cost the scene both of the things a
+ * rake is for. A shadow's throw is cot(elevation) x height, so at 8° every landmark threw its
+ * shadow 7.1x its own height — the dock canopy's grid landed 33 m downsun, past the edge of
+ * the playable map, and no vantage in the game could see it. And a horizontal surface receives
+ * sin(elevation) of the key, so the ground was taking 14% of the sun and reading almost
+ * entirely on ambient fill: measured lit-to-shadow contrast on flat ground was under one stop,
+ * which is what made every frame look like a grey-card render regardless of the grade.
+ *
+ * 18° throws 3.1x height — still a long raking shadow, and now one that lands inside the map
+ * where the composition can use it — and more than doubles the key on horizontal surfaces. It
+ * also halves the shadow-map depth gradient, which is what let the slope-scaled bias be
+ * dialled back far enough to stop the ground self-shadowing.
+ */
+export const SUN_ELEVATION = 18.0;
 /** Sun azimuth in degrees, measured from +Z clockwise. Puts the key over the west stacks. */
 export const SUN_AZIMUTH = 252.0;
 
@@ -106,15 +121,11 @@ export const LIGHTING = {
    * the HemisphereLight, so the warm ground bounce stays at its authored absolute level and
    * only the sky side moves.
    *
-   * Revised down from 1.20 once the real cause of the flat frame was found. 1.20 was chosen
-   * while the ash shader chunk was being injected into every program twice, which broke six
-   * materials outright and washed the whole image out; against that, dialling the blue fill
-   * right up looked like it was helping. With the duplicate injection fixed and the exposure
-   * calibrated, 1.20 renders every shadowed surface a saturated electric blue rather than a
-   * cool grey. 0.55 restores the intended relationship: the sky tints the shade, the grade's
-   * `lift` does the rest, and the sun stays overwhelmingly dominant at 4.6 : 0.55.
+   * The sky tints the shade, the grade's `lift` does the rest, and the sun stays dominant.
+   * Trimmed to 0.42 as part of pulling total ambient fill down: fill and key were within a
+   * stop of each other on horizontal surfaces, so nothing on the ground could read as lit.
    */
-  hemiSkyIntensity: 0.55,
+  hemiSkyIntensity: 0.42,
   /**
    * Warm ground bounce, the other half of §4's "bounce is warm off the ground, cool from the
    * sky". Raised from 0.35.
@@ -140,12 +151,23 @@ export const LIGHTING = {
    */
   hemiGroundIntensity: 0.45,
   /**
-   * Image-based lighting weight. The environment probe is a PMREM of the whole dome, so it is
-   * close to achromatic — every extra unit of it is a neutral wash that cancels the hemisphere's
-   * blue and flattens the frame toward one hue family. 0.70 keeps the specular response and
-   * the sense of an open sky while leaving the diffuse shadow fill to the hemisphere.
+   * Image-based lighting weight for SPECULAR. The environment probe is what puts a sky in the
+   * rail heads, the scope glass and the container flanks, so it wants to stay up.
    */
   envIntensity: 0.7,
+  /**
+   * Image-based lighting weight for DIFFUSE, applied separately to `iblIrradiance` in the
+   * light shader shadows.js composes.
+   *
+   * These were one number, and that is why the frame was flat: the probe is a near-achromatic
+   * bake of the whole dome, so at parity with the specular weight it arrives as a large,
+   * perfectly uniform, unoccluded wash from every direction at once — including from below.
+   * Ambient that carries no direction carries no shape, and it was landing within a stop of
+   * the key on every horizontal surface. Lowering the shared number sorted the wash out and
+   * took the sky reflections with it; splitting the two lets the diffuse come down to where
+   * shade reads as shade while the speculars keep their sky.
+   */
+  envDiffuseIntensity: 0.3,
   /** Practical lights are the only point lights and must have a visible fixture. */
   practicalIntensity: 12.0,
   practicalColour: '#ffb765',
@@ -153,16 +175,27 @@ export const LIGHTING = {
 };
 
 export const ATMOSPHERE = {
-  /** Exponential height fog. Density is per metre at y = fogBase. */
-  fogDensity: 0.0072,
-  fogHeightFalloff: 0.055, // ash settles low, so it thins fast with altitude
+  /**
+   * Exponential height fog. Density is per metre at y = fogBase.
+   *
+   * 0.011 gives transmittance 0.82 / 0.54 / 0.33 at 20 / 60 / 110 m, so the three depth layers
+   * inside the map's own footprint separate instead of all arriving at the same value — that
+   * separation IS aerial perspective, and it is the cheapest depth cue an outdoor scene has.
+   * The gentler height falloff matters as much as the density: at 0.055 the fog had halved by
+   * 13 m of altitude, so the gantry crane at 22 m and the water tower at 18 m stood in visually
+   * clean air and read as near objects however far away they were.
+   */
+  fogDensity: 0.011,
+  fogHeightFalloff: 0.045,
   fogBase: 0.0,
   fogColourNear: '#c9b79c',
   fogColourFar: '#a8b3bd',
   /** How strongly fog brightens looking into the sun. This sells the dusty air. */
   inscatterStrength: 1.35,
   inscatterAnisotropy: 0.76, // Henyey-Greenstein g, forward scattering
-  godrayStrength: 0.55,
+  // Live only once sky.js's compensating `godrayGain` is collapsed to 1.0: the two were
+  // reciprocal, so this knob multiplied out to a constant and editing it did nothing.
+  godrayStrength: 1.4,
   godrayDecay: 0.965,
   godrayDensity: 0.72,
   dustMoteDensity: 1.0,
@@ -288,9 +321,24 @@ export const GRADE = {
   bloomStrength: 0.14,
   bloomThreshold: 0.75,
   bloomSoftKnee: 0.55,
-  ssaoIntensity: 0.85,
-  ssaoRadius: 0.55,
-  vignette: 0.34,
+  ssaoIntensity: 0.75,
+  /**
+   * World-space AO radius in metres.
+   *
+   * 0.55 was already small and the pass's distance modulation collapsed it further, to roughly
+   * 0.2 m in practice — enough to darken a crease, nowhere near enough to ground an object.
+   * Occlusion at that scale is a dirt effect; occlusion at 1.5 m is what tells the eye a crate
+   * is standing ON the floor rather than floating in front of it, which is most of what
+   * "it looks flat / it doesn't look 3D" actually means. Intensity comes down as the radius
+   * goes up, because the same darkness spread over a metre reads as grime rather than contact.
+   */
+  ssaoRadius: 1.6,
+  /**
+   * Applied in HDR, then squared, so it is a real exposure cut and not a display-side ceiling.
+   * 0.34 cost 1.18 stops in the corners, which pulled roughly the outer third of a 107° frame
+   * onto the tone curve's toe — the part of the image with most of the silhouette detail in it.
+   */
+  vignette: 0.22,
   chromatic: 0.0016,
   grainAmount: 0.028,
   sharpen: 0.32,
