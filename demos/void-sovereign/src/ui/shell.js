@@ -76,9 +76,14 @@ const BRIEFING = {
     ],
     [
       'Sovereignty runs out',
+      /* Deliberately no number here. This used to read "the first four
+         minutes", which was the grace period at the time and stopped being
+         true the moment pacing became a preset — the standard match now opens
+         with two. The HUD counts the clock down live and cannot drift, so the
+         briefing points at it instead of racing it. */
       'The ore seams across the middle of the field are contested. Hold more of them than '
         + 'your opponent and their sovereignty drains; at zero, they are finished. Nothing '
-        + 'drains for the first four minutes, so the opening is still an opening.',
+        + 'drains during the opening — the HUD counts down to the moment it starts.',
     ],
     [
       'A side is broken',
