@@ -106,6 +106,11 @@ const QUALITY = (() => {
   const q = params.get('quality');
   return q && QUALITIES.includes(q) ? q : autoQuality();
 })();
+/* Match pacing. `?pace=standard` shortens the sovereignty clock; `long` is
+   the original hour-scale grind. Unknown values fall through to the sim's own
+   default rather than being rejected here, so there is one place that decides
+   what a valid preset is. */
+const PACE = params.get('pace') || '';
 
 function fatal(message, detail) {
   const el = document.getElementById('vs-fatal');
@@ -571,7 +576,7 @@ async function main() {
           fx: M.fx,
           ships: A.ships,
           environment: A.environment,
-          options: { difficulty },
+          options: { difficulty, pace: PACE },
         });
       });
 
