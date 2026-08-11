@@ -80,32 +80,32 @@ import { Commander } from './ai.js';
     harder still. It is a number rather than a named curve so the pacing can
     be swept and measured instead of argued about.
 
-    Measured, ten seeds, both chairs filled by a real commander, shipped path:
+    Measured on the shipped path, ten seeds, both chairs filled by a real
+    commander, one fresh page per seed so the runs are reproducible:
 
-      exp 1,    rate 0.25, grace 240  (`long`)
-                median 44.0 min, range 37.5–70.0, 0/10 in the 12–18 band, and
-                it did not always resolve: 1 seed hit the cap with no winner
-                and 2 ground out on attrition.
+      long      median 46.5 min, range 31.2–70.0. Every single match ran past
+                25 minutes, and one hit the cap with no winner at all.
+      standard  median 17.5 min, range 11.0–24.8. No match over 25 minutes,
+                none unresolved, and 9 of 10 decided by sovereignty rather
+                than by grinding the other fleet down.
 
-      exp 0.5,  rate 0.30, grace 120
-                median 27.6 min, range 15.5–41.2, 3/10 in band — but 10/10
-                ended on sovereignty, no caps and no attrition grinds. The
-                mechanism was right and only the rate was wrong.
+    `standard` is faster on all ten seeds, not on average — there is no seed
+    where the old rule produced the shorter match. That is why it is the
+    default and `long` is the option, rather than the other way round.
 
-    `standard` below drops the exponent further and raises the rate, because
-    a lower exponent lifts narrow margins harder than wide ones and so
-    compresses the spread as well as the median — and the spread is the real
-    problem, since the slow seeds are exactly the ones where the seams stay
-    level. Its own ten-seed figures are NOT yet in this comment because they
-    have not been measured yet; they go here when they are, and not before. */
+    Do not trust these figures from a harness that reuses one page across
+    seeds. State persists between matches, so the first match in a page
+    differs from later ones: the same seed gave 20.9, 14.6 and 14.2 minutes
+    in one page, and 20.9 three times out of three with a fresh page each. */
 export const PACE = {
   long: { grace: 240, rate: 0.25, exp: 1 },
   standard: { grace: 120, rate: 0.38, exp: 0.34 },
 };
 
-/** Default pacing. Flip this to `standard` only once the A/B says so — until
-    then the shipped behaviour is the measured baseline. */
-const PACE_DEFAULT = 'long';
+/** Default pacing. `standard` on the evidence above: faster on all ten seeds,
+    median inside a demo-sized 12–18 minutes, and it always resolves. `long`
+    stays reachable for anyone who wants the hour-scale grind. */
+const PACE_DEFAULT = 'standard';
 
 /* The grace period and drain rate used to live here as `SOVEREIGNTY_GRACE`
    and `SOVEREIGNTY_RATE`. They are in `PACE` above now, per preset. They are
