@@ -306,10 +306,32 @@ class Grid {
 
 /* ------------------------------------------------------------------- world */
 
+/* Entity ids. Unique within a world, and deliberately reset per world — see
+   the constructor. */
 let _nextId = 1;
 
 export class World {
   constructor({ seed = 1337, engine = null, fx = null, environment = null, options = {} } = {}) {
+    /* Restart the id sequence with the world.
+
+       Ids are not just labels: the sim uses them as a cheap deterministic
+       phase, so which entity gets which number changes how the match plays.
+       `ai.js` picks sensor sources with `(e.id & 3) === 0`, `combat.js` sets
+       the flee timer from `e.id % 7` and the retarget phase from `e.id % 13`.
+
+       This counter used to be module-level and never reset, so a second match
+       in the same page numbered its ships from wherever the first stopped and
+       every one of those phases shifted. The result was a restart that could
+       not reproduce its own seed: measured, one seed run three times in a page
+       gave 20.9, 14.6 and 14.2 minutes with 235, 90 and 93 surviving entities,
+       while a fresh page per run gave 20.9 three times out of three. The
+       starting state was byte-identical in all of them — 32 entities, 12
+       clusters, same credits — and they still diverged inside 30 ticks.
+
+       Ids only ever need to be unique within one world; nothing outside
+       persists them across a rebuild, because teardown detaches every entity
+       from FX before the world goes. */
+    _nextId = 1;
     this.seed = seed >>> 0 || 1;
     this.engine = engine;
     this.fx = fx;
