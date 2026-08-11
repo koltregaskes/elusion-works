@@ -11,8 +11,8 @@
  * Chain, in order, each stage skippable by quality:
  *
  *   HDR + depth (+ prepass normals) from engine.targets
+ *     -> AO           (GTAO horizon search, bilateral blur, depth-aware upsample, indirect-only)
  *     -> TAA          (Halton jitter, depth reprojection, Catmull-Rom history, YCoCg clip)
- *     -> SSAO         (hemisphere kernel over prepass normals, bilateral blur, indirect-only)
  *     -> Motion blur  (velocity reconstruction, 8 taps, shutter 0.5, depth-rejected)
  *     -> DOF          (ADS only, hexagonal bokeh, 3-direction 2-pass)
  *     -> Bloom        (13-tap Karis downsample x6, 3x3 tent upsample x5)
@@ -468,6 +468,24 @@ void main() {
 /* 2. SSAO                                                                     */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Ground-truth ambient occlusion (Jimenez et al. 2016), i.e. a horizon search rather than a
+ * hemisphere point-sampler.
+ *
+ * The difference is not a tuning one. A Crytek-style kernel asks "is this point inside
+ * geometry?" of N scattered points and averages the yes/no answers, so it converges on a grey
+ * smudge that is dark in creases and near-uniform everywhere else. A horizon search asks, per
+ * screen-space slice through the view vector, "how high does the surrounding geometry actually
+ * rise?" and analytically integrates the visible arc of the cosine-weighted hemisphere between
+ * those two horizons. The answer is the occlusion, not a sample count that approaches it, so a
+ * couple of slices carry more shape than sixteen scattered taps and the result reads as
+ * contact — a crate meeting the floor — instead of dirt in the corners.
+ *
+ * The search radius is WORLD-space and converted to a screen-space ellipse per pixel through
+ * the projection scales. A screen-space radius is the classic mistake: it makes the occlusion a
+ * different physical size at every depth, so nothing in the frame has a consistent sense of
+ * scale and the AO reads as a screen artefact rather than as light.
+ */
 const FRAG_SSAO = /* glsl */ `
 ${COMMON}
 
@@ -479,16 +497,31 @@ uniform mat4 uProj;
 uniform mat4 uInvProj;
 uniform vec2 uNoiseScale;
 uniform vec2 uNearFar;
-uniform vec3 uKernel[KERNEL_SIZE];
-uniform float uRadius;
-uniform float uBias;
+uniform vec2 uTexel;          // one texel of THIS target, which may be half resolution
+uniform float uRadius;        // metres
 uniform float uMaxDistance;
 uniform float uHasNormal;
+/** Walks the noise every frame so TAA resolves the slice pattern. 0 when TAA cannot. */
+uniform float uFrame;
+
+const float PI_AO = 3.14159265359;
+const float HALF_PI_AO = 1.57079636;
 
 vec3 viewPosFromDepth(vec2 uv, float d) {
   vec4 ndc = vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
   vec4 v = uInvProj * ndc;
   return v.xyz / v.w;
+}
+
+/**
+ * acos to about 0.007 rad (Eberly's one-term fit). The arc integral is smooth in its horizon
+ * angles, so the error is far below a code value, and this removes 4 transcendentals per slice
+ * from the innermost loop of the most sampled pass in the chain.
+ */
+float acosFast(float x) {
+  float a = abs(x);
+  float r = (-0.156583 * a + HALF_PI_AO) * sqrt(max(0.0, 1.0 - a));
+  return x < 0.0 ? PI_AO - r : r;
 }
 
 void main() {
@@ -497,7 +530,7 @@ void main() {
   float dist = -P.z;
 
   // Sky (and anything past the AO range) is unoccluded. .g carries linear depth for the
-  // bilateral blur that follows, so it does not have to re-fetch and re-linearise.
+  // bilateral blur and the upsample that follow, so neither has to re-fetch and re-linearise.
   if (d >= 0.999999 || dist > uMaxDistance) {
     fragColor = vec4(1.0, dist, 0.0, 1.0);
     return;
@@ -524,49 +557,83 @@ void main() {
     N = normalize(cross(dFdx(P), dFdy(P)));
   }
 
-  // 4x4 interleaved rotation. Nearest + Repeat, so each 4x4 screen block uses a different
-  // kernel orientation; the bilateral blur below then averages the 16 orientations back into
-  // a smooth field. Random per-pixel noise would need a much wider blur to converge.
-  vec2 rnd = texture(tNoise, vUv * uNoiseScale).xy * 2.0 - 1.0;
-  vec3 rvec = normalize(vec3(rnd, 0.0));
-  vec3 T = normalize(rvec - N * dot(rvec, N));
-  vec3 B = cross(N, T);
-  mat3 TBN = mat3(T, B, N);
+  vec3 V = normalize(-P);
 
-  // Shrink the world radius slightly with distance. A fixed world radius costs a full kernel
-  // of cache misses on near geometry and vanishes below a texel at range.
-  float radius = uRadius * clamp(4.0 / max(dist, 1.0), 0.55, 1.6);
+  // uProj[0][0] and [1][1] ARE the projection scales, so this is the exact metres-to-UV
+  // conversion at this depth rather than a small-angle fit, and it is elliptical in UV because
+  // the slice direction is uniform in VIEW space, which is where the radius is authored.
+  vec2 uvRadius = 0.5 * uRadius * vec2(uProj[0][0], uProj[1][1]) / max(dist, uNearFar.x);
+  // Floor of two texels so the search is never degenerate at range; ceiling so a surface a
+  // metre from the lens does not scatter its taps across a sixth of the frame.
+  uvRadius = clamp(uvRadius, uTexel * 2.0, vec2(0.16));
 
-  float occlusion = 0.0;
-  for (int i = 0; i < KERNEL_SIZE; i++) {
-    vec3 samplePos = P + TBN * uKernel[i] * radius;
+  // 4x4 interleaved noise: .r rotates the slice set, .g jitters the step positions. Nearest +
+  // Repeat, so each 4x4 screen block gets a different pattern and the bilateral blur below
+  // averages the 16 of them back into a smooth field — a per-pixel random would need a much
+  // wider blur to converge. The frame offsets are irrational multiples so the 16 patterns do
+  // not resynchronise on any short period.
+  vec2 nz = texture(tNoise, vUv * uNoiseScale).rg;
+  float rot = fract(nz.r + uFrame * 0.6180339887);
+  float jit = fract(nz.g + uFrame * 0.4142135624);
 
-    vec4 clip = uProj * vec4(samplePos, 1.0);
-    if (clip.w <= EPS) continue;
-    vec2 sUv = clip.xy / clip.w * 0.5 + 0.5;
-    if (sUv.x < 0.0 || sUv.x > 1.0 || sUv.y < 0.0 || sUv.y > 1.0) continue;
+  float visibility = 0.0;
 
-    // Only .z is needed, and jitter never touches the projection's z row, so the closed-form
-    // linearisation is exact and cheaper than a full inverse-projection reconstruct.
-    float sampleZ = viewZFromDepth(texture(tDepth, sUv).x, uNearFar.x, uNearFar.y);
+  for (int s = 0; s < SLICE_COUNT; s++) {
+    float phi = PI_AO * (float(s) + rot) / float(SLICE_COUNT);
+    vec2 omega = vec2(cos(phi), sin(phi));
 
-    // View Z is negative going away from the camera: a *larger* value is nearer, so the
-    // depth-buffer surface occludes our kernel point when sampleZ - samplePos.z > bias.
-    float dz = sampleZ - samplePos.z;
+    // The slice is the plane through V and the screen direction omega. Everything below is
+    // measured inside it: the normal's angle from V, and the two horizon angles.
+    vec3 dirV = vec3(omega, 0.0);
+    vec3 orthoDir = dirV - dot(dirV, V) * V;
+    vec3 axis = normalize(cross(orthoDir, V));
+    vec3 projN = N - axis * dot(N, axis);
+    float projNLen = length(projN);
+    // A normal lying in the slice's own plane of rotation projects to nothing and the slice
+    // legitimately contributes nothing. Guarding here also keeps the normalize below finite.
+    if (projNLen < 1e-4) continue;
 
-    // Range check. Without it, a wall 40 m behind a railing occludes the railing and the
-    // whole background picks up a dark halo. The smoothstep keeps the transition from
-    // showing up as a hard ring.
-    float rangeCheck = smoothstep(0.0, 1.0, radius / max(EPS, abs(P.z - sampleZ)));
-    occlusion += step(uBias, dz) * rangeCheck;
+    float cosNorm = clamp(dot(projN, V) / projNLen, -1.0, 1.0);
+    float n = sign(dot(orthoDir, projN)) * acosFast(cosNorm);
+    float sinN = sin(n);
+
+    for (int side = 0; side < 2; side++) {
+      float sgn = side == 0 ? 1.0 : -1.0;
+      // The hemisphere's own edge. Nothing beyond it can occlude, so it is both the starting
+      // horizon and the value a fully attenuated sample falls back to.
+      float lowCos = cos(n + sgn * HALF_PI_AO);
+      float horizonCos = lowCos;
+
+      for (int st = 0; st < STEP_COUNT; st++) {
+        float t = (float(st) + jit) / float(STEP_COUNT);
+        vec2 sUv = vUv + sgn * omega * uvRadius * t;
+        if (sUv.x < 0.0 || sUv.x > 1.0 || sUv.y < 0.0 || sUv.y > 1.0) break;
+
+        vec3 delta = viewPosFromDepth(sUv, texture(tDepth, sUv).x) - P;
+        float len = length(delta);
+        if (len < 1e-4) continue;
+
+        float shc = dot(delta, V) / len;
+        // Distance attenuation. Beyond the radius a surface is not part of this pixel's
+        // ambient aperture, and without this a wall right across the yard raises the horizon
+        // of everything in front of it. Ramped from 0.6 * radius so it is not a visible ring.
+        float w = clamp((uRadius - len) / (uRadius * 0.4), 0.0, 1.0);
+        horizonCos = max(horizonCos, mix(lowCos, shc, w));
+      }
+
+      // Clamped into the hemisphere either side of the normal, then integrated: this is the
+      // exact cosine-weighted visible arc between the normal and the horizon.
+      float h = n + clamp(sgn * acosFast(horizonCos) - n, -HALF_PI_AO, HALF_PI_AO);
+      visibility += projNLen * (cosNorm + 2.0 * h * sinN - cos(2.0 * h - n)) * 0.25;
+    }
   }
 
-  float ao = 1.0 - occlusion / float(KERNEL_SIZE);
+  float ao = clamp(visibility / float(SLICE_COUNT), 0.0, 1.0);
 
-  // Fade the last 40% of the range so distant geometry never darkens; fog owns that depth.
-  ao = mix(ao, 1.0, smoothstep(uMaxDistance * 0.6, uMaxDistance, dist));
+  // Fade the last quarter of the range so distant geometry never darkens; fog owns that depth.
+  ao = mix(ao, 1.0, smoothstep(uMaxDistance * 0.75, uMaxDistance, dist));
 
-  fragColor = vec4(clamp(ao, 0.0, 1.0), dist, 0.0, 1.0);
+  fragColor = vec4(ao, dist, 0.0, 1.0);
 }
 `;
 
@@ -611,12 +678,54 @@ ${COMMON}
 
 uniform sampler2D tColour;
 uniform sampler2D tAO;
+uniform sampler2D tDepth;    // world-only depth at THIS pass's resolution
 uniform vec3 uAoTint;
 uniform float uIntensity;
+uniform float uExposure;
+uniform vec2 uNearFar;
+uniform vec2 uAoTexel;       // one texel of the AO target
+uniform float uUpsample;     // 1 when the AO target is smaller than this pass
+
+/**
+ * Joint-bilateral upsample of the AO field.
+ *
+ * Below the high preset the AO runs at half resolution, and a single bilinear tap mixes the four
+ * source texels blind: across a silhouette that averages the occluded side with the unoccluded
+ * one, so the contact darkening bleeds off the object and onto the background it exists to
+ * separate the object from. Every AO texel carries its own linear depth in .g, so weighting the
+ * four contributors against this pixel's depth keeps the field on the correct surface. The
+ * branch is on a uniform, so at full resolution the whole wavefront takes the single-tap path.
+ */
+float fetchAO(float depthHere) {
+  if (uUpsample < 0.5) return texture(tAO, vUv).r;
+
+  vec2 st = vUv / uAoTexel - 0.5;
+  vec2 base = floor(st);
+  vec2 f = st - base;
+  vec2 uv0 = (base + 0.5) * uAoTexel;
+
+  float sum = 0.0;
+  float wsum = 0.0;
+  for (int j = 0; j < 2; j++) {
+    for (int i = 0; i < 2; i++) {
+      vec2 t = texture(tAO, uv0 + vec2(float(i), float(j)) * uAoTexel).rg;
+      float bw = (i == 0 ? 1.0 - f.x : f.x) * (j == 0 ? 1.0 - f.y : f.y);
+      // Relative tolerance, so it holds at 3 m and at 40 m. The epsilon means a pixel whose
+      // four contributors are ALL on other surfaces degrades to the plain bilinear result
+      // rather than to a division by zero.
+      float dw = exp(-abs(t.g - depthHere) / max(0.05, depthHere * 0.03));
+      float w = bw * dw + 1e-4;
+      sum += t.r * w;
+      wsum += w;
+    }
+  }
+  return sum / wsum;
+}
 
 void main() {
   vec3 c = sanitise(texture(tColour, vUv).rgb);
-  float ao = clamp(texture(tAO, vUv).r, 0.0, 1.0);
+  float depthHere = linearDepth(texture(tDepth, vUv).x, uNearFar.x, uNearFar.y);
+  float ao = clamp(fetchAO(depthHere), 0.0, 1.0);
 
   // Power curve from GRADE.ssaoIntensity: shaping the response rather than lerping keeps the
   // deep creases dark while barely touching the broad, weakly-occluded areas.
@@ -625,8 +734,12 @@ void main() {
   /* AO occludes *indirect* light only. This is a post pass, so we have no split — approximate
    * it with a soft luminance mask: a pixel already blasted by the low sun is direct-lit and
    * must not be dimmed (that is what turns AAA AO into hobby AO — muddy, dirty-looking
-   * sunlight), whereas a dim pixel is mostly sky/bounce fill and takes the AO in full. */
-  float lum = luma(c);
+   * sunlight), whereas a dim pixel is mostly sky/bounce fill and takes the AO in full.
+   *
+   * The knees are display-referred — 1.1 means "about as bright as the frame gets" — and
+   * tColour is scene-referred, so the exposure has to be in the comparison or the two are in
+   * different units and the mask sits pinned at one end of its ramp for the whole frame. */
+  float lum = luma(c) * uExposure;
   float indirect = 1.0 - smoothstep(0.12, 1.1, lum);
   float k = mix(0.22, 1.0, indirect);
 
@@ -1776,7 +1889,8 @@ export function createPostFX(engine, game) {
 
   const features = {
     taa: true,
-    ssaoTaps: 16,
+    aoSlices: 2,
+    aoSteps: 6,
     ssao: true,
     motionBlur: true,
     dof: true,
@@ -1788,12 +1902,21 @@ export function createPostFX(engine, game) {
     const level = QUALITY_ORDER[q] ?? 2;
     features.taa = level >= 1;
     features.ssao = level >= 1;
-    features.ssaoTaps = level >= 2 ? 16 : 8;
+    /*
+     * The horizon search costs slices x steps x 2 depth taps. Slices buy azimuthal coverage
+     * (which direction the occluder is in) and steps buy horizon accuracy (how high it rises);
+     * with only two slices the temporal offset plus the bilateral blur fill in the rest, which
+     * is why the `medium` budget goes on steps. 2 x 3 at half resolution is 12 taps over a
+     * quarter of the pixels — comparable to the 8-tap hemisphere kernel it replaces, and this
+     * is the preset most players get, so it is the one that had to stay affordable.
+     */
+    features.aoSlices = level >= 2 ? 3 : 2;
+    features.aoSteps = level >= 3 ? 6 : level >= 2 ? 4 : 3;
     features.motionBlur = level >= 2;
     features.dof = level >= 2;
     features.bloomMips = level === 0 ? 4 : level === 1 ? 5 : 6;
-    // AO at half resolution below `high`: it is the cheapest big win available and the
-    // bilateral blur hides the upsample.
+    // AO at half resolution below `high`: it is the cheapest big win available, and the apply
+    // pass upsamples it depth-aware so the half-res field still lands on the right surfaces.
     features.aoScale = level >= 2 ? 1.0 : 0.5;
   }
   applyQuality((game && game.quality) || engine.quality || 'high');
@@ -1872,12 +1995,14 @@ export function createPostFX(engine, game) {
 
   const rng = mulberry32(0x5eed17);
 
-  /** 4x4 interleaved rotation noise for SSAO. */
+  /**
+   * 4x4 interleaved noise for the AO. .r offsets the slice rotation, .g the step positions
+   * along each slice; both are read as 0..1 fractions, not as a direction vector.
+   */
   const noiseData = new Uint8Array(4 * 4 * 4);
   for (let i = 0; i < 16; i++) {
-    const a = rng() * Math.PI * 2.0;
-    noiseData[i * 4 + 0] = Math.round((Math.cos(a) * 0.5 + 0.5) * 255);
-    noiseData[i * 4 + 1] = Math.round((Math.sin(a) * 0.5 + 0.5) * 255);
+    noiseData[i * 4 + 0] = Math.round(rng() * 255);
+    noiseData[i * 4 + 1] = Math.round(rng() * 255);
     noiseData[i * 4 + 2] = 0;
     noiseData[i * 4 + 3] = 255;
   }
@@ -1896,35 +2021,6 @@ export function createPostFX(engine, game) {
   blackTexture.needsUpdate = true;
 
   const dirtTexture = createLensDirt(rng);
-
-  /**
-   * Cosine-weighted hemisphere kernel. Built at both tap counts up front so switching quality
-   * never allocates mid-session and never leaves the shader's declared array size disagreeing
-   * with the JS array length.
-   */
-  function makeKernel(count) {
-    const out = [];
-    const r2 = mulberry32(0xa0c1e5 + count);
-    for (let i = 0; i < count; i++) {
-      // Sample the unit disc uniformly and lift it onto the hemisphere: that is exactly a
-      // cosine-weighted distribution, which is the response a diffuse surface actually has.
-      const r = Math.sqrt(r2());
-      const a = r2() * Math.PI * 2.0;
-      const v = new THREE.Vector3(
-        r * Math.cos(a),
-        r * Math.sin(a),
-        Math.sqrt(Math.max(0, 1 - r * r))
-      );
-      // Cluster samples toward the origin: contact occlusion carries the read, and it is the
-      // far samples that produce halos.
-      let scale = i / count;
-      scale = 0.12 + 0.88 * scale * scale;
-      v.multiplyScalar(scale);
-      out.push(v);
-    }
-    return out;
-  }
-  const kernels = { 8: makeKernel(8), 16: makeKernel(16) };
 
   /* --- Uniform blocks (allocated once, mutated in place) ------------------ */
 
@@ -1955,11 +2051,17 @@ export function createPostFX(engine, game) {
     uInvProj: { value: new THREE.Matrix4() },
     uNoiseScale: { value: new THREE.Vector2(1, 1) },
     uNearFar: { value: new THREE.Vector2(0.05, 600) },
-    uKernel: { value: kernels[features.ssaoTaps] || kernels[16] },
+    uTexel: { value: new THREE.Vector2() },
     uRadius: { value: params.ssaoRadius },
-    uBias: { value: 0.022 },
-    uMaxDistance: { value: 45.0 },
+    /**
+     * How far out the AO is computed at all, in metres, with the last quarter faded to nothing.
+     * It has to cover the map's own footprint (110 x 90 m) or distant objects meet the ground
+     * with nothing joining them to it. Depth costs nothing here: the search radius is
+     * world-space, so out at 60 m it spans a couple of texels rather than a wide gather.
+     */
+    uMaxDistance: { value: 70.0 },
     uHasNormal: { value: 0 },
+    uFrame: { value: 0 },
   };
 
   const uAoBlur = {
@@ -1971,8 +2073,13 @@ export function createPostFX(engine, game) {
   const uAoApply = {
     tColour: { value: null },
     tAO: { value: null },
+    tDepth: { value: null },
     uAoTint: { value: new THREE.Vector3(1, 1, 1) },
     uIntensity: { value: 1.0 },
+    uExposure: { value: params.exposure },
+    uNearFar: { value: new THREE.Vector2(0.05, 600) },
+    uAoTexel: { value: new THREE.Vector2() },
+    uUpsample: { value: 0 },
   };
 
   const uMotion = {
@@ -2112,7 +2219,10 @@ export function createPostFX(engine, game) {
   /* --- Materials ---------------------------------------------------------- */
 
   const matTaa = makeMaterial(FRAG_TAA, uTaa);
-  const matSsao = makeMaterial(FRAG_SSAO, uSsao, { KERNEL_SIZE: features.ssaoTaps });
+  const matSsao = makeMaterial(FRAG_SSAO, uSsao, {
+    SLICE_COUNT: features.aoSlices,
+    STEP_COUNT: features.aoSteps,
+  });
   const matAoBlur = makeMaterial(FRAG_AO_BLUR, uAoBlur);
   const matAoApply = makeMaterial(FRAG_AO_APPLY, uAoApply);
   const matMotion = makeMaterial(FRAG_MOTION, uMotion);
@@ -2272,6 +2382,8 @@ export function createPostFX(engine, game) {
   let debugMode = 0;
   let failed = false;
   let elapsed = 0;
+  /** Frames rendered by this chain. Drives the AO's temporal sample offset. */
+  let frameIndex = 0;
 
   // Our own jitter-free previous view-projection. engine.prevViewProj is captured too (see
   // below) but the reprojection maths must not contain the sub-pixel offset, and we cannot
@@ -2312,6 +2424,9 @@ export function createPostFX(engine, game) {
     // GRADE.ssaoIntensity is a 0..1 art value; map it onto a power curve exponent. 0.85 lands
     // near 2.1, a firm but not sooty contact shadow.
     uAoApply.uIntensity.value = 0.6 + params.ssaoIntensity * 1.75;
+    // The indirect-only mask tests display-referred knees, so it needs the exposure that maps
+    // the scene onto them. See FRAG_AO_APPLY.
+    uAoApply.uExposure.value = params.exposure;
 
     uMotion.uAmount.value = params.motionBlurEnabled ? params.motionBlurAmount : 0.0;
 
@@ -2439,6 +2554,10 @@ export function createPostFX(engine, game) {
     uSsao.tNormal.value = normalTexture || blackTexture;
     uSsao.uHasNormal.value = normalTexture ? 1 : 0;
     uSsao.uNoiseScale.value.set(aoA.width / 4, aoA.height / 4);
+    uSsao.uTexel.value.set(1 / aoA.width, 1 / aoA.height);
+    // The slice pattern only walks when there is a temporal resolve downstream to average it.
+    // Without one it would be a per-frame flicker rather than a finer sample set.
+    uSsao.uFrame.value = features.taa && params.taaEnabled ? frameIndex % 64 : 0;
     draw(matSsao, aoA);
 
     // Separable bilateral blur. Horizontal into B, vertical back into A.
@@ -2453,6 +2572,9 @@ export function createPostFX(engine, game) {
     const out = targets.chain[chainIndex];
     uAoApply.tColour.value = colourTexture;
     uAoApply.tAO.value = aoA.texture;
+    uAoApply.tDepth.value = worldDepthTexture || depthTexture;
+    uAoApply.uAoTexel.value.set(1 / aoA.width, 1 / aoA.height);
+    uAoApply.uUpsample.value = aoA.width < width ? 1 : 0;
     draw(matAoApply, out);
     chainIndex = 1 - chainIndex;
     return out.texture;
@@ -2635,10 +2757,10 @@ export function createPostFX(engine, game) {
       const before = JSON.stringify(features);
       applyQuality(q);
       if (JSON.stringify(features) === before) return;
-      if (matSsao.defines.KERNEL_SIZE !== features.ssaoTaps) {
-        matSsao.defines.KERNEL_SIZE = features.ssaoTaps;
-        // The uniform array is declared at KERNEL_SIZE, so the JS array must match exactly.
-        uSsao.uKernel.value = kernels[features.ssaoTaps] || kernels[16];
+      if (matSsao.defines.SLICE_COUNT !== features.aoSlices ||
+          matSsao.defines.STEP_COUNT !== features.aoSteps) {
+        matSsao.defines.SLICE_COUNT = features.aoSlices;
+        matSsao.defines.STEP_COUNT = features.aoSteps;
         matSsao.needsUpdate = true;
       }
       if (width && height) buildTargets(width, height);
@@ -2680,6 +2802,7 @@ export function createPostFX(engine, game) {
     if (!hdr) { emergencyBlit(g); return; }
 
     elapsed += dt;
+    frameIndex++;
     syncSize();
     syncParams();
 
@@ -2742,6 +2865,7 @@ export function createPostFX(engine, game) {
       uSsao.uInvProj.value.copy(camera.projectionMatrixInverse);
     }
     uSsao.uNearFar.value.set(nfx, nfy);
+    uAoApply.uNearFar.value.set(nfx, nfy);
     uDofPre.uNearFar.value.set(nfx, nfy);
     uDofComposite.uNearFar.value.set(nfx, nfy);
 
@@ -2781,18 +2905,22 @@ export function createPostFX(engine, game) {
     uDofComposite.uHasWorldDepth.value = vmHas;
     uDofComposite.uVmCut.value = params.taaNearCut;
 
-    /* 1. TAA */
-    if (features.taa && params.taaEnabled && depthTexture && debugMode === 0) {
-      colour = runTAA(colour, depthTexture, worldDepthTexture);
-    } else {
-      historyValid = false;
-    }
-
-    /* 2. SSAO */
+    /* 1. AO — before TAA, which is load-bearing rather than incidental. The horizon search is
+     * a stochastic estimate; a couple of slices per pixel per frame, offset every frame, is a
+     * far larger sample set than a couple of slices per pixel forever, and the temporal resolve
+     * is what turns one into the other. Downstream of it the pass would have to buy the same
+     * smoothness with taps and blur. */
     let aoTexture = null;
     if (features.ssao && depthTexture && params.ssaoIntensity > 0.001) {
       colour = runSSAO(colour, depthTexture, normalTexture, worldDepthTexture);
       aoTexture = targets.ao[0] ? targets.ao[0].texture : null;
+    }
+
+    /* 2. TAA */
+    if (features.taa && params.taaEnabled && depthTexture && debugMode === 0) {
+      colour = runTAA(colour, depthTexture, worldDepthTexture);
+    } else {
+      historyValid = false;
     }
 
     /* 3. Motion blur */
