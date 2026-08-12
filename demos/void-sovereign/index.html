@@ -53,10 +53,319 @@
          Three.js has parsed is the first thing a visitor judges. Every other
          screen is built lazily by the module. -->
     <div class="vs-shell" id="vs-shell" data-state="title">
+      <!-- The front-matter backdrop.
+
+           Round 1's single sharpest note was that the title screen "looks like
+           a documentation site" and was the fastest way a stranger would
+           dismiss the game: a heavy neo-grotesque logotype fighting the mono
+           hairline language used everywhere else, and an empty near-black
+           frame with no art in it.
+
+           So there is art, and it is generated rather than shipped — the same
+           rule the rest of the project runs on, and the same subject matter.
+           Two nebula masses and the star field are `feTurbulence`, so they are
+           noise fields evaluated by the browser, not a texture; the planet, its
+           terminator and its lit rim are gradients; the capital-ship elevation
+           and the wing ahead of it are hairline paths, drawn in the same 1 px
+           cyan the HUD is drawn in. Nothing here is a binary asset and nothing
+           waits on a megabyte of Three.js, because it is static markup that
+           paints with the document.
+
+           It is shared by title, setup, briefing and loading, and it is
+           `aria-hidden` because it says nothing a screen reader needs. -->
+      <div class="vs-art" aria-hidden="true">
+        <svg
+          class="vs-art__svg"
+          viewBox="0 0 1600 900"
+          preserveAspectRatio="xMidYMid slice"
+          focusable="false"
+        >
+          <defs>
+            <!-- Nebula filament noise. One channel of fractal noise driven far
+                 past its own range into alpha, so only the crests survive and
+                 the field reads as gas rather than as static. -->
+            <filter
+              id="vsNebulaA"
+              x="-15%" y="-15%" width="130%" height="130%"
+              color-interpolation-filters="sRGB"
+            >
+              <!-- Near-isotropic on purpose: an anisotropic base frequency
+                   turns fractal noise into horizontal banding, which reads as
+                   a corrupted texture rather than as gas. -->
+              <feTurbulence
+                type="fractalNoise"
+                baseFrequency="0.0026 0.0031"
+                numOctaves="4"
+                seed="23"
+                result="t"
+              />
+              <feColorMatrix
+                in="t"
+                type="matrix"
+                values="0 0 0 0 0.34
+                        0 0 0 0 0.70
+                        0 0 0 0 0.84
+                        3.1 0 0 0 -1.42"
+                result="c"
+              />
+              <feGaussianBlur in="c" stdDeviation="2.2" />
+            </filter>
+
+            <filter
+              id="vsNebulaB"
+              x="-15%" y="-15%" width="130%" height="130%"
+              color-interpolation-filters="sRGB"
+            >
+              <feTurbulence
+                type="fractalNoise"
+                baseFrequency="0.0038 0.0033"
+                numOctaves="3"
+                seed="61"
+                result="t"
+              />
+              <feColorMatrix
+                in="t"
+                type="matrix"
+                values="0 0 0 0 0.64
+                        0 0 0 0 0.38
+                        0 0 0 0 0.21
+                        3.4 0 0 0 -1.86"
+                result="c"
+              />
+              <feGaussianBlur in="c" stdDeviation="3" />
+            </filter>
+
+            <!-- Resolvable stars. High-frequency noise thresholded hard enough
+                 that roughly one sample in three hundred survives. -->
+            <filter id="vsStars" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+              <feTurbulence type="fractalNoise" baseFrequency="0.82" numOctaves="1" seed="9" result="t" />
+              <feColorMatrix
+                in="t"
+                type="matrix"
+                values="0 0 0 0 0.88
+                        0 0 0 0 0.94
+                        0 0 0 0 1
+                        11 0 0 0 -8.5"
+              />
+            </filter>
+
+            <filter id="vsStarsFar" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+              <feTurbulence type="fractalNoise" baseFrequency="0.34" numOctaves="1" seed="31" result="t" />
+              <feColorMatrix
+                in="t"
+                type="matrix"
+                values="0 0 0 0 0.66
+                        0 0 0 0 0.80
+                        0 0 0 0 1
+                        7.5 0 0 0 -5.9"
+              />
+            </filter>
+
+            <radialGradient id="vsMassA" cx="0.5" cy="0.5" r="0.5">
+              <stop offset="0" stop-color="#fff" stop-opacity="1" />
+              <stop offset="0.55" stop-color="#fff" stop-opacity="0.55" />
+              <stop offset="1" stop-color="#fff" stop-opacity="0" />
+            </radialGradient>
+            <mask id="vsMaskA">
+              <ellipse cx="1120" cy="300" rx="620" ry="420" fill="url(#vsMassA)" />
+            </mask>
+            <mask id="vsMaskB">
+              <ellipse cx="330" cy="720" rx="560" ry="330" fill="url(#vsMassA)" />
+            </mask>
+
+            <!-- The one key light. Everything else in the frame takes its
+                 direction from this. -->
+            <radialGradient id="vsKey" cx="0.5" cy="0.5" r="0.5">
+              <stop offset="0" stop-color="#eaf7ff" stop-opacity="0.95" />
+              <stop offset="0.14" stop-color="#bfe8f6" stop-opacity="0.42" />
+              <stop offset="0.44" stop-color="#5fa9c4" stop-opacity="0.1" />
+              <stop offset="1" stop-color="#5fa9c4" stop-opacity="0" />
+            </radialGradient>
+
+            <!-- Planet body. A linear ramp along the star direction, not a
+                 radial one: what makes a sphere read as lit is a terminator,
+                 and §3.2 asks for a hard one with a deep shadow side. The
+                 gradient axis runs from the sub-stellar point (0.27, 0.06 of
+                 the bounding box, toward the key star) to the antipode. -->
+            <linearGradient id="vsPlanet" x1="0.27" y1="0.06" x2="0.73" y2="0.94">
+              <stop offset="0" stop-color="#20384a" />
+              <stop offset="0.035" stop-color="#142833" />
+              <stop offset="0.075" stop-color="#0a1721" />
+              <stop offset="0.13" stop-color="#050c13" />
+              <stop offset="0.22" stop-color="#03070c" />
+              <stop offset="1" stop-color="#02050a" />
+            </linearGradient>
+
+            <!-- Atmosphere: a hair of scatter *outside* the limb. Fifteen user
+                 units of it, no more — pushed further out it stops being an
+                 atmosphere and becomes a second ring around the planet. -->
+            <radialGradient id="vsAtmo" cx="0.5" cy="0.5" r="0.5">
+              <stop offset="0.965" stop-color="#7fd8e8" stop-opacity="0" />
+              <stop offset="0.976" stop-color="#8fdcf0" stop-opacity="0.26" />
+              <stop offset="0.988" stop-color="#8fdcf0" stop-opacity="0.1" />
+              <stop offset="1" stop-color="#bfeeff" stop-opacity="0" />
+            </radialGradient>
+
+            <linearGradient id="vsRim" x1="0.1" y1="0.98" x2="0.8" y2="0.04">
+              <stop offset="0" stop-color="#7fd8e8" stop-opacity="0" />
+              <stop offset="0.3" stop-color="#8fdcf0" stop-opacity="0.34" />
+              <stop offset="0.62" stop-color="#dff5ff" stop-opacity="0.78" />
+              <stop offset="0.88" stop-color="#8fdcf0" stop-opacity="0.2" />
+              <stop offset="1" stop-color="#7fd8e8" stop-opacity="0" />
+            </linearGradient>
+
+            <linearGradient id="vsPlume" x1="1" y1="0" x2="0" y2="0">
+              <stop offset="0" stop-color="#bfeeff" stop-opacity="0.85" />
+              <stop offset="0.35" stop-color="#7fd8e8" stop-opacity="0.32" />
+              <stop offset="1" stop-color="#7fd8e8" stop-opacity="0" />
+            </linearGradient>
+
+            <linearGradient id="vsTrail" x1="1" y1="0" x2="0" y2="0">
+              <stop offset="0" stop-color="#9fe6f4" stop-opacity="0.7" />
+              <stop offset="1" stop-color="#9fe6f4" stop-opacity="0" />
+            </linearGradient>
+          </defs>
+
+          <g class="vs-art__far">
+            <rect x="0" y="0" width="1600" height="900" filter="url(#vsStarsFar)" opacity="0.5" />
+            <rect x="0" y="0" width="1600" height="900" filter="url(#vsStars)" opacity="0.92" />
+          </g>
+
+          <g class="vs-art__gas">
+            <rect x="0" y="0" width="1600" height="900" filter="url(#vsNebulaA)" mask="url(#vsMaskA)" opacity="0.5" />
+            <rect x="0" y="0" width="1600" height="900" filter="url(#vsNebulaB)" mask="url(#vsMaskB)" opacity="0.34" />
+          </g>
+
+          <!-- Key star, well outside the frame's centre of interest. Every
+               terminator, rim and plume in the frame points away from it. -->
+          <circle cx="1104" cy="176" r="290" fill="url(#vsKey)" />
+          <circle cx="1104" cy="176" r="2.4" fill="#f2fbff" />
+
+          <!-- Backdrop object. §3 asks for one, and the frame has been empty
+               without it: it is what makes the ship in front of it a ship the
+               size of a city rather than a diagram. -->
+          <g class="vs-art__planet">
+            <circle cx="1560" cy="1252" r="790" fill="url(#vsAtmo)" />
+            <circle cx="1560" cy="1252" r="770" fill="url(#vsPlanet)" />
+            <!-- The lit limb, in two passes: a hairline edge and a wide, faint
+                 bloom outside it. Bloom belongs to light sources and edges, not
+                 to hulls — §3.6. -->
+            <path
+              d="M857 939 A770 770 0 0 1 2198 821"
+              fill="none"
+              stroke="url(#vsRim)"
+              stroke-width="16"
+              opacity="0.16"
+            />
+            <path
+              d="M857 939 A770 770 0 0 1 2198 821"
+              fill="none"
+              stroke="url(#vsRim)"
+              stroke-width="1.8"
+            />
+          </g>
+
+          <!-- Capital hull, hairline elevation. Long, flat and asymmetric, with
+               a prow that resolves its heading from a still frame — the same
+               three rules §3 sets for the meshes. -->
+          <g class="vs-art__fleet" transform="translate(1096 452) rotate(-8)">
+            <g class="vs-art__hull" transform="translate(0 0) scale(0.6)">
+              <path class="vs-art__plume" d="M-296 -13 L-470 -5 L-470 5 L-296 13 Z" fill="url(#vsPlume)" />
+              <path class="vs-art__plume" d="M-296 -34 L-408 -28 L-408 -21 L-296 -25 Z" fill="url(#vsPlume)" opacity="0.6" />
+
+              <!-- primary loft -->
+              <path
+                d="M-292 -20 L-104 -27 L74 -30 L188 -22 L252 -8 L268 -1 L268 3 L246 12 L182 24 L70 32 L-104 30 L-292 22 Z"
+                fill="#070c12"
+                stroke="#8fd4e4"
+                stroke-opacity="0.5"
+                stroke-width="1.1"
+              />
+              <!-- dorsal mass: the tier-2 volume between loft and greeble -->
+              <path
+                d="M-146 -26 L-118 -62 L36 -66 L96 -50 L108 -30"
+                fill="#05090e"
+                stroke="#8fd4e4"
+                stroke-opacity="0.42"
+                stroke-width="1.1"
+              />
+              <path d="M-96 -63 L-96 -26 M-30 -65 L-30 -28 M40 -65 L40 -29" stroke="#8fd4e4" stroke-opacity="0.2" stroke-width="1" />
+              <!-- ventral radiator fin -->
+              <path
+                d="M-84 30 L-58 78 L26 74 L48 28"
+                fill="#05090e"
+                stroke="#8fd4e4"
+                stroke-opacity="0.3"
+                stroke-width="1.1"
+              />
+              <path d="M-64 34 L-46 70 M-30 33 L-20 71 M4 32 L8 71" stroke="#8fd4e4" stroke-opacity="0.16" stroke-width="1" />
+              <!-- keel line, the one mark that survives at 100 px -->
+              <path d="M-286 4 L262 1" stroke="#bfeeff" stroke-opacity="0.36" stroke-width="1" />
+              <!-- panel lines -->
+              <path
+                d="M-232 -21 L-232 22 M-176 -23 L-176 25 M-40 -28 L-40 31 M96 -29 L96 28 M170 -23 L170 24"
+                stroke="#8fd4e4"
+                stroke-opacity="0.15"
+                stroke-width="1"
+              />
+              <!-- engine block and bells -->
+              <path
+                d="M-292 -22 L-330 -18 L-330 18 L-292 22 Z"
+                fill="#04080c"
+                stroke="#8fd4e4"
+                stroke-opacity="0.36"
+                stroke-width="1.1"
+              />
+              <path d="M-330 -12 L-296 -12 M-330 0 L-296 0 M-330 12 L-296 12" stroke="#bfeeff" stroke-opacity="0.32" stroke-width="1.2" />
+              <!-- hangar mouth, running lights -->
+              <path d="M-24 30 L44 29" stroke="#bfeeff" stroke-opacity="0.42" stroke-width="2" />
+              <circle cx="214" cy="-13" r="1.6" fill="#bfeeff" opacity="0.8" />
+              <circle cx="-186" cy="-22" r="1.4" fill="#e8a44a" opacity="0.55" />
+              <circle cx="130" cy="26" r="1.4" fill="#bfeeff" opacity="0.5" />
+            </g>
+
+            <!-- The wing it is escorting: small enough that the capital reads
+                 as fifty times their size, which is §3's scale rule. -->
+            <g class="vs-art__wing" opacity="0.72">
+              <g transform="translate(320 118)">
+                <path d="M0 0 L9 17 L0 12 L-9 17 Z" fill="#0a1119" stroke="#9fe6f4" stroke-opacity="0.6" stroke-width="1" />
+                <path d="M-58 6 L-2 6 L-2 10 L-58 12 Z" fill="url(#vsTrail)" />
+              </g>
+              <g transform="translate(392 152)">
+                <path d="M0 0 L8 15 L0 11 L-8 15 Z" fill="#0a1119" stroke="#9fe6f4" stroke-opacity="0.5" stroke-width="1" />
+                <path d="M-52 5 L-2 5 L-2 9 L-52 11 Z" fill="url(#vsTrail)" opacity="0.8" />
+              </g>
+              <g transform="translate(268 176)">
+                <path d="M0 0 L8 15 L0 11 L-8 15 Z" fill="#0a1119" stroke="#9fe6f4" stroke-opacity="0.5" stroke-width="1" />
+                <path d="M-48 5 L-2 5 L-2 9 L-48 11 Z" fill="url(#vsTrail)" opacity="0.75" />
+              </g>
+              <g transform="translate(452 206)">
+                <path d="M0 0 L7 13 L0 9 L-7 13 Z" fill="#0a1119" stroke="#9fe6f4" stroke-opacity="0.4" stroke-width="1" />
+                <path d="M-40 4 L-2 4 L-2 8 L-40 9 Z" fill="url(#vsTrail)" opacity="0.6" />
+              </g>
+              <g transform="translate(196 236)">
+                <path d="M0 0 L7 13 L0 9 L-7 13 Z" fill="#0a1119" stroke="#9fe6f4" stroke-opacity="0.36" stroke-width="1" />
+                <path d="M-36 4 L-2 4 L-2 8 L-36 9 Z" fill="url(#vsTrail)" opacity="0.5" />
+              </g>
+            </g>
+          </g>
+        </svg>
+      </div>
+
       <section class="vs-screen vs-screen--title is-active" data-screen="title" aria-label="Void Sovereign">
         <div class="vs-screen__inner">
           <p class="vs-eyebrow">Elusion Works</p>
-          <h1 class="vs-title">Void Sovereign</h1>
+          <!-- Set in the type the rest of the game already owns. The wordmark
+               was Inter 700 at -0.03em, which is a website headline; every
+               other letterform in this build is IBM Plex Mono, tracked out,
+               uppercase. Two lines because "VOID SOVEREIGN" tracked to 0.26em
+               does not fit one at the sizes that make it a logotype. -->
+          <!-- The two spans are on one line, separated by a single space, so
+               `textContent.trim()` is still exactly "Void Sovereign" — that is
+               what `.local/laneA-flow.mjs` asserts to prove the wordmark is in
+               the static document rather than painted by a module. They are
+               `display: block`, so the space collapses to nothing on screen. -->
+          <h1 class="vs-title"><span class="vs-title__l">Void</span> <span class="vs-title__l vs-title__l--b">Sovereign</span></h1>
           <p class="vs-deck">
             Fleet command at universe scale. Every hull, every nebula and every
             asteroid in the match ahead is generated in your browser from a

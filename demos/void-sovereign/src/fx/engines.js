@@ -80,12 +80,28 @@ void main() {
      doing the job it exists for, but no longer faster than the count of ships
      the camera is collecting into frame.
 
-     p=0 at k=1 by construction: nothing about a close-up drive changes. */
-  vSpread = pow( clamp( 1.0 / k, 0.02, 1.0 ), 0.85 );
+     p=0 at k=1 by construction: nothing about a close-up drive changes.
+
+     p was 0.85 and is now 0.70. The 0.85 was measured against a 560-hull
+     stress frame and it did the job it was set for, but it also took the drive
+     below the point where it registers as anything at all at ordinary combat
+     range — and an engine glow that only appears on a beauty shot is not doing
+     the one job it has in this genre, which is telling the player which way a
+     hull is pointed and whether it is under power. Energy now grows as k^1.30
+     rather than k^1.15; the per-class ceiling below is what stops that becoming
+     a fleet of equal white dots, and it does more of the work than the exponent
+     ever did. */
+  vSpread = pow( clamp( 1.0 / k, 0.02, 1.0 ), 0.70 );
   scale.xy *= k;
-  // Was 0.35: with the ceiling in place the cone no longer needs as much
-  // length compensation, and less of it keeps a fighter's plume short.
-  scale.z *= mix( 1.0, k, 0.22 );
+  /* Length compensation, up hard from 0.22.
+
+     This is the cheapest legibility there is and it costs no radiance: a
+     floored plume that gains width but not length is a round dot, and a round
+     dot is a running light. Carrying most of the floor into the axis as well
+     turns it into a short streak trailing the hull, which reads as *heading and
+     thrust* from the same two or three pixels. Brightness was never the missing
+     ingredient — direction was. */
+  scale.z *= mix( 1.0, k, 0.60 );
 
   vec3 local = position * scale;
   vec3 wp = qrot( iQuat, local ) + iPos;
@@ -234,7 +250,7 @@ void main() {
      has to come down in radiance as well as in area. Held at the same 0.85 as
      the cone so the two halves of one drive never disagree about how far away
      it is. */
-  vSpread = pow( clamp( natural / max( size, 0.0001 ), 0.02, 1.0 ), 0.85 );
+  vSpread = pow( clamp( natural / max( size, 0.0001 ), 0.02, 1.0 ), 0.70 );
 
   mv.xy += position.xy * size;
   gl_Position = projectionMatrix * mv;
@@ -501,23 +517,31 @@ const LIGHT_RANGE = 26000;
 const TRAIL_RANGE = 9000;
 
 /* Station-keeping glow floor. Small enough to read as "hot, idle", large
-   enough that a parked mothership is not twelve dead holes. */
-const IDLE_THROTTLE = 0.14;
+   enough that a parked mothership is not twelve dead holes — and, at 0.20
+   rather than 0.14, enough that a ship holding station in a firefight still
+   shows which way it is facing. Plume length runs 3.0 + 22.0 * throttle bell
+   radii, so this is the difference between a 6.1 and a 7.4 radii stub. */
+const IDLE_THROTTLE = 0.20;
 
 /* Per-class screen ceiling for the drive glow, in pixels, from hull length.
 
    The pixel *floor* is what makes a distant effect legible; this is the
-   companion ceiling that stops the floor levelling the fleet. Anchored so a
-   14 m interceptor tops out at 2 px — beyond about 8 km the hull itself is
-   under 2 px, so the glow stays the same order as the thing emitting it —
-   and rising sub-linearly to ~14 px for a 1,900 m mothership, whose flare is
-   carried by its own physical size long before the floor is in play.
+   companion ceiling that stops the floor levelling the fleet. Rising
+   sub-linearly with hull length, so a capital's flare is carried by its own
+   physical size long before the floor is in play.
 
-     interceptor  14 m -> 2.0 px      frigate  130 m -> 4.9 px
-     corvette     34 m -> 2.9 px      destroyer 380 m -> 7.5 px
-     collector    46 m -> 3.2 px      mothership 1900 m -> 14.3 px */
+   The anchor is up from 2.0 px to 3.2 px. At 2.0 the ceiling was doing its job
+   against the 560-hull stress case and simultaneously holding the drive under
+   the threshold where a player sees it at all in an ordinary engagement: two
+   pixels of glow on a hull that is itself two or three pixels is a rounding
+   error, not a heading cue. The shape of the curve — the thing that keeps a
+   fighter and a capital distinguishable — is unchanged; only the height moved.
+
+     interceptor  14 m ->  3.2 px      frigate   130 m ->  7.8 px
+     corvette     34 m ->  4.5 px      destroyer 380 m -> 12.0 px
+     collector    46 m ->  5.0 px      mothership 1900 m -> 20.0 px (clamped) */
 function ceilingPixels(L) {
-  return Math.min(16, Math.max(1.5, 2.0 * Math.pow(Math.max(L, 4) / 14, 0.40)));
+  return Math.min(20, Math.max(2.2, 3.2 * Math.pow(Math.max(L, 4) / 14, 0.40)));
 }
 
 /* Plume length and flare radius scale with the *bell*, and bells run roughly
@@ -550,7 +574,13 @@ export class EngineFX {
       uniforms: {
         uNoise: { value: ctx.noises.fbm },
         uHot: { value: new THREE.Color(0xdff2ff) },
-        uMinPixels: { value: 2.6 },
+        /* Global floor, up from 2.6. It is the *ceiling* (iMisc.z) that decides
+           what any given class gets, and at 2.6 the global floor was the binding
+           term for everything from a frigate upward — so the per-class ladder
+           this pair exists to draw was flat over half its range. Raising it
+           hands the decision back to the ceiling without changing what a
+           fighter is allowed. */
+        uMinPixels: { value: 5.0 },
       },
       renderOrder: 10,
       softness: 16,
@@ -566,7 +596,8 @@ export class EngineFX {
       fragmentShader: FLARE_FRAG,
       uniforms: {
         uMap: { value: ctx.sprites.flare },
-        uMinPixels: { value: 4.0 },
+        // Same argument as the cone's: the ceiling should be what decides.
+        uMinPixels: { value: 7.0 },
       },
       renderOrder: 11,
       softness: 12,
@@ -587,6 +618,22 @@ export class EngineFX {
       softness: 6,
       nearFade: 8,
     });
+
+    /* Three-stop ramp for the light-trail, one per team, shared by reference.
+
+       The age taper alone can never close a streak off, and measuring it says
+       why: a 30-segment ribbon fed every ~8 m behind a 600 m/s fighter spans
+       about 84% of its own lifetime, so the oldest vertex still sits at k=0.16
+       and the strip ends on a square cut 20% of its head width. That cut is
+       most of what "trails read as drawn lines" means — the eye reads the end,
+       not the gradient. The ramp closes it in *space* instead, and carries the
+       temperature with it: hot at the nozzle, team hue through the body, near
+       dark where it dies. */
+    this._trailRamps = ctx.teamColors.map((t) => [
+      new THREE.Color(t.engine).lerp(new THREE.Color(0xffffff), 0.55),
+      new THREE.Color(t.engine),
+      new THREE.Color(t.engine).multiplyScalar(0.10),
+    ]);
 
     this.plumeCount = 0;
     this.lightCount = 0;
@@ -774,7 +821,8 @@ export class EngineFX {
              field of them reads as straight scratches across the frame rather
              than as ships moving. Twenty-odd hull lengths still streaks. */
           const life = (0.30 + 0.20 * ctx.qscale) * j;
-          entry.trail = trails.acquire(team.engine, r, life, Math.max(5, r * 2.4));
+          const ramp = this._trailRamps[e.team || 0] || this._trailRamps[0];
+          entry.trail = trails.acquire(team.engine, r, life, Math.max(5, r * 2.4), ramp);
         } else if (!want && entry.trail) {
           trails.detach(entry.trail);
           entry.trail = null;

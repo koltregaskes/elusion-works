@@ -163,6 +163,125 @@ function rollSeed() {
   return String((Math.floor(Math.random() * 0xfffffff) + 1) >>> 0);
 }
 
+/* -------------------------------------------------------------- seed sigil */
+
+/* The seed is the pitch of the whole project, and round 1 found it set in
+   10 px grey at the bottom of the briefing next to the Back button. Words alone
+   do not fix that: "the same seed rebuilds the same universe" is a claim, and a
+   number is not evidence of it.
+
+   So the seed also gets drawn. This is a deterministic mark derived from the
+   seed string and nothing else — reroll and it becomes a visibly different
+   figure, type a word and it becomes that word's figure, come back to the same
+   seed tomorrow and it is the same figure again. It demonstrates the property
+   the screen is trying to describe, in the one place a player is deciding
+   whether to keep the seed they have been given.
+
+   FNV-1a into mulberry32: both are three lines, both are exactly reproducible
+   across engines, and neither is `Math.random()`, which the architecture bans
+   for anything a seed is supposed to determine. */
+function hash32(str) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+
+function mulberry32(a) {
+  let s = a >>> 0;
+  return function next() {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), 1 | t);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function svgNode(name, attrs) {
+  const n = document.createElementNS(SVG_NS, name);
+  for (const k of Object.keys(attrs)) n.setAttribute(k, String(attrs[k]));
+  return n;
+}
+
+/** Build the empty sigil frame. Contents are replaced by `paintSigil`. */
+function makeSigil(cls) {
+  const svg = svgNode('svg', {
+    class: cls,
+    viewBox: '0 0 100 100',
+    'aria-hidden': 'true',
+    focusable: 'false',
+  });
+  return svg;
+}
+
+/**
+ * Draw the mark for `seed` into `svg`. Same string in, same picture out — that
+ * is the entire point, so nothing here may consult the clock or the RNG.
+ */
+function paintSigil(svg, seed) {
+  if (!svg) return;
+  const rnd = mulberry32(hash32(String(seed === undefined || seed === null ? '' : seed)));
+  const frag = document.createDocumentFragment();
+  const cx = 50;
+  const cy = 50;
+
+  frag.appendChild(svgNode('circle', { cx, cy, r: 44, class: 'vs-sigil__ring' }));
+  frag.appendChild(svgNode('circle', { cx, cy, r: 15 + rnd() * 13, class: 'vs-sigil__ring2' }));
+
+  // Graduations round the outside: a bearing scale, not decoration.
+  const ticks = 14 + Math.floor(rnd() * 12);
+  for (let i = 0; i < ticks; i++) {
+    const a = (i / ticks) * Math.PI * 2 + rnd() * 0.05;
+    const len = 3 + rnd() * 5;
+    frag.appendChild(svgNode('line', {
+      x1: cx + Math.cos(a) * 44,
+      y1: cy + Math.sin(a) * 44,
+      x2: cx + Math.cos(a) * (44 + len),
+      y2: cy + Math.sin(a) * (44 + len),
+      class: 'vs-sigil__tick',
+    }));
+  }
+
+  // Two arcs at seeded radii — the part that changes most obviously on reroll.
+  for (let i = 0; i < 2; i++) {
+    const r = 30 + rnd() * 14;
+    const a0 = rnd() * Math.PI * 2;
+    const span = 0.7 + rnd() * 1.9;
+    const a1 = a0 + span;
+    frag.appendChild(svgNode('path', {
+      d: `M${(cx + Math.cos(a0) * r).toFixed(2)} ${(cy + Math.sin(a0) * r).toFixed(2)} `
+        + `A${r.toFixed(2)} ${r.toFixed(2)} 0 ${span > Math.PI ? 1 : 0} 1 `
+        + `${(cx + Math.cos(a1) * r).toFixed(2)} ${(cy + Math.sin(a1) * r).toFixed(2)}`,
+      class: 'vs-sigil__arc',
+    }));
+  }
+
+  // The constellation: the figure a player actually recognises a seed by.
+  const n = 5 + Math.floor(rnd() * 4);
+  const pts = [];
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + (rnd() - 0.5) * 0.9;
+    const r = 11 + rnd() * 28;
+    pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
+  }
+  frag.appendChild(svgNode('polygon', {
+    points: pts.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(' '),
+    class: 'vs-sigil__web',
+  }));
+  for (const [x, y] of pts) {
+    frag.appendChild(svgNode('circle', {
+      cx: x.toFixed(2), cy: y.toFixed(2), r: (1 + rnd() * 1.4).toFixed(2), class: 'vs-sigil__pt',
+    }));
+  }
+
+  svg.replaceChildren(frag);
+}
+
 export class Shell {
   constructor({ root, hudEl = null, stageEl = null, game = {}, defaults = {} } = {}) {
     this.root = typeof root === 'string' ? document.getElementById(root) : root;
@@ -369,6 +488,8 @@ export class Shell {
     for (const off of this._offs) off();
     this._offs.length = 0;
     this._listeners.clear();
+    const body = this.root.ownerDocument && this.root.ownerDocument.body;
+    if (body) body.classList.remove('vs-blocked');
     this.root.replaceChildren();
   }
 
@@ -449,6 +570,7 @@ export class Shell {
     this._seedInput.value = this.setup.seed;
     this._seedInput.addEventListener('input', () => {
       this.setup.seed = this._seedInput.value.trim();
+      this._paintSeedField();
     });
     const reroll = button('vs-btn vs-btn--ghost', 'Reroll');
     reroll.dataset.act = 'reroll';
@@ -459,7 +581,13 @@ export class Shell {
       'A word or a number. The same seed rebuilds the same universe, every time.',
     );
     seedHint.id = 'vs-seed-hint';
-    seedField.append(seedLabel, seedRow, seedHint);
+
+    const seedMark = el('div', 'vs-seedmark');
+    this._setupSigil = makeSigil('vs-sigil vs-sigil--sm');
+    seedMark.appendChild(this._setupSigil);
+    seedMark.appendChild(el('span', 'vs-seedmark__k', 'This universe'));
+
+    seedField.append(seedLabel, seedRow, seedHint, seedMark);
 
     // --- opponent
     this._diffGroup = this._choice(
@@ -489,6 +617,7 @@ export class Shell {
 
     fields.append(seedField, this._diffGroup.field, this._qualGroup.field);
     inner.appendChild(fields);
+    this._paintSeedField();
 
     const actions = el('div', 'vs-actions');
     const back = button('vs-btn vs-btn--ghost', 'Back');
@@ -560,7 +689,36 @@ export class Shell {
     const s = this._makeScreen('briefing');
     s.setAttribute('aria-label', 'Briefing');
     const inner = s.querySelector('.vs-screen__inner');
-    this._head(inner, 'Briefing · step 2 of 2', 'Your orders');
+
+    /* The seed card rides beside the heading rather than under it, so the
+       screen gains a hero without gaining a row — the briefing already fills a
+       720p viewport and the columns below it are the part that must not be
+       pushed off the bottom. */
+    const head = el('div', 'vs-brief__head');
+    const headText = el('div', 'vs-brief__headtext');
+    this._head(headText, 'Briefing · step 2 of 2', 'Your orders');
+
+    const card = el('figure', 'vs-seed');
+    this._briefSigil = makeSigil('vs-sigil');
+    card.appendChild(this._briefSigil);
+    const cap = el('figcaption', 'vs-seed__body');
+    cap.appendChild(el('span', 'vs-seed__k', 'Seed'));
+    this._briefSeed = el('span', 'vs-seed__n', '');
+    cap.appendChild(this._briefSeed);
+    this._briefOpp = el('span', 'vs-seed__meta', '');
+    cap.appendChild(this._briefOpp);
+    cap.appendChild(
+      el(
+        'p',
+        'vs-seed__note',
+        'The mark is drawn from the number. Every hull, nebula, asteroid field '
+          + 'and opening move in the match ahead is drawn from it too.',
+      ),
+    );
+    card.appendChild(cap);
+
+    head.append(headText, card);
+    inner.appendChild(head);
 
     const cols = el('div', 'vs-brief');
 
@@ -593,6 +751,9 @@ export class Shell {
     const go = button('vs-btn vs-btn--primary', 'Take command');
     go.dataset.act = 'brief:launch';
     go.dataset.autofocus = 'true';
+    /* The seed used to be here, at 10 px in 30% grey beside Back. It is the
+       card at the top of the screen now; what is left is the reminder that it
+       is not the only thing this button is about to commit to. */
     this._briefSummary = el('p', 'vs-brief__seed', '');
     actions.append(this._briefSummary, back, go);
     inner.appendChild(actions);
@@ -961,6 +1122,22 @@ export class Shell {
       else s.removeAttribute('inert');
     }
     this.root.classList.toggle('is-blocking', blocked);
+
+    /* Round 1: "on the pause screen the production panel stays at full
+       brightness while everything else dims, and the dim is a flat opacity
+       drop with no blur, so live HUD text ghosts through behind the menu."
+
+       Both halves were true. The pause scrim is a left-to-right gradient — the
+       menu sits on the bright end, so by the right-hand edge it was only 24%
+       and the production panel was reading at three-quarter strength through
+       it. And a scrim over sharp 10 px mono leaves sharp 10 px mono.
+
+       `inert` already takes the HUD out of the tab order and the accessibility
+       tree while a menu is up; this takes it out of the picture as well. The
+       class goes on `<body>` because the HUD is a *previous* sibling of the
+       shell root, so no combinator on `.vs-shell` can reach it. */
+    const body = this.root.ownerDocument && this.root.ownerDocument.body;
+    if (body) body.classList.toggle('vs-blocked', blocked);
   }
 
   _focusFirst(scope) {
@@ -971,8 +1148,21 @@ export class Shell {
 
   _paintBriefing() {
     const d = DIFFICULTIES.find(([v]) => v === this.setup.difficulty);
-    this._briefSummary.textContent =
-      `Seed ${this.setup.seed || 'random'} · ${d ? d[1] : this.setup.difficulty} opponent`;
+    const q = QUALITIES.find(([v]) => v === this.setup.quality);
+    const seed = this.setup.seed || 'random';
+    this._briefSeed.textContent = seed;
+    this._briefOpp.textContent =
+      `${d ? d[1] : this.setup.difficulty} opponent · ${q ? q[1] : this.setup.quality} detail`;
+    this._briefSummary.textContent = 'Every asset in the match is built when you press this.';
+    paintSigil(this._briefSigil, seed);
+  }
+
+  /* The setup screen's copy of the mark, live under the seed field. A reroll
+     that only changes eight digits is a number changing; a reroll that redraws
+     the figure beside them is a universe changing, which is the thing the
+     field is actually for. */
+  _paintSeedField() {
+    paintSigil(this._setupSigil, this.setup.seed);
   }
 
   _teardown() {
@@ -1186,6 +1376,7 @@ export class Shell {
       case 'reroll':
         this.setup.seed = rollSeed();
         this._seedInput.value = this.setup.seed;
+        this._paintSeedField();
         break;
       case 'setup:back':
         this.go('title');
