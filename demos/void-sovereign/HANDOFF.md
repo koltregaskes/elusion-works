@@ -278,6 +278,104 @@ default to "not good enough" and to get harsher, not softer, over time.
 
 ## 5. Hard-won knowledge — read before you "fix" these again
 
+**A comment that asserts runtime behaviour is a measurement, and it goes
+stale like one.** Two instances landed in a single session, and both cost a
+round.
+
+`_samplePoints` in `core/camera.js` opened with a visibility gate, above a
+comment claiming `THREE.LOD` "leaves every level visible until its first
+`update()`, which has not happened yet at boot". **False in the running
+game.** By the time `frameOpeningShot` fires, the rig is still at its default
+2,600 m pose, the mothership is far enough away that `LOD.update()` has
+already selected level 1, and level 0 is hidden. The walk ate the finest level
+on its first line, returned zero meshes, and `_composeOpening` silently
+declined — so the opening shot was the spring default on every seed, elevation
+exactly −24.06°, for as long as that comment had been true-sounding.
+
+The tell was that a post-boot probe called the *same function* and got 9,033
+points back. Same code, different moment.
+
+The second: `styles/tutorial.css` carried "the rail is vertically centred,
+which collides with nothing at 1280x720". True when written, and false the
+moment the stance palette was docked into the roster and made that block ~68 px
+taller. Measured 8,576 px² of overlap.
+
+Both are the `setFleetScene()` family — correct code that never runs, or ran
+once under conditions that have since moved. **If a comment states a runtime
+fact, it needs a harness, not a sentence.** `.local/rail-clear.mjs` and the
+`openingSkip` guard in `camera.js` are what those two claims look like when
+they are checked instead of asserted.
+
+Corollary, learned the same session: every silent bail-out should record why it
+bailed. `_composeOpening` declining without a trace is what made a wrong
+diagnosis (the batched fleet renderer) survive long enough to reach a brief.
+
+**The GLSL backtick trap has now bitten seven times, and `syntax-check.mjs`
+does not catch every form of it.** Two more landed in a single session (a
+backtick around `` `k` `` and `` `position` `` in shader comments, then
+`` `cover` ``). The structural detector caught the first two by fingerprint.
+The third presented only as `Unexpected identifier 'cover'` with **no
+truncated-literal warning at all**, so a clean-looking failure message hid the
+real cause.
+
+A related variant costs just as much and is not a backtick: a replacement that
+closes a block comment early, leaving prose loose inside a shader string.
+`syntax-check` passes it, because it is still a valid template literal. Only
+reading the file finds it.
+
+Rule: when a shader file fails to parse and the message names an identifier you
+recognise as English prose, look for an unterminated template literal or an
+early `*/` before you look anywhere else.
+
+**Fix your instrument before you tune anything.** A whole round of pacing work
+was spent tuning against numbers that turned out to be noise, and the noise was
+entirely mine.
+
+The tell: the same seed, same settings, run three times, gave 17.2, 14.0 and
+35.0 minutes with different winners. Two harness faults, both invisible until
+measured. The render loop advanced the sim while the harness waited for the
+match to become ready, and only then took over and injected the second
+commander — so every run began manual ticking from a different state with the
+opponent joining late by a varying amount. And state persisted between matches
+inside one page, so the first match in a page did not match later ones.
+
+The sim itself is exactly reproducible: same seed, fresh page, three runs,
+identical duration, winner, seams and entity count. **If a measurement varies,
+suspect the harness before the code.** Every soak now records
+`ticksBeforeTakeover`, which must be 0, and uses a fresh page per seed.
+
+**Entity ids are behaviour, not labels — reset them with the world.** `ai.js`
+picks sensor sources with `(e.id & 3) === 0`, `combat.js` sets the flee timer
+from `e.id % 7` and the retarget phase from `e.id % 13`. The id counter was
+module-level and survived a world rebuild, so a restart numbered its ships from
+wherever the last match stopped and all three phases shifted. The result was a
+restart that could not reproduce its own seed, on a demo whose entire pitch is
+that everything derives from one seed. A tick-0 diff was byte-identical and the
+runs still forked inside 30 ticks — the state looked right and the *phase* was
+wrong. If you add another `id %` anywhere, this constraint comes with it.
+
+**Prove which code path actually runs before you believe a fix landed.** This
+has now cost the project twice, and both times the code was correct.
+
+The first was `setFleetScene()`: never called, so the batch root was unparented
+and the fleet did not draw at all. It invalidated a "draw calls are flat"
+claim that had already been reported as good news.
+
+The second was the contested band. `generateResourceClusters` + `markContested`
+in `sim/spawn.js` produce 4–8 contested clusters on every seed — measured over
+40 seeds, histogram `{4:30, 6:9, 8:1}`, mean 4.55, not one seed with none. But
+`resolveResourceClusters` prefers `environment.resourceClusters` when present,
+and it is *always* present. Measured in the running world, **5 seeds in 8 had
+zero contested clusters**, which made the sovereignty victory condition
+unreachable and the whole seam economy inert — on the majority of matches, the
+mechanic written specifically to stop 12:1 stalemates was not running at all.
+A previous agent's fix for mirror-match bias went into that same bypassed path.
+
+The tell in both cases was that the unit-level measurement was clean and the
+integrated measurement was never taken. A generator that produces the right
+answer is not evidence that anything consumes it. Measure the field the running
+game actually uses.
+
 **Sky is equirectangular, not a cubemap. Do not convert it back.**
 Hard straight lines were cutting across the sky. After bisecting the scene
 graph, post-processing, the HUD and the dust, the cause was **cube-map seams**:

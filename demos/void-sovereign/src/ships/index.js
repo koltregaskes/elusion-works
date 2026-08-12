@@ -80,12 +80,30 @@ function callMat(fn, ...args) {
 }
 
 /* `length` drives plate density: the `bulwark` family spans a 46 m collector to
-   a 380 m destroyer, and without it both would be issued the same plating. */
+   a 380 m destroyer, and without it both would be issued the same plating.
+
+   The `instanced` variant is asked for unconditionally, including for the three
+   unbatched hulls that are drawn as plain Meshes, and that is deliberate.
+
+   [MAT] defines `VS_ATTRIBS` only on the instanced material. That define is
+   what declares the per-vertex `aVariant` attribute every part in greeble.js
+   writes, and `aVariant` is what offsets the macro-texture slot — belt armour
+   away from superstructure panelling away from exposed machinery. Without it
+   `fv = uVariant` for every fragment on the model, so a 1,900 m mothership drew
+   its entire skin from one macro layer: no panel-to-panel value change
+   anywhere, which is exactly the "uniform grey albedo" the round-1 critique
+   called out, and it hit the mothership, the carrier and the cruiser — the
+   three hulls the eye spends longest on.
+
+   Using the instanced material on a plain Mesh is safe. Three.js sets
+   USE_INSTANCING per object, not per material, so the vertex path is unchanged;
+   the two other attributes the define declares, `aDamage` and `aTeam`, are
+   simply absent, and an absent attribute reads the generic default of 0 — which
+   is the value the material's own contract already documents as the no-op. */
 function hullMaterial(team, family, instanced, length) {
   const opts = length ? { length } : undefined;
-  const m = instanced
-    ? callMat(MATLIB && MATLIB.getInstancedHullMaterial, team, family, opts)
-    : callMat(MATLIB && MATLIB.getHullMaterial, team, family, opts);
+  const m = callMat(MATLIB && MATLIB.getInstancedHullMaterial, team, family, opts)
+    || (instanced ? null : callMat(MATLIB && MATLIB.getHullMaterial, team, family, opts));
   if (m) return m;
   return fallbackMaterial(`hull:${team}:${family}:${instanced ? 1 : 0}`, () => {
     const c = TEAM_COLORS[team] || FALLBACK_TEAM_COLORS[0];

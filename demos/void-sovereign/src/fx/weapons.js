@@ -23,10 +23,28 @@ import { bus } from '../core/events.js';
 const TRACER_STRIDE = 16;
 /* 0..2 origin | 3..5 vel | 6..9 spawn,life,width,length | 10..13 rgb,bright | 14..15 head,seed */
 
+/* A round is two shells, not one strip.
+
+     shell 0  halo   ~2.4x bore, soft-edged, firmly team-coloured. This is the
+                     thing that survives at four kilometres and the thing that
+                     says whose gun fired.
+     shell 1  core   ~0.4x bore, near-white, hard-edged. This is what reads as
+                     *hot* once the camera is close enough to resolve it.
+
+   Both taper: full bore just behind the nose and pinched to nothing where the
+   trail runs out, because a strip of constant width from one end to the other
+   is a drawn line and no amount of colour rescues it. Both also lose radiance
+   as the screen floor spreads them over more pixels than they physically
+   occupy, so a shot at 6 km reads as further away than a shot at 600 m instead
+   of brighter — which is what the old "1.0 + 1.1 * vClamp" lift did.
+   (No backticks in this comment on purpose: it sits directly above a GLSL
+   template literal, and a stray one here is the project's most expensive
+   recurring bug — see HANDOFF §5.) */
 const TRACER_VERT = /* glsl */ `
 #include <common>
 #include <logdepthbuf_pars_vertex>
 
+attribute float aShell;
 attribute vec3 iOrigin;
 attribute vec3 iVel;
 attribute vec4 iTime;
@@ -42,6 +60,8 @@ varying float vEnv;
 varying float vBright;
 varying float vFragW;
 varying float vClamp;
+varying float vShell;
+varying float vSpread;
 
 void main() {
   float t = uTime - iTime.x;
@@ -61,18 +81,33 @@ void main() {
   // the round head is all that is visible at that angle anyway.
   side = sl > 1e-4 ? side / sl : normalize( cross( dirW, vec3( 0.371, 0.664, 0.649 ) ) );
 
-  /* Screen floor. A 0.5 m round at 4 km is a fifth of a pixel; without these
-     two clamps a fleet action is an empty starfield with some noise in it. */
-  float wFloor = dist * uPixelScale * 3.6;
-  float width = max( iTime.z, wFloor );
-  vClamp = clamp( 1.0 - iTime.z / max( width, 0.0001 ), 0.0, 1.0 );
-  width *= alive;
-  float len = max( iTime.w, dist * uPixelScale * 30.0 );
+  float core = step( 0.5, aShell );
+  float shellW = mix( 2.40, 0.40, core );
+  /* Screen floor, per shell. A 0.5 m round at 4 km is a fifth of a pixel;
+     without a floor a fleet action is an empty starfield with some noise in it.
+     The core's floor is deliberately near one pixel — it is a filament, and a
+     filament floored to four pixels is just a second halo. */
+  float shellPx = mix( 3.20, 1.05, core );
+
+  float natural = iTime.z * shellW;
+  float floorW = dist * uPixelScale * shellPx;
+  float width = max( natural, floorW );
+  vClamp = clamp( 1.0 - natural / max( width, 0.0001 ), 0.0, 1.0 );
+  vSpread = pow( clamp( natural / max( width, 0.0001 ), 0.05, 1.0 ), 0.40 );
+
+  /* The taper. uv.y is 0 at the tail and 1 at the nose, so this is a wedge
+     with a slight pinch at the very tip — a round with its wake behind it,
+     rather than a rectangle. */
+  float taper = pow( uv.y, 0.62 ) * ( 1.0 - 0.34 * smoothstep( 0.94, 1.0, uv.y ) );
+  width *= taper * alive;
+
+  float len = max( iTime.w, dist * uPixelScale * 26.0 );
 
   vec3 wp = p - dirW * ( len * ( 1.0 - uv.y ) ) + side * ( ( uv.x - 0.5 ) * width );
   gl_Position = projectionMatrix * viewMatrix * vec4( wp, 1.0 );
 
   vUv = uv;
+  vShell = aShell;
   vColor = iTint.rgb;
   vBright = iTint.w;
   vEnv = alive * smoothstep( 0.0, 0.015, t ) * ( 1.0 - smoothstep( 0.88, 1.0, age ) );
@@ -92,6 +127,8 @@ varying float vEnv;
 varying float vBright;
 varying float vFragW;
 varying float vClamp;
+varying float vShell;
+varying float vSpread;
 
 void main() {
   #include <logdepthbuf_fragment>
@@ -99,17 +136,28 @@ void main() {
   float across = abs( vUv.x * 2.0 - 1.0 );
   float lat = max( 1.0 - across * across, 0.0 );
 
-  /* Far away the round is a pixel wide, so the lateral falloff has to collapse
-     into a solid bar — a soft gradient across three pixels is invisible. */
-  float lateral = mix( lat, pow( lat, 0.35 ), vClamp );
-  float tail = pow( along, mix( 2.8, 1.6, vClamp ) ) * lateral;
-  float head = smoothstep( 0.74, 1.0, along ) * exp( -across * across * mix( 5.5, 2.2, vClamp ) );
+  float a;
+  vec3 col;
+  if ( vShell > 0.5 ) {
+    /* Core. Hard across, and piled hard into the nose: the filament is the
+       projectile and the wake behind it is the halo's job. */
+    float lateral = pow( lat, mix( 0.60, 0.26, vClamp ) );
+    float head = smoothstep( 0.60, 1.0, along );
+    a = lateral * ( 0.22 + 0.72 * pow( along, 1.7 ) + 1.20 * head );
+    col = mix( vColor, vec3( 1.0 ), 0.52 + 0.42 * head ) * ( 1.05 + 2.5 * head );
+  } else {
+    /* Halo. Wide, soft, and never allowed to reach white — it is the only
+       part of a round that carries team colour at range (ARCHITECTURE §3.3),
+       and colour that clips is colour thrown away. */
+    float lateral = pow( lat, mix( 1.85, 0.95, vClamp ) );
+    float head = smoothstep( 0.52, 1.0, along );
+    a = lateral * ( 0.13 + 0.40 * pow( along, 2.4 ) + 0.34 * head ) * 0.58;
+    col = vColor * ( 0.50 + 1.00 * head );
+  }
 
-  float a = clamp( tail * 0.55 + head * 1.35, 0.0, 1.0 ) * vEnv * fxSoftFade( vFragW );
+  a = clamp( a, 0.0, 1.0 ) * vEnv * fxSoftFade( vFragW );
   if ( a <= 0.004 ) discard;
-  vec3 col = mix( vColor, vec3( 1.0 ), clamp( head * 1.25, 0.0, 1.0 ) )
-           * vBright * uGain * ( 0.85 + 2.4 * head ) * ( 1.0 + 1.1 * vClamp );
-  gl_FragColor = vec4( col, a );
+  gl_FragColor = vec4( col * vBright * uGain * vSpread, a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -385,6 +433,205 @@ void main() {
 }
 `;
 
+/* ------------------------------------------------------------------ flashes
+
+   A gun going off and a round landing were, until now, the *same sprite at the
+   same size with the same orientation*: one 4-point diffraction star, drawn
+   from `ctx.sprites.flare`, whose baked-in cross reads identically on every
+   muzzle and every impact in the frame. Massed, that is the single most
+   recognisable particle-system-from-a-tutorial tell in real-time graphics —
+   because no two real flashes are the same shape, and a viewer who cannot say
+   why still sees a repeat.
+
+   This is a family of four, in one 2x2 atlas and therefore still one texture
+   and one draw call, with per-instance rotation, spin, scale and lifetime on
+   top. Muzzle and impact draw from different halves of the family with
+   different size and duration distributions, so they stop being interchangeable
+   even before the colour and the ejecta differ.
+
+   Mips are deliberately off. These are 2-11 px quads with an alpha profile that
+   reaches zero well inside its own cell, so nothing needs minifying — and a
+   generated mip chain on an atlas smears neighbouring cells together, which is
+   the same trap the dust atlas fell into (HANDOFF §5). */
+
+const FLASH_VARIANTS = 4;
+
+/* Per-cell shape. `spikes` are one-sided rays so an odd count reads as
+   genuinely irregular rather than as a rotated even star. */
+const FLASH_SHAPES = [
+  // 0 · classic four-point, thin and long. Still in the family — just no
+  //     longer the *only* member.
+  { core: 150, halo: 5.5, haloW: 0.30, rays: [0, 90, 180, 270], len: 0.94, w: 0.028, vary: 0.10 },
+  // 1 · six-point, uneven arm lengths, fat soft centre.
+  { core: 90, halo: 3.4, haloW: 0.44, rays: [12, 68, 131, 190, 251, 310], len: 0.62, w: 0.021, vary: 0.42 },
+  // 2 · no rays at all: a pure bloom. The one that stops a carpet of impacts
+  //     reading as a field of asterisks.
+  { core: 60, halo: 2.6, haloW: 0.62, rays: [], len: 0, w: 0, vary: 0 },
+  // 3 · three ragged arms, off-balance — an obviously asymmetric burst.
+  { core: 110, halo: 4.2, haloW: 0.34, rays: [24, 150, 265], len: 0.84, w: 0.046, vary: 0.55 },
+];
+
+function flashAtlas(size = 256) {
+  const c = document.createElement('canvas');
+  c.width = size;
+  c.height = size;
+  const g = c.getContext('2d');
+  const img = g.createImageData(size, size);
+  const half = size / 2;
+
+  for (let cell = 0; cell < FLASH_VARIANTS; cell++) {
+    const s = FLASH_SHAPES[cell];
+    const ox = (cell % 2) * half;
+    const oy = Math.floor(cell / 2) * half;
+    // Arm amplitudes are a fixed irrational walk, so the atlas is identical on
+    // every machine and every seed — this is geometry, not content.
+    const amp = s.rays.map((_, i) => 1 - s.vary * ((i * 0.6180339887) % 1));
+    const rad = s.rays.map((d) => (d * Math.PI) / 180);
+
+    for (let y = 0; y < half; y++) {
+      const ny = (y + 0.5) / half * 2 - 1;
+      for (let x = 0; x < half; x++) {
+        const nx = (x + 0.5) / half * 2 - 1;
+        const r2 = nx * nx + ny * ny;
+        let a = Math.exp(-r2 * s.core) + Math.exp(-r2 * s.halo) * s.haloW;
+        for (let i = 0; i < rad.length; i++) {
+          const ca = Math.cos(rad[i]);
+          const sa = Math.sin(rad[i]);
+          const along = nx * ca + ny * sa;
+          if (along <= 0) continue;
+          const across = -nx * sa + ny * ca;
+          const fall = Math.max(0, 1 - along / s.len);
+          a += Math.exp(-(across * across) / (s.w * s.w)) * fall * fall * amp[i] * 0.85;
+        }
+        /* Hard window to zero before the cell border. Without it a bright arm
+           runs into the neighbouring cell and every variant grows a stub of the
+           one beside it. */
+        const r = Math.sqrt(r2);
+        const win = r >= 1 ? 0 : (1 - r) * (1 - r) * (3 - 2 * Math.min(1, r));
+        a = Math.min(1, a) * Math.min(1, win * 1.6);
+        const o = ((oy + y) * size + (ox + x)) * 4;
+        img.data[o] = 255;
+        img.data[o + 1] = 255;
+        img.data[o + 2] = 255;
+        img.data[o + 3] = Math.round(a * 255);
+      }
+    }
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = THREE.ClampToEdgeWrapping;
+  t.wrapT = THREE.ClampToEdgeWrapping;
+  t.minFilter = THREE.LinearFilter;
+  t.magFilter = THREE.LinearFilter;
+  t.generateMipmaps = false;
+  t.needsUpdate = true;
+  return t;
+}
+
+const FLASH_STRIDE = 18;
+/* 0..2 pos | 3..5 vel | 6..9 spawn,life,rot0,spin | 10..11 size0,size1
+   12..15 rgb,bright | 16..17 variant,capPx */
+
+const FLASH_VERT = /* glsl */ `
+#include <common>
+#include <logdepthbuf_pars_vertex>
+
+attribute vec3 iPos;
+attribute vec3 iVel;
+attribute vec4 iTime;
+attribute vec2 iSize;
+attribute vec4 iTint;
+attribute vec2 iMisc;
+
+uniform float uTime;
+uniform float uPixelScale;
+uniform float uMinPixels;
+
+varying vec2 vUv;
+varying vec2 vQuad;
+varying vec3 vColor;
+varying float vBright;
+varying float vAlpha;
+varying float vFragW;
+varying float vClamp;
+varying float vSpread;
+
+void main() {
+  float t = uTime - iTime.x;
+  float life = max( iTime.y, 0.0001 );
+  float age = clamp( t / life, 0.0, 1.0 );
+  float alive = step( 0.0, t ) * step( age, 0.9999 );
+
+  vec3 wp = iPos + iVel * max( t, 0.0 );
+  vec4 mv = viewMatrix * vec4( wp, 1.0 );
+  float dist = max( -mv.z, 1.0 );
+
+  float natural = mix( iSize.x, iSize.y, age );
+  // Same per-event ceiling on the screen floor the flare field carries: a
+  // carpet of muzzle flashes must not all paint the same disc (see shotCeiling).
+  float capPx = iMisc.y > 0.0 ? min( uMinPixels, iMisc.y ) : uMinPixels;
+  float size = max( natural, dist * uPixelScale * capPx );
+  vClamp = clamp( 1.0 - natural / max( size, 0.0001 ), 0.0, 1.0 );
+  vSpread = pow( clamp( natural / max( size, 0.0001 ), 0.04, 1.0 ), 0.32 );
+  size *= alive;
+
+  float rot = iTime.z + iTime.w * t;
+  float c = cos( rot );
+  float s = sin( rot );
+  mv.xy += vec2( position.x * c - position.y * s, position.x * s + position.y * c ) * size;
+  gl_Position = projectionMatrix * mv;
+
+  // 2x2 atlas, inset a texel so no arm can bleed into the cell next door.
+  float v = floor( iMisc.x + 0.5 );
+  vec2 cellOrigin = vec2( mod( v, 2.0 ), floor( v * 0.5 ) ) * 0.5;
+  vUv = cellOrigin + 0.008 + uv * 0.484;
+
+  vQuad = uv;
+  vColor = iTint.rgb;
+  vBright = iTint.w;
+  vAlpha = pow( 1.0 - age, 1.25 ) * alive;
+  vFragW = gl_Position.w;
+  #include <logdepthbuf_vertex>
+}
+`;
+
+const FLASH_FRAG = /* glsl */ `
+#include <common>
+#include <logdepthbuf_pars_fragment>
+#SOFT_PARS
+
+uniform sampler2D uMap;
+
+varying vec2 vUv;
+varying vec2 vQuad;
+varying vec3 vColor;
+varying float vBright;
+varying float vAlpha;
+varying float vFragW;
+varying float vClamp;
+varying float vSpread;
+
+void main() {
+  #include <logdepthbuf_fragment>
+  vec4 texel = texture2D( uMap, vUv );
+  float a = fxSharpen( texel.a, vClamp ) * fxQuadMask( vQuad ) * vAlpha * fxSoftFade( vFragW );
+  if ( a <= 0.0035 ) discard;
+  gl_FragColor = vec4( vColor * texel.rgb * vBright * uGain * ( 1.0 + 0.9 * vClamp ) * vSpread, a );
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}
+`;
+
+const FLASH_ATTRS = [
+  { name: 'iPos', size: 3, offset: 0 },
+  { name: 'iVel', size: 3, offset: 3 },
+  { name: 'iTime', size: 4, offset: 6 },
+  { name: 'iSize', size: 2, offset: 10 },
+  { name: 'iTint', size: 4, offset: 12 },
+  { name: 'iMisc', size: 2, offset: 16 },
+];
+
 const EXHAUST_STRIDE = 8;
 /* 0..2 pos | 3..5 rgb | 6 size | 7 seed */
 
@@ -548,6 +795,20 @@ const EXHAUST_ATTRS = [
 const FLAK_BURST = new THREE.Color(0xffb264);
 const FLAK_SMOKE = new THREE.Color(0x6b6259);
 const HOT_WHITE = new THREE.Color(0xffffff);
+/* A hull hit is *matter* failing, and it must never be mistaken for a shield
+   hit, which is *field* discharging. Shields get the team trim and skid their
+   sparks tangentially across a lattice; a hull hit gets none of the livery —
+   white-hot metal, molten orange spall thrown out along the surface normal,
+   and a dirty soot puff that a shield can never produce. */
+const HULL_HOT = new THREE.Color(0xfff1cf);
+const HULL_MOLTEN = new THREE.Color(0xff7a24);
+const HULL_SOOT = new THREE.Color(0x3a332e);
+
+/* Distributions over the flash family. Muzzle runs spiky, impact runs bloom-led.
+   Repeats are the weighting. */
+const MUZZLE_SET = [0, 1, 3, 1];
+const IMPACT_SET = [2, 3, 2, 1];
+const BURST_SET = [1, 3, 2, 0];
 
 /* Screen ceiling, in pixels, for the two effects that fire hundreds of times a
    second in a fleet action: a gun going off and a round landing.
@@ -566,18 +827,31 @@ function shotCeiling(damage) {
 /** Sim rate (ARCHITECTURE §0). Tracer length is quoted in sim ticks of travel. */
 const SIM_HZ = 30;
 
+/* Live missile smoke ribbons allowed at once, across the whole battle.
+
+   The budget alone (220 at high quality) is not a cap on what the *eye* can
+   take: a salvo exchange put ~30 ribbons across the middle of frame at once and
+   they stopped reading as ordnance and started reading as scratches on a film
+   print. Beyond about a dozen no additional information reaches the player —
+   the thirteenth missile is already covered by the first twelve — so the ones
+   that miss out simply fly on their exhaust flare, which is what a missile past
+   the front of a salvo looks like anyway. */
+const MAX_MISSILE_TRAILS = 12;
+
 export class WeaponFX {
   constructor(ctx) {
     this.ctx = ctx;
-    this.drawCalls = 4;
+    this.drawCalls = 5;
 
     this._quadGeo = quadGeometry();
+    this._tracerGeo = shellQuadGeometry(2);
     this._beamGeo = shellQuadGeometry(3);
     this._missileGeo = missileGeometry();
+    this._flashTex = flashAtlas();
 
     this.tracers = ctx.instanceBatch({
       name: 'tracers',
-      base: this._quadGeo,
+      base: this._tracerGeo,
       attributes: TRACER_ATTRS,
       stride: TRACER_STRIDE,
       capacity: ctx.budget.tracers,
@@ -586,6 +860,23 @@ export class WeaponFX {
       renderOrder: 15,
       softness: 8,
       nearFade: 14,
+    });
+
+    /* Sized well under the flare field: a flash lives 0.08-0.35 s, so even at
+       the several-hundred-rounds-a-second a fleet action fires, the live
+       population sits in the low hundreds. */
+    this._flashCap = Math.max(128, Math.round(ctx.budget.flare * 0.28));
+    this.flashes = ctx.instanceBatch({
+      name: 'weaponFlashes',
+      base: this._quadGeo,
+      attributes: FLASH_ATTRS,
+      stride: FLASH_STRIDE,
+      capacity: this._flashCap,
+      vertexShader: FLASH_VERT,
+      fragmentShader: FLASH_FRAG,
+      uniforms: { uMap: { value: this._flashTex }, uMinPixels: { value: 5.5 } },
+      renderOrder: 14,
+      softness: 12,
     });
 
     this.beams = ctx.instanceBatch({
@@ -640,8 +931,43 @@ export class WeaponFX {
     this._tracerFree = [];
     for (let i = ctx.budget.tracers - 1; i >= 0; i--) this._tracerFree.push(i);
 
+    // Same LIFO free-list pattern as the tracers, so live flashes stay packed
+    // near zero and only the high-water mark is uploaded and drawn.
+    this._flashes = [];
+    this._flashFree = [];
+    for (let i = this._flashCap - 1; i >= 0; i--) this._flashFree.push(i);
+
     this._beams = [];
     this._missiles = [];
+    this._missileTrails = 0;
+
+    /* A missile's wake is two ribbons, and it has to be, because the two halves
+       of "white-hot at the nozzle cooling to dark smoke" cannot live on one
+       blend mode.
+
+       The *smoke* is normal-blended — it occludes, which is what smoke does —
+       and on that layer a genuinely cold tail over near-black space is
+       invisible by construction. Ramping it to black therefore deletes the tail
+       rather than cooling it, and what is left is a uniform pale hairline: the
+       original complaint, unchanged. So the smoke ramp runs bright warm grey to
+       dark warm grey and lets the width taper and the alpha do the vanishing.
+
+       The *heat* is a second, much shorter additive ribbon on the glow layer.
+       That is the only place white-hot can actually be white-hot — it clears
+       the bloom threshold — and it is what carries the team hue a few tens of
+       metres behind the nozzle before the smoke takes over. Both ribbons ride
+       batches that already exist, so this is two more strips, not two more
+       draw calls. */
+    this._smokeRamps = ctx.teamColors.map(() => [
+      new THREE.Color(0xe8ddcc),
+      new THREE.Color(0x8a7f74),
+      new THREE.Color(0x2a2724),
+    ]);
+    this._heatRamps = ctx.teamColors.map((t) => [
+      new THREE.Color(0xfffaf0),
+      new THREE.Color(t.engine),
+      new THREE.Color(t.engine).multiplyScalar(0.18),
+    ]);
 
     this._v = new THREE.Vector3();
     this._v2 = new THREE.Vector3();
@@ -688,35 +1014,59 @@ export class WeaponFX {
     }
   }
 
-  /** `sim:damage` with shield:false — scorch and spall on the hull itself. */
+  /** `sim:damage` with shield:false — scorch and spall on the hull itself.
+
+      Deliberately built to be unmistakable against `shields.js`. A shield hit is
+      clean, team-coloured, laterally spread across a hex lattice, and leaves
+      nothing behind. A hull hit is dirty: no livery anywhere in it, a white-hot
+      core over molten orange, spall thrown *out along the plate normal* as
+      stretched streaks rather than dots, and a soot puff on every hit that a
+      field discharge has no way to produce. Told apart in a single frame, at any
+      range where either is legible at all. */
   hullImpact(p) {
     const pt = p.point;
     if (!pt) return;
     const n = p.normal || this._v.set(0, 1, 0);
     const amount = Math.max(1, p.amount || 10);
     const mag = Math.min(6.0, 0.9 + Math.sqrt(amount) * 0.30);
-    const f = this.ctx.fields;
+    const ctx = this.ctx;
+    const f = ctx.fields;
+    const rng = ctx.rng;
+    const jitter = 0.74 + rng.next() * 0.56;
 
-    // White core, then an orange bloom: the difference between "hit" and
-    // "nothing happened" at four kilometres.
     const capPx = shotCeiling(amount);
-    f.flare.spawn(pt.x, pt.y, pt.z, 0, 0, 0, 0.13, 0,
-      mag * 11, mag * 2.4, HOT_WHITE, 4.2, 0, 0, capPx);
-    f.flare.spawn(pt.x, pt.y, pt.z, 0, 0, 0, 0.30, 0,
-      mag * 4, mag * 20, FLAK_BURST, 2.0, 0, 0, capPx * 1.4);
-    this._sparkBurst(pt, n, Math.round(8 + mag * 4), 0.55, 60 + amount * 0.9, mag * 2.0);
+    this._flash(pt.x, pt.y, pt.z, 0, 0, 0,
+      0.10 + rng.next() * 0.07, mag * 9 * jitter, mag * 2.0, HULL_HOT, 4.0, capPx, IMPACT_SET);
+    // Molten wash, blown a little way back out of the hole it just made.
+    f.flare.spawn(pt.x + n.x * mag * 0.6, pt.y + n.y * mag * 0.6, pt.z + n.z * mag * 0.6,
+      n.x * 26, n.y * 26, n.z * 26, 0.30, 2.2,
+      mag * 4, mag * 19 * jitter, HULL_MOLTEN, 1.9, 0, 0, capPx * 1.4);
+    /* Stretched, not round: `stretch` elongates the billboard along its own
+       velocity, so spall reads as metal being thrown rather than as a spray of
+       identical dots. */
+    this._sparkBurst(pt, n, Math.round(9 + mag * 5), 0.42, 70 + amount * 1.1, mag * 1.9);
 
-    if (amount > 25) {
-      const rng = this.ctx.rng;
-      for (let i = 0; i < 2; i++) {
-        // No drag in vacuum: the ejecta keeps going and simply thins out.
-        f.smoke.spawn(
-          pt.x, pt.y, pt.z,
-          n.x * 14 + rng.gaussian(0, 9), n.y * 14 + rng.gaussian(0, 9), n.z * 14 + rng.gaussian(0, 9),
-          1.4 + rng.next() * 1.0, 0.12, mag * 4, mag * 20,
-          FLAK_SMOKE, 0.8, 0, rng.gaussian(0, 1.2),
-        );
-      }
+    // Soot on every hit, not only the big ones — this is the tell that says
+    // "the plate is open" and it is the half a shield can never fake.
+    const puffs = amount > 25 ? 2 : 1;
+    for (let i = 0; i < puffs; i++) {
+      // No drag in vacuum: the ejecta keeps going and simply thins out.
+      f.smoke.spawn(
+        pt.x, pt.y, pt.z,
+        n.x * 16 + rng.gaussian(0, 8), n.y * 16 + rng.gaussian(0, 8), n.z * 16 + rng.gaussian(0, 8),
+        1.2 + rng.next() * 1.1, 0.12, mag * 3.4, mag * 17,
+        HULL_SOOT, 0.85, 1.1, rng.gaussian(0, 1.2),
+      );
+    }
+    // Two or three fat molten gobbets that outlive the flash and arc away.
+    for (let i = 0; i < 2 + (amount > 40 ? 1 : 0); i++) {
+      const u = rng.unitVector();
+      const s = (34 + amount * 0.7) * rng.range(0.5, 1.4);
+      f.ember.spawn(
+        pt.x, pt.y, pt.z,
+        n.x * s * 0.8 + u.x * s * 0.5, n.y * s * 0.8 + u.y * s * 0.5, n.z * s * 0.8 + u.z * s * 0.5,
+        rng.range(0.5, 1.3), 0.2, mag * 1.1, mag * 0.2, HULL_MOLTEN, 2.2, 2.4, 0,
+      );
     }
   }
 
@@ -797,8 +1147,10 @@ export class WeaponFX {
     const f = this.ctx.fields;
     const scale = 1.6 + Math.sqrt(dmg) * 0.34;
 
-    f.flare.spawn(x, y, z, 0, 0, 0, 0.18, 0, 34 * scale, 7 * scale, HOT_WHITE, 5.0, 0, 0);
-    f.flare.spawn(x, y, z, 0, 0, 0, 0.40, 0, 13 * scale, 48 * scale, FLAK_BURST, 2.4, 0, 0);
+    const j = 0.76 + rng.next() * 0.52;
+    this._flash(x, y, z, 0, 0, 0, 0.15 + rng.next() * 0.09,
+      30 * scale * j, 7 * scale, HOT_WHITE, 4.6, 0, BURST_SET);
+    f.flare.spawn(x, y, z, 0, 0, 0, 0.40, 0, 13 * scale, 48 * scale * j, FLAK_BURST, 2.4, 0, 0);
 
     const puffs = Math.round(3 + 2 * this.ctx.qscale);
     for (let i = 0; i < puffs; i++) {
@@ -843,10 +1195,31 @@ export class WeaponFX {
     const dist = Math.max(1, Math.hypot(dx, dy, dz));
     const speed = w.projectileSpeed || 900;
 
+    /* Launch spread. Six missiles leaving one bay at one bearing fly six
+       near-identical curves, and because they also share a wobble phase those
+       curves land in a plane — which is the emitter's spline drawn on screen in
+       smoke. Kicking each round onto its own initial bearing and letting the
+       seeker pull it back in is what a salvo actually looks like, and it is the
+       only fix that survives the missiles converging on the same target. */
+    const dir = new THREE.Vector3(dx / dist, dy / dist, dz / dist);
+    const ax = Math.abs(dir.x);
+    const ay = Math.abs(dir.y);
+    const az = Math.abs(dir.z);
+    const perp = this._v3;
+    if (ax <= ay && ax <= az) perp.set(1, 0, 0);
+    else if (ay <= az) perp.set(0, 1, 0);
+    else perp.set(0, 0, 1);
+    perp.crossVectors(dir, perp).normalize();
+    const perp2 = this._v2.crossVectors(dir, perp).normalize();
+    const spread = 0.17 + rng.next() * 0.13;
+    dir.addScaledVector(perp, rng.gaussian(0, spread));
+    dir.addScaledVector(perp2, rng.gaussian(0, spread));
+    dir.normalize();
+
     this._col.copy(team.engine).lerp(HOT_WHITE, 0.25);
     const m = {
       pos: new THREE.Vector3(from.x, from.y, from.z),
-      dir: new THREE.Vector3(dx / dist, dy / dist, dz / dist),
+      dir,
       right: new THREE.Vector3(),
       speed: speed * 0.45,
       maxSpeed: speed,
@@ -858,12 +1231,42 @@ export class WeaponFX {
       damage: w.damage || 20,
       seed: rng.next(),
       turn: 1.5 + rng.next() * 1.2,
+      /* Per-missile wobble. Shared frequencies made a salvo breathe in unison
+         however different its phases were; a spread of rates is what makes six
+         ribbons diverge instead of nesting. */
+      wobA: 0.16 + rng.next() * 0.22,
+      wobF1: 5.4 + rng.next() * 4.4,
+      wobF2: 3.6 + rng.next() * 3.6,
+      // Metres of lateral offset fed to the ribbon, so the smoke wanders off
+      // the flight path the way a real exhaust column does.
+      jitA: 1.6 + rng.next() * 3.4,
+      jitF: 2.1 + rng.next() * 2.8,
       colour: new THREE.Color(this._col),
       body: new THREE.Color(0x9aa2a8),
       len: 3.4 + Math.sqrt(w.damage || 20) * 0.26,
-      trail: ctx.fields.smokeTrail.acquire(0x8d8a86, 3.4, 1.5, 9),
+      trail: null,
+      heat: null,
       quat: new THREE.Quaternion(),
     };
+    if (this._missileTrails < MAX_MISSILE_TRAILS) {
+      const ti = (p.shooter && p.shooter.team) || 0;
+      /* Life was 1.5 s, which at 900 m/s laid 1.3 km of ribbon per missile and
+         is why a dozen of them tiled the middle of the frame for the whole
+         engagement. 0.55 s is roughly a hundred body-lengths of smoke — plainly
+         ordnance, gone before it becomes scenery. */
+      /* 9 m of column behind a 6 m body. Narrower than this and the ribbon is a
+         one-pixel wire at any range a player actually watches from, which is
+         the "drawn line" read however well it tapers or ramps — width is what
+         makes it read as a volume of smoke rather than as ink. */
+      m.trail = ctx.fields.smokeTrail.acquire(
+        0x8d8a86, 9.0, 0.48, 11, this._smokeRamps[ti] || this._smokeRamps[0],
+      );
+      // A third of the smoke's life: the flame is out long before the soot is.
+      m.heat = ctx.fields.trail.acquire(
+        team.engine, 2.4, 0.18, 8, this._heatRamps[ti] || this._heatRamps[0],
+      );
+      if (m.trail) this._missileTrails++;
+    }
     m.quat.setFromUnitVectors(this._zAxis, m.dir);
     this._missiles.push(m);
     this._muzzle(from, m.dir.x, m.dir.y, m.dir.z, w.damage || 20, team, 0.75);
@@ -871,16 +1274,23 @@ export class WeaponFX {
 
   _detonateMissile(m, hit) {
     const ctx = this.ctx;
-    if (m.trail) ctx.fields.smokeTrail.detach(m.trail);
+    if (m.trail) {
+      ctx.fields.smokeTrail.detach(m.trail);
+      this._missileTrails = Math.max(0, this._missileTrails - 1);
+    }
+    if (m.heat) ctx.fields.trail.detach(m.heat);
     m.trail = null;
+    m.heat = null;
     if (!hit) return;
     const rng = ctx.rng;
     const f = ctx.fields;
     const p = m.pos;
     const scale = 1 + Math.sqrt(m.damage) * 0.16;
 
-    f.flare.spawn(p.x, p.y, p.z, 0, 0, 0, 0.2, 0, 34 * scale, 7 * scale, HOT_WHITE, 4.0, 0, 0);
-    f.flare.spawn(p.x, p.y, p.z, 0, 0, 0, 0.5, 0, 12 * scale, 52 * scale, FLAK_BURST, 1.8, 0, 0);
+    const j = 0.76 + rng.next() * 0.52;
+    this._flash(p.x, p.y, p.z, 0, 0, 0, 0.16 + rng.next() * 0.10,
+      30 * scale * j, 7 * scale, HOT_WHITE, 4.0, 0, BURST_SET);
+    f.flare.spawn(p.x, p.y, p.z, 0, 0, 0, 0.5, 0, 12 * scale, 52 * scale * j, FLAK_BURST, 1.8, 0, 0);
     for (let i = 0; i < Math.round(4 * ctx.qscale) + 2; i++) {
       const u = rng.unitVector();
       f.smoke.spawn(
@@ -1004,6 +1414,61 @@ export class WeaponFX {
 
   /* --------------------------------------------------------------- helpers */
 
+  /* Which members of the flash family each event draws from, and how often.
+
+     A muzzle is a contained deflagration in a barrel and throws hard spikes; an
+     impact is spall off a plate and is mostly bloom with the odd ragged arm. The
+     lists overlap on purpose — they are two distributions over one family, not
+     two disjoint sprites — but a frame full of both never resolves into a
+     repeating asterisk, which is the whole complaint. */
+  _flash(x, y, z, vx, vy, vz, life, size0, size1, colour, bright, capPx, set) {
+    const rng = this.ctx.rng;
+    let slot = this._flashFree.pop();
+    if (slot === undefined) {
+      const oldest = this._flashes.shift();
+      if (!oldest) return;
+      slot = oldest.slot;
+    }
+    const d = this.flashes.data;
+    const o = slot * FLASH_STRIDE;
+    const now = this.ctx.now;
+    d[o] = x; d[o + 1] = y; d[o + 2] = z;
+    d[o + 3] = vx; d[o + 4] = vy; d[o + 5] = vz;
+    d[o + 6] = now;
+    d[o + 7] = life;
+    // Free rotation and a slow tumble. A star pinned to the screen axes is the
+    // give-away even when its shape varies.
+    d[o + 8] = rng.next() * Math.PI * 2;
+    d[o + 9] = rng.gaussian(0, 2.6);
+    d[o + 10] = size0;
+    d[o + 11] = size1;
+    d[o + 12] = colour.r; d[o + 13] = colour.g; d[o + 14] = colour.b;
+    d[o + 15] = bright;
+    d[o + 16] = set[rng.int(0, set.length - 1)];
+    d[o + 17] = capPx || 0;
+    this._flashes.push({ slot, death: now + life });
+  }
+
+  _writeFlashBuffer() {
+    const now = this.ctx.now;
+    for (let i = this._flashes.length - 1; i >= 0; i--) {
+      if (this._flashes[i].death > now) continue;
+      this._flashFree.push(this._flashes[i].slot);
+      this._flashes.splice(i, 1);
+    }
+    let hi = -1;
+    for (let i = 0; i < this._flashes.length; i++) {
+      if (this._flashes[i].slot > hi) hi = this._flashes[i].slot;
+    }
+    const n = hi + 1;
+    this.flashes.geometry.instanceCount = n;
+    if (n <= 0) return;
+    const b = this.flashes.buffer;
+    b.clearUpdateRanges();
+    b.addUpdateRange(0, n * FLASH_STRIDE);
+    b.needsUpdate = true;
+  }
+
   _entityPos(e, out) {
     const o = e.object3D ? e.object3D.position : e.position;
     return o ? out.copy(o) : out.set(0, 0, 0);
@@ -1049,13 +1514,18 @@ export class WeaponFX {
     const ctx = this.ctx;
     const rng = ctx.rng;
     const f = ctx.fields;
-    const size = (5.0 + 4.4 * Math.sqrt(Math.max(1, damage))) * gain;
+    /* Scale variation is not decoration. Two hundred flashes a second at
+       *exactly* one size is what makes a fleet action read as a repeating
+       stamp; +/-30% on size and +/-25% on duration is enough that no two in
+       frame measure the same, and no single one looks wrong. */
+    const jitter = 0.72 + rng.next() * 0.58;
+    const size = (5.0 + 4.4 * Math.sqrt(Math.max(1, damage))) * gain * jitter;
     const capPx = shotCeiling(damage);
 
     this._col2.copy(team.trim).lerp(HOT_WHITE, 0.55);
-    // Core flash, then a coloured cone blown down the barrel line.
-    f.flare.spawn(from.x, from.y, from.z, 0, 0, 0, 0.085, 0,
-      size, size * 0.3, HOT_WHITE, 5.0, 0, 0, capPx);
+    // Core flash from the family, then a coloured cone blown down the barrel.
+    this._flash(from.x, from.y, from.z, 0, 0, 0,
+      0.070 + rng.next() * 0.045, size, size * 0.26, HOT_WHITE, 4.6, capPx, MUZZLE_SET);
     f.flare.spawn(
       from.x + dx * size * 0.3, from.y + dy * size * 0.3, from.z + dz * size * 0.3,
       dx * 42, dy * 42, dz * 42, 0.17, 4, size * 0.8, size * 2.0, this._col2, 2.6, 0, 0,
@@ -1092,10 +1562,15 @@ export class WeaponFX {
       const my = ny * (1 - spread) + sy * spread;
       const mz = nz * (1 - spread) + sz * spread;
       const s = speed * rng.range(0.4, 1.6);
+      /* Stretch capped at 4.5, down from 8.0. A spark billboard elongated nine
+         times its own width is not a spark, it is a hairline — and a burst of
+         thirty of them radiating from an impact draws a wire star that is the
+         same tutorial tell as the flare sprite was. Long enough to read as
+         moving metal, short enough to stay a particle. */
       f.spark.spawn(
         point.x, point.y, point.z, mx * s, my * s, mz * s,
         rng.range(0.18, 0.62), 3.2, size * rng.range(0.6, 1.4), 0.25,
-        HOT_WHITE, 2.4, rng.range(2.5, 8.0), 0,
+        HOT_WHITE, 2.4, rng.range(1.6, 4.5), 0,
       );
     }
   }
@@ -1123,14 +1598,16 @@ export class WeaponFX {
         this._v2.set(t.ex, t.ey, t.ez);
         const mag = Math.min(5.0, 0.9 + Math.sqrt(t.damage) * 0.26);
         const capPx = shotCeiling(t.damage);
-        ctx.fields.flare.spawn(t.ex, t.ey, t.ez, 0, 0, 0, 0.11, 0,
-          mag * 12, mag * 2.6, HOT_WHITE, 4.4, 0, 0, capPx);
+        const jitter = 0.74 + ctx.rng.next() * 0.56;
+        this._flash(t.ex, t.ey, t.ez, 0, 0, 0, 0.09 + ctx.rng.next() * 0.06,
+          mag * 10 * jitter, mag * 2.2, HULL_HOT, 4.2, capPx, IMPACT_SET);
         ctx.fields.flare.spawn(t.ex, t.ey, t.ez, 0, 0, 0, 0.26, 0,
-          mag * 4, mag * 18, FLAK_BURST, 1.9, 0, 0, capPx * 1.4);
-        this._sparkBurst(this._v2, this._v, Math.round(8 + mag * 4), 0.6, 80 + t.damage * 1.2, mag * 1.9);
+          mag * 4, mag * 17 * jitter, HULL_MOLTEN, 1.9, 0, 0, capPx * 1.4);
+        this._sparkBurst(this._v2, this._v, Math.round(8 + mag * 4), 0.45, 80 + t.damage * 1.2, mag * 1.9);
       }
     }
     this._writeTracerBuffer();
+    this._writeFlashBuffer();
 
     /* Beams: track both endpoints, then drip muzzle bloom and impact splash. */
     const bd = this.beams.data;
@@ -1210,8 +1687,8 @@ export class WeaponFX {
 
     // Impact bulb: white core, coloured wash, both floored to a legible size.
     const is = b.width * 9.5 * gain;
-    f.flare.spawn(b.to.x, b.to.y, b.to.z, 0, 0, 0, 0.12, 0,
-      is, is * 0.45, HOT_WHITE, 6.4, 0, 0);
+    this._flash(b.to.x, b.to.y, b.to.z, 0, 0, 0, 0.12,
+      is * (0.8 + rng.next() * 0.5), is * 0.45, HULL_HOT, 6.0, 0, IMPACT_SET);
     f.flare.spawn(b.to.x, b.to.y, b.to.z, 0, 0, 0, 0.34, 0,
       is * 0.6, is * 3.0, b.colour, 3.0, 0, 0);
 
@@ -1279,8 +1756,9 @@ export class WeaponFX {
       if (range > 1e-4) tmpDesired.multiplyScalar(1 / range);
 
       /* Wobble: a slow figure-of-eight around the seek vector. Missiles that
-         fly a perfectly straight line look like tracers. */
-      const wob = Math.max(0, Math.min(1, (range - 60) / 400)) * 0.16;
+         fly a perfectly straight line look like tracers. Amplitude and both
+         rates are per-missile (see `_fireMissile`) so a salvo diverges. */
+      const wob = Math.max(0, Math.min(1, (range - 60) / 400)) * m.wobA;
       // Stable perpendicular basis: cross against whichever world axis the
       // heading is least aligned with, so a straight-down-Z missile is fine.
       const ax = Math.abs(m.dir.x);
@@ -1292,8 +1770,8 @@ export class WeaponFX {
       tmpAxis.crossVectors(m.dir, tmpAxis).normalize();
       m.right.crossVectors(m.dir, tmpAxis).normalize();
       const t = ctx.now + m.seed * 30;
-      tmpDesired.addScaledVector(tmpAxis, Math.sin(t * 7.3) * wob);
-      tmpDesired.addScaledVector(m.right, Math.cos(t * 5.1) * wob);
+      tmpDesired.addScaledVector(tmpAxis, Math.sin(t * m.wobF1) * wob);
+      tmpDesired.addScaledVector(m.right, Math.cos(t * m.wobF2) * wob);
       tmpDesired.normalize();
 
       const maxTurn = m.turn * dt;
@@ -1314,7 +1792,24 @@ export class WeaponFX {
         continue;
       }
 
-      if (m.trail) ctx.fields.smokeTrail.feed(m.trail, m.pos.x, m.pos.y, m.pos.z);
+      /* Feed the ribbon a laterally-jittered point rather than the missile's
+         exact position. Exhaust is not welded to the airframe — it is pushed
+         about by its own instability — and without this every ribbon is a
+         mathematically clean offset of its neighbour, which is what made a
+         salvo's trails read as a ruled sheet. Metres, not degrees, so it
+         perturbs the smoke without touching the flight path. */
+      if (m.trail || m.heat) {
+        const jt = ctx.now * m.jitF + m.seed * 17;
+        const j1 = Math.sin(jt) * m.jitA;
+        const j2 = Math.cos(jt * 0.73 + m.seed * 5) * m.jitA;
+        const jx = m.pos.x + tmpAxis.x * j1 + m.right.x * j2;
+        const jy = m.pos.y + tmpAxis.y * j1 + m.right.y * j2;
+        const jz = m.pos.z + tmpAxis.z * j1 + m.right.z * j2;
+        if (m.trail) ctx.fields.smokeTrail.feed(m.trail, jx, jy, jz);
+        // The flame sits on the axis, not in the wander: it is still inside the
+        // nozzle's flow when the smoke has already been pushed about.
+        if (m.heat) ctx.fields.trail.feed(m.heat, m.pos.x, m.pos.y, m.pos.z);
+      }
 
       if (n < this.missiles.capacity) {
         const o = n * MISSILE_STRIDE;
@@ -1344,16 +1839,22 @@ export class WeaponFX {
   dispose() {
     for (const m of this._missiles) {
       if (m.trail) this.ctx.fields.smokeTrail.detach(m.trail);
+      if (m.heat) this.ctx.fields.trail.detach(m.heat);
     }
     this._missiles.length = 0;
+    this._missileTrails = 0;
     this._beams.length = 0;
     this._tracers.length = 0;
+    this._flashes.length = 0;
     this.tracers.dispose();
     this.beams.dispose();
     this.missiles.dispose();
     this.exhaust.dispose();
+    this.flashes.dispose();
     this._quadGeo.dispose();
+    this._tracerGeo.dispose();
     this._beamGeo.dispose();
     this._missileGeo.dispose();
+    this._flashTex.dispose();
   }
 }

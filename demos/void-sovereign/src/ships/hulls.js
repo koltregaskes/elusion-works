@@ -193,6 +193,114 @@ function winBay(ctx, span, pitch, w, h, o = {}) {
   ctx.b.addParts(parts, { ...o, ...face });
 }
 
+/* ------------------------------------------------- tier-2 shape vocabulary
+
+   These three exist to fix one specific failure. A hull built from a primary
+   loft plus greeble at 0.5–1% of its length has no detail between the two, and
+   the eye reads that as "a big flat thing covered in noise" — which is what a
+   box covered in noise looks like. Every hull of frigate size and up now
+   carries shapes from this band: 10–30% of hull length, big enough to change
+   the outline, small enough to be structure rather than the ship itself.
+
+   All three are also deliberately *not* axis-aligned. The prow skews in plan,
+   the blade sweeps, the keel walks off the centreline. Axis-aligned masses
+   stack into accretion; swept ones read as design. */
+
+/**
+ * Asymmetric tapered prow.
+ *
+ * A lofted wedge doing three things `chamferBox` cannot: a plan skew (`skew`
+ * walks the sections to starboard as they run forward), a rise (`rise` lifts
+ * the chord so the bow points up out of the hull line), and independent
+ * top/bottom tumblehome so the shape is a chisel in elevation and a knife in
+ * plan. That combination is what resolves heading from a static frame. A
+ * mirrored box cannot, which is exactly why the mothership beauty shot read
+ * the same at both ends.
+ */
+function prow(ctx, o) {
+  const { b } = ctx;
+  const n = b.lod(7, 5, 3, 2);
+  const st = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    // Hold the beam, then cut it away hard. A linear taper is a cone, and a
+    // cone on the front of a hull is a boat.
+    const e = Math.pow(t, o.ease === undefined ? 1.7 : o.ease);
+    const w = o.w + (o.wTip - o.w) * e;
+    const h = o.h + (o.hTip - o.h) * e;
+    st.push({
+      z: o.z0 + (o.z1 - o.z0) * t,
+      pts: rectSection(w, h, {
+        cx: (o.skew || 0) * e,
+        cy: (o.cy || 0) + (o.rise || 0) * e,
+        wTop: w * (o.tumbleTop === undefined ? 0.34 : o.tumbleTop),
+        wBot: w * (o.tumbleBot === undefined ? 0.84 : o.tumbleBot),
+        chamfer: h * 0.13,
+      }),
+    });
+  }
+  b.add(loft(st, {}), {
+    variant: o.variant === undefined ? PLATE.ARMOUR : o.variant,
+    wear: o.wear === undefined ? 0.6 : o.wear,
+  });
+}
+
+/**
+ * Swept blade — chine, strake, fin, radiator spar, gun pylon.
+ *
+ * Root chord at the hull, tip chord further aft and outboard, so the leading
+ * edge is a diagonal. `asym` shortens the port blade: a matched pair is the
+ * one thing that reads as CAD default rather than as a ship that has been
+ * rebuilt round whatever it lost.
+ */
+function blade(ctx, o) {
+  const { b } = ctx;
+  const t = o.t;
+  b.both((s) => {
+    const k = s > 0 ? 1 : (o.asym === undefined ? 0.86 : o.asym);
+    const sw = o.sweep;
+    b.add(wing([
+      wingSection(o.root, o.zf, o.zb, t, { chamfer: t * 0.4, cy: o.cy0 || 0 }),
+      wingSection(o.root + o.span * 0.52 * k, o.zf - sw * 0.5 * k, o.zb - sw * 0.18 * k, t * 0.72,
+        { chamfer: t * 0.28, cy: (o.cy0 || 0) * 0.4 }),
+      wingSection(o.root + o.span * k, o.zf - sw * k, o.zb - sw * 0.44 * k, t * 0.3,
+        { chamfer: t * 0.12, cy: o.cy1 || 0 }),
+    ]), {
+      mirrorX: s < 0, x: o.x || 0, y: o.y || 0, z: o.z || 0,
+      rz: s * (o.dihedral || 0), ry: s * (o.toe || 0),
+      variant: o.variant === undefined ? PLATE.ARMOUR : o.variant,
+      wear: o.wear === undefined ? 0.5 : o.wear,
+    });
+  });
+}
+
+/**
+ * Dorsal keel line.
+ *
+ * A continuous raised spine running most of the hull, tall enough to break the
+ * top edge of the silhouette at 100 px and tapered at both ends so it reads as
+ * structure rather than as a bar laid on the deck. Stations are
+ * `{ z, w, h, y }`; the top face is narrower than the base, so the key light
+ * gives it two values instead of one.
+ */
+function keel(ctx, stations, o = {}) {
+  const { b } = ctx;
+  const st = stations.map((p) => ({
+    z: p.z,
+    pts: rectSection(p.w, p.h, {
+      cx: (o.x || 0) + (p.x || 0),
+      cy: p.y,
+      wTop: p.w * (o.top === undefined ? 0.3 : o.top),
+      wBot: p.w,
+      chamfer: p.h * 0.22,
+    }),
+  }));
+  b.add(loft(decimateStations(st, b.lod(1, 1, 2, 3)), {}), {
+    variant: o.variant === undefined ? PLATE.PANEL : o.variant,
+    wear: o.wear === undefined ? 0.3 : o.wear,
+  });
+}
+
 /* ============================================================ small craft */
 
 /* scout — a sensor dish with engines bolted on. Almost no hull. */
@@ -398,6 +506,27 @@ function buildBomber(ctx) {
   });
   b.both((s) => thruster(ctx, s * 1.05, 1.6, -9.0, 0.72));
 
+  // Twin canted tails. Nothing else in the fleet has them, and they are the
+  // one addition that makes a 20 m hull nameable at 120 px: from any angle the
+  // bomber is a V above a fat belly. Splayed outward so the pair never reads as
+  // a single fin seen edge-on.
+  b.both((s) => {
+    b.add(wing([
+      wingSection(0, -8.6, -3.6, 0.55, { chamfer: 0.2 }),
+      wingSection(2.0, -9.2, -5.4, 0.42, { chamfer: 0.15 }),
+      wingSection(3.5, -9.5, -7.2, 0.22, { chamfer: 0.07 }),
+    ]), {
+      mirrorX: s < 0, x: s > 0 ? 1.5 : 1.35, y: 1.9, rz: s * 1.16,
+      variant: PLATE.PANEL, wear: 0.45,
+    });
+  });
+
+  // Ordnance belly, carried below the loft as its own mass rather than sunk
+  // into it — the bomber's tier-2 read from broadside.
+  b.add(chamferBox(4.4, 2.0, 11.0, {
+    chamfer: 0.55, chamferZ: 1.3, taperFront: 0.52, taperBack: 0.74, wBot: 3.0,
+  }), { y: -4.3, z: -0.4, variant: PLATE.ARMOUR, wear: 0.6 });
+
   // Cockpit: armoured slit, offset to starboard.
   b.add(chamferBox(2.0, 0.75, 2.4, { chamfer: 0.3, chamferZ: 0.4, taperFront: 0.55, wTop: 1.4 }), {
     x: 0.35, y: 1.85, z: 4.2, variant: PLATE.ARMOUR, wear: 0.35,
@@ -454,16 +583,35 @@ function buildCorvette(ctx) {
     });
   });
 
-  // Twin dorsal cannon on a shared raised mount.
-  b.add(chamferBox(5.2, 1.6, 7.5, { chamfer: 0.5, chamferZ: 0.8, taperFront: 0.72 }), {
-    y: 3.6, z: 1.0, variant: PLATE.ARMOUR, wear: 0.35,
+  // Twin dorsal cannon on a shared raised mount. The barrels run out past the
+  // bow on purpose: at 120 px the assault corvette has to be readable as a gun
+  // platform, and a barrel that stops short of the prow contributes nothing to
+  // the outline. Two long tubes overhanging the nose is the whole class.
+  b.add(chamferBox(5.6, 3.4, 9.5, { chamfer: 0.7, chamferZ: 1.1, taperFront: 0.72, wTop: 3.8 }), {
+    y: 4.6, z: 0.0, variant: PLATE.ARMOUR, wear: 0.35,
   });
   b.both((s) => {
-    b.add(tube(0.62, 0.5, 9.5, b.lod(10, 8, 6, 5), { rot: Math.PI / 8, capStart: false }), {
-      x: s * 1.5, y: 4.3, z: 3.2, variant: PLATE.MECH, wear: 0.75,
+    b.add(tube(0.72, 0.56, 18.0, b.lod(10, 8, 6, 5), { rot: Math.PI / 8, capStart: false }), {
+      x: s * 1.6, y: 6.4, z: 2.6, variant: PLATE.MECH, wear: 0.75,
     });
-    b.add(ring(0.5, 0.95, 0.7, b.lod(10, 8, 6, 6)), { x: s * 1.5, y: 4.3, z: 11.4, variant: PLATE.MECH, wear: 0.9 });
-    hp(ctx, s * 1.5, 4.3, 12.9);
+    b.add(ring(0.56, 1.15, 0.85, b.lod(10, 8, 6, 6)), { x: s * 1.6, y: 6.4, z: 19.4, variant: PLATE.MECH, wear: 0.9 });
+    b.add(ring(0.72, 1.3, 0.8, b.lod(10, 8, 6, 6)), { x: s * 1.6, y: 6.4, z: 9.0, variant: PLATE.MECH, wear: 0.6 });
+    hp(ctx, s * 1.6, 6.4, 21.0);
+  });
+
+  // Anhedral stub wings, swept back off the shoulder. Two jobs: they widen the
+  // plan so the corvette is not the frigate's silhouette at a smaller size, and
+  // the leading edge is the only diagonal on an otherwise square hull.
+  blade(ctx, {
+    root: 3.9, span: 4.6, zf: 4.0, zb: -8.0, sweep: 6.4, t: 1.5,
+    y: -0.6, dihedral: -0.30, asym: 0.84, variant: PLATE.HULL, wear: 0.4,
+  });
+
+  // Swept bow chine. Skewed to starboard, so from dead ahead the two cheeks are
+  // visibly different lengths and the ship has a handedness.
+  prow(ctx, {
+    z0: 6.0, z1: 17.2, w: 7.2, wTip: 1.2, h: 6.0, hTip: 1.1,
+    skew: 0.6, rise: 0.6, cy: 0.1, tumbleTop: 0.4, ease: 1.9, wear: 0.62,
   });
 
   // Drive block, four mouths.
@@ -494,12 +642,12 @@ function buildCorvette(ctx) {
   }
 
   b.paint({ x0: 3.0, x1: 5.4, y0: -1.6, y1: 2.4, z0: 1.0, z1: 10.6, n: [1, 0, 0], nMin: 0.35, mirror: true });
-  b.paint({ x0: -2.8, x1: 2.8, y0: 4.2, y1: 4.8, z0: -3.0, z1: 4.8 });
+  b.paint({ x0: -3.4, x1: 3.4, y0: 5.6, y1: 6.6, z0: -4.0, z1: 4.8 });
   b.paint({ x0: -3.8, x1: 3.8, y0: -3.4, y1: 3.4, z0: -17.4, z1: -14.4, n: [0, 0, -1], nMin: 0.4 });
 
   navSet(ctx, 4.4, 1.0, -10.0, 0.35, 1.7);
   light(ctx, -1.7, 4.9, -6.0, NAV.beacon, 2.2, 0.3);
-  light(ctx, 0, 4.5, 12.0, NAV.deck, 1.1, 0.24);
+  light(ctx, 0, 3.2, 15.0, NAV.deck, 1.1, 0.24);
 }
 
 /* missileCorvette — the launch cells are the design. */
@@ -517,9 +665,20 @@ function buildMissileCorvette(ctx) {
   ];
   b.add(loft(decimateStations(spine, b.lod(1, 2, 4, 7)), {}), { variant: PLATE.HULL });
 
-  // Honeycomb block: a real grid of sunk cells, four across, six deep.
-  b.add(chamferBox(7.6, 2.4, 12.0, { chamfer: 0.5, chamferZ: 0.7, wTop: 6.8 }), {
-    y: 3.5, z: -2.0, variant: PLATE.ARMOUR, wear: 0.35,
+  // Honeycomb block: a real grid of sunk cells, four across, six deep. The
+  // block is the class. It stands a full hull-height proud of the deck and
+  // overhangs the flanks, so the missile corvette's outline is a slab on a
+  // hull rather than the assault corvette's outline with different fittings —
+  // the two are 32 and 34 m and would otherwise be the same ship.
+  b.add(chamferBox(12.0, 5.6, 12.0, {
+    chamfer: 0.7, chamferZ: 1.0, wTop: 10.0, taperFront: 0.88, taperBack: 0.94,
+  }), { y: 6.6, z: -3.0, variant: PLATE.ARMOUR, wear: 0.35 });
+  // Canted shoulder plates off the block, so its top edge is a slope from
+  // ahead rather than a ruled line.
+  b.both((s) => {
+    b.add(chamferBox(1.8, 4.8, 11.0, { chamfer: 0.45, chamferZ: 1.4, wTop: 0.8, wBot: 2.4 }), {
+      mirrorX: s < 0, x: 6.4, y: 6.2, z: -3.0, rz: s * 0.34, variant: PLATE.PANEL, wear: 0.45,
+    });
   });
   const cols = 4;
   const rows = b.lod(6, 6, 3, 0);
@@ -530,12 +689,12 @@ function buildMissileCorvette(ctx) {
       const cz = -2.0 + (r - (rows - 1) * 0.5) * (pitch * 1.55 * (6 / Math.max(1, rows)));
       b.addParts(pocket(1.34, 1.34, 1.9, {
         chamfer: 0.2, taper: 0.66, variant: PLATE.MECH, lit: (r + c) % 3 === 0,
-      }), { x: cx, y: 4.7, z: cz, rx: Math.PI / 2, wear: 0.5 });
-      if (r === 0 && c < 2) hp(ctx, cx, 4.7, cz);
+      }), { x: cx, y: 9.2, z: cz, rx: Math.PI / 2, wear: 0.5 });
+      if (r === 0 && c < 2) hp(ctx, cx, 9.2, cz);
     }
   }
-  hp(ctx, -pitch * 0.5, 4.7, -2.0);
-  hp(ctx, pitch * 1.5, 4.7, -2.0);
+  hp(ctx, -pitch * 0.5, 9.2, -3.0);
+  hp(ctx, pitch * 1.5, 9.2, -3.0);
 
   // Side reload rails and armoured shoulder plates.
   b.both((s) => {
@@ -553,6 +712,28 @@ function buildMissileCorvette(ctx) {
   // Sharp fairing over the bow sensor.
   b.add(chamferBox(2.4, 1.9, 5.2, { chamfer: 0.4, chamferZ: 0.9, taperFront: 0.35, wTop: 1.5 }), {
     y: 0.6, z: 11.0, variant: PLATE.ARMOUR, wear: 0.5,
+  });
+
+  // Outrigger launch rails, splayed aft and outboard past the stern. Seen from
+  // above — which is most of the time — the missile corvette is otherwise the
+  // assault corvette's plan with a box on it. The fork tail is what separates
+  // them at 120 px, and it is also the honest place to put the reload gear.
+  b.both((s) => {
+    const k = s > 0 ? 1 : 0.86;
+    b.add(chamferBox(1.6, 1.8, 20.0 * k, {
+      chamfer: 0.4, chamferZ: 2.2, taperFront: 0.55, taperBack: 0.8,
+    }), {
+      mirrorX: s < 0, x: 5.6, y: 2.4, z: -12.0, ry: -s * 0.30, rz: s * 0.16,
+      variant: PLATE.MECH, wear: 0.55,
+    });
+    b.addParts(ribBand(b.lod(5, 3, 2, 0), -8.0 * k, 8.0 * k, 2.6, 2.6, 0.4, { variant: PLATE.MECH }), {
+      mirrorX: s < 0, x: 5.6, y: 2.4, z: -12.0, ry: -s * 0.30, rz: s * 0.16,
+    });
+    b.add(chamferBox(2.6, 2.4, 3.0, { chamfer: 0.6, chamferZ: 0.8, taperFront: 0.6 }), {
+      mirrorX: s < 0, x: 8.6, y: 1.6, z: -21.0 * k, ry: -s * 0.30,
+      variant: PLATE.ARMOUR, wear: 0.6,
+    });
+    hp(ctx, s * 6.4, 2.4, -4.0);
   });
 
   b.add(chamferBox(5.6, 4.6, 2.6, { chamfer: 0.7, chamferZ: 0.45 }), {
@@ -575,7 +756,7 @@ function buildMissileCorvette(ctx) {
   }
 
   b.paint({ x0: 3.2, x1: 5.0, y0: -0.4, y1: 3.2, z0: -8.0, z1: 6.0, n: [1, 0, 0], nMin: 0.35, mirror: true });
-  b.paint({ x0: -4.0, x1: 4.0, y0: 4.4, y1: 5.0, z0: -8.4, z1: 4.4 });
+  b.paint({ x0: -4.6, x1: 4.6, y0: 1.8, y1: 4.4, z0: -8.4, z1: 4.4, n: [1, 0, 0], nMin: 0.3, mirror: true });
   b.paint({ x0: -3.2, x1: 3.2, y0: -2.8, y1: 2.8, z0: -16.2, z1: -13.6, n: [0, 0, -1], nMin: 0.4 });
 
   navSet(ctx, 4.5, 1.4, -8.0, 0.32, 1.8);
@@ -622,13 +803,41 @@ function buildAssaultFrigate(ctx) {
   b.add(loft(decimateStations(spine, b.lod(1, 2, 4, 7)), {}), { variant: PLATE.HULL });
   armourBelt(ctx, plan.slice(0, 7), { out: 0.7, top: 1.5, bottom: -4.5, chamfer: 1.1 });
 
-  // Turret deck: a raised armoured strip carrying the main battery.
-  b.add(chamferBox(11.0, 2.2, 54.0, { chamfer: 0.9, chamferZ: 1.4, taperFront: 0.6, wTop: 9.0 }), {
-    y: 8.4, z: -6.0, variant: PLATE.ARMOUR, wear: 0.3,
+  // Swept prow. The plan skew and the rise are what let a static frame say
+  // which way this ship is pointing; the loft under it still runs to z 65, so
+  // this reads as armour bolted over the bow rather than as extra hull.
+  prow(ctx, {
+    z0: 26.0, z1: 66.0, w: 17.0, wTip: 3.2, h: 15.0, hTip: 3.4,
+    skew: 1.6, rise: 1.4, cy: 0.4, tumbleTop: 0.36, ease: 1.8, wear: 0.6,
   });
-  placeTurret(ctx, 3.5, { y: 9.6, z: 20.0, barrels: 2, barrelLen: 10.5 });
-  placeTurret(ctx, 3.5, { y: 9.6, z: 4.0, barrels: 2, barrelLen: 10.5 });
-  placeTurret(ctx, 3.2, { y: 9.6, z: -26.0, barrels: 2, barrelLen: 9.5, ry: Math.PI });
+  // Bow chines: a diagonal down each cheek, port shorter than starboard.
+  blade(ctx, {
+    root: 9.0, span: 4.4, zf: 52.0, zb: 20.0, sweep: 22.0, t: 3.0,
+    y: -1.0, dihedral: -0.22, asym: 0.8, wear: 0.55,
+  });
+
+  // Turret deck, stepped. A superfiring barbette forward of a long strip aft:
+  // two heights, so the top edge of the silhouette has a stair in it and the
+  // frigate is not the destroyer's outline at a third of the size.
+  b.add(chamferBox(11.0, 4.2, 44.0, { chamfer: 1.0, chamferZ: 1.6, taperBack: 0.7, wTop: 8.4 }), {
+    y: 9.0, z: -30.0, variant: PLATE.ARMOUR, wear: 0.3,
+  });
+  b.add(chamferBox(11.5, 4.4, 18.0, { chamfer: 1.2, chamferZ: 2.4, taperFront: 0.5, wTop: 8.0 }), {
+    x: 0.6, y: 9.2, z: 44.0, variant: PLATE.ARMOUR, wear: 0.34,
+  });
+  placeTurret(ctx, 3.5, { y: 12.4, z: 46.0, barrels: 2, barrelLen: 13.0 });
+  placeTurret(ctx, 3.5, { y: 11.6, z: -20.0, barrels: 2, barrelLen: 12.0, ry: Math.PI });
+  placeTurret(ctx, 3.2, { y: 11.6, z: -44.0, barrels: 2, barrelLen: 10.5, ry: Math.PI });
+
+  // Dorsal keel: the line that survives at 100 px. Runs the whole ship, walks
+  // a metre off the centreline so it never reads as a mirror axis.
+  keel(ctx, [
+    { z: -62, w: 3.0, h: 1.4, y: 10.4, x: 0.4 },
+    { z: -50, w: 4.8, h: 4.0, y: 11.6, x: 0.6 },
+    { z: -10, w: 5.2, h: 4.4, y: 12.0, x: 0.9 },
+    { z: 14, w: 4.2, h: 3.4, y: 12.6, x: 1.2 },
+    { z: 34, w: 2.2, h: 1.8, y: 12.2, x: 1.5 },
+  ], { wear: 0.34 });
 
   // Flak sponsons, deliberately not opposite each other.
   placeTurret(ctx, 2.0, { x: 10.8, y: 0.5, z: 8.0, rz: -Math.PI / 2, barrels: 2, barrelLen: 4.0 });
@@ -639,19 +848,24 @@ function buildAssaultFrigate(ctx) {
     });
   });
 
-  // Bridge tower aft, offset to port. Layered, not a single block.
-  const tz = -40;
-  b.add(chamferBox(9.5, 6.0, 15.0, { chamfer: 1.0, chamferZ: 1.6, taperFront: 0.78, wTop: 7.2 }), {
-    x: -1.4, y: 11.5, z: tz, variant: PLATE.PANEL, wear: 0.28,
+  /* Bridge tower FORWARD, offset to port. The escort carries its bridge over
+     the shoulder and its heavy turret aft; the destroyer carries a slab island
+     over the stern quarter and its battery forward. That inversion is the one
+     reliable way to tell the two apart at 120 px — they are the same family,
+     the same proportions and the same fittings, and before this they were the
+     same silhouette at two sizes. */
+  const tz = 26;
+  b.add(chamferBox(9.5, 9.0, 15.0, { chamfer: 1.0, chamferZ: 1.6, taperFront: 0.78, wTop: 7.2 }), {
+    x: -1.4, y: 13.0, z: tz, variant: PLATE.PANEL, wear: 0.28,
   });
-  b.add(chamferBox(6.6, 4.4, 9.5, { chamfer: 0.8, chamferZ: 1.2, taperFront: 0.7, wTop: 4.6 }), {
-    x: -1.4, y: 16.4, z: tz + 1.5, variant: PLATE.PANEL, wear: 0.24,
+  b.add(chamferBox(6.6, 5.4, 9.5, { chamfer: 0.8, chamferZ: 1.2, taperFront: 0.7, wTop: 4.6 }), {
+    x: -1.4, y: 20.0, z: tz + 1.5, variant: PLATE.PANEL, wear: 0.24,
   });
   b.add(chamferBox(4.2, 1.5, 4.0, { chamfer: 0.35, chamferZ: 0.6, taperFront: 0.62 }), {
-    x: -1.4, y: 19.3, z: tz + 4.0, kind: KIND.GLASS, variant: PLATE.PANEL,
+    x: -1.4, y: 23.4, z: tz + 4.0, kind: KIND.GLASS, variant: PLATE.PANEL,
   });
-  windows(ctx, 6.6, 0.95, 0.45, 0.55, { x: -1.4, y: 12.5, z: tz + 7.6, rows: 2, rowPitch: 1.5 });
-  windows(ctx, 12.0, 0.95, 0.4, 0.5, { x: 4.8, y: 12.5, z: tz, ry: -Math.PI / 2, rows: 2, rowPitch: 1.4 });
+  windows(ctx, 6.6, 0.95, 0.45, 0.55, { x: -1.4, y: 13.5, z: tz + 7.6, rows: 2, rowPitch: 1.5 });
+  windows(ctx, 12.0, 0.95, 0.4, 0.5, { x: 4.8, y: 13.5, z: tz, ry: -Math.PI / 2, rows: 2, rowPitch: 1.4 });
 
   // Drive block: four mains and two verniers.
   b.add(chamferBox(17.0, 15.0, 6.0, { chamfer: 2.0, chamferZ: 1.2, wTop: 12.0 }), {
@@ -663,9 +877,9 @@ function buildAssaultFrigate(ctx) {
   b.both((s) => thruster(ctx, s * 8.2, 0, -65.5, 1.3));
 
   if (b.detail < 2) {
-    b.addParts(mast(rng, 13.0, 0.42, { arms: 4 }), { x: 3.0, y: 12.0, z: tz - 7.0, rz: -0.1, wear: 0.5 });
+    b.addParts(mast(rng, 13.0, 0.42, { arms: 4 }), { x: 3.0, y: 15.0, z: tz - 9.0, rz: -0.1, wear: 0.5 });
     b.addParts(dish(2.6, { sides: b.lod(14, 10, 8, 6), rows: 3 }), {
-      x: -5.4, y: 14.2, z: tz - 5.5, rx: -0.5, ry: -0.7, variant: PLATE.PANEL, wear: 0.35,
+      x: -5.4, y: 17.4, z: tz - 6.5, rx: -0.5, ry: -0.7, variant: PLATE.PANEL, wear: 0.35,
     });
     b.addParts(catwalk(30.0, 2.0, 0.28), { x: 7.4, y: 2.0, z: -12.0, wear: 0.5 });
     b.addParts(greebleField(rng, {
@@ -693,14 +907,14 @@ function buildAssaultFrigate(ctx) {
 
   b.paint({ x0: 9.4, x1: 13.0, y0: -5.0, y1: 1.8, z0: -34.0, z1: 26.0, n: [1, 0, 0], nMin: 0.4, mirror: true });
   b.paint({ x0: 9.4, x1: 13.0, y0: -5.0, y1: 1.8, z0: -60.0, z1: -46.0, n: [1, 0, 0], nMin: 0.4, mirror: true });
-  b.paint({ x0: -6.4, x1: 3.6, y0: 13.0, y1: 20.0, z0: tz - 5, z1: tz + 6, n: [1, 0, 0], nMin: 0.3, mirror: true });
-  b.paint({ x0: -6.0, x1: 6.0, y0: 8.0, y1: 11.0, z0: 30.0, z1: 56.0, n: [0, 1, 0], nMin: 0.3 });
+  b.paint({ x0: -6.4, x1: 3.6, y0: 15.0, y1: 24.0, z0: tz - 6, z1: tz + 6, n: [1, 0, 0], nMin: 0.3, mirror: true });
+  b.paint({ x0: -8.0, x1: 8.0, y0: -4.0, y1: 8.0, z0: 34.0, z1: 62.0, n: [0, 1, 0], nMin: 0.25 });
   b.paint({ x0: -10.0, x1: 10.0, y0: -9.0, y1: 9.0, z0: -66.5, z1: -60.5, n: [0, 0, -1], nMin: 0.4 });
 
   lightStrake(ctx, { z0: -56, z1: 46, x: 11.2, y: -1.0, colour: NAV.beacon, period: 2.0, size: 0.55 });
   navSet(ctx, 11.0, 1.2, -30.0, 0.7, 1.9);
-  light(ctx, -1.4, 21.0, tz + 1.5, NAV.beacon, 2.4, 0.6);
-  light(ctx, 0, 10.0, 52.0, NAV.deck, 1.3, 0.5);
+  light(ctx, -1.4, 25.0, tz + 1.5, NAV.beacon, 2.4, 0.6);
+  light(ctx, 0, 6.0, 56.0, NAV.deck, 1.3, 0.5);
 }
 
 /* ionFrigate — a gun with a ship built behind it. */
@@ -722,33 +936,39 @@ function buildIonFrigate(ctx) {
   })), b.lod(1, 2, 4, 7)), {}), { variant: PLATE.HULL });
 
   // The barrel: 88 m of accelerator running past the bow. This is the ship.
-  const bl = 88;
+  /* Waisted, not parallel: fat at the breech, thin through the middle third,
+     then flared hard into the emitter. A constant-diameter tube the same width
+     as the hull simply reads as more hull, which is why a 140 m ship named for
+     its gun scored the same as the assault frigate from every angle. */
+  const bl = 100;
   const bz0 = -18;
+  const GUN_Y = 9.4;
   const sides = b.lod(14, 12, 8, 6);
   b.add(loft(decimateStations([
-    { z: bz0, pts: ngonSection(5.0, sides) },
-    { z: bz0 + 8, pts: ngonSection(6.2, sides) },
-    { z: bz0 + 46, pts: ngonSection(6.0, sides) },
-    { z: bz0 + 70, pts: ngonSection(6.6, sides) },
-    { z: bz0 + bl - 3, pts: ngonSection(6.9, sides) },
-    { z: bz0 + bl, pts: ngonSection(6.2, sides) },
-  ], b.lod(1, 2, 4, 6)), {}), { y: 3.2, variant: PLATE.MECH, wear: 0.45 });
+    { z: bz0, pts: ngonSection(6.4, sides) },
+    { z: bz0 + 8, pts: ngonSection(7.0, sides) },
+    { z: bz0 + 30, pts: ngonSection(4.0, sides) },
+    { z: bz0 + 62, pts: ngonSection(3.7, sides) },
+    { z: bz0 + 74, pts: ngonSection(7.6, sides) },
+    { z: bz0 + bl - 3, pts: ngonSection(8.6, sides) },
+    { z: bz0 + bl, pts: ngonSection(7.4, sides) },
+  ], b.lod(1, 2, 4, 6)), {}), { y: GUN_Y, variant: PLATE.MECH, wear: 0.45 });
 
   // Accelerator coils, spaced tighter toward the muzzle.
   const coils = b.lod(9, 6, 3, 0);
   for (let i = 0; i < coils; i++) {
     const t = i / Math.max(1, coils - 1);
-    const z = bz0 + 10 + Math.pow(t, 0.8) * (bl - 22);
-    b.add(ring(6.2, 8.2 - t * 1.2, 1.5 + (1 - t) * 0.8, sides), {
-      y: 3.2, z, variant: PLATE.MECH, wear: 0.4 + t * 0.3,
+    const z = bz0 + 22 + Math.pow(t, 0.8) * (bl - 40);
+    b.add(ring(3.8, 6.4 - t * 1.4, 1.5 + (1 - t) * 0.8, sides), {
+      y: GUN_Y, z, variant: PLATE.MECH, wear: 0.4 + t * 0.3,
     });
   }
   // Muzzle: recessed emitter with a lit core.
-  b.addParts(pocket(8.4, 8.4, 5.0, { chamfer: 1.6, taper: 0.55, lit: true, variant: PLATE.MECH }), {
-    y: 3.2, z: bz0 + bl, ry: Math.PI, wear: 0.9,
+  b.addParts(pocket(10.6, 10.6, 6.0, { chamfer: 2.0, taper: 0.55, lit: true, variant: PLATE.MECH }), {
+    y: GUN_Y, z: bz0 + bl, ry: Math.PI, wear: 0.9,
   });
-  b.add(ring(6.3, 8.0, 1.8, sides), { y: 3.2, z: bz0 + bl - 1.8, variant: PLATE.ARMOUR, wear: 0.85 });
-  hp(ctx, 0, 3.2, bz0 + bl + 1.0);
+  b.add(ring(7.6, 10.2, 2.2, sides), { y: GUN_Y, z: bz0 + bl - 2.2, variant: PLATE.ARMOUR, wear: 0.85 });
+  hp(ctx, 0, GUN_Y, bz0 + bl + 1.0);
 
   // Capacitor banks flanking the barrel, ribbed and exposed.
   b.both((s) => {
@@ -769,8 +989,32 @@ function buildIonFrigate(ctx) {
     });
   });
 
-  // Spine bracing between body and barrel.
-  b.addParts(ribBand(b.lod(6, 4, 2, 0), -14, 20, 5.0, 9.0, 1.1, { variant: PLATE.PANEL, y: 0.5 }), {});
+  // Cradle: three deep pylons carrying the barrel clear of the hull, with real
+  // daylight between them. A continuous rib band welded the gun to the deck and
+  // the two masses merged into one blob — which is how a 140 m ship named for
+  // its gun ended up indistinguishable from the assault frigate.
+  for (const [z, d, lean] of [[-12, 16, 0.0], [8, 12, 0.12], [22, 9, 0.22]]) {
+    b.add(chamferBox(7.0, GUN_Y - 1.0, d, {
+      chamfer: 1.0, chamferZ: 1.6, taperFront: 0.7, wTop: 4.0, wBot: 8.0,
+    }), { x: 0.4, y: GUN_Y * 0.5 - 1.5, z, rz: lean * 0.3, variant: PLATE.PANEL, wear: 0.45 });
+  }
+  // Breech block: the tier-2 mass the gun comes out of, stepped up off the
+  // deck so the barrel has an origin instead of appearing out of the hull.
+  b.add(chamferBox(13.0, 13.0, 30.0, {
+    chamfer: 2.2, chamferZ: 3.6, taperFront: 0.72, taperBack: 0.86, wTop: 8.0,
+  }), { x: -0.6, y: 5.0, z: -34.0, variant: PLATE.ARMOUR, wear: 0.42 });
+  b.addParts(ribBand(b.lod(5, 3, 2, 0), -46, -22, 14.0, 14.0, 1.2, { variant: PLATE.MECH, y: 5.0 }), { x: -0.6 });
+
+  // Chisel fairing over the body's bow, under the gun. Skewed to starboard so
+  // the hull under the barrel also states a heading.
+  prow(ctx, {
+    z0: 2.0, z1: 30.0, w: 12.0, wTip: 2.4, h: 9.0, hTip: 2.0,
+    skew: 1.3, rise: -0.8, cy: -4.0, tumbleTop: 0.38, ease: 1.7, wear: 0.6,
+  });
+  blade(ctx, {
+    root: 6.5, span: 4.2, zf: 18.0, zb: -14.0, sweep: 17.0, t: 2.4,
+    y: -5.0, dihedral: -0.28, asym: 0.78, wear: 0.55,
+  });
 
   // Bridge, tucked low on the starboard quarter — the gun owns the centreline.
   b.add(chamferBox(6.0, 4.6, 11.0, { chamfer: 0.9, chamferZ: 1.4, taperFront: 0.7, wTop: 4.2 }), {
@@ -830,6 +1074,21 @@ function buildSupportFrigate(ctx) {
   })), b.lod(1, 2, 4, 7)), {}), { variant: PLATE.HULL });
   armourBelt(ctx, plan.slice(0, 5), { out: 0.6, top: 1.0, bottom: -3.6, chamfer: 0.9, variant: PLATE.PANEL });
 
+  // Ventral prow, swept and skewed to port on this one — the support hull's
+  // asymmetry runs the other way from the warships', which is a fleet-level
+  // cue as much as a per-ship one.
+  prow(ctx, {
+    z0: 12.0, z1: 42.0, w: 12.0, wTip: 2.2, h: 9.5, hTip: 2.2,
+    skew: -1.2, rise: -1.0, cy: -1.5, tumbleTop: 0.36, ease: 1.8, wear: 0.55,
+  });
+  // Dorsal keel running back to the heat plant.
+  keel(ctx, [
+    { z: -50, w: 2.6, h: 1.2, y: 8.4, x: -0.5 },
+    { z: -34, w: 4.2, h: 3.0, y: 9.0, x: -0.7 },
+    { z: -4, w: 4.4, h: 3.2, y: 9.2, x: -0.9 },
+    { z: 24, w: 2.8, h: 2.0, y: 8.6, x: -1.1 },
+  ], { wear: 0.34 });
+
   // Boom arms: two segments plus an emitter head, reaching forward and out.
   // The port arm is longer — support ships get rebuilt, not replaced.
   const arms = [
@@ -862,14 +1121,26 @@ function buildSupportFrigate(ctx) {
     hp(ctx, tip.x, tip.y, tip.z);
   }
 
-  // Radiator wings: big, thin, angled off the dorsal deck.
+  // Radiator wings. Deliberately oversized and raked: on a support ship the
+  // heat plant is the largest single thing aboard, and this is the only hull in
+  // the fleet with a wing-like outline. At 120 px it is the whole read — two
+  // long panels canted up and back off a short body, with the boom arms
+  // reaching forward underneath.
   b.both((s) => {
-    b.addParts(radiator(11.0, 30.0, 1.0, b.lod(9, 5, 0, 0), { taper: 0.7 }), {
-      mirrorX: s < 0, x: 9.5, y: 12.0, z: -22.0, rz: s * -0.62, ry: s * 0.1,
+    b.addParts(radiator(17.0, 52.0, 1.2, b.lod(10, 6, 0, 0), { taper: 0.55 }), {
+      mirrorX: s < 0, x: 13.0, y: 17.0, z: -20.0, rz: s * -0.72, ry: s * 0.16,
       variant: PLATE.PANEL, wear: 0.3,
     });
-    b.add(chamferBox(1.4, 3.0, 8.0, { chamfer: 0.4, chamferZ: 0.9 }), {
-      mirrorX: s < 0, x: 5.0, y: 9.0, z: -22.0, rz: s * -0.62, variant: PLATE.MECH, wear: 0.45,
+    // Root spar, swept back so the wing meets the hull on a diagonal.
+    b.add(chamferBox(2.0, 3.6, 22.0, { chamfer: 0.5, chamferZ: 2.4, taperFront: 0.5, wTop: 1.0 }), {
+      mirrorX: s < 0, x: 7.4, y: 10.5, z: -20.0, rz: s * -0.72, ry: s * 0.16,
+      variant: PLATE.MECH, wear: 0.45,
+    });
+    // Lower fin, raked the other way, so the pair reads as a rotated cross
+    // from ahead rather than as a flat vee.
+    b.addParts(radiator(8.0, 26.0, 1.0, b.lod(7, 4, 0, 0), { taper: 0.6 }), {
+      mirrorX: s < 0, x: 11.0, y: -11.0, z: -34.0, rz: s * 0.55, ry: s * -0.12,
+      variant: PLATE.PANEL, wear: 0.42,
     });
   });
 
@@ -965,28 +1236,49 @@ function buildDestroyer(ctx) {
   armourBelt(ctx, plan.slice(0, 10), { out: 1.8, top: 4.0, bottom: -8.0, chamfer: 3.0 });
   armourBelt(ctx, plan.slice(0, 9), { out: 3.4, top: -9.0, bottom: -18.0, chamfer: 2.6, tumble: 1.0 });
 
-  // Armoured ram: a blunt faceted wedge bolted over the bow, not a needle.
-  b.add(chamferBox(26.0, 24.0, 54.0, { chamfer: 4.5, chamferZ: 9.0, taperFront: 0.5, wTop: 15.0 }), {
-    y: 1.0, z: 168.0, variant: PLATE.ARMOUR, wear: 0.6,
+  // Armoured ram, rebuilt as a swept prow. The old pair of coaxial boxes gave
+  // the bow the same rectangular termination as the stern; this one skews to
+  // starboard, rises out of the keel line and carries a chine down each cheek,
+  // so a still frame states a heading.
+  prow(ctx, {
+    z0: 130.0, z1: 214.0, w: 40.0, wTip: 8.0, h: 40.0, hTip: 9.0,
+    skew: 4.0, rise: 5.0, cy: 0.0, tumbleTop: 0.34, ease: 1.75, wear: 0.66,
   });
-  b.add(chamferBox(17.0, 15.0, 20.0, { chamfer: 3.0, chamferZ: 5.0, taperFront: 0.62, wTop: 9.0 }), {
-    y: 1.0, z: 196.0, variant: PLATE.ARMOUR, wear: 0.75,
+  blade(ctx, {
+    root: 22.0, span: 12.0, zf: 176.0, zb: 90.0, sweep: 62.0, t: 8.0,
+    y: -6.0, dihedral: -0.24, asym: 0.78, wear: 0.6,
+  });
+  b.add(chamferBox(17.0, 15.0, 22.0, { chamfer: 3.0, chamferZ: 5.0, taperFront: 0.5, wTop: 8.0 }), {
+    x: 2.0, y: 5.0, z: 202.0, variant: PLATE.ARMOUR, wear: 0.8,
   });
 
-  // Superfiring forward pair, then two aft over the drive block.
-  b.add(chamferBox(30.0, 6.0, 60.0, { chamfer: 2.4, chamferZ: 3.6, taperFront: 0.62, wTop: 24.0 }), {
-    y: 26.0, z: 62.0, variant: PLATE.ARMOUR, wear: 0.32,
+  // Superfiring forward pair on barbettes tall enough to break the top line.
+  // A destroyer is a gun battery with engines; the battery has to be the thing
+  // you see, not a bump on a deck.
+  b.add(chamferBox(30.0, 14.0, 62.0, { chamfer: 3.2, chamferZ: 4.6, taperFront: 0.62, wTop: 22.0 }), {
+    y: 30.0, z: 64.0, variant: PLATE.ARMOUR, wear: 0.32,
   });
-  placeTurret(ctx, 9.5, { y: 30.5, z: 84.0, barrels: 2, barrelLen: 30.0 });
-  b.add(chamferBox(23.0, 7.0, 30.0, { chamfer: 2.0, chamferZ: 3.0, taperFront: 0.75, wTop: 18.0 }), {
-    y: 30.0, z: 48.0, variant: PLATE.ARMOUR, wear: 0.3,
+  placeTurret(ctx, 9.5, { y: 39.5, z: 84.0, barrels: 2, barrelLen: 36.0 });
+  b.add(chamferBox(23.0, 15.0, 34.0, { chamfer: 2.6, chamferZ: 4.0, taperFront: 0.75, wTop: 16.0 }), {
+    x: -1.0, y: 40.0, z: 44.0, variant: PLATE.ARMOUR, wear: 0.3,
   });
-  placeTurret(ctx, 9.5, { y: 37.0, z: 50.0, barrels: 2, barrelLen: 30.0 });
-  placeTurret(ctx, 9.0, { y: 29.0, z: -66.0, barrels: 2, barrelLen: 28.0, ry: Math.PI });
-  placeTurret(ctx, 9.0, { y: 29.0, z: -104.0, barrels: 2, barrelLen: 28.0, ry: Math.PI });
-  b.add(chamferBox(26.0, 6.0, 66.0, { chamfer: 2.2, chamferZ: 3.4, taperBack: 0.7, wTop: 21.0 }), {
-    y: 25.5, z: -86.0, variant: PLATE.ARMOUR, wear: 0.32,
+  placeTurret(ctx, 9.5, { y: 51.0, z: 46.0, barrels: 2, barrelLen: 36.0 });
+  placeTurret(ctx, 9.0, { y: 32.0, z: -66.0, barrels: 2, barrelLen: 30.0, ry: Math.PI });
+  placeTurret(ctx, 9.0, { y: 32.0, z: -104.0, barrels: 2, barrelLen: 30.0, ry: Math.PI });
+  b.add(chamferBox(26.0, 9.0, 66.0, { chamfer: 2.2, chamferZ: 3.4, taperBack: 0.7, wTop: 21.0 }), {
+    y: 27.0, z: -86.0, variant: PLATE.ARMOUR, wear: 0.32,
   });
+
+  // Dorsal keel between the battery and the island — the line that has to
+  // survive at 100 px. Off-centre, so it never doubles as a mirror axis.
+  keel(ctx, [
+    { z: -172, w: 8.0, h: 4.0, y: 30.0, x: 1.5 },
+    { z: -130, w: 13.0, h: 10.0, y: 33.0, x: 2.0 },
+    { z: -20, w: 14.0, h: 11.0, y: 33.0, x: 2.5 },
+    { z: 20, w: 11.0, h: 8.0, y: 34.0, x: 3.0 },
+    { z: 116, w: 9.0, h: 7.0, y: 30.0, x: 3.5 },
+    { z: 152, w: 4.0, h: 3.0, y: 26.0, x: 4.0 },
+  ], { wear: 0.34 });
 
   // Flak sponsons along the belt, staggered port and starboard.
   const flak = [[1, 96], [-1, 64], [1, 10], [-1, -34], [1, -84], [-1, -120]];
@@ -997,24 +1289,27 @@ function buildDestroyer(ctx) {
     placeTurret(ctx, 3.4, { mirrorX: s < 0, x: 30.5, y: -1.0, z, rz: -Math.PI / 2, barrels: 2, barrelLen: 7.0 });
   }
 
-  // Superstructure aft — tiered, offset to port, with a comms spine.
+  // Superstructure aft — one tall narrow island rather than a low wide block.
+  // Tall-and-narrow is what separates this hull from the cruiser at a glance:
+  // the cruiser's mass steps up in four terraces the length of the ship, the
+  // destroyer's is a single slab tower over the stern quarter.
   const tz = -74;
-  b.add(chamferBox(30.0, 14.0, 78.0, { chamfer: 3.0, chamferZ: 4.0, taperFront: 0.8, wTop: 24.0 }), {
-    x: -1.5, y: 34.0, z: tz, variant: PLATE.PANEL, wear: 0.26,
+  b.add(chamferBox(30.0, 26.0, 78.0, { chamfer: 3.6, chamferZ: 4.0, taperFront: 0.8, wTop: 22.0 }), {
+    x: -1.5, y: 40.0, z: tz, variant: PLATE.PANEL, wear: 0.26,
   });
-  b.add(chamferBox(22.0, 12.0, 52.0, { chamfer: 2.4, chamferZ: 3.4, taperFront: 0.78, wTop: 16.0 }), {
-    x: -2.5, y: 45.0, z: tz + 6, variant: PLATE.PANEL, wear: 0.24,
+  b.add(chamferBox(20.0, 22.0, 50.0, { chamfer: 2.8, chamferZ: 3.4, taperFront: 0.78, wTop: 14.0 }), {
+    x: -3.5, y: 62.0, z: tz + 6, variant: PLATE.PANEL, wear: 0.24,
   });
-  b.add(chamferBox(14.0, 10.0, 30.0, { chamfer: 1.8, chamferZ: 2.6, taperFront: 0.72, wTop: 10.0 }), {
-    x: -2.5, y: 54.5, z: tz + 12, variant: PLATE.PANEL, wear: 0.22,
+  b.add(chamferBox(13.0, 18.0, 28.0, { chamfer: 2.0, chamferZ: 2.6, taperFront: 0.72, wTop: 9.0 }), {
+    x: -3.5, y: 80.0, z: tz + 12, variant: PLATE.PANEL, wear: 0.22,
   });
   b.add(chamferBox(10.0, 3.4, 9.0, { chamfer: 0.9, chamferZ: 1.4, taperFront: 0.6 }), {
-    x: -2.5, y: 60.0, z: tz + 24, kind: KIND.GLASS, variant: PLATE.PANEL,
+    x: -3.5, y: 88.0, z: tz + 22, kind: KIND.GLASS, variant: PLATE.PANEL,
   });
-  windows(ctx, 22.0, 2.1, 0.9, 1.1, { x: -1.5, y: 35.0, z: tz + 39.2, rows: 3, rowPitch: 3.4 });
-  windows(ctx, 15.0, 2.1, 0.9, 1.1, { x: -2.5, y: 46.0, z: tz + 32.2, rows: 2, rowPitch: 3.2 });
-  windows(ctx, 62.0, 2.3, 0.8, 1.0, { x: 13.4, y: 35.0, z: tz - 4, ry: -Math.PI / 2, rows: 3, rowPitch: 3.2 });
-  windows(ctx, 62.0, 2.3, 0.8, 1.0, { x: -16.4, y: 35.0, z: tz - 4, ry: Math.PI / 2, rows: 3, rowPitch: 3.2 });
+  windows(ctx, 22.0, 2.1, 0.9, 1.1, { x: -1.5, y: 40.0, z: tz + 39.2, rows: 4, rowPitch: 3.4 });
+  windows(ctx, 15.0, 2.1, 0.9, 1.1, { x: -3.5, y: 62.0, z: tz + 31.2, rows: 3, rowPitch: 3.2 });
+  windows(ctx, 62.0, 2.3, 0.8, 1.0, { x: 13.4, y: 40.0, z: tz - 4, ry: -Math.PI / 2, rows: 4, rowPitch: 3.2 });
+  windows(ctx, 62.0, 2.3, 0.8, 1.0, { x: -16.4, y: 40.0, z: tz - 4, ry: Math.PI / 2, rows: 4, rowPitch: 3.2 });
 
   // Drive block: six mouths in two rows, plus heat fins.
   b.add(chamferBox(46.0, 42.0, 16.0, { chamfer: 5.0, chamferZ: 3.0, wTop: 34.0 }), {
@@ -1030,13 +1325,13 @@ function buildDestroyer(ctx) {
   });
 
   if (b.detail < 2) {
-    b.addParts(mast(rng, 40.0, 1.2, { arms: 5 }), { x: 6.0, y: 40.0, z: tz - 26, rz: -0.08, wear: 0.5 });
-    b.addParts(mast(rng, 26.0, 0.9, { arms: 3 }), { x: -9.0, y: 60.0, z: tz + 4, rz: 0.1, wear: 0.5 });
+    b.addParts(mast(rng, 40.0, 1.2, { arms: 5 }), { x: 6.0, y: 52.0, z: tz - 26, rz: -0.08, wear: 0.5 });
+    b.addParts(mast(rng, 26.0, 0.9, { arms: 3 }), { x: -9.0, y: 84.0, z: tz + 4, rz: 0.1, wear: 0.5 });
     b.addParts(dish(6.5, { sides: b.lod(16, 12, 8, 6), rows: 4 }), {
-      x: 12.0, y: 44.0, z: tz - 14, rx: -0.55, ry: 0.9, variant: PLATE.PANEL, wear: 0.35,
+      x: 12.0, y: 54.0, z: tz - 14, rx: -0.55, ry: 0.9, variant: PLATE.PANEL, wear: 0.35,
     });
     b.addParts(dish(4.5, { sides: b.lod(14, 10, 8, 6), rows: 3 }), {
-      x: -13.5, y: 42.0, z: tz - 8, rx: -0.4, ry: -1.1, variant: PLATE.PANEL, wear: 0.35,
+      x: -13.5, y: 52.0, z: tz - 8, rx: -0.4, ry: -1.1, variant: PLATE.PANEL, wear: 0.35,
     });
     b.addParts(catwalk(90.0, 5.0, 0.7), { x: 20.0, y: 5.0, z: -20.0, wear: 0.5 });
     b.addParts(catwalk(46.0, 4.2, 0.6), { x: -20.0, y: 5.0, z: 30.0, wear: 0.5 });
@@ -1073,16 +1368,16 @@ function buildDestroyer(ctx) {
   // skin so the colour survives the ship being a few pixels wide.
   b.paint({ x0: 27.0, x1: 42.0, y0: -16.0, y1: 8.0, z0: -70.0, z1: 90.0, n: [1, 0, 0], nMin: 0.4, mirror: true });
   b.paint({ x0: 27.0, x1: 42.0, y0: -16.0, y1: 8.0, z0: -178.0, z1: -118.0, n: [1, 0, 0], nMin: 0.4, mirror: true });
-  b.paint({ x0: -20.0, x1: 16.0, y0: 38.0, y1: 66.0, z0: tz - 24, z1: tz + 30, n: [1, 0, 0], nMin: 0.3, mirror: true });
-  b.paint({ x0: -16.0, x1: 16.0, y0: 8.0, y1: 24.0, z0: 138.0, z1: 200.0, n: [0, 1, 0], nMin: 0.3 });
+  b.paint({ x0: -20.0, x1: 16.0, y0: 44.0, y1: 92.0, z0: tz - 24, z1: tz + 30, n: [1, 0, 0], nMin: 0.3, mirror: true });
+  b.paint({ x0: -24.0, x1: 24.0, y0: -6.0, y1: 22.0, z0: 138.0, z1: 210.0, n: [0, 1, 0], nMin: 0.25 });
   b.paint({ x0: -26.0, x1: 26.0, y0: -26.0, y1: 24.0, z0: -192.0, z1: -177.0, n: [0, 0, -1], nMin: 0.45 });
 
   lightStrake(ctx, { z0: -180, z1: 150, x: 31.5, y: -2.0, colour: NAV.beacon, period: 2.2, size: 1.5 });
   navSet(ctx, 31.0, 2.0, -60.0, 2.0, 2.0);
   navSet(ctx, 26.0, 2.0, 60.0, 1.8, 2.0);
-  light(ctx, -2.5, 62.5, tz + 12, NAV.beacon, 2.6, 1.8);
-  light(ctx, 0, 30.0, 150.0, NAV.deck, 1.2, 1.4);
-  light(ctx, 6.0, 81.0, tz - 26, NAV.beacon, 1.7, 1.2);
+  light(ctx, -3.5, 90.0, tz + 12, NAV.beacon, 2.6, 1.8);
+  light(ctx, 0, 22.0, 160.0, NAV.deck, 1.2, 1.4);
+  light(ctx, 6.0, 93.0, tz - 26, NAV.beacon, 1.7, 1.2);
 }
 
 /* cruiser — twin spinal ion mounts, tiered decks, cathedral mass. */
@@ -1114,10 +1409,24 @@ function buildCruiser(ctx) {
   })), b.lod(1, 2, 4, 7)), {}), { variant: PLATE.HULL });
   armourBelt(ctx, plan.slice(0, 11), { out: 2.6, top: 4.0, bottom: -14.0, chamfer: 5.0 });
   armourBelt(ctx, plan.slice(0, 10), { out: 5.0, top: -16.0, bottom: -32.0, chamfer: 4.0, tumble: 1.0 });
-  // Blunt armoured prow block.
-  b.add(chamferBox(40.0, 44.0, 76.0, { chamfer: 7.0, chamferZ: 13.0, taperFront: 0.56, wTop: 24.0 }), {
-    y: -6.0, z: 268.0, variant: PLATE.ARMOUR, wear: 0.6,
+  // Swept armoured prow, sunk between the two spinal mounts. Skewed the
+  // opposite way from the destroyer's, so the two capitals do not share a
+  // handedness as well as a family.
+  prow(ctx, {
+    z0: 200.0, z1: 316.0, w: 62.0, wTip: 12.0, h: 64.0, hTip: 13.0,
+    skew: -6.0, rise: 7.0, cy: -6.0, tumbleTop: 0.32, ease: 1.8, wear: 0.62,
   });
+  blade(ctx, {
+    root: 32.0, span: 20.0, zf: 268.0, zb: 150.0, sweep: 96.0, t: 13.0,
+    y: -14.0, dihedral: -0.26, asym: 0.8, wear: 0.6,
+  });
+  // Dorsal keel forward of the cathedral, where the terraces stop.
+  keel(ctx, [
+    { z: 40, w: 22.0, h: 12.0, y: 40.0, x: -3.0 },
+    { z: 130, w: 26.0, h: 20.0, y: 44.0, x: -4.0 },
+    { z: 220, w: 18.0, h: 15.0, y: 40.0, x: -5.0 },
+    { z: 270, w: 8.0, h: 6.0, y: 34.0, x: -6.0 },
+  ], { wear: 0.34 });
 
   // Twin spinal ion mounts. These are the ship — a cruiser is identified by
   // its guns at ranges where the hull is a smudge — so they are set well
@@ -1128,7 +1437,11 @@ function buildCruiser(ctx) {
   // blob; held out on pylons they read as two guns with a ship between them,
   // which is what a Heavy Cruiser is.
   const sides = b.lod(14, 12, 8, 6);
-  const gunX = 84.0;
+  // Held far enough outboard that the gap is the shape. At 84 m the pylons
+  // reached the belt and gun, hull and pylon merged into one blob; at 150 m
+  // there are two clear channels of void down the ship and the cruiser reads
+  // as a trident from every angle that matters.
+  const gunX = 150.0;
   const gunY = 8.0;
   b.both((s) => {
     const barrel = [
@@ -1160,13 +1473,15 @@ function buildCruiser(ctx) {
     });
     b.add(ring(21.0, 27.0, 6.0, sides), { mirrorX: s < 0, x: gunX, y: gunY, z: 322, variant: PLATE.ARMOUR, wear: 0.85 });
     hp(ctx, s * gunX, gunY, 344.0);
-    // Pylons carrying each gun off the flank. Short, deep and few, so the gap
-    // between gun and hull stays open all the way down the ship.
-    for (let i = 0; i < b.lod(4, 3, 2, 0); i++) {
-      const z = -80 + i * 108;
-      b.add(chamferBox(34.0, 22.0, 46.0, { chamfer: 5.0, chamferZ: 8.0, taperFront: 0.78, wTop: 24.0 }), {
-        mirrorX: s < 0, x: gunX - 21, y: gunY - 4, z, rz: s * 0.06, variant: PLATE.PANEL, wear: 0.44,
-      });
+    // Pylons carrying each gun off the flank. Three, thin along the hull and
+    // swept, so roughly four fifths of the run between gun and hull stays open.
+    // Solid all the way and the two masses become one; this is the difference
+    // between a cruiser and a wider destroyer.
+    for (let i = 0; i < b.lod(3, 3, 2, 0); i++) {
+      const z = -140 + i * 150;
+      b.add(chamferBox(96.0, 26.0, 40.0, {
+        chamfer: 6.0, chamferZ: 12.0, taperFront: 0.62, taperBack: 0.78, wTop: 16.0,
+      }), { mirrorX: s < 0, x: gunX - 48, y: gunY - 6, z, ry: s * 0.05, rz: s * 0.05, variant: PLATE.PANEL, wear: 0.44 });
     }
     b.addParts(radiator(4.0, 90.0, 1.8, b.lod(9, 5, 0, 0)), {
       mirrorX: s < 0, x: gunX + 20, y: 26.0, z: 40.0, rz: s * -0.5, variant: PLATE.PANEL, wear: 0.4,
@@ -1175,10 +1490,10 @@ function buildCruiser(ctx) {
 
   // Cathedral: four terraces stepping up toward the stern.
   const tiers = [
-    { y: 46, w: 66, h: 24, d: 260, z: -70, wt: 52 },
-    { y: 66, w: 52, h: 20, d: 200, z: -96, wt: 40 },
-    { y: 84, w: 38, h: 18, d: 140, z: -118, wt: 28 },
-    { y: 100, w: 24, h: 16, d: 84, z: -136, wt: 17 },
+    { y: 52, w: 66, h: 36, d: 260, z: -70, wt: 52 },
+    { y: 84, w: 52, h: 32, d: 200, z: -96, wt: 40 },
+    { y: 114, w: 38, h: 30, d: 140, z: -118, wt: 28 },
+    { y: 142, w: 24, h: 26, d: 84, z: -136, wt: 17 },
   ];
   for (const t of tiers) {
     b.add(chamferBox(t.w, t.h, t.d, {
@@ -1192,7 +1507,7 @@ function buildCruiser(ctx) {
     }));
   }
   b.add(chamferBox(16.0, 5.0, 14.0, { chamfer: 1.4, chamferZ: 2.2, taperFront: 0.6 }), {
-    x: -2.0, y: 110.0, z: -100.0, kind: KIND.GLASS, variant: PLATE.PANEL,
+    x: -2.0, y: 157.0, z: -100.0, kind: KIND.GLASS, variant: PLATE.PANEL,
   });
 
   // Flying buttresses off the flanks into the lower terrace.
@@ -1231,13 +1546,13 @@ function buildCruiser(ctx) {
   });
 
   if (b.detail < 2) {
-    b.addParts(mast(rng, 62.0, 1.9, { arms: 5 }), { x: 9.0, y: 108.0, z: -150.0, rz: -0.07, wear: 0.5 });
-    b.addParts(mast(rng, 40.0, 1.4, { arms: 4 }), { x: -13.0, y: 92.0, z: -60.0, rz: 0.1, wear: 0.5 });
+    b.addParts(mast(rng, 62.0, 1.9, { arms: 5 }), { x: 9.0, y: 152.0, z: -150.0, rz: -0.07, wear: 0.5 });
+    b.addParts(mast(rng, 40.0, 1.4, { arms: 4 }), { x: -13.0, y: 120.0, z: -60.0, rz: 0.1, wear: 0.5 });
     b.addParts(dish(11.0, { sides: b.lod(16, 12, 8, 6), rows: 4 }), {
-      x: 20.0, y: 78.0, z: -172.0, rx: -0.5, ry: 0.9, variant: PLATE.PANEL, wear: 0.35,
+      x: 20.0, y: 108.0, z: -172.0, rx: -0.5, ry: 0.9, variant: PLATE.PANEL, wear: 0.35,
     });
     b.addParts(dish(8.0, { sides: b.lod(14, 10, 8, 6), rows: 3 }), {
-      x: -22.0, y: 74.0, z: -140.0, rx: -0.35, ry: -1.0, variant: PLATE.PANEL, wear: 0.35,
+      x: -22.0, y: 100.0, z: -140.0, rx: -0.35, ry: -1.0, variant: PLATE.PANEL, wear: 0.35,
     });
     b.addParts(catwalk(200.0, 8.0, 1.1), { x: 34.0, y: 8.0, z: -40.0, wear: 0.5 });
     b.addParts(catwalk(120.0, 7.0, 1.0), { x: -34.0, y: 8.0, z: 60.0, wear: 0.5 });
@@ -1276,15 +1591,15 @@ function buildCruiser(ctx) {
   b.paint({ x0: 46.0, x1: 72.0, y0: -34.0, y1: 6.0, z0: -130.0, z1: 170.0, n: [1, 0, 0], nMin: 0.4, mirror: true });
   b.paint({ x0: 46.0, x1: 72.0, y0: -34.0, y1: 6.0, z0: -296.0, z1: -196.0, n: [1, 0, 0], nMin: 0.4, mirror: true });
   b.paint({ x0: 14.0, x1: 40.0, y0: 0.0, y1: 26.0, z0: -60.0, z1: -4.0, mirror: true });
-  b.paint({ x0: -36.0, x1: 32.0, y0: 56.0, y1: 96.0, z0: -180.0, z1: -20.0, n: [1, 0, 0], nMin: 0.35, mirror: true });
-  b.paint({ x0: -30.0, x1: 30.0, y0: 14.0, y1: 36.0, z0: 180.0, z1: 300.0, n: [0, 1, 0], nMin: 0.3 });
+  b.paint({ x0: -36.0, x1: 32.0, y0: 70.0, y1: 140.0, z0: -180.0, z1: -20.0, n: [1, 0, 0], nMin: 0.35, mirror: true });
+  b.paint({ x0: -44.0, x1: 44.0, y0: -20.0, y1: 34.0, z0: 200.0, z1: 320.0, n: [0, 1, 0], nMin: 0.25 });
   b.paint({ x0: -46.0, x1: 46.0, y0: -48.0, y1: 36.0, z0: -316.0, z1: -292.0, n: [0, 0, -1], nMin: 0.45 });
 
   lightStrake(ctx, { z0: -290, z1: 250, x: 53.0, y: -6.0, colour: NAV.beacon, period: 2.3, size: 2.4 });
   navSet(ctx, 52.0, 2.0, -100.0, 3.2, 2.1);
   navSet(ctx, 44.0, 2.0, 100.0, 3.0, 2.1);
-  light(ctx, -2.0, 113.0, -100.0, NAV.beacon, 2.7, 3.0);
-  light(ctx, 9.0, 172.0, -150.0, NAV.beacon, 1.6, 2.4);
+  light(ctx, -2.0, 160.0, -100.0, NAV.beacon, 2.7, 3.0);
+  light(ctx, 9.0, 218.0, -150.0, NAV.beacon, 1.6, 2.4);
   light(ctx, 0, 40.0, 240.0, NAV.deck, 1.2, 2.2);
 }
 
@@ -1424,9 +1739,55 @@ function buildCarrier(ctx) {
   })), b.lod(1, 2, 4, 7)), {}), { variant: PLATE.HULL });
   armourBelt(ctx, plan.slice(0, 10), { out: 2.6, top: -4.0, bottom: -26.0, chamfer: 4.6, tumble: 1.0 });
   armourBelt(ctx, plan.slice(0, 9), { out: 1.2, top: 30.0, bottom: 12.0, chamfer: 3.4, tumble: 0.92, variant: PLATE.PANEL });
-  b.add(chamferBox(66.0, 40.0, 94.0, { chamfer: 9.0, chamferZ: 17.0, taperFront: 0.52, wTop: 38.0 }), {
-    y: -2.0, z: 356.0, variant: PLATE.ARMOUR, wear: 0.6,
+  // Swept prow. Narrow and skewed to port against the destroyer's starboard
+  // skew, so the two silhouettes lean opposite ways.
+  prow(ctx, {
+    z0: 250.0, z1: 396.0, w: 96.0, wTip: 18.0, h: 56.0, hTip: 14.0,
+    skew: -9.0, rise: 6.0, cy: -2.0, tumbleTop: 0.36, ease: 1.8, wear: 0.6,
   });
+  blade(ctx, {
+    root: 46.0, span: 26.0, zf: 336.0, zb: 200.0, sweep: 120.0, t: 14.0,
+    y: -10.0, dihedral: -0.22, asym: 0.8, wear: 0.58,
+  });
+
+  // Outboard flight decks. The carrier's whole identity was hidden: its bays
+  // are recessed into the flanks, and a recess contributes nothing to an
+  // outline. Two long decks standing 90 m off each flank on a handful of
+  // pylons turn the plan into a trimaran with two open launch corridors, which
+  // is a shape no other class in the fleet has at any range.
+  for (const s of [1, -1]) {
+    const dz = s > 0 ? -30 : 40;           // staggered, never a mirrored pair
+    const dl = s > 0 ? 620 : 560;
+    b.add(loft(decimateStations([
+      { z: dz - dl * 0.5, w: 34, h: 30 },
+      { z: dz - dl * 0.34, w: 52, h: 44 },
+      { z: dz + dl * 0.18, w: 56, h: 46 },
+      { z: dz + dl * 0.42, w: 40, h: 36 },
+      { z: dz + dl * 0.5, w: 16, h: 18 },
+    ].map((p) => ({
+      z: p.z,
+      pts: rectSection(p.w, p.h, { wTop: p.w * 0.62, wBot: p.w * 0.9, chamfer: p.h * 0.2, cy: -86 }),
+    })), b.lod(1, 2, 3, 4)), {}), {
+      mirrorX: s < 0, x: 218.0, ry: -s * 0.03, variant: PLATE.ARMOUR, wear: 0.48,
+    });
+    // Two pylons per side, thin along the hull so the corridor stays open.
+    for (const [pz, pd] of [[dz - dl * 0.28, 74], [dz + dl * 0.26, 62]]) {
+      b.add(chamferBox(140.0, 30.0, pd, {
+        chamfer: 8.0, chamferZ: 16.0, taperFront: 0.6, taperBack: 0.74, wTop: 16.0,
+      }), { mirrorX: s < 0, x: 158.0, y: -44.0, z: pz, rz: s * 0.42, variant: PLATE.PANEL, wear: 0.44 });
+    }
+    if (b.detail < 2) {
+      b.addParts(catwalk(dl * 0.72, 14.0, 2.0), { mirrorX: s < 0, x: 218.0, y: -60.0, z: dz, wear: 0.5 });
+      b.addParts(ribBand(b.lod(9, 6, 3, 0), dz - dl * 0.34, dz + dl * 0.36, 62.0, 12.0, 3.0, {
+        variant: PLATE.MECH, y: -62.0,
+      }), { mirrorX: s < 0, x: 218.0 });
+    }
+    lightStrake(ctx, {
+      z0: dz - dl * 0.4, z1: dz + dl * 0.4, x: s * 242.0, y: -66.0,
+      colour: NAV.hangar, period: 1.6, size: 2.0, both: false,
+    });
+    ctx.dock.push(new THREE.Vector3(s * 172.0, -62.0, dz));
+  }
 
   // Flight decks: two lit mouths sunk into the flanks, the port bay further
   // forward than the starboard one so the ship never reads as a mirrored slab.
@@ -1459,24 +1820,34 @@ function buildCarrier(ctx) {
   // Control tower, starboard side, well aft so it never overhangs a deck.
   const tx = 56;
   const tz = -150;
-  b.add(chamferBox(46.0, 30.0, 104.0, { chamfer: 5.0, chamferZ: 7.0, taperFront: 0.84, wTop: 38.0 }), {
-    x: tx, y: 48.0, z: tz, variant: PLATE.PANEL, wear: 0.26,
+  b.add(chamferBox(46.0, 54.0, 104.0, { chamfer: 6.0, chamferZ: 7.0, taperFront: 0.84, wTop: 34.0 }), {
+    x: tx, y: 58.0, z: tz, variant: PLATE.PANEL, wear: 0.26,
   });
-  b.add(chamferBox(36.0, 26.0, 70.0, { chamfer: 4.0, chamferZ: 6.0, taperFront: 0.8, wTop: 27.0 }), {
-    x: tx, y: 72.0, z: tz + 8, variant: PLATE.PANEL, wear: 0.24,
+  b.add(chamferBox(34.0, 42.0, 70.0, { chamfer: 4.6, chamferZ: 6.0, taperFront: 0.8, wTop: 24.0 }), {
+    x: tx - 2, y: 104.0, z: tz + 8, variant: PLATE.PANEL, wear: 0.24,
   });
-  b.add(chamferBox(24.0, 22.0, 42.0, { chamfer: 3.0, chamferZ: 4.4, taperFront: 0.74, wTop: 17.0 }), {
-    x: tx, y: 94.0, z: tz + 14, variant: PLATE.PANEL, wear: 0.22,
+  b.add(chamferBox(22.0, 34.0, 42.0, { chamfer: 3.4, chamferZ: 4.4, taperFront: 0.74, wTop: 15.0 }), {
+    x: tx - 2, y: 140.0, z: tz + 14, variant: PLATE.PANEL, wear: 0.22,
   });
   b.add(chamferBox(18.0, 7.0, 15.0, { chamfer: 1.7, chamferZ: 2.6, taperFront: 0.6 }), {
-    x: tx, y: 105.0, z: tz + 32, kind: KIND.GLASS, variant: PLATE.PANEL,
+    x: tx - 2, y: 156.0, z: tz + 30, kind: KIND.GLASS, variant: PLATE.PANEL,
   });
-  winBay(ctx, 34.0, 3.4, 1.4, 1.5, { x: tx, y: 50.0, z: tz + 52.4, rows: 3, rowPitch: 4.4, fill: 0.66, depth: 1.8 });
-  winBay(ctx, 26.0, 3.4, 1.4, 1.5, { x: tx, y: 74.0, z: tz + 43.4, rows: 2, rowPitch: 4.2, fill: 0.66, depth: 1.8 });
+  winBay(ctx, 34.0, 3.4, 1.4, 1.5, { x: tx, y: 56.0, z: tz + 52.4, rows: 5, rowPitch: 4.4, fill: 0.66, depth: 1.8 });
+  winBay(ctx, 26.0, 3.4, 1.4, 1.5, { x: tx - 2, y: 100.0, z: tz + 43.4, rows: 4, rowPitch: 4.2, fill: 0.66, depth: 1.8 });
   b.both((s) => winBay(ctx, 92.0, 3.6, 1.3, 1.4, {
-    mirrorX: s < 0, x: tx + s * 23.2, y: 50.0, z: tz, ry: -s * Math.PI / 2,
-    rows: 3, rowPitch: 4.2, fill: 0.6, depth: 1.8,
+    mirrorX: s < 0, x: tx + s * 23.2, y: 56.0, z: tz, ry: -s * Math.PI / 2,
+    rows: 5, rowPitch: 4.2, fill: 0.6, depth: 1.8,
   }));
+
+  // Dorsal keel down the trench, well to port of the island — from above the
+  // carrier is otherwise a flat rectangle with two holes in the sides.
+  keel(ctx, [
+    { z: -330, w: 26.0, h: 14.0, y: 42.0, x: -30.0 },
+    { z: -240, w: 42.0, h: 30.0, y: 50.0, x: -32.0 },
+    { z: 40, w: 44.0, h: 32.0, y: 50.0, x: -34.0 },
+    { z: 220, w: 32.0, h: 22.0, y: 46.0, x: -36.0 },
+    { z: 320, w: 14.0, h: 10.0, y: 38.0, x: -38.0 },
+  ], { wear: 0.32 });
 
   // Dorsal spine: production gantries running the length of the trench.
   b.addParts(ribBand(b.lod(12, 7, 4, 0), -300, 240, 68.0, 9.0, 3.4, { variant: PLATE.MECH, y: 34.0 }), {});
@@ -1512,9 +1883,9 @@ function buildCarrier(ctx) {
   });
 
   if (b.detail < 2) {
-    b.addParts(mast(rng, 54.0, 2.0, { arms: 5 }), { x: tx + 13, y: 104.0, z: tz - 28, rz: -0.06, wear: 0.5 });
+    b.addParts(mast(rng, 54.0, 2.0, { arms: 5 }), { x: tx + 13, y: 150.0, z: tz - 28, rz: -0.06, wear: 0.5 });
     b.addParts(dish(14.0, { sides: b.lod(16, 12, 8, 6), rows: 4 }), {
-      x: tx - 25, y: 82.0, z: tz - 20, rx: -0.5, ry: -1.0, variant: PLATE.PANEL, wear: 0.35,
+      x: tx - 25, y: 118.0, z: tz - 20, rx: -0.5, ry: -1.0, variant: PLATE.PANEL, wear: 0.35,
     });
     b.addParts(dish(9.5, { sides: b.lod(14, 10, 8, 6), rows: 3 }), {
       x: -70.0, y: 42.0, z: -230.0, rx: -0.4, ry: -1.3, variant: PLATE.PANEL, wear: 0.35,
@@ -1567,16 +1938,16 @@ function buildCarrier(ctx) {
   // chevron and a drive collar.
   b.paint({ x0: 88.0, x1: 120.0, y0: -42.0, y1: -6.0, z0: -100.0, z1: 190.0, n: [1, 0, 0], nMin: 0.4, mirror: true });
   b.paint({ x0: 88.0, x1: 120.0, y0: -42.0, y1: -6.0, z0: -340.0, z1: -210.0, n: [1, 0, 0], nMin: 0.4, mirror: true });
-  b.paint({ x0: 30.0, x1: 82.0, y0: 60.0, y1: 112.0, z0: tz - 44, z1: tz + 44, n: [1, 0, 0], nMin: 0.3, mirror: true });
+  b.paint({ x0: 30.0, x1: 82.0, y0: 74.0, y1: 160.0, z0: tz - 44, z1: tz + 44, n: [1, 0, 0], nMin: 0.3, mirror: true });
   b.paint({ x0: -54.0, x1: -10.0, y0: 40.0, y1: 48.0, z0: -172.0, z1: 130.0, n: [0, 1, 0], nMin: 0.45 });
-  b.paint({ x0: -30.0, x1: 30.0, y0: 10.0, y1: 30.0, z0: 250.0, z1: 386.0, n: [0, 1, 0], nMin: 0.3 });
+  b.paint({ x0: -50.0, x1: 50.0, y0: -20.0, y1: 26.0, z0: 250.0, z1: 400.0, n: [0, 1, 0], nMin: 0.25 });
   b.paint({ x0: -76.0, x1: 76.0, y0: -42.0, y1: 36.0, z0: -376.0, z1: -352.0, n: [0, 0, -1], nMin: 0.45 });
 
   lightStrake(ctx, { z0: -350, z1: 330, x: 101.0, y: -30.0, colour: NAV.beacon, period: 2.4, size: 2.8 });
   navSet(ctx, 99.0, -30.0, -160.0, 3.4, 2.2);
   navSet(ctx, 88.0, -26.0, 200.0, 3.2, 2.2);
-  light(ctx, tx, 110.0, tz + 14, NAV.beacon, 2.8, 3.2);
-  light(ctx, 0, 40.0, 330.0, NAV.deck, 1.2, 2.6);
+  light(ctx, tx - 2, 162.0, tz + 14, NAV.beacon, 2.8, 3.2);
+  light(ctx, 0, 26.0, 356.0, NAV.deck, 1.2, 2.6);
 }
 
 /* mothership — everything you have. A city with engines.
@@ -1726,31 +2097,36 @@ function buildMothership(ctx) {
   // through it — built as members round a hole rather than as a slab, because
   // the hole is the point. The forward post is much heavier than the aft one
   // and the top beam slopes: a symmetrical frame reads as a suitcase handle.
-  const sail = { x: -8.0, base: 288, top: 716, tk: 96 };
+  const sail = { x: -8.0, base: 288, top: 812, tk: 96 };
   const member = (z, d, y0, y1, tk, wear, o = {}) => {
     b.add(chamferBox(tk, y1 - y0, d, {
       chamfer: tk * 0.24, chamferZ: tk * 0.4, taperFront: o.taperFront || 0.92, wTop: tk * 0.82,
     }), { x: sail.x, y: (y0 + y1) * 0.5, z, variant: PLATE.PANEL, wear, ...o });
   };
-  member(-344, 600, sail.base, 400, sail.tk, 0.26); // bottom slab
-  member(-134, 180, 400, sail.top, 78, 0.24); // forward post
-  member(-582, 116, 400, 648, 66, 0.26); // aft post
-  b.add(chamferBox(66.0, 76.0, 556.0, { chamfer: 16.0, chamferZ: 24.0, wTop: 50.0 }), {
-    x: sail.x, y: sail.top - 44, z: -348.0, rx: -0.062, variant: PLATE.PANEL, wear: 0.25,
+  member(-344, 600, sail.base, 392, sail.tk, 0.26); // bottom slab
+  member(-104, 148, 392, sail.top, 82, 0.24); // forward post
+  member(-608, 104, 392, 740, 62, 0.26); // aft post
+  b.add(chamferBox(66.0, 78.0, 596.0, { chamfer: 16.0, chamferZ: 24.0, wTop: 50.0 }), {
+    x: sail.x, y: sail.top - 44, z: -348.0, rx: -0.072, variant: PLATE.PANEL, wear: 0.25,
   });
+  /* The arch is now 390 m of clear span and 380 m of clear height — a fifth of
+     the hull length in each direction, so it survives as a hole at twenty
+     pixels. At the previous 300 x 250 anything standing behind it closed the
+     void up, which is how the hero asset came back from review reading as a
+     solid brick with no bow and no stern. */
   // Diagonal brace inside the arch: the one member that stops the void from
-  // being a rectangle.
-  b.add(chamferBox(56.0, 34.0, 268.0, { chamfer: 12.0, chamferZ: 16.0 }), {
-    x: sail.x, y: 470.0, z: -300.0, rx: 0.62, variant: PLATE.MECH, wear: 0.45,
+  // being a rectangle. Kept low and thin so the upper two thirds stay open.
+  b.add(chamferBox(50.0, 28.0, 250.0, { chamfer: 11.0, chamferZ: 14.0 }), {
+    x: sail.x, y: 452.0, z: -286.0, rx: 0.66, variant: PLATE.MECH, wear: 0.45,
   });
   // Arch soffit and jamb linings — the void needs edges to read as cut.
-  b.add(chamferBox(90.0, 18.0, 288.0, { chamfer: 6.0, chamferZ: 9.0 }), {
-    x: sail.x, y: 410.0, z: -368.0, variant: PLATE.MECH, wear: 0.45,
+  b.add(chamferBox(90.0, 18.0, 366.0, { chamfer: 6.0, chamferZ: 9.0 }), {
+    x: sail.x, y: 402.0, z: -360.0, variant: PLATE.MECH, wear: 0.45,
   });
-  b.add(chamferBox(62.0, 16.0, 274.0, { chamfer: 5.0, chamferZ: 9.0 }), {
-    x: sail.x, y: 638.0, z: -366.0, variant: PLATE.MECH, wear: 0.4,
+  b.add(chamferBox(62.0, 16.0, 352.0, { chamfer: 5.0, chamferZ: 9.0 }), {
+    x: sail.x, y: 736.0, z: -358.0, variant: PLATE.MECH, wear: 0.4,
   });
-  b.addParts(ribBand(b.lod(7, 4, 2, 0), -478, -252, 96.0, 12.0, 8.0, { variant: PLATE.MECH, y: 418.0 }), { x: sail.x });
+  b.addParts(ribBand(b.lod(7, 4, 2, 0), -502, -216, 96.0, 12.0, 8.0, { variant: PLATE.MECH, y: 410.0 }), { x: sail.x });
 
   // Sail skin: window cities on both faces, arrays, plate layers.
   b.both((s) => {
@@ -1759,27 +2135,27 @@ function buildMothership(ctx) {
       ry: -Math.PI / 2, rows: 12, rowPitch: 2.5, fill: 0.62, depth: 0.8,
     });
     winBay(ctx, 152.0, 2.5, 0.8, 0.7, {
-      mirrorX: s < 0, x: sail.x + 40.0, y: 540.0, z: -134.0,
+      mirrorX: s < 0, x: sail.x + 42.0, y: 580.0, z: -104.0,
       ry: -Math.PI / 2, rows: 24, rowPitch: 5.2, fill: 0.58, depth: 0.7,
     });
     winBay(ctx, 100.0, 2.5, 0.8, 0.7, {
-      mirrorX: s < 0, x: sail.x + 34.0, y: 512.0, z: -582.0,
+      mirrorX: s < 0, x: sail.x + 32.0, y: 550.0, z: -608.0,
       ry: -Math.PI / 2, rows: 20, rowPitch: 5.2, fill: 0.5, depth: 0.7,
     });
     b.addParts(commsArray(96.0, 132.0, { rows: 6, thickness: 8.0 }), {
-      mirrorX: s < 0, x: sail.x + 40.0, y: 556.0, z: -600.0, ry: -Math.PI / 2, wear: 0.3,
+      mirrorX: s < 0, x: sail.x + 38.0, y: 600.0, z: -626.0, ry: -Math.PI / 2, wear: 0.3,
     });
   });
 
   // Bridge: a wide armoured visor on the forward face of the sail, high up.
   b.add(chamferBox(108.0, 50.0, 56.0, { chamfer: 10.0, chamferZ: 14.0, taperFront: 0.5, wTop: 66.0 }), {
-    x: sail.x, y: 630.0, z: -34.0, variant: PLATE.ARMOUR, wear: 0.24,
+    x: sail.x, y: 704.0, z: -22.0, variant: PLATE.ARMOUR, wear: 0.24,
   });
   b.add(chamferBox(88.0, 26.0, 34.0, { chamfer: 6.0, chamferZ: 9.0, taperFront: 0.55, wTop: 52.0 }), {
-    x: sail.x, y: 632.0, z: -16.0, kind: KIND.GLASS, variant: PLATE.PANEL,
+    x: sail.x, y: 706.0, z: -4.0, kind: KIND.GLASS, variant: PLATE.PANEL,
   });
   winBay(ctx, 76.0, 1.8, 0.6, 0.5, {
-    x: sail.x, y: 572.0, z: -48.0, rows: 12, rowPitch: 1.7, fill: 0.62, depth: 0.6,
+    x: sail.x, y: 640.0, z: -36.0, rows: 12, rowPitch: 1.7, fill: 0.62, depth: 0.6,
   });
 
   /* -------------------------------------------------------- forward tower */
@@ -2037,8 +2413,8 @@ function buildMothership(ctx) {
   if (b.detail < 2) {
     // Masts are kept short. A 200 m whisker adds a third of the ship's height
     // to the silhouette and contributes nothing to it but fuzz.
-    b.addParts(mast(rng, 138.0, 6.4, { arms: 6 }), { x: 44.0, y: sail.top - 24, z: -570.0, rz: -0.05, wear: 0.5 });
-    b.addParts(mast(rng, 96.0, 4.6, { arms: 5 }), { x: -56.0, y: sail.top - 30, z: -178.0, rz: 0.07, wear: 0.5 });
+    b.addParts(mast(rng, 138.0, 6.4, { arms: 6 }), { x: 44.0, y: sail.top - 24, z: -596.0, rz: -0.05, wear: 0.5 });
+    b.addParts(mast(rng, 96.0, 4.6, { arms: 5 }), { x: -56.0, y: sail.top - 30, z: -150.0, rz: 0.07, wear: 0.5 });
     b.addParts(mast(rng, 74.0, 3.6, { arms: 4 }), { x: 62.0, y: 544.0, z: tower.z - 50, rz: -0.1, wear: 0.5 });
     b.addParts(dish(38.0, { sides: b.lod(18, 12, 8, 6), rows: 5 }), {
       x: 118.0, y: 306.0, z: -636.0, rx: -0.5, ry: 0.9, variant: PLATE.PANEL, wear: 0.35,
@@ -2147,7 +2523,7 @@ function buildMothership(ctx) {
     n: [1, 0, 0], nMin: 0.3, mirror: true,
   });
   b.paint({ // sail top beam — a cap stripe read from above and from the side
-    x0: -110, x1: 94, y0: 668, y1: 736, z0: -630, z1: -60,
+    x0: -110, x1: 94, y0: 760, y1: 836, z0: -630, z1: -60,
   });
   b.paint({ // dock tower crown
     x0: -120, x1: 130, y0: 440, y1: 560, z0: tower.z - 100, z1: tower.z + 100,
@@ -2175,8 +2551,8 @@ function buildMothership(ctx) {
   navSet(ctx, 224.0, -92.0, -360.0, 8.0, 2.4);
   navSet(ctx, 224.0, -92.0, 200.0, 8.0, 2.4);
   navSet(ctx, 258.0, 30.0, shieldZ, 8.0, 2.4);
-  light(ctx, sail.x, sail.top + 18, -34.0, NAV.beacon, 2.9, 8.0);
-  light(ctx, 44.0, sail.top + 194, -570.0, NAV.beacon, 1.5, 7.0);
+  light(ctx, sail.x, sail.top + 18, -22.0, NAV.beacon, 2.9, 8.0);
+  light(ctx, 44.0, sail.top + 194, -596.0, NAV.beacon, 1.5, 7.0);
   light(ctx, 6.0, 556.0, tower.z + 6, NAV.beacon, 2.2, 7.0);
   light(ctx, 0, 190.0, shieldZ + 74, NAV.deck, 1.2, 6.0);
   light(ctx, 0, -402.0, -880.0, NAV.deck, 2.0, 6.0);

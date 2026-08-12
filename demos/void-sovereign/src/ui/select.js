@@ -17,15 +17,32 @@ import { SHIPS, ROLE, approxRadius, damageAffinity } from '../ships/catalog.js';
      3. Everything is culled off-screen, and a culled contact releases its
         pool slot to the next one — so the cost tracks what you can see, not
         what you have selected.
-     4. Two pools, not one. A readable contact gets a nine-node bracket; a
-        contact smaller than the ticks themselves gets a one-node pip. A
-        200-ship fleet is therefore ~200 DOM nodes rather than ~2,000, and
-        past the group threshold it collapses to a single bracket plus a
-        constellation of pips. */
+     4. Three pools, not one. A readable contact gets a nine-node bracket; a
+        contact too small to frame gets a class glyph; a contact smaller than
+        the glyph gets a one-node pip. A 200-ship fleet is therefore ~200 DOM
+        nodes rather than ~2,000, and past the group threshold it collapses to
+        a single bracket plus a constellation of pips.
 
-/* A full bracket is nine nodes; a pip is one. The caps are chosen so the
-   worst case is a few hundred elements, all of them transform-only. */
+   Why three tiers rather than two — round 1's finding, in full.
+
+   The bracket used to be sized `projectedRadius * 1.5 + 5` with a pip floor at
+   half >= 8 px, which meant a hull only two pixels across still earned a 16 px
+   box. Brackets were therefore very nearly constant on screen at every range,
+   and a box that does not shrink with distance actively destroys depth: in one
+   review frame the brackets were physically larger than the ships inside them,
+   and a fleet at 30 km read as the same distance as one at 3 km.
+
+   So: the bracket now hugs the hull (`px * 1.15 + 2`) and is only drawn once
+   the hull is genuinely frameable. Everything between "too small to frame" and
+   "too small to see" gets the `silhouette` path out of `catalog.js` instead —
+   the same 24×24 glyph the roster and the production menu already use — scaled
+   with range so it still reads as depth, so class survives at ranges where the
+   mesh is four pixels of grey. Below that it is a pip, as before. */
+
+/* A full bracket is nine nodes, a glyph is three, a pip is one. The caps are
+   chosen so the worst case is a few hundred elements, all transform-only. */
 const MAX_BRACKETS = 96;
+const MAX_GLYPHS = 140;
 const MAX_PIPS = 320;
 const MAX_RETICLES = 14;
 const MAX_ORDERS = 16;
@@ -34,14 +51,28 @@ const MAX_ORDERS = 16;
    bracket around the whole formation and a pip per ship. */
 const GROUP_AT = 140;
 
-/* Below this half-size a bracket is visual noise, so it becomes a pip. This is
-   what makes a 300-ship fleet at long range read as a constellation rather
-   than a mess of overlapping boxes. */
-const PIP_HALF = 8;
+/* Tier thresholds, in projected hull *radius* pixels.
+
+   `BRACKET_PX` is where four corner ticks have something to sit around: below
+   it the ticks are the picture rather than the ship. `GLYPH_PX` is where a
+   24-unit silhouette still resolves as a shape rather than as a smudge —
+   under it there is nothing to say about class and a pip is honest. */
+const BRACKET_PX = 7;
+const GLYPH_PX = 1.5;
+
 const CORNER = 9;
 const SMALL_CORNER = 5;
 const RET_CORNER = 6;
 const GROUP_CORNER = 16;
+
+/* Glyph scale ramp. The element is authored at 20 px and scaled, so range still
+   reads on a marker whose whole job is to be legible at range. */
+const GLYPH_MIN_K = 0.55;
+const GLYPH_MAX_K = 1.3;
+
+/* Half a turn to face down the leg, plus 45° because a two-border corner tick
+   points up-right in its own frame. Precomputed: it is written every frame. */
+const ARROW_TURN = (Math.PI + Math.PI / 4).toFixed(4);
 
 const ROLE_ORDER = {
   structure: 0,
@@ -497,6 +528,7 @@ export class WorldMarkers {
   constructor({ root, ctx }) {
     this.ctx = ctx;
     this.brackets = [];
+    this.glyphs = [];
     this.pips = [];
     this.reticles = [];
     this.orders = [];
@@ -509,10 +541,14 @@ export class WorldMarkers {
     root.appendChild(el);
     this.el = el;
 
-    // Pips paint under brackets, so they get their own host created first.
+    // Pips paint under everything, glyphs under brackets, so the hosts are
+    // created in that order and DOM order settles the stack without z-index.
     this.pipHost = document.createElement('div');
     this.pipHost.className = 'vsh-layer__pips';
     el.appendChild(this.pipHost);
+    this.glyphHost = document.createElement('div');
+    this.glyphHost.className = 'vsh-layer__glyphs';
+    el.appendChild(this.glyphHost);
 
     this.group = this._makeBracket(true);
     this.group.el.classList.add('vsh-brk--group');
@@ -568,6 +604,35 @@ export class WorldMarkers {
     return b;
   }
 
+  /* The middle tier: the class silhouette straight out of `catalog.js`.
+
+     A destroyer and an interceptor are both a few grey pixels at 12 km, and a
+     bracket around either says only "selected". The glyph says which, using
+     exactly the path the roster chip and the production row use, so the player
+     learns one shape per class in three places at once. */
+  _makeGlyph() {
+    const el = document.createElement('div');
+    el.className = 'vsh-gly';
+    const svg = svgEl('svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    const path = svgEl('path');
+    svg.appendChild(path);
+    el.appendChild(svg);
+    this.glyphHost.appendChild(el);
+    return { el, path, classId: null, live: false, enemy: false, low: false, k: -1 };
+  }
+
+  _glyph(i) {
+    let g = this.glyphs[i];
+    if (!g) {
+      g = this._makeGlyph();
+      this.glyphs[i] = g;
+    }
+    return g;
+  }
+
   /* One node, one transform write. This is what keeps a 300-hull selection
      affordable — the bracket's nine elements would not be. */
   _pip(i) {
@@ -612,6 +677,12 @@ export class WorldMarkers {
   _makeOrder() {
     const el = document.createElement('div');
     el.className = 'vsh-ord';
+    /* The lead line is first so the ring and the crosshair paint over its
+       head rather than under it. */
+    const lead = document.createElement('i');
+    lead.className = 'vsh-ord__lead';
+    const arrow = document.createElement('i');
+    arrow.className = 'vsh-ord__arrow';
     const ring = document.createElement('i');
     ring.className = 'vsh-ord__ring';
     const v = document.createElement('i');
@@ -622,9 +693,14 @@ export class WorldMarkers {
     stalk.className = 'vsh-ord__stalk';
     const base = document.createElement('i');
     base.className = 'vsh-ord__base';
-    el.append(ring, v, h, stalk, base);
+    el.append(lead, arrow, ring, v, h, stalk, base);
     this.el.appendChild(el);
-    return { el, ring, stalk, base, life: 0, ttl: 1, x: 0, y: 0, z: 0, targetId: -1, attack: false };
+    return {
+      el, ring, stalk, base, lead, arrow,
+      life: 0, ttl: 1, x: 0, y: 0, z: 0,
+      ox: 0, oy: 0, oz: 0, from: false,
+      targetId: -1, attack: false,
+    };
   }
 
   /* ------------------------------------------------------------ triggers */
@@ -641,6 +717,7 @@ export class WorldMarkers {
     o.ttl = o.attack ? 1.6 : 2.6;
     o.life = o.ttl;
     o.el.classList.toggle('vsh-ord--attack', o.attack);
+    this._setOrigin(o);
   }
 
   /** An attack order landed on a specific hull. The marker tracks it. */
@@ -653,6 +730,40 @@ export class WorldMarkers {
     o.ttl = 1.6;
     o.life = o.ttl;
     o.el.classList.add('vsh-ord--attack');
+    this._setOrigin(o);
+  }
+
+  /* Where the order came *from*, frozen at the moment it was issued.
+
+     Round 1: "order lines currently read as stray hairs". They did, because the
+     only line an order ever drew was the altitude stalk — a 1 px hair dropped
+     to the reference plane with no indication of who was going where. A marker
+     at the destination alone cannot say which of three selected groups you just
+     sent, and in a 3D field it cannot even say which way they are travelling.
+
+     So the marker now also draws the leg: fleet centroid at the instant of the
+     click, to the destination, tapered so it is widest and brightest where the
+     fleet is going and thins to nothing where it came from, with a chevron at
+     the arrival end. The origin is a fixed world point rather than a live
+     centroid — the line is a record of an order given, not a leash. */
+  _setOrigin(o) {
+    const ctx = this.ctx;
+    let x = 0;
+    let y = 0;
+    let z = 0;
+    let n = 0;
+    for (const id of ctx.selection) {
+      const e = ctx.entity(id);
+      if (!e || e.alive === false) continue;
+      const p = posOf(e);
+      if (!p) continue;
+      x += p.x; y += p.y; z += p.z; n++;
+    }
+    o.from = n > 0;
+    if (!n) return;
+    o.ox = x / n;
+    o.oy = y / n;
+    o.oz = z / n;
   }
 
   _takeOrder() {
@@ -697,6 +808,7 @@ export class WorldMarkers {
        a mixed fleet degrades smoothly instead of all at once. */
     const useGroup = sel.size > GROUP_AT;
     let nBrk = 0;
+    let nGly = 0;
     let nPip = 0;
 
     if (useGroup) this._drawGroup();
@@ -709,17 +821,22 @@ export class WorldMarkers {
       const p = posOf(e);
       if (!p || !proj.project(p.x, p.y, p.z)) continue;
 
+      // Projected hull radius in screen pixels. Everything below keys off it.
       const radius = e.radius || approxRadius(e.classId);
-      const half = Math.min(220, ((radius * proj.scaleK) / proj.cw) * 1.5 + 5);
-      const margin = half + 30;
+      const px = (radius * proj.scaleK) / proj.cw;
+      const half = Math.min(240, px * 1.15 + 2);
+      const margin = Math.max(24, half + 24);
       if (
         proj.sx < -margin || proj.sx > proj.w + margin ||
         proj.sy < -margin || proj.sy > proj.h + margin
       ) continue;
 
-      if (!useGroup && half >= PIP_HALF && nBrk < MAX_BRACKETS) {
+      if (!useGroup && px >= BRACKET_PX && nBrk < MAX_BRACKETS) {
         this._drawBracket(this._bracket(nBrk), e, half, proj.sx, proj.sy);
         nBrk++;
+      } else if (!useGroup && px >= GLYPH_PX && nGly < MAX_GLYPHS) {
+        this._drawGlyph(this._glyph(nGly), e, px, proj.sx, proj.sy);
+        nGly++;
       } else {
         this._drawPip(this._pip(nPip), e, proj.sx, proj.sy);
         nPip++;
@@ -727,6 +844,7 @@ export class WorldMarkers {
     }
 
     for (let i = nBrk; i < this.brackets.length; i++) this._park(this.brackets[i]);
+    for (let i = nGly; i < this.glyphs.length; i++) this._parkPip(this.glyphs[i]);
     for (let i = nPip; i < this.pips.length; i++) this._parkPip(this.pips[i]);
 
     this._drawReticles(proj);
@@ -763,6 +881,35 @@ export class WorldMarkers {
     if (!p.live) {
       p.live = true;
       p.el.classList.add('is-live');
+    }
+  }
+
+  /* Class glyph. One transform write carries both position and range: the
+     scale ramp is what stops a distant wing reading as a near one, which is
+     the whole reason the old constant-size bracket had to go. */
+  _drawGlyph(g, e, px, sx, sy) {
+    const k = Math.max(GLYPH_MIN_K, Math.min(GLYPH_MAX_K, px * 0.135 + 0.42));
+    g.el.style.transform =
+      `translate3d(${sx.toFixed(1)}px,${sy.toFixed(1)}px,0) scale(${k.toFixed(3)})`;
+
+    if (g.classId !== e.classId) {
+      g.classId = e.classId;
+      const def = SHIPS[e.classId];
+      g.path.setAttribute('d', (def && def.silhouette) || 'M12 3 L20 20 H4 Z');
+    }
+    const enemy = e.team !== this.ctx.team;
+    if (enemy !== g.enemy) {
+      g.enemy = enemy;
+      g.el.classList.toggle('vsh-gly--enemy', enemy);
+    }
+    const low = (e.hull || 0) < (e.maxHull || 1) * 0.34 || this._hits.has(e.id);
+    if (low !== g.low) {
+      g.low = low;
+      g.el.classList.toggle('vsh-gly--low', low);
+    }
+    if (!g.live) {
+      g.live = true;
+      g.el.classList.add('is-live');
     }
   }
 
@@ -992,6 +1139,36 @@ export class WorldMarkers {
       const sy = proj.sy;
       o.el.style.transform = `translate3d(${sx.toFixed(1)}px,${sy.toFixed(1)}px,0)`;
 
+      /* The leg. Both ends are world points, so it foreshortens with the
+         camera exactly as the fleet's actual course does — which is the only
+         reason it reads as a vector rather than as a decoration. The wedge and
+         the fade both live in CSS; all that is written here is one rotation
+         and one length. */
+      if (o.from && proj.project(o.ox, o.oy, o.oz)) {
+        const lx = proj.sx - sx;
+        const ly = proj.sy - sy;
+        const len = Math.sqrt(lx * lx + ly * ly);
+        if (len > 30 && len < 6000) {
+          const a = Math.atan2(ly, lx);
+          o.lead.style.transform = `rotate(${a.toFixed(4)}rad) translateX(14px) scaleX(${(len - 14).toFixed(1)})`;
+          o.lead.style.opacity = '1';
+          /* The chevron rides 15 px back up the leg and points the way the
+             fleet is going. `rotate(a)` puts the local +X along the leg, the
+             translate walks back along it, and the second rotation turns the
+             corner tick — which naturally points up-right, i.e. −45° — round
+             to the direction of travel. */
+          o.arrow.style.transform =
+            `rotate(${a.toFixed(4)}rad) translateX(15px) rotate(${ARROW_TURN}rad)`;
+          o.arrow.style.opacity = '0.9';
+        } else {
+          o.lead.style.opacity = '0';
+          o.arrow.style.opacity = '0';
+        }
+      } else {
+        o.lead.style.opacity = '0';
+        o.arrow.style.opacity = '0';
+      }
+
       // The altitude stalk: a hairline dropped to the y=0 reference plane. It
       // is the only honest way to read height in a 3D field on a 2D screen.
       if (o.targetId < 0 && proj.project(x, 0, z)) {
@@ -1034,6 +1211,7 @@ export class WorldMarkers {
   dispose() {
     this.el.remove();
     this.brackets.length = 0;
+    this.glyphs.length = 0;
     this.pips.length = 0;
     this.reticles.length = 0;
     this.orders.length = 0;

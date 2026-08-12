@@ -608,11 +608,82 @@ const MACRO_RECIPES = [
   { hatches: 6, vents: 4, greebles: 14, panels: 6, stencils: 4, chevrons: 1, hazard: 1, windows: 4, strips: 4, trim: 4, plateBands: 3 },
 ];
 
-/** Which macro variants each family is allowed to draw from (4 slots, weighted). */
+/* Every macro layer used to be derived from `HULL_PALETTES.bulwark`, so the
+   four differed in *stamp content* and barely at all in value — which is half
+   of why a 1,900 m hull came out as one grey. These are the other half: four
+   materials, not four stencils.
+
+     0 hull plating          the family's own value, near enough to neutral
+     1 belt armour           dark, matte, and the one place rust is allowed
+     2 exposed machinery     darkest and the most metal — bare alloy under wear
+     3 superstructure skin   bone, the lightest thing on the ship
+
+   The hull-palette note above still stands and is not being overturned: the
+   *plate* families remain achromatic, and the only chroma introduced here is
+   a 12% warm bias on the armour belt and a 3% cool bias on machinery. That is
+   §3.3's "bone and rust" at the strength of a hint, applied to a partially
+   covering layer — not a hue on the hull. */
+const MACRO_PALETTES = [
+  { base: [0.352, 0.356, 0.362], bare: [0.470, 0.478, 0.492], tint: 0.20, rough: 0.46, wearAmount: 0.85 },
+  { base: [0.268, 0.252, 0.240], bare: [0.398, 0.372, 0.350], tint: 0.26, rough: 0.60, wearAmount: 1.15 },
+  { base: [0.212, 0.218, 0.228], bare: [0.432, 0.436, 0.446], tint: 0.30, rough: 0.38, wearAmount: 1.30 },
+  { base: [0.520, 0.516, 0.500], bare: [0.560, 0.556, 0.548], tint: 0.14, rough: 0.52, wearAmount: 0.60 },
+];
+
+/* The macro layer only covers where it stamps — `cov` is its alpha, and even
+   the busiest recipe leaves half the surface to the plate underneath. So the
+   value split above would only ever show *inside* the stamps, and a hull would
+   still read as one grey between them.
+
+   This is the same four materials expressed as a multiplier on the plate layer,
+   applied across the whole fragment before the macro mixes over it. Geometry
+   picks the entry through `aVariant` (greeble.js `PLATE.*`), so the boundary
+   between a bone superstructure and a dark armour belt is a *part* boundary —
+   which is the only kind that respects panel breaks by construction.
+
+   `tint` multiplies albedo, `rough` and `metal` are added. Keep the tints
+   centred near 1: this modulates the family's identity, it does not replace it.
+
+   And keep them centred *above* 1 rather than on it. `PLATE.MECH` and
+   `PLATE.ARMOUR` between them account for well over half the authored parts in
+   ships/hulls.js, so a set that is symmetric about 1 is not symmetric in area
+   and darkens the fleet. The first pass of these numbers was, and it cost every
+   class 8-13 points of median encoded luminance while widening the spread — a
+   real widening, but downward only, which is the opposite of the round-1
+   note asking for lit faces to reach further up. Scaled by 1.07 the medians sit
+   back where they were and the spread stays. */
+export const MACRO_TONE = [
+  { tint: [1.120, 1.120, 1.120], rough: 0.00, metal: 0.00 },
+  { tint: [0.856, 0.808, 0.765], rough: 0.11, metal: 0.04 },
+  { tint: [0.733, 0.744, 0.765], rough: -0.07, metal: 0.18 },
+  { tint: [1.391, 1.386, 1.354], rough: 0.05, metal: -0.05 },
+];
+
+/* Which macro layer each `PLATE.*` value resolves to, per family.
+
+   Indexed by `PLATE` directly — `PLATE.HULL, ARMOUR, PANEL, MECH` — not by the
+   shader's rotated slot index; materials.js does the rotation so this table can
+   stay readable. Every row is a *permutation*: all four entries distinct.
+
+   The old table repeated two of four slots in every family (`lancer [0,0,1,0]`
+   collapsed to two layers, `bulwark` and `monolith` to three), so geometry that
+   asked for belt armour and geometry that asked for access panelling were
+   handed the same texture. Asking for panel-to-panel variation and getting none
+   is exactly the "one uniform grey albedo" the round-1 critique reported.
+
+   `ARMOUR -> 1` and `MECH -> 2` everywhere, because those two are semantic and
+   a belt is a belt at any tonnage. The family axis is already carried by the
+   plate layer underneath (`uPlateLayer`), so the one row that differs does so
+   for a reason: `PLATE.HULL` is the `add()` default and therefore owns the main
+   lofted body, and on a monolith that body should be the bone architectural
+   layer — it is the only one that carries window rows, and a window row is the
+   strongest scale cue a 1,900 m hull has. A 14 m interceptor must never get
+   one on its main skin, so lancer and bulwark keep the sparse layer there. */
 export const FAMILY_MACRO_SLOTS = {
-  lancer: [0, 0, 1, 0],
-  bulwark: [1, 2, 1, 0],
-  monolith: [3, 2, 3, 1],
+  //          HULL  ARMOUR  PANEL  MECH
+  lancer: [0, 1, 3, 2],
+  bulwark: [0, 1, 3, 2],
+  monolith: [3, 1, 0, 2],
 };
 
 const HULL_CODES = ['SV', 'KV', 'TR', 'DX', 'HN', 'AR', 'VK'];
@@ -1844,7 +1915,8 @@ export function initTextureLibrary(renderer, rng, opts) {
     const maps = deriveMaps(macroS, r, {
       hc: drawn.hc, mc: drawn.mc, pc: drawn.pc,
       cc: drawn.cc, tc: drawn.tc, ec: drawn.ec, lc: drawn.lc,
-      palette: HULL_PALETTES.bulwark, macro: true, quality,
+      // One palette per layer, not one palette for all four — see MACRO_PALETTES.
+      palette: MACRO_PALETTES[q], macro: true, quality,
     });
     const o = macroLayer * q;
     mAlbedo.set(maps.albedo, o);
