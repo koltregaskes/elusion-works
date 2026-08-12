@@ -309,6 +309,35 @@ const SETTINGS_SPEC = [
     },
   },
 
+  /*
+   * Bindings are deliberately NOT settings rows in the value-store sense: they carry no `key`,
+   * so the filter that builds SETTINGS_ROWS never sees them and they cannot leak into
+   * ashfall.settings. Their state lives in core/input.js (ashfall.bindings), which owns the
+   * defaults, the persistence and the fallback-to-default rules. The menu only renders and
+   * captures. A playtester asked for jump and crouch on mouse side buttons; with buttons as
+   * ordinary codes, that request is nothing but two rows here.
+   */
+  { group: 'Bindings' },
+  { kind: 'bind', action: 'forward', label: 'Move forward' },
+  { kind: 'bind', action: 'back', label: 'Move back' },
+  { kind: 'bind', action: 'left', label: 'Strafe left' },
+  { kind: 'bind', action: 'right', label: 'Strafe right' },
+  { kind: 'bind', action: 'jump', label: 'Jump', hint: 'Mouse side buttons work here too.' },
+  { kind: 'bind', action: 'crouch', label: 'Crouch / slide' },
+  { kind: 'bind', action: 'sprint', label: 'Sprint' },
+  { kind: 'bind', action: 'fire', label: 'Fire' },
+  { kind: 'bind', action: 'ads', label: 'Aim down sights' },
+  { kind: 'bind', action: 'reload', label: 'Reload' },
+  { kind: 'bind', action: 'inspect', label: 'Inspect weapon' },
+  { kind: 'bind', action: 'weapon1', label: 'Weapon 1' },
+  { kind: 'bind', action: 'weapon2', label: 'Weapon 2' },
+  { kind: 'bind', action: 'weapon3', label: 'Weapon 3' },
+  {
+    kind: 'bindreset',
+    label: 'Reset bindings',
+    hint: 'Restore the default keys and buttons.',
+  },
+
   { group: 'Audio' },
   {
     key: 'volume',
@@ -552,9 +581,132 @@ export function createMenu(game) {
         el.settings.appendChild(g);
         continue;
       }
+      if (spec.kind === 'bind' || spec.kind === 'bindreset') {
+        el.settings.appendChild(buildBindRow(spec));
+        continue;
+      }
       el.settings.appendChild(buildRow(spec));
     }
     refreshAvailability();
+  }
+
+  /* --- DOM: key/button binding rows -------------------------------------- */
+
+  /** Human labels for codes. Anything unlisted falls back to a sensible transform. */
+  const CODE_LABELS = {
+    Space: 'SPACE', Mouse0: 'LMB', Mouse1: 'MMB', Mouse2: 'RMB', Mouse3: 'M4', Mouse4: 'M5',
+    ControlLeft: 'L-CTRL', ControlRight: 'R-CTRL', ShiftLeft: 'L-SHIFT', ShiftRight: 'R-SHIFT',
+    AltLeft: 'L-ALT', AltRight: 'R-ALT', ArrowUp: 'UP', ArrowDown: 'DOWN', ArrowLeft: 'LEFT',
+    ArrowRight: 'RIGHT', Enter: 'ENTER', Tab: 'TAB', Backquote: 'GRAVE', CapsLock: 'CAPS',
+    Backspace: 'BKSP', Minus: 'MINUS', Equal: 'EQUALS',
+  };
+  const codeLabel = (code) =>
+    CODE_LABELS[code] ||
+    (code.startsWith('Key') ? code.slice(3) : code.startsWith('Digit') ? code.slice(5) : code.toUpperCase());
+
+  const bindButtons = new Map(); // action -> button, so a conflict repaint reaches every row
+  let bindCapture = null; // { action, cleanup } while listening for the next key/button
+
+  function paintBindings() {
+    const b = game?.input?.bindings || {};
+    for (const [action, btn] of bindButtons) {
+      btn.textContent = (b[action] || []).map(codeLabel).join(' / ') || 'UNBOUND';
+    }
+  }
+
+  function stopBindCapture() {
+    if (!bindCapture) return;
+    bindCapture.cleanup();
+    bindCapture = null;
+    paintBindings();
+  }
+
+  function startBindCapture(action, btn) {
+    stopBindCapture();
+    btn.textContent = 'PRESS A KEY OR BUTTON';
+    btn.classList.add('is-listening');
+    // The Esc guard below also suppresses the menu's own Esc handling for this press.
+    const done = () => {
+      btn.classList.remove('is-listening');
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('mousedown', onBtn, true);
+    };
+    const applyCode = (code) => {
+      const input = game?.input;
+      if (input) {
+        // One physical control, one action: captured codes are stripped from every other
+        // action first, or "jump is also fire" bugs arrive the moment someone experiments.
+        for (const other of Object.keys(input.bindings)) {
+          if (other !== action && input.bindings[other].includes(code)) {
+            input.rebind(other, input.bindings[other].filter((c) => c !== code));
+          }
+        }
+        input.rebind(action, [code]);
+      }
+      stopBindCapture();
+    };
+    const onKey = (e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (e.code === 'Escape') stopBindCapture();
+      else applyCode(e.code);
+    };
+    const onBtn = (e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      applyCode(`Mouse${e.button}`);
+    };
+    // Capture phase, so these outrun the menu's bubble-phase Escape/click handling.
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('mousedown', onBtn, true);
+    bindCapture = { action, cleanup: done };
+  }
+
+  function buildBindRow(spec) {
+    const row = doc.createElement('div');
+    row.className = `setting is-${spec.kind}`;
+
+    const text = doc.createElement('div');
+    text.className = 'setting-text';
+    const label = doc.createElement('span');
+    label.className = 'setting-label';
+    label.textContent = spec.label;
+    text.appendChild(label);
+    if (spec.hint) {
+      const hint = doc.createElement('p');
+      hint.className = 'setting-hint';
+      hint.textContent = spec.hint;
+      text.appendChild(hint);
+    }
+
+    const control = doc.createElement('div');
+    control.className = 'setting-control';
+    const btn = doc.createElement('button');
+    btn.type = 'button';
+    btn.className = 'bind-btn mono';
+
+    if (spec.kind === 'bindreset') {
+      btn.textContent = 'RESET';
+      btn.addEventListener('click', () => {
+        stopBindCapture();
+        game?.input?.resetBindings?.();
+        paintBindings();
+      });
+    } else {
+      bindButtons.set(spec.action, btn);
+      btn.addEventListener('click', (e) => {
+        // The arming click must not be captured as the new binding itself.
+        e.stopPropagation();
+        startBindCapture(spec.action, btn);
+      });
+      const b = game?.input?.bindings?.[spec.action] || [];
+      btn.textContent = b.map(codeLabel).join(' / ') || 'UNBOUND';
+    }
+
+    control.appendChild(btn);
+    row.appendChild(text);
+    row.appendChild(control);
+    return row;
   }
 
   function buildRow(spec) {
@@ -827,6 +979,10 @@ export function createMenu(game) {
   const PAGE_FOR_MODE = { menu: 'title', paused: 'pause', dead: 'dead', playing: null };
 
   function showPage(name) {
+    // A half-armed rebind capture must never outlive the screen it was started on: its
+    // capture-phase listeners would silently eat the first keypress of gameplay.
+    stopBindCapture();
+    if (name === 'settings') paintBindings();
     page = name;
     for (const [key, node] of pages) {
       const active = key === name;
@@ -1495,6 +1651,7 @@ export function createMenu(game) {
   function dispose() {
     if (disposed) return;
     disposed = true;
+    stopBindCapture();
     for (const fn of unbind) {
       try {
         fn();

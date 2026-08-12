@@ -215,6 +215,7 @@ uniform float uHistoryValid;
 uniform float uClipGamma;
 uniform float uNearCut;
 uniform float uHasWorldDepth;
+uniform float uVmFeedback;
 
 /**
  * 5-tap optimised Catmull-Rom. A plain bilinear history fetch is a box filter applied every
@@ -399,13 +400,30 @@ void main() {
   float vm = uHasWorldDepth > 0.5 ? inBand * step(0.02, depthDiff)   // 1 = viewmodel pixel
                                   : 1.0 - nearFade;
 
-  // min(), deliberately not mix(): this term may only ever SHORTEN the history, never lengthen
-  // it. The old "mix(0.80, feedback, nearFade)" reinstated 0.80 on top of a velocity ramp that
-  // had already fallen to 0.35, which is what smeared near-field cover into horizontal ribbons
-  // and left a hard straight ghost edge where a beam silhouette had been a frame earlier.
-  // 0.20 kills the viewmodel ghost in ~2 frames while leaving the gun a trace of temporal AA;
-  // if the procedural hard edges on the receiver alias, raise to 0.30 — do not go above 0.40.
-  feedback = min(feedback, mix(1.0, 0.20, vm));
+  /* min(), deliberately not mix(): this term may only ever SHORTEN the history, never lengthen
+   * it. The original "mix(0.80, feedback, nearFade)" reinstated 0.80 on top of a velocity ramp
+   * that had already fallen to 0.35, which is what smeared near-field cover into horizontal
+   * ribbons and left a hard ghost edge where a beam silhouette had been a frame earlier.
+   *
+   * uVmFeedback is 0. Not "low" — zero, and the distinction is the whole point.
+   *
+   * The first attempt at this set it to 0.20, on the reasoning that a short history still buys
+   * the gun a little temporal AA. That is wrong, and an A/B on the yard vantage settled it:
+   * at 0.20 the ballast, the rail and the sleepers were all plainly readable through the
+   * receiver and magazine; at 0.0 the weapon is opaque. 0.20 did not look like 20% of a ghost,
+   * it looked like a see-through gun, and two independent reviewers called it exactly that.
+   *
+   * The reason is that "a little history" is not a little blur here. Everywhere else in the
+   * frame history is a *better estimate of the same surface*, because reprojection lands it on
+   * that surface. On the viewmodel there are no motion vectors at all — the gun is drawn with
+   * its own projection and reprojected with the world camera's — so history is not a noisier
+   * sample of the receiver, it is a sample of whatever the receiver was covering last frame.
+   * Blending 20% of that is 20% of the background, composited over the gun. It is alpha, not
+   * antialiasing, and no amount of tuning turns one into the other.
+   *
+   * The gun does not go unantialiased: FXAA and CAS both run after the resolve and are purely
+   * spatial, so the viewmodel keeps edge treatment without keeping a memory. */
+  feedback = min(feedback, mix(1.0, uVmFeedback, vm));
 
   // Reject anything that reprojects off-screen or behind the previous camera. There is no
   // history for it; using the edge-clamped texel is what smears a bright streak inwards
@@ -641,6 +659,8 @@ uniform float uAmount;     // params.motionBlurAmount
 uniform float uShutter;    // 0.5 — 180 degree shutter, the cinema default
 uniform float uMaxPixels;  // ~10 px at 1600x900, scaled with resolution
 uniform float uNearCut;    // apparent depth the viewmodel reaches, in metres
+uniform sampler2D tDepthWorld;  // prepass, world only — no viewmodel in it
+uniform float uHasWorldDepth;
 
 #define MB_TAPS 8
 
@@ -667,11 +687,23 @@ void main() {
   vec2 prevUV = prevClip.xy / prevClip.w * 0.5 + 0.5;
   vec2 velocity = (vUv - prevUV) * uAmount * uShutter;
 
-  // The viewmodel shares this depth buffer but not this projection, so its reconstructed
-  // velocity is fiction. Fade the effect out in the near field: the weapon must stay sharp.
-  // The cut is deliberately lower than the TAA one — smearing is far more visible than a
-  // shortened history, but so is losing motion blur on nearby cover.
-  velocity *= smoothstep(uNearCut * 0.35, uNearCut, centreDist);
+  /* The viewmodel shares this depth buffer but not this projection, so its reconstructed
+   * velocity is not merely noisy, it is meaningless. This used to fade over a depth band,
+   * which left roughly a quarter of that fictional velocity applied across the whole weapon:
+   * at the shipped 3.24 m cut, smoothstep(1.13, 3.24, 2.0) is 0.28. Eight taps gathered along
+   * a garbage vector is exactly how the forearm came to have railway ballast visible through
+   * it while its own material is fully opaque — reviewers read it as a transparent sleeve.
+   *
+   * So it is the same exact mask TAA uses, for the same reason, built from the same world-only
+   * prepass depth: a texel whose composited depth differs from the world depth inside the band
+   * the viewmodel can occupy is the weapon, and it gets no velocity at all. Nearby world cover
+   * keeps its motion blur, because its composited depth matches the prepass exactly. */
+  float worldDist = linearDepth(texture(tDepthWorld, vUv).x, uNearFar.x, uNearFar.y);
+  float depthDiff = abs(centreDist - worldDist) / max(worldDist, 0.05);
+  float inBand = 1.0 - step(uNearCut, centreDist);
+  float vm = uHasWorldDepth > 0.5 ? inBand * step(0.02, depthDiff)
+                                  : 1.0 - smoothstep(uNearCut * 0.35, uNearCut, centreDist);
+  velocity *= 1.0 - vm;
 
   vec2 velPixels = velocity * uResolution;
   float len = length(velPixels);
@@ -733,6 +765,19 @@ uniform vec2 uNearFar;
 uniform float uFocus;
 uniform float uCoCScale;
 uniform float uNearKeep;
+uniform sampler2D tDepthWorld;  // prepass, world only — no viewmodel in it
+uniform float uHasWorldDepth;
+uniform float uVmCut;           // apparent depth the viewmodel reaches, in metres
+
+/* 1 where the composited depth disagrees with the world-only prepass inside the band the
+ * viewmodel can occupy — i.e. the weapon. Identical test to the one FRAG_TAA and FRAG_MOTION
+ * use, so all three passes agree on where the gun is. */
+float vmMask(vec2 uv, float dist) {
+  if (uHasWorldDepth <= 0.5) return 0.0;
+  float worldDist = linearDepth(texture(tDepthWorld, uv).x, uNearFar.x, uNearFar.y);
+  float diff = abs(dist - worldDist) / max(worldDist, 0.05);
+  return (1.0 - step(uVmCut, dist)) * step(0.02, diff);
+}
 
 float cocAt(vec2 uv) {
   float dist = linearDepth(texture(tDepth, uv).x, uNearFar.x, uNearFar.y);
@@ -744,6 +789,13 @@ float cocAt(vec2 uv) {
   // camera's near/far. Anything nearer than uNearKeep is treated as "held by the player" and
   // gets zero CoC — the gun must never go soft while you are looking down the sight.
   coc *= smoothstep(uNearKeep * 0.45, uNearKeep, dist);
+  // ...and the band alone was not enough. This half-res pass takes the largest-magnitude CoC
+  // of its 2x2 group so thin silhouettes keep their blur, which means any group straddling the
+  // weapon's edge adopts the *background's* CoC and then averages weapon and background colour
+  // into one texel. A forearm is only a few texels wide at half res, so most of it was boundary
+  // and it came out as a see-through limb with the rails legible through it. Zeroing the CoC on
+  // viewmodel texels stops the weapon seeding that blur at all.
+  coc *= 1.0 - vmMask(uv, dist);
   return clamp(coc, -1.0, 1.0);
 }
 
@@ -853,6 +905,9 @@ uniform float uFocus;
 uniform float uCoCScale;
 uniform float uNearKeep;
 uniform float uBlend;
+uniform sampler2D tDepthWorld;
+uniform float uHasWorldDepth;
+uniform float uVmCut;
 
 void main() {
   vec3 sharp = sanitise(texture(tColour, vUv).rgb);
@@ -864,6 +919,19 @@ void main() {
   float coc = (1.0 - uFocus / max(dist, EPS)) * uCoCScale;
   coc *= smoothstep(uNearKeep * 0.45, uNearKeep, dist);
   float k = clamp(abs(coc) * 1.6, 0.0, 1.0) * uBlend;
+
+  /* Belt to the prefilter's braces, and the one that actually guarantees the result: whatever
+   * the half-res bokeh target ended up containing, the weapon takes none of it. tBokeh is a
+   * blurred, downsampled image in which the gun and the world behind it have already been
+   * averaged together, so any non-zero k on a viewmodel texel composites background over the
+   * weapon — which is transparency, not defocus. Measured directly: with the DOF pass disabled
+   * the forearm is opaque and with it enabled the rails read straight through it. */
+  if (uHasWorldDepth > 0.5) {
+    float worldDist = linearDepth(texture(tDepthWorld, vUv).x, uNearFar.x, uNearFar.y);
+    float diff = abs(dist - worldDist) / max(worldDist, 0.05);
+    float vm = (1.0 - step(uVmCut, dist)) * step(0.02, diff);
+    k *= 1.0 - vm;
+  }
 
   fragColor = vec4(sanitise(mix(sharp, blur, k)), 1.0);
 }
@@ -1686,6 +1754,9 @@ export function createPostFX(engine, game) {
      * over roughly 5 m of real world geometry. 0.4 m of extent is the weapon itself.
      */
     taaNearCut: 2.6,
+    // Viewmodel TAA history. It has no valid motion vectors — see the viewmodel guard in
+    // FRAG_TAA — so any history it keeps is a copy of where the gun used to be.
+    taaVmFeedback: 0.0,
     /** Peak bokeh radius in half-res texels. */
     dofRadius: 14.0,
     dofStrength: 1.0,
@@ -1735,13 +1806,37 @@ export function createPostFX(engine, game) {
     const wn = (cam && cam.near) || 0.05;
     const wf = (cam && cam.far) || 600;
     if (vm && vm.far > vm.near) {
-      // 0.8 m covers the muzzle of a carbine held at a low ready plus the arms; beyond that
-      // the mapping runs away towards the far plane and would sterilise the whole mid-ground.
-      params.dofNearKeep = viewmodelApparentDepth(vm.near, vm.far, wn, wf, 0.8);
-      // TAA guards only the band the viewmodel actually occupies, so its fallback mask does not
-      // swallow metres of world geometry. 0.4 m of extent is the weapon and the arms without the
-      // deliberate DOF over-cover. ~2.58 m apparent.
-      params.taaNearCut = viewmodelApparentDepth(vm.near, vm.far, wn, wf, 0.4);
+      /*
+       * One number, derived once, and every viewmodel guard in the chain is keyed to it.
+       *
+       * This used to be two, and both were short. `taaNearCut` took 0.4 m of extent (~2.58 m
+       * apparent) on the reasoning that 0.4 m is "the weapon and the arms". It is not: a
+       * carbine at low ready with the support arm extended reaches about a metre from the eye,
+       * and the mapping from physical extent to world-linearised depth is steeply non-linear
+       * out there. Every mask built on 2.58 m therefore stopped part-way along the weapon, so
+       * TAA, motion blur and DOF each treated the far half of the gun as world geometry.
+       *
+       * Measured rather than reasoned, because reasoning got this wrong three times: sweeping
+       * dofNearKeep on the yard vantage, the weapon is still see-through at 8 and fully opaque
+       * at 14, which puts the top of the viewmodel's apparent-depth band at ~6.3 m — nearly
+       * 2.5x the old figure. 1.0 m of extent reproduces that.
+       */
+      const vmBand = viewmodelApparentDepth(vm.near, vm.far, wn, wf, 1.0);
+      // The band every viewmodel mask tests against — TAA, motion blur, and both DOF stages.
+      params.taaNearCut = vmBand;
+      /*
+       * DOF is gated by smoothstep(uNearKeep * 0.45, uNearKeep, dist), so holding the whole
+       * weapon at zero CoC needs uNearKeep * 0.45 >= vmBand. Deriving it that way rather than
+       * picking a literal keeps the two in step if the viewmodel FOV or its near/far ever move.
+       *
+       * This matters more than it looks: the DOF prefilter runs at half resolution and takes
+       * the largest-magnitude CoC of each 2x2 group, so a group straddling the weapon's edge
+       * adopts the background's CoC and averages weapon and background colour together. On a
+       * forearm — a few texels wide at half res — most of the limb is boundary, which is why
+       * reviewers read an opaque cloth sleeve as transparent and could name the ballast stones
+       * behind it.
+       */
+      params.dofNearKeep = vmBand / 0.45;
     }
   }
 
@@ -1848,6 +1943,7 @@ export function createPostFX(engine, game) {
     uHistoryValid: { value: 0 },
     uClipGamma: { value: 1.0 },
     uNearCut: { value: 4.0 },
+    uVmFeedback: { value: params.taaVmFeedback },
   };
 
   const uSsao = {
@@ -1892,6 +1988,8 @@ export function createPostFX(engine, game) {
     /** Recomputed per frame from the render height — see runMotionBlur(). */
     uMaxPixels: { value: 10.0 },
     uNearCut: { value: 2.5 },
+    tDepthWorld: { value: null },
+    uHasWorldDepth: { value: 0 },
   };
 
   const uDofPre = {
@@ -1902,6 +2000,9 @@ export function createPostFX(engine, game) {
     uFocus: { value: 12.0 },
     uCoCScale: { value: 1.0 },
     uNearKeep: { value: params.dofNearKeep },
+    tDepthWorld: { value: null },
+    uHasWorldDepth: { value: 0 },
+    uVmCut: { value: params.taaNearCut },
   };
 
   const uDofBlur = {
@@ -1923,6 +2024,9 @@ export function createPostFX(engine, game) {
     uCoCScale: { value: 1.0 },
     uNearKeep: { value: params.dofNearKeep },
     uBlend: { value: 1.0 },
+    tDepthWorld: { value: null },
+    uHasWorldDepth: { value: 0 },
+    uVmCut: { value: params.taaNearCut },
   };
 
   const uBloomDown = {
@@ -2250,7 +2354,17 @@ export function createPostFX(engine, game) {
     // own tuning and still guards only the front of the DOF near field, so nearby cover keeps
     // smearing when the player whips the camera round, which is what motion blur is for.
     uTaa.uNearCut.value = Math.min(params.taaNearCut, params.dofNearKeep);
-    uMotion.uNearCut.value = params.dofNearKeep * 0.6;
+    // Clamped because `params` is public and this one feeds a mix() weight. Anything below 0
+    // makes the final `mix(curT, clipped, feedback)` extrapolate rather than blend, which does
+    // not read as "less history" — it reads as ringing and out-of-gamut pixels on the weapon.
+    // NaN would propagate through the whole resolve, so a non-finite value falls back to 0.
+    const vmFb = Number.isFinite(params.taaVmFeedback) ? params.taaVmFeedback : 0.0;
+    uTaa.uVmFeedback.value = Math.min(1.0, Math.max(0.0, vmFb));
+    // The calibrated band, not a fraction of the DOF keep. `dofNearKeep` is itself derived as
+    // band / 0.45, so `dofNearKeep * 0.6` was the band times 1.33 — close enough to look right
+    // and wrong enough to matter, and it also drove the *fallback* path on a machine with no
+    // prepass. All four viewmodel guards now read the same number.
+    uMotion.uNearCut.value = params.taaNearCut;
   }
 
   /* --- Size sync ---------------------------------------------------------- */
@@ -2646,6 +2760,26 @@ export function createPostFX(engine, game) {
     renderer.autoClear = false;
 
     let colour = hdr.texture;
+
+    /* --- Shared viewmodel mask inputs -------------------------------------
+     * Bound here, per frame, and deliberately NOT inside runTAA(). Motion blur and DOF use the
+     * same mask, but they do not share TAA's fate: `runTAA` is skipped whenever TAA is off in
+     * the settings menu or a debug view is active, and both of those leave motion blur and DOF
+     * running. Binding from inside it left them on uHasWorldDepth = 0 — silently back on the
+     * broad depth-band fallback that put ballast through the player's sleeve in the first
+     * place, and with FRAG_MOTION sampling an unbound tDepthWorld before reaching its own
+     * fallback branch. Caught in review; it would not have shown up in any capture, because
+     * every capture runs with TAA on. */
+    const vmDepth = worldDepthTexture || depthTexture;
+    const vmHas = worldDepthTexture ? 1 : 0;
+    uMotion.tDepthWorld.value = vmDepth;
+    uMotion.uHasWorldDepth.value = vmHas;
+    uDofPre.tDepthWorld.value = vmDepth;
+    uDofPre.uHasWorldDepth.value = vmHas;
+    uDofPre.uVmCut.value = params.taaNearCut;
+    uDofComposite.tDepthWorld.value = vmDepth;
+    uDofComposite.uHasWorldDepth.value = vmHas;
+    uDofComposite.uVmCut.value = params.taaNearCut;
 
     /* 1. TAA */
     if (features.taa && params.taaEnabled && depthTexture && debugMode === 0) {

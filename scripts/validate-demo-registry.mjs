@@ -10,6 +10,8 @@ const sitemapPath = join(root, "sitemap.xml");
 const payloadRoot = join(demosRoot, "cyberpunk-messenger");
 const manifestPath = join(payloadRoot, "release-manifest.json");
 const permittedPayloadExtras = new Set(["DESIGN.md", "release-manifest.json"]);
+// Neon Seraph (KOL-4773) and Void Sovereign (PR #23) stay direct-only until their own release gates pass.
+const directOnlyDemos = new Set(["neon-seraph", "void-sovereign"]);
 const indexHtml = readFileSync(indexPath, "utf8");
 const sitemapXml = readFileSync(sitemapPath, "utf8");
 
@@ -30,6 +32,11 @@ const demoFolders = readdirSync(demosRoot, { withFileTypes: true })
   .map((entry) => entry.name)
   .filter((slug) => existsSync(join(demosRoot, slug, "index.html")))
   .sort();
+const catalogueFolders = demoFolders.filter((slug) => !directOnlyDemos.has(slug));
+
+for (const slug of directOnlyDemos) {
+  if (!demoFolders.includes(slug)) fail(`direct-only demo exception '${slug}' has no matching folder`);
+}
 
 const cardSlugs = [...indexHtml.matchAll(/class="ew-plate-link" href="([^"/]+)\//g)]
   .map((match) => match[1])
@@ -43,12 +50,13 @@ const uniqueSitemap = new Set(sitemapSlugs);
 if (uniqueCards.size !== cardSlugs.length) fail("demos/index.html contains duplicate demo cards");
 if (uniqueSitemap.size !== sitemapSlugs.length) fail("sitemap.xml contains duplicate demo routes");
 
-for (const slug of demoFolders) {
+for (const slug of catalogueFolders) {
   if (!uniqueCards.has(slug)) fail(`demo folder '${slug}' is missing from demos/index.html`);
   if (!uniqueSitemap.has(slug)) fail(`demo folder '${slug}' is missing from sitemap.xml`);
 }
 for (const slug of uniqueCards) {
   if (!demoFolders.includes(slug)) fail(`demos/index.html links unknown demo '${slug}'`);
+  if (directOnlyDemos.has(slug)) fail(`direct-only demo '${slug}' must not appear in demos/index.html`);
 }
 for (const slug of uniqueSitemap) {
   if (!demoFolders.includes(slug)) fail(`sitemap.xml links unknown demo '${slug}'`);
@@ -56,11 +64,11 @@ for (const slug of uniqueSitemap) {
 
 const countLabel = indexHtml.match(/aria-label="Open the (\d+)-item Demo Index"/)?.[1];
 const countBadge = indexHtml.match(/class="ew-index-count"[^>]*>(\d+)</)?.[1];
-if (Number(countLabel) !== demoFolders.length) {
-  fail(`header label says ${countLabel ?? "nothing"} but ${demoFolders.length} demo folders exist`);
+if (Number(countLabel) !== catalogueFolders.length) {
+  fail(`header label says ${countLabel ?? "nothing"} but ${catalogueFolders.length} catalogue demos exist`);
 }
-if (Number(countBadge) !== demoFolders.length) {
-  fail(`header badge says ${countBadge ?? "nothing"} but ${demoFolders.length} demo folders exist`);
+if (Number(countBadge) !== catalogueFolders.length) {
+  fail(`header badge says ${countBadge ?? "nothing"} but ${catalogueFolders.length} catalogue demos exist`);
 }
 
 if (!existsSync(manifestPath)) {
@@ -111,7 +119,7 @@ if (!existsSync(manifestPath)) {
 
 if (!process.exitCode) {
   console.log(
-    `Demo registry valid: ${demoFolders.length} folders, cards and sitemap routes; ` +
+    `Demo registry valid: ${catalogueFolders.length} catalogue demos across ${demoFolders.length} routed folders; ` +
     `${JSON.parse(readFileSync(manifestPath, "utf8")).files.length} Cyberpunk payload files verified.`
   );
 }

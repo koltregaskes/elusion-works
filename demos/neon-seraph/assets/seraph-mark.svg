@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title id="title">Neon Seraph mark</title>
+  <defs>
+    <linearGradient id="g" x1="12" x2="116" y1="18" y2="110" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d8ff3f"/>
+      <stop offset=".47" stop-color="#1fffd7"/>
+      <stop offset="1" stop-color="#ff3e9e"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="128" height="128" rx="12" fill="#03070a"/>
+  <path d="M64 10 94 42 78 42 112 82 77 75 64 118 51 75 16 82 50 42 34 42Z" fill="url(#g)" filter="url(#glow)"/>
+  <path d="M64 28 76 47 64 42 52 47Z" fill="#03070a" opacity=".72"/>
+  <path d="M64 55 73 76 64 100 55 76Z" fill="#03070a" opacity=".82"/>
+</svg>

@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Neon Seraph: Blackout Protocol | Elusion Works Demo</title>
+    <meta
+      name="description"
+      content="A cinematic landing page demo for Neon Seraph: Blackout Protocol, a fictional isometric cyberpunk action game."
+    />
+    <meta name="theme-color" content="#03070a" />
+    <meta name="robots" content="index,follow" />
+    <link rel="canonical" href="https://elusionworks.com/demos/neon-seraph/" />
+    <meta property="og:title" content="Neon Seraph: Blackout Protocol" />
+    <meta
+      property="og:description"
+      content="A premium cyberpunk game landing page demo with a procedural trailer loop and interactive arcology systems."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://elusionworks.com/demos/neon-seraph/" />
+    <meta property="og:image" content="https://elusionworks.com/demos/neon-seraph/assets/poster.webp" />
+    <meta property="og:image:alt" content="Neon Seraph trailer frame showing a cyberpunk arcology at blackout." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="assets/seraph-mark.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Chakra+Petch:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <div class="grain" aria-hidden="true"></div>
+    <div class="rain" aria-hidden="true"></div>
+
+    <header class="site-header" data-header>
+      <a class="brand" href="#top" aria-label="Neon Seraph home">
+        <img src="assets/seraph-mark.svg" alt="" width="34" height="34" />
+        <span>
+          <strong>Neon Seraph</strong>
+          <small>Blackout Protocol</small>
+        </span>
+      </a>
+      <nav class="site-nav" aria-label="Primary navigation">
+        <a href="#signal">Signal</a>
+        <a href="#arcology">Arcology</a>
+        <a href="#combat">Combat</a>
+        <a href="#factions">Factions</a>
+        <a href="#launch">Launch</a>
+      </nav>
+      <div class="header-actions">
+        <button class="audio-toggle" type="button" data-motion-toggle aria-pressed="false">Reduce motion</button>
+        <a class="button button--small" href="#launch">Wishlist</a>
+      </div>
+    </header>
+
+    <main id="main-content">
+      <section class="hero" id="top" aria-labelledby="hero-title">
+        <video
+          class="hero-video"
+          data-hero-video
+          autoplay
+          muted
+          loop
+          playsinline
+          preload="metadata"
+          poster="assets/poster.webp"
+          aria-label="Procedural cinematic trailer loop for Neon Seraph showing a blackout over a stacked cyberpunk city."
+        >
+          <source src="assets/seraph-trailer-loop.webm" type="video/webm" />
+        </video>
+        <div class="hero-fallback" aria-hidden="true"></div>
+        <div class="hero-shade" aria-hidden="true"></div>
+
+        <div class="hero-layout">
+          <div class="hero-copy reveal">
+            <p class="eyebrow">Original playable-world concept / Elusion Works demo</p>
+            <h1 id="hero-title">Neon Seraph</h1>
+            <p class="hero-subtitle">Blackout Protocol</p>
+            <p class="hero-lede">
+              Drop into Eidolon Spire after the grid gods go silent. Command a winged breach rig, carve through corporate
+              cathedrals, and keep the last district alive until dawn.
+            </p>
+            <div class="hero-actions" aria-label="Primary actions">
+              <a class="button button--primary" href="#launch">Wishlist the Signal</a>
+              <button class="button button--ghost" type="button" data-trailer-jump>Watch the Loop</button>
+            </div>
+          </div>
+
+          <aside class="hero-hud reveal" aria-label="Game status">
+            <div class="hud-row">
+              <span>Status</span>
+              <strong>Reveal build</strong>
+            </div>
+            <div class="hud-row">
+              <span>View</span>
+              <strong>Isometric action</strong>
+            </div>
+            <div class="hud-row">
+              <span>Mode</span>
+              <strong>Solo / duo breach</strong>
+            </div>
+            <div class="signal-meter" aria-hidden="true">
+              <i></i><i></i><i></i><i></i><i></i>
+            </div>
+          </aside>
+        </div>
+
+        <div class="hero-footer" aria-label="Platform and trailer controls">
+          <div class="platform-strip">
+            <span>PC</span>
+            <span>PS5</span>
+            <span>Xbox Series</span>
+            <span>Cloud demo</span>
+          </div>
+          <div class="trailer-controls">
+            <button type="button" data-video-toggle>Pause trailer</button>
+            <a href="#arcology">Scroll to mission brief</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="brief section-shell" id="signal" aria-labelledby="signal-title">
+        <div class="brief-copy reveal">
+          <p class="section-number">01 / signal</p>
+          <h2 id="signal-title">A reveal page built like a control-room breach.</h2>
+        </div>
+        <div class="brief-grid">
+          <article class="brief-panel reveal">
+            <span>Player fantasy</span>
+            <h3>Read the city from above.</h3>
+            <p>
+              Tactical dash-and-cover action from an isometric camera, wrapped in a cinematic story about debt, memory,
+              and a power grid that learned to pray.
+            </p>
+          </article>
+          <article class="brief-panel reveal">
+            <span>Site motion</span>
+            <h3>Trailer first, systems second.</h3>
+            <p>
+              The hero loop sells the world instantly. Every following section behaves like a playable dossier instead
+              of a static marketing strip.
+            </p>
+          </article>
+          <article class="brief-panel reveal">
+            <span>Original assets</span>
+            <h3>Procedural, not borrowed.</h3>
+            <p>
+              The video, poster, mark, district map, and HUD language are generated locally for this fictional game demo.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="arcology section-shell" id="arcology" aria-labelledby="arcology-title">
+        <div class="section-heading reveal">
+          <p class="section-number">02 / arcology</p>
+          <h2 id="arcology-title">Choose a district. Watch the briefing mutate.</h2>
+          <p>
+            Eidolon Spire is one vertical city split across four failing systems. The scanner changes objective, threat,
+            and environmental readout without leaving the page.
+          </p>
+        </div>
+
+        <div class="district-grid">
+          <div class="iso-map reveal" aria-label="Interactive isometric district map">
+            <button class="district-tile district-tile--active" type="button" data-district="stack">Stack 09</button>
+            <button class="district-tile" type="button" data-district="saint">Saint Circuit</button>
+            <button class="district-tile" type="button" data-district="glass">Glass Market</button>
+            <button class="district-tile" type="button" data-district="yard">Leviathan Yard</button>
+            <div class="city-core" aria-hidden="true">
+              <span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+
+          <article class="district-readout reveal" aria-live="polite">
+            <p class="readout-label" data-district-code>District 09 / brownout</p>
+            <h3 data-district-title>Stack 09</h3>
+            <p data-district-copy>
+              Worker housing has become a vertical maze of emergency shrines, dead lifts, and drone nests. Keep the
+              lantern relays alive while hostile debt collectors climb from below.
+            </p>
+            <dl>
+              <div>
+                <dt>Threat</dt>
+                <dd data-district-threat>Choir debt squads</dd>
+              </div>
+              <div>
+                <dt>Reward</dt>
+                <dd data-district-reward>Overclocked dash core</dd>
+              </div>
+              <div>
+                <dt>Weather</dt>
+                <dd data-district-weather>Acid rain / low ceiling</dd>
+              </div>
+            </dl>
+          </article>
+        </div>
+      </section>
+
+      <section class="combat section-shell" id="combat" aria-labelledby="combat-title">
+        <div class="section-heading reveal">
+          <p class="section-number">03 / combat loop</p>
+          <h2 id="combat-title">Fast decisions, heavy silhouettes, readable chaos.</h2>
+        </div>
+        <div class="combat-grid">
+          <article class="system-card reveal">
+            <span>01</span>
+            <h3>Wing breach</h3>
+            <p>Slash through sightlines, vault cover, and redirect incoming fire with a luminous wing-rig built for close tactical violence.</p>
+          </article>
+          <article class="system-card reveal">
+            <span>02</span>
+            <h3>Drone choir</h3>
+            <p>Queue commands while moving: blind turrets, mark elites, drag loot, or stitch a temporary shield around an exposed ally.</p>
+          </article>
+          <article class="system-card reveal">
+            <span>03</span>
+            <h3>Blackout tempo</h3>
+            <p>Every arena pulses between darkness and emergency light, changing enemy behaviour, stealth routes, and damage windows.</p>
+          </article>
+        </div>
+
+        <div class="loadout reveal" aria-label="Interactive loadout carousel">
+          <div>
+            <p class="readout-label">Seraph rig</p>
+            <h3 data-loadout-title>Halo Cutter</h3>
+            <p data-loadout-copy>Short-range crescent blade that stores kinetic charge on perfect dodges.</p>
+          </div>
+          <div class="loadout-controls">
+            <button type="button" data-loadout-prev aria-label="Previous loadout">Prev</button>
+            <button type="button" data-loadout-next aria-label="Next loadout">Next</button>
+          </div>
+          <div class="weapon-orbit" aria-hidden="true">
+            <i></i><i></i><i></i>
+          </div>
+        </div>
+      </section>
+
+      <section class="factions section-shell" id="factions" aria-labelledby="factions-title">
+        <div class="section-heading reveal">
+          <p class="section-number">04 / factions</p>
+          <h2 id="factions-title">Three powers want the blackout to last.</h2>
+        </div>
+        <div class="faction-shell reveal">
+          <div class="faction-tabs" role="tablist" aria-label="Faction dossiers">
+            <button class="faction-tab faction-tab--active" type="button" role="tab" aria-selected="true" data-faction="choir">Vesper Choir</button>
+            <button class="faction-tab" type="button" role="tab" aria-selected="false" data-faction="grid">KuroGrid</button>
+            <button class="faction-tab" type="button" role="tab" aria-selected="false" data-faction="null">Civic Null</button>
+          </div>
+          <article class="faction-dossier" aria-live="polite">
+            <p class="readout-label" data-faction-type>Religious debt syndicate</p>
+            <h3 data-faction-title>Vesper Choir</h3>
+            <p data-faction-copy>
+              A lending cult that turns unpaid balances into battlefield hymns. Their agents arrive with gold respirators,
+              choir drones, and contracts printed on human skin.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="media section-shell" id="trailer" aria-labelledby="trailer-title">
+        <div class="section-heading reveal">
+          <p class="section-number">05 / trailer room</p>
+          <h2 id="trailer-title">The loop is a mood test, not borrowed footage.</h2>
+          <p>
+            This demo ships a real locally generated WebM trailer loop plus a poster frame. The fallback is a procedural
+            motion plate, so the first viewport still reads if video playback is unavailable.
+          </p>
+        </div>
+        <figure class="trailer-frame reveal">
+          <video controls muted loop playsinline poster="assets/poster.webp" preload="metadata">
+            <source src="assets/seraph-trailer-loop.webm" type="video/webm" />
+          </video>
+          <figcaption>Procedural reveal loop: Eidolon Spire enters emergency blackout.</figcaption>
+        </figure>
+      </section>
+
+      <section class="launch section-shell" id="launch" aria-labelledby="launch-title">
+        <div class="launch-copy reveal">
+          <p class="section-number">06 / launch vector</p>
+          <h2 id="launch-title">Wishlist the fictional reveal build.</h2>
+          <p>
+            A public portfolio demo for testing high-impact game landing pages with video, interaction, and original
+            procedural assets.
+          </p>
+        </div>
+        <form class="launch-form reveal" data-launch-form>
+          <label for="email">Signal address</label>
+          <div>
+            <input id="email" name="email" type="email" placeholder="runner@eidolon.example" autocomplete="email" />
+            <button class="button button--primary" type="submit">Join Watchlist</button>
+          </div>
+          <p data-form-status>Static demo: no email is sent.</p>
+        </form>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <a href="../">Elusion Works demos</a>
+      <span>Neon Seraph: Blackout Protocol is a fictional portfolio concept.</span>
+      <span>Original procedural media. No borrowed game IP.</span>
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>

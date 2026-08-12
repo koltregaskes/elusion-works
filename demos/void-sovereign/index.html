@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en-GB" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Void Sovereign | Elusion Works</title>
+    <meta
+      name="description"
+      content="A universe-scale 3D space RTS in the browser. Procedural fleets, procedural nebulae, full 3D fleet command — built on Three.js with zero binary art assets."
+    />
+    <meta name="theme-color" content="#04070c" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data: blob:; media-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
+    />
+    <meta property="og:title" content="Void Sovereign | Elusion Works" />
+    <meta
+      property="og:description"
+      content="A universe-scale 3D space RTS in the browser. Procedural fleets, procedural nebulae, full 3D fleet command."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://elusionworks.com/demos/void-sovereign/" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link rel="canonical" href="https://elusionworks.com/demos/void-sovereign/" />
+    <link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles/shell.css" />
+    <link rel="stylesheet" href="styles/hud.css" />
+    <link rel="modulepreload" href="src/main.js" />
+    <link rel="modulepreload" href="vendor/three/build/three.module.js" />
+  </head>
+
+  <body class="vs-body">
+    <!-- The 3D view. Everything else is a thin overlay on top of this. -->
+    <div class="vs-stage" id="vs-stage">
+      <canvas id="vs-canvas" aria-label="Void Sovereign tactical view" role="img"></canvas>
+    </div>
+
+    <!-- The HUD builds itself into this container. Owned by src/ui/hud.js. -->
+    <div class="vs-hud" id="vs-hud" aria-live="polite"></div>
+
+    <!-- Boot overlay. Driven by src/main.js, removed once the first frame lands. -->
+    <div class="vs-boot" id="vs-boot">
+      <div class="vs-boot-inner">
+        <p class="vs-boot-eyebrow">Elusion Works</p>
+        <h1 class="vs-boot-title">Void Sovereign</h1>
+        <p class="vs-boot-deck">
+          Fleet command at universe scale. Everything you are about to see —
+          every hull, every nebula, every asteroid — is generated in your browser
+          from a single seed.
+        </p>
+        <div class="vs-setup" id="vs-setup">
+          <div class="vs-setup-field">
+            <label class="vs-setup-label" for="vs-setup-seed">Seed</label>
+            <div class="vs-setup-row">
+              <input class="vs-setup-input" id="vs-setup-seed" type="text" inputmode="text"
+                     autocomplete="off" spellcheck="false" aria-describedby="vs-setup-seed-hint" />
+              <button class="vs-setup-btn" id="vs-setup-reroll" type="button">Reroll</button>
+            </div>
+            <p class="vs-setup-hint" id="vs-setup-seed-hint">Rebuilds the same universe every time.</p>
+          </div>
+
+          <div class="vs-setup-field">
+            <span class="vs-setup-label" id="vs-setup-diff-label">Opponent</span>
+            <div class="vs-setup-choice" role="radiogroup" aria-labelledby="vs-setup-diff-label" id="vs-setup-difficulty">
+              <button type="button" role="radio" aria-checked="false" data-value="easy">Cautious</button>
+              <button type="button" role="radio" aria-checked="true" data-value="normal">Even</button>
+              <button type="button" role="radio" aria-checked="false" data-value="hard">Relentless</button>
+            </div>
+            <p class="vs-setup-hint">Cautious is handicapped, not blind. Relentless earns 15% more and builds 15% faster.</p>
+          </div>
+
+          <div class="vs-setup-field">
+            <span class="vs-setup-label" id="vs-setup-qual-label">Detail</span>
+            <div class="vs-setup-choice" role="radiogroup" aria-labelledby="vs-setup-qual-label" id="vs-setup-quality">
+              <button type="button" role="radio" aria-checked="false" data-value="low">Low</button>
+              <button type="button" role="radio" aria-checked="false" data-value="medium">Medium</button>
+              <button type="button" role="radio" aria-checked="true" data-value="high">High</button>
+              <button type="button" role="radio" aria-checked="false" data-value="ultra">Ultra</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="vs-boot-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="vs-boot-bar">
+          <div class="vs-boot-progress-fill" id="vs-boot-fill"></div>
+        </div>
+        <div class="vs-boot-footer">
+          <p class="vs-boot-status" id="vs-boot-status">Waking the shipyard…</p>
+          <button class="vs-launch" id="vs-launch" type="button" disabled hidden>Take command</button>
+        </div>
+        <noscript>
+          <p class="vs-boot-status">This demo needs JavaScript and WebGL 2.</p>
+        </noscript>
+      </div>
+    </div>
+
+    <!-- Shown only if the engine cannot start at all. -->
+    <div class="vs-fatal" id="vs-fatal" hidden>
+      <div class="vs-fatal-inner">
+        <h2>This one needs a bigger engine room.</h2>
+        <p id="vs-fatal-detail">Void Sovereign requires WebGL 2.</p>
+        <a class="vs-fatal-back" href="../">Back to the demo shelf</a>
+      </div>
+    </div>
+
+    <a class="vs-exit" href="../" aria-label="Back to the Elusion Works demo shelf">
+      <span aria-hidden="true">←</span> Demos
+    </a>
+
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>
