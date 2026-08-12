@@ -317,6 +317,7 @@ export class ExplosionFX {
 
     this._v = new THREE.Vector3();
     this._v2 = new THREE.Vector3();
+    this._dir = new THREE.Vector3();
     this._axis = new THREE.Vector3();
     this._side = new THREE.Vector3();
     this._up = new THREE.Vector3();
@@ -389,6 +390,19 @@ export class ExplosionFX {
       hull: (ctx.hullPalette && ctx.hullPalette(def.palette)) || null,
       events: null,
     };
+
+    /* The axis the wreck vents along. Mostly the keel — a hull fails along its
+       frames — but pulled off it by a random component so a squadron dying does
+       not produce a row of identical twin-lobed bursts. Drawn once per death,
+       from the death's own fork of the RNG, so it is reproducible from the seed
+       like everything else. */
+    seq.blast = new THREE.Vector3().copy(seq.axis);
+    const w = seq.rng.unitVector();
+    seq.blast.x += w.x * 0.55;
+    seq.blast.y += w.y * 0.55;
+    seq.blast.z += w.z * 0.55;
+    if (seq.blast.lengthSq() < 1e-6) seq.blast.set(0, 0, 1);
+    seq.blast.normalize();
 
     if (L < 45) seq.events = this._scriptPop(seq);
     else if (L < 210) seq.events = this._scriptBreak(seq);
@@ -511,6 +525,39 @@ export class ExplosionFX {
     return out.copy(seq.pos).addScaledVector(seq.vel, t);
   }
 
+  /* Directional bias for ejecta.
+
+     A ship is not a point charge. It comes apart along its structure, so the
+     blast vents hardest through the two ends of the hull and along whatever
+     axis the failure ran — which is why real wreckage forms lobes and a
+     particle system's `rng.unitVector()` forms a ball. A perfectly isotropic
+     spray is the single loudest "this is a particle emitter" signal a death can
+     give, and it is the reason the puffs read as soft round billboards with
+     nothing behind them.
+
+     `seq.blast` is a per-death axis, drawn once, biased onto the hull's long
+     axis: most ships fail along the keel, some do not. Writes a unit vector to
+     `out` and returns a speed multiplier, so the material moving *along* the
+     lobes is also the material moving fastest — which is what makes the lobes
+     legible rather than merely present. */
+  _bias(seq, rng, amount, out) {
+    const u = rng.unitVector();
+    const b = seq.blast;
+    // Sign per sample so the lobes go both ways down the axis, as a hull that
+    // has broken in the middle actually vents.
+    const s = rng.next() < 0.5 ? -1 : 1;
+    out.set(
+      u.x + b.x * s * amount,
+      u.y + b.y * s * amount,
+      u.z + b.z * s * amount,
+    );
+    const len = Math.max(1e-4, Math.hypot(out.x, out.y, out.z));
+    out.multiplyScalar(1 / len);
+    // Alignment with the lobe, remapped to 0.3 .. 1.25 of nominal speed.
+    const align = Math.abs(out.x * b.x + out.y * b.y + out.z * b.z);
+    return (0.30 + 0.95 * Math.pow(align, 1.6)) * rng.range(0.55, 1.15);
+  }
+
   /* `fx:blast` — the one channel anything that shoves the camera goes through.
 
      Emitted on the beats of a death sequence that should be *felt*: each
@@ -595,9 +642,27 @@ export class ExplosionFX {
         // Body: expands and cools through gold.
         f.flare.spawn(origin.x, origin.y, origin.z, V.x, V.y, V.z, ev.life, 0,
           size * 0.32, size, col, ev.bright * 0.14, 0, 0);
-        // Cooling shell: deep orange, slower, wider — the fireball's edge.
-        f.flare.spawn(origin.x, origin.y, origin.z, V.x, V.y, V.z, ev.life * 2.1, 0,
-          size * 0.5, size * 1.5, EMBER, ev.bright * 0.045, 0, 0);
+        /* Cooling shell: deep orange, slower, wider — the fireball's edge. It
+           drifts along the vent axis and stretches with it, so the outside of a
+           fireball is an elongated mass rather than a circle. */
+        const B = seq.blast;
+        const drift = size * 0.55;
+        f.flare.spawn(origin.x, origin.y, origin.z,
+          V.x + B.x * drift, V.y + B.y * drift, V.z + B.z * drift, ev.life * 2.1, 0,
+          size * 0.5, size * 1.5, EMBER, ev.bright * 0.045, 0.75, 0);
+        /* Two lobes thrown down the vent axis. A fireball whose silhouette is a
+           circle has no information in it about what just failed or which way;
+           a pair of offset masses gives the blast a direction from the first
+           frame, which is the whole of the complaint. */
+        for (let s = -1; s <= 1; s += 2) {
+          f.flare.spawn(
+            origin.x + B.x * size * 0.62 * s,
+            origin.y + B.y * size * 0.62 * s,
+            origin.z + B.z * size * 0.62 * s,
+            V.x + B.x * drift * 1.6 * s, V.y + B.y * drift * 1.6 * s, V.z + B.z * drift * 1.6 * s,
+            ev.life * 1.5, 0, size * 0.22, size * 0.85, FIRE, ev.bright * 0.075, 1.3, 0,
+          );
+        }
         /* Brightness is a good proxy for how hard a beat should hit — the
            destroyer's primary is `bright: 34`, which is what anchors the scale
            at 1.0. But a single beat built from three overlaid flares must put
@@ -659,11 +724,10 @@ export class ExplosionFX {
         const V = seq.vel;
         const ss = px(ev.size, ev.minPx);
         for (let i = 0; i < n; i++) {
-          const u = rng.unitVector();
-          const s = ev.speed * rng.range(0.25, 1.0);
+          const s = ev.speed * this._bias(seq, rng, 0.62, this._dir);
           this._col.copy(CORE).lerp(EMBER, rng.next() * 0.7);
           f.spark.spawn(origin.x, origin.y, origin.z,
-            V.x + u.x * s, V.y + u.y * s, V.z + u.z * s,
+            V.x + this._dir.x * s, V.y + this._dir.y * s, V.z + this._dir.z * s,
             rng.range(0.35, 1.5), 0.35, ss * rng.range(0.6, 1.6), 0.2,
             this._col, 2.8, rng.range(3, 10), 0);
         }
@@ -674,13 +738,16 @@ export class ExplosionFX {
         const n = Math.round(ev.n * q);
         const V = seq.vel;
         for (let i = 0; i < n; i++) {
-          const u = rng.ballPoint(1);
-          const s = ev.speed * rng.range(0.1, 1.0);
+          const s = ev.speed * this._bias(seq, rng, 0.48, this._dir) * rng.range(0.35, 1.0);
           this._col.copy(FIRE).lerp(EMBER, rng.next());
           f.ember.spawn(origin.x, origin.y, origin.z,
-            V.x + u.x * s, V.y + u.y * s, V.z + u.z * s,
+            V.x + this._dir.x * s, V.y + this._dir.y * s, V.z + this._dir.z * s,
             ev.life * rng.range(0.5, 1.4), 0.10,
-            seq.L * 0.045, seq.L * 0.010, this._col, 2.4, 0, rng.gaussian(0, 0.6));
+            seq.L * 0.045, seq.L * 0.010, this._col, 2.4,
+            // Motion-stretched, not round. An ember travelling 200 m/s that
+            // draws as a circle is a bubble; the same ember drawn along its own
+            // velocity is burning debris, and it costs nothing.
+            rng.range(1.4, 4.2), rng.gaussian(0, 0.6));
         }
         break;
       }
@@ -689,12 +756,17 @@ export class ExplosionFX {
         const n = Math.round(ev.n * q);
         const V = seq.vel;
         for (let i = 0; i < n; i++) {
-          const u = rng.unitVector();
-          const s = ev.speed * rng.range(0.2, 1.0);
+          const s = ev.speed * this._bias(seq, rng, 0.55, this._dir);
           f.smoke.spawn(origin.x, origin.y, origin.z,
-            V.x + u.x * s, V.y + u.y * s, V.z + u.z * s,
+            V.x + this._dir.x * s, V.y + this._dir.y * s, V.z + this._dir.z * s,
             ev.life * rng.range(0.6, 1.3), 0.06,
-            ev.size * 0.35, ev.size * rng.range(1.6, 3.2), SOOT, 0.95, 0, rng.gaussian(0, 0.7));
+            ev.size * 0.35, ev.size * rng.range(1.6, 3.2), SOOT, 0.95,
+            /* Soot billows *away* from the blast rather than sitting as a disc.
+               A round billboard with a visible sprite boundary is the read the
+               critic named; elongating it along its own travel is what turns a
+               puff into a plume, and it also hides the boundary because the long
+               axis is where the alpha is already thinnest. */
+            rng.range(0.8, 2.6), rng.gaussian(0, 0.7));
         }
         break;
       }
@@ -727,6 +799,8 @@ export class ExplosionFX {
           speed: ev.speed,
           colour: seq.team.primary,
           hull: seq.hull,
+          // Wreckage vents down the same lobes the gas does.
+          blast: seq.blast,
           /* Structural spans, 15-25% of hull length, on the beat where the
              ship actually breaks. Only the main break throws them: the
              lead-in bursts are plating coming off, not the keel letting go. */

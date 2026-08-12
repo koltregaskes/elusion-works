@@ -213,14 +213,30 @@ export class DebrisFX {
     const keelCount = Math.max(0, Math.round(opts.keelCount || 0));
     const keelLength = opts.keelLength || 0;
 
+    /* Vent axis from the death sequence. Wreckage leaves a hull along the same
+       lobes the gas does — a radially uniform spray of chunks is the giveaway
+       that this is an emitter rather than a structure failing. */
+    const B = opts.blast || null;
+
     for (let i = 0; i < count; i++) {
       if (this._chunks.length >= cap) this._chunks.shift();
       const isKeel = i < keelCount && keelLength > 0;
       // Keel sections stay near the wreck's core and travel slowly; they carry
       // the mass, so they must not be flung out with the light debris.
       const p = rng.ballPoint(isKeel ? spread * 0.45 : spread);
+      if (B) {
+        // Stretch the spawn cloud along the axis: a broken hull is longer than
+        // it is wide, and so is the volume its pieces start from.
+        const s = rng.next() < 0.5 ? -1 : 1;
+        const push = spread * 0.55 * s * rng.range(0.2, 1.0);
+        p.x += B.x * push; p.y += B.y * push; p.z += B.z * push;
+      }
       const dirLen = Math.max(1e-4, Math.hypot(p.x, p.y, p.z));
-      const kick = speed * (isKeel ? rng.range(0.08, 0.30) : rng.range(0.25, 1.0));
+      // Pieces heading down a lobe are the ones the blast actually pushed, so
+      // they leave faster; the rest tumble away off the sides.
+      const align = B ? Math.abs((p.x * B.x + p.y * B.y + p.z * B.z) / dirLen) : 1;
+      const lobe = B ? 0.45 + 0.85 * Math.pow(align, 1.5) : 1;
+      const kick = speed * lobe * (isKeel ? rng.range(0.08, 0.30) : rng.range(0.25, 1.0));
       const jitter = speed * (isKeel ? 0.06 : 0.22);
 
       // Long thin sections read as hull plating; keep one axis dominant.

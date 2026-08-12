@@ -832,12 +832,39 @@
   }
 }
 
-/* The rail is vertically centred, which collides with nothing at 1280x720 —
-   but a very short window is a different problem, so shed the step list and
-   let the body scroll rather than overrunning the frame. */
+/* The rail is vertically centred, so its height decides whether it clears the
+   selection roster in the bottom-left.
+
+   This rule used to start at 700px and carried a comment saying the rail
+   "collides with nothing at 1280x720". That was true when it was written and
+   stopped being true the moment the stance/formation palette was docked into
+   the roster, which made that block about 68px taller. At exactly 1280x720
+   neither this rule nor the 1180px width rule fired, so the full-height card
+   ran straight into it — a comment asserting a measurement, going stale
+   because something else moved.
+
+   Starting at 820px covers 720p with room to spare. Centred, the card's lower
+   edge sits at 50vh + max-height/2, so 55vh keeps it above 638px at 720p.
+   Measured with `.local/rail-clear.mjs`, which asserts the two rectangles do
+   not intersect rather than trusting the arithmetic here. */
+@media (max-height: 820px) {
+  .vst-card {
+    /* Stop centring rather than shrinking. Centred, clearing the roster at
+       720p needs max-height down at ~45vh, which sheds most of the step list
+       for no reason — the space above the card is empty. Anchoring near the
+       top keeps the full rail and still lands its lower edge ~50px clear.
+       Measured: 1280x720 rail bottom 475 against roster top 526. */
+    top: 11vh;
+    transform: none;
+    max-height: 55vh;
+  }
+}
+
+/* Shorter still: shed the step list and let the body scroll rather than
+   overrunning the frame. */
 @media (max-height: 700px) {
   .vst-card {
-    max-height: 64vh;
+    max-height: 52vh;
   }
 
   .vst-list {

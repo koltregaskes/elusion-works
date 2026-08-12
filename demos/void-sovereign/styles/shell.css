@@ -112,24 +112,117 @@ body.vs-body {
   transition: opacity 260ms var(--vs-ease), visibility 0s;
 }
 
-/* Front matter sits on nothing, so it owns the frame. */
+/* ==================================================== front-matter backdrop
+   The generated frame behind title, setup, briefing and loading. See the note
+   on the markup in index.html for why it exists and why it is authored rather
+   than fetched. It is opaque, so it is what the front-matter screens sit on;
+   they carry only a soft directional wash of their own to hold their type. */
+
+.vs-art {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: var(--vs-void);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 320ms var(--vs-ease), visibility 0s linear 320ms;
+}
+
+.vs-shell[data-state='title'] .vs-art,
+.vs-shell[data-state='setup'] .vs-art,
+.vs-shell[data-state='briefing'] .vs-art,
+.vs-shell[data-state='loading'] .vs-art {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 320ms var(--vs-ease), visibility 0s;
+}
+
+.vs-art__svg {
+  position: absolute;
+  /* Over-sized so the parallax drift never walks an edge into the frame. */
+  left: -3%;
+  top: -3%;
+  width: 106%;
+  height: 106%;
+}
+
+/* The fleet drifts and nothing else does.
+
+   Deliberately not the gas or the stars: those two groups are `feTurbulence`,
+   and moving a filtered subtree risks the browser re-running the noise every
+   frame instead of compositing a cached raster. A title screen that costs a
+   megapixel of fractal noise per frame is a worse crime than a still nebula.
+   The ship is four dozen paths and moves for nothing. */
+.vs-art__fleet {
+  animation: vs-drift-fleet 74s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@keyframes vs-drift-fleet {
+  from { transform: translate(1108px, 460px) rotate(-8.4deg); }
+  to { transform: translate(1082px, 444px) rotate(-7.2deg); }
+}
+
+/* Fine over most of the frame; the deck and the menu need more than the art
+   gives them on the left, so the screens keep a directional wash. */
 .vs-screen--title,
 .vs-screen--setup,
 .vs-screen--briefing,
 .vs-screen--loading {
   background:
-    radial-gradient(120% 90% at 50% 38%, rgba(18, 34, 52, 0.55), transparent 70%),
-    var(--vs-void);
+    linear-gradient(100deg, rgba(3, 7, 12, 0.93) 0%, rgba(3, 7, 12, 0.82) 26%, rgba(3, 7, 12, 0.36) 56%, rgba(3, 7, 12, 0.06) 78%, rgba(3, 7, 12, 0) 100%);
+}
+
+/* Setup, briefing and loading are reading screens, not posters: the art stays,
+   turned down, so the frame is continuous but the prose is not fighting it. */
+.vs-screen--setup,
+.vs-screen--briefing,
+.vs-screen--loading {
+  background:
+    linear-gradient(100deg, rgba(3, 7, 12, 0.95) 0%, rgba(3, 7, 12, 0.9) 34%, rgba(3, 7, 12, 0.72) 66%, rgba(3, 7, 12, 0.6) 100%);
 }
 
 /* Pause and the end card sit over a live battlefield, and the whole point of
    the tactical pause is that you can still read it. A directional scrim, not
-   a wall. */
+   a wall — but a scrim over sharp type is still sharp type, so the field goes
+   soft as well as dark. The blur is what separates "behind the menu" from
+   "beside the menu"; the gradient alone left the far side reading at
+   three-quarter strength. */
 .vs-screen--paused,
 .vs-screen--gameOver {
   background:
-    linear-gradient(90deg, rgba(3, 6, 11, 0.94) 0%, rgba(3, 6, 11, 0.82) 34%, rgba(3, 6, 11, 0.42) 72%, rgba(3, 6, 11, 0.24) 100%);
+    linear-gradient(90deg, rgba(3, 6, 11, 0.94) 0%, rgba(3, 6, 11, 0.84) 34%, rgba(3, 6, 11, 0.6) 72%, rgba(3, 6, 11, 0.5) 100%);
   justify-items: start;
+}
+
+.vs-screen--paused.is-active,
+.vs-screen--gameOver.is-active {
+  -webkit-backdrop-filter: blur(6px) saturate(0.8);
+  backdrop-filter: blur(6px) saturate(0.8);
+}
+
+/* No compositor blur: fall back to a heavier wash rather than to nothing. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .vs-screen--paused,
+  .vs-screen--gameOver {
+    background:
+      linear-gradient(90deg, rgba(3, 6, 11, 0.97) 0%, rgba(3, 6, 11, 0.92) 34%, rgba(3, 6, 11, 0.82) 72%, rgba(3, 6, 11, 0.76) 100%);
+  }
+}
+
+/* The live HUD, while any shell screen or panel is up. `inert` already has it
+   out of the tab order and the accessibility tree; this takes it out of the
+   composition too, uniformly, so no corner of it survives at full strength
+   because the scrim happened to be thin there. */
+.vs-body.vs-blocked .vs-hud {
+  opacity: 0.24;
+  filter: blur(2px) saturate(0.55);
+}
+
+.vs-hud {
+  transition: opacity 220ms var(--vs-ease), filter 220ms var(--vs-ease);
 }
 
 .vs-screen__inner {
@@ -165,13 +258,47 @@ body.vs-body {
   color: var(--vs-dim);
 }
 
+/* The wordmark, in the game's own type.
+
+   It was Inter 700 at −0.03em — a neo-grotesque website headline sitting on a
+   screen where every other letterform, in the menus, the HUD, the briefing and
+   the key card, is tracked-out uppercase mono. Round 1 called it the single
+   fastest thing that would make a stranger dismiss the game, and the fix is
+   not a different display face: it is to stop having two languages. */
 .vs-title {
-  margin: 0 0 1.2rem;
-  font-size: clamp(2.6rem, 8vw, 5.4rem);
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 0.95;
+  position: relative;
+  margin: 0 0 1.6rem;
+  padding-left: 1.15em;
+  font-family: var(--vs-mono);
+  font-size: clamp(1.45rem, 4.4vw, 3.5rem);
+  font-weight: 400;
+  letter-spacing: 0.26em;
+  line-height: 1.12;
+  text-transform: uppercase;
   color: #fff;
+}
+
+/* A hairline down the left of the wordmark, the same mark the menu rows use to
+   grow their tick from — the logotype belongs to the same drawing as the rest
+   of the screen rather than sitting on top of it. */
+.vs-title::before {
+  content: '';
+  position: absolute;
+  left: 0.16em;
+  top: 0.22em;
+  bottom: 0.3em;
+  width: 1px;
+  background: linear-gradient(to bottom, var(--vs-cyan), rgba(127, 216, 232, 0.06));
+}
+
+.vs-title__l {
+  display: block;
+}
+
+/* The second word carries the weight; the first is the qualifier. */
+.vs-title__l--b {
+  color: var(--vs-ink);
+  text-shadow: 0 0 34px rgba(127, 216, 232, 0.24);
 }
 
 .vs-heading {
@@ -455,7 +582,130 @@ body.vs-body {
   color: rgba(223, 232, 242, 0.3);
 }
 
+/* ------------------------------------------------------------- seed sigil */
+/* The generated mark. See `paintSigil` in shell.js for what it is and why the
+   briefing has one — in short, the seed is the project's whole claim and it
+   was set in 10 px grey next to the Back button. */
+
+.vs-sigil {
+  flex: 0 0 auto;
+  width: 104px;
+  height: 104px;
+  overflow: visible;
+}
+
+.vs-sigil--sm {
+  width: 46px;
+  height: 46px;
+}
+
+.vs-sigil__ring,
+.vs-sigil__ring2,
+.vs-sigil__arc,
+.vs-sigil__web {
+  fill: none;
+  stroke: var(--vs-cyan);
+  vector-effect: non-scaling-stroke;
+}
+
+.vs-sigil__ring { stroke-width: 1; stroke-opacity: 0.22; }
+.vs-sigil__ring2 { stroke-width: 1; stroke-opacity: 0.14; }
+.vs-sigil__arc { stroke-width: 1; stroke-opacity: 0.36; }
+.vs-sigil__web { stroke-width: 1; stroke-opacity: 0.62; }
+
+.vs-sigil__tick {
+  stroke: var(--vs-cyan);
+  stroke-width: 1;
+  stroke-opacity: 0.3;
+  vector-effect: non-scaling-stroke;
+}
+
+.vs-sigil__pt {
+  fill: #dff5ff;
+  fill-opacity: 0.8;
+}
+
+.vs-seedmark {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-top: 0.9rem;
+}
+
+.vs-seedmark__k {
+  font-family: var(--vs-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: rgba(223, 232, 242, 0.28);
+}
+
 /* ---------------------------------------------------------------- briefing */
+
+.vs-brief__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 2.4rem;
+  flex-wrap: wrap;
+}
+
+.vs-brief__headtext {
+  flex: 1 1 20rem;
+  min-width: 0;
+}
+
+.vs-seed {
+  flex: 0 1 25rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 1.1rem;
+  margin: 0 0 0.4rem;
+  padding-left: 1.4rem;
+  border-left: 1px solid var(--vs-faint);
+}
+
+.vs-seed__body {
+  min-width: 0;
+}
+
+.vs-seed__k {
+  display: block;
+  font-family: var(--vs-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--vs-dim);
+  margin-bottom: 0.3rem;
+}
+
+.vs-seed__n {
+  display: block;
+  font-family: var(--vs-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(1.05rem, 2.1vw, 1.5rem);
+  letter-spacing: 0.1em;
+  line-height: 1.1;
+  color: var(--vs-cyan);
+  word-break: break-all;
+}
+
+.vs-seed__meta {
+  display: block;
+  margin-top: 0.35rem;
+  font-family: var(--vs-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(223, 232, 242, 0.34);
+}
+
+.vs-seed__note {
+  margin: 0.6rem 0 0;
+  font-size: 0.74rem;
+  line-height: 1.55;
+  color: rgba(223, 232, 242, 0.4);
+}
 
 .vs-brief {
   display: grid;
@@ -844,7 +1094,10 @@ body.vs-body {
   font-size: 10px;
   letter-spacing: 0.06em;
   line-height: 1.3;
-  color: rgba(255, 255, 255, 0.4);
+  /* Raised from 40%. The objective sentence is the one line in the bar that
+     has to survive over the lit limb of a planet, and 40% white measured at
+     roughly the same value as the backdrop it was sitting on. */
+  color: rgba(255, 255, 255, 0.56);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -952,11 +1205,16 @@ body.vs-body {
   .vs-panel,
   .vs-progress__fill,
   .vsh-obj__fill,
+  .vs-hud,
   .vs-menu__b,
   .vs-menu__b::before {
     transition-duration: 1ms;
   }
   .vs-screen.is-active .vs-screen__inner {
+    animation: none;
+  }
+  /* The backdrop holds its composition; it just stops drifting. */
+  .vs-art__fleet {
     animation: none;
   }
 }

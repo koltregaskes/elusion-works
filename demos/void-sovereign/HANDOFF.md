@@ -278,6 +278,23 @@ default to "not good enough" and to get harsher, not softer, over time.
 
 ## 5. Hard-won knowledge — read before you "fix" these again
 
+**The GLSL backtick trap has now bitten seven times, and `syntax-check.mjs`
+does not catch every form of it.** Two more landed in a single session (a
+backtick around `` `k` `` and `` `position` `` in shader comments, then
+`` `cover` ``). The structural detector caught the first two by fingerprint.
+The third presented only as `Unexpected identifier 'cover'` with **no
+truncated-literal warning at all**, so a clean-looking failure message hid the
+real cause.
+
+A related variant costs just as much and is not a backtick: a replacement that
+closes a block comment early, leaving prose loose inside a shader string.
+`syntax-check` passes it, because it is still a valid template literal. Only
+reading the file finds it.
+
+Rule: when a shader file fails to parse and the message names an identifier you
+recognise as English prose, look for an unterminated template literal or an
+early `*/` before you look anywhere else.
+
 **Fix your instrument before you tune anything.** A whole round of pacing work
 was spent tuning against numbers that turned out to be noise, and the noise was
 entirely mine.

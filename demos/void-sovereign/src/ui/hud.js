@@ -19,12 +19,19 @@ import { SensorsView } from './sensors.js';
 
    Layout, corner by corner:
      top-left      credits, income
-     top-right     population, fleet value, hulls, hostiles, time scale
-     bottom-left   toast stack, then the grouped selection roster
-     bottom-centre stance / formation / utility palette
-     bottom-right  production menu and queue
+     top-right     population, fleet value, hulls, hostiles, match clock, speed
+     bottom-left   toast stack, the grouped selection roster, and the
+                   stance / formation palette docked underneath it
+     bottom-centre the three utility verbs, and nothing else
+     bottom-right  production strip, expanding to the full menu on demand
      over the void selection brackets, health pips, target reticles, orders
    The bottom deck stops short of the page shell's "← Demos" link.
+
+   The palette used to float unanchored in the dead centre-bottom of the frame
+   with keycap hints too small to read. It commands the selection, so round 1's
+   fix #7 docks it to the selection roster: the two now share a block, a scrim
+   and a live state, and the keycaps are set inline at a size a person can
+   actually read. What is left in the centre is three verbs on one line.
 
    **The keyboard belongs to `core/input.js`.** That module is the single
    owner of the control scheme; every key the player presses arrives here as a
@@ -330,7 +337,7 @@ export class HUD {
     this._buildDom();
     if (this._obDone) this.onboard.classList.add('is-gone');
     this.markers = new WorldMarkers({ root: this.layerHost, ctx: this.ctx });
-    this.roster = new SelectionRoster({ root: this.leftCol, ctx: this.ctx });
+    this.roster = new SelectionRoster({ root: this.rosterHost, ctx: this.ctx });
     this.build = new BuildMenu({ root: this.rightCol, ctx: this.ctx });
     this.sensors = new SensorsView({ root: this.sensorHost, ctx: this.ctx });
 
@@ -428,8 +435,23 @@ export class HUD {
     this.statFoes = this._stat(fleet, 'Hostiles', '0');
     this.statFoes.root.classList.add('vsh-stat--foe');
 
+    /* The match clock. Round 1 found a `TIME` header sitting over the speed
+       controls with no elapsed time under it, while the briefing describes a
+       grace period the player is expected to race — so the header was naming a
+       number that did not exist.
+
+       Sim time, not wall-clock: `world.time` only advances on ticks the loop
+       actually ran, so a match that spent four minutes in the pause menu does
+       not report four minutes more, and it agrees with the duration on the
+       end-of-match card, which is derived the same way. The speed control keeps
+       its own header, now correctly called Speed. */
+    this.statClock = this._stat(fleet, 'Time', '00:00');
+    this.statClock.root.classList.add('vsh-stat--clock');
+    this._clockShown = '';
+    this._clockGrace = null;
+
     const speedStat = el('div', 'vsh-stat vsh-stat--speed');
-    speedStat.append(el('span', 'vsh-stat__k', 'Time'));
+    speedStat.append(el('span', 'vsh-stat__k', 'Speed'));
     const speedRow = el('div', 'vsh-speed');
     this.speedBtns = SPEED_STEPS.map((s) => {
       const b = el('button', 'vsh-speed__b vsh-num', SPEED_LABELS[s] || `×${s}`);
@@ -470,24 +492,36 @@ export class HUD {
     this.leftCol.appendChild(this.toastEl);
 
     /* ------------------------------------------------------------ palette */
+    /* One block: the roster the `SelectionRoster` mounts into, then the two
+       rows that command it. They appear and disappear together and share one
+       scrim, because they are one idea — "here is what you have selected, and
+       here is what you can tell it to do". */
+    this.selBlock = el('div', 'vsh-selblock');
+    this.rosterHost = el('div', 'vsh-selblock__roster');
+    this.selBlock.appendChild(this.rosterHost);
+    this.leftCol.appendChild(this.selBlock);
+
     const palette = el('div', 'vsh-palette');
-    this.stanceRow = el('div', 'vsh-palette__row');
-    this.stanceRow.append(el('span', 'vsh-palette__k', 'Stance'));
-    this.stanceBtns = STANCES.map((s) => this._cmd(this.stanceRow, s.label, s.key, 'stance', s.id));
+    this.stanceRow = this._paletteRow('Stance');
+    this.stanceBtns = STANCES.map((s) =>
+      this._cmd(this.stanceRow.btns, s.label, s.key, 'stance', s.id));
 
-    this.formRow = el('div', 'vsh-palette__row');
-    this.formRow.append(el('span', 'vsh-palette__k', 'Formation'));
+    this.formRow = this._paletteRow('Formation');
     this.formBtns = FORMATIONS.map((f) =>
-      this._cmd(this.formRow, f.label, f.key, 'formation', f.id));
+      this._cmd(this.formRow.btns, f.label, f.key, 'formation', f.id));
 
+    palette.append(this.stanceRow.root, this.formRow.root);
+    this.selBlock.appendChild(palette);
+    this.palette = palette;
+
+    /* The three verbs that have nothing to do with the selection stay in the
+       centre. Three items on one line is not a panel and does not box in the
+       void; the 470×340 grid that used to live beside them did. */
     const util = el('div', 'vsh-palette__util');
     this.sensorBtn = this._cmd(util, 'Sensors', 'Tab', 'util', 'sensors');
     this.focusBtn = this._cmd(util, 'Focus', 'F', 'util', 'focus');
     this.helpBtn = this._cmd(util, 'Keys', 'H', 'util', 'help');
-
-    palette.append(this.stanceRow, this.formRow, util);
-    midCol.appendChild(palette);
-    this.palette = palette;
+    midCol.appendChild(util);
 
     /* --------------------------------------------------------------- help */
     /* Centred, not docked. A 336 px side rail landed straight on top of the
@@ -709,6 +743,43 @@ export class HUD {
     return wrap;
   }
 
+  /* MM:SS of sim time, plus one piece of state the number alone cannot carry:
+     whether the sovereignty clock has started yet. The briefing tells the
+     player the opening is safe and the objective sentence counts it down, but
+     that sentence is the first thing the top bar drops on a narrow viewport —
+     so the tick beside the clock is the readout that survives to 1024. */
+  _refreshClock() {
+    if (!this.statClock) return;
+    const w = this.world;
+    const t = w && typeof w.time === 'number' && Number.isFinite(w.time) ? w.time : 0;
+    const s = Math.max(0, Math.floor(t));
+    const text = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+    if (text !== this._clockShown) {
+      this._clockShown = text;
+      this.statClock.value.textContent = text;
+    }
+    const grace = t < this._objGrace() && !this._sovDraining();
+    if (grace !== this._clockGrace) {
+      this._clockGrace = grace;
+      this.statClock.root.classList.toggle('is-grace', grace);
+      this.statClock.root.setAttribute(
+        'title',
+        grace
+          ? 'Elapsed match time. Nothing drains yet — the sovereignty clock has not started.'
+          : 'Elapsed match time. The sovereignty clock is running.',
+      );
+    }
+  }
+
+  _sovDraining() {
+    const teams = this.world && this.world.teams;
+    if (!teams || teams.length < 2) return false;
+    for (let i = 0; i < teams.length; i++) {
+      if (num(teams[i] && teams[i].sovereignty, 100) < 99.99) return true;
+    }
+    return false;
+  }
+
   /* Grace period before the sovereignty clock starts, mirrored from
      `SOVEREIGNTY_GRACE` in `sim/world.js`, which does not export it. The
      readout stops trusting this the moment it sees real drain, so a drift in
@@ -837,6 +908,16 @@ export class HUD {
     s.appendChild(v);
     parent.appendChild(s);
     return { root: s, value: v };
+  }
+
+  /* A labelled row whose buttons wrap on their own column rather than under
+     the label — six formation names do not fit beside a caption at 1280. */
+  _paletteRow(label) {
+    const root = el('div', 'vsh-palette__row');
+    root.append(el('span', 'vsh-palette__k', label));
+    const btns = el('div', 'vsh-palette__btns');
+    root.appendChild(btns);
+    return { root, btns };
   }
 
   _cmd(parent, label, key, kind, id) {
@@ -1129,8 +1210,9 @@ export class HUD {
 
   _syncPalette() {
     const live = this.selection.size > 0;
-    this.stanceRow.classList.toggle('is-live', live);
-    this.formRow.classList.toggle('is-live', live);
+    this.selBlock.classList.toggle('is-live', live);
+    this.stanceRow.root.classList.toggle('is-live', live);
+    this.formRow.root.classList.toggle('is-live', live);
     for (let i = 0; i < this.stanceBtns.length; i++) {
       this.stanceBtns[i].setAttribute('aria-pressed', String(STANCES[i].id === this.stance));
     }
@@ -1329,7 +1411,7 @@ export class HUD {
     const out = this._rects || (this._rects = []);
     out.length = 0;
     const base = this.root.getBoundingClientRect();
-    for (const node of [this.build && this.build.el, this.roster && this.roster.el]) {
+    for (const node of [this.build && this.build.el, this.selBlock]) {
       if (!node || !node.classList.contains('is-live')) continue;
       const r = node.getBoundingClientRect();
       if (r.width < 1 || r.height < 1) continue;
@@ -1391,6 +1473,7 @@ export class HUD {
     this.statHulls.value.textContent = String(hulls);
     this.statFoes.value.textContent = String(foes);
     this._fleetHulls = hulls;
+    this._refreshClock();
     this._refreshObjective();
 
     if (force) {

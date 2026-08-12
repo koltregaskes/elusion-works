@@ -232,7 +232,16 @@ const mul = (c, k) => [c[0] * k, c[1] * k, c[2] * k];
    Shared GLSL: hashes, gradient noise, fBm, ridged multifractal.
    --------------------------------------------------------------------------- */
 
-const NOISE_GLSL = /* glsl */ `
+/* Split in two, and the split is a boot-time decision rather than tidiness.
+
+   This file's own history says it: the driver's cost is dominated by inlining
+   gradient-noise evaluations, not by running them. Pass B needs the ridged
+   field and nothing else, so handing it the three fBm variants as well cost
+   several seconds of compile for functions it never calls — measured as boot
+   going from 18.8 s to 28.5 s when pass B was first given the whole header,
+   for about a second of extra fragment work. Give each program only what it
+   evaluates. */
+const NOISE_CORE = /* glsl */ `
 vec3 hash33(vec3 p) {
   p = fract(p * vec3(0.1031, 0.1030, 0.0973));
   p += dot(p, p.yxz + 33.33);
@@ -261,6 +270,22 @@ float gnoise(vec3 p) {
 
 const mat3 M3 = mat3(0.00, 0.80, 0.60, -0.80, 0.36, -0.48, -0.60, -0.48, 0.64);
 
+/* Ridged multifractal — the sharp filament structure real emission nebulae
+   have along their ionisation fronts. [0,1]. */
+float ridge3(vec3 p) {
+  float n = 1.0 - abs(gnoise(p));
+  float f = 0.5 * n * n;
+  p = M3 * p * 2.05;
+  n = 1.0 - abs(gnoise(p));
+  f += 0.25 * n * n;
+  p = M3 * p * 2.02;
+  n = 1.0 - abs(gnoise(p));
+  f += 0.125 * n * n;
+  return f / 0.875;
+}
+`;
+
+const NOISE_GLSL = NOISE_CORE + /* glsl */ `
 float fbm3n(vec3 p) {
   float f = 0.5 * gnoise(p);
   p = M3 * p * 2.02;
@@ -292,20 +317,6 @@ float fbm5n(vec3 p) {
   p = M3 * p * 2.04;
   f += 0.03125 * gnoise(p);
   return f / 0.96875;
-}
-
-/* Ridged multifractal — the sharp filament structure real emission nebulae
-   have along their ionisation fronts. [0,1]. */
-float ridge3(vec3 p) {
-  float n = 1.0 - abs(gnoise(p));
-  float f = 0.5 * n * n;
-  p = M3 * p * 2.05;
-  n = 1.0 - abs(gnoise(p));
-  f += 0.25 * n * n;
-  p = M3 * p * 2.02;
-  n = 1.0 - abs(gnoise(p));
-  f += 0.125 * n * n;
-  return f / 0.875;
 }
 
 vec3 desat(vec3 c, float k) {
@@ -477,6 +488,7 @@ uniform float uFrontAmt;
 uniform float uHotAmt;
 uniform float uExtAmt;
 uniform float uScatterAmt;
+uniform float uShadowK;
 
 void main() {
   vec3 d = skyDir(vUv);
@@ -491,10 +503,17 @@ void main() {
      the nebula has no lit side and no shadow side and reads as a flat matte
      behind the fleet. Two terms: a broad gradient toward the star, and a
      narrow forward-scattering lobe — dust scatters hard forward, which is why
-     a reflection nebula near a bright star glows. */
+     a reflection nebula near a bright star glows.
+
+     The gradient is deliberately wider than it was. A complex now sits in the
+     band of sky the camera actually looks through, which is 75-125 degrees off
+     the star, and over that arc the old curve moved from 0.66 to 0.93 — a
+     ratio of 1.4:1, which is no lighting at all. The real lit-versus-shadow
+     read comes from the self-shadow term below; this is only the global tilt
+     it rides on. */
   float sunMu = dot(d, SUN);
   float sunFwd = pow(max(sunMu, 0.0), 6.0);
-  float sunLit = 0.62 + 0.62 * smoothstep(-0.70, 0.85, sunMu);
+  float sunLit = 0.45 + 0.85 * smoothstep(-0.85, 0.95, sunMu);
 
   float ca = dot(d, uE0);
   float tx = dot(d, uE1) * uAB.x;
@@ -525,13 +544,31 @@ void main() {
     /* Unthresholded glow so the gas dissolves into the void. */
     float halo = base * base * base;
 
+    /* Self-shadowing, and it is the whole difference between gas and paint.
+
+       Step the sample point a little way toward the star and ask how much bulk
+       gas is in the way. Where the answer is "none" this is the illuminated
+       face of the complex; where it is "a lot" the light never arrived. One
+       extra evaluation of the same field, at one octave fewer because a
+       shadow is a low-frequency thing, and it costs a fifth of the layer.
+
+       Without it every part of a complex was lit identically by the global
+       gradient above, so a structure tens of degrees across had no interior
+       form — which is exactly what "brown defocus blobs" describes. The floor
+       keeps shadowed gas visible rather than black: this is a thin medium, not
+       an opaque one, and its dark side is still lit by everything else. */
+    vec3 sp = normalize(d + SUN * 0.22) * uScale + uOff;
+    float ahead = fbm3n(sp + w) * 0.5 + 0.5;
+    float sunShade = exp(-smoothstep(uThr, uThr + uSoft, ahead) * uShadowK);
+    float lit = 0.28 + 0.72 * sunShade;
+
     float k = env * clarity;
     float dens = k * (halo * uHaloAmt + body * uAmount + front * uFrontAmt);
 
     vec3 emis = uCool;
     emis = mix(emis, uMid, smoothstep(0.02, 0.80, body));
     emis = mix(emis, uHot, clamp(front * front * uHotAmt, 0.0, 1.0));
-    emis = emis * sunLit + SUNCOL * sunFwd * uScatterAmt;
+    emis = emis * sunLit * lit + SUNCOL * sunFwd * uScatterAmt * lit;
 
     float tk = k * body * uExtAmt;
     emitted *= exp(-EXT * tk);
@@ -647,9 +684,23 @@ varying vec2 vUv;
 
 #define PI 3.141592653589793
 
+${NOISE_CORE}
+
 uniform float uGasGain;     // per-seed exposure ceiling, set after probing
 uniform float uGasSat;      // per-seed saturation ceiling
 uniform sampler2D uGas;
+uniform vec2 uTexel;        // one texel of the gas map, for the edge gradient
+
+const vec3 SUN = vec3(${f3(P.sunDir)});
+const vec3 RIMCOL = vec3(${f3(P.rimCol)});
+
+/* Lat/long -> direction, same construction the gas pass uses. */
+vec3 skyDirB(vec2 uv) {
+  float lon = (uv.x * 2.0 - 1.0) * PI;
+  float lat = (uv.y - 0.5) * PI;
+  float cl = cos(lat);
+  return normalize(vec3(cl * sin(lon), sin(lat), cl * cos(lon)));
+}
 
 void main() {
   /* Exposure and saturation ceilings, applied to the gas only.
@@ -668,11 +719,92 @@ void main() {
   gasCol = mix(vec3(dot(gasCol, vec3(0.2126, 0.7152, 0.0722))), gasCol, uGasSat);
   vec3 col = gasCol;
 
+  /* Filaments and the edge where gas meets void — at the FULL map resolution.
+
+     The gas itself is shaded at a quarter of this and upsampled, which is the
+     right call for bulk density (it has no feature finer than a third of a
+     degree) and the wrong one for everything that makes a nebula read as
+     nearby: the ionisation fronts, the wisps peeling off the rim, the hard
+     lit edge. Bilinear over a 4x upsample removes precisely those, which is
+     what a reviewer sees as blur banding and "brown defocus blobs".
+
+     So the body stays cheap and soft and the detail is put back here, where a
+     texel is a texel. Two things are added, both keyed to the gas that is
+     already present so nothing can appear in empty sky:
+
+       fil   a ridged network an order of magnitude finer than any layer's own
+             front scale, modulating the gas it sits in;
+       edge  the gradient of the optical depth, which IS the boundary — it is
+             large exactly where dense gas gives way to nothing and zero
+             everywhere else, so a rim can be drawn without segmenting
+             anything.
+
+     Optical depth rather than luminance drives both. Depth is the amount of
+     gas; luminance is the amount of gas times the palette's brightness times
+     the exposure correction, and keying structure to that made the detail
+     appear and disappear with the seed.
+
+     The branch is a real early-out over the empty half of the sky and every
+     term inside it is multiplied by k, which is zero at the threshold — the
+     lesson from the gas-layer envelopes, which showed as a clipped contour
+     until they were faded to exactly zero. */
+  float tau = gas.a;
+  if (tau > 0.010) {
+    float k = smoothstep(0.010, 0.070, tau);
+    vec3 d = skyDirB(vUv);
+
+    /* Longitudinal texels shrink toward the poles, so an unweighted x
+       difference is a gradient of the parameterisation rather than of the
+       sky. */
+    float cl = max(cos((vUv.y - 0.5) * PI), 0.06);
+    float tx = (texture2D(uGas, vUv + vec2(uTexel.x, 0.0)).a
+              - texture2D(uGas, vUv - vec2(uTexel.x, 0.0)).a) / cl;
+    float ty = texture2D(uGas, vUv + vec2(0.0, uTexel.y)).a
+             - texture2D(uGas, vUv - vec2(0.0, uTexel.y)).a;
+    float edge = clamp(length(vec2(tx, ty)) * ${num(P.rimGain)}, 0.0, 1.4);
+
+    float fil = ridge3(d * ${num(P.filScale)} + vec3(${f3(P.filOff)}));
+    float grain = gnoise(d * ${num(P.filScale * 2.9)} + vec3(${f3(P.filOff)})) * 0.5 + 0.5;
+    fil *= 0.62 + 0.38 * grain;
+
+    /* Peaks at the transition and falls to zero in both solid gas and open
+       sky: filaments live on the skin of a cloud, not in the middle of it. */
+    float dens = smoothstep(0.02, 0.85, tau);
+    /* Peaks at the transition, but never falls to zero inside the cloud.
+       A pure edge weight left the bodies flat and only their outlines lit,
+       which photographs as thin white ribbons of smoke rather than as gas with
+       anything inside it — the failure the first capture with this in it
+       showed. Filaments do concentrate on the skin of a cloud; they are not
+       absent from the middle of one. */
+    float band = 0.35 + 0.65 * (4.0 * dens * (1.0 - dens));
+
+    col = mix(col, col * (0.66 + 0.80 * fil), k);
+    col += gasCol * fil * fil * band * ${num(P.filAmt)} * k;
+
+    /* The lit rim. Scattering at a boundary is strongest where the boundary
+       faces the star, so this has a bright side and a dark side by
+       construction rather than by a global gradient. */
+    float rimLit = 0.22 + 1.05 * smoothstep(-0.55, 0.85, dot(d, SUN));
+    /* Scaled by the exposure correction like every other term. Left out of it
+       the rim was the one part of the sky the ceiling could not reach, and it
+       carried the measured whole-sky mean 9% past a limit that exists to stop
+       the backdrop out-reading the fleet. It also made the single-shot
+       correction wrong in principle: the output has to be linear in the gain
+       or one measurement cannot predict the corrected image. */
+    col += RIMCOL * edge * (0.30 + 0.70 * fil) * rimLit
+         * ${num(P.rimAmt)} * k * uGasGain;
+  }
+
   /* A hair of ambient so the void is deep charcoal-blue rather than a dead
      zero — pure #000 reads as a hole punched in the frame. */
   col += vec3(${f3(P.voidCol)});
 
-  gl_FragColor = vec4(max(col, vec3(0.0)), 1.0);
+  /* Optical depth rides out in alpha. Nothing downstream reads it as opacity
+     — three's background path runs with blending off and the PMREM ignores it
+     — but the star field needs it: emission tells you where the gas glows and
+     says nothing about the dark lanes, which are exactly the places a star
+     really does disappear. */
+  gl_FragColor = vec4(max(col, vec3(0.0)), tau);
 }
 `;
 }
@@ -733,6 +865,7 @@ attribute float aMag;
 uniform float uSize;
 uniform float uGain;
 uniform float uOcclude;
+uniform float uTau;
 uniform sampler2D uSky;
 varying vec3 vColour;
 
@@ -742,16 +875,25 @@ void main() {
 
   /* Gas in front of a star dims it. The bake no longer carries the stars, so
      that depth cue has to be reconstructed: one fetch of the sky map along the
-     star's own direction, which is the gas column it sits behind. Emission is
-     not extinction, but the two are strongly correlated in this sky and the
-     visible outcome — stars fading out across a bright complex, surviving in
-     the empty half — is the one that matters. */
+     star's own direction, which is the gas column it sits behind.
+
+     Two terms, because emission and extinction are different things and the
+     sky has places with plenty of one and none of the other. Luminance covers
+     the bright complexes. Optical depth — carried in the map's alpha — covers
+     the dust lanes, which emit almost nothing and are the places a star
+     genuinely vanishes. With luminance alone a lane read as empty sky and the
+     field showed straight through it, which is the tell that a dark nebula is
+     a painted shape rather than something in the way.
+
+     The fetch is in the map's own frame, so it stays correct when ENV rotates
+     the sky about the star axis to compose it: the star cloud is rotated as an
+     object and the position attribute is still the un-rotated direction. */
   vec3 d = normalize(position);
   vec2 uv = vec2(atan(d.x, d.z) / (2.0 * PI) + 0.5, asin(clamp(d.y, -1.0, 1.0)) / PI + 0.5);
-  vec3 gas = texture2D(uSky, uv).rgb;
-  float gl = dot(gas, vec3(0.2126, 0.7152, 0.0722));
+  vec4 gas = texture2D(uSky, uv);
+  float gl = dot(gas.rgb, vec3(0.2126, 0.7152, 0.0722));
 
-  vColour = aTint * aMag * uGain * exp(-gl * uOcclude);
+  vColour = aTint * aMag * uGain * exp(-gl * uOcclude - gas.a * uTau);
   /* Constant, in framebuffer pixels. Magnitude is carried by brightness alone:
      letting it drive the disc as well is what makes a field read as bokeh, and
      the post stack's bloom already gives the bright ones their spread. */
@@ -840,6 +982,7 @@ function buildStarField(P, rng, dpr) {
       uSigma: { value: 0.275 },
       uGain: { value: 1 },
       uOcclude: { value: P.starOcclude },
+      uTau: { value: P.starTau },
       uSky: { value: null },
     },
     vertexShader: STAR_VERTEX,
@@ -889,16 +1032,40 @@ function generateParams(rng, opts) {
      than one smudge. Everything else stays empty on purpose. */
   /* Where the primary complex sits.
 
-     Not uniform on the sphere. The camera rig orbits with its pitch clamped to
-     roughly +/-70 degrees and spends nearly all of its time within 30 of the
-     horizontal, so a nebula placed at the zenith is a nebula almost nobody
-     sees — and on an earlier build most seeds opened on a sky with no gas in
-     frame at all. Pull the anchor into the band the player actually looks
-     through, without pinning it to the equator. */
-  const anchor = vecFrom(rng);
-  anchor.y *= 0.34;
-  if (Math.abs(anchor.y) > 0.42) anchor.y = 0.42 * Math.sign(anchor.y);
-  anchor.normalize();
+     Both complexes are placed on a CONE ABOUT THE STAR, and that is the whole
+     of the fix for a sky that measured 4-9 of 255 in every gameplay frame.
+
+     Pulling the anchor toward the horizon was not enough, because elevation
+     was never the problem: azimuth was. The anchor was uniformly seeded around
+     the compass, the camera looks through about seventy degrees of it, and the
+     two were unrelated — so most seeds put the only gas in the sky behind the
+     player. Measured in the running game on six seeds, the backdrop objects
+     sat 38 to 150 degrees off the view direction.
+
+     A cone about the star is the one locus ENV can both place gas on and
+     afterwards ROTATE ALONG, because a rotation about the star axis leaves
+     every dot(direction, star) in the bake untouched — the lit side, the
+     forward-scattering lobe and the self-shadow all stay exactly where they
+     were baked. `Environment._aimBackdrop` spends that freedom once the camera
+     has framed its opening shot. What it cannot change is the angle between
+     the gas and the star, which is why that angle is chosen here to sit in the
+     band the camera views through rather than anywhere on the sphere.
+
+     Note this does NOT close the loop the camera rig warns about. The rig aims
+     itself off the star and the star's azimuth stays uniformly seeded; nothing
+     here feeds back into where the star is. */
+  const sunV = new THREE.Vector3().fromArray(sunDir).normalize();
+  const sunFrame = frame(sunV);
+  const onSunCone = (halfAngle, psi) =>
+    sunV
+      .clone()
+      .multiplyScalar(Math.cos(halfAngle))
+      .addScaledVector(sunFrame[1], Math.sin(halfAngle) * Math.cos(psi))
+      .addScaledVector(sunFrame[2], Math.sin(halfAngle) * Math.sin(psi))
+      .normalize();
+
+  const psi0 = rng.range(0, Math.PI * 2);
+  const anchor = onSunCone(rng.range(1.31, 2.09), psi0);   // 75-120 degrees off the star
   const anchorFrame = frame(anchor);
   const jitter = (spread) =>
     anchor
@@ -907,16 +1074,14 @@ function generateParams(rng, opts) {
       .addScaledVector(anchorFrame[2], rng.gaussian(0, spread))
       .normalize();
 
-  /* The secondary goes roughly opposite in yaw and also near the horizon, so
-     whichever way the player turns there is something in the sky. The two are
-     kept at least ~75 degrees apart so they never merge into one smear. */
-  let second = vecFrom(rng);
-  for (let i = 0; i < 48; i++) {
-    second = vecFrom(rng);
-    second.y *= 0.40;
-    second.normalize();
-    if (second.dot(anchor) < 0.22) break;
-  }
+  /* The secondary sits on the same cone, a good way round it: far enough that
+     the two never merge into one smear, near enough that turning away from the
+     primary does not turn into empty sky. The composition rotation moves both
+     together, so this separation is the one that survives it. */
+  const second = onSunCone(
+    rng.range(1.05, 1.92),
+    psi0 + (rng.chance(0.5) ? 1 : -1) * rng.range(1.85, 2.62),
+  );
   const secondFrame = frame(second);
   const jitter2 = (spread) =>
     second
@@ -952,6 +1117,7 @@ function generateParams(rng, opts) {
       frontAmt: rng.range(0.30, 0.55) * gain,
       hotAmt: rng.range(0.45, 0.75),
       extAmt: rng.range(0.9, 1.4),
+      shadowK: 1.05,
       scatterAmt: rng.range(0.10, 0.20),
     },
     /* --- primary: the body proper, where the colour lives --- */
@@ -978,6 +1144,7 @@ function generateParams(rng, opts) {
       frontAmt: rng.range(0.75, 1.15) * gain,
       hotAmt: rng.range(0.75, 1.05),
       extAmt: rng.range(1.0, 1.5),
+      shadowK: 2.10,
       scatterAmt: rng.range(0.06, 0.13),
     },
     /* --- primary: the accent. Small, hot, and the only place the third hue
@@ -1005,6 +1172,7 @@ function generateParams(rng, opts) {
       frontAmt: rng.range(0.85, 1.35) * gain,
       hotAmt: rng.range(0.90, 1.25),
       extAmt: rng.range(0.7, 1.1),
+      shadowK: 1.55,
       scatterAmt: rng.range(0.04, 0.09),
     },
     /* --- secondary complex: the second dominant hue, quieter --- */
@@ -1031,6 +1199,7 @@ function generateParams(rng, opts) {
       frontAmt: rng.range(0.40, 0.70) * gain,
       hotAmt: rng.range(0.55, 0.85),
       extAmt: rng.range(0.9, 1.3),
+      shadowK: 1.35,
       scatterAmt: rng.range(0.07, 0.14),
     },
     /* --- secondary: a hot knot inside it so it is not a flat wash --- */
@@ -1057,6 +1226,7 @@ function generateParams(rng, opts) {
       frontAmt: rng.range(0.60, 1.00) * gain,
       hotAmt: rng.range(0.85, 1.15),
       extAmt: rng.range(0.7, 1.1),
+      shadowK: 1.70,
       scatterAmt: rng.range(0.04, 0.09),
     },
   ];
@@ -1129,10 +1299,21 @@ function generateParams(rng, opts) {
 
   const bandW = rng.range(0.075, 0.135);
 
+  /* The rim colour is the palette's hot core spent down to a near-neutral: a
+     lit edge is a scattering effect and scatters everything, so laying the
+     core hue on at full chroma put a saturated outline round every cloud and
+     read as a cutout rather than as light. */
+  const rimCol = mul(pal.core, 1 / Math.max(pal.core[0], pal.core[1], pal.core[2], 1e-4));
+  const rimGrey = 0.2126 * rimCol[0] + 0.7152 * rimCol[1] + 0.0722 * rimCol[2];
+
   return {
     palette: pal,
     layers,
     lanes,
+    /* Where the two complexes were baked, so ENV can work out how far to spin
+       the sky about the star axis to put the primary in frame. */
+    anchor: [anchor.x, anchor.y, anchor.z],
+    second: [second.x, second.y, second.z],
     bandAxis: [bandAxis.x, bandAxis.y, bandAxis.z],
     bandCore: [bandCore.x, bandCore.y, bandCore.z],
     bandW,
@@ -1168,6 +1349,26 @@ function generateParams(rng, opts) {
     sunDir,
     sunCol: mul(pal.key, 0.42),
 
+    /* Full-resolution detail, applied in pass B. `filScale` is an order of
+       magnitude above any layer's own front frequency — a feature is about
+       three degrees across against the layers' thirty — and the grain octave
+       on top of it lands near a degree, which is four map texels at 4096 and
+       therefore the finest thing worth storing. Beyond that the mip chain eats
+       it and all it buys is shimmer. */
+    filScale: rng.range(24, 38),
+    filOff: [rng.range(-30, 30), rng.range(-30, 30), rng.range(-30, 30)],
+    filAmt: rng.range(0.55, 0.95),
+    rimAmt: rng.range(0.18, 0.30),
+    /* Optical depth changes by roughly one over the width of a boundary, and a
+       boundary is a few gas texels across, so the raw difference of two taps
+       lands around 0.2-0.4. This puts a real edge near 1. */
+    rimGain: rng.range(2.6, 3.8),
+    rimCol: [
+      rimGrey + (rimCol[0] - rimGrey) * 0.45,
+      rimGrey + (rimCol[1] - rimGrey) * 0.45,
+      rimGrey + (rimCol[2] - rimGrey) * 0.45,
+    ],
+
     /* Star budget.
 
        Counts follow the Euclidean law a real sky does — the number of stars
@@ -1192,6 +1393,10 @@ function generateParams(rng, opts) {
     starBandW: bandW * rng.range(2.2, 3.2),
     starBandAmt: rng.range(0.65, 1.05),
     starOcclude: rng.range(9.0, 15.0),
+    /* Against optical depth rather than emission, so dust lanes occlude too.
+       Depth runs 0-3 across this sky, so a couple of units of gas takes a star
+       down by an e-fold and a dense lane removes it. */
+    starTau: rng.range(0.55, 0.95),
 
     voidCol: [
       pal.haze[0] * 0.045 + 0.0009,
@@ -1324,6 +1529,7 @@ export function buildSkybox(renderer, rng, opts = {}) {
     uRidgeScale: f(), uThr: f(), uSoft: f(), uContrast: f(),
     uFilThr: f(), uFilSoft: f(), uHaloAmt: f(), uAmount: f(),
     uFrontAmt: f(), uHotAmt: f(), uExtAmt: f(), uScatterAmt: f(),
+    uShadowK: f(),
   });
   const laneMaterial = stage(buildLaneFragment(P), {
     uPrev: { value: null }, uWarp: { value: warpTarget.texture },
@@ -1343,6 +1549,7 @@ export function buildSkybox(renderer, rng, opts = {}) {
       uGasGain: { value: 1.0 },
       uGasSat: { value: 1.0 },
       uGas: { value: gasA.texture },
+      uTexel: { value: new THREE.Vector2(1 / GW, 1 / GH) },
     },
     vertexShader: SKY_VERTEX,
     fragmentShader: buildSkyFragment(P),
@@ -1444,6 +1651,7 @@ export function buildSkybox(renderer, rng, opts = {}) {
       u.uHotAmt.value = L.hotAmt;
       u.uExtAmt.value = L.extAmt;
       u.uScatterAmt.value = L.scatterAmt;
+      u.uShadowK.value = L.shadowK;
       composite(layerMaterial);
     }
     for (const L of P.lanes) {
@@ -1459,9 +1667,32 @@ export function buildSkybox(renderer, rng, opts = {}) {
     composite(dustMaterial);
   }
   material.uniforms.uGas.value = src.texture;
-
-  drawTiled(material, preview, PW, PH, tiles);
   quad.material = material;
+
+  /* Measure on a thumbnail, not on the shipping map.
+
+     The exposure probe takes 160 samples of the sphere; it has never needed
+     four thousand texels of longitude to do that. Pass B used to be shaded at
+     full size purely so it could be measured, and then shaded again with the
+     correction applied — two full-resolution passes for one image. That was
+     nearly free while pass B was a texture fetch and a mix. It is not free now
+     that pass B carries the full-resolution filament and rim work, and it is
+     the reason to move the measurement rather than to drop the detail: the
+     thumbnail is a sixty-fourth of the pixels, so this is now cheaper than the
+     original single-correction path was. */
+  const measure = new THREE.WebGLRenderTarget(512, 256, {
+    type: THREE.HalfFloatType,
+    format: THREE.RGBAFormat,
+    generateMipmaps: false,
+    minFilter: THREE.LinearFilter,
+    magFilter: THREE.LinearFilter,
+    wrapS: THREE.RepeatWrapping,
+    wrapT: THREE.ClampToEdgeWrapping,
+    depthBuffer: false,
+    stencilBuffer: false,
+  });
+  measure.texture.colorSpace = THREE.LinearSRGBColorSpace;
+  drawTiled(material, measure, 512, 256, 1);
 
   /* Measure, correct, re-shade.
 
@@ -1485,27 +1716,56 @@ export function buildSkybox(renderer, rng, opts = {}) {
      the hull bounce) quietly falls back to a default. */
   const MEAN_CEIL = 0.0155;
   const PEAK_CEIL = 0.155;
-  const SAT_CEIL = 0.62;
-  buildMips(preview);
-  let probe = probeSky(renderer, preview.texture);
+  /* And a floor, which the ceilings alone could never supply.
 
-  const gain = Math.min(
-    1,
-    MEAN_CEIL / Math.max(1e-5, probe.luminance),
-    PEAK_CEIL / Math.max(1e-5, probe.peak),
-  );
+     `gain` used to be `min(1, ...)`, so the correction could only ever darken.
+     That is right as far as it goes — a sky must not out-read the fleet — but
+     it left the opposite failure entirely uncontrolled, and the opposite
+     failure is the one that shipped: measured over the sky region of three
+     gameplay frames the backdrop ran a median of 4-9 of 255, which is not a
+     dim nebula, it is a black rectangle. A ceiling with no floor is not an
+     exposure control, it is a clip.
+
+     0.055 of linear scene light is about 64 of 255 through ACES at this
+     exposure: a gas core that is unmistakably present and still a long way
+     under a lit hull, which sits near 0.25. The mean ceiling is applied last
+     and therefore always wins, so lifting a quiet seed can never raise the
+     whole-sky average past what section 3.1 allows. */
+  const PEAK_FLOOR = 0.055;
+  const SAT_CEIL = 0.62;
+  let probe = probeSky(renderer, measure.texture);
+
+  const pk = Math.max(1e-5, probe.peak);
+  const lum = Math.max(1e-5, probe.luminance);
+  let gain = 1;
+  if (pk * gain > PEAK_CEIL) gain = PEAK_CEIL / pk;
+  if (pk * gain < PEAK_FLOOR) gain = PEAK_FLOOR / pk;
+  if (lum * gain > MEAN_CEIL) gain = MEAN_CEIL / lum;
+  gain = Math.max(0.2, Math.min(3.2, gain));
+
   const wmx = Math.max(probe.weighted.r, probe.weighted.g, probe.weighted.b);
   const wmn = Math.min(probe.weighted.r, probe.weighted.g, probe.weighted.b);
   const chroma = wmx > 1e-5 ? (wmx - wmn) / wmx : 0;
   const sat = chroma > SAT_CEIL ? SAT_CEIL / chroma : 1;
 
-  if (gain < 0.985 || sat < 0.985) {
-    material.uniforms.uGasGain.value = gain;
-    material.uniforms.uGasSat.value = sat;
-    drawTiled(material, preview, PW, PH, tiles);
-    buildMips(preview);
-    probe = probeSky(renderer, preview.texture);
+  material.uniforms.uGasGain.value = gain;
+  material.uniforms.uGasSat.value = sat;
+  if (gain < 0.985 || gain > 1.015 || sat < 0.985) {
+    /* Re-measure so the lighting colours below describe the sky that will
+       actually be drawn rather than the one that was measured. */
+    drawTiled(material, measure, 512, 256, 1);
+    probe = probeSky(renderer, measure.texture);
   }
+  measure.dispose();
+
+  /* The shipping map, shaded once, corrected.
+
+     The mip chain has to be built here and not later: the target carries a
+     mipmapped min filter, and a mipmapped texture with no chain is incomplete
+     — it samples as solid black, which would take the star field's gas
+     occlusion and the environment probe down with it. */
+  drawTiled(material, preview, PW, PH, tiles);
+  buildMips(preview);
 
   renderer.setScissorTest(prevScissorTest);
   renderer.setScissor(prevScissor.x, prevScissor.y, prevScissor.z, prevScissor.w);
@@ -1663,7 +1923,14 @@ export function buildSkybox(renderer, rng, opts = {}) {
     bounceFill,
     average: probe.mean.clone(),
     averageLuminance: probe.luminance,
+    peakLuminance: probe.peak,
+    gasGain: gain,
     size,
+    /* Where the gas was baked, and the axis it may be spun about without
+       invalidating a single lighting term in it. ENV composes with these. */
+    nebulaAnchor: new THREE.Vector3().fromArray(P.anchor),
+    nebulaSecond: new THREE.Vector3().fromArray(P.second),
+    sunDirection: new THREE.Vector3().fromArray(P.sunDir),
     /** Point-source stars. ENV adds this to `farScene` and owns its layer. */
     starField: stars.points,
     starsAboveThreshold: stars.aboveThreshold,
