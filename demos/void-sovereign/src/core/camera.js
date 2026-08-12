@@ -410,6 +410,7 @@ export class CameraRig {
     this._composeY = 0;
     this._composeGain = new Spring(0, 1.8);
     this._openingReport = null;
+    this._openingSkip = null;
 
     /* Reduced motion kills the two things that move without being asked to:
        idle sway and impact shake. Deliberate motion — orbit, zoom, focus, the
@@ -648,6 +649,16 @@ export class CameraRig {
     return this._openingReport;
   }
 
+  /** Why the hero framing declined, if it did. Null once it has succeeded. */
+  get openingSkip() {
+    return this._openingSkip;
+  }
+
+  _skipOpening(why) {
+    this._openingSkip = why;
+    return false;
+  }
+
   /** Give the off-centre composition back and latch the opening as spent. */
   _releaseCompose() {
     this._composed = true;
@@ -678,23 +689,48 @@ export class CameraRig {
 
   /* World-space sample of the hero's hull, taken once.
 
-     Only the finest LOD level is walked: `THREE.LOD` leaves every level visible
-     until its first `update()`, which has not happened yet at boot, and three
-     copies of the same hull would triple the work for an identical extent.
+     Only the finest LOD level is walked — three copies of the same hull would
+     triple the work for an identical extent — and **an LOD level's own
+     `visible` flag is ignored when we descend into it.**
 
-     Normals come back alongside the positions because the aim search needs to
-     know which way each sample faces — the framing solve only needs where the
-     hull is, but choosing between equally well-framed approaches needs to know
-     which of them the star is actually on. */
+     That last clause is the whole of a bug that cost this lane a round, and it
+     is the third instance of HANDOFF §5's "prove which code path actually
+     runs". The previous comment here asserted that `THREE.LOD` leaves every
+     level visible until its first `update()`, "which has not happened yet at
+     boot". Measured in the running game, that is false: by the time
+     `frameOpeningShot` fires, the rig is still at its default 2,600 m pose
+     pointing at the origin, the mothership is far enough away that `LOD.update()`
+     has already selected **level 1**, and `levels[0].object.visible` is
+     therefore `false`. The walk's own `visible === false` guard — there to skip
+     genuinely hidden decoration — then ate the finest level on its first line
+     and returned zero meshes. `_composeOpening` saw a null and silently
+     declined, so the hero framing never ran on any seed and the opening frame
+     was the spring defaults: pitch 0.42 rad exactly, elevation -24.1 degrees.
+
+     A hidden LOD level is a statement about what the renderer should draw this
+     frame. It is not a statement about where the hull is, and the framing solve
+     is asking the second question. So visibility gates ordinary children and
+     nothing else. */
   _samplePoints(root) {
     const out = [];
     const nrm = [];
     const budget = OPENING.samples;
     const meshes = [];
-    const walk = (node) => {
-      if (!node || node.visible === false) return;
+    /* `forced` is set only for an LOD level we chose deliberately: it suppresses
+       the visibility test for that subtree root, never for its children. */
+    const walk = (node, forced) => {
+      if (!node) return;
+      if (!forced && node.visible === false) return;
       if (node.isLOD && node.levels && node.levels.length) {
-        walk(node.levels[0].object);
+        /* Three keeps `levels` sorted by ascending distance, so [0] is the
+           finest — but take the minimum rather than trusting the ordering,
+           because picking the wrong level here is invisible: it still returns a
+           hull-shaped cloud, just the wrong size. */
+        let finest = node.levels[0];
+        for (let i = 1; i < node.levels.length; i++) {
+          if (node.levels[i].distance < finest.distance) finest = node.levels[i];
+        }
+        walk(finest.object, true);
         return;
       }
       if (node.isMesh && node.geometry && node.geometry.attributes &&
@@ -702,10 +738,13 @@ export class CameraRig {
         meshes.push(node);
       }
       const kids = node.children;
-      for (let i = 0; i < kids.length; i++) walk(kids[i]);
+      for (let i = 0; i < kids.length; i++) walk(kids[i], false);
     };
+    /* World matrices, not just visibility: an LOD level that has never been
+       drawn still needs its `matrixWorld` current before its vertices mean
+       anything. `updateWorldMatrix` descends regardless of visibility. */
     root.updateWorldMatrix(true, true);
-    walk(root);
+    walk(root, false);
     if (!meshes.length) return null;
 
     let total = 0;
@@ -736,6 +775,43 @@ export class CameraRig {
       }
     }
     if (out.length < 12) return null;
+    out.n = nrm;
+    return out;
+  }
+
+  /* Last resort: the hero as a sphere of its own bounding radius.
+
+     The opening shot must not be an all-or-nothing bet on walking somebody
+     else's scene graph. The LOD-visibility bug above is the second time a
+     lane-external change to how hulls are represented has silently switched
+     this solve off, and if hulls ever move fully into instanced batches the
+     hero's `Object3D` really will carry no geometry — the diagnosis this task
+     arrived with, which turned out to be wrong today and will be right the day
+     `mothership` leaves the UNBATCHED set.
+
+     With a sphere the *aim* is still fully solved: the lighting band, the
+     elevation band, the seeded phase and the off-centre offset are all
+     properties of the direction, not of the hull's outline. Only the fill is
+     approximate, and it is approximated conservatively — a sphere circumscribes
+     the hull, so the framing errs toward too far out rather than cropping.
+
+     Deterministic by construction: a Fibonacci lattice, no RNG, so this is
+     still reproducible per seed. */
+  _spherePoints(centre, radius) {
+    const n = 512;
+    const r = Math.max(1, radius || 0);
+    const out = [];
+    const nrm = [];
+    const golden = Math.PI * (3 - Math.sqrt(5));
+    for (let i = 0; i < n; i++) {
+      const y = 1 - (i / (n - 1)) * 2;
+      const rad = Math.sqrt(Math.max(0, 1 - y * y));
+      const th = golden * i;
+      const nx = Math.cos(th) * rad;
+      const nz = Math.sin(th) * rad;
+      out.push(centre.x + nx * r, centre.y + y * r, centre.z + nz * r);
+      nrm.push(nx, y, nz);
+    }
     out.n = nrm;
     return out;
   }
@@ -1016,16 +1092,29 @@ export class CameraRig {
   /* Compose the hero frame. Returns false if this is not that call, in which
      case `focusOn` carries on as it always did. */
   _composeOpening(point, instant) {
-    if (this._composed || !instant) return false;
+    /* Every bail-out records *why*. HANDOFF §5 has this project losing two
+       rounds to a correct function that was never reached, and this one made it
+       three: the solve was silently declining and the only evidence was a pitch
+       sitting on its spring default. A skip reason costs one string. */
+    if (this._composed) return this._skipOpening('already-composed');
+    if (!instant) return this._skipOpening('not-instant');
     const hero = this._hero();
-    if (!hero) return false;
+    if (!hero) return this._skipOpening('no-hero');
     /* Only the boot framing of the flagship itself qualifies. */
     const reach = Math.max(200, (hero.radius || 0) * 1.5);
-    if (_v3.copy(hero.position).sub(point).lengthSq() > reach * reach) return false;
+    if (_v3.copy(hero.position).sub(point).lengthSq() > reach * reach) {
+      return this._skipOpening('point-not-hero');
+    }
 
-    const pts = this._samplePoints(hero.object3D);
-    if (!pts) return false;
     const hullLength = (hero.def && hero.def.length) || (hero.radius || 900) * 2;
+    let pts = this._samplePoints(hero.object3D);
+    let sampledFrom = 'geometry';
+    if (!pts) {
+      /* Compose anyway. A degraded hero frame is a shot; a skipped one is the
+         spring defaults, and nobody notices those for six seeds running. */
+      pts = this._spherePoints(hero.position, hero.radius || hullLength * 0.5);
+      sampledFrom = 'sphere';
+    }
 
     const seed = (this.world && this.world.seed) || 1337;
     const rng = makeRng((seed ^ 0x5f3a91) >>> 0);
@@ -1054,6 +1143,7 @@ export class CameraRig {
     this._composeY = wantY - (s ? s.cy : 0);
     this._composeGain.snap(1);
     this._composed = true;
+    this._openingSkip = null;
 
     this._cancelTransition();
     this._follow = null;
@@ -1074,6 +1164,12 @@ export class CameraRig {
 
     this._openingReport = {
       seed,
+      /* Which subject the fill was solved against. Anything other than
+         'geometry' means the hull could not be walked and the framing is a
+         circumscribing approximation — worth seeing in a capture report rather
+         than discovering from a wide frame six months later. */
+      sampledFrom,
+      samples: pts.length / 3,
       yaw: aim.yaw,
       pitch: aim.pitch,
       distance: solved.dist,
