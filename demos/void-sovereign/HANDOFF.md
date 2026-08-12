@@ -278,6 +278,38 @@ default to "not good enough" and to get harsher, not softer, over time.
 
 ## 5. Hard-won knowledge — read before you "fix" these again
 
+**A comment that asserts runtime behaviour is a measurement, and it goes
+stale like one.** Two instances landed in a single session, and both cost a
+round.
+
+`_samplePoints` in `core/camera.js` opened with a visibility gate, above a
+comment claiming `THREE.LOD` "leaves every level visible until its first
+`update()`, which has not happened yet at boot". **False in the running
+game.** By the time `frameOpeningShot` fires, the rig is still at its default
+2,600 m pose, the mothership is far enough away that `LOD.update()` has
+already selected level 1, and level 0 is hidden. The walk ate the finest level
+on its first line, returned zero meshes, and `_composeOpening` silently
+declined — so the opening shot was the spring default on every seed, elevation
+exactly −24.06°, for as long as that comment had been true-sounding.
+
+The tell was that a post-boot probe called the *same function* and got 9,033
+points back. Same code, different moment.
+
+The second: `styles/tutorial.css` carried "the rail is vertically centred,
+which collides with nothing at 1280x720". True when written, and false the
+moment the stance palette was docked into the roster and made that block ~68 px
+taller. Measured 8,576 px² of overlap.
+
+Both are the `setFleetScene()` family — correct code that never runs, or ran
+once under conditions that have since moved. **If a comment states a runtime
+fact, it needs a harness, not a sentence.** `.local/rail-clear.mjs` and the
+`openingSkip` guard in `camera.js` are what those two claims look like when
+they are checked instead of asserted.
+
+Corollary, learned the same session: every silent bail-out should record why it
+bailed. `_composeOpening` declining without a trace is what made a wrong
+diagnosis (the batched fleet renderer) survive long enough to reach a brief.
+
 **The GLSL backtick trap has now bitten seven times, and `syntax-check.mjs`
 does not catch every form of it.** Two more landed in a single session (a
 backtick around `` `k` `` and `` `position` `` in shader comments, then
