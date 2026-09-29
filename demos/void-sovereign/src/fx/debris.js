@@ -284,8 +284,18 @@ export class DebrisFX {
       this._col.multiplyScalar(0.20 + 0.42 * Math.pow(rng.next(), 1.3));
 
       const spinAxis = rng.unitVector();
-      // Big structure tumbles for longer than it burns.
-      const life = isKeel ? rng.range(40, 58) : rng.range(24, 44);
+      /* Big structure tumbles for longer than it burns — but the reverse also
+         has to hold, and until now it did not: a 14 m interceptor's two chunks
+         drifted for the same 24-44 s a capital's keel sections do. That is
+         wrong twice over. It puts a fighter's death on the same clock as a
+         mothership's, which flattens the duration ladder §3.9/P3 asks for; and
+         in a 560-hull action the field fills with fighter gravel that shoulders
+         out the keel sections the eye is actually meant to read.
+
+         `lifeScale` is set by the death script from hull length, and defaults
+         to 1 so an unscaled caller behaves exactly as before. */
+      const ls = opts.lifeScale === undefined ? 1 : Math.max(0.05, opts.lifeScale);
+      const life = (isKeel ? rng.range(40, 58) : rng.range(24, 44)) * ls;
 
       this._chunks.push({
         px: origin.x + p.x,
@@ -305,8 +315,16 @@ export class DebrisFX {
         r: this._col.r, g: this._col.g, b: this._col.b,
         birth: ctx.now,
         life,
-        // Thermal mass: big sections stay hot along their torn edges far longer.
-        cool: isKeel ? 9.0 : 3.2,
+        /* Thermal mass: big sections stay hot along their torn edges far
+           longer. `lifeScale` carries into the cooling constant as well as the
+           lifetime, because surface-to-volume is the reason both numbers are
+           what they are — and because a fighter fragment that keeps throwing
+           sparks for three and a half seconds puts a 3.5 s floor under the
+           death of a ship whose whole event is meant to last a third of one. */
+        cool: (isKeel ? 9.0 : 3.2) * Math.max(0.1, Math.min(1, ls)),
+        // Thermal scale, kept so `update` can put the sparks and embers a
+        // chunk throws on the same clock as the chunk itself.
+        ls: Math.max(0.1, Math.min(1, ls)),
         seed: rng.next(),
         heat: 1,
         nextSpark: ctx.now + rng.range(0, 0.4),
@@ -342,24 +360,41 @@ export class DebrisFX {
       c.quat.premultiply(q);
       c.heat = Math.exp(-age / (c.cool || 3.2));
 
-      if (c.heat > 0.34 && emit > 0 && now >= c.nextSpark) {
+      /* Only wreckage with real thermal mass burns.
+
+         A 3 m fragment off a 14 m interceptor has no business glowing, and
+         while it did, it set the floor of the whole duration ladder: the
+         chunk cooled in 0.4 s but the *ember it had already thrown* lived
+         another 1.5-3.5 s, so a death whose entire script runs for a quarter
+         of a second measured at over three seconds. Measured over the roster
+         it was the single largest contributor to the bottom rung.
+
+         `cool > 0.9 s` is the gate — a fighter's gravel and a corvette's fail
+         it, a frigate's keel sections and everything a capital sheds pass —
+         and what does pass throws sparks and embers on its own clock. */
+      if (c.heat > 0.34 && c.cool > 0.9 && emit > 0 && now >= c.nextSpark) {
         c.nextSpark = now + rng.range(0.25, 0.9);
         emit--;
+        const tl = c.ls || 1;
         const u = rng.unitVector();
         const s = rng.range(2, 14);
         f.spark.spawn(c.px, c.py, c.pz,
           c.vx + u.x * s, c.vy + u.y * s, c.vz + u.z * s,
-          rng.range(0.4, 1.1), 1.2, Math.max(0.5, c.sx * 0.22), 0.15,
+          rng.range(0.4, 1.1) * tl, 1.2, Math.max(0.5, c.sx * 0.22), 0.15,
           SPARK, 2.0, rng.range(2, 6), 0);
         if (rng.chance(0.3)) {
           f.ember.spawn(c.px, c.py, c.pz, c.vx, c.vy, c.vz,
-            rng.range(1.5, 3.5), 0.4, c.sx * 0.5, c.sx * 0.1, SPARK, 1.4, 0, 0);
+            rng.range(1.5, 3.5) * tl, 0.4, c.sx * 0.5, c.sx * 0.1, SPARK, 1.4, 0, 0);
         }
       }
 
       if (n >= cap) continue;
-      // Shrink out over the last couple of seconds: no alpha, no sorting.
-      const k = age > c.life - 2.2 ? Math.max(0, (c.life - age) / 2.2) : 1;
+      /* Shrink out over the last couple of seconds: no alpha, no sorting. The
+         window is a fraction of the chunk's own life as well as a ceiling,
+         because a short-lived fighter fragment with a flat 2.2 s window spends
+         most of its existence visibly deflating. */
+      const fade = Math.min(2.2, c.life * 0.3);
+      const k = age > c.life - fade ? Math.max(0, (c.life - age) / fade) : 1;
       const o = n * D_STRIDE;
       d[o] = c.px; d[o + 1] = c.py; d[o + 2] = c.pz;
       d[o + 3] = c.quat.x; d[o + 4] = c.quat.y; d[o + 5] = c.quat.z; d[o + 6] = c.quat.w;

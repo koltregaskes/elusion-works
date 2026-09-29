@@ -824,6 +824,63 @@ function shotCeiling(damage) {
   return Math.min(11, Math.max(2.4, 1.4 + Math.sqrt(Math.max(1, damage)) * 0.58));
 }
 
+/* ------------------------------------------------- impacts that read at 6 px
+
+   Critic round 2, fix 4: at the distance this game frames combat, hits are
+   invisible. A frame with 24 hulls engaging 74 showed "about a dozen glyphs
+   and two flares", and nothing on screen answered "am I winning" except the
+   HUD bar.
+
+   The two halves of the ask pull against each other. Raising every impact to a
+   6 px floor recreates the exact failure `shotCeiling` was written to stop: a
+   fleet action fires several hundred rounds a second, and several hundred 6 px
+   discs is an even white carpet with no silhouette left in it. Lowering them
+   again is where we came in.
+
+   The way out is to spend the pixel budget on *fewer* marks rather than
+   smaller ones. Two impacts that land within `IMPACT_CELL_PX` of each other on
+   screen inside `IMPACT_WINDOW` seconds are one event as far as the player is
+   concerned — the eye cannot separate them at that size — so they are painted
+   as a single mark carrying their summed weight. A destroyer under fire from
+   six mounts becomes a steady legible pulse at its own position instead of
+   sixty invisible dots, and the aggregate rate of marks across the frame stays
+   flat as the battle grows, because what grows is the weight per mark.
+
+   Close up nothing changes: the cell is defined in *screen* pixels, so at
+   200 m two hits a hull apart are far more than 14 px apart and each keeps its
+   own mark, complete with its own spall, soot and gobbets — none of which
+   carry a floor at all, which is what keeps a close-up from turning to
+   confetti.
+
+   The first hit into an empty cell paints immediately, so no hit is ever late;
+   the summary mark fires when the window closes and only if more arrived. */
+const IMPACT_WINDOW = 0.13;
+const IMPACT_CELL_PX = 14;
+const IMPACT_FLOOR_PX = 6.4;
+
+/* Screen floor for one impact mark, in pixels.
+
+   Calibre still matters — a lance strike is allowed more pixels than an
+   autocannon round — but nothing may go below legibility, and nothing may
+   exceed half its target's own screen height. That second clause is what keeps
+   a 14 m interceptor three pixels tall from wearing a 6 px impact mark: at
+   that size the mark would *become* the ship. A small hull's hit therefore
+   reads by radiance rather than by area, which is the right answer anyway,
+   since what the player needs from a fighter taking fire is *that* it was hit,
+   not where. */
+function impactFloorPx(amount, targetPx) {
+  const want = Math.min(11, IMPACT_FLOOR_PX + Math.sqrt(Math.max(1, amount)) * 0.34);
+  return Math.min(want, Math.max(2.4, targetPx * 0.5));
+}
+
+/** Radius of whatever a shot was aimed at, for callers that only see the shot. */
+function targetRadius(entity) {
+  if (!entity) return 0;
+  if (entity.radius) return entity.radius;
+  if (entity.def && entity.def.length) return entity.def.length * 0.4;
+  return 0;
+}
+
 /** Sim rate (ARCHITECTURE §0). Tracer length is quoted in sim ticks of travel. */
 const SIM_HZ = 30;
 
@@ -874,7 +931,14 @@ export class WeaponFX {
       capacity: this._flashCap,
       vertexShader: FLASH_VERT,
       fragmentShader: FLASH_FRAG,
-      uniforms: { uMap: { value: this._flashTex }, uMinPixels: { value: 5.5 } },
+      /* 11 px, not 5.5, and every caller now states its own ceiling.
+         `capPx` can only ever *lower* this floor (see FLASH_VERT), so while
+         the batch floor sat at 5.5 no impact could be floored to the 6.4 px
+         fix 4 asks for, however the event was authored — the readability
+         contract was capped below the thing it was contracting for. The
+         per-event ceilings are what keep the carpet down; this number only
+         sets how high an event is *allowed* to ask. */
+      uniforms: { uMap: { value: this._flashTex }, uMinPixels: { value: 11.0 } },
       renderOrder: 14,
       softness: 12,
     });
@@ -940,6 +1004,10 @@ export class WeaponFX {
     this._beams = [];
     this._missiles = [];
     this._missileTrails = 0;
+    /* Open impact windows, keyed by screen-space cell. Small and short-lived:
+       one entry per distinguishable point of impact in the frame, cleared
+       within IMPACT_WINDOW of the last hit into it. */
+    this._hits = new Map();
 
     /* A missile's wake is two ribbons, and it has to be, because the two halves
        of "white-hot at the nozzle cooling to dark smoke" cannot live on one
@@ -1034,9 +1102,14 @@ export class WeaponFX {
     const rng = ctx.rng;
     const jitter = 0.74 + rng.next() * 0.56;
 
+    /* The legible mark goes through the coalescing path, which decides its
+       screen floor from the target's own size and folds neighbours together.
+       Everything below it is near-field detail that carries no floor at all
+       and simply stops resolving at range — that split is what lets the mark
+       be raised to 6 px without the close-up becoming confetti. */
+    this._impactMark(pt, n, amount, p.entity);
+
     const capPx = shotCeiling(amount);
-    this._flash(pt.x, pt.y, pt.z, 0, 0, 0,
-      0.10 + rng.next() * 0.07, mag * 9 * jitter, mag * 2.0, HULL_HOT, 4.0, capPx, IMPACT_SET);
     // Molten wash, blown a little way back out of the hole it just made.
     f.flare.spawn(pt.x + n.x * mag * 0.6, pt.y + n.y * mag * 0.6, pt.z + n.z * mag * 0.6,
       n.x * 26, n.y * 26, n.z * 26, 0.30, 2.2,
@@ -1068,6 +1141,108 @@ export class WeaponFX {
         rng.range(0.5, 1.3), 0.2, mag * 1.1, mag * 0.2, HULL_MOLTEN, 2.2, 2.4, 0,
       );
     }
+  }
+
+  /* --------------------------------------------------------- impact marks */
+
+  /** One hit, coalesced. See the IMPACT_* block above for why. */
+  _impactMark(pt, nrm, amount, entity, radiusHint) {
+    const ctx = this.ctx;
+    const mpp = ctx.px(ctx.distTo(pt.x, pt.y, pt.z));
+    /* The cell is quantised in screen pixels, not metres, so the grouping
+       follows the camera: pulled back to strategic range a whole capital falls
+       in one cell, and at 200 m two hits on the same plate do not. Keying on
+       the cell rather than on the entity also folds the tracer-arrival path in
+       with the `sim:damage` path for free, and those two fire on the same hit
+       within a frame of each other. */
+    const cell = Math.max(1e-3, mpp * IMPACT_CELL_PX);
+    const key = `${Math.round(pt.x / cell)}:${Math.round(pt.y / cell)}:${Math.round(pt.z / cell)}`;
+    const radius = (entity && entity.radius)
+      || (entity && entity.def && entity.def.length ? entity.def.length * 0.4 : 0)
+      || radiusHint
+      || 18;
+
+    const open = this._hits.get(key);
+    if (open) {
+      // Fold in. Position is a weighted mean so the mark lands on the centre
+      // of mass of the volley rather than on whichever round arrived first.
+      const w = open.weight + amount;
+      const k = amount / w;
+      open.x += (pt.x - open.x) * k;
+      open.y += (pt.y - open.y) * k;
+      open.z += (pt.z - open.z) * k;
+      open.nx += (nrm.x - open.nx) * k;
+      open.ny += (nrm.y - open.ny) * k;
+      open.nz += (nrm.z - open.nz) * k;
+      open.weight = w;
+      open.pending += amount;
+      if (radius > open.radius) open.radius = radius;
+      return;
+    }
+
+    this._paintImpact(pt.x, pt.y, pt.z, amount, radius, 1);
+    this._hits.set(key, {
+      x: pt.x, y: pt.y, z: pt.z,
+      nx: nrm.x, ny: nrm.y, nz: nrm.z,
+      weight: amount, pending: 0, radius,
+      until: ctx.now + IMPACT_WINDOW,
+    });
+  }
+
+  /** Close every window whose time is up, painting one summary mark each. */
+  _flushHits(now) {
+    if (!this._hits.size) return;
+    for (const [key, h] of this._hits) {
+      if (now < h.until) continue;
+      this._hits.delete(key);
+      if (h.pending <= 0) continue;
+      /* One mark for the rest of the volley, weighted by what it carried. The
+         `dwell` multiplier is what makes sustained fire read as sustained:
+         a heavy volley leaves its mark on screen for twice as long as a single
+         round does, which is the cue a player reads as "that one is losing". */
+      this._paintImpact(h.x, h.y, h.z, h.pending, h.radius,
+        1 + Math.min(1.1, h.pending / Math.max(1, h.weight)));
+    }
+  }
+
+  /* The mark itself: a hot dot with a floor, a ceiling and enough dwell to
+     survive at the size the floor gives it.
+
+     Forcing size up alone gives a grey smudge, and the reason is in the
+     fragment stage: `vSpread` deliberately *dims* a billboard in proportion to
+     how hard the pixel floor is stretching it, so that a carpet of floored
+     sprites cannot wash the frame out. Correct as a default, and fatal for the
+     one effect that has to read at exactly that size. The lift below is
+     computed from the same two quantities the shader uses, so a mark ends up
+     at a known multiple of its authored radiance however hard the floor bites,
+     and the frame's total floored area is still bounded by the coalescing. */
+  _paintImpact(x, y, z, amount, radius, dwell) {
+    const ctx = this.ctx;
+    const rng = ctx.rng;
+    const mpp = ctx.px(ctx.distTo(x, y, z));
+    const mag = Math.min(7.0, 0.9 + Math.sqrt(Math.max(1, amount)) * 0.30);
+    const jitter = 0.74 + rng.next() * 0.56;
+
+    const targetPx = (2 * radius) / mpp;
+    const capPx = impactFloorPx(amount, targetPx);
+    const natural = mag * 9 * jitter;
+    const floored = Math.max(natural, mpp * capPx);
+    // Mirrors FLASH_VERT/FLASH_FRAG: clamp amount, spread dimming, and the
+    // 1 + 0.9 * clamp lift the fragment stage already applies.
+    const ratio = Math.min(1, natural / floored);
+    const clampAmt = 1 - ratio;
+    const spread = Math.pow(Math.max(0.04, ratio), 0.32);
+    const gain = (1 + 0.9 * clampAmt) * spread;
+    // Target twice the authored radiance when the floor is fully carrying the
+    // mark; unity when it is not biting at all.
+    const lift = Math.min(3.6, (1 + clampAmt) / Math.max(0.2, gain));
+    /* Dwell, not area. Three frames of a 6 px dot is not an event a player
+       can see; nine is. Close up the floor is not biting, so the flash stays
+       as crisp and short as it ever was. */
+    const life = (0.10 + rng.next() * 0.06) * (1 + 1.4 * clampAmt) * dwell;
+
+    this._flash(x, y, z, 0, 0, 0, life,
+      natural, mag * 2.0, HULL_HOT, 4.0 * lift, capPx, IMPACT_SET);
   }
 
   detachEntity(entity) {
@@ -1108,7 +1283,7 @@ export class WeaponFX {
     this._addTracer(
       from.x, from.y, from.z,
       (dx / dist) * speed, (dy / dist) * speed, (dz / dist) * speed,
-      life, width, len, this._col, 2.1, 'kinetic', dmg, team,
+      life, width, len, this._col, 2.1, 'kinetic', dmg, team, targetRadius(p.target),
     );
     this._muzzle(from, dx / dist, dy / dist, dz / dist, dmg, team, 1.0);
   }
@@ -1148,8 +1323,11 @@ export class WeaponFX {
     const scale = 1.6 + Math.sqrt(dmg) * 0.34;
 
     const j = 0.76 + rng.next() * 0.52;
+    // A flak puff is a real cloud a few tens of metres across, so it carries
+    // its own ceiling rather than the batch's 11 px: a sky full of airburst
+    // discs all floored to the same size is the carpet again.
     this._flash(x, y, z, 0, 0, 0, 0.15 + rng.next() * 0.09,
-      30 * scale * j, 7 * scale, HOT_WHITE, 4.6, 0, BURST_SET);
+      30 * scale * j, 7 * scale, HOT_WHITE, 4.6, 6.0, BURST_SET);
     f.flare.spawn(x, y, z, 0, 0, 0, 0.40, 0, 13 * scale, 48 * scale * j, FLAK_BURST, 2.4, 0, 0);
 
     const puffs = Math.round(3 + 2 * this.ctx.qscale);
@@ -1289,7 +1467,7 @@ export class WeaponFX {
 
     const j = 0.76 + rng.next() * 0.52;
     this._flash(p.x, p.y, p.z, 0, 0, 0, 0.16 + rng.next() * 0.10,
-      30 * scale * j, 7 * scale, HOT_WHITE, 4.0, 0, BURST_SET);
+      30 * scale * j, 7 * scale, HOT_WHITE, 4.0, 6.0, BURST_SET);
     f.flare.spawn(p.x, p.y, p.z, 0, 0, 0, 0.5, 0, 12 * scale, 52 * scale * j, FLAK_BURST, 1.8, 0, 0);
     for (let i = 0; i < Math.round(4 * ctx.qscale) + 2; i++) {
       const u = rng.unitVector();
@@ -1479,7 +1657,7 @@ export class WeaponFX {
     return q ? out.copy(q) : out.identity();
   }
 
-  _addTracer(x, y, z, vx, vy, vz, life, width, len, colour, bright, kind, damage, team) {
+  _addTracer(x, y, z, vx, vy, vz, life, width, len, colour, bright, kind, damage, team, tRadius) {
     const slot = this._tracerFree.pop();
     if (slot === undefined) {
       // Saturated: drop the oldest so new fire always reads.
@@ -1487,12 +1665,12 @@ export class WeaponFX {
       if (oldest) this._tracerFree.push(oldest.slot);
       const again = this._tracerFree.pop();
       if (again === undefined) return;
-      return this._writeTracer(again, x, y, z, vx, vy, vz, life, width, len, colour, bright, kind, damage, team);
+      return this._writeTracer(again, x, y, z, vx, vy, vz, life, width, len, colour, bright, kind, damage, team, tRadius);
     }
-    return this._writeTracer(slot, x, y, z, vx, vy, vz, life, width, len, colour, bright, kind, damage, team);
+    return this._writeTracer(slot, x, y, z, vx, vy, vz, life, width, len, colour, bright, kind, damage, team, tRadius);
   }
 
-  _writeTracer(slot, x, y, z, vx, vy, vz, life, width, len, colour, bright, kind, damage, team) {
+  _writeTracer(slot, x, y, z, vx, vy, vz, life, width, len, colour, bright, kind, damage, team, tRadius) {
     const d = this.tracers.data;
     const o = slot * TRACER_STRIDE;
     const now = this.ctx.now;
@@ -1504,7 +1682,7 @@ export class WeaponFX {
     d[o + 14] = 1;
     d[o + 15] = slot * 0.618034 % 1;
     this._tracers.push({
-      slot, death: now + life, kind, damage,
+      slot, death: now + life, kind, damage, tRadius,
       ex: x + vx * life, ey: y + vy * life, ez: z + vz * life,
       dx: vx, dy: vy, dz: vz,
     });
@@ -1599,14 +1777,20 @@ export class WeaponFX {
         const mag = Math.min(5.0, 0.9 + Math.sqrt(t.damage) * 0.26);
         const capPx = shotCeiling(t.damage);
         const jitter = 0.74 + ctx.rng.next() * 0.56;
-        this._flash(t.ex, t.ey, t.ez, 0, 0, 0, 0.09 + ctx.rng.next() * 0.06,
-          mag * 10 * jitter, mag * 2.2, HULL_HOT, 4.2, capPx, IMPACT_SET);
+        /* Same coalescing path as `hullImpact`. The round landing and the
+           `sim:damage` it causes are one event to the player, and keying the
+           accumulator on a screen cell is what folds them together without
+           either path having to know about the other. `tRadius` is the
+           target's radius captured at the muzzle, so the mark can be held
+           under its target's own screen size. */
+        this._impactMark(this._v2, this._v, t.damage, null, t.tRadius);
         ctx.fields.flare.spawn(t.ex, t.ey, t.ez, 0, 0, 0, 0.26, 0,
           mag * 4, mag * 17 * jitter, HULL_MOLTEN, 1.9, 0, 0, capPx * 1.4);
         this._sparkBurst(this._v2, this._v, Math.round(8 + mag * 4), 0.45, 80 + t.damage * 1.2, mag * 1.9);
       }
     }
     this._writeTracerBuffer();
+    this._flushHits(now);
     this._writeFlashBuffer();
 
     /* Beams: track both endpoints, then drip muzzle bloom and impact splash. */
@@ -1687,8 +1871,12 @@ export class WeaponFX {
 
     // Impact bulb: white core, coloured wash, both floored to a legible size.
     const is = b.width * 9.5 * gain;
+    // A beam's landing point is an impact like any other, so it is floored and
+    // coalesced by the same rule. The bulb below it is the beam's own wash.
+    this._impactMark(b.to, this._v.copy(b.from).sub(b.to).normalize(),
+      b.damage, b.target);
     this._flash(b.to.x, b.to.y, b.to.z, 0, 0, 0, 0.12,
-      is * (0.8 + rng.next() * 0.5), is * 0.45, HULL_HOT, 6.0, 0, IMPACT_SET);
+      is * (0.8 + rng.next() * 0.5), is * 0.45, HULL_HOT, 6.0, 8.0, IMPACT_SET);
     f.flare.spawn(b.to.x, b.to.y, b.to.z, 0, 0, 0, 0.34, 0,
       is * 0.6, is * 3.0, b.colour, 3.0, 0, 0);
 
@@ -1856,5 +2044,6 @@ export class WeaponFX {
     this._beamGeo.dispose();
     this._missileGeo.dispose();
     this._flashTex.dispose();
+    this._hits.clear();
   }
 }
