@@ -3,40 +3,90 @@ import { Engine } from './core/engine.js';
 import { Loop } from './core/loop.js';
 import { bus } from './core/events.js';
 import { makeRng } from './core/rng.js';
+import { Shell } from './ui/shell.js';
+/* Lane C's tutorial and codex. Side-effect import by design: it defers its own
+   install by a macrotask so the `window.__VS = {…}` assignment below cannot
+   discard its handle, injects its own stylesheet, and registers its `tutorial`
+   and `codex` panels through `shell.registerPanel` when the shell appears —
+   its `tutorial` panel replacing the placeholder this file's shell ships. */
+import './ui/tutorial.js';
 
-/* Boot sequence.
+/* Bootstrap and match lifecycle.
 
-   Each subsystem is loaded in its own stage so a failure is isolated and
-   reportable rather than a blank canvas. Stages that can degrade (post-fx,
-   environment, HUD) do; the ones the game cannot exist without (engine, world)
-   are fatal. The boot overlay reports progress because procedural generation
-   of the skybox and hull atlases genuinely takes a moment. */
+   Two things live here. The first is the boot sequence, which is unchanged in
+   spirit: each subsystem loads in its own stage so a failure is isolated and
+   reportable rather than a blank canvas, and stages that can degrade do.
+
+   The second is new, and it is the reason this file grew: **a match is built
+   and torn down in place, without reloading the page.** Restart and quit used
+   to be `location.href = …`, which threw away the warmed shader cache and cost
+   5–13 s every time. The renderer, the canvas, the loop and — where the seed
+   and detail tier have not changed — the texture atlases, the hull cache, the
+   nebula and the audio graph all survive a restart now. Only the world, the FX
+   pools, the camera, the input and the HUD are rebuilt.
+
+   `ui/shell.js` owns the screens and the state machine. This file owns the
+   engine-side operations the shell asks for, handed over as a small `game`
+   interface. Nothing in the shell knows what Three.js is. */
 
 const params = new URLSearchParams(location.search);
 
-const SEED = (() => {
-  const raw = params.get('seed');
-  if (raw !== null && raw !== '') {
-    const n = Number(raw);
-    if (Number.isFinite(n)) return Math.abs(Math.trunc(n)) || 1;
-    // Allow word seeds — hash them so ?seed=kharak is stable and shareable.
-    let h = 2166136261;
-    for (let i = 0; i < raw.length; i++) {
-      h ^= raw.charCodeAt(i);
-      h = Math.imul(h, 16777619);
-    }
-    return (h >>> 0) || 1;
+/* Quality presets, mirrored from `core/engine.js`, which does not export them.
+   Duplicated deliberately and knowingly: changing the detail tier without a
+   page reload means writing `engine.preset` from out here, and a wrong pixel
+   ratio is a visible defect rather than a silent one. If engine.js ever
+   exports the table, delete this. */
+const QUALITY_PRESETS = {
+  low: { dpr: 1.0, shadows: false, shadowSize: 1024, anisotropy: 2, samples: 0 },
+  medium: { dpr: 1.25, shadows: true, shadowSize: 1536, anisotropy: 4, samples: 0 },
+  high: { dpr: 1.5, shadows: true, shadowSize: 2048, anisotropy: 8, samples: 2 },
+  ultra: { dpr: 2.0, shadows: true, shadowSize: 4096, anisotropy: 16, samples: 4 },
+};
+
+const QUALITIES = ['low', 'medium', 'high', 'ultra'];
+
+/* Three never frees the PMREM it derives from a render-target environment map,
+   and the sky is one.
+
+   Measured, not guessed: hooking `renderer.properties.get` and listing every
+   texture still holding a `__webglTexture` showed **one PMREM.cubeUv leaked per
+   rebuild**, for ever. In `WebGLCubeUVMaps.get()` the `texture.isRenderTargetTexture`
+   branch caches the generated PMREM and returns — it is the *other* branch that
+   attaches the `dispose` listener which would free it. So a sky baked into a
+   `WebGLRenderTarget` and assigned to `scene.environment` derives a PMREM that
+   nothing in three will ever release; even `renderer.dispose()` only resets the
+   WeakMap. The cache is a closure-local WeakMap, so the only handle on the
+   render target is the generator call that produced it.
+
+   Wrapping the prototype is deliberate and contained: `vendor/three` is frozen
+   and stays untouched. The right long-term home is `render/skybox.js`, whose
+   `dispose()` could free the PMREM its own render target caused — that is an
+   ENV-owned change and is in this lane's report. */
+const _pmremTargets = new Set();
+if (THREE.PMREMGenerator && THREE.PMREMGenerator.prototype.fromEquirectangular) {
+  const inner = THREE.PMREMGenerator.prototype.fromEquirectangular;
+  THREE.PMREMGenerator.prototype.fromEquirectangular = function fromEquirectangular(tex, rt) {
+    const out = inner.call(this, tex, rt);
+    if (out && out.dispose) _pmremTargets.add(out);
+    return out;
+  };
+}
+
+/** Word seeds hash so `?seed=kharak` is stable and shareable. */
+function normaliseSeed(raw) {
+  const text = String(raw === undefined || raw === null ? '' : raw).trim();
+  if (text === '') return (Math.floor(Math.random() * 0xfffffff) + 1) >>> 0;
+  const n = Number(text);
+  if (Number.isFinite(n)) return Math.abs(Math.trunc(n)) || 1;
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
   }
-  return (Math.floor(Math.random() * 0xfffffff) + 1) >>> 0;
-})();
+  return (h >>> 0) || 1;
+}
 
-const QUALITY = (() => {
-  const q = params.get('quality');
-  if (q && ['low', 'medium', 'high', 'ultra'].includes(q)) return q;
-  return autoQuality();
-})();
-
-/** Pick a starting tier from coarse device signals; the loop adapts from here. */
+/** Pick a starting tier from coarse device signals. */
 function autoQuality() {
   const mem = navigator.deviceMemory || 4;
   const cores = navigator.hardwareConcurrency || 4;
@@ -47,150 +97,28 @@ function autoQuality() {
   return 'high';
 }
 
-const boot = {
-  el: document.getElementById('vs-boot'),
-  bar: document.getElementById('vs-boot-bar'),
-  fill: document.getElementById('vs-boot-fill'),
-  status: document.getElementById('vs-boot-status'),
-  set(pct, text) {
-    if (this.fill) this.fill.style.transform = `scaleX(${Math.max(0, Math.min(1, pct))})`;
-    if (this.bar) this.bar.setAttribute('aria-valuenow', String(Math.round(pct * 100)));
-    if (this.status && text) this.status.textContent = text;
-  },
-  dismiss() {
-    if (!this.el) return;
-    this.el.classList.add('is-done');
-    const el = this.el;
-    setTimeout(() => el.remove(), 900);
-    this.el = null;
-  },
-};
-
-/* Pre-match setup on the boot card.
-
-   Deliberately does NOT gate the default path: generation starts immediately
-   and the game launches itself the moment it is ready, exactly as before, so
-   a visitor who wants to just look at it waits for nothing and every existing
-   screenshot harness keeps working unchanged.
-
-   It only waits for an explicit "Take command" if the player actually touches
-   a control — at which point they have declared an interest in choosing, and
-   auto-launching out from under them would be rude.
-
-   Any change reloads with new parameters. Generation has already started by
-   the time the card is on screen, and all three settings are consumed during
-   it — the seed feeds every generator, quality sizes the atlases and the sky,
-   and difficulty is read when `World` is constructed. Re-running the boot is
-   the honest way to apply them, and it now costs a few seconds rather than
-   the thirty it once did. */
-const setup = {
-  touched: false,
-  seed: params.get('seed') || '',
-  difficulty: params.get('difficulty') || 'normal',
-  quality: params.get('quality') || '',
-  _onLaunch: null,
-
-  init(seedValue, qualityValue) {
-    const root = document.getElementById('vs-setup');
-    const launch = document.getElementById('vs-launch');
-    if (!root || !launch) return;
-
-    this.seed = String(this.seed || seedValue);
-    this.quality = this.quality || qualityValue;
-    /* Baselines for "did the player change anything", captured as the RAW
-       values this run actually started from. Comparing against the normalised
-       SEED is wrong for word seeds: ?seed=kharak hashes to a number, the raw
-       text never equals String(SEED), and "Take command" reloads the same URL
-       forever instead of starting the game. */
-    this._seed0 = this.seed;
-    this._quality0 = this.quality;
-
-    const seedInput = document.getElementById('vs-setup-seed');
-    if (seedInput) {
-      seedInput.value = this.seed;
-      seedInput.addEventListener('input', () => {
-        this.seed = seedInput.value.trim();
-        this._touch();
-      });
-    }
-
-    const reroll = document.getElementById('vs-setup-reroll');
-    if (reroll && seedInput) {
-      reroll.addEventListener('click', () => {
-        this.seed = String((Math.floor(Math.random() * 0xfffffff) + 1) >>> 0);
-        seedInput.value = this.seed;
-        this._touch();
-      });
-    }
-
-    this._group('vs-setup-difficulty', this.difficulty, (v) => {
-      this.difficulty = v;
-      this._touch();
-    });
-    this._group('vs-setup-quality', this.quality, (v) => {
-      this.quality = v;
-      this._touch();
-    });
-
-    launch.addEventListener('click', () => this._launch());
-    this._launchEl = launch;
-  },
-
-  _group(id, current, onPick) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const buttons = Array.from(el.querySelectorAll('button[data-value]'));
-    const paint = (value) => {
-      for (const b of buttons) b.setAttribute('aria-checked', String(b.dataset.value === value));
-    };
-    paint(current);
-    for (const b of buttons) {
-      b.addEventListener('click', () => {
-        paint(b.dataset.value);
-        onPick(b.dataset.value);
-      });
-    }
-  },
-
-  _touch() {
-    if (this.touched) return;
-    this.touched = true;
-    if (this._launchEl) this._launchEl.hidden = false;
-  },
-
-  /** Called once generation finishes. Returns true if it handled the launch. */
-  onReady(fn) {
-    this._onLaunch = fn;
-    if (this._launchEl) this._launchEl.disabled = false;
-    if (!this.touched) return false; // default path: caller auto-launches
-    return true;
-  },
-
-  _launch() {
-    const activeDifficulty = params.get('difficulty') || 'normal';
-    const changed =
-      this.seed !== this._seed0 ||
-      (this.quality && this.quality !== this._quality0) ||
-      this.difficulty !== activeDifficulty;
-
-    if (changed) {
-      const url = new URL(location.href);
-      if (this.seed) url.searchParams.set('seed', this.seed);
-      if (this.quality) url.searchParams.set('quality', this.quality);
-      url.searchParams.set('difficulty', this.difficulty);
-      location.href = url.toString();
-      return;
-    }
-    if (this._onLaunch) this._onLaunch();
-  },
-};
+const SEED_TEXT = params.get('seed') || '';
+const DIFFICULTY = (() => {
+  const d = params.get('difficulty');
+  return d && ['easy', 'normal', 'hard'].includes(d) ? d : 'normal';
+})();
+const QUALITY = (() => {
+  const q = params.get('quality');
+  return q && QUALITIES.includes(q) ? q : autoQuality();
+})();
+/* Match pacing. `?pace=standard` shortens the sovereignty clock; `long` is
+   the original hour-scale grind. Unknown values fall through to the sim's own
+   default rather than being rejected here, so there is one place that decides
+   what a valid preset is. */
+const PACE = params.get('pace') || '';
 
 function fatal(message, detail) {
   const el = document.getElementById('vs-fatal');
   const d = document.getElementById('vs-fatal-detail');
   if (d) d.textContent = message;
   if (el) el.hidden = false;
-  if (boot.el) boot.el.remove();
+  const shell = document.getElementById('vs-shell');
+  if (shell) shell.remove();
   const vs = window.__VS || (window.__VS = {});
   vs.fatal = { message, detail: detail ? String(detail.stack || detail) : null };
 }
@@ -215,7 +143,7 @@ async function tryImport(path, label) {
   }
 }
 
-/* Give the browser a chance to paint the boot bar between stages.
+/* Give the browser a chance to paint between stages.
 
    Raced against a timer on purpose: a backgrounded or hidden tab throttles
    requestAnimationFrame to nearly nothing, and a boot that awaits rAF simply
@@ -232,18 +160,39 @@ const yieldFrame = () =>
     setTimeout(finish, 60);
   });
 
-/* Announce a stage and let it actually paint BEFORE the work starts.
+/* The live match, and the assets a match is built on. Split because the second
+   group survives a restart whenever the seed and the detail tier have not
+   changed, and that split is the whole of the "restart must not reload"
+   requirement. */
+const M = {
+  world: null,
+  fx: null,
+  cameraRig: null,
+  input: null,
+  hud: null,
+};
 
-   Awaiting a dynamic import is not enough: a promise resolution is a microtask
-   and does not guarantee a paint, so a label set immediately before a long
-   synchronous block could be replaced by the next label before the user ever
-   saw it. That is how the boot overlay came to read "Laying down keels…" while
-   the sky was baking, which sent someone hunting a hang in the ships module
-   that was actually 0 ms. Set, paint, then work. */
-async function stage(pct, text) {
-  boot.set(pct, text);
-  await yieldFrame();
-}
+const A = {
+  key: null,          // `${seed}|${quality}` the current assets were built for
+  environment: null,
+  audio: null,
+  fallbackLights: null,
+  textures: null,
+  materials: null,
+  ships: null,
+};
+
+/* The loop needs a world every frame. Between matches it gets this, so
+   rendering — and therefore the warmed program cache, the resize handling and
+   the frame clock — never stops. */
+const NULL_WORLD = {
+  tick() {},
+  syncTransforms() {},
+  entities: new Map(),
+  teams: [],
+  time: 0,
+  dispose() {},
+};
 
 async function main() {
   if (!hasWebGL2()) {
@@ -251,20 +200,17 @@ async function main() {
     return;
   }
 
-  setup.init(SEED, QUALITY);
-
   const canvas = document.getElementById('vs-canvas');
   const vs = (window.__VS = {
     ready: false,
-    seed: SEED,
-    quality: QUALITY,
     THREE,
     bus,
     loadErrors,
+    seed: normaliseSeed(SEED_TEXT),
+    quality: QUALITY,
+    bootTimings: [],
   });
 
-  /* ---------------------------------------------------------------- engine */
-  await stage(0.04, 'Spinning up the renderer…');
   let engine;
   try {
     engine = new Engine({ canvas, quality: QUALITY });
@@ -273,301 +219,498 @@ async function main() {
     return;
   }
   vs.engine = engine;
-  const rng = makeRng(SEED);
-  vs.rng = rng;
-  await yieldFrame();
 
-  /* -------------------------------------------------------------- textures */
-  await stage(0.10, 'Printing hull plating…');
-  const texturesMod = await tryImport('./render/textures.js', 'textures');
-  if (texturesMod && texturesMod.initTextureLibrary) {
-    try {
-      texturesMod.initTextureLibrary(engine.renderer, rng.fork(11), { quality: QUALITY });
-    } catch (e) {
-      loadErrors.push({ label: 'textures:init', error: String(e.message) });
-    }
-  }
-  vs.textures = texturesMod;
-  await yieldFrame();
-
-  await stage(0.20, 'Mixing paint and primer…');
-  const materialsMod = await tryImport('./render/materials.js', 'materials');
-  if (materialsMod && materialsMod.initMaterials) {
-    try {
-      materialsMod.initMaterials(engine.renderer, { quality: QUALITY, rng: rng.fork(12) });
-    } catch (e) {
-      loadErrors.push({ label: 'materials:init', error: String(e.message) });
-    }
-  }
-  vs.materials = materialsMod;
-  await yieldFrame();
-
-  /* ----------------------------------------------------------- environment */
-  await stage(0.30, 'Painting the nebula…');
-  const envMod = await tryImport('./render/environment.js', 'environment');
-  let environment = null;
-  if (envMod && envMod.Environment) {
-    try {
-      environment = new envMod.Environment({
-        engine,
-        rng: rng.fork(21),
-        textures: texturesMod,
-        seed: SEED,
-        quality: QUALITY,
-      });
-      for (const light of environment.lights || []) engine.scene.add(light);
-    } catch (e) {
-      loadErrors.push({ label: 'environment', error: String(e.stack || e.message) });
-    }
-  }
-  if (!environment) installFallbackLighting(engine);
-  vs.environment = environment;
-  await yieldFrame();
-
-  /* ----------------------------------------------------------------- ships */
-  await stage(0.48, 'Laying down keels…');
-  const shipsMod = await tryImport('./ships/index.js', 'ships');
-  if (shipsMod && shipsMod.warmShipCache) {
-    try {
-      shipsMod.warmShipCache(rng.fork(31));
-    } catch (e) {
-      loadErrors.push({ label: 'ships:warm', error: String(e.message) });
-    }
-  }
-  vs.ships = shipsMod;
-  await yieldFrame();
-
-  /* -------------------------------------------------------------------- fx */
-  await stage(0.62, 'Priming the ordnance…');
-  const fxMod = await tryImport('./fx/index.js', 'fx');
-  let fx = null;
-  if (fxMod && fxMod.FXSystem) {
-    try {
-      fx = new fxMod.FXSystem({
-        engine,
-        materials: materialsMod,
-        textures: texturesMod,
-        quality: QUALITY,
-      });
-    } catch (e) {
-      loadErrors.push({ label: 'fx', error: String(e.stack || e.message) });
-    }
-  }
-  vs.fx = fx;
-  await yieldFrame();
-
-  /* ----------------------------------------------------------------- world */
-  await stage(0.72, 'Deploying the fleets…');
-  const worldMod = await tryImport('./sim/world.js', 'world');
-  if (!worldMod || !worldMod.World) {
-    fatal('The simulation failed to load.', loadErrors[loadErrors.length - 1]);
-    return;
-  }
-  let world;
-  try {
-    world = new worldMod.World({
-      seed: SEED,
-      engine,
-      fx,
-      ships: shipsMod,
-      environment,
-      options: { difficulty: params.get('difficulty') || 'normal' },
-    });
-  } catch (e) {
-    fatal('The simulation failed to start.', e);
-    return;
-  }
-  vs.world = world;
-  await yieldFrame();
-
-  /* -------------------------------------------------------- camera + input */
-  await stage(0.82, 'Handing you the bridge…');
-  const cameraMod = await tryImport('./core/camera.js', 'camera');
-  let cameraRig = null;
-  if (cameraMod && cameraMod.CameraRig) {
-    try {
-      cameraRig = new cameraMod.CameraRig({ engine, domElement: canvas, world });
-    } catch (e) {
-      loadErrors.push({ label: 'camera', error: String(e.stack || e.message) });
-    }
-  }
-  if (!cameraRig) cameraRig = makeFallbackCamera(engine);
-  vs.cameraRig = cameraRig;
-
-  /* Open on the player's mothership.
-
-     Framed off hull *length*, not bounding radius. Radius × 7.5 put the camera
-     9.2 km out — 4.8 hull lengths — and the flagship came in at 324 px of a
-     1920 px frame, one element among asteroids rather than the subject. This
-     is the single most important image in the demo, so the hero fills it. */
-  const playerBase = world.entities.get(world.teams[0].baseId);
-  if (playerBase && cameraRig.focusOn) {
-    const hullLength = (playerBase.def && playerBase.def.length) || playerBase.radius * 2;
-    cameraRig.focusOn(playerBase.position, hullLength * 2.1, true);
-  } else if (playerBase === undefined) {
-    // Seen on at least one seed: teams[0].baseId did not resolve to an entity.
-    // Fall back to the team's home position so the camera is never left at the
-    // origin staring into empty space.
-    loadErrors.push({ label: 'camera:openingFrame', error: 'player base entity did not resolve' });
-    const home = world.teams[0] && world.teams[0].homePosition;
-    if (home && cameraRig.focusOn) cameraRig.focusOn(home, 4000, true);
-  }
-
-  const inputMod = await tryImport('./core/input.js', 'input');
-  let input = null;
-  if (inputMod && inputMod.InputController) {
-    try {
-      input = new inputMod.InputController({
-        engine,
-        domElement: canvas,
-        camera: cameraRig,
-        world,
-      });
-    } catch (e) {
-      loadErrors.push({ label: 'input', error: String(e.stack || e.message) });
-    }
-  }
-  vs.input = input;
-  await yieldFrame();
-
-  /* ----------------------------------------------------------------- audio */
-  await stage(0.88, 'Opening the comms channel…');
-  const audioMod = await tryImport('./audio/index.js', 'audio');
-  let audio = null;
-  if (audioMod && audioMod.AudioSystem) {
-    try {
-      audio = new audioMod.AudioSystem({
-        seed: SEED,
-        engine,
-        world,
-        camera: cameraRig,
-      });
-    } catch (e) {
-      // Never fatal. A browser that blocks AudioContext must still get a game.
-      loadErrors.push({ label: 'audio', error: String(e.stack || e.message) });
-    }
-  }
-  vs.audio = audio;
-  await yieldFrame();
-
-  /* ------------------------------------------------------------------- HUD */
-  await stage(0.92, 'Bringing the displays up…');
-  const hudMod = await tryImport('./ui/hud.js', 'hud');
-  let hud = null;
-  if (hudMod && hudMod.HUD) {
-    try {
-      hud = new hudMod.HUD({
-        engine,
-        world,
-        camera: cameraRig,
-        container: document.getElementById('vs-hud'),
-        // Without this the mixer is unreachable: the HUD falls back to guessing
-        // defaults and cannot read a persisted mute preference.
-        audio,
-      });
-    } catch (e) {
-      loadErrors.push({ label: 'hud', error: String(e.stack || e.message) });
-    }
-  }
-  vs.hud = hud;
-  await yieldFrame();
-
-  /* ---------------------------------------------------------------- postfx */
-  await stage(0.96, 'Grading the image…');
-  const postMod = await tryImport('./render/postfx.js', 'postfx');
   let post = null;
-  if (postMod && postMod.PostFX) {
-    try {
-      post = new postMod.PostFX(engine);
-      if (post.setQuality) post.setQuality(QUALITY);
-      engine.setPostProcess(post);
-    } catch (e) {
-      loadErrors.push({ label: 'postfx', error: String(e.stack || e.message) });
-      engine.setPostProcess(null);
-    }
-  }
-  vs.post = post;
+  let halted = true;               // nothing is running until a match is
 
-  /* ------------------------------------------------------------- per-frame */
-  /* Route engine-level failures somewhere a human will see them. A lost
-     context is fatal and gets the full panel; a detached hook is survivable
-     and gets a toast. */
+  /* One loop for the life of the page.
+
+     Halting is a property intercept rather than a time scale of zero, because
+     the two must not be the same control: the player's own tactical pause and
+     speed setting live in `timeScale`, and a shell pause that wrote 0 into it
+     would be silently undone by the next `ui:speed` the HUD sends, or would
+     forget which speed to restore. With this, `Loop._frame` reads 0 while the
+     shell is halted, so the fixed-step accumulator genuinely does not advance
+     — `_accum` is untouched, `world.tick()` is never called and `loop.tick`
+     does not increment — while `world.syncTransforms()` and `engine.render()`
+     carry on and the scene stays live behind the menu. The player's speed is
+     underneath, unchanged, and comes back on resume. */
+  const loop = new Loop({ engine, world: NULL_WORLD, hz: 30 });
+  vs.loop = loop;
+  let userTimeScale = loop.timeScale;
+  Object.defineProperty(loop, 'timeScale', {
+    configurable: true,
+    get() {
+      return halted ? 0 : userTimeScale;
+    },
+    set(v) {
+      const n = Number(v);
+      userTimeScale = Number.isFinite(n) ? Math.max(0, n) : 0;
+    },
+  });
+  Object.defineProperty(loop, 'halted', {
+    configurable: true,
+    get() {
+      return halted;
+    },
+  });
+
+  /* One render hook for the life of the page, reading whatever is currently
+     built. Registering a fresh hook per match leaked one closure per restart
+     and left dead subsystems being ticked. */
+  engine.registerRenderHook((dt, elapsed) => {
+    if (M.cameraRig && M.cameraRig.update) M.cameraRig.update(dt);
+    if (M.input && M.input.update) M.input.update(dt);
+    // Must run every frame, not just on events: the listener frame, distance
+    // attenuation, voice stealing and the score's scheduler all advance here.
+    if (A.audio) A.audio.update(dt, elapsed, engine.camera);
+    if (A.environment && A.environment.update) A.environment.update(dt, elapsed, engine.camera);
+    if (A.materials && A.materials.updateMaterials) A.materials.updateMaterials(elapsed);
+    if (M.fx) M.fx.update(dt, elapsed, engine.camera);
+    if (M.hud) M.hud.update(dt);
+  }, 'frame');
+
   engine.onFailure = (message, info) => {
     if (info && info.kind === 'contextlost') {
       vs.ready = false;
-      // The loop is created below this point, so it may legitimately not exist
-      // yet if the context is lost during boot.
-      if (vs.loop) vs.loop.stop();
+      loop.stop();
       fatal(message, null);
       return;
     }
     bus.emit('ui:toast', { text: message, kind: 'warning' });
   };
 
-  engine.registerRenderHook((dt, elapsed) => {
-    if (cameraRig && cameraRig.update) cameraRig.update(dt);
-    if (input && input.update) input.update(dt);
-    // Must run every frame, not just on events: the listener frame, distance
-    // attenuation, voice stealing, coalesced weapon clusters and the score's
-    // scheduler all advance here. Constructing it alone leaves it inert.
-    if (audio) audio.update(dt, elapsed, engine.camera);
-    if (environment && environment.update) environment.update(dt, elapsed, engine.camera);
-    if (materialsMod && materialsMod.updateMaterials) materialsMod.updateMaterials(elapsed);
-    if (fx) fx.update(dt, elapsed, engine.camera);
-    if (hud) hud.update(dt);
-  });
+  loop.start();
 
-  const loop = new Loop({ engine, world, hz: 30 });
-  vs.loop = loop;
+  /* ------------------------------------------------------------- teardown */
 
-  /* Opt-in only, via ?adaptive=1.
+  /** Tear the live match down. `deep` also frees the seed-scoped assets. */
+  function teardown(deep) {
+    /* Per-step GPU accounting, left in on purpose. "Restart does not leak" is
+       a claim that has to be re-provable after any change to any of these
+       modules, and a single before/after pair only tells you *that* something
+       leaked. `__VS.lastTeardown` names which call did it. */
+    const trace = [];
+    const info = engine.renderer.info;
+    let lastT = info.memory.textures;
+    let lastG = info.memory.geometries;
+    const note = (label) => {
+      const t = info.memory.textures;
+      const g = info.memory.geometries;
+      trace.push({ label, textures: t - lastT, geometries: g - lastG });
+      lastT = t;
+      lastG = g;
+    };
+    vs.lastTeardown = trace;
+    trace.push({ label: 'before', textures: lastT, geometries: lastG });
 
-     It was on by default and silently walked high -> medium -> low within ~40 s
-     on the dev mini-PC, which meant every screenshot and every art review was
-     of a downgraded build without anyone being told. That directly contradicts
-     the build-first/optimise-last policy in ARCHITECTURE §0: quality decisions
-     belong to Phase 4, measured on the target laptop, not to a watchdog running
-     on hardware we are explicitly not targeting. */
-  if (params.get('adaptive') === '1') installAdaptiveQuality(loop, engine, post);
+    loop.world = NULL_WORLD;
+    if (M.hud) M.hud.dispose();
+    if (M.input && M.input.dispose) M.input.dispose();
+    if (M.cameraRig && M.cameraRig.dispose) M.cameraRig.dispose();
+    // World teardown calls back into FX to detach entities, so FX outlives it.
+    if (M.world) M.world.dispose();
+    note('world');
+    if (M.fx) M.fx.dispose();
+    note('fx');
+    M.world = null;
+    M.fx = null;
+    M.cameraRig = null;
+    M.input = null;
+    M.hud = null;
 
-  vs.restart = (seed) => {
-    const url = new URL(location.href);
-    url.searchParams.set('seed', String(seed || Math.floor(Math.random() * 0xfffffff) + 1));
-    location.href = url.toString();
-  };
-  bus.on('ui:restart', (p) => vs.restart(p && p.seed));
+    /* Hull geometry and the fleet batches are shared across every entity of a
+       class, so `World` deliberately does not free them — releasing them on
+       one ship's death would delete the geometry every other ship of that
+       class draws from. They belong to the ships module, so teardown is ours. */
+    if (A.ships && A.ships.disposeFleetBatches) A.ships.disposeFleetBatches();
+    note('fleetBatches');
 
-  vs.skipIntro = () => {
-    boot.dismiss();
-    bus.emit('ui:skipIntro');
-  };
+    if (!deep) {
+      /* Shallow restart keeps the nebula, but ENV's ore records are adopted by
+         the sim *in place* and mined down over a match. Handing a worked-out
+         field to a fresh skirmish is the kind of leak that survives ten
+         restarts looking like a balance problem. */
+      resetClusters(A.environment);
+      return;
+    }
 
-  vs.dispose = () => {
-    loop.dispose();
-    if (hud) hud.dispose();
-    if (input && input.dispose) input.dispose();
-    if (fx) fx.dispose();
-    if (environment && environment.dispose) environment.dispose();
-    world.dispose();
-    /* World deliberately no longer frees these: hull geometry and the fleet
-       batches are shared across every entity of a class, so releasing them on
-       one ship's death deleted the geometry every other ship of that class was
-       drawing from. They belong to the ships module, so teardown is ours. */
-    if (shipsMod && shipsMod.disposeFleetBatches) shipsMod.disposeFleetBatches();
-    if (shipsMod && shipsMod.disposeShipCache) shipsMod.disposeShipCache();
-    if (audio) audio.dispose();
-    engine.dispose();
-  };
+    if (A.ships && A.ships.disposeShipCache) A.ships.disposeShipCache();
+    note('shipCache');
+    if (A.audio) A.audio.dispose();
+    A.audio = null;
 
-  /* Say so when a subsystem degraded.
+    /* Grab whatever the sky is wired into before ENV lets go of it. See the
+       explicit dispose below — this pair is the leak. */
+    const derived = [engine.scene.environment, engine.farScene.background].filter(
+      (t) => t && t.isTexture,
+    );
 
-     Per-stage isolation keeps a broken module from blanking the canvas, which
-     is right — but it also means the game can run for hours quietly missing
-     its lighting or its audio with only a console-free `__VS.loadErrors` array
-     to show for it. That silence cost four iterations of chasing a nebula
-     bounce that was being reverted to defaults by an unrelated parse error
-     upstream. A degraded run must announce itself. */
-  if (loadErrors.length) {
+    if (A.environment && A.environment.dispose) A.environment.dispose();
+    A.environment = null;
+    note('environment');
+
+    /* Measured, not guessed: **+1 CubeTexture and +1 PMREM.cubeUv leaked per
+       rebuild** before this ran, found by hooking `renderer.properties.get` and
+       listing every texture still holding a `__webglTexture`.
+
+       The sky is an equirectangular *render target*. Three derives two more
+       GPU textures from it — `WebGLCubeMaps` builds a CubeTexture for
+       `scene.background`, `WebGLCubeUVMaps` builds a PMREM for
+       `scene.environment` — and frees each of them from a `dispose` listener
+       it attaches to the **source texture**. `WebGLRenderTarget.dispose()`
+       dispatches on the render target, not on its texture, so that listener
+       never fires and both derived maps outlive the sky that produced them.
+       Disposing the texture object itself is what closes it. The GPU texture
+       is already gone by this point, so this is only the notification. */
+    for (const t of derived) {
+      try {
+        t.dispose();
+      } catch (e) {
+        /* already gone with its render target */
+      }
+    }
+    /* The PMREM half of the same problem — see the prototype wrap at the top of
+       this file. Safe here and only here: every sky that produced one of these
+       has just been disposed, and the new one is generated after this returns. */
+    for (const rt of _pmremTargets) {
+      try {
+        rt.dispose();
+      } catch (e) {
+        /* nothing to free */
+      }
+    }
+    _pmremTargets.clear();
+    note('skyDerivedMaps');
+    if (A.fallbackLights) {
+      for (const l of A.fallbackLights) engine.scene.remove(l);
+      A.fallbackLights = null;
+    }
+    // disposeMaterials() frees the texture library as well.
+    if (A.materials && A.materials.disposeMaterials) A.materials.disposeMaterials();
+    else if (A.textures && A.textures.disposeTextures) A.textures.disposeTextures();
+    note('materials+textures');
+    A.key = null;
+  }
+
+  /** ENV's cluster records are shared with the sim; reset what a match mutates. */
+  function resetClusters(environment) {
+    if (!environment) return;
+    let list = null;
+    try {
+      list = environment.resourceClusters;
+    } catch (e) {
+      list = null;
+    }
+    if (!list || !list.length) return;
+    for (const c of list) {
+      if (!c) continue;
+      if (c.maxAmount > 0) c.amount = c.maxAmount;
+      c.control = 0;
+      c.owner = undefined;
+      if (c.presence) {
+        c.presence[0] = 0;
+        c.presence[1] = 0;
+      }
+      c.miners = [0, 0];
+      c.threat = [0, 0];
+      c._fill = undefined;
+    }
+  }
+
+  /* -------------------------------------------------------------- building */
+
+  /** Detail tier without a page reload. */
+  function applyQuality(q) {
+    const preset = QUALITY_PRESETS[q] || QUALITY_PRESETS.high;
+    engine.quality = q;
+    engine.preset = preset;
+    engine.renderer.shadowMap.enabled = preset.shadows;
+    engine.maxAnisotropy = Math.min(
+      preset.anisotropy,
+      engine.renderer.capabilities.getMaxAnisotropy(),
+    );
+    engine.resize();
+    if (post && post.setQuality) post.setQuality(q);
+    vs.quality = q;
+  }
+
+  let building = false;
+
+  /**
+   * Build a match. Reuses everything it legitimately can: if the seed and the
+   * detail tier are unchanged, the atlases, the hull cache, the nebula and the
+   * audio graph are all kept and only the sim-side is rebuilt.
+   */
+  async function startMatch(setup, progress) {
+    if (building) throw new Error('a match is already being built');
+    building = true;
+    const t0 = performance.now();
+    const step = (v, label) => {
+      if (progress) progress(v, label);
+    };
+
+    try {
+      const seed = normaliseSeed(setup.seed);
+      const quality = QUALITIES.includes(setup.quality) ? setup.quality : QUALITY;
+      const difficulty = ['easy', 'normal', 'hard'].includes(setup.difficulty)
+        ? setup.difficulty
+        : 'normal';
+      const key = `${seed}|${quality}`;
+      const deep = A.key !== key;
+
+      teardown(deep);
+      if (quality !== engine.quality) applyQuality(quality);
+
+      vs.seed = seed;
+      const rng = makeRng(seed);
+      vs.rng = rng;
+
+      /* Stage timings and per-stage GPU allocation, both kept. The second half
+         is the counterpart to the teardown trace: between them, any stage that
+         allocates more than its dispose frees is named rather than inferred. */
+      const timings = [];
+      const mem = engine.renderer.info.memory;
+      const mark = async (v, label, fn) => {
+        step(v, label);
+        await yieldFrame();
+        const t = performance.now();
+        const t0Tex = mem.textures;
+        const t0Geo = mem.geometries;
+        await fn();
+        timings.push({
+          label,
+          ms: Math.round(performance.now() - t),
+          dTex: mem.textures - t0Tex,
+          dGeo: mem.geometries - t0Geo,
+        });
+        await yieldFrame();
+      };
+
+      if (deep) {
+        await mark(0.08, 'Printing hull plating…', async () => {
+          const mod = await tryImport('./render/textures.js', 'textures');
+          A.textures = mod;
+          if (mod && mod.initTextureLibrary) {
+            try {
+              mod.initTextureLibrary(engine.renderer, rng.fork(11), { quality });
+            } catch (e) {
+              loadErrors.push({ label: 'textures:init', error: String(e.message) });
+            }
+          }
+        });
+
+        await mark(0.18, 'Mixing paint and primer…', async () => {
+          const mod = await tryImport('./render/materials.js', 'materials');
+          A.materials = mod;
+          if (mod && mod.initMaterials) {
+            try {
+              mod.initMaterials(engine.renderer, { quality, rng: rng.fork(12) });
+            } catch (e) {
+              loadErrors.push({ label: 'materials:init', error: String(e.message) });
+            }
+          }
+        });
+
+        await mark(0.32, 'Painting the nebula…', async () => {
+          const mod = await tryImport('./render/environment.js', 'environment');
+          A.environment = null;
+          if (mod && mod.Environment) {
+            try {
+              A.environment = new mod.Environment({
+                engine,
+                rng: rng.fork(21),
+                textures: A.textures,
+                seed,
+                quality,
+              });
+              for (const light of A.environment.lights || []) engine.scene.add(light);
+            } catch (e) {
+              loadErrors.push({ label: 'environment', error: String(e.stack || e.message) });
+            }
+          }
+          if (!A.environment) A.fallbackLights = installFallbackLighting(engine);
+        });
+
+        await mark(0.48, 'Laying down keels…', async () => {
+          const mod = await tryImport('./ships/index.js', 'ships');
+          A.ships = mod;
+          if (mod && mod.warmShipCache) {
+            try {
+              mod.warmShipCache(rng.fork(31));
+            } catch (e) {
+              loadErrors.push({ label: 'ships:warm', error: String(e.message) });
+            }
+          }
+        });
+      } else {
+        step(0.5, 'Reusing the warmed universe…');
+        await yieldFrame();
+      }
+
+      await mark(0.62, 'Priming the ordnance…', async () => {
+        const mod = await tryImport('./fx/index.js', 'fx');
+        if (mod && mod.FXSystem) {
+          try {
+            M.fx = new mod.FXSystem({
+              engine,
+              materials: A.materials,
+              textures: A.textures,
+              quality,
+            });
+          } catch (e) {
+            loadErrors.push({ label: 'fx', error: String(e.stack || e.message) });
+          }
+        }
+      });
+
+      let worldMod = null;
+      await mark(0.7, 'Reading the sailing orders…', async () => {
+        worldMod = await tryImport('./sim/world.js', 'world');
+      });
+      if (!worldMod || !worldMod.World) throw new Error('the simulation failed to load');
+      await mark(0.74, 'Deploying the fleets…', async () => {
+        M.world = new worldMod.World({
+          seed,
+          engine,
+          fx: M.fx,
+          ships: A.ships,
+          environment: A.environment,
+          options: { difficulty, pace: PACE },
+        });
+      });
+
+      await mark(0.84, 'Handing you the bridge…', async () => {
+        const cameraMod = await tryImport('./core/camera.js', 'camera');
+        if (cameraMod && cameraMod.CameraRig) {
+          try {
+            M.cameraRig = new cameraMod.CameraRig({ engine, domElement: canvas, world: M.world });
+          } catch (e) {
+            loadErrors.push({ label: 'camera', error: String(e.stack || e.message) });
+          }
+        }
+        if (!M.cameraRig) M.cameraRig = makeFallbackCamera(engine);
+        frameOpeningShot(M.world, M.cameraRig);
+
+        const inputMod = await tryImport('./core/input.js', 'input');
+        if (inputMod && inputMod.InputController) {
+          try {
+            M.input = new inputMod.InputController({
+              engine,
+              domElement: canvas,
+              camera: M.cameraRig,
+              world: M.world,
+            });
+          } catch (e) {
+            loadErrors.push({ label: 'input', error: String(e.stack || e.message) });
+          }
+        }
+      });
+
+      await mark(0.9, 'Opening the comms channel…', async () => {
+        if (A.audio) {
+          /* The soundscape is deterministic per seed and the graph is expensive
+             — but the real reason this is re-pointed rather than rebuilt is
+             that every `AudioSystem` opens an `AudioContext`, browsers cap the
+             number of live contexts at around six, and `close()` is async. Ten
+             restarts in a row would run out of them. */
+          A.audio.world = M.world;
+          A.audio.cameraRig = M.cameraRig;
+          return;
+        }
+        const audioMod = await tryImport('./audio/index.js', 'audio');
+        if (audioMod && audioMod.AudioSystem) {
+          try {
+            A.audio = new audioMod.AudioSystem({
+              seed,
+              engine,
+              world: M.world,
+              camera: M.cameraRig,
+            });
+          } catch (e) {
+            // Never fatal. A browser that blocks AudioContext must still play.
+            loadErrors.push({ label: 'audio', error: String(e.stack || e.message) });
+          }
+        }
+      });
+
+      await mark(0.95, 'Bringing the displays up…', async () => {
+        const hudMod = await tryImport('./ui/hud.js', 'hud');
+        if (hudMod && hudMod.HUD) {
+          try {
+            M.hud = new hudMod.HUD({
+              engine,
+              world: M.world,
+              camera: M.cameraRig,
+              container: document.getElementById('vs-hud'),
+              audio: A.audio,
+            });
+          } catch (e) {
+            loadErrors.push({ label: 'hud', error: String(e.stack || e.message) });
+          }
+        }
+      });
+
+      if (!post) {
+        await mark(0.98, 'Grading the image…', async () => {
+          const postMod = await tryImport('./render/postfx.js', 'postfx');
+          if (postMod && postMod.PostFX) {
+            try {
+              post = new postMod.PostFX(engine);
+              if (post.setQuality) post.setQuality(quality);
+              engine.setPostProcess(post);
+            } catch (e) {
+              loadErrors.push({ label: 'postfx', error: String(e.stack || e.message) });
+              engine.setPostProcess(null);
+            }
+          }
+          vs.post = post;
+          if (params.get('adaptive') === '1') installAdaptiveQuality(loop, engine, post);
+        });
+      }
+
+      A.key = key;
+      loop.world = M.world;
+      // The HUD's boot card is dormant in the shipped build — the shell owns
+      // loading — but anything listening for `ui:ready` still gets it.
+      bus.emit('ui:ready', { seed, quality, difficulty });
+
+      vs.bootTimings = timings;
+      vs.lastBuildMs = Math.round(performance.now() - t0);
+      vs.lastBuildDeep = deep;
+      reportDegraded();
+      return { seed, quality, difficulty };
+    } finally {
+      building = false;
+    }
+  }
+
+  /* Open on the player's mothership.
+
+     Framed off hull *length*, not bounding radius. Radius × 7.5 put the camera
+     9.2 km out — 4.8 hull lengths — and the flagship came in at 324 px of a
+     1920 px frame, one element among asteroids rather than the subject. */
+  function frameOpeningShot(world, rig) {
+    const playerBase = world.entities.get(world.teams[0].baseId);
+    if (playerBase && rig.focusOn) {
+      const hullLength = (playerBase.def && playerBase.def.length) || playerBase.radius * 2;
+      rig.focusOn(playerBase.position, hullLength * 2.1, true);
+      return;
+    }
+    // Seen on at least one seed: teams[0].baseId did not resolve to an entity.
+    loadErrors.push({ label: 'camera:openingFrame', error: 'player base entity did not resolve' });
+    const home = world.teams[0] && world.teams[0].homePosition;
+    if (home && rig.focusOn) rig.focusOn(home, 4000, true);
+  }
+
+  /* Say so when a subsystem degraded. Per-stage isolation keeps a broken
+     module from blanking the canvas, which is right — but it also means the
+     game can run for hours quietly missing its lighting with only a
+     console-free array to show for it. */
+  let reportedErrors = 0;
+  function reportDegraded() {
+    if (loadErrors.length <= reportedErrors) return;
+    reportedErrors = loadErrors.length;
     const labels = [...new Set(loadErrors.map((e) => String(e.label).split(':')[0]))];
     bus.emit('ui:toast', {
       text: `Running degraded — ${labels.join(', ')} failed to load. See __VS.loadErrors.`,
@@ -575,7 +718,102 @@ async function main() {
     });
   }
 
-  /* A listener that throws is now contained by the bus rather than killing the
+  /* ----------------------------------------------------------------- shell */
+
+  const shell = new Shell({
+    root: document.getElementById('vs-shell'),
+    hudEl: document.getElementById('vs-hud'),
+    stageEl: document.getElementById('vs-stage'),
+    defaults: {
+      seed: SEED_TEXT || String(vs.seed),
+      difficulty: DIFFICULTY,
+      quality: QUALITY,
+    },
+    game: {
+      start: (setup, progress) => startMatch(setup, progress),
+      stop: () => teardown(false),
+      setHalted: (v) => {
+        halted = !!v;
+      },
+      stats: () => (M.hud ? M.hud.matchStats() : {}),
+      hud: () => M.hud,
+    },
+  });
+  vs.shell = shell;
+
+  /* Lane B's options panel, pulled in as soon as the shell exists.
+
+     `core/input.js` also imports it, but input only exists once a match has
+     been built — which meant Options on the title screen was still the shell's
+     own placeholder, and the real panel only appeared after you had already
+     played a match. Registering here makes "can I change the controls?"
+     answerable before the first game rather than after it. The panel guards
+     against double registration, so the import in `input.js` stays harmless.
+
+     Dynamic so the boot path pays nothing for it and a panel that fails to
+     load cannot take the game down with it. */
+  if (typeof document !== 'undefined') {
+    import('./ui/options.js')
+      .then((m) => m && m.installOptions && m.installOptions())
+      .catch(() => { /* the game does not depend on the panel existing */ });
+  }
+
+  shell.on('stateChange', ({ to }) => {
+    if (to === 'playing') markReady();
+  });
+
+  /* The end screen is driven by the sim, not by a guess. `sim:gameOver` is the
+     one event that decides a match is over, and it carries the reason. */
+  bus.on('sim:gameOver', (p) => {
+    shell.showGameOver({
+      winner: p && p.winner,
+      reason: p && p.reason,
+      humanTeam: M.world ? M.world.humanTeam : 0,
+    });
+  });
+
+  // Kept for compatibility: anything that emitted `ui:restart` used to get a
+  // page reload. It now gets a real restart.
+  bus.on('ui:restart', (p) => vs.restart(p && p.seed));
+
+  /* -------------------------------------------------------- debug handles */
+
+  Object.defineProperties(vs, {
+    world: { get: () => M.world, configurable: true },
+    fx: { get: () => M.fx, configurable: true },
+    hud: { get: () => M.hud, configurable: true },
+    input: { get: () => M.input, configurable: true },
+    cameraRig: { get: () => M.cameraRig, configurable: true },
+    environment: { get: () => A.environment, configurable: true },
+    audio: { get: () => A.audio, configurable: true },
+    ships: { get: () => A.ships, configurable: true },
+    textures: { get: () => A.textures, configurable: true },
+    materials: { get: () => A.materials, configurable: true },
+    busErrors: { get: () => bus.errors, configurable: true },
+    halted: { get: () => halted, configurable: true },
+  });
+
+  vs.restart = (seed) => {
+    if (seed !== undefined && seed !== null && seed !== '') shell.setup.seed = String(seed);
+    return shell.restart();
+  };
+
+  vs.skipIntro = () => {
+    if (shell.state === 'title' || shell.state === 'setup' || shell.state === 'briefing') {
+      return shell.quickStart();
+    }
+    bus.emit('ui:skipIntro');
+    return true;
+  };
+
+  vs.dispose = () => {
+    loop.dispose();
+    teardown(true);
+    shell.dispose();
+    engine.dispose();
+  };
+
+  /* A listener that throws is contained by the bus rather than killing the
      fan-out, but contained is not the same as fine — it still means a feature
      is silently absent. Check once the game has settled and say so. */
   setTimeout(() => {
@@ -586,30 +824,26 @@ async function main() {
       kind: 'warning',
     });
   }, 8000);
-  Object.defineProperty(vs, 'busErrors', { get: () => bus.errors });
 
-  boot.set(1, 'Ready.');
-  loop.start();
-
-  // Mark ready only after a real frame has rendered — the screenshot harness
-  // and any perf tooling both key off this. Fall back to a timer so a hidden
-  // tab still reports ready rather than appearing to hang forever.
-  const markReady = () => {
+  /* Mark ready only after a real frame of a live match has rendered — the
+     screenshot harness and the perf tooling both key off this, and its meaning
+     is unchanged from before the shell existed: there is a world, and it has
+     been drawn at least once. Fall back to a timer so a hidden tab still
+     reports ready rather than appearing to hang. */
+  function markReady() {
     if (vs.ready) return;
-    vs.ready = true;
-    // If the player has touched the setup controls, hold the card until they
-    // say go. Otherwise launch straight in, as it always has.
-    const held = setup.onReady(() => {
-      boot.dismiss();
-      bus.emit('ui:ready', { seed: SEED, quality: QUALITY });
-    });
-    if (!held) {
-      boot.dismiss();
-      bus.emit('ui:ready', { seed: SEED, quality: QUALITY });
-    }
-  };
-  requestAnimationFrame(() => requestAnimationFrame(markReady));
-  setTimeout(markReady, 1500);
+    const arm = () => {
+      if (vs.ready || !M.world) return;
+      vs.ready = true;
+    };
+    requestAnimationFrame(() => requestAnimationFrame(arm));
+    setTimeout(arm, 1500);
+  }
+
+  /* Straight into a match, no front matter. This is what the screenshot
+     harnesses drive and what a deliberate `?autostart=1` link does; a plain
+     visit gets the title screen, which is the entire point of this lane. */
+  if (params.get('autostart') === '1') shell.quickStart();
 }
 
 /* --------------------------------------------------------------- fallbacks */
@@ -621,14 +855,15 @@ function installFallbackLighting(engine) {
   engine.scene.add(key);
   const fill = new THREE.HemisphereLight(0x2a4a6e, 0x0a0d18, 0.55);
   engine.scene.add(fill);
+  return [key, fill];
 }
 
 /** A minimal orbit rig so the game is still playable if camera.js is missing. */
 function makeFallbackCamera(engine) {
   const focus = new THREE.Vector3();
   let distance = 6000;
-  let yaw = 0.6;
-  let pitch = 0.45;
+  const yaw = 0.6;
+  const pitch = 0.45;
   engine.camera.position.set(0, distance * 0.5, distance);
   return {
     focusOn(point, d) {
@@ -641,6 +876,7 @@ function makeFallbackCamera(engine) {
     get distance() {
       return distance;
     },
+    dispose() {},
     update() {
       const cp = Math.cos(pitch);
       engine.camera.position.set(
@@ -658,10 +894,8 @@ function installAdaptiveQuality(loop, engine, post) {
   if (!post || !post.setQuality) return;
 
   /* Prefer the post stack's own policy when it exposes one — it knows its real
-     per-pass costs and its own hysteresis (drops after 2.5 s under 48 fps,
-     climbs after 12 s over 58.5 fps), which is better informed than a frame
-     counter out here. `setQuality()` is documented safe to call at any time
-     and was verified leak-free across 20 tier changes. */
+     per-pass costs and its own hysteresis, which is better informed than a
+     frame counter out here. */
   if (typeof post.suggestQuality === 'function') {
     let cooldown = 300;
     engine.registerRenderHook(() => {
@@ -675,14 +909,14 @@ function installAdaptiveQuality(loop, engine, post) {
         engine.quality = want;
         bus.emit('ui:toast', { text: `Detail set to ${want} to hold frame rate.`, kind: 'info' });
       }
-    });
+    }, 'adaptive');
     return;
   }
 
   const tiers = ['low', 'medium', 'high', 'ultra'];
   let index = tiers.indexOf(engine.quality);
   let badFrames = 0;
-  let cooldown = 300; // let the first few seconds settle before judging
+  let cooldown = 300;
 
   engine.registerRenderHook(() => {
     if (cooldown > 0) {
@@ -696,12 +930,15 @@ function installAdaptiveQuality(loop, engine, post) {
         engine.quality = tiers[index];
         badFrames = 0;
         cooldown = 600;
-        bus.emit('ui:toast', { text: `Detail reduced to ${tiers[index]} to hold frame rate.`, kind: 'info' });
+        bus.emit('ui:toast', {
+          text: `Detail reduced to ${tiers[index]} to hold frame rate.`,
+          kind: 'info',
+        });
       }
     } else {
       badFrames = Math.max(0, badFrames - 2);
     }
-  });
+  }, 'adaptive');
 }
 
 main().catch((e) => fatal('Void Sovereign failed to start.', e));

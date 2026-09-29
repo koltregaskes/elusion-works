@@ -807,8 +807,16 @@ void main() {
   side = sl > 1e-5 ? side / sl : vec3( 0.0 );
 
   float floorW = dist * uPixelScale * uMinPixels;
-  float natural = aWidth * mix( 1.0, k, uTaper );
-  float w = max( natural, floorW );
+  float shrink = mix( 1.0, k, uTaper );
+  float natural = aWidth * shrink;
+  /* The width floor has to taper with the ribbon, not sit under it.
+     At any range where the floor is the term that wins — which is most of a
+     fleet action — an untapered floor draws a constant-width bar however hard
+     the age ramp or the per-vertex ramp pulls the natural width down, and a
+     constant-width strip is the "drawn line" read rather than exhaust. Held at
+     10% rather than 0 so the very end of a live trail does not alias in and out
+     of existence from frame to frame. */
+  float w = max( natural, floorW * mix( 0.10, 1.0, shrink ) );
   vClamp = clamp( 1.0 - natural / max( w, 0.0001 ), 0.0, 1.0 );
   /* The energy compensation the plume, the nozzle flare and the running lights
      all carry, and that this batch was the only one missing. Same argument: the
@@ -977,14 +985,22 @@ export class RibbonField {
     ctx.scene.add(this.mesh);
   }
 
-  /** Returns a handle or null when saturated. */
-  acquire(colour, width, life, minStep) {
+  /** Returns a handle or null when saturated.
+
+      `ramp` is optional and opt-in: `[head, mid, tail]` THREE.Colors held **by
+      reference** (callers share one team-wide triple rather than allocating per
+      trail). With it the ribbon carries a three-stop temperature gradient along
+      its length and a width ramp that reaches zero at the tail, instead of one
+      flat colour and one flat width end to end — which is the difference
+      between exhaust and a drawn line. Without it, behaviour is unchanged. */
+  acquire(colour, width, life, minStep, ramp) {
     const slot = this._free.pop();
     if (slot === undefined) return null;
     const r = {
       slot,
       n: 0,
       colour: new THREE.Color(colour),
+      ramp: ramp || null,
       width,
       life,
       minStep: minStep || 6,
@@ -1054,7 +1070,15 @@ export class RibbonField {
       const o = r.n * 4;
       p[o] = x; p[o + 1] = y; p[o + 2] = z; p[o + 3] = now;
       r.n++;
-      this._writeRange(r, Math.max(0, r.n - 3), r.n);
+      /* A ramped ribbon is anchored to its own head and tail, so growing the
+         strip moves every existing point's place in the gradient and the whole
+         thing has to be rewritten. Only while it is filling — once it is full
+         the sliding-window branch above already rewrites everything, so a
+         ramped trail costs no more per push than an unramped one at steady
+         state. Deliberately *not* done on the head-only path in `feed`: that
+         one runs every frame for a slow emitter and n has not changed, so the
+         two head vertices are all that need touching. */
+      this._writeRange(r, r.ramp ? 0 : Math.max(0, r.n - 3), r.n);
     }
   }
 
@@ -1064,6 +1088,8 @@ export class RibbonField {
     const p = r.pts;
     const base = r.slot * S * 2;
     const col = r.colour;
+    const ramp = r.ramp;
+    const span = Math.max(1, r.n - 1);
     for (let j = from; j < to; j++) {
       const o4 = j * 4;
       const nx = j < r.n - 1 ? (j + 1) * 4 : o4;
@@ -1075,15 +1101,36 @@ export class RibbonField {
       if (len > 1e-5) { dx /= len; dy /= len; dz /= len; } else { dx = 0; dy = 0; dz = 1; }
       // Head is thin, body is full: a trail should look welded to the nozzle.
       const headFade = j === r.n - 1 ? 0.55 : 1;
+      let cr = col.r;
+      let cg = col.g;
+      let cb = col.b;
+      let wf = headFade;
+      if (ramp) {
+        // 0 at the oldest live point, 1 at the head. Two linear segments, so
+        // the mid stop lands exactly halfway down the live strip.
+        const f = j / span;
+        const hot = f > 0.5;
+        const a = hot ? ramp[1] : ramp[2];
+        const b = hot ? ramp[0] : ramp[1];
+        const k = hot ? (f - 0.5) * 2 : f * 2;
+        cr = a.r + (b.r - a.r) * k;
+        cg = a.g + (b.g - a.g) * k;
+        cb = a.b + (b.b - a.b) * k;
+        /* Width to zero at the tail, in *space* rather than in age. The age
+           taper alone cannot do it: a ribbon whose live window is shorter than
+           its own lifetime — which is every fast mover — never reaches the low
+           end of the age ramp, so its tail ends on a hard square cut. */
+        wf = Math.pow(f, 0.55) * headFade;
+      }
       for (let s = 0; s < 2; s++) {
         const o = (base + j * 2 + s) * R_STRIDE;
         d[o] = p[o4]; d[o + 1] = p[o4 + 1]; d[o + 2] = p[o4 + 2];
         d[o + 3] = s === 0 ? -1 : 1;
         d[o + 4] = dx; d[o + 5] = dy; d[o + 6] = dz;
         d[o + 7] = p[o4 + 3];
-        d[o + 8] = col.r; d[o + 9] = col.g; d[o + 10] = col.b;
+        d[o + 8] = cr; d[o + 9] = cg; d[o + 10] = cb;
         d[o + 11] = r.life;
-        d[o + 12] = r.width * headFade;
+        d[o + 12] = r.width * wf;
         d[o + 13] = 1;
         d[o + 14] = (r.slot * 0.618034) % 1;
       }
@@ -1349,10 +1396,14 @@ export class FXSystem {
         farFade: [7000, 8800],
         renderOrder: 11, softness: 16,
       }),
+      /* Ordnance smoke. `taper` is up from 0.6 because a missile ribbon that
+         still carries 40% of its width where it dies ends on a square cut, and
+         eight of those across the middle of frame are the "scratches on a film
+         print" read. The three-stop ramp (see `acquire`) does the rest. */
       smokeTrail: new RibbonField(ctx, {
         name: 'smokeTrail', capacity: budget.smokeTrails, segments: 24,
         blending: THREE.NormalBlending, layer: LAYER.DEFAULT,
-        opacity: 0.45, core: 0, taper: 0.6, minPixels: 1.6, renderOrder: 5, softness: 45,
+        opacity: 0.52, core: 0, taper: 0.95, minPixels: 1.5, renderOrder: 5, softness: 45,
       }),
     };
 

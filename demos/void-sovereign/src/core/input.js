@@ -36,90 +36,445 @@ const DEFAULTS = {
   colour: 0x86e9ff,
 };
 
+const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+
 export const FORMATIONS = ['delta', 'broad', 'claw', 'x', 'wall', 'sphere'];
 export const STANCES = ['evasive', 'neutral', 'aggressive'];
 export const SPEED_STEPS = [0, 0.25, 0.5, 1, 2, 4];
 
+/* ------------------------------------------------------ control bindings */
+
+/* Every key this module answers to lives in one table, and the handlers switch
+   on an *action*, never on a key code.
+
+   It used to be a `switch (code)` of hand-written `case 'KeyZ'`, which made the
+   honest answer to "what are the controls and can I change them?" — the first
+   question the first player asked — "read the source, and no". With the scheme
+   as data, rebinding is a data change and the help card, the options panel and
+   the dispatcher cannot drift apart.
+
+   Modifiers are deliberately *not* part of a binding. Shift means "queue this
+   order" / "hurry" / "coarser" everywhere in the scheme, so folding it into
+   bindings would break Shift+A queueing an attack-move the moment anyone
+   rebound anything. Ctrl is a fixed property of the two actions that have
+   always carried it — select-all and control-group assign — not something the
+   player adds or removes. What is rebindable is exactly the key.
+
+   `fixed` entries are families rather than single keys (the number row, the
+   numpad). They are listed so the panel can show them, and they are not
+   rebindable, because splitting "0 – 9" into ten rebindable rows is a redesign
+   of the scheme rather than an answer to the question asked. */
+
+export const ACTION_GROUPS = ['Time', 'Selection', 'Orders', 'Camera', 'Control groups'];
+
+export const ACTIONS = [
+  { id: 'time.pause', group: 'Time', label: 'Pause the battle', key: 'Space', prevent: true,
+    note: 'Orders given while paused are obeyed the moment it resumes.' },
+  { id: 'time.faster', group: 'Time', label: 'Game speed up', key: 'Equal', alt: ['NumpadAdd'] },
+  { id: 'time.slower', group: 'Time', label: 'Game speed down', key: 'Minus', alt: ['NumpadSubtract'] },
+  { id: 'ui.help', group: 'Time', label: 'Controls card', key: 'KeyH' },
+  { id: 'audio.mute', group: 'Time', label: 'Mute or unmute all sound', key: 'KeyM' },
+
+  { id: 'shell.menu', group: 'Time', label: 'Pause menu — and closes whatever is open',
+    fixed: 'Esc' },
+
+  { id: 'selection.all', group: 'Selection', label: 'Select your whole fleet', key: 'KeyA',
+    ctrl: true, prevent: true },
+  /* Clear-selection used to be Escape and is not any more: the shell owns
+     Escape now (SHELL-CONTRACT §3), and two claimants on one key is how this
+     project shipped its first keyboard trap. D for deselect — free, on the
+     order hand, and rebindable like everything else. */
+  { id: 'selection.clear', group: 'Selection', label: 'Clear selection', key: 'KeyD',
+    note: 'Escape is the pause menu now, so deselecting moved to its own key.' },
+
+  { id: 'orders.attackMove', group: 'Orders', label: 'Attack-move to the cursor', key: 'KeyA' },
+  { id: 'orders.guard', group: 'Orders', label: 'Guard the hull or the position', key: 'KeyG' },
+  { id: 'orders.patrol', group: 'Orders', label: 'Patrol out and back', key: 'KeyP' },
+  { id: 'orders.stop', group: 'Orders', label: 'Stop — cancel all queued orders', key: 'KeyS' },
+  { id: 'orders.stanceEvasive', group: 'Orders', label: 'Stance: evasive', key: 'KeyZ' },
+  { id: 'orders.stanceNeutral', group: 'Orders', label: 'Stance: neutral', key: 'KeyX' },
+  { id: 'orders.stanceAggressive', group: 'Orders', label: 'Stance: aggressive', key: 'KeyC' },
+  { id: 'orders.formation', group: 'Orders', label: 'Formation: delta, broad, claw, X, wall, sphere',
+    fixed: '1 – 6 (Shift or numpad)' },
+
+  { id: 'camera.focus', group: 'Camera', label: 'Focus and follow the selection', key: 'KeyF' },
+  { id: 'camera.panUp', group: 'Camera', label: 'Pan up', key: 'ArrowUp', hold: true, prevent: true },
+  { id: 'camera.panDown', group: 'Camera', label: 'Pan down', key: 'ArrowDown', hold: true, prevent: true },
+  { id: 'camera.panLeft', group: 'Camera', label: 'Pan left', key: 'ArrowLeft', hold: true, prevent: true },
+  { id: 'camera.panRight', group: 'Camera', label: 'Pan right', key: 'ArrowRight', hold: true, prevent: true },
+  { id: 'camera.orbitLeft', group: 'Camera', label: 'Swing the camera left', key: 'KeyQ', hold: true },
+  { id: 'camera.orbitRight', group: 'Camera', label: 'Swing the camera right', key: 'KeyE', hold: true },
+  { id: 'camera.zoomIn', group: 'Camera', label: 'Zoom in without the wheel', key: 'PageUp', prevent: true },
+  { id: 'camera.zoomOut', group: 'Camera', label: 'Zoom out without the wheel', key: 'PageDown', prevent: true },
+  { id: 'ui.sensors', group: 'Camera', label: 'Sensors manager', key: 'Tab', prevent: true },
+
+  { id: 'groups.recall', group: 'Control groups', label: 'Recall group (press twice to focus it)',
+    fixed: '0 – 9' },
+  { id: 'groups.assign', group: 'Control groups', label: 'Assign control group',
+    fixed: 'Ctrl + 0 – 9' },
+];
+
+export const ACTION_BY_ID = new Map(ACTIONS.map((a) => [a.id, a]));
+
+export const DEFAULT_BINDINGS = Object.freeze(
+  ACTIONS.reduce((out, a) => {
+    if (!a.fixed) out[a.id] = a.key;
+    return out;
+  }, {}),
+);
+
+/* A bare modifier is never a binding — capturing one would produce an action
+   that fires every time the player holds Shift to queue an order. */
+const MODIFIER_CODES = new Set([
+  'ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight',
+  'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight',
+]);
+
+const KEY_LABELS = {
+  Space: 'Space', Escape: 'Esc', Tab: 'Tab', Enter: 'Enter', Backspace: 'Backspace',
+  Delete: 'Del', Insert: 'Ins', Home: 'Home', End: 'End',
+  PageUp: 'Page Up', PageDown: 'Page Down',
+  ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
+  Equal: '+', Minus: '−', Comma: ',', Period: '.', Slash: '/', Backslash: '\\',
+  Semicolon: ';', Quote: '\'', BracketLeft: '[', BracketRight: ']', Backquote: '`',
+  NumpadAdd: 'Num +', NumpadSubtract: 'Num −', NumpadMultiply: 'Num ×',
+  NumpadDivide: 'Num ÷', NumpadEnter: 'Num Enter', NumpadDecimal: 'Num .',
+  CapsLock: 'Caps Lock',
+};
+
+/** The key as a player would say it, not as the DOM spells it. */
+export function keyLabel(code) {
+  if (!code) return '—';
+  if (KEY_LABELS[code]) return KEY_LABELS[code];
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+  if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+  if (/^Numpad[0-9]$/.test(code)) return `Num ${code.slice(6)}`;
+  return code;
+}
+
+/** What the panel prints on an action's key cap, Ctrl prefix and all. */
+export function bindingLabel(id) {
+  const def = ACTION_BY_ID.get(id);
+  if (!def) return '—';
+  if (def.fixed) return def.fixed;
+  const label = keyLabel(optionsStore.binding(id));
+  return def.ctrl ? `Ctrl + ${label}` : label;
+}
+
+/* ------------------------------------------------------------- persistence */
+
+const STORAGE_KEY = 'vs.options.v1';
+
+export const SENSITIVITY_RANGE = Object.freeze({ min: 0.4, max: 2.5, step: 0.05 });
+
+const GAMEPLAY_DEFAULTS = Object.freeze({
+  cameraSensitivity: 1,
+  invertY: false,
+  edgeScroll: true,
+});
+
+/* Storage can throw on *access*, not merely on read: a hardened profile or a
+   third-party-cookie block makes `window.localStorage` itself a throwing
+   getter. Everything here degrades to defaults rather than to a boot failure —
+   a preference nobody can save is a small loss, a game that will not start is
+   not. */
+function safeStorage() {
+  try {
+    if (typeof window === 'undefined') return null;
+    const s = window.localStorage;
+    return s && typeof s.getItem === 'function' ? s : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+class OptionsStore {
+  constructor() {
+    this.storageKey = STORAGE_KEY;
+    this.defaults = { bindings: DEFAULT_BINDINGS, gameplay: GAMEPLAY_DEFAULTS };
+    this._bindings = Object.assign({}, DEFAULT_BINDINGS);
+    this._gameplay = Object.assign({}, GAMEPLAY_DEFAULTS);
+    this._chords = new Map();
+    this._listeners = new Set();
+    this.storageAvailable = !!safeStorage();
+    this._load();
+    this._reindex();
+  }
+
+  get bindings() { return Object.assign({}, this._bindings); }
+
+  get gameplay() { return Object.assign({}, this._gameplay); }
+
+  binding(id) { return this._bindings[id] || ''; }
+
+  /* What the dispatcher matches on: the key code, prefixed for the two actions
+     that have always required Ctrl. */
+  chord(code, ctrl) { return (ctrl ? 'Ctrl+' : '') + code; }
+
+  lookup(code, ctrl) { return this._chords.get(this.chord(code, !!ctrl)) || null; }
+
+  /** The action already holding `code` for this action's modifier, or null. */
+  conflict(id, code) {
+    const def = ACTION_BY_ID.get(id);
+    if (!def || !code) return null;
+    const hit = this._chords.get(this.chord(code, !!def.ctrl));
+    return hit && hit.id !== id ? hit : null;
+  }
+
+  /** Returns `{ ok, conflict }` — refusing rather than silently unbinding the
+      action the player already relies on. */
+  setBinding(id, code) {
+    const def = ACTION_BY_ID.get(id);
+    if (!def || def.fixed) return { ok: false, conflict: null, reason: 'unknown' };
+    if (!code || MODIFIER_CODES.has(code)) return { ok: false, conflict: null, reason: 'modifier' };
+    if (this._bindings[id] === code) return { ok: true, conflict: null };
+    const clash = this.conflict(id, code);
+    if (clash) return { ok: false, conflict: clash, reason: 'conflict' };
+    this._bindings[id] = code;
+    this._reindex();
+    this._save();
+    this._emit(`bindings.${id}`, code);
+    return { ok: true, conflict: null };
+  }
+
+  resetBindings() {
+    this._bindings = Object.assign({}, DEFAULT_BINDINGS);
+    this._reindex();
+    this._save();
+    this._emit('bindings', this.bindings);
+  }
+
+  setGameplay(key, value) {
+    if (!(key in GAMEPLAY_DEFAULTS)) return false;
+    let v = value;
+    if (key === 'cameraSensitivity') {
+      v = Number(v);
+      if (!Number.isFinite(v)) return false;
+      v = clamp(v, SENSITIVITY_RANGE.min, SENSITIVITY_RANGE.max);
+    } else {
+      v = !!v;
+    }
+    if (this._gameplay[key] === v) return true;
+    this._gameplay[key] = v;
+    this._save();
+    this._emit(`gameplay.${key}`, v);
+    return true;
+  }
+
+  resetGameplay() {
+    this._gameplay = Object.assign({}, GAMEPLAY_DEFAULTS);
+    this._save();
+    this._emit('gameplay', this.gameplay);
+  }
+
+  /** Local subscription for things that must react synchronously (the input
+      controller). Everything else can listen for `options:changed` on the bus. */
+  onChange(fn) {
+    if (typeof fn !== 'function') return () => {};
+    this._listeners.add(fn);
+    return () => this._listeners.delete(fn);
+  }
+
+  _emit(key, value) {
+    refreshControlScheme();
+    for (const fn of this._listeners) {
+      try { fn(key, value); } catch (err) { /* one bad listener is not a crash */ }
+    }
+    bus.emit('options:changed', { key, value });
+  }
+
+  _load() {
+    const s = safeStorage();
+    if (!s) return;
+    let raw = null;
+    try { raw = s.getItem(STORAGE_KEY); } catch (err) { return; }
+    if (!raw) return;
+
+    let data = null;
+    try { data = JSON.parse(raw); } catch (err) { data = null; }
+    /* Corrupt or hand-mangled JSON is simply not a preference: fall through on
+       defaults. Throwing here would take the whole boot down with it. */
+    if (!data || typeof data !== 'object') return;
+
+    const b = data.bindings;
+    if (b && typeof b === 'object') {
+      for (const def of ACTIONS) {
+        if (def.fixed) continue;
+        const code = b[def.id];
+        if (typeof code === 'string' && code && !MODIFIER_CODES.has(code)) {
+          this._bindings[def.id] = code;
+        }
+      }
+      /* Validate the finished set, never as it is being read: a straight swap
+         of two keys is legal and looks like a collision half-way through. */
+      const used = new Set();
+      for (const def of ACTIONS) {
+        if (def.fixed) continue;
+        const chord = this.chord(this._bindings[def.id], !!def.ctrl);
+        if (!used.has(chord)) {
+          used.add(chord);
+          continue;
+        }
+        const fallback = this.chord(DEFAULT_BINDINGS[def.id], !!def.ctrl);
+        this._bindings[def.id] = used.has(fallback) ? '' : DEFAULT_BINDINGS[def.id];
+        if (!used.has(fallback)) used.add(fallback);
+      }
+    }
+
+    const g = data.gameplay;
+    if (g && typeof g === 'object') {
+      if (Number.isFinite(g.cameraSensitivity)) {
+        this._gameplay.cameraSensitivity =
+          clamp(g.cameraSensitivity, SENSITIVITY_RANGE.min, SENSITIVITY_RANGE.max);
+      }
+      if (typeof g.invertY === 'boolean') this._gameplay.invertY = g.invertY;
+      if (typeof g.edgeScroll === 'boolean') this._gameplay.edgeScroll = g.edgeScroll;
+    }
+  }
+
+  _save() {
+    const s = safeStorage();
+    if (!s) return;
+    try {
+      s.setItem(STORAGE_KEY, JSON.stringify({
+        v: 1,
+        bindings: this._bindings,
+        gameplay: this._gameplay,
+      }));
+    } catch (err) {
+      /* Quota, private mode, a disabled origin. The session keeps its settings;
+         only the memory of them is lost. */
+    }
+  }
+
+  _reindex() {
+    this._chords.clear();
+    for (const def of ACTIONS) {
+      if (def.fixed) continue;
+      const code = this._bindings[def.id];
+      if (code) {
+        const chord = this.chord(code, !!def.ctrl);
+        if (!this._chords.has(chord)) this._chords.set(chord, def);
+      }
+      /* Alternates are fixed alongside the rebindable primary — the numpad
+         +/− have always worked and taking them away would be a regression —
+         but they still occupy their chord so a rebind cannot land on top. */
+      for (const extra of def.alt || []) {
+        const chord = this.chord(extra, !!def.ctrl);
+        if (!this._chords.has(chord)) this._chords.set(chord, def);
+      }
+    }
+  }
+}
+
+export const optionsStore = new OptionsStore();
+
+/* ------------------------------------------------------------ help scheme */
+
 /** The full control scheme, as data, so ui/hud.js can render the help panel
-    from the same source of truth the handlers are written against.
+    from the same source of truth the handlers are written against. Rebuilt in
+    place whenever a binding changes, so the card is right at whatever moment
+    it is built.
 
     Time comes first on purpose. Tactical pause is the single most valuable
     thing a new commander can be told about — you can pause the battle and
     still issue every order — and it is invisible unless something says so. */
-export const CONTROL_SCHEME = [
-  {
-    group: 'Time',
-    rows: [
-      ['Space', 'Pause the battle — you can still select and give orders'],
-      ['+ / −', 'Game speed: ¼, ½, ×1, ×2, ×4'],
-      ['H', 'This panel'],
-      ['M', 'Mute or unmute all sound'],
-    ],
-  },
-  {
-    group: 'Selection',
-    rows: [
-      ['Left click', 'Select unit under the cursor'],
-      ['Left drag', 'Band-select'],
-      ['Shift + click / drag', 'Add to selection'],
-      ['Ctrl + click / drag', 'Toggle in selection'],
-      ['Double click', 'Select every ship of that class on screen'],
-      ['Ctrl + A', 'Select your whole fleet'],
-      ['Esc', 'Clear selection'],
-    ],
-  },
-  {
-    group: 'Orders',
-    rows: [
-      ['Right click', 'Move to the point under the cursor'],
-      ['Right drag up / down', 'Set the move altitude (disc + stalk gizmo)'],
-      ['Right click on enemy', 'Attack'],
-      ['Shift + any order', 'Queue it behind the current one'],
-      ['A', 'Attack-move to the cursor — engage anything met on the way'],
-      ['G', 'Guard the hull under the cursor, or hold that position'],
-      ['P', 'Patrol out to the cursor and back'],
-      ['S', 'Stop — cancel all queued orders'],
-      ['1 – 6 (Shift or numpad)', 'Formation: delta, broad, claw, X, wall, sphere'],
-      ['Z / X / C', 'Stance: evasive, neutral, aggressive'],
-    ],
-  },
-  {
-    group: 'Camera',
-    rows: [
-      ['Right drag (nothing selected)', 'Orbit'],
-      ['Middle drag', 'Orbit'],
-      ['Alt + right drag', 'Orbit, even with a selection'],
-      ['Wheel', 'Zoom (exponential; Shift for coarse)'],
-      ['Page Up / Page Down', 'Zoom without the wheel'],
-      ['Arrow keys', 'Pan across the focus plane (Shift to hurry)'],
-      ['Q / E', 'Swing the camera left / right'],
-      ['Screen edge', 'Edge-scroll'],
-      ['F', 'Focus and follow the selection'],
-      ['Tab', 'Sensors manager'],
-    ],
-  },
-  {
-    group: 'Control groups',
-    rows: [
-      ['Ctrl + 0 – 9', 'Assign control group'],
-      ['0 – 9', 'Recall group (press twice to focus it)'],
-    ],
-  },
-  {
-    group: 'Touch',
-    rows: [
-      ['One finger drag', 'Orbit'],
-      ['Tap', 'Select'],
-      ['Two-finger pinch', 'Zoom'],
-      ['Two-finger drag', 'Pan'],
-      ['Long press', 'Move gizmo (second finger sets altitude)'],
-    ],
-  },
-];
+export const CONTROL_SCHEME = [];
+
+function buildControlScheme() {
+  const K = (id) => bindingLabel(id);
+  const arrowsAreDefault = ['camera.panUp', 'camera.panDown', 'camera.panLeft', 'camera.panRight']
+    .every((id) => optionsStore.binding(id) === DEFAULT_BINDINGS[id]);
+  const panKeys = arrowsAreDefault
+    ? 'Arrow keys'
+    : `${K('camera.panUp')} ${K('camera.panLeft')} ${K('camera.panDown')} ${K('camera.panRight')}`;
+
+  return [
+    {
+      group: 'Time',
+      rows: [
+        [K('time.pause'), 'Pause the battle — you can still select and give orders'],
+        [`${K('time.faster')} / ${K('time.slower')}`, 'Game speed: ¼, ½, ×1, ×2, ×4'],
+        [K('ui.help'), 'This panel'],
+        [K('audio.mute'), 'Mute or unmute all sound'],
+        [K('shell.menu'), 'Pause menu — and closes whatever is open'],
+      ],
+    },
+    {
+      group: 'Selection',
+      rows: [
+        ['Left click', 'Select unit under the cursor'],
+        ['Left drag', 'Band-select'],
+        ['Shift + click / drag', 'Add to selection'],
+        ['Ctrl + click / drag', 'Toggle in selection'],
+        ['Double click', 'Select every ship of that class on screen'],
+        [K('selection.all'), 'Select your whole fleet'],
+        [K('selection.clear'), 'Clear selection'],
+      ],
+    },
+    {
+      group: 'Orders',
+      rows: [
+        ['Right click', 'Move to the point under the cursor'],
+        ['Right drag up / down', 'Set the move altitude (disc + stalk gizmo)'],
+        ['Right click on enemy', 'Attack'],
+        ['Shift + any order', 'Queue it behind the current one'],
+        [K('orders.attackMove'), 'Attack-move to the cursor — engage anything met on the way'],
+        [K('orders.guard'), 'Guard the hull under the cursor, or hold that position'],
+        [K('orders.patrol'), 'Patrol out to the cursor and back'],
+        [K('orders.stop'), 'Stop — cancel all queued orders'],
+        [K('orders.formation'), 'Formation: delta, broad, claw, X, wall, sphere'],
+        [
+          `${K('orders.stanceEvasive')} / ${K('orders.stanceNeutral')} / ${K('orders.stanceAggressive')}`,
+          'Stance: evasive, neutral, aggressive',
+        ],
+      ],
+    },
+    {
+      group: 'Camera',
+      rows: [
+        ['Right drag (nothing selected)', 'Orbit'],
+        ['Middle drag', 'Orbit'],
+        ['Alt + right drag', 'Orbit, even with a selection'],
+        ['Wheel', 'Zoom (exponential; Shift for coarse)'],
+        [`${K('camera.zoomIn')} / ${K('camera.zoomOut')}`, 'Zoom without the wheel'],
+        [panKeys, 'Pan across the focus plane (Shift to hurry)'],
+        [`${K('camera.orbitLeft')} / ${K('camera.orbitRight')}`, 'Swing the camera left / right'],
+        ['Screen edge', 'Edge-scroll'],
+        [K('camera.focus'), 'Focus and follow the selection'],
+        [K('ui.sensors'), 'Sensors manager'],
+      ],
+    },
+    {
+      group: 'Control groups',
+      rows: [
+        [K('groups.assign'), 'Assign control group'],
+        [K('groups.recall'), 'Recall group (press twice to focus it)'],
+      ],
+    },
+    {
+      group: 'Touch',
+      rows: [
+        ['One finger drag', 'Orbit'],
+        ['Tap', 'Select'],
+        ['Two-finger pinch', 'Zoom'],
+        ['Two-finger drag', 'Pan'],
+        ['Long press', 'Move gizmo (second finger sets altitude)'],
+      ],
+    },
+  ];
+}
+
+/* Mutated in place rather than reassigned: `ui/hud.js` imports the binding, and
+   an exported const array it already holds must stay the same array. */
+function refreshControlScheme() {
+  CONTROL_SCHEME.length = 0;
+  for (const block of buildControlScheme()) CONTROL_SCHEME.push(block);
+}
+
+refreshControlScheme();
 
 /* ------------------------------------------------------------------ helpers */
-
-const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
 const NUMPAD_RE = /^Numpad([1-6])$/;
 const DIGIT_RE = /^Digit([0-9])$/;
@@ -156,11 +511,18 @@ const _ptB = new THREE.Vector3();
    touched, and stop belongs on S — the collision is unresolvable while WASD
    holds the camera. Panning keeps the arrows, the screen edge, Q/E and the
    middle-drag orbit, which in a camera this orbit-centric is no real loss;
-   whereas an attack-move you cannot reach is a missing verb. */
-const PAN_KEYS = new Set([
-  'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
-  'ShiftLeft', 'ShiftRight',
-]);
+   whereas an attack-move you cannot reach is a missing verb. All of that is
+   now a default in ACTIONS rather than a rule here, and a player who wants
+   WASD back can have it.
+
+   Shift stays hard-wired: it is the "more" modifier across the whole scheme
+   (queue, hurry, coarser) rather than a binding of its own. */
+const BOOST_KEYS = new Set(['ShiftLeft', 'ShiftRight']);
+
+const HOLD_IDS = [
+  'camera.panUp', 'camera.panDown', 'camera.panLeft', 'camera.panRight',
+  'camera.orbitLeft', 'camera.orbitRight',
+];
 
 function makeLineBuffer(vertexCount) {
   const geo = new THREE.BufferGeometry();
@@ -185,6 +547,10 @@ export class InputController {
     this.rig = camera || rig;
     this.canvas = domElement || (engine.renderer && engine.renderer.domElement);
     this.world = world || null;
+    /* A host that states its own edge-scroll policy keeps it: a probe harness
+       that switched it off must not have it switched back on by a preference
+       left behind by somebody else's session. */
+    this._edgeScrollPinned = !!(options && Object.prototype.hasOwnProperty.call(options, 'edgeScroll'));
     this.options = Object.assign({}, DEFAULTS, options || {});
     this.team = this.options.team;
 
@@ -225,6 +591,16 @@ export class InputController {
     this._keys = new Set();
     this._rectCache = null;
     this._lastUpdateMs = -1e9;
+
+    /* Bindings and the two camera preferences come from the options store and
+       follow it live — a rebind must take effect on the next keystroke, not on
+       the next reload. */
+    this._sens = 1;
+    this._invertY = 1;
+    this._holdCodes = { up: '', down: '', left: '', right: '', orbitL: '', orbitR: '' };
+    this._holdSet = new Set();
+    this._applyOptions();
+    this._offOptions = optionsStore.onChange(() => this._applyOptions());
 
     /* Gizmo state, in world units. */
     this._giz = {
@@ -270,6 +646,46 @@ export class InputController {
 
     /* Self-drive as a fallback; main.js calling update() first wins the frame. */
     this._offHook = engine.registerRenderHook((dt) => this.update(dt));
+
+    /* The options panel lives in `ui/` and nothing else can import it —
+       `main.js` and `index.html` belong to the shell lane. Pulling it in from
+       here is what makes "can I change the controls?" answerable at all. It is
+       a dynamic import so the boot path pays nothing for it, so the two
+       modules never form a static cycle, and so a panel that fails to load
+       cannot take the game with it. */
+    if (typeof document !== 'undefined') {
+      import('../ui/options.js')
+        .then((m) => m && m.installOptions && m.installOptions())
+        .catch(() => { /* the game does not depend on the panel existing */ });
+    }
+  }
+
+  /* --------------------------------------------------------------- options */
+
+  _applyOptions() {
+    const g = optionsStore.gameplay;
+    this._sens = clamp(g.cameraSensitivity, SENSITIVITY_RANGE.min, SENSITIVITY_RANGE.max);
+    this._invertY = g.invertY ? -1 : 1;
+    if (!this._edgeScrollPinned) this.options.edgeScroll = g.edgeScroll;
+
+    const h = this._holdCodes;
+    h.up = optionsStore.binding('camera.panUp');
+    h.down = optionsStore.binding('camera.panDown');
+    h.left = optionsStore.binding('camera.panLeft');
+    h.right = optionsStore.binding('camera.panRight');
+    h.orbitL = optionsStore.binding('camera.orbitLeft');
+    h.orbitR = optionsStore.binding('camera.orbitRight');
+
+    this._holdSet.clear();
+    for (const id of HOLD_IDS) {
+      const code = optionsStore.binding(id);
+      if (code) this._holdSet.add(code);
+    }
+    /* A key that is no longer bound must not stay stuck down: rebinding pan-left
+       mid-drag would otherwise pan the camera forever. */
+    for (const code of Array.from(this._keys)) {
+      if (!this._holdSet.has(code) && !BOOST_KEYS.has(code)) this._keys.delete(code);
+    }
   }
 
   /* ------------------------------------------------------------- accessors */
@@ -293,6 +709,19 @@ export class InputController {
     const c = this.canvas;
     this._prevTouchAction = c.style.touchAction;
     c.style.touchAction = 'none';
+
+    /* The view is focusable, but deliberately out of the tab order.
+
+       Tab is the sensors manager in this genre and the HUD, the tutorial and
+       the sensors view all say so — so it stays. What it must never be is a
+       key that eats focus movement. Making the canvas focusable at -1 gives
+       the dispatcher an honest test for "is the player in the view or in the
+       UI": a pointer press puts focus here, and Tab is ours; nothing else can
+       ever put focus here, so a keyboard-only player starts on the body, Tab
+       walks them into the HUD, and they reach the Sensors button the same way
+       they reach everything else. */
+    this._prevTabIndex = c.getAttribute('tabindex');
+    if (this._prevTabIndex === null) c.setAttribute('tabindex', '-1');
 
     this._h = {
       down: (e) => this._onPointerDown(e),
@@ -355,6 +784,10 @@ export class InputController {
     if (this._mode !== 'idle') return;
 
     e.preventDefault();
+    /* preventDefault has just cancelled the focus the browser would have given
+       the view, so take it explicitly. This is what makes Tab mean "sensors"
+       for a player who is actually in the view. */
+    this._focusView();
     if (this.canvas.setPointerCapture) {
       try { this.canvas.setPointerCapture(e.pointerId); } catch (err) { /* not capturable */ }
     }
@@ -418,7 +851,7 @@ export class InputController {
         this._band.y1 = e.clientY;
         break;
       case 'orbit':
-        this.rig.orbitBy(dx, dy);
+        this.rig.orbitBy(dx * this._sens, dy * this._sens * this._invertY);
         break;
       case 'gizmo':
         this._updateGizmo(e.clientX, e.clientY);
@@ -501,6 +934,7 @@ export class InputController {
 
   _touchDown(e) {
     this._rectCache = null;
+    this._focusView();
     if (this.canvas.setPointerCapture) {
       try { this.canvas.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
     }
@@ -545,7 +979,10 @@ export class InputController {
     }
 
     if (this._mode === 'orbit' && this._touches.size === 1) {
-      this.rig.orbitBy(e.clientX - px, e.clientY - py);
+      this.rig.orbitBy(
+        (e.clientX - px) * this._sens,
+        (e.clientY - py) * this._sens * this._invertY,
+      );
       return;
     }
 
@@ -557,7 +994,9 @@ export class InputController {
       }
       this._touchMidpoint(_mid);
       /* Direct manipulation: the world follows the fingers, so the focus moves
-         the other way. */
+         the other way. Camera sensitivity deliberately does not apply here —
+         the whole point of a two-finger drag is that the ground stays under
+         the fingers, and scaling it would break that contract. */
       this.rig.panScreen(-(_mid.x - this._pinchMid.x), -(_mid.y - this._pinchMid.y));
       this._pinchMid.x = _mid.x;
       this._pinchMid.y = _mid.y;
@@ -633,57 +1072,51 @@ export class InputController {
     const code = e.code;
     const mod = e.ctrlKey || e.metaKey;
 
-    /* Tab and Space belong to whichever control has focus. Claiming them at
-       window level made every HUD button unreachable by keyboard: Tab could
+    /* Tab, Space and Enter belong to whichever control has focus. Claiming them
+       at window level made every HUD button unreachable by keyboard: Tab could
        never move focus off a speed button or the mute glyph, and Space
        activated the pause instead of the focused button. Game bindings apply
-       only when focus is on the page body or the canvas. */
+       only when focus is on the page body or the view.
+
+       The canvas is explicitly excluded from the control test — it carries
+       `tabindex="-1"` now, which `closest('[tabindex]')` would otherwise match,
+       and that would silently kill tactical pause for anyone who had clicked
+       the view. */
     const onControl =
       e.target instanceof Element &&
       e.target !== document.body &&
+      e.target !== this.canvas &&
       e.target.closest('button, a, [role="button"], [role="radio"], [tabindex]');
     if (onControl && (code === 'Tab' || code === 'Space' || code === 'Enter')) return;
 
-    if (code === 'Tab') {
-      e.preventDefault();
-      this._toggleSensors();
-      return;
-    }
-    if (code === 'Escape') {
-      this.setSelection([]);
-      return;
-    }
-    if (code === 'Space') {
-      e.preventDefault();
-      this._togglePause();
-      return;
-    }
-    if (code === 'KeyA' && mod) {
-      e.preventDefault();
-      this._selectAllOwn();
-      return;
-    }
+    /* Tab is the browser's focus key before it is ours.
+
+       The first version of this handler claimed Tab at window level and made
+       the HUD unreachable. The guard above fixed that for controls and
+       over-corrected: from the page body — which is where a keyboard-only
+       player starts — Tab was still swallowed, so focus could never enter the
+       UI layer at all. Both traps close here. Tab reaches the sensors manager
+       only when the player is in the view, and Shift+Tab never does, so there
+       is always a way back out with the keyboard alone. */
+    if (code === 'Tab' && (e.shiftKey || document.activeElement !== this.canvas)) return;
+
+    /* Game bindings apply only while a match is actually being played.
+
+       With the shell's menus up — the pause screen, the title, a panel — a
+       keystroke belongs to the menu. Measured before this existed: reading the
+       options card and pressing S issued a fleet-wide stop, and G a guard
+       order, to ships the player could not see. That is the same class of
+       defect as the Tab/Space trap, arriving from the opposite direction.
+       Where there is no shell there is no menu, and nothing changes. */
+    if (!this._gameKeysLive()) return;
+
+    /* One lookup, one action. Nothing below this line compares a key code to a
+       verb — that is the whole point of the binding table. */
+    const action = optionsStore.lookup(code, mod);
+    if (action && this._runAction(action, e)) return;
 
     const digit = DIGIT_RE.test(code) ? Number(code.slice(5)) : -1;
     if (mod && digit < 0) return;   // leave every other browser shortcut alone
-
-    switch (code) {
-      case 'KeyF': this._focusSelection(); return;
-      case 'KeyH': bus.emit('ui:toast', { text: 'Controls', kind: 'help' }); return;
-      case 'KeyZ': this._setStance(STANCES[0]); return;
-      case 'KeyX': this._setStance(STANCES[1]); return;
-      case 'KeyC': this._setStance(STANCES[2]); return;
-      case 'KeyA': this._issueAttackMove(e.shiftKey); return;
-      case 'KeyG': this._issueGuard(e.shiftKey); return;
-      case 'KeyP': this._issuePatrol(e.shiftKey); return;
-      case 'KeyS': this._issueStop(); return;
-      case 'KeyM': this._toggleMute(); return;
-      case 'Equal': case 'NumpadAdd': this._nudgeSpeed(1); return;
-      case 'Minus': case 'NumpadSubtract': this._nudgeSpeed(-1); return;
-      case 'PageUp': e.preventDefault(); this.rig.zoomBy(2); return;
-      case 'PageDown': e.preventDefault(); this.rig.zoomBy(-2); return;
-      default: break;
-    }
 
     /* Numpad 1–6 and Shift+1–6 pick a formation; the bare number row stays
        with control groups, which is the muscle memory that matters. */
@@ -703,10 +1136,70 @@ export class InputController {
       return;
     }
 
-    if (PAN_KEYS.has(code) || code === 'KeyQ' || code === 'KeyE') {
-      if (code.startsWith('Arrow')) e.preventDefault();
-      this._keys.add(code);
+    if (BOOST_KEYS.has(code)) this._keys.add(code);
+  }
+
+  /** Run a bound action. Returns false if it declined, so the caller can carry
+      on down the handler rather than swallowing the key. */
+  _runAction(def, e) {
+    const handled = this._dispatchAction(def, e);
+    if (handled && def.prevent) e.preventDefault();
+    return handled;
+  }
+
+  _dispatchAction(def, e) {
+    if (def.hold) {
+      this._keys.add(e.code);
+      return true;
     }
+    switch (def.id) {
+      case 'time.pause': this._togglePause(); return true;
+      case 'time.faster': this._nudgeSpeed(1); return true;
+      case 'time.slower': this._nudgeSpeed(-1); return true;
+      case 'ui.help': bus.emit('ui:toast', { text: 'Controls', kind: 'help' }); return true;
+      case 'audio.mute': this._toggleMute(); return true;
+
+      case 'selection.all': this._selectAllOwn(); return true;
+      case 'selection.clear': this.setSelection([]); return true;
+
+      case 'orders.attackMove': this._issueAttackMove(e.shiftKey); return true;
+      case 'orders.guard': this._issueGuard(e.shiftKey); return true;
+      case 'orders.patrol': this._issuePatrol(e.shiftKey); return true;
+      case 'orders.stop': this._issueStop(); return true;
+      case 'orders.stanceEvasive': this._setStance(STANCES[0]); return true;
+      case 'orders.stanceNeutral': this._setStance(STANCES[1]); return true;
+      case 'orders.stanceAggressive': this._setStance(STANCES[2]); return true;
+
+      case 'camera.focus': this._focusSelection(); return true;
+      case 'camera.zoomIn': this.rig.zoomBy(2); return true;
+      case 'camera.zoomOut': this.rig.zoomBy(-2); return true;
+      case 'ui.sensors': this._toggleSensors(); return true;
+
+      default: return false;
+    }
+  }
+
+  /** Put focus on the view, so Tab is unambiguously a game key from here. */
+  _focusView() {
+    const c = this.canvas;
+    if (!c || !c.focus || document.activeElement === c) return;
+    try {
+      c.focus({ preventScroll: true });
+    } catch (err) {
+      /* An inert or detached canvas simply refuses; nothing depends on it. */
+    }
+  }
+
+  _shell() {
+    const vs = typeof window !== 'undefined' ? window.__VS : null;
+    return (vs && vs.shell) || null;
+  }
+
+  /** True when keystrokes belong to the fleet rather than to a menu. */
+  _gameKeysLive() {
+    const shell = this._shell();
+    if (!shell || typeof shell.state !== 'string') return true;
+    return shell.state === 'playing';
   }
 
   _isTypingTarget(el) {
@@ -1453,8 +1946,15 @@ export class InputController {
     this._lastUpdateMs = now;
     const step = clamp(dt || 0, 0, 0.1);
 
-    this._applyKeyPan(step);
-    this._applyEdgeScroll(step);
+    /* A key held when the menu opened must not keep panning the camera behind
+       it — the key-up will arrive on the menu, and until it does the held set
+       is stale. */
+    if (this._gameKeysLive()) {
+      this._applyKeyPan(step);
+      this._applyEdgeScroll(step);
+    } else if (this._keys.size) {
+      this._keys.clear();
+    }
     this._refreshBand();
     this._refreshGizmo();
   }
@@ -1462,23 +1962,24 @@ export class InputController {
   _applyKeyPan(dt) {
     if (!this._keys.size || dt <= 0) return;
     const k = this._keys;
+    const h = this._holdCodes;
     let x = 0;
     let y = 0;
-    if (k.has('ArrowLeft')) x -= 1;
-    if (k.has('ArrowRight')) x += 1;
-    if (k.has('ArrowUp')) y -= 1;
-    if (k.has('ArrowDown')) y += 1;
+    if (h.left && k.has(h.left)) x -= 1;
+    if (h.right && k.has(h.right)) x += 1;
+    if (h.up && k.has(h.up)) y -= 1;
+    if (h.down && k.has(h.down)) y += 1;
 
     if (x || y) {
       const boost = k.has('ShiftLeft') || k.has('ShiftRight') ? this.options.boostMultiplier : 1;
-      const s = this.options.panPixelsPerSecond * dt * boost * (x && y ? Math.SQRT1_2 : 1);
+      const s = this.options.panPixelsPerSecond * dt * boost * this._sens * (x && y ? Math.SQRT1_2 : 1);
       this.rig.panScreen(x * s, y * s);
     }
 
     let spin = 0;
-    if (k.has('KeyQ')) spin -= 1;
-    if (k.has('KeyE')) spin += 1;
-    if (spin) this.rig.orbitBy(spin * this.options.keyOrbitPixelsPerSecond * dt, 0);
+    if (h.orbitL && k.has(h.orbitL)) spin -= 1;
+    if (h.orbitR && k.has(h.orbitR)) spin += 1;
+    if (spin) this.rig.orbitBy(spin * this.options.keyOrbitPixelsPerSecond * dt * this._sens, 0);
   }
 
   _applyEdgeScroll(dt) {
@@ -1501,7 +2002,7 @@ export class InputController {
     else if (py > r.height - m) y = 1 - Math.max(0, r.height - py) / m;
 
     if (!x && !y) return;
-    const s = this.options.panPixelsPerSecond * 0.85 * dt;
+    const s = this.options.panPixelsPerSecond * 0.85 * dt * this._sens;
     this.rig.panScreen(x * s, y * s);
   }
 
@@ -1525,12 +2026,16 @@ export class InputController {
     window.removeEventListener('resize', h.layout);
     window.removeEventListener('scroll', h.layout, { capture: true });
     c.style.touchAction = this._prevTouchAction || '';
+    if (this._prevTabIndex === null) c.removeAttribute('tabindex');
+    else if (this._prevTabIndex !== undefined) c.setAttribute('tabindex', this._prevTabIndex);
 
     this._clearLongPress();
     for (const off of this._offs) off();
     this._offs.length = 0;
     if (this._offHook) this._offHook();
     this._offHook = null;
+    if (this._offOptions) this._offOptions();
+    this._offOptions = null;
 
     for (const m of this._overlays) {
       if (m && m.parent) m.parent.remove(m);

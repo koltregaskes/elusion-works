@@ -1,14 +1,21 @@
 import * as THREE from '../../vendor/three/build/three.module.js';
 import { LAYER } from '../core/engine.js';
+import { bus } from '../core/events.js';
 import { makeRng, fbm2, fbm3, ridged3 } from '../core/rng.js';
 import { buildSkybox } from './skybox.js';
-import { setNebulaBounce } from './materials.js';
+import { setNebulaBounce, TEAM_COLORS } from './materials.js';
+import { CONTROL } from '../sim/economy.js';
 import {
+  DEFAULT_SETUP,
   OPENING_ANGLE,
+  OPENING_SHELL,
   SEAM_ANGLE,
+  SHELL_GAP,
   clearOfStarts,
+  clearOpening,
+  generateResourceClusters,
   homePosition,
-  nudgeClearOfStarts,
+  markContested,
 } from '../sim/spawn.js';
 
 /* Everything that is not a ship.
@@ -23,18 +30,143 @@ import {
    the nebula occupies one part of the sky, the star another, the planet a
    third, and the rest is black. Emptiness is the subject. */
 
-/* Cluster counts are rounded up to an even number in `_buildAsteroids`: the
-   field is mirrored through the origin, so seams always come in pairs. */
+/* `clusters` is a *rock* budget, not a field-layout decision.
+
+   The seam layout is SIM's — `sim/spawn.js: generateResourceClusters` — and it
+   is the same on every quality setting, because how many seams there are and
+   how much ore is in them is balance, and a player who turns the detail down
+   must not get a different game. What quality buys here is how densely each
+   seam is populated: `_buildAsteroids` divides this budget by the number of
+   seams SIM asked for, so `clusters * rocksPerCluster` rocks are attempted per
+   tier however the field is laid out. Measured placed counts on seed 1337 are
+   276 / 716 / 1347 / 2135 against attempts of 276 / 720 / 1404 / 2280 — the
+   shortfall is the opening-shell and overlap rejections below, which have
+   always dropped a handful. */
 const QUALITY = {
-  low: { clusters: 6, rocksPerCluster: 45, dust: 70, derelicts: 0, landmarks: 2, rockDetail: [1, 0] },
-  medium: { clusters: 8, rocksPerCluster: 90, dust: 140, derelicts: 10, landmarks: 4, rockDetail: [2, 1] },
+  low: { clusters: 6, rocksPerCluster: 45, dust: 70, seamHaze: 40, derelicts: 0, landmarks: 2, rockDetail: [1, 0] },
+  medium: { clusters: 8, rocksPerCluster: 90, dust: 140, seamHaze: 80, derelicts: 10, landmarks: 4, rockDetail: [2, 1] },
   /* The low LOD was an 80-face icosahedron, which is a faceted blob rather
      than a small rock — and since the high and low sets are on screen at the
      same time, the two read as different materials. 320 faces costs almost
      nothing instanced and keeps the field looking like one field. */
-  high: { clusters: 10, rocksPerCluster: 140, dust: 230, derelicts: 14, landmarks: 6, rockDetail: [3, 2] },
-  ultra: { clusters: 12, rocksPerCluster: 190, dust: 320, derelicts: 18, landmarks: 6, rockDetail: [4, 2] },
+  high: { clusters: 10, rocksPerCluster: 140, dust: 230, seamHaze: 150, derelicts: 14, landmarks: 6, rockDetail: [3, 2] },
+  ultra: { clusters: 12, rocksPerCluster: 190, dust: 320, seamHaze: 210, derelicts: 18, landmarks: 6, rockDetail: [4, 2] },
 };
+
+/* `seamHaze` is sheets per contested seam, so a seed with eight seams pays for
+   eight and a seed with four pays for four. It is a density, not a total: the
+   field it fills is sized from the seam's own ore radius, so the number that
+   has to stay constant across seeds is how thick a seam looks, not how many
+   sprites exist. */
+
+/* ===========================================================================
+   THE LIGHTING CONTRACT (ARCHITECTURE §3.2: "One key light. Hard terminator,
+   deep shadow side — never flat.")
+
+   Round 2's finding was that two seeds of the same game at the same tick
+   "look like two different products — one flat and bright, one dark and
+   silhouetted". The diagnosis that produced these numbers, measured rather
+   than reasoned, is in three parts.
+
+   1 · THE KEY WAS NEVER THE PROBLEM. An ablation run
+       (`.local/laneL-ablate.mjs`, output `laneL-ablate-BEFORE.json`) rendered
+       the boot frame on two seeds with each non-key term removed in turn. Two
+       crops settle it: with the whole rig on, seed 4242's mothership is flat
+       mid-grey across every face; with the key alone it has a hard terminator
+       and a shadow side that falls to near black. The key was already doing
+       §3.2's job and the fill was cancelling it.
+
+   2 · NO SINGLE FILL DID IT EITHER. Removing the hemisphere, the rim, the
+       ambient, the sky probe or the fog one at a time each moved the hull by
+       two or three encoded units. It is their SUM against the key that
+       matters, which is why every number below is written as a fraction of
+       the key and the sum is stated. A swept scalar on that sum was read by
+       looking at hull crops: 1.00 flat, 0.45 a terminator appears, 0.22
+       right, 0.10 too far — the shadow side goes black and the form in it is
+       lost, which is the other failure mode and is the one the previous round
+       was correcting when it overshot.
+
+   3 · THE RATIO WAS DRIFTING WITH THE PALETTE. Every intensity below
+       multiplies a colour handed back by the sky bake, and those colours are
+       normalised on their BRIGHTEST CHANNEL, not on luminance. A blue-dominant
+       sky and a green-dominant one at the same "intensity" therefore deliver
+       different amounts of light, because Rec.709 weights green 0.7152 and
+       blue 0.0722. So every lighting colour is renormalised to unit luminance
+       here (`unitLuminance`) and the constant carries the whole radiometric
+       weight. A seed may change the palette; it may not change the level.
+
+   Ratios, not absolutes — only KEY_IRRADIANCE is a number about brightness,
+   and the exposure meter has the final say on that anyway:
+
+     key                        1.0000
+     fill      (hemisphere)     0.0160
+     rim       (counter-key)    0.0110
+     ambient                    0.0028
+     hull bounce, diffuse       0.0075
+     hull bounce, Fresnel rim   0.0190
+                                ------
+     everything that is not the key  0.0563   ->  key : fill = 17.8 : 1
+
+   The sky probe is deliberately outside that sum: `environmentIntensity`
+   multiplies the baked map's own radiance rather than a unit colour, so it is
+   not commensurable with the rest and is pinned separately — see
+   `IBL_REFERENCE_SKY_LUMINANCE`. Its irradiance-equivalent share is reported
+   by `lightingReport()` rather than asserted here.
+
+   `lightingReport()` reads all of this back off the live objects, so the
+   claim is checkable in the running game instead of being a comment that
+   states a runtime fact (HANDOFF §5).
+   =========================================================================== */
+const KEY_IRRADIANCE = 6.0;
+const FILL_OVER_KEY = 0.0160;
+const RIM_OVER_KEY = 0.0110;
+const AMBIENT_OVER_KEY = 0.0028;
+const BOUNCE_DIFFUSE_OVER_KEY = 0.0075;
+const BOUNCE_RIM_OVER_KEY = 0.0190;
+const NON_KEY_TOTAL_OVER_KEY =
+  FILL_OVER_KEY + RIM_OVER_KEY + AMBIENT_OVER_KEY + BOUNCE_DIFFUSE_OVER_KEY + BOUNCE_RIM_OVER_KEY;
+
+/* The hemisphere's ground half, as a fraction of its sky half. A hemisphere
+   light is the one term with no horizontal direction at all — it lights a
+   hull by `normal.y` alone — so it is the most efficient terminator-killer in
+   the rig per unit of brightness, and it is kept low for that reason rather
+   than because the gas below the battle is dim. */
+const FILL_GROUND_OVER_SKY = 0.45;
+
+/* The sky probe's intensity is a fraction of the key AT A REFERENCE SKY.
+   `environmentIntensity` scales the baked map, whose mean luminance is itself
+   seeded: measured across eight seeds it ran 0.0111 to 0.0160, a 1.44x swing
+   on a term the contract has to hold still. Dividing the measured luminance
+   out is what makes a bright nebula tint the shadow side without also raising
+   it. The reference is the mean of that measured set, so a median seed lands
+   on the same intensity the tuned build used. */
+const IBL_REFERENCE_SKY_LUMINANCE = 0.0145;
+const IBL_INTENSITY_OVER_KEY = 0.0092;
+
+/* Rec.709 luminance, and a hue-preserving renormalisation of a lighting
+   colour to unit luminance. The guard matters: a lighting colour that has
+   been clamped toward a single very dark channel can come back with a
+   luminance near zero, and dividing by it would make one seed's fill a
+   thousand times the key. */
+const luminance709 = (c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+function unitLuminance(colour) {
+  const l = luminance709(colour);
+  if (!(l > 1e-3)) return colour.setRGB(1, 1, 1);
+  return colour.multiplyScalar(1 / l);
+}
+
+/* Marks around a capture boundary.
+
+   Twenty-four, and the count is a legibility decision rather than a density
+   one. It has to be low enough that the marks group into a circle instead of
+   reading as scattered debris -- twenty-eight ticks seen from beside the ring
+   read as noise in the first frames -- and high enough that the gaps never
+   close into a continuous arc, which is the whole point of not being one. At
+   300 px across, each mark is about 39 px of which about 16 are drawn, and
+   both scale together as the circle shrinks so the dash never fills its gap.
+   Every fourth mark is ranked, which gives six tall ticks: few enough to count
+   at a glance, which is what turns a row of pips into a ladder. */
+const BOUNDARY_MARKS = 24;
 
 /* Gas-giant schemes. Restrained — bands are close in hue and separated by
    value, not by colour, which is what stops a procedural planet looking like a
@@ -102,43 +234,11 @@ const PLANET_SCHEMES = [
    through it, which is why `SEAM_ANGLE` is deliberately looser than
    `OPENING_ANGLE`. */
 
-/* The clearance rule protects the frame as seen from the *mothership*, which
-   is not quite where the camera is: the rig opens about 4 km out, so a rock
-   that comfortably clears the hull can still be a couple of hundred metres
-   from the lens and fill 60 degrees of the opening shot — measured at exactly
-   that on one seed. Carving a thin shell out of the field at the opening orbit
-   radius costs a handful of the 140 rocks in a seam and nothing else. */
-const OPENING_SHELL = 4000;
-const SHELL_GAP = 900;
-
-const _cl = new THREE.Vector3();
-
-/**
- * Put `pos` where it cannot own the opening frame: outside SIM's angular
- * clearance from both starts, and off the sphere the camera rig opens on.
- * Mutates and returns `pos`.
- *
- * The nudge is looped rather than called once because moving a body away from
- * one start can bring it toward the other, and SIM's helper takes a bounded
- * number of passes by design. Looping to a fixed point here is cheap and means
- * the field never ships a violation for the sake of one more iteration.
- */
-function clearOpening(pos, radius, sep, limit) {
-  for (let i = 0; i < 8 && !clearOfStarts(pos, radius, sep, limit); i++) {
-    nudgeClearOfStarts(pos, radius, sep, limit);
-  }
-  const gap = radius + SHELL_GAP;
-  for (let t = 0; t < 2; t++) {
-    homePosition(t, sep, _cl);
-    const d = pos.distanceTo(_cl);
-    if (Math.abs(d - OPENING_SHELL) >= gap) continue;
-    // Always outward: inward is toward the mothership.
-    const want = OPENING_SHELL + gap;
-    if (d < 1) pos.set(_cl.x + want, _cl.y, _cl.z);
-    else pos.sub(_cl).multiplyScalar(want / d).add(_cl);
-  }
-  return pos;
-}
+/* The opening-shell correction (`clearOpening`, `OPENING_SHELL`, `SHELL_GAP`)
+   used to live here, because ENV placed the seams and had to apply it. SIM
+   places them now, so the rule moved to `sim/spawn.js` with the rest of the
+   clearance contract and ENV imports it for the landmarks and derelicts it
+   still positions itself. */
 
 /* --------------------------------------------------------------------------- */
 
@@ -228,6 +328,10 @@ export class Environment {
     this._lights = [];
     this._clusters = [];
     this._rockSets = [];
+    this._landmarks = [];
+    this._seams = null;
+    this._seamList = [];
+    this._aimed = false;
     this._time = 0;
     this._lodTimer = 0;
     this._lodKey = '';
@@ -273,7 +377,29 @@ export class Environment {
     this._buildPlanet();
     this._buildDust();
     this._buildAsteroids();
+    this._buildSeams();
     this._buildDerelicts();
+
+    /* Compose the backdrop once the camera has framed its opening shot.
+
+       Everything in `farScene` is placed before the world, the fleet or the
+       camera exist — ENV is built at 60% of the load bar and the hero framing
+       is solved at 84% — so at construction there is no view direction to
+       compose against, and the result was measurable: over six seeds the gas
+       giant sat 38 to 150 degrees off where the camera ended up looking and
+       appeared in none of six gameplay frames.
+
+       `ui:ready` is the first moment the answer exists. It is emitted at the
+       end of the build, synchronously, after `frameOpeningShot`, and it is
+       emitted again on a restart — which is what this wants, since a restart
+       re-solves the framing. */
+    this._offReady = bus.on('ui:ready', () => {
+      try {
+        this.aimBackdrop(this.engine.camera);
+      } catch (err) {
+        /* A backdrop in the wrong place is a worse frame, not a broken one. */
+      }
+    });
   }
 
   /* ------------------------------------------------------------------ sky */
@@ -316,10 +442,21 @@ export class Environment {
        sRGB. That is a hull disappearing into the void rather than turning away
        from the light, and on the four darkest seeds it took the *median* down
        with it. The floor wanted is 0.06-0.09 — read as black at a glance, but
-       with the form still legible in it. */
+       with the form still legible in it.
+
+       The intensity is PINNED AGAINST THE MAP'S OWN MEASURED LUMINANCE rather
+       than fixed. This is the one fill whose radiance is itself a function of
+       the seed — it *is* the nebula — so a constant `environmentIntensity`
+       hands a bright seed more bounce than a dark one on a term the contract
+       exists to hold still. Measured across eight seeds the map's mean
+       luminance ran 0.0111 to 0.0160; dividing it out is what lets a bright
+       nebula tint the shadow side without also raising it. */
     engine.scene.environment = this.sky.texture;
+    const probeLum = Math.max(1e-4, this.sky.averageLuminance || IBL_REFERENCE_SKY_LUMINANCE);
     engine.scene.environmentIntensity =
-      this.options.environmentIntensity !== undefined ? this.options.environmentIntensity : 0.25;
+      this.options.environmentIntensity !== undefined
+        ? this.options.environmentIntensity
+        : KEY_IRRADIANCE * IBL_INTENSITY_OVER_KEY * (IBL_REFERENCE_SKY_LUMINANCE / probeLum);
 
     /* Depth haze. Deliberately a very dark, nebula-tinted colour: fog that
        tends toward grey turns the void into soup, fog that tends toward a dark
@@ -348,29 +485,22 @@ export class Environment {
     const { engine, sky } = this;
     const r = this.rng;
 
-    /* One hard key star and a nebula-tinted fill (§3.2).
+    /* One hard key star and a nebula-tinted fill (§3.2). Every number here is
+       the contract at the top of this file; nothing in this method chooses a
+       level. What it does choose is hue, which is the one thing the seed is
+       allowed to move.
 
-       The ratio is the whole game here. An earlier balance ran the key at 3.15
-       against roughly 1.0 of combined fill, rim, ambient and IBL — a little
-       over 3:1 — and at 3:1 there is no terminator on anything. Every hull
-       came out evenly lit, which is exactly the flat CG look the visual
-       direction exists to prevent. This runs closer to 12:1 of key against
-       everything else, so the lit side is bright, the shadow side falls to a
-       dark nebula-coloured bounce, and the edge between them is a hard line.
-
-       The fill is tinted and *dim* rather than neutral and strong. A saturated
-       fill at low intensity leaves a grey hull grey while still telling you
-       what colour the sky behind it is; a bright one repaints the fleet.
-
-       The numbers below are the second half of the opening-luminance fix. The
-       key is up a little and the bounce is up rather more, which raises the
-       shadow floor toward 0.06-0.09 sRGB and — because the seeds that were
-       dark were dark in their *shadow* — compresses the spread across seeds
-       without touching the terminator, whose ratio is set by key-over-fill and
-       is roughly preserved (5.2 against ~1.15 of everything else, near enough
-       4.5:1 in linear light, which is 2.0-2.5 stops of encoded separation). */
-    const keyColour = sky.keyColour.clone();
-    const key = new THREE.DirectionalLight(keyColour, this.options.keyIntensity || 5.2);
+       Every colour goes through `unitLuminance` first. The sky bake hands back
+       colours normalised on their brightest channel, so "intensity 0.42" meant
+       0.42 * L(colour) and L ran 0.75 to 0.99 across the seeds measured — a
+       third of a stop of drift in the fill alone, on the term whose whole job
+       is to be a fixed fraction of the key. After this call the constant is
+       the weight and the colour is only a tint. */
+    const keyColour = unitLuminance(sky.keyColour.clone());
+    const key = new THREE.DirectionalLight(
+      keyColour,
+      this.options.keyIntensity || KEY_IRRADIANCE,
+    );
     key.position.copy(this.sunDirection).multiplyScalar(50000);
     key.target.position.set(0, 0, 0);
     key.castShadow = false; // a 60 km ortho frustum buys nothing but texels
@@ -378,14 +508,23 @@ export class Environment {
     engine.scene.add(key);
     engine.scene.add(key.target);
     this.keyLight = key;
+    const keyIntensity = key.intensity;
 
     /* Hemisphere fill tinted top-and-bottom by the two ends of the sky: bright
        nebula overhead, deep gas below. This is what stops the shadow side of a
-       hull reading as a hole punched in the frame — and no more than that. */
+       hull reading as a hole punched in the frame — and no more than that.
+
+       It is also the rig's most dangerous term, because it has no horizontal
+       direction: it lights by `normal.y` alone, so it adds the same amount to
+       the face turned toward the key and the face turned away from it. At the
+       previous level it was the single largest contributor to a hull that read
+       the same value all the way across. */
     const hemi = new THREE.HemisphereLight(
-      sky.nebulaColour.clone(),
-      sky.fillColour.clone().multiplyScalar(0.45),
-      this.options.fillIntensity || 0.42,
+      unitLuminance(sky.nebulaColour.clone()),
+      unitLuminance(sky.fillColour.clone()).multiplyScalar(FILL_GROUND_OVER_SKY),
+      this.options.fillIntensity !== undefined
+        ? this.options.fillIntensity
+        : keyIntensity * FILL_OVER_KEY,
     );
     hemi.position.set(0, 1, 0);
     hemi.name = 'env:fill';
@@ -393,15 +532,21 @@ export class Environment {
     this.fillLight = hemi;
 
     /* A cold rim from roughly the opposite side. One key light, one bounce —
-       never a second key, so this stays well under a tenth of the key. */
+       never a second key. This is the term with the most power to undo §3.2
+       per unit of brightness, because unlike the hemisphere it points
+       *directly at the shadow side*: whatever it adds lands exactly where the
+       terminator is supposed to be taking light away. It buys a cold edge, and
+       at this level that is all it buys. */
     const rimDir = this.sunDirection
       .clone()
       .negate()
       .add(new THREE.Vector3(r.gaussian(0, 0.4), r.gaussian(0, 0.3), r.gaussian(0, 0.4)))
       .normalize();
     const rim = new THREE.DirectionalLight(
-      sky.nebulaColour.clone(),
-      this.options.rimIntensity || 0.30,
+      unitLuminance(sky.nebulaColour.clone()),
+      this.options.rimIntensity !== undefined
+        ? this.options.rimIntensity
+        : keyIntensity * RIM_OVER_KEY,
     );
     rim.position.copy(rimDir).multiplyScalar(50000);
     rim.name = 'env:rim';
@@ -409,7 +554,10 @@ export class Environment {
     engine.scene.add(rim.target);
     this.rimLight = rim;
 
-    const amb = new THREE.AmbientLight(sky.ambientColour.clone(), 0.075);
+    const amb = new THREE.AmbientLight(
+      unitLuminance(sky.ambientColour.clone()),
+      keyIntensity * AMBIENT_OVER_KEY,
+    );
     amb.name = 'env:ambient';
     engine.scene.add(amb);
     this.ambientLight = amb;
@@ -418,17 +566,97 @@ export class Environment {
 
     /* Hand the same sky to the hull shader. Without this the whole fleet is
        lit by whatever bounce colour [MAT] shipped as a placeholder, no matter
-       what the nebula behind it is doing. */
+       what the nebula behind it is doing.
+
+       These two weights belong to the contract as much as the scene lights do,
+       and the ablation found them to be the largest single share of it: zero
+       them on their own and seed 4242's mothership collapses to its running
+       lights, which is how much of that hull was being drawn by the bounce
+       rather than by the star. [MAT]'s diffuse bounce term is `mix(fill, key,
+       normal.y * 0.5 + 0.5)` — another pure up-down hemisphere, so like
+       `env:fill` it adds equally either side of the terminator. The Fresnel
+       rim is the better-behaved of the two (it only fires at grazing angles)
+       and is allowed correspondingly more.
+
+       The bounce colours are luminance-normalised for the same reason the
+       scene lights are, and [MAT] clamps their chroma harder than the scene
+       lights' because they multiply into the hull's own response where they
+       compete with team colour directly. */
+    this.hullBounce = {
+      ambient:
+        this.options.hullAmbient !== undefined
+          ? this.options.hullAmbient
+          : keyIntensity * BOUNCE_DIFFUSE_OVER_KEY,
+      rim:
+        this.options.hullRim !== undefined
+          ? this.options.hullRim
+          : keyIntensity * BOUNCE_RIM_OVER_KEY,
+    };
     try {
       setNebulaBounce(
-        sky.bounceKey || sky.nebulaColour,
-        sky.bounceFill || sky.fillColour,
-        this.options.hullAmbient !== undefined ? this.options.hullAmbient : 0.20,
-        this.options.hullRim !== undefined ? this.options.hullRim : 0.52,
+        unitLuminance((sky.bounceKey || sky.nebulaColour).clone()),
+        unitLuminance((sky.bounceFill || sky.fillColour).clone()),
+        this.hullBounce.ambient,
+        this.hullBounce.rim,
       );
     } catch (err) {
       /* [MAT] may not have initialised; its own defaults are perfectly usable. */
     }
+  }
+
+  /**
+   * Read the lighting contract back off the live rig.
+   *
+   * Not a restatement of the constants: every number here is fetched from the
+   * object that is actually in the scene, so a caller that changed an
+   * intensity, or an `options` override, shows up. HANDOFF §5 — a comment that
+   * asserts a runtime fact goes stale like a measurement, so the acceptance
+   * harness reads this rather than trusting the block at the top of the file.
+   *
+   * `iblIrradianceEquivalent` is the only estimated figure: an environment map
+   * delivers roughly `pi * meanRadiance * intensity` of irradiance to a
+   * surface facing it, which is what makes it comparable with a light's
+   * `intensity * luminance(colour)`. It is reported separately and labelled
+   * because it is an estimate and the others are not.
+   *
+   * @returns {object}
+   */
+  lightingReport() {
+    const L = luminance709;
+    const w = (light) => (light ? light.intensity * L(light.color) : 0);
+    const keyW = w(this.keyLight);
+    const fillW = w(this.fillLight);
+    const rimW = w(this.rimLight);
+    const ambW = w(this.ambientLight);
+    const bounce = this.hullBounce || { ambient: 0, rim: 0 };
+    const skyLum = (this.sky && this.sky.averageLuminance) || 0;
+    const iblIntensity = this.engine.scene.environmentIntensity || 0;
+    const iblW = Math.PI * skyLum * iblIntensity;
+    const nonKey = fillW + rimW + ambW + bounce.ambient + bounce.rim;
+    const r6 = (v) => +v.toFixed(6);
+    return {
+      keyIrradiance: r6(keyW),
+      fillOverKey: r6(fillW / keyW),
+      rimOverKey: r6(rimW / keyW),
+      ambientOverKey: r6(ambW / keyW),
+      bounceDiffuseOverKey: r6(bounce.ambient / keyW),
+      bounceRimOverKey: r6(bounce.rim / keyW),
+      nonKeyOverKey: r6(nonKey / keyW),
+      keyOverFill: +(keyW / Math.max(1e-9, nonKey)).toFixed(3),
+      contractNonKeyOverKey: r6(NON_KEY_TOTAL_OVER_KEY),
+      iblIntensity: r6(iblIntensity),
+      iblIrradianceEquivalent: r6(iblW),
+      iblOverKeyEstimated: r6(iblW / keyW),
+      skyAverageLuminance: r6(skyLum),
+      /* The whole point: these must not move with the seed. A colour whose
+         luminance is not 1 here is a colour that escaped `unitLuminance`. */
+      colourLuminance: {
+        key: r6(L(this.keyLight.color)),
+        fill: r6(L(this.fillLight.color)),
+        rim: r6(L(this.rimLight.color)),
+        ambient: r6(L(this.ambientLight.color)),
+      },
+    };
   }
 
   get lights() {
@@ -535,11 +763,18 @@ export class Environment {
       ];
     this.planetScheme = scheme;
 
-    // Angular diameter 17..27 degrees. Big enough to be the scale cue, small
-    // enough that the void still dominates the frame.
-    const angular = r.range(0.30, 0.47);
+    /* Angular diameter 23..37 degrees. It was 17..27, which is a planet in the
+       frame; this is a planet the frame is composed around. The critique's
+       number is 20-40 and the reason to sit in the upper half of it is that
+       the body is deliberately pushed off to one side and allowed to run off
+       the top of the frame — a hero object that fits comfortably inside the
+       picture reads as a prop, and one that is cropped reads as near. The void
+       still dominates: at 30 degrees the planet covers about a twelfth of a
+       16:9 frame. */
+    const angular = r.range(0.40, 0.65);
     const radius = r.range(5.2e7, 8.4e7);
     const dist = radius / Math.tan(angular * 0.5);
+    this._planetRadius = radius;
 
     /* Phase angle. `a` is the cosine between the direction to the planet and
        the direction to the star; the phase angle is its arccos measured the
@@ -610,9 +845,21 @@ export class Environment {
     const bodyMat = new THREE.ShaderMaterial({
       uniforms: {
         uSunDir: { value: this.sunDirection.clone() },
-        // Same direction expressed in the group's own frame, refreshed as the
-        // planet turns, so the ring shadow tracks the light instead of the mesh.
-        uSunLocal: { value: this.sunDirection.clone() },
+        /* The same direction expressed in the GROUP'S OWN FRAME, refreshed as
+           the planet turns. Both the ring shadow and the terminator are
+           computed against object-space positions, so this is the vector they
+           need; uSunDir remains for the terms that work in world space.
+
+           Seeded correctly here rather than left at the world vector and
+           corrected on the first update: the boot frame is the one the critic
+           looks at, and a uniform that is only right from frame two is a
+           uniform that is wrong in the hero shot. */
+        uSunLocal: {
+          value: this.sunDirection
+            .clone()
+            .applyQuaternion(tiltQ.clone().invert())
+            .normalize(),
+        },
         uSunColour: { value: new THREE.Color().copy(sunColour) },
         uFill: { value: fill },
         uSpin: { value: 0 },
@@ -684,7 +931,30 @@ export class Environment {
 
           vec3 N = lp;
           vec3 V = normalize(cameraPosition - vWorld);
-          float ndl = dot(N, uSunDir);
+          /* uSunLocal, NOT uSunDir. N is the OBJECT-space normal — vLocal is
+             normalize(position), before the model matrix — so pairing it with
+             a world-space light put the terminator in the wrong frame by
+             exactly the group's own rotation. That rotation is not small: the
+             axial tilt is seeded over 0.10 to 0.55 rad, and the body also
+             spins, so the disagreement was both seed-dependent and drifting
+             during a match.
+
+             This is the defect round 2 reported as "the planet's terminator
+             says the key is low-right while the mothership is lit almost
+             frontally". Measured by fitting the light direction back out of
+             the planet's own pixels across eight seeds, in
+             .local/laneL-light.mjs, the angle between the fitted terminator
+             and the key ran 9.9 to 38.9 degrees on seven of them, which is
+             the tilt range. The fix costs nothing: uSunLocal is the same
+             vector expressed in the group's frame and was already being
+             maintained every frame for the ring shadow.
+
+             No backticks in this comment, deliberately. HANDOFF section 5:
+             a backtick inside a GLSL template literal has silently truncated
+             a shader eight times on this project, and it presents as a parse
+             error in an unrelated module naming an identifier that looks like
+             English prose. It caught this very edit. */
+          float ndl = dot(N, uSunLocal);
           float ndv = max(dot(N, V), 0.0);
 
           /* Terminator with real atmospheric wrap, then a night side that is
@@ -722,7 +992,14 @@ export class Environment {
             }
           }` : ''}
 
-          vec3 col = albedo * uSunColour * shade * ringShade * ${num(r.range(1.7, 2.3))};
+          /* Pulled back roughly a third now that the disc is half again as
+             wide and reliably in frame. At the old exposure the lit cloud tops
+             measured brighter than a lit hull, which inverts section 3.1: the
+             backdrop is what the subject is read against, and the moment it
+             out-reads the subject the fleet stops being the subject. It still
+             wants to be the brightest large area in the frame — that is what
+             gives a hull its silhouette — just not brighter than the hull. */
+          vec3 col = albedo * uSunColour * shade * ringShade * ${num(r.range(1.15, 1.55))};
           col += albedo * uFill * 0.085;             // nebula bounce, night side included
           col += uFill * 0.010;
 
@@ -831,6 +1108,10 @@ export class Environment {
     atmo.layers.enable(LAYER.BACKDROP);
     atmo.renderOrder = 2;
     group.add(atmo);
+    /* Both of these carry the planet's world centre as a uniform, because they
+       trace against the body rather than being shaded on it. Anything that
+       moves the group has to move them too. */
+    this._atmoMat = atmoMat;
     this._disposables.push(atmoGeo, atmoMat);
 
     /* ---- rings ---- */
@@ -937,6 +1218,7 @@ export class Environment {
       ringMesh.renderOrder = 1;
       group.add(ringMesh);
       this._ring = ringMesh;
+      this._ringMat = ringMat;
       this._disposables.push(ringGeo, ringMat);
     }
 
@@ -1005,6 +1287,768 @@ export class Environment {
     }
   }
 
+  /* ------------------------------------------------------ backdrop framing */
+
+  /**
+   * Put the backdrop where the camera is looking.
+   *
+   * Two moves, and they are different in kind.
+   *
+   * The gas giant is simply repositioned. It is an object at 4e8 m; there is
+   * nothing to preserve about where it was, and the only constraint is that it
+   * must keep a terminator across its visible disc, which is why it is placed
+   * on the star's side of the frame rather than the anti-star side. That also
+   * puts it opposite the hero hull, which the camera rig pushes away from the
+   * star for the same reason — so the two compose against each other for free.
+   *
+   * The sky is ROTATED ABOUT THE STAR AXIS, and only about the star axis. A
+   * rotation about that axis leaves every dot(direction, star) in the bake
+   * exactly as it was, so the lit side of the nebula, its forward-scattering
+   * lobe and its self-shadowing all remain correct. Any other rotation would
+   * be a lie about where the light comes from. The star quad itself sits on
+   * that axis and is therefore invariant, which is what makes the trick free.
+   *
+   * The star cloud rotates by the inverse, as an object: its shader looks the
+   * gas column up along its own un-rotated vertex position, which is the sky
+   * map's frame, so occlusion follows the gas rather than the stars.
+   *
+   * This does not close the loop the camera rig warns about. The rig derives
+   * its aim from the star; the star's azimuth stays uniformly seeded and is
+   * chosen before anything here runs. Nothing in this method feeds back into
+   * it. The seed still decides the whole picture.
+   *
+   * @param {THREE.Camera} camera
+   */
+  aimBackdrop(camera) {
+    const cam = camera || this.engine.camera;
+    if (!cam || this._aimed) return;
+    const view = cam.getWorldDirection(new THREE.Vector3());
+    if (!Number.isFinite(view.x) || view.lengthSq() < 0.5) return;
+    this._aimed = true;
+
+    const r = this.rng.fork(0xa1a3);
+    const sun = this.sunDirection;
+
+    /* Screen frame. Offsets below are tangents, which is exactly how a pinhole
+       camera maps an angle to a position in the frame: an offset of t along
+       `right` lands at t / tan(hfov/2) in normalised device x. */
+    const up0 = Math.abs(view.y) > 0.94 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+    const right = new THREE.Vector3().crossVectors(view, up0).normalize();
+    const up = new THREE.Vector3().crossVectors(right, view).normalize();
+
+    const vHalf = Math.tan((cam.fov * Math.PI) / 360);
+    const hHalf = vHalf * (cam.aspect || 16 / 9);
+
+    /* Which side of the frame the star is on. The planet goes that way: it
+       shortens the star-planet angle, which fattens the phase and guarantees
+       the terminator stays on the visible disc. */
+    const sunSide = sun.dot(right);
+    const side = sunSide === 0 ? (r.chance(0.5) ? 1 : -1) : Math.sign(sunSide);
+
+    const ndcX = side * r.range(0.34, 0.52);
+    const ndcY = r.range(0.24, 0.42);
+    const dir = view
+      .clone()
+      .addScaledVector(right, ndcX * hHalf)
+      .addScaledVector(up, ndcY * vHalf)
+      .normalize();
+
+    this.planetDirection = dir.clone();
+    if (this._planetGroup) {
+      const dist = this._planetGroup.position.length();
+      const centre = dir.clone().multiplyScalar(dist);
+      this._planetGroup.position.copy(centre);
+      this._planetGroup.updateMatrixWorld();
+      if (this._atmoMat) this._atmoMat.uniforms.uCentre.value.copy(centre);
+      if (this._ringMat) this._ringMat.uniforms.uCentre.value.copy(centre);
+      /* The moon travels with it, or the pair stops reading as a system. */
+      if (this._moon) {
+        const md = this._moon.position.length();
+        this._moon.position
+          .copy(dir)
+          .applyAxisAngle(up, r.range(0.18, 0.42) * (r.chance(0.5) ? 1 : -1))
+          .applyAxisAngle(right, r.range(0.10, 0.30) * (r.chance(0.5) ? 1 : -1))
+          .multiplyScalar(md);
+      }
+    }
+
+    /* The gas goes to the other side of the frame from the planet, and high
+       rather than low: the complaint the composition is answering is a black
+       upper two thirds, and gas under the battle line does not fix that. */
+    const want = view
+      .clone()
+      .addScaledVector(right, -side * r.range(0.28, 0.46) * hHalf)
+      .addScaledVector(up, r.range(0.30, 0.58) * vHalf)
+      .normalize();
+    this._composeSky(want, sun);
+  }
+
+  /* How far the sky may be tilted OFF the star axis, in radians.
+
+     Rotation about the star axis is exact: it moves the gas and changes
+     nothing the bake believes about the light. It is also only one degree of
+     freedom, and it cannot close the gap when the angle between the gas and
+     the star differs from the angle between the view and the star — measured
+     on seed 99 that gap was 55 degrees and left the only complex in the sky
+     pointing at the floor.
+
+     So a bounded tilt is allowed on top of it, and what it costs is stated
+     plainly: the gas ends up believing the star is up to this far from where
+     it is. The reason that is affordable rather than a lie is that the terms
+     it perturbs are broad — a global lit-versus-shadow gradient measured in
+     tens of degrees — while the term doing the actual work, the self-shadow,
+     is internal to the cloud and does not reference the world star at all
+     once baked. Twenty-two degrees is about where the lit side visibly stops
+     agreeing with the terminator on a hull in the same frame. */
+  static get SKY_TILT_MAX() {
+    return 0.38;
+  }
+
+  /**
+   * Bring one of the baked gas complexes to a chosen world direction.
+   * @param {THREE.Vector3} want  where the gas should appear
+   * @param {THREE.Vector3} sun   direction to the key star
+   */
+  _composeSky(want, sun) {
+    const sky = this.sky;
+    if (!sky || !sky.nebulaAnchor) return;
+
+    /* Which complex to bring round. The primary is the big one and the better
+       subject, so it wins unless the secondary can be placed a good deal more
+       honestly — that is, with materially less tilt, because the tilt is the
+       only part of this that costs anything. */
+    const wantPolar = Math.acos(THREE.MathUtils.clamp(want.dot(sun), -1, 1));
+    const polar = (v) => Math.acos(THREE.MathUtils.clamp(v.dot(sun), -1, 1));
+    const primary = sky.nebulaAnchor;
+    const secondary = sky.nebulaSecond;
+    let src = primary;
+    if (secondary) {
+      const dp = Math.abs(polar(primary) - wantPolar);
+      const ds = Math.abs(polar(secondary) - wantPolar);
+      if (ds < dp - 0.26) src = secondary;
+    }
+
+    /* Work on the APPEARANCE side throughout: `qApp` is the rotation that
+       takes a direction in the baked map to where it is drawn in the world.
+       The background sampler wants its inverse, and the star cloud — whose
+       shader looks the gas up along its own un-rotated vertices — wants
+       exactly qApp. */
+    const flatten = (v) => v.clone().addScaledVector(sun, -v.dot(sun));
+    const a = flatten(src);
+    const u = flatten(want);
+    const qApp = new THREE.Quaternion();
+    if (a.lengthSq() > 0.02 && u.lengthSq() > 0.02) {
+      a.normalize();
+      u.normalize();
+      const cross = new THREE.Vector3().crossVectors(a, u);
+      qApp.setFromAxisAngle(sun, Math.atan2(cross.dot(sun), a.dot(u)));
+    }
+
+    /* Whatever azimuth could not fix is polar, and polar is what the tilt is
+       for. Clamped, and applied about the axis that moves the complex straight
+       toward the target rather than round it. */
+    const shown = src.clone().applyQuaternion(qApp);
+    const axis = new THREE.Vector3().crossVectors(shown, want);
+    if (axis.lengthSq() > 1e-8) {
+      axis.normalize();
+      const gap = Math.acos(THREE.MathUtils.clamp(shown.dot(want), -1, 1));
+      const tilt = Math.min(gap, Environment.SKY_TILT_MAX);
+      if (tilt > 1e-4) qApp.premultiply(new THREE.Quaternion().setFromAxisAngle(axis, tilt));
+    }
+
+    const { engine } = this;
+    engine.farScene.backgroundRotation.setFromQuaternion(qApp.clone().invert());
+    engine.scene.environmentRotation.copy(engine.farScene.backgroundRotation);
+    if (sky.starField) {
+      sky.starField.quaternion.copy(qApp);
+      sky.starField.updateMatrixWorld();
+    }
+    this._skyRotation = qApp;
+  }
+
+  /* --------------------------------------------------- contested seams (3D) */
+
+  /* The primary victory condition, given a body.
+     ---------------------------------------------------------------------
+     Until now a contested seam existed on screen as ore rocks — which look
+     exactly like the ore rocks of an uncontested seam — and as the HUD string
+     "Seams 0/6". The one piece of ground the whole match is fought over had no
+     representation in the world at all, which is both an art problem (every
+     empty frame lacks a subject) and a design problem (the player cannot see
+     the thing they are being asked to take).
+
+     The boundary that is drawn is the one the sim actually integrates over:
+     `CONTROL.RADIUS` past the seam's own radius is the test `sim/economy.js`
+     and `sim/ai.js` both apply to decide who is standing on it, so the line a
+     player sees is the line they are judged against rather than a decorative
+     approximation of it. Ownership, control and the contested flag are all read
+     from SIM's records — the same objects, by identity — and never recomputed
+     here.
+
+     `markContested` is called once from ENV because ENV builds before the
+     world does and would otherwise have nothing to draw. It is SIM's own test,
+     run on SIM's own records, and `sim/world.js` runs it again on the same
+     objects a moment later and agrees by construction. */
+
+  /* Round 3: the shell is gone, and why.
+     ---------------------------------------------------------------------
+
+     Round 1 found they had no 3D representation at all. Round 2 gave them a
+     double-sided additive shell, which solved the design problem and created an
+     art problem that this shader's own comment had predicted before it shipped
+     -- "a perfect one reads as blown glass, and the first capture with these in
+     it looked like a row of soap bubbles over the battle". The lump
+     displacement and the coverage fade were the mitigation and they were not
+     enough, because the read does not come from the surface detail. It comes
+     from the geometry: a closed manifold with a rim term on it IS a surface,
+     and a double-sided additive shell whose grazing limb is twice as bright as
+     its interior is the exact recipe for one. The critic read blister packs, a
+     snow globe and grey elliptical films over asteroid clusters. Those are
+     three descriptions of a single fault.
+
+     It cannot be tuned out. A genuine participating volume that occludes would
+     be honest, but it is a raymarch across eight kilometres of overdraw to
+     arrive at a soft ball, and a soft ball with a boundary is still a dome.
+     So the shell is gone, and what remains is the two parts that were never
+     the problem, each doing one job:
+
+     HAZE. The same billboard medium the dust layer already is, placed by the
+     seam so its density is guaranteed rather than whatever the global field
+     happened to leave there, and graded so it thins from the middle out. A
+     medium has no silhouette, no limb and no rim, so there is nothing for the
+     eye to resolve as a surface; and because it shares the dust layer's
+     soft-depth fade, a rock standing in it is INSIDE it rather than under a
+     film. Flattened harder than the rocks are, because a disc of gas lying in
+     the battle plane is the one shape that cannot be mistaken for a dome.
+
+     BOUNDARY. This is where the second, systemic failure lived. Three
+     unrelated systems were drawing thin bright ellipses into the same frames:
+     the gas giant's ring plane, this boundary, and the shell's grazing limb.
+     A player could not tell which arc was a physical object, which was a
+     gameplay rule and which was a rendering artefact -- and since neither the
+     seams nor the planet were in frame in round 1, all of it was self-inflicted.
+     Deleting the shell removes one of the three. This replaces the second with
+     a mark that cannot be confused with geometry: a ladder of discrete vertical
+     ticks standing on the capture radius, with a dashed arc running between
+     them. Nothing in nature is dashed. A ring is smooth and continuous at every
+     scale; a ladder is repeated and interrupted at every scale; the two do not
+     converge at any distance, which a thinner or dimmer ellipse would have. */
+
+  _buildSeams() {
+    const { engine, sky } = this;
+    const clusters = this._clusters;
+    if (!clusters || !clusters.length) return;
+
+    const sep = this.options.separation || DEFAULT_SETUP.separation;
+    try {
+      if (clusters.some((c) => c && c.contested === undefined)) markContested(clusters, sep);
+    } catch (err) {
+      return;
+    }
+
+    const list = [];
+    for (const c of clusters) if (c && c.contested) list.push(c);
+    if (!list.length) return;
+    this._seamList = list;
+
+    const n = list.length;
+    const iCentre = new Float32Array(n * 3);
+    const iParam = new Float32Array(n * 3);   // haze extent, boundary radius, phase
+    const iTint = new Float32Array(n * 3);
+    const iState = new Float32Array(n * 2);   // held 0..1, contested pulse 0..1
+    const r = this.rng.fork(0x5EA9);
+    for (let i = 0; i < n; i++) {
+      const c = list[i];
+      iCentre[i * 3] = c.position.x;
+      iCentre[i * 3 + 1] = c.position.y;
+      iCentre[i * 3 + 2] = c.position.z;
+      /* Two radii, and the split still matters.
+
+         The haze is the seam -- the gas and rubble you can see -- so it is
+         drawn just outside the ore and contains what it claims to. The capture
+         radius is 3.4 km past a seam already 1.3-2 km across, which is a
+         boundary on a twenty-two kilometre map and not a body; drawing a
+         volume out to it is what put the fleet inside a row of glass domes.
+         It is a rule, so it is drawn as one.
+
+         iParam.y is c.radius + CONTROL.RADIUS exactly, because that is the
+         number sim/economy.js and sim/ai.js test presence against. If one of
+         them moves, this moves with it or the mark is a lie. */
+      iParam[i * 3] = c.radius * 1.45;
+      iParam[i * 3 + 1] = c.radius + CONTROL.RADIUS;
+      iParam[i * 3 + 2] = r.range(0, Math.PI * 2);
+      iTint[i * 3] = 1;
+      iTint[i * 3 + 1] = 1;
+      iTint[i * 3 + 2] = 1;
+    }
+
+    /* Neutral is bone rather than white: unclaimed ground should read as cold
+       and unlit. The team hues are the trim colours the hulls already wear, so
+       a seam and the fleet holding it are the same colour -- but spent down
+       toward the neutral, because trim is a fifth of a silhouette and this is
+       kilometres of frame. At full chroma the held seams came out as flat
+       orange masses that owned the picture, which is section 3.3 exactly
+       backwards: colour belongs to the nebula and the engines, and a marker
+       this large states its allegiance in hue rather than in saturation. */
+    const neutral = new THREE.Color(0.50, 0.54, 0.58);
+    this._seamColours = {
+      neutral,
+      team: [
+        TEAM_COLORS[0].trim.clone().lerp(neutral, 0.42),
+        TEAM_COLORS[1].trim.clone().lerp(neutral, 0.42),
+      ],
+    };
+
+    /* =================================================================== */
+    /* ---- the haze ---- */
+
+    /* The haze borrows the dust layer's billboard atlas rather than baking its
+       own — same medium, same hand-built per-cell mips, one texture. _buildDust
+       runs first and normally leaves it here, but it returns early when the
+       dust budget is zeroed, so this must not assume it. */
+    if (!this._dustTexture) {
+      this._dustTexture = makeDustTexture(this.rng.fork(0xd057), 256);
+      this._disposables.push(this._dustTexture);
+    }
+
+    const hazePer = this.budget.seamHaze || 0;
+    let haze = null;
+    let hazeMat = null;
+    const seamCol = [];
+    for (let i = 0; i < n; i++) seamCol.push(new THREE.Vector4(1, 1, 1, 0));
+
+    if (hazePer > 0) {
+      const hr = this.rng.fork(0x5EAF);
+      const total = hazePer * n;
+      const hPos = new Float32Array(total * 3);
+      const hParam = new Float32Array(total * 4);
+      const hSeam = new Float32Array(total);
+      const hTint = new Float32Array(total * 3);
+      const hAtlas = new Float32Array(total * 2);
+      const base = sky.nebulaColour.clone().lerp(sky.fillColour, 0.35);
+
+      let m = 0;
+      for (let i = 0; i < n; i++) {
+        const ext = iParam[i * 3];
+        for (let k = 0; k < hazePer; k++) {
+          /* Flattened to 0.42 in y. The rocks sit at 0.78 and read as a
+             lens; gas that has been fought over reads as a disc, and a disc
+             seen from the camera's clamped -3..+26 degrees of pitch never
+             closes into an outline the way a sphere does. */
+          let dx = hr.gaussian(0, 1);
+          let dy = hr.gaussian(0, 1);
+          let dz = hr.gaussian(0, 1);
+          const dl = Math.hypot(dx, dy, dz) || 1;
+          dx /= dl; dy /= dl; dz /= dl;
+          /* u^0.85 rather than u^(1/3): uniform-in-volume sampling piles the
+             sheets against the rim, which is the one place a medium must not
+             be denser than its middle or it has grown a shell again. */
+          const t = Math.pow(hr.next(), 0.85);
+          const rad = t * ext;
+          hPos[m * 3] = list[i].position.x + dx * rad;
+          hPos[m * 3 + 1] = list[i].position.y + dy * rad * 0.42;
+          hPos[m * 3 + 2] = list[i].position.z + dz * rad;
+
+          /* Small, and smaller than the first pass tried.
+
+             A sheet you can see the edge of has stopped being a medium -- the
+             lesson the dust layer in this file already carries -- and a seam is
+             inside the fight rather than behind it, so the ceiling is lower
+             still. At 300-820 m the cover fade below, which exists to stop any
+             one sheet being read as a shape, killed the entire field from
+             inside the seam: standing 2.6 km off the centre, every sheet
+             subtended more than the window allowed and the frame came back
+             with no haze in it at all. The fix is not to relax the rule that
+             keeps sheets from being objects; it is to make them small enough
+             to obey it, and buy the density back in count. */
+          const size = hr.range(140, 390);
+          /* The gradient. Amplitude falls as the square of the normalised
+             radius, so the field is genuinely densest at the ore and reaches
+             zero before it reaches anything that could be read as an edge. */
+          const fall = 1 - t * t;
+          hParam[m * 4] = size;
+          hParam[m * 4 + 1] = hr.range(0, Math.PI * 2);
+          hParam[m * 4 + 2] = hr.range(0.085, 0.210) * fall;
+          hParam[m * 4 + 3] = hr.range(0, 100);
+          hSeam[m] = i;
+
+          const tc = base.clone().multiplyScalar(hr.range(0.75, 1.30));
+          hTint[m * 3] = tc.r;
+          hTint[m * 3 + 1] = tc.g;
+          hTint[m * 3 + 2] = tc.b;
+          hAtlas[m * 2] = hr.int(0, 1) * 0.5;
+          hAtlas[m * 2 + 1] = hr.int(0, 1) * 0.5;
+          m++;
+        }
+      }
+
+      const quad = new THREE.PlaneGeometry(1, 1);
+      const hgeo = new THREE.InstancedBufferGeometry();
+      hgeo.index = quad.index;
+      hgeo.setAttribute('position', quad.attributes.position);
+      hgeo.setAttribute('uv', quad.attributes.uv);
+      hgeo.setAttribute('iPos', new THREE.InstancedBufferAttribute(hPos, 3));
+      hgeo.setAttribute('iParam', new THREE.InstancedBufferAttribute(hParam, 4));
+      hgeo.setAttribute('iSeam', new THREE.InstancedBufferAttribute(hSeam, 1));
+      hgeo.setAttribute('iTint', new THREE.InstancedBufferAttribute(hTint, 3));
+      hgeo.setAttribute('iAtlas', new THREE.InstancedBufferAttribute(hAtlas, 2));
+      hgeo.instanceCount = m;
+      hgeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 60000);
+
+      hazeMat = new THREE.ShaderMaterial({
+        defines: { SEAM_N: n },
+        uniforms: {
+          uMap: { value: this._dustTexture },
+          uSunDir: { value: this.sunDirection.clone() },
+          uSunColour: { value: sky.keyColour.clone() },
+          uTime: { value: 0 },
+          uSeamCol: { value: seamCol },
+          uFar: { value: 40000 },
+          uDepth: { value: null },
+          uSoft: { value: 900 },
+          uResolution: { value: new THREE.Vector2(1, 1) },
+        },
+        vertexShader: /* glsl */ `
+          #include <common>
+          #include <logdepthbuf_pars_vertex>
+          attribute vec3 iPos;
+          attribute vec4 iParam;
+          attribute float iSeam;
+          attribute vec3 iTint;
+          attribute vec2 iAtlas;
+          uniform float uTime;
+          uniform float uFar;
+          uniform vec4 uSeamCol[SEAM_N];
+          varying vec2 vUv;
+          varying vec3 vTint;
+          varying float vAlpha;
+          varying vec3 vView;
+          varying float vDist;
+          void main() {
+            /* Constant-index loop rather than uSeamCol[int(iSeam)]. Dynamic
+               indexing of a uniform array is legal in a GLSL ES 1.00 vertex
+               shader and is still not worth the driver lottery for eight
+               iterations. */
+            vec4 sc = vec4(0.0);
+            for (int i = 0; i < SEAM_N; i++) {
+              sc += uSeamCol[i] * step(abs(float(i) - iSeam), 0.5);
+            }
+
+            float ph = iParam.w;
+            vec3 drift = vec3(
+              sin(uTime * 0.0121 + ph),
+              cos(uTime * 0.0093 + ph * 1.7),
+              sin(uTime * 0.0074 + ph * 0.6)) * 130.0;
+            vec3 centre = iPos + drift;
+
+            vec3 toCam = cameraPosition - centre;
+            float dist = length(toCam);
+            vec3 fwd = toCam / max(dist, 1.0);
+            vec3 ref = abs(fwd.y) > 0.985 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
+            vec3 right = normalize(cross(ref, fwd));
+            vec3 up = cross(fwd, right);
+
+            float c = cos(iParam.y);
+            float s = sin(iParam.y);
+            vec2 q = position.xy;
+            vec2 rq = vec2(q.x * c - q.y * s, q.x * s + q.y * c);
+            vec3 world = centre + (right * rq.x + up * rq.y) * iParam.x;
+
+            /* Fade by how much of the FRAME a sheet covers, not by a multiple
+               of its own size -- keying it to its own size guarantees that the
+               biggest sheets are always drawn at maximum alpha and maximum
+               screen area, which is how the dust layer once ate every
+               terminator in the build. projectionMatrix[1][1] is 1/tan(fov/2),
+               so this is the sheet half-width as a fraction of the frame's
+               half-height. */
+            float halfH = dist / max(projectionMatrix[1][1], 1.0e-4);
+            float cover = (iParam.x * 0.5) / max(halfH, 1.0);
+            float near = 1.0 - smoothstep(0.10, 0.34, cover);
+            float far = 1.0 - smoothstep(uFar * 0.60, uFar, dist);
+            vAlpha = iParam.z * near * far;
+
+            /* The medium carries ownership, but softly: it is mixed halfway
+               toward the seam colour rather than painted with it, so a held
+               seam warms rather than turning into a flat coloured mass. */
+            vTint = mix(iTint, sc.rgb * 0.85, 0.55) * (0.90 + 0.30 * sc.a);
+            vUv = uv * 0.5 + iAtlas;
+            vView = -fwd;
+            vDist = dist;
+
+            gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
+            #include <logdepthbuf_vertex>
+          }`,
+        fragmentShader: /* glsl */ `
+          #include <common>
+          #include <logdepthbuf_pars_fragment>
+          uniform sampler2D uMap;
+          uniform vec3 uSunDir;
+          uniform vec3 uSunColour;
+          varying vec2 vUv;
+          varying vec3 vTint;
+          varying float vAlpha;
+          varying vec3 vView;
+          varying float vDist;
+          #ifdef USE_SOFT_DEPTH
+            uniform sampler2D uDepth;
+            uniform float uSoft;
+            uniform vec2 uResolution;
+          #endif
+          void main() {
+            #include <logdepthbuf_fragment>
+            float a = texture2D(uMap, vUv).a * vAlpha;
+            #ifdef USE_SOFT_DEPTH
+              /* The whole difference between a medium and a glaze. Logarithmic
+                 depth: invert log2(1 + w) * logDepthBufFC * 0.5 back to
+                 view-space w, then fade over uSoft metres of separation, so a
+                 rock standing in the seam is embedded in the haze instead of
+                 having a film drawn over it. */
+              float dz = texture2D(uDepth, gl_FragCoord.xy / uResolution).x;
+              float sceneW = exp2(dz * 2.0 / logDepthBufFC) - 1.0;
+              a *= smoothstep(0.0, uSoft, sceneW - vDist);
+            #endif
+            if (a < 0.0015) discard;
+            /* Henyey-Greenstein, as the dust layer: gas between the camera and
+               the key star glows, gas behind it goes dark. Without it the seam
+               lights identically from every angle and reads as paint. */
+            float mu = dot(vView, uSunDir);
+            float g = 0.58;
+            float hg = (1.0 - g * g) / pow(max(1.0 + g * g - 2.0 * g * mu, 1.0e-4), 1.5);
+            vec3 col = vTint * 0.60 + uSunColour * hg * 0.26;
+            gl_FragColor = vec4(col * a, a);
+          }`,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        depthTest: true,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+        fog: false,
+      });
+
+      haze = new THREE.Mesh(hgeo, hazeMat);
+      haze.frustumCulled = false;
+      haze.renderOrder = 13;
+      haze.name = 'env:seamHaze';
+      engine.scene.add(haze);
+      this._disposables.push(hgeo, hazeMat, quad);
+    }
+
+    /* =================================================================== */
+    /* ---- the boundary ---- */
+
+    const marks = BOUNDARY_MARKS;
+    const bnd = makeBoundaryGeometry(marks);
+    const bgeo = new THREE.InstancedBufferGeometry();
+    bgeo.index = bnd.index;
+    bgeo.setAttribute('position', bnd.attributes.position);
+    bgeo.setAttribute('aShape', bnd.attributes.aShape);
+    bgeo.setAttribute('iCentre', new THREE.InstancedBufferAttribute(iCentre, 3));
+    bgeo.setAttribute('iParam', new THREE.InstancedBufferAttribute(iParam, 3));
+    const bTint = new THREE.InstancedBufferAttribute(iTint, 3);
+    const bState = new THREE.InstancedBufferAttribute(iState, 2);
+    bTint.setUsage(THREE.DynamicDrawUsage);
+    bState.setUsage(THREE.DynamicDrawUsage);
+    bgeo.setAttribute('iTint', bTint);
+    bgeo.setAttribute('iState', bState);
+    bgeo.instanceCount = n;
+    bgeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 60000);
+
+    const bndMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        /* 24 km, not the old ring's 46. A boundary is worth drawing when it is
+           somewhere you could be fighting over; drawn across the whole 60 km
+           cube, six of them overlap in every wide frame and the picture is
+           busier for information the player cannot act on. */
+        uFade: { value: 24000 },
+        uPixel: { value: 2 / 1080 },
+      },
+      vertexShader: /* glsl */ `
+        #include <common>
+        #include <logdepthbuf_pars_vertex>
+        attribute vec4 aShape;
+        attribute vec3 iCentre;
+        attribute vec3 iParam;
+        attribute vec3 iTint;
+        attribute vec2 iState;
+        uniform float uTime;
+        uniform float uFade;
+        uniform float uPixel;
+        varying vec4 vShape;
+        varying vec3 vTint;
+        varying float vAlpha;
+        void main() {
+          float R = iParam.y;
+          float held = iState.x;
+          vec3 anchor = iCentre + position * R;
+          vec3 world = anchor;
+
+          float dA = length(cameraPosition - anchor);
+          float halfA = dA / max(projectionMatrix[1][1], 1.0e-4);
+
+          if (aShape.x > 0.5) {
+            /* A tick: vertical in the world, turned about its own axis to face
+               the camera across its width. Vertical is the point -- the dashes
+               lie in the plane and vanish when the plane is edge-on, which is
+               exactly when a ladder of uprights is most legible, so between
+               them the boundary reads from every angle the camera can reach. */
+            vec3 toCam = cameraPosition - anchor;
+            vec3 fwd = toCam / max(length(toCam), 1.0);
+            vec3 side = cross(vec3(0.0, 1.0, 0.0), fwd);
+            float sl = length(side);
+            side = sl > 1.0e-3 ? side / sl : vec3(1.0, 0.0, 0.0);
+
+            /* Height is ownership as well as hue. A neutral boundary is a low
+               ladder of hairlines; a held one stands up. Colour alone is a bad
+               single channel for a read this important -- it is the first
+               thing a projector, a JPEG or a colour-blind player loses.
+
+               Then it is clamped in SCREEN terms, which is the fix for the
+               worst thing the frames showed. A height stated purely in metres
+               has no ceiling, so the near arc of a boundary the camera is
+               standing beside threw 400 m uprights across half the frame and
+               the ladder read as a forest of searchlight beams -- noise, not a
+               boundary. A rule should look the same size wherever you are
+               standing relative to it, which makes its extent a screen
+               quantity with a world quantity underneath for the scale cue.
+               halfA is the frame's half-height in metres at this vertex, so
+               the ranked ticks land near 3.5% of frame height and the
+               unranked near 2%, and the floor keeps the far arc from
+               disappearing into its own width. */
+            float h = R * (0.030 + 0.052 * aShape.w) * (0.70 + 0.55 * held);
+            h = clamp(h, halfA * 0.0060, halfA * (0.040 + 0.035 * aShape.w));
+            /* A width floor in framebuffer pixels, or the far side of the ring
+               thins below a pixel and crawls. halfA * uPixel is one pixel
+               measured in metres at this vertex's distance. */
+            float w = max(R * 0.0030, halfA * uPixel * 1.30);
+            world = anchor + side * (aShape.y * w) + vec3(0.0, 1.0, 0.0) * (aShape.z * h);
+          }
+
+          float pulse = 0.80 + 0.20 * sin(uTime * 1.15 + iParam.z);
+          float a = mix(0.60, 1.05, held) * mix(1.0, pulse, iState.y);
+          /* The plain ticks are the ruling; the ranked ones are the numbers on
+             it. Without a value difference between them the eye has twenty-four
+             equal marks and no structure to group, which is the difference
+             between a boundary and a scatter. */
+          a *= mix(mix(1.0, 0.52, 1.0 - aShape.w), 1.0, 1.0 - aShape.x);
+
+          /* Flat marks thin as the plane turns edge-on, but they must not go
+             out. A continuous ring had to, because edge-on it is a one-pixel
+             line across the frame and it crawls; a DASH edge-on is a short
+             segment with soft ends and does not. And at the camera's shallowest
+             pitch the dashes are the only thing tying the ticks into a circle
+             -- without them a boundary read as a scatter of sparks rather than
+             as a rule, which is the first thing the frames showed. */
+          vec3 toC = normalize(cameraPosition - iCentre);
+          float planar = 0.38 + 0.62 * smoothstep(0.004, 0.11, abs(toC.y));
+          a *= mix(planar, 1.0, aShape.x);
+
+          float dC = length(cameraPosition - iCentre);
+          float halfC = dC / max(projectionMatrix[1][1], 1.0e-4);
+          a *= (1.0 - smoothstep(uFade, uFade * 2.0, dC))
+             * (1.0 - smoothstep(1.30, 2.90, R / max(halfC, 1.0)));
+
+          vShape = aShape;
+          vTint = iTint;
+          vAlpha = a;
+          gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
+          #include <logdepthbuf_vertex>
+        }`,
+      fragmentShader: /* glsl */ `
+        #include <common>
+        #include <logdepthbuf_pars_fragment>
+        varying vec4 vShape;
+        varying vec3 vTint;
+        varying float vAlpha;
+        void main() {
+          #include <logdepthbuf_fragment>
+          float u = vShape.y;
+          float v = vShape.z;
+          float prof;
+          if (vShape.x > 0.5) {
+            /* Soft across the width so a sub-pixel upright antialiases itself,
+               and flat along its length with the falloff pushed out to the last
+               fifth. A profile that peaked at the plane and decayed the whole
+               way to the ends read as a spark rather than as a post -- a field
+               of them looked like rain, which is the second thing the frames
+               showed. A post is an even bar with soft caps. */
+            prof = (1.0 - u * u) * smoothstep(1.0, 0.62, abs(v));
+          } else {
+            /* Flat top, soft ends: a dash, not a lozenge. */
+            prof = smoothstep(1.0, 0.58, abs(u)) * (1.0 - v * v);
+          }
+          float a = prof * vAlpha * 0.62;
+          if (a < 0.004) discard;
+          gl_FragColor = vec4(vTint * a * 1.15, a);
+        }`,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: true,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+      fog: false,
+    });
+
+    const bndMesh = new THREE.Mesh(bgeo, bndMat);
+    bndMesh.frustumCulled = false;
+    bndMesh.renderOrder = 16;
+    bndMesh.name = 'env:seamBounds';
+    engine.scene.add(bndMesh);
+
+    this._seams = {
+      haze,
+      hazeMat,
+      bounds: bndMesh,
+      seamCol,
+      tints: [bTint],
+      states: [bState],
+      key: '',
+    };
+    this._disposables.push(bgeo, bnd, bndMat);
+    this._updateSeams(true);
+  }
+
+  /** Repaint the seams from SIM's live control values. */
+  _updateSeams(force) {
+    const s = this._seams;
+    if (!s) return;
+    const list = this._seamList;
+
+    /* Quantised, because this rewrites an instance buffer and a uniform array
+       while control moves continuously -- a seam takes twenty-two seconds to
+       flip, so thirty-two steps is finer than an eye can follow and a
+       hundredth of the uploads. */
+    let key = '';
+    for (const c of list) key += Math.round((c.control || 0) * 32) + ',';
+    if (!force && key === s.key) return;
+    s.key = key;
+
+    const tint = s.tints[0].array;
+    const state = s.states[0].array;
+    const col = new THREE.Color();
+    const { neutral, team } = this._seamColours;
+    for (let i = 0; i < list.length; i++) {
+      const ctl = Math.max(-1, Math.min(1, list[i].control || 0));
+      const mag = Math.abs(ctl);
+      col.copy(neutral).lerp(team[ctl < 0 ? 0 : 1], mag);
+      tint[i * 3] = col.r;
+      tint[i * 3 + 1] = col.g;
+      tint[i * 3 + 2] = col.b;
+      state[i * 2] = mag;
+      /* Pulses hardest when the seam is genuinely nobody's. */
+      state[i * 2 + 1] = 1 - mag;
+      /* The haze reads the same numbers through a uniform array rather than a
+         per-instance attribute: there are hundreds of sheets per seam and six
+         seams, so six vec4s beat re-uploading a few thousand floats. */
+      const sc = s.seamCol[i];
+      if (sc) sc.set(col.r, col.g, col.b, mag);
+    }
+    for (const a of s.tints) a.needsUpdate = true;
+    for (const a of s.states) a.needsUpdate = true;
+  }
+
   /* ----------------------------------------------------------------- dust */
 
   _buildDust() {
@@ -1049,12 +2093,20 @@ export class Environment {
       iPos[n * 3 + 1] = y;
       iPos[n * 3 + 2] = z;
 
-      // A 6 km sheet cannot be drawn anywhere near the camera without covering
-      // the frame, so the top of the range was only ever wasted geometry.
-      const size = r.range(1200, 4200) * (r.chance(0.16) ? 1.6 : 1);
+      /* Smaller, and more of them survive to be seen.
+
+         The old range topped out at 6.7 km, and the fade below only removed a
+         sheet once it covered a quarter of the frame — so a 4 km sheet at
+         eight kilometres was drawn at full strength across seventeen degrees.
+         Individually invisible; collectively the veil that made the close pass
+         unusable. Trading size for amplitude keeps the same amount of dust in
+         the frame while making any one sheet too small to be read as a shape,
+         which is the whole requirement: dust is a medium, and the moment you
+         can see where one sprite ends it has stopped being one. */
+      const size = r.range(700, 2400) * (r.chance(0.16) ? 1.5 : 1);
       iParam[n * 4] = size;
       iParam[n * 4 + 1] = r.range(0, Math.PI * 2);
-      iParam[n * 4 + 2] = r.range(0.020, 0.070) * (size > 8000 ? 0.55 : 1);
+      iParam[n * 4 + 2] = r.range(0.028, 0.092) * (size > 3000 ? 0.60 : 1);
       iParam[n * 4 + 3] = r.range(0, 100);
 
       const t = tintA.clone().lerp(tintB, r.range(0, 1));
@@ -1142,11 +2194,27 @@ export class Environment {
              was not touching those regions.
 
              projectionMatrix[1][1] is 1/tan(fov/2), so this is the sheet's
-             half-width as a fraction of the frame's half-height. Past about a
-             fifth of the frame it starts to go, and it is gone by half. */
+             half-width as a fraction of the frame's half-height.
+
+             The window was 0.20 to 0.52, and stated in the units that matter
+             that is: a sheet is drawn at full strength until it is TEN DEGREES
+             across and is not fully gone until twenty-six. That is not a fade,
+             it is a permit. Measured from the capture harness's own close
+             camera, forty-one sheets were in front of the lens, twenty-eight of
+             them subtending more than ten degrees, summing to 0.66 of additive
+             alpha over a hull whose shadow side sits at 0.06-0.09 — which is
+             the large translucent sheets the VFX lane bisected to this file,
+             and the reason a close pass had no terminator on anything.
+
+             The fault was never one bad sheet. Every instance obeyed a rule
+             that governs sheets one at a time while nothing at all governed
+             the sum. Fixing the sum by scaling the amplitude down would have
+             thinned the far field too; fixing it here removes only the
+             instances that were large enough to be seen as objects. Four
+             degrees to thirteen. */
           float halfH = dist / max(projectionMatrix[1][1], 1.0e-4);
           float cover = (iParam.x * 0.5) / max(halfH, 1.0);
-          float near = 1.0 - smoothstep(0.20, 0.52, cover);
+          float near = 1.0 - smoothstep(0.08, 0.26, cover);
           float far = 1.0 - smoothstep(uFar * 0.62, uFar, dist);
           float hz = exp(-dist * uHaze * 4.0);
           vAlpha = iParam.z * near * far * uIntensity * (0.45 + 0.55 * hz);
@@ -1223,92 +2291,58 @@ export class Environment {
 
     /* ---- cluster layout ----
 
-       SIM adopts these verbatim as the resource field when ENV provides them
-       (`sim/spawn.js: resolveResourceClusters`), so the layout is a balance
-       decision, not a dressing one. It has to satisfy the same contract SIM's
-       own fallback does:
+       Not ENV's to decide. SIM adopts these records verbatim as the resource
+       field (`sim/spawn.js: resolveResourceClusters`) — the same objects, by
+       identity, so miners decrement the very `amount` the rocks fade from — and
+       what a seam is worth, how many there are and above all *where the
+       contested band sits* are balance, not dressing.
 
-         - mirror-symmetric through the origin, so neither side gets a better
-           opening from the seed;
-         - two rich seams within a short haul of each mothership;
-         - expansion seams further out that cost a warship to hold;
-         - a contested band straddling the midline to fight over.
+       ENV used to lay out its own field to the same written spec, and the two
+       implementations drifted in the one place it mattered. ENV mirrored every
+       seam through the origin and called the result symmetric. It is: the two
+       starts are also reflections through the origin, so a seam and its twin
+       have exactly swapped home distances. That makes the *pair* fair and every
+       individual seam lopsided, and `markContested` — rightly — asks whether a
+       single seam is equidistant, because a seam you can only hold by being
+       nearer to it than your opponent is not no-man's land. Result: a contested
+       band on three seeds in eight, no sovereignty clock on the other five, and
+       one of the three victory conditions quietly unreachable. SIM's own
+       generator, which builds the band as a ring in the plane perpendicularly
+       bisecting the two starts, was correct the whole time and never ran.
 
-       The two motherships sit at +/- (separation/2) along X (see
-       `sim/spawn.js: homePosition`). `separation` is passed through when SIM
-       overrides the default. */
-    const sep = this.options.separation || 22000;
+       So it runs. ENV asks for the field and builds rocks around what it gets.
+       There is now one definition and nothing left to drift.
+
+       `separation` is passed through when SIM overrides the default; both
+       sides read the same default from `DEFAULT_SETUP` when it does not. */
+    const sep = this.options.separation || DEFAULT_SETUP.separation;
     const home = homePosition(0, sep, new THREE.Vector3());
-    const clusters = [];
-
-    /* Seams are nudged, not rejected. SIM measured several seeds opening with
-       a seam inside the frame-share limit — 249 m over on one, 614 m on
-       another — and it cannot move them itself, because by the time it reads
-       the field the rocks are already built around these centres. A radial
-       push of a few hundred metres is invisible in economy terms and is
-       applied before mirroring, so the field stays exactly symmetric. */
-    const _c = new THREE.Vector3();
-    const pushPair = (x, y, z, radius, amount) => {
-      _c.set(x, y, z);
-      /* Nudged against the *cluster* radius, not the radius of one rock.
-         SIM's own ledger measures a seam by the record's radius, so that is
-         the number both sides have to agree on — passing the smaller
-         single-rock figure satisfies the letter of the porous-seam note and
-         still leaves violations on the books. */
-      clearOpening(_c, radius, sep, SEAM_ANGLE);
-      clusters.push(makeClusterRecord(_c.x, _c.y, _c.z, radius, amount));
-      clusters.push(makeClusterRecord(-_c.x, -_c.y, -_c.z, radius, amount));
-    };
-
-    // Two rich home seams per side, so the opening is never a dice roll.
-    for (let i = 0; i < 2; i++) {
-      const a = (i / 2) * Math.PI * 2 + r.range(0, Math.PI);
-      const d = r.range(3600, 5200);
-      pushPair(
-        home.x + Math.cos(a) * d,
-        home.y + r.range(-900, 900),
-        home.z + Math.sin(a) * d,
-        r.range(950, 1500),
-        r.range(22000, 26000),
-      );
-    }
-
-    // Everything is built in mirrored pairs, so the budget is spent in pairs.
-    const pairs = Math.max(3, Math.round(b.clusters / 2));
-    const contested = Math.max(1, Math.floor((pairs - 2) / 2));
-    const expansions = Math.max(0, pairs - 2 - contested);
-
-    for (let i = 0; i < expansions; i++) {
-      const a = r.range(0, Math.PI * 2);
-      const d = r.range(8000, 12500);
-      pushPair(
-        home.x * 0.55 + Math.cos(a) * d,
-        r.range(-2600, 2600),
-        home.z * 0.55 + Math.sin(a) * d,
-        r.range(1200, 1900),
-        r.range(19000, 23000),
-      );
-    }
-
-    // Contested band on the midline. Symmetric by construction: each is
-    // generated in one half and mirrored, so the pair straddles the middle.
-    for (let i = 0; i < contested; i++) {
-      const a = (i / contested) * Math.PI + r.range(-0.25, 0.25);
-      const d = r.range(2500, 7000);
-      pushPair(
-        Math.cos(a) * d * 0.35,
-        Math.sin(a) * d * 0.55,
-        Math.sin(a * 1.7) * d,
-        r.range(1400, 2100),
-        r.range(28000, 32000),
-      );
-    }
+    /* Its own fork. The rock stream below must not shift because the seam
+       layout changed shape — and, more to the point, must not silently reshape
+       the whole field the next time SIM tunes the economy. */
+    const clusters = generateResourceClusters(this.rng.fork(0x5EA3), { separation: sep });
+    for (const c of clusters) adoptClusterRecord(c);
 
     this._clusters = clusters;
 
-    /* ---- base shapes. Four is plenty: per-instance rotation and non-uniform
-       scale do most of the work of making a field look varied. ---- */
-    const shapes = 4;
+    /* Quality buys rock density, not a different map (see QUALITY above), so
+       the per-tier instance budget is divided by however many seams SIM asked
+       for rather than multiplying a fixed count by them. */
+    const rocksPerCluster = Math.max(
+      8,
+      Math.round((b.rocksPerCluster * b.clusters) / Math.max(1, clusters.length)),
+    );
+
+    /* ---- base shapes ----
+
+       Four was not plenty. Per-instance rotation and non-uniform scale hide a
+       repeated silhouette in a crowd and stop hiding it the moment two copies
+       of the same rock are near each other at similar orientations, which in a
+       fourteen-hundred-instance field happens constantly — a reviewer called
+       the reuse visible, and it is. Six shapes is 50% more of the only thing
+       that actually varies here, at the cost of four instanced draws that are
+       only issued when they have something in them. */
+    const shapes = 6;
     const [dHigh, dLow] = b.rockDetail;
 
     /* Rock albedo.
@@ -1613,9 +2647,31 @@ export class Environment {
          against it twice: once to stop it being buried inside a neighbour, and
          once afterwards to work out how much sky its neighbours take away. */
       const near = [];
-      for (let i = 0; i < b.rocksPerCluster; i++) {
+      for (let i = 0; i < rocksPerCluster; i++) {
         const s = r.int(0, shapes - 1);
-        const size = Math.pow(r.next(), 3.0) * 430 + 11;
+        /* Four size classes, drawn from explicitly rather than from one power
+           curve.
+
+           `pow(random, 3) * 430 + 11` is a smooth distribution and that is
+           exactly its problem: it produces a continuum with no gaps, and a
+           continuum of sizes reads as texture rather than as scale. Nothing in
+           it is decisively bigger than anything else, so a 380 m destroyer
+           flying through it has nothing to be measured against — which is the
+           whole job the field is here to do (section 3.4) and the reason the
+           reviewer read the rocks as one size class.
+
+           Discrete classes with real gaps between them give the eye something
+           to count. The monoliths are the point of the exercise: at 400-950 m
+           roughly eight per seam are frigate-to-cruiser sized, so a capital
+           passing one is unmistakably a capital. The grit at the bottom exists
+           for the close pass and costs nothing at range, where the LOD and the
+           seam fill already thin it out. */
+        const cls = r.next();
+        const size =
+          cls < 0.34 ? r.range(9, 28)
+          : cls < 0.68 ? r.range(32, 110)
+          : cls < 0.94 ? r.range(130, 340)
+          : r.range(400, 950);
         scl.set(size * r.range(0.7, 1.25), size * r.range(0.6, 1.1), size * r.range(0.75, 1.3));
         const bound = Math.max(scl.x, scl.y, scl.z);
         let placed = false;
@@ -1773,16 +2829,19 @@ export class Environment {
        2 km rock still fills the frame. So the test is the angle it subtends
        from the opening camera shell around each start, and it is applied to
        both starts because the field is mirrored. ---- */
-    const lmGeo = makeRockGeometry(r.fork(77), Math.min(5, dHigh + 2));
     const lmCount = b.landmarks;
-    const lm = new THREE.InstancedMesh(lmGeo, material, lmCount);
-    lm.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(lmCount * 3), 3);
-    /* Landmarks share the rock material, so they must carry `aAo` or the
-       attribute defaults to zero and every one of them renders black. They sit
-       outside their seam by construction, so they are barely occluded. */
-    const lmAo = new Float32Array(lmCount);
-    lmAo.fill(0.92);
-    lmGeo.setAttribute('aAo', new THREE.InstancedBufferAttribute(lmAo, 1));
+    /* Every landmark used to be the same rock.
+
+       They shared one geometry from `r.fork(77)`, so the two-to-six largest
+       and most photographed objects in the near field were literally one model
+       at different scales and orientations — the single most visible instance
+       of the reuse the reviewer picked up, because these are the things big
+       enough for a silhouette to be memorised. Three shapes over at most six
+       landmarks means no two neighbours need be twins, and it costs two
+       instanced draws that are frustum-culled like the original. */
+    const lmShapes = Math.max(1, Math.min(3, lmCount));
+    const perShape = [];
+    for (let s = 0; s < lmShapes; s++) perShape.push([]);
     for (let i = 0; i < lmCount; i++) {
       // Mirror them in pairs too — a 3 km landmark is cover, and cover on one
       // side of the map only is not a fair map.
@@ -1798,17 +2857,37 @@ export class Environment {
       clearOpening(pos, bound, sep, OPENING_ANGLE);
       qt.set(r.gaussian(), r.gaussian(), r.gaussian(), r.gaussian()).normalize();
       m.compose(pos, qt, scl);
-      lm.setMatrixAt(i, m);
       const t = r.range(0.86, 1.12);
-      lm.setColorAt(i, new THREE.Color(t, t * 0.985, t * 0.955));
+      perShape[i % lmShapes].push({ matrix: m.clone(), tint: t });
     }
-    lm.instanceMatrix.needsUpdate = true;
-    lm.instanceColor.needsUpdate = true;
-    lm.frustumCulled = true;
-    lm.name = 'env:landmarks';
-    engine.scene.add(lm);
-    this._landmarks = lm;
-    this._disposables.push(lmGeo);
+
+    this._landmarks = [];
+    for (let s = 0; s < lmShapes; s++) {
+      const list = perShape[s];
+      if (!list.length) continue;
+      const geo = makeRockGeometry(r.fork(77 + s * 31), Math.min(5, dHigh + 2));
+      const mesh = new THREE.InstancedMesh(geo, material, list.length);
+      mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(list.length * 3), 3);
+      /* Landmarks share the rock material, so they must carry the occlusion
+         attribute or it defaults to zero and every one of them renders black.
+         They sit outside their seam by construction, so they are barely
+         occluded. */
+      const ao = new Float32Array(list.length);
+      ao.fill(0.92);
+      geo.setAttribute('aAo', new THREE.InstancedBufferAttribute(ao, 1));
+      for (let i = 0; i < list.length; i++) {
+        mesh.setMatrixAt(i, list[i].matrix);
+        const t = list[i].tint;
+        mesh.setColorAt(i, new THREE.Color(t, t * 0.985, t * 0.955));
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.instanceColor.needsUpdate = true;
+      mesh.frustumCulled = true;
+      mesh.name = 'env:landmarks';
+      engine.scene.add(mesh);
+      this._landmarks.push(mesh);
+      this._disposables.push(geo);
+    }
   }
 
   /** Live cluster records. SIM may decrement `amount` in place. */
@@ -1884,6 +2963,12 @@ export class Environment {
     }
 
     if (this._dustMat) this._dustMat.uniforms.uTime.value = elapsed;
+
+    if (this._seams) {
+      if (this._seams.hazeMat) this._seams.hazeMat.uniforms.uTime.value = elapsed;
+      this._seams.bounds.material.uniforms.uTime.value = elapsed;
+      this._updateSeams(false);
+    }
 
     // The gas giant turns; slowly enough that it reads as scale, not motion.
     if (this._planetGroup) {
@@ -1990,24 +3075,36 @@ export class Environment {
    * @param {number} [softness]                fade distance in metres
    */
   setDepthTexture(texture, softness = 900) {
-    if (!this._dustMat) return;
-    const mat = this._dustMat;
-    mat.uniforms.uDepth.value = texture || null;
-    mat.uniforms.uSoft.value = softness;
-    const want = texture ? '' : null;
-    const has = mat.defines.USE_SOFT_DEPTH !== undefined;
-    if (texture && !has) {
-      mat.defines.USE_SOFT_DEPTH = want;
-      mat.needsUpdate = true;
-    } else if (!texture && has) {
-      delete mat.defines.USE_SOFT_DEPTH;
-      mat.needsUpdate = true;
+    /* The seam haze wants this at least as much as the dust does: soft depth
+       is the entire difference between a medium a rock stands inside and a
+       film drawn over the top of one, which is what the round-2 shell read as. */
+    for (const mat of [this._dustMat, this._seams && this._seams.hazeMat]) {
+      if (!mat) continue;
+      mat.uniforms.uDepth.value = texture || null;
+      mat.uniforms.uSoft.value = softness;
+      const has = mat.defines.USE_SOFT_DEPTH !== undefined;
+      if (texture && !has) {
+        mat.defines.USE_SOFT_DEPTH = '';
+        mat.needsUpdate = true;
+      } else if (!texture && has) {
+        delete mat.defines.USE_SOFT_DEPTH;
+        mat.needsUpdate = true;
+      }
     }
   }
 
-  /** Keep the soft-particle pass in step with the render target size. */
+  /** Keep the soft-particle pass in step with the render target size.
+
+      The boundary needs the height for a different reason: its ticks have a
+      width floor stated in framebuffer pixels, so that the far side of a ring
+      stays a hairline instead of thinning below a pixel and crawling. */
   setResolution(w, h) {
     if (this._dustMat) this._dustMat.uniforms.uResolution.value.set(w, h);
+    if (this._seams) {
+      if (this._seams.hazeMat) this._seams.hazeMat.uniforms.uResolution.value.set(w, h);
+      const bm = this._seams.bounds && this._seams.bounds.material;
+      if (bm && bm.uniforms.uPixel) bm.uniforms.uPixel.value = 2 / Math.max(1, h);
+    }
   }
 
   /* -------------------------------------------------------------- dispose */
@@ -2015,16 +3112,29 @@ export class Environment {
   dispose() {
     const { engine } = this;
 
-    for (const m of [this._dust, this._landmarks, this._derelicts]) {
+    if (this._offReady) {
+      this._offReady();
+      this._offReady = null;
+    }
+    /* The rotation lives on the scenes, not on anything ENV owns, so it has to
+       be put back or the next match inherits this one's composition. */
+    engine.farScene.backgroundRotation.set(0, 0, 0);
+    engine.scene.environmentRotation.set(0, 0, 0);
+
+    const loose = [this._dust, this._derelicts];
+    if (this._seams) loose.push(this._seams.bounds, this._seams.haze);
+    for (const m of loose.concat(this._landmarks || [])) {
       if (m && m.parent) m.parent.remove(m);
     }
+    for (const m of this._landmarks || []) m.dispose();
+    this._landmarks = [];
+    this._seams = null;
     for (const set of this._rockSets) {
       if (set.high.parent) set.high.parent.remove(set.high);
       if (set.low.parent) set.low.parent.remove(set.low);
       set.high.dispose();
       set.low.dispose();
     }
-    if (this._landmarks) this._landmarks.dispose();
     if (this._derelicts) this._derelicts.dispose();
     this._rockSets.length = 0;
 
@@ -2060,18 +3170,112 @@ export class Environment {
    Procedural geometry helpers
    =========================================================================== */
 
-/** One resource seam. SIM reads `position`, `radius` and `amount` and may
-    decrement `amount` in place as miners work it. */
-function makeClusterRecord(x, y, z, radius, amount) {
-  return {
-    position: new THREE.Vector3(x, y, z),
-    radius,
-    amount: Math.round(amount),
-    maxAmount: Math.round(amount),
-    _visible: true,
-    _high: true,
-    _fill: 1,
+/** Add ENV's render state to one of SIM's seam records.
+
+    The record stays SIM's — position, radius and ore are its numbers, and it
+    decrements `amount` in place as miners work the seam. All ENV keeps here is
+    what it needs to draw it: culling, LOD tier and how much rock is left. */
+function adoptClusterRecord(c) {
+  c.amount = Math.round(c.amount);
+  c.maxAmount = Math.round(c.maxAmount);
+  c._visible = true;
+  c._high = true;
+  c._fill = 1;
+  return c;
+}
+
+/* A capture boundary in unit space: a circle of radius 1 lying in XZ, built
+   out of `marks` discrete marks rather than as a ring.
+
+   That is the whole design. Round 2 drew this as a thin bright ellipse, and so
+   did the gas giant's ring plane, and so did the grazing limb of the seam
+   shell — three unrelated systems speaking one visual language in the same
+   frame, none of them distinguishable from the others. A continuous arc cannot
+   be de-conflicted by making it thinner or dimmer, because the thing being
+   confused is its *shape*. So it is not an arc. Each mark is a short dashed
+   segment lying in the plane with an upright tick standing on it, and the two
+   between them survive every camera angle the rig can reach: the dashes read
+   from above and go out as the plane turns edge-on, which is precisely when a
+   ladder of uprights is at its most legible.
+
+   `aShape` is (kind, u, v, rank):
+     kind — 0 flat dash, 1 upright tick.
+     u    — -1..1 along the mark: arc for a dash, screen width for a tick.
+     v    — -1..1 across it: radial for a dash, vertical for a tick.
+     rank — 0 or 1. Every fourth mark is ranked and stands taller, which is
+            what turns a circle of identical pips into a ladder you can count
+            around, and gives the eye a repeat length to measure the seam by.
+
+   The instanced shader scales the result by the seam's real capture radius and
+   bills each tick to face the camera about its own vertical axis. */
+function makeBoundaryGeometry(marks) {
+  const DUTY = 0.40;   // fraction of each mark's angular pitch that is drawn
+  const SEGS = 2;      // quads per dash, so a dash does not chord off the circle
+  const RAD = 0.0060;  // dash half-width, as a fraction of the radius
+
+  const pos = [];
+  const shape = [];
+  const index = [];
+  const vert = (x, y, z, k, u, v, rank) => {
+    pos.push(x, y, z);
+    shape.push(k, u, v, rank);
+    return pos.length / 3 - 1;
   };
+  const quad = (a, b, c, d) => index.push(a, b, c, a, c, d);
+
+  const pitch = (Math.PI * 2) / marks;
+  const half = pitch * 0.5 * DUTY;
+
+  for (let i = 0; i < marks; i++) {
+    const th = i * pitch;
+    const rank = i % 4 === 0 ? 1 : 0;
+
+    /* Dashes sit in the GAPS, at the half-pitch, not under the ticks. Sharing
+       an anchor put a horizontal mark and a vertical mark at the same screen
+       point, and from a camera pitched down that is a plus sign — a HUD glyph
+       scattered through the world, which is the one thing section 3.8 says the
+       UI must never become. Interleaved, they read as what they are: a fence
+       line with a dashed rule running between the posts. */
+    const dth = th + pitch * 0.5;
+    for (let s = 0; s < SEGS; s++) {
+      const f0 = s / SEGS;
+      const f1 = (s + 1) / SEGS;
+      const a0 = dth - half + 2 * half * f0;
+      const a1 = dth - half + 2 * half * f1;
+      const u0 = -1 + 2 * f0;
+      const u1 = -1 + 2 * f1;
+      const c0 = Math.cos(a0);
+      const s0 = Math.sin(a0);
+      const c1 = Math.cos(a1);
+      const s1 = Math.sin(a1);
+      const ri = 1 - RAD;
+      const ro = 1 + RAD;
+      quad(
+        vert(c0 * ri, 0, s0 * ri, 0, u0, -1, rank),
+        vert(c1 * ri, 0, s1 * ri, 0, u1, -1, rank),
+        vert(c1 * ro, 0, s1 * ro, 0, u1, 1, rank),
+        vert(c0 * ro, 0, s0 * ro, 0, u0, 1, rank),
+      );
+    }
+
+    /* All four tick corners share the anchor point; the shader pushes them
+       apart along the camera-facing horizontal and the world vertical, so the
+       tick's width is a screen quantity and its height is a world one. */
+    const cx = Math.cos(th);
+    const cz = Math.sin(th);
+    quad(
+      vert(cx, 0, cz, 1, -1, -1, rank),
+      vert(cx, 0, cz, 1, 1, -1, rank),
+      vert(cx, 0, cz, 1, 1, 1, rank),
+      vert(cx, 0, cz, 1, -1, 1, rank),
+    );
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('aShape', new THREE.Float32BufferAttribute(shape, 4));
+  geo.setIndex(index);
+  return geo;
 }
 
 /** Deformed icosahedron: fBm lumps, ridged crags, a few impact craters. */

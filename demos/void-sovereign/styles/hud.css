@@ -135,12 +135,27 @@
 /* --------------------------------------------------------------- 0. scrims */
 /* Soft directional washes, never boxes. Two corners and the top edge, so the
    numerals hold against a bright nebula without walling off the void. */
+/* The top band is stated in pixels, not per cent, because what it has to
+   protect is a fixed 62 px of type — at 1440 the old 13% stop put the fade
+   almost 190 px down the frame, and at 720 it ran out before the objective
+   line. Round 1 found the readout sitting unprotected over a lit asteroid;
+   this is the "text scrim behind the top HUD bar" from that list.
+
+   It is still a wash that fades to nothing over 130 px with no edge anywhere,
+   so it reads as vignette rather than as a bar. §3.8 holds. */
 .vsh-root__scrim {
   position: absolute;
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(to bottom, rgba(2, 7, 12, 0.72), rgba(2, 7, 12, 0) 13%),
+    linear-gradient(
+      to bottom,
+      rgba(2, 7, 12, 0.93) 0,
+      rgba(2, 7, 12, 0.87) 44px,
+      rgba(2, 7, 12, 0.7) 68px,
+      rgba(2, 7, 12, 0.28) 98px,
+      rgba(2, 7, 12, 0) 136px
+    ),
     radial-gradient(76% 50% at 0% 100%, rgba(2, 7, 12, 0.7), rgba(2, 7, 12, 0) 74%),
     radial-gradient(66% 52% at 100% 100%, rgba(2, 7, 12, 0.7), rgba(2, 7, 12, 0) 74%);
   opacity: 0.94;
@@ -161,7 +176,8 @@
 .vsh-host--sensors { z-index: 2; }
 
 .vsh-layer,
-.vsh-layer__pips {
+.vsh-layer__pips,
+.vsh-layer__glyphs {
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -191,10 +207,47 @@
 .vsh-pip--enemy,
 .vsh-pip--enemy.vsh-pip--low { border-color: var(--vsh-amber); }
 
+/* Class glyph — the middle tier, between a frameable hull and a pip.
+
+   The path is the same 24×24 `silhouette` the roster chip and the production
+   row draw, so one shape means one class in three places. Sized by transform
+   rather than by width so the scale ramp costs nothing extra: `_drawGlyph`
+   writes exactly one transform, carrying position and range together. */
+.vsh-gly {
+  position: absolute;
+  left: -10px;
+  top: -10px;
+  width: 20px;
+  height: 20px;
+  color: var(--vsh-cyan);
+  opacity: 0;
+  transition: opacity 0.16s linear;
+}
+
+.vsh-gly.is-live { opacity: 0.72; }
+
+.vsh-gly svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+  overflow: visible;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.15;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.85));
+}
+
+.vsh-gly--low { color: var(--vsh-red); opacity: 1; }
+/* Same rule as everywhere else: red is our trouble, never theirs. */
+.vsh-gly--enemy,
+.vsh-gly--enemy.vsh-gly--low { color: var(--vsh-amber); }
+
 /* Selection bracket. The root is a zero-size anchor at the projected centre;
    the four corner ticks translate outward from it. Nothing is ever scaled, so
    a bracket around a 1,900 m mothership has the same 1px stroke as one around
-   an interceptor. */
+   an interceptor — but the *span* now tracks the projected hull, which is what
+   makes range legible. See the tier note at the top of `ui/select.js`. */
 .vsh-brk {
   position: absolute;
   left: 0;
@@ -388,13 +441,48 @@
   height: 1px;
 }
 
+/* The leg of the order: fleet centroid at the click, to the destination.
+
+   Authored as a 3px-tall wedge one pixel wide and stretched along X, so the
+   clip path tapers it in *width* as well as fading it in value — thick and
+   bright where the fleet is going, nothing where it came from. A uniform
+   hairline was what the round-1 critic called a stray hair, and it was right:
+   a line with no direction in it is not an order, it is a scratch. */
+.vsh-ord__lead {
+  position: absolute;
+  left: 0;
+  top: -1.5px;
+  width: 1px;
+  height: 3px;
+  background: linear-gradient(to right, currentColor, transparent);
+  clip-path: polygon(0 0, 100% 40%, 100% 60%, 0 100%);
+  transform-origin: 0 50%;
+  opacity: 0;
+}
+
+/* Arrival chevron, pointing the way they are travelling. Two ticks rather than
+   a filled head — the overlay owns no solid shapes. */
+.vsh-ord__arrow {
+  position: absolute;
+  left: -5px;
+  top: -5px;
+  width: 10px;
+  height: 10px;
+  border-top: 1px solid currentColor;
+  border-right: 1px solid currentColor;
+  opacity: 0;
+  transform-origin: 50% 50%;
+}
+
 .vsh-ord__stalk {
   position: absolute;
   left: 0;
   top: 0;
   width: 1px;
   height: 1px;
-  background: currentColor;
+  /* Tapered too, for the same reason: the stalk reads as a plumb line dropped
+     from the marker rather than as a hair someone left on the lens. */
+  background: linear-gradient(to bottom, currentColor, rgba(127, 216, 232, 0));
   opacity: 0.4;
   transform-origin: 0 0;
 }
@@ -516,6 +604,22 @@
 .vsh-stat:first-child { border-left: 0; }
 .vsh-stat:last-child { padding-right: 0; }
 .vsh-stat--speed { min-width: 132px; }
+.vsh-stat--clock { min-width: 74px; }
+
+/* Nothing drains during the opening. The clock says so on its own, because the
+   objective sentence that says it in words is the first thing the bar drops
+   when it runs out of room. */
+.vsh-stat--clock.is-grace .vsh-stat__v { color: var(--vsh-cyan); }
+.vsh-stat--clock.is-grace .vsh-stat__v::after {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 6px;
+  vertical-align: 1px;
+  border: 1px solid currentColor;
+  opacity: 0.75;
+}
 
 .vsh-stat__k {
   display: block;
@@ -685,7 +789,7 @@
    case; these sit directly behind the two densest blocks so they hold even
    over a lit asteroid. Both are gradients that fade to nothing — there is no
    edge anywhere, so neither reads as a panel. */
-.vsh-roster::before,
+.vsh-selblock::before,
 .vsh-build::before,
 .vsh-card::before,
 .vsh-onboard::before {
@@ -695,10 +799,26 @@
   pointer-events: none;
 }
 
-.vsh-roster::before {
+/* The roster and the palette that commands it are one block and share one
+   wash — the palette used to sit unanchored in the middle of the frame with
+   nothing behind it at all. */
+.vsh-selblock {
+  position: relative;
+  width: 100%;
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vsh-selblock::before {
   inset: -18px -46px -34px -40px;
   background: radial-gradient(112% 104% at 0% 100%, rgba(2, 6, 11, 0.86), rgba(2, 6, 11, 0) 74%);
+  opacity: 0;
+  transition: opacity 0.2s var(--vsh-ease);
 }
+
+.vsh-selblock.is-live::before { opacity: 1; }
 
 .vsh-build::before {
   inset: -20px -40px -34px -48px;
@@ -709,7 +829,6 @@
 .vsh-roster {
   position: relative;
   width: 100%;
-  max-width: 460px;
   opacity: 0;
   transform: translate3d(0, 8px, 0);
   transition: opacity 0.2s var(--vsh-ease), transform 0.2s var(--vsh-ease);
@@ -838,20 +957,23 @@
 .vsh-bar.is-low .vsh-bar__fill { background: var(--vsh-red); opacity: 0.9; }
 
 /* ------------------------------------------------------------- 5. palette */
-/* `stretch` is what aligns the two rows: it makes each row as wide as the
-   widest, so "Stance" and "Formation" share a left edge and their buttons
-   share a first column instead of each row centring independently. */
+/* Docked under the roster, not floating in the middle of the frame. Two rows,
+   each a fixed caption column and a wrapping button column — six formation
+   names do not fit on one line beside a caption at 1280, and wrapping under
+   the caption rather than under the buttons is what made the old fixed-flex
+   version unusable at that width. */
 .vsh-palette {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 9px;
+  gap: 3px;
 }
 
 .vsh-palette__row {
-  display: flex;
-  align-items: center;
-  gap: 3px;
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: 8px;
   opacity: 0;
   transform: translate3d(0, 6px, 0);
   transition: opacity 0.18s var(--vsh-ease), transform 0.18s var(--vsh-ease);
@@ -864,27 +986,31 @@
   pointer-events: auto;
 }
 
-/* Fixed and right-aligned, so "Stance" and "Formation" share a left edge and
-   both rows of buttons start on the same column. */
+.vsh-palette__btns {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 2px;
+  margin-left: -6px;   /* pull the first button's padding back to the column */
+}
+
 .vsh-palette__k {
-  flex: 0 0 70px;
-  width: 70px;
   font-family: var(--vsh-mono);
-  font-size: 9px;
-  letter-spacing: 0.2em;
+  font-size: 8.5px;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   text-align: right;
   color: var(--vsh-ink-24);
-  margin-right: 10px;
 }
 
 .vsh-cmd {
   position: relative;
-  padding: 4px 9px 5px;
+  padding: 4px 6px 5px;
   font-family: var(--vsh-mono);
-  font-size: 10px;
-  letter-spacing: 0.16em;
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
+  white-space: nowrap;
   color: var(--vsh-ink-40);
   transition: color 0.14s linear;
 }
@@ -892,8 +1018,8 @@
 .vsh-cmd::after {
   content: '';
   position: absolute;
-  left: 9px;
-  right: 9px;
+  left: 6px;
+  right: 6px;
   bottom: 1px;
   height: 1px;
   background: currentColor;
@@ -911,22 +1037,34 @@
 
 .vsh-cmd[aria-pressed='true']::after { transform: scaleX(1); }
 
+/* Inline and 9 px, not stacked at 8 px in 16% white.
+   Round 1 measured the old keycaps at "sub-6 px" and called them illegible; at
+   16% opacity on a lit backdrop they effectively were not there. Beside the
+   verb they cost no extra line and they can be read. */
 .vsh-cmd__key {
-  display: block;
-  margin-top: 3px;
-  font-size: 8px;
-  letter-spacing: 0.18em;
-  color: var(--vsh-ink-16);
+  display: inline;
+  margin-left: 5px;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--vsh-ink-24);
 }
+
+.vsh-cmd[aria-pressed='true'] .vsh-cmd__key { color: rgba(127, 216, 232, 0.5); }
 
 .vsh-palette__util {
   display: flex;
   gap: 2px;
   align-items: center;
-  justify-content: center;   /* the rows stretch; this one stays centred */
+  justify-content: center;
 }
 
 /* --------------------------------------------------------------- 6. build */
+/* Collapsed is the resting state. See the note at the top of `ui/build.js`:
+   the always-open 430×340 grid was the largest element on screen in five of
+   six review frames, which is exactly the "boxes the void in" §3.8 forbids.
+   Detail arrives on `:hover`, on `:focus-within`, or when the header button
+   pins `.is-open`. The buttons themselves are identical in both states, so
+   nothing becomes unreachable by collapsing. */
 .vsh-build {
   position: relative;
   width: 100%;
@@ -947,18 +1085,44 @@
   display: flex;
   align-items: baseline;
   gap: 12px;
-  padding-bottom: 7px;
-  margin-bottom: 8px;
+  padding-bottom: 5px;
+  margin-bottom: 5px;
   border-bottom: 1px solid var(--vsh-ink-16);
 }
 
 .vsh-build__title {
+  position: relative;
+  padding-right: 12px;
   font-family: var(--vsh-mono);
   font-size: 9.5px;
   font-weight: 500;
   letter-spacing: 0.24em;
   text-transform: uppercase;
   color: var(--vsh-ink-40);
+  transition: color 0.14s linear;
+}
+
+.vsh-build__title:hover { color: var(--vsh-ink-64); }
+
+/* A corner tick that turns, not a triangle: the overlay owns no filled marks. */
+.vsh-build__title::after {
+  content: '';
+  position: absolute;
+  right: 1px;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  margin-top: -3px;
+  border-top: 1px solid currentColor;
+  border-right: 1px solid currentColor;
+  transform: rotate(-45deg);
+  transform-origin: 50% 50%;
+  opacity: 0.7;
+  transition: transform 0.2s var(--vsh-ease);
+}
+
+.vsh-build__title[aria-expanded='true']::after {
+  transform: rotate(135deg);
 }
 
 /* One yard-wide state, said once. White, not amber: amber is the enemy, and a
@@ -977,8 +1141,17 @@
 
 .vsh-build__tabs {
   margin-left: auto;
-  display: flex;
+  display: none;
   gap: 8px;
+}
+
+/* Producer tabs only matter once you are reading names, and they are the one
+   control the collapsed strip suppresses — so every route that reaches them by
+   keyboard opens the panel first. See `ui/build.js`. */
+.vsh-build.is-open .vsh-build__tabs,
+.vsh-build:hover .vsh-build__tabs,
+.vsh-build:focus-within .vsh-build__tabs {
+  display: flex;
 }
 
 .vsh-tab {
@@ -998,33 +1171,41 @@
   box-shadow: inset 0 -1px 0 0 currentColor;
 }
 
+/* ---- collapsed: one row of class glyphs and their cost, and nothing else */
 .vsh-build__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1px 22px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0;
 }
 
+/* 31 px × 13 classes has to survive the narrowest column the bottom deck ever
+   hands this panel, which is 400 px at 1280 — measured, not guessed. Wrapping
+   to a second row is allowed but is not the intended resting shape. */
 .vsh-item {
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  column-gap: 9px;
-  padding: 4px 4px 4px 0;
-  text-align: left;
+  justify-content: flex-end;
+  gap: 1px;
+  width: 31px;
+  padding: 2px 0 3px;
+  text-align: center;
   transition: opacity 0.14s linear;
-  opacity: 0.8;
+  opacity: 0.72;
 }
 
 .vsh-item:hover:not([disabled]) { opacity: 1; }
 
 .vsh-item[disabled] {
   cursor: not-allowed;
-  opacity: 0.44;
+  opacity: 0.34;
 }
 
 .vsh-item__icon {
-  width: 24px;
-  height: 24px;
+  flex: 0 0 auto;
+  width: 21px;
+  height: 21px;
   fill: none;
   stroke: var(--vsh-cyan);
   stroke-width: 1.1;
@@ -1034,7 +1215,60 @@
 
 .vsh-item[disabled] .vsh-item__icon { stroke: rgba(var(--vsh-w), 0.4); }
 
-.vsh-item__name {
+.vsh-item__name,
+.vsh-item__sub {
+  display: none;
+}
+
+.vsh-item__cost {
+  font-family: var(--vsh-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  color: var(--vsh-ink-40);
+}
+
+/* ---- expanded: the full read, on hover, on focus, or pinned */
+.vsh-build.is-open .vsh-build__grid,
+.vsh-build:hover .vsh-build__grid,
+.vsh-build:focus-within .vsh-build__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px 22px;
+}
+
+.vsh-build.is-open .vsh-item,
+.vsh-build:hover .vsh-item,
+.vsh-build:focus-within .vsh-item {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 9px;
+  width: auto;
+  padding: 4px 4px 4px 0;
+  text-align: left;
+  opacity: 0.8;
+}
+
+.vsh-build.is-open .vsh-item:hover:not([disabled]),
+.vsh-build:hover .vsh-item:hover:not([disabled]),
+.vsh-build:focus-within .vsh-item:hover:not([disabled]) { opacity: 1; }
+
+.vsh-build.is-open .vsh-item[disabled],
+.vsh-build:hover .vsh-item[disabled],
+.vsh-build:focus-within .vsh-item[disabled] { opacity: 0.44; }
+
+.vsh-build.is-open .vsh-item__icon,
+.vsh-build:hover .vsh-item__icon,
+.vsh-build:focus-within .vsh-item__icon {
+  width: 24px;
+  height: 24px;
+}
+
+.vsh-build.is-open .vsh-item__name,
+.vsh-build:hover .vsh-item__name,
+.vsh-build:focus-within .vsh-item__name {
+  display: block;
   font-family: var(--vsh-mono);
   font-size: 10.5px;
   letter-spacing: 0.1em;
@@ -1045,7 +1279,10 @@
   text-overflow: ellipsis;
 }
 
-.vsh-item__sub {
+.vsh-build.is-open .vsh-item__sub,
+.vsh-build:hover .vsh-item__sub,
+.vsh-build:focus-within .vsh-item__sub {
+  display: block;
   grid-column: 2 / span 2;
   font-family: var(--vsh-mono);
   font-size: 9px;
@@ -1055,14 +1292,14 @@
   white-space: nowrap;
 }
 
-.vsh-item__sub.is-blocked { color: rgba(var(--vsh-w), 0.55); }
-
-.vsh-item__cost {
-  font-family: var(--vsh-mono);
-  font-variant-numeric: tabular-nums;
+.vsh-build.is-open .vsh-item__cost,
+.vsh-build:hover .vsh-item__cost,
+.vsh-build:focus-within .vsh-item__cost {
   font-size: 11px;
   color: var(--vsh-ink-64);
 }
+
+.vsh-item__sub.is-blocked { color: rgba(var(--vsh-w), 0.55); }
 
 /* ------------------------------------------------------------ 6b. ship card */
 /* What a class is *for*. The counter lines are computed from the same
@@ -1174,11 +1411,22 @@
 .vsh-build__queue {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-height: 24px;
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--vsh-ink-10);
+}
+
+.vsh-build.is-open .vsh-build__queue,
+.vsh-build:hover .vsh-build__queue,
+.vsh-build:focus-within .vsh-build__queue {
+  justify-content: flex-start;
   gap: 10px;
   min-height: 34px;
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid var(--vsh-ink-10);
 }
 
 .vsh-build__qempty {
@@ -1191,12 +1439,19 @@
 
 .vsh-q {
   position: relative;
-  width: 32px;
-  height: 32px;
+  width: 23px;
+  height: 23px;
   display: grid;
   place-items: center;
   transition: opacity 0.14s linear;
   opacity: 0.85;
+}
+
+.vsh-build.is-open .vsh-q,
+.vsh-build:hover .vsh-q,
+.vsh-build:focus-within .vsh-q {
+  width: 32px;
+  height: 32px;
 }
 
 .vsh-q:hover { opacity: 1; }

@@ -283,20 +283,66 @@ const OPENING = {
      star's azimuth stays uniformly seeded and ENV must not close the loop by
      aiming it at the camera; only this end of the relationship is constrained.
 
-     The band is deliberately *not* narrowed to chase hull brightness, and that
-     was tested rather than assumed. Raising the floor to 116 degrees and
-     re-measuring the two seeds that sit at the bottom of the band:
+     The band is deliberately *not* narrowed, and the two claims that used to
+     argue about it here have both been retired by a re-measurement (29 Sep,
+     post ENV's key:fill rig fix). 8 seeds x 4 bands x a boot each, one
+     variable: `alpha` consumes exactly one `rng.range` draw whatever the band
+     is, so every downstream seeded decision is unchanged. The bands were
+     injected into the served module rather than written to disk, so the run
+     could not leave a patched file behind. `.local/laneB-band.mjs` runs it,
+     `.local/laneB-band.json` holds it, `.local/laneB-table.mjs` reads it.
 
-       nightbloom   view-to-sun 108.7 -> 118.9, hull p50 0.138 -> 0.186
-       coldwater    view-to-sun 106.0 -> 117.2, hull p50 0.328 -> 0.360,
-                    but painted silhouette 55.0% -> 57.1%, out of the 45-55 band
+     Both earlier claims were **between-seed**, and a seed sets the palette,
+     the hull, the star's elevation and the angle all at once. Held one seed at
+     a time, the answer changes:
 
-     So narrowing costs seeded variety and framing, and still does not lift the
-     dark seed over 0.25. The angle is also not the discriminator it looks like:
-     coldwater sits at 106 degrees, lower than nightbloom, and measures 0.328.
-     `litWeight` below addresses what the camera can actually control; the rest
-     of nightbloom's deficit is in the key/fill for that palette, which is ENV's
-     to own. Evidence is in `.local/sil-lit1.json` and `.local/sil-band.json`. */
+       · The angle IS a discriminator, contrary to "not the discriminator it
+         looks like". Area-weighted over camera-facing hull, the share of the
+         visible hull that is lit rises with the angle on 7 of 8 seeds, mean
+         -0.149 of terminator balance per +10 degrees. Raising the floor to
+         116 — the exact edit the older paragraph reported as harmless — costs
+         balance on 8 of 8, up to -0.67 on 13634 and -0.63 on nightbloom.
+       · But it is a WEAK discriminator, contrary to "the three widest angles
+         are the three weakest terminators". kharak reverses sign inside its
+         own seed: 115.2 degrees scores 0.64, 111.4 degrees scores 0.32. The
+         band sets the cone's half-angle; the phase *around* the cone is
+         picked by the framing score below, and the phase is what decides
+         which flank faces the key. On a 1,900 m slab that swamps the angle.
+
+     And narrowing buys nothing. Mean terminator balance, worst seed, and the
+     painted silhouette, over the same 8 seeds:
+
+       104-134 (this)   bal 0.779  worst 0.464   painted 42.8-52.1%
+       104-116          bal 0.767  worst 0.315   painted 34.3-52.1%
+       100-112          bal 0.731  worst 0.210   painted 23.5-52.7%
+       116-134          bal 0.537  worst 0.355   painted 42.1-53.4%
+
+     The current band is the best of the four on the mean AND on the worst
+     seed, and it is the only one that never drops a hero frame under 42% of
+     frame width. Both narrow candidates fail on kharak, which under 100-112
+     opens nose-on as a narrow tower at 23.5% — the earlier agent's "narrowing
+     costs framing", and it is visible in `.local/shots/laneB-band/`, not just
+     in the number. **Do not narrow this band.** If the wide end ever has to be
+     policed, police it after the composition offset, not here — see below.
+
+     Two instrument notes, because this question has now consumed three passes:
+
+     · These two constants do not control the shipped angle. `_composeOpening`
+       rotates the camera toward the star after the band has had its say, and
+       that subtracts 0.8-11.7 degrees, per seed, unpredictably: 104-134 ships
+       103.1-124.7, and 4242 draws 118.2 but ships 106.6. Any measurement of
+       "view-to-key" taken off a frame is of the composed angle, not the drawn
+       one. `.local/laneB-angle.mjs` prints all three.
+     · Do not use hull quantiles for this. `shadowFraction`, `deepFraction`
+       and `p25OverP75` are graded by the auto-exposure meter, so a flatter
+       frame that meters brighter scores as having MORE shadow. Measured
+       inversions: 13634 at 116-134 looks flat and scores shadow 0.025 ->
+       0.157; emberfall at 104-116 visibly gains a terminator and scores
+       0.025 -> 0.006. The area-weighted N.L split agrees with the crops on
+       every seed checked; the quantiles do not. Also hide `.vst-root`, not
+       just `#vs-hud`, before differencing a frame — the onboarding card is
+       translucent and sits over the hull, and counting it doubled 13634's
+       shadow fraction. */
   sunAngleMin: 104 * DEG,
   sunAngleMax: 134 * DEG,
 
@@ -410,6 +456,7 @@ export class CameraRig {
     this._composeY = 0;
     this._composeGain = new Spring(0, 1.8);
     this._openingReport = null;
+    this._openingSkip = null;
 
     /* Reduced motion kills the two things that move without being asked to:
        idle sway and impact shake. Deliberate motion — orbit, zoom, focus, the
@@ -648,6 +695,16 @@ export class CameraRig {
     return this._openingReport;
   }
 
+  /** Why the hero framing declined, if it did. Null once it has succeeded. */
+  get openingSkip() {
+    return this._openingSkip;
+  }
+
+  _skipOpening(why) {
+    this._openingSkip = why;
+    return false;
+  }
+
   /** Give the off-centre composition back and latch the opening as spent. */
   _releaseCompose() {
     this._composed = true;
@@ -678,23 +735,48 @@ export class CameraRig {
 
   /* World-space sample of the hero's hull, taken once.
 
-     Only the finest LOD level is walked: `THREE.LOD` leaves every level visible
-     until its first `update()`, which has not happened yet at boot, and three
-     copies of the same hull would triple the work for an identical extent.
+     Only the finest LOD level is walked — three copies of the same hull would
+     triple the work for an identical extent — and **an LOD level's own
+     `visible` flag is ignored when we descend into it.**
 
-     Normals come back alongside the positions because the aim search needs to
-     know which way each sample faces — the framing solve only needs where the
-     hull is, but choosing between equally well-framed approaches needs to know
-     which of them the star is actually on. */
+     That last clause is the whole of a bug that cost this lane a round, and it
+     is the third instance of HANDOFF §5's "prove which code path actually
+     runs". The previous comment here asserted that `THREE.LOD` leaves every
+     level visible until its first `update()`, "which has not happened yet at
+     boot". Measured in the running game, that is false: by the time
+     `frameOpeningShot` fires, the rig is still at its default 2,600 m pose
+     pointing at the origin, the mothership is far enough away that `LOD.update()`
+     has already selected **level 1**, and `levels[0].object.visible` is
+     therefore `false`. The walk's own `visible === false` guard — there to skip
+     genuinely hidden decoration — then ate the finest level on its first line
+     and returned zero meshes. `_composeOpening` saw a null and silently
+     declined, so the hero framing never ran on any seed and the opening frame
+     was the spring defaults: pitch 0.42 rad exactly, elevation -24.1 degrees.
+
+     A hidden LOD level is a statement about what the renderer should draw this
+     frame. It is not a statement about where the hull is, and the framing solve
+     is asking the second question. So visibility gates ordinary children and
+     nothing else. */
   _samplePoints(root) {
     const out = [];
     const nrm = [];
     const budget = OPENING.samples;
     const meshes = [];
-    const walk = (node) => {
-      if (!node || node.visible === false) return;
+    /* `forced` is set only for an LOD level we chose deliberately: it suppresses
+       the visibility test for that subtree root, never for its children. */
+    const walk = (node, forced) => {
+      if (!node) return;
+      if (!forced && node.visible === false) return;
       if (node.isLOD && node.levels && node.levels.length) {
-        walk(node.levels[0].object);
+        /* Three keeps `levels` sorted by ascending distance, so [0] is the
+           finest — but take the minimum rather than trusting the ordering,
+           because picking the wrong level here is invisible: it still returns a
+           hull-shaped cloud, just the wrong size. */
+        let finest = node.levels[0];
+        for (let i = 1; i < node.levels.length; i++) {
+          if (node.levels[i].distance < finest.distance) finest = node.levels[i];
+        }
+        walk(finest.object, true);
         return;
       }
       if (node.isMesh && node.geometry && node.geometry.attributes &&
@@ -702,10 +784,13 @@ export class CameraRig {
         meshes.push(node);
       }
       const kids = node.children;
-      for (let i = 0; i < kids.length; i++) walk(kids[i]);
+      for (let i = 0; i < kids.length; i++) walk(kids[i], false);
     };
+    /* World matrices, not just visibility: an LOD level that has never been
+       drawn still needs its `matrixWorld` current before its vertices mean
+       anything. `updateWorldMatrix` descends regardless of visibility. */
     root.updateWorldMatrix(true, true);
-    walk(root);
+    walk(root, false);
     if (!meshes.length) return null;
 
     let total = 0;
@@ -736,6 +821,43 @@ export class CameraRig {
       }
     }
     if (out.length < 12) return null;
+    out.n = nrm;
+    return out;
+  }
+
+  /* Last resort: the hero as a sphere of its own bounding radius.
+
+     The opening shot must not be an all-or-nothing bet on walking somebody
+     else's scene graph. The LOD-visibility bug above is the second time a
+     lane-external change to how hulls are represented has silently switched
+     this solve off, and if hulls ever move fully into instanced batches the
+     hero's `Object3D` really will carry no geometry — the diagnosis this task
+     arrived with, which turned out to be wrong today and will be right the day
+     `mothership` leaves the UNBATCHED set.
+
+     With a sphere the *aim* is still fully solved: the lighting band, the
+     elevation band, the seeded phase and the off-centre offset are all
+     properties of the direction, not of the hull's outline. Only the fill is
+     approximate, and it is approximated conservatively — a sphere circumscribes
+     the hull, so the framing errs toward too far out rather than cropping.
+
+     Deterministic by construction: a Fibonacci lattice, no RNG, so this is
+     still reproducible per seed. */
+  _spherePoints(centre, radius) {
+    const n = 512;
+    const r = Math.max(1, radius || 0);
+    const out = [];
+    const nrm = [];
+    const golden = Math.PI * (3 - Math.sqrt(5));
+    for (let i = 0; i < n; i++) {
+      const y = 1 - (i / (n - 1)) * 2;
+      const rad = Math.sqrt(Math.max(0, 1 - y * y));
+      const th = golden * i;
+      const nx = Math.cos(th) * rad;
+      const nz = Math.sin(th) * rad;
+      out.push(centre.x + nx * r, centre.y + y * r, centre.z + nz * r);
+      nrm.push(nx, y, nz);
+    }
     out.n = nrm;
     return out;
   }
@@ -1016,16 +1138,29 @@ export class CameraRig {
   /* Compose the hero frame. Returns false if this is not that call, in which
      case `focusOn` carries on as it always did. */
   _composeOpening(point, instant) {
-    if (this._composed || !instant) return false;
+    /* Every bail-out records *why*. HANDOFF §5 has this project losing two
+       rounds to a correct function that was never reached, and this one made it
+       three: the solve was silently declining and the only evidence was a pitch
+       sitting on its spring default. A skip reason costs one string. */
+    if (this._composed) return this._skipOpening('already-composed');
+    if (!instant) return this._skipOpening('not-instant');
     const hero = this._hero();
-    if (!hero) return false;
+    if (!hero) return this._skipOpening('no-hero');
     /* Only the boot framing of the flagship itself qualifies. */
     const reach = Math.max(200, (hero.radius || 0) * 1.5);
-    if (_v3.copy(hero.position).sub(point).lengthSq() > reach * reach) return false;
+    if (_v3.copy(hero.position).sub(point).lengthSq() > reach * reach) {
+      return this._skipOpening('point-not-hero');
+    }
 
-    const pts = this._samplePoints(hero.object3D);
-    if (!pts) return false;
     const hullLength = (hero.def && hero.def.length) || (hero.radius || 900) * 2;
+    let pts = this._samplePoints(hero.object3D);
+    let sampledFrom = 'geometry';
+    if (!pts) {
+      /* Compose anyway. A degraded hero frame is a shot; a skipped one is the
+         spring defaults, and nobody notices those for six seeds running. */
+      pts = this._spherePoints(hero.position, hero.radius || hullLength * 0.5);
+      sampledFrom = 'sphere';
+    }
 
     const seed = (this.world && this.world.seed) || 1337;
     const rng = makeRng((seed ^ 0x5f3a91) >>> 0);
@@ -1054,6 +1189,7 @@ export class CameraRig {
     this._composeY = wantY - (s ? s.cy : 0);
     this._composeGain.snap(1);
     this._composed = true;
+    this._openingSkip = null;
 
     this._cancelTransition();
     this._follow = null;
@@ -1074,6 +1210,12 @@ export class CameraRig {
 
     this._openingReport = {
       seed,
+      /* Which subject the fill was solved against. Anything other than
+         'geometry' means the hull could not be walked and the framing is a
+         circumscribing approximation — worth seeing in a capture report rather
+         than discovering from a wide frame six months later. */
+      sampledFrom,
+      samples: pts.length / 3,
       yaw: aim.yaw,
       pitch: aim.pitch,
       distance: solved.dist,

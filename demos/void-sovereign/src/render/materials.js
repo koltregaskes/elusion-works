@@ -10,6 +10,7 @@ import {
   ATLAS,
   familyLayer,
   FAMILY_MACRO_SLOTS,
+  MACRO_TONE,
 } from './textures.js';
 
 /* Ship and structure materials.
@@ -126,7 +127,14 @@ uniform sampler2DArray uMacroOrm;
 uniform sampler2DArray uMacroEmis;
 uniform float uPlateLayer;
 uniform vec4  uMacroSlots;
+/* Column i is the material tone for slot i: rgb = albedo multiplier on the
+   plate layer, w = roughness offset. A mat4 times the one-hot selector below
+   is exactly "pick column i", branchless and in one instruction. */
+uniform mat4  uMacroTone;
+uniform vec4  uMacroMetal;
 uniform float uPlateTexels;
+uniform float uPlateCell;
+uniform vec2  uPlateJit;
 uniform float uBaseTiling;
 uniform float uMacroTiling;
 uniform float uBlendSharp;
@@ -163,6 +171,11 @@ varying vec3 vObjNormal;
 flat varying mat3 vObjToView;
 #ifdef VS_ATTRIBS
   varying vec3 vAttr;
+  /* x = hand-placed livery region, y = wear. Deliberately *not* folded into
+     vAttr: vAttr.y is a team index and this is a paint mask, and the whole
+     reason the region mask reached nothing for so long is that the two look
+     interchangeable and are not. See the note above vsLivery. */
+  varying vec2 vPaint;
 #endif
 
 vec3 vsAlbedo;
@@ -225,8 +238,29 @@ vec3 vsWhiten( vec3 c, vec3 hue, float k ) {
    to be as legible on a twenty-pixel frigate at five kilometres as it is from
    fifty metres, and a band that lives in a texture never is.
 
+   That property is also this function's failure mode, and it is what the
+   round-1 critique reported as "trim decals cut straight across geometry edges
+   without respecting the underlying panel breaks". A band that is a pure
+   function of position cannot know a panel break exists. Two things fix it and
+   neither gives up the scale-invariance:
+
+   - blazon is the hand-placed region mask the hull builders have been writing
+     all along (greeble.js::paintTeamMask -> aTeamMask). It is per-triangle,
+     so its boundary is a *part* boundary: a hangar face, an armour belt, a
+     stern plate. That is paint applied to a ship rather than to a mesh.
+   - the analytic bands are now stepped by plate cell rather than run straight.
+     The cell grid is at exactly the plate pitch the atlas is tiled at, so an
+     edge that jitters cell by cell lands on the panel rhythm instead of
+     slicing through it, and a fraction of plates take no paint at all — the
+     replacement panel nobody got round to repainting.
+
+   blazon is a paint mask and nothing else. It must never be routed into the
+   team index: the shader reads that as "which faction", and a player hull whose
+   painted regions resolved to team 1 would wear enemy amber on every one of
+   them. The two channels stay separate all the way through.
+
    Returns the primary mask; the accent output carries the secondary. */
-float vsLivery( vec3 P, vec3 GN, out float accent, out float runLight ) {
+float vsLivery( vec3 P, vec3 GN, float blazon, out float accent, out float runLight ) {
   float rho = max( length( P.xy ), 1e-3 );  // local girth radius, metres
   float ax = abs( P.x ) / rho;              // 0 on the centreline, ~1 at the beam
   float ay = P.y / rho;                     // -1 keel .. +1 spine
@@ -238,6 +272,17 @@ float vsLivery( vec3 P, vec3 GN, out float accent, out float runLight ) {
   float deck = smoothstep( 0.48, 0.80, abs( GN.y ) );
   float flank = smoothstep( 0.44, 0.78, abs( GN.x ) );
 
+  /* One cell per plate, in object metres. uPlateCell is the reciprocal of the
+     same plate size that sets uBaseTiling, so this grid and the plating in the
+     atlas share a pitch by construction — which is the only reason a stepped
+     edge reads as following a seam rather than as noise. */
+  vec3 cid = floor( P * uPlateCell + 0.37 );
+  float j0 = vsHash13( cid + 7.13 );
+  float j1 = vsHash13( cid * 1.37 - 3.11 );
+
+  float axj = ax + ( j0 - 0.5 ) * uPlateJit.x;
+  float ayj = ay + ( j1 - 0.5 ) * uPlateJit.x;
+
   /* Everything here runs the full length of the hull, because a longitudinal
      band is the only marking whose position does not have to be worked out
      from a hull length this material is never told. It is also the strongest
@@ -245,26 +290,43 @@ float vsLivery( vec3 P, vec3 GN, out float accent, out float runLight ) {
      in a way that a roundel or a stern flash never could. */
 
   // 1. dorsal and ventral spine stripe
-  float spine = deck * ( 1.0 - smoothstep( uSpine.x - uSpine.y, uSpine.x + uSpine.y, ax ) );
+  float spine = deck * ( 1.0 - smoothstep( uSpine.x - uSpine.y, uSpine.x + uSpine.y, axj ) );
 
   // 2. shoulder pinstripes, just outboard of the spine — a two-line livery
   //    reads as deliberate where a single band can read as a lighting accident
-  float sh = abs( ax - uShoulder.x );
+  float sh = abs( axj - uShoulder.x );
   float shoulder = deck * ( 1.0 - smoothstep( uShoulder.y * 0.6, uShoulder.y, sh ) );
 
   // 3. flank stripe at a fixed fraction of the hull's local height
   float side = flank
-    * ( 1.0 - smoothstep( uFlank.y - uFlank.z, uFlank.y + uFlank.z, abs( ay - uFlank.x ) ) );
+    * ( 1.0 - smoothstep( uFlank.y - uFlank.z, uFlank.y + uFlank.z, abs( ayj - uFlank.x ) ) );
 
   /* Running lights ride just outboard of the shoulder stripe as dashes spaced
-     by girth, which puts them exactly where the eye is already looking. */
+     by girth, which puts them exactly where the eye is already looking. They
+     take the unjittered axis on purpose — a light is a fitting bolted to the
+     hull, not paint sprayed on to it, so it has no reason to follow a seam. */
   float rim = 1.0 - smoothstep( 0.0, uShoulder.z, abs( ax - uShoulder.x - uShoulder.y * 1.9 ) );
   float ph = fract( P.z / max( rho * uRun, 1e-3 ) );
   float dash = smoothstep( 0.50, 0.55, ph ) * ( 1.0 - smoothstep( 0.70, 0.75, ph ) );
   runLight = deck * rim * dash;
 
-  accent = clamp( max( side, shoulder ), 0.0, 1.0 );
-  return clamp( spine, 0.0, 1.0 );
+  // A plate that never got its coat back. Applies to every painted mark alike.
+  float skip = 1.0 - step( uPlateJit.y, j1 );
+
+  /* The authored region joins the *secondary* channel, not the primary, and
+     that is a colour decision rather than a plumbing one. The secondary is the
+     deep teal / crimson-rust half of the faction pair; the primary is the
+     bright trim. A large area of bright trim does not read as a warship, it
+     reads as a toy — measured on the first pass of this change, where the
+     destroyer came back more cyan than grey. A broad dark painted block with
+     the bright stripe running across it is both the restrained option and the
+     one the reference genre actually uses.
+
+     The stripe keeps priority where the two overlap: HULL_BODY subtracts the
+     primary from the secondary, so a band crossing a blazon stays bright. */
+  float field = clamp( blazon, 0.0, 1.0 ) * skip;
+  accent = clamp( max( max( side, shoulder ) * skip, field ), 0.0, 1.0 );
+  return clamp( spine * skip, 0.0, 1.0 );
 }
 `;
 
@@ -298,19 +360,38 @@ const HULL_BODY = /* glsl */`
   float emisTeam = 0.0;
   float accentMask = 0.0;
 
+  /* Which of the four hull materials this fragment's *geometry* asked for.
+     aVariant is written per part by greeble.js from PLATE.HULL/ARMOUR/
+     PANEL/MECH, so the selector below is authored data, not a texture lookup —
+     which is why the boundary between two materials always falls on a part
+     boundary and never mid-plate. */
+  float fv = uVariant;
+#ifdef VS_ATTRIBS
+  fv = uVariant + vAttr.z;   // offset, not replacement — see the team note
+#endif
+  // Selected with steps rather than a dynamic index: HLSL codegen warns on
+  // dynamically indexed vectors and the branchless form is free anyway.
+  float si = mod( floor( fv ), 4.0 );
+  vec4 sel = vec4( step( si, 0.5 ),
+                   step( 0.5, si ) * step( si, 1.5 ),
+                   step( 1.5, si ) * step( si, 2.5 ),
+                   step( 2.5, si ) );
+
+  /* The macro layer only covers where it stamps, so on its own the four
+     materials would differ only inside a hatch or a sub-panel and the metres of
+     plating between them would stay one grey — which is what the round-1
+     critique measured. This is the same four materials as a tone on the plate
+     itself: bone superstructure, slate hull, dark matte belt armour, near-black
+     machinery with bare alloy under the wear. Applied before the macro mixes
+     over it, so the stamps land on top of a surface that already agrees with
+     them. */
+  vec4 matTone = uMacroTone * sel;   // not "tone" — that name is taken further down
+  albedo *= matTone.rgb;
+  rough = clamp( rough + matTone.w, 0.0, 1.0 );
+  metal = clamp( metal + dot( uMacroMetal, sel ), 0.0, 1.0 );
+
 #ifdef VS_MACRO
   {
-    float fv = uVariant;
-  #ifdef VS_ATTRIBS
-    fv = uVariant + vAttr.z;   // offset, not replacement — see the team note
-  #endif
-    // Selected with steps rather than a dynamic index: HLSL codegen warns on
-    // dynamically indexed vectors and the branchless form is free anyway.
-    float si = mod( floor( fv ), 4.0 );
-    vec4 sel = vec4( step( si, 0.5 ),
-                     step( 0.5, si ) * step( si, 1.5 ),
-                     step( 1.5, si ) * step( si, 2.5 ),
-                     step( 2.5, si ) );
     float ml = dot( uMacroSlots, sel );
 
     vec4 mA = vsTri( uMacroMap, P, W, uMacroTiling, ml );
@@ -339,6 +420,21 @@ const HULL_BODY = /* glsl */`
   #endif
   }
 #endif
+
+  /* Per-vertex wear, written by greeble.js::applyWear around thruster mouths,
+     along the leading edge and out at the extremities. It reached nothing until
+     now — the attribute was never declared — which is the other half of the
+     round-1 "no wear" finding. Shaped rather than used raw: the field carries a
+     ~0.1 noise floor across the whole hull and taking that literally sands the
+     entire ship evenly, which is the opposite of what wear is for. */
+  float wear = 0.0;
+#ifdef VS_ATTRIBS
+  wear = smoothstep( 0.10, 0.85, clamp( vPaint.y, 0.0, 1.0 ) );
+#endif
+  paintCover *= 1.0 - wear * 0.85;
+  albedo *= 1.0 + wear * 0.26;      // scoured back to the brighter alloy beneath
+  rough = clamp( rough + wear * 0.13, 0.0, 1.0 );
+  metal = clamp( metal + wear * 0.34, 0.0, 1.0 );
 
   /* Specular anti-aliasing. Mip-filtered normals flatten out with distance,
      which under-roughens the surface and makes a fleet of distant hulls
@@ -376,9 +472,21 @@ const HULL_BODY = /* glsl */`
   albedo *= mix( vec3( 1.0 ), vColor, 0.10 );
 #endif
 
+  /* The hand-placed livery regions. aTeamMask has been written by every hull
+     builder in ships/ since the fleet was authored and was reaching nothing,
+     because this material declared the attribute next to it under a different
+     name. It is a *paint* mask and is kept well away from team above; routing
+     it into the team index instead would have painted every marked region on a
+     player hull in enemy amber, which is the one failure the livery may not
+     have. */
+  float blazon = 0.0;
+#ifdef VS_ATTRIBS
+  blazon = clamp( vPaint.x, 0.0, 1.0 );
+#endif
+
   float runLight = 0.0;
   float accent = 0.0;
-  float livery = vsLivery( P, GN, accent, runLight );
+  float livery = vsLivery( P, GN, blazon, accent, runLight );
 
   /* Erode the paint edges. Multiplying a soft-edged mask by noise and
      re-thresholding leaves the middle of a band solid and chews the boundary,
@@ -572,10 +680,24 @@ varying vec3 vObjPos;
 varying vec3 vObjNormal;
 flat varying mat3 vObjToView;
 #ifdef VS_ATTRIBS
+  /* Two separate groups, and the split is load-bearing.
+
+     aDamage and aTeam are *per-instance* channels SIM may supply on a batch
+     to shift a subset of it off the material's own team and damage uniforms.
+     Nothing writes them today and an absent attribute reads 0, which is the
+     documented no-op.
+
+     aTeamMask, aVariant and aWear are *per-vertex* and every part built by
+     greeble.js writes all three. aVariant picks the hull material; aTeamMask
+     is the hand-placed livery region; aWear is scouring near thrusters and
+     leading edges. aTeamMask is emphatically not a team index — see vsLivery. */
   attribute float aDamage;
   attribute float aTeam;
   attribute float aVariant;
+  attribute float aTeamMask;
+  attribute float aWear;
   varying vec3 vAttr;
+  varying vec2 vPaint;
 #endif
 `;
 
@@ -593,6 +715,7 @@ vObjNormal = objectNormal;
 }
 #ifdef VS_ATTRIBS
   vAttr = vec3( aDamage, aTeam, aVariant );
+  vPaint = vec2( aTeamMask, aWear );
 #endif
 `;
 
@@ -631,6 +754,21 @@ function hullUniforms(team, family, opts) {
   const ps = plateSize(opts.length, tune);
   const baseTiling = 1 / (ATLAS.platesPerRegion * ps);
 
+  /* `slots` is indexed by `PLATE.*`; the shader indexes by the rotated slot
+     index `si = (uVariant + aVariant) mod 4`. Those coincide only while
+     uVariant is 0, which is the default below, and a caller that rotates the
+     whole ship's palette with `opts.variant` gets the tone table rotated with
+     the layer table because both are read through the same selector. */
+  const tone = new THREE.Matrix4();
+  const metalD = new THREE.Vector4();
+  const te = [];
+  for (let i = 0; i < 4; i++) {
+    const t = MACRO_TONE[slots[i]] || MACRO_TONE[0];
+    te.push(t.tint[0], t.tint[1], t.tint[2], t.rough);   // column i
+    metalD.setComponent(i, t.metal);
+  }
+  tone.fromArray(te);   // Matrix4.fromArray is column-major, which is the layout above
+
   const a = TEAM_COLORS[0];
   const b = TEAM_COLORS[1];
 
@@ -645,7 +783,13 @@ function hullUniforms(team, family, opts) {
     uMacroEmis: { value: atlas.macroEmissiveMap },
     uPlateLayer: { value: familyLayer(family) },
     uMacroSlots: { value: new THREE.Vector4(slots[0], slots[1], slots[2], slots[3]) },
+    uMacroTone: { value: tone },
+    uMacroMetal: { value: metalD },
     uPlateTexels: { value: atlas.size },
+    // One livery cell per plate. Same pitch as the plating, by construction.
+    uPlateCell: { value: 1 / ps },
+    // (band jitter in girth units, fraction of plates left unpainted)
+    uPlateJit: { value: new THREE.Vector2(0.075, 0.86) },
     uBaseTiling: { value: baseTiling },
     uMacroTiling: { value: baseTiling / ATLAS.macroSpan },
     uBlendSharp: { value: 5.0 },
@@ -659,7 +803,15 @@ function hullUniforms(team, family, opts) {
     uWindowColour: { value: new THREE.Color(0xffd9ac) },
     uHotColour: { value: new THREE.Color(0xff5a1e) },
     uTeam: { value: team === 1 ? 1 : 0 },
-    uVariant: { value: opts.variant === undefined ? (team * 2 + 1) : opts.variant },
+    /* Zero by default, so `si` is exactly the `PLATE.*` value the geometry
+       asked for and every family's slot table can be read in plain semantic
+       order. It used to default to `team * 2 + 1`, which rotated the mapping
+       per faction: the enemy's belt armour was drawn with the layer meant for
+       superstructure skin and vice versa. Faction reads off trim colour, engine
+       colour and running lights — never off which macro layer the armour belt
+       happens to be using — so there was nothing to buy with the rotation and
+       four correct material assignments to lose. */
+    uVariant: { value: opts.variant === undefined ? 0 : opts.variant },
     uTrimStrength: { value: (opts.trim === undefined ? 1 : opts.trim) * tune.trim },
     uLiveryGain: { value: opts.livery === undefined ? 1 : opts.livery },
     uEmissiveGain: { value: opts.emissive === undefined ? tune.emissive : opts.emissive },
@@ -805,9 +957,18 @@ export function getHullMaterial(team, family, opts) {
 }
 
 /**
- * Instanced twin of `getHullMaterial`. Reads `instanceColor` plus the optional
- * per-instance float attributes `aDamage`, `aTeam` and `aVariant`; all three
- * default to 0 when the geometry does not supply them.
+ * Instanced twin of `getHullMaterial`. Reads `instanceColor` plus five float
+ * attributes, all of which default to 0 when the geometry does not supply them.
+ *
+ * Per-instance, supplied by SIM on a mixed batch:
+ *   `aDamage`   additional damage on top of `opts.damage`
+ *   `aTeam`     shifts this instance off the material's own team
+ *
+ * Per-vertex, written by every part greeble.js builds:
+ *   `aVariant`  `PLATE.HULL|ARMOUR|PANEL|MECH` — picks the hull material
+ *   `aTeamMask` hand-placed livery region (`paintTeamMask`). A paint mask, not
+ *               a team index: it never touches faction colour selection.
+ *   `aWear`     scouring near thrusters, leading edges and extremities
  */
 export function getInstancedHullMaterial(team, family, opts) {
   if (!store) throw new Error('materials: initMaterials() must run first');
