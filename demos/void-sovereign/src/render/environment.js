@@ -59,6 +59,102 @@ const QUALITY = {
    has to stay constant across seeds is how thick a seam looks, not how many
    sprites exist. */
 
+/* ===========================================================================
+   THE LIGHTING CONTRACT (ARCHITECTURE §3.2: "One key light. Hard terminator,
+   deep shadow side — never flat.")
+
+   Round 2's finding was that two seeds of the same game at the same tick
+   "look like two different products — one flat and bright, one dark and
+   silhouetted". The diagnosis that produced these numbers, measured rather
+   than reasoned, is in three parts.
+
+   1 · THE KEY WAS NEVER THE PROBLEM. An ablation run
+       (`.local/laneL-ablate.mjs`, output `laneL-ablate-BEFORE.json`) rendered
+       the boot frame on two seeds with each non-key term removed in turn. Two
+       crops settle it: with the whole rig on, seed 4242's mothership is flat
+       mid-grey across every face; with the key alone it has a hard terminator
+       and a shadow side that falls to near black. The key was already doing
+       §3.2's job and the fill was cancelling it.
+
+   2 · NO SINGLE FILL DID IT EITHER. Removing the hemisphere, the rim, the
+       ambient, the sky probe or the fog one at a time each moved the hull by
+       two or three encoded units. It is their SUM against the key that
+       matters, which is why every number below is written as a fraction of
+       the key and the sum is stated. A swept scalar on that sum was read by
+       looking at hull crops: 1.00 flat, 0.45 a terminator appears, 0.22
+       right, 0.10 too far — the shadow side goes black and the form in it is
+       lost, which is the other failure mode and is the one the previous round
+       was correcting when it overshot.
+
+   3 · THE RATIO WAS DRIFTING WITH THE PALETTE. Every intensity below
+       multiplies a colour handed back by the sky bake, and those colours are
+       normalised on their BRIGHTEST CHANNEL, not on luminance. A blue-dominant
+       sky and a green-dominant one at the same "intensity" therefore deliver
+       different amounts of light, because Rec.709 weights green 0.7152 and
+       blue 0.0722. So every lighting colour is renormalised to unit luminance
+       here (`unitLuminance`) and the constant carries the whole radiometric
+       weight. A seed may change the palette; it may not change the level.
+
+   Ratios, not absolutes — only KEY_IRRADIANCE is a number about brightness,
+   and the exposure meter has the final say on that anyway:
+
+     key                        1.0000
+     fill      (hemisphere)     0.0160
+     rim       (counter-key)    0.0110
+     ambient                    0.0028
+     hull bounce, diffuse       0.0075
+     hull bounce, Fresnel rim   0.0190
+                                ------
+     everything that is not the key  0.0563   ->  key : fill = 17.8 : 1
+
+   The sky probe is deliberately outside that sum: `environmentIntensity`
+   multiplies the baked map's own radiance rather than a unit colour, so it is
+   not commensurable with the rest and is pinned separately — see
+   `IBL_REFERENCE_SKY_LUMINANCE`. Its irradiance-equivalent share is reported
+   by `lightingReport()` rather than asserted here.
+
+   `lightingReport()` reads all of this back off the live objects, so the
+   claim is checkable in the running game instead of being a comment that
+   states a runtime fact (HANDOFF §5).
+   =========================================================================== */
+const KEY_IRRADIANCE = 6.0;
+const FILL_OVER_KEY = 0.0160;
+const RIM_OVER_KEY = 0.0110;
+const AMBIENT_OVER_KEY = 0.0028;
+const BOUNCE_DIFFUSE_OVER_KEY = 0.0075;
+const BOUNCE_RIM_OVER_KEY = 0.0190;
+const NON_KEY_TOTAL_OVER_KEY =
+  FILL_OVER_KEY + RIM_OVER_KEY + AMBIENT_OVER_KEY + BOUNCE_DIFFUSE_OVER_KEY + BOUNCE_RIM_OVER_KEY;
+
+/* The hemisphere's ground half, as a fraction of its sky half. A hemisphere
+   light is the one term with no horizontal direction at all — it lights a
+   hull by `normal.y` alone — so it is the most efficient terminator-killer in
+   the rig per unit of brightness, and it is kept low for that reason rather
+   than because the gas below the battle is dim. */
+const FILL_GROUND_OVER_SKY = 0.45;
+
+/* The sky probe's intensity is a fraction of the key AT A REFERENCE SKY.
+   `environmentIntensity` scales the baked map, whose mean luminance is itself
+   seeded: measured across eight seeds it ran 0.0111 to 0.0160, a 1.44x swing
+   on a term the contract has to hold still. Dividing the measured luminance
+   out is what makes a bright nebula tint the shadow side without also raising
+   it. The reference is the mean of that measured set, so a median seed lands
+   on the same intensity the tuned build used. */
+const IBL_REFERENCE_SKY_LUMINANCE = 0.0145;
+const IBL_INTENSITY_OVER_KEY = 0.0092;
+
+/* Rec.709 luminance, and a hue-preserving renormalisation of a lighting
+   colour to unit luminance. The guard matters: a lighting colour that has
+   been clamped toward a single very dark channel can come back with a
+   luminance near zero, and dividing by it would make one seed's fill a
+   thousand times the key. */
+const luminance709 = (c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+function unitLuminance(colour) {
+  const l = luminance709(colour);
+  if (!(l > 1e-3)) return colour.setRGB(1, 1, 1);
+  return colour.multiplyScalar(1 / l);
+}
+
 /* Marks around a capture boundary.
 
    Twenty-four, and the count is a legibility decision rather than a density
@@ -346,10 +442,21 @@ export class Environment {
        sRGB. That is a hull disappearing into the void rather than turning away
        from the light, and on the four darkest seeds it took the *median* down
        with it. The floor wanted is 0.06-0.09 — read as black at a glance, but
-       with the form still legible in it. */
+       with the form still legible in it.
+
+       The intensity is PINNED AGAINST THE MAP'S OWN MEASURED LUMINANCE rather
+       than fixed. This is the one fill whose radiance is itself a function of
+       the seed — it *is* the nebula — so a constant `environmentIntensity`
+       hands a bright seed more bounce than a dark one on a term the contract
+       exists to hold still. Measured across eight seeds the map's mean
+       luminance ran 0.0111 to 0.0160; dividing it out is what lets a bright
+       nebula tint the shadow side without also raising it. */
     engine.scene.environment = this.sky.texture;
+    const probeLum = Math.max(1e-4, this.sky.averageLuminance || IBL_REFERENCE_SKY_LUMINANCE);
     engine.scene.environmentIntensity =
-      this.options.environmentIntensity !== undefined ? this.options.environmentIntensity : 0.25;
+      this.options.environmentIntensity !== undefined
+        ? this.options.environmentIntensity
+        : KEY_IRRADIANCE * IBL_INTENSITY_OVER_KEY * (IBL_REFERENCE_SKY_LUMINANCE / probeLum);
 
     /* Depth haze. Deliberately a very dark, nebula-tinted colour: fog that
        tends toward grey turns the void into soup, fog that tends toward a dark
@@ -378,29 +485,22 @@ export class Environment {
     const { engine, sky } = this;
     const r = this.rng;
 
-    /* One hard key star and a nebula-tinted fill (§3.2).
+    /* One hard key star and a nebula-tinted fill (§3.2). Every number here is
+       the contract at the top of this file; nothing in this method chooses a
+       level. What it does choose is hue, which is the one thing the seed is
+       allowed to move.
 
-       The ratio is the whole game here. An earlier balance ran the key at 3.15
-       against roughly 1.0 of combined fill, rim, ambient and IBL — a little
-       over 3:1 — and at 3:1 there is no terminator on anything. Every hull
-       came out evenly lit, which is exactly the flat CG look the visual
-       direction exists to prevent. This runs closer to 12:1 of key against
-       everything else, so the lit side is bright, the shadow side falls to a
-       dark nebula-coloured bounce, and the edge between them is a hard line.
-
-       The fill is tinted and *dim* rather than neutral and strong. A saturated
-       fill at low intensity leaves a grey hull grey while still telling you
-       what colour the sky behind it is; a bright one repaints the fleet.
-
-       The numbers below are the second half of the opening-luminance fix. The
-       key is up a little and the bounce is up rather more, which raises the
-       shadow floor toward 0.06-0.09 sRGB and — because the seeds that were
-       dark were dark in their *shadow* — compresses the spread across seeds
-       without touching the terminator, whose ratio is set by key-over-fill and
-       is roughly preserved (5.2 against ~1.15 of everything else, near enough
-       4.5:1 in linear light, which is 2.0-2.5 stops of encoded separation). */
-    const keyColour = sky.keyColour.clone();
-    const key = new THREE.DirectionalLight(keyColour, this.options.keyIntensity || 5.2);
+       Every colour goes through `unitLuminance` first. The sky bake hands back
+       colours normalised on their brightest channel, so "intensity 0.42" meant
+       0.42 * L(colour) and L ran 0.75 to 0.99 across the seeds measured — a
+       third of a stop of drift in the fill alone, on the term whose whole job
+       is to be a fixed fraction of the key. After this call the constant is
+       the weight and the colour is only a tint. */
+    const keyColour = unitLuminance(sky.keyColour.clone());
+    const key = new THREE.DirectionalLight(
+      keyColour,
+      this.options.keyIntensity || KEY_IRRADIANCE,
+    );
     key.position.copy(this.sunDirection).multiplyScalar(50000);
     key.target.position.set(0, 0, 0);
     key.castShadow = false; // a 60 km ortho frustum buys nothing but texels
@@ -408,14 +508,23 @@ export class Environment {
     engine.scene.add(key);
     engine.scene.add(key.target);
     this.keyLight = key;
+    const keyIntensity = key.intensity;
 
     /* Hemisphere fill tinted top-and-bottom by the two ends of the sky: bright
        nebula overhead, deep gas below. This is what stops the shadow side of a
-       hull reading as a hole punched in the frame — and no more than that. */
+       hull reading as a hole punched in the frame — and no more than that.
+
+       It is also the rig's most dangerous term, because it has no horizontal
+       direction: it lights by `normal.y` alone, so it adds the same amount to
+       the face turned toward the key and the face turned away from it. At the
+       previous level it was the single largest contributor to a hull that read
+       the same value all the way across. */
     const hemi = new THREE.HemisphereLight(
-      sky.nebulaColour.clone(),
-      sky.fillColour.clone().multiplyScalar(0.45),
-      this.options.fillIntensity || 0.42,
+      unitLuminance(sky.nebulaColour.clone()),
+      unitLuminance(sky.fillColour.clone()).multiplyScalar(FILL_GROUND_OVER_SKY),
+      this.options.fillIntensity !== undefined
+        ? this.options.fillIntensity
+        : keyIntensity * FILL_OVER_KEY,
     );
     hemi.position.set(0, 1, 0);
     hemi.name = 'env:fill';
@@ -423,15 +532,21 @@ export class Environment {
     this.fillLight = hemi;
 
     /* A cold rim from roughly the opposite side. One key light, one bounce —
-       never a second key, so this stays well under a tenth of the key. */
+       never a second key. This is the term with the most power to undo §3.2
+       per unit of brightness, because unlike the hemisphere it points
+       *directly at the shadow side*: whatever it adds lands exactly where the
+       terminator is supposed to be taking light away. It buys a cold edge, and
+       at this level that is all it buys. */
     const rimDir = this.sunDirection
       .clone()
       .negate()
       .add(new THREE.Vector3(r.gaussian(0, 0.4), r.gaussian(0, 0.3), r.gaussian(0, 0.4)))
       .normalize();
     const rim = new THREE.DirectionalLight(
-      sky.nebulaColour.clone(),
-      this.options.rimIntensity || 0.30,
+      unitLuminance(sky.nebulaColour.clone()),
+      this.options.rimIntensity !== undefined
+        ? this.options.rimIntensity
+        : keyIntensity * RIM_OVER_KEY,
     );
     rim.position.copy(rimDir).multiplyScalar(50000);
     rim.name = 'env:rim';
@@ -439,7 +554,10 @@ export class Environment {
     engine.scene.add(rim.target);
     this.rimLight = rim;
 
-    const amb = new THREE.AmbientLight(sky.ambientColour.clone(), 0.075);
+    const amb = new THREE.AmbientLight(
+      unitLuminance(sky.ambientColour.clone()),
+      keyIntensity * AMBIENT_OVER_KEY,
+    );
     amb.name = 'env:ambient';
     engine.scene.add(amb);
     this.ambientLight = amb;
@@ -448,17 +566,97 @@ export class Environment {
 
     /* Hand the same sky to the hull shader. Without this the whole fleet is
        lit by whatever bounce colour [MAT] shipped as a placeholder, no matter
-       what the nebula behind it is doing. */
+       what the nebula behind it is doing.
+
+       These two weights belong to the contract as much as the scene lights do,
+       and the ablation found them to be the largest single share of it: zero
+       them on their own and seed 4242's mothership collapses to its running
+       lights, which is how much of that hull was being drawn by the bounce
+       rather than by the star. [MAT]'s diffuse bounce term is `mix(fill, key,
+       normal.y * 0.5 + 0.5)` — another pure up-down hemisphere, so like
+       `env:fill` it adds equally either side of the terminator. The Fresnel
+       rim is the better-behaved of the two (it only fires at grazing angles)
+       and is allowed correspondingly more.
+
+       The bounce colours are luminance-normalised for the same reason the
+       scene lights are, and [MAT] clamps their chroma harder than the scene
+       lights' because they multiply into the hull's own response where they
+       compete with team colour directly. */
+    this.hullBounce = {
+      ambient:
+        this.options.hullAmbient !== undefined
+          ? this.options.hullAmbient
+          : keyIntensity * BOUNCE_DIFFUSE_OVER_KEY,
+      rim:
+        this.options.hullRim !== undefined
+          ? this.options.hullRim
+          : keyIntensity * BOUNCE_RIM_OVER_KEY,
+    };
     try {
       setNebulaBounce(
-        sky.bounceKey || sky.nebulaColour,
-        sky.bounceFill || sky.fillColour,
-        this.options.hullAmbient !== undefined ? this.options.hullAmbient : 0.20,
-        this.options.hullRim !== undefined ? this.options.hullRim : 0.52,
+        unitLuminance((sky.bounceKey || sky.nebulaColour).clone()),
+        unitLuminance((sky.bounceFill || sky.fillColour).clone()),
+        this.hullBounce.ambient,
+        this.hullBounce.rim,
       );
     } catch (err) {
       /* [MAT] may not have initialised; its own defaults are perfectly usable. */
     }
+  }
+
+  /**
+   * Read the lighting contract back off the live rig.
+   *
+   * Not a restatement of the constants: every number here is fetched from the
+   * object that is actually in the scene, so a caller that changed an
+   * intensity, or an `options` override, shows up. HANDOFF §5 — a comment that
+   * asserts a runtime fact goes stale like a measurement, so the acceptance
+   * harness reads this rather than trusting the block at the top of the file.
+   *
+   * `iblIrradianceEquivalent` is the only estimated figure: an environment map
+   * delivers roughly `pi * meanRadiance * intensity` of irradiance to a
+   * surface facing it, which is what makes it comparable with a light's
+   * `intensity * luminance(colour)`. It is reported separately and labelled
+   * because it is an estimate and the others are not.
+   *
+   * @returns {object}
+   */
+  lightingReport() {
+    const L = luminance709;
+    const w = (light) => (light ? light.intensity * L(light.color) : 0);
+    const keyW = w(this.keyLight);
+    const fillW = w(this.fillLight);
+    const rimW = w(this.rimLight);
+    const ambW = w(this.ambientLight);
+    const bounce = this.hullBounce || { ambient: 0, rim: 0 };
+    const skyLum = (this.sky && this.sky.averageLuminance) || 0;
+    const iblIntensity = this.engine.scene.environmentIntensity || 0;
+    const iblW = Math.PI * skyLum * iblIntensity;
+    const nonKey = fillW + rimW + ambW + bounce.ambient + bounce.rim;
+    const r6 = (v) => +v.toFixed(6);
+    return {
+      keyIrradiance: r6(keyW),
+      fillOverKey: r6(fillW / keyW),
+      rimOverKey: r6(rimW / keyW),
+      ambientOverKey: r6(ambW / keyW),
+      bounceDiffuseOverKey: r6(bounce.ambient / keyW),
+      bounceRimOverKey: r6(bounce.rim / keyW),
+      nonKeyOverKey: r6(nonKey / keyW),
+      keyOverFill: +(keyW / Math.max(1e-9, nonKey)).toFixed(3),
+      contractNonKeyOverKey: r6(NON_KEY_TOTAL_OVER_KEY),
+      iblIntensity: r6(iblIntensity),
+      iblIrradianceEquivalent: r6(iblW),
+      iblOverKeyEstimated: r6(iblW / keyW),
+      skyAverageLuminance: r6(skyLum),
+      /* The whole point: these must not move with the seed. A colour whose
+         luminance is not 1 here is a colour that escaped `unitLuminance`. */
+      colourLuminance: {
+        key: r6(L(this.keyLight.color)),
+        fill: r6(L(this.fillLight.color)),
+        rim: r6(L(this.rimLight.color)),
+        ambient: r6(L(this.ambientLight.color)),
+      },
+    };
   }
 
   get lights() {
@@ -647,9 +845,21 @@ export class Environment {
     const bodyMat = new THREE.ShaderMaterial({
       uniforms: {
         uSunDir: { value: this.sunDirection.clone() },
-        // Same direction expressed in the group's own frame, refreshed as the
-        // planet turns, so the ring shadow tracks the light instead of the mesh.
-        uSunLocal: { value: this.sunDirection.clone() },
+        /* The same direction expressed in the GROUP'S OWN FRAME, refreshed as
+           the planet turns. Both the ring shadow and the terminator are
+           computed against object-space positions, so this is the vector they
+           need; uSunDir remains for the terms that work in world space.
+
+           Seeded correctly here rather than left at the world vector and
+           corrected on the first update: the boot frame is the one the critic
+           looks at, and a uniform that is only right from frame two is a
+           uniform that is wrong in the hero shot. */
+        uSunLocal: {
+          value: this.sunDirection
+            .clone()
+            .applyQuaternion(tiltQ.clone().invert())
+            .normalize(),
+        },
         uSunColour: { value: new THREE.Color().copy(sunColour) },
         uFill: { value: fill },
         uSpin: { value: 0 },
@@ -721,7 +931,30 @@ export class Environment {
 
           vec3 N = lp;
           vec3 V = normalize(cameraPosition - vWorld);
-          float ndl = dot(N, uSunDir);
+          /* uSunLocal, NOT uSunDir. N is the OBJECT-space normal — vLocal is
+             normalize(position), before the model matrix — so pairing it with
+             a world-space light put the terminator in the wrong frame by
+             exactly the group's own rotation. That rotation is not small: the
+             axial tilt is seeded over 0.10 to 0.55 rad, and the body also
+             spins, so the disagreement was both seed-dependent and drifting
+             during a match.
+
+             This is the defect round 2 reported as "the planet's terminator
+             says the key is low-right while the mothership is lit almost
+             frontally". Measured by fitting the light direction back out of
+             the planet's own pixels across eight seeds, in
+             .local/laneL-light.mjs, the angle between the fitted terminator
+             and the key ran 9.9 to 38.9 degrees on seven of them, which is
+             the tilt range. The fix costs nothing: uSunLocal is the same
+             vector expressed in the group's frame and was already being
+             maintained every frame for the ring shadow.
+
+             No backticks in this comment, deliberately. HANDOFF section 5:
+             a backtick inside a GLSL template literal has silently truncated
+             a shader eight times on this project, and it presents as a parse
+             error in an unrelated module naming an identifier that looks like
+             English prose. It caught this very edit. */
+          float ndl = dot(N, uSunLocal);
           float ndv = max(dot(N, V), 0.0);
 
           /* Terminator with real atmospheric wrap, then a night side that is
