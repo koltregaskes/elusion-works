@@ -1011,8 +1011,21 @@ export class EngineFX {
            constrained to stay inside the lip flange — a soft glow that spills a
            little past the flange is what hides the aperture rather than ringing
            it. It stays close to the bell so the drive is the size of its own
-           hardware at close range. */
-        const wid = r * (0.95 + 0.25 * throttle);
+           hardware at close range.
+
+           The floor here is set by the flange, not by taste. The lip is a ring
+           from 0.90 to 1.12 radii on the mouth plane, so a ribbon narrower than
+           1.12 leaves the rim standing proud of its own glow and the aperture
+           reads as a lit circle with a dark arc on the lit side. The previous
+           0.95 + 0.25t did clear it at full throttle (1.20) and did not at idle
+           (1.00) — which is why the rings survived in every hero frame, where
+           ships sit at idle, while looking fixed in capture frames of a fleet
+           under way. Measured at 7x on laneH-hero-destroyer: six bores, six
+           dark crescents, all on the flange side.
+
+           1.30 at idle covers the flange by 0.18 radii, which is more than the
+           lip is thick, so the rim has nothing to catch on from any angle. */
+        const wid = r * (1.30 + 0.20 * throttle);
         const seed = (entry.seed + i * 0.317) % 1;
 
         const o = n * E_STRIDE;
