@@ -103,6 +103,32 @@ Six lanes landed at once. These cost more than they bought:
    74 renders as a dozen glyphs and two flares. Minimum screen presence per ship
    via oriented impostors at a floor size, impact flashes that survive at 6 px,
    and per-hull damage state so there is something to read.
+
+   **Diagnosed 29 Sep, before any fix — the tiering is not the problem.**
+   `src/ui/select.js` draws its marker layer from `for (const id of sel)`: it
+   covers **only the current selection**. Unselected friendlies get nothing, and
+   hostiles get at most `MAX_RETICLES = 14`. Against 74 hostiles that is exactly
+   the "about a dozen glyphs" the critic counted — the marks were never missing,
+   they were never drawn.
+
+   So extending the glyph tier downward, which is what an earlier brief of mine
+   asked for, would not have moved this number at all: the ships that go
+   unmarked are not falling below `GLYPH_PX`, they are outside the loop. That
+   brief was wrong and is recorded here so the next lane does not inherit it.
+
+   The critic's own words point at the real lever — "an oriented impostor at a
+   floor size so the class silhouette still reads when the mesh does not". That
+   is a render-side minimum screen size for the hull in `src/ships/index.js`,
+   not an overlay. Note the constraint first: HANDOFF §5 records that LOD
+   thresholds are multiples of hull length and are correct, and that a previous
+   agent was wrong to "fix" them.
+
+   Whoever takes this should also decide deliberately, rather than by default,
+   whether the 3D view *should* mark every contact. The Sensors Manager on Tab
+   is the full-fleet strategic read and is the genre convention; blanketing the
+   main view in 98 glyphs risks the confetti §3.8 forbids. The honest options
+   are a render-side impostor floor, a weighted contact mark for engaged and
+   damaged hulls only, or both.
 5. **Stage the deaths.** Stop resolving an explosion as a clump of coincident
    billboards. Capital: internal flash through hull gaps, 1–3 s of directional
    venting along the axes already computed, a break at a structural line, then
