@@ -47,6 +47,54 @@ const MAX_PIPS = 320;
 const MAX_RETICLES = 14;
 const MAX_ORDERS = 16;
 
+/* Weighted contact marks — round 2 fix 4, and the reason this layer exists.
+
+   Every pool above draws from `ctx.selection`. That is the whole bug the
+   critic photographed: in a frame of 24 hulls against 74, the only contacts
+   with any mark at all were the ones we had selected, plus at most fourteen
+   reticles. The unmarked ships were never below `GLYPH_PX` — they were never
+   in the loop. Lowering a threshold would have moved nothing.
+
+   The obvious repair is to mark all 98. That is the wrong one. The Sensors
+   Manager on Tab is already the full-fleet strategic read, and §3.8 says the
+   UI sits *on* the void rather than boxing it in — 98 icons over the main view
+   is the confetti that rule forbids, and round 2 already recorded one fix that
+   made the HUD louder and cost more than it bought.
+
+   So a contact earns a mark by mattering, and the density of marks *is* the
+   battle: where nothing is happening the void stays empty, and where the
+   shooting is the frame fills up. Four earners — firing, being fired on,
+   recently hit, or a capital — because those are the four things that answer
+   "who is winning, what is shooting what, what is about to die".
+
+   Against the three selection tiers the mark is deliberately the quietest
+   thing on screen: a hairline diamond, turned 45° so it cannot be confused
+   with the pip's axis-aligned square or the bracket's corner ticks, at a
+   third of a pip's opacity until something happens to it.
+
+   Two signals ride on top. Team hue answers "who" — cyan ours, amber theirs,
+   never red for a hostile, the same rule the pip and the bracket follow. A
+   mark that goes solid and grows answers "about to die", for either team, with
+   ours also turning red. That is the one-second read the critic asked for. */
+const CONTACT_EARN = 3;
+/* A hull already this many pixels of projected radius reads for itself, so it
+   has to be doing something — firing, taking fire, or dying — before it earns
+   a mark on top. Without this a parked mothership that fills a third of the
+   frame wears a 12 px diamond, which is the HUD talking over the picture. */
+const CONTACT_SELF_EVIDENT_PX = 16;
+const CONTACT_EARN_BIG = 6;
+const MAX_CONTACTS = 140;
+/* Mass buckets: fighters/collectors, line ships, capitals. Three pools rather
+   than one so the element size is baked in at creation and the draw path stays
+   transform-and-opacity only — the same reason the bracket never scales. */
+const CONTACT_PX = [6, 8, 12];
+const CONTACT_CAP = [96, 64, 24];
+const CONTACT_CAND = 512;
+/* The weight pass walks every entity, so it runs on a timer rather than per
+   frame; positions still update every frame off the resulting list. */
+const CONTACT_REFRESH = 0.1;
+const CONTACT_DYING = 0.3;
+
 /* Past this many selected hulls, individual brackets stop helping: you get one
    bracket around the whole formation and a pip per ship. */
 const GROUP_AT = 140;
@@ -73,6 +121,18 @@ const GLYPH_MAX_K = 1.3;
 /* Half a turn to face down the leg, plus 45° because a two-border corner tick
    points up-right in its own frame. Precomputed: it is written every frame. */
 const ARROW_TURN = (Math.PI + Math.PI / 4).toFixed(4);
+
+/** Hoisted so the per-refresh sort does not allocate a closure. */
+function byWeight(a, b) {
+  return b.w - a.w;
+}
+
+/** Which contact-mark pool a role draws from. Mass, not threat. */
+function massBucket(role) {
+  if (role === 'capital' || role === 'structure') return 2;
+  if (role === 'frigate' || role === 'support') return 1;
+  return 0;
+}
 
 const ROLE_ORDER = {
   structure: 0,
@@ -532,9 +592,17 @@ export class WorldMarkers {
     this.pips = [];
     this.reticles = [];
     this.orders = [];
+    this.contacts = [[], [], []];
     this._hits = new Map(); // entityId -> seconds of remaining "under fire" flash
     this._spin = 0;
     this._hidden = false;
+    /* Contact-mark working set. All three are reused: the pool never shrinks,
+       the list is a re-sorted view of it, and the set is cleared in place. */
+    this._candPool = [];
+    this._cand = [];
+    this._targeted = new Set();
+    this._reticled = new Set();
+    this._contactAcc = CONTACT_REFRESH;
 
     const el = document.createElement('div');
     el.className = 'vsh-layer vsh-layer--world';
@@ -543,6 +611,12 @@ export class WorldMarkers {
 
     // Pips paint under everything, glyphs under brackets, so the hosts are
     // created in that order and DOM order settles the stack without z-index.
+    // Contact marks go under even the pips: a marked contact that is also
+    // selected keeps its selection marker on top, which is the hierarchy.
+    this.contactHost = document.createElement('div');
+    this.contactHost.className = 'vsh-layer__contacts';
+    this.contactHost.style.cssText = 'position:absolute;inset:0;pointer-events:none';
+    el.appendChild(this.contactHost);
     this.pipHost = document.createElement('div');
     this.pipHost.className = 'vsh-layer__pips';
     el.appendChild(this.pipHost);
@@ -645,6 +719,38 @@ export class WorldMarkers {
       this.pips[i] = p;
     }
     return p;
+  }
+
+  /* An unselected contact that has earned a mark. Styled here rather than in
+     `hud.css` because the size is what distinguishes the three pools, and a
+     pool whose geometry is baked in at creation never writes anything but
+     `transform`, `opacity`, `color` and `background` again. */
+  _contactMark(bucket, i) {
+    const pool = this.contacts[bucket];
+    let c = pool[i];
+    if (!c) {
+      const node = document.createElement('i');
+      node.className = 'vsh-cmk';
+      const px = CONTACT_PX[bucket];
+      const off = (-px / 2).toFixed(1);
+      /* The dark ring is not decoration. A bare amber hairline sits on top of
+         an amber engine bloom and an amber tracer, and at six pixels it simply
+         disappears into them — the first pass of this layer was legible on the
+         void and invisible in the one place it had to work. One crisp dark
+         pixel outside the stroke, plus a soft drop, separates the mark from
+         whatever it is over. It is the same reason the class glyph carries a
+         drop-shadow, done with a shadow rather than a filter because up to a
+         hundred of these move every frame. */
+      node.style.cssText =
+        `position:absolute;left:${off}px;top:${off}px;width:${px}px;height:${px}px;` +
+        'border:1px solid currentColor;background:transparent;opacity:0;' +
+        'box-shadow:0 0 0 1px rgba(2,6,11,0.85),0 0 4px 1px rgba(2,6,11,0.6);' +
+        'transition:opacity 0.16s linear';
+      this.contactHost.appendChild(node);
+      c = { el: node, live: false, hue: '', dying: null, a: -1 };
+      pool[i] = c;
+    }
+    return c;
   }
 
   /* A target lock is the same corner-tick language as a selection bracket,
@@ -848,7 +954,155 @@ export class WorldMarkers {
     for (let i = nPip; i < this.pips.length; i++) this._parkPip(this.pips[i]);
 
     this._drawReticles(proj);
+
+    this._contactAcc += dt;
+    if (this._contactAcc >= CONTACT_REFRESH) {
+      this._contactAcc = 0;
+      this._weighContacts();
+    }
+    this._drawContacts(proj);
+
     this._drawOrders(dt, proj);
+  }
+
+  /* ------------------------------------------------------- contact marks */
+
+  /* What a contact has to do to be worth a mark. The thresholds are set so
+     that firing, being fired on, or being a capital each earn one on their
+     own, and a scratch does not: a fleet in transit draws nothing, a fleet in
+     contact draws almost entirely. */
+  _weigh(e, targeted) {
+    let w = 0;
+    if (this._hits.has(e.id)) w += 4;
+    if (e.targetId >= 0) w += 3;
+    if (targeted.has(e.id)) w += 3;
+    if (e.role === 'capital' || e.role === 'structure') w += 3;
+    const maxHull = e.maxHull || (e.def ? e.def.hull : 0) || 1;
+    const frac = (e.hull || 0) / maxHull;
+    if (frac <= CONTACT_DYING) w += 3;
+    else if (frac < 0.75) w += 1;
+    return w;
+  }
+
+  _weighContacts() {
+    const ctx = this.ctx;
+    const targeted = this._targeted;
+    const pool = this._candPool;
+    const list = this._cand;
+    targeted.clear();
+    list.length = 0;
+
+    // Who is being shot at. One pass, because "engaged" cuts both ways and a
+    // ship under fire is exactly what a commander needs marked.
+    for (const e of ctx.entities()) {
+      if (e.alive === false) continue;
+      if (e.targetId >= 0) targeted.add(e.targetId);
+    }
+
+    let n = 0;
+    for (const e of ctx.entities()) {
+      if (e.alive === false) continue;
+      const w = this._weigh(e, targeted);
+      if (w < CONTACT_EARN) continue;
+      let c = pool[n];
+      if (!c) {
+        c = { id: -1, w: 0, bucket: 0 };
+        pool[n] = c;
+      }
+      c.id = e.id;
+      c.w = w;
+      c.bucket = massBucket(e.role);
+      list.push(c);
+      n++;
+      if (n >= CONTACT_CAND) break;
+    }
+    // Heaviest first, so a hard cap sheds the least important contacts rather
+    // than whichever ones the entity map happened to yield last.
+    if (list.length > 1) list.sort(byWeight);
+  }
+
+  _drawContacts(proj) {
+    const ctx = this.ctx;
+    const sel = ctx.selection;
+    const list = this._cand;
+    const used = [0, 0, 0];
+    let total = 0;
+
+    for (let i = 0; i < list.length && total < MAX_CONTACTS; i++) {
+      const c = list[i];
+      // Anything the selection or a reticle already speaks for is left alone.
+      if (sel.has(c.id) || this._reticled.has(c.id)) continue;
+      const b = c.bucket;
+      if (used[b] >= CONTACT_CAP[b]) continue;
+      const e = ctx.entity(c.id);
+      if (!e || e.alive === false) continue;
+      const p = posOf(e);
+      if (!p || !proj.project(p.x, p.y, p.z)) continue;
+      if (
+        proj.sx < -12 || proj.sx > proj.w + 12 ||
+        proj.sy < -12 || proj.sy > proj.h + 12
+      ) continue;
+      const radius = e.radius || approxRadius(e.classId);
+      const px = (radius * proj.scaleK) / proj.cw;
+      if (px >= CONTACT_SELF_EVIDENT_PX && c.w < CONTACT_EARN_BIG) continue;
+      this._drawContact(this._contactMark(b, used[b]), e, proj.sx, proj.sy);
+      used[b]++;
+      total++;
+    }
+
+    for (let b = 0; b < 3; b++) {
+      const pool = this.contacts[b];
+      for (let i = used[b]; i < pool.length; i++) this._parkContact(pool[i]);
+    }
+  }
+
+  _drawContact(c, e, sx, sy) {
+    /* "About to die" has to be unmistakable, and the first pass of this got it
+       wrong: filling the diamond with its own hue looked identical to a healthy
+       hostile whose engine bloom happened to shine through a hollow one. So
+       dying now changes three things at once — fill, size, and, for our own
+       hulls, hue — because at six pixels over an explosion you cannot rely on
+       any single cue surviving.
+
+       Red stays reserved for our trouble, which is the rule the pip and the
+       bracket already follow. A hostile about to die keeps its amber and says
+       so by going solid and growing; ours goes red as well. A frame filling
+       with fat amber chips is one we are winning, and one filling with red is
+       one we are losing — which is the one-second read the critic asked for. */
+    const maxHull = e.maxHull || (e.def ? e.def.hull : 0) || 1;
+    const dying = (e.hull || 0) <= maxHull * CONTACT_DYING;
+    const enemy = e.team !== this.ctx.team;
+
+    c.el.style.transform =
+      `translate3d(${sx.toFixed(1)}px,${sy.toFixed(1)}px,0) rotate(45deg)`
+      + (dying ? ' scale(1.35)' : '');
+
+    const hue = enemy ? 'var(--vsh-amber)' : dying ? 'var(--vsh-red)' : 'var(--vsh-cyan)';
+    if (hue !== c.hue) {
+      c.hue = hue;
+      c.el.style.color = hue;
+    }
+    if (dying !== c.dying) {
+      c.dying = dying;
+      c.el.style.background = dying ? 'currentColor' : 'transparent';
+    }
+
+    const a = dying ? 1
+      : this._hits.has(e.id) ? 0.85
+        : e.targetId >= 0 ? 0.6
+          : 0.32;
+    if (a !== c.a) {
+      c.a = a;
+      c.el.style.opacity = String(a);
+    }
+    c.live = true;
+  }
+
+  _parkContact(c) {
+    if (!c.live) return;
+    c.live = false;
+    c.a = -1;
+    c.el.style.opacity = '0';
   }
 
   _park(b) {
@@ -1042,7 +1296,8 @@ export class WorldMarkers {
      currently shooting at us. Both are what a commander actually needs. */
   _drawReticles(proj) {
     const ctx = this.ctx;
-    const seen = new Set();
+    const seen = this._reticled;
+    seen.clear();
     let n = 0;
 
     for (const id of ctx.selection) {
@@ -1215,6 +1470,11 @@ export class WorldMarkers {
     this.pips.length = 0;
     this.reticles.length = 0;
     this.orders.length = 0;
+    for (let b = 0; b < this.contacts.length; b++) this.contacts[b].length = 0;
+    this._candPool.length = 0;
+    this._cand.length = 0;
+    this._targeted.clear();
+    this._reticled.clear();
     this._hits.clear();
   }
 }
