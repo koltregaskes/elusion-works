@@ -296,7 +296,28 @@ const OPENING = {
      coldwater sits at 106 degrees, lower than nightbloom, and measures 0.328.
      `litWeight` below addresses what the camera can actually control; the rest
      of nightbloom's deficit is in the key/fill for that palette, which is ENV's
-     to own. Evidence is in `.local/sil-lit1.json` and `.local/sil-band.json`. */
+     to own. Evidence is in `.local/sil-lit1.json` and `.local/sil-band.json`.
+     REOPENED 29 Sep, and deliberately not changed yet. The paragraph above
+     concluded that the residual belongs to ENV's key/fill for that palette.
+     ENV has since fixed exactly that: the rig's ratios used to drift with the
+     palette because intensities multiplied a sky colour normalised on its
+     brightest channel rather than on luminance, so a nominal 0.42 delivered
+     0.75-0.99 of itself depending on hue. Key:fill is now pinned at 17.76:1
+     on every seed, sd 0.
+
+     So the premise of the reasoning above has moved. The lighting lane then
+     measured, post-fix, that the three seeds with the weakest hero terminator
+     are exactly the three with the largest view-to-key angle (115.1, 120.5,
+     124.6 degrees) while the five with a good terminator all sit at 103-107 —
+     which is the opposite of "the angle is not the discriminator".
+
+     The two findings use different metrics and were taken either side of a rig
+     change, so neither settles it. **Re-measure before touching these two
+     numbers**, with the terminator metric rather than the older lit score.
+     This is the failure mode HANDOFF section 5 names: a comment asserting a
+     measurement goes stale when something else moves. Left as a note rather
+     than an edit precisely because the last person to edit should not be the
+     one who decides. */
   sunAngleMin: 104 * DEG,
   sunAngleMax: 134 * DEG,
 
