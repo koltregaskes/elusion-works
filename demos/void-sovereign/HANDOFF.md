@@ -345,6 +345,27 @@ Two consequences, both learned the hard way:
 2. **Brief lanes to look early and often**, not to save verification for one
    pass at the end. The end is where the budget runs out.
 
+**Hiding `#vs-hud` does not hide the UI.** The onboarding card is `.vst-root`,
+appended to `document.body`, translucent, and on several seeds it sits directly
+over the hero hull. Any harness that measures hull pixels while hiding only the
+HUD has been measuring the tutorial card as if it were ship — it doubled one
+seed's shadow score before anyone noticed.
+
+Audited 29 Sep: **69 harnesses in `.local/` hide `#vs-hud`; two also hid
+`.vst-root`.** The gate harnesses are patched to
+`#vs-hud, .vs-hud, #hud, .vst-root, #vs-tutorial-root`. `.local/` is gitignored,
+so that patch does not travel — **if you are reading this in a fresh clone, the
+harnesses you regenerate will have the bug again.** `shot.mjs` and
+`play-capture.mjs` are exempt on purpose: they photograph gameplay and the HUD
+belongs in frame.
+
+The general form is worth more than the instance: before trusting any
+screen-space measurement, enumerate what is actually on the canvas. This
+project has now been wrong three separate ways about what its own frames
+contain — a nebula surviving `farScene.visible = false`, TAA history rejected
+by a camera that writes its position every frame, and a translucent tutorial
+card counted as hull.
+
 **A 40-pixel detail cannot be judged in a 1600×900 frame.** `.local/crop.mjs`
 magnifies a region through Chromium's canvas with smoothing off — there is no
 sharp and no ImageMagick on this box, and the `convert` on PATH is the Windows
