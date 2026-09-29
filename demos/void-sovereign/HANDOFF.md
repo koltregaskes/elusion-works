@@ -327,6 +327,49 @@ Rule: when a shader file fails to parse and the message names an identifier you
 recognise as English prose, look for an unterminated template literal or an
 early `*/` before you look anywhere else.
 
+**Lanes die at the verification step. The integrator does the looking.**
+Across rounds 2 and 3, five separate lanes were killed — by rate limits or by
+stalls — and *four of them died at the same point*: after editing, after
+`syntax-check` passed, before they had looked at a single rendered frame. Their
+last words are almost interchangeable: "Now the gate that matters — looking at
+the frames", "Now the remaining gates".
+
+Two consequences, both learned the hard way:
+
+1. **Never trust a parse as evidence of a render.** One of those lanes left
+   `src/fx/engines.js` compiling cleanly while the mothership drew as an
+   incoherent pile of plates. It was reverted. Another left the death staging
+   in a state that turned out to be *correct*, and would have been thrown away
+   on the same suspicion if nobody had checked. Both needed a human-equivalent
+   look, in opposite directions.
+2. **Brief lanes to look early and often**, not to save verification for one
+   pass at the end. The end is where the budget runs out.
+
+**A 40-pixel detail cannot be judged in a 1600×900 frame.** `.local/crop.mjs`
+magnifies a region through Chromium's canvas with smoothing off — there is no
+sharp and no ImageMagick on this box, and the `convert` on PATH is the Windows
+FAT-to-NTFS converter. It was written after I spent two rounds asserting "the
+nozzle rings are still visible" from a 1× view where that claim is
+unfalsifiable either way. Use it before reporting a small-detail defect, and
+before reporting one fixed.
+
+**Hero and per-class renders photograph ships at idle. Check throttle-dependent
+effects at both ends.** The nozzle rings that survived the plume rebuild were
+arithmetic, not art: the lip flange is a ring from 0.90 to 1.12 radii, and the
+ribbon's radius was `0.95 + 0.25 * throttle`. At full throttle that reaches
+1.20 and covers the flange; at idle it reaches 1.00 and sits *inside* it. Every
+still this project takes is of a stationary ship, which is why the defect
+looked fixed in capture frames of a fleet under way and was in every hero shot.
+
+**The 3D marker layer covers the selection only.** `src/ui/select.js` draws
+from `for (const id of sel)`; unselected friendlies get nothing and hostiles get
+at most `MAX_RETICLES = 14`. That — not the glyph tier thresholds — is why a
+frame reporting 74 hostiles showed about a dozen marks. I wrote a lane brief
+aimed at the tier thresholds before reading the loop; it would have changed
+nothing. The full-fleet read is the Sensors Manager on Tab, and whether the main
+view *should* mark every contact is an open design decision, recorded in
+CRITIQUE-ROUND-2.md rather than settled by default.
+
 **Fix your instrument before you tune anything.** A whole round of pacing work
 was spent tuning against numbers that turned out to be noise, and the noise was
 entirely mine.
