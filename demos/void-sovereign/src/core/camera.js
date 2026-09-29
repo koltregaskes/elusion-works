@@ -283,41 +283,66 @@ const OPENING = {
      star's azimuth stays uniformly seeded and ENV must not close the loop by
      aiming it at the camera; only this end of the relationship is constrained.
 
-     The band is deliberately *not* narrowed to chase hull brightness, and that
-     was tested rather than assumed. Raising the floor to 116 degrees and
-     re-measuring the two seeds that sit at the bottom of the band:
+     The band is deliberately *not* narrowed, and the two claims that used to
+     argue about it here have both been retired by a re-measurement (29 Sep,
+     post ENV's key:fill rig fix). 8 seeds x 4 bands x a boot each, one
+     variable: `alpha` consumes exactly one `rng.range` draw whatever the band
+     is, so every downstream seeded decision is unchanged. The bands were
+     injected into the served module rather than written to disk, so the run
+     could not leave a patched file behind. `.local/laneB-band.mjs` runs it,
+     `.local/laneB-band.json` holds it, `.local/laneB-table.mjs` reads it.
 
-       nightbloom   view-to-sun 108.7 -> 118.9, hull p50 0.138 -> 0.186
-       coldwater    view-to-sun 106.0 -> 117.2, hull p50 0.328 -> 0.360,
-                    but painted silhouette 55.0% -> 57.1%, out of the 45-55 band
+     Both earlier claims were **between-seed**, and a seed sets the palette,
+     the hull, the star's elevation and the angle all at once. Held one seed at
+     a time, the answer changes:
 
-     So narrowing costs seeded variety and framing, and still does not lift the
-     dark seed over 0.25. The angle is also not the discriminator it looks like:
-     coldwater sits at 106 degrees, lower than nightbloom, and measures 0.328.
-     `litWeight` below addresses what the camera can actually control; the rest
-     of nightbloom's deficit is in the key/fill for that palette, which is ENV's
-     to own. Evidence is in `.local/sil-lit1.json` and `.local/sil-band.json`.
-     REOPENED 29 Sep, and deliberately not changed yet. The paragraph above
-     concluded that the residual belongs to ENV's key/fill for that palette.
-     ENV has since fixed exactly that: the rig's ratios used to drift with the
-     palette because intensities multiplied a sky colour normalised on its
-     brightest channel rather than on luminance, so a nominal 0.42 delivered
-     0.75-0.99 of itself depending on hue. Key:fill is now pinned at 17.76:1
-     on every seed, sd 0.
+       · The angle IS a discriminator, contrary to "not the discriminator it
+         looks like". Area-weighted over camera-facing hull, the share of the
+         visible hull that is lit rises with the angle on 7 of 8 seeds, mean
+         -0.149 of terminator balance per +10 degrees. Raising the floor to
+         116 — the exact edit the older paragraph reported as harmless — costs
+         balance on 8 of 8, up to -0.67 on 13634 and -0.63 on nightbloom.
+       · But it is a WEAK discriminator, contrary to "the three widest angles
+         are the three weakest terminators". kharak reverses sign inside its
+         own seed: 115.2 degrees scores 0.64, 111.4 degrees scores 0.32. The
+         band sets the cone's half-angle; the phase *around* the cone is
+         picked by the framing score below, and the phase is what decides
+         which flank faces the key. On a 1,900 m slab that swamps the angle.
 
-     So the premise of the reasoning above has moved. The lighting lane then
-     measured, post-fix, that the three seeds with the weakest hero terminator
-     are exactly the three with the largest view-to-key angle (115.1, 120.5,
-     124.6 degrees) while the five with a good terminator all sit at 103-107 —
-     which is the opposite of "the angle is not the discriminator".
+     And narrowing buys nothing. Mean terminator balance, worst seed, and the
+     painted silhouette, over the same 8 seeds:
 
-     The two findings use different metrics and were taken either side of a rig
-     change, so neither settles it. **Re-measure before touching these two
-     numbers**, with the terminator metric rather than the older lit score.
-     This is the failure mode HANDOFF section 5 names: a comment asserting a
-     measurement goes stale when something else moves. Left as a note rather
-     than an edit precisely because the last person to edit should not be the
-     one who decides. */
+       104-134 (this)   bal 0.779  worst 0.464   painted 42.8-52.1%
+       104-116          bal 0.767  worst 0.315   painted 34.3-52.1%
+       100-112          bal 0.731  worst 0.210   painted 23.5-52.7%
+       116-134          bal 0.537  worst 0.355   painted 42.1-53.4%
+
+     The current band is the best of the four on the mean AND on the worst
+     seed, and it is the only one that never drops a hero frame under 42% of
+     frame width. Both narrow candidates fail on kharak, which under 100-112
+     opens nose-on as a narrow tower at 23.5% — the earlier agent's "narrowing
+     costs framing", and it is visible in `.local/shots/laneB-band/`, not just
+     in the number. **Do not narrow this band.** If the wide end ever has to be
+     policed, police it after the composition offset, not here — see below.
+
+     Two instrument notes, because this question has now consumed three passes:
+
+     · These two constants do not control the shipped angle. `_composeOpening`
+       rotates the camera toward the star after the band has had its say, and
+       that subtracts 0.8-11.7 degrees, per seed, unpredictably: 104-134 ships
+       103.1-124.7, and 4242 draws 118.2 but ships 106.6. Any measurement of
+       "view-to-key" taken off a frame is of the composed angle, not the drawn
+       one. `.local/laneB-angle.mjs` prints all three.
+     · Do not use hull quantiles for this. `shadowFraction`, `deepFraction`
+       and `p25OverP75` are graded by the auto-exposure meter, so a flatter
+       frame that meters brighter scores as having MORE shadow. Measured
+       inversions: 13634 at 116-134 looks flat and scores shadow 0.025 ->
+       0.157; emberfall at 104-116 visibly gains a terminator and scores
+       0.025 -> 0.006. The area-weighted N.L split agrees with the crops on
+       every seed checked; the quantiles do not. Also hide `.vst-root`, not
+       just `#vs-hud`, before differencing a frame — the onboarding card is
+       translucent and sits over the hull, and counting it doubled 13634's
+       shadow fraction. */
   sunAngleMin: 104 * DEG,
   sunAngleMax: 134 * DEG,
 
