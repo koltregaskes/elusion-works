@@ -541,16 +541,39 @@ const HULL_BODY = /* glsl */`
     float dn = vsNoise3( P * ( uBaseTiling * 1.6 ) + 11.3 );
     float dn2 = vsNoise3( P * ( uBaseTiling * 5.5 ) - 3.1 );
     float field = dn * 0.72 + dn2 * 0.28;
-    float burn = smoothstep( 1.02 - dmg * 1.25, 0.72 - dmg * 1.25, field );
-    float core = smoothstep( 0.86 - dmg * 1.25, 0.46 - dmg * 1.25, field );
-    albedo = mix( albedo, vec3( 0.030, 0.026, 0.024 ), burn );
+    /* Burned area must GROW with damage. It used to be
+       smoothstep( 1.02 - dmg * 1.25, 0.72 - dmg * 1.25, field ): reversed
+       edges, so it burned wherever field < 0.72 - 1.25 * dmg, a threshold
+       that FALLS as damage rises. vsNoise3 is value noise in [0, 1], so past
+       about 58% damage that threshold went below zero and the scorch vanished
+       entirely - heavily damaged ships looked pristine, and lightly damaged
+       ones carried the most hot emissive. That inversion, not the colour
+       alone, is what put a lava pattern on a lightly hit friendly frigate in
+       critic round 3. Now the burned share of the hull tracks the damage
+       fraction, and the albedo never goes fully black, so even a dying hull
+       keeps a readable form. */
+    float burn = 1.0 - smoothstep( dmg * 1.05 - 0.12, dmg * 1.05 + 0.04, field );
+    albedo = mix( albedo, vec3( 0.030, 0.026, 0.024 ), burn * 0.9 );
     rough = mix( rough, 0.93, burn );
     metal = mix( metal, 0.28, burn );
     ao = mix( ao, ao * 0.65, burn );
     objN = normalize( mix( objN, GN, burn * 0.45 ) );
     float flicker = 0.62 + 0.38 * sin( uTime * 7.3 + field * 41.0 )
       * ( 0.5 + 0.5 * sin( uTime * 2.1 + field * 13.0 ) );
-    vsEmissive += uHotColour * core * dmg * flicker * 2.4;
+    /* Hot metal shows only along thin cracks inside the burned area, never
+       as a filled region. This used to drive the emissive from a broad
+       smoothstep over the same field as the scorch, at 2.4x, so a damaged
+       hull glowed orange over about a third of its surface: the enemy's hue
+       family on a friendly ship, reading as paint rather than damage
+       (critic round 3, first-contact close frame). A crack here is the zero
+       crossing of a second, finer noise, kept only where the scorch is
+       already heavy, and its colour is pushed toward white-hot so the read
+       is heat rather than team. */
+    float cn = vsNoise3( P * ( uBaseTiling * 9.0 ) + 5.7 );
+    float crack = 1.0 - smoothstep( 0.0, 0.03, abs( cn - 0.5 ) );
+    float hot = crack * smoothstep( 0.45, 0.85, burn );
+    vec3 hotCol = mix( uHotColour, vec3( 1.0, 0.86, 0.66 ), 0.7 );
+    vsEmissive += hotCol * hot * dmg * flicker * 1.8;
   }
 
   vsAlbedo = albedo;
