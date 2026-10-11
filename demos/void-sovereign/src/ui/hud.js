@@ -10,6 +10,7 @@ import {
 import { SelectionRoster, WorldMarkers } from './select.js';
 import { BuildMenu } from './build.js';
 import { SensorsView } from './sensors.js';
+import { SeamRing } from './seamring.js';
 
 /* VOID SOVEREIGN — HUD facade.
 
@@ -337,6 +338,8 @@ export class HUD {
     this._buildDom();
     if (this._obDone) this.onboard.classList.add('is-gone');
     this.markers = new WorldMarkers({ root: this.layerHost, ctx: this.ctx });
+    // The capture boundary is a HUD mark under the markers, not world geometry.
+    this.seams = new SeamRing({ root: this.layerHost, ctx: this.ctx, camera: this.camera });
     this.roster = new SelectionRoster({ root: this.rosterHost, ctx: this.ctx });
     this.build = new BuildMenu({ root: this.rightCol, ctx: this.ctx });
     this.sensors = new SensorsView({ root: this.sensorHost, ctx: this.ctx });
@@ -1266,6 +1269,7 @@ export class HUD {
     if (this.sensors.open === open) return;
     this.sensors.setOpen(open);
     this.markers.setHidden(open);
+    this.seams.setHidden(open);
     // The rail would sit on top of the schematic; the schematic wins.
     this.onboard.classList.toggle('is-mute', open);
     this._syncPalette();
@@ -1685,6 +1689,7 @@ export class HUD {
     }
 
     this.roster.update(d);
+    this.seams.update(d);
     this.markers.update(d);
     this.build.update(d);
     this.sensors.update(d);
@@ -1705,6 +1710,7 @@ export class HUD {
 
     this.roster.dispose();
     this.markers.dispose();
+    this.seams.dispose();
     this.build.dispose();
     this.sensors.dispose();
 

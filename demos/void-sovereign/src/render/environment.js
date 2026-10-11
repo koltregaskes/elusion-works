@@ -4,7 +4,6 @@ import { bus } from '../core/events.js';
 import { makeRng, fbm2, fbm3, ridged3 } from '../core/rng.js';
 import { buildSkybox } from './skybox.js';
 import { setNebulaBounce, TEAM_COLORS } from './materials.js';
-import { CONTROL } from '../sim/economy.js';
 import {
   DEFAULT_SETUP,
   OPENING_ANGLE,
@@ -154,19 +153,6 @@ function unitLuminance(colour) {
   if (!(l > 1e-3)) return colour.setRGB(1, 1, 1);
   return colour.multiplyScalar(1 / l);
 }
-
-/* Marks around a capture boundary.
-
-   Twenty-four, and the count is a legibility decision rather than a density
-   one. It has to be low enough that the marks group into a circle instead of
-   reading as scattered debris -- twenty-eight ticks seen from beside the ring
-   read as noise in the first frames -- and high enough that the gaps never
-   close into a continuous arc, which is the whole point of not being one. At
-   300 px across, each mark is about 39 px of which about 16 are drawn, and
-   both scale together as the circle shrinks so the dash never fills its gap.
-   Every fourth mark is ranked, which gives six tall ticks: few enough to count
-   at a glance, which is what turns a row of pips into a ladder. */
-const BOUNDARY_MARKS = 24;
 
 /* Gas-giant schemes. Restrained — bands are close in hue and separated by
    value, not by colour, which is what stops a procedural planet looking like a
@@ -1527,12 +1513,12 @@ export class Environment {
      A player could not tell which arc was a physical object, which was a
      gameplay rule and which was a rendering artefact -- and since neither the
      seams nor the planet were in frame in round 1, all of it was self-inflicted.
-     Deleting the shell removes one of the three. This replaces the second with
-     a mark that cannot be confused with geometry: a ladder of discrete vertical
-     ticks standing on the capture radius, with a dashed arc running between
-     them. Nothing in nature is dashed. A ring is smooth and continuous at every
-     scale; a ladder is repeated and interrupted at every scale; the two do not
-     converge at any distance, which a thinner or dimmer ellipse would have. */
+     Deleting the shell removes one of the three. Round 3 replaced the second
+     with a ladder of world-space ticks, and the critic read it as incoming
+     fire: hostile-hue rods, blurred by depth of field, at mixed angles. A
+     rule is not a body, so round 4 takes it out of the world entirely. The
+     boundary is a flat HUD mark now (ui/seamring.js): constant screen size,
+     no post-processing, white rather than any team hue. */
 
   _buildSeams() {
     const { engine, sky } = this;
@@ -1552,35 +1538,18 @@ export class Environment {
     this._seamList = list;
 
     const n = list.length;
-    const iCentre = new Float32Array(n * 3);
-    const iParam = new Float32Array(n * 3);   // haze extent, boundary radius, phase
-    const iTint = new Float32Array(n * 3);
-    const iState = new Float32Array(n * 2);   // held 0..1, contested pulse 0..1
-    const r = this.rng.fork(0x5EA9);
-    for (let i = 0; i < n; i++) {
-      const c = list[i];
-      iCentre[i * 3] = c.position.x;
-      iCentre[i * 3 + 1] = c.position.y;
-      iCentre[i * 3 + 2] = c.position.z;
-      /* Two radii, and the split still matters.
+    /* Two radii, and the split still matters.
 
-         The haze is the seam -- the gas and rubble you can see -- so it is
-         drawn just outside the ore and contains what it claims to. The capture
-         radius is 3.4 km past a seam already 1.3-2 km across, which is a
-         boundary on a twenty-two kilometre map and not a body; drawing a
-         volume out to it is what put the fleet inside a row of glass domes.
-         It is a rule, so it is drawn as one.
-
-         iParam.y is c.radius + CONTROL.RADIUS exactly, because that is the
-         number sim/economy.js and sim/ai.js test presence against. If one of
-         them moves, this moves with it or the mark is a lie. */
-      iParam[i * 3] = c.radius * 1.45;
-      iParam[i * 3 + 1] = c.radius + CONTROL.RADIUS;
-      iParam[i * 3 + 2] = r.range(0, Math.PI * 2);
-      iTint[i * 3] = 1;
-      iTint[i * 3 + 1] = 1;
-      iTint[i * 3 + 2] = 1;
-    }
+       The haze is the seam -- the gas and rubble you can see -- so it is drawn
+       just outside the ore and contains what it claims to. The capture radius
+       is 3.4 km past a seam already 1.3-2 km across, which is a boundary on a
+       twenty-two kilometre map and not a body; drawing a volume out to it is
+       what put the fleet inside a row of glass domes. It is a rule, so it is
+       drawn as one -- and since round 4 it is drawn by the HUD, not here. See
+       ui/seamring.js, which reads c.radius + CONTROL.RADIUS off the same
+       records sim/economy.js tests presence against. */
+    const hazeExt = new Float32Array(n);
+    for (let i = 0; i < n; i++) hazeExt[i] = list[i].radius * 1.45;
 
     /* Neutral is bone rather than white: unclaimed ground should read as cold
        and unlit. The team hues are the trim colours the hulls already wear, so
@@ -1629,7 +1598,7 @@ export class Environment {
 
       let m = 0;
       for (let i = 0; i < n; i++) {
-        const ext = iParam[i * 3];
+        const ext = hazeExt[i];
         for (let k = 0; k < hazePer; k++) {
           /* Flattened to 0.42 in y. The rocks sit at 0.78 and read as a
              lens; gas that has been fought over reads as a disc, and a disc
@@ -1834,179 +1803,16 @@ export class Environment {
       this._disposables.push(hgeo, hazeMat, quad);
     }
 
-    /* =================================================================== */
-    /* ---- the boundary ---- */
-
-    const marks = BOUNDARY_MARKS;
-    const bnd = makeBoundaryGeometry(marks);
-    const bgeo = new THREE.InstancedBufferGeometry();
-    bgeo.index = bnd.index;
-    bgeo.setAttribute('position', bnd.attributes.position);
-    bgeo.setAttribute('aShape', bnd.attributes.aShape);
-    bgeo.setAttribute('iCentre', new THREE.InstancedBufferAttribute(iCentre, 3));
-    bgeo.setAttribute('iParam', new THREE.InstancedBufferAttribute(iParam, 3));
-    const bTint = new THREE.InstancedBufferAttribute(iTint, 3);
-    const bState = new THREE.InstancedBufferAttribute(iState, 2);
-    bTint.setUsage(THREE.DynamicDrawUsage);
-    bState.setUsage(THREE.DynamicDrawUsage);
-    bgeo.setAttribute('iTint', bTint);
-    bgeo.setAttribute('iState', bState);
-    bgeo.instanceCount = n;
-    bgeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 60000);
-
-    const bndMat = new THREE.ShaderMaterial({
-      uniforms: {
-        uTime: { value: 0 },
-        /* 24 km, not the old ring's 46. A boundary is worth drawing when it is
-           somewhere you could be fighting over; drawn across the whole 60 km
-           cube, six of them overlap in every wide frame and the picture is
-           busier for information the player cannot act on. */
-        uFade: { value: 24000 },
-        uPixel: { value: 2 / 1080 },
-      },
-      vertexShader: /* glsl */ `
-        #include <common>
-        #include <logdepthbuf_pars_vertex>
-        attribute vec4 aShape;
-        attribute vec3 iCentre;
-        attribute vec3 iParam;
-        attribute vec3 iTint;
-        attribute vec2 iState;
-        uniform float uTime;
-        uniform float uFade;
-        uniform float uPixel;
-        varying vec4 vShape;
-        varying vec3 vTint;
-        varying float vAlpha;
-        void main() {
-          float R = iParam.y;
-          float held = iState.x;
-          vec3 anchor = iCentre + position * R;
-          vec3 world = anchor;
-
-          float dA = length(cameraPosition - anchor);
-          float halfA = dA / max(projectionMatrix[1][1], 1.0e-4);
-
-          if (aShape.x > 0.5) {
-            /* A tick: vertical in the world, turned about its own axis to face
-               the camera across its width. Vertical is the point -- the dashes
-               lie in the plane and vanish when the plane is edge-on, which is
-               exactly when a ladder of uprights is most legible, so between
-               them the boundary reads from every angle the camera can reach. */
-            vec3 toCam = cameraPosition - anchor;
-            vec3 fwd = toCam / max(length(toCam), 1.0);
-            vec3 side = cross(vec3(0.0, 1.0, 0.0), fwd);
-            float sl = length(side);
-            side = sl > 1.0e-3 ? side / sl : vec3(1.0, 0.0, 0.0);
-
-            /* Height is ownership as well as hue. A neutral boundary is a low
-               ladder of hairlines; a held one stands up. Colour alone is a bad
-               single channel for a read this important -- it is the first
-               thing a projector, a JPEG or a colour-blind player loses.
-
-               Then it is clamped in SCREEN terms, which is the fix for the
-               worst thing the frames showed. A height stated purely in metres
-               has no ceiling, so the near arc of a boundary the camera is
-               standing beside threw 400 m uprights across half the frame and
-               the ladder read as a forest of searchlight beams -- noise, not a
-               boundary. A rule should look the same size wherever you are
-               standing relative to it, which makes its extent a screen
-               quantity with a world quantity underneath for the scale cue.
-               halfA is the frame's half-height in metres at this vertex, so
-               the ranked ticks land near 3.5% of frame height and the
-               unranked near 2%, and the floor keeps the far arc from
-               disappearing into its own width. */
-            float h = R * (0.030 + 0.052 * aShape.w) * (0.70 + 0.55 * held);
-            h = clamp(h, halfA * 0.0060, halfA * (0.040 + 0.035 * aShape.w));
-            /* A width floor in framebuffer pixels, or the far side of the ring
-               thins below a pixel and crawls. halfA * uPixel is one pixel
-               measured in metres at this vertex's distance. */
-            float w = max(R * 0.0030, halfA * uPixel * 1.30);
-            world = anchor + side * (aShape.y * w) + vec3(0.0, 1.0, 0.0) * (aShape.z * h);
-          }
-
-          float pulse = 0.80 + 0.20 * sin(uTime * 1.15 + iParam.z);
-          float a = mix(0.60, 1.05, held) * mix(1.0, pulse, iState.y);
-          /* The plain ticks are the ruling; the ranked ones are the numbers on
-             it. Without a value difference between them the eye has twenty-four
-             equal marks and no structure to group, which is the difference
-             between a boundary and a scatter. */
-          a *= mix(mix(1.0, 0.52, 1.0 - aShape.w), 1.0, 1.0 - aShape.x);
-
-          /* Flat marks thin as the plane turns edge-on, but they must not go
-             out. A continuous ring had to, because edge-on it is a one-pixel
-             line across the frame and it crawls; a DASH edge-on is a short
-             segment with soft ends and does not. And at the camera's shallowest
-             pitch the dashes are the only thing tying the ticks into a circle
-             -- without them a boundary read as a scatter of sparks rather than
-             as a rule, which is the first thing the frames showed. */
-          vec3 toC = normalize(cameraPosition - iCentre);
-          float planar = 0.38 + 0.62 * smoothstep(0.004, 0.11, abs(toC.y));
-          a *= mix(planar, 1.0, aShape.x);
-
-          float dC = length(cameraPosition - iCentre);
-          float halfC = dC / max(projectionMatrix[1][1], 1.0e-4);
-          a *= (1.0 - smoothstep(uFade, uFade * 2.0, dC))
-             * (1.0 - smoothstep(1.30, 2.90, R / max(halfC, 1.0)));
-
-          vShape = aShape;
-          vTint = iTint;
-          vAlpha = a;
-          gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
-          #include <logdepthbuf_vertex>
-        }`,
-      fragmentShader: /* glsl */ `
-        #include <common>
-        #include <logdepthbuf_pars_fragment>
-        varying vec4 vShape;
-        varying vec3 vTint;
-        varying float vAlpha;
-        void main() {
-          #include <logdepthbuf_fragment>
-          float u = vShape.y;
-          float v = vShape.z;
-          float prof;
-          if (vShape.x > 0.5) {
-            /* Soft across the width so a sub-pixel upright antialiases itself,
-               and flat along its length with the falloff pushed out to the last
-               fifth. A profile that peaked at the plane and decayed the whole
-               way to the ends read as a spark rather than as a post -- a field
-               of them looked like rain, which is the second thing the frames
-               showed. A post is an even bar with soft caps. */
-            prof = (1.0 - u * u) * smoothstep(1.0, 0.62, abs(v));
-          } else {
-            /* Flat top, soft ends: a dash, not a lozenge. */
-            prof = smoothstep(1.0, 0.58, abs(u)) * (1.0 - v * v);
-          }
-          float a = prof * vAlpha * 0.62;
-          if (a < 0.004) discard;
-          gl_FragColor = vec4(vTint * a * 1.15, a);
-        }`,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      depthTest: true,
-      side: THREE.DoubleSide,
-      toneMapped: false,
-      fog: false,
-    });
-
-    const bndMesh = new THREE.Mesh(bgeo, bndMat);
-    bndMesh.frustumCulled = false;
-    bndMesh.renderOrder = 16;
-    bndMesh.name = 'env:seamBounds';
-    engine.scene.add(bndMesh);
-
+    /* The boundary used to be built here, as world geometry. It is a rule, not
+       a body, and as geometry it took depth of field, bloom and the scene's
+       perspective -- round 3 read it as incoming fire. It is now a flat HUD
+       mark drawn by ui/seamring.js from the same SIM records. */
     this._seams = {
       haze,
       hazeMat,
-      bounds: bndMesh,
       seamCol,
-      tints: [bTint],
-      states: [bState],
       key: '',
     };
-    this._disposables.push(bgeo, bnd, bndMat);
     this._updateSeams(true);
   }
 
@@ -2016,8 +1822,8 @@ export class Environment {
     if (!s) return;
     const list = this._seamList;
 
-    /* Quantised, because this rewrites an instance buffer and a uniform array
-       while control moves continuously -- a seam takes twenty-two seconds to
+    /* Quantised, because this rewrites a uniform array while control moves
+       continuously -- a seam takes twenty-two seconds to
        flip, so thirty-two steps is finer than an eye can follow and a
        hundredth of the uploads. */
     let key = '';
@@ -2025,28 +1831,18 @@ export class Environment {
     if (!force && key === s.key) return;
     s.key = key;
 
-    const tint = s.tints[0].array;
-    const state = s.states[0].array;
     const col = new THREE.Color();
     const { neutral, team } = this._seamColours;
     for (let i = 0; i < list.length; i++) {
       const ctl = Math.max(-1, Math.min(1, list[i].control || 0));
       const mag = Math.abs(ctl);
       col.copy(neutral).lerp(team[ctl < 0 ? 0 : 1], mag);
-      tint[i * 3] = col.r;
-      tint[i * 3 + 1] = col.g;
-      tint[i * 3 + 2] = col.b;
-      state[i * 2] = mag;
-      /* Pulses hardest when the seam is genuinely nobody's. */
-      state[i * 2 + 1] = 1 - mag;
-      /* The haze reads the same numbers through a uniform array rather than a
+      /* The haze reads these through a uniform array rather than a
          per-instance attribute: there are hundreds of sheets per seam and six
          seams, so six vec4s beat re-uploading a few thousand floats. */
       const sc = s.seamCol[i];
       if (sc) sc.set(col.r, col.g, col.b, mag);
     }
-    for (const a of s.tints) a.needsUpdate = true;
-    for (const a of s.states) a.needsUpdate = true;
   }
 
   /* ----------------------------------------------------------------- dust */
@@ -2966,7 +2762,6 @@ export class Environment {
 
     if (this._seams) {
       if (this._seams.hazeMat) this._seams.hazeMat.uniforms.uTime.value = elapsed;
-      this._seams.bounds.material.uniforms.uTime.value = elapsed;
       this._updateSeams(false);
     }
 
@@ -3093,17 +2888,11 @@ export class Environment {
     }
   }
 
-  /** Keep the soft-particle pass in step with the render target size.
-
-      The boundary needs the height for a different reason: its ticks have a
-      width floor stated in framebuffer pixels, so that the far side of a ring
-      stays a hairline instead of thinning below a pixel and crawling. */
+  /** Keep the soft-particle pass in step with the render target size. */
   setResolution(w, h) {
     if (this._dustMat) this._dustMat.uniforms.uResolution.value.set(w, h);
     if (this._seams) {
       if (this._seams.hazeMat) this._seams.hazeMat.uniforms.uResolution.value.set(w, h);
-      const bm = this._seams.bounds && this._seams.bounds.material;
-      if (bm && bm.uniforms.uPixel) bm.uniforms.uPixel.value = 2 / Math.max(1, h);
     }
   }
 
@@ -3122,7 +2911,7 @@ export class Environment {
     engine.scene.environmentRotation.set(0, 0, 0);
 
     const loose = [this._dust, this._derelicts];
-    if (this._seams) loose.push(this._seams.bounds, this._seams.haze);
+    if (this._seams) loose.push(this._seams.haze);
     for (const m of loose.concat(this._landmarks || [])) {
       if (m && m.parent) m.parent.remove(m);
     }
@@ -3182,100 +2971,6 @@ function adoptClusterRecord(c) {
   c._high = true;
   c._fill = 1;
   return c;
-}
-
-/* A capture boundary in unit space: a circle of radius 1 lying in XZ, built
-   out of `marks` discrete marks rather than as a ring.
-
-   That is the whole design. Round 2 drew this as a thin bright ellipse, and so
-   did the gas giant's ring plane, and so did the grazing limb of the seam
-   shell — three unrelated systems speaking one visual language in the same
-   frame, none of them distinguishable from the others. A continuous arc cannot
-   be de-conflicted by making it thinner or dimmer, because the thing being
-   confused is its *shape*. So it is not an arc. Each mark is a short dashed
-   segment lying in the plane with an upright tick standing on it, and the two
-   between them survive every camera angle the rig can reach: the dashes read
-   from above and go out as the plane turns edge-on, which is precisely when a
-   ladder of uprights is at its most legible.
-
-   `aShape` is (kind, u, v, rank):
-     kind — 0 flat dash, 1 upright tick.
-     u    — -1..1 along the mark: arc for a dash, screen width for a tick.
-     v    — -1..1 across it: radial for a dash, vertical for a tick.
-     rank — 0 or 1. Every fourth mark is ranked and stands taller, which is
-            what turns a circle of identical pips into a ladder you can count
-            around, and gives the eye a repeat length to measure the seam by.
-
-   The instanced shader scales the result by the seam's real capture radius and
-   bills each tick to face the camera about its own vertical axis. */
-function makeBoundaryGeometry(marks) {
-  const DUTY = 0.40;   // fraction of each mark's angular pitch that is drawn
-  const SEGS = 2;      // quads per dash, so a dash does not chord off the circle
-  const RAD = 0.0060;  // dash half-width, as a fraction of the radius
-
-  const pos = [];
-  const shape = [];
-  const index = [];
-  const vert = (x, y, z, k, u, v, rank) => {
-    pos.push(x, y, z);
-    shape.push(k, u, v, rank);
-    return pos.length / 3 - 1;
-  };
-  const quad = (a, b, c, d) => index.push(a, b, c, a, c, d);
-
-  const pitch = (Math.PI * 2) / marks;
-  const half = pitch * 0.5 * DUTY;
-
-  for (let i = 0; i < marks; i++) {
-    const th = i * pitch;
-    const rank = i % 4 === 0 ? 1 : 0;
-
-    /* Dashes sit in the GAPS, at the half-pitch, not under the ticks. Sharing
-       an anchor put a horizontal mark and a vertical mark at the same screen
-       point, and from a camera pitched down that is a plus sign — a HUD glyph
-       scattered through the world, which is the one thing section 3.8 says the
-       UI must never become. Interleaved, they read as what they are: a fence
-       line with a dashed rule running between the posts. */
-    const dth = th + pitch * 0.5;
-    for (let s = 0; s < SEGS; s++) {
-      const f0 = s / SEGS;
-      const f1 = (s + 1) / SEGS;
-      const a0 = dth - half + 2 * half * f0;
-      const a1 = dth - half + 2 * half * f1;
-      const u0 = -1 + 2 * f0;
-      const u1 = -1 + 2 * f1;
-      const c0 = Math.cos(a0);
-      const s0 = Math.sin(a0);
-      const c1 = Math.cos(a1);
-      const s1 = Math.sin(a1);
-      const ri = 1 - RAD;
-      const ro = 1 + RAD;
-      quad(
-        vert(c0 * ri, 0, s0 * ri, 0, u0, -1, rank),
-        vert(c1 * ri, 0, s1 * ri, 0, u1, -1, rank),
-        vert(c1 * ro, 0, s1 * ro, 0, u1, 1, rank),
-        vert(c0 * ro, 0, s0 * ro, 0, u0, 1, rank),
-      );
-    }
-
-    /* All four tick corners share the anchor point; the shader pushes them
-       apart along the camera-facing horizontal and the world vertical, so the
-       tick's width is a screen quantity and its height is a world one. */
-    const cx = Math.cos(th);
-    const cz = Math.sin(th);
-    quad(
-      vert(cx, 0, cz, 1, -1, -1, rank),
-      vert(cx, 0, cz, 1, 1, -1, rank),
-      vert(cx, 0, cz, 1, 1, 1, rank),
-      vert(cx, 0, cz, 1, -1, 1, rank),
-    );
-  }
-
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  geo.setAttribute('aShape', new THREE.Float32BufferAttribute(shape, 4));
-  geo.setIndex(index);
-  return geo;
 }
 
 /** Deformed icosahedron: fBm lumps, ridged crags, a few impact craters. */
