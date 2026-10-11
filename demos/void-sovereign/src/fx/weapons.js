@@ -17,6 +17,7 @@
 
 import * as THREE from '../../vendor/three/build/three.module.js';
 import { bus } from '../core/events.js';
+import { hullFloorPx } from '../ships/catalog.js';
 
 /* ------------------------------------------------------------------ shaders */
 
@@ -583,6 +584,8 @@ varying float vAlpha;
 varying float vFragW;
 varying float vClamp;
 varying float vSpread;
+varying float vVariant;
+varying float vPx;
 
 void main() {
   float t = uTime - iTime.x;
@@ -594,7 +597,9 @@ void main() {
   vec4 mv = viewMatrix * vec4( wp, 1.0 );
   float dist = max( -mv.z, 1.0 );
 
-  float natural = mix( iSize.x, iSize.y, age );
+  /* The impact star (variants 4 and 5) holds its quad for its whole life, so
+     it fades as a shape instead of shrinking back into a dot. */
+  float natural = iMisc.x > 3.5 ? iSize.x : mix( iSize.x, iSize.y, age );
   // Same per-event ceiling on the screen floor the flare field carries: a
   // carpet of muzzle flashes must not all paint the same disc (see shotCeiling).
   float capPx = iMisc.y > 0.0 ? min( uMinPixels, iMisc.y ) : uMinPixels;
@@ -619,6 +624,8 @@ void main() {
   vBright = iTint.w;
   vAlpha = pow( 1.0 - age, 1.25 ) * alive;
   vFragW = gl_Position.w;
+  vVariant = v;
+  vPx = size / max( dist * uPixelScale, 1e-6 );
   #include <logdepthbuf_vertex>
 }
 `;
@@ -638,13 +645,72 @@ varying float vAlpha;
 varying float vFragW;
 varying float vClamp;
 varying float vSpread;
+varying float vVariant;
+varying float vPx;
+
+/* The impact star. Critic round 3: at fleet range a hit and an engine were
+   the same soft white smudge, because the impact half of the flash family led
+   with the pure-bloom cell and an engine glow is a pure bloom too. A hit now
+   has the one shape no drive has: a thin ring with short radial spikes
+   standing off it, round a small hot point. Drawn analytically in pixel
+   units, not sampled from the atlas, because at the 6-9 px a hit is floored to
+   a minified texture smears a 1 px ring into the very disc this replaces.
+
+   Four things keep it a shape rather than a blob, each found by looking:
+   line widths are held to about a pixel at any size; the ring does not
+   expand, because temporal AA integrates an expanding ring into a filled
+   disc; the ring is dropped when the mark is too small to hold one; and the
+   lines sit just under the glow layer's 0.6 bloom cut so the bloom pass
+   cannot fill the shape in - only the hot point blooms. Returns alpha and
+   the core's share of it. */
+vec2 fxImpactStar( vec2 q, float px, float arms ) {
+  vec2 d = q * 2.0 - 1.0;
+  float r = length( d );
+  float onePx = 2.0 / max( px, 1.0 );
+  float ringR = 0.44;
+  float ringW = max( 0.05, onePx * 0.7 );
+  float rr = ( r - ringR ) / ringW;
+  float ring = exp( -rr * rr );
+  float ang = atan( d.y, d.x );
+  float sector = 6.2831853 / arms;
+  float off = mod( ang + sector * 0.5, sector ) - sector * 0.5;
+  float perp = r * abs( sin( off ) );
+  float armW = max( 0.04, onePx * 0.7 );
+  float pp = perp / armW;
+  /* Under ~14 px a ring and a hot point merge into one bright square, so the
+     ring is only drawn once there is room for it, and below that the spikes
+     run in close to the core instead: at fleet range the hit is a crisp cross,
+     close up it is a ring with spikes standing off it. */
+  float roomy = smoothstep( 13.0, 22.0, px );
+  float armIn = mix( 0.26, ringR + ringW * 1.6, roomy );
+  float arm = exp( -pp * pp )
+            * smoothstep( armIn - 0.08, armIn + 0.04, r )
+            * ( 1.0 - smoothstep( 0.84, 0.99, r ) );
+  float coreW = max( 0.06, onePx * 0.5 );
+  float core = exp( -( r * r ) / ( coreW * coreW ) );
+  float line = max( ring * roomy, arm );
+  float a = clamp( core + line, 0.0, 1.0 ) * ( 1.0 - step( 1.0, r ) );
+  return vec2( a, core / max( core + line, 1e-4 ) );
+}
 
 void main() {
   #include <logdepthbuf_fragment>
   vec4 texel = texture2D( uMap, vUv );
-  float a = fxSharpen( texel.a, vClamp ) * fxQuadMask( vQuad ) * vAlpha * fxSoftFade( vFragW );
+  bool star = vVariant > 3.5;
+  float coreShare = 1.0;
+  if ( star ) {
+    vec2 st = fxImpactStar( vQuad, vPx, vVariant > 4.5 ? 6.0 : 4.0 );
+    texel = vec4( 1.0, 1.0, 1.0, st.x );
+    coreShare = st.y;
+  }
+  /* The star is not sharpened and not quad-masked: sharpening is for a soft
+     blob that has to read as a hot dot, and the mask would eat the spikes. It
+     windows itself. */
+  float a = fxSharpen( texel.a, star ? 0.0 : vClamp ) * ( star ? 1.0 : fxQuadMask( vQuad ) ) * vAlpha * fxSoftFade( vFragW );
   if ( a <= 0.0035 ) discard;
-  gl_FragColor = vec4( vColor * texel.rgb * vBright * uGain * ( 1.0 + 0.9 * vClamp ) * vSpread, a );
+  vec3 lit = vColor * texel.rgb * vBright * uGain * ( 1.0 + 0.9 * vClamp ) * vSpread;
+  if ( star ) lit = mix( vColor * 0.58 * uGain, lit, coreShare );
+  gl_FragColor = vec4( lit, a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -831,10 +897,26 @@ const HULL_HOT = new THREE.Color(0xfff1cf);
 const HULL_MOLTEN = new THREE.Color(0xff7a24);
 const HULL_SOOT = new THREE.Color(0x3a332e);
 
-/* Distributions over the flash family. Muzzle runs spiky, impact runs bloom-led.
-   Repeats are the weighting. */
+/* Distributions over the flash family. Muzzle runs spiky, bursts run
+   bloom-led. Repeats are the weighting.
+
+   Impacts no longer draw from the atlas at all (round 4, fix 5): 4 and 5 are
+   the analytic impact star in FLASH_FRAG, four spikes and six. The bloom-led
+   cells they used to draw were the same soft disc a distant drive is. */
 const MUZZLE_SET = [0, 1, 3, 1];
-const IMPACT_SET = [2, 3, 2, 1];
+const IMPACT_SET = [4, 5, 4, 4];
+/* Radiance of one impact mark, before the floor lift. Was 4.0 on the soft
+   bloom cell; the star is mostly 1 px lines, and at 4.0 a stacked volley blew
+   out to white and lost its shape to the bloom pass. */
+const IMPACT_BRIGHT = 2.6;
+/* Screen floor for the near-field detail of a hit - spall sparks and molten
+   gobbets. The comment on hullImpact always said these "carry no floor at all
+   and simply stop resolving at range", but they inherited the spark and ember
+   fields' 2.2-2.4 px floors, so at 5 km twenty floored sparks per hit stacked
+   into the white bloom blob that round 3 could not tell from an engine - the
+   impact star's shape was under it. Under a pixel they fade out with distance
+   as intended and the star carries the hit. */
+const IMPACT_DETAIL_CAP_PX = 0.7;
 const BURST_SET = [1, 3, 2, 0];
 
 /* Screen ceiling, in pixels, for the two effects that fire hundreds of times a
@@ -883,7 +965,11 @@ function shotCeiling(damage) {
    the summary mark fires when the window closes and only if more arrived. */
 const IMPACT_WINDOW = 0.13;
 const IMPACT_CELL_PX = 14;
-const IMPACT_FLOOR_PX = 6.4;
+/* 9.5, up from 6.4 (round 4, fix 5). The mark is now the impact star, a 1 px
+   ring and spikes, and under about 9 px it closes up into the very dot it
+   replaced. It is mostly empty space, so the extra pixels do not cost the
+   carpet that the old 6 px disc would have at this size. */
+const IMPACT_FLOOR_PX = 9.5;
 
 /* Screen floor for one impact mark, in pixels.
 
@@ -897,7 +983,12 @@ const IMPACT_FLOOR_PX = 6.4;
    not where. */
 function impactFloorPx(amount, targetPx) {
   const want = Math.min(11, IMPACT_FLOOR_PX + Math.sqrt(Math.max(1, amount)) * 0.34);
-  return Math.min(want, Math.max(2.4, targetPx * 0.5));
+  /* 1.2x the target, up from 0.5x, and the target is the hull as *drawn*
+     (with the impostor's size floor), not the physical one. A disc that size
+     would become the ship; the impact star is a 1 px ring and spikes, so on a
+     small hull it rings the hull instead of covering it, and it needs the
+     room to stay a ring. */
+  return Math.min(want, Math.max(2.4, targetPx * 1.2));
 }
 
 /** Radius of whatever a shot was aimed at, for callers that only see the shot. */
@@ -1166,13 +1257,16 @@ export class WeaponFX {
 
     const capPx = shotCeiling(amount);
     // Molten wash, blown a little way back out of the hole it just made.
+    /* Its screen floor is held under the impact star's (0.7 of the shot
+       ceiling, was 1.4): floored up to fleet range this round wash is
+       another soft disc, and the hit has to read by the star's shape. */
     f.flare.spawn(pt.x + n.x * mag * 0.6, pt.y + n.y * mag * 0.6, pt.z + n.z * mag * 0.6,
       n.x * 26, n.y * 26, n.z * 26, 0.30, 2.2,
-      mag * 4, mag * 19 * jitter, HULL_MOLTEN, 1.9, 0, 0, capPx * 1.4);
+      mag * 4, mag * 19 * jitter, HULL_MOLTEN, 1.9, 0, 0, capPx * 0.7);
     /* Stretched, not round: `stretch` elongates the billboard along its own
        velocity, so spall reads as metal being thrown rather than as a spray of
        identical dots. */
-    this._sparkBurst(pt, n, Math.round(9 + mag * 5), 0.42, 70 + amount * 1.1, mag * 1.9);
+    this._sparkBurst(pt, n, Math.round(9 + mag * 5), 0.42, 70 + amount * 1.1, mag * 1.9, IMPACT_DETAIL_CAP_PX);
 
     // Soot on every hit, not only the big ones — this is the tell that says
     // "the plate is open" and it is the half a shield can never fake.
@@ -1193,7 +1287,7 @@ export class WeaponFX {
       f.ember.spawn(
         pt.x, pt.y, pt.z,
         n.x * s * 0.8 + u.x * s * 0.5, n.y * s * 0.8 + u.y * s * 0.5, n.z * s * 0.8 + u.z * s * 0.5,
-        rng.range(0.5, 1.3), 0.2, mag * 1.1, mag * 0.2, HULL_MOLTEN, 2.2, 2.4, 0,
+        rng.range(0.5, 1.3), 0.2, mag * 1.1, mag * 0.2, HULL_MOLTEN, 2.2, 2.4, 0, IMPACT_DETAIL_CAP_PX,
       );
     }
   }
@@ -1278,7 +1372,8 @@ export class WeaponFX {
     const mag = Math.min(7.0, 0.9 + Math.sqrt(Math.max(1, amount)) * 0.30);
     const jitter = 0.74 + rng.next() * 0.56;
 
-    const targetPx = (2 * radius) / mpp;
+    // Bounding radius is ~0.55 hull lengths (catalog approxRadius).
+    const targetPx = Math.max((2 * radius) / mpp, hullFloorPx(radius / 0.55));
     const capPx = impactFloorPx(amount, targetPx);
     const natural = mag * 9 * jitter;
     const floored = Math.max(natural, mpp * capPx);
@@ -1296,8 +1391,19 @@ export class WeaponFX {
        as crisp and short as it ever was. */
     const life = (0.10 + rng.next() * 0.06) * (1 + 1.4 * clampAmt) * dwell;
 
-    this._flash(x, y, z, 0, 0, 0, life,
-      natural, mag * 2.0, HULL_HOT, 4.0 * lift, capPx, IMPACT_SET);
+    const o = this._flash(x, y, z, 0, 0, 0, life,
+      natural, mag * 2.0, HULL_HOT, IMPACT_BRIGHT * lift, capPx, IMPACT_SET);
+    /* Squared to the screen and not spinning. A target under sustained fire
+       stacks several marks inside one coalescing cell, and at random angles
+       their spikes fill each other in until the stack is the same soft disc
+       a drive is. Aligned, a stack is still one legible cross with rings
+       opening through it. The random draw for the angle still happens in
+       _flash, so the FX stream is unchanged. */
+    if (o !== undefined) {
+      const d = this.flashes.data;
+      d[o + 8] = Math.PI * 0.25;
+      d[o + 9] = 0;
+    }
   }
 
   detachEntity(entity) {
@@ -1536,9 +1642,14 @@ export class WeaponFX {
     const scale = 1 + Math.sqrt(m.damage) * 0.16;
 
     const j = 0.76 + rng.next() * 0.52;
+    /* A warhead landing on a hull also paints the impact star through
+       hullImpact (sim:damage), so at fleet range the round burst is held
+       small (round 4, fix 5): a missile volley used to put a carpet of 6-10 px
+       white discs over its target, the same round smudge as a drive, and it
+       buried the stars. Close up none of these floors bind. */
     this._flash(p.x, p.y, p.z, 0, 0, 0, 0.16 + rng.next() * 0.10,
-      30 * scale * j, 7 * scale, HOT_WHITE, 4.0, 6.0, BURST_SET);
-    f.flare.spawn(p.x, p.y, p.z, 0, 0, 0, 0.5, 0, 12 * scale, 52 * scale * j, FLAK_BURST, 1.8, 0, 0);
+      30 * scale * j, 7 * scale, HOT_WHITE, 4.0, 3.5, BURST_SET);
+    f.flare.spawn(p.x, p.y, p.z, 0, 0, 0, 0.5, 0, 12 * scale, 52 * scale * j, FLAK_BURST, 1.8, 0, 0, 3.0);
     for (let i = 0; i < Math.round(4 * ctx.qscale) + 2; i++) {
       const u = rng.unitVector();
       f.smoke.spawn(
@@ -1555,7 +1666,7 @@ export class WeaponFX {
       f.spark.spawn(
         p.x, p.y, p.z, u.x * s, u.y * s, u.z * s,
         rng.range(0.3, 0.8), 3.0, rng.range(1.6, 4.0) * scale, 0.3,
-        this._col2, 2.6, rng.range(3, 9), 0,
+        this._col2, 2.6, rng.range(3, 9), 0, IMPACT_DETAIL_CAP_PX,
       );
     }
   }
@@ -1695,6 +1806,7 @@ export class WeaponFX {
     d[o + 16] = set[rng.int(0, set.length - 1)];
     d[o + 17] = capPx || 0;
     this._flashes.push({ slot, death: now + life });
+    return o;
   }
 
   _writeFlashBuffer() {
@@ -1822,7 +1934,7 @@ export class WeaponFX {
   }
 
   /** Sparks scattered into the hemisphere around a surface normal. */
-  _sparkBurst(point, normal, count, spread, speed, size) {
+  _sparkBurst(point, normal, count, spread, speed, size, capPx) {
     const rng = this.ctx.rng;
     const f = this.ctx.fields;
     const nx = normal.x;
@@ -1847,7 +1959,7 @@ export class WeaponFX {
       f.spark.spawn(
         point.x, point.y, point.z, mx * s, my * s, mz * s,
         rng.range(0.18, 0.62), 3.2, size * rng.range(0.6, 1.4), 0.25,
-        HOT_WHITE, 2.4, rng.range(1.6, 4.5), 0,
+        HOT_WHITE, 2.4, rng.range(1.6, 4.5), 0, capPx,
       );
     }
   }
@@ -1886,7 +1998,7 @@ export class WeaponFX {
         this._impactMark(this._v2, this._v, t.damage, null, t.tRadius);
         ctx.fields.flare.spawn(t.ex, t.ey, t.ez, 0, 0, 0, 0.26, 0,
           mag * 4, mag * 17 * jitter, HULL_MOLTEN, 1.9, 0, 0, capPx * 1.4);
-        this._sparkBurst(this._v2, this._v, Math.round(8 + mag * 4), 0.45, 80 + t.damage * 1.2, mag * 1.9);
+        this._sparkBurst(this._v2, this._v, Math.round(8 + mag * 4), 0.45, 80 + t.damage * 1.2, mag * 1.9, IMPACT_DETAIL_CAP_PX);
       }
     }
     this._writeTracerBuffer();

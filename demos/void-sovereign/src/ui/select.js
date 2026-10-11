@@ -95,6 +95,29 @@ const CONTACT_CAND = 512;
 const CONTACT_REFRESH = 0.1;
 const CONTACT_DYING = 0.3;
 
+/* One hostile mark grammar (critic round 3, fix 5).
+
+   Round 3 found hostiles wearing two unexplained forms - the diamond above and
+   the target reticle's corner ticks - with no class information in either, so
+   "you learn what you have, not what you face", and unengaged hostiles wore
+   nothing at all and read as sparkles. A hostile contact is now always the
+   class silhouette, in amber, from the same catalog path every friendly glyph,
+   roster chip and production row uses. One family: the glyph says *what*, its
+   strength says *how engaged* (quiet when merely sensed, stronger when it is
+   firing or being hit, filled when it is about to die), and the turning
+   corners of a target lock sit *around* the glyph rather than replacing it.
+   The diamond stays for our own unselected ships, which is the one thing it
+   now means. The keys card carries the one-line legend.
+
+   "Sensed" is inside any friendly hull's sensor range (catalog sensorRange,
+   4 km if unset); a hostile out there with nothing to say still earns the
+   quietest mark, which is the difference between seven enemy fighters and
+   seven sparkles over the planet. Sizes are by mass bucket and fixed per
+   element, the same reason the diamond pools are. */
+const HOSTILE_K = [0.6, 0.8, 1.05];
+const MAX_HOSTILE_GLYPHS = 120;
+const SENSE_RANGE_DEFAULT = 4000;
+
 /* Past this many selected hulls, individual brackets stop helping: you get one
    bracket around the whole formation and a pip per ship. */
 const GROUP_AT = 140;
@@ -593,6 +616,9 @@ export class WorldMarkers {
     this.reticles = [];
     this.orders = [];
     this.contacts = [[], [], []];
+    this.hostileGlyphs = [];
+    this._sensors = [];
+    this._sensed = new Set();
     this._hits = new Map(); // entityId -> seconds of remaining "under fire" flash
     this._spin = 0;
     this._hidden = false;
@@ -751,6 +777,30 @@ export class WorldMarkers {
       pool[i] = c;
     }
     return c;
+  }
+
+  /* A hostile contact: the class glyph, in the contact layer so selection and
+     reticles still paint over it. Built like the selection glyph but owned
+     by this pool, with its size baked in and only transform, opacity and fill
+     written per frame. */
+  _hostileGlyph(i) {
+    let g = this.hostileGlyphs[i];
+    if (!g) {
+      const el = document.createElement('div');
+      el.className = 'vsh-gly vsh-gly--enemy vsh-gly--contact';
+      el.style.opacity = '0';
+      const svg = svgEl('svg');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.setAttribute('aria-hidden', 'true');
+      svg.setAttribute('focusable', 'false');
+      const path = svgEl('path');
+      svg.appendChild(path);
+      el.appendChild(svg);
+      this.contactHost.appendChild(el);
+      g = { el, path, classId: null, live: false, a: -1, dying: null };
+      this.hostileGlyphs[i] = g;
+    }
+    return g;
   }
 
   /* A target lock is the same corner-tick language as a selection bracket,
@@ -994,15 +1044,41 @@ export class WorldMarkers {
 
     // Who is being shot at. One pass, because "engaged" cuts both ways and a
     // ship under fire is exactly what a commander needs marked.
+    // And where our sensors reach, as flat x,y,z,range-squared quads.
+    const sens = this._sensors;
+    sens.length = 0;
     for (const e of ctx.entities()) {
       if (e.alive === false) continue;
       if (e.targetId >= 0) targeted.add(e.targetId);
+      if (e.team === ctx.team) {
+        const p = posOf(e);
+        if (!p) continue;
+        const r = (e.def && e.def.sensorRange) || SENSE_RANGE_DEFAULT;
+        sens.push(p.x, p.y, p.z, r * r);
+      }
     }
+    const sensed = this._sensed;
+    sensed.clear();
 
     let n = 0;
     for (const e of ctx.entities()) {
       if (e.alive === false) continue;
-      const w = this._weigh(e, targeted);
+      let w = this._weigh(e, targeted);
+      if (e.team !== ctx.team && w < CONTACT_EARN) {
+        const p = posOf(e);
+        if (p) {
+          for (let i = 0; i < sens.length; i += 4) {
+            const dx = p.x - sens[i];
+            const dy = p.y - sens[i + 1];
+            const dz = p.z - sens[i + 2];
+            if (dx * dx + dy * dy + dz * dz <= sens[i + 3]) {
+              sensed.add(e.id);
+              w = CONTACT_EARN;
+              break;
+            }
+          }
+        }
+      }
       if (w < CONTACT_EARN) continue;
       let c = pool[n];
       if (!c) {
@@ -1027,15 +1103,19 @@ export class WorldMarkers {
     const list = this._cand;
     const used = [0, 0, 0];
     let total = 0;
+    let nHost = 0;
 
-    for (let i = 0; i < list.length && total < MAX_CONTACTS; i++) {
+    for (let i = 0; i < list.length && (total < MAX_CONTACTS || nHost < MAX_HOSTILE_GLYPHS); i++) {
       const c = list[i];
-      // Anything the selection or a reticle already speaks for is left alone.
-      if (sel.has(c.id) || this._reticled.has(c.id)) continue;
-      const b = c.bucket;
-      if (used[b] >= CONTACT_CAP[b]) continue;
+      if (sel.has(c.id)) continue;
       const e = ctx.entity(c.id);
       if (!e || e.alive === false) continue;
+      const enemy = e.team !== ctx.team;
+      /* A reticle speaks for a friendly. For a hostile it is only the lock:
+         the glyph inside it is still what says which class you are shooting. */
+      if (!enemy && this._reticled.has(c.id)) continue;
+      const b = c.bucket;
+      if (enemy ? nHost >= MAX_HOSTILE_GLYPHS : (total >= MAX_CONTACTS || used[b] >= CONTACT_CAP[b])) continue;
       const p = posOf(e);
       if (!p || !proj.project(p.x, p.y, p.z)) continue;
       if (
@@ -1045,6 +1125,11 @@ export class WorldMarkers {
       const radius = e.radius || approxRadius(e.classId);
       const px = (radius * proj.scaleK) / proj.cw;
       if (px >= CONTACT_SELF_EVIDENT_PX && c.w < CONTACT_EARN_BIG) continue;
+      if (enemy) {
+        this._drawHostile(this._hostileGlyph(nHost), e, b, proj.sx, proj.sy);
+        nHost++;
+        continue;
+      }
       this._drawContact(this._contactMark(b, used[b]), e, proj.sx, proj.sy);
       used[b]++;
       total++;
@@ -1054,6 +1139,36 @@ export class WorldMarkers {
       const pool = this.contacts[b];
       for (let i = used[b]; i < pool.length; i++) this._parkContact(pool[i]);
     }
+    for (let i = nHost; i < this.hostileGlyphs.length; i++) this._parkContact(this.hostileGlyphs[i]);
+  }
+
+  _drawHostile(g, e, bucket, sx, sy) {
+    const maxHull = e.maxHull || (e.def ? e.def.hull : 0) || 1;
+    const dying = (e.hull || 0) <= maxHull * CONTACT_DYING;
+    const k = HOSTILE_K[bucket] * (dying ? 1.3 : 1);
+    g.el.style.transform =
+      `translate3d(${sx.toFixed(1)}px,${sy.toFixed(1)}px,0) scale(${k.toFixed(3)})`;
+    if (g.classId !== e.classId) {
+      g.classId = e.classId;
+      const def = SHIPS[e.classId];
+      g.path.setAttribute('d', (def && def.silhouette) || 'M12 3 L20 20 H4 Z');
+    }
+    if (dying !== g.dying) {
+      g.dying = dying;
+      g.path.style.fill = dying ? 'currentColor' : '';
+      g.path.style.fillOpacity = dying ? '0.6' : '';
+    }
+    /* Strength is engagement. Merely sensed is the quietest thing on screen
+       short of nothing; firing, being hit and dying each step it up. */
+    const a = dying ? 1
+      : this._hits.has(e.id) ? 0.9
+        : e.targetId >= 0 || this._targeted.has(e.id) ? 0.7
+          : 0.42;
+    if (a !== g.a) {
+      g.a = a;
+      g.el.style.opacity = String(a);
+    }
+    g.live = true;
   }
 
   _drawContact(c, e, sx, sy) {
@@ -1471,6 +1586,9 @@ export class WorldMarkers {
     this.reticles.length = 0;
     this.orders.length = 0;
     for (let b = 0; b < this.contacts.length; b++) this.contacts[b].length = 0;
+    this.hostileGlyphs.length = 0;
+    this._sensors.length = 0;
+    this._sensed.clear();
     this._candPool.length = 0;
     this._cand.length = 0;
     this._targeted.clear();

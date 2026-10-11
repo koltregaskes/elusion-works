@@ -31,6 +31,7 @@
    always win the budget. */
 
 import * as THREE from '../../vendor/three/build/three.module.js';
+import { hullFloorPx, HULL_FLOOR_MAX_GROW } from '../ships/catalog.js';
 
 const QROT = /* glsl */ `
 vec3 qrot( vec4 q, vec3 v ) {
@@ -58,8 +59,41 @@ float plumeSpread( float t ) {
 `;
 
 /* 0..2 pos | 3..6 quat | 7..9 scale | 10..12 colour
-   13..16 seed,throttle,capPx,flare | 17 axial cap (m) */
-const E_STRIDE = 18;
+   13..16 seed,throttle,capPx,flare | 17 axial cap (m) | 18 hull as drawn (m) */
+const E_STRIDE = 19;
+
+/* Fleet-range caps against the hull as it is actually drawn (critic round 3,
+   fix 5). At 5 km the drive used to be a 7 px white blob round a 3 px hull,
+   "brighter and wider than the hull it belongs to", so at the distance the
+   game is mostly played the engine *was* the ship. Every screen floor on the
+   drive is now clamped to a fraction of the hull's drawn length (iHull, which
+   includes the impostor's own size floor). The physical plume and flare are
+   held as well, but only while the hull is small on screen (WIDTH_PX below),
+   so nothing about a close-up drive changes.
+
+   The flare is a billboard, so its fraction is a *quad width*; its painted
+   disc is about 0.8 of that. 0.14 of length is about the beam of the long
+   warship hulls (8-9:1), so the glow can match the stern it sits on and not
+   exceed it. The ribbon's is a nominal radius, painted out to ~1.6x. */
+const FLARE_HULL_FRAC = 0.14;
+const PLUME_HULL_RADIUS = 0.05;
+/* The axial floor (MIN_AXIAL_PX) may not paint a streak longer than this many
+   drawn hull lengths, which is the round-2 0.6x plume look with a little room. */
+const PLUME_HULL_LEN = 0.75;
+/* Hull length on screen, in pixels, over which the drive hands its radiance
+   down to the fleet-range level: full above the top, FLEET_DIM below the
+   bottom. The impostor floor puts a fighter at 9 px, so a floored hull always
+   gets the fleet level; a 130 m frigate at 5 km (~30 px) gets about half way. */
+const FLEET_PX = [10, 48];
+const FLEET_DIM = 0.55;
+/* The physical drive, not just its floor, is narrowed once the hull is small
+   on screen. A frigate's bell cluster is wider than its beam - right close up,
+   where the round-2 plume reads as a soft core in a wide shell, and wrong at
+   5 km, where the same 25 m of glow is 5 px on a 3 px hull. Below WIDTH_PX[0]
+   pixels of hull the ribbon's radius is held to PLUME_HULL_RADIUS of length
+   and the flare to FLARE_HULL_FRAC; above WIDTH_PX[1] nothing is held at all,
+   so a close-up drive is exactly the round-2 one. */
+const WIDTH_PX = [40, 160];
 
 /* Quad half-width, in units of plumeSpread(). The shell profile is
    exp( -rho^2 * 0.95 ) and rho reaches this value at the quad edge, so at 2.4
@@ -111,6 +145,7 @@ attribute vec3 iScale;
 attribute vec3 iColor;
 attribute vec4 iMisc;
 attribute float iAxialCap;
+attribute float iHull;
 
 uniform float uTime;
 uniform float uPixelScale;
@@ -127,6 +162,7 @@ varying float vFragW;
 varying float vClamp;
 varying float vDim;
 varying float vView;
+varying float vFleet;
 
 void main() {
   vec3 axis = normalize( qrot( iQuat, vec3( 0.0, 0.0, 1.0 ) ) );
@@ -148,7 +184,12 @@ void main() {
   float camDist = max( distance( cameraPosition, iPos ), 1.0 );
   float R = max( iScale.x, 0.0001 );
   float floorR = camDist * uPixelScale * min( uMinPixels, iMisc.z );
+  /* Fleet-range cap: the floor may not widen the drive past a fraction of the
+     hull as drawn. See FLARE_HULL_FRAC. */
+  floorR = min( floorR, iHull * ${PLUME_HULL_RADIUS.toFixed(3)} );
   float k = max( 1.0, floorR / R );
+  float hullPx = iHull / max( camDist * uPixelScale, 1e-6 );
+  vFleet = smoothstep( ${FLEET_PX[0].toFixed(1)}, ${FLEET_PX[1].toFixed(1)}, hullPx );
   vClamp = clamp( 1.0 - 1.0 / k, 0.0, 1.0 );
   /* Energy, not just size. A point source smeared over a minimum disc has to
      lose peak radiance or the smallest hulls end up the brightest things in a
@@ -163,7 +204,7 @@ void main() {
 
   /* Length: floor, then ceiling, in that order. See PLUME_LEN_CAP. */
   float len = iScale.z * mix( 1.0, k, ${LEN_FLOOR_MIX.toFixed(2)} );
-  float axialFloor = camDist * uPixelScale * uMinAxialPx;
+  float axialFloor = min( camDist * uPixelScale * uMinAxialPx, iHull * ${PLUME_HULL_LEN.toFixed(2)} );
   len = min( len, max( iAxialCap, axialFloor ) );
   /* Guard, not a tuning knob: if the radial floor ever bound harder than the
      axial one the plume would become a disc wider than it is long, and a disc
@@ -171,6 +212,9 @@ void main() {
      every class from 30 m to 60 km this never binds — the two floors are set so
      it cannot — so it is cheap to make impossible. */
   radius = min( radius, len * 0.42 );
+  /* Fleet-range width: see WIDTH_PX. */
+  float wide = smoothstep( ${WIDTH_PX[0].toFixed(1)}, ${WIDTH_PX[1].toFixed(1)}, hullPx );
+  radius = min( radius, iHull * mix( ${PLUME_HULL_RADIUS.toFixed(3)}, 1.0, wide ) );
 
   /* position.y is the profile coordinate: 0..1 along the plume, and -1 for the
      single upstream row that puts glow *inside* the bell mouth. The upstream
@@ -253,6 +297,7 @@ varying float vFragW;
 varying float vClamp;
 varying float vDim;
 varying float vView;
+varying float vFleet;
 
 void main() {
   #include <logdepthbuf_fragment>
@@ -332,8 +377,11 @@ void main() {
      Rescaling to the team colour at the same magnitude drops luminance 46% for
      the player's cyan and 59% for the enemy's amber, and buys a fleet that is
      legibly two sides. */
-  col = mix( col, vColor * dot( col, vec3( 0.3333 ) ), vClamp * 0.8 );
-  col *= uGain * ( 1.0 + 0.25 * vClamp ) * vDim;
+  col = mix( col, vColor * dot( col, vec3( 0.3333 ) ), max( vClamp * 0.8, 1.0 - vFleet ) );
+  /* At fleet range the drive must not out-shine the hull it belongs to: the
+     hull impostor sits at 22-75 of 255, and a drive at full radiance on a
+     9 px hull blooms into the white comma round 3 photographed. */
+  col *= uGain * ( 1.0 + 0.25 * vClamp ) * vDim * mix( ${FLEET_DIM.toFixed(2)}, 1.0, vFleet );
 
   a *= smoothstep( 0.0, 0.02, vThrottle );
   a *= fxSoftFade( vFragW );
@@ -354,6 +402,7 @@ attribute vec4 iQuat;
 attribute vec3 iScale;
 attribute vec3 iColor;
 attribute vec4 iMisc;
+attribute float iHull;
 
 uniform float uTime;
 uniform float uPixelScale;
@@ -365,6 +414,7 @@ varying float vGain;
 varying float vFragW;
 varying float vClamp;
 varying float vDim;
+varying float vFleet;
 
 void main() {
   vec3 axis = qrot( iQuat, vec3( 0.0, 0.0, 1.0 ) );
@@ -393,8 +443,17 @@ void main() {
      that is itself only 1 px across at 16 km paints a glow eight times the
      size of the ship. The ceiling holds a fighter to ~2 px however far away it
      gets, which is what lets the silhouette outlive the glow. */
-  float size = max( natural, dist * uPixelScale * min( uMinPixels, iMisc.z ) );
+  /* And the fleet-range cap on top: whatever the per-class ceiling allows, the
+     floored disc may not be wider than a fraction of the hull as drawn. The
+     physical flare is only held once the hull itself is small on screen, just
+     below, so a close-up bore is untouched. */
+  float floorSize = min( dist * uPixelScale * min( uMinPixels, iMisc.z ), iHull * ${FLARE_HULL_FRAC.toFixed(3)} );
+  float size = max( natural, floorSize );
+  /* Fleet-range width on the physical flare too: see WIDTH_PX. */
+  float hullPxF = iHull / max( dist * uPixelScale, 1e-6 );
+  size = min( size, iHull * mix( ${FLARE_HULL_FRAC.toFixed(3)}, 4.0, smoothstep( ${WIDTH_PX[0].toFixed(1)}, ${WIDTH_PX[1].toFixed(1)}, hullPxF ) ) );
   vClamp = clamp( 1.0 - natural / max( size, 0.0001 ), 0.0, 1.0 );
+  vFleet = smoothstep( ${FLEET_PX[0].toFixed(1)}, ${FLEET_PX[1].toFixed(1)}, iHull / max( dist * uPixelScale, 1e-6 ) );
   /* Exponent tuned against the backdrop, not in the abstract: ENV measures the
      nebula gas around a fleet at 12-94 of 255, and SHIPS lands its impostor at
      22 shadow / 75 lit inside that range. Anything brighter than the top of the
@@ -434,6 +493,7 @@ varying float vGain;
 varying float vFragW;
 varying float vClamp;
 varying float vDim;
+varying float vFleet;
 
 void main() {
   #include <logdepthbuf_fragment>
@@ -463,9 +523,9 @@ void main() {
      drive is the strongest colour signal a ship gives at range (§3.3). The
      white centre is retired as the screen floor takes over, for the same reason
      the ribbon's is — see PLUME_FRAG. */
-  float white = clamp( core / max( core + bore, 1e-4 ), 0.0, 1.0 ) * ( 1.0 - 0.8 * vClamp );
+  float white = clamp( core / max( core + bore, 1e-4 ), 0.0, 1.0 ) * ( 1.0 - 0.8 * vClamp ) * vFleet;
   vec3 hot = mix( vColor, vec3( 1.0 ), white * 0.85 );
-  gl_FragColor = vec4( hot * 1.38 * uGain * ( 1.0 + 0.25 * vClamp ) * vDim, a );
+  gl_FragColor = vec4( hot * 1.38 * uGain * ( 1.0 + 0.25 * vClamp ) * vDim * mix( ${FLEET_DIM.toFixed(2)}, 1.0, vFleet ), a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -521,6 +581,7 @@ const PLUME_ATTRS = [
   { name: 'iColor', size: 3, offset: 10 },
   { name: 'iMisc', size: 4, offset: 13 },
   { name: 'iAxialCap', size: 1, offset: 17 },
+  { name: 'iHull', size: 1, offset: 18 },
 ];
 /* ------------------------------------------------------------ running lights
    `buildShipModel()` hands back a `lights[]` array per the §2 contract and
@@ -631,6 +692,18 @@ const LIGHT_ATTRS = [
 const LIGHT_RANGE = 26000;
 
 const TRAIL_RANGE = 9000;
+
+/* Trail length ceiling, in hull lengths, measured in space from the nozzle.
+
+   The age taper says a streak dies 0.5 s after it is laid, but the FX clock
+   and the sim clock are not the same clock: FX ages on the frame's dt clamped
+   to 0.1 s, the sim runs at the player's speed setting, so at 4x or on a slow
+   frame a fighter outruns its own trail's lifetime and a 0.5 s streak covers
+   kilometres. Round 3's "order lines or laser pointers" across the wide
+   frames were exactly that. A length cap in space holds whatever either clock
+   is doing: twelve hull lengths still streaks behind a fighter at any range,
+   and the ribbon tapers to nothing at the cap rather than ending on a cut. */
+const TRAIL_HULLS = 12;
 
 /* Station-keeping glow floor. Small enough to read as "hot, idle", large
    enough that a parked mothership is not twelve dead holes — and, at 0.20
@@ -827,6 +900,7 @@ export class EngineFX {
        attach rather than per nozzle per frame. */
     const L = def.length || (entity.radius || 10) * 2.2;
     entry.L = L;
+    entry.floorPx = hullFloorPx(L);
     entry.gain = lengthGain(L);
     /* The proportion ceiling, in metres, at full burn. Throttle shapes it on
        the CPU so the shader clamp is a single min() against a number that
@@ -924,11 +998,21 @@ export class EngineFX {
       const dz = op.z - camPos.z;
       const dist2 = dx * dx + dy * dy + dz * dz;
 
+      /* The impostor's size floor (ships/index.js, hullFloorPx) scales the
+         drawn hull about its centre. Hardware hung off the hull has to move
+         out with it or a floored fighter's drive sits a third of the way up
+         its own fuselage. Same arithmetic as the impostor vertex stage, in
+         the same CSS pixels; 1 everywhere a hull is big enough not to need
+         the floor, so a close-up is untouched. */
+      const pxPerM = 1 / (Math.max(1, Math.sqrt(dist2)) * (ctx.pixelScale || 0.001));
+      const grow = Math.min(HULL_FLOOR_MAX_GROW, Math.max(1, entry.floorPx / Math.max(1e-6, entry.L * scale * pxPerM)));
+      const hullDrawn = entry.L * scale * grow;
+
       if (entry.lights && ln < lcap && dist2 < LIGHT_RANGE * LIGHT_RANGE) {
         const ls = entry.lights;
         for (let i = 0; i < ls.length && ln < lcap; i++) {
           const l = ls[i];
-          v.copy(l.pos).multiplyScalar(scale).applyQuaternion(oq).add(op);
+          v.copy(l.pos).multiplyScalar(scale * grow).applyQuaternion(oq).add(op);
           const o = ln * L_STRIDE;
           ld[o] = v.x; ld[o + 1] = v.y; ld[o + 2] = v.z;
           ld[o + 3] = l.r; ld[o + 4] = l.g; ld[o + 5] = l.b;
@@ -965,13 +1049,13 @@ export class EngineFX {
              than as ships moving. Twenty-odd hull lengths still streaks. */
           const life = (0.30 + 0.20 * ctx.qscale) * j;
           const ramp = this._trailRamps[e.team || 0] || this._trailRamps[0];
-          entry.trail = trails.acquire(team.engine, r, life, Math.max(5, r * 2.4), ramp);
+          entry.trail = trails.acquire(team.engine, r, life, Math.max(5, r * 2.4), ramp, TRAIL_HULLS * entry.L * scale);
         } else if (!want && entry.trail) {
           trails.detach(entry.trail);
           entry.trail = null;
         }
         if (entry.trail) {
-          centre.copy(entry.centre).multiplyScalar(scale).applyQuaternion(oq).add(op);
+          centre.copy(entry.centre).multiplyScalar(scale * grow).applyQuaternion(oq).add(op);
           trails.feed(entry.trail, centre.x, centre.y, centre.z);
         }
       }
@@ -982,15 +1066,18 @@ export class EngineFX {
       /* Proportion ceiling for this frame's throttle. A ship at station keeping
          shows a stub, not a short version of full burn: 0.20 hull lengths at
          idle against 0.60 at full. */
-      const axialCap = entry.maxAxial * (0.28 + 0.72 * throttle) * scale;
+      const axialCap = entry.maxAxial * (0.28 + 0.72 * throttle) * scale * grow;
 
       for (let i = 0; i < entry.defs.length; i++) {
         if (n >= cap) break;
         const d = entry.defs[i];
-        v.copy(d.pos).multiplyScalar(scale).applyQuaternion(oq).add(op);
+        v.copy(d.pos).multiplyScalar(scale * grow).applyQuaternion(oq).add(op);
         q.copy(d.quat).premultiply(oq);
 
-        const r = d.radius * scale;
+        /* Scaled with the drawn hull too, so a floored drive keeps the
+           proportions it has close up and only the screen floors above it
+           are capped. */
+        const r = d.radius * scale * grow;
         /* A fighter at full burn trails roughly its own length of flame; a
            capital's block runs proportionally further because its bells are
            proportionally larger. One formula covers a 45x span of nozzle size.
@@ -1040,6 +1127,7 @@ export class EngineFX {
         cd[o + 15] = entry.plumeCapPx;
         cd[o + 16] = 0;
         cd[o + 17] = far ? 0 : axialCap;
+        cd[o + 18] = hullDrawn;
 
         for (let k = 0; k < E_STRIDE; k++) fd[o + k] = cd[o + k];
         /* The flare is the only thing filling the bore now that the throat disc

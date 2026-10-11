@@ -150,6 +150,12 @@ const PAUSE_LEDE =
   'Space pauses the battle. Orders you give while it is paused are obeyed the ' +
   'moment it resumes — a fleet engagement is meant to be commanded, not raced.';
 const PAUSE_NOTE = 'Space pauses the battle — you can still give orders.';
+/* The marker legend (critic round 3, fix 5: hostiles wore two unexplained
+   mark forms). One line, under the pause lede, naming every form the world
+   layer in ui/select.js can draw. */
+const MARK_LEGEND =
+  'Marks: outline = ship class · amber theirs, cyan ours (◇ = ours, unselected) · ' +
+  'turning corners = your target · filled = about to die · red = ours in trouble';
 
 /* -------------------------------------------------------------- projection */
 
@@ -543,6 +549,9 @@ export class HUD {
     hHead.appendChild(this.helpClose);
     // Promoted out of the "Groups & time" list, where it was one grey row.
     const hLede = el('p', 'vsh-help__lede', PAUSE_LEDE);
+    const hLegend = el('p', 'vsh-help__lede vsh-help__legend', MARK_LEGEND);
+    hLegend.style.maxWidth = 'none';
+    hLegend.style.borderLeftColor = 'var(--vsh-amber)';
 
     /* Straight from `core/input.js`, so the card cannot drift from the
        handlers — every row it publishes is printed, including the four order
@@ -596,7 +605,7 @@ export class HUD {
     audio.appendChild(this.audioNote);
     this.audioPanel = audio;
 
-    hInner.append(hHead, hLede, audio, hGrid);
+    hInner.append(hHead, hLede, hLegend, audio, hGrid);
     help.appendChild(hInner);
     this.help = help;
 

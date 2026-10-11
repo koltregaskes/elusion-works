@@ -16,7 +16,7 @@
    so the coarse levels are genuinely the same vessel with detail removed. */
 
 import * as THREE from '../../vendor/three/build/three.module.js';
-import { SHIPS, ROLE, FAMILY } from './catalog.js';
+import { SHIPS, ROLE, FAMILY, hullFloorPx, HULL_FLOOR_MAX_GROW } from './catalog.js';
 import { buildHullLevel, HULL_CLASSES } from './hulls.js';
 import { KIND } from './greeble.js';
 import { LAYER } from '../core/engine.js';
@@ -187,9 +187,18 @@ function glassMaterial(team) {
    lit side reads against the void, the shadow side reads against the nebula,
    and the ship is a shape either way instead of a value that happens to
    average into the background. A floor on the painted size then stops a
-   fighter dissolving below one pixel. That floor only binds under ~2.3 px, so
-   it never touches a frigate or a capital and the ranking by hull length —
-   which is the whole of §3.4 — survives.
+   fighter dissolving below one pixel.
+
+   Round 4 (critic round 3, fix 5) raised that floor from 2.3 px to 9-12 px of
+   *hull length* (`hullFloorPx` in catalog.js, shared with FX). At 2.3 px the
+   floor kept a fighter on screen but did not make it a ship: at 5 km the drive
+   glow was a 7 px white blob and the hull a 3 px smudge inside it, so "the
+   engine *is* the ship". The floor now binds on interceptors, corvettes and
+   collectors at fleet range and on frigates only well past 10 km, and it
+   rises gently with hull length so the classes it binds on still rank. It
+   scales the hull's own silhouette about its centre, so a floored fighter is
+   a 9 px sliver with its real proportions, not a disc. EngineFX moves the
+   nozzles out with the same grow so the drive stays on the stern.
 
    This costs nothing. It replaces the hull material at the coarse levels
    rather than adding a pass, so the draw-call count is unchanged, and one
@@ -197,10 +206,9 @@ function glassMaterial(team) {
 
 /** Levels at or beyond this draw as impostors. 2 == under ~55 screen px. */
 const IMPOSTOR_LOD = 2;
-/** Minimum painted diameter, in device pixels, for an impostor hull. */
-const IMPOSTOR_MIN_PX = 2.3;
-/** Ceiling on the size floor, so nothing balloons out at 60 km. */
-const IMPOSTOR_MAX_GROW = 2.4;
+/** Ceiling on the size floor, so nothing balloons out at 60 km. Shared with
+    FX through catalog.js; the floor itself is `hullFloorPx(length)`. */
+const IMPOSTOR_MAX_GROW = HULL_FLOOR_MAX_GROW;
 /** Canopy glass stops resolving well before the blockout does. */
 const GLASS_MAX_LOD = 1;
 /** Shadow-side floor. Deep, but never zero — a hole reads as nothing.
@@ -258,11 +266,15 @@ function impostorBeforeRender(renderer, scene, camera) {
     h = _vp.w;
   }
   if (!(h > 0)) h = renderer.getDrawingBufferSize(_dbSize).y;
-  // projectionMatrix[1][1] is 1 / tan( fovY / 2 ); half the viewport height in
-  // device pixels turns that into pixels per metre at one metre of depth. Taken
-  // from the matrix rather than from camera.fov so a post stack that renders at
-  // a reduced scale, or jitters the projection for TAA, is followed exactly.
-  _impostorPx.value = camera.projectionMatrix.elements[5] * h * 0.5;
+  // projectionMatrix[1][1] is 1 / tan( fovY / 2 ); half the viewport height
+  // turns that into pixels per metre at one metre of depth. Taken from the
+  // matrix rather than from camera.fov so a jittered projection is followed
+  // exactly. The height is the canvas's *CSS* height when there is one: the
+  // floor is a promise about how big a hull looks on screen, and FX sizes the
+  // drive glow against the same CSS-pixel hull, so the two must agree whatever
+  // the device pixel ratio or the post stack's internal render scale.
+  const css = renderer.domElement && renderer.domElement.clientHeight;
+  _impostorPx.value = camera.projectionMatrix.elements[5] * (css > 0 ? css : h) * 0.5;
 
   if (_keyCountdown-- <= 0) {
     scanKeyLight(scene);
@@ -336,11 +348,17 @@ function impostorMaterial(team, classId, radius) {
   const colour = new THREE.Color(0x6d747c);
   colour.lerp(pal.secondary, 0.16);
 
+  /* The floor is on painted hull *length*; the shader measures the bounding
+     radius, so convert: grow = minPxR / (R * s) and the painted length is
+     L * s * grow, so minPxR = floorPx * R / L. */
+  const def = SHIPS[classId];
+  const R = Math.max(1e-3, radius);
+  const L = def && def.length > 0 ? def.length : R * 2;
   const uniforms = {
     uPxScale: _impostorPx,
     uKeyDir: _impostorKey,
-    uBoundR: { value: Math.max(1e-3, radius) },
-    uMinPxR: { value: IMPOSTOR_MIN_PX * 0.5 },
+    uBoundR: { value: R },
+    uMinPxR: { value: (hullFloorPx(L) * R) / L },
     uMaxGrow: { value: IMPOSTOR_MAX_GROW },
     uFill: { value: IMPOSTOR_FILL },
   };

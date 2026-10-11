@@ -765,7 +765,7 @@ export class ParticleField {
 
 const R_STRIDE = 16;
 /* 0..2 pos | 3 side | 4..6 dir | 7 birth | 8..10 colour | 11 life
-   12 width | 13 alpha | 14 seed | 15 pad */
+   12 width | 13 alpha | 14 seed | 15 taper (1 = untapered; see maxSpan) */
 
 const RIBBON_VERT = /* glsl */ `
 #include <common>
@@ -779,6 +779,7 @@ attribute float aLife;
 attribute float aWidth;
 attribute float aAlpha;
 attribute float aSeed;
+attribute float aTaper;
 
 uniform float uTime;
 uniform float uPixelScale;
@@ -816,7 +817,11 @@ void main() {
      constant-width strip is the "drawn line" read rather than exhaust. Held at
      10% rather than 0 so the very end of a live trail does not alias in and out
      of existence from frame to frame. */
-  float w = max( natural, floorW * mix( 0.10, 1.0, shrink ) );
+  /* And it tapers in space as well as in age. A trail with a length cap in
+     space (maxSpan) carries its distance-from-the-nozzle ramp in aTaper, 1 at
+     the head and 0 at the cap, and without it the floor drew the whole length
+     at one width - the uniform hairline round 3 read as an order line. */
+  float w = max( natural, floorW * mix( 0.10, 1.0, shrink ) * aTaper );
   vClamp = clamp( 1.0 - natural / max( w, 0.0001 ), 0.0, 1.0 );
   /* The energy compensation the plume, the nozzle flare and the running lights
      all carry, and that this batch was the only one missing. Same argument: the
@@ -911,6 +916,7 @@ export class RibbonField {
 
     const verts = capacity * segments * 2;
     this._data = new Float32Array(verts * R_STRIDE);
+    this._along = new Float32Array(segments);
     this._slots = new Array(capacity);
     this._free = [];
     for (let i = capacity - 1; i >= 0; i--) {
@@ -934,6 +940,7 @@ export class RibbonField {
     geo.setAttribute('aWidth', new THREE.InterleavedBufferAttribute(ib, 1, 12));
     geo.setAttribute('aAlpha', new THREE.InterleavedBufferAttribute(ib, 1, 13));
     geo.setAttribute('aSeed', new THREE.InterleavedBufferAttribute(ib, 1, 14));
+    geo.setAttribute('aTaper', new THREE.InterleavedBufferAttribute(ib, 1, 15));
 
     const quads = capacity * (segments - 1);
     const idx = verts > 65535 ? new Uint32Array(quads * 6) : new Uint16Array(quads * 6);
@@ -992,8 +999,14 @@ export class RibbonField {
       trail). With it the ribbon carries a three-stop temperature gradient along
       its length and a width ramp that reaches zero at the tail, instead of one
       flat colour and one flat width end to end — which is the difference
-      between exhaust and a drawn line. Without it, behaviour is unchanged. */
-  acquire(colour, width, life, minStep, ramp) {
+      between exhaust and a drawn line. Without it, behaviour is unchanged.
+
+      `maxSpan` is optional too, in metres: a ceiling on the ribbon's length in
+      *space*, measured back from the head. With it the ramp, the width and the
+      alpha are all laid out over that distance and reach zero at it, so the
+      streak has a fixed proportion to its emitter whatever the frame rate or
+      the sim speed is doing to the age taper. Ramped ribbons only. */
+  acquire(colour, width, life, minStep, ramp, maxSpan) {
     const slot = this._free.pop();
     if (slot === undefined) return null;
     const r = {
@@ -1001,6 +1014,7 @@ export class RibbonField {
       n: 0,
       colour: new THREE.Color(colour),
       ramp: ramp || null,
+      maxSpan: ramp && maxSpan > 0 ? maxSpan : 0,
       width,
       life,
       minStep: minStep || 6,
@@ -1090,7 +1104,20 @@ export class RibbonField {
     const col = r.colour;
     const ramp = r.ramp;
     const span = Math.max(1, r.n - 1);
+    /* Distance from the head, for a span-capped ribbon. Walked from the head
+       down to `from`, so a head-only rewrite costs two steps. */
+    const cap = r.maxSpan;
+    const along = this._along;
+    if (cap > 0) {
+      along[r.n - 1] = 0;
+      for (let j = r.n - 2; j >= from; j--) {
+        const a4 = (j + 1) * 4;
+        const b4 = j * 4;
+        along[j] = along[j + 1] + Math.hypot(p[a4] - p[b4], p[a4 + 1] - p[b4 + 1], p[a4 + 2] - p[b4 + 2]);
+      }
+    }
     for (let j = from; j < to; j++) {
+      const sp = cap > 0 ? Math.max(0, 1 - along[j] / cap) : 1;
       const o4 = j * 4;
       const nx = j < r.n - 1 ? (j + 1) * 4 : o4;
       const px = j > 0 ? (j - 1) * 4 : o4;
@@ -1107,8 +1134,9 @@ export class RibbonField {
       let wf = headFade;
       if (ramp) {
         // 0 at the oldest live point, 1 at the head. Two linear segments, so
-        // the mid stop lands exactly halfway down the live strip.
-        const f = j / span;
+        // the mid stop lands exactly halfway down the live strip. A capped
+        // ribbon runs the ramp over its cap instead, whichever ends sooner.
+        const f = cap > 0 ? Math.min(j / span, sp) : j / span;
         const hot = f > 0.5;
         const a = hot ? ramp[1] : ramp[2];
         const b = hot ? ramp[0] : ramp[1];
@@ -1131,11 +1159,40 @@ export class RibbonField {
         d[o + 8] = cr; d[o + 9] = cg; d[o + 10] = cb;
         d[o + 11] = r.life;
         d[o + 12] = r.width * wf;
-        d[o + 13] = 1;
+        /* Alpha fades with distance from the nozzle as well as with age, and
+           a vertex past the cap has zero alpha, which also collapses its width
+           in the vertex stage: the strip simply stops existing there. */
+        d[o + 13] = cap > 0 ? sp * sp * (3 - 2 * sp) : 1;
         d[o + 14] = (r.slot * 0.618034) % 1;
+        d[o + 15] = cap > 0 ? sp : 1;
       }
     }
     this._mark(base + from * 2, (to - from) * 2);
+
+    /* Weld the first unused vertex pair to the head (round 4, fix 5).
+
+       The index buffer joins all `segments` vertices of a slot, so while a
+       ribbon is still filling - every slow mover, every newly acquired trail,
+       every trail that stopped moving - there is one more quad after the head,
+       and its far end is whatever that vertex last held: the previous ribbon
+       in this slot, or the same ribbon before a teleport. Zero alpha there
+       collapses the far end's width but not the quad, so the head drew a
+       tapering line out to an arbitrary stale point, often kilometres away,
+       fading from full head brightness to nothing. That is the uniform
+       hairline round 3 read as an order line, and it outlived every age and
+       span taper because it was never part of the trail at all. Parked on the
+       head with zero width and alpha, the quad has no area. */
+    if (to === r.n && r.n > 0 && r.n < S) {
+      const h4 = (r.n - 1) * 4;
+      for (let s = 0; s < 2; s++) {
+        const o = (base + r.n * 2 + s) * R_STRIDE;
+        d[o] = p[h4]; d[o + 1] = p[h4 + 1]; d[o + 2] = p[h4 + 2];
+        d[o + 7] = p[h4 + 3];
+        d[o + 12] = 0;
+        d[o + 13] = 0;
+      }
+      this._mark(base + r.n * 2, 2);
+    }
   }
 
   /** Stop feeding but let the tail burn down naturally. */
@@ -1382,9 +1439,11 @@ export class FXSystem {
            colour signal a ship gives at range (§3.3). At 1.6x it still reads as
            a hot streak but stays cyan or amber instead of going to paper.
 
-           1.2 px, not 1.4: the width floor is what stops a streak disappearing,
-           and a hairline does that. At 1.4 a wing at fleet range painted bars
-           wider than they needed to be, and area is energy.
+           0.9 px, not 1.2 (round 4): the width floor is what stops a streak
+           disappearing, and a hairline does that, but it must stay thinner
+           than the hull it trails - a floored fighter is about 2 px across, and
+           a 1.2 px line at full length out-read it. The floor also tapers in
+           space now (see aTaper), so only the head carries the full 0.9.
 
            farFade is a pop fix, not a dimmer. It ends just under EngineFX's own
            9 km trail gate so the hard cut never shows, and starts late enough to
@@ -1392,7 +1451,7 @@ export class FXSystem {
            [4500, 8800] it deleted them from the 5 km fleet rung outright, which
            throws away the read this batch exists for (see the file header: the
            streaks should arrive before the hulls resolve). */
-        core: 0.6, taper: 0.95, minPixels: 1.2, opacity: 0.55,
+        core: 0.6, taper: 0.95, minPixels: 0.9, opacity: 0.55,
         farFade: [7000, 8800],
         renderOrder: 11, softness: 16,
       }),
