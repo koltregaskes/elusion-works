@@ -102,7 +102,7 @@ const QUALITY = {
      rim       (counter-key)    0.0110
      ambient                    0.0028
      hull bounce, diffuse       0.0075
-     hull bounce, Fresnel rim   0.0190
+     hull bounce, cold rim      0.0190   (shadow-side edge only)
                                 ------
      everything that is not the key  0.0563   ->  key : fill = 17.8 : 1
 
@@ -561,8 +561,9 @@ export class Environment {
        rather than by the star. [MAT]'s diffuse bounce term is `mix(fill, key,
        normal.y * 0.5 + 0.5)` — another pure up-down hemisphere, so like
        `env:fill` it adds equally either side of the terminator. The Fresnel
-       rim is the better-behaved of the two (it only fires at grazing angles)
-       and is allowed correspondingly more.
+       rim is the better-behaved of the two (it only fires at grazing angles,
+       and only on faces this key does not reach, so it outlines the shadow
+       side without lifting it) and is allowed correspondingly more.
 
        The bounce colours are luminance-normalised for the same reason the
        scene lights are, and [MAT] clamps their chroma harder than the scene

@@ -1773,7 +1773,9 @@ export class CameraRig {
     return false;
   }
 
-  /** Swing to the nearest yaw/pitch that actually sees the subject.
+  /** Swing to the nearest yaw/pitch that actually sees the subject, and
+      sees it against something other than a rock of its own value: an
+      approach must pass both _sightBlocked and _backdropCover.
 
       Only ever called when the rig *chooses* a framing — boot, F, `ui:focus`.
       Fighting the player mid-orbit would be worse than the occlusion; if they
