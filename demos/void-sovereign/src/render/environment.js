@@ -805,7 +805,10 @@ export class Environment {
     const hasRing = r.chance(0.62);
     const ring = {
       inner: radius * r.range(1.32, 1.55),
-      outer: radius * r.range(2.05, 2.55),
+      /* Was 2.05..2.55: a ring that wide spans 70+ degrees of sky at the
+         planet's angular size, which is a ring the fleet flies across rather
+         than one it sees. Saturn's main rings stop at about 2.3 radii. */
+      outer: radius * r.range(1.90, 2.25),
       bandFreq: r.range(9, 15),
       fineFreq: r.range(48, 80),
       gap1: r.range(0.30, 0.45),
@@ -960,10 +963,26 @@ export class Environment {
              geometric terminator the light carries. 0.085 is about five
              degrees, which is the right order for a deep hydrogen atmosphere
              and is what the twilight band below rides on. */
-          const float WRAP = 0.085;
-          float wrapped = clamp((ndl + WRAP) / (1.0 + WRAP), 0.0, 1.0);
-          float lit = smoothstep(0.0, 0.055, wrapped);
-          float shade = lit * (0.06 + 0.94 * wrapped * wrapped);
+          /* R4 fix 6. The form above still read as a hard straight edge with
+             no penumbra, and the measured reason was a floor: lit stepped
+             from 0 to a 0.06 shade inside 0.06 of ndl, and the twilight term
+             below added a flat 0.1 on top of it over the same step, so the
+             exposure lifted a cliff, not a gradient. Now the light rolls off
+             through a penumbra band PEN wide either side of the geometric
+             terminator (about four per cent of the radius on screen at
+             quadrature), and under it a falloff flatter than Lambert: it
+             leaves the band at about a fifth of full and climbs gently across
+             the disc, so the band is the only edge there
+             is and the cloud bands stay readable all the way to the bright
+             limb instead of sitting in the tone curve's shoulder. No floor
+             anywhere: the night side gets only fill. The key is 0.6 of what
+             it was because the old dark side was propping up the metered
+             exposure; with a true night half the lit half clipped flat. */
+          const float PEN = 0.045;
+          float pen = smoothstep(-PEN, PEN * 1.35, ndl);
+          float lamb = clamp((ndl + PEN) / (1.0 + PEN), 0.0, 1.0);
+          float lit = pen;
+          float shade = pen * pow(lamb, 0.6);
           shade *= mix(0.58, 1.0, pow(ndv, 0.40));   // limb darkening
 
           /* Ring shadow. March the local surface point toward the star and see
@@ -989,15 +1008,30 @@ export class Environment {
              out-reads the subject the fleet stops being the subject. It still
              wants to be the brightest large area in the frame — that is what
              gives a hull its silhouette — just not brighter than the hull. */
-          vec3 col = albedo * uSunColour * shade * ringShade * ${num(r.range(1.15, 1.55))};
-          col += albedo * uFill * 0.085;             // nebula bounce, night side included
-          col += uFill * 0.010;
-
           /* Twilight: the last few degrees before the terminator run through
-             the atmosphere at a grazing angle, so they redden. Without this the
-             terminator is a clean arc and reads as a stencil. */
-          float twi = lit * (1.0 - smoothstep(0.0, 0.30, ndl));
-          col += albedo * ATMO.zyx * twi * 0.28;
+             the atmosphere at a grazing angle, so they redden. It TINTS the
+             key, it no longer adds light: as an additive 0.28 it was a flat
+             warm slab exactly where the light should be dying, which is what
+             made the lit side look full-bright right up to a cut edge. */
+          float twi = 1.0 - smoothstep(0.0, 0.22, ndl);
+          vec3 warm = mix(vec3(1.0), normalize(ATMO.zyx + 0.05) * 1.6, 0.55);
+          vec3 key = uSunColour * mix(vec3(1.0), warm, twi * pen);
+          vec3 col = albedo * key * shade * ringShade * ${num(r.range(1.15, 1.55) * 0.6)};
+
+          /* Night side. The nebula bounce was albedo * fill * 0.085 plus a
+             flat 0.010, which after the post stack's adaptation put the night
+             disc at 35 to 40 per cent of the lit value with every cloud band
+             still legible: a lit disc under a translucent decal. The lighting
+             contract is a key to fill ratio of 17.76 to 1 measured on screen,
+             and a night side that honours it has bands that are barely there.
+             Measured scene-referred on seed 13634 the old night ran at 1:13
+             of the lit cloud tops, inside the contract's 1:17.76. It now sits
+             near 1:50, and the albedo it lights is
+             pulled three quarters of the way to its own mean, which keeps a
+             ghost of the banding without letting it read as weather. */
+          vec3 nightAlb = mix((CA + CB + CC) * (1.0 / 3.0), albedo, 0.25);
+          col += nightAlb * uFill * 0.150;
+          col += uFill * 0.0020;
 
           /* Thin atmospheric limb over the disc — forward-scattering haze that
              only shows where the air is edge-on *and* lit. Past the terminator
@@ -1012,7 +1046,10 @@ export class Environment {
              it is scattering *everything*, just the short end slightly more. */
           vec3 rimTint = mix(vec3(dot(ATMO, vec3(0.2126, 0.7152, 0.0722))), ATMO, 0.42);
           float rim = pow(1.0 - ndv, 3.4);
-          col += rimTint * rim * smoothstep(-0.04, 0.34, ndl) * 0.50;
+          /* Gated on the lit side proper. From -0.04 it wrapped a lit rim a
+             few degrees round onto the night limb, which on a disc this big
+             is a visible grey crescent past the terminator (R4 fix 6). */
+          col += rimTint * rim * smoothstep(0.02, 0.34, ndl) * pen * 0.50;
 
           gl_FragColor = vec4(col, 1.0);
         }`,
@@ -1085,7 +1122,16 @@ export class Environment {
           /* Grazing light reddens on its way through, so the few degrees at
              the terminator run warm before they go out. */
           vec3 tint = mix(uColour.zyx * 0.9, uColour, smoothstep(0.02, 0.32, ndl));
-          gl_FragColor = vec4(tint * a * lit * scat * 0.80, 1.0);
+          /* R4 fix 6: weighted by the light, never uniform. The lit limb
+             carries the full forward-scattered halo; the dark limb keeps a
+             thread at about one twenty-fifth of it, cool and unscattered,
+             which is all the nebula behind could plausibly put through the
+             air there and just enough to stop the night limb dissolving
+             into the void. It falls off with the light, not with a ring. */
+          float dark = (1.0 - lit) * smoothstep(0.20, -0.30, ndl);
+          vec3 lim = tint * a * lit * scat * 0.80;
+          lim += uColour * 0.032 * exp(-h * 2.2) * dark;
+          gl_FragColor = vec4(lim, 1.0);
         }`,
       transparent: true,
       blending: THREE.AdditiveBlending,
@@ -1175,7 +1221,13 @@ export class Environment {
                planet's own scheme made the rings compete with the planet. */
             vec3 ice = mix(vec3(${f3(scheme.c)}), vec3(${f3(scheme.b)}), fine);
             ice = mix(vec3(dot(ice, vec3(0.2126, 0.7152, 0.0722))), ice, 0.42) * 0.62;
-            vec3 col = ice * uSunColour * shade * phase * 0.52 + uFill * 0.06;
+            /* R4 fix 6: 0.70 of what it was. At the old level the ring
+               out-valued the nebula it sits in front of and matched a lit
+               hull, and a backdrop band as bright as the subject is read at
+               the subject's depth. Dimmer and a touch cooler, it sits in the
+               sky with the gas rather than in the battle with the fleet. */
+            vec3 col = (ice * uSunColour * shade * phase * 0.52 + uFill * 0.06) * 0.70;
+            col = mix(col, uFill * dot(col, vec3(0.2126, 0.7152, 0.0722)) * 2.2, 0.18);
             /* Opacity comes from optical depth, and from nothing else.
 
                It used to be a raw density scaled by the phase term and then
@@ -1348,7 +1400,9 @@ export class Environment {
       const dist = this._planetGroup.position.length();
       const centre = dir.clone().multiplyScalar(dist);
       this._planetGroup.position.copy(centre);
+      this._orientRing(dir, side, this.rng.fork(0x816e));
       this._planetGroup.updateMatrixWorld();
+      this._refreshPlanetLight();
       if (this._atmoMat) this._atmoMat.uniforms.uCentre.value.copy(centre);
       if (this._ringMat) this._ringMat.uniforms.uCentre.value.copy(centre);
       /* The moon travels with it, or the pair stops reading as a system. */
@@ -1371,6 +1425,79 @@ export class Environment {
       .addScaledVector(up, r.range(0.30, 0.58) * vHalf)
       .normalize();
     this._composeSky(want, sun);
+  }
+
+  /**
+   * Turn the planet so its ring reads as a feature of the sky, not a floor.
+   *
+   * The ring was at backdrop distance already: the planet lives in
+   * `farScene`, drawn by `farCamera`, which copies the gameplay camera's
+   * rotation and never translates, so nothing in it can parallax. What made
+   * hulls look parked ON it was its orientation. The axial tilt was seeded at
+   * 6 to 31 degrees from world up, so the ring plane lay within a few degrees
+   * of the battle plane, and seen from a camera pitched down at the fleet it
+   * was a second floor running under every ship at the same perspective as
+   * the real one. The eye has no way to put two coplanar-looking floors at
+   * different depths, so it merged them.
+   *
+   * Now the ring is set against the view it will be seen in, in the world's
+   * horizon frame so it holds for any yaw and pitch (the rig never rolls):
+   *   - its long axis is inclined 24 to 47 degrees to the horizon, so it can
+   *     never line up with the battle plane;
+   *   - it is open to between 0.17 and 0.28 (minor over major axis), a slim
+   *     ellipse that reads as a ring round a planet and not as a road;
+   *   - it leans with the light on screen, so the terminator crosses the
+   *     cloud bands rather than running along them.
+   * The band latitudes and the ring shadow live in the same frame, so they
+   * turn with it and stay consistent.
+   *
+   * @param {THREE.Vector3} dir   unit direction to the planet
+   * @param {number} side         +1 if the planet is right of frame, -1 left
+   * @param {object} r            seeded rng
+   */
+  _orientRing(dir, side, r) {
+    const worldUp = new THREE.Vector3(0, 1, 0);
+    const hr = new THREE.Vector3().crossVectors(dir, worldUp);
+    if (hr.lengthSq() < 1e-4) hr.set(1, 0, 0);
+    hr.normalize();
+    const hu = new THREE.Vector3().crossVectors(hr, dir).normalize();
+    /* Which way the long axis leans is decided by the light, not by taste.
+       The pole is perpendicular to the long axis, so if the axis leaned
+       across the light the pole would point at the star, the lit half of the
+       disc would be the polar hood, and the cloud bands would run parallel
+       to the terminator: a bland lit cap over a dark one. Leaning WITH the
+       on-screen light direction makes the terminator cut across the bands,
+       which is the single strongest cue that this is a lit sphere. The
+       inclination stays inside the band either way. */
+    const sp = this.sunDirection.clone().addScaledVector(dir, -this.sunDirection.dot(dir));
+    let phi = Math.atan2(sp.dot(hu), sp.dot(hr));
+    if (phi > Math.PI / 2) phi -= Math.PI;
+    if (phi < -Math.PI / 2) phi += Math.PI;
+    const lean = Math.sign(phi) || side;
+    const theta = lean * THREE.MathUtils.clamp(Math.abs(phi), 0.45, 0.77) * r.range(0.94, 1.06);
+    const major = hr.clone().multiplyScalar(Math.cos(theta)).addScaledVector(hu, Math.sin(theta)).normalize();
+    const across = new THREE.Vector3().crossVectors(dir, major).normalize();
+    const open = r.range(0.17, 0.28);
+    const pole = across
+      .multiplyScalar(Math.sqrt(1 - open * open) * (r.chance(0.5) ? 1 : -1))
+      .addScaledVector(dir, -open)
+      .normalize();
+    const z = new THREE.Vector3().crossVectors(major, pole).normalize();
+    const basis = new THREE.Matrix4().makeBasis(major, pole, z);
+    this._planetGroup.quaternion.setFromRotationMatrix(basis);
+    this._ringOpen = open;
+  }
+
+  /* The ring shadow and the terminator are computed against the BODY's
+     object-space normals, so the key has to be re-expressed in the body's own
+     frame — the group's orientation and the body's spin together — every
+     time either changes. This is the same vector as the hull key light, which
+     is what keeps the planet's lit side and every hull terminator agreeing. */
+  _refreshPlanetLight() {
+    if (!this._planetMat || !this._planet) return;
+    this._planet.updateMatrixWorld(true);
+    this._planet.getWorldQuaternion(_invQ).invert();
+    this._planetMat.uniforms.uSunLocal.value.copy(this.sunDirection).applyQuaternion(_invQ).normalize();
   }
 
   /* How far the sky may be tilted OFF the star axis, in radians.
@@ -2807,18 +2934,16 @@ export class Environment {
       this._updateSeams(false);
     }
 
-    // The gas giant turns; slowly enough that it reads as scale, not motion.
-    if (this._planetGroup) {
-      this._planetGroup.rotation.y += dt * 0.0022;
-      if (this._planetMat) {
-        /* The ring shadow is traced in the planet's own frame, so the light
-           has to be re-expressed there every time the planet moves under it. */
-        this._planetGroup.updateMatrixWorld();
-        this._planetMat.uniforms.uSunLocal.value
-          .copy(this.sunDirection)
-          .applyQuaternion(_invQ.copy(this._planetGroup.quaternion).invert())
-          .normalize();
-      }
+    /* The gas giant turns; slowly enough that it reads as scale, not motion.
+
+       The BODY turns, about its own pole, and nothing else does. This used to
+       add to the group's Euler y, and with the axial tilt living in the same
+       Euler that is not a spin about the pole: it precessed the whole system,
+       so over a match the ring plane slowly swung across the sky. A ring is a
+       fixed feature of the backdrop; only the cloud tops move. */
+    if (this._planetGroup && this._planet) {
+      this._planet.rotation.y += dt * 0.0022;
+      this._refreshPlanetLight();
     }
 
     this._lodTimer -= dt;
