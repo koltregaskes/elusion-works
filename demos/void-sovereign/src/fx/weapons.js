@@ -23,23 +23,35 @@ import { bus } from '../core/events.js';
 const TRACER_STRIDE = 16;
 /* 0..2 origin | 3..5 vel | 6..9 spawn,life,width,length | 10..13 rgb,bright | 14..15 head,seed */
 
-/* A round is two shells, not one strip.
+/* A round is a bead and a wake, not a strip. (Critic round 3, fix 3.)
 
-     shell 0  halo   ~2.4x bore, soft-edged, firmly team-coloured. This is the
-                     thing that survives at four kilometres and the thing that
-                     says whose gun fired.
-     shell 1  core   ~0.4x bore, near-white, hard-edged. This is what reads as
-                     *hot* once the camera is close enough to resolve it.
+   The previous build drew each round as two stacked full-length strips, a
+   wide team-coloured halo over a thin white filament, both floored to a few
+   pixels. At play distance the floors won along the whole length, so every
+   round was a strip of near-constant width and value: a drawn line. And
+   because rounds were drawn for every shot, a gun firing ten or fifty a
+   second laid its dashes end to end into one unbroken hairline from muzzle
+   to target, which is exactly what an order line looks like.
 
-   Both taper: full bore just behind the nose and pinched to nothing where the
-   trail runs out, because a strip of constant width from one end to the other
-   is a drawn line and no amount of colour rescues it. Both also lose radiance
-   as the screen floor spreads them over more pixels than they physically
-   occupy, so a shot at 6 km reads as further away than a shot at 600 m instead
-   of brighter — which is what the old "1.0 + 1.1 * vClamp" lift did.
+   Now the two shells do different jobs:
+
+     shell 0  wake   a short ribbon BEHIND the round, team tint held pale,
+                     widest at the round and pinched to nothing at the tail,
+                     with its opacity falling off steeply, so most of its
+                     length is near-black. Length conveys speed, the fade
+                     conveys direction.
+     shell 1  bead   a screen-facing round head at the projectile itself,
+                     white-hot in the middle with a tinted rim. It has its own
+                     pixel floor, so at four kilometres a round is still a
+                     bright dot with a smear behind it instead of a hairline.
+
+   The wake grows out of the muzzle rather than appearing at full length
+   behind the gun, and the CPU side caps how many rounds per second each
+   shooter may draw (see TRACER_RATE), so a stream reads as beads with gaps.
+   Still one instance per round and one draw call for the batch.
    (No backticks in this comment on purpose: it sits directly above a GLSL
    template literal, and a stray one here is the project's most expensive
-   recurring bug — see HANDOFF §5.) */
+   recurring bug, see HANDOFF section 5.) */
 const TRACER_VERT = /* glsl */ `
 #include <common>
 #include <logdepthbuf_pars_vertex>
@@ -68,9 +80,11 @@ void main() {
   float life = max( iTime.y, 0.0001 );
   float age = clamp( t / life, 0.0, 1.0 );
   float alive = step( 0.0, t ) * step( age, 0.9999 );
+  float tt = max( t, 0.0 );
 
-  vec3 p = iOrigin + iVel * max( t, 0.0 );
-  vec3 dirW = normalize( iVel );
+  float speed = max( length( iVel ), 0.001 );
+  vec3 dirW = iVel / speed;
+  vec3 p = iOrigin + iVel * tt;
 
   vec3 toCam = cameraPosition - p;
   float dist = max( length( toCam ), 1.0 );
@@ -78,39 +92,46 @@ void main() {
   vec3 side = cross( dirW, view );
   float sl = length( side );
   // Head-on the cross product collapses; any stable perpendicular will do,
-  // the round head is all that is visible at that angle anyway.
+  // only the bead is visible at that angle anyway.
   side = sl > 1e-4 ? side / sl : normalize( cross( dirW, vec3( 0.371, 0.664, 0.649 ) ) );
+  // The direction of travel as the screen sees it.
+  vec3 up = cross( view, side );
 
-  float core = step( 0.5, aShell );
-  float shellW = mix( 2.40, 0.40, core );
-  /* Screen floor, per shell. A 0.5 m round at 4 km is a fifth of a pixel;
-     without a floor a fleet action is an empty starfield with some noise in it.
-     The core's floor is deliberately near one pixel — it is a filament, and a
-     filament floored to four pixels is just a second halo. */
-  float shellPx = mix( 3.20, 1.05, core );
+  float mpp = dist * uPixelScale;
+  float bead = step( 0.5, aShell );
+  vec3 wp;
 
-  float natural = iTime.z * shellW;
-  float floorW = dist * uPixelScale * shellPx;
-  float width = max( natural, floorW );
-  vClamp = clamp( 1.0 - natural / max( width, 0.0001 ), 0.0, 1.0 );
-  vSpread = pow( clamp( natural / max( width, 0.0001 ), 0.05, 1.0 ), 0.40 );
+  if ( bead > 0.5 ) {
+    /* Bead: about three bores across, never under 3.6 px, slightly long in
+       the direction of travel so even a single still frame says which way
+       it is going. */
+    float natural = iTime.z * 3.2;
+    float s = max( natural, mpp * 3.6 );
+    vClamp = clamp( 1.0 - natural / s, 0.0, 1.0 );
+    vSpread = 1.0;
+    s *= alive;
+    wp = p + side * ( ( uv.x - 0.5 ) * s ) + up * ( ( uv.y - 0.5 ) * s * 1.45 );
+  } else {
+    /* Wake: never shorter than 14 px so a far shot is still a dash, never
+       longer than the distance actually flown so it leaves the barrel
+       rather than hanging behind the gun. */
+    float len = min( max( iTime.w, mpp * 14.0 ), speed * tt + 0.001 );
+    float natural = iTime.z * 1.25;
+    float w = max( natural, mpp * 1.8 );
+    vClamp = clamp( 1.0 - natural / w, 0.0, 1.0 );
+    vSpread = pow( clamp( natural / w, 0.05, 1.0 ), 0.40 );
+    // Pinched to a point at the tail, full bore at the round.
+    w *= pow( uv.y, 0.85 ) * alive;
+    wp = p - dirW * ( len * ( 1.0 - uv.y ) ) + side * ( ( uv.x - 0.5 ) * w );
+  }
 
-  /* The taper. uv.y is 0 at the tail and 1 at the nose, so this is a wedge
-     with a slight pinch at the very tip — a round with its wake behind it,
-     rather than a rectangle. */
-  float taper = pow( uv.y, 0.62 ) * ( 1.0 - 0.34 * smoothstep( 0.94, 1.0, uv.y ) );
-  width *= taper * alive;
-
-  float len = max( iTime.w, dist * uPixelScale * 26.0 );
-
-  vec3 wp = p - dirW * ( len * ( 1.0 - uv.y ) ) + side * ( ( uv.x - 0.5 ) * width );
   gl_Position = projectionMatrix * viewMatrix * vec4( wp, 1.0 );
 
   vUv = uv;
   vShell = aShell;
   vColor = iTint.rgb;
   vBright = iTint.w;
-  vEnv = alive * smoothstep( 0.0, 0.015, t ) * ( 1.0 - smoothstep( 0.88, 1.0, age ) );
+  vEnv = alive * smoothstep( 0.0, 0.012, t ) * ( 1.0 - smoothstep( 0.90, 1.0, age ) );
   vFragW = gl_Position.w;
   #include <logdepthbuf_vertex>
 }
@@ -132,32 +153,34 @@ varying float vSpread;
 
 void main() {
   #include <logdepthbuf_fragment>
-  float along = vUv.y;
-  float across = abs( vUv.x * 2.0 - 1.0 );
-  float lat = max( 1.0 - across * across, 0.0 );
-
   float a;
   vec3 col;
   if ( vShell > 0.5 ) {
-    /* Core. Hard across, and piled hard into the nose: the filament is the
-       projectile and the wake behind it is the halo's job. */
-    float lateral = pow( lat, mix( 0.60, 0.26, vClamp ) );
-    float head = smoothstep( 0.60, 1.0, along );
-    a = lateral * ( 0.22 + 0.72 * pow( along, 1.7 ) + 1.20 * head );
-    col = mix( vColor, vec3( 1.0 ), 0.52 + 0.42 * head ) * ( 1.05 + 2.5 * head );
+    /* Bead. A white-hot core inside a tinted rim, round regardless of view
+       angle. The floor carries it at range, so it is lifted a little rather
+       than dimmed as the floor bites: this is the one part of a round that
+       has to read at four kilometres. */
+    vec2 q = ( vUv - 0.5 ) * 2.0;
+    float r2 = dot( q, q );
+    float core = exp( -r2 * 9.0 );
+    float rim = exp( -r2 * 2.6 );
+    a = ( core + rim * 0.55 ) * ( 1.0 - smoothstep( 0.62, 1.0, r2 ) );
+    col = mix( vColor, vec3( 1.0 ), clamp( core * 1.25, 0.0, 1.0 ) )
+        * ( 1.4 + 2.6 * core ) * mix( 1.0, 1.3, vClamp );
   } else {
-    /* Halo. Wide, soft, and never allowed to reach white — it is the only
-       part of a round that carries team colour at range (ARCHITECTURE §3.3),
-       and colour that clips is colour thrown away. */
-    float lateral = pow( lat, mix( 1.85, 0.95, vClamp ) );
-    float head = smoothstep( 0.52, 1.0, along );
-    a = lateral * ( 0.13 + 0.40 * pow( along, 2.4 ) + 0.34 * head ) * 0.58;
-    col = vColor * ( 0.50 + 1.00 * head );
+    /* Wake. Opacity falls off steeply from the round, so the bright part is
+       the front half and the rest is a fading smear: a comet, not a rod. */
+    float along = vUv.y;
+    float across = abs( vUv.x * 2.0 - 1.0 );
+    float lateral = pow( max( 1.0 - across * across, 0.0 ), mix( 1.2, 0.6, vClamp ) );
+    float fall = along * along;
+    a = lateral * fall * 0.85;
+    col = vColor * ( 0.35 + 0.95 * fall ) * vSpread;
   }
 
   a = clamp( a, 0.0, 1.0 ) * vEnv * fxSoftFade( vFragW );
   if ( a <= 0.004 ) discard;
-  gl_FragColor = vec4( col * vBright * uGain * vSpread, a );
+  gl_FragColor = vec4( col * vBright * uGain, a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -272,7 +295,11 @@ void main() {
   vSeed = iTint.w;
   vKind = iKind;
   vShell = aShell;
-  vIntensity = iTime.w * ( 1.0 + 1.5 * exp( -t * 34.0 ) );
+  /* Brightness flicker: two incommensurate rates per beam, so a lance
+     breathes like contained plasma rather than holding the flat value of a
+     drawn line. Fifteen per cent either way, never enough to strobe. */
+  float flick = 1.0 + 0.15 * sin( uTime * 41.0 + iTint.w * 57.0 ) * sin( uTime * 17.0 + iTint.w * 23.0 );
+  vIntensity = iTime.w * ( 1.0 + 1.5 * exp( -t * 34.0 ) ) * flick;
   vEnv = env;
   vFragW = gl_Position.w;
   #include <logdepthbuf_vertex>
@@ -895,6 +922,31 @@ const SIM_HZ = 30;
    the front of a salvo looks like anyway. */
 const MAX_MISSILE_TRAILS = 12;
 
+/* How many rounds per second one shooter is allowed to *draw*, as a token
+   bucket: `rate` tokens a second, up to `burst` banked.
+
+   Every round still lands — the impact path and the sim's own damage are
+   untouched — but not every round gets a visible tracer, which is how real
+   tracer ammunition works too. Without this an interceptor's twin mass
+   drivers put 12 rounds a second down a 1 km lane, 250 m apart, and at x4
+   game speed 48 a second, 60 m apart (FX time runs on the wall clock while
+   the sim runs at the game speed). Rounds that close overlap into one
+   unbroken line from muzzle to target, which is the "laser pointer" and
+   "order line" read the critic kept naming. Capped, a stream is a row of
+   beads with dark gaps between them at any game speed. */
+const TRACER_RATE = { rate: 7, burst: 3 };
+const MISSILE_RATE = { rate: 4, burst: 4 };
+
+/* Fire is tinted by team, but held well off the UI palette. The HUD speaks
+   saturated cyan and orange-red; a round carries the same hue at under half
+   the saturation and high lightness, so friendly fire is pale ice and hostile
+   fire pale amber — legible as a side, never as an interface line. */
+const FIRE_HSL = { h: 0, s: 0, l: 0 };
+function fireTint(src, out) {
+  src.getHSL(FIRE_HSL);
+  return out.setHSL(FIRE_HSL.h, Math.min(0.62, FIRE_HSL.s * 0.55), 0.74);
+}
+
 export class WeaponFX {
   constructor(ctx) {
     this.ctx = ctx;
@@ -991,8 +1043,11 @@ export class WeaponFX {
       softness: 8,
     });
 
-    this._tracers = [];   // { slot, death, kind, x,y,z, dx,dy,dz, damage, team, colour }
+    this._tracers = [];   // { slot (-1 = undrawn), death, kind, ex,ey,ez, dx,dy,dz, damage, tRadius }
     this._tracerFree = [];
+    // Per-shooter draw budgets (TRACER_RATE / MISSILE_RATE). Weak, so a dead
+    // ship's bucket goes with it.
+    this._drawBudget = new WeakMap();
     for (let i = ctx.budget.tracers - 1; i >= 0; i--) this._tracerFree.push(i);
 
     // Same LIFO free-list pattern as the tracers, so live flashes stay packed
@@ -1273,17 +1328,19 @@ export class WeaponFX {
 
     const dmg = w.damage || 10;
     const width = Math.max(0.55, 0.28 + Math.sqrt(dmg) * 0.19);
-    /* Tail length is two sim ticks of travel — the distance the round actually
-       covers between frames, which is what motion blur would show. It must not
-       depend on how far the target is: a shot at 3 km and a shot at 300 m are
-       the same object. */
-    const len = Math.max(26, speed * (2 / SIM_HZ) + dmg * 0.35);
+    /* Wake length: an eighth of the shot, held between 50 and 240 m. Long
+       enough that its fade shows direction and speed, short enough that it
+       is a mark crossing the gap rather than a line spanning it — the
+       visible, bright part is only the front third of this (see
+       TRACER_FRAG). Heavier calibres run a little longer. */
+    const len = Math.min(240, Math.max(50, dist / 8 + dmg * 0.4));
 
-    this._col.copy(team.trim).lerp(HOT_WHITE, 0.16);
+    fireTint(team.trim, this._col);
     this._addTracer(
       from.x, from.y, from.z,
       (dx / dist) * speed, (dy / dist) * speed, (dz / dist) * speed,
-      life, width, len, this._col, 2.1, 'kinetic', dmg, team, targetRadius(p.target),
+      life, width, len, this._col, 2.0, 'kinetic', dmg, team, targetRadius(p.target),
+      this._mayDraw(p.shooter, w.id || w.type, TRACER_RATE),
     );
     this._muzzle(from, dx / dist, dy / dist, dz / dist, dmg, team, 1.0);
   }
@@ -1309,10 +1366,11 @@ export class WeaponFX {
 
     const speed = w.projectileSpeed || 1900;
     const dmg = w.damage || 12;
-    this._col.copy(team.trim).lerp(FLAK_BURST, 0.45);
+    fireTint(team.trim, this._col).lerp(FLAK_BURST, 0.45);
     this._addTracer(
       from.x, from.y, from.z, dx * speed, dy * speed, dz * speed,
-      burst / speed, 0.5, Math.max(20, speed * (1.4 / SIM_HZ)), this._col, 1.8, 'flak', dmg, team,
+      burst / speed, 0.5, Math.max(20, speed * (1.4 / SIM_HZ)), this._col, 1.8, 'flak', dmg, team, 0,
+      this._mayDraw(p.shooter, w.id || w.type, TRACER_RATE),
     );
     this._muzzle(from, dx, dy, dz, dmg, team, 0.8);
   }
@@ -1360,6 +1418,13 @@ export class WeaponFX {
 
   _fireMissile(p, w, team) {
     const ctx = this.ctx;
+    /* Same draw budget as the guns. A swarm-pod corvette launches ~7 rounds a
+       second (28 at x4), and a dozen of them a hundred metres apart, each with
+       its own flame ribbon, join into one continuous line from launcher to
+       target — the R3 "hairline from mark to target". The sim owns the
+       damage, and the hit paints through `hullImpact`, so a missile over
+       budget simply is not drawn. */
+    if (!this._mayDraw(p.shooter, w.id || 'missile', MISSILE_RATE)) return;
     if (this._missiles.length >= ctx.budget.missiles) {
       const old = this._missiles.shift();
       this._detonateMissile(old, false);
@@ -1431,17 +1496,22 @@ export class WeaponFX {
       /* Life was 1.5 s, which at 900 m/s laid 1.3 km of ribbon per missile and
          is why a dozen of them tiled the middle of the frame for the whole
          engagement. 0.55 s is roughly a hundred body-lengths of smoke — plainly
-         ordnance, gone before it becomes scenery. */
+         ordnance, gone before it becomes scenery. Now 0.34 s: at fleet range
+         a straight 500 m smoke ribbon was still the longest uniform line in
+         a frozen engagement frame (R4 fix 3), and a third less is still
+         plainly a missile's wake. */
       /* 9 m of column behind a 6 m body. Narrower than this and the ribbon is a
          one-pixel wire at any range a player actually watches from, which is
          the "drawn line" read however well it tapers or ramps — width is what
          makes it read as a volume of smoke rather than as ink. */
       m.trail = ctx.fields.smokeTrail.acquire(
-        0x8d8a86, 9.0, 0.48, 11, this._smokeRamps[ti] || this._smokeRamps[0],
+        0x8d8a86, 9.0, 0.34, 11, this._smokeRamps[ti] || this._smokeRamps[0],
       );
-      // A third of the smoke's life: the flame is out long before the soot is.
+      /* A third of the smoke's life: the flame is out long before the soot
+         is. 0.12 s, down from 0.18, so at cruise it is ~130 m of flame, under
+         the spacing the draw budget leaves between rounds of one salvo. */
       m.heat = ctx.fields.trail.acquire(
-        team.engine, 2.4, 0.18, 8, this._heatRamps[ti] || this._heatRamps[0],
+        team.engine, 2.4, 0.12, 8, this._heatRamps[ti] || this._heatRamps[0],
       );
       if (m.trail) this._missileTrails++;
     }
@@ -1657,15 +1727,44 @@ export class WeaponFX {
     return q ? out.copy(q) : out.identity();
   }
 
-  _addTracer(x, y, z, vx, vy, vz, life, width, len, colour, bright, kind, damage, team, tRadius) {
-    const slot = this._tracerFree.pop();
+  /* Token bucket per shooter, in FX time. See TRACER_RATE. A shot with no
+     known shooter always draws. */
+  _mayDraw(shooter, key, cfg) {
+    if (!shooter || typeof shooter !== 'object') return true;
+    const now = this.ctx.now;
+    let per = this._drawBudget.get(shooter);
+    if (!per) {
+      per = {};
+      this._drawBudget.set(shooter, per);
+    }
+    // One bucket per weapon, so a ship's flak never starves its main guns.
+    let b = per[key];
+    if (!b) b = per[key] = { t: now, tokens: cfg.burst };
+    b.tokens = Math.min(cfg.burst, b.tokens + Math.max(0, now - b.t) * cfg.rate);
+    b.t = now;
+    if (b.tokens < 1) return false;
+    b.tokens -= 1;
+    return true;
+  }
+
+  _addTracer(x, y, z, vx, vy, vz, life, width, len, colour, bright, kind, damage, team, tRadius, visible = true) {
+    /* A round over its shooter's draw budget still flies and still lands —
+       it simply has no GPU slot. */
+    if (!visible) {
+      this._tracers.push({
+        slot: -1, death: this.ctx.now + life, kind, damage, tRadius,
+        ex: x + vx * life, ey: y + vy * life, ez: z + vz * life,
+        dx: vx, dy: vy, dz: vz,
+      });
+      return;
+    }
+    let slot = this._tracerFree.pop();
     if (slot === undefined) {
-      // Saturated: drop the oldest so new fire always reads.
-      const oldest = this._tracers.shift();
-      if (oldest) this._tracerFree.push(oldest.slot);
-      const again = this._tracerFree.pop();
-      if (again === undefined) return;
-      return this._writeTracer(again, x, y, z, vx, vy, vz, life, width, len, colour, bright, kind, damage, team, tRadius);
+      // Saturated: drop the oldest drawn round so new fire always reads.
+      const i = this._tracers.findIndex((t) => t.slot >= 0);
+      if (i < 0) return;
+      slot = this._tracers[i].slot;
+      this._tracers.splice(i, 1);
     }
     return this._writeTracer(slot, x, y, z, vx, vy, vz, life, width, len, colour, bright, kind, damage, team, tRadius);
   }
@@ -1765,9 +1864,10 @@ export class WeaponFX {
       const t = this._tracers[i];
       if (t.death > now) continue;
       this._tracers.splice(i, 1);
-      this._tracerFree.push(t.slot);
-      const d = this.tracers.data;
-      d[t.slot * TRACER_STRIDE + 7] = 0;
+      if (t.slot >= 0) {
+        this._tracerFree.push(t.slot);
+        this.tracers.data[t.slot * TRACER_STRIDE + 7] = 0;
+      }
       if (t.kind === 'flak') {
         this._flakBurst(t.ex, t.ey, t.ez, t.damage);
       } else {
