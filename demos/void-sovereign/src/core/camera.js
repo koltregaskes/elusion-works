@@ -244,6 +244,22 @@ const HARVEST_INTERVAL_MS = 2000;
    frame's half-height *and* it overlaps the middle of the shot. */
 const OCCLUSION_FRACTION = 0.25;
 
+/* Behind the subject is a different question from in front of it.
+
+   Round 3's close frames put a dark frigate against a wall of rock of exactly
+   its own value, and nothing above objected: the wall was a dozen 60-200 m
+   boulders, every one of them under OCCLUDER_MIN_RADIUS, none of them between
+   the camera and the hull. The ship was perfectly visible and could not be
+   seen. So a chosen framing also asks how much of the patch of frame around
+   the subject is rock *behind* it, counting rocks down to BACKDROP_MIN_RADIUS,
+   and prefers the nearest approach where that share is under BACKDROP_OK. A
+   share is an angle, like everything else here, so it means the same at every
+   zoom. Beyond BACKDROP_REACH shot-lengths a rock is scenery, not backdrop. */
+const BACKDROP_MIN_RADIUS = 12;
+const MAX_BACKDROP = 6000;
+const BACKDROP_OK = 0.3;
+const BACKDROP_REACH = 40;
+
 /* ------------------------------------------------------------ opening shot */
 
 /* The first frame of a run is the single most-seen image in the demo, so the
@@ -432,6 +448,9 @@ export class CameraRig {
     this._colliders = [];
     this._worldOk = true;
     this._static = [];          // big, immobile scene occluders (landmarks, planets)
+    this._backdrop = [];        // every rock worth a pixel, for the backdrop test
+    this._backdropN = 0;
+    this._lastClear = null;     // what the last chosen framing decided, for probes
     this._staticStamp = -1;
     this._staticAt = -1e9;
 
@@ -1579,6 +1598,7 @@ export class CameraRig {
 
     const out = this._static;
     out.length = 0;
+    this._backdropN = 0;
     for (let i = 0; i < scene.children.length; i++) {
       const o = scene.children[i];
       if (!o || o.visible === false || !o.isMesh || !o.geometry) continue;
@@ -1614,11 +1634,15 @@ export class CameraRig {
           o.getMatrixAt(k, _m1);
           _m1.premultiply(o.matrixWorld);
           _m1.decompose(_p1, _q1, _s1);
-          this._pushOccluder(out, _p1, br * Math.max(_s1.x, _s1.y, _s1.z));
+          const rk = br * Math.max(_s1.x, _s1.y, _s1.z);
+          this._pushOccluder(out, _p1, rk);
+          this._pushBackdrop(_p1, rk);
         }
       } else {
         _m1.copy(o.matrixWorld).decompose(_p1, _q1, _s1);
-        this._pushOccluder(out, _p1, br * Math.max(_s1.x, _s1.y, _s1.z));
+        const rk = br * Math.max(_s1.x, _s1.y, _s1.z);
+        this._pushOccluder(out, _p1, rk);
+        this._pushBackdrop(_p1, rk);
       }
     }
 
@@ -1637,6 +1661,64 @@ export class CameraRig {
     if (!Number.isFinite(r) || r < OCCLUDER_MIN_RADIUS || r > OCCLUDER_MAX_RADIUS) return;
     if (!Number.isFinite(pos.x) || !Number.isFinite(pos.y) || !Number.isFinite(pos.z)) return;
     out.push({ x: pos.x, y: pos.y, z: pos.z, r });
+  }
+
+  /** Pooled record for the backdrop test. Runs on the harvest cadence over
+      every rock instance, so it reuses its objects rather than allocating. */
+  _pushBackdrop(pos, r) {
+    if (!Number.isFinite(r) || r < BACKDROP_MIN_RADIUS || r > OCCLUDER_MAX_RADIUS) return;
+    if (this._backdropN >= MAX_BACKDROP) return;
+    if (!Number.isFinite(pos.x) || !Number.isFinite(pos.y) || !Number.isFinite(pos.z)) return;
+    const list = this._backdrop;
+    let o = list[this._backdropN];
+    if (!o) list[this._backdropN] = o = { x: 0, y: 0, z: 0, r: 0 };
+    o.x = pos.x; o.y = pos.y; o.z = pos.z; o.r = r;
+    this._backdropN++;
+  }
+
+  /** Share, 0..1, of the patch of frame around the subject that is rock
+      standing *behind* it, for a camera `dist` away along `dir`.
+
+      The patch is the subject's own angular size with a margin, never less
+      than about a third of the frame's half-height, because a hull smaller
+      than that is read against whatever surrounds it rather than against the
+      pixels it happens to cover. Overlap is a cheap disc-in-disc estimate and
+      overlapping rocks may count twice; it is a ranking, capped at 1. */
+  _backdropCover(focus, dir, dist, subjectRadius) {
+    const n = this._backdropN;
+    if (!n) return 0;
+    const list = this._backdrop;
+    const halfFov = this.camera.fov * DEG * 0.5;
+    const subj = Math.max(subjectRadius || 0, dist * 0.12);
+    const win = Math.max(Math.atan2(subj * 1.8, Math.max(dist, 1)), halfFov * 0.32);
+    const winA = win * win;
+    const camX = focus.x + dir.x * dist;
+    const camY = focus.y + dir.y * dist;
+    const camZ = focus.z + dir.z * dist;
+    const reach = dist * BACKDROP_REACH + 4000;
+    let cover = 0;
+    for (let i = 0; i < n; i++) {
+      const o = list[i];
+      const fx = o.x - focus.x;
+      const fy = o.y - focus.y;
+      const fz = o.z - focus.z;
+      if (fx * fx + fy * fy + fz * fz < o.r * o.r) continue; // we are inside it
+      let ox = o.x - camX;
+      let oy = o.y - camY;
+      let oz = o.z - camZ;
+      /* Depth along the view axis: only what sits past the subject's plane. */
+      const depth = -(ox * dir.x + oy * dir.y + oz * dir.z);
+      if (depth <= dist || depth > reach) continue;
+      const dc = Math.sqrt(ox * ox + oy * oy + oz * oz);
+      const half = Math.asin(clamp(o.r / dc, 0, 1));
+      ox /= dc; oy /= dc; oz /= dc;
+      const off = Math.acos(clamp(-(ox * dir.x + oy * dir.y + oz * dir.z), -1, 1));
+      if (off >= half + win) continue;
+      const m = Math.min(half, win);
+      cover += clamp((half + win - off) / (2 * m), 0, 1) * ((m * m) / winA);
+      if (cover >= 1) return 1;
+    }
+    return cover;
   }
 
   /** Is the subject at `focus` hidden from a camera `dist` away along `dir`?
@@ -1701,23 +1783,48 @@ export class CameraRig {
     const focus = this._focus.target;
     const dist = Math.exp(this._logDist.target);
     const list = this._occluderList(focus, dist);
-    if (!list.length) return;
+    if (!list.length && !this._backdropN) return;
 
+    /* Two tests per candidate, in search order (smallest swing first): the
+       hard one — is anything in the way — and the backdrop share. The first
+       approach that passes both wins. If none does, the clear approach with
+       the least rock behind the subject wins, but only if it is meaningfully
+       better than the shot the player already had; a long swing to trade one
+       rock wall for a slightly thinner one is worse than no swing. */
     const yaw0 = this._yaw.target;
     const pitch0 = this._pitch.target;
+    let best = -1;
+    let bestCover = Infinity;
+    let cover0 = Infinity;
+    let bestYaw = yaw0;
+    let bestPitch = pitch0;
     for (let i = 0; i < CLEAR_SEARCH.length; i++) {
       const yaw = yaw0 + CLEAR_SEARCH[i][0];
       const pitch = clamp(pitch0 + CLEAR_SEARCH[i][1], -PITCH_LIMIT, PITCH_LIMIT);
       const cp = Math.cos(pitch);
       _try.set(Math.sin(yaw) * cp, Math.sin(pitch), Math.cos(yaw) * cp).normalize();
-      if (this._sightBlocked(focus, _try, dist, list, this._focusRadius)) continue;
-      if (i === 0) return;              // already clear, leave the shot alone
-      this._yaw.target = yaw;
-      this._pitch.target = pitch;
-      if (instant) {
-        this._yaw.snap(yaw);
-        this._pitch.snap(pitch);
+      if (list.length && this._sightBlocked(focus, _try, dist, list, this._focusRadius)) continue;
+      const cover = this._backdropCover(focus, _try, dist, this._focusRadius);
+      if (i === 0) cover0 = cover;
+      if (cover < bestCover - 1e-6) {
+        bestCover = cover;
+        best = i;
+        bestYaw = yaw;
+        bestPitch = pitch;
       }
+      if (cover <= BACKDROP_OK) break;
+    }
+    if (best >= 0) {
+      this._lastClear = { swing: 0, cover0, cover: cover0 };
+      if (best === 0) return;           // already clear, leave the shot alone
+      if (cover0 !== Infinity && bestCover > BACKDROP_OK && bestCover > cover0 - 0.15) return;
+      this._yaw.target = bestYaw;
+      this._pitch.target = bestPitch;
+      if (instant) {
+        this._yaw.snap(bestYaw);
+        this._pitch.snap(bestPitch);
+      }
+      this._lastClear = { swing: best, cover0, cover: bestCover };
       return;
     }
     /* Nothing at this range works — the subject is buried. Come in closer, so

@@ -70,7 +70,29 @@ const NEBULA = {
   fill: new THREE.Color(0x2a2233),
   ambient: 0.085,
   rim: 0.46,
+  /* World direction toward the key star. ENV hands over the real one through
+     setHullKeyDirection(); the rim below needs it to know which side is dark. */
+  keyDir: new THREE.Vector3(0.5, 0.6, 0.3).normalize(),
 };
+
+/* The rim's colour: cold blue-white at unit luminance, fixed rather than taken
+   from the sky. §3.2 asks for a "cold rim/fill bounce from the nebula", and the
+   one property of it that matters on screen is that it is cold and neutral.
+   Taking the hue from the bake let a warm palette tint every silhouette amber,
+   which is the enemy's hue family. It is also never a team colour: the edge is
+   light, and paint is the livery's job. */
+const RIM_COLD = new THREE.Color(0.80, 0.95, 1.30).multiplyScalar(
+  1 / (0.2126 * 0.80 + 0.7152 * 0.95 + 0.0722 * 1.30),
+);
+
+/* The rim's strength. The term used to be weighted by f0, the dielectric
+   Fresnel floor of 0.045, which made its contract weight (0.019 of the key,
+   ENV's BOUNCE_RIM_OVER_KEY) worth about 0.005 in linear light at the very
+   edge: below the dither. It never drew a pixel, and a dark hull on a dark rock
+   read as one blob. The weight stays where the contract put it; this is what
+   it now multiplies: a gain on the contract weight, not a reflectance, because
+   the job is an edge that reads, not a physical floor. */
+const RIM_GAIN = 1.6;
 
 /* `ref` is the hull length a family is tuned around. ships/index.js asks for a
    material by (team, family) only, so without it every class from a 46 m
@@ -165,6 +187,8 @@ uniform vec3  uNebulaFill;
 uniform vec2  uBounce;
 uniform vec2  uChroma;
 uniform vec2  uTerm;
+uniform vec3  uKeyDir;
+uniform vec3  uRimCold;
 
 varying vec3 vObjPos;
 varying vec3 vObjNormal;
@@ -672,7 +696,6 @@ const HULL_BOUNCE = /* glsl */`
   vec3 wN = normalize( ( vec4( nonPerturbedNormal, 0.0 ) * viewMatrix ).xyz );
   vec3 wNp = normalize( ( vec4( normal, 0.0 ) * viewMatrix ).xyz );
   vec3 wV = normalize( ( vec4( vViewPosition, 0.0 ) * viewMatrix ).xyz );
-  float fres = pow( 1.0 - saturate( dot( wNp, wV ) ), 4.2 );
   vec3 f0 = mix( vec3( 0.045 ), diffuseColor.rgb, vsMetal );
   float gloss = 1.0 - vsRough;
 
@@ -693,7 +716,37 @@ const HULL_BOUNCE = /* glsl */`
   outgoingLight += hemiN * diffuseColor.rgb * uBounce.x
     * ( 0.35 + 0.65 * skyN ) * ( 1.0 - vsMetal * 0.85 ) * vsAO;
   outgoingLight += hemiR * f0 * uBounce.x * gloss * gloss * vsAO;
-  outgoingLight += hemiN * f0 * uBounce.y * fres * mix( 1.0, 0.4, vsRough ) * vsAO;
+
+  /* Cold rim (§3.2, "cold rim/fill bounce from the nebula"). A thin edge
+     line on the shadow side, which is what separates a dark gunmetal hull from
+     a dark rock behind it and stops a hull in front of the planet reading as a
+     flat black sticker.
+
+     Three factors, and each one is there to keep it an edge rather than a
+     glow:
+       edge   - Fresnel on the *unperturbed* normal, cubed, so it fires where
+                the hull turns away from the lens and is nothing on a face
+                square to it. Hulls are faceted: a fifth power found almost no
+                face oblique enough to light, and drew nothing. The
+                panel-mapped normal would put a speckle of rim on every plate
+                seam across the face of the hull.
+       dark   - zero on any face the key reaches, so the lit side and the
+                terminator are exactly what they were. It is not a fill: it
+                cannot lift the shadow side, only outline it.
+       facing - weighted toward the counter-key, where a nebula bounce would
+                actually come from, but never to zero, so the edge survives
+                when the camera itself sits on the counter-key side.
+     Cold and neutral by construction (RIM_COLD), and added after the chroma
+     pass so team paint does not tint it. */
+  {
+    float eV = 1.0 - saturate( dot( wN, wV ) );
+    float edge = eV * eV * eV;
+    float nk = dot( wN, uKeyDir );
+    float dark = 1.0 - smoothstep( -0.04, 0.22, nk );
+    float facing = 0.45 + 0.55 * saturate( - nk );
+    outgoingLight += uRimCold * ( uBounce.y * ${RIM_GAIN.toFixed(3)} )
+      * edge * dark * facing * mix( 1.0, 0.6, vsRough ) * vsAO;
+  }
 }
 `;
 
@@ -765,6 +818,7 @@ const CHROMA = { direct: 0.86, indirect: 0.26 };
    held on both the brightest and the darkest seed. */
 const TERMINATOR = { gamma: 2.0, pivot: 0.62 };
 const termGain = () => Math.pow(TERMINATOR.pivot, 1 - TERMINATOR.gamma);
+const TERMINATOR_SHARED = { value: new THREE.Vector2(TERMINATOR.gamma, termGain()) };
 
 let store = null;
 
@@ -853,6 +907,8 @@ function hullUniforms(team, family, opts) {
     uBounce: { value: new THREE.Vector2(NEBULA.ambient, NEBULA.rim) },
     uChroma: { value: new THREE.Vector2(CHROMA.direct, CHROMA.indirect) },
     uTerm: { value: new THREE.Vector2(TERMINATOR.gamma, termGain()) },
+    uKeyDir: { value: NEBULA.keyDir.clone() },
+    uRimCold: { value: RIM_COLD.clone() },
     uModelScale: { value: opts.modelScale === undefined ? 1 : opts.modelScale },
   };
 }
@@ -1447,6 +1503,33 @@ export function setNebulaBounce(keyColour, fillColour, ambient, rim) {
 }
 
 /**
+ * Tell the hull shader where the key star is, so the cold rim lands on the
+ * side the key does not reach. ENV calls this with the same vector it aims the
+ * key light down; there is one key and everything reads it.
+ * @param {THREE.Vector3} dir world direction from the battle toward the star
+ */
+export function setHullKeyDirection(dir) {
+  if (!dir) return;
+  NEBULA.keyDir.copy(dir).normalize();
+  if (!store) return;
+  for (const mat of store.materials) {
+    const u = mat.userData.uniforms;
+    if (u && u.uKeyDir) u.uKeyDir.value.copy(NEBULA.keyDir);
+  }
+}
+
+/**
+ * The live terminator shaping as a shared uniform, (gamma, gain), for
+ * materials outside this module that sit under the same key — the asteroid
+ * field. Handing out the object rather than a copy is the point: a
+ * `setHullTerminator()` retune reaches the rocks in the same call.
+ * @returns {{ value: THREE.Vector2 }}
+ */
+export function getTerminatorUniform() {
+  return TERMINATOR_SHARED;
+}
+
+/**
  * How strongly hulls reject the illuminant's colour. 0 is physically literal
  * and turns every ship the colour of the sky; 1 renders as though the key were
  * white. Live-tunable so the look can be judged against a screenshot.
@@ -1474,8 +1557,9 @@ export function setHullChroma(direct, indirect) {
 export function setHullTerminator(gamma, pivot) {
   if (gamma !== undefined) TERMINATOR.gamma = Math.max(1, Math.min(4, gamma));
   if (pivot !== undefined) TERMINATOR.pivot = Math.max(0.35, Math.min(0.95, pivot));
-  if (!store) return;
   const g = termGain();
+  TERMINATOR_SHARED.value.set(TERMINATOR.gamma, g);
+  if (!store) return;
   for (const mat of store.materials) {
     const u = mat.userData.uniforms;
     if (u && u.uTerm) u.uTerm.value.set(TERMINATOR.gamma, g);

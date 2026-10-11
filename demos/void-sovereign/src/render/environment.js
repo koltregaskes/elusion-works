@@ -3,7 +3,7 @@ import { LAYER } from '../core/engine.js';
 import { bus } from '../core/events.js';
 import { makeRng, fbm2, fbm3, ridged3 } from '../core/rng.js';
 import { buildSkybox } from './skybox.js';
-import { setNebulaBounce, TEAM_COLORS } from './materials.js';
+import { setNebulaBounce, setHullKeyDirection, getTerminatorUniform, TEAM_COLORS } from './materials.js';
 import {
   DEFAULT_SETUP,
   OPENING_ANGLE,
@@ -585,6 +585,9 @@ export class Environment {
         this.hullBounce.ambient,
         this.hullBounce.rim,
       );
+      /* The same key, by the same vector: the hull's cold rim is drawn on the
+         side this light does not reach. */
+      setHullKeyDirection(this.sunDirection);
     } catch (err) {
       /* [MAT] may not have initialised; its own defaults are perfectly usable. */
     }
@@ -2180,6 +2183,7 @@ export class Environment {
     });
     material.onBeforeCompile = (shader) => {
       shader.uniforms.uRockBounce = { value: rockBounce };
+      shader.uniforms.uRockTerm = getTerminatorUniform();
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
@@ -2232,6 +2236,7 @@ export class Environment {
            varying float vRockSize;
            varying float vRockAo;
            uniform vec3 uRockBounce;
+           uniform vec2 uRockTerm;
            ${NOISE_GLSL}
            /* A detail band is only worth evaluating while the screen still has
               the pixels to resolve it. The foot argument is the angular
@@ -2324,6 +2329,42 @@ export class Environment {
 
              return h * radius;
            }`,
+        )
+        .replace(
+          '#include <lights_physical_pars_fragment>',
+          `#include <lights_physical_pars_fragment>
+           /* The hull terminator, on rock (§3.2: one key, one contract).
+
+              A lumpy charcoal body under a hard key was still reading as
+              front-lit. Not a wrong light: measured on the CPU from the real
+              geometry, a rock seen from 101 degrees off the key presents 77%
+              of its visible area to the star, and plain Lambert maps that
+              whole cosine band, 0.2 to 1.0, into one even mid-grey. The ships
+              beside it had already stopped doing that (materials.js,
+              HULL_TERMINATOR), so the planet and the hulls showed a lit face
+              and a dark one while the rocks between them showed neither.
+
+              Same shaping, same live numbers - uRockTerm is the hull's own
+              uniform object, so a retune reaches both. Faces below the pivot
+              fall away exactly as a hull's do, so the shadow side of a rock is
+              as dark as the shadow side of a hull. The one difference is a
+              cap: above the pivot a rock stays at plain Lambert instead of
+              being lifted into the knee. Hulls are meant to out-read rock
+              (silhouette first, see rockColour above), and a 1.6x lift on a
+              lit boulder face put the field level with the fleet. Indirect
+              light is untouched here; it is cut further down. */
+           void RE_Direct_Rock( const in IncidentLight directLight, const in vec3 geometryPosition,
+               const in vec3 geometryNormal, const in vec3 geometryViewDir,
+               const in vec3 geometryClearcoatNormal, const in PhysicalMaterial material,
+               inout ReflectedLight reflectedLight ) {
+             IncidentLight rkLight = directLight;
+             float rkNdL = saturate( dot( geometryNormal, directLight.direction ) );
+             rkLight.color *= rkNdL > 1e-4 ? min( pow( rkNdL, uRockTerm.x - 1.0 ) * uRockTerm.y, 1.0 ) : 0.0;
+             RE_Direct_Physical( rkLight, geometryPosition, geometryNormal, geometryViewDir,
+               geometryClearcoatNormal, material, reflectedLight );
+           }
+           #undef RE_Direct
+           #define RE_Direct RE_Direct_Rock`,
         )
         .replace(
           '#include <normal_fragment_maps>',
