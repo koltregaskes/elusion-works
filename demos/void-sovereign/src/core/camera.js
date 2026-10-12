@@ -260,6 +260,30 @@ const MAX_BACKDROP = 6000;
 const BACKDROP_OK = 0.3;
 const BACKDROP_REACH = 40;
 
+/* Near-plane safety. The hard occluders stop at OCCLUDER_MIN_RADIUS, so a
+   35 m rock between a 60 m close-up and its subject was invisible to every
+   test here: the camera flew straight into it, the near plane sliced it, and
+   the frame was a flat black polygon with ruler-straight edges (round 4,
+   `R4-s99-first-contact-close`). Every frame the rig now sphere-casts from the
+   subject toward the camera against the bounding sphere of every rock near
+   the shot and pulls the camera in to just short of the first one it meets.
+
+   Pull, not fade. Fading would need a per-instance opacity on the shared rock
+   material, a transparent pass with its sorting problems, and a change on the
+   render side — and a faded rock the near plane is inside still shows its cut.
+   Pulling in is a few dozen ray-sphere tests on the CPU and cannot leave the
+   camera inside anything it knows about.
+
+   It comes in fast and gives the distance back slowly, so a small rock
+   crossing the line costs one smooth dip rather than a pop or a flutter; a
+   hard limit under the smoothing means no frame is ever inside a rock while
+   the smoothing catches up. */
+const NEAR_ROCK_MIN_RADIUS = 3;
+const MAX_NEAR_ROCKS = 12000;
+const NEAR_CANDIDATES = 64;
+const PULL_IN_RATE = 14;     // 1/s: most of the way in within ~0.15 s
+const PULL_OUT_RATE = 1.4;   // 1/s: gives the shot back over ~1.5 s
+
 /* ------------------------------------------------------------ opening shot */
 
 /* The first frame of a run is the single most-seen image in the demo, so the
@@ -433,6 +457,19 @@ export class CameraRig {
     this._logDist = new Spring(Math.log(2600), o.zoomOmega);
     this._fov = new Spring(this.baseFov, o.fovOmega);
     this._clear = new Spring(0, o.clearOmega);
+    /* Near-plane safety: every rock worth a sphere test as x,y,z,r, the few
+       near the current shot, and the smoothed pull-in as a share of the
+       orbit distance (1 = no pull). */
+    this._near = new Float32Array(MAX_NEAR_ROCKS * 4);
+    this._nearN = 0;
+    this._nearGen = 0;
+    this._cand = new Int32Array(NEAR_CANDIDATES);
+    this._candN = 0;
+    this._candAt = { x: 0, y: 0, z: 0, reach: -1, gen: -1 };
+    this._candIdx = [];
+    this._candKey = [];
+    this._pullK = 1;
+    this._pullSnap = true;
 
     this._logMin = Math.log(o.minDistance);
     this._logMax = Math.log(o.maxDistance);
@@ -514,7 +551,7 @@ export class CameraRig {
   /* --------------------------------------------------------------- accessors */
 
   get distance() {
-    return Math.exp(this._logDist.value) + this._clear.value;
+    return Math.exp(this._logDist.value) * Math.min(1, this._pullK) + this._clear.value;
   }
 
   get targetDistance() {
@@ -574,6 +611,7 @@ export class CameraRig {
     if (instant) {
       this._logDist.snap(this._logDist.target);
       this._clear.snap(0);
+      this._pullSnap = true;
       this._apply(0);
     }
     this._idle = 0;
@@ -1219,6 +1257,7 @@ export class CameraRig {
     this._pitch.snap(clamp(aim.pitch, -PITCH_LIMIT, PITCH_LIMIT));
     this._logDist.snap(clamp(Math.log(solved.dist), this._logMin, this._logMax));
     this._clear.snap(0);
+    this._pullSnap = true;
     /* Snap the lens too, or the first second of the demo is spent gliding from
        the default FOV to the one the framing was solved against. */
     this._fov.snap(this._fovAt(solved.dist));
@@ -1436,8 +1475,9 @@ export class CameraRig {
 
     this._pitch.value = clamp(this._pitch.value, -PITCH_LIMIT, PITCH_LIMIT);
 
-    const focus = this._focus.value;
     let dist = Math.exp(this._logDist.value);
+    this._slideFocus(dist);
+    const focus = this._focus.value;
 
     /* Never inside the thing you are looking at. */
     const floor = this._minDistance(this._focusRadius);
@@ -1447,6 +1487,9 @@ export class CameraRig {
     const pitch = this._pitch.value;
     const cp = Math.cos(pitch);
     _dir.set(Math.sin(yaw) * cp, Math.sin(pitch), Math.cos(yaw) * cp).normalize();
+
+    /* Near-plane safety: come in short of any rock on the line to the subject. */
+    dist = this._pullIn(focus, _dir, dist, floor, dt);
 
     /* Push out along the view vector if a hull swallowed the camera. */
     this._clear.target = Math.max(0, this._sweepClearance(focus, _dir, dist) - dist);
@@ -1599,6 +1642,8 @@ export class CameraRig {
     const out = this._static;
     out.length = 0;
     this._backdropN = 0;
+    this._nearN = 0;
+    this._nearGen++;
     for (let i = 0; i < scene.children.length; i++) {
       const o = scene.children[i];
       if (!o || o.visible === false || !o.isMesh || !o.geometry) continue;
@@ -1637,12 +1682,14 @@ export class CameraRig {
           const rk = br * Math.max(_s1.x, _s1.y, _s1.z);
           this._pushOccluder(out, _p1, rk);
           this._pushBackdrop(_p1, rk);
+          this._pushNear(_p1, rk);
         }
       } else {
         _m1.copy(o.matrixWorld).decompose(_p1, _q1, _s1);
         const rk = br * Math.max(_s1.x, _s1.y, _s1.z);
         this._pushOccluder(out, _p1, rk);
         this._pushBackdrop(_p1, rk);
+        this._pushNear(_p1, rk);
       }
     }
 
@@ -1674,6 +1721,228 @@ export class CameraRig {
     if (!o) list[this._backdropN] = o = { x: 0, y: 0, z: 0, r: 0 };
     o.x = pos.x; o.y = pos.y; o.z = pos.z; o.r = r;
     this._backdropN++;
+  }
+
+  /** Packed record for the near-plane sphere-cast. */
+  _pushNear(pos, r) {
+    if (!Number.isFinite(r) || r < NEAR_ROCK_MIN_RADIUS || r > OCCLUDER_MAX_RADIUS) return;
+    if (this._nearN >= MAX_NEAR_ROCKS) return;
+    if (!Number.isFinite(pos.x) || !Number.isFinite(pos.y) || !Number.isFinite(pos.z)) return;
+    const j = this._nearN * 4;
+    const a = this._near;
+    a[j] = pos.x; a[j + 1] = pos.y; a[j + 2] = pos.z; a[j + 3] = r;
+    this._nearN++;
+  }
+
+  /** The rocks that can matter to a shot `reach` around `focus`, nearest
+      first, at most NEAR_CANDIDATES of them. Cached as a ball that contains
+      the query ball, so a followed fighter rescans a few times a second and
+      a still shot never does. */
+  _nearCandidates(focus, reach) {
+    this._harvestStatic();
+    const a = this._candAt;
+    const dx = focus.x - a.x;
+    const dy = focus.y - a.y;
+    const dz = focus.z - a.z;
+    if (a.gen === this._nearGen && Math.sqrt(dx * dx + dy * dy + dz * dz) + reach <= a.reach) return this._candN;
+
+    let R = reach * 1.6 + 40;
+    const near = this._near;
+    const idx = this._candIdx;
+    const key = this._candKey;
+    idx.length = 0;
+    key.length = 0;
+    for (let i = 0, j = 0; i < this._nearN; i++, j += 4) {
+      const ox = near[j] - focus.x;
+      const oy = near[j + 1] - focus.y;
+      const oz = near[j + 2] - focus.z;
+      const s = Math.sqrt(ox * ox + oy * oy + oz * oz) - near[j + 3];
+      if (s < R) { idx.push(i); key.push(s); }
+    }
+    let n = idx.length;
+    if (n > NEAR_CANDIDATES) {
+      /* Keep the nearest, and shrink the cached ball to what is still whole. */
+      const order = idx.map((_, k) => k).sort((p, q) => key[p] - key[q]);
+      R = key[order[NEAR_CANDIDATES]];
+      for (let k = 0; k < NEAR_CANDIDATES; k++) this._cand[k] = idx[order[k]];
+      n = NEAR_CANDIDATES;
+    } else {
+      for (let k = 0; k < n; k++) this._cand[k] = idx[k];
+    }
+    this._candN = n;
+    a.x = focus.x; a.y = focus.y; a.z = focus.z;
+    a.reach = R;
+    a.gen = this._nearGen;
+    return n;
+  }
+
+  /** Clearance around a rock's bounding sphere for a camera `dist` out: the
+      near plane sits at dist * 0.006 and its corners about as far again off
+      axis, so this keeps the whole near quad outside the rock. */
+  _nearBand(dist) {
+    return dist * 0.012 + 0.5;
+  }
+
+  /** Orbit distance after pulling in short of every rock between the subject
+      and the camera. `floor` is the closest the shot may come; a rock that
+      starts inside it cannot be pulled in front of, so the camera is pushed
+      out past that one instead — it then hides part of the subject, but the
+      near plane is never inside it. */
+  _pullIn(focus, dir, dist, floor, dt) {
+    const n = this._nearCandidates(focus, dist * 1.25 + 50);
+    const band = this._nearBand(dist);
+    const near = this._near;
+    const cand = this._cand;
+    /* The soft pull respects the shot floor; the hard limit may go under it,
+       to just clear the subject, before it gives up and pushes out instead. */
+    const hardFloor = Math.max((this._focusRadius || 0) * 1.05, 1.5);
+    let hard = dist;
+    let soft = dist;
+    for (let c = 0; c < n; c++) {
+      const j = cand[c] * 4;
+      const r = near[j + 3];
+      const mx = focus.x - near[j];
+      const my = focus.y - near[j + 1];
+      const mz = focus.z - near[j + 2];
+      const m2 = mx * mx + my * my + mz * mz;
+      /* Inside a rock's bounding sphere is usually open water beside a lumpy
+         rock, not the rock itself — ships fly there. The only thing a sphere
+         can say then is that the rock lies below the subject's own height
+         over its centre, so cast against a sphere just under that instead. */
+      const inside = m2 < r * r;
+      const mm = inside ? Math.sqrt(m2) : 0;
+      if (inside && mm * 0.96 - band <= 0) continue;
+      const b = dir.x * mx + dir.y * my + dir.z * mz;
+      /* The soft sphere is the larger, so missing it misses the hard one too. */
+      const rs = inside ? mm * 0.985 : r * 1.1 + band * 2.5 + 1;
+      const ds = b * b - (m2 - rs * rs);
+      if (ds <= 0) continue;
+      const ss = Math.sqrt(ds);
+      const t1s = -b - ss;
+      if (-b + ss <= 0 || t1s >= dist) continue;
+      if (t1s > floor && t1s < soft) soft = t1s;
+      const rh = inside ? mm * 0.96 - band : r + band;
+      const dh = b * b - (m2 - rh * rh);
+      if (dh <= 0) continue;
+      const t1 = -b - Math.sqrt(dh);
+      if (t1 > hardFloor && t1 < hard) hard = t1;
+    }
+
+    const softK = soft / dist;
+    if (this._pullSnap || !(dt > 0)) {
+      this._pullK = softK;
+      this._pullSnap = false;
+    } else {
+      const rate = softK < this._pullK ? PULL_IN_RATE : PULL_OUT_RATE;
+      this._pullK += (softK - this._pullK) * (1 - Math.exp(-dt * rate));
+    }
+    let d = dist * Math.min(this._pullK, hard / dist);
+    const low = Math.min(floor, hard, dist);
+    if (d < low) d = low;
+
+    /* Rocks hugging the subject: out past them, never inside. */
+    for (let pass = 0; pass < 2; pass++) {
+      for (let c = 0; c < n; c++) {
+        const j = cand[c] * 4;
+        const r = near[j + 3];
+        const mx = focus.x - near[j];
+        const my = focus.y - near[j + 1];
+        const mz = focus.z - near[j + 2];
+        if (mx * mx + my * my + mz * mz < r * r) continue;
+        d = this._pushPast(focus, dir, d, near[j], near[j + 1], near[j + 2], r + band);
+      }
+    }
+    if (!Number.isFinite(d)) return dist;
+    return Math.min(d, dist * 4 + 2000);
+  }
+
+  /** A focus gliding from one subject to the next goes round rocks, not
+      through them. Mid-glide the focus is a point in empty space, and on a
+      straight line between two ships it happily passes through a landmark;
+      the pull-in cannot help then, because a camera orbiting a point inside
+      a rock is inside it too. So the gliding focus is held on the surface of
+      any rock sphere it enters and slides round it toward its target. A rock
+      that contains the target itself is left alone — that is where the
+      subject lives, and the glide has to arrive. */
+  _slideFocus(dist) {
+    const f = this._focus.value;
+    const tg = this._trans ? this._trans.to.focus : this._focus.target;
+    const gx = tg.x - f.x;
+    const gy = tg.y - f.y;
+    const gz = tg.z - f.z;
+    if (gx * gx + gy * gy + gz * gz < 1) return;
+    const n = this._nearCandidates(f, dist * 1.25 + 50);
+    const band = this._nearBand(dist);
+    const near = this._near;
+    for (let pass = 0; pass < 2; pass++) {
+      for (let c = 0; c < n; c++) {
+        const j = this._cand[c] * 4;
+        const cx = near[j];
+        const cy = near[j + 1];
+        const cz = near[j + 2];
+        /* The soft sphere of _pullIn, so a sliding focus never sits inside
+           the hard one and trips its push-out. */
+        const R = near[j + 3] * 1.1 + band * 2.5 + 1;
+        const tx = tg.x - cx;
+        const ty = tg.y - cy;
+        const tz = tg.z - cz;
+        if (tx * tx + ty * ty + tz * tz < R * R) continue;
+        const mx = f.x - cx;
+        const my = f.y - cy;
+        const mz = f.z - cz;
+        const m2 = mx * mx + my * my + mz * mz;
+        if (m2 >= R * R || m2 < 1e-6) continue;
+        const m = Math.sqrt(m2);
+        const k = R / m;
+        f.set(cx + mx * k, cy + my * k, cz + mz * k);
+        if (this._trans) continue;               // the transition re-lerps every frame
+        /* Slide, do not stick: drop the velocity into the rock and keep a
+           minimum speed round it toward the target, or a target almost
+           straight behind the rock would leave the focus parked on its face. */
+        const nx = mx / m;
+        const ny = my / m;
+        const nz = mz / m;
+        const v = this._focus.velocity;
+        const vn = v.x * nx + v.y * ny + v.z * nz;
+        if (vn < 0) v.set(v.x - nx * vn, v.y - ny * vn, v.z - nz * vn);
+        const wx = tg.x - f.x;
+        const wy = tg.y - f.y;
+        const wz = tg.z - f.z;
+        const wn = wx * nx + wy * ny + wz * nz;
+        _v3.set(wx - nx * wn, wy - ny * wn, wz - nz * wn);
+        if (_v3.lengthSq() < 1e-6) _v3.set(-nz, 0, nx);   // dead behind: pick a side
+        if (_v3.lengthSq() < 1e-6) _v3.set(1, 0, 0);
+        _v3.normalize();
+        const want = this._focus.omega * 0.35 * Math.sqrt(wx * wx + wy * wy + wz * wz);
+        const vt = v.x * _v3.x + v.y * _v3.y + v.z * _v3.z;
+        if (vt < want) v.addScaledVector(_v3, want - vt);
+      }
+    }
+  }
+
+  /** Would a camera `dist` out along `dir` have rock on its line to the
+      subject, or sit inside one? The focus search treats that as blocked:
+      the per-frame pull-in would otherwise shorten the very shot it chose. */
+  _rockOnPath(focus, dir, dist, floor) {
+    const n = this._nearCandidates(focus, dist * 1.25 + 50);
+    const band = this._nearBand(dist);
+    const near = this._near;
+    for (let c = 0; c < n; c++) {
+      const j = this._cand[c] * 4;
+      const r = near[j + 3];
+      const mx = focus.x - near[j];
+      const my = focus.y - near[j + 1];
+      const mz = focus.z - near[j + 2];
+      const m2 = mx * mx + my * my + mz * mz;
+      const rh = m2 < r * r ? Math.sqrt(m2) * 0.96 - band : r + band;   // see _pullIn
+      if (rh <= 0) continue;
+      const b = dir.x * mx + dir.y * my + dir.z * mz;
+      const dh = b * b - (m2 - rh * rh);
+      if (dh <= 0) continue;
+      const s = Math.sqrt(dh);
+      if (-b + s > floor && -b - s < dist) return true;
+    }
+    return false;
   }
 
   /** Share, 0..1, of the patch of frame around the subject that is rock
@@ -1785,7 +2054,8 @@ export class CameraRig {
     const focus = this._focus.target;
     const dist = Math.exp(this._logDist.target);
     const list = this._occluderList(focus, dist);
-    if (!list.length && !this._backdropN) return;
+    const floor = this._minDistance(this._focusRadius);
+    if (!list.length && !this._backdropN && !this._nearCandidates(focus, dist * 1.25 + 50)) return;
 
     /* Two tests per candidate, in search order (smallest swing first): the
        hard one — is anything in the way — and the backdrop share. The first
@@ -1800,12 +2070,23 @@ export class CameraRig {
     let cover0 = Infinity;
     let bestYaw = yaw0;
     let bestPitch = pitch0;
+    let through = -1;
+    let throughYaw = yaw0;
+    let throughPitch = pitch0;
     for (let i = 0; i < CLEAR_SEARCH.length; i++) {
       const yaw = yaw0 + CLEAR_SEARCH[i][0];
       const pitch = clamp(pitch0 + CLEAR_SEARCH[i][1], -PITCH_LIMIT, PITCH_LIMIT);
       const cp = Math.cos(pitch);
       _try.set(Math.sin(yaw) * cp, Math.sin(pitch), Math.cos(yaw) * cp).normalize();
       if (list.length && this._sightBlocked(focus, _try, dist, list, this._focusRadius)) continue;
+      /* A path through rock is blocked too, however small the rock: the
+         per-frame pull-in would cut the shot short in front of it. Kept as a
+         last resort, so a subject wrapped in rubble still gets a sight-clear
+         angle rather than the buried fallback. */
+      if (this._rockOnPath(focus, _try, dist, floor)) {
+        if (through < 0) { through = i; throughYaw = yaw; throughPitch = pitch; }
+        continue;
+      }
       const cover = this._backdropCover(focus, _try, dist, this._focusRadius);
       if (i === 0) cover0 = cover;
       if (cover < bestCover - 1e-6) {
@@ -1829,6 +2110,17 @@ export class CameraRig {
       this._lastClear = { swing: best, cover0, cover: bestCover };
       return;
     }
+    if (through > 0) {
+      this._yaw.target = throughYaw;
+      this._pitch.target = throughPitch;
+      if (instant) {
+        this._yaw.snap(throughYaw);
+        this._pitch.snap(throughPitch);
+      }
+      this._lastClear = { swing: through, cover0, cover: NaN, through: true };
+      return;
+    }
+    if (through === 0) return;      // only rock-crossed angles: the pull-in has this one
     /* Nothing at this range works — the subject is buried. Come in closer, so
        the camera sits inside whatever is wrapped around it, but never more than
        halve the shot: `focusOn` does not always know how big the subject is,
@@ -1852,18 +2144,9 @@ export class CameraRig {
       out = this._pushPast(focus, dir, out, c.x, c.y, c.z, (e.radius || 0) * 1.18 + 3);
     }
 
-    /* Asteroid landmarks swallow a camera exactly as readily as a carrier
-       does, and unlike a carrier they never move out of the way. */
-    const stat = this._harvestStatic();
-    for (let i = 0; i < stat.length; i++) {
-      const o = stat[i];
-      /* Something we are standing inside is a volume, not an obstacle. */
-      const dx = focus.x - o.x;
-      const dy = focus.y - o.y;
-      const dz = focus.z - o.z;
-      if (dx * dx + dy * dy + dz * dz < o.r * o.r) continue;
-      out = this._pushPast(focus, dir, out, o.x, o.y, o.z, o.r * 1.06 + 3);
-    }
+    /* Rocks are not pushed past here any more. `_pullIn` has already brought
+       the camera in short of every rock on the line, and pushing out past a
+       landmark from there threw the camera through two kilometres of rock. */
 
     /* A push-out is a correction, never a teleport. If the arithmetic ever
        produces something absurd, the camera keeps the shot it had. */
