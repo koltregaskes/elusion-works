@@ -155,7 +155,8 @@ const PAUSE_NOTE = 'Space pauses the battle — you can still give orders.';
    layer in ui/select.js can draw. */
 const MARK_LEGEND =
   'Marks: outline = ship class · amber theirs, cyan ours (◇ = ours, unselected) · ' +
-  'turning corners = your target · filled = about to die · red = ours in trouble';
+  'turning corners = your target · filled = about to die · ' +
+  'red outline = ours below a third of hull · red corners = ours under fire';
 
 /* -------------------------------------------------------------- projection */
 

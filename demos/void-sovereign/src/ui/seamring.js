@@ -39,7 +39,24 @@ import { CONTROL } from '../sim/economy.js';
    SIM's and are never recomputed here.
 
    Cost: zero draw calls on the WebGL side (the 3D boundary mesh is gone), and
-   a few hundred projections and three canvas strokes per visible seam. */
+   a few hundred projections and three canvas strokes per visible seam.
+
+   Round 5, fix 5. The critic's round 4 verdict was "verified, at a price":
+   in most early frames the rings were the largest drawn shapes, swept half
+   the frame in full-strength friendly cyan, sliced the planet as a hairline
+   when seen edge-on, and printed "SEAM · THEIRS 9%" over an impact cloud. So:
+
+     - the whole rule is drawn at about 35% of its old strength (RULE_A);
+     - it fades with camera distance (DIST_NEAR..DIST_FAR, down to DIST_MIN)
+       and fades sooner when the ring is larger than the frame (BIG_*);
+     - edge-on it is culled, not thinned: below about 3.5 degrees of
+       elevation nothing draws, and it is back in full by about 10;
+     - every part of the ring is neutral bone. Ownership is one short, thin
+       filled arc segment from the zero bearing whose length is the hold, cyan
+       only when it is ours; theirs gets the same segment in bone. A seam we
+       hold is no longer a cyan ellipse;
+     - a label is dropped when an engaged hull (one with a target, and so
+       with fire and impacts round it) projects inside or near its box. */
 
 /* Samples round the circle. Four per tick pitch: the chord error at 3.75
    degrees is about a sixth of a pixel on a ring 300 px across. */
@@ -52,7 +69,11 @@ const TICK_PX = 5;
 const RANK_PX = 9;
 const DASH = [5, 4];
 const LINE_PX = 1;
-const HOLD_PX = 1.5;
+const HOLD_PX = 3;
+/* The ownership segment covers at most this fraction of the ring at full hold. */
+const HOLD_SPAN = 1 / 6;
+/* Overall strength of the rule relative to round 4. */
+const RULE_A = 0.35;
 
 /* Range fades, carried over from the 3D boundary so the rule appears and
    leaves at the same moments it used to. Past 24 km a boundary is somewhere
@@ -60,8 +81,18 @@ const HOLD_PX = 1.5;
    camera is standing inside, where its near arc would sweep the screen. */
 const FADE_NEAR = 24000;
 const FADE_FAR = 48000;
-const BIG_FROM = 1.3;
-const BIG_TO = 2.9;
+const BIG_FROM = 0.8;
+const BIG_TO = 2.0;
+/* Distance fade inside the range above: a near ring is the one being decided
+   about; one across the map keeps only DIST_MIN of its strength. */
+const DIST_NEAR = 3000;
+const DIST_FAR = 16000;
+const DIST_MIN = 0.45;
+/* Edge-on cull: sine of the camera's elevation over the ring's plane. */
+const EDGE_OFF = 0.06;
+const EDGE_ON = 0.17;
+/* Keep-out round a label, in px, for engaged hulls (their fire and impacts). */
+const LABEL_FX_PAD = 36;
 
 /* Below these projected radii the ring is too small to carry all its marks:
    first the plain ticks go, then the label. The ticks never shrink, because
@@ -71,7 +102,9 @@ const LABEL_PX = 70;
 const MAX_LABELS = 2;
 const LABEL_FONT = '500 10px "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 
-const INK = '223, 232, 242';
+/* Neutral bone: the rule's own ink, warm enough that it cannot be read as
+   friendly cyan or as the HUD's cold white text. */
+const BONE = '214, 206, 188';
 const CYAN = '127, 216, 232';
 const HALO = 'rgba(2, 6, 10, ';
 
@@ -236,6 +269,11 @@ export class SeamRing {
     const p11 = Math.max(cam.projectionMatrix.elements[5], 1e-4);
     const halfC = dC / p11;
     let a = (1 - smoothstep(FADE_NEAR, FADE_FAR, dC)) * (1 - smoothstep(BIG_FROM, BIG_TO, R / Math.max(halfC, 1)));
+    a *= 1 - (1 - DIST_MIN) * smoothstep(DIST_NEAR, DIST_FAR, dC);
+    /* Edge-on, the ellipse collapses toward one line across the frame -- a
+       hairline through the planet. It is culled rather than thinned. */
+    const up = Math.abs(dy) / dC;
+    a *= smoothstep(EDGE_OFF, EDGE_ON, up);
     if (a < 0.02) return false;
 
     /* Projected radius, for deciding how many marks the ring can carry. */
@@ -267,12 +305,7 @@ export class SeamRing {
     }
     if (maxX < -20 || minX > W + 20 || maxY < -20 || minY > H + 20) return false;
 
-    /* Edge-on, the dashed ellipse collapses toward one line across the frame;
-       it thins but must not go out, or the ticks lose the line tying them
-       into a circle. The ticks themselves are screen marks and keep their
-       full weight at every pitch. */
-    const up = Math.abs(dy) / dC;
-    const planar = 0.38 + 0.62 * smoothstep(0.004, 0.11, up);
+    const ra = a * RULE_A;
 
     const ctl = Math.max(-1, Math.min(1, c.control || 0));
     const hold = Math.abs(ctl);
@@ -303,10 +336,10 @@ export class SeamRing {
     g.setLineDash(DASH);
     g.lineDashOffset = -2;
     g.lineWidth = LINE_PX + 2;
-    g.strokeStyle = HALO + (0.32 * a * planar).toFixed(3) + ')';
+    g.strokeStyle = HALO + (0.32 * ra).toFixed(3) + ')';
     g.stroke();
     g.lineWidth = LINE_PX;
-    g.strokeStyle = 'rgba(' + INK + ', ' + (0.42 * a * planar).toFixed(3) + ')';
+    g.strokeStyle = 'rgba(' + BONE + ', ' + (0.42 * ra).toFixed(3) + ')';
     g.stroke();
     g.setLineDash([]);
 
@@ -341,16 +374,17 @@ export class SeamRing {
       g.lineTo(sx[k] + nx * len, sy[k] + ny * len);
     }
     g.lineWidth = LINE_PX + 2;
-    g.strokeStyle = HALO + (0.40 * a).toFixed(3) + ')';
+    g.strokeStyle = HALO + (0.40 * ra).toFixed(3) + ')';
     g.stroke();
     g.lineWidth = LINE_PX;
-    g.strokeStyle = 'rgba(' + INK + ', ' + (0.66 * a).toFixed(3) + ')';
+    g.strokeStyle = 'rgba(' + BONE + ', ' + (0.66 * ra).toFixed(3) + ')';
     g.stroke();
 
-    /* ---- hold progress: a solid arc from the zero bearing. */
-    const col = ours ? CYAN : INK;
+    /* ---- ownership: one short, thin filled arc segment from the zero
+       bearing, its length the hold. Cyan only when it is ours. */
+    const col = ours ? CYAN : BONE;
     if (hold > 0.01) {
-      const span = hold * SAMPLES;
+      const span = hold * HOLD_SPAN * SAMPLES;
       const whole = Math.floor(span);
       g.beginPath();
       let open = false;
@@ -371,14 +405,13 @@ export class SeamRing {
         g.lineTo(sx[whole] + (sx[whole + 1] - sx[whole]) * f, sy[whole] + (sy[whole + 1] - sy[whole]) * f);
       }
       g.lineWidth = HOLD_PX + 2;
-      g.strokeStyle = HALO + (0.32 * a).toFixed(3) + ')';
+      g.strokeStyle = HALO + (0.5 * a).toFixed(3) + ')';
       g.stroke();
-      /* Brighter than the dashes, never louder than a hairline. At full
-         weight a seam they nearly hold was a solid white ellipse across a
-         third of the frame -- the thin-bright-ellipse language the planet's
-         ring already speaks. */
+      /* A segment, never a ring: at full hold it is a sixth of the
+         circumference. In round 4 a held seam was a cyan ellipse across half
+         the frame. */
       g.lineWidth = HOLD_PX;
-      g.strokeStyle = 'rgba(' + col + ', ' + ((ours ? 0.74 : 0.56) * a).toFixed(3) + ')';
+      g.strokeStyle = 'rgba(' + col + ', ' + ((ours ? 0.62 : 0.4) * a).toFixed(3) + ')';
       g.stroke();
     }
 
@@ -406,7 +439,8 @@ export class SeamRing {
         const x = sx[k];
         const y0 = above ? sy[k] - 21 : sy[k] + 7;
         if (x - tw / 2 < 8 || x + tw / 2 > W - 8 || y0 < 4 || y0 + 14 > H - 4) return false;
-        return !this._masked(x - tw / 2 - 4, y0 - 2, x + tw / 2 + 4, y0 + 16);
+        if (this._masked(x - tw / 2 - 4, y0 - 2, x + tw / 2 + 4, y0 + 16)) return false;
+        return !this._nearFx(x - tw / 2 - LABEL_FX_PAD, y0 - LABEL_FX_PAD, x + tw / 2 + LABEL_FX_PAD, y0 + 14 + LABEL_FX_PAD);
       };
       let k = -1;
       let above = true;
@@ -424,12 +458,27 @@ export class SeamRing {
         L.y0 = above ? sy[k] - 21 : sy[k] + 7;
         L.w = tw;
         L.above = above;
-        L.col = col;
+        L.col = BONE;
         L.a = a;
         L.r = rPx;
       }
     }
     return true;
+  }
+
+  /** True if an engaged hull -- one with a target, so with fire and impacts
+      round it -- projects inside the box. Labels only, a few per frame. */
+  _nearFx(x0, y0, x1, y1) {
+    const ents = typeof this.ctx.entities === 'function' ? this.ctx.entities() : null;
+    if (!ents) return false;
+    const proj = this.ctx.proj;
+    for (const e of ents) {
+      if (!e || e.alive === false || !(e.targetId >= 0)) continue;
+      const p = (e.object3D && e.object3D.position) || e.position;
+      if (!p || !proj.project(p.x, p.y, p.z)) continue;
+      if (proj.sx > x0 && proj.sx < x1 && proj.sy > y0 && proj.sy < y1) return true;
+    }
+    return false;
   }
 
   _drawLabels() {
@@ -466,7 +515,7 @@ export class SeamRing {
       g.textBaseline = q.above ? 'bottom' : 'top';
       g.strokeStyle = HALO + (0.75 * q.a).toFixed(3) + ')';
       g.strokeText(q.text, q.x, q.y);
-      g.fillStyle = 'rgba(' + q.col + ', ' + (0.78 * q.a).toFixed(3) + ')';
+      g.fillStyle = 'rgba(' + q.col + ', ' + (0.62 * q.a).toFixed(3) + ')';
       g.fillText(q.text, q.x, q.y);
       drawn++;
     }

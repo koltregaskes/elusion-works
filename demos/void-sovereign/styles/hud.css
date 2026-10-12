@@ -820,9 +820,14 @@
 
 .vsh-selblock.is-live::before { opacity: 1; }
 
+/* Production is a real backed panel (critic round 4: the cruiser's barrels
+   ran through the prices). Square, near-opaque, one hairline edge. */
 .vsh-build::before {
-  inset: -20px -40px -34px -48px;
-  background: radial-gradient(112% 104% at 100% 100%, rgba(2, 6, 11, 0.86), rgba(2, 6, 11, 0) 74%);
+  inset: -10px -12px -8px -14px;
+  background: rgba(3, 7, 12, 0.86);
+  box-shadow:
+    inset 0 0 0 1px rgba(223, 232, 242, 0.07),
+    0 0 22px 6px rgba(3, 7, 12, 0.45);
 }
 
 /* -------------------------------------------------------------- 4. roster */
@@ -1172,27 +1177,29 @@
 }
 
 /* ---- collapsed: one row of class glyphs and their cost, and nothing else */
+/* Round 5: the glyph-and-price strip lost the class names round 2 had, and a
+   row of thirteen outlines cannot be read without them. The resting state is
+   now a compact two-column list: glyph, name, price. Build time and
+   population still wait for hover, focus or the pinned state. */
 .vsh-build__grid {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 18px;
 }
 
 /* 31 px × 13 classes has to survive the narrowest column the bottom deck ever
    hands this panel, which is 400 px at 1280 — measured, not guessed. Wrapping
    to a second row is allowed but is not the intended resting shape. */
 .vsh-item {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: flex-end;
-  gap: 1px;
-  width: 31px;
-  padding: 2px 0 3px;
-  text-align: center;
+  column-gap: 7px;
+  min-width: 0;
+  padding: 2px 2px 2px 0;
+  text-align: left;
   transition: opacity 0.14s linear;
-  opacity: 0.72;
+  opacity: 0.8;
 }
 
 .vsh-item:hover:not([disabled]) { opacity: 1; }
@@ -1204,8 +1211,8 @@
 
 .vsh-item__icon {
   flex: 0 0 auto;
-  width: 21px;
-  height: 21px;
+  width: 18px;
+  height: 18px;
   fill: none;
   stroke: var(--vsh-cyan);
   stroke-width: 1.1;
@@ -1215,7 +1222,19 @@
 
 .vsh-item[disabled] .vsh-item__icon { stroke: rgba(var(--vsh-w), 0.4); }
 
-.vsh-item__name,
+.vsh-item__name {
+  display: block;
+  min-width: 0;
+  font-family: var(--vsh-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vsh-ink-64);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .vsh-item__sub {
   display: none;
 }
@@ -1223,9 +1242,9 @@
 .vsh-item__cost {
   font-family: var(--vsh-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 9px;
+  font-size: 9.5px;
   letter-spacing: 0.02em;
-  color: var(--vsh-ink-40);
+  color: var(--vsh-ink-64);
 }
 
 /* ---- expanded: the full read, on hover, on focus, or pinned */

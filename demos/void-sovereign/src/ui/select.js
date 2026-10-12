@@ -1242,7 +1242,11 @@ export class WorldMarkers {
       p.enemy = enemy;
       p.el.classList.toggle('vsh-pip--enemy', enemy);
     }
-    const low = (e.hull || 0) < (e.maxHull || 1) * 0.34 || this._hits.has(e.id);
+    /* Red means one thing: below a third of hull. It also blinked on for
+       1.1 s on every hit, the "red mark nobody explains" of round 4
+       (R4-s99-engagement-wide). Under fire is the red reticle's job; the keys
+       legend names both. */
+    const low = (e.hull || 0) < (e.maxHull || 1) * 0.34;
     if (low !== p.low) {
       p.low = low;
       p.el.classList.toggle('vsh-pip--low', low);
@@ -1271,7 +1275,11 @@ export class WorldMarkers {
       g.enemy = enemy;
       g.el.classList.toggle('vsh-gly--enemy', enemy);
     }
-    const low = (e.hull || 0) < (e.maxHull || 1) * 0.34 || this._hits.has(e.id);
+    /* Red means one thing: below a third of hull. It also blinked on for
+       1.1 s on every hit, the "red mark nobody explains" of round 4
+       (R4-s99-engagement-wide). Under fire is the red reticle's job; the keys
+       legend names both. */
+    const low = (e.hull || 0) < (e.maxHull || 1) * 0.34;
     if (low !== g.low) {
       g.low = low;
       g.el.classList.toggle('vsh-gly--low', low);

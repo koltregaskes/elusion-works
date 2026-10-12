@@ -401,7 +401,15 @@ export class Tutorial {
   }
 
   skip() {
-    if (!this.active) return;
+    /* After a skip or a finish the same button reads "Dismiss", but `active`
+       is already false, so this used to return and the outro card sat over
+       the left third of the battle for its whole OUTRO_LIFE (26 s). Dismiss
+       retires it now; nothing in the game state changes, because _finish has
+       already emitted `tutorial:complete`. */
+    if (!this.active) {
+      if (this.finished && this.card && !this.card.hidden) this._retire();
+      return;
+    }
     this._finish(true);
   }
 
