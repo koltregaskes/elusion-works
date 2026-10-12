@@ -484,6 +484,67 @@ const CLEAR_SEARCH = (() => {
   return out;
 })();
 
+/* Shot composition (R7 fix 3).
+
+   Round 6 kept the near plane out of rock, and the close camera then parked
+   hard against it: seed 99's engagement close was three-quarters faceted rock
+   with the frigate cut by the frame edge, seed 13634's wide shot 60 % rock.
+   Nothing scored the picture. The key-light swing, the backdrop test and the
+   sight test each nudged the angle in turn, and none of them could see how
+   much of the frame the rocks ate or whether the subject still fitted.
+
+   So every framing the rig chooses - F, focusOn, and the follow camera's own
+   re-framing - now scores candidate poses with one function, after the
+   near-plane rules have had their say (a pose with rock on its line is marked,
+   not trusted):
+     - rock share: a 16 x 9 grid of rays from the candidate camera against the
+       vertex-tight hull ellipsoids of the ~64 rocks that could matter;
+     - the subject's projected silhouette, which must sit inside the frame with
+       a margin and be bigger than a sliver;
+     - the key-light band, the sight test and the backdrop share, as terms of
+       the same score rather than overrides applied one after another;
+     - the swing from the requested pose, so the nearest good shot wins.
+   A pose that breaks a hard rule pays REJECT and loses to any that does not;
+   if every pose does, the cheapest still wins and the rocks left between the
+   lens and the subject are dithered out by the fade slots instead.
+
+   The follow camera re-scores its own pose a few times a second while the
+   player leaves it alone. It moves only when that pose breaks a hard rule and
+   a candidate is clearly better, eases there on the orbit springs, and then
+   holds for a cooldown, so it cannot flick between two near-equal shots. */
+const COMPOSE = {
+  rockMax: 0.40,       // share of the frame that may be rock
+  margin: 0.04,        // NDC margin the subject keeps from every frame edge
+  minSize: 0.05,       // the subject's larger half-extent, as a share of the frame
+  fitTo: 0.82,         // the larger edge a clipped subject is pulled back to
+  gridX: 16,
+  gridY: 9,
+  rocks: 64,           // rocks scored per shot, the biggest on screen first
+  minAngle: 0.05,      // a rock that cannot subtend more than this is ignored
+  reject: 20,
+  keyWeight: 2.0,      // per radian outside KEY_QUARTER
+  rockWeight: 1.5,
+  backdropWeight: 1.0,
+  swingYaw: 0.25,      // per radian of swing from the requested pose
+  swingPitch: 0.4,
+  distWeight: 0.6,     // per unit of |log| distance change
+  subjectSamples: 360, // hull points kept per subject
+  evalEvery: 0.4,      // s between follow re-scores
+  idleBefore: 1.2,     // s the player must have left the camera alone
+  switchGain: 1.5,     // how much better a new pose must score to move
+  cooldown: 2.5,       // s held after a move
+  occludedW: 0.25,     // dither opacity of a rock between lens and subject
+  fadeRate: 4,         // 1/s toward that, and back
+};
+const FOLLOW_MAX_SPEED = 6000;   // m/s; anything faster is a jump
+const FOLLOW_VEL_RATE = 8;       // 1/s smoothing of the measured velocity
+const _ray = new THREE.Vector3();
+const _span = { w: 0, h: 0, cx: 0, cy: 0 };
+const _ocD = new THREE.Vector3();
+const _ocR = new THREE.Vector3();
+const _ocU = new THREE.Vector3();
+const _ocT = new THREE.Vector3();
+
 /* ------------------------------------------------------------------ the rig */
 
 export class CameraRig {
@@ -545,6 +606,27 @@ export class CameraRig {
     this._backdrop = [];        // every rock worth a pixel, for the backdrop test
     this._backdropN = 0;
     this._lastClear = null;     // what the last chosen framing decided, for probes
+    /* Shot composition (R7 fix 3). */
+    this._compI = new Int32Array(COMPOSE.rocks);   // near-rock indices scored this shot
+    this._compN = 0;
+    this._compKeep = new Int32Array(COMPOSE.rocks);
+    this._compIdx = [];
+    this._compKey = [];
+    this._localHull = new WeakMap();               // entity -> hull points in its own frame
+    this._subjPts = [];
+    this._shot = { rock: 0, clip: false, size: -1, blocked: false, path: false, cover: 0, score: 0 };
+    this._recompT = 0;
+    this._recompForce = false;
+    this._followVel = new THREE.Vector3();      // smoothed velocity of the followed centroid
+    this._followPrev = new THREE.Vector3();
+    this._followPrevOk = false;
+    this._followKey = null;
+    this._recompHold = 0;
+    /* Rocks faded for standing in the way: world centre, opacity, target. */
+    this._occC = new Float32Array(ROCK_FADE_SLOTS * 3).fill(ROCK_FADE_FAR);
+    this._occW = new Float32Array(ROCK_FADE_SLOTS).fill(1);
+    this._occT = new Float32Array(ROCK_FADE_SLOTS).fill(1);
+    this._occN = 0;             // rocks in the way this frame, for probes
     this._staticStamp = -1;
     this._staticAt = -1e9;
 
@@ -660,12 +742,11 @@ export class CameraRig {
     this._follow = null;
     this._focus.target.set(point.x, point.y, point.z);
     this._focusRadius = 0;
-    this._keyQuarter(instant);
     if (typeof distance === 'number' && isFinite(distance)) {
       this._logDist.target = clamp(Math.log(Math.max(1e-3, distance)), this._logMin, this._logMax);
     }
     if (instant) this._focus.snap(this._focus.target);
-    this._clearView(instant);
+    this._compose(instant, null, null);
     if (instant) {
       this._logDist.snap(this._logDist.target);
       this._clear.snap(0);
@@ -713,10 +794,9 @@ export class CameraRig {
     this._follow = list.length ? list : null;
     let hero = null;
     for (const e of list) if (e.quaternion && (!hero || (e.radius || 0) > (hero.radius || 0))) hero = e;
-    this._keyQuarter(instant, hero);
 
     if (instant) this._focus.snap(this._focus.target);
-    this._clearView(instant);
+    this._compose(instant, hero, list);
     if (instant) {
       this._logDist.snap(this._logDist.target);
       this._apply(0);
@@ -766,6 +846,10 @@ export class CameraRig {
   follow(entities) {
     const list = this._toList(entities);
     this._follow = list.length ? list : null;
+    /* Now the rig knows what it is framing: score the shot on the next frame,
+       whatever the player was doing a moment ago. */
+    this._recompT = 0;
+    this._recompForce = !!this._follow;
   }
 
   clearFollow() {
@@ -1275,7 +1359,7 @@ export class CameraRig {
   }
 
   /** Static plus entity occluders near a focus, as the flat records the sight
-      test wants. Shared by `_clearView` and the opening aim. */
+      test wants. Shared by `_shotContext` and the opening aim. */
   _occluderList(focus, dist) {
     this._colliderTick = 0;
     const world = this._collidersFor(focus, dist);
@@ -1552,7 +1636,18 @@ export class CameraRig {
     const cam = this.camera;
     const o = this.options;
 
-    if (this._follow && this._follow.length) this._trackFollow();
+    if (this._follow && this._follow.length) this._trackFollow(dt);
+
+    /* Follow re-framing (R7 fix 3): a few times a second, never mid-gesture. */
+    if (this._recompHold > 0) this._recompHold -= dt;
+    if (this._follow && !this._trans && !this._sensors && dt > 0) {
+      this._recompT -= dt;
+      if (this._recompT <= 0 && (this._recompForce || this._idle >= COMPOSE.idleBefore)) {
+        this._recompT = COMPOSE.evalEvery;
+        this._reframe(this._recompForce);
+        this._recompForce = false;
+      }
+    }
 
     if (this._trans) {
       const tr = this._trans;
@@ -1653,6 +1748,9 @@ export class CameraRig {
       }
     }
 
+    /* Rocks between the lens and the subject are dithered out (R7 fix 3). */
+    this._occluders(_v1, focus, dt);
+
     /* Near guard, after every offset: see the note at _hullHit. */
     {
       const nq = clamp(eff * 0.006, 0.03, 140) * 1.03;
@@ -1717,7 +1815,15 @@ export class CameraRig {
     up.crossVectors(right, dir).normalize();
   }
 
-  _trackFollow() {
+  /* The focus spring is critically damped, so it trails a subject moving at
+     v by 2v/omega: at 6 rad/s a fighter at 150 m/s sat 50 m behind the focus,
+     out of a 60 m shot entirely. R7's 50-move run measured the followed hull
+     outside the frame on 30 moves of 50 for exactly that reason. So the
+     target leads the centroid by its measured velocity times 2/omega, which
+     takes the steady-state lag to zero. Velocity is measured from the
+     centroid per real second, so sim speed and fixed-step jitter cannot
+     skew it, and smoothed so one stepped tick does not kick the frame. */
+  _trackFollow(dt) {
     const list = this._follow;
     _v2.set(0, 0, 0);
     let n = 0;
@@ -1735,7 +1841,21 @@ export class CameraRig {
       this._follow = null;
       return;
     }
-    this._focus.target.copy(_v2.divideScalar(n));
+    _v2.divideScalar(n);
+    const fv = this._followVel;
+    if (dt > 0) {
+      if (this._followPrevOk && this._followKey === list) {
+        _v3.copy(_v2).sub(this._followPrev).divideScalar(dt);
+        if (_v3.lengthSq() > FOLLOW_MAX_SPEED * FOLLOW_MAX_SPEED) fv.set(0, 0, 0);   // a jump, not motion
+        else fv.lerp(_v3, 1 - Math.exp(-dt * FOLLOW_VEL_RATE));
+      } else {
+        fv.set(0, 0, 0);
+      }
+      this._followPrev.copy(_v2);
+      this._followPrevOk = true;
+      this._followKey = list;
+    }
+    this._focus.target.copy(_v2).addScaledVector(fv, 2 / Math.max(0.5, this._focus.omega));
     this._focusRadius = biggest;
   }
 
@@ -1982,15 +2102,28 @@ export class CameraRig {
       }
     }
     if (inside > ROCK_FADE_SLOTS) return false;
+    /* Free slots go to rocks standing between the lens and the subject. The
+       near quad always outranks them: a rock the quad is in is already here. */
     const u = rockFadeUniform.value;
-    for (let s = 0; s < ROCK_FADE_SLOTS; s++) {
-      if (s < used) {
-        const j = fi[s] * 4;
-        u[s].set(near[j], near[j + 1], near[j + 2], fw[s]);
-      } else {
-        u[s].set(ROCK_FADE_FAR, ROCK_FADE_FAR, ROCK_FADE_FAR, 1);
-      }
+    let s = 0;
+    for (; s < used; s++) {
+      const j = fi[s] * 4;
+      u[s].set(near[j], near[j + 1], near[j + 2], fw[s]);
     }
+    const oc = this._occC;
+    for (let e = 0; e < ROCK_FADE_SLOTS && s < ROCK_FADE_SLOTS; e++) {
+      if (this._occW[e] >= 0.999) continue;
+      const x = oc[e * 3];
+      const y = oc[e * 3 + 1];
+      const z = oc[e * 3 + 2];
+      let dup = false;
+      for (let q = 0; q < s; q++) {
+        if (Math.abs(u[q].x - x) < 0.5 && Math.abs(u[q].y - y) < 0.5 && Math.abs(u[q].z - z) < 0.5) dup = true;
+      }
+      if (dup) continue;
+      u[s++].set(x, y, z, this._occW[e]);
+    }
+    for (; s < ROCK_FADE_SLOTS; s++) u[s].set(ROCK_FADE_FAR, ROCK_FADE_FAR, ROCK_FADE_FAR, 1);
     this._fadeN = inside;
     return true;
   }
@@ -2295,94 +2428,382 @@ export class CameraRig {
     return false;
   }
 
-  /** Swing to the nearest yaw/pitch that actually sees the subject, and
-      sees it against something other than a rock of its own value: an
-      approach must pass both _sightBlocked and _backdropCover.
-
-      Only ever called when the rig *chooses* a framing — boot, F, `ui:focus`.
-      Fighting the player mid-orbit would be worse than the occlusion; if they
-      drive into a rock, the per-frame push-out in `_apply` still stops the
-      camera ending up inside it. */
-  _clearView(instant) {
-    const focus = this._focus.target;
-    const dist = Math.exp(this._logDist.target);
-    const list = this._occluderList(focus, dist);
-    const floor = this._minDistance(this._focusRadius);
-    if (!list.length && !this._backdropN && !this._nearCandidates(focus, dist * 1.25 + 50)) return;
-
-    /* Two tests per candidate, in search order (smallest swing first): the
-       hard one — is anything in the way — and the backdrop share. The first
-       approach that passes both wins. If none does, the clear approach with
-       the least rock behind the subject wins, but only if it is meaningfully
-       better than the shot the player already had; a long swing to trade one
-       rock wall for a slightly thinner one is worse than no swing. */
+  /** Choose the shot for a framing the rig was asked for: boot, F,
+      `ui:focus`, a script's focusOn. The key-light solve gives the search its
+      origin (with its flank preference when there is a hull to show); every
+      candidate pose round that is then scored by `_shotScore` and the
+      cheapest wins. This replaces the key swing, `_clearView`'s sight and
+      backdrop passes and its buried fallback, which used to run one after
+      another and overrule each other (R7 fix 3). */
+  _compose(instant, hero, list) {
+    const yawIn = this._yaw.target;
+    this._keyQuarter(false, hero);
     const yaw0 = this._yaw.target;
+    this._yaw.target = yawIn;
     const pitch0 = this._pitch.target;
-    let best = -1;
-    let bestCover = Infinity;
-    let cover0 = Infinity;
-    let bestYaw = yaw0;
-    let bestPitch = pitch0;
-    let through = -1;
-    let throughYaw = yaw0;
-    let throughPitch = pitch0;
+    const dist0 = Math.exp(this._logDist.target);
+    const ctx = this._shotContext(this._focus.target, list);
+    const best = this._bestShot(ctx, yaw0, pitch0, dist0);
+    this._takeShot(best, instant);
+    this._lastClear = {
+      swing: best.i,
+      score: +best.score.toFixed(3),
+      rock: best.rock,
+      clip: best.clip,
+      size: best.size,
+      cover: best.cover,
+      path: best.path,
+      blocked: best.blocked,
+      dist: best.dist / dist0,
+    };
+    this._recompHold = list ? COMPOSE.cooldown : 0;
+  }
+
+  /** The follow camera's re-framing. Scores the pose it already has; moves
+      only when that pose breaks a hard rule, a candidate beats it by
+      `switchGain`, and the last move is a cooldown old. The springs ease it
+      there. `force` skips the cooldown, for the first look at a new subject. */
+  _reframe(force) {
+    const list = this._follow;
+    if (!list || !list.length) return;
+    if (this._composeGain.value > 0.01) return;
+    const focus = this._focus.target;
+    const ctx = this._shotContext(focus, list);
+    const yaw = this._yaw.target;
+    const pitch = this._pitch.target;
+    const dist = Math.exp(this._logDist.target);
+    const cp = Math.cos(pitch);
+    _try.set(Math.sin(yaw) * cp, Math.sin(pitch), Math.cos(yaw) * cp).normalize();
+    const cur = this._shotScore(ctx, _try, dist);
+    const sh = this._shot;
+    this._lastFrame = { cur: +cur.toFixed(3), rock: sh.rock, clip: sh.clip, size: sh.size, moved: false };
+    if (cur < COMPOSE.reject) return;                // breaks no hard rule: leave it be
+    if (!force && this._recompHold > 0) return;
+    const best = this._bestShot(ctx, yaw, pitch, dist);
+    if (!(best.score < cur - COMPOSE.switchGain)) return;
+    this._takeShot(best, false);
+    this._recompHold = COMPOSE.cooldown;
+    this._lastFrame.moved = true;
+    this._lastFrame.to = +best.score.toFixed(3);
+    this._lastFrame.rockTo = best.rock;
+    this._lastFrame.swing = best.i;
+  }
+
+  _takeShot(best, instant) {
+    this._yaw.target = best.yaw;
+    this._pitch.target = best.pitch;
+    this._logDist.target = clamp(Math.log(best.dist), this._logMin, this._logMax);
+    if (instant) {
+      this._yaw.snap(best.yaw);
+      this._pitch.snap(best.pitch);
+      this._logDist.snap(this._logDist.target);
+    }
+  }
+
+  /** Everything a shot score needs that does not depend on the pose. */
+  _shotContext(focus, list) {
+    const dist = Math.exp(this._logDist.target);
+    const ctx = this._ctx || (this._ctx = {
+      focus: null, list: null, floor: 0, subjR: 0, pts: null, sun: new THREE.Vector3(), haveSun: false,
+    });
+    ctx.focus = focus;
+    ctx.list = this._occluderList(focus, dist);
+    ctx.floor = this._minDistance(this._focusRadius);
+    ctx.subjR = this._focusRadius || 0;
+    ctx.pts = list && list.length ? this._subjectPts(list) : null;
+    ctx.haveSun = this._sunDir(ctx.sun);
+    /* Twice the distance: a clipped subject may be scored pulled back. */
+    this._compRocks(focus, dist * 2);
+    return ctx;
+  }
+
+  /** Search CLEAR_SEARCH round (yaw0, pitch0) for the cheapest pose. A pose
+      whose subject is clipped or too small also gets one corrective distance,
+      scored on its own merits plus the cost of the change. Swing cost alone
+      only grows down the list, so the search stops paying once it passes the
+      best score found. */
+  _bestShot(ctx, yaw0, pitch0, dist0) {
+    const out = this._bestOut || (this._bestOut = {
+      yaw: 0, pitch: 0, dist: 0, score: 0, i: -1, rock: 0, clip: false, size: -1, cover: 0, path: false, blocked: false,
+    });
+    out.score = Infinity;
+    out.i = -1;
+    out.yaw = yaw0; out.pitch = pitch0; out.dist = dist0;
+    const sh = this._shot;
+    const lo = this._minDistance(this._focusRadius);
+    const hi = this.options.maxDistance;
     for (let i = 0; i < CLEAR_SEARCH.length; i++) {
-      const yaw = yaw0 + CLEAR_SEARCH[i][0];
       const pitch = clamp(pitch0 + CLEAR_SEARCH[i][1], -PITCH_LIMIT, PITCH_LIMIT);
+      const swing = Math.abs(CLEAR_SEARCH[i][0]) * COMPOSE.swingYaw + Math.abs(pitch - pitch0) * COMPOSE.swingPitch;
+      if (swing >= out.score) continue;
+      const yaw = yaw0 + CLEAR_SEARCH[i][0];
       const cp = Math.cos(pitch);
       _try.set(Math.sin(yaw) * cp, Math.sin(pitch), Math.cos(yaw) * cp).normalize();
-      if (list.length && this._sightBlocked(focus, _try, dist, list, this._focusRadius)) continue;
-      /* A path through rock is blocked too, however small the rock: the
-         per-frame pull-in would cut the shot short in front of it. Kept as a
-         last resort, so a subject wrapped in rubble still gets a sight-clear
-         angle rather than the buried fallback. */
-      if (this._rockOnPath(focus, _try, dist, floor)) {
-        if (through < 0) { through = i; throughYaw = yaw; throughPitch = pitch; }
-        continue;
+      for (let pass = 0; pass < 2; pass++) {
+        let d = dist0;
+        if (pass === 1) {
+          /* Projected size goes as 1 / distance. */
+          if (!ctx.pts || !(sh.edge < Infinity) || sh.size <= 0) break;
+          if (sh.clip) d = dist0 * sh.edge / COMPOSE.fitTo;
+          else if (sh.size < COMPOSE.minSize) d = dist0 * sh.size / (COMPOSE.minSize * 2);
+          else break;
+          d = clamp(d, lo, hi);
+          if (Math.abs(d - dist0) < dist0 * 0.02) break;
+        }
+        const s = swing + Math.abs(Math.log(d / dist0)) * COMPOSE.distWeight + this._shotScore(ctx, _try, d);
+        if (s < out.score) {
+          out.score = s; out.i = i; out.yaw = yaw; out.pitch = pitch; out.dist = d;
+          out.rock = sh.rock; out.clip = sh.clip; out.size = sh.size; out.cover = sh.cover;
+          out.path = sh.path; out.blocked = sh.blocked;
+        }
       }
-      const cover = this._backdropCover(focus, _try, dist, this._focusRadius);
-      if (i === 0) cover0 = cover;
-      if (cover < bestCover - 1e-6) {
-        bestCover = cover;
-        best = i;
-        bestYaw = yaw;
-        bestPitch = pitch;
+      if (out.score < 0.05) break;          // clean, lit and unmoved: nothing to beat
+    }
+    return out;
+  }
+
+  /** Cost of a camera `dist` out from the focus along `dir`; lower is better.
+      A hard rule broken costs COMPOSE.reject. Fills `this._shot`. */
+  _shotScore(ctx, dir, dist) {
+    const sh = this._shot;
+    const focus = ctx.focus;
+    let s = 0;
+    /* Something big across the shot, or rock on the line the pull-in would
+       then cut the shot short in front of (or a camera inside a hull). */
+    sh.blocked = ctx.list.length > 0 && this._sightBlocked(focus, dir, dist, ctx.list, ctx.subjR);
+    if (sh.blocked) s += COMPOSE.reject * 2;
+    sh.path = this._rockOnPath(focus, dir, dist, ctx.floor);
+    if (sh.path) s += COMPOSE.reject;
+    /* The key band, by how far outside it the lens sits. */
+    if (ctx.haveSun) {
+      const a = Math.acos(clamp(dir.x * ctx.sun.x + dir.y * ctx.sun.y + dir.z * ctx.sun.z, -1, 1));
+      const off = a < KEY_QUARTER.min ? KEY_QUARTER.min - a : a > KEY_QUARTER.max ? a - KEY_QUARTER.max : 0;
+      s += off * COMPOSE.keyWeight;
+    }
+    const fov = this._fovAt(dist);
+    sh.rock = this._rockShare(focus, dir, dist, fov);
+    s += sh.rock * COMPOSE.rockWeight;
+    if (sh.rock > COMPOSE.rockMax) s += COMPOSE.reject + (sh.rock - COMPOSE.rockMax) * 10;
+    /* Rock of the subject's own value right behind it (R4). */
+    sh.cover = this._backdropCover(focus, dir, dist, ctx.subjR);
+    s += Math.max(0, sh.cover - BACKDROP_OK) * COMPOSE.backdropWeight * 3;
+    sh.clip = false;
+    sh.size = -1;
+    sh.edge = 0;
+    if (ctx.pts) {
+      const sp = this._spanAt(ctx.pts, focus, dir, dist, fov, _span);
+      if (!sp) {
+        sh.clip = true;
+        sh.edge = Infinity;
+      } else {
+        sh.size = Math.max(sp.w, sp.h);
+        sh.edge = Math.max(Math.abs(sp.cx) + sp.w, Math.abs(sp.cy) + sp.h);
+        sh.clip = sh.edge > 1 - COMPOSE.margin;
       }
-      if (cover <= BACKDROP_OK) break;
+      if (sh.clip) s += COMPOSE.reject;
+      else if (sh.size < COMPOSE.minSize) s += COMPOSE.reject * 0.5;
     }
-    if (best >= 0) {
-      this._lastClear = { swing: 0, cover0, cover: cover0 };
-      if (best === 0) return;           // already clear, leave the shot alone
-      if (cover0 !== Infinity && bestCover > BACKDROP_OK && bestCover > cover0 - 0.15) return;
-      this._yaw.target = bestYaw;
-      this._pitch.target = bestPitch;
-      if (instant) {
-        this._yaw.snap(bestYaw);
-        this._pitch.snap(bestPitch);
+    sh.score = s;
+    return s;
+  }
+
+  /** Share, 0..1, of the frame that is rock for a camera `dist` out along
+      `dir`: a COMPOSE.gridX x gridY grid of rays against the hull ellipsoids
+      of the rocks `_compRocks` kept, after a sphere-against-frustum cull. The
+      hulls hold every vertex, so this errs toward more rock, not less. */
+  _rockShare(focus, dir, dist, fovDeg) {
+    const n = this._compN;
+    if (!n) return 0;
+    const tanV = Math.tan(fovDeg * DEG * 0.5);
+    const tanH = tanV * Math.max(0.2, this.camera.aspect);
+    _cam.copy(focus).addScaledVector(dir, dist);
+    this._camBasis(dir, _right, _up);
+    const near = this._near;
+    const keep = this._compKeep;
+    const kh = 1 / Math.sqrt(1 + tanH * tanH);
+    const kv = 1 / Math.sqrt(1 + tanV * tanV);
+    let m = 0;
+    for (let c = 0; c < n; c++) {
+      const i = this._compI[c];
+      const j = i * 4;
+      const rx = near[j] - _cam.x;
+      const ry = near[j + 1] - _cam.y;
+      const rz = near[j + 2] - _cam.z;
+      const r = near[j + 3];
+      const z = -(rx * dir.x + ry * dir.y + rz * dir.z);
+      if (z <= -r) continue;
+      const x = rx * _right.x + ry * _right.y + rz * _right.z;
+      const y = rx * _up.x + ry * _up.y + rz * _up.z;
+      if ((Math.abs(x) - z * tanH) * kh > r) continue;
+      if ((Math.abs(y) - z * tanV) * kv > r) continue;
+      keep[m++] = i;
+    }
+    if (!m) return 0;
+    const GX = COMPOSE.gridX;
+    const GY = COMPOSE.gridY;
+    const hit = _hullHit;
+    let rock = 0;
+    for (let gy = 0; gy < GY; gy++) {
+      const sy = (-1 + (2 * gy + 1) / GY) * tanV;
+      for (let gx = 0; gx < GX; gx++) {
+        const sx = (-1 + (2 * gx + 1) / GX) * tanH;
+        _ray.set(
+          -dir.x + _right.x * sx + _up.x * sy,
+          -dir.y + _right.y * sx + _up.y * sy,
+          -dir.z + _right.z * sx + _up.z * sy,
+        );
+        for (let k = 0; k < m; k++) {
+          if (this._hullRay(keep[k], _cam, _ray, 0, hit) && hit[1] > 0) { rock++; break; }
+        }
       }
-      this._lastClear = { swing: best, cover0, cover: bestCover };
-      return;
     }
-    if (through > 0) {
-      this._yaw.target = throughYaw;
-      this._pitch.target = throughPitch;
-      if (instant) {
-        this._yaw.snap(throughYaw);
-        this._pitch.snap(throughPitch);
+    return rock / (GX * GY);
+  }
+
+  /** The rocks that could fill part of a frame taken from anywhere within
+      `reach` of `focus`, biggest possible angular size first, at most
+      COMPOSE.rocks of them, into `_compI`. */
+  _compRocks(focus, reach) {
+    this._harvestStatic();
+    const near = this._near;
+    const idx = this._compIdx;
+    const key = this._compKey;
+    idx.length = 0;
+    key.length = 0;
+    for (let i = 0, j = 0; i < this._nearN; i++, j += 4) {
+      const r = near[j + 3];
+      const dx = near[j] - focus.x;
+      const dy = near[j + 1] - focus.y;
+      const dz = near[j + 2] - focus.z;
+      const dc = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      const a = r / Math.max(dc - reach, r * 0.25, 1);
+      if (a < COMPOSE.minAngle) continue;
+      idx.push(i);
+      key.push(a + 0.001 * r / Math.max(dc, 1));    // ties within reach: biggest from the subject
+    }
+    let n = idx.length;
+    if (n > COMPOSE.rocks) {
+      const order = idx.map((_, k) => k).sort((p, q) => key[q] - key[p]);
+      for (let k = 0; k < COMPOSE.rocks; k++) this._compI[k] = idx[order[k]];
+      n = COMPOSE.rocks;
+    } else {
+      for (let k = 0; k < n; k++) this._compI[k] = idx[k];
+    }
+    this._compN = n;
+    return n;
+  }
+
+  /** World points on the subjects' hulls. A hull is sampled once per entity
+      (finest LOD, `_samplePoints`), thinned and kept in the entity's own
+      frame, then carried by its world matrix on every call. An entity with no
+      walkable geometry stands in as six points on its bounding radius. */
+  _subjectPts(list) {
+    const out = this._subjPts;
+    out.length = 0;
+    let n = 0;
+    for (let q = 0; q < list.length; q++) {
+      const e = list[q];
+      if (!e || e.alive === false) continue;
+      if (++n > 24) break;
+      const o = e.object3D;
+      let loc = o ? this._localHull.get(e) : null;
+      if (o && loc === undefined) {
+        loc = null;
+        const w = this._samplePoints(o);
+        if (w) {
+          _m1.copy(o.matrixWorld).invert();
+          const cnt = w.length / 3;
+          const stride = Math.max(1, Math.floor(cnt / COMPOSE.subjectSamples));
+          const a = [];
+          for (let i = 0; i < cnt; i += stride) {
+            _p1.set(w[i * 3], w[i * 3 + 1], w[i * 3 + 2]).applyMatrix4(_m1);
+            a.push(_p1.x, _p1.y, _p1.z);
+          }
+          loc = new Float32Array(a);
+        }
+        this._localHull.set(e, loc);
       }
-      this._lastClear = { swing: through, cover0, cover: NaN, through: true };
-      return;
+      if (loc) {
+        o.updateMatrixWorld();
+        const mw = o.matrixWorld;
+        for (let i = 0; i < loc.length; i += 3) {
+          _p1.set(loc[i], loc[i + 1], loc[i + 2]).applyMatrix4(mw);
+          out.push(_p1.x, _p1.y, _p1.z);
+        }
+      } else {
+        const p = e.position || (o && o.position);
+        if (!p) continue;
+        const r = e.radius || (e.def && e.def.length ? e.def.length * 0.5 : 10);
+        out.push(
+          p.x + r, p.y, p.z, p.x - r, p.y, p.z,
+          p.x, p.y + r * 0.5, p.z, p.x, p.y - r * 0.5, p.z,
+          p.x, p.y, p.z + r, p.x, p.y, p.z - r,
+        );
+      }
     }
-    if (through === 0) return;      // only rock-crossed angles: the pull-in has this one
-    /* Nothing at this range works — the subject is buried. Come in closer, so
-       the camera sits inside whatever is wrapped around it, but never more than
-       halve the shot: `focusOn` does not always know how big the subject is,
-       and a naive "get as close as allowed" lands the camera on its nose. */
-    const tight = Math.max(this._minDistance(this._focusRadius), this._focusRadius * 2.6, dist * 0.5);
-    if (tight < dist * 0.95) {
-      this._logDist.target = clamp(Math.log(tight), this._logMin, this._logMax);
-      if (instant) this._logDist.snap(this._logDist.target);
+    return out.length >= 3 ? out : null;
+  }
+
+  /** Rocks standing between the lens at `cam` and the subject at `focus`:
+      five rays, to the focus and to four points on the subject's radius,
+      against the pull-in's shortlist. Each one found eases toward
+      COMPOSE.occludedW in a fade slot the near guard has not taken, and eases
+      back to solid once it is out of the way. Keyed by rock centre, which is
+      what the shader matches, so a re-harvest cannot hand a fade to the
+      wrong rock. */
+  _occluders(cam, focus, dt) {
+    const T = this._occT;
+    const W = this._occW;
+    const C = this._occC;
+    for (let e = 0; e < ROCK_FADE_SLOTS; e++) T[e] = 1;
+    const n = this._candN;
+    const R = this._focusRadius || 0;
+    const near = this._near;
+    const hit = _hullHit;
+    let found = 0;
+    _ocD.copy(focus).sub(cam);
+    const len0 = _ocD.length();
+    if (n && len0 > 1e-3) {
+      _ocD.divideScalar(len0);
+      this._camBasis(_ocD, _ocR, _ocU);
+      const rays = R > 0 ? 5 : 1;
+      for (let k = 0; k < rays && found < ROCK_FADE_SLOTS; k++) {
+        const ox = k === 1 ? 0.6 : k === 2 ? -0.6 : 0;
+        const oy = k === 3 ? 0.35 : k === 4 ? -0.35 : 0;
+        _ocT.copy(focus).addScaledVector(_ocR, ox * R).addScaledVector(_ocU, oy * R).sub(cam);
+        const len = _ocT.length();
+        if (len < 1e-3) continue;
+        _ocT.divideScalar(len);
+        for (let c = 0; c < n && found < ROCK_FADE_SLOTS; c++) {
+          const i = this._cand[c];
+          if (!this._hullRay(i, cam, _ocT, 0, hit) || hit[1] <= 0 || hit[0] >= len - R * 0.25) continue;
+          const j = i * 4;
+          let e = -1;
+          let free = -1;
+          for (let q = 0; q < ROCK_FADE_SLOTS; q++) {
+            if (Math.abs(C[q * 3] - near[j]) < 0.5 && Math.abs(C[q * 3 + 1] - near[j + 1]) < 0.5 &&
+                Math.abs(C[q * 3 + 2] - near[j + 2]) < 0.5) { e = q; break; }
+            if (free < 0 && W[q] >= 0.999 && T[q] === 1) free = q;
+          }
+          if (e >= 0 && T[e] !== 1) continue;      // already counted this frame
+          if (e < 0) {
+            if (free < 0) continue;
+            e = free;
+            C[e * 3] = near[j]; C[e * 3 + 1] = near[j + 1]; C[e * 3 + 2] = near[j + 2];
+            W[e] = 1;
+          }
+          T[e] = COMPOSE.occludedW;
+          found++;
+        }
+      }
     }
+    const step = Math.max(0, dt) * COMPOSE.fadeRate;
+    for (let e = 0; e < ROCK_FADE_SLOTS; e++) {
+      const w = W[e];
+      W[e] = w < T[e] ? Math.min(T[e], w + step) : Math.max(T[e], w - step);
+      if (W[e] >= 0.999 && T[e] === 1) W[e] = 1;
+    }
+    this._occN = found;
   }
 
   /** Distance along `dir` at which the camera clears every nearby hull. */
