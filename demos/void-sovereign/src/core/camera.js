@@ -296,6 +296,31 @@ const PULL_OUT_RATE = 1.4;   // 1/s: gives the shot back over ~1.5 s
    yawed 30 degrees is not a brick; the honest number is the projection of the
    *geometry*, which measures 484 px on the same frame and is what `_spanAt`
    computes. Everything below is stated against that measure. */
+/* Where a focus move leaves the key light (R5 fix 3).
+
+   The opening is aimed into a sun band, but every later framing - F on a
+   selection, a jump to an event, a script's focusOn - kept whatever yaw the
+   camera already had. Measured in play on seed 13634, the R4 close recipe put
+   the camera 21 degrees off the key (the key behind the lens): the whole
+   visible side of an assault frigate was lit, p10/p90 of hull pixels 22/135,
+   with the key alone accounting for p50 81 -> 4. Swept over bow headings the
+   same recipe front-lit 130 of 360. Exposure was not it (1.13-1.22, and
+   pinning it to 1.0 moved p90 by 8 per cent); neither was the indirect rig.
+   The floor is 90, not 60: at 60 the same hull still measured p10/p90 0.20,
+   at 97-123 it measured 0.087 - a shadow side only shows once the lens is at
+   least square to the key.
+
+   Angles here are between the camera offset (subject to lens) and the
+   direction to the star, so 0 is front-lit and 180 is a silhouette. A focus
+   move outside the band swings yaw only, by the least amount that lands on
+   the nearer edge, so pitch survives; F on a selection also prefers the edge
+   that keeps the biggest hull broadside. The opening composes through
+   _composeOpening and is never touched. */
+const KEY_QUARTER = {
+  min: 90 * DEG,
+  max: 130 * DEG,
+};
+
 const OPENING = {
   /* Share of frame the hero's projected geometry should span. The rubric asks
      for a painted silhouette of 45-55% of the width; the height cap is what
@@ -603,6 +628,7 @@ export class CameraRig {
     this._follow = null;
     this._focus.target.set(point.x, point.y, point.z);
     this._focusRadius = 0;
+    this._keyQuarter(instant);
     if (typeof distance === 'number' && isFinite(distance)) {
       this._logDist.target = clamp(Math.log(Math.max(1e-3, distance)), this._logMin, this._logMax);
     }
@@ -653,6 +679,9 @@ export class CameraRig {
     this._focusRadius = biggest;
     this._logDist.target = clamp(Math.log(dist), this._logMin, this._logMax);
     this._follow = list.length ? list : null;
+    let hero = null;
+    for (const e of list) if (e.quaternion && (!hero || (e.radius || 0) > (hero.radius || 0))) hero = e;
+    this._keyQuarter(instant, hero);
 
     if (instant) this._focus.snap(this._focus.target);
     this._clearView(instant);
@@ -661,6 +690,44 @@ export class CameraRig {
       this._apply(0);
     }
     this._idle = 0;
+  }
+
+  /* Swing yaw so the lens sits inside KEY_QUARTER of the key. With the pitch
+     held, cos(angle) = cos(pitch) * h * cos(yaw - az) + sin(pitch) * sun.y,
+     where h and az are the key's horizontal length and azimuth, so the edge
+     yaw is solved directly. Of its two solutions the nearer is kept, unless a
+     subject is given: then the one that shows more of its flank wins. */
+  _keyQuarter(instant, subject) {
+    if (!this._sunDir(_sun)) return;
+    const yaw = this._yaw.target;
+    const pitch = this._pitch.target;
+    const cp = Math.cos(pitch);
+    const sp = Math.sin(pitch);
+    const h = Math.sqrt(Math.max(0, 1 - _sun.y * _sun.y));
+    const az = Math.atan2(_sun.x, _sun.z);
+    const now = cp * h * Math.cos(yaw - az) + sp * _sun.y;
+    const lo = Math.cos(KEY_QUARTER.max);
+    const hi = Math.cos(KEY_QUARTER.min);
+    if (now >= lo && now <= hi) return;
+    const k = cp * h;
+    if (k < 1e-4) return;                 // key overhead: yaw cannot move it
+    const d = Math.acos(clamp(((now > hi ? hi : lo) - sp * _sun.y) / k, -1, 1));
+    const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+    const d1 = wrap(az + d - yaw);
+    const d2 = wrap(az - d - yaw);
+    let pick = Math.abs(d1) <= Math.abs(d2) ? d1 : d2;
+    if (subject && subject.quaternion) {
+      _v2.set(0, 0, 1).applyQuaternion(subject.quaternion);
+      const fl = Math.hypot(_v2.x, _v2.z);
+      if (fl > 0.2) {
+        const flank = (dy) => Math.abs(Math.sin(yaw + dy) * _v2.z - Math.cos(yaw + dy) * _v2.x) / fl
+          - 0.15 * Math.abs(dy) / Math.PI;
+        pick = flank(d1) >= flank(d2) ? d1 : d2;
+      }
+    }
+    const next = yaw + pick;
+    this._yaw.target = next;
+    if (instant) this._yaw.snap(next);
   }
 
   /** Keep the focus glued to a moving group's centroid (what F should do). */
