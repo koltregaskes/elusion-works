@@ -1,6 +1,7 @@
 import * as THREE from '../../vendor/three/build/three.module.js';
 import { bus } from './events.js';
 import { makeRng } from './rng.js';
+import { rockFadeUniform, ROCK_FADE_SLOTS, ROCK_FADE_FAR } from '../render/rock-fade.js';
 
 /* Focus-orbit camera rig.
 
@@ -284,6 +285,30 @@ const NEAR_CANDIDATES = 64;
 const PULL_IN_RATE = 14;     // 1/s: most of the way in within ~0.15 s
 const PULL_OUT_RATE = 1.4;   // 1/s: gives the shot back over ~1.5 s
 
+/* A hard guarantee, not a statistical one (R6 fix 2).
+
+   Round 5 still put the camera inside rock on 3 moves in 10 on seed 13634,
+   one of them a black frame. The cause was the sphere. A rock is a displaced
+   sphere stretched by up to 3:1 (`shape.axis` 0.42-1.30), so a ship can fly
+   inside its bounding sphere in open water; round 5 then cast against a sphere
+   shrunk to the ship's height over the centre, and that sphere does not hold a
+   flat rock's long axis. The camera orbited straight into the mesh.
+
+   So every near-rock record now carries an ellipsoid built from the geometry's
+   own vertices and the instance rotation and scale. It holds every vertex, so,
+   being convex, it holds the mesh. Pull-in, push-out and the focus search all
+   test that hull grown by the near-plane band, and the final camera position
+   is checked against every hull in reach after sway and shake: a rock whose
+   hull the near quad is inside, or within a short ramp of, is dither-faded by
+   the rock shader, reaching zero before the quad touches it. A subject inside
+   a rock's hull is the case this handles; nothing can frame it from outside.
+   Fading was chosen over holding the camera because a held camera stops
+   following a ship that loiters by a rock, and the player reads that as the
+   camera breaking. Holding the last safe position remains as the fallback
+   when more rocks than there are fade slots would need fading at once. */
+const _hullHit = [0, 0];
+const _mh = new THREE.Matrix4();
+
 /* ------------------------------------------------------------ opening shot */
 
 /* The first frame of a run is the single most-seen image in the demo, so the
@@ -486,6 +511,13 @@ export class CameraRig {
        near the current shot, and the smoothed pull-in as a share of the
        orbit distance (1 = no pull). */
     this._near = new Float32Array(MAX_NEAR_ROCKS * 4);
+    this._hull = new Float32Array(MAX_NEAR_ROCKS * 12);   // rotation (9) + world semi-axes (3)
+    this._fadeI = new Int32Array(ROCK_FADE_SLOTS);
+    this._fadeW = new Float32Array(ROCK_FADE_SLOTS);
+    this._fadeN = 0;            // rocks the near quad is inside this frame (all faded)
+    this._safePos = new THREE.Vector3();
+    this._safeOk = false;
+    this._held = 0;             // frames the guard held the last safe position
     this._nearN = 0;
     this._nearGen = 0;
     this._cand = new Int32Array(NEAR_CANDIDATES);
@@ -1621,6 +1653,21 @@ export class CameraRig {
       }
     }
 
+    /* Near guard, after every offset: see the note at _hullHit. */
+    {
+      const nq = clamp(eff * 0.006, 0.03, 140) * 1.03;
+      const tv = Math.tan(cam.fov * DEG * 0.5) * 1.15;
+      const quad = nq * Math.sqrt(1 + tv * tv * (1 + cam.aspect * cam.aspect)) + 0.02;
+      if (this._nearGuard(_v1, quad, eff)) {
+        this._safePos.copy(_v1);
+        this._safeOk = true;
+      } else if (this._safeOk) {
+        _v1.copy(this._safePos);
+        this._held++;
+        this._nearGuard(_v1, quad, eff);
+      }
+    }
+
     cam.position.copy(_v1);
     cam.up.set(0, 1, 0);
     cam.lookAt(_look);
@@ -1749,14 +1796,14 @@ export class CameraRig {
           const rk = br * Math.max(_s1.x, _s1.y, _s1.z);
           this._pushOccluder(out, _p1, rk);
           this._pushBackdrop(_p1, rk);
-          this._pushNear(_p1, rk);
+          this._pushNear(_p1, _q1, _s1, geo);
         }
       } else {
         _m1.copy(o.matrixWorld).decompose(_p1, _q1, _s1);
         const rk = br * Math.max(_s1.x, _s1.y, _s1.z);
         this._pushOccluder(out, _p1, rk);
         this._pushBackdrop(_p1, rk);
-        this._pushNear(_p1, rk);
+        this._pushNear(_p1, _q1, _s1, geo);
       }
     }
 
@@ -1790,15 +1837,162 @@ export class CameraRig {
     this._backdropN++;
   }
 
-  /** Packed record for the near-plane sphere-cast. */
-  _pushNear(pos, r) {
+  /** Packed record for the near-plane tests: centre and the radius of the
+      origin-centred sphere round the hull in `_near`, and in `_hull` the
+      instance rotation and the world semi-axes of an ellipsoid that holds
+      every vertex of the instance, so it holds the mesh. */
+  _pushNear(pos, quat, scale, geo) {
+    const e = this._hullOf(geo);
+    if (!e) return;
+    const ax = e[0] * Math.abs(scale.x);
+    const ay = e[1] * Math.abs(scale.y);
+    const az = e[2] * Math.abs(scale.z);
+    const r = Math.max(ax, ay, az);
     if (!Number.isFinite(r) || r < NEAR_ROCK_MIN_RADIUS || r > OCCLUDER_MAX_RADIUS) return;
     if (this._nearN >= MAX_NEAR_ROCKS) return;
     if (!Number.isFinite(pos.x) || !Number.isFinite(pos.y) || !Number.isFinite(pos.z)) return;
     const j = this._nearN * 4;
     const a = this._near;
     a[j] = pos.x; a[j + 1] = pos.y; a[j + 2] = pos.z; a[j + 3] = r;
+    const m = _mh.makeRotationFromQuaternion(quat).elements;
+    const h = this._hull;
+    const k = this._nearN * 12;
+    h[k] = m[0]; h[k + 1] = m[1]; h[k + 2] = m[2];
+    h[k + 3] = m[4]; h[k + 4] = m[5]; h[k + 5] = m[6];
+    h[k + 6] = m[8]; h[k + 7] = m[9]; h[k + 8] = m[10];
+    h[k + 9] = ax; h[k + 10] = ay; h[k + 11] = az;
     this._nearN++;
+  }
+
+  /** Semi-axes, in geometry units, of an origin-centred ellipsoid holding
+      every vertex. A rock is a displaced sphere stretched by `shape.axis`, so
+      that ellipsoid is tight; anything else gets the origin-centred sphere.
+      A convex body that holds every vertex holds every triangle. Once per
+      geometry. */
+  _hullOf(geo) {
+    const ud = geo.userData || (geo.userData = {});
+    if (ud._nearHull !== undefined) return ud._nearHull;
+    const pos = geo.attributes && geo.attributes.position;
+    let out = null;
+    if (pos && pos.count) {
+      const ax = ud.shape && ud.shape.axis ? ud.shape.axis : [1, 1, 1];
+      let k = 0;
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i) / ax[0];
+        const y = pos.getY(i) / ax[1];
+        const z = pos.getZ(i) / ax[2];
+        const l = x * x + y * y + z * z;
+        if (l > k) k = l;
+      }
+      k = Math.sqrt(k) * 1.0005;
+      if (k > 0 && Number.isFinite(k)) out = [ax[0] * k, ax[1] * k, ax[2] * k];
+    }
+    ud._nearHull = out;
+    return out;
+  }
+
+  /** How far to grow each semi-axis of hull `k` (a `_hull` offset) so it
+      holds everything within `grow` metres of it. A plain `+ grow` does not
+      on a flat rock; scaling by longest over shortest does. */
+  _hullGrow(k, grow) {
+    const h = this._hull;
+    const mx = Math.max(h[k + 9], h[k + 10], h[k + 11]);
+    const mn = Math.min(h[k + 9], h[k + 10], h[k + 11]);
+    return grow * mx / Math.max(mn, 1e-6);
+  }
+
+  /** Normalised radius of a world point in near-rock `i`'s hull grown by
+      `grow` metres: under 1 is inside. */
+  _hullRho(i, px, py, pz, grow) {
+    const a = this._near;
+    const h = this._hull;
+    const j = i * 4;
+    const k = i * 12;
+    const g = this._hullGrow(k, grow);
+    const dx = px - a[j];
+    const dy = py - a[j + 1];
+    const dz = pz - a[j + 2];
+    const lx = (dx * h[k] + dy * h[k + 1] + dz * h[k + 2]) / (h[k + 9] + g);
+    const ly = (dx * h[k + 3] + dy * h[k + 4] + dz * h[k + 5]) / (h[k + 10] + g);
+    const lz = (dx * h[k + 6] + dy * h[k + 7] + dz * h[k + 8]) / (h[k + 11] + g);
+    return Math.sqrt(lx * lx + ly * ly + lz * lz);
+  }
+
+  /** Where the ray `f + t * dir` enters and leaves near-rock `i`'s hull grown
+      by `grow` metres, into `out`; false on a miss. */
+  _hullRay(i, f, dir, grow, out) {
+    const a = this._near;
+    const h = this._hull;
+    const j = i * 4;
+    const k = i * 12;
+    const g = this._hullGrow(k, grow);
+    const sx = 1 / (h[k + 9] + g);
+    const sy = 1 / (h[k + 10] + g);
+    const sz = 1 / (h[k + 11] + g);
+    const dx = f.x - a[j];
+    const dy = f.y - a[j + 1];
+    const dz = f.z - a[j + 2];
+    const ox = (dx * h[k] + dy * h[k + 1] + dz * h[k + 2]) * sx;
+    const oy = (dx * h[k + 3] + dy * h[k + 4] + dz * h[k + 5]) * sy;
+    const oz = (dx * h[k + 6] + dy * h[k + 7] + dz * h[k + 8]) * sz;
+    const vx = (dir.x * h[k] + dir.y * h[k + 1] + dir.z * h[k + 2]) * sx;
+    const vy = (dir.x * h[k + 3] + dir.y * h[k + 4] + dir.z * h[k + 5]) * sy;
+    const vz = (dir.x * h[k + 6] + dir.y * h[k + 7] + dir.z * h[k + 8]) * sz;
+    const A = vx * vx + vy * vy + vz * vz;
+    const B = ox * vx + oy * vy + oz * vz;
+    const C = ox * ox + oy * oy + oz * oz - 1;
+    const D = B * B - A * C;
+    if (!(A > 0) || !(D > 0)) return false;
+    const q = Math.sqrt(D);
+    out[0] = (-B - q) / A;
+    out[1] = (-B + q) / A;
+    return true;
+  }
+
+  /** The last line of the guarantee. Tests the near quad, a ball of radius
+      `quad` round `pos`, against every rock hull in reach and fills the rock
+      shader's fade slots: 0 for a hull the quad is inside, rising to 1 over a
+      short ramp outside it. False when more rocks hold the quad than there
+      are slots, in which case nothing is written and the caller must move. */
+  _nearGuard(pos, quad, eff) {
+    this._harvestStatic();
+    const near = this._near;
+    const ramp = Math.max(1.5, eff * 0.08);
+    const fi = this._fadeI;
+    const fw = this._fadeW;
+    let used = 0;
+    let inside = 0;
+    for (let i = 0, j = 0; i < this._nearN; i++, j += 4) {
+      const dx = pos.x - near[j];
+      const dy = pos.y - near[j + 1];
+      const dz = pos.z - near[j + 2];
+      const reach = near[j + 3] + this._hullGrow(i * 12, quad + ramp);
+      if (dx * dx + dy * dy + dz * dz >= reach * reach) continue;
+      const far = this._hullRho(i, pos.x, pos.y, pos.z, quad + ramp);
+      if (far >= 1) continue;
+      const rho = this._hullRho(i, pos.x, pos.y, pos.z, quad);
+      const w = rho <= 1 ? 0 : Math.min(1, (rho - 1) / Math.max(rho - far, 1e-6));
+      if (w === 0) inside++;
+      if (used < ROCK_FADE_SLOTS) {
+        fi[used] = i; fw[used] = w; used++;
+      } else {
+        let worst = 0;
+        for (let s = 1; s < used; s++) if (fw[s] > fw[worst]) worst = s;
+        if (w < fw[worst]) { fi[worst] = i; fw[worst] = w; }
+      }
+    }
+    if (inside > ROCK_FADE_SLOTS) return false;
+    const u = rockFadeUniform.value;
+    for (let s = 0; s < ROCK_FADE_SLOTS; s++) {
+      if (s < used) {
+        const j = fi[s] * 4;
+        u[s].set(near[j], near[j + 1], near[j + 2], fw[s]);
+      } else {
+        u[s].set(ROCK_FADE_FAR, ROCK_FADE_FAR, ROCK_FADE_FAR, 1);
+      }
+    }
+    this._fadeN = inside;
+    return true;
   }
 
   /** The rocks that can matter to a shot `reach` around `focus`, nearest
@@ -1865,33 +2059,31 @@ export class CameraRig {
     const hardFloor = Math.max((this._focusRadius || 0) * 1.05, 1.5);
     let hard = dist;
     let soft = dist;
+    const hit = _hullHit;
     for (let c = 0; c < n; c++) {
-      const j = cand[c] * 4;
+      const i = cand[c];
+      const j = i * 4;
       const r = near[j + 3];
+      /* A subject inside a rock's hull cannot be framed from outside it on
+         this line. Round 5 cast against a sphere shrunk to the subject's
+         height here, and that sphere does not hold a stretched rock: the
+         camera orbited into the mesh. The near guard fades that rock instead. */
+      if (this._hullRho(i, focus.x, focus.y, focus.z, band) < 1) continue;
       const mx = focus.x - near[j];
       const my = focus.y - near[j + 1];
       const mz = focus.z - near[j + 2];
       const m2 = mx * mx + my * my + mz * mz;
-      /* Inside a rock's bounding sphere is usually open water beside a lumpy
-         rock, not the rock itself — ships fly there. The only thing a sphere
-         can say then is that the rock lies below the subject's own height
-         over its centre, so cast against a sphere just under that instead. */
-      const inside = m2 < r * r;
-      const mm = inside ? Math.sqrt(m2) : 0;
-      if (inside && mm * 0.96 - band <= 0) continue;
       const b = dir.x * mx + dir.y * my + dir.z * mz;
-      /* The soft sphere is the larger, so missing it misses the hard one too. */
-      const rs = inside ? mm * 0.985 : r * 1.1 + band * 2.5 + 1;
+      /* The soft sphere holds the grown hull, so missing it misses the hull. */
+      const rs = Math.max(r * 1.1 + band * 2.5, r + this._hullGrow(i * 12, band)) + 1;
       const ds = b * b - (m2 - rs * rs);
       if (ds <= 0) continue;
       const ss = Math.sqrt(ds);
       const t1s = -b - ss;
       if (-b + ss <= 0 || t1s >= dist) continue;
       if (t1s > floor && t1s < soft) soft = t1s;
-      const rh = inside ? mm * 0.96 - band : r + band;
-      const dh = b * b - (m2 - rh * rh);
-      if (dh <= 0) continue;
-      const t1 = -b - Math.sqrt(dh);
+      if (!this._hullRay(i, focus, dir, band, hit) || hit[1] <= 0) continue;
+      const t1 = hit[0];
       if (t1 > hardFloor && t1 < hard) hard = t1;
     }
 
@@ -1910,13 +2102,10 @@ export class CameraRig {
     /* Rocks hugging the subject: out past them, never inside. */
     for (let pass = 0; pass < 2; pass++) {
       for (let c = 0; c < n; c++) {
-        const j = cand[c] * 4;
-        const r = near[j + 3];
-        const mx = focus.x - near[j];
-        const my = focus.y - near[j + 1];
-        const mz = focus.z - near[j + 2];
-        if (mx * mx + my * my + mz * mz < r * r) continue;
-        d = this._pushPast(focus, dir, d, near[j], near[j + 1], near[j + 2], r + band);
+        const i = cand[c];
+        if (this._hullRho(i, focus.x, focus.y, focus.z, band) < 1) continue;
+        if (!this._hullRay(i, focus, dir, band, hit)) continue;
+        if (d > hit[0] && d < hit[1]) d = hit[1];
       }
     }
     if (!Number.isFinite(d)) return dist;
@@ -1993,21 +2182,18 @@ export class CameraRig {
   _rockOnPath(focus, dir, dist, floor) {
     const n = this._nearCandidates(focus, dist * 1.25 + 50);
     const band = this._nearBand(dist);
-    const near = this._near;
+    const hit = _hullHit;
+    const cx = focus.x + dir.x * dist;
+    const cy = focus.y + dir.y * dist;
+    const cz = focus.z + dir.z * dist;
     for (let c = 0; c < n; c++) {
-      const j = this._cand[c] * 4;
-      const r = near[j + 3];
-      const mx = focus.x - near[j];
-      const my = focus.y - near[j + 1];
-      const mz = focus.z - near[j + 2];
-      const m2 = mx * mx + my * my + mz * mz;
-      const rh = m2 < r * r ? Math.sqrt(m2) * 0.96 - band : r + band;   // see _pullIn
-      if (rh <= 0) continue;
-      const b = dir.x * mx + dir.y * my + dir.z * mz;
-      const dh = b * b - (m2 - rh * rh);
-      if (dh <= 0) continue;
-      const s = Math.sqrt(dh);
-      if (-b + s > floor && -b - s < dist) return true;
+      const i = this._cand[c];
+      /* A camera inside any rock's hull plus the near band is never a
+         candidate, whatever the line to the subject does (R6 fix 2). */
+      if (this._hullRho(i, cx, cy, cz, band) < 1) return true;
+      if (this._hullRho(i, focus.x, focus.y, focus.z, band) < 1) continue;
+      if (!this._hullRay(i, focus, dir, band, hit)) continue;
+      if (hit[1] > floor && hit[0] < dist) return true;
     }
     return false;
   }

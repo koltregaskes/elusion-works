@@ -4,6 +4,7 @@ import { bus } from '../core/events.js';
 import { makeRng, fbm2, fbm3, ridged3 } from '../core/rng.js';
 import { buildSkybox } from './skybox.js';
 import { setNebulaBounce, setHullKeyDirection, getTerminatorUniform, TEAM_COLORS } from './materials.js';
+import { rockFadeUniform, ROCK_FADE_SLOTS } from './rock-fade.js';
 import {
   DEFAULT_SETUP,
   OPENING_ANGLE,
@@ -2312,6 +2313,7 @@ export class Environment {
     material.onBeforeCompile = (shader) => {
       shader.uniforms.uRockBounce = { value: rockBounce };
       shader.uniforms.uRockTerm = getTerminatorUniform();
+      shader.uniforms.uRockFade = rockFadeUniform;
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
@@ -2320,6 +2322,8 @@ export class Environment {
            varying vec3 vRockView;
            varying float vRockSize;
            varying float vRockAo;
+           varying float vRockFade;
+           uniform vec4 uRockFade[${ROCK_FADE_SLOTS}];
            attribute float aAo;`,
         )
         .replace(
@@ -2327,6 +2331,18 @@ export class Environment {
           `#include <begin_vertex>
            vRockLocal = position;
            vRockAo = aAo;
+           /* Near-plane fade (R6 fix 2): the camera rig names the rocks whose
+              hull its near quad is in, or nearly in, by world centre. */
+           #ifdef USE_INSTANCING
+             vec3 rfC = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+           #else
+             vec3 rfC = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+           #endif
+           vRockFade = 1.0;
+           for (int i = 0; i < ${ROCK_FADE_SLOTS}; i++) {
+             vec3 rfD = rfC - uRockFade[i].xyz;
+             if (dot(rfD, rfD) < 0.25) vRockFade = min(vRockFade, uRockFade[i].w);
+           }
            /* Metres, recovered from the instance matrix, so surface detail can
               be specified in metres rather than in unit-sphere space. Without
               it a 12 m boulder and a 3 km landmark carry identical craters and
@@ -2363,6 +2379,7 @@ export class Environment {
            varying vec3 vRockView;
            varying float vRockSize;
            varying float vRockAo;
+           varying float vRockFade;
            uniform vec3 uRockBounce;
            uniform vec2 uRockTerm;
            ${NOISE_GLSL}
@@ -2570,6 +2587,16 @@ export class Environment {
              iblIrradiance *= uRockBounce * ind;
            }
            #include <lights_fragment_end>`,
+        )
+        .replace(
+          '#include <clipping_planes_fragment>',
+          `#include <clipping_planes_fragment>
+           /* Near-plane fade (R6 fix 2): an ordered dither down to nothing, so a
+              rock the near quad is inside draws no fragment at all. */
+           if (vRockFade < 0.999) {
+             float rfN = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+             if (vRockFade <= 0.001 || rfN >= vRockFade) discard;
+           }`,
         );
     };
     material.customProgramCacheKey = () => 'env-rock';
