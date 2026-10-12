@@ -5,6 +5,7 @@ import { makeRng, fbm2, fbm3, ridged3 } from '../core/rng.js';
 import { buildSkybox } from './skybox.js';
 import { setNebulaBounce, setHullKeyDirection, getTerminatorUniform, TEAM_COLORS } from './materials.js';
 import { rockFadeUniform, ROCK_FADE_SLOTS } from './rock-fade.js';
+import { HAZE_DENSITY, hazeColourFromSky } from './atmosphere.js';
 import {
   DEFAULT_SETUP,
   OPENING_ANGLE,
@@ -445,23 +446,21 @@ export class Environment {
         ? this.options.environmentIntensity
         : KEY_IRRADIANCE * IBL_INTENSITY_OVER_KEY * (IBL_REFERENCE_SKY_LUMINANCE / probeLum);
 
-    /* Depth haze. Deliberately a very dark, nebula-tinted colour: fog that
-       tends toward grey turns the void into soup, fog that tends toward a dark
-       tint just bleeds contrast out of things that are kilometres away.
+    /* Depth haze: the carrier for the shared aerial perspective in
+       atmosphere.js, which replaces three's fog maths for every fogged
+       material. The colour is this seed's fill pulled toward its nebula and
+       pinned to the measured brightness of the sky, never a generic grey.
 
-       It is also pinned to the measured brightness of the sky behind it. The
-       fill and nebula colours handed back by the bake are *hue* references —
-       normalised so their brightest channel is 1 — so using them directly gave
-       a haze three to six times brighter than the sky it is meant to be
-       hiding things in. The visible result was that a rock twenty kilometres
-       out washed to a pale pink and a rock five kilometres out stayed
-       charcoal: the same material reading as two different ones in a single
-       frame, which is worse than having no haze at all. */
-    const fogColour = this.sky.fillColour.clone().lerp(this.sky.nebulaColour, 0.3);
-    const fogLum = 0.2126 * fogColour.r + 0.7152 * fogColour.g + 0.0722 * fogColour.b;
-    const skyLum = Math.max(1e-4, this.sky.averageLuminance);
-    fogColour.multiplyScalar(Math.min(0.09, (skyLum * 0.85) / Math.max(1e-4, fogLum)));
-    const density = this.options.fogDensity !== undefined ? this.options.fogDensity : 5.6e-5;
+       It stays pinned because the fill and nebula colours handed back by the
+       bake are *hue* references, normalised so their brightest channel is 1;
+       used directly they gave a haze three to six times brighter than the sky
+       and a rock twenty kilometres out washed to a pale pink. The old haze
+       went the other way, dark and so thin (7 % at 5 km) that nothing read as
+       far away; the new one has a clear focus band, a real fleet-range lift
+       and per-family caps, so the same material recedes in steps instead of
+       reading as two different materials. */
+    const fogColour = hazeColourFromSky(this.sky);
+    const density = this.options.fogDensity !== undefined ? this.options.fogDensity : HAZE_DENSITY;
     this.fog = new THREE.FogExp2(fogColour, density);
     engine.scene.fog = this.fog;
   }

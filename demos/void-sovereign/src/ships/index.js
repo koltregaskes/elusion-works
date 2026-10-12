@@ -21,6 +21,7 @@ import { buildHullLevel, HULL_CLASSES } from './hulls.js';
 import { KIND } from './greeble.js';
 import { LAYER } from '../core/engine.js';
 import { bus } from '../core/events.js';
+import { HULL_HAZE_DEFINE } from '../render/atmosphere.js';
 
 /* ------------------------------------------------------- material bridge */
 
@@ -364,7 +365,9 @@ function impostorMaterial(team, classId, radius) {
     uFill: { value: IMPOSTOR_FILL },
   };
 
-  const m = new THREE.MeshBasicMaterial({ color: colour, fog: false });
+  // Fogged like the full hulls, with the same hull cap, so a ship does not
+  // pop out of the haze when it drops to the impostor.
+  const m = new THREE.MeshBasicMaterial({ color: colour, fog: true });
   m.userData.impostor = true;
   // Exposed so a probe can sweep the size floor and the fill without a rebuild.
   // `uPxScale` and `uKeyDir` are the shared objects — writing them here would
@@ -377,7 +380,8 @@ function impostorMaterial(team, classId, radius) {
       .replace('#include <project_vertex>', `#include <project_vertex>\n${IMPOSTOR_VERT}`);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying float vFace;')
-      .replace('#include <color_fragment>', '#include <color_fragment>\n\tdiffuseColor.rgb *= vFace;');
+      .replace('#include <color_fragment>', '#include <color_fragment>\n\tdiffuseColor.rgb *= vFace;')
+      .replace('#include <fog_pars_fragment>', `${HULL_HAZE_DEFINE}#include <fog_pars_fragment>`);
   };
   // Every impostor shares one program; only the uniforms differ.
   m.customProgramCacheKey = () => 'vs-impostor';

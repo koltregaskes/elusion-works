@@ -1,5 +1,6 @@
 import * as THREE from '../../vendor/three/build/three.module.js';
 import { makeRng } from '../core/rng.js';
+import { HULL_HAZE_DEFINE } from './atmosphere.js';
 import {
   initTextureLibrary,
   getHullAtlas,
@@ -1089,7 +1090,8 @@ function patchHull(material, uniforms, flags) {
       .replace('#include <normal_fragment_maps>', 'normal = normalize( vObjToView * vsObjN );')
       .replace('#include <emissivemap_fragment>', 'totalEmissiveRadiance += vsEmissive;')
       .replace('#include <aomap_fragment>', HULL_AO)
-      .replace('#include <opaque_fragment>', `${HULL_BOUNCE}\n#include <opaque_fragment>`);
+      .replace('#include <opaque_fragment>', `${HULL_BOUNCE}\n#include <opaque_fragment>`)
+      .replace('#include <fog_pars_fragment>', `${HULL_HAZE_DEFINE}#include <fog_pars_fragment>`);
 
     material.userData.shader = shader;
   };
@@ -1600,6 +1602,7 @@ export function getGlassMaterial(team) {
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGlassObj = position;');
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>\n${GLASS_PARS}`)
+      .replace('#include <fog_pars_fragment>', `${HULL_HAZE_DEFINE}#include <fog_pars_fragment>`)
       .replace('#include <opaque_fragment>', /* glsl */`
 {
   vec3 wN = normalize( ( vec4( normal, 0.0 ) * viewMatrix ).xyz );
