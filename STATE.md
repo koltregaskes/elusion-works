@@ -1,5 +1,5 @@
 Status: active
-Next step: round 5 evidence capture (list in CRITIQUE-ROUND-4.md 'Evidence required for round 5'), then critic round 5; all six round-5 fixes landed (2e15ad8, 42448b4, f6496ed, 1b511a0, 9394f8e, 60c0646)
-Blocked on: nothing for round 5; going live needs Kol to merge PR #29 then #27 (KOL-6004)
-Updated: 2026-10-12 04:00 UK by HOMEWORLD CLONE session
+Next step: round 6 fixes from demos/void-sovereign/CRITIQUE-ROUND-5.md (start: plume cap / shafts in fx/engines.js + fx/weapons.js; check first whether the 3.5x 'plumes' are fx:trail ribbons rather than the plume mesh), one commit each on feat/void-sovereign-shell; also check seed-2718 WebGL context loss
+Blocked on: nothing for round 6; going live needs Kol to merge PR #29 then #27 (KOL-6004)
+Updated: 2026-10-12 05:15 UK by HOMEWORLD CLONE session (round 5 scored 5/10, mean 5.5)
 Linear: https://linear.app/koltregaskes/issue/KOL-5966
