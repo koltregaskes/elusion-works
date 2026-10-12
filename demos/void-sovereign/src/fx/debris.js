@@ -95,7 +95,9 @@ void main() {
   float heat = pow( clamp( vHeat, 0.0, 1.0 ), 1.7 );
   float edge = pow( 1.0 - abs( dot( n, viewDir ) ), 2.6 );
   float seam = smoothstep( 0.62, 0.97, fract( length( vLocal ) * 5.3 + vSeed * 4.0 ) );
-  float glow = heat * ( edge * 0.85 + seam * 0.55 * heat );
+  /* R7: glow only on torn edges and seams, at a lower ceiling, so a fresh
+     shard reads as charred metal with a burning rim, not as a lit amber card. */
+  float glow = heat * ( edge * 0.55 + seam * 0.40 * heat );
   vec3 hot = mix( vec3( 0.85, 0.13, 0.02 ), vec3( 1.0, 0.62, 0.24 ), heat );
   col += hot * glow;
 
@@ -204,7 +206,12 @@ export class DebrisFX {
        darkest thing in a death sequence, and it has to stay under the embers
        and the flash or the whole wreck reads as pale gravel lit from nowhere. */
     const hull = opts.hull || opts.colour || ctx.teamColors[0].primary;
+    /* R7: debris is the hull's charred material, not its paint. Desaturated
+       most of the way and pulled toward char before any per-chunk tone: a
+       bone or team-tinted base was the round-6 "amber cardboard". */
     const base = this._col2.copy(hull);
+    const bl = 0.2126 * base.r + 0.7152 * base.g + 0.0722 * base.b;
+    base.lerp(this._col.setRGB(bl, bl, bl), 0.75).lerp(CHAR, 0.40);
 
     /* A few large keel sections, then a heavy tail of smaller pieces. A hull
        does not shatter evenly — it breaks along frames, so the eye expects two

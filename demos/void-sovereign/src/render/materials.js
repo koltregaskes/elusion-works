@@ -53,6 +53,8 @@ export const TEAM_COLORS = [
     engine: col(0x6fccff),
     trim: col(0x2fb4e6),
     light: col(0xcdf0ff),
+    // R7 hull plate hue (value comes from the atlas mean): cool gunmetal
+    hull: col(0x8996a6),
   },
   {
     // Enemy — bone, crimson-rust, amber drive glow.
@@ -61,6 +63,8 @@ export const TEAM_COLORS = [
     engine: col(0xff8f30),
     trim: col(0xe2761f),
     light: col(0xffd2a0),
+    // R7 hull plate hue: weathered bone
+    hull: col(0xb5a284),
   },
 ];
 
@@ -111,6 +115,14 @@ const FAMILY_TUNING = {
 function plateSize(length, tune) {
   const l = Math.max(4, length || tune.ref);
   return Math.min(24, Math.max(0.22, tune.plateK * Math.pow(l, tune.plateExp)));
+}
+
+/** R7 analytic plate size in metres. Steeper than plateSize() on purpose: a
+    fighter should carry a few big plates and a Mothership a hundred along
+    its keel (14 m -> 1.4 m, 150 m -> 5.2 m, 1,900 m -> 21 m). */
+function panelSize(length, tune) {
+  const l = Math.max(4, length || tune.ref);
+  return Math.min(28, Math.max(0.8, 0.33 * Math.pow(l, 0.55)));
 }
 
 /* Livery geometry, in girth units — see `vsLivery` in the shader. Every number
@@ -288,6 +300,9 @@ uniform vec2  uChroma;
 uniform vec2  uTerm;
 uniform vec3  uKeyDir;
 uniform vec3  uRimCold;
+uniform vec3  uHullA;
+uniform vec3  uHullB;
+uniform float uPanel;
 
 varying vec3 vObjPos;
 varying vec3 vObjNormal;
@@ -351,6 +366,86 @@ float vsNoise3( vec3 x ) {
     f.z );
 }
 
+/* R7 hull plating, built in the shader rather than read from the atlas.
+
+   The round-6 critique called the atlas plating stucco on the Mothership and
+   blotch camouflage on the fighters, and both are the same fault: a 2D texture
+   tiled triplanarly has no idea which way the ship points, so its plates run
+   any direction, its paint-cover alpha lands as random patches, and up close
+   its texels show. This lays plates out along the hull's own axes instead.
+
+   - The dominant face axis picks one plane, hard, so a seam never doubles up
+     the way a blended triplanar seam does. On the flanks and deck the long
+     side of a plate runs along +Z, the keel axis; end faces get square plates.
+   - Plate size comes from uPanel, metres, sub-linear in hull length: a 14 m
+     interceptor carries a handful of big plates and a 1,900 m Mothership
+     carries a hundred along its keel.
+   - Seams and bevels are analytic and filtered by the pixel footprint, and
+     fade out before a pixel covers a fifth of a plate, so there is no texel
+     to see and nothing to crawl.
+   - The two shipyards differ in the layout itself, not just in colour. The
+     player yard lays long, staggered, clean plates. The hostile yard builds in
+     short segments that line up into rings, every third ring a heavier rib,
+     with wider seams that hold grime.
+
+   hostile is 0 or 1. Outputs: seam darkening, an object-space normal tilt for
+   the plate bevel, per-plate value and roughness offsets, seam grime, a bright
+   worn edge line, and the rib mask. */
+void vsPanels( vec3 P, vec3 GN, float hostile, out float seam, out vec3 tilt,
+    out float pv, out float pr, out float grime, out float edgeW, out float rib ) {
+  vec3 aN = abs( GN );
+  float fx = step( aN.y, aN.x ) * step( aN.z, aN.x );
+  float fy = ( 1.0 - fx ) * step( aN.z, aN.y );
+  float fz = clamp( 1.0 - fx - fy, 0.0, 1.0 );
+  vec2 uv = P.zy * fx + P.zx * fy + P.xy * fz;
+  vec3 tU = vec3( 0.0, 0.0, 1.0 ) * ( fx + fy ) + vec3( 1.0, 0.0, 0.0 ) * fz;
+  vec3 tV = vec3( 0.0, 1.0, 0.0 ) * ( fx + fz ) + vec3( 1.0, 0.0, 0.0 ) * fy;
+  float face = fx + fy * 2.0 + fz * 3.0;
+
+  vec2 fwm = fwidth( uv );
+  float fw = max( max( fwm.x, fwm.y ), 1e-5 );
+
+  vec2 L = mix( vec2( 2.6, 0.95 ), vec2( 0.70, 1.40 ), hostile ) * uPanel;
+  L = mix( L, vec2( 1.25 * uPanel ), fz );
+  float row = floor( uv.y / L.y );
+  /* Player rows each take their own plate length and offset, so the courses
+     never settle into the half-bond of a brick wall (the first pass did, and
+     read as masonry on the Mothership). Hostile segments keep one length and
+     no offset, so they line up into rings around the hull. */
+  float rh = vsHash13( vec3( row, face, 9.1 ) );
+  L.x *= mix( 0.75 + rh * 0.9, 1.0, hostile );
+  uv.x += vsHash13( vec3( row, face, 2.3 ) ) * L.x * ( 1.0 - hostile );
+
+  vec2 g = uv / L;
+  vec2 cell = floor( g );
+  vec2 f = g - cell;
+  vec2 dE = min( f, 1.0 - f ) * L;
+  float d = min( dE.x, dE.y );
+
+  float lod = 1.0 - smoothstep( 0.10, 0.30, fw / min( L.x, L.y ) );
+  rib = hostile * step( 1.5, mod( cell.x, 3.0 ) ) * ( 1.0 - fz );
+  float w = uPanel * mix( 0.016, 0.026, hostile ) * ( 1.0 + rib * 0.8 );
+  seam = ( 1.0 - smoothstep( w, w + fw * 1.5, d ) ) * lod;
+
+  float bw = w * 3.2 + fw;
+  float bev = ( 1.0 - smoothstep( w, bw, d ) ) * lod;
+  float onU = step( dE.x, dE.y );
+  vec2 s = sign( f - 0.5 );
+  tilt = ( tU * s.x * onU + tV * s.y * ( 1.0 - onU ) ) * bev * mix( 0.32, 0.50, hostile );
+
+  vec3 cid = vec3( cell, face );
+  float h1 = vsHash13( cid + 0.31 );
+  float h2 = vsHash13( cid * 1.71 + 5.3 );
+  pv = 1.0 + ( h1 - 0.5 ) * mix( 0.09, 0.22, hostile ) - rib * 0.14;
+  pr = ( h2 - 0.5 ) * mix( 0.05, 0.16, hostile ) + rib * 0.07;
+
+  float gn = vsNoise3( P / uPanel * 2.3 );
+  grime = hostile * ( 1.0 - smoothstep( w, w + uPanel * 0.20, d ) )
+        * ( 0.40 + 0.60 * gn ) * mix( 0.35, 1.0, lod );
+  edgeW = hostile * ( smoothstep( w, w * 1.5 + fw, d ) - smoothstep( w * 1.6, w * 3.0 + fw, d ) )
+        * lod * smoothstep( 0.45, 0.75, gn );
+}
+
 /* Remove an illuminant's chroma while keeping the surface's own. The hue
    argument is the albedo normalised to unit luminance, so at k = 1 this is
    exactly what the fragment would look like under a white light of the same
@@ -389,7 +484,7 @@ vec3 vsWhiten( vec3 c, vec3 hue, float k ) {
    them. The two channels stay separate all the way through.
 
    Returns the primary mask; the accent output carries the secondary. */
-float vsLivery( vec3 P, vec3 GN, float blazon, out float accent, out float runLight ) {
+float vsLivery( vec3 P, vec3 GN, float blazon, float hostile, out float accent, out float fieldOut, out float runLight ) {
   float rho = max( length( P.xy ), 1e-3 );  // local girth radius, metres
   float ax = abs( P.x ) / rho;              // 0 on the centreline, ~1 at the beam
   float ay = P.y / rho;                     // -1 keel .. +1 spine
@@ -430,6 +525,18 @@ float vsLivery( vec3 P, vec3 GN, float blazon, out float accent, out float runLi
   float side = flank
     * ( 1.0 - smoothstep( uFlank.y - uFlank.z, uFlank.y + uFlank.z, abs( ayj - uFlank.x ) ) );
 
+  /* R7: the two yards paint by different rules, so livery is a shape cue as
+     well as a hue. The player runs unbroken lines down the keel axis. The
+     hostile yard breaks its spine stripe into segments and swaps the flank
+     stripe for short transverse bars across the side, the way its plating is
+     built in rings. Spacing is in girths, like everything else here. */
+  float segZ = fract( P.z / max( rho * 1.5, 1e-3 ) );
+  spine *= mix( 1.0, step( segZ, 0.55 ), hostile );
+  shoulder *= 1.0 - hostile * 0.7;
+  float barZ = fract( P.z / max( rho * 2.6, 1e-3 ) + 0.3 );
+  float bars = flank * step( barZ, 0.13 ) * ( 1.0 - smoothstep( 0.45, 0.70, abs( ayj ) ) );
+  side = mix( side, bars, hostile );
+
   /* Running lights ride just outboard of the shoulder stripe as dashes spaced
      by girth, which puts them exactly where the eye is already looking. They
      take the unjittered axis on purpose — a light is a fitting bolted to the
@@ -453,8 +560,11 @@ float vsLivery( vec3 P, vec3 GN, float blazon, out float accent, out float runLi
 
      The stripe keeps priority where the two overlap: HULL_BODY subtracts the
      primary from the secondary, so a band crossing a blazon stays bright. */
-  float field = clamp( blazon, 0.0, 1.0 ) * skip;
-  accent = clamp( max( max( side, shoulder ) * skip, field ), 0.0, 1.0 );
+  /* R7: the field is handed back on its own so HULL_BODY can lay it on as a
+     restrained wash rather than a solid coat. A whole wing in solid secondary
+     was the toy-plane read the round-6 critique called out. */
+  fieldOut = clamp( blazon, 0.0, 1.0 ) * skip;
+  accent = clamp( max( side, shoulder ) * skip, 0.0, 1.0 );
   return clamp( spine * skip, 0.0, 1.0 );
 }
 `;
@@ -469,22 +579,62 @@ const HULL_BODY = /* glsl */`
   vec4 A = vsTri( uPlateMap, P, W, uBaseTiling, uPlateLayer );
   vec4 O = vsTri( uPlateOrm, P, W, uBaseTiling, uPlateLayer );
 
+  /* Faction, needed up front now: the plating itself is built per yard. */
+  float teamP = uTeam;
+#ifdef VS_ATTRIBS
+  teamP = clamp( uTeam + vAttr.y, 0.0, 1.0 );
+#endif
+  float hostile = step( 0.5, teamP );
+  float pSeam, pV, pR, pGrime, pEdge, pRib;
+  vec3 pTilt;
+  vsPanels( P, GN, hostile, pSeam, pTilt, pV, pR, pGrime, pEdge, pRib );
+
   vec3 tX = texture( uPlateNormal, vec3( P.zy * uBaseTiling, uPlateLayer ) ).xyz * 2.0 - 1.0;
   vec3 tY = texture( uPlateNormal, vec3( P.zx * uBaseTiling, uPlateLayer ) ).xyz * 2.0 - 1.0;
   vec3 tZ = texture( uPlateNormal, vec3( P.xy * uBaseTiling, uPlateLayer ) ).xyz * 2.0 - 1.0;
 
+  /* The atlas normal is now fine detail under the analytic plating, so it is
+     run at under half strength and faded out entirely once its texels drop
+     below a couple of pixels: that is where the crawl came from. */
+  float nk = uNormalStrength * 0.40
+    * ( 1.0 - smoothstep( 1.5, 8.0, vsFootprint( P.zy * uBaseTiling, uPlateTexels ) ) );
+
   /* Whiteout triplanar normal blend — folds the geometric normal into every
      plane so curved hulls keep their curvature. */
-  tX = vec3( tX.xy * uNormalStrength + GN.zy, abs( tX.z ) * GN.x );
-  tY = vec3( tY.xy * uNormalStrength + GN.zx, abs( tY.z ) * GN.y );
-  tZ = vec3( tZ.xy * uNormalStrength + GN.xy, abs( tZ.z ) * GN.z );
+  tX = vec3( tX.xy * nk + GN.zy, abs( tX.z ) * GN.x );
+  tY = vec3( tY.xy * nk + GN.zx, abs( tY.z ) * GN.y );
+  tZ = vec3( tZ.xy * nk + GN.xy, abs( tZ.z ) * GN.z );
   vec3 objN = normalize( tX.zyx * W.x + tY.yzx * W.y + tZ.xyz * W.z );
+  objN = normalize( objN + pTilt );
 
-  vec3 albedo = A.rgb;
-  float rough = O.g;
-  float metal = O.b;
-  float ao = O.r;
-  float paintCover = A.a;   // 1 = plate still has its coat, 0 = bare alloy
+  /* Albedo: the yard's own hull colour at the atlas's mean value (so the
+     lighting contract, tuned on the atlas, still holds), varied per plate. The
+     atlas survives only as a faint luminance modulation; at full strength it
+     was the stucco and the camouflage. */
+  vec3 aAvg = textureLod( uPlateMap, vec3( 0.5, 0.5, uPlateLayer ), 16.0 ).rgb;
+  float aL = max( dot( aAvg, VS_LUMA ), 0.02 );
+  vec3 hullC = mix( uHullA, uHullB, hostile );
+  hullC = hullC / max( dot( hullC, VS_LUMA ), 1e-3 ) * aL * mix( 0.96, 1.20, hostile );
+  float detail = clamp( dot( A.rgb, VS_LUMA ) / aL, 0.4, 1.8 );
+  vec3 albedo = hullC * pV * mix( 1.0, detail, 0.18 );
+  albedo *= 1.0 - pSeam * mix( 0.45, 0.64, hostile );
+  albedo *= 1.0 - pGrime * 0.36;
+
+  /* Hostile weathering: long rust-brown streaks that run aft with the keel
+     axis, held dark and low in chroma so they read as age, not as team. */
+  float rn = vsNoise3( vec3( P.x, P.y, P.z * 0.16 ) / uPanel * 0.8 );
+  float rust = hostile * smoothstep( 0.55, 0.85, rn ) * 0.40;
+  albedo = mix( albedo, vec3( 0.32, 0.20, 0.13 ) * ( aL / 0.215 ) * 0.70, rust );
+  albedo *= 1.0 + pEdge * 0.40;
+
+  /* Player plates are clean, smooth gunmetal; hostile plates are rough and
+     dull. The atlas keeps a third of its say. */
+  float rough = mix( mix( 0.40, 0.64, hostile ), O.g, 0.33 ) + pR + pGrime * 0.14 + rust * 0.12;
+  float metal = mix( mix( 0.46, 0.22, hostile ), O.b, 0.33 ) + pEdge * 0.30;
+  float ao = mix( 1.0, O.r, 0.5 ) * ( 1.0 - pSeam * 0.35 );
+  /* Paint cover was the atlas alpha, laid down as random patches: the
+     camouflage. Paint now only goes at a plate's worn edge. */
+  float paintCover = mix( 1.0, A.a, 0.12 ) * ( 1.0 - pEdge * 0.7 );   // 1 = coat, 0 = bare
   vec3 emis = vec3( 0.0 );
   float emisTeam = 0.0;
   float accentMask = 0.0;
@@ -515,7 +665,7 @@ const HULL_BODY = /* glsl */`
      over it, so the stamps land on top of a surface that already agrees with
      them. */
   vec4 matTone = uMacroTone * sel;   // not "tone" — that name is taken further down
-  albedo *= matTone.rgb;
+  albedo *= mix( vec3( 1.0 ), matTone.rgb, 0.65 );
   rough = clamp( rough + matTone.w, 0.0, 1.0 );
   metal = clamp( metal + dot( uMacroMetal, sel ), 0.0, 1.0 );
 
@@ -534,9 +684,12 @@ const HULL_BODY = /* glsl */`
     nZ = vec3( nZ.xy * uNormalStrength + GN.xy, abs( nZ.z ) * GN.z );
     vec3 macroN = normalize( nX.zyx * W.x + nY.yzx * W.y + nZ.xyz * W.z );
 
+    /* The macro stamps (hatches, window rows, sub-panels) now modulate the
+       yard's surface instead of replacing it, so a stamp keeps its shape
+       without dropping the atlas's own grey into the middle of a hull. */
     float cov = clamp( mA.a, 0.0, 1.0 );
-    albedo = mix( albedo, mA.rgb, cov );
-    rough = mix( rough, mO.g, cov );
+    albedo = mix( albedo, albedo * clamp( mA.rgb / max( aAvg, vec3( 0.02 ) ), 0.25, 2.2 ), cov * 0.85 );
+    rough = mix( rough, mO.g, cov * 0.6 );
     metal = mix( metal, mO.b, cov );
     ao = min( ao, mix( 1.0, mO.r, cov ) );
     objN = normalize( mix( objN, macroN, cov ) );
@@ -615,7 +768,8 @@ const HULL_BODY = /* glsl */`
 
   float runLight = 0.0;
   float accent = 0.0;
-  float livery = vsLivery( P, GN, blazon, accent, runLight );
+  float fieldM = 0.0;
+  float livery = vsLivery( P, GN, blazon, hostile, accent, fieldM, runLight );
 
   /* Erode the paint edges. Multiplying a soft-edged mask by noise and
      re-thresholding leaves the middle of a band solid and chews the boundary,
@@ -624,8 +778,9 @@ const HULL_BODY = /* glsl */`
      its coat, so the plate layer's own coverage gates the livery. */
   float chip = vsNoise3( P * uBaseTiling * 22.0 ) * 0.55 + vsNoise3( P * uBaseTiling * 64.0 ) * 0.45;
   float coat = mix( 0.55, 1.0, smoothstep( 0.05, 0.45, paintCover ) );
-  livery = smoothstep( 0.40, 0.58, livery * ( 0.90 + 0.24 * chip ) ) * coat;
-  accent = smoothstep( 0.40, 0.58, accent * ( 0.90 + 0.24 * chip ) ) * coat;
+  livery = smoothstep( 0.40, 0.58, livery * ( 0.90 + mix( 0.12, 0.30, hostile ) * chip ) ) * coat;
+  accent = smoothstep( 0.40, 0.58, accent * ( 0.90 + mix( 0.12, 0.30, hostile ) * chip ) ) * coat;
+  accent = max( accent, smoothstep( 0.40, 0.58, fieldM * ( 0.90 + 0.10 * chip ) ) * coat * 0.42 );
 
   /* The atlas accent mask adds close-range pinstripes on top; it is detail, so
      it is allowed to disappear into the mip chain with everything else. */
@@ -1012,7 +1167,12 @@ function hullUniforms(team, family, opts) {
     // One livery cell per plate. Same pitch as the plating, by construction.
     uPlateCell: { value: 1 / ps },
     // (band jitter in girth units, fraction of plates left unpainted)
-    uPlateJit: { value: new THREE.Vector2(0.075, 0.86) },
+    // y = 1: every plate keeps its paint. 0.86 left one plate in seven bare,
+    // and on a painted field that patchwork was the R6 "blotch camouflage".
+    uPlateJit: { value: new THREE.Vector2(0.075, 1.0) },
+    uHullA: { value: a.hull.clone() },
+    uHullB: { value: b.hull.clone() },
+    uPanel: { value: panelSize(opts.length, tune) },
     uBaseTiling: { value: baseTiling },
     uMacroTiling: { value: baseTiling / ATLAS.macroSpan },
     uBlendSharp: { value: 5.0 },
