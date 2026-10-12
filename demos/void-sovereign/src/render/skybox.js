@@ -34,7 +34,7 @@ import { makeRng } from '../core/rng.js';
             fades into the void instead of ending at a contour;
      body   a soft-thresholded bulk that carries the dominant hue and does all
             of the absorbing;
-     front  a ridged filament network multiplied *by* the body, so ionisation
+     front  a soft warped-fBm detail field multiplied *by* the body, so ionisation
             fronts can only brighten gas that is already there.
 
    An earlier version made the filaments the whole density. Ridge troughs then
@@ -229,13 +229,13 @@ function vecFrom(rng) {
 const mul = (c, k) => [c[0] * k, c[1] * k, c[2] * k];
 
 /* ---------------------------------------------------------------------------
-   Shared GLSL: hashes, gradient noise, fBm, ridged multifractal.
+   Shared GLSL: hashes, gradient noise, fBm, soft warped detail.
    --------------------------------------------------------------------------- */
 
 /* Split in two, and the split is a boot-time decision rather than tidiness.
 
    This file's own history says it: the driver's cost is dominated by inlining
-   gradient-noise evaluations, not by running them. Pass B needs the ridged
+   gradient-noise evaluations, not by running them. Pass B needs the detail
    field and nothing else, so handing it the three fBm variants as well cost
    several seconds of compile for functions it never calls — measured as boot
    going from 18.8 s to 28.5 s when pass B was first given the whole header,
@@ -270,18 +270,24 @@ float gnoise(vec3 p) {
 
 const mat3 M3 = mat3(0.00, 0.80, 0.60, -0.80, 0.36, -0.48, -0.60, -0.48, 0.64);
 
-/* Ridged multifractal — the sharp filament structure real emission nebulae
-   have along their ionisation fronts. [0,1]. */
-float ridge3(vec3 p) {
-  float n = 1.0 - abs(gnoise(p));
-  float f = 0.5 * n * n;
+/* Soft detail field: domain-warped fBm, [0,1], mean about 0.58.
+
+   This replaced a ridged multifractal (1 - abs(noise), squared). The abs puts a
+   crease along every zero of the noise, and the zero set of a smooth field is a
+   network of closed loops, so every term that used it drew the same thing: thin
+   hard-edged worms and cells. Thresholded fronts, lane grain and the full-res
+   filament pass all inherited it, and together they were the grey marbling and
+   brain-coral contours of the round 4 critique. A warped fBm has no crease, so
+   nothing built on it can draw a contour sharper than the field itself. The
+   mean is kept near the old field's so the per-seed thresholds still land. */
+float wisp3(vec3 p) {
+  p += vec3(0.71, -0.53, 0.46) * gnoise(p * 0.43 + vec3(5.3, 1.7, 9.1)) * 1.2;
+  float f = 0.5 * gnoise(p);
   p = M3 * p * 2.05;
-  n = 1.0 - abs(gnoise(p));
-  f += 0.25 * n * n;
+  f += 0.25 * gnoise(p);
   p = M3 * p * 2.02;
-  n = 1.0 - abs(gnoise(p));
-  f += 0.125 * n * n;
-  return f / 0.875;
+  f += 0.125 * gnoise(p);
+  return clamp(0.58 + 0.85 * f / 0.875, 0.0, 1.0);
 }
 `;
 
@@ -434,7 +440,7 @@ void main() {
     float blat = dot(d, BAND_AXIS);
     float g = exp(-(blat * blat) * ${num(1 / (2 * P.bandW * P.bandW))});
     float along = fbm3n(d * ${num(P.bandScale)} + vec3(${f3(P.bandOff)})) * 0.5 + 0.5;
-    float mott = ridge3(d * ${num(P.bandScale * 2.6)} + vec3(${f3(P.bandOff)}));
+    float mott = wisp3(d * ${num(P.bandScale * 2.6)} + vec3(${f3(P.bandOff)}));
     g *= 0.34 + 0.66 * along;
     float bulge = exp(-(1.0 - dot(d, BAND_CORE)) * ${num(P.bulgeK)});
     vec3 bandCol = vec3(${f3(P.bandCol)});
@@ -443,7 +449,7 @@ void main() {
 
     float lo = blat - ${num(P.laneOff)};
     float lane = exp(-(lo * lo) * ${num(1 / (2 * P.laneW * P.laneW))});
-    float laneN = ridge3(d * ${num(P.laneScale)} + vec3(${f3(P.laneNoiseOff)}));
+    float laneN = wisp3(d * ${num(P.laneScale)} + vec3(${f3(P.laneNoiseOff)}));
     float laneD = lane * smoothstep(0.42, 0.86, laneN) * ${num(P.laneAmt)};
     emitted *= exp(-EXT * laneD);
     tau += laneD;
@@ -538,7 +544,7 @@ void main() {
 
     /* Ionisation fronts ride *on* the bulk — multiplied by it, never
        independent of it, so a ridge trough can never punch a hole. */
-    float fil = ridge3(p * uRidgeScale + w * 0.55);
+    float fil = wisp3(p * uRidgeScale + w * 0.55);
     float front = smoothstep(uFilThr, uFilThr + uFilSoft, fil) * (0.16 + 0.84 * body);
 
     /* Unthresholded glow so the gas dissolves into the void. */
@@ -613,11 +619,19 @@ void main() {
   env *= smoothstep(${num(ENV_CUTOFF)}, ${num(ENV_CUTOFF * 16)}, env);
   if (env > 0.0) {
     vec3 p = d * uScale + uOff;
-    /* Lanes are the zero set of a smooth field, not a threshold on it. That
-       is what gives long, sinuous, branching filaments instead of blobs. */
-    float n = fbm3n(p + warp * uWarpAmt);
-    float lane = 1.0 - smoothstep(0.0, uWidth, abs(n));
-    lane *= 0.35 + 0.65 * smoothstep(0.30, 0.72, ridge3(p * uGrain));
+    /* Lanes are soft density, not a level set. They used to be the zero set
+       of an fBm field, and a zero set is a family of closed loops: that drew
+       the hard dark contour network the round 4 critique called brain coral,
+       and pass B then traced both sides of every loop with its rim. Now the
+       domain is squeezed along the complex's long axis so the dust streams
+       rather than pools, the field is warped and run at a higher frequency so
+       no single lane spans much of a frame, and density ramps in over a
+       range several times the old line width, so no edge is sharper than the
+       gas it sits in. */
+    p -= uE1 * (dot(d, uE1) * uScale * 0.45);
+    float n = fbm3n(p * 1.35 + warp * (uWarpAmt * 1.3)) * 0.5 + 0.5;
+    float lane = smoothstep(0.45, 0.78 + uWidth, n);
+    lane *= 0.45 + 0.55 * wisp3(p * uGrain);
     float amt = env * clarity * lane * uAmount;
     emitted *= exp(-EXT * amt);
     tau += amt;
@@ -655,7 +669,7 @@ void main() {
   if (env > 0.0) {
     vec3 p = d * ${num(P.dust.scale)} + vec3(${f3(P.dust.off)});
     float nn = fbm4n(p + warp * 1.5) * 0.5 + 0.5;
-    float rg = ridge3(p * 1.7 + warp * 0.8);
+    float rg = wisp3(p * 1.7 + warp * 0.8);
     float m = mix(nn, rg, 0.40);
     float dens = env * smoothstep(${num(P.dust.thr)}, ${num(P.dust.thr + 0.30)}, m) * ${num(P.dust.amount)};
     emitted *= exp(-EXT * dens);
@@ -732,7 +746,7 @@ void main() {
      texel is a texel. Two things are added, both keyed to the gas that is
      already present so nothing can appear in empty sky:
 
-       fil   a ridged network an order of magnitude finer than any layer's own
+       fil   a soft detail field an order of magnitude finer than any layer's own
              front scale, modulating the gas it sits in;
        edge  the gradient of the optical depth, which IS the boundary — it is
              large exactly where dense gas gives way to nothing and zero
@@ -763,7 +777,7 @@ void main() {
              - texture2D(uGas, vUv - vec2(0.0, uTexel.y)).a;
     float edge = clamp(length(vec2(tx, ty)) * ${num(P.rimGain)}, 0.0, 1.4);
 
-    float fil = ridge3(d * ${num(P.filScale)} + vec3(${f3(P.filOff)}));
+    float fil = wisp3(d * ${num(P.filScale)} + vec3(${f3(P.filOff)}));
     float grain = gnoise(d * ${num(P.filScale * 2.9)} + vec3(${f3(P.filOff)})) * 0.5 + 0.5;
     fil *= 0.62 + 0.38 * grain;
 
