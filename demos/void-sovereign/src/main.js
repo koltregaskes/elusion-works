@@ -270,11 +270,35 @@ async function main() {
     if (M.hud) M.hud.update(dt);
   }, 'frame');
 
+  /* A lost context is usually transient — a driver reset, a GPU switch — and
+     the browser hands it back within a second or two. So the loss itself only
+     warns; the fatal panel is kept for a context that never returns, or one
+     that returns and cannot be rebuilt. */
+  const RESTORE_GRACE_MS = 6000;
+  let restoreTimer = 0;
+  const giveUp = (message) => {
+    clearTimeout(restoreTimer);
+    vs.ready = false;
+    loop.stop();
+    fatal(message, null);
+  };
+  engine.onRestored = () => {
+    clearTimeout(restoreTimer);
+    restoreTimer = 0;
+    if (A.environment && A.environment.rebakeSky) A.environment.rebakeSky();
+    vs.contextRestores = (vs.contextRestores || 0) + 1;
+    bus.emit('ui:toast', { text: 'Graphics restored.', kind: 'info' });
+  };
+
   engine.onFailure = (message, info) => {
     if (info && info.kind === 'contextlost') {
-      vs.ready = false;
-      loop.stop();
-      fatal(message, null);
+      if (info.fatal) {
+        giveUp(message);
+        return;
+      }
+      bus.emit('ui:toast', { text: 'Graphics context lost, waiting for it to return…', kind: 'warn' });
+      clearTimeout(restoreTimer);
+      restoreTimer = setTimeout(() => giveUp(message), RESTORE_GRACE_MS);
       return;
     }
     bus.emit('ui:toast', { text: message, kind: 'warning' });

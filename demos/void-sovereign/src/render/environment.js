@@ -2938,6 +2938,34 @@ export class Environment {
     this._disposables.push(geo, mat);
   }
 
+  /* After a WebGL context restore the sky's render target comes back blank.
+     The bake is a pure function of the seed (`fork` with a fixed salt), so
+     re-running it reproduces the same map; only the star field's composition
+     quaternion lives on the sky object and has to be carried across. */
+  rebakeSky() {
+    const { engine } = this;
+    const old = this.sky;
+    const q = old.starField ? old.starField.quaternion.clone() : null;
+    if (old.starField && old.starField.parent) old.starField.parent.remove(old.starField);
+    const fresh = buildSkybox(engine.renderer, this.rng.fork(0x5117), {
+      quality: this.quality,
+      size: this.options.skySize,
+      tiles: this.options.skyTiles,
+      layers: this.options.skyLayers,
+      sunDirection: this.sunDirection,
+    });
+    /* No `old.dispose()`: its GL objects died with the old context, and
+       deleting them through the new one only raises INVALID_OPERATION. */
+    this.sky = fresh;
+    engine.farScene.background = fresh.texture;
+    engine.scene.environment = fresh.texture;
+    if (fresh.starField) {
+      if (q) fresh.starField.quaternion.copy(q);
+      fresh.starField.layers.enable(LAYER.BACKDROP);
+      engine.farScene.add(fresh.starField);
+    }
+  }
+
   /* --------------------------------------------------------------- update */
 
   update(dt, elapsed, camera) {

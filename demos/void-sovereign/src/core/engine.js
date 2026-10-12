@@ -85,6 +85,7 @@ export class Engine {
     this.hookErrors = [];
     this.contextLost = false;
     this.onFailure = null; // set by main.js to surface this to the player
+    this.onRestored = null; // set by main.js to re-bake seed-scoped render targets
 
     this._onResize = () => this.resize();
     window.addEventListener('resize', this._onResize, { passive: true });
@@ -102,8 +103,27 @@ export class Engine {
         );
       }
     };
+    /* Three re-creates its GL state and re-uploads every texture that still
+       holds its source data (data, canvas and image textures) the next time it
+       is drawn. What it cannot bring back is the *contents* of a render target:
+       those come back blank. Post-FX re-primes its own buffers here; the sky
+       bake, which is seed-scoped, is re-baked by whoever owns it via
+       `onRestored`. */
     this._onContextRestored = () => {
       this.contextLost = false;
+      try {
+        if (this._post && this._post.onContextRestored) this._post.onContextRestored();
+        if (this.onRestored) this.onRestored();
+      } catch (e) {
+        this.contextLost = true;
+        if (this.onFailure) {
+          this.onFailure('The graphics context came back but could not be rebuilt.', {
+            kind: 'contextlost',
+            fatal: true,
+            error: e,
+          });
+        }
+      }
     };
     canvas.addEventListener('webglcontextlost', this._onContextLost, false);
     canvas.addEventListener('webglcontextrestored', this._onContextRestored, false);
