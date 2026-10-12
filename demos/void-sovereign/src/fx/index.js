@@ -552,6 +552,7 @@ ${SOFT_PARS}
 uniform sampler2D uMap;
 uniform float uOpacity;
 uniform float uClampLift;
+uniform float uRadial;
 
 varying vec2 vUv;
 varying vec3 vColor;
@@ -564,6 +565,22 @@ varying float vSpread;
 void main() {
   #include <logdepthbuf_fragment>
   vec4 texel = texture2D( uMap, vUv );
+  /* R7 fix 5b: the flare field draws its falloff analytically. The canvas
+     sprite was an 8-bit gradient with knees, and at the 8-34x radiance a
+     death flash carries every texel inside the knee clipped to one flat
+     white disc while the quantised tail drew a ring round it - a placeholder
+     sphere rather than light. Two exponentials in float - a needle core and a
+     longer glare tail - have no shoulder, so what clips is a few pixels. */
+  if ( uRadial > 0.5 ) {
+    float r = length( vUv * 2.0 - 1.0 );
+    float prof = 0.70 * exp( -r / 0.04 ) + 0.30 * exp( -r / 0.16 );
+    /* Windowed to zero well inside the quad mask. At 9-14x radiance the
+       tail is still a few percent at r 0.8, the sRGB curve lifts that to a
+       visible grey, and the mask cut it off as a hard circular edge. */
+    float win = 1.0 - smoothstep( 0.18, 0.68, r );
+    prof *= win * win;
+    texel = vec4( 1.0, 1.0, 1.0, prof );
+  }
   // Sharpen and hot up whatever the pixel floor had to rescue, so a distant
   // impact is a hot dot rather than a wide grey smudge.
   float a = fxSharpen( texel.a, vClamp ) * fxQuadMask( vUv )
@@ -595,6 +612,7 @@ export class ParticleField {
       // Emissive fields get an intensity lift when the pixel floor rescues
       // them; smoke must not, or distant soot glows.
       clampLift = blending === THREE.NormalBlending ? 0.0 : 1.35,
+      radial = false,
     } = opts;
 
     this.ctx = ctx;
@@ -642,6 +660,7 @@ export class ParticleField {
           uMinPixels: { value: minPixels },
           uOpacity: { value: opacity },
           uClampLift: { value: clampLift },
+          uRadial: { value: radial ? 1 : 0 },
         },
         softUniforms(),
       ),
@@ -1437,7 +1456,7 @@ export class FXSystem {
     ctx.fields = {
       flare: new ParticleField(ctx, {
         name: 'flare', texture: sprites.flare, capacity: budget.flare,
-        alphaPow: 1.15, minPixels: 5.0, renderOrder: 14, softness: 18,
+        alphaPow: 1.15, minPixels: 5.0, renderOrder: 14, softness: 18, radial: true,
       }),
       spark: new ParticleField(ctx, {
         name: 'spark', texture: sprites.spark, capacity: budget.spark,

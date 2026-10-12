@@ -470,7 +470,8 @@ export class ExplosionFX {
   _scriptSpark(seq) {
     const { L, R, ring } = seq.m;
     return [
-      { t: 0.00, k: 'flash', shape: 'point', size: R * 1.9, minPx: 11, life: 0.13, bright: 14.0 },
+      // R7 fix 5b: peaks on its first frame and decays over 0.2 s (was 0.13 s).
+      { t: 0.00, k: 'flash', shape: 'point', size: R * 1.9, minPx: 11, life: 0.20, bright: 9.0 },
       /* No shock ring (round 4: a cream hoop round a 14 m hull read as clip
          art), and the spray is held to a couple of hull lengths. */
       /* Round 6 fix 4: short and slow enough to stay inside the hull's own
