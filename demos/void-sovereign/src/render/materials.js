@@ -119,10 +119,10 @@ function plateSize(length, tune) {
 
 /** R7 analytic plate size in metres. Steeper than plateSize() on purpose: a
     fighter should carry a few big plates and a Mothership a hundred along
-    its keel (14 m -> 1.4 m, 150 m -> 5.2 m, 1,900 m -> 21 m). */
+    its keel (14 m -> 1.4 m, 150 m -> 5.4 m, 1,900 m -> 24 m). */
 function panelSize(length, tune) {
   const l = Math.max(4, length || tune.ref);
-  return Math.min(28, Math.max(0.8, 0.33 * Math.pow(l, 0.55)));
+  return Math.min(40, Math.max(0.8, 0.30 * Math.pow(l, 0.58)));
 }
 
 /* Livery geometry, in girth units — see `vsLivery` in the shader. Every number
@@ -384,7 +384,9 @@ float vsNoise3( vec3 x ) {
      fade out before a pixel covers a fifth of a plate, so there is no texel
      to see and nothing to crawl.
    - The two shipyards differ in the layout itself, not just in colour. The
-     player yard lays long, staggered, clean plates. The hostile yard builds in
+     player yard lays long strakes of plates whose lengths vary from one to
+     eight cells, a third of them split again (R7 follow-up: the first pass
+     was an even running bond and read as brickwork). The hostile yard builds in
      short segments that line up into rings, every third ring a heavier rib,
      with wider seams that hold grime.
 
@@ -405,45 +407,98 @@ void vsPanels( vec3 P, vec3 GN, float hostile, out float seam, out vec3 tilt,
   vec2 fwm = fwidth( uv );
   float fw = max( max( fwm.x, fwm.y ), 1e-5 );
 
-  vec2 L = mix( vec2( 2.6, 0.95 ), vec2( 0.70, 1.40 ), hostile ) * uPanel;
-  L = mix( L, vec2( 1.25 * uPanel ), fz );
-  float row = floor( uv.y / L.y );
-  /* Player rows each take their own plate length and offset, so the courses
-     never settle into the half-bond of a brick wall (the first pass did, and
-     read as masonry on the Mothership). Hostile segments keep one length and
-     no offset, so they line up into rings around the hull. */
-  float rh = vsHash13( vec3( row, face, 9.1 ) );
-  L.x *= mix( 0.75 + rh * 0.9, 1.0, hostile );
-  uv.x += vsHash13( vec3( row, face, 2.3 ) ) * L.x * ( 1.0 - hostile );
+  /* Base cell. A panel is a run of one to about eight base cells along the run
+     axis; a boundary between two cells is a real seam only where a hash says
+     so, so panel lengths vary strongly and no bond pattern can form. Player:
+     runs go along the keel in long strakes. Hostile: the run axis is turned
+     across the hull, so every cell boundary along the keel is a ring seam and
+     the plates inside a ring are strips of varying height. */
+  vec2 B = mix( vec2( 2.0, 1.8 ), vec2( 0.85, 1.0 ), hostile ) * uPanel;
+  B = mix( B, vec2( 1.8 * uPanel ), fz );
+  float lane0 = floor( uv.y / B.y );
+  uv.x += vsHash13( vec3( lane0, face, 2.3 ) ) * B.x * ( 1.0 - hostile );
+  vec2 g = uv / B;
+  vec2 c = floor( g );
+  vec2 f = g - c;
 
-  vec2 g = uv / L;
-  vec2 cell = floor( g );
-  vec2 f = g - cell;
-  vec2 dE = min( f, 1.0 - f ) * L;
-  float d = min( dE.x, dE.y );
+  vec2 cs = mix( c, c.yx, hostile );     // x = run index, y = lane index
+  vec2 fs = mix( f, f.yx, hostile );
+  vec2 Bs = mix( B, B.yx, hostile );
+  vec3 tR = mix( tU, tV, hostile );
+  vec3 tC = mix( tV, tU, hostile );
+  float pRun = mix( 0.28, 0.40, hostile );
+  float kf = face + 11.0;
+  float aLo = step( vsHash13( vec3( cs.y, cs.x, kf ) ), pRun );
+  float aHi = step( vsHash13( vec3( cs.y, cs.x + 1.0, kf ) ), pRun );
+  float start = cs.x - 8.0;
+  for ( int i = 0; i < 8; i++ ) {
+    float k = cs.x - float( i );
+    if ( vsHash13( vec3( cs.y, k, kf ) ) < pRun ) { start = k; break; }
+  }
+  vec3 pid = vec3( cs.y, start, face );
+  float h1 = vsHash13( pid + 0.31 );
+  float h2 = vsHash13( pid * 1.71 + 5.3 );
+  float h3 = vsHash13( pid * 0.77 + 1.9 );
 
-  float lod = 1.0 - smoothstep( 0.10, 0.30, fw / min( L.x, L.y ) );
-  rib = hostile * step( 1.5, mod( cell.x, 3.0 ) ) * ( 1.0 - fz );
-  float w = uPanel * mix( 0.016, 0.026, hostile ) * ( 1.0 + rib * 0.8 );
-  seam = ( 1.0 - smoothstep( w, w + fw * 1.5, d ) ) * lod;
+  float lod = 1.0 - smoothstep( 0.10, 0.30, fw / min( B.x, B.y ) );
+  rib = hostile * step( 1.5, mod( c.x, 3.0 ) ) * ( 1.0 - fz );
+  float w = uPanel * mix( 0.012, 0.020, hostile ) * ( 1.0 + rib * 0.8 );
 
-  float bw = w * 3.2 + fw;
-  float bev = ( 1.0 - smoothstep( w, bw, d ) ) * lod;
-  float onU = step( dE.x, dE.y );
-  vec2 s = sign( f - 0.5 );
-  tilt = ( tU * s.x * onU + tV * s.y * ( 1.0 - onU ) ) * bev * mix( 0.32, 0.50, hostile );
+  // distances in metres to the four sides of this base cell
+  float dR0 = fs.x * Bs.x;
+  float dR1 = ( 1.0 - fs.x ) * Bs.x;
+  float dC0 = fs.y * Bs.y;
+  float dC1 = ( 1.0 - fs.y ) * Bs.y;
+  float eR0 = mix( 1e5, dR0, aLo );
+  float eR1 = mix( 1e5, dR1, aHi );
+  float dMaj = min( min( dC0, dC1 ), min( eR0, eR1 ) );
 
-  vec3 cid = vec3( cell, face );
-  float h1 = vsHash13( cid + 0.31 );
-  float h2 = vsHash13( cid * 1.71 + 5.3 );
-  pv = 1.0 + ( h1 - 0.5 ) * mix( 0.09, 0.22, hostile ) - rib * 0.14;
-  pr = ( h2 - 0.5 ) * mix( 0.05, 0.16, hostile ) + rib * 0.07;
+  /* Hierarchy: about a third of the primary panels are split into two to four
+     smaller ones by thinner, shallower seams on the inactive cell boundaries
+     and down the middle of the lane. */
+  float sub = step( h3, 0.34 );
+  float dMin = min( min( dR0, dR1 ), abs( fs.y - 0.5 ) * Bs.y );
+  float wm = w * 0.6;
+
+  float sMaj = 1.0 - smoothstep( w, w + fw * 1.5, dMaj );
+  float sMin = ( 1.0 - smoothstep( wm, wm + fw * 1.5, dMin ) ) * sub * 0.55;
+
+  /* Rule-placed detail, sparse: an access-hatch outline in about one base cell
+     in eleven, and a rivet line beside the long seams of one lane in three. */
+  vec2 q = abs( f - 0.5 ) * B;
+  vec2 hs = B * vec2( 0.20, 0.26 );
+  float he = max( q.x - hs.x, q.y - hs.y );
+  float hatch = step( vsHash13( vec3( c, face + 5.0 ) ), 0.09 ) * ( 1.0 - fz )
+              * ( 1.0 - smoothstep( wm, wm + fw * 1.5, abs( he ) ) ) * 0.7;
+  float sp = uPanel * 0.22;
+  float runCoord = mix( uv.x, uv.y, hostile );
+  float rv = length( vec2( ( fract( runCoord / sp ) - 0.5 ) * sp, min( dC0, dC1 ) - w * 4.0 ) );
+  float rivLod = 1.0 - smoothstep( 0.12, 0.35, fw / sp );
+  float rivet = step( vsHash13( vec3( cs.y, face, 7.7 ) ), 0.33 ) * ( 1.0 - fz ) * rivLod
+              * ( 1.0 - smoothstep( w * 0.9, w * 0.9 + fw, rv ) ) * 0.6;
+
+  seam = max( max( sMaj, sMin ), max( hatch, rivet ) ) * lod;
+
+  /* Recessed seam with a lip: only the plate side of a major seam is rolled,
+     and narrowly, so the lit side catches a hairline and the shaded side drops
+     into the groove. Nothing here brightens albedo. */
+  float bw = w * 2.2 + fw;
+  float bev = ( 1.0 - smoothstep( w, bw, dMaj ) ) * ( 1.0 - sMaj ) * lod;
+  vec3 dir = -tC;
+  float best = dC0;
+  if ( dC1 < best ) { best = dC1; dir = tC; }
+  if ( eR0 < best ) { best = eR0; dir = -tR; }
+  if ( eR1 < best ) { best = eR1; dir = tR; }
+  tilt = dir * bev * mix( 0.22, 0.34, hostile );
+
+  pv = 1.0 + ( h1 - 0.5 ) * mix( 0.05, 0.16, hostile ) - rib * 0.12;
+  pr = ( h2 - 0.5 ) * mix( 0.16, 0.18, hostile ) + rib * 0.07;
 
   float gn = vsNoise3( P / uPanel * 2.3 );
-  grime = hostile * ( 1.0 - smoothstep( w, w + uPanel * 0.20, d ) )
+  grime = hostile * ( 1.0 - smoothstep( w, w + uPanel * 0.18, dMaj ) )
         * ( 0.40 + 0.60 * gn ) * mix( 0.35, 1.0, lod );
-  edgeW = hostile * ( smoothstep( w, w * 1.5 + fw, d ) - smoothstep( w * 1.6, w * 3.0 + fw, d ) )
-        * lod * smoothstep( 0.45, 0.75, gn );
+  edgeW = hostile * ( smoothstep( w, w * 1.5 + fw, dMaj ) - smoothstep( w * 1.6, w * 3.0 + fw, dMaj ) )
+        * lod * smoothstep( 0.55, 0.85, gn );
 }
 
 /* Remove an illuminant's chroma while keeping the surface's own. The hue
@@ -617,7 +672,7 @@ const HULL_BODY = /* glsl */`
   hullC = hullC / max( dot( hullC, VS_LUMA ), 1e-3 ) * aL * mix( 0.96, 1.20, hostile );
   float detail = clamp( dot( A.rgb, VS_LUMA ) / aL, 0.4, 1.8 );
   vec3 albedo = hullC * pV * mix( 1.0, detail, 0.18 );
-  albedo *= 1.0 - pSeam * mix( 0.45, 0.64, hostile );
+  albedo *= 1.0 - pSeam * mix( 0.62, 0.66, hostile );
   albedo *= 1.0 - pGrime * 0.36;
 
   /* Hostile weathering: long rust-brown streaks that run aft with the keel
@@ -625,13 +680,14 @@ const HULL_BODY = /* glsl */`
   float rn = vsNoise3( vec3( P.x, P.y, P.z * 0.16 ) / uPanel * 0.8 );
   float rust = hostile * smoothstep( 0.55, 0.85, rn ) * 0.40;
   albedo = mix( albedo, vec3( 0.32, 0.20, 0.13 ) * ( aL / 0.215 ) * 0.70, rust );
-  albedo *= 1.0 + pEdge * 0.40;
+  albedo *= 1.0 + pEdge * 0.12;
 
   /* Player plates are clean, smooth gunmetal; hostile plates are rough and
      dull. The atlas keeps a third of its say. */
   float rough = mix( mix( 0.40, 0.64, hostile ), O.g, 0.33 ) + pR + pGrime * 0.14 + rust * 0.12;
   float metal = mix( mix( 0.46, 0.22, hostile ), O.b, 0.33 ) + pEdge * 0.30;
-  float ao = mix( 1.0, O.r, 0.5 ) * ( 1.0 - pSeam * 0.35 );
+  float ao = mix( 1.0, O.r, 0.5 ) * ( 1.0 - pSeam * 0.45 );
+  rough += pSeam * 0.20;   // a groove holds no highlight
   /* Paint cover was the atlas alpha, laid down as random patches: the
      camouflage. Paint now only goes at a plate's worn edge. */
   float paintCover = mix( 1.0, A.a, 0.12 ) * ( 1.0 - pEdge * 0.7 );   // 1 = coat, 0 = bare
