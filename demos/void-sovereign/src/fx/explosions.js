@@ -102,7 +102,10 @@ void main() {
   // Value noise clusters hard around 0.5, so it needs a gain and a curve or the
   // modulation is invisible.
   float feed = w2 * 0.6 + w1 * 0.4;
-  vBlotch = clamp( 0.12 + 2.5 * pow( feed, 1.7 ), 0.12, 1.9 );
+  /* Round 6 fix 4: held near flat. Swung from 0.12 to 1.9 round the front, the
+     blotch drew bright and dark spokes across the band that read as radial
+     speed lines; the front is now a hairline of near-even weight. */
+  vBlotch = clamp( 0.80 + 0.35 * pow( feed, 1.7 ), 0.80, 1.15 );
 
   float ang = uv.x * 6.2831853;
   vec3 wp = iCenter + ( t1 * cos( ang ) + t2 * sin( ang ) ) * ( rr * R * ragged );
@@ -115,7 +118,7 @@ void main() {
   float camDist = max( distance( cameraPosition, iCenter ), 1.0 );
   // Clamped: at small R the ratio explodes, and a floor that exceeds the
   // envelope would fill it edge to edge.
-  float thickFloor = min( 0.018, ( camDist * uPixelScale * 5.0 ) / max( R, 1.0 ) );
+  float thickFloor = min( 0.010, ( camDist * uPixelScale * 1.6 ) / max( R, 1.0 ) );
 
   vRr = rr;
   vColor = iColor;
@@ -163,7 +166,7 @@ void main() {
   float lead = exp( -pow( max( d, 0.0 ) / ( thick * 0.90 ), 2.0 ) );
   // Plateau then fall, not a Gaussian: the gas immediately behind the front is
   // still dense, and a front with no body behind it is a wireframe hoop.
-  float trail = exp( -pow( max( -d, 0.0 ) / ( thick * 2.2 ), 1.6 ) );
+  float trail = exp( -pow( max( -d, 0.0 ) / ( thick * 0.9 ), 1.6 ) );
   float band = lead * trail * vBlotch;
   /* The hot leading edge. This was 0.32 of the band thickness, which on a
      3.4 km capital front is about 17 metres — comfortably sub-pixel, so the
@@ -471,7 +474,10 @@ export class ExplosionFX {
       { t: 0.00, k: 'flash', shape: 'point', size: R * 1.9, minPx: 11, life: 0.13, bright: 14.0 },
       /* No shock ring (round 4: a cream hoop round a 14 m hull read as clip
          art), and the spray is held to a couple of hull lengths. */
-      { t: 0.00, k: 'sparks', n: 18, speed: L * 4.5, size: L * 0.05, minPx: 1.6, life: 0.26 },
+      /* Round 6 fix 4: short and slow enough to stay inside the hull's own
+         length. At L * 4.5 with 3-10x stretch the spray drew a blurred tan
+         X well past the ship, which read as the lens-cross firework. */
+      { t: 0.00, k: 'sparks', n: 18, speed: L * 1.4, size: L * 0.03, minPx: 1.2, life: 0.26, stretch: [1.0, 2.0] },
       { t: 0.01, k: 'debris', n: 2, scale: 0.26, speed: L * 5.0, lifeScale: 0.12 },
     ];
   }
@@ -758,7 +764,10 @@ export class ExplosionFX {
            0.24 s and a fifth of a hull apart read as a sequence, and the same
            two at one point read as one ball with a hard sprite boundary. */
         if (ev.at) origin.addScaledVector(seq.axis, ev.at * seq.L);
-        const size = cap(px(ev.size, ev.minPx), ev.shape === 'point' ? 1.0 : 2.0);
+        /* Round 6 fix 4: a strike craft's pop is sized from the hull as drawn now,
+           halo included - the quad is held to 0.8x the hull (was 1.2x), and the
+           flare sprite no longer carries a lens cross to reach past it. */
+        const size = cap(px(ev.size, ev.minPx), ev.shape === 'point' ? 1.5 : 2.0);
         /* `point` — two flares instead of five. Right for anything whose whole
            death is a single beat: a strike craft's pop built from a core, a
            body, a cooling shell and two lobes is five coincident billboards
@@ -981,7 +990,7 @@ export class ExplosionFX {
           f.spark.spawn(plane.x, plane.y, plane.z,
             V.x + this._dir.x * sp, V.y + this._dir.y * sp, V.z + this._dir.z * sp,
             rng.range(0.3, 1.1) * seq.T, 0.35, seq.L * 0.02 * rng.range(0.6, 1.6), 0.2,
-            this._col, 2.8, rng.range(4, 12), 0);
+            this._col, 2.8, rng.range(1.2, 2.4), 0); // short embers, not radial speed lines (R6 fix 4)
         }
 
         /* The two halves. Each is its own debris burst with its own bulk
@@ -1057,7 +1066,7 @@ export class ExplosionFX {
           f.spark.spawn(origin.x, origin.y, origin.z,
             V.x + this._dir.x * s, V.y + this._dir.y * s, V.z + this._dir.z * s,
             rng.range(lmax * 0.35, lmax), 0.35, ss * rng.range(0.6, 1.6), 0.2,
-            this._col, 2.8, rng.range(3, 10), 0);
+            this._col, 2.8, ev.stretch ? rng.range(ev.stretch[0], ev.stretch[1]) : rng.range(3, 10), 0);
         }
         break;
       }

@@ -714,7 +714,10 @@ vec2 fxImpactStar( vec2 q, float px, float arms ) {
   float arm = exp( -pp * pp )
             * smoothstep( armIn - 0.08, armIn + 0.04, r )
             * ( 1.0 - smoothstep( 0.84, 0.99, r ) );
-  float coreW = max( 0.06, onePx * 0.5 );
+  /* Round 6 fix 4: the core is held to about two pixels of radius at any
+     quad size. As a fixed 6 percent of the quad it grew with the star, and
+     with the radiance cap let go past 30 px it bloomed into a disc. */
+  float coreW = max( onePx * 0.5, min( 0.06, onePx * 2.0 ) );
   float core = exp( -( r * r ) / ( coreW * coreW ) );
   float line = max( ring * roomy, arm );
   float a = clamp( core + line, 0.0, 1.0 ) * ( 1.0 - step( 1.0, r ) );
@@ -745,7 +748,10 @@ void main() {
        (critic round 4, fw-impacts). Under about 12 px the core is held just
        over the cut, so it blooms by a pixel or two and the spikes carry the
        mark; close up, where the star is large, the cap lets go. */
-    float capR = mix( 0.95, 8.0, smoothstep( 12.0, 30.0, vPx ) ) * uGain;
+    /* Round 6 fix 4: the cap no longer lets go to 8x close up. At 2.2 the hot
+       point clears the cut and blooms by a few pixels, so the saturated core
+       stays inside 8 px at every size and the spikes still carry the shape. */
+    float capR = mix( 0.95, 2.2, smoothstep( 12.0, 30.0, vPx ) ) * uGain;
     lit = min( lit, vec3( capR ) );
   }
   gl_FragColor = vec4( lit, a );
@@ -963,6 +969,23 @@ const BURST_SET = [1, 3, 2, 0];
    pixels they tint the star and the star carries the shape. */
 const IMPACT_WASH_MAX_PX = 2.0;
 const BEAM_END_MAX_PX = 2.5;
+
+/* Round 6 fix 4: a screen CEILING for everything hot a hit paints, at any
+   camera distance past focus. The ceilings above are floors-of-a-floor: they
+   only limit how far the pixel floor may lift a sprite, so a sprite whose
+   natural size was already large - a 119 m molten wash, a 70 m flak flash -
+   still drew as a 25-35 px white bloom disc across the whole mid band
+   (critic round 5, s99-engagement-wide). Past IMPACT_FOCUS_M nothing a hit
+   paints may exceed IMPACT_CORE_MAX_PX on screen; inside it the ceiling
+   opens with the square of the approach, so a hit seen close up keeps its
+   body and there is no step at the boundary. */
+const IMPACT_CORE_MAX_PX = 8;
+const IMPACT_FOCUS_M = 900;
+function hitCeil(ctx, metres, x, y, z) {
+  const d = ctx.distTo(x, y, z);
+  const k = Math.max(1, IMPACT_FOCUS_M / d);
+  return Math.min(metres, ctx.px(d) * IMPACT_CORE_MAX_PX * k * k);
+}
 
 /* Screen ceiling, in pixels, for the two effects that fire hundreds of times a
    second in a fleet action: a gun going off and a round landing.
@@ -1314,13 +1337,14 @@ export class WeaponFX {
     const mpp = ctx.px(ctx.distTo(pt.x, pt.y, pt.z));
     // 1.0x, not 1.2x: bloom spreads a hot sprite a little past its own quad.
     const ceilM = Math.max(tl, mpp * hullFloorPx(tl));
+    const washM = hitCeil(ctx, ceilM, pt.x, pt.y, pt.z);
     // Molten wash, blown a little way back out of the hole it just made.
     /* Its screen floor is held under the impact star's (0.7 of the shot
        ceiling, was 1.4): floored up to fleet range this round wash is
        another soft disc, and the hit has to read by the star's shape. */
     f.flare.spawn(pt.x + n.x * mag * 0.6, pt.y + n.y * mag * 0.6, pt.z + n.z * mag * 0.6,
       n.x * 26, n.y * 26, n.z * 26, 0.30, 2.2,
-      Math.min(mag * 4, ceilM * 0.25), Math.min(mag * 19 * jitter, ceilM), HULL_MOLTEN, 1.9, 0, 0, Math.min(capPx * 0.5, IMPACT_WASH_MAX_PX));
+      Math.min(mag * 4, washM * 0.25), Math.min(mag * 19 * jitter, washM), HULL_MOLTEN, 1.9, 0, 0, Math.min(capPx * 0.5, IMPACT_WASH_MAX_PX));
     /* Stretched, not round: `stretch` elongates the billboard along its own
        velocity, so spall reads as metal being thrown rather than as a spray of
        identical dots. */
@@ -1444,7 +1468,9 @@ export class WeaponFX {
        not, so a killing blow (mag 7) painted a 60 m ring-and-spokes star on a
        14 m interceptor. Both are now held to 1.2x the hull as drawn. */
     const lengthM = Math.max(radius / 0.55, mpp * hullFloorPx(radius / 0.55));
-    const natural = Math.min(mag * 9 * jitter, lengthM);
+    // The star's quad may run to 2.5x the core ceiling - its spikes are hairlines
+    // under the bloom cut, so only the core has to fit inside the 8 px.
+    const natural = Math.min(mag * 9 * jitter, lengthM, hitCeil(ctx, Infinity, x, y, z) * 2.5);
     const floored = Math.max(natural, mpp * capPx);
     // Mirrors FLASH_VERT/FLASH_FRAG: clamp amount, spread dimming, and the
     // 1 + 0.9 * clamp lift the fragment stage already applies.
@@ -1559,9 +1585,10 @@ export class WeaponFX {
     // A flak puff is a real cloud a few tens of metres across, so it carries
     // its own ceiling rather than the batch's 11 px: a sky full of airburst
     // discs all floored to the same size is the carpet again.
+    const fc = hitCeil(this.ctx, Infinity, x, y, z);
     this._flash(x, y, z, 0, 0, 0, 0.15 + rng.next() * 0.09,
-      30 * scale * j, 7 * scale, HOT_WHITE, 4.6, 6.0, BURST_SET);
-    f.flare.spawn(x, y, z, 0, 0, 0, 0.40, 0, 13 * scale, 48 * scale * j, FLAK_BURST, 2.4, 0, 0);
+      Math.min(30 * scale * j, fc), Math.min(7 * scale, fc), HOT_WHITE, 4.6, 6.0, BURST_SET);
+    f.flare.spawn(x, y, z, 0, 0, 0, 0.40, 0, Math.min(13 * scale, fc), Math.min(48 * scale * j, fc * 1.6), FLAK_BURST, 2.4, 0, 0);
 
     const puffs = Math.round(3 + 2 * this.ctx.qscale);
     for (let i = 0; i < puffs; i++) {
@@ -1722,9 +1749,10 @@ export class WeaponFX {
        small (round 4, fix 5): a missile volley used to put a carpet of 6-10 px
        white discs over its target, the same round smudge as a drive, and it
        buried the stars. Close up none of these floors bind. */
+    const fc = hitCeil(ctx, Infinity, p.x, p.y, p.z);
     this._flash(p.x, p.y, p.z, 0, 0, 0, 0.16 + rng.next() * 0.10,
-      30 * scale * j, 7 * scale, HOT_WHITE, 4.0, 3.5, BURST_SET);
-    f.flare.spawn(p.x, p.y, p.z, 0, 0, 0, 0.5, 0, 12 * scale, 52 * scale * j, FLAK_BURST, 1.8, 0, 0, 3.0);
+      Math.min(30 * scale * j, fc), Math.min(7 * scale, fc), HOT_WHITE, 4.0, 3.5, BURST_SET);
+    f.flare.spawn(p.x, p.y, p.z, 0, 0, 0, 0.5, 0, Math.min(12 * scale, fc), Math.min(52 * scale * j, fc * 1.6), FLAK_BURST, 1.8, 0, 0, 3.0);
     for (let i = 0; i < Math.round(4 * ctx.qscale) + 2; i++) {
       const u = rng.unitVector();
       f.smoke.spawn(
@@ -2071,8 +2099,9 @@ export class WeaponFX {
            target's radius captured at the muzzle, so the mark can be held
            under its target's own screen size. */
         this._impactMark(this._v2, this._v, t.damage, null, t.tRadius);
+        const wc = hitCeil(ctx, Infinity, t.ex, t.ey, t.ez);
         ctx.fields.flare.spawn(t.ex, t.ey, t.ez, 0, 0, 0, 0.26, 0,
-          mag * 4, mag * 17 * jitter, HULL_MOLTEN, 1.9, 0, 0, Math.min(capPx * 0.5, IMPACT_WASH_MAX_PX));
+          Math.min(mag * 4, wc * 0.5), Math.min(mag * 17 * jitter, wc), HULL_MOLTEN, 1.9, 0, 0, Math.min(capPx * 0.5, IMPACT_WASH_MAX_PX));
         this._sparkBurst(this._v2, this._v, Math.round(8 + mag * 4), 0.45, 80 + t.damage * 1.2, mag * 1.9, IMPACT_DETAIL_CAP_PX);
       }
     }
@@ -2157,7 +2186,7 @@ export class WeaponFX {
       ms * 0.7, ms * 2.2, b.colour, 2.6, 0, 0, BEAM_END_MAX_PX);
 
     // Impact bulb: white core, coloured wash, both floored to a legible size.
-    const is = b.width * 9.5 * gain;
+    const is = Math.min(b.width * 9.5 * gain, hitCeil(ctx, Infinity, b.to.x, b.to.y, b.to.z) / 3.0);
     // A beam's landing point is an impact like any other, so it is floored and
     // coalesced by the same rule. The bulb below it is the beam's own wash.
     this._impactMark(b.to, this._v.copy(b.from).sub(b.to).normalize(),

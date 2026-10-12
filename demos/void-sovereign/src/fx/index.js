@@ -117,17 +117,9 @@ function spriteFlare(size = 128) {
   grad.addColorStop(1.0, 'rgba(255,255,255,0)');
   g.fillStyle = grad;
   g.fillRect(0, 0, size, size);
-  // Faint anamorphic cross so big flares get a lens signature.
-  g.globalCompositeOperation = 'lighter';
-  for (let i = 0; i < 2; i++) {
-    const lg = g.createLinearGradient(i ? 0 : h, i ? h : 0, i ? size : h, i ? h : size);
-    lg.addColorStop(0, 'rgba(255,255,255,0)');
-    lg.addColorStop(0.5, 'rgba(255,255,255,0.28)');
-    lg.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = lg;
-    if (i) g.fillRect(0, h - size * 0.012, size, size * 0.024);
-    else g.fillRect(h - size * 0.012, 0, size * 0.024, size);
-  }
+  /* Round 6 fix 4: the baked anamorphic cross is gone. Every flare in the
+     game carried it, and on a strike craft death it drew a lens-flare
+     firework wider than the ship. Impact stars draw their own spikes. */
   return finishTexture(c);
 }
 
