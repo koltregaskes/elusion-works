@@ -681,7 +681,10 @@ vec2 fxImpactStar( vec2 q, float px, float arms ) {
      ring is only drawn once there is room for it, and below that the spikes
      run in close to the core instead: at fleet range the hit is a crisp cross,
      close up it is a ring with spikes standing off it. */
-  float roomy = smoothstep( 13.0, 22.0, px );
+  /* Round 5: the ring is gone. Close up, a ring with spokes standing off it
+     round a fighter read as a cartoon sun (critic round 4), so the mark is
+     the hot point and its short spikes at every size. */
+  float roomy = 0.0;
   float armIn = mix( 0.26, ringR + ringW * 1.6, roomy );
   float arm = exp( -pp * pp )
             * smoothstep( armIn - 0.08, armIn + 0.04, r )
@@ -1256,17 +1259,30 @@ export class WeaponFX {
     this._impactMark(pt, n, amount, p.entity);
 
     const capPx = shotCeiling(amount);
+    /* Round 5 ceiling: nothing a hit paints may draw larger than 1.2x the
+       target hull as drawn now (its length, or the impostor's pixel floor).
+       The wash below was mag * 19 m - 114 m on a killing blow - and its baked
+       lens cross put a 650 px orange flare over a 95 px fighter. */
+    const ent = p.entity;
+    const tl = (ent && ent.def && ent.def.length) || (targetRadius(ent) || 18) / 0.55;
+    const mpp = ctx.px(ctx.distTo(pt.x, pt.y, pt.z));
+    // 1.0x, not 1.2x: bloom spreads a hot sprite a little past its own quad.
+    const ceilM = Math.max(tl, mpp * hullFloorPx(tl));
     // Molten wash, blown a little way back out of the hole it just made.
     /* Its screen floor is held under the impact star's (0.7 of the shot
        ceiling, was 1.4): floored up to fleet range this round wash is
        another soft disc, and the hit has to read by the star's shape. */
     f.flare.spawn(pt.x + n.x * mag * 0.6, pt.y + n.y * mag * 0.6, pt.z + n.z * mag * 0.6,
       n.x * 26, n.y * 26, n.z * 26, 0.30, 2.2,
-      mag * 4, mag * 19 * jitter, HULL_MOLTEN, 1.9, 0, 0, capPx * 0.7);
+      Math.min(mag * 4, ceilM * 0.25), Math.min(mag * 19 * jitter, ceilM), HULL_MOLTEN, 1.9, 0, 0, capPx * 0.7);
     /* Stretched, not round: `stretch` elongates the billboard along its own
        velocity, so spall reads as metal being thrown rather than as a spray of
        identical dots. */
-    this._sparkBurst(pt, n, Math.round(9 + mag * 5), 0.42, 70 + amount * 1.1, mag * 1.9, IMPACT_DETAIL_CAP_PX);
+    /* Held inside the same ceiling: at mag 6 these were 16 m billboards
+       stretched 4.5x, a 200 px wire star round a 95 px fighter. Travel under
+       the 3.2 drag is about speed / 3, so 0.8 ceilM keeps the burst on the hull. */
+    this._sparkBurst(pt, n, Math.round(9 + mag * 5), 0.42, Math.min(70 + amount * 1.1, ceilM * 0.8),
+      Math.min(mag * 1.9, ceilM * 0.05), IMPACT_DETAIL_CAP_PX);
 
     // Soot on every hit, not only the big ones — this is the tell that says
     // "the plate is open" and it is the half a shield can never fake.
@@ -1276,14 +1292,14 @@ export class WeaponFX {
       f.smoke.spawn(
         pt.x, pt.y, pt.z,
         n.x * 16 + rng.gaussian(0, 8), n.y * 16 + rng.gaussian(0, 8), n.z * 16 + rng.gaussian(0, 8),
-        1.2 + rng.next() * 1.1, 0.12, mag * 3.4, mag * 17,
+        1.2 + rng.next() * 1.1, 0.12, Math.min(mag * 3.4, ceilM * 0.3), Math.min(mag * 17, ceilM * 1.5),
         HULL_SOOT, 0.85, 1.1, rng.gaussian(0, 1.2),
       );
     }
     // Two or three fat molten gobbets that outlive the flash and arc away.
     for (let i = 0; i < 2 + (amount > 40 ? 1 : 0); i++) {
       const u = rng.unitVector();
-      const s = (34 + amount * 0.7) * rng.range(0.5, 1.4);
+      const s = Math.min(34 + amount * 0.7, ceilM * 3) * rng.range(0.5, 1.4);
       f.ember.spawn(
         pt.x, pt.y, pt.z,
         n.x * s * 0.8 + u.x * s * 0.5, n.y * s * 0.8 + u.y * s * 0.5, n.z * s * 0.8 + u.z * s * 0.5,
@@ -1306,8 +1322,11 @@ export class WeaponFX {
        within a frame of each other. */
     const cell = Math.max(1e-3, mpp * IMPACT_CELL_PX);
     const key = `${Math.round(pt.x / cell)}:${Math.round(pt.y / cell)}:${Math.round(pt.z / cell)}`;
-    const radius = (entity && entity.radius)
-      || (entity && entity.def && entity.def.length ? entity.def.length * 0.4 : 0)
+    /* Hull length first (as 0.55 L, the convention _paintImpact undoes): the
+       model's bounding radius includes fins and booms, and the round-5 size
+       ceiling is quoted against the hull as the player sees it. */
+    const radius = (entity && entity.def && entity.def.length ? entity.def.length * 0.55 : 0)
+      || (entity && entity.radius)
       || radiusHint
       || 18;
 
@@ -1375,7 +1394,11 @@ export class WeaponFX {
     // Bounding radius is ~0.55 hull lengths (catalog approxRadius).
     const targetPx = Math.max((2 * radius) / mpp, hullFloorPx(radius / 0.55));
     const capPx = impactFloorPx(amount, targetPx);
-    const natural = mag * 9 * jitter;
+    /* Round 5: the floor was capped at 1.2x the target, the natural size was
+       not, so a killing blow (mag 7) painted a 60 m ring-and-spokes star on a
+       14 m interceptor. Both are now held to 1.2x the hull as drawn. */
+    const lengthM = Math.max(radius / 0.55, mpp * hullFloorPx(radius / 0.55));
+    const natural = Math.min(mag * 9 * jitter, lengthM);
     const floored = Math.max(natural, mpp * capPx);
     // Mirrors FLASH_VERT/FLASH_FRAG: clamp amount, spread dimming, and the
     // 1 + 0.9 * clamp lift the fragment stage already applies.

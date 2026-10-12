@@ -22,6 +22,7 @@ import { WeaponFX } from './weapons.js';
 import { ExplosionFX } from './explosions.js';
 import { ShieldFX } from './shields.js';
 import { DebrisFX } from './debris.js';
+import { WreckFX } from './wrecks.js';
 
 /* ------------------------------------------------------------------ imports
    `render/textures.js` and `render/materials.js` belong to the MAT agent and
@@ -1471,9 +1472,10 @@ export class FXSystem {
     this.explosions = new ExplosionFX(ctx, this.debris);
     this.weapons = new WeaponFX(ctx);
     this.shields = new ShieldFX(ctx);
+    this.wrecks = new WreckFX(ctx);
 
     this._subsystems = [
-      this.engines, this.weapons, this.explosions, this.shields, this.debris,
+      this.engines, this.weapons, this.explosions, this.shields, this.debris, this.wrecks,
     ];
 
     this._entities = new Map();
@@ -1608,6 +1610,8 @@ export class FXSystem {
     const e = p && p.entity;
     if (!e) return;
     this.explosions.kill(e, p.killer);
+    // The hull stays: capitals break into drifting, charred sections.
+    this.wrecks.kill(e);
     this.engines.detach(e);
     this.weapons.detachEntity(e);
     this.shields.cancel(e);

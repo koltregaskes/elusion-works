@@ -194,6 +194,7 @@ varying vec3 vObjPos;
 varying vec3 vObjNormal;
 flat varying mat3 vObjToView;
 #ifdef VS_ATTRIBS
+  varying vec3 vCut;
   varying vec3 vAttr;
   /* x = hand-placed livery region, y = wear. Deliberately *not* folded into
      vAttr: vAttr.y is a team index and this is a paint mask, and the whole
@@ -772,6 +773,12 @@ flat varying mat3 vObjToView;
   attribute float aVariant;
   attribute float aTeamMask;
   attribute float aWear;
+  /* Wreck sections (R5). x..y is the slice of the hull's own keel (object z)
+     this instance keeps; (0, 0), which is what an absent attribute reads, keeps
+     all of it. One dead capital is drawn as 2-4 instances of its own class,
+     each cut to a section, so a wreck costs no extra draw call. */
+  attribute vec2 aCut;
+  varying vec3 vCut;
   varying vec3 vAttr;
   varying vec2 vPaint;
 #endif
@@ -792,6 +799,7 @@ vObjNormal = objectNormal;
 #ifdef VS_ATTRIBS
   vAttr = vec3( aDamage, aTeam, aVariant );
   vPaint = vec2( aTeamMask, aWear );
+  vCut = vec3( aCut, position.z );
 #endif
 `;
 
@@ -913,6 +921,13 @@ function hullUniforms(team, family, opts) {
   };
 }
 
+/* Wreck-section clip, see aCut. Runs before any shading work. */
+const HULL_CUT = /* glsl */`
+#ifdef VS_ATTRIBS
+  if ( vCut.y > vCut.x && ( vCut.z < vCut.x || vCut.z > vCut.y ) ) discard;
+#endif
+`;
+
 function patchHull(material, uniforms, flags) {
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
@@ -929,7 +944,7 @@ function patchHull(material, uniforms, flags) {
         '#include <lights_physical_pars_fragment>',
         `#include <lights_physical_pars_fragment>\n${HULL_TERMINATOR}`,
       )
-      .replace('#include <map_fragment>', HULL_BODY)
+      .replace('#include <map_fragment>', HULL_CUT + HULL_BODY)
       .replace('#include <color_fragment>', '')
       .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = vsRough;')
       .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = vsMetal;')

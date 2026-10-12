@@ -18,6 +18,7 @@
 
 import * as THREE from '../../vendor/three/build/three.module.js';
 import { bus } from '../core/events.js';
+import { hullFloorPx } from '../ships/catalog.js';
 
 const RING_STRIDE = 16;
 /* 0..2 centre | 3..5 normal | 6..9 start,life,r0,r1 | 10..12 rgb | 13 thickness
@@ -298,7 +299,7 @@ export class ExplosionFX {
     this.debris = debris;
     this.drawCalls = 1;
 
-    this._quadGeo = annulusGeometry(96);
+    this._quadGeo = annulusGeometry(160);
     const defs = `#define RING_INNER ${RING_INNER.toFixed(3)}\n`
       + `#define RING_OUTER ${RING_OUTER.toFixed(3)}\n`;
     this.rings = ctx.instanceBatch({
@@ -468,8 +469,9 @@ export class ExplosionFX {
     const { L, R, ring } = seq.m;
     return [
       { t: 0.00, k: 'flash', shape: 'point', size: R * 1.9, minPx: 11, life: 0.13, bright: 14.0 },
-      { t: 0.00, k: 'sparks', n: 26, speed: L * 18, size: L * 0.14, minPx: 2.6, life: 0.26 },
-      { t: 0.00, k: 'ring', r0: R * 0.35, r1: ring * 0.80, life: 0.20, thick: 0.050, intensity: 1.35 },
+      /* No shock ring (round 4: a cream hoop round a 14 m hull read as clip
+         art), and the spray is held to a couple of hull lengths. */
+      { t: 0.00, k: 'sparks', n: 18, speed: L * 4.5, size: L * 0.05, minPx: 1.6, life: 0.26 },
       { t: 0.01, k: 'debris', n: 2, scale: 0.26, speed: L * 5.0, lifeScale: 0.12 },
     ];
   }
@@ -604,7 +606,7 @@ export class ExplosionFX {
        beats, two places. The third coincident flash is gone. */
     ev.push({ t: 2.42, k: 'hullglow', duration: 0.62, size: L, bright: 2.4 });
     ev.push({ t: 2.70, k: 'hullglow', duration: 0.30, size: L * 1.05, bright: 5.8 });
-    ev.push({ t: 2.74, k: 'sparks', n: 120 * N, speed: L * 1.6, size: L * 0.018, minPx: 2.6, life: 1.1 });
+    ev.push({ t: 2.74, k: 'sparks', n: 120 * N, speed: L * 0.6, size: L * 0.018, minPx: 2.6, life: 1.1 });
 
     /* The screen floor scales with hull length as well as the world size does.
        A flat 110 px floor gave a mothership and a destroyer the same guaranteed
@@ -624,13 +626,11 @@ export class ExplosionFX {
       t: 3.16, k: 'flash', at: station - 0.20, size: R * 1.05, life: 1.30,
       minPx: Math.round(primaryPx * 0.60), bright: 11.0, colour: FIRE, shake: 0,
     });
-    ev.push({ t: 3.30, k: 'ring', r0: R * 0.25, r1: ring * 1.05, life: 2.0, thick: 0.030, intensity: 1.16, axis: 'perp' });
-    ev.push({ t: 3.42, k: 'embers', n: 240 * N, speed: L * 0.85, life: 3.20 });
+    ev.push({ t: 3.42, k: 'embers', n: 240 * N, speed: L * 0.30, life: 3.20 });
     ev.push({ t: 3.46, k: 'smoke', n: 14, size: L * 0.42, speed: L * 0.5, life: 3.60 });
 
     /* ---- act 4: drifting lit wreckage. The keel sections are already out
        there from the split; this is the fire still in them. */
-    ev.push({ t: 3.62, k: 'ring', r0: R * 1.1, r1: ring * 2.1, life: 2.8, thick: 0.016, intensity: 0.82 });
     ev.push({
       t: 3.70, k: 'linger', duration: 5.20, rate: 18, size: L * 0.35,
       emberLife: 3.4, smokeLife: 4.0,
@@ -736,6 +736,13 @@ export class ExplosionFX {
     // number of screen pixels for the camera we actually have right now.
     const dist = ctx.distTo(origin.x, origin.y, origin.z);
     const px = (metres, minPx) => (minPx ? ctx.atLeast(metres, dist, minPx) : metres);
+    /* Round 5 ceiling: no flash may draw larger than 1.2x the hull as it is
+       drawn on screen right now (its length, or the impostor's pixel floor
+       when that is bigger). `k` is how far past `size` the widest sprite of
+       that beat reaches. The floors above can lift a beat to legibility; they
+       can no longer lift it past the ship. Shock rings get 2x. */
+    const hullM = Math.max(seq.L, ctx.px(dist) * hullFloorPx(seq.L));
+    const cap = (metres, k) => Math.min(metres, (1.2 * hullM) / k);
 
     switch (ev.k) {
       /* A fireball is a colour ramp in time, not one coloured blob: a white
@@ -751,7 +758,7 @@ export class ExplosionFX {
            0.24 s and a fifth of a hull apart read as a sequence, and the same
            two at one point read as one ball with a hard sprite boundary. */
         if (ev.at) origin.addScaledVector(seq.axis, ev.at * seq.L);
-        const size = px(ev.size, ev.minPx);
+        const size = cap(px(ev.size, ev.minPx), ev.shape === 'point' ? 1.0 : 2.0);
         /* `point` — two flares instead of five. Right for anything whose whole
            death is a single beat: a strike craft's pop built from a core, a
            body, a cooling shell and two lobes is five coincident billboards
@@ -820,7 +827,7 @@ export class ExplosionFX {
         this._v.addScaledVector(seq.side, rng.gaussian(0, seq.L * 0.06));
         this._v.addScaledVector(seq.up, rng.gaussian(0, seq.L * 0.05));
         const V = seq.vel;
-        const size = px(ev.size, ev.minPx);
+        const size = cap(px(ev.size, ev.minPx), 2.8);
         f.flare.spawn(this._v.x, this._v.y, this._v.z, V.x, V.y, V.z, 0.22, 0,
           size * 0.4, size * 1.8, CORE, 7.0, 0, 0);
         f.flare.spawn(this._v.x, this._v.y, this._v.z, V.x, V.y, V.z, 0.5, 0,
@@ -923,7 +930,7 @@ export class ExplosionFX {
         const V = seq.vel;
         const at = ev.at || 0;
         const plane = this._v.copy(origin).addScaledVector(seq.axis, at * seq.L);
-        const size = px(ev.size, ev.minPx);
+        const size = cap(px(ev.size, ev.minPx), 2.0);
         const col = ev.colour || CORE;
         const coreK = ev.core === undefined ? 0.46 : ev.core;
 
@@ -963,7 +970,7 @@ export class ExplosionFX {
             seq.side.y * ca + seq.up.y * sa + seq.axis.y * rng.gaussian(0, 0.22),
             seq.side.z * ca + seq.up.z * sa + seq.axis.z * rng.gaussian(0, 0.22),
           ).normalize();
-          const sp = seq.L * rng.range(1.2, 3.6);
+          const sp = seq.L * rng.range(0.4, 1.1);
           this._col.copy(CORE).lerp(EMBER, rng.next() * 0.7);
           f.spark.spawn(plane.x, plane.y, plane.z,
             V.x + this._dir.x * sp, V.y + this._dir.y * sp, V.z + this._dir.z * sp,
@@ -1012,7 +1019,14 @@ export class ExplosionFX {
           const u = rng.unitVector();
           nrm.set(u.x, u.y, u.z);
         }
-        this._addRing(origin, nrm, ev.r0, ev.r1, ev.life, ev.thick, ev.intensity, seq);
+        /* Outer edge at most 2x the hull's screen length across (RING_OUTER
+           is the annulus' outer lip). */
+        const r1 = Math.min(ev.r1, hullM / RING_OUTER);
+        const r0 = Math.min(ev.r0, r1 * 0.5);
+        // A ring pulled in that far carries the same energy over less area;
+        // dim it with the cut so the shorter front does not read as a halo.
+        const dim = Math.min(1, 0.15 + r1 / Math.max(ev.r1, 1e-3));
+        this._addRing(origin, nrm, r0, r1, ev.life, ev.thick, ev.intensity * dim, seq);
         break;
       }
 

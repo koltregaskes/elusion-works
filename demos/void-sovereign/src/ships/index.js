@@ -695,6 +695,7 @@ export function setFleetScene(scene) {
 
 const INITIAL_CAPACITY = 64;
 const _m4 = new THREE.Matrix4();
+const _zero = new THREE.Matrix4().makeScale(0, 0, 0);
 const _col = new THREE.Color();
 
 class FleetBatch {
@@ -727,13 +728,19 @@ class FleetBatch {
     const slotDamage = new Float32Array(capacity);
     const slotLevel = new Int32Array(capacity).fill(-1);
     const slotIndex = new Int32Array(capacity).fill(-1);
+    const slotCut = new Float32Array(capacity * 2);
+    const slotWreck = new Uint8Array(capacity);
     if (oldCap) {
       slotMatrix.set(this.slotMatrix);
       slotColor.set(this.slotColor);
       slotDamage.set(this.slotDamage);
       slotLevel.set(this.slotLevel);
       slotIndex.set(this.slotIndex);
+      slotCut.set(this.slotCut);
+      slotWreck.set(this.slotWreck);
     }
+    this.slotCut = slotCut;
+    this.slotWreck = slotWreck;
     this.slotMatrix = slotMatrix;
     this.slotColor = slotColor;
     this.slotDamage = slotDamage;
@@ -761,6 +768,10 @@ class FleetBatch {
         const dmg = new THREE.InstancedBufferAttribute(new Float32Array(capacity), 1);
         dmg.setUsage(THREE.DynamicDrawUsage);
         im.geometry.setAttribute('aDamage', dmg);
+        // Wreck-section keel slice, see `setWreckSection`. (0, 0) = whole hull.
+        const cut = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 2), 2);
+        cut.setUsage(THREE.DynamicDrawUsage);
+        im.geometry.setAttribute('aCut', cut);
         im.castShadow = shadow;
         im.receiveShadow = shadow;
         // Instances are scattered across the whole battle volume, so a bounding
@@ -778,7 +789,7 @@ class FleetBatch {
           im.onBeforeRender = impostorBeforeRender;
         }
         this.group.add(im);
-        level.parts.push({ mesh: im, damage: dmg, kind });
+        level.parts.push({ mesh: im, damage: dmg, cut, kind });
       };
 
       const impostor = i >= IMPOSTOR_LOD;
@@ -815,12 +826,29 @@ class FleetBatch {
     if (index < 0) return;
     _m4.fromArray(this.slotMatrix, slot * 16);
     _col.setRGB(this.slotColor[slot * 3], this.slotColor[slot * 3 + 1], this.slotColor[slot * 3 + 2]);
+    const wreck = this.slotWreck[slot] === 1;
     for (const p of level.parts) {
-      p.mesh.setMatrixAt(index, _m4);
+      // A wreck section is dark plating only: its lights, glass and drive
+      // bells are collapsed to nothing rather than drawn whole across the cut.
+      p.mesh.setMatrixAt(index, wreck && p.kind !== KIND.HULL ? _zero : _m4);
       p.mesh.setColorAt(index, _col);
       p.damage.array[index] = this.slotDamage[slot];
+      p.cut.array[index * 2] = this.slotCut[slot * 2];
+      p.cut.array[index * 2 + 1] = this.slotCut[slot * 2 + 1];
     }
     level.dirty = true;
+  }
+
+  /** Turn a reserved slot into one section of a wreck: keep only the slice
+      lo..hi of the hull's own keel (object-space z), and drop its emitters.
+      Called again with a narrower slice to burn the section away at the end. */
+  setWreckSection(slot, lo, hi) {
+    if (slot < 0 || slot >= this.capacity) return;
+    this.slotWreck[slot] = 1;
+    this.slotCut[slot * 2] = lo;
+    this.slotCut[slot * 2 + 1] = hi;
+    const lv = this.slotLevel[slot];
+    if (lv >= 0) this.writeInstance(this.levels[lv], this.slotIndex[slot], slot);
   }
 
   addToLevel(slot, lv) {
@@ -870,6 +898,9 @@ class FleetBatch {
     this.slotColor[slot * 3 + 1] = 1;
     this.slotColor[slot * 3 + 2] = 1;
     this.slotDamage[slot] = 0;
+    this.slotCut[slot * 2] = 0;
+    this.slotCut[slot * 2 + 1] = 0;
+    this.slotWreck[slot] = 0;
     this.live++;
     this.addToLevel(slot, 0);
     return slot;
@@ -890,7 +921,8 @@ class FleetBatch {
     if (lv < 0) return;
     const level = this.levels[lv];
     const index = this.slotIndex[slot];
-    for (const p of level.parts) p.mesh.setMatrixAt(index, matrix);
+    const wreck = this.slotWreck[slot] === 1;
+    for (const p of level.parts) p.mesh.setMatrixAt(index, wreck && p.kind !== KIND.HULL ? _zero : matrix);
     level.dirty = true;
   }
 
@@ -941,6 +973,7 @@ class FleetBatch {
         p.mesh.instanceMatrix.needsUpdate = true;
         if (p.mesh.instanceColor) p.mesh.instanceColor.needsUpdate = true;
         p.damage.needsUpdate = true;
+        p.cut.needsUpdate = true;
       }
       level.dirty = false;
     }
@@ -979,6 +1012,18 @@ export function getFleetBatch(classId, team = 0) {
   batch = new FleetBatch(classId, team);
   _batches.set(key, batch);
   return batch;
+}
+
+/** What FX needs to cut a dead hull of this class into wreck sections: its
+    keel extent in object space, and the finest-shaded level a section may sit
+    on (the impostor levels do not take the cut, so sections stop short of
+    them). Null if the class has no hull. */
+export function wreckInfo(classId) {
+  const asset = buildClass(classId);
+  const g = asset && asset.levels[0] && asset.levels[0].hull;
+  if (!g) return null;
+  if (!g.boundingBox) g.computeBoundingBox();
+  return { zMin: g.boundingBox.min.z, zMax: g.boundingBox.max.z, maxLod: IMPOSTOR_LOD - 1 };
 }
 
 /** Flush every dirty instance buffer. Call once per frame, after the sim has
