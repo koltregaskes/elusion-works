@@ -79,7 +79,7 @@ const FLARE_HULL_FRAC = 0.14;
 const PLUME_HULL_RADIUS = 0.05;
 /* The axial floor (MIN_AXIAL_PX) may not paint a streak longer than this many
    drawn hull lengths, which is the round-2 0.6x plume look with a little room. */
-const PLUME_HULL_LEN = 0.75;
+const PLUME_HULL_LEN = 0.45;
 /* Hull length on screen, in pixels, over which the drive hands its radiance
    down to the fleet-range level: full above the top, FLEET_DIM below the
    bottom. The impostor floor puts a fighter at 9 px, so a floored hull always
@@ -125,7 +125,11 @@ const LEN_FLOOR_MIX = 0.60;
    0.6 hulls. On a 14 m interceptor at the same range the cap is 8.4 m and the
    floor is 24 m — floor wins, and the drive is a 4 px streak rather than a
    2 px dot. */
-const PLUME_LEN_CAP = 0.60;
+/* 0.35, down from 0.60 (round 5 fix 4). The soft shell paints well past
+   the nominal length, so a 0.60 ceiling drew a hostile corvette's plume at
+   about 1.15x its hull up close (critic round 4, fcc13-corvette-plume). The
+   0.35x proportion is re-applied to every moving hull, either team. */
+const PLUME_LEN_CAP = 0.35;
 
 /* Axial floor in pixels: the round-1 constraint, expressed as the one number it
    actually is. Down from the ~13 px the round-2 arithmetic handed a fighter at

@@ -264,7 +264,12 @@ void main() {
      becomes the brightest object in shot by a wide margin with no muzzle, no
      impact and no falloff to place it. Legible still, but a line rather than
      a scratch. */
-  float shellPx = aShell < 0.5 ? 9.0 : ( aShell < 1.5 ? 4.0 : 1.6 );
+  /* Round 5 fix 4: 9 / 4 / 1.6 still drew three parallel bars at fleet range
+     (critic round 4, "laser pointers"), so the floors are slimmer and the
+     floored width now carries the same taper and flicker the natural width
+     does. Before, the taper only lived in the natural width, which the floor
+     swallows at range, so a distant lance was a ruler-straight bar. */
+  float shellPx = aShell < 0.5 ? 7.0 : ( aShell < 1.5 ? 3.0 : 1.1 );
 
   /* Taper along the length, then bulb at the impact: the lance leaves the
      barrel at full bore, thins over the run, and fattens where it is dumping
@@ -272,10 +277,20 @@ void main() {
   float lean = mix( 1.0, 0.68, smoothstep( 0.02, 0.72, along ) );
   float belly = lean + 0.55 * smoothstep( 0.60, 1.0, along ) + 0.25 * ( 1.0 - smoothstep( 0.0, 0.18, along ) );
 
-  float natural = iTime.z * shellW * belly
+  /* Width flicker: the shell breathes, the core barely does. Two rates per
+     beam plus a slow ripple travelling down the run, so the width is never
+     the same at both ends or on consecutive frames. */
+  float wFlick = 1.0 + ( aShell > 1.5 ? 0.10 : 0.24 )
+               * sin( uTime * 23.0 + iTint.w * 41.0 - along * 9.0 )
+               * ( 0.6 + 0.4 * sin( uTime * 7.3 + iTint.w * 17.0 ) );
+
+  float natural = iTime.z * shellW * belly * wFlick
                 * mix( 0.18, 1.0, charge )
                 * mix( 1.0, 0.10, smoothstep( 0.84, 1.0, t ) );
-  float floorW = dist * uPixelScale * shellPx;
+  // The floor tapers toward the target (to 55 %) and does not take the bulb:
+  // the landing point is drawn by the capped impact star, not by a fat bar end.
+  float floorTaper = mix( 1.0, 0.55, smoothstep( 0.04, 0.92, along ) );
+  float floorW = dist * uPixelScale * shellPx * floorTaper * wFlick;
   float w = max( natural, floorW );
   vClamp = clamp( 1.0 - natural / max( w, 0.0001 ), 0.0, 1.0 );
   // Radiance falls as the floor spreads the beam over more pixels than it
@@ -347,8 +362,15 @@ void main() {
      part. Without this the beam is a hard-edged white scratch of constant
      value from one edge of frame to the other, with nothing to say which end
      is the gun and which is the target. */
-  float taper = mix( 1.0, 0.38, smoothstep( 0.03, 0.66, along ) )
-              + 0.55 * smoothstep( 0.80, 1.0, along );
+  /* vClamp is how much the screen floor is carrying the width, so it doubles
+     as a range term: 0 close up, near 1 at fleet range. At range the lance
+     falls off toward the target instead of brightening into it, and the end
+     terms are held back, because the bloom pass turns a hot 2 px bar end into
+     a 20 px white disc (critic round 4, fw-beams). */
+  float far = smoothstep( 0.35, 0.9, vClamp );
+  float taper = mix( 1.0, mix( 0.38, 0.30, far ), smoothstep( 0.03, 0.66, along ) )
+              + mix( 0.55, 0.12, far ) * smoothstep( 0.80, 1.0, along );
+  ends *= mix( 1.0, 0.22, far );
 
   float shape;
   vec3 col;
@@ -360,15 +382,18 @@ void main() {
      bloom and the grade. */
   if ( vShell > 1.5 ) {
     // Core: a hard white filament. This is not a light, it is a hole being cut.
-    shape = pow( max( 1.0 - across * across, 0.0 ), mix( 0.55, 0.22, vClamp ) );
-    col = mix( vec3( 1.0 ), vColor, 0.12 ) * ( 1.9 + 3.0 * ends ) * mix( 0.92, 1.0, energy );
+    // At range the core is a thin hot line, not a flat bar: a narrower
+    // profile and radiance held near the glow cut so the bloom cannot widen it.
+    shape = pow( max( 1.0 - across * across, 0.0 ), mix( 0.55, 1.6, far ) );
+    col = mix( vec3( 1.0 ), vColor, mix( 0.12, 0.22, far ) ) * ( mix( 1.9, 1.05, far ) + 3.0 * ends ) * mix( 0.92, 1.0, energy );
   } else if ( vShell > 0.5 ) {
-    // Sheath: the colour, and where the plasma turbulence lives.
-    shape = pow( max( 1.0 - across, 0.0 ), mix( 2.2, 1.1, vClamp ) ) * mix( 0.75, 1.25, energy );
-    col = mix( vColor, vec3( 1.0 ), 0.06 ) * ( 0.60 + 1.15 * ends ) * energy;
+    // Sheath: the colour, and where the plasma turbulence lives. Soft-edged
+    // and kept under the glow cut at range so it stays team-tinted.
+    shape = pow( max( 1.0 - across, 0.0 ), mix( 2.2, 1.6, vClamp ) ) * mix( 0.75, 1.25, energy );
+    col = mix( vColor, vec3( 1.0 ), mix( 0.06, 0.0, far ) ) * ( mix( 0.60, 0.42, far ) + 1.15 * ends ) * energy;
   } else {
     // Halo: the long-range read. Soft, wide, cheap, and firmly coloured.
-    shape = pow( max( 1.0 - across, 0.0 ), 2.8 ) * 0.55;
+    shape = pow( max( 1.0 - across, 0.0 ), 2.8 ) * mix( 0.55, 0.40, far );
     col = vColor * ( 0.30 + 0.62 * ends );
   }
 
@@ -712,7 +737,17 @@ void main() {
   float a = fxSharpen( texel.a, star ? 0.0 : vClamp ) * ( star ? 1.0 : fxQuadMask( vQuad ) ) * vAlpha * fxSoftFade( vFragW );
   if ( a <= 0.0035 ) discard;
   vec3 lit = vColor * texel.rgb * vBright * uGain * ( 1.0 + 0.9 * vClamp ) * vSpread;
-  if ( star ) lit = mix( vColor * 0.58 * uGain, lit, coreShare );
+  if ( star ) {
+    lit = mix( vColor * 0.58 * uGain, lit, coreShare );
+    /* Round 5 fix 4: tone cap on the hot point. At fleet range the floor lift
+       drove the core to 6-9x radiance, and the glow layer's 0.6 bloom cut
+       spread that 1 px point into a 12-20 px white disc that hid the cross
+       (critic round 4, fw-impacts). Under about 12 px the core is held just
+       over the cut, so it blooms by a pixel or two and the spikes carry the
+       mark; close up, where the star is large, the cap lets go. */
+    float capR = mix( 0.95, 8.0, smoothstep( 12.0, 30.0, vPx ) ) * uGain;
+    lit = min( lit, vec3( capR ) );
+  }
   gl_FragColor = vec4( lit, a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -921,6 +956,13 @@ const IMPACT_BRIGHT = 2.6;
    as intended and the star carries the hit. */
 const IMPACT_DETAIL_CAP_PX = 0.7;
 const BURST_SET = [1, 3, 2, 0];
+/* Round 5 fix 4: screen ceilings for the soft flare-field sprites that sit
+   under a hit and at both ends of a beam. The flare field floors to 5 px and
+   lifts radiance when the floor bites, so at fleet range each of these was a
+   round bloom disc of 12-20 px over the impact star. Held to a couple of
+   pixels they tint the star and the star carries the shape. */
+const IMPACT_WASH_MAX_PX = 2.0;
+const BEAM_END_MAX_PX = 2.5;
 
 /* Screen ceiling, in pixels, for the two effects that fire hundreds of times a
    second in a fleet action: a gun going off and a round landing.
@@ -972,7 +1014,11 @@ const IMPACT_CELL_PX = 14;
    ring and spikes, and under about 9 px it closes up into the very dot it
    replaced. It is mostly empty space, so the extra pixels do not cost the
    carpet that the old 6 px disc would have at this size. */
-const IMPACT_FLOOR_PX = 9.5;
+const IMPACT_FLOOR_PX = 6.5;
+/* Round 5 fix 4: the star is a hot point and four or six 1 px spikes now (the
+   ring went in round 5), and a cross holds its shape at 6-8 px, so the floor
+   comes back down and nothing a hit paints at range may exceed 8 px. */
+const IMPACT_MAX_PX = 8;
 
 /* Screen floor for one impact mark, in pixels.
 
@@ -985,7 +1031,7 @@ const IMPACT_FLOOR_PX = 9.5;
    since what the player needs from a fighter taking fire is *that* it was hit,
    not where. */
 function impactFloorPx(amount, targetPx) {
-  const want = Math.min(11, IMPACT_FLOOR_PX + Math.sqrt(Math.max(1, amount)) * 0.34);
+  const want = Math.min(IMPACT_MAX_PX, IMPACT_FLOOR_PX + Math.sqrt(Math.max(1, amount)) * 0.1);
   /* 1.2x the target, up from 0.5x, and the target is the hull as *drawn*
      (with the impostor's size floor), not the physical one. A disc that size
      would become the ship; the impact star is a 1 px ring and spikes, so on a
@@ -1274,7 +1320,7 @@ export class WeaponFX {
        another soft disc, and the hit has to read by the star's shape. */
     f.flare.spawn(pt.x + n.x * mag * 0.6, pt.y + n.y * mag * 0.6, pt.z + n.z * mag * 0.6,
       n.x * 26, n.y * 26, n.z * 26, 0.30, 2.2,
-      Math.min(mag * 4, ceilM * 0.25), Math.min(mag * 19 * jitter, ceilM), HULL_MOLTEN, 1.9, 0, 0, capPx * 0.7);
+      Math.min(mag * 4, ceilM * 0.25), Math.min(mag * 19 * jitter, ceilM), HULL_MOLTEN, 1.9, 0, 0, Math.min(capPx * 0.5, IMPACT_WASH_MAX_PX));
     /* Stretched, not round: `stretch` elongates the billboard along its own
        velocity, so spall reads as metal being thrown rather than as a spray of
        identical dots. */
@@ -1622,6 +1668,12 @@ export class WeaponFX {
     };
     if (this._missileTrails < MAX_MISSILE_TRAILS) {
       const ti = (p.shooter && p.shooter.team) || 0;
+      /* Round 5 fix 4: the bomber's plasma torpedo is a bead, not a shaft. Its
+         130 m flame and 0.34 s smoke laid a thick continuous orange line from
+         launch to target at fleet range (critic round 4, fcc99-impact). A
+         plasma charge burns no propellant, so it gets a short hot wake like a
+         kinetic round and only a whisper of smoke. */
+      const bead = w.id === 'plasmaLance';
       /* Life was 1.5 s, which at 900 m/s laid 1.3 km of ribbon per missile and
          is why a dozen of them tiled the middle of the frame for the whole
          engagement. 0.55 s is roughly a hundred body-lengths of smoke — plainly
@@ -1634,13 +1686,13 @@ export class WeaponFX {
          the "drawn line" read however well it tapers or ramps — width is what
          makes it read as a volume of smoke rather than as ink. */
       m.trail = ctx.fields.smokeTrail.acquire(
-        0x8d8a86, 9.0, 0.34, 11, this._smokeRamps[ti] || this._smokeRamps[0],
+        0x8d8a86, bead ? 5.0 : 9.0, bead ? 0.10 : 0.34, 11, this._smokeRamps[ti] || this._smokeRamps[0],
       );
       /* A third of the smoke's life: the flame is out long before the soot
          is. 0.12 s, down from 0.18, so at cruise it is ~130 m of flame, under
          the spacing the draw budget leaves between rounds of one salvo. */
       m.heat = ctx.fields.trail.acquire(
-        team.engine, 2.4, 0.12, 8, this._heatRamps[ti] || this._heatRamps[0],
+        team.engine, bead ? 1.8 : 2.4, bead ? 0.045 : 0.12, 8, this._heatRamps[ti] || this._heatRamps[0],
       );
       if (m.trail) this._missileTrails++;
     }
@@ -2020,7 +2072,7 @@ export class WeaponFX {
            under its target's own screen size. */
         this._impactMark(this._v2, this._v, t.damage, null, t.tRadius);
         ctx.fields.flare.spawn(t.ex, t.ey, t.ez, 0, 0, 0, 0.26, 0,
-          mag * 4, mag * 17 * jitter, HULL_MOLTEN, 1.9, 0, 0, capPx * 1.4);
+          mag * 4, mag * 17 * jitter, HULL_MOLTEN, 1.9, 0, 0, Math.min(capPx * 0.5, IMPACT_WASH_MAX_PX));
         this._sparkBurst(this._v2, this._v, Math.round(8 + mag * 4), 0.45, 80 + t.damage * 1.2, mag * 1.9, IMPACT_DETAIL_CAP_PX);
       }
     }
@@ -2100,9 +2152,9 @@ export class WeaponFX {
     // Muzzle throat, re-lit every emit so the barrel stays white for the burn.
     const ms = b.width * 7.0 * gain;
     f.flare.spawn(b.from.x, b.from.y, b.from.z, 0, 0, 0, 0.10, 0,
-      ms, ms * 0.55, HOT_WHITE, 5.2, 0, 0);
+      ms, ms * 0.55, HOT_WHITE, 5.2, 0, 0, BEAM_END_MAX_PX);
     f.flare.spawn(b.from.x, b.from.y, b.from.z, 0, 0, 0, 0.22, 0,
-      ms * 0.7, ms * 2.2, b.colour, 2.6, 0, 0);
+      ms * 0.7, ms * 2.2, b.colour, 2.6, 0, 0, BEAM_END_MAX_PX);
 
     // Impact bulb: white core, coloured wash, both floored to a legible size.
     const is = b.width * 9.5 * gain;
@@ -2111,9 +2163,9 @@ export class WeaponFX {
     this._impactMark(b.to, this._v.copy(b.from).sub(b.to).normalize(),
       b.damage, b.target);
     this._flash(b.to.x, b.to.y, b.to.z, 0, 0, 0, 0.12,
-      is * (0.8 + rng.next() * 0.5), is * 0.45, HULL_HOT, 6.0, 8.0, IMPACT_SET);
+      is * (0.8 + rng.next() * 0.5), is * 0.45, HULL_HOT, 3.2, IMPACT_MAX_PX, IMPACT_SET);
     f.flare.spawn(b.to.x, b.to.y, b.to.z, 0, 0, 0, 0.34, 0,
-      is * 0.6, is * 3.0, b.colour, 3.0, 0, 0);
+      is * 0.6, is * 3.0, b.colour, 3.0, 0, 0, BEAM_END_MAX_PX);
 
     // Back along the beam is the hull normal for a head-on cut; spall goes that
     // way, and a wide skirt of it sprays across the plating.
@@ -2122,12 +2174,16 @@ export class WeaponFX {
     if (l > 1e-4) this._v.multiplyScalar(1 / l);
     else this._v.set(0, 1, 0);
 
+    /* Round 5 fix 4: the splash re-emits all through a 1.6 s burn, and with the
+       spark field's 2.4 px floor its sparks stacked into a 25 px white bloom
+       disc at the landing point. Same sub-pixel cap as every other hit's
+       near-field detail, so at range the capped impact star carries the hit. */
     const hot = Math.round((10 + 8 * ctx.qscale) * (b.ion ? 1.6 : 1));
     this._sparkBurst(b.to, this._v, hot, 0.55,
-      (220 + b.damage * 0.9) * gain, b.width * 1.5);
+      (220 + b.damage * 0.9) * gain, b.width * 1.5, IMPACT_DETAIL_CAP_PX);
     // A second, flatter fan: molten metal running along the surface.
     this._sparkBurst(b.to, this._v, Math.round(hot * 0.6), 1.35,
-      (110 + b.damage * 0.4) * gain, b.width * 1.1);
+      (110 + b.damage * 0.4) * gain, b.width * 1.1, IMPACT_DETAIL_CAP_PX);
 
     for (let i = 0; i < (b.ion ? 2 : 1); i++) {
       const u = rng.unitVector();
@@ -2135,7 +2191,7 @@ export class WeaponFX {
         b.to.x, b.to.y, b.to.z,
         this._v.x * 60 + u.x * 45, this._v.y * 60 + u.y * 45, this._v.z * 60 + u.z * 45,
         rng.range(0.7, 1.8), 0.25, b.width * 1.6, b.width * 0.3,
-        FLAK_BURST, 2.4, 0, 0,
+        FLAK_BURST, 2.4, 0, 0, IMPACT_DETAIL_CAP_PX,
       );
     }
     if (rng.chance(0.6)) {

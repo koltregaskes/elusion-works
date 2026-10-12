@@ -943,15 +943,21 @@ export class ExplosionFX {
            through the two open ends of the break, which is where the hull is
            now missing. Elongating them along their own travel keeps the
            fireball's silhouette lens-shaped instead of circular. */
+        /* Round 5 fix 4: these lobes bypassed the 1.2x ceiling. `size` was
+           capped, but they flew off at 0.9 size/s for 1.7 lives with a 1.5x
+           velocity stretch, so the flare sprite's baked cross was smeared into
+           two ~400 px orange lens crosses well past both ends of a cruiser
+           (fix1-cruiser-strip frame 06). Slower, shorter-lived, a third of the
+           stretch, and dimmer: the lobes now end inside the cap. */
         for (let s = -1; s <= 1; s += 2) {
           f.flare.spawn(
-            plane.x + seq.axis.x * size * 0.55 * s,
-            plane.y + seq.axis.y * size * 0.55 * s,
-            plane.z + seq.axis.z * size * 0.55 * s,
-            V.x + seq.axis.x * size * 0.9 * s,
-            V.y + seq.axis.y * size * 0.9 * s,
-            V.z + seq.axis.z * size * 0.9 * s,
-            ev.life * 1.7, 0, size * 0.22, size * 0.85, FIRE, ev.bright * 0.075, 1.5, 0,
+            plane.x + seq.axis.x * size * 0.40 * s,
+            plane.y + seq.axis.y * size * 0.40 * s,
+            plane.z + seq.axis.z * size * 0.40 * s,
+            V.x + seq.axis.x * size * 0.30 * s,
+            V.y + seq.axis.y * size * 0.30 * s,
+            V.z + seq.axis.z * size * 0.30 * s,
+            ev.life * 1.1, 0, size * 0.18, size * 0.55, FIRE, ev.bright * 0.05, 0.5, 0,
           );
         }
 

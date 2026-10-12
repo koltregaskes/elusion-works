@@ -40,6 +40,7 @@ varying float vStrength;
 varying float vSeed;
 varying float vSpan;
 varying float vFragW;
+varying float vFlick;
 
 void main() {
   float age = clamp( ( uTime - iTime.x ) / max( iTime.y, 0.0001 ), 0.0, 1.0 );
@@ -58,6 +59,8 @@ void main() {
   vSeed = iSeed;
   vSpan = iSpan;
   vFragW = gl_Position.w;
+  // Per-hit shimmer, two incommensurate rates, so the cap breathes as it fades.
+  vFlick = 0.72 + 0.28 * sin( uTime * 47.0 + iSeed * 91.0 ) * sin( uTime * 19.0 + iSeed * 37.0 );
   #include <logdepthbuf_vertex>
 }
 `;
@@ -78,6 +81,7 @@ varying float vStrength;
 varying float vSeed;
 varying float vSpan;
 varying float vFragW;
+varying float vFlick;
 
 const vec2 HS = vec2( 1.0, 1.7320508 );
 
@@ -135,15 +139,24 @@ void main() {
   // bubble when several hits overlap — kept brief and low.
   float rimFlash = fres * exp( -vAge * 11.0 ) * 0.20;
 
+  /* Round 5 fix 4: a partial cap, never the whole sphere. Up close a cruiser
+     hit lit the full low-poly bubble, rim to rim, as a faceted orange ball
+     (fix1-cruiser-strip frame 01). Everything is now windowed to about 50
+     degrees round the hit point, the rim term only shows inside that window,
+     and the lattice is a hint under a smooth fresnel sheen. */
+  float local = 1.0 - smoothstep( 0.30, 0.90, ang );
+  if ( local <= 0.0 ) discard;
+  rimFlash *= local * vFlick;
+
   // The unexcited lattice must be genuinely dark, not a dim standing grid.
-  float lattice = grid * 0.92 + 0.16;
-  float a = ( excite * lattice * mix( 0.42, 1.0, fres ) + hot + rimFlash )
+  float lattice = grid * 0.30 + 0.55;
+  float a = ( excite * lattice * mix( 0.30, 1.0, fres ) * local * vFlick + hot + rimFlash )
           * vStrength * pow( 1.0 - vAge, 1.3 );
   a *= fxSoftFade( vFragW );
   if ( a <= 0.004 ) discard;
 
   vec3 col = mix( vColor, vec3( 1.0 ), clamp( hot * 0.8 + grid * excite * 0.45, 0.0, 1.0 ) );
-  gl_FragColor = vec4( col * ( 1.4 + 3.0 * hot ) * uGain, clamp( a, 0.0, 1.0 ) );
+  gl_FragColor = vec4( col * ( 1.1 + 1.8 * hot ) * uGain, clamp( a, 0.0, 1.0 ) );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -176,7 +189,9 @@ export class ShieldFX {
     this.ctx = ctx;
     this.drawCalls = 1;
 
-    this._sphere = new THREE.IcosahedronGeometry(1, ctx.quality === 'low' ? 1 : 2);
+    /* Detail 4 (5120 faces), up from 2: at detail 2 the silhouette and the
+       interpolated normals of a cruiser-sized bubble showed the facets. */
+    this._sphere = new THREE.IcosahedronGeometry(1, ctx.quality === 'low' ? 3 : 4);
     this.batch = ctx.instanceBatch({
       name: 'shields',
       base: this._sphere,
