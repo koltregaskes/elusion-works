@@ -1,5 +1,5 @@
 Status: active
-Next step: critic round 3 on the PR 29 build, then fix its findings one at a time on feat/void-sovereign-shell
-Blocked on: nothing for the round; going live needs Kol to merge PR #29 then #27 (KOL-6004)
-Updated: 2026-10-11 19:00 UK by HOMEWORLD CLONE session
+Next step: round 5 fixes from demos/void-sovereign/CRITIQUE-ROUND-4.md, one commit each on feat/void-sovereign-shell, starting with death staging around the hull
+Blocked on: nothing for round 5; going live needs Kol to merge PR #29 then #27 (KOL-6004)
+Updated: 2026-10-12 UK by HOMEWORLD CLONE session (round 4 scored 5/10)
 Linear: https://linear.app/koltregaskes/issue/KOL-5966
