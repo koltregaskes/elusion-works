@@ -18,7 +18,6 @@
 
 import * as THREE from '../../vendor/three/build/three.module.js';
 import { bus } from '../core/events.js';
-import { hullFloorPx } from '../ships/catalog.js';
 
 const RING_STRIDE = 16;
 /* 0..2 centre | 3..5 normal | 6..9 start,life,r0,r1 | 10..12 rgb | 13 thickness
@@ -612,7 +611,9 @@ export class ExplosionFX {
        beats, two places. The third coincident flash is gone. */
     ev.push({ t: 2.42, k: 'hullglow', duration: 0.62, size: L, bright: 2.4 });
     ev.push({ t: 2.70, k: 'hullglow', duration: 0.30, size: L * 1.05, bright: 5.8 });
-    ev.push({ t: 2.74, k: 'sparks', n: 120 * N, speed: L * 0.6, size: L * 0.018, minPx: 2.6, life: 1.1 });
+    /* R7 fix 5: sparse embers, not a dense radial burst. 120 * N sparks at 3-10x
+       stretch drew a white starburst round the carrier's primary. */
+    ev.push({ t: 2.74, k: 'sparks', n: 18 * N, speed: L * 0.6, size: L * 0.012, minPx: 1.8, life: 1.1, stretch: [1.2, 2.4] });
 
     /* The screen floor scales with hull length as well as the world size does.
        A flat 110 px floor gave a mothership and a destroyer the same guaranteed
@@ -623,9 +624,10 @@ export class ExplosionFX {
     const station = rng.range(-0.26, 0.26);
     ev.push({
       t: 2.92, k: 'split', at: station, size: R * 1.7, minPx: primaryPx, life: 0.60,
-      bright: 34.0, core: 0.62, sep: 0.13, keel: 4, n: 40, scale: 1.0, spark: 240 * N,
+      bright: 34.0, core: 0.62, sep: 0.13, keel: 4, n: 40, scale: 1.0, spark: 30 * N,
     });
-    ev.push({ t: 2.92, k: 'ring', r0: R * 0.35, r1: ring * 1.55, life: 1.6, thick: 0.022, intensity: 1.63, axis: 'hull' });
+    // R7 fix 5: a hairline front at the break's own weight, not a thick hoop.
+    ev.push({ t: 2.92, k: 'ring', r0: R * 0.35, r1: ring * 1.55, life: 1.6, thick: 0.012, intensity: 1.10, axis: 'hull' });
     /* The cooling shell: same detonation, seen later and from further down the
        hull. `shake: 0` — the beat is one shove, not two. */
     ev.push({
@@ -747,7 +749,11 @@ export class ExplosionFX {
        when that is bigger). `k` is how far past `size` the widest sprite of
        that beat reaches. The floors above can lift a beat to legibility; they
        can no longer lift it past the ship. Shock rings get 2x. */
-    const hullM = Math.max(seq.L, ctx.px(dist) * hullFloorPx(seq.L));
+    /* R7 fix 5: the shared hull budget (ctx.hullBudget), the same rule hits use. */
+    const hullM = ctx.hullBudget(seq.L, origin.x, origin.y, origin.z, 1);
+    /* Ejecta reach: a spray may travel half the 1.2x box from the centre, so
+       sparks and strike-craft embers stay inside the same box as the flash. */
+    const reach = 0.6 * hullM;
     const cap = (metres, k) => Math.min(metres, (1.2 * hullM) / k);
 
     switch (ev.k) {
@@ -985,8 +991,9 @@ export class ExplosionFX {
             seq.side.y * ca + seq.up.y * sa + seq.axis.y * rng.gaussian(0, 0.22),
             seq.side.z * ca + seq.up.z * sa + seq.axis.z * rng.gaussian(0, 0.22),
           ).normalize();
-          const sp = seq.L * rng.range(0.4, 1.1);
-          this._col.copy(CORE).lerp(EMBER, rng.next() * 0.7);
+          // R7 fix 5: inside `reach` over the ember's life, not a hull length a second.
+          const sp = Math.min(seq.L, reach / (1.1 * seq.T * 1.1)) * rng.range(0.4, 1.0);
+          this._col.copy(CORE).lerp(EMBER, 0.45 + rng.next() * 0.55);
           f.spark.spawn(plane.x, plane.y, plane.z,
             V.x + this._dir.x * sp, V.y + this._dir.y * sp, V.z + this._dir.z * sp,
             rng.range(0.3, 1.1) * seq.T, 0.35, seq.L * 0.02 * rng.range(0.6, 1.6), 0.2,
@@ -1060,8 +1067,10 @@ export class ExplosionFX {
            long, and no top rung can then reach 5:1 without a capital taking
            the best part of a minute to finish emitting. */
         const lmax = ev.life || 1.5;
+        // Bias peaks near 1.44x, drag is 0.35: this keeps the spray inside `reach`.
+        const spd = Math.min(ev.speed, reach / (lmax * 1.35));
         for (let i = 0; i < n; i++) {
-          const s = ev.speed * this._bias(seq, rng, 0.62, this._dir);
+          const s = spd * this._bias(seq, rng, 0.62, this._dir);
           this._col.copy(CORE).lerp(EMBER, rng.next() * 0.7);
           f.spark.spawn(origin.x, origin.y, origin.z,
             V.x + this._dir.x * s, V.y + this._dir.y * s, V.z + this._dir.z * s,
@@ -1074,8 +1083,10 @@ export class ExplosionFX {
       case 'embers': {
         const n = Math.round(ev.n * q);
         const V = seq.vel;
+        // Strike craft and frigates: inside the same box. Capital embers drift on.
+        const spd = seq.L < BAND_BREAK ? Math.min(ev.speed, reach / (ev.life * 1.4 * 1.3)) : ev.speed;
         for (let i = 0; i < n; i++) {
-          const s = ev.speed * this._bias(seq, rng, 0.48, this._dir) * rng.range(0.35, 1.0);
+          const s = spd * this._bias(seq, rng, 0.48, this._dir) * rng.range(0.35, 1.0);
           this._col.copy(FIRE).lerp(EMBER, rng.next());
           f.ember.spawn(origin.x, origin.y, origin.z,
             V.x + this._dir.x * s, V.y + this._dir.y * s, V.z + this._dir.z * s,

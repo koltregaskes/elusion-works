@@ -246,7 +246,9 @@ void main() {
 
   // Overshoot both ends a little so the muzzle throat sits inside the barrel
   // and the impact bulb sits on the hull rather than short of it.
-  float along = uv.y * 1.07 - 0.035;
+  /* R7 fix 5: no overshoot at the target end. The landing point is drawn on
+     the plating now, and 3.5 percent of a 1.3 km lance ran 45 m past it. */
+  float along = uv.y * 1.035 - 0.035;
   vec3 p = iFrom + dirW * ( along * len );
 
   vec3 toCam = cameraPosition - p;
@@ -255,7 +257,12 @@ void main() {
   float sl = length( side );
   side = sl > 1e-4 ? side / sl : vec3( 1.0, 0.0, 0.0 );
 
-  float shellW = aShell < 0.5 ? 4.6 : ( aShell < 1.5 ? 1.75 : 0.52 );
+  /* R7 fix 5: slimmed from 4.6 / 1.75 / 0.52. With a 5.5 m base the halo was a
+     25-45 m slab, and at focus distance that is a white bar across half the
+     frame. The lance is now a thin hot core and a narrow soft shell sized in
+     metres (about 1 / 2.6 / 6 m on an ion lance); the screen floors below
+     still hold it legible at range. */
+  float shellW = aShell < 0.5 ? 1.9 : ( aShell < 1.5 ? 0.85 : 0.30 );
   /* Screen floors, cut hard from 20/8/3.
 
      Those were tuned on a hero shot where the lance is the subject and the
@@ -400,7 +407,15 @@ void main() {
   float a = clamp( shape * taper, 0.0, 1.0 ) * vEnv * fxSoftFade( vFragW );
   if ( a <= 0.004 ) discard;
 
-  gl_FragColor = vec4( col * vIntensity * uGain * vSpread * taper, a );
+  vec3 lit = col * vIntensity * uGain * vSpread * taper;
+  /* R7 fix 5: a radiance ceiling per shell, scaled so the hue survives. The
+     strike-up surge and the end terms drove the core to 6x and the sheath
+     past the glow cut, and the bloom pass spread that into a slab. Halo and
+     sheath now stay under the cut; only the filament blooms, and only a little. */
+  float capB = ( vShell > 1.5 ? 1.6 : ( vShell > 0.5 ? 0.55 : 0.32 ) ) * uGain;
+  float peak = max( max( lit.r, lit.g ), max( lit.b, 1e-4 ) );
+  lit *= min( 1.0, capB / peak );
+  gl_FragColor = vec4( lit, a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -700,8 +715,14 @@ vec2 fxImpactStar( vec2 q, float px, float arms ) {
   float sector = 6.2831853 / arms;
   float off = mod( ang + sector * 0.5, sector ) - sector * 0.5;
   float perp = r * abs( sin( off ) );
-  float armW = max( 0.04, onePx * 0.7 );
+  /* R7 fix 5: hairlines in pixels at every size. The 0.04 floor was 4 percent
+     of the quad, so on a 500 px close-up star each spike was a 10 px bar that
+     the bloom and the depth of field turned into the thick four-arm X the
+     critic measured at 510 x 540 px. Spikes also shorten as the star grows:
+     close up a hit is a hot point with short spall rays, not a cross. */
+  float armW = max( 0.004, onePx * 0.7 );
   float pp = perp / armW;
+  float armEnd = mix( 0.99, 0.42, smoothstep( 24.0, 140.0, px ) );
   /* Under ~14 px a ring and a hot point merge into one bright square, so the
      ring is only drawn once there is room for it, and below that the spikes
      run in close to the core instead: at fleet range the hit is a crisp cross,
@@ -713,7 +734,7 @@ vec2 fxImpactStar( vec2 q, float px, float arms ) {
   float armIn = mix( 0.26, ringR + ringW * 1.6, roomy );
   float arm = exp( -pp * pp )
             * smoothstep( armIn - 0.08, armIn + 0.04, r )
-            * ( 1.0 - smoothstep( 0.84, 0.99, r ) );
+            * ( 1.0 - smoothstep( armEnd - 0.15, armEnd, r ) );
   /* Round 6 fix 4: the core is held to about two pixels of radius at any
      quad size. As a fixed 6 percent of the quad it grew with the star, and
      with the radiance cap let go past 30 px it bloomed into a disc. */
@@ -979,13 +1000,22 @@ const BEAM_END_MAX_PX = 2.5;
    paints may exceed IMPACT_CORE_MAX_PX on screen; inside it the ceiling
    opens with the square of the approach, so a hit seen close up keeps its
    body and there is no step at the boundary. */
-const IMPACT_CORE_MAX_PX = 8;
-const IMPACT_FOCUS_M = 900;
-function hitCeil(ctx, metres, x, y, z) {
-  const d = ctx.distTo(x, y, z);
-  const k = Math.max(1, IMPACT_FOCUS_M / d);
-  return Math.min(metres, ctx.px(d) * IMPACT_CORE_MAX_PX * k * k);
+/* Round 7 fix 5: the 900 m gate is gone. Inside it the ceiling opened with
+   the square of the approach, so at focus distance nothing limited a hit and
+   an ion lance threw a white burst several times the size of the frigate it
+   was cutting. Every hit is now sized off its TARGET hull as drawn
+   (ctx.hullBudget), at every distance: the hot core and wash to HIT_CORE_K of
+   the hull, and the whole hit - star spikes, spall, sparks, flak and missile
+   blasts - to HIT_EXTENT_K. `length` is the target hull length in metres. */
+const HIT_EXTENT_K = 0.6;
+const HIT_CORE_K = 0.2;
+function hitCeil(ctx, metres, x, y, z, length, k = HIT_CORE_K) {
+  return Math.min(metres, ctx.hullBudget(length, x, y, z, k));
 }
+/* Spark travel under the spark field's drag is about 0.43x launch speed over
+   the burst's life (drag 3.2, life to 0.62 s, speed jitter to 1.6x), so this
+   is the launch speed that keeps a burst inside `reach` metres. */
+const SPARK_REACH_PER_SPEED = 0.43;
 
 /* Screen ceiling, in pixels, for the two effects that fire hundreds of times a
    second in a fleet action: a gun going off and a round landing.
@@ -1060,7 +1090,23 @@ function impactFloorPx(amount, targetPx) {
      would become the ship; the impact star is a 1 px ring and spikes, so on a
      small hull it rings the hull instead of covering it, and it needs the
      room to stay a ring. */
-  return Math.min(want, Math.max(2.4, targetPx * 1.2));
+  /* R7 fix 5: 0.6x, the same hit budget as every other part of a hit. */
+  return Math.min(want, Math.max(2.4, targetPx * 0.6));
+}
+
+/* R7 fix 5: pull a target-local hit point onto a capsule round the keel (local
+   +Z): 0.45 L either side of the centre, 0.06 L off the axis. Returns true
+   when it moved the point. */
+function onHull(lp, entity) {
+  const L = (entity && entity.def && entity.def.length) || 0;
+  if (L <= 0) return false;
+  let moved = false;
+  const zMax = 0.45 * L;
+  if (Math.abs(lp.z) > zMax) { lp.z = Math.sign(lp.z) * zMax; moved = true; }
+  const rr = Math.hypot(lp.x, lp.y);
+  const rMax = 0.06 * L;
+  if (rr > rMax) { lp.x *= rMax / rr; lp.y *= rMax / rr; moved = true; }
+  return moved;
 }
 
 /** Radius of whatever a shot was aimed at, for callers that only see the shot. */
@@ -1260,6 +1306,7 @@ export class WeaponFX {
     this._v3 = new THREE.Vector3();
     this._q = new THREE.Quaternion();
     this._qi = new THREE.Quaternion();
+    this._hp = new THREE.Vector3();
     this._col = new THREE.Color();
     this._col2 = new THREE.Color();
     this._zAxis = new THREE.Vector3(0, 0, 1);
@@ -1310,8 +1357,16 @@ export class WeaponFX {
       field discharge has no way to produce. Told apart in a single frame, at any
       range where either is legible at all. */
   hullImpact(p) {
-    const pt = p.point;
+    let pt = p.point;
     if (!pt) return;
+    // R7 fix 5: on the plating, not on the bounding sphere (see onHull).
+    if (p.entity && p.entity.def && p.entity.def.length) {
+      const tp = this._entityPos(p.entity, this._v3);
+      const tq = this._entityQuat(p.entity, this._q);
+      this._qi.copy(tq).invert();
+      const lp = this._hp.copy(pt).sub(tp).applyQuaternion(this._qi);
+      if (onHull(lp, p.entity)) pt = lp.applyQuaternion(tq).add(tp);
+    }
     const n = p.normal || this._v.set(0, 1, 0);
     const amount = Math.max(1, p.amount || 10);
     const mag = Math.min(6.0, 0.9 + Math.sqrt(amount) * 0.30);
@@ -1334,10 +1389,9 @@ export class WeaponFX {
        lens cross put a 650 px orange flare over a 95 px fighter. */
     const ent = p.entity;
     const tl = (ent && ent.def && ent.def.length) || (targetRadius(ent) || 18) / 0.55;
-    const mpp = ctx.px(ctx.distTo(pt.x, pt.y, pt.z));
-    // 1.0x, not 1.2x: bloom spreads a hot sprite a little past its own quad.
-    const ceilM = Math.max(tl, mpp * hullFloorPx(tl));
-    const washM = hitCeil(ctx, ceilM, pt.x, pt.y, pt.z);
+    // R7 fix 5: the whole hit inside 0.6x the hull as drawn, its wash inside 0.2x.
+    const ceilM = hitCeil(ctx, Infinity, pt.x, pt.y, pt.z, tl, HIT_EXTENT_K);
+    const washM = hitCeil(ctx, Infinity, pt.x, pt.y, pt.z, tl);
     // Molten wash, blown a little way back out of the hole it just made.
     /* Its screen floor is held under the impact star's (0.7 of the shot
        ceiling, was 1.4): floored up to fleet range this round wash is
@@ -1351,7 +1405,7 @@ export class WeaponFX {
     /* Held inside the same ceiling: at mag 6 these were 16 m billboards
        stretched 4.5x, a 200 px wire star round a 95 px fighter. Travel under
        the 3.2 drag is about speed / 3, so 0.8 ceilM keeps the burst on the hull. */
-    this._sparkBurst(pt, n, Math.round(9 + mag * 5), 0.42, Math.min(70 + amount * 1.1, ceilM * 0.8),
+    this._sparkBurst(pt, n, Math.round(9 + mag * 5), 0.42, Math.min(70 + amount * 1.1, (ceilM * 0.5) / SPARK_REACH_PER_SPEED),
       Math.min(mag * 1.9, ceilM * 0.05), IMPACT_DETAIL_CAP_PX);
 
     // Soot on every hit, not only the big ones — this is the tell that says
@@ -1362,18 +1416,21 @@ export class WeaponFX {
       f.smoke.spawn(
         pt.x, pt.y, pt.z,
         n.x * 16 + rng.gaussian(0, 8), n.y * 16 + rng.gaussian(0, 8), n.z * 16 + rng.gaussian(0, 8),
-        1.2 + rng.next() * 1.1, 0.12, Math.min(mag * 3.4, ceilM * 0.3), Math.min(mag * 17, ceilM * 1.5),
+        1.2 + rng.next() * 1.1, 0.12, Math.min(mag * 3.4, ceilM * 0.3), Math.min(mag * 17, ceilM),
         HULL_SOOT, 0.85, 1.1, rng.gaussian(0, 1.2),
       );
     }
     // Two or three fat molten gobbets that outlive the flash and arc away.
     for (let i = 0; i < 2 + (amount > 40 ? 1 : 0); i++) {
       const u = rng.unitVector();
-      const s = Math.min(34 + amount * 0.7, ceilM * 3) * rng.range(0.5, 1.4);
+      const s = Math.min(34 + amount * 0.7, ceilM * 0.43) * rng.range(0.5, 1.4);
       f.ember.spawn(
         pt.x, pt.y, pt.z,
         n.x * s * 0.8 + u.x * s * 0.5, n.y * s * 0.8 + u.y * s * 0.5, n.z * s * 0.8 + u.z * s * 0.5,
-        rng.range(0.5, 1.3), 0.2, mag * 1.1, mag * 0.2, HULL_MOLTEN, 2.2, 2.4, 0, IMPACT_DETAIL_CAP_PX,
+        // R7 fix 5: sized off the hull too. A 6.6 m gobbet at a 30 m focus
+        // camera was a 300 px orange lobe, four of them a flower round the kill.
+        rng.range(0.5, 1.3), 0.2, Math.min(mag * 1.1, ceilM * 0.06), Math.min(mag * 0.2, ceilM * 0.012),
+        HULL_MOLTEN, 2.2, 2.4, 0, IMPACT_DETAIL_CAP_PX,
       );
     }
   }
@@ -1467,10 +1524,11 @@ export class WeaponFX {
     /* Round 5: the floor was capped at 1.2x the target, the natural size was
        not, so a killing blow (mag 7) painted a 60 m ring-and-spokes star on a
        14 m interceptor. Both are now held to 1.2x the hull as drawn. */
-    const lengthM = Math.max(radius / 0.55, mpp * hullFloorPx(radius / 0.55));
-    // The star's quad may run to 2.5x the core ceiling - its spikes are hairlines
-    // under the bloom cut, so only the core has to fit inside the 8 px.
-    const natural = Math.min(mag * 9 * jitter, lengthM, hitCeil(ctx, Infinity, x, y, z) * 2.5);
+    /* R7 fix 5: the star's whole quad, spikes included, sits inside 0.6x the
+       hull as drawn. It used to be held to the hull's full length and, inside
+       900 m, to nothing else - which at focus distance was the 510 px X drawn
+       over a 500 px interceptor. */
+    const natural = Math.min(mag * 9 * jitter, hitCeil(ctx, Infinity, x, y, z, radius / 0.55, HIT_EXTENT_K));
     const floored = Math.max(natural, mpp * capPx);
     // Mirrors FLASH_VERT/FLASH_FRAG: clamp amount, spread dimming, and the
     // 1 + 0.9 * clamp lift the fragment stage already applies.
@@ -1487,7 +1545,7 @@ export class WeaponFX {
     const life = (0.10 + rng.next() * 0.06) * (1 + 1.4 * clampAmt) * dwell;
 
     const o = this._flash(x, y, z, 0, 0, 0, life,
-      natural, mag * 2.0, HULL_HOT, IMPACT_BRIGHT * lift, capPx, IMPACT_SET);
+      natural, Math.min(mag * 2.0, natural), HULL_HOT, IMPACT_BRIGHT * lift, capPx, IMPACT_SET);
     /* Squared to the screen and not spinning. A target under sustained fire
        stacks several marks inside one coalescing cell, and at random angles
        their spikes fill each other in until the stack is the same soft disc
@@ -1576,7 +1634,7 @@ export class WeaponFX {
     this._muzzle(from, dx, dy, dz, dmg, team, 0.8);
   }
 
-  _flakBurst(x, y, z, dmg) {
+  _flakBurst(x, y, z, dmg, tRadius) {
     const rng = this.ctx.rng;
     const f = this.ctx.fields;
     const scale = 1.6 + Math.sqrt(dmg) * 0.34;
@@ -1585,7 +1643,11 @@ export class WeaponFX {
     // A flak puff is a real cloud a few tens of metres across, so it carries
     // its own ceiling rather than the batch's 11 px: a sky full of airburst
     // discs all floored to the same size is the carpet again.
-    const fc = hitCeil(this.ctx, Infinity, x, y, z);
+    const tl = (tRadius || 18) / 0.55;
+    const fc = hitCeil(this.ctx, Infinity, x, y, z, tl);
+    // Whole airburst, sparks included, inside 0.6x its target hull as drawn.
+    const reach = hitCeil(this.ctx, Infinity, x, y, z, tl, HIT_EXTENT_K) * 0.5;
+    const sk = Math.min(1, reach / (260 * 0.25));
     this._flash(x, y, z, 0, 0, 0, 0.15 + rng.next() * 0.09,
       Math.min(30 * scale * j, fc), Math.min(7 * scale, fc), HOT_WHITE, 4.6, 6.0, BURST_SET);
     f.flare.spawn(x, y, z, 0, 0, 0, 0.40, 0, Math.min(13 * scale, fc), Math.min(48 * scale * j, fc * 1.6), FLAK_BURST, 2.4, 0, 0);
@@ -1606,7 +1668,7 @@ export class WeaponFX {
     this._col2.copy(FLAK_BURST).lerp(HOT_WHITE, 0.4);
     for (let i = 0; i < sparks; i++) {
       const u = rng.unitVector();
-      const s = rng.range(60, 260);
+      const s = rng.range(60, 260) * sk;
       f.spark.spawn(
         x, y, z, u.x * s, u.y * s, u.z * s,
         rng.range(0.22, 0.55), 3.4,
@@ -1749,7 +1811,10 @@ export class WeaponFX {
        small (round 4, fix 5): a missile volley used to put a carpet of 6-10 px
        white discs over its target, the same round smudge as a drive, and it
        buried the stars. Close up none of these floors bind. */
-    const fc = hitCeil(ctx, Infinity, p.x, p.y, p.z);
+    const tl = (targetRadius(m.target) || 18) / 0.55;
+    const fc = hitCeil(ctx, Infinity, p.x, p.y, p.z, tl);
+    const reach = hitCeil(ctx, Infinity, p.x, p.y, p.z, tl, HIT_EXTENT_K) * 0.5;
+    const sk = Math.min(1, reach / (380 * 0.3));
     this._flash(p.x, p.y, p.z, 0, 0, 0, 0.16 + rng.next() * 0.10,
       Math.min(30 * scale * j, fc), Math.min(7 * scale, fc), HOT_WHITE, 4.0, 3.5, BURST_SET);
     f.flare.spawn(p.x, p.y, p.z, 0, 0, 0, 0.5, 0, Math.min(12 * scale, fc), Math.min(52 * scale * j, fc * 1.6), FLAK_BURST, 1.8, 0, 0, 3.0);
@@ -1765,7 +1830,7 @@ export class WeaponFX {
     this._col2.copy(FLAK_BURST).lerp(HOT_WHITE, 0.45);
     for (let i = 0; i < sparks; i++) {
       const u = rng.unitVector();
-      const s = rng.range(90, 380);
+      const s = rng.range(90, 380) * sk;
       f.spark.spawn(
         p.x, p.y, p.z, u.x * s, u.y * s, u.z * s,
         rng.range(0.3, 0.8), 3.0, rng.range(1.6, 4.0) * scale, 0.3,
@@ -1796,7 +1861,8 @@ export class WeaponFX {
       /* Base radius, before the three shell multipliers (4.6 / 1.75 / 0.52).
          An ionLance at 220 damage therefore burns a ~25 m halo around a ~3 m
          white core — a lance, not a laser pointer. */
-      width: (ion ? 2.2 : 1.2) + Math.sqrt(dmg) * (ion ? 0.22 : 0.13),
+      // R7 fix 5: an ion lance's base is ~3 m (was ~5.5 m); see BEAM_VERT shellW.
+      width: (ion ? 1.6 : 1.0) + Math.sqrt(dmg) * (ion ? 0.10 : 0.09),
       intensity: ion ? 1.25 : 0.95,
       colour: new THREE.Color(this._col),
       seed: ctx.rng.next(),
@@ -1818,6 +1884,11 @@ export class WeaponFX {
       const tp = this._entityPos(b.target, this._v);
       const tq = this._entityQuat(b.target, this._q);
       b.localTo = this._v2.copy(b.to).sub(tp).applyQuaternion(this._qi.copy(tq).invert()).clone();
+      /* R7 fix 5: the sim lands a lance on the target's bounding sphere, which
+         on a long thin hull is open space - at focus distance the splash sat
+         300 px off the plating with the bar running on past it. Draw the
+         landing on the hull instead. Visual only; the sim is untouched. */
+      if (onHull(b.localTo, b.target)) b.to.copy(b.localTo).applyQuaternion(tq).add(tp);
     }
 
     this._beams.push(b);
@@ -1845,7 +1916,10 @@ export class WeaponFX {
        sparks blown forward out of the barrel. */
     const f = ctx.fields;
     const rng = ctx.rng;
-    const scale = b.width * 4.6;
+    /* R7 fix 5: the widest sprite here is 6x `scale`, held inside 0.6x the
+       firing hull as drawn, like any other hit-class flash. */
+    const firerL = (b.shooter && b.shooter.def && b.shooter.def.length) || 0;
+    const scale = Math.min(b.width * 4.6, hitCeil(ctx, Infinity, b.from.x, b.from.y, b.from.z, firerL, HIT_EXTENT_K) / 6);
     this._v.copy(b.to).sub(b.from);
     const l = Math.max(1e-4, this._v.length());
     this._v.multiplyScalar(1 / l);
@@ -1865,7 +1939,7 @@ export class WeaponFX {
     const n = Math.round(14 * ctx.qscale) + 6;
     this._col2.copy(b.colour).lerp(HOT_WHITE, 0.55);
     for (let i = 0; i < n; i++) {
-      const s = rng.range(160, 620);
+      const s = rng.range(160, 620) * Math.min(1, scale / 14);
       const j = s * 0.16;
       f.spark.spawn(b.from.x, b.from.y, b.from.z,
         ax * s + rng.gaussian(0, j), ay * s + rng.gaussian(0, j), az * s + rng.gaussian(0, j),
@@ -2084,7 +2158,7 @@ export class WeaponFX {
         this.tracers.data[t.slot * TRACER_STRIDE + 7] = 0;
       }
       if (t.kind === 'flak') {
-        this._flakBurst(t.ex, t.ey, t.ez, t.damage);
+        this._flakBurst(t.ex, t.ey, t.ez, t.damage, t.tRadius);
       } else {
         const inv = 1 / Math.max(1e-4, Math.hypot(t.dx, t.dy, t.dz));
         this._v.set(-t.dx * inv, -t.dy * inv, -t.dz * inv);
@@ -2099,10 +2173,11 @@ export class WeaponFX {
            target's radius captured at the muzzle, so the mark can be held
            under its target's own screen size. */
         this._impactMark(this._v2, this._v, t.damage, null, t.tRadius);
-        const wc = hitCeil(ctx, Infinity, t.ex, t.ey, t.ez);
+        const wc = hitCeil(ctx, Infinity, t.ex, t.ey, t.ez, (t.tRadius || 18) / 0.55);
         ctx.fields.flare.spawn(t.ex, t.ey, t.ez, 0, 0, 0, 0.26, 0,
           Math.min(mag * 4, wc * 0.5), Math.min(mag * 17 * jitter, wc), HULL_MOLTEN, 1.9, 0, 0, Math.min(capPx * 0.5, IMPACT_WASH_MAX_PX));
-        this._sparkBurst(this._v2, this._v, Math.round(8 + mag * 4), 0.45, 80 + t.damage * 1.2, mag * 1.9, IMPACT_DETAIL_CAP_PX);
+        this._sparkBurst(this._v2, this._v, Math.round(8 + mag * 4), 0.45,
+          Math.min(80 + t.damage * 1.2, (wc * HIT_EXTENT_K / HIT_CORE_K) * 0.5 / SPARK_REACH_PER_SPEED), mag * 1.9, IMPACT_DETAIL_CAP_PX);
       }
     }
     this._writeTracerBuffer();
@@ -2179,14 +2254,20 @@ export class WeaponFX {
     const gain = Math.min(1, t / 0.08) * (1 - Math.max(0, (t - 0.86) / 0.14));
 
     // Muzzle throat, re-lit every emit so the barrel stays white for the burn.
-    const ms = b.width * 7.0 * gain;
+    const shooterL = (b.shooter && b.shooter.def && b.shooter.def.length) || 0;
+    const ms = Math.min(b.width * 7.0 * gain,
+      hitCeil(ctx, Infinity, b.from.x, b.from.y, b.from.z, shooterL) / 2.2);
     f.flare.spawn(b.from.x, b.from.y, b.from.z, 0, 0, 0, 0.10, 0,
       ms, ms * 0.55, HOT_WHITE, 5.2, 0, 0, BEAM_END_MAX_PX);
     f.flare.spawn(b.from.x, b.from.y, b.from.z, 0, 0, 0, 0.22, 0,
       ms * 0.7, ms * 2.2, b.colour, 2.6, 0, 0, BEAM_END_MAX_PX);
 
     // Impact bulb: white core, coloured wash, both floored to a legible size.
-    const is = Math.min(b.width * 9.5 * gain, hitCeil(ctx, Infinity, b.to.x, b.to.y, b.to.z) / 3.0);
+    /* R7 fix 5: the splash, its sparks and its embers sit inside 0.6x the
+       TARGET hull as drawn, at every distance (was: uncapped inside 900 m). */
+    const targetL = (b.target && b.target.def && b.target.def.length) || 0;
+    const is = Math.min(b.width * 9.5 * gain, hitCeil(ctx, Infinity, b.to.x, b.to.y, b.to.z, targetL) / 3.0);
+    const reach = hitCeil(ctx, Infinity, b.to.x, b.to.y, b.to.z, targetL, HIT_EXTENT_K) * 0.5;
     // A beam's landing point is an impact like any other, so it is floored and
     // coalesced by the same rule. The bulb below it is the beam's own wash.
     this._impactMark(b.to, this._v.copy(b.from).sub(b.to).normalize(),
@@ -2209,17 +2290,18 @@ export class WeaponFX {
        near-field detail, so at range the capped impact star carries the hit. */
     const hot = Math.round((10 + 8 * ctx.qscale) * (b.ion ? 1.6 : 1));
     this._sparkBurst(b.to, this._v, hot, 0.55,
-      (220 + b.damage * 0.9) * gain, b.width * 1.5, IMPACT_DETAIL_CAP_PX);
+      Math.min(220 + b.damage * 0.9, reach / SPARK_REACH_PER_SPEED) * gain, b.width * 1.5, IMPACT_DETAIL_CAP_PX);
     // A second, flatter fan: molten metal running along the surface.
     this._sparkBurst(b.to, this._v, Math.round(hot * 0.6), 1.35,
-      (110 + b.damage * 0.4) * gain, b.width * 1.1, IMPACT_DETAIL_CAP_PX);
+      Math.min(110 + b.damage * 0.4, reach / SPARK_REACH_PER_SPEED) * gain, b.width * 1.1, IMPACT_DETAIL_CAP_PX);
+    const ek = Math.min(1, reach / 160);
 
     for (let i = 0; i < (b.ion ? 2 : 1); i++) {
       const u = rng.unitVector();
       f.ember.spawn(
         b.to.x, b.to.y, b.to.z,
-        this._v.x * 60 + u.x * 45, this._v.y * 60 + u.y * 45, this._v.z * 60 + u.z * 45,
-        rng.range(0.7, 1.8), 0.25, b.width * 1.6, b.width * 0.3,
+        (this._v.x * 60 + u.x * 45) * ek, (this._v.y * 60 + u.y * 45) * ek, (this._v.z * 60 + u.z * 45) * ek,
+        rng.range(0.7, 1.8), 0.25, Math.min(b.width * 1.6, reach * 0.1), Math.min(b.width * 0.3, reach * 0.02),
         FLAK_BURST, 2.4, 0, 0, IMPACT_DETAIL_CAP_PX,
       );
     }

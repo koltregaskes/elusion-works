@@ -97,8 +97,12 @@ void main() {
   float seam = smoothstep( 0.62, 0.97, fract( length( vLocal ) * 5.3 + vSeed * 4.0 ) );
   /* R7: glow only on torn edges and seams, at a lower ceiling, so a fresh
      shard reads as charred metal with a burning rim, not as a lit amber card. */
-  float glow = heat * ( edge * 0.55 + seam * 0.40 * heat );
-  vec3 hot = mix( vec3( 0.85, 0.13, 0.02 ), vec3( 1.0, 0.62, 0.24 ), heat );
+  /* R7 fix 5: still read as amber cardboard at focus distance. A flat shard
+     seen near edge-on has edge near 1 across its whole face, so the rim term
+     lit the face. The rim is now a narrow grazing band, the seams carry the
+     burn, and the ramp tops out at deep orange rather than amber. */
+  float glow = heat * ( pow( edge, 2.5 ) * 0.30 + seam * 0.34 * heat );
+  vec3 hot = mix( vec3( 0.70, 0.08, 0.01 ), vec3( 1.0, 0.42, 0.10 ), heat );
   col += hot * glow;
 
   gl_FragColor = vec4( col, 1.0 );
@@ -211,7 +215,7 @@ export class DebrisFX {
        bone or team-tinted base was the round-6 "amber cardboard". */
     const base = this._col2.copy(hull);
     const bl = 0.2126 * base.r + 0.7152 * base.g + 0.0722 * base.b;
-    base.lerp(this._col.setRGB(bl, bl, bl), 0.75).lerp(CHAR, 0.40);
+    base.lerp(this._col.setRGB(bl, bl, bl), 0.80).lerp(CHAR, 0.55);
 
     /* A few large keel sections, then a heavy tail of smaller pieces. A hull
        does not shatter evenly — it breaks along frames, so the eye expects two

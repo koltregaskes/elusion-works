@@ -23,6 +23,7 @@ import { ExplosionFX } from './explosions.js';
 import { ShieldFX } from './shields.js';
 import { DebrisFX } from './debris.js';
 import { WreckFX } from './wrecks.js';
+import { hullFloorPx } from '../ships/catalog.js';
 
 /* ------------------------------------------------------------------ imports
    `render/textures.js` and `render/materials.js` belong to the MAT agent and
@@ -1384,6 +1385,18 @@ export class FXSystem {
       distTo(x, y, z) {
         const c = ctx.camPos;
         return Math.max(1, Math.hypot(x - c.x, y - c.y, z - c.z));
+      },
+      /* Round 7 fix 5: the one size rule for everything a hit or a death paints.
+         Returns `k` times the TARGET hull as it is drawn right now, in metres:
+         its length, or the impostor's pixel floor when that is bigger. Every
+         hit, splash, spark, flak or missile blast, death flash and shock ring
+         is held under a multiple of this at every camera distance - a hit
+         0.6x, a strike craft death 1.2x, a capital flash 1.2x and its ring 2x.
+         It replaces the old fixed 8 px ceiling that only applied past 900 m and
+         let go entirely at focus distance. */
+      hullBudget(length, x, y, z, k) {
+        const L = Math.max(1, length || 33);
+        return k * Math.max(L, ctx.px(ctx.distTo(x, y, z)) * hullFloorPx(L));
       },
       keyLight: { dir: new THREE.Vector3(-0.45, 0.32, -0.83).normalize(), colour: new THREE.Color(0xfff2df) },
       fillLight: new THREE.Color(0x2b3f5c),
