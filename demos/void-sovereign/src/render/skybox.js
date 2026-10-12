@@ -184,6 +184,14 @@ const PALETTES = [
    they approach it, so the branch is a pure performance win and never visible. */
 const ENV_CUTOFF = 0.0016;
 
+/* Pass B's lit-side term: a saturating curve of the gas's raw emission,
+   e / (e + LIFT_HALF), weighted by the per-seed rimAmt times LIFT_GAIN. A term
+   linear in emission is undone by the peak and mean ceilings below; one that
+   saturates lifts thin gas against the core, which is the share of the light
+   the old density-gradient rim supplied on average. */
+const LIFT_HALF = 0.06;
+const LIFT_GAIN = 1.1;
+
 /* Map HEIGHT in texels; width is twice this.
 
    This used to be set by the star field, and the reasoning was wrong in a way
@@ -703,7 +711,6 @@ ${NOISE_CORE}
 uniform float uGasGain;     // per-seed exposure ceiling, set after probing
 uniform float uGasSat;      // per-seed saturation ceiling
 uniform sampler2D uGas;
-uniform vec2 uTexel;        // one texel of the gas map, for the edge gradient
 
 const vec3 SUN = vec3(${f3(P.sunDir)});
 const vec3 RIMCOL = vec3(${f3(P.rimCol)});
@@ -748,10 +755,9 @@ void main() {
 
        fil   a soft detail field an order of magnitude finer than any layer's own
              front scale, modulating the gas it sits in;
-       edge  the gradient of the optical depth, which IS the boundary — it is
-             large exactly where dense gas gives way to nothing and zero
-             everywhere else, so a rim can be drawn without segmenting
-             anything.
+       lift  scattered key light, rising with the gas's own emission and with
+             the angle toward the star. It is deliberately not a gradient or edge
+             of the density: see the note at the lit-side term below.
 
      Optical depth rather than luminance drives both. Depth is the amount of
      gas; luminance is the amount of gas times the palette's brightness times
@@ -763,19 +769,10 @@ void main() {
      lesson from the gas-layer envelopes, which showed as a clipped contour
      until they were faded to exactly zero. */
   float tau = gas.a;
+  float filL = 0.47;   /* mean of the detail field below, used outside the gas */
   if (tau > 0.010) {
     float k = smoothstep(0.010, 0.070, tau);
     vec3 d = skyDirB(vUv);
-
-    /* Longitudinal texels shrink toward the poles, so an unweighted x
-       difference is a gradient of the parameterisation rather than of the
-       sky. */
-    float cl = max(cos((vUv.y - 0.5) * PI), 0.06);
-    float tx = (texture2D(uGas, vUv + vec2(uTexel.x, 0.0)).a
-              - texture2D(uGas, vUv - vec2(uTexel.x, 0.0)).a) / cl;
-    float ty = texture2D(uGas, vUv + vec2(0.0, uTexel.y)).a
-             - texture2D(uGas, vUv - vec2(0.0, uTexel.y)).a;
-    float edge = clamp(length(vec2(tx, ty)) * ${num(P.rimGain)}, 0.0, 1.4);
 
     float fil = wisp3(d * ${num(P.filScale)} + vec3(${f3(P.filOff)}));
     float grain = gnoise(d * ${num(P.filScale * 2.9)} + vec3(${f3(P.filOff)})) * 0.5 + 0.5;
@@ -795,18 +792,34 @@ void main() {
     col = mix(col, col * (0.66 + 0.80 * fil), k);
     col += gasCol * fil * fil * band * ${num(P.filAmt)} * k;
 
-    /* The lit rim. Scattering at a boundary is strongest where the boundary
-       faces the star, so this has a bright side and a dark side by
-       construction rather than by a global gradient. */
-    float rimLit = 0.22 + 1.05 * smoothstep(-0.55, 0.85, dot(d, SUN));
-    /* Scaled by the exposure correction like every other term. Left out of it
-       the rim was the one part of the sky the ceiling could not reach, and it
-       carried the measured whole-sky mean 9% past a limit that exists to stop
-       the backdrop out-reading the fleet. It also made the single-shot
-       correction wrong in principle: the output has to be linear in the gain
-       or one measurement cannot predict the corrected image. */
-    col += RIMCOL * edge * (0.30 + 0.70 * fil) * rimLit
-         * ${num(P.rimAmt)} * k * uGasGain;
+    filL = mix(filL, fil, k);
+  }
+
+  {
+    /* The lit side. This used to be a rim keyed to the gradient of the optical
+       depth, and that was the round 6 and 7 rope: a gradient magnitude is zero
+       on every crest and every trough of the field and large on both flanks,
+       so it drew a closed ring around every bump in the gas and two parallel
+       lines down every ridge. Switching it off alone removed the loops on
+       seeds 99 and 37; the gas front, lanes, self-shadow and warp were never
+       the source. What it was for is kept: scattered key light on the gas,
+       bright toward the star and dim away from it. It is now keyed to the
+       light the gas already emits, through a curve that only rises and
+       saturates: it can brighten a cloud, more in its thin parts than its
+       core, but can never draw a line inside one, and the dust lanes, which
+       are dense but emit almost nothing, stay dark instead of being filled in.
+       Optical depth is the wrong key here because it counts that dust. */
+    float glow = dot(gas.rgb, vec3(0.2126, 0.7152, 0.0722));
+    float lift = glow / (glow + ${num(LIFT_HALF)});
+    vec3 dL = skyDirB(vUv);
+    float rimLit = 0.22 + 1.05 * smoothstep(-0.55, 0.85, dot(dL, SUN));
+    /* Not gated by optical depth. The halo glows but barely absorbs, so a
+       depth gate switched this on only where the body began and outlined
+       every cavity in the gas. Emission is already zero in empty sky. Scaled
+       by the exposure correction like every other term: left out of it the
+       rim was the one part of the sky the ceiling could not reach. */
+    col += RIMCOL * lift * (0.30 + 0.70 * filL) * rimLit
+         * ${num(P.rimAmt * LIFT_GAIN)} * uGasGain;
   }
 
   /* A hair of ambient so the void is deep charcoal-blue rather than a dead
@@ -1373,9 +1386,9 @@ function generateParams(rng, opts) {
     filOff: [rng.range(-30, 30), rng.range(-30, 30), rng.range(-30, 30)],
     filAmt: rng.range(0.55, 0.95),
     rimAmt: rng.range(0.18, 0.30),
-    /* Optical depth changes by roughly one over the width of a boundary, and a
-       boundary is a few gas texels across, so the raw difference of two taps
-       lands around 0.2-0.4. This puts a real edge near 1. */
+    /* No longer read: pass B's rim was keyed to the density gradient and drew
+       contour loops. The draw is kept so every later draw from this rng, and
+       so every seed's palette and layout, stays exactly as it was. */
     rimGain: rng.range(2.6, 3.8),
     rimCol: [
       rimGrey + (rimCol[0] - rimGrey) * 0.45,
@@ -1563,7 +1576,6 @@ export function buildSkybox(renderer, rng, opts = {}) {
       uGasGain: { value: 1.0 },
       uGasSat: { value: 1.0 },
       uGas: { value: gasA.texture },
-      uTexel: { value: new THREE.Vector2(1 / GW, 1 / GH) },
     },
     vertexShader: SKY_VERTEX,
     fragmentShader: buildSkyFragment(P),
