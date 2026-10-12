@@ -138,6 +138,104 @@ const LIVERY = {
 
 const SHARED_TIME = { value: 0 };
 
+/* Hit-local damage store (R6). Damage used to be one per-instance fraction
+   pushed through a noise threshold, so it landed uniformly over the whole
+   hull: peach squiggles nose to tail at 50%, leopard print at 20%, and none
+   of it on the side the shots came from (critic round 5). Now every batched
+   hull owns one row of a small float texture holding its last eight hull hits
+   in its own local space, and the scorch grows only around those. One texture
+   for the whole fleet, shared by every hull material, so it costs no draw
+   call and no per-material state; rows are handed out by the batches in
+   ships/index.js. Width 9: eight hits, then the hull length. Row 0 is never
+   handed out and stays empty, so an instance with no row reads clean. */
+const HIT_W = 9;
+const HIT_EMPTY = 1e5;
+const HIT_TEX = { value: null };
+let _hitData = null;
+let _hitRows = 1;
+
+function clearHitRows(from, count) {
+  for (let r = from; r < from + count; r++) {
+    const o = r * HIT_W * 4;
+    for (let k = 0; k < 8; k++) {
+      _hitData[o + k * 4] = HIT_EMPTY;
+      _hitData[o + k * 4 + 1] = HIT_EMPTY;
+      _hitData[o + k * 4 + 2] = HIT_EMPTY;
+      _hitData[o + k * 4 + 3] = -1e4;
+    }
+    _hitData[o + 32] = 0;
+    _hitData[o + 33] = 0;
+    _hitData[o + 34] = 0;
+    _hitData[o + 35] = 0;
+  }
+}
+
+function ensureHitRows(rows) {
+  const have = HIT_TEX.value ? HIT_TEX.value.image.height : 0;
+  if (rows <= have) return;
+  let h = Math.max(256, have);
+  while (h < rows) h *= 2;
+  const data = new Float32Array(HIT_W * 4 * h);
+  const old = _hitData;
+  _hitData = data;
+  clearHitRows(0, h);
+  if (old) data.set(old);
+  const tex = new THREE.DataTexture(data, HIT_W, h, THREE.RGBAFormat, THREE.FloatType);
+  tex.minFilter = THREE.NearestFilter;
+  tex.magFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  const prev = HIT_TEX.value;
+  HIT_TEX.value = tex;
+  if (prev) prev.dispose();
+}
+ensureHitRows(256);
+
+/** Hand out `count` consecutive hit rows, all empty, for hull length `length`. */
+export function allocHitRows(count, length) {
+  const base = _hitRows;
+  _hitRows += count;
+  ensureHitRows(_hitRows);
+  clearHitRows(base, count);
+  for (let r = base; r < base + count; r++) _hitData[r * HIT_W * 4 + 32] = length || 1;
+  HIT_TEX.value.needsUpdate = true;
+  return base;
+}
+
+/** Copy `count` rows (a batch growing keeps its slots' hits). */
+export function copyHitRows(from, to, count) {
+  const n = HIT_W * 4;
+  _hitData.copyWithin(to * n, from * n, (from + count) * n);
+  HIT_TEX.value.needsUpdate = true;
+}
+
+/** Empty one row's hits (a reused slot must not inherit a dead hull's scars). */
+export function resetHitRow(row) {
+  if (!(row > 0)) return;
+  const len = _hitData[row * HIT_W * 4 + 32];
+  clearHitRows(row, 1);
+  _hitData[row * HIT_W * 4 + 32] = len;
+  HIT_TEX.value.needsUpdate = true;
+}
+
+/** Read hit `k` of a row into `out` (x, y, z, time). */
+export function readHit(row, k, out) {
+  const o = (row * HIT_W + k) * 4;
+  out[0] = _hitData[o]; out[1] = _hitData[o + 1]; out[2] = _hitData[o + 2]; out[3] = _hitData[o + 3];
+  return out;
+}
+
+/** Store hit `k` of a row at hull-local (x, y, z), stamped with the shader clock. */
+export function writeHit(row, k, x, y, z) {
+  if (!(row > 0) || k < 0 || k > 7) return;
+  const o = (row * HIT_W + k) * 4;
+  _hitData[o] = x;
+  _hitData[o + 1] = y;
+  _hitData[o + 2] = z;
+  _hitData[o + 3] = SHARED_TIME.value;
+  HIT_TEX.value.needsUpdate = true;
+}
+
 const HULL_PARS = /* glsl */`
 uniform sampler2DArray uPlateMap;
 uniform sampler2DArray uPlateNormal;
@@ -201,6 +299,11 @@ flat varying mat3 vObjToView;
      reason the region mask reached nothing for so long is that the two look
      interchangeable and are not. See the note above vsLivery. */
   varying vec2 vPaint;
+  /* Hit-local damage (R6). Row vHitRow of uHitTex holds this instance's last
+     eight hull hits: texels 0-7 are (hull-local xyz, uTime at the hit), texel
+     8 is (hull keel length, 0, 0, 0). Row 0 is permanently empty. */
+  uniform highp sampler2D uHitTex;
+  flat varying float vHitRow;
 #endif
 
 vec3 vsAlbedo;
@@ -578,7 +681,34 @@ const HULL_BODY = /* glsl */`
        fraction, and the albedo never goes fully black, so even a dying hull
        keeps a readable form. */
     float burn = 1.0 - smoothstep( dmg * 1.05 - 0.12, dmg * 1.05 + 0.04, field );
-    albedo = mix( albedo, vec3( 0.030, 0.026, 0.024 ), burn * 0.9 );
+    float heat = 0.5;
+    float wreck = 0.0;
+#ifdef VS_ATTRIBS
+    /* R6: scorch only around the hull's own recorded hits. Each hit burns a
+       zone whose radius grows with the damage fraction, and the noise field
+       above bends its edge so a zone reads as a burn, not a circle. Eight
+       distance tests and nine texel fetches; LOD3 is the unlit impostor and
+       never gets here. heat is how recently the zone was hit: cracks are
+       white-hot for the first few seconds and then cool to a dull red. */
+    int hitRow = int( vHitRow + 0.5 );
+    float hullLen = texelFetch( uHitTex, ivec2( 8, hitRow ), 0 ).x;
+    float rad = max( hullLen * ( 0.055 + 0.10 * dmg ), 1e-3 );
+    float edge = ( field - 0.5 ) * rad * 1.1;
+    burn = 0.0;
+    heat = 0.0;
+    for ( int i = 0; i < 8; i++ ) {
+      vec4 h = texelFetch( uHitTex, ivec2( i, hitRow ), 0 );
+      float s = 1.0 - smoothstep( rad * 0.45, rad, distance( P, h.xyz ) + edge );
+      burn = max( burn, s );
+      heat = max( heat, s * exp( -max( uTime - h.w, 0.0 ) * 0.6 ) );
+    }
+    /* A wreck is charred all over and long cold: its own darker char, not the
+       hot-crack look of a hull still in the fight. */
+    wreck = ( vCut.y > vCut.x || dmg > 0.995 ) ? 1.0 : 0.0;
+    burn = mix( burn, 0.72 + 0.28 * smoothstep( 0.3, 0.7, field ), wreck );
+    heat *= 1.0 - wreck;
+#endif
+    albedo = mix( albedo, mix( vec3( 0.030, 0.026, 0.024 ), vec3( 0.011, 0.010, 0.009 ), wreck ), burn * 0.9 );
     rough = mix( rough, 0.93, burn );
     metal = mix( metal, 0.28, burn );
     ao = mix( ao, ao * 0.65, burn );
@@ -595,10 +725,13 @@ const HULL_BODY = /* glsl */`
        already heavy, and its colour is pushed toward white-hot so the read
        is heat rather than team. */
     float cn = vsNoise3( P * ( uBaseTiling * 9.0 ) + 5.7 );
-    float crack = 1.0 - smoothstep( 0.0, 0.03, abs( cn - 0.5 ) );
-    float hot = crack * smoothstep( 0.45, 0.85, burn );
-    vec3 hotCol = mix( uHotColour, vec3( 1.0, 0.86, 0.66 ), 0.7 );
-    vsEmissive += hotCol * hot * dmg * flicker * 1.8;
+    float crack = 1.0 - smoothstep( 0.0, 0.022, abs( cn - 0.5 ) );
+    float hot = crack * smoothstep( 0.6, 0.95, burn );
+    /* Fresh: white-hot. Cooled: a dull dark red, about a fifth as bright.
+       A wreck keeps only the faintest embers. */
+    vec3 hotCol = mix( vec3( 0.42, 0.05, 0.015 ), vec3( 1.0, 0.88, 0.72 ), heat );
+    float hotGain = mix( 0.35, 2.4, heat ) * ( 1.0 - 0.8 * wreck );
+    vsEmissive += hotCol * hot * max( dmg, 0.35 ) * flicker * hotGain;
   }
 
   vsAlbedo = albedo;
@@ -779,6 +912,9 @@ flat varying mat3 vObjToView;
      each cut to a section, so a wreck costs no extra draw call. */
   attribute vec2 aCut;
   varying vec3 vCut;
+  /* Row of the shared hit texture this instance reads, see uHitTex. */
+  attribute float aHitRow;
+  flat varying float vHitRow;
   varying vec3 vAttr;
   varying vec2 vPaint;
 #endif
@@ -800,6 +936,7 @@ vObjNormal = objectNormal;
   vAttr = vec3( aDamage, aTeam, aVariant );
   vPaint = vec2( aTeamMask, aWear );
   vCut = vec3( aCut, position.z );
+  vHitRow = aHitRow;
 #endif
 `;
 
@@ -906,6 +1043,7 @@ function hullUniforms(team, family, opts) {
     uAoStrength: { value: opts.ao === undefined ? 1.0 : opts.ao },
     uDamage: { value: opts.damage || 0 },
     uTime: SHARED_TIME,
+    uHitTex: HIT_TEX,
     uSpine: { value: new THREE.Vector2(liv.spine[0], liv.spine[1]) },
     uFlank: { value: new THREE.Vector3(liv.flank[0], liv.flank[1], liv.flank[2]) },
     uShoulder: { value: new THREE.Vector3(liv.shoulder[0], liv.shoulder[1], liv.shoulder[2]) },

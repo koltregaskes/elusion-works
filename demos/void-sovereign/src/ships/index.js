@@ -20,6 +20,7 @@ import { SHIPS, ROLE, FAMILY, hullFloorPx, HULL_FLOOR_MAX_GROW } from './catalog
 import { buildHullLevel, HULL_CLASSES } from './hulls.js';
 import { KIND } from './greeble.js';
 import { LAYER } from '../core/engine.js';
+import { bus } from '../core/events.js';
 
 /* ------------------------------------------------------- material bridge */
 
@@ -697,6 +698,25 @@ const INITIAL_CAPACITY = 64;
 const _m4 = new THREE.Matrix4();
 const _zero = new THREE.Matrix4().makeScale(0, 0, 0);
 const _col = new THREE.Color();
+const _hv = new THREE.Vector3();
+const _hit4 = [0, 0, 0, 0];
+const PROF_Z = 16;
+const PROF_A = 12;
+
+/* Stable render-side scatter for `addHit`; never touches the sim's RNG. */
+function hash01(n) {
+  const s = Math.sin(n * 12.9898 + 78.233) * 43758.5453;
+  return s - Math.floor(s);
+}
+
+/* Hull hits feed the hit-local damage shading. Listening only: the event is
+   read, never changed, so the sim stays deterministic. */
+bus.on('sim:damage', (p) => {
+  if (!p || p.shield) return;
+  const e = p.entity;
+  const rec = e && e._batchRec;
+  if (rec && rec.batch && typeof rec.batch.addHit === 'function') rec.batch.addHit(e._slot, p.point);
+});
 
 class FleetBatch {
   constructor(classId, team) {
@@ -741,6 +761,16 @@ class FleetBatch {
     }
     this.slotCut = slotCut;
     this.slotWreck = slotWreck;
+
+    // Hit-local damage (R6): one row per slot in the shared hit texture, see
+    // `addHit`. A grown batch takes a fresh range and carries its hits over.
+    const slotHits = new Uint8Array(capacity);
+    if (oldCap) slotHits.set(this.slotHits);
+    this.slotHits = slotHits;
+    const hitBase = MATLIB && MATLIB.allocHitRows
+      ? MATLIB.allocHitRows(capacity, this.hullBox().max.z - this.hullBox().min.z) : 0;
+    if (hitBase && oldCap && this.hitBase) MATLIB.copyHitRows(this.hitBase, hitBase, oldCap);
+    this.hitBase = hitBase;
     this.slotMatrix = slotMatrix;
     this.slotColor = slotColor;
     this.slotDamage = slotDamage;
@@ -789,7 +819,14 @@ class FleetBatch {
           im.onBeforeRender = impostorBeforeRender;
         }
         this.group.add(im);
-        level.parts.push({ mesh: im, damage: dmg, cut, kind });
+        // Row of the shared hit texture, hull parts only (nothing else reads it).
+        let row = null;
+        if (kind === KIND.HULL) {
+          row = new THREE.InstancedBufferAttribute(new Float32Array(capacity), 1);
+          row.setUsage(THREE.DynamicDrawUsage);
+          im.geometry.setAttribute('aHitRow', row);
+        }
+        level.parts.push({ mesh: im, damage: dmg, cut, row, kind });
       };
 
       const impostor = i >= IMPOSTOR_LOD;
@@ -835,8 +872,102 @@ class FleetBatch {
       p.damage.array[index] = this.slotDamage[slot];
       p.cut.array[index * 2] = this.slotCut[slot * 2];
       p.cut.array[index * 2 + 1] = this.slotCut[slot * 2 + 1];
+      if (p.row) p.row.array[index] = this.hitBase ? this.hitBase + slot : 0;
     }
     level.dirty = true;
+  }
+
+  /** LOD0 hull bounds in the hull's own space (the space `aCut` and the hit
+      texture use). */
+  hullBox() {
+    if (!this._hullBox) {
+      const g = this.asset.levels[0] && this.asset.levels[0].hull;
+      if (g && !g.boundingBox) g.computeBoundingBox();
+      this._hullBox = g && g.boundingBox ? g.boundingBox.clone()
+        : new THREE.Box3(new THREE.Vector3(-1, -1, -1), new THREE.Vector3(1, 1, 1));
+    }
+    return this._hullBox;
+  }
+
+  /** Mean radius off the keel axis of the LOD0 hull's vertices, binned by
+      keel station (PROF_Z) and bearing (PROF_A). Built once per class. */
+  hullProfile() {
+    if (this._hullProfile) return this._hullProfile;
+    const b = this.hullBox();
+    const cx = (b.max.x + b.min.x) * 0.5;
+    const cy = (b.max.y + b.min.y) * 0.5;
+    const sz = Math.max(1e-3, b.max.z - b.min.z);
+    const sum = new Float32Array(PROF_Z * PROF_A);
+    const cnt = new Uint32Array(PROF_Z * PROF_A);
+    const g = this.asset.levels[0] && this.asset.levels[0].hull;
+    const pos = g && g.attributes && g.attributes.position;
+    if (pos) {
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i) - cx;
+        const y = pos.getY(i) - cy;
+        const zi = Math.min(PROF_Z - 1, Math.max(0, Math.floor(((pos.getZ(i) - b.min.z) / sz) * PROF_Z)));
+        const a = Math.atan2(y, x) / (Math.PI * 2) + 0.5;
+        const ai = Math.min(PROF_A - 1, Math.floor(a * PROF_A));
+        sum[zi * PROF_A + ai] += Math.hypot(x, y);
+        cnt[zi * PROF_A + ai]++;
+      }
+    }
+    for (let k = 0; k < sum.length; k++) sum[k] = cnt[k] ? sum[k] / cnt[k] : 0;
+    this._hullProfile = sum;
+    return sum;
+  }
+
+  /**
+   * Record a hull hit for the hit-local damage shading (R6). Render-side only:
+   * reads the `sim:damage` point, never changes it. The sim reports the hit on
+   * the target's bounding sphere along the shooter's bearing; that is brought
+   * into hull space through the slot's own matrix, scattered along the keel so
+   * a burst from one bearing marks several places on the facing side instead
+   * of one, and pulled in onto the hull's bounds. A hit close to an existing
+   * one deepens and re-heats that zone instead of starting a new one.
+   */
+  addHit(slot, point) {
+    if (!this.hitBase || slot < 0 || slot >= this.capacity || !point) return;
+    if (this.slotWreck[slot] === 1) return;
+    const row = this.hitBase + slot;
+    _m4.fromArray(this.slotMatrix, slot * 16).invert();
+    _hv.copy(point).applyMatrix4(_m4);
+    const b = this.hullBox();
+    const sx = b.max.x - b.min.x;
+    const sy = b.max.y - b.min.y;
+    const sz = b.max.z - b.min.z;
+    const cx = (b.max.x + b.min.x) * 0.5;
+    const cy = (b.max.y + b.min.y) * 0.5;
+    const cz = (b.max.z + b.min.z) * 0.5;
+    const n = (this._hitSeq = (this._hitSeq || 0) + 1);
+    const r1 = hash01(n * 3 + 1);
+    const r3 = hash01(n * 3 + 3);
+    // Bearing round the keel, scattered a little, and a station along it.
+    const ang = Math.atan2(_hv.y - cy, _hv.x - cx) + (r1 - 0.5) * 1.1;
+    const z = cz + Math.max(-0.46, Math.min(0.46, (_hv.z - cz) / sz + (r3 - 0.5) * 0.8)) * sz;
+    // Onto the skin: the box is no use for that, since the masts and the
+    // bridge make it far taller than the hull, so a hit would float above the
+    // deck. The profile is the hull's mean radius per keel station and bearing.
+    const prof = this.hullProfile();
+    const zi = Math.min(PROF_Z - 1, Math.max(0, Math.floor(((z - b.min.z) / sz) * PROF_Z)));
+    const ai = Math.min(PROF_A - 1, Math.max(0, Math.floor(((ang / (Math.PI * 2)) + 0.5 - Math.floor((ang / (Math.PI * 2)) + 0.5)) * PROF_A)));
+    const rr = prof[zi * PROF_A + ai] || Math.min(sx, sy) * 0.4;
+    _hv.set(cx + Math.cos(ang) * rr, cy + Math.sin(ang) * rr, z);
+    // Merge into a nearby zone rather than spend a ring entry on it.
+    const near = sz * 0.1;
+    for (let k = 0; k < 8; k++) {
+      MATLIB.readHit(row, k, _hit4);
+      const dx = _hit4[0] - _hv.x;
+      const dy = _hit4[1] - _hv.y;
+      const dz = _hit4[2] - _hv.z;
+      if (dx * dx + dy * dy + dz * dz < near * near) {
+        MATLIB.writeHit(row, k, _hit4[0], _hit4[1], _hit4[2]);
+        return;
+      }
+    }
+    const k = this.slotHits[slot] % 8;
+    this.slotHits[slot] = (k + 1) % 8;
+    MATLIB.writeHit(row, k, _hv.x, _hv.y, _hv.z);
   }
 
   /** Turn a reserved slot into one section of a wreck: keep only the slice
@@ -901,6 +1032,8 @@ class FleetBatch {
     this.slotCut[slot * 2] = 0;
     this.slotCut[slot * 2 + 1] = 0;
     this.slotWreck[slot] = 0;
+    this.slotHits[slot] = 0;
+    if (this.hitBase) MATLIB.resetHitRow(this.hitBase + slot);
     this.live++;
     this.addToLevel(slot, 0);
     return slot;
@@ -974,6 +1107,7 @@ class FleetBatch {
         if (p.mesh.instanceColor) p.mesh.instanceColor.needsUpdate = true;
         p.damage.needsUpdate = true;
         p.cut.needsUpdate = true;
+        if (p.row) p.row.needsUpdate = true;
       }
       level.dirty = false;
     }
