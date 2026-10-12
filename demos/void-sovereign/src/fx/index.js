@@ -1067,7 +1067,9 @@ export class RibbonField {
     } else {
       const head = (r.n - 1) * 4;
       p[head] = x; p[head + 1] = y; p[head + 2] = z; p[head + 3] = now;
-      this._writeRange(r, Math.max(0, r.n - 2), r.n);
+      /* A span-capped strip clips its tail against the head (see _writeRange),
+         so the clipped vertices move whenever the head does. */
+      this._writeRange(r, Math.max(0, r.n - (r.maxSpan > 0 ? 4 : 2)), r.n);
     }
   }
 
@@ -1151,9 +1153,27 @@ export class RibbonField {
            end of the age ramp, so its tail ends on a hard square cut. */
         wf = Math.pow(f, 0.55) * headFade;
       }
+      /* Clip in space (round 6 fix 1). The alpha cap alone ends at the next
+         stored point, and a fighter at cruise lays one every ~9 m, so a strip
+         capped at 5 m still drew a fading quad out to the older point: at 4x,
+         several hull lengths. A vertex past the cap is drawn at the exact cap
+         distance along its segment instead, so the strip stops where the
+         budget says. Past the first clipped vertex everything has zero alpha
+         and width already, so collapsing it onto its newer neighbour is free. */
+      let vx = p[o4];
+      let vy = p[o4 + 1];
+      let vz = p[o4 + 2];
+      if (cap > 0 && j < r.n - 1 && along[j] > cap) {
+        const n4 = (j + 1) * 4;
+        const seg = along[j] - along[j + 1];
+        const t = seg > 1e-5 ? Math.min(1, Math.max(0, (cap - along[j + 1]) / seg)) : 0;
+        vx = p[n4] + (p[o4] - p[n4]) * t;
+        vy = p[n4 + 1] + (p[o4 + 1] - p[n4 + 1]) * t;
+        vz = p[n4 + 2] + (p[o4 + 2] - p[n4 + 2]) * t;
+      }
       for (let s = 0; s < 2; s++) {
         const o = (base + j * 2 + s) * R_STRIDE;
-        d[o] = p[o4]; d[o + 1] = p[o4 + 1]; d[o + 2] = p[o4 + 2];
+        d[o] = vx; d[o + 1] = vy; d[o + 2] = vz;
         d[o + 3] = s === 0 ? -1 : 1;
         d[o + 4] = dx; d[o + 5] = dy; d[o + 6] = dz;
         d[o + 7] = p[o4 + 3];

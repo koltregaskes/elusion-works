@@ -210,6 +210,10 @@ void main() {
   float len = iScale.z * mix( 1.0, k, ${LEN_FLOOR_MIX.toFixed(2)} );
   float axialFloor = min( camDist * uPixelScale * uMinAxialPx, iHull * ${PLUME_HULL_LEN.toFixed(2)} );
   len = min( len, max( iAxialCap, axialFloor ) );
+  /* Hard ceiling, last word (round 6 fix 1): whatever throttle, speed, the
+     screen floor or the hull floor did above, the drawn plume never runs past
+     PLUME_LEN_CAP of the hull as drawn. The axial floor alone allowed 0.45. */
+  len = min( len, iHull * ${PLUME_LEN_CAP.toFixed(2)} );
   /* Guard, not a tuning knob: if the radial floor ever bound harder than the
      axial one the plume would become a disc wider than it is long, and a disc
      is the one failure mode that reads as a nozzle ring again. Measured across
@@ -706,8 +710,17 @@ const TRAIL_RANGE = 9000;
    kilometres. Round 3's "order lines or laser pointers" across the wide
    frames were exactly that. A length cap in space holds whatever either clock
    is doing: twelve hull lengths still streaks behind a fighter at any range,
-   and the ribbon tapers to nothing at the cap rather than ending on a cut. */
-const TRAIL_HULLS = 12;
+   and the ribbon tapers to nothing at the cap rather than ending on a cut.
+
+   Round 6 fix 1: twelve hull lengths WAS the streak. The critic's 3.4x cyan
+   "plume" behind an interceptor, the 3.6x one behind a hostile Missile
+   Corvette, the Lance Bomber's ~500 px orange "shaft" and the frame-crossing
+   cyan line in the near-plane set were all this ribbon, not the plume mesh
+   (attributed by peeling layers in R6/fix1-before-*). The wake now shares the
+   plume's budget, so drive glow and wake together stay inside 0.35 hulls; the
+   ribbon field clips the strip at the cap in space, so a 9 m frame step at
+   cruise cannot stretch it past the budget either. */
+const TRAIL_HULLS = PLUME_LEN_CAP;
 
 /* Station-keeping glow floor. Small enough to read as "hot, idle", large
    enough that a parked mothership is not twelve dead holes — and, at 0.20
