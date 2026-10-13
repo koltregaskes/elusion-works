@@ -4,7 +4,7 @@ import { bus } from '../core/events.js';
 import { makeRng, fbm2, fbm3, ridged3 } from '../core/rng.js';
 import { buildSkybox } from './skybox.js';
 import { setNebulaBounce, setHullKeyDirection, setHullSkyFloor, getTerminatorUniform, TEAM_COLORS } from './materials.js';
-import { rockFadeUniform, ROCK_FADE_SLOTS } from './rock-fade.js';
+import { rockFadeUniform, rockFadeState, ROCK_FADE_SLOTS } from './rock-fade.js';
 import { HAZE_DENSITY, hazeColourFromSky } from './atmosphere.js';
 import {
   DEFAULT_SETUP,
@@ -2329,7 +2329,9 @@ export class Environment {
       envMapIntensity: 0.30,
       fog: true,
     });
-    material.onBeforeCompile = (shader) => {
+    /* One patch for both rock materials: the opaque one, and its transparent
+       twin that draws only the rocks part-way through a fade (R9 fix 2). */
+    const patchRock = (blend) => (shader) => {
       shader.uniforms.uRockBounce = { value: rockBounce };
       shader.uniforms.uRockTerm = getTerminatorUniform();
       shader.uniforms.uRockFade = rockFadeUniform;
@@ -2389,6 +2391,16 @@ export class Environment {
            #else
              vRockView = (modelViewMatrix * vec4(transformed, 1.0)).xyz;
            #endif`,
+        )
+        .replace(
+          '#include <project_vertex>',
+          blend
+            ? `#include <project_vertex>
+           /* The blend pass draws only rocks part-way through a fade; every
+              other instance collapses to one point outside the clip volume,
+              so it costs a vertex and no fragment. */
+           if (vRockFade >= 0.999 || vRockFade <= 0.001) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);`
+            : '#include <project_vertex>',
         );
       shader.fragmentShader = shader.fragmentShader
         .replace(
@@ -2610,17 +2622,55 @@ export class Environment {
         .replace(
           '#include <clipping_planes_fragment>',
           `#include <clipping_planes_fragment>
-           /* Near-plane fade (R6 fix 2): an ordered dither down to nothing, so a
-              rock the near quad is inside draws no fragment at all. */
-           if (vRockFade < 0.999) {
-             float rfN = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-             if (vRockFade <= 0.001 || rfN >= vRockFade) discard;
-           }`,
+           /* Rock fade (R9 fix 2): the opaque pass draws a rock only while it
+              is fully solid. One part-way through a fade is drawn by the blend
+              pass alone, alpha-blended, never as a dither stipple. */
+           ${blend
+             ? 'if (vRockFade >= 0.999 || vRockFade <= 0.001) discard;'
+             : 'if (vRockFade < 0.999) discard;'}`,
+        )
+        .replace(
+          '#include <opaque_fragment>',
+          blend
+            ? `diffuseColor.a *= vRockFade;
+           #include <opaque_fragment>`
+            : '#include <opaque_fragment>',
         );
     };
+    material.onBeforeCompile = patchRock(false);
     material.customProgramCacheKey = () => 'env-rock';
     this._rockMaterial = material;
     this._disposables.push(material);
+
+    /* The transparent twin. Drawn after every opaque, without depth writes so
+       the effects behind a fading rock still draw, and hidden (no draw call)
+       unless some rock is part-way through a fade: see rock-fade.js. */
+    const blendMaterial = material.clone();
+    blendMaterial.transparent = true;
+    blendMaterial.depthWrite = false;
+    blendMaterial.visible = false;
+    blendMaterial.onBeforeCompile = patchRock(true);
+    blendMaterial.customProgramCacheKey = () => 'env-rock-blend';
+    rockFadeState.blend = blendMaterial;
+    this._rockBlendMaterial = blendMaterial;
+    this._disposables.push(blendMaterial);
+    /* A blend twin shares its source mesh's geometry, instance buffers, count
+       and visibility, so the LOD repack and culling drive both at once. */
+    const addBlendTwin = (src) => {
+      const twin = new THREE.InstancedMesh(src.geometry, blendMaterial, 0);
+      twin.instanceMatrix = src.instanceMatrix;
+      twin.instanceColor = src.instanceColor;
+      Object.defineProperty(twin, 'count', { get: () => src.count, set: () => {}, configurable: true });
+      Object.defineProperty(twin, 'visible', { get: () => src.visible, set: () => {}, configurable: true });
+      twin.frustumCulled = false;
+      twin.castShadow = false;
+      twin.receiveShadow = false;
+      twin.renderOrder = 1;
+      twin.name = 'env:rock-blend';
+      twin.raycast = () => {};
+      src.add(twin);
+      return twin;
+    };
 
     const totalPerShape = [];
     const perShapeInstances = [];
@@ -2813,6 +2863,7 @@ export class Environment {
         mesh.receiveShadow = false;
         mesh.name = 'env:rocks';
         engine.scene.add(mesh);
+        addBlendTwin(mesh);
       }
 
       this._rockSets.push({
@@ -2896,6 +2947,7 @@ export class Environment {
       mesh.frustumCulled = true;
       mesh.name = 'env:landmarks';
       engine.scene.add(mesh);
+      addBlendTwin(mesh);
       this._landmarks.push(mesh);
       this._disposables.push(geo);
     }
