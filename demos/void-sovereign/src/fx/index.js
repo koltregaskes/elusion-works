@@ -23,6 +23,7 @@ import { ExplosionFX } from './explosions.js';
 import { ShieldFX } from './shields.js';
 import { DebrisFX } from './debris.js';
 import { WreckFX } from './wrecks.js';
+import { DamageFX } from './damage.js';
 import { hullFloorPx } from '../ships/catalog.js';
 
 /* ------------------------------------------------------------------ imports
@@ -1292,6 +1293,7 @@ function scaleCaps(scale) {
     debris: s(900),
     trails: s(440),
     smokeTrails: s(220),
+    dmgSmoke: s(1400),
     plumes: s(4200),
     lights: s(9000),
   };
@@ -1509,6 +1511,15 @@ export class FXSystem {
         blending: THREE.NormalBlending, layer: LAYER.DEFAULT,
         opacity: 0.52, core: 0, taper: 0.95, minPixels: 1.5, renderOrder: 5, softness: 45,
       }),
+      /* Smoke off burning hulls (R11 fix 3, fx/damage.js). Its own field because
+         the shared one is tuned thin for explosions and vanished at fleet
+         range; this one is denser and lit grey, so a hurt capital at 4 km
+         visibly trails smoke. One draw call. */
+      dmgSmoke: new ParticleField(ctx, {
+        name: 'dmgSmoke', texture: sprites.smoke, capacity: budget.dmgSmoke,
+        blending: THREE.NormalBlending, layer: LAYER.DEFAULT,
+        alphaPow: 1.3, opacity: 0.5, minPixels: 3.0, renderOrder: 6, softness: 60,
+      }),
     };
 
     this.engines = new EngineFX(ctx);
@@ -1517,12 +1528,12 @@ export class FXSystem {
     this.weapons = new WeaponFX(ctx);
     this.shields = new ShieldFX(ctx);
     this.wrecks = new WreckFX(ctx);
+    this.damage = new DamageFX(ctx, this._entities = new Map());
 
     this._subsystems = [
-      this.engines, this.weapons, this.explosions, this.shields, this.debris, this.wrecks,
+      this.engines, this.weapons, this.explosions, this.shields, this.debris, this.wrecks, this.damage,
     ];
 
-    this._entities = new Map();
     this._unsubs = [
       bus.on('sim:spawn', (p) => this._onSpawn(p)),
       bus.on('sim:death', (p) => this._onDeath(p)),
@@ -1604,11 +1615,14 @@ export class FXSystem {
   get stats() {
     const f = this.ctx.fields;
     return {
-      particles: f.flare.count + f.spark.count + f.ember.count + f.smoke.count,
+      particles: f.flare.count + f.spark.count + f.ember.count + f.smoke.count + f.dmgSmoke.count,
       flare: f.flare.count,
       spark: f.spark.count,
       ember: f.ember.count,
       smoke: f.smoke.count,
+      dmgSmoke: f.dmgSmoke.count,
+      burning: this.damage.burning,
+      burningFull: this.damage.full,
       trails: f.trail.live,
       smokeTrails: f.smokeTrail.live,
       plumes: this.engines.plumeCount,

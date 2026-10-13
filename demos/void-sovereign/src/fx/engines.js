@@ -1024,16 +1024,32 @@ export class EngineFX {
       const pxPerM = 1 / (Math.max(1, Math.sqrt(dist2)) * (ctx.pixelScale || 0.001));
       const grow = Math.min(HULL_FLOOR_MAX_GROW, Math.max(1, entry.floorPx / Math.max(1e-6, entry.L * scale * pxPerM)));
       const hullDrawn = entry.L * scale * grow;
+      /* R11 fix 3: a hurt hull loses its running lights - flickering and some
+         out around half hull, most out when critical - and below about a
+         third one bell (two near the end) sputters. Read off the hull
+         fraction, never written back. */
+      const hurt = e.maxHull > 0 ? 1 - Math.max(0, e.hull || 0) / e.maxHull : 0;
+      const lampOut = hurt > 0.4 ? Math.min(0.9, (hurt - 0.4) * 2.2) : 0;
+      const lampFlick = hurt > 0.42;
+      const now = ctx.now;
 
       if (entry.lights && ln < lcap && dist2 < LIGHT_RANGE * LIGHT_RANGE) {
         const ls = entry.lights;
         for (let i = 0; i < ls.length && ln < lcap; i++) {
           const l = ls[i];
+          let lsz = 1;
+          if (lampOut > 0 || lampFlick) {
+            const h = ((l.seed || 0) * 7.31 + i * 0.6180339 + 0.13) % 1;
+            if (h < lampOut) continue;
+            const fl = 0.5 + 0.5 * Math.sin(now * (6 + h * 14) + h * 40);
+            if (lampFlick && fl < 0.35) continue;
+            lsz = lampFlick ? 0.6 + 0.4 * fl : 1;
+          }
           v.copy(l.pos).multiplyScalar(scale * grow).applyQuaternion(oq).add(op);
           const o = ln * L_STRIDE;
           ld[o] = v.x; ld[o + 1] = v.y; ld[o + 2] = v.z;
           ld[o + 3] = l.r; ld[o + 4] = l.g; ld[o + 5] = l.b;
-          ld[o + 6] = l.size * scale;
+          ld[o + 6] = l.size * scale * lsz;
           ld[o + 7] = l.phase;
           ld[o + 8] = l.period;
           ld[o + 9] = l.seed;
@@ -1084,6 +1100,9 @@ export class EngineFX {
          shows a stub, not a short version of full burn: 0.20 hull lengths at
          idle against 0.60 at full. */
       const axialCap = entry.maxAxial * (0.28 + 0.72 * throttle) * scale * grow;
+      const nDefs = entry.defs.length;
+      const sputA = hurt > 0.62 && nDefs > 1 ? Math.floor(entry.seed * nDefs) % nDefs : -1;
+      const sputB = hurt > 0.85 && nDefs > 2 ? (sputA + (nDefs >> 1)) % nDefs : -1;
 
       for (let i = 0; i < entry.defs.length; i++) {
         if (n >= cap) break;
@@ -1131,14 +1150,22 @@ export class EngineFX {
            lip is thick, so the rim has nothing to catch on from any angle. */
         const wid = r * (1.30 + 0.20 * throttle);
         const seed = (entry.seed + i * 0.317) % 1;
+        /* Sputter: long cut-outs and a ragged relight. */
+        let sp = 1;
+        if (i === sputA || i === sputB) {
+          const t = now * 1.3 + seed * 13;
+          sp = t - Math.floor(t) < 0.45
+            ? 0.04 + 0.1 * Math.abs(Math.sin(now * 41 + seed * 7))
+            : 0.7 + 0.3 * Math.sin(now * 29 + seed * 3);
+        }
 
         const o = n * E_STRIDE;
         cd[o] = v.x; cd[o + 1] = v.y; cd[o + 2] = v.z;
         cd[o + 3] = q.x; cd[o + 4] = q.y; cd[o + 5] = q.z; cd[o + 6] = q.w;
         cd[o + 7] = far ? 0 : wid;
         cd[o + 8] = far ? 0 : wid;
-        cd[o + 9] = far ? 0 : len;
-        cd[o + 10] = team.engine.r; cd[o + 11] = team.engine.g; cd[o + 12] = team.engine.b;
+        cd[o + 9] = far ? 0 : len * sp;
+        cd[o + 10] = team.engine.r * sp; cd[o + 11] = team.engine.g * sp; cd[o + 12] = team.engine.b * sp;
         cd[o + 13] = seed;
         cd[o + 14] = throttle;
         cd[o + 15] = entry.plumeCapPx;
@@ -1159,9 +1186,9 @@ export class EngineFX {
            too, or a parked capital gets its twelve rings back — and a parked
            capital is the first frame a player sees. 3.2 + 1.0 puts the plateau
            at 1.05 radii idle and 1.30 at full, against a bore of 0.90. */
-        fd[o + 7] = r * (3.2 + 1.0 * throttle);
+        fd[o + 7] = r * (3.2 + 1.0 * throttle) * (0.3 + 0.7 * sp);
         fd[o + 8] = fd[o + 7];
-        fd[o + 9] = len;
+        fd[o + 9] = len * sp;
         fd[o + 15] = entry.flareCapPx;
         fd[o + 16] = 1;
         n++;

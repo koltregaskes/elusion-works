@@ -883,6 +883,22 @@ const HULL_BODY = /* glsl */`
 
   /* Damage: scorch, exposed hot metal, flickering cracks. */
   if ( dmg > 0.002 ) {
+    /* R11 fix 3: damage stages. Hull lamps (windows and running lights)
+       start to flicker past 40% damage and go out cell by cell after it:
+       about a third out at half hull, nine in ten at 20%. */
+    float cellM = 8.0;
+#ifdef VS_ATTRIBS
+    int hitRow = int( vHitRow + 0.5 );
+    float hullLen = texelFetch( uHitTex, ivec2( 8, hitRow ), 0 ).x;
+    cellM = max( hullLen * 0.03, 1.0 );
+#endif
+    vec3 lampC = floor( P / cellM );
+    float lampH = fract( sin( dot( lampC, vec3( 12.9898, 78.233, 37.719 ) ) ) * 43758.5453 );
+    float lampOut = clamp( ( dmg - 0.36 ) * 2.4, 0.0, 0.92 );
+    float lampFl = 0.5 + 0.5 * sin( uTime * ( 6.0 + lampH * 14.0 ) + lampH * 40.0 );
+    vsEmissive *= step( lampOut, lampH ) * mix( 1.0, step( 0.35, lampFl ) * ( 0.6 + 0.4 * lampFl ), smoothstep( 0.38, 0.46, dmg ) );
+    float breach = 0.0;
+    float rim = 0.0;
     float dn = vsNoise3( P * ( uBaseTiling * 1.6 ) + 11.3 );
     float dn2 = vsNoise3( P * ( uBaseTiling * 5.5 ) - 3.1 );
     float field = dn * 0.72 + dn2 * 0.28;
@@ -907,15 +923,25 @@ const HULL_BODY = /* glsl */`
        distance tests and nine texel fetches; LOD3 is the unlit impostor and
        never gets here. heat is how recently the zone was hit: cracks are
        white-hot for the first few seconds and then cool to a dull red. */
-    int hitRow = int( vHitRow + 0.5 );
-    float hullLen = texelFetch( uHitTex, ivec2( 8, hitRow ), 0 ).x;
-    float rad = max( hullLen * ( 0.055 + 0.10 * dmg ), 1e-3 );
+    /* Zones widen in a step at half hull (R11 fix 3), not only smoothly. */
+    float rad = max( hullLen * ( 0.05 + 0.07 * dmg + 0.07 * smoothstep( 0.36, 0.52, dmg ) ), 1e-3 );
+    /* Breaches: past about 65% damage the three oldest zones (the ones the
+       FX burn and vent from, fx/damage.js) open into dark holes with a
+       glowing rim, ragged by the same noise as the scorch edge. */
+    float brk = smoothstep( 0.62, 0.76, dmg );
     float edge = ( field - 0.5 ) * rad * 1.1;
     burn = 0.0;
     heat = 0.0;
     for ( int i = 0; i < 8; i++ ) {
       vec4 h = texelFetch( uHitTex, ivec2( i, hitRow ), 0 );
-      float s = 1.0 - smoothstep( rad * 0.45, rad, distance( P, h.xyz ) + edge );
+      float hd = distance( P, h.xyz );
+      float s = 1.0 - smoothstep( rad * 0.45, rad, hd + edge );
+      if ( i < 3 && brk > 0.0 ) {
+        float br = rad * 0.36 * brk;
+        float bd = hd + edge * 0.3;
+        breach = max( breach, 1.0 - smoothstep( br * 0.7, br * 0.9, bd ) );
+        rim = max( rim, smoothstep( br * 0.55, br * 0.9, bd ) * ( 1.0 - smoothstep( br * 0.95, br * 1.45, bd ) ) );
+      }
       burn = max( burn, s );
       heat = max( heat, s * exp( -max( uTime - h.w, 0.0 ) * 0.6 ) );
     }
@@ -924,12 +950,23 @@ const HULL_BODY = /* glsl */`
     wreck = ( vCut.y > vCut.x || dmg > 0.995 ) ? 1.0 : 0.0;
     burn = mix( burn, 0.72 + 0.28 * smoothstep( 0.3, 0.7, field ), wreck );
     heat *= 1.0 - wreck;
+    breach *= 1.0 - wreck;
+    rim *= 1.0 - wreck;
 #endif
     albedo = mix( albedo, mix( vec3( 0.030, 0.026, 0.024 ), vec3( 0.011, 0.010, 0.009 ), wreck ), burn * 0.9 );
     rough = mix( rough, 0.93, burn );
     metal = mix( metal, 0.28, burn );
     ao = mix( ao, ao * 0.65, burn );
     objN = normalize( mix( objN, GN, burn * 0.45 ) );
+    /* Soot past half hull: broad patches of the whole hull go dull and dark,
+       so a badly hurt ship reads darker even where its hits face away. */
+    float soot = smoothstep( 0.38, 0.85, dmg ) * ( 0.2 + 0.45 * smoothstep( 0.42, 0.68, field ) ) * ( 1.0 - wreck );
+    albedo *= 1.0 - soot;
+    rough = mix( rough, 0.9, soot );
+    albedo = mix( albedo, vec3( 0.002 ), breach );
+    rough = mix( rough, 1.0, breach );
+    metal = mix( metal, 0.0, breach );
+    ao = mix( ao, 0.05, breach );
     float flicker = 0.62 + 0.38 * sin( uTime * 7.3 + field * 41.0 )
       * ( 0.5 + 0.5 * sin( uTime * 2.1 + field * 13.0 ) );
     /* Hot metal shows only along thin cracks inside the burned area, never
@@ -949,6 +986,10 @@ const HULL_BODY = /* glsl */`
     vec3 hotCol = mix( vec3( 0.42, 0.05, 0.015 ), vec3( 1.0, 0.88, 0.72 ), heat );
     float hotGain = mix( 0.35, 2.4, heat ) * ( 1.0 - 0.8 * wreck );
     vsEmissive += hotCol * hot * max( dmg, 0.35 ) * flicker * hotGain;
+    /* Breach: a glowing rim round a void with a dull fire deep inside. */
+    vec3 rimCol = mix( vec3( 1.0, 0.30, 0.06 ), vec3( 1.0, 0.58, 0.26 ), rim * flicker );
+    vsEmissive += rimCol * rim * 1.6 * ( 0.75 + 0.25 * flicker );
+    vsEmissive += vec3( 0.55, 0.07, 0.02 ) * breach * 0.35 * flicker;
   }
 
   vsAlbedo = albedo;
