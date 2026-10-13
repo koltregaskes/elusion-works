@@ -75,6 +75,10 @@ const NEBULA = {
   fill: new THREE.Color(0x2a2233),
   ambient: 0.085,
   rim: 0.46,
+  /* Sky floor on the hull's shadow side (R8): a cool unit-luminance colour from
+     the baked sky and its strength. ENV sets both through setHullSkyFloor(). */
+  floorColour: new THREE.Color(0.80, 0.95, 1.30),
+  floor: 0,
   /* World direction toward the key star. ENV hands over the real one through
      setHullKeyDirection(); the rim below needs it to know which side is dark. */
   keyDir: new THREE.Vector3(0.5, 0.6, 0.3).normalize(),
@@ -97,7 +101,7 @@ const RIM_COLD = new THREE.Color(0.80, 0.95, 1.30).multiplyScalar(
    read as one blob. The weight stays where the contract put it; this is what
    it now multiplies: a gain on the contract weight, not a reflectance, because
    the job is an edge that reads, not a physical floor. */
-const RIM_GAIN = 1.6;
+const RIM_GAIN = 2.0;
 
 /* `ref` is the hull length a family is tuned around. ships/index.js asks for a
    material by (team, family) only, so without it every class from a 46 m
@@ -300,6 +304,7 @@ uniform vec2  uChroma;
 uniform vec2  uTerm;
 uniform vec3  uKeyDir;
 uniform vec3  uRimCold;
+uniform vec4  uSkyFloor;
 uniform vec3  uHullA;
 uniform vec3  uHullB;
 uniform float uPanel;
@@ -1093,6 +1098,32 @@ const HULL_BOUNCE = /* glsl */`
     outgoingLight += uRimCold * ( uBounce.y * ${RIM_GAIN.toFixed(3)} )
       * edge * dark * facing * mix( 1.0, 0.6, vsRough ) * vsAO;
   }
+
+  /* Sky floor (R8 fix 2). The terms above are all directional and none of them
+     reaches the broad middle of the shadow side, so at engagement close that
+     side measured 0.02 of the lit value: a black cut-out with no planes in it,
+     which reads as silhouette, not as form, and gives a close frame no depth.
+
+     This is a floor, not an ambient, and three things keep it one:
+       gate    - zero AT the terminator and on every face the key reaches,
+                 rising to full only past it. The hard terminator is untouched
+                 and a dark core-shadow band survives just beyond it, which is
+                 what keeps the shadow side dramatic rather than flat.
+       planes  - weighted by the panel-mapped normal against the counter-key
+                 sky, so each plate in shadow takes a slightly different value
+                 and the plating and its tilt still read there.
+       seams   - multiplied by albedo (which carries the seam grime) and by AO,
+                 so the seams and the recesses stay darker than the plates.
+     The colour is the sky the haze is built from, pulled cold (ENV hands it
+     over at unit luminance); the strength is a contract weight on the key. */
+  {
+    float nkG = dot( wN, uKeyDir );
+    float gate = 1.0 - smoothstep( -0.30, 0.0, nkG );
+    vec3 skyDir = normalize( vec3( 0.0, 0.55, 0.0 ) - uKeyDir );
+    float planes = 0.40 + 0.60 * saturate( dot( wNp, skyDir ) );
+    vec3 base = diffuseColor.rgb * ( 1.0 - 0.45 * vsMetal ) + f0 * 0.35 * vsMetal;
+    outgoingLight += uSkyFloor.rgb * uSkyFloor.w * base * gate * planes * vsAO;
+  }
 }
 `;
 
@@ -1272,6 +1303,7 @@ function hullUniforms(team, family, opts) {
     uTerm: { value: new THREE.Vector2(TERMINATOR.gamma, termGain()) },
     uKeyDir: { value: NEBULA.keyDir.clone() },
     uRimCold: { value: RIM_COLD.clone() },
+    uSkyFloor: { value: new THREE.Vector4(NEBULA.floorColour.r, NEBULA.floorColour.g, NEBULA.floorColour.b, NEBULA.floor) },
     uModelScale: { value: opts.modelScale === undefined ? 1 : opts.modelScale },
   };
 }
@@ -1871,6 +1903,23 @@ export function setNebulaBounce(keyColour, fillColour, ambient, rim) {
     if (u.uNebulaFill) u.uNebulaFill.value.copy(NEBULA.fill);
     if (u.uBounce) u.uBounce.value.set(NEBULA.ambient, NEBULA.rim);
     if (u.uGlassRim) u.uGlassRim.value.copy(NEBULA.key);
+  }
+}
+
+/**
+ * The hull's shadow-side sky floor (R8 fix 2). ENV calls this with the baked
+ * sky's haze hue, already pulled cold and normalised to unit luminance, and a
+ * strength that is a fraction of the key.
+ * @param {THREE.Color} [colour] unit-luminance fill colour
+ * @param {number} [strength] radiance multiplier
+ */
+export function setHullSkyFloor(colour, strength) {
+  if (colour) NEBULA.floorColour.copy(colour);
+  if (strength !== undefined) NEBULA.floor = strength;
+  if (!store) return;
+  for (const mat of store.materials) {
+    const u = mat.userData.uniforms;
+    if (u && u.uSkyFloor) u.uSkyFloor.value.set(NEBULA.floorColour.r, NEBULA.floorColour.g, NEBULA.floorColour.b, NEBULA.floor);
   }
 }
 

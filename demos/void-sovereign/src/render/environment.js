@@ -3,7 +3,7 @@ import { LAYER } from '../core/engine.js';
 import { bus } from '../core/events.js';
 import { makeRng, fbm2, fbm3, ridged3 } from '../core/rng.js';
 import { buildSkybox } from './skybox.js';
-import { setNebulaBounce, setHullKeyDirection, getTerminatorUniform, TEAM_COLORS } from './materials.js';
+import { setNebulaBounce, setHullKeyDirection, setHullSkyFloor, getTerminatorUniform, TEAM_COLORS } from './materials.js';
 import { rockFadeUniform, ROCK_FADE_SLOTS } from './rock-fade.js';
 import { HAZE_DENSITY, hazeColourFromSky } from './atmosphere.js';
 import {
@@ -105,8 +105,14 @@ const QUALITY = {
      ambient                    0.0028
      hull bounce, diffuse       0.0075
      hull bounce, cold rim      0.0190   (shadow-side edge only)
+     hull sky floor             0.0100   (shadow side past the terminator only)
                                 ------
-     everything that is not the key  0.0563   ->  key : fill = 17.8 : 1
+     everything that is not the key  0.0663   ->  key : fill = 15.1 : 1
+
+   The sky floor is R8's: at engagement close the shadow side of a hull
+   measured 0.02 of its lit side, black with no planes in it. It is gated to
+   zero at the terminator, so the hard edge and the core shadow beside it are
+   kept and only the far shadow side lifts, to 0.06-0.15 of lit.
 
    The sky probe is deliberately outside that sum: `environmentIntensity`
    multiplies the baked map's own radiance rather than a unit colour, so it is
@@ -124,8 +130,10 @@ const RIM_OVER_KEY = 0.0110;
 const AMBIENT_OVER_KEY = 0.0028;
 const BOUNCE_DIFFUSE_OVER_KEY = 0.0075;
 const BOUNCE_RIM_OVER_KEY = 0.0190;
+const BOUNCE_FLOOR_OVER_KEY = 0.0250;
 const NON_KEY_TOTAL_OVER_KEY =
-  FILL_OVER_KEY + RIM_OVER_KEY + AMBIENT_OVER_KEY + BOUNCE_DIFFUSE_OVER_KEY + BOUNCE_RIM_OVER_KEY;
+  FILL_OVER_KEY + RIM_OVER_KEY + AMBIENT_OVER_KEY + BOUNCE_DIFFUSE_OVER_KEY + BOUNCE_RIM_OVER_KEY
+  + BOUNCE_FLOOR_OVER_KEY;
 
 /* The hemisphere's ground half, as a fraction of its sky half. A hemisphere
    light is the one term with no horizontal direction at all — it lights a
@@ -578,6 +586,10 @@ export class Environment {
         this.options.hullRim !== undefined
           ? this.options.hullRim
           : keyIntensity * BOUNCE_RIM_OVER_KEY,
+      floor:
+        this.options.hullFloor !== undefined
+          ? this.options.hullFloor
+          : keyIntensity * BOUNCE_FLOOR_OVER_KEY,
     };
     try {
       setNebulaBounce(
@@ -589,6 +601,13 @@ export class Environment {
       /* The same key, by the same vector: the hull's cold rim is drawn on the
          side this light does not reach. */
       setHullKeyDirection(this.sunDirection);
+      /* The shadow-side floor takes the hue the haze is built from (the fill
+         pulled halfway to the nebula), then halfway again toward cold, so a
+         warm sky cannot tint the shadow side into the enemy's amber. */
+      const floorHue = unitLuminance((sky.fillColour || new THREE.Color(1, 1, 1)).clone()
+        .lerp(sky.nebulaColour || sky.fillColour || new THREE.Color(1, 1, 1), 0.5));
+      setHullSkyFloor(unitLuminance(floorHue.lerp(unitLuminance(new THREE.Color(0.80, 0.95, 1.30)), 0.5)),
+        this.hullBounce.floor);
     } catch (err) {
       /* [MAT] may not have initialised; its own defaults are perfectly usable. */
     }
@@ -622,7 +641,7 @@ export class Environment {
     const skyLum = (this.sky && this.sky.averageLuminance) || 0;
     const iblIntensity = this.engine.scene.environmentIntensity || 0;
     const iblW = Math.PI * skyLum * iblIntensity;
-    const nonKey = fillW + rimW + ambW + bounce.ambient + bounce.rim;
+    const nonKey = fillW + rimW + ambW + bounce.ambient + bounce.rim + (bounce.floor || 0);
     const r6 = (v) => +v.toFixed(6);
     return {
       keyIrradiance: r6(keyW),
@@ -631,6 +650,7 @@ export class Environment {
       ambientOverKey: r6(ambW / keyW),
       bounceDiffuseOverKey: r6(bounce.ambient / keyW),
       bounceRimOverKey: r6(bounce.rim / keyW),
+      bounceFloorOverKey: r6((bounce.floor || 0) / keyW),
       nonKeyOverKey: r6(nonKey / keyW),
       keyOverFill: +(keyW / Math.max(1e-9, nonKey)).toFixed(3),
       contractNonKeyOverKey: r6(NON_KEY_TOTAL_OVER_KEY),
