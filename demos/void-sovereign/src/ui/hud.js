@@ -883,6 +883,8 @@ export class HUD {
     const left = Math.max(0, this._objGrace() - t);
     const hold = w.sovHold || null;
     const holdOurs = !!hold && hold.team === this.team;
+    // The drain stops while a battle is on (World._pauseSovereignty).
+    const pause = !hold && drained ? (w.sovPause || null) : null;
     const clock = (s) => {
       const v = Math.max(0, Math.ceil(s));
       return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`;
@@ -893,6 +895,8 @@ export class HUD {
     if (hold) {
       state = `Battle ${clock(hold.left)}`;
       stateKind = holdOurs ? 'good' : 'bad';
+    } else if (pause) {
+      state = `Paused · ${clock(pause.left)} max`;
     } else if (total > 0) {
       const p = this._seamProgress(this._objProg || (this._objProg = [0, 0]));
       const ticking = drained || left <= 0;
@@ -916,9 +920,9 @@ export class HUD {
       this.objState.classList.toggle('is-good', stateKind === 'good');
       this.objState.classList.toggle('is-bad', stateKind === 'bad');
     }
-    if (this._objHold !== !!hold) {
-      this._objHold = !!hold;
-      this.objEl.classList.toggle('is-hold', !!hold);
+    if (this._objHold !== !!(hold || pause)) {
+      this._objHold = !!(hold || pause);
+      this.objEl.classList.toggle('is-hold', this._objHold);
     }
 
     let line;
@@ -926,6 +930,8 @@ export class HUD {
       line = holdOurs
         ? `Sovereignty secured — the battle decides it · ${hold.engaged} engaged`
         : `Sovereignty gone — the battle decides it · ${hold.engaged} engaged`;
+    } else if (pause) {
+      line = `Sovereignty paused — battle in progress · ${pause.engaged} engaged`;
     } else if (!drained && left > 0) {
       const mm = Math.floor(left / 60);
       const ss = String(Math.floor(left % 60)).padStart(2, '0');
@@ -946,7 +952,9 @@ export class HUD {
         + (hold
           ? ` Sovereignty is at zero during a battle, so the result waits until the battle breaks`
             + ` (at most ${clock(hold.left)} more).`
-          : ''),
+          : pause
+            ? ` The sovereignty clock is paused while a battle is on, for at most ${clock(pause.left)} more this match.`
+            : ''),
     );
   }
 

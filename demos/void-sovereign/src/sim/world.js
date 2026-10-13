@@ -150,13 +150,36 @@ const BROKEN_FLEET_VALUE = 1400;
     match (not per hold), and when it is spent the result stands whatever is
     still happening. The only way out of a hold other than losing it is to win
     the middle back, or to kill their Mothership, and either of those is the
-    battle deciding it. */
+    battle deciding it.
+
+    The pause (R11). Holding the result once the clock read zero still let the
+    clock run down *during* the battle it was meant to wait for: in round 10
+    no evidence match ever triggered the hold, because the drain finished
+    between battles, six or seven minutes after the biggest one. So the drain
+    itself now stops while a battle is live, by the same definition of a
+    battle, and starts again when it breaks. Pause and hold draw on one budget,
+    `CAP` game seconds for the whole match, so between them they can never
+    stall a match for longer than that. With the drain paused through a
+    battle, sovereignty cannot reach zero mid-battle until the budget is
+    spent, at which point the hold is refused as well: the hold stays only as
+    the backstop for a battle that goes live on the very tick the clock runs
+    out.
+
+    The first headless runs spent the whole budget on the skirmish that opens
+    every mirror match as the grace period ends, with both sides near 100%,
+    and had nothing left for the battle at the end. So the pause waits until
+    someone's sovereignty is at or below `PAUSE_BELOW`, the stretch where the
+    clock can actually end the match, and one pause lasts at most `PER`
+    seconds; a battle that outlasts it has to break before the clock can be
+    paused again. */
 const SOV_HOLD = {
   START: 20,
   SIDE: 4,
   RELEASE: 12,
   SETTLE: 4,
-  CAP: 75,
+  CAP: 210,
+  PAUSE_BELOW: 30,
+  PER: 100,
 };
 const _holdEng = [0, 0];
 
@@ -407,6 +430,11 @@ export class World {
     this.sovHold = null;
     this._sovHoldUsed = 0;
     this.sovHoldLog = [];
+    /* The drain pause (see `SOV_HOLD`): the live pause or null, read by the
+       HUD, and what happened, for the end screen and harnesses. */
+    this.sovPause = null;
+    this.sovPauseLog = [];
+    this._sovPauseArmed = true;
     this.endHeld = null;
 
     /* Which side a human is playing, so combat alerts are sent to them and not
@@ -1550,6 +1578,7 @@ export class World {
     if (this.over) return;
     const pace = this.pace || PACE[PACE_DEFAULT];
     if (this.time < pace.grace) return;
+    if (this._pauseSovereignty(dt)) return;
     const a = this.teams[0].seams;
     const b = this.teams[1].seams;
     if (a === b) return;
@@ -1639,6 +1668,7 @@ export class World {
     if (winner === null) return;
 
     if (this.sovHold) this._endSovHold(reason === 'sovereignty' ? this.sovHold.ending || 'settled' : reason);
+    if (this.sovPause) this._endSovPause('over');
     const last = this.sovHoldLog.length ? this.sovHoldLog[this.sovHoldLog.length - 1] : null;
     this.endHeld = reason === 'sovereignty' && last && last.end === this.time ? last : null;
     this.over = true;
@@ -1732,6 +1762,72 @@ export class World {
       return false;
     }
     return true;
+  }
+
+  /**
+   * True while the sovereignty clock is stopped for a live battle (see the
+   * pause under `SOV_HOLD`). Shares the hold's per-match budget.
+   */
+  _pauseSovereignty(dt) {
+    const eng = this._engagedBySide(_holdEng);
+    const total = eng[0] + eng[1];
+    const side = Math.min(eng[0], eng[1]);
+    const live = total >= SOV_HOLD.START && side >= SOV_HOLD.SIDE;
+    let p = this.sovPause;
+    if (!p) {
+      if (!live) this._sovPauseArmed = true;
+      if (!live || !this._sovPauseArmed || this._sovHoldUsed >= SOV_HOLD.CAP) return false;
+      if (Math.min(this.teams[0].sovereignty, this.teams[1].sovereignty) > SOV_HOLD.PAUSE_BELOW) {
+        return false;
+      }
+      p = this.sovPause = {
+        since: this.time,
+        usedBefore: this._sovHoldUsed,
+        cap: SOV_HOLD.CAP,
+        left: SOV_HOLD.CAP - this._sovHoldUsed,
+        engaged: total,
+        engagedBySide: [eng[0], eng[1]],
+        startEngaged: total,
+        peak: total,
+        quiet: 0,
+        sov: [this.teams[0].sovereignty, this.teams[1].sovereignty],
+      };
+      bus.emit('sim:sovPause', { engaged: total, left: p.left });
+      return true;
+    }
+    p.engaged = total;
+    p.engagedBySide[0] = eng[0];
+    p.engagedBySide[1] = eng[1];
+    if (total > p.peak) p.peak = total;
+    const used = p.usedBefore + (this.time - p.since);
+    this._sovHoldUsed = Math.min(SOV_HOLD.CAP, used);
+    p.left = Math.max(0, SOV_HOLD.CAP - used);
+    const over = total < SOV_HOLD.RELEASE || side < SOV_HOLD.SIDE;
+    p.quiet = over ? p.quiet + dt : 0;
+    let how = '';
+    if (used >= SOV_HOLD.CAP) how = 'cap';
+    else if (p.quiet >= SOV_HOLD.SETTLE) how = 'settled';
+    else if (this.time - p.since >= SOV_HOLD.PER) how = 'long';
+    if (!how) return true;
+    if (how === 'long') this._sovPauseArmed = false;
+    this._endSovPause(how);
+    return false;
+  }
+
+  _endSovPause(how) {
+    const p = this.sovPause;
+    if (!p) return;
+    this.sovPauseLog.push({
+      start: p.since,
+      end: this.time,
+      seconds: this.time - p.since,
+      how,
+      startEngaged: p.startEngaged,
+      peak: p.peak,
+      endEngaged: p.engaged,
+    });
+    this.sovPause = null;
+    bus.emit('sim:sovPauseEnd', { how });
   }
 
   _endSovHold(how) {

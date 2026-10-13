@@ -130,6 +130,31 @@ const MELEE = 7000;
 const LINE_LAG = 3000;
 const LINE_LEAD = 2500;
 
+/* Capitals lead the push (R11). R10 gave the AI destroyers and cruisers and
+   made the rally wait for "the line", but the battles were still fought
+   without them, for three reasons:
+   - the rally counted frigates and capitals as one line and launched at 75%
+     of it, so four frigates in and two capitals out was "ready";
+   - the rally put everyone in one wall, so a capital's slot could sit two
+     kilometres off the centre and still count as "here";
+   - in the assault the strike craft were laid 2.5 km ahead of a line that was
+     only paced once it trailed by 3 km, so the screen made contact, the whole
+     force went to melee on the screen's mark, and the 95 m/s cruiser arrived
+     a minute later at a fight that was already over.
+   Now the capitals take the centre of the rally and the launch waits until
+   every capital is within `CAP_FORM` of the rallied group's centre. In the
+   assault, once the capitals trail the body by `CAP_LAG`, the next bound is
+   laid from them, `CAP_LEAD` ahead, so the screen stays in front of the
+   capitals instead of in front of the fight. `CAP_ESCORT` is how far from the
+   body a capital still counts as part of it; one further back is a
+   reinforcement on its way, and is not allowed to drag the bound home. */
+const CAP_FORM = 1500;
+const CAP_LAG = 1500;
+const CAP_LEAD = 1100;
+const CAP_ESCORT = 9000;
+const RALLY_CAP = 300;
+const _kc = new THREE.Vector3();
+
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _c = new THREE.Vector3();
@@ -195,6 +220,12 @@ export class Commander {
     this._near = [];
     this._far = [];
     this._body = [];
+    this._caps = [];
+    this._rest = [];
+    /* Each launch from the rally: when, how big, capitals in the centre of
+       the group out of capitals in the strike, and whether the deadline forced
+       it. Read by harnesses; never by the sim. */
+    this.launchLog = [];
     this._orders = {};
   }
 
@@ -1002,10 +1033,20 @@ export class Commander {
       let line = 0;
       let lineReady = 0;
       let slowest = Infinity;
+      const caps = this._caps;
+      const rest = this._rest;
+      caps.length = 0;
+      rest.length = 0;
+      _c.set(0, 0, 0);
       for (let i = 0; i < this.strike.length; i++) {
         const e = this.strike[i];
         const here = e.position.distanceToSquared(this.strikePoint) < 4200 * 4200;
-        if (here) ready++;
+        if (here) {
+          ready++;
+          _c.add(e.position);
+        }
+        if (e.role === ROLE.CAPITAL) caps.push(e);
+        else rest.push(e);
         if (e.role === ROLE.CAPITAL || e.role === ROLE.FRIGATE) {
           line++;
           if (here) lineReady++;
@@ -1013,19 +1054,39 @@ export class Commander {
             Math.max(1, e.position.distanceTo(this.strikePoint)));
         }
       }
+      if (ready) _c.multiplyScalar(1 / ready);
+      else _c.copy(this.strikePoint);
+      /* Every capital must be in the middle of the rallied group, not merely
+         somewhere near the rally point (see `CAP_FORM`). */
+      let capsIn = 0;
+      for (let i = 0; i < caps.length; i++) {
+        if (caps[i].position.distanceToSquared(_c) < CAP_FORM * CAP_FORM) capsIn++;
+      }
       /* The line is slow — a cruiser makes 95 m/s to an interceptor's 540 —
          so the rally waits for it, and the deadline is its arrival time, not
          the fighters'. A push without its capitals is the R9 battle: sixty
          markers over hulls three pixels long. */
       if (line && lineReady < line && slowest < Infinity) {
         this.phaseDeadline = Math.max(this.phaseDeadline,
-          Math.min(this.time + 1.2 / slowest, this.phaseStart + 260));
+          Math.min(this.time + 1.2 / slowest, this.phaseStart + RALLY_CAP));
       }
-      const lineIn = lineReady >= line * 0.75;
+      if (capsIn < caps.length) {
+        this.phaseDeadline = Math.max(this.phaseDeadline,
+          Math.min(this.time + 20, this.phaseStart + RALLY_CAP));
+      }
+      const lineIn = lineReady >= line * 0.75 && capsIn >= caps.length;
       if ((ready >= this.strike.length * 0.7 && lineIn) || this.time > this.phaseDeadline) {
         this.phase = 'assault';
+        this.launchLog.push({
+          t: Math.round(this.time), n: this.strike.length, caps: caps.length, capsIn,
+          forced: !lineIn,
+        });
+        if (this.launchLog.length > 24) this.launchLog.shift();
       } else {
-        this._moveForce(this.strike, this.strikePoint, FORMATION.WALL, 'strike', 1800, 'move');
+        // The capitals take the centre; the rest of the fleet forms its wall
+        // on them, so "with the fleet" means in the middle of it.
+        this._moveForce(rest, this.strikePoint, FORMATION.WALL, 'strike', 1800, 'move');
+        this._moveForce(caps, this.strikePoint, FORMATION.SPHERE, 'strikeCaps', 900, 'move');
         for (let i = 0; i < this.strike.length; i++) this.strike[i].stance = STANCE.NEUTRAL;
         return;
       }
@@ -1133,6 +1194,26 @@ export class Commander {
       _lc.multiplyScalar(1 / lineN);
       lagging = _lc.distanceTo(target.position) > _c.distanceTo(target.position) + LINE_LAG;
     }
+    /* The capitals set the pace before the frigates do, and sooner (see
+       `CAP_LAG`). Only capitals with the body count: one still crossing from
+       the yard is a reinforcement, and pacing on it would walk the fleet home. */
+    let capN = 0;
+    _kc.set(0, 0, 0);
+    for (let i = 0; i < far.length; i++) {
+      if (far[i].role !== ROLE.CAPITAL) continue;
+      if (far[i].position.distanceToSquared(_c) > CAP_ESCORT * CAP_ESCORT) continue;
+      _kc.add(far[i].position);
+      capN++;
+    }
+    let lead = LINE_LEAD;
+    if (capN) {
+      _kc.multiplyScalar(1 / capN);
+      if (_kc.distanceTo(target.position) > _c.distanceTo(target.position) + CAP_LAG) {
+        _lc.copy(_kc);
+        lagging = true;
+        lead = CAP_LEAD;
+      }
+    }
 
     if (cohesive) {
       /* Push: the next bound toward the objective, from where the fleet is.
@@ -1150,7 +1231,7 @@ export class Commander {
       }
 
       const from = lagging ? _lc : _c;
-      const bound = lagging ? LINE_LEAD : ADVANCE;
+      const bound = lagging ? lead : ADVANCE;
       _v2.subVectors(target.position, from);
       const d = _v2.length();
       if (d > bound) _v.copy(from).addScaledVector(_v2.multiplyScalar(1 / d), bound);
