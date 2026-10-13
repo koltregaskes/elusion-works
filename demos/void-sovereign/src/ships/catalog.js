@@ -600,3 +600,21 @@ export function approxRadius(classId) {
   const s = SHIPS[classId];
   return s ? s.length * 0.55 : 10;
 }
+
+/* Minimum painted hull length on screen, in CSS pixels, for a hull drawn as
+   the distant impostor (critic round 3, fix 5: "a hull never drops below about
+   8-10 px of hull"). Read by SHIPS, which grows the impostor to it, and by FX,
+   which must size the drive glow and the trail against the hull as it is
+   actually drawn rather than against the physical hull it no longer matches.
+
+   It rises a little with hull length so the floor does not flatten the
+   ranking among the small classes it binds on (interceptor 9 px, corvette
+   ~10, collector ~10.7, frigate 12) - section 3.4 of ARCHITECTURE. The grow
+   ceiling is what keeps it a floor and not a blob: past the range where a
+   fighter needs more than HULL_FLOOR_MAX_GROW times its own size it is let go
+   and shrinks naturally, and the LOD thresholds (multiples of hull length,
+   HANDOFF section 5) are untouched by any of this. */
+export const HULL_FLOOR_MAX_GROW = 6;
+export function hullFloorPx(length) {
+  return Math.min(12, Math.max(9, 9 * Math.pow(Math.max(1, length) / 14, 0.15)));
+}

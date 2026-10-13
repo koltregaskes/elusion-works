@@ -271,6 +271,15 @@ class GpuTimer {
     }
   }
 
+  /* After a context restore the extension object and every pending query
+     belong to the dead context: drop them unread and ask again. */
+  reset() {
+    this._pending.length = 0;
+    this._active = null;
+    this.results = Object.create(null);
+    this.ext = this.gl.getExtension('EXT_disjoint_timer_query_webgl2');
+  }
+
   dispose() {
     for (const p of this._pending) this.gl.deleteQuery(p.q);
     this._pending.length = 0;
@@ -647,6 +656,13 @@ export class PostFX {
 
   get _useGlow() {
     return this._glowMode !== 'threshold' && !!this.tier.glow;
+  }
+
+  /* The context came back: its render targets are blank and its timer queries
+     are gone. The per-frame targets refill themselves; these two do not. */
+  onContextRestored() {
+    this._timer.reset();
+    this._seedExposure();
   }
 
   /* Prime the adaptation buffers so frame one is not a black flash. */

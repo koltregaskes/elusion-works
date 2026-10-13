@@ -1,14 +1,9 @@
 /* Shield impacts.
 
-   There is never a visible bubble. The shield only exists in the instant it is
-   hit: a hex cell lights under the impact, the excitation runs outward across
-   the surface as a ring of cells, the fresnel rim flares for a fraction of a
-   second, and it is gone inside half a second.
-
-   The hex grid is laid out in an equal-angle azimuthal projection centred on
-   the hit, so the cells radiate from the impact instead of from some arbitrary
-   pole — which is what makes the propagation read as energy spreading through
-   a lattice rather than a texture scrolling. */
+   There is never a visible bubble and there is no lattice. The shield only
+   exists in the instant it is hit: a soft hot point under the impact and one
+   ripple running a short way out from it, local to the hit in metres and gone
+   inside about a third of a second. */
 
 import * as THREE from '../../vendor/three/build/three.module.js';
 
@@ -40,6 +35,7 @@ varying float vStrength;
 varying float vSeed;
 varying float vSpan;
 varying float vFragW;
+varying float vFlick;
 
 void main() {
   float age = clamp( ( uTime - iTime.x ) / max( iTime.y, 0.0001 ), 0.0, 1.0 );
@@ -58,6 +54,8 @@ void main() {
   vSeed = iSeed;
   vSpan = iSpan;
   vFragW = gl_Position.w;
+  // Per-hit shimmer, two incommensurate rates, so the cap breathes as it fades.
+  vFlick = 0.72 + 0.28 * sin( uTime * 47.0 + iSeed * 91.0 ) * sin( uTime * 19.0 + iSeed * 37.0 );
   #include <logdepthbuf_vertex>
 }
 `;
@@ -66,8 +64,6 @@ const SHIELD_FRAG = /* glsl */ `
 #include <common>
 #include <logdepthbuf_pars_fragment>
 #SOFT_PARS
-
-uniform float uHexScale;
 
 varying vec3 vNormal;
 varying vec3 vWorld;
@@ -78,72 +74,43 @@ varying float vStrength;
 varying float vSeed;
 varying float vSpan;
 varying float vFragW;
+varying float vFlick;
 
-const vec2 HS = vec2( 1.0, 1.7320508 );
-
-/** Nearest hex centre: xy = offset from centre, zw = cell id. */
-vec4 getHex( vec2 p ) {
-  vec4 hC = floor( vec4( p, p - vec2( 0.5, 1.0 ) ) / HS.xyxy ) + 0.5;
-  vec4 h = vec4( p - hC.xy * HS, p - ( hC.zw + 0.5 ) * HS );
-  return dot( h.xy, h.xy ) < dot( h.zw, h.zw ) ? vec4( h.xy, hC.xy ) : vec4( h.zw, hC.zw + 0.5 );
-}
-
-float hexEdge( vec2 h ) {
-  vec2 a = abs( h );
-  return 0.5 - max( dot( a, HS * 0.5 ), a.x );
-}
-
-float hash21( vec2 p ) {
-  return fract( sin( dot( p, vec2( 27.619, 57.583 ) ) ) * 43758.5453 );
-}
-
+/* Round 6 fix 4: no lattice. The hex-cell shader this replaced was still the
+   thing drawing a 600 px tiled bubble over half a capital, because its 50
+   degree window was an ANGLE on a sphere the size of the whole hull - on a
+   cruiser that is a patch most of a hull long. vSpan is now the patch's
+   angular radius, worked out on the CPU from a size in metres, so the ripple
+   is local in the world and not in the sphere's own terms. Inside it: a soft
+   hot point and one ripple running out to the patch edge, both gone inside a
+   third of a second. */
 void main() {
   #include <logdepthbuf_fragment>
   if ( vStrength <= 0.0 ) discard;
 
   vec3 n = normalize( vNormal );
-  vec3 viewDir = normalize( cameraPosition - vWorld );
-  float fres = pow( 1.0 - abs( dot( n, viewDir ) ), 2.6 );
-
   float ang = acos( clamp( dot( n, vHit ), -1.0, 1.0 ) );
-  float front = vSpan * ( 1.0 - pow( 1.0 - vAge, 1.7 ) );
-  float d = ang - front;
+  float x = ang / max( vSpan, 1e-3 );
+  float local = 1.0 - smoothstep( 0.55, 1.0, x );
+  if ( local <= 0.0 ) discard;
 
-  // Sharp leading shell plus a decaying wash behind it.
-  float shell = exp( -pow( d / 0.26, 2.0 ) );
-  float wash = smoothstep( 0.0, -0.55, d ) * 0.20 * ( 1.0 - vAge );
+  vec3 viewDir = normalize( cameraPosition - vWorld );
+  float fres = pow( 1.0 - abs( dot( n, viewDir ) ), 2.0 );
 
-  // Tangent frame about the hit: cells radiate from the impact, not a pole.
-  vec3 up = abs( vHit.y ) < 0.9 ? vec3( 0.0, 1.0, 0.0 ) : vec3( 1.0, 0.0, 0.0 );
-  vec3 t1 = normalize( cross( vHit, up ) );
-  vec3 t2 = cross( vHit, t1 );
-  vec2 pl = vec2( dot( n, t1 ), dot( n, t2 ) );
-  float pl2 = length( pl );
-  vec2 dirp = pl2 > 1e-5 ? pl / pl2 : vec2( 1.0, 0.0 );
-  vec2 q = dirp * ang * uHexScale + vSeed * 13.0;
+  float fade = 1.0 - vAge;
+  float front = 0.85 * ( 1.0 - pow( fade, 1.8 ) );
+  float dr = ( x - front ) / 0.17;
+  float ripple = exp( -dr * dr ) * fade;
+  float hot = exp( -( x * x ) / 0.06 ) * pow( fade, 2.4 );
 
-  vec4 hc = getHex( q );
-  float edge = hexEdge( hc.xy );
-  float grid = 1.0 - smoothstep( 0.0, 0.075, edge );
-  float cellR = hash21( hc.zw + vSeed * 7.0 );
-  float cell = 0.45 + 0.55 * cellR;
-
-  float excite = ( shell + wash ) * cell;
-  float hot = exp( -pow( ang / 0.17, 2.0 ) ) * pow( 1.0 - vAge, 2.4 ) * 1.5;
-  // The rim only announces itself at the moment of impact, then it is gone.
-  // It traces the whole silhouette, so it is the first thing that reads as a
-  // bubble when several hits overlap — kept brief and low.
-  float rimFlash = fres * exp( -vAge * 11.0 ) * 0.20;
-
-  // The unexcited lattice must be genuinely dark, not a dim standing grid.
-  float lattice = grid * 0.92 + 0.16;
-  float a = ( excite * lattice * mix( 0.42, 1.0, fres ) + hot + rimFlash )
-          * vStrength * pow( 1.0 - vAge, 1.3 );
+  float a = ( ripple * 0.36 * mix( 0.7, 1.0, fres ) + hot * 0.55 ) * local * vFlick * vStrength;
   a *= fxSoftFade( vFragW );
   if ( a <= 0.004 ) discard;
 
-  vec3 col = mix( vColor, vec3( 1.0 ), clamp( hot * 0.8 + grid * excite * 0.45, 0.0, 1.0 ) );
-  gl_FragColor = vec4( col * ( 1.4 + 3.0 * hot ) * uGain, clamp( a, 0.0, 1.0 ) );
+  // Held near the glow cut so the patch tints the hull rather than blooming
+  // into a white ball of its own.
+  vec3 col = mix( vColor, vec3( 1.0 ), clamp( hot * 0.30, 0.0, 1.0 ) );
+  gl_FragColor = vec4( col * ( 0.6 + 0.5 * hot ) * uGain, clamp( a, 0.0, 1.0 ) );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -176,7 +143,9 @@ export class ShieldFX {
     this.ctx = ctx;
     this.drawCalls = 1;
 
-    this._sphere = new THREE.IcosahedronGeometry(1, ctx.quality === 'low' ? 1 : 2);
+    /* Detail 4 (5120 faces), up from 2: at detail 2 the silhouette and the
+       interpolated normals of a cruiser-sized bubble showed the facets. */
+    this._sphere = new THREE.IcosahedronGeometry(1, ctx.quality === 'low' ? 3 : 4);
     this.batch = ctx.instanceBatch({
       name: 'shields',
       base: this._sphere,
@@ -185,7 +154,6 @@ export class ShieldFX {
       capacity: ctx.budget.shields,
       vertexShader: SHIELD_VERT,
       fragmentShader: SHIELD_FRAG,
-      uniforms: { uHexScale: { value: 13.0 } },
       side: THREE.FrontSide,
       renderOrder: 18,
       softness: 30,
@@ -237,6 +205,9 @@ export class ShieldFX {
     const amount = Math.max(1, p.amount || 10);
     const team = ctx.teamColour(e.team || 0);
     this._col.copy(team.trim).lerp(team.light, 0.35);
+    // Ripple radius in metres: about a tenth of the bounding radius on a
+    // capital, a third on a strike craft, never wider than 0.35 rad.
+    const patchM = Math.min(radius * 0.35, Math.max(radius * 0.10, 8 + Math.sqrt(amount) * 1.6));
 
     this._hits.push({
       entity: e,
@@ -245,14 +216,13 @@ export class ShieldFX {
       centre: centre.clone(),
       radius,
       start: ctx.now,
-      life: 0.42 + Math.min(0.34, amount * 0.0016),
+      life: 0.24 + Math.min(0.12, amount * 0.0008),
       strength: Math.min(1.7, 0.5 + Math.sqrt(amount) * 0.075),
       seed: ctx.rng.next(),
-      /* How far round the sphere the excitation runs, in radians. Held under
-         two so even an ion lance leaves the far side of the hull dark: a front
-         that reaches the opposite pole has lit the whole bubble, which is the
-         one thing this is not allowed to do. */
-      span: 1.15 + Math.min(0.8, amount * 0.003),
+      /* Angular radius of the ripple patch. Sized in metres first, then
+         turned into an angle on this hull's sphere: a fixed angle is a patch
+         most of a hull long on a capital (round 5's 600 px bubble). */
+      span: patchM / radius,
       colour: this._col.clone(),
     });
 
@@ -263,8 +233,13 @@ export class ShieldFX {
     const py = centre.y + dir.y * radius;
     const pz = centre.z + dir.z * radius;
     const mag = Math.min(5.5, 1.0 + Math.sqrt(amount) * 0.24);
-    f.flare.spawn(px, py, pz, 0, 0, 0, 0.14, 0, mag * 13, mag * 3, WHITE, 4.6, 0, 0);
-    f.flare.spawn(px, py, pz, 0, 0, 0, 0.32, 0, mag * 5, mag * 22, this._col, 2.4, 0, 0);
+    /* Held inside the ripple patch and under the 8 px hit ceiling past focus
+       (round 6 fix 4): at mag * 22 m the tinted flare alone was a 120 m disc. */
+    const dCam = ctx.distTo(px, py, pz);
+    const kf = Math.max(1, 900 / dCam);
+    const fc = Math.min(patchM, ctx.px(dCam) * 8 * kf * kf);
+    f.flare.spawn(px, py, pz, 0, 0, 0, 0.14, 0, Math.min(mag * 13, fc * 0.6), Math.min(mag * 3, fc * 0.3), WHITE, 4.6, 0, 0);
+    f.flare.spawn(px, py, pz, 0, 0, 0, 0.32, 0, Math.min(mag * 5, fc * 0.5), Math.min(mag * 22, fc), this._col, 2.4, 0, 0);
 
     const rng = ctx.rng;
     const n = Math.round((7 + mag * 3) * ctx.qscale);

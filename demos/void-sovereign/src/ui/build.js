@@ -10,7 +10,30 @@ import { silhouetteIcon, ShipCard } from './select.js';
 
    Everything is rebuilt only when the producer set changes. Per-frame work is
    limited to affordability classes and the queue rings, throttled to 10 Hz,
-   because nobody can read a progress ring faster than that. */
+   because nobody can read a progress ring faster than that.
+
+   ## Collapsed by default — round 1, fix #7
+
+   This was a 430×340 grid, permanently open, and in five of the six review
+   frames it was the largest single element on screen: twelve ship names, twelve
+   build times, twelve population costs and a queue, all sitting on top of the
+   combat and the asteroid fields whether or not the player was building
+   anything. ARCHITECTURE §3.8 says the UI "sits *on* the void, never boxes it
+   in", and an always-on grid of that size boxes it in.
+
+   So the resting state is now a single row of class glyphs with a cost under
+   each — the two facts you need to decide, and nothing else. Name, build time,
+   population and the producer tabs arrive on hover, on focus, or when the
+   header is toggled open.
+
+   The critical constraint is that **the collapsed strip is fully operable**.
+   Every buildable class is a real, tabbable, clickable button in both states;
+   expanding adds labels, it does not add controls. That is what stops this
+   being the project's third keyboard trap: there is no state in which a control
+   exists but cannot be reached, because the same buttons carry both states.
+   `:focus-within` opens the panel the instant a keyboard reaches it, so the
+   producer tabs — the only controls that are display-suppressed while
+   collapsed — are already painted by the time Tab moves on to them. */
 
 const RING_R = 13;
 const RING_C = 2 * Math.PI * RING_R;
@@ -28,6 +51,7 @@ export class BuildMenu {
     this._acc = 1;
     this._sig = '';
     this._status = null;
+    this._pinned = false;
 
     const el = document.createElement('section');
     el.className = 'vsh-build';
@@ -35,9 +59,15 @@ export class BuildMenu {
 
     const head = document.createElement('div');
     head.className = 'vsh-build__head';
-    const title = document.createElement('span');
+    /* The label is the disclosure. A separate caret would be a second control
+       for one job, and the word is already the biggest hit target here. */
+    const title = document.createElement('button');
+    title.type = 'button';
     title.className = 'vsh-build__title';
     title.textContent = 'Production';
+    title.setAttribute('aria-expanded', 'false');
+    title.setAttribute('aria-label', 'Production — show ship names and build times');
+    this.toggle = title;
     /* One status line for whatever is blocking the whole yard. Repeating
        "Population cap" on ten rows is noise, and painting it amber would
        borrow the enemy's colour for a neutral economy state. */
@@ -94,10 +124,27 @@ export class BuildMenu {
       this.refresh();
     };
 
+    this._onToggle = () => this.setOpen(!this._pinned);
+    this.toggle.addEventListener('click', this._onToggle);
+
     this.grid.addEventListener('click', this._onGrid);
     this.queue.addEventListener('click', this._onQueue);
     this.tabBar.addEventListener('click', this._onTabs);
     this.refresh();
+  }
+
+  /** Pin the detailed view open. Hover and focus expand it transiently on
+      their own; this is the state a player can choose to keep. */
+  setOpen(open) {
+    this._pinned = !!open;
+    this.el.classList.toggle('is-open', this._pinned);
+    this.toggle.setAttribute('aria-expanded', String(this._pinned));
+    this.toggle.setAttribute(
+      'aria-label',
+      this._pinned
+        ? 'Production — collapse to the glyph row'
+        : 'Production — show ship names and build times',
+    );
   }
 
   /** Every live friendly hull that can build something. */
@@ -327,6 +374,7 @@ export class BuildMenu {
   }
 
   dispose() {
+    this.toggle.removeEventListener('click', this._onToggle);
     this.grid.removeEventListener('click', this._onGrid);
     this.queue.removeEventListener('click', this._onQueue);
     this.tabBar.removeEventListener('click', this._onTabs);
