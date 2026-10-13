@@ -112,6 +112,13 @@ const END_COPY = {
     lost: 'They held the contested seams until your sovereignty ran out.',
     draw: 'Both sides ran their sovereignty out together.',
   },
+  /* Sovereignty ran out while a battle was on, the result waited for it
+     (`SOV_HOLD` in sim/world.js), and the battle did not turn it. */
+  sovereigntyHeld: {
+    won: 'Their sovereignty ran out mid-battle. The result waited for the fight, and the fight did not turn it.',
+    lost: 'Your sovereignty ran out mid-battle. The result waited for the fight, and the fight did not turn it.',
+    draw: 'Both sides ran their sovereignty out together.',
+  },
   attrition: {
     won: 'They have no yards, no miners and no fleet left to rebuild with.',
     lost: 'You have no yards, no miners and no fleet left to rebuild with.',
@@ -1244,17 +1251,28 @@ export class Shell {
       outcome === 'won' ? 'Victory' : outcome === 'lost' ? 'Defeat' : 'Mutual annihilation';
     this._overTitle.classList.toggle('is-won', outcome === 'won');
     this._overTitle.classList.toggle('is-lost', outcome === 'lost');
-    this._overReason.textContent = END_COPY[reason][outcome];
+    const copy = reason === 'sovereignty' && p.held ? 'sovereigntyHeld' : reason;
+    this._overReason.textContent = END_COPY[copy][outcome];
 
     const stats = (this.game.stats && this.game.stats()) || {};
-    const rows = [
+    const rows = [];
+    /* The same figures, in the same words, as the HUD's sovereignty row. */
+    const sov = Array.isArray(p.sovereignty) ? p.sovereignty : null;
+    if (sov && sov.length >= 2) {
+      const pc = (v) => `${Math.max(0, Math.ceil(Number(v) || 0))}%`;
+      rows.push(['Sovereignty', `You ${pc(sov[team])} · Them ${pc(sov[team ^ 1])}`]);
+    }
+    if (p.held && Number.isFinite(p.held.seconds)) {
+      rows.push(['Battle after the clock ran out', `${fmtClock(p.held.seconds)} · ${fmtInt(p.held.peak)} engaged at peak`]);
+    }
+    rows.push(
       ['Hostiles destroyed', fmtInt(stats.kills)],
       ['Hulls lost', fmtInt(stats.losses)],
       ['Hulls commissioned', fmtInt(stats.built)],
       ['Resources harvested', fmtInt(stats.harvested)],
       ['Fleet remaining', `${fmtInt(stats.fleetHulls)} · ${fmtInt(stats.fleetValue)} RU`],
       ['Duration', fmtClock(stats.duration)],
-    ];
+    );
     const frag = document.createDocumentFragment();
     for (const [k, v] of rows) {
       const row = el('div', 'vs-tally__row');

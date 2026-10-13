@@ -734,16 +734,22 @@ export class HUD {
     this.objLine = el('span', 'vsh-obj__line', 'Take their Mothership, or take the middle.');
     wrap.appendChild(this.objLine);
 
+    /* Round 9 read "YOU 89 / THEM 8" as fleet strength while the fleet stats
+       beside it said 28 hulls against 89 hostiles. The meters are sovereignty
+       percentages, not ships, so they say so: a key on the row itself (the
+       "Objective" key above is the first thing a narrow bar drops) and a
+       percent sign on every number. */
     const meters = el('div', 'vsh-obj__meters');
+    meters.append(el('span', 'vsh-obj__mk vsh-obj__mk--sov', 'Sovereignty'));
     const meter = (side, label) => {
       const m = el('div', `vsh-obj__m vsh-obj__m--${side}`);
       m.append(el('span', 'vsh-obj__mk', label));
       const bar = el('div', 'vsh-obj__bar');
       const fill = el('i', 'vsh-obj__fill');
       bar.appendChild(fill);
-      const n = el('span', 'vsh-obj__n vsh-num', '100');
+      const n = el('span', 'vsh-obj__n vsh-num', '100%');
       m.append(bar, n);
-      m.setAttribute('aria-label', `${label} sovereignty`);
+      m.setAttribute('aria-label', `${label === 'You' ? 'Your' : 'Their'} sovereignty, percent`);
       meters.appendChild(m);
       return { root: m, fill, n };
     };
@@ -751,6 +757,12 @@ export class HUD {
     this.objThem = meter('them', 'Them');
     this.objSeams = el('span', 'vsh-obj__seams', '');
     meters.appendChild(this.objSeams);
+    /* What the middle is doing, not just what it holds. A seam only counts as
+       owned at full control and drops out the moment its fleet leaves, so a
+       side winning on seams could read 0/6; this says "taking 63%",
+       "draining them", or, during a held result, how long the battle has. */
+    this.objState = el('span', 'vsh-obj__state', '');
+    meters.appendChild(this.objState);
     wrap.appendChild(meters);
     this.objEl = wrap;
     return wrap;
@@ -798,7 +810,28 @@ export class HUD {
      readout stops trusting this the moment it sees real drain, so a drift in
      the sim shows up as an early switch to "draining" rather than as a lie. */
   _objGrace() {
-    return 240;
+    // It said 240 for good after `standard` pacing moved the grace to 120 s;
+    // read it from the live preset now, with the old figure as the fallback.
+    const pace = this.world && this.world.pace;
+    return pace && Number.isFinite(pace.grace) ? pace.grace : 240;
+  }
+
+  /* Best part-taken seam for each side, as 0..1 of full control, for seams
+     that side does not already own. Control is negative toward team 0. */
+  _seamProgress(out) {
+    out[0] = 0;
+    out[1] = 0;
+    const cl = this.world && this.world.resourceClusters;
+    if (!cl) return out;
+    for (let i = 0; i < cl.length; i++) {
+      const c = cl[i];
+      if (!c || !c.contested || typeof c.control !== 'number') continue;
+      const forUs = this.team === 0 ? -c.control : c.control;
+      if (c.owner === this.team || c.owner === (this.team ^ 1)) continue;
+      if (forUs > out[0]) out[0] = forUs;
+      if (-forUs > out[1]) out[1] = -forUs;
+    }
+    return out;
   }
 
   _refreshObjective() {
@@ -824,20 +857,23 @@ export class HUD {
 
     this.objUs.fill.style.transform = `scaleX(${(sovUs / 100).toFixed(3)})`;
     this.objThem.fill.style.transform = `scaleX(${(sovThem / 100).toFixed(3)})`;
-    const nUs = String(Math.ceil(sovUs));
-    const nThem = String(Math.ceil(sovThem));
+    const nUs = `${Math.ceil(sovUs)}%`;
+    const nThem = `${Math.ceil(sovThem)}%`;
     if (this.objUs.n.textContent !== nUs) this.objUs.n.textContent = nUs;
     if (this.objThem.n.textContent !== nThem) this.objThem.n.textContent = nThem;
     this.objUs.root.classList.toggle('is-alert', sovUs <= 25);
 
-    const seamText = total > 0 ? `Seams ${seamsUs}/${total}` : '';
+    // Both sides' holdings, so a lead reads as a lead: "Seams 2–1 of 6".
+    const seamText = total > 0 ? `Seams ${seamsUs}–${seamsThem} of ${total}` : '';
     if (this.objSeams.textContent !== seamText) {
       this.objSeams.replaceChildren();
       if (total > 0) {
         this.objSeams.append(
           document.createTextNode('Seams '),
           el('b', null, String(seamsUs)),
-          document.createTextNode(`/${total}`),
+          document.createTextNode('–'),
+          el('i', null, String(seamsThem)),
+          document.createTextNode(` of ${total}`),
         );
       }
     }
@@ -845,8 +881,52 @@ export class HUD {
     const t = num(w.time, 0);
     const drained = sovUs < 99.99 || sovThem < 99.99;
     const left = Math.max(0, this._objGrace() - t);
+    const hold = w.sovHold || null;
+    const holdOurs = !!hold && hold.team === this.team;
+    const clock = (s) => {
+      const v = Math.max(0, Math.ceil(s));
+      return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`;
+    };
+
+    let state = '';
+    let stateKind = '';
+    if (hold) {
+      state = `Battle ${clock(hold.left)}`;
+      stateKind = holdOurs ? 'good' : 'bad';
+    } else if (total > 0) {
+      const p = this._seamProgress(this._objProg || (this._objProg = [0, 0]));
+      const ticking = drained || left <= 0;
+      if (p[0] >= 0.05 && p[0] >= p[1]) {
+        state = `yours at ${Math.floor(p[0] * 100)}%`;
+        stateKind = 'good';
+      } else if (p[1] >= 0.05) {
+        state = `theirs at ${Math.floor(p[1] * 100)}%`;
+        stateKind = 'bad';
+      } else if (ticking && seamsUs > seamsThem) {
+        state = 'draining them';
+        stateKind = 'good';
+      } else if (ticking && seamsThem > seamsUs) {
+        state = 'draining you';
+        stateKind = 'bad';
+      }
+    }
+    if (this.objState.textContent !== state) this.objState.textContent = state;
+    if (this._objStateKind !== stateKind) {
+      this._objStateKind = stateKind;
+      this.objState.classList.toggle('is-good', stateKind === 'good');
+      this.objState.classList.toggle('is-bad', stateKind === 'bad');
+    }
+    if (this._objHold !== !!hold) {
+      this._objHold = !!hold;
+      this.objEl.classList.toggle('is-hold', !!hold);
+    }
+
     let line;
-    if (!drained && left > 0) {
+    if (hold) {
+      line = holdOurs
+        ? `Sovereignty secured — the battle decides it · ${hold.engaged} engaged`
+        : `Sovereignty gone — the battle decides it · ${hold.engaged} engaged`;
+    } else if (!drained && left > 0) {
       const mm = Math.floor(left / 60);
       const ss = String(Math.floor(left % 60)).padStart(2, '0');
       line = `Sovereignty clock starts in ${mm}:${ss} — take the middle before it does`;
@@ -861,7 +941,12 @@ export class HUD {
     this.objEl.setAttribute(
       'title',
       `Win by destroying their Mothership, by draining their sovereignty to zero, `
-        + `or by breaking their fleet entirely. Your sovereignty ${nUs}%, theirs ${nThem}%.`,
+        + `or by breaking their fleet entirely. Your sovereignty ${nUs}, theirs ${nThem}. `
+        + `Sovereignty is a clock on the middle, not fleet strength: hulls and hostiles are counted on the right.`
+        + (hold
+          ? ` Sovereignty is at zero during a battle, so the result waits until the battle breaks`
+            + ` (at most ${clock(hold.left)} more).`
+          : ''),
     );
   }
 

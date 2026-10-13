@@ -1170,6 +1170,46 @@ body.vs-body {
   color: var(--vs-cyan);
 }
 
+.vsh-obj__seams { white-space: nowrap; }
+
+.vsh-obj__seams i {
+  font-style: normal;
+  color: var(--vs-amber);
+}
+
+/* The row's own key. The meters are sovereignty percentages, and the round 9
+   critic read them as fleet strength without it. */
+.vsh-obj__mk--sov {
+  color: rgba(255, 255, 255, 0.4);
+  padding-right: 2px;
+}
+
+.vsh-obj__n { min-width: 3.3em; }
+
+/* What the middle is doing: "yours at 63%", "draining them", "Battle 0:52". */
+.vsh-obj__state {
+  font-family: var(--vs-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.4);
+  white-space: nowrap;
+}
+
+.vsh-obj__state:empty { display: none; }
+.vsh-obj__state.is-good { color: var(--vs-cyan); }
+.vsh-obj__state.is-bad { color: var(--vs-amber); }
+
+/* A held result: sovereignty is at zero but a battle is on, so the battle
+   decides it. The sentence and the countdown take the bar's full value. */
+.vsh-obj.is-hold .vsh-obj__line { color: rgba(255, 255, 255, 0.86); }
+.vsh-obj.is-hold .vsh-obj__state {
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  padding: 1px 6px;
+  border: 1px solid currentColor;
+}
+
 /* ------------------------------------------------------------- responsive */
 
 /* The top bar is the tightest row on the page. The objective sentence is the
@@ -1185,6 +1225,8 @@ body.vs-body {
   .vsh-obj__bar { width: 52px; }
   .vsh-obj__meters { gap: 10px; }
   .vsh-obj__seams { padding-left: 8px; }
+  .vsh-obj__mk--sov { display: none; }
+  .vsh-obj__state:not(.is-good):not(.is-bad) { display: none; }
 }
 
 @media (max-width: 1000px) {

@@ -126,9 +126,44 @@ const REPAIR_COST_FRACTION = 0.32;
 /** Below this in warships, with no yards and no miners, a side is finished. */
 const BROKEN_FLEET_VALUE = 1400;
 
+/** The sovereignty hold.
+
+    Round 9's played match reached 31 engaged at 12:09 and was then won on
+    sovereignty at 12:13: the clock ended the match four seconds into the
+    climax, so the battle the whole match had built towards was never fought
+    out. A clock that runs out mid-battle is still a result, but the result
+    waits for the battle that is on.
+
+    When a side's sovereignty reaches zero while a battle is live, the result
+    is held until the battle is over. "A battle" is read from the sim, not
+    guessed: at least `START` hulls engaged across both fleets, with at least
+    `SIDE` of them on each side (sixty hostiles shooting a remnant of three is
+    a mopping-up, not a battle). The battle is over once, for `SETTLE` seconds
+    running, fewer than `RELEASE` are engaged or either side has fewer than
+    `SIDE` engaged. The second half was added after the first played hold:
+    the losing fleet was down to one hull shooting back while twenty winners
+    stayed "engaged" on it and its Mothership, and the hold ran to its cap on
+    a battle that had been decided forty seconds earlier.
+
+    The hold cannot be used to stall. The side at zero does not recover while
+    it is behind in the middle, the budget is `CAP` game seconds for the whole
+    match (not per hold), and when it is spent the result stands whatever is
+    still happening. The only way out of a hold other than losing it is to win
+    the middle back, or to kill their Mothership, and either of those is the
+    battle deciding it. */
+const SOV_HOLD = {
+  START: 20,
+  SIDE: 4,
+  RELEASE: 12,
+  SETTLE: 4,
+  CAP: 75,
+};
+const _holdEng = [0, 0];
+
 const VICTORY_COPY = {
   base: 'The mothership is gone.',
   sovereignty: 'The contested field decided it.',
+  sovereigntyHeld: 'The contested field decided it, and the battle did not change it.',
   attrition: 'No yards, no miners, no fleet left to rebuild with.',
 };
 
@@ -365,6 +400,14 @@ export class World {
     this.over = false;
     this.winner = -1;
     this.endReason = '';
+    /* The sovereignty hold (see `_holdSovereignty`). `sovHold` is the live
+       hold or null, read by the HUD; `_sovHoldUsed` is the match's spent
+       budget; `sovHoldLog` is what happened, for the end screen and harnesses;
+       `endHeld` is set when a sovereignty result was waited on. */
+    this.sovHold = null;
+    this._sovHoldUsed = 0;
+    this.sovHoldLog = [];
+    this.endHeld = null;
 
     /* Which side a human is playing, so combat alerts are sent to them and not
        to the commander. -1 in an AI-versus-AI harness silences them entirely. */
@@ -1465,7 +1508,7 @@ export class World {
     this._compact();
     this._sovereignty(dt);
     if (this.tickCount % 15 === 0) this._threatAlerts();
-    this._checkVictory();
+    this._checkVictory(dt);
 
     bus.emit('sim:tick', { tick: this.tickCount, dt });
 
@@ -1561,8 +1604,13 @@ export class World {
    * cannot come back, and making the player spend twenty minutes hunting the
    * last collector to prove it is the standard tail on a single-condition RTS.
    */
-  _checkVictory() {
+  _checkVictory(dt = 0) {
     if (this.over) return;
+    // A hold whose loser clawed back above zero is over: they took the middle
+    // back mid-battle, which is the battle deciding it the other way.
+    if (this.sovHold && this.teams[0].sovereignty > 0 && this.teams[1].sovereignty > 0) {
+      this._endSovHold('recovered');
+    }
     const aliveBase = [false, false];
     for (let t = 0; t < 2; t++) {
       const base = this.entities.get(this.teams[t].baseId);
@@ -1579,6 +1627,7 @@ export class World {
       const a = this.teams[0].sovereignty;
       const b = this.teams[1].sovereignty;
       winner = a <= 0 && b <= 0 ? -1 : a <= 0 ? 1 : 0;
+      if (winner >= 0 && this._holdSovereignty(winner, dt)) return;
     } else if (this.tickCount % 30 === 0) {
       for (let t = 0; t < 2 && winner === null; t++) {
         if (this._isBroken(t)) {
@@ -1589,20 +1638,119 @@ export class World {
     }
     if (winner === null) return;
 
+    if (this.sovHold) this._endSovHold(reason === 'sovereignty' ? this.sovHold.ending || 'settled' : reason);
+    const last = this.sovHoldLog.length ? this.sovHoldLog[this.sovHoldLog.length - 1] : null;
+    this.endHeld = reason === 'sovereignty' && last && last.end === this.time ? last : null;
     this.over = true;
     this.winner = winner;
     this.endReason = reason;
-    bus.emit('sim:gameOver', { winner: this.winner, reason });
+    bus.emit('sim:gameOver', { winner: this.winner, reason, held: this.endHeld });
     if (this.notify) {
       const won = this.winner === this.humanTeam;
       const line = this.winner < 0
         ? 'Mutual annihilation.'
         : won ? 'Victory.' : 'Defeat.';
+      const copy = this.endHeld ? VICTORY_COPY.sovereigntyHeld : VICTORY_COPY[reason];
       bus.emit('ui:toast', {
-        text: `${line} ${VICTORY_COPY[reason] || ''}`.trim(),
+        text: `${line} ${copy || ''}`.trim(),
         kind: won ? 'good' : 'alarm',
       });
     }
+  }
+
+  /** Hulls engaged per side right now. Warships only: a mothership taking
+      fire and a collector being chased are not the battle. */
+  _engagedBySide(out) {
+    out[0] = 0;
+    out[1] = 0;
+    for (let i = 0; i < this.dense.length; i++) {
+      const e = this.dense[i];
+      if (!e.alive || !e.engaged || e.team < 0 || e.team > 1) continue;
+      if (e.role === ROLE.RESOURCE || e.role === ROLE.STRUCTURE) continue;
+      out[e.team]++;
+    }
+    return out;
+  }
+
+  /**
+   * Sovereignty has reached zero for `loser = winner ^ 1`. Returns true while
+   * the result is being held for the battle that is on (see `SOV_HOLD`).
+   */
+  _holdSovereignty(winner, dt) {
+    const eng = this._engagedBySide(_holdEng);
+    const total = eng[0] + eng[1];
+    let h = this.sovHold;
+    if (!h) {
+      if (this._sovHoldUsed >= SOV_HOLD.CAP) return false;
+      if (total < SOV_HOLD.START || Math.min(eng[0], eng[1]) < SOV_HOLD.SIDE) return false;
+      h = this.sovHold = {
+        team: winner,
+        since: this.time,
+        usedBefore: this._sovHoldUsed,
+        cap: SOV_HOLD.CAP,
+        left: SOV_HOLD.CAP - this._sovHoldUsed,
+        engaged: total,
+        engagedBySide: [eng[0], eng[1]],
+        startEngaged: total,
+        peak: total,
+        low: total,
+        quiet: 0,
+        ending: '',
+      };
+      if (this.notify) {
+        const ours = winner === this.humanTeam;
+        bus.emit('ui:toast', {
+          text: ours
+            ? 'Sovereignty secured — the battle decides it. Win the fight in front of you.'
+            : 'Sovereignty lost — the battle decides it. Break them or take the middle back.',
+          kind: ours ? 'good' : 'alarm',
+        });
+      }
+      bus.emit('sim:sovHold', { team: winner, engaged: total, cap: SOV_HOLD.CAP });
+      return true;
+    }
+
+    h.team = winner;
+    h.engaged = total;
+    h.engagedBySide[0] = eng[0];
+    h.engagedBySide[1] = eng[1];
+    if (total > h.peak) h.peak = total;
+    if (total < h.low) h.low = total;
+    const used = h.usedBefore + (this.time - h.since);
+    this._sovHoldUsed = used;
+    h.left = Math.max(0, SOV_HOLD.CAP - used);
+    // Over when the shooting stops, or when one side has stopped shooting back:
+    // twenty winners engaged on a lone survivor is a battle already decided.
+    const over = total < SOV_HOLD.RELEASE || Math.min(eng[0], eng[1]) < SOV_HOLD.SIDE;
+    h.quiet = over ? h.quiet + dt : 0;
+    if (used >= SOV_HOLD.CAP) {
+      h.ending = 'cap';
+      return false;
+    }
+    if (h.quiet >= SOV_HOLD.SETTLE) {
+      h.ending = 'settled';
+      return false;
+    }
+    return true;
+  }
+
+  _endSovHold(how) {
+    const h = this.sovHold;
+    if (!h) return;
+    this._sovHoldUsed = Math.min(SOV_HOLD.CAP, h.usedBefore + (this.time - h.since));
+    this.sovHoldLog.push({
+      team: h.team,
+      start: h.since,
+      end: this.time,
+      seconds: this.time - h.since,
+      how,
+      startEngaged: h.startEngaged,
+      peak: h.peak,
+      low: h.low,
+      endEngaged: h.engaged,
+    });
+    this.sovHold = null;
+    bus.emit('sim:sovHoldEnd', { team: h.team, how });
   }
 
   /** No yards, no miners, no fleet: there is no route back from here. */

@@ -806,6 +806,9 @@ async function main() {
     shell.showGameOver({
       winner: p && p.winner,
       reason: p && p.reason,
+      held: p && p.held,
+      // The end screen repeats the HUD's sovereignty figures, so the two agree.
+      sovereignty: M.world && M.world.teams ? M.world.teams.map((t) => t.sovereignty) : null,
       humanTeam: M.world ? M.world.humanTeam : 0,
     });
   });
