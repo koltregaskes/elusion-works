@@ -12,17 +12,21 @@
 
    Cost: the sections live in the class's own instanced batch, so a wreck adds
    no draw call of its own. A class that is never batched in play (cruiser,
-   carrier) gets its batch on its first death, once per class and team.
+   carrier, mothership) still gets its batch at boot (`prepare`), and its
+   programs are compiled there: building the batch and linking its instanced
+   hull shader on the first death stalled the frame 0.9-1.0 s (R9 fix 1).
 
    Render-side only. Nothing here touches the sim; it is driven entirely off
    `sim:death` and the FX clock, and uses the death's own RNG fork, so it can
    neither perturb nor depend on simulation state. */
 import * as THREE from '../../vendor/three/build/three.module.js';
 import { getFleetBatch, wreckInfo, pickLod } from '../ships/index.js';
-import { hullFloorPx } from '../ships/catalog.js';
+import { hullFloorPx, SHIPS } from '../ships/catalog.js';
 
 /* Frigate size and up: assault, ion and support frigates are 115-140 m. */
 const WRECK_MIN_LENGTH = 100;
+/* Every class whose death leaves a wreck. */
+const WRECK_CLASSES = Object.keys(SHIPS).filter((id) => (SHIPS[id].length || 0) >= WRECK_MIN_LENGTH);
 /* Sections alive at once, across the battle. The oldest wreck goes first. */
 const MAX_SECTIONS = 72;
 /* The last seconds of a section, spent burning away from both cut ends. */
@@ -47,6 +51,19 @@ export class WreckFX {
   }
 
   get count() { return this._sections.length; }
+
+  /** Build the batch of every class that leaves a wreck, for both teams, so a
+      kill never creates one (R9 fix 1). The boot then compiles their programs
+      (`compileFleetBatches`); an empty batch is invisible and costs no draw. */
+  prepare() {
+    let n = 0;
+    for (const id of WRECK_CLASSES) {
+      for (const team of [0, 1]) {
+        try { if (getFleetBatch(id, team)) n++; } catch (e) { /* class has no hull */ }
+      }
+    }
+    return n;
+  }
 
   /** How long a dead hull of length L stays on screen, in seconds. Matched to
       the debris field's keel sections (40-58 s on a cruiser), so the hull and

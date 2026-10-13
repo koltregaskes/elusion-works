@@ -1176,6 +1176,39 @@ export function wreckInfo(classId, team = 0) {
   return { zMin: g.boundingBox.min.z, zMax: g.boundingBox.max.z, maxLod: IMPOSTOR_LOD - 1 };
 }
 
+/**
+ * Compile the shader programs of every batch that exists, off the main thread
+ * where the driver allows it (`compileAsync`, KHR_parallel_shader_compile).
+ *
+ * Why (R9 fix 1): a program is otherwise linked on the first frame that draws
+ * it, synchronously. An instanced hull is its own program (USE_INSTANCING), so
+ * the first wreck of a class drawn only as a plain Mesh in play (carrier,
+ * cruiser, mothership) linked the hull shader mid-battle: 0.9-1.0 s with no
+ * frame. Call this at boot, after the batches are created.
+ *
+ * `offscreen`: the scene is drawn into a render target (the post stack), and
+ * three keys a program on that (no tone mapping, linear output), so compile
+ * against one too or the warmed program is not the one the frame uses.
+ */
+export function compileFleetBatches(renderer, scene, camera, offscreen = false) {
+  if (!renderer || typeof renderer.compileAsync !== 'function' || !_fleetRoot.children.length) {
+    return Promise.resolve(0);
+  }
+  const prev = renderer.getRenderTarget();
+  const rt = offscreen ? new THREE.WebGLRenderTarget(1, 1) : null;
+  let job;
+  try {
+    renderer.setRenderTarget(rt);
+    job = renderer.compileAsync(_fleetRoot, camera, scene);
+  } finally {
+    renderer.setRenderTarget(prev);
+  }
+  return job.then(() => {
+    if (rt) rt.dispose();
+    return _fleetRoot.children.length;
+  });
+}
+
 /** Flush every dirty instance buffer. Call once per frame, after the sim has
     written its transforms. */
 export function commitAllBatches() {

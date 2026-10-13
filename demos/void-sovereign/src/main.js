@@ -693,6 +693,20 @@ async function main() {
         });
       }
 
+      /* R9 fix 1: every wreck batch is built, and its programs compiled, here
+         rather than on the first kill of its class (a carrier kill froze the
+         frame for a second while the instanced hull shader linked). Parallel
+         compile where the driver has it, so the shell keeps animating. */
+      await mark(0.99, 'Casting the wreck moulds…', async () => {
+        if (!M.fx || !M.fx.wrecks || !A.ships || !A.ships.compileFleetBatches) return;
+        try {
+          M.fx.wrecks.prepare();
+          await A.ships.compileFleetBatches(engine.renderer, engine.scene, engine.camera, !!post);
+        } catch (e) {
+          loadErrors.push({ label: 'ships:compile', error: String(e.message) });
+        }
+      });
+
       A.key = key;
       loop.world = M.world;
       // The HUD's boot card is dormant in the shipped build — the shell owns
