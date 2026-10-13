@@ -799,6 +799,8 @@ class FleetBatch {
       const level = {
         parts: [],
         count: old[i] ? old[i].count : 0,
+        // Instances in this level that are wreck slots (see `showParts`).
+        wrecks: old[i] ? old[i].wrecks : 0,
         indexToSlot: new Int32Array(capacity).fill(-1),
         dirty: true,
       };
@@ -824,7 +826,7 @@ class FleetBatch {
         // sphere round the batch is meaningless — cull per entity in the sim.
         im.frustumCulled = false;
         im.count = level.count;
-        im.visible = level.count > 0;
+        im.visible = level.count > 0 && (kind === KIND.HULL || level.wrecks < level.count);
         im.name = `${this.classId}:${kind}:L${i}`;
         im.userData.kind = kind;
         im.userData.lodLevel = i;
@@ -991,10 +993,15 @@ class FleetBatch {
       Called again with a narrower slice to burn the section away at the end. */
   setWreckSection(slot, lo, hi) {
     if (slot < 0 || slot >= this.capacity) return;
+    const was = this.slotWreck[slot] === 1;
     this.slotWreck[slot] = 1;
     this.slotCut[slot * 2] = lo;
     this.slotCut[slot * 2 + 1] = hi;
     const lv = this.slotLevel[slot];
+    if (!was && lv >= 0) {
+      this.levels[lv].wrecks++;
+      this.showParts(this.levels[lv]);
+    }
     if (lv >= 0) this.writeInstance(this.levels[lv], this.slotIndex[slot], slot);
   }
 
@@ -1005,11 +1012,19 @@ class FleetBatch {
     level.indexToSlot[index] = slot;
     this.slotIndex[slot] = index;
     this.slotLevel[slot] = lv;
+    if (this.slotWreck[slot] === 1) level.wrecks++;
     this.writeInstance(level, index, slot);
-    for (const p of level.parts) {
-      p.mesh.count = level.count;
-      p.mesh.visible = true;
-    }
+    for (const p of level.parts) p.mesh.count = level.count;
+    this.showParts(level);
+  }
+
+  /** A wreck slot keeps only its hull: its glass, lights and bells are written
+      as zero-scale matrices. A level holding nothing but wreck slots (dead
+      hulls, derelicts) therefore draws only its hull part, so a wreck or a
+      derelict costs one draw call per level it sits in, not two to four. */
+  showParts(level) {
+    const anyLive = level.wrecks < level.count;
+    for (const p of level.parts) p.mesh.visible = level.count > 0 && (p.kind === KIND.HULL || anyLive);
   }
 
   removeFromLevel(slot) {
@@ -1027,12 +1042,11 @@ class FleetBatch {
       this.writeInstance(level, index, moved);
     }
     level.count = Math.max(0, last);
+    if (this.slotWreck[slot] === 1) level.wrecks = Math.max(0, level.wrecks - 1);
     level.indexToSlot[level.count] = -1;
     level.dirty = true;
-    for (const p of level.parts) {
-      p.mesh.count = level.count;
-      p.mesh.visible = level.count > 0;
-    }
+    for (const p of level.parts) p.mesh.count = level.count;
+    this.showParts(level);
     this.slotLevel[slot] = -1;
     this.slotIndex[slot] = -1;
   }

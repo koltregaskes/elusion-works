@@ -3004,8 +3004,8 @@ export class Environment {
       p.set(Math.cos(ang) * rad, r.gaussian(0, 3200), Math.sin(ang) * rad);
       q.set(r.gaussian(), r.gaussian(), r.gaussian(), r.gaussian()).normalize();
       const len = r.range(240, 1500);
-      // Was the instance tint; now how far the section is charred.
-      const damage = 0.85 + r.range(0, 0.5) * 0.3;
+      r.range(0, 0.5); // was the instance tint; kept so the draws stay in step
+      const damage = 1; // charred through, as a wreck ends
       const team = rc.next() < 0.5 ? 0 : 1;
       let classId = DERELICT_CLASSES[0];
       for (const id of DERELICT_CLASSES) {
@@ -3046,7 +3046,7 @@ export class Environment {
 
   /* Batched hulls do not go through THREE.LOD: the level is picked from the
      camera distance and pushed, with the class's own thresholds and
-     hysteresis, the same as a live hull of that class at that range. */
+     hysteresis as a live hull of that class, floored at LOD1. */
   _refreshDerelictLod(camera) {
     const list = this._derelicts;
     if (!list || !list.length) return;
@@ -3056,7 +3056,9 @@ export class Environment {
       if (!b.levels.length) continue;
       const dist = this._tmpV.copy(d.centre).sub(cp).length() / d.scale;
       const want = pickLod(d.classId, dist, b.slotLevel[d.slot]);
-      b.setLod(d.slot, want);
+      // Never the full-detail level: dressing does not pay LOD0's triangles
+      // (a carrier at LOD0 alone was +95k on the s2718 opening frame).
+      b.setLod(d.slot, Math.max(1, want));
       b.commit();
     }
   }
