@@ -1,5 +1,5 @@
-Status: active
-Next step: round 11 evidence then critic round 11; if it still scores 5, pause fix rounds and update Kol's laptop play-test guide (KOL-6021). R11 fixes landed: e88714d, a851509, 55348ed
-Blocked on: nothing; weekly budget must last to 19 Oct (stop at 35%); going live needs Kol to merge PR #29 then #27 (KOL-6004)
-Updated: 2026-10-13 UK by HOMEWORLD CLONE session
+Status: parked
+Next step: wait for Kol's laptop play test (demos/void-sovereign/PLAYTEST.md, KOL-6021) or the orchestrator's go-ahead; then round 12 from demos/void-sovereign/CRITIQUE-ROUND-11.md (R2 combat legibility still 4; capital kill frame, HUD arithmetic, peak framing)
+Blocked on: Kol's play test on the gaming laptop (KOL-6021); weekly usage at the 35% stop until 19 Oct; going live needs Kol to merge PR #29 then #27 (KOL-6004)
+Updated: 2026-10-13 UK by HOMEWORLD CLONE session (round 11 scored 5/10, mean 5.8)
 Linear: https://linear.app/koltregaskes/issue/KOL-5966
