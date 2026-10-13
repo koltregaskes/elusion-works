@@ -511,12 +511,24 @@ const CLEAR_SEARCH = (() => {
    The follow camera re-scores its own pose a few times a second while the
    player leaves it alone. It moves only when that pose breaks a hard rule and
    a candidate is clearly better, eases there on the orbit springs, and then
-   holds for a cooldown, so it cannot flick between two near-equal shots. */
+   holds for a cooldown, so it cannot flick between two near-equal shots.
+
+   R8 fix 3, for frigates and capitals: every term is now scored where the
+   pull-in actually leaves the lens, not at the distance asked for; rock is
+   split into what stands in front of the subject and what stands behind it,
+   and either over COMPOSE.rockMax is a hard rule; so is a hull under
+   COMPOSE.minSize of the frame height, and frigates and capitals are pulled
+   into a fill band of their own (FILL). When no pose is clean, the offending
+   rocks are faded outright (`_forceFades`), and a faded rock is always faded
+   to nothing — no 25 % ghosts. */
 const COMPOSE = {
-  rockMax: 0.40,       // share of the frame that may be rock
+  rockMax: 0.40,       // share of the frame that may be rock in front of the subject, and again behind it
   margin: 0.04,        // NDC margin the subject keeps from every frame edge
-  minSize: 0.05,       // the subject's larger half-extent, as a share of the frame
+  minSize: 0.08,       // the subject's larger screen extent, as a share of the frame HEIGHT (R8)
   fitTo: 0.82,         // the larger edge a clipped subject is pulled back to
+  pathCost: 2,         // rock on the line the pull-in will cut the shot short at (scored where it lands)
+  fillWeight: 1.2,     // per unit of |log| outside a class's fill band
+  fadeSlots: 3,        // most rocks a framing may fade outright when nothing scores clean
   gridX: 16,
   gridY: 9,
   rocks: 64,           // rocks scored per shot, the biggest on screen first
@@ -533,8 +545,21 @@ const COMPOSE = {
   idleBefore: 1.2,     // s the player must have left the camera alone
   switchGain: 1.5,     // how much better a new pose must score to move
   cooldown: 2.5,       // s held after a move
-  occludedW: 0.25,     // dither opacity of a rock between lens and subject
+  /* A rock in the way is dithered all the way out, never parked at a partial
+     opacity: R7's 0.25 read as a translucent ghost rock across the hull. */
+  occludedW: 0,        // dither opacity of a rock between lens and subject
   fadeRate: 4,         // 1/s toward that, and back
+  occludedHold: 1.0,   // s a faded occluder stays out after it leaves the subject's rays
+  breakHold: 0.8,      // s after a move before a clipped or tiny subject may move it again
+};
+/* How much of the frame HEIGHT each kind of hull should fill, by role (R8 fix
+   3). Strike craft keep R7's behaviour; a frigate or a capital that comes out
+   a speck or overflowing the frame is pulled to `want`. */
+const FILL = {
+  frigate: { lo: 0.14, hi: 0.75, want: 0.30 },
+  support: { lo: 0.14, hi: 0.75, want: 0.30 },
+  capital: { lo: 0.22, hi: 0.85, want: 0.42 },
+  structure: { lo: 0.22, hi: 0.90, want: 0.48 },
 };
 const FOLLOW_MAX_SPEED = 6000;   // m/s; anything faster is a jump
 const FOLLOW_VEL_RATE = 8;       // 1/s smoothing of the measured velocity
@@ -544,6 +569,7 @@ const _ocD = new THREE.Vector3();
 const _ocR = new THREE.Vector3();
 const _ocU = new THREE.Vector3();
 const _ocT = new THREE.Vector3();
+const _held = { yaw: 0, pitch: 0, dist: 0 };
 
 /* ------------------------------------------------------------------ the rig */
 
@@ -614,7 +640,15 @@ export class CameraRig {
     this._compKey = [];
     this._localHull = new WeakMap();               // entity -> hull points in its own frame
     this._subjPts = [];
-    this._shot = { rock: 0, clip: false, size: -1, blocked: false, path: false, cover: 0, score: 0 };
+    this._shot = { rock: 0, front: 0, back: 0, eff: 0, clip: false, size: -1, blocked: false, path: false, cover: 0, score: 0 };
+    /* R8 fix 3: rays per kept rock in the last _rockShare (front, back), and
+       the rocks the held framing fades outright because no pose scored clean. */
+    this._compHitF = new Int16Array(COMPOSE.rocks);
+    this._compHitB = new Int16Array(COMPOSE.rocks);
+    this._compZ = new Float32Array(COMPOSE.rocks);
+    this._forced = new Float32Array(COMPOSE.fadeSlots * 3);
+    this._forcedN = 0;
+    this._pb = { soft: 0, hard: 0, n: 0, band: 0 };
     this._recompT = 0;
     this._recompForce = false;
     this._followVel = new THREE.Vector3();      // smoothed velocity of the followed centroid
@@ -627,6 +661,14 @@ export class CameraRig {
     this._occW = new Float32Array(ROCK_FADE_SLOTS).fill(1);
     this._occT = new Float32Array(ROCK_FADE_SLOTS).fill(1);
     this._occN = 0;             // rocks in the way this frame, for probes
+    this._occHold = new Float32Array(ROCK_FADE_SLOTS);   // s an occluder stays out after it was last in the way
+    /* Near-guard fades eased to nothing over time rather than parked part-way
+       down the spatial ramp (R8 fix 3): near-rock index -> opacity, and the
+       frame each was last touched. */
+    this._ngW = new Map();
+    this._ngStamp = new Map();
+    this._ngFrame = 0;
+    this._ngStep = 0;
     this._staticStamp = -1;
     this._staticAt = -1e9;
 
@@ -949,6 +991,9 @@ export class CameraRig {
   _releaseCompose() {
     this._composed = true;
     this._composeGain.target = 0;
+    /* The player has the camera: a fallback fade belongs to the framing it
+       was chosen for, so the rocks come back (dithered in) from here. */
+    this._forcedN = 0;
   }
 
   /* The player's flagship, if the world can name it. `teams[0]` matches what
@@ -1753,6 +1798,11 @@ export class CameraRig {
 
     /* Near guard, after every offset: see the note at _hullHit. */
     {
+      this._ngFrame++;
+      this._ngStep = Math.max(0, dt) * COMPOSE.fadeRate * 2;
+      for (const [i, f] of this._ngStamp) {
+        if (f < this._ngFrame - 1) { this._ngStamp.delete(i); this._ngW.delete(i); }
+      }
       const nq = clamp(eff * 0.006, 0.03, 140) * 1.03;
       const tv = Math.tan(cam.fov * DEG * 0.5) * 1.15;
       const quad = nq * Math.sqrt(1 + tv * tv * (1 + cam.aspect * cam.aspect)) + 0.02;
@@ -2091,8 +2141,15 @@ export class CameraRig {
       const far = this._hullRho(i, pos.x, pos.y, pos.z, quad + ramp);
       if (far >= 1) continue;
       const rho = this._hullRho(i, pos.x, pos.y, pos.z, quad);
-      const w = rho <= 1 ? 0 : Math.min(1, (rho - 1) / Math.max(rho - far, 1e-6));
-      if (w === 0) inside++;
+      const ws = rho <= 1 ? 0 : Math.min(1, (rho - 1) / Math.max(rho - far, 1e-6));
+      if (ws === 0) inside++;
+      /* The ramp only starts the fade; time finishes it. A lens parked inside
+         the ramp used to hold the rock at a partial dither for as long as the
+         shot lasted - a translucent ghost (R8 fix 3). */
+      const prev = this._ngW.has(i) ? this._ngW.get(i) : ws;
+      const w = this._ngStamp.get(i) === this._ngFrame ? Math.min(ws, prev) : Math.max(0, Math.min(ws, prev - this._ngStep));
+      this._ngW.set(i, w);
+      this._ngStamp.set(i, this._ngFrame);
       if (used < ROCK_FADE_SLOTS) {
         fi[used] = i; fw[used] = w; used++;
       } else {
@@ -2183,6 +2240,55 @@ export class CameraRig {
       out past that one instead — it then hides part of the subject, but the
       near plane is never inside it. */
   _pullIn(focus, dir, dist, floor, dt) {
+    const pb = this._pullBounds(focus, dir, dist, floor);
+    const softK = pb.soft / dist;
+    if (this._pullSnap || !(dt > 0)) {
+      this._pullK = softK;
+      this._pullSnap = false;
+    } else {
+      const rate = softK < this._pullK ? PULL_IN_RATE : PULL_OUT_RATE;
+      this._pullK += (softK - this._pullK) * (1 - Math.exp(-dt * rate));
+    }
+    let d = dist * Math.min(this._pullK, pb.hard / dist);
+    const low = Math.min(floor, pb.hard, dist);
+    if (d < low) d = low;
+    d = this._pushOut(focus, dir, d, pb.n, pb.band);
+    if (!Number.isFinite(d)) return dist;
+    return Math.min(d, dist * 4 + 2000);
+  }
+
+  /** Where `_pullIn` comes to rest for a requested `dist`: the same
+      geometry with the smoothing settled. The shot score is taken here, at the
+      camera the player will actually get, not at the distance asked for —
+      R7 scored the request and under-counted rock in tight pockets (R8 fix 3). */
+  _settledDist(focus, dir, dist, floor) {
+    if (dist < floor) dist = floor;
+    const pb = this._pullBounds(focus, dir, dist, floor);
+    let d = Math.min(pb.soft, pb.hard);
+    const low = Math.min(floor, pb.hard, dist);
+    if (d < low) d = low;
+    d = this._pushOut(focus, dir, d, pb.n, pb.band);
+    if (!Number.isFinite(d)) return dist;
+    return Math.min(d, dist * 4 + 2000);
+  }
+
+  /** Rocks hugging the subject: out past them, never inside. */
+  _pushOut(focus, dir, d, n, band) {
+    const cand = this._cand;
+    const hit = _hullHit;
+    for (let pass = 0; pass < 2; pass++) {
+      for (let c = 0; c < n; c++) {
+        const i = cand[c];
+        if (this._hullRho(i, focus.x, focus.y, focus.z, band) < 1) continue;
+        if (!this._hullRay(i, focus, dir, band, hit)) continue;
+        if (d > hit[0] && d < hit[1]) d = hit[1];
+      }
+    }
+    return d;
+  }
+
+  /** The soft (sphere) and hard (hull) distances the pull-in may not pass. */
+  _pullBounds(focus, dir, dist, floor) {
     const n = this._nearCandidates(focus, dist * 1.25 + 50);
     const band = this._nearBand(dist);
     const near = this._near;
@@ -2219,30 +2325,9 @@ export class CameraRig {
       const t1 = hit[0];
       if (t1 > hardFloor && t1 < hard) hard = t1;
     }
-
-    const softK = soft / dist;
-    if (this._pullSnap || !(dt > 0)) {
-      this._pullK = softK;
-      this._pullSnap = false;
-    } else {
-      const rate = softK < this._pullK ? PULL_IN_RATE : PULL_OUT_RATE;
-      this._pullK += (softK - this._pullK) * (1 - Math.exp(-dt * rate));
-    }
-    let d = dist * Math.min(this._pullK, hard / dist);
-    const low = Math.min(floor, hard, dist);
-    if (d < low) d = low;
-
-    /* Rocks hugging the subject: out past them, never inside. */
-    for (let pass = 0; pass < 2; pass++) {
-      for (let c = 0; c < n; c++) {
-        const i = cand[c];
-        if (this._hullRho(i, focus.x, focus.y, focus.z, band) < 1) continue;
-        if (!this._hullRay(i, focus, dir, band, hit)) continue;
-        if (d > hit[0] && d < hit[1]) d = hit[1];
-      }
-    }
-    if (!Number.isFinite(d)) return dist;
-    return Math.min(d, dist * 4 + 2000);
+    const pb = this._pb;
+    pb.soft = soft; pb.hard = hard; pb.n = n; pb.band = band;
+    return pb;
   }
 
   /** A focus gliding from one subject to the next goes round rocks, not
@@ -2442,13 +2527,21 @@ export class CameraRig {
     this._yaw.target = yawIn;
     const pitch0 = this._pitch.target;
     const dist0 = Math.exp(this._logDist.target);
+    /* A new framing earns its own fades: start from every rock solid, so the
+       search prefers a pose that needs none. */
+    this._forcedN = 0;
     const ctx = this._shotContext(this._focus.target, list);
     const best = this._bestShot(ctx, yaw0, pitch0, dist0);
     this._takeShot(best, instant);
+    this._forceHeld(ctx, best);
     this._lastClear = {
       swing: best.i,
       score: +best.score.toFixed(3),
       rock: best.rock,
+      front: best.front,
+      back: best.back,
+      eff: best.eff,
+      forced: this._forcedN,
       clip: best.clip,
       size: best.size,
       cover: best.cover,
@@ -2466,7 +2559,10 @@ export class CameraRig {
   _reframe(force) {
     const list = this._follow;
     if (!list || !list.length) return;
-    if (this._composeGain.value > 0.01) return;
+    /* Only while the opening still holds its framing; once released, the
+       slow ease of its gain must not shut re-framing out (R8: the first move
+       after boot kept a capital overflowing the frame for seconds). */
+    if (this._composeGain.target > 0 && this._composeGain.value > 0.01) return;
     const focus = this._focus.target;
     const ctx = this._shotContext(focus, list);
     const yaw = this._yaw.target;
@@ -2476,17 +2572,45 @@ export class CameraRig {
     _try.set(Math.sin(yaw) * cp, Math.sin(pitch), Math.cos(yaw) * cp).normalize();
     const cur = this._shotScore(ctx, _try, dist);
     const sh = this._shot;
-    this._lastFrame = { cur: +cur.toFixed(3), rock: sh.rock, clip: sh.clip, size: sh.size, moved: false };
-    if (cur < COMPOSE.reject) return;                // breaks no hard rule: leave it be
-    if (!force && this._recompHold > 0) return;
+    this._lastFrame = {
+      cur: +cur.toFixed(3), rock: sh.rock, front: sh.front, back: sh.back, eff: sh.eff,
+      clip: sh.clip, size: sh.size, moved: false, forced: this._forcedN,
+    };
+    /* The cooldown keeps it from flicking between near-equal shots; a subject
+       cut by the frame edge or shrunk under COMPOSE.minSize is not near-equal,
+       so that waits only COMPOSE.breakHold after the last move. */
+    const broken = sh.clip || (sh.size >= 0 && sh.size < COMPOSE.minSize);
+    const hold = broken ? this._recompHold - (COMPOSE.cooldown - COMPOSE.breakHold) : this._recompHold;
+    if (cur < COMPOSE.reject || (!force && hold > 0)) {
+      /* Held: the fades follow the subject through the rocks it passes. */
+      _held.yaw = yaw; _held.pitch = pitch; _held.dist = dist;
+      this._forceHeld(ctx, _held);
+      this._lastFrame.forced = this._forcedN;
+      return;
+    }
     const best = this._bestShot(ctx, yaw, pitch, dist);
-    if (!(best.score < cur - COMPOSE.switchGain)) return;
+    if (!(best.score < cur - COMPOSE.switchGain)) {
+      _held.yaw = yaw; _held.pitch = pitch; _held.dist = dist;
+      this._forceHeld(ctx, _held);
+      this._lastFrame.forced = this._forcedN;
+      return;
+    }
     this._takeShot(best, false);
+    this._forceHeld(ctx, best);
     this._recompHold = COMPOSE.cooldown;
     this._lastFrame.moved = true;
     this._lastFrame.to = +best.score.toFixed(3);
     this._lastFrame.rockTo = best.rock;
     this._lastFrame.swing = best.i;
+    this._lastFrame.forced = this._forcedN;
+  }
+
+  /** Fade outright whatever rock the pose about to be held still has over the
+      line, front or back (the R8 fallback). */
+  _forceHeld(ctx, pose) {
+    const cp = Math.cos(pose.pitch);
+    _try.set(Math.sin(pose.yaw) * cp, Math.sin(pose.pitch), Math.cos(pose.yaw) * cp).normalize();
+    this._forceFades(ctx, _try, pose.dist);
   }
 
   _takeShot(best, instant) {
@@ -2511,6 +2635,7 @@ export class CameraRig {
     ctx.floor = this._minDistance(this._focusRadius);
     ctx.subjR = this._focusRadius || 0;
     ctx.pts = list && list.length ? this._subjectPts(list) : null;
+    ctx.fill = ctx.pts ? this._fillFor(list) : null;
     ctx.haveSun = this._sunDir(ctx.sun);
     /* Twice the distance: a clipped subject may be scored pulled back. */
     this._compRocks(focus, dist * 2);
@@ -2539,22 +2664,27 @@ export class CameraRig {
       const yaw = yaw0 + CLEAR_SEARCH[i][0];
       const cp = Math.cos(pitch);
       _try.set(Math.sin(yaw) * cp, Math.sin(pitch), Math.cos(yaw) * cp).normalize();
-      for (let pass = 0; pass < 2; pass++) {
+      for (let pass = 0; pass < 3; pass++) {
         let d = dist0;
-        if (pass === 1) {
-          /* Projected size goes as 1 / distance. */
+        if (pass > 0) {
+          /* Projected size goes as 1 / distance, measured where the lens came
+             to rest. A pass that changes nothing ends the corrections. */
           if (!ctx.pts || !(sh.edge < Infinity) || sh.size <= 0) break;
-          if (sh.clip) d = dist0 * sh.edge / COMPOSE.fitTo;
-          else if (sh.size < COMPOSE.minSize) d = dist0 * sh.size / (COMPOSE.minSize * 2);
+          const fill = ctx.fill;
+          const eff = sh.eff;
+          if (sh.clip) d = eff * sh.edge / COMPOSE.fitTo;
+          else if (fill && (sh.size < fill.lo || sh.size > fill.hi)) d = eff * sh.size / fill.want;
+          else if (sh.size < COMPOSE.minSize) d = eff * sh.size / (COMPOSE.minSize * 2);
           else break;
           d = clamp(d, lo, hi);
-          if (Math.abs(d - dist0) < dist0 * 0.02) break;
+          if (Math.abs(d - eff) < eff * 0.02) break;
         }
         const s = swing + Math.abs(Math.log(d / dist0)) * COMPOSE.distWeight + this._shotScore(ctx, _try, d);
         if (s < out.score) {
           out.score = s; out.i = i; out.yaw = yaw; out.pitch = pitch; out.dist = d;
           out.rock = sh.rock; out.clip = sh.clip; out.size = sh.size; out.cover = sh.cover;
           out.path = sh.path; out.blocked = sh.blocked;
+          out.front = sh.front; out.back = sh.back; out.eff = sh.eff;
         }
       }
       if (out.score < 0.05) break;          // clean, lit and unmoved: nothing to beat
@@ -2568,12 +2698,20 @@ export class CameraRig {
     const sh = this._shot;
     const focus = ctx.focus;
     let s = 0;
-    /* Something big across the shot, or rock on the line the pull-in would
-       then cut the shot short in front of (or a camera inside a hull). */
+    /* Rock on the line, or a camera inside a hull, at the distance asked for:
+       the pull-in will move the lens. That is a cost, not a rejection, now
+       that everything below is scored where the lens comes to rest (R8). */
+    sh.path = this._rockOnPath(focus, dir, dist, ctx.floor);
+    if (sh.path) s += COMPOSE.pathCost;
+    const eff = this._settledDist(focus, dir, dist, ctx.floor);
+    sh.eff = eff;
+    /* Pushed out past a rock the subject is tucked against: from there the
+       hull is a speck behind a wall. Seed 99 put a 34 m corvette 900 m out. */
+    if (eff > dist * 1.5 + 20) s += COMPOSE.reject;
+    dist = eff;
+    /* Something big across the shot from there. */
     sh.blocked = ctx.list.length > 0 && this._sightBlocked(focus, dir, dist, ctx.list, ctx.subjR);
     if (sh.blocked) s += COMPOSE.reject * 2;
-    sh.path = this._rockOnPath(focus, dir, dist, ctx.floor);
-    if (sh.path) s += COMPOSE.reject;
     /* The key band, by how far outside it the lens sits. */
     if (ctx.haveSun) {
       const a = Math.acos(clamp(dir.x * ctx.sun.x + dir.y * ctx.sun.y + dir.z * ctx.sun.z, -1, 1));
@@ -2583,7 +2721,11 @@ export class CameraRig {
     const fov = this._fovAt(dist);
     sh.rock = this._rockShare(focus, dir, dist, fov);
     s += sh.rock * COMPOSE.rockWeight;
-    if (sh.rock > COMPOSE.rockMax) s += COMPOSE.reject + (sh.rock - COMPOSE.rockMax) * 10;
+    /* Rock in front of the subject and rock behind it are separate rules: a
+       hull standing on a slab that fills the frame is as lost as one seen
+       through a wall (R8 fix 3). */
+    const over = Math.max(sh.front, sh.back) - COMPOSE.rockMax;
+    if (over > 0) s += COMPOSE.reject + over * 10;
     /* Rock of the subject's own value right behind it (R4). */
     sh.cover = this._backdropCover(focus, dir, dist, ctx.subjR);
     s += Math.max(0, sh.cover - BACKDROP_OK) * COMPOSE.backdropWeight * 3;
@@ -2596,15 +2738,80 @@ export class CameraRig {
         sh.clip = true;
         sh.edge = Infinity;
       } else {
-        sh.size = Math.max(sp.w, sp.h);
+        /* Size in shares of the frame HEIGHT, whichever axis the hull lies on. */
+        sh.size = Math.max(sp.w * Math.max(0.2, this.camera.aspect), sp.h);
         sh.edge = Math.max(Math.abs(sp.cx) + sp.w, Math.abs(sp.cy) + sp.h);
         sh.clip = sh.edge > 1 - COMPOSE.margin;
       }
       if (sh.clip) s += COMPOSE.reject;
-      else if (sh.size < COMPOSE.minSize) s += COMPOSE.reject * 0.5;
+      else if (sh.size < COMPOSE.minSize) s += COMPOSE.reject + (COMPOSE.minSize - sh.size) * 40;
+      const fill = ctx.fill;
+      if (fill && sh.size > 0) {
+        if (sh.size < fill.lo) s += Math.log(fill.lo / sh.size) * COMPOSE.fillWeight;
+        else if (sh.size > fill.hi) s += Math.log(sh.size / fill.hi) * COMPOSE.fillWeight;
+      }
     }
     sh.score = s;
     return s;
+  }
+
+  /** The fill band for the biggest hull in `list`, by role; null for strike
+      craft, which R7 already frames well. */
+  _fillFor(list) {
+    if (!list) return null;
+    let big = null;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (e && e.alive !== false && (!big || (e.radius || 0) > (big.radius || 0))) big = e;
+    }
+    if (!big) return null;
+    const role = big.role || (big.def && big.def.role);
+    return FILL[role] || null;
+  }
+
+  /** Fallback (R8 fix 3): when even the best pose leaves more than
+      COMPOSE.rockMax of the frame rock in front of the subject or behind it,
+      the rocks that cover most of the offending side are faded outright — a
+      dither to nothing, never a ghost — until the share is back under the
+      line or COMPOSE.fadeSlots rocks are used. Re-scores the held pose to fill
+      the per-rock ray counts. */
+  _forceFades(ctx, dir, dist) {
+    this._forcedN = 0;
+    this._shotScore(ctx, dir, dist);
+    const sh = this._shot;
+    const total = COMPOSE.gridX * COMPOSE.gridY;
+    let front = Math.round(sh.front * total);
+    let back = Math.round(sh.back * total);
+    const lim = COMPOSE.rockMax * total;
+    const F = this._compHitF;
+    const B = this._compHitB;
+    const near = this._near;
+    const keep = this._compKeep;
+    const m = this._compM || 0;
+    while (this._forcedN < COMPOSE.fadeSlots && (front > lim || back > lim)) {
+      const useF = front - lim >= back - lim;
+      let best = -1;
+      for (let k = 0; k < m; k++) if ((useF ? F[k] : B[k]) > 0 && (best < 0 || (useF ? F[k] > F[best] : B[k] > B[best]))) best = k;
+      if (best < 0) break;
+      const j = keep[best] * 4;
+      const f = this._forcedN * 3;
+      this._forced[f] = near[j]; this._forced[f + 1] = near[j + 1]; this._forced[f + 2] = near[j + 2];
+      this._forcedN++;
+      front -= F[best]; back -= B[best];
+      F[best] = 0; B[best] = 0;
+    }
+    return this._forcedN;
+  }
+
+  _isForced(i) {
+    const j = i * 4;
+    const near = this._near;
+    const fc = this._forced;
+    for (let q = 0; q < this._forcedN; q++) {
+      if (Math.abs(fc[q * 3] - near[j]) < 0.5 && Math.abs(fc[q * 3 + 1] - near[j + 1]) < 0.5 &&
+          Math.abs(fc[q * 3 + 2] - near[j + 2]) < 0.5) return true;
+    }
+    return false;
   }
 
   /** Share, 0..1, of the frame that is rock for a camera `dist` out along
@@ -2612,6 +2819,10 @@ export class CameraRig {
       of the rocks `_compRocks` kept, after a sphere-against-frustum cull. The
       hulls hold every vertex, so this errs toward more rock, not less. */
   _rockShare(focus, dir, dist, fovDeg) {
+    const sh = this._shot;
+    sh.front = 0;
+    sh.back = 0;
+    this._compM = 0;
     const n = this._compN;
     if (!n) return 0;
     const tanV = Math.tan(fovDeg * DEG * 0.5);
@@ -2620,6 +2831,7 @@ export class CameraRig {
     this._camBasis(dir, _right, _up);
     const near = this._near;
     const keep = this._compKeep;
+    const ZK = this._compZ;
     const kh = 1 / Math.sqrt(1 + tanH * tanH);
     const kv = 1 / Math.sqrt(1 + tanV * tanV);
     let m = 0;
@@ -2636,13 +2848,27 @@ export class CameraRig {
       const y = rx * _up.x + ry * _up.y + rz * _up.z;
       if ((Math.abs(x) - z * tanH) * kh > r) continue;
       if ((Math.abs(y) - z * tanV) * kv > r) continue;
-      keep[m++] = i;
+      /* A rock this framing already fades outright draws nothing. */
+      if (this._forcedN && this._isForced(i)) continue;
+      /* Kept nearest first (by the depth the rock can start at), so a ray can
+         stop as soon as no rock left could be nearer than the one it hit. */
+      const z0 = z - r * 1.5;           // the hull ellipsoid may stand a little proud of r
+      let q = m++;
+      while (q > 0 && ZK[q - 1] > z0) { keep[q] = keep[q - 1]; ZK[q] = ZK[q - 1]; q--; }
+      keep[q] = i;
+      ZK[q] = z0;
     }
+    this._compM = m;
     if (!m) return 0;
     const GX = COMPOSE.gridX;
     const GY = COMPOSE.gridY;
     const hit = _hullHit;
-    let rock = 0;
+    const F = this._compHitF;
+    const B = this._compHitB;
+    F.fill(0, 0, m);
+    B.fill(0, 0, m);
+    let front = 0;
+    let back = 0;
     for (let gy = 0; gy < GY; gy++) {
       const sy = (-1 + (2 * gy + 1) / GY) * tanV;
       for (let gx = 0; gx < GX; gx++) {
@@ -2652,12 +2878,25 @@ export class CameraRig {
           -dir.y + _right.y * sx + _up.y * sy,
           -dir.z + _right.z * sx + _up.z * sy,
         );
+        /* The ray's parameter is its depth along the view axis (its -dir
+           component is 1), so the nearest entry against `dist` says whether
+           the rock this pixel shows stands in front of the subject or behind. */
+        let tMin = Infinity;
+        let kMin = -1;
         for (let k = 0; k < m; k++) {
-          if (this._hullRay(keep[k], _cam, _ray, 0, hit) && hit[1] > 0) { rock++; break; }
+          if (ZK[k] >= tMin) break;
+          if (!this._hullRay(keep[k], _cam, _ray, 0, hit) || hit[1] <= 0) continue;
+          const t = Math.max(0, hit[0]);
+          if (t < tMin) { tMin = t; kMin = k; }
         }
+        if (kMin < 0) continue;
+        if (tMin < dist) { front++; F[kMin]++; } else { back++; B[kMin]++; }
       }
     }
-    return rock / (GX * GY);
+    const total = GX * GY;
+    sh.front = front / total;
+    sh.back = back / total;
+    return (front + back) / total;
   }
 
   /** The rocks that could fill part of a frame taken from anywhere within
@@ -2756,6 +2995,24 @@ export class CameraRig {
     const W = this._occW;
     const C = this._occC;
     for (let e = 0; e < ROCK_FADE_SLOTS; e++) T[e] = 1;
+    /* The framing's own fallback fades first (R8 fix 3). */
+    const fc = this._forced;
+    for (let q = 0; q < this._forcedN; q++) {
+      let e = -1;
+      let free = -1;
+      for (let s = 0; s < ROCK_FADE_SLOTS; s++) {
+        if (Math.abs(C[s * 3] - fc[q * 3]) < 0.5 && Math.abs(C[s * 3 + 1] - fc[q * 3 + 1]) < 0.5 &&
+            Math.abs(C[s * 3 + 2] - fc[q * 3 + 2]) < 0.5) { e = s; break; }
+        if (free < 0 && W[s] >= 0.999 && T[s] === 1) free = s;
+      }
+      if (e < 0) {
+        if (free < 0) continue;
+        e = free;
+        C[e * 3] = fc[q * 3]; C[e * 3 + 1] = fc[q * 3 + 1]; C[e * 3 + 2] = fc[q * 3 + 2];
+        W[e] = 1;
+      }
+      T[e] = 0;
+    }
     const n = this._candN;
     const R = this._focusRadius || 0;
     const near = this._near;
@@ -2793,12 +3050,20 @@ export class CameraRig {
             W[e] = 1;
           }
           T[e] = COMPOSE.occludedW;
+          this._occHold[e] = COMPOSE.occludedHold;
           found++;
         }
       }
     }
     const step = Math.max(0, dt) * COMPOSE.fadeRate;
     for (let e = 0; e < ROCK_FADE_SLOTS; e++) {
+      /* A rock at the edge of the subject's rays flickers in and out of them
+         as the ship moves; held out a moment, it fades once instead of
+         hovering half-way (R8 fix 3). */
+      if (T[e] === 1 && this._occHold[e] > 0) {
+        this._occHold[e] -= Math.max(0, dt);
+        if (W[e] < 0.999) T[e] = COMPOSE.occludedW;
+      }
       const w = W[e];
       W[e] = w < T[e] ? Math.min(T[e], w + step) : Math.max(T[e], w - step);
       if (W[e] >= 0.999 && T[e] === 1) W[e] = 1;
