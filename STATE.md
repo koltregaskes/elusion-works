@@ -1,5 +1,5 @@
 Status: active
-Next step: round 9 evidence - a played match through to a real battle (fix the scripted commander's stall at the pop cap; if still <30 engaged, one measured AI muster change), plus the standard beats; then critic round 9. R9 fixes landed: 94e16ed kill freeze, 93eda24 rock-fade stipple
-Blocked on: nothing; weekly budget must last to 19 Oct (stop after current step at 35%); going live needs Kol to merge PR #29 then #27 (KOL-6004)
-Updated: 2026-10-13 08:00 UK by HOMEWORLD CLONE session
+Next step: round 10 from demos/void-sovereign/CRITIQUE-ROUND-9.md - top: frigates and capitals in the played fight, hold the sovereignty result while a big fight is live; also the untextured grey boxes (cause unknown), rock-in-front frames
+Blocked on: orchestrator go-ahead for round 10; weekly budget must last to 19 Oct (stop at 35%); going live needs Kol to merge PR #29 then #27 (KOL-6004)
+Updated: 2026-10-13 09:20 UK by HOMEWORLD CLONE session (round 9 scored 5/10, mean 5.5)
 Linear: https://linear.app/koltregaskes/issue/KOL-5966
