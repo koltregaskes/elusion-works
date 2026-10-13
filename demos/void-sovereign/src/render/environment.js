@@ -6,6 +6,8 @@ import { buildSkybox } from './skybox.js';
 import { setNebulaBounce, setHullKeyDirection, setHullSkyFloor, getTerminatorUniform, TEAM_COLORS } from './materials.js';
 import { rockFadeUniform, rockFadeState, ROCK_FADE_SLOTS } from './rock-fade.js';
 import { HAZE_DENSITY, hazeColourFromSky } from './atmosphere.js';
+import { getFleetBatch, wreckInfo, pickLod } from '../ships/index.js';
+import { SHIPS } from '../ships/catalog.js';
 import {
   DEFAULT_SETUP,
   OPENING_ANGLE,
@@ -43,6 +45,9 @@ import {
    276 / 716 / 1347 / 2135 against attempts of 276 / 720 / 1404 / 2280 — the
    shortfall is the opening-shell and overlap rejections below, which have
    always dropped a handful. */
+/* Hull classes a derelict is cut from (`_buildDerelicts`): 380, 620, 760 m. */
+const DERELICT_CLASSES = ['destroyer', 'cruiser', 'carrier'];
+
 const QUALITY = {
   low: { clusters: 6, rocksPerCluster: 45, dust: 70, seamHaze: 40, derelicts: 0, landmarks: 2, rockDetail: [1, 0] },
   medium: { clusters: 8, rocksPerCluster: 90, dust: 140, seamHaze: 80, derelicts: 10, landmarks: 4, rockDetail: [2, 1] },
@@ -2960,32 +2965,38 @@ export class Environment {
 
   /* ------------------------------------------------------------ derelicts */
 
+  /* A derelict is a dead hull from the fleet's own kit: a destroyer, cruiser
+     or carrier of either yard, drawn in that class's instanced batch the way a
+     wreck section is (fx/wrecks.js) - plating and panel map from the hull
+     material, charred by the damage shading, its lights, glass and drive bells
+     collapsed to nothing. It is the whole hull, not a cut section: the
+     impostor levels do not take `aCut`, so a section would have to be held at
+     LOD1 out to 30 km (measured on s2718: +33-53 draw calls and +340-570k
+     triangles), or grow back into a whole hull at the impostor swap.
+
+     R10 fix 1: these used to be a merged stack of raw BoxGeometry under a
+     flat-shaded, untextured MeshStandardMaterial ('env:derelicts', position
+     and normal only). At 9-30 km and 240-1500 m long they were the largest
+     shapes in many frames, and read as grey placeholder prisms beside the
+     plated hulls (R9 critique: the grey box, slabs and sticks). */
   _buildDerelicts() {
-    const { engine, sky } = this;
     const r = this.rng.fork(0xdead);
+    // The yard comes off its own fork, so `r` keeps to placement.
+    const rc = this.rng.fork(0xdeaf);
     const count = this.budget.derelicts;
+    this._derelicts = [];
     if (!count) return;
 
-    const geo = makeDerelictGeometry(r);
-    const mat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(0.040, 0.039, 0.038).lerp(sky.fillColour, 0.14),
-      roughness: 0.88,
-      metalness: 0.28,
-      flatShading: true,
-      envMapIntensity: 0.7,
-      fog: true,
-    });
-
-    const mesh = new THREE.InstancedMesh(geo, mat, count);
-    mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3);
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const s = new THREE.Vector3();
     const p = new THREE.Vector3();
+    const o = new THREE.Vector3();
     /* Derelicts are placed on a ring about the origin, which says nothing
        about where the motherships are — one landed 756 m from the opening
        camera and filled 66 degrees of the first frame. Same treatment as the
-       rocks; a dead hull is dressing and can go wherever it needs to. */
+       rocks; a dead hull is dressing and can go wherever it needs to.
+       (The box builder drew from `r` first, so the R10 layout differs from R9.) */
     const sep = this.options.separation || 22000;
     for (let i = 0; i < count; i++) {
       const ang = r.range(0, Math.PI * 2);
@@ -2993,20 +3004,61 @@ export class Environment {
       p.set(Math.cos(ang) * rad, r.gaussian(0, 3200), Math.sin(ang) * rad);
       q.set(r.gaussian(), r.gaussian(), r.gaussian(), r.gaussian()).normalize();
       const len = r.range(240, 1500);
-      s.set(len, len, len);
-      // The hull spans roughly 1.2 local units end to end, so 0.6 is its radius.
-      clearOpening(p, len * 0.6, sep, OPENING_ANGLE);
-      m.compose(p, q, s);
-      mesh.setMatrixAt(i, m);
-      const t = 0.65 + r.range(0, 0.5);
-      mesh.setColorAt(i, new THREE.Color(t, t * 0.98, t * 0.95));
+      // Was the instance tint; now how far the section is charred.
+      const damage = 0.85 + r.range(0, 0.5) * 0.3;
+      const team = rc.next() < 0.5 ? 0 : 1;
+      let classId = DERELICT_CLASSES[0];
+      for (const id of DERELICT_CLASSES) {
+        if (Math.abs(SHIPS[id].length - len) < Math.abs(SHIPS[classId].length - len)) classId = id;
+      }
+      const L = SHIPS[classId].length;
+      const scale = Math.max(0.8, Math.min(1.25, len / L));
+
+      let batch = null;
+      let info = null;
+      try {
+        batch = getFleetBatch(classId, team);
+        info = wreckInfo(classId, team);
+      } catch (e) { batch = null; }
+      if (!batch || !info || !(info.zMax > info.zMin) || typeof batch.setWreckSection !== 'function') continue;
+
+      const span = info.zMax - info.zMin;
+      // A cut wider than the keel keeps the whole hull and marks the slot dead.
+      const lo = info.zMin - span;
+      const hi = info.zMax + span;
+      const zc = (info.zMin + info.zMax) * 0.5;
+      // The hull's own centre sits at p: offset its origin back along the keel.
+      o.set(0, 0, zc * scale).applyQuaternion(q);
+      clearOpening(p, span * scale * 0.6, sep, OPENING_ANGLE);
+      const centre = p.clone();
+      s.set(scale, scale, scale);
+      m.compose(p.sub(o), q, s);
+
+      const slot = batch.reserve();
+      if (!(slot >= 0)) continue;
+      batch.setWreckSection(slot, lo, hi);
+      batch.setDamage(slot, damage);
+      batch.setMatrix(slot, m);
+      this._derelicts.push({ batch, slot, classId, centre, scale });
     }
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.instanceColor.needsUpdate = true;
-    mesh.name = 'env:derelicts';
-    engine.scene.add(mesh);
-    this._derelicts = mesh;
-    this._disposables.push(geo, mat);
+    for (const d of this._derelicts) d.batch.commit();
+  }
+
+  /* Batched hulls do not go through THREE.LOD: the level is picked from the
+     camera distance and pushed, with the class's own thresholds and
+     hysteresis, the same as a live hull of that class at that range. */
+  _refreshDerelictLod(camera) {
+    const list = this._derelicts;
+    if (!list || !list.length) return;
+    const cp = camera.position;
+    for (const d of list) {
+      const b = d.batch;
+      if (!b.levels.length) continue;
+      const dist = this._tmpV.copy(d.centre).sub(cp).length() / d.scale;
+      const want = pickLod(d.classId, dist, b.slotLevel[d.slot]);
+      b.setLod(d.slot, want);
+      b.commit();
+    }
   }
 
   /* After a WebGL context restore the sky's render target comes back blank.
@@ -3076,6 +3128,7 @@ export class Environment {
     if (this._lodTimer <= 0 && cam) {
       this._lodTimer = 0.2;
       this._refreshRockLod(cam);
+      this._refreshDerelictLod(cam);
     }
   }
 
@@ -3203,7 +3256,7 @@ export class Environment {
     engine.farScene.backgroundRotation.set(0, 0, 0);
     engine.scene.environmentRotation.set(0, 0, 0);
 
-    const loose = [this._dust, this._derelicts];
+    const loose = [this._dust];
     if (this._seams) loose.push(this._seams.haze);
     for (const m of loose.concat(this._landmarks || [])) {
       if (m && m.parent) m.parent.remove(m);
@@ -3217,7 +3270,12 @@ export class Environment {
       set.high.dispose();
       set.low.dispose();
     }
-    if (this._derelicts) this._derelicts.dispose();
+    /* Derelict sections live in the fleet batches. A teardown that already
+       disposed the batches (main.js does, before ENV) has nothing to release. */
+    for (const d of this._derelicts || []) {
+      if (d.batch.levels.length) d.batch.release(d.slot);
+    }
+    this._derelicts = [];
     this._rockSets.length = 0;
 
     for (const l of this._lights) {
@@ -3356,64 +3414,6 @@ function smoothNormals(geo) {
     nrm.setXYZ(i, e[0] / l, e[1] / l, e[2] / l);
   }
   nrm.needsUpdate = true;
-}
-
-/** A dead hull: a spine, a few blocks, a broken-off section. Silhouette only. */
-function makeDerelictGeometry(rng) {
-  const parts = [];
-  const push = (w, h, d, x, y, z, rx, ry, rz) => {
-    const g = new THREE.BoxGeometry(w, h, d);
-    const m = new THREE.Matrix4();
-    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz));
-    m.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(1, 1, 1));
-    g.applyMatrix4(m);
-    parts.push(g);
-  };
-
-  push(0.16, 0.13, 1.0, 0, 0, 0, 0, 0, 0);
-  push(0.28, 0.09, 0.30, 0, 0.02, rng.range(-0.20, 0.05), 0, 0, rng.range(-0.1, 0.1));
-  push(0.10, 0.22, 0.22, 0, 0.10, rng.range(0.10, 0.30), rng.range(-0.2, 0.2), 0, 0);
-  const n = rng.int(2, 4);
-  for (let i = 0; i < n; i++) {
-    push(
-      rng.range(0.05, 0.14),
-      rng.range(0.05, 0.12),
-      rng.range(0.08, 0.26),
-      rng.range(-0.13, 0.13),
-      rng.range(-0.09, 0.09),
-      rng.range(-0.45, 0.45),
-      rng.range(-0.3, 0.3),
-      rng.range(-0.3, 0.3),
-      rng.range(-0.3, 0.3),
-    );
-  }
-  // A torn-off tail, tumbling separately in the same instance.
-  push(0.11, 0.09, 0.22, rng.range(-0.25, 0.25), rng.range(-0.1, 0.1), rng.range(0.55, 0.85),
-    rng.range(-0.6, 0.6), rng.range(-0.6, 0.6), rng.range(-0.6, 0.6));
-
-  // Merge by hand — no addon dependency, and these are all plain non-indexed
-  // box geometries once their indices are expanded.
-  let total = 0;
-  const expanded = parts.map((g) => {
-    const ng = g.toNonIndexed();
-    g.dispose();
-    total += ng.attributes.position.count;
-    return ng;
-  });
-  const position = new Float32Array(total * 3);
-  const normal = new Float32Array(total * 3);
-  let o = 0;
-  for (const g of expanded) {
-    position.set(g.attributes.position.array, o * 3);
-    normal.set(g.attributes.normal.array, o * 3);
-    o += g.attributes.position.count;
-    g.dispose();
-  }
-  const out = new THREE.BufferGeometry();
-  out.setAttribute('position', new THREE.BufferAttribute(position, 3));
-  out.setAttribute('normal', new THREE.BufferAttribute(normal, 3));
-  out.computeBoundingSphere();
-  return out;
 }
 
 /** 2x2 atlas of soft, wispy dust puffs. Alpha only; colour comes per instance.
