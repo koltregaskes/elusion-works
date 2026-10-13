@@ -125,10 +125,16 @@ const ADVANCE = 6500;
    when the fleet is in contact short of its objective. */
 const MELEE = 7000;
 
+/* How far the line (frigates, capitals) may trail the body before the body
+   waits for it, and how far ahead of a trailing line the next bound is laid. */
+const LINE_LAG = 3000;
+const LINE_LEAD = 2500;
+
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _c = new THREE.Vector3();
 const _p = new THREE.Vector3();
+const _lc = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 
 /* Sorting a force by range to a point. The comparator is module-level so the
@@ -170,6 +176,9 @@ export class Commander {
     this.strikePoint = new THREE.Vector3();
     this.phase = 'massing';
     this.phaseDeadline = 0;
+    this.phaseStart = 0;
+    this.lineFund = 0;
+    this.linePop = 0;
     this.bestProgress = Infinity;
     this.progressAt = 0;
     this.flankSign = 0;
@@ -297,7 +306,9 @@ export class Commander {
     if (have >= want) return;
 
     if (canBuild(world, this.team, 'collector')) {
-      enqueueBuild(world, this.team, 'collector');
+      // Miners come off a carrier when there is one: the mothership's slip
+      // belongs to the line.
+      enqueueBuild(world, this.team, 'collector', this._quietCarrier());
       return;
     }
     // Miners come first. If the yard is jammed with warships and the economy
@@ -313,6 +324,24 @@ export class Commander {
         }
       }
     }
+  }
+
+  /** The least-loaded carrier, or undefined to let the economy choose. */
+  _quietCarrier() {
+    const t = this.world.teams[this.team];
+    let best;
+    let bestLoad = Infinity;
+    for (const id of t.producers) {
+      const p = this.world.entities.get(id);
+      if (!p || !p.alive || p.classId !== 'carrier') continue;
+      let load = 0;
+      for (let i = 0; i < t.queue.length; i++) if (t.queue[i].producerId === id) load++;
+      if (load < bestLoad) {
+        bestLoad = load;
+        best = id;
+      }
+    }
+    return best;
   }
 
   _queuedCount(classId) {
@@ -345,21 +374,112 @@ export class Commander {
     // piling up faster than the existing yards can spend it.
     const needRoom = head < 12;
     const idleMoney = t.credits > SHIPS.carrier.cost * this.cfg.reserve;
-    if ((needRoom || idleMoney) && carriers < this.cfg.yards && this.time > gate &&
+    // One yard on the slip at a time. The mothership is also the only hull
+    // that lays down the line, and four carriers queued back to back are
+    // eleven minutes in which it builds nothing else.
+    const slipFree = this._queuedCount('carrier') === 0;
+    // And the line has the slip first whenever there are berths for it; a
+    // yard is laid down when the line is complete, when the line itself
+    // needs the room, or when the fleet has nowhere at all to go.
+    const line = this._lineClass();
+    const lineFits = !!line &&
+      t.popUsed + t.popQueued + (SHIPS[line].popCost || 0) <= t.popCap;
+    // A carrier is 165 s on the slip; do not start one that would still be
+    // building when the first destroyer comes due.
+    const dDue = TECH_GATE.destroyer * this.cfg.techScale;
+    const destroyerDue = !this.own.destroyer && !this._queuedCount('destroyer') &&
+      this.time > dDue - SHIPS.carrier.buildTime * 0.8 && this.time < dDue + 240;
+    // Never ahead of the first yard, though: until a carrier is out the
+    // mothership is the whole economy of war and the cap is 55.
+    const lineFirst = (this.own.carrier || 0) > 0 && (lineFits || destroyerDue) && head >= 4;
+    if ((needRoom || idleMoney) && slipFree && !lineFirst &&
+        carriers < this.cfg.yards && this.time > gate &&
         t.credits > SHIPS.carrier.cost * 1.4 && canBuild(world, this.team, 'carrier')) {
       enqueueBuild(world, this.team, 'carrier');
       return;
     }
 
+    /* The line. Only the mothership can lay down frigates and capitals, and a
+       cheapest-counter shopping list run against a treasury the carriers drain
+       every think never saves up for one: R9's played match fielded 77
+       hostile warships at fifteen minutes and not one of them was a frigate.
+       So the mothership builds the line, and while it is saving for the next
+       hull the carriers spend only what is above that price. */
+    this.lineFund = 0;
+    this.linePop = 0;
+    // Saving only starts once a carrier can keep the strike craft coming.
+    if (line && (this.own.carrier || 0) > 0) {
+      // Money and berths both: a fleet of bomber wings that fills the
+      // population cap starves the line as surely as an empty treasury.
+      this.lineFund = SHIPS[line].cost;
+      this.linePop = SHIPS[line].popCost || 0;
+    }
+
+    const lineQueued = this._queuedPop(ROLE.FRIGATE) + this._queuedPop(ROLE.CAPITAL) > 0;
     for (const id of t.producers) {
       const p = world.entities.get(id);
       if (!p || !p.alive) continue;
       let load = 0;
       for (let i = 0; i < t.queue.length; i++) if (t.queue[i].producerId === id) load++;
-      if (load >= 2) continue;
+      // The line may queue one deep behind whatever is already on the slip.
+      const lineSlot = p.classId === 'mothership' && line && !lineQueued;
+      if (load >= (lineSlot ? 3 : 2)) continue;
+      if (p.classId === 'mothership' && line) {
+        if (canBuild(world, this.team, line, id)) {
+          enqueueBuild(world, this.team, line, id);
+          this.lineFund = 0;
+          this.linePop = 0;
+        }
+        // Saving for it, or waiting for berths: either way the yard waits
+        // for the line rather than filling the slot with another fighter wing.
+        if ((this.lineFund > 0 || load > 0) && (this.own.carrier || 0) > 0) continue;
+      }
       const pick = this._chooseClass(p.classId);
       if (pick) enqueueBuild(world, this.team, pick, id);
     }
+  }
+
+  /**
+   * The next frigate or capital the line wants, or null when it is complete.
+   *
+   * The order of battle grows with the match: a frigate screen first, a
+   * destroyer once the gate opens and another every four minutes, then a
+   * cruiser. The line never takes more than half the population, so the
+   * carriers' strike craft are still the bulk of the fleet.
+   */
+  _lineClass() {
+    const now = this.time;
+    const ts = this.cfg.techScale;
+    const fGate = TECH_GATE.assaultFrigate * ts;
+    if (now < fGate) return null;
+    const t = this.world.teams[this.team];
+    const own = this.own;
+    const linePop = (own.assaultFrigate || 0) * 4 + (own.ionFrigate || 0) * 4 +
+      (own.destroyer || 0) * 9 + (own.cruiser || 0) * 18 +
+      this._queuedPop(ROLE.FRIGATE) + this._queuedPop(ROLE.CAPITAL);
+    if (linePop > t.popCap * 0.5) return null;
+
+    const dGate = TECH_GATE.destroyer * ts;
+    const cGate = TECH_GATE.cruiser * ts;
+    const have = (id) => (own[id] || 0) + this._queuedCount(id);
+    const wantCruiser = now < cGate ? 0 : 1 + Math.floor((now - cGate) / 480);
+    const wantDestroyer = now < dGate ? 0 : Math.min(3, 1 + Math.floor((now - dGate) / 240));
+    const wantFrigate = Math.min(4, 2 + Math.floor((now - fGate) / 150));
+    if (have('cruiser') < Math.min(2, wantCruiser)) return 'cruiser';
+    if (have('destroyer') < wantDestroyer) return 'destroyer';
+    const frigates = have('assaultFrigate') + have('ionFrigate');
+    if (frigates < wantFrigate) {
+      if (now < TECH_GATE.ionFrigate * ts) return 'assaultFrigate';
+      return have('ionFrigate') < have('assaultFrigate') ? 'ionFrigate' : 'assaultFrigate';
+    }
+    return null;
+  }
+
+  _queuedPop(role) {
+    const q = this.world.teams[this.team].queue;
+    let n = 0;
+    for (let i = 0; i < q.length; i++) if (SHIPS[q[i].classId].role === role) n += q[i].pop;
+    return n;
   }
 
   get time() {
@@ -415,7 +535,13 @@ export class Commander {
       if (producerClassId && !def.buildableBy.includes(producerClassId)) continue;
       const gate = (TECH_GATE[id] === undefined ? 0 : TECH_GATE[id]) * this.cfg.techScale;
       if (now < gate) continue;
-      if (t.credits < def.cost) continue;
+      // The carriers do not spend the money the mothership is saving.
+      const yard = producerClassId === 'mothership';
+      const fund = yard ? 0 : (this.lineFund || 0);
+      if (t.credits - fund < def.cost) continue;
+      if (!yard && this.linePop &&
+          t.popUsed + t.popQueued + (def.popCost || 0) * Math.max(1, def.squadSize || 1) +
+          this.linePop > t.popCap) continue;
       if (!canBuild(world, this.team, id)) continue;
 
       const squad = Math.max(1, def.squadSize || 1);
@@ -533,12 +659,18 @@ export class Commander {
     }
     moves = 2;
     while (force.length < want && moves-- > 0) {
+      // Strike craft stand guard and hold the band; the line goes with the
+      // fleet. A frigate is drafted only when there is nothing smaller.
       let pick = -1;
       for (let i = pool.length - 1; i >= 0; i--) {
-        if (pool[i].role !== ROLE.CAPITAL) {
-          pick = i;
-          break;
+        const r = pool[i].role;
+        if (r === ROLE.CAPITAL) continue;
+        if (r === ROLE.FRIGATE || r === ROLE.SUPPORT) {
+          if (pick < 0) pick = i;
+          continue;
         }
+        pick = i;
+        break;
       }
       if (pick < 0) break;
       const e = pool[pick];
@@ -818,6 +950,7 @@ export class Commander {
       this.committed = true;
       this.phase = 'rally';
       this.phaseDeadline = this.time + 110;
+      this.phaseStart = this.time;
       this.strikeTargetId = -1;
     }
 
@@ -844,6 +977,7 @@ export class Commander {
       if (_c.distanceToSquared(target.position) > THEATRE * THEATRE) {
         this.phase = 'rally';
         this.phaseDeadline = this.time + 110;
+        this.phaseStart = this.time;
       } else {
         this.phase = 'assault';
       }
@@ -865,10 +999,30 @@ export class Commander {
       if (_v2.lengthSq() < 1) _v2.set(0, 0, 1);
       this.strikePoint.copy(target.position).addScaledVector(_v2.normalize(), 8500);
       let ready = 0;
+      let line = 0;
+      let lineReady = 0;
+      let slowest = Infinity;
       for (let i = 0; i < this.strike.length; i++) {
-        if (this.strike[i].position.distanceToSquared(this.strikePoint) < 4200 * 4200) ready++;
+        const e = this.strike[i];
+        const here = e.position.distanceToSquared(this.strikePoint) < 4200 * 4200;
+        if (here) ready++;
+        if (e.role === ROLE.CAPITAL || e.role === ROLE.FRIGATE) {
+          line++;
+          if (here) lineReady++;
+          else slowest = Math.min(slowest, (e.def.speed || 100) /
+            Math.max(1, e.position.distanceTo(this.strikePoint)));
+        }
       }
-      if (ready >= this.strike.length * 0.7 || this.time > this.phaseDeadline) {
+      /* The line is slow — a cruiser makes 95 m/s to an interceptor's 540 —
+         so the rally waits for it, and the deadline is its arrival time, not
+         the fighters'. A push without its capitals is the R9 battle: sixty
+         markers over hulls three pixels long. */
+      if (line && lineReady < line && slowest < Infinity) {
+        this.phaseDeadline = Math.max(this.phaseDeadline,
+          Math.min(this.time + 1.2 / slowest, this.phaseStart + 260));
+      }
+      const lineIn = lineReady >= line * 0.75;
+      if ((ready >= this.strike.length * 0.7 && lineIn) || this.time > this.phaseDeadline) {
         this.phase = 'assault';
       } else {
         this._moveForce(this.strike, this.strikePoint, FORMATION.WALL, 'strike', 1800, 'move');
@@ -960,6 +1114,26 @@ export class Commander {
     }
     const cohesive = together >= body.length * 0.6 || near.length >= 3;
 
+    /* The line sets the pace. Frigates and capitals out of contact are the
+       slowest hulls in the fleet; if they have fallen more than a few
+       kilometres behind the body, the next bound is laid from them, short,
+       and the strike craft screen just ahead of the line instead of arriving
+       alone. */
+    let lineN = 0;
+    _lc.set(0, 0, 0);
+    for (let i = 0; i < far.length; i++) {
+      const r = far[i].role;
+      if (r === ROLE.CAPITAL || r === ROLE.FRIGATE) {
+        _lc.add(far[i].position);
+        lineN++;
+      }
+    }
+    let lagging = false;
+    if (lineN) {
+      _lc.multiplyScalar(1 / lineN);
+      lagging = _lc.distanceTo(target.position) > _c.distanceTo(target.position) + LINE_LAG;
+    }
+
     if (cohesive) {
       /* Push: the next bound toward the objective, from where the fleet is.
          If the body has stopped closing, it is being held — go round rather
@@ -975,9 +1149,11 @@ export class Commander {
         this.flankUntil = this.time + 80;
       }
 
-      _v2.subVectors(target.position, _c);
+      const from = lagging ? _lc : _c;
+      const bound = lagging ? LINE_LEAD : ADVANCE;
+      _v2.subVectors(target.position, from);
       const d = _v2.length();
-      if (d > ADVANCE) _v.copy(_c).addScaledVector(_v2.multiplyScalar(1 / d), ADVANCE);
+      if (d > bound) _v.copy(from).addScaledVector(_v2.multiplyScalar(1 / d), bound);
       else _v.copy(target.position);
 
       if (this.time < this.flankUntil) {
@@ -986,8 +1162,9 @@ export class Commander {
         _v.addScaledVector(_p.normalize(), 7000 * this.flankSign);
       }
     } else {
-      // Regroup: form on the fleet before going a metre further.
-      _v.copy(_c);
+      // Regroup: form on the fleet — on its line, if the line is behind —
+      // before going a metre further.
+      _v.copy(lagging ? _lc : _c);
     }
     this._moveForce(
       far, _v,
