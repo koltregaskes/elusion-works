@@ -562,6 +562,9 @@ const FILL = {
   structure: { lo: 0.22, hi: 0.90, want: 0.48 },
 };
 const FOLLOW_MAX_SPEED = 6000;   // m/s; anything faster is a jump
+/* A sliding focus that has not closed on its target for this long is wedged
+   in the crease between overlapping rock spheres (see `_slideFocus`). */
+const SLIDE_STALL_S = 0.6;
 const FOLLOW_VEL_RATE = 8;       // 1/s smoothing of the measured velocity
 const _ray = new THREE.Vector3();
 const _span = { w: 0, h: 0, cx: 0, cy: 0 };
@@ -589,6 +592,9 @@ export class CameraRig {
 
     /* State. Position is derived from these four every frame. */
     this._focus = new Vec3Spring(o.focusOmega);
+    /* Progress watch for the sliding focus: best gap to the glide's target,
+       time since it last improved, and whether sliding has been given up. */
+    this._slideWatch = { tg: new THREE.Vector3(1e9, 1e9, 1e9), best: 0, t: 0, off: false };
     this._yaw = new Spring(0.55, o.orbitOmega);
     this._pitch = new Spring(0.42, o.orbitOmega);
     this._logDist = new Spring(Math.log(2600), o.zoomOmega);
@@ -1715,7 +1721,7 @@ export class CameraRig {
     this._pitch.value = clamp(this._pitch.value, -PITCH_LIMIT, PITCH_LIMIT);
 
     let dist = Math.exp(this._logDist.value);
-    this._slideFocus(dist);
+    this._slideFocus(dist, dt);
     const focus = this._focus.value;
 
     /* Never inside the thing you are looking at. */
@@ -2337,14 +2343,47 @@ export class CameraRig {
       a rock is inside it too. So the gliding focus is held on the surface of
       any rock sphere it enters and slides round it toward its target. A rock
       that contains the target itself is left alone — that is where the
-      subject lives, and the glide has to arrive. */
-  _slideFocus(dist) {
+      subject lives, and the glide has to arrive.
+
+      Each sphere is slid round on its own, so where two overlap the slide off
+      one pushes into the other and back: R8 measured the focus wedged in such
+      a crease for the whole of a follow, 2.9 km short of a corvette the
+      camera was meant to be on, so the frame showed empty space while the
+      hull drew correctly where the sim had it. Arriving is the contract, so
+      the slide is watched: a glide that stops closing on its target for
+      SLIDE_STALL_S stops sliding and finishes in a straight line, as it did
+      before sliding existed (the rock fades and the pull-in still keep the
+      lens out of the rock it crosses). A new target re-arms it. */
+  _slideFocus(dist, dt = 0) {
     const f = this._focus.value;
     const tg = this._trans ? this._trans.to.focus : this._focus.target;
     const gx = tg.x - f.x;
     const gy = tg.y - f.y;
     const gz = tg.z - f.z;
-    if (gx * gx + gy * gy + gz * gz < 1) return;
+    const g2 = gx * gx + gy * gy + gz * gz;
+    const sw = this._slideWatch;
+    if (g2 < 1) {
+      sw.tg.copy(tg);
+      sw.best = 0;
+      sw.t = 0;
+      sw.off = false;
+      return;
+    }
+    const gap = Math.sqrt(g2);
+    /* A followed hull creeps; a new subject jumps. Only a jump re-arms. */
+    if (sw.tg.distanceToSquared(tg) > (50 + 0.25 * sw.best) * (50 + 0.25 * sw.best)) {
+      sw.tg.copy(tg);
+      sw.best = gap;
+      sw.t = 0;
+      sw.off = false;
+    } else if (gap < sw.best - Math.max(1, sw.best * 0.01)) {
+      sw.best = gap;
+      sw.t = 0;
+    } else if (dt > 0) {
+      sw.t += dt;
+      if (sw.t > SLIDE_STALL_S) sw.off = true;
+    }
+    if (sw.off) return;
     const n = this._nearCandidates(f, dist * 1.25 + 50);
     const band = this._nearBand(dist);
     const near = this._near;
