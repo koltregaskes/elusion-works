@@ -60,7 +60,7 @@ export class WreckFX {
     const L = (def && def.length) || 0;
     const o = entity && entity.object3D;
     if (L < WRECK_MIN_LENGTH || !o) return;
-    const info = wreckInfo(entity.classId);
+    const info = wreckInfo(entity.classId, entity.team || 0);
     if (!info || !(info.zMax > info.zMin)) return;
     let batch = null;
     try { batch = getFleetBatch(entity.classId, entity.team || 0); } catch (e) { batch = null; }

@@ -26,6 +26,7 @@ import {
   windowBand, windowBay, hangarBay, truss, armourPlates, commsArray,
   greebleField, ribBand, partMatrix, triCount, applyWear,
 } from './greeble.js';
+import { hostileBuilder } from './bone.js';
 
 /* --------------------------------------------------------------- palette */
 
@@ -2724,9 +2725,12 @@ export const HULL_CLASSES = Object.keys(BUILDERS);
  * every level at exactly the same size — deriving it per level would make the
  * ship visibly jump as greebles drop out of the bounding box.
  */
-export function buildHullLevel(classId, detail, xform) {
+export function buildHullLevel(classId, detail, xform, team = 0) {
   const def = SHIPS[classId];
   if (!def || !BUILDERS[classId]) return null;
+  // The hostile yard builds from its own kit (bone.js): same class envelope,
+  // different shipyard. Classes without a bone variant fall back to ours.
+  const build = (team === 1 && hostileBuilder(classId)) || BUILDERS[classId];
   const rng = makeRng(def.modelSeed);
   const b = new Builder(rng, detail, def.length);
   // Windows draw from their own stream. The coarse levels skip them entirely,
@@ -2735,9 +2739,10 @@ export function buildHullLevel(classId, detail, xform) {
   const ctx = {
     b, rng, wrng: rng.fork(9001), def, detail,
     hardpoints: [], engines: [], lights: [], dock: [],
+    kit: { thruster, placeTurret, hp, light, navSet },
   };
 
-  BUILDERS[classId](ctx);
+  build(ctx);
 
   const sources = ctx.engines.map((e) => ({ x: e.pos.x, y: e.pos.y, z: e.pos.z, r: e.radius }));
   const geo = b.finish(null);

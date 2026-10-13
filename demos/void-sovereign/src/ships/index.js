@@ -432,20 +432,27 @@ export function pickLod(classId, distance, current = -1) {
 
 const _cache = new Map();
 
-function buildClass(classId) {
-  let asset = _cache.get(classId);
+/* Geometry is per (class, team): the hostile yard builds its own hulls from the
+   bone kit (bone.js), so each team's batch carries its own geometry and LODs.
+   Gameplay size does not change with the shipyard — the hostile asset takes the
+   player hull's radius, which is what the sim reads as the collision radius. */
+function buildClass(classId, team = 0) {
+  const t = team === 1 ? 1 : 0;
+  const key = `${classId}:${t}`;
+  let asset = _cache.get(key);
   if (asset) return asset;
 
   const def = SHIPS[classId];
   if (!def || HULL_CLASSES.indexOf(classId) < 0) return null;
 
-  const base = buildHullLevel(classId, 0, null);
+  const base = buildHullLevel(classId, 0, null, t);
   if (!base) return null;
+  const gameplay = t === 1 ? buildClass(classId, 0) : null;
 
   const levels = [base.geo];
   const tris = [base.tris];
   for (let d = 1; d < 4; d++) {
-    const lvl = buildHullLevel(classId, d, base.xform);
+    const lvl = buildHullLevel(classId, d, base.xform, t);
     if (!lvl) break;
     levels.push(lvl.geo);
     tris.push(lvl.tris);
@@ -453,16 +460,18 @@ function buildClass(classId) {
 
   asset = {
     classId,
+    team: t,
     def,
     levels,
     tris,
-    radius: base.radius,
+    radius: gameplay ? gameplay.radius : base.radius,
+    visualRadius: base.radius,
     hardpoints: base.hardpoints,
     engines: base.engines,
     lights: base.lights,
     dock: base.dock,
   };
-  _cache.set(classId, asset);
+  _cache.set(key, asset);
   return asset;
 }
 
@@ -533,7 +542,7 @@ function levelGroup(asset, index, team) {
  *        phase, never geometry — hulls come from `SHIPS[classId].modelSeed`.
  */
 export function buildShipModel(classId, team = 0, rng = null) {
-  const asset = buildClass(classId);
+  const asset = buildClass(classId, team);
   if (!asset) return null;
 
   const group = new THREE.Group();
@@ -573,7 +582,7 @@ export function buildShipModel(classId, team = 0, rng = null) {
  * visible and the triangle saving is.
  */
 export function buildInstancedBatch(classId, team = 0, count = 1, rng = null) {
-  const asset = buildClass(classId);
+  const asset = buildClass(classId, team);
   if (!asset) return null;
 
   const swarm = asset.def.role === ROLE.FIGHTER || asset.def.role === ROLE.CORVETTE;
@@ -641,7 +650,10 @@ export function buildInstancedBatch(classId, team = 0, count = 1, rng = null) {
 
 /** Pre-build every class so the first frame of a skirmish does not hitch. */
 export function warmShipCache(rng = null) {
-  for (const id of HULL_CLASSES) buildClass(id);
+  for (const id of HULL_CLASSES) {
+    buildClass(id, 0);
+    buildClass(id, 1);
+  }
   return _cache.size;
 }
 
@@ -726,7 +738,7 @@ class FleetBatch {
   constructor(classId, team) {
     this.classId = classId;
     this.team = team;
-    this.asset = buildClass(classId);
+    this.asset = buildClass(classId, team);
     this.capacity = 0;
     this.levels = [];
     this.group = new THREE.Group();
@@ -1146,7 +1158,7 @@ export function getFleetBatch(classId, team = 0) {
   const key = `${classId}:${team}`;
   let batch = _batches.get(key);
   if (batch) return batch;
-  if (!buildClass(classId)) return null;
+  if (!buildClass(classId, team)) return null;
   batch = new FleetBatch(classId, team);
   _batches.set(key, batch);
   return batch;
@@ -1156,8 +1168,8 @@ export function getFleetBatch(classId, team = 0) {
     keel extent in object space, and the finest-shaded level a section may sit
     on (the impostor levels do not take the cut, so sections stop short of
     them). Null if the class has no hull. */
-export function wreckInfo(classId) {
-  const asset = buildClass(classId);
+export function wreckInfo(classId, team = 0) {
+  const asset = buildClass(classId, team);
   const g = asset && asset.levels[0] && asset.levels[0].hull;
   if (!g) return null;
   if (!g.boundingBox) g.computeBoundingBox();
@@ -1195,8 +1207,8 @@ export function disposeFleetBatches() {
 
 /** Triangle counts and metadata per LOD level. Used by the ship viewer and by
     anyone auditing the draw budget. Not part of the frozen contract. */
-export function shipStats(classId) {
-  const asset = buildClass(classId);
+export function shipStats(classId, team = 0) {
+  const asset = buildClass(classId, team);
   if (!asset) return null;
   const tri = (g) => (g && g.getAttribute('position') ? g.getAttribute('position').count / 3 : 0);
   const lvl0 = asset.levels[0];
