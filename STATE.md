@@ -1,5 +1,5 @@
 Status: active
-Next step: round 11 from demos/void-sovereign/CRITIQUE-ROUND-10.md - top: attacks start only with capitals present; pause sovereignty drain while 20+ engaged; also carrier-kill flash too small, HUD pop/hull-loss contradictions, boot 28.7 s
-Blocked on: orchestrator go-ahead for round 11; weekly budget must last to 19 Oct (stop at 35%); going live needs Kol to merge PR #29 then #27 (KOL-6004)
-Updated: 2026-10-13 UK by HOMEWORLD CLONE session (round 10 scored 5/10, mean 5.6)
+Next step: round 11 aimed at the three criteria at 4 (see pack diagnosis): fix 1 capital-led attacks + pause sovereignty drain while 20+ engaged; fix 2 capital kill reads on the kill frame; fix 3 damage escalates at 50/20%; then evidence, critic round 11. If still 5: pause fix rounds, update the laptop play-test guide (KOL-6021)
+Blocked on: nothing; weekly budget must last to 19 Oct (stop at 35%); going live needs Kol to merge PR #29 then #27 (KOL-6004)
+Updated: 2026-10-13 UK by HOMEWORLD CLONE session
 Linear: https://linear.app/koltregaskes/issue/KOL-5966
