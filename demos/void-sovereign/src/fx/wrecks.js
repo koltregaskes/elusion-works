@@ -31,6 +31,18 @@ const WRECK_CLASSES = Object.keys(SHIPS).filter((id) => (SHIPS[id].length || 0) 
 const MAX_SECTIONS = 72;
 /* The last seconds of a section, spent burning away from both cut ends. */
 const BURN_OUT = 3.0;
+/* R11 fix 2: a capital's hull breaks on the kill, not over 12 s. Sections of
+   a hull at least BREAK_KICK_MIN long are kicked apart along the keel, each
+   by BREAK_KICK x its offset from mid-keel (end sections of a carrier move
+   0.135 of a hull, so adjacent cuts open by 0.09 of a hull),
+   eased in from BREAK_DELAY with time constant BREAK_TAU (57% at +0.3 s,
+   99% at +1.5 s), with 3-7 degrees of tumble so the cuts open in a V. After
+   it the old slow drift is all that is left, so the wreck still reads as a
+   dead hull for its whole life. Frigates keep their own split beat. */
+const BREAK_KICK_MIN = 300;
+const BREAK_KICK = 0.36;
+const BREAK_DELAY = 0.05;
+const BREAK_TAU = 0.30;
 
 const CORE = new THREE.Color(0xfff2d8);
 const FIRE = new THREE.Color(0xff9a42);
@@ -41,6 +53,9 @@ const _o = new THREE.Vector3();
 const _p = new THREE.Vector3();
 const _dq = new THREE.Quaternion();
 const _s = new THREE.Vector3();
+const _k = new THREE.Vector3();
+const _kq = new THREE.Quaternion();
+const _q2 = new THREE.Quaternion();
 
 export class WreckFX {
   constructor(ctx) {
@@ -135,18 +150,49 @@ export class WreckFX {
         age: 0, life: life * rng.range(0.94, 1.0), popFor,
         nextPop: rng.range(0.15, 0.9),
         damage: damage0, shownDamage: -1, rng,
+        kick: null, tilt: null, tiltAngle: 0, cutAt: -1,
       };
+      if (L >= BREAK_KICK_MIN) {
+        const lat = rng.unitVector();
+        sec.kick = new THREE.Vector3().copy(axis).multiplyScalar(L * BREAK_KICK * away)
+          .add(new THREE.Vector3(lat.x, lat.y, lat.z).multiplyScalar(L * 0.012));
+        const ta = rng.unitVector();
+        sec.tilt = new THREE.Vector3(ta.x, ta.y, 0);
+        if (!(sec.tilt.lengthSq() > 0.01)) sec.tilt.set(1, 0, 0);
+        sec.tilt.normalize();
+        sec.tiltAngle = rng.range(0.06, 0.12) * (rng.next() < 0.5 ? -1 : 1);
+        // The detonation along this section's forward cut, staggered down the keel.
+        if (i < n - 1) sec.cutAt = 0.18 + 0.08 * i + rng.range(0, 0.06);
+      }
       batch.setWreckSection(slot, lo, hi);
       this._place(sec);
       this._sections.push(sec);
     }
   }
 
+  /* 0 until BREAK_DELAY, then easing to 1 (see BREAK_TAU). */
+  static breakEase(age) {
+    return age <= BREAK_DELAY ? 0 : 1 - Math.exp(-(age - BREAK_DELAY) / BREAK_TAU);
+  }
+
+  /* Where the section is drawn now: its drift plus the eased break kick, and
+     its spin plus the eased tilt. Writes _k (centre) and returns the quaternion. */
+  _pose(sec) {
+    _k.copy(sec.pos);
+    if (!sec.kick) return sec.q;
+    const e = WreckFX.breakEase(sec.age);
+    _k.addScaledVector(sec.kick, e);
+    // Tilt about a section-local lateral axis, so the cut faces open.
+    _kq.setFromAxisAngle(sec.tilt, sec.tiltAngle * e);
+    return _q2.copy(sec.q).multiply(_kq);
+  }
+
   _place(sec) {
     // Rotate about the section's own centre, not the dead ship's origin.
-    _o.copy(sec.local).multiply(sec.s).applyQuaternion(sec.q);
-    _p.copy(sec.pos).sub(_o);
-    _m.compose(_p, sec.q, sec.s);
+    const q = this._pose(sec);
+    _o.copy(sec.local).multiply(sec.s).applyQuaternion(q);
+    _p.copy(_k).sub(_o);
+    _m.compose(_p, q, sec.s);
     sec.batch.setMatrix(sec.slot, _m);
   }
 
@@ -170,6 +216,10 @@ export class WreckFX {
       this._place(sec);
 
       const d = cam.distanceTo(sec.pos);
+      if (sec.cutAt >= 0 && sec.age >= sec.cutAt) {
+        sec.cutAt = -1;
+        this._cut(sec, d);
+      }
       const want = pickLod(sec.classId, d, sec.batch.slotLevel[sec.slot]);
       sec.batch.setLod(sec.slot, Math.min(want, wreckInfo(sec.classId).maxLod));
 
@@ -206,8 +256,9 @@ export class WreckFX {
     const f = ctx.fields;
     const rng = sec.rng;
     const z = rng.range(sec.lo, sec.hi);
+    const q = this._pose(sec);
     _p.set(rng.gaussian(0, sec.L * 0.025), rng.gaussian(0, sec.L * 0.025), z)
-      .sub(sec.local).multiply(sec.s).applyQuaternion(sec.q).add(sec.pos);
+      .sub(sec.local).multiply(sec.s).applyQuaternion(q).add(_k);
     const mpp = ctx.px(dist);
     const drawn = Math.max(sec.len, mpp * hullFloorPx(sec.L) * (sec.len / sec.L));
     let size = ctx.atLeast(sec.L * 0.03 * rng.range(0.6, 1.4) * weight, dist, 5);
@@ -227,6 +278,42 @@ export class WreckFX {
       const s = sec.L * 0.01;
       f.smoke.spawn(_p.x, _p.y, _p.z, V.x + u.x * s, V.y + u.y * s, V.z + u.z * s,
         rng.range(2.5, 4.0), 0.05, size * 0.6, size * 2.4, SOOT, 0.8, 0, rng.gaussian(0, 0.6));
+    }
+  }
+
+  /* R11 fix 2: the detonation that opens a cut. Sits on the section's
+     forward cut face: a hot core and a gold body sized off the hull as drawn
+     (well under the primary, the only beat allowed past the 1.2x ceiling),
+     spall thrown out in the cut plane, and soot after it. */
+  _cut(sec, dist) {
+    const ctx = this.ctx;
+    const f = ctx.fields;
+    const rng = sec.rng;
+    const q = this._pose(sec);
+    _p.set(0, 0, sec.hi).sub(sec.local).multiply(sec.s).applyQuaternion(q).add(_k);
+    const drawn = Math.max(sec.L, ctx.px(dist) * hullFloorPx(sec.L));
+    const size = drawn * rng.range(0.20, 0.26);
+    const V = sec.vel;
+    f.flare.spawn(_p.x, _p.y, _p.z, V.x, V.y, V.z, 0.30, 0, size * 0.7, size * 0.35, CORE, 16.0, 0, 0);
+    f.flare.spawn(_p.x, _p.y, _p.z, V.x, V.y, V.z, 0.75, 0, size * 0.45, size * 1.0, FIRE, 2.4, 0, 0);
+    const ax = _o.set(0, 0, 1).applyQuaternion(q);
+    const n = Math.round(22 * ctx.qscale);
+    for (let i = 0; i < n; i++) {
+      const u = rng.unitVector();
+      // In the cut plane: drop most of the keel-ward component.
+      const along = u.x * ax.x + u.y * ax.y + u.z * ax.z;
+      const s = sec.L * rng.range(0.05, 0.16);
+      f.spark.spawn(_p.x, _p.y, _p.z,
+        V.x + (u.x - ax.x * along * 0.8) * s,
+        V.y + (u.y - ax.y * along * 0.8) * s,
+        V.z + (u.z - ax.z * along * 0.8) * s,
+        rng.range(0.4, 1.1), 0.35, sec.L * 0.006, 0.2, CORE, 2.8, rng.range(1.4, 3.0), 0);
+    }
+    for (let i = 0; i < 2; i++) {
+      const u = rng.unitVector();
+      const s = sec.L * 0.02;
+      f.smoke.spawn(_p.x, _p.y, _p.z, V.x + u.x * s, V.y + u.y * s, V.z + u.z * s,
+        rng.range(2.5, 4.0), 0.05, size * 0.3, size * 1.3, SOOT, 0.85, 0.8, rng.gaussian(0, 0.6));
     }
   }
 

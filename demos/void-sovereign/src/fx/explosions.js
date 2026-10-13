@@ -287,6 +287,11 @@ const SHAKE_EXP = 0.8;
 const BAND_SPARK = 26;
 const BAND_POP = 70;
 const BAND_BREAK = 210;
+/* R11 fix 2: how far past the hull as drawn (ctx.hullBudget) a capital's
+   primary detonation's sprites are sized, as a quad width. Every other beat
+   keeps the 1.2x ceiling; the primary is the one beat that has to read as
+   bigger than anything a gun does to the hull, on the kill frame. */
+const PRIMARY_K = 1.0;
 
 const WHITE = new THREE.Color(0xffffff);
 const CORE = new THREE.Color(0xfff2d8);
@@ -544,9 +549,9 @@ export class ExplosionFX {
      keel, so the death walks the length of the hull instead of piling up on
      its centroid.
 
-       act 1  internal flash through hull gaps   0.00 - 1.00
+       act 1  primary, the hull breaks (R11)     0.00 - 1.00
        act 2  directional venting, vent axes     0.55 - 2.70
-       act 3  the hull lets go at a frame        2.70 - 3.60
+       act 3  the sections cook off              2.40 - 3.60
        act 4  drifting lit wreckage             3.60 - end
 
      Act 2's duration is what the brief asks for: at the destroyer reference
@@ -565,7 +570,34 @@ export class ExplosionFX {
        only works if each one stays a few pixels across. The moment any of
        them is lifted to a 34 px minimum it stops being a gap in a hull and
        becomes another fireball, and five of those is the ball. */
-    ev.push({ t: 0.00, k: 'breach', n: 4, size: R * 0.055, life: 0.75, bright: 11.0 });
+    /* R11 fix 2: the primary detonation is the kill frame, not act three.
+
+       Round 10 measured the carrier's kill flash at 0.04 of its hull box: the
+       only light on the kill frame was act one's unfloored breaches, and the
+       hull did not visibly come apart until the act-three split 4.5 s later
+       (and the wreck sections drifted apart at 1-2% of a hull a second, so
+       the break read at about 12 s). The primary now fires on the kill: a
+       white core at the break station, the failure running out along the keel
+       from it inside 0.08 s, an expanding shell of burning gas and torn
+       plating, and the wreck sections (wrecks.js) kicked apart from +0.1 s
+       with a detonation along each cut at +0.2-0.45 s. It is the only beat
+       allowed past the 1.2x flash ceiling, to PRIMARY_K of the hull as drawn. */
+    const station = rng.range(-0.26, 0.26);
+    ev.push({
+      t: 0.00, k: 'primary', at: station, life: 0.50, bright: 30.0,
+      sep: 0.13, keel: 4, n: 40, scale: 1.0, spark: 30 * N,
+    });
+    // The failure running down the keel from the station, nearest first.
+    for (const u of [-0.40, -0.27, -0.14, 0.0, 0.14, 0.27, 0.40]) {
+      const d = Math.abs(u - station);
+      if (d < 0.08) continue;
+      ev.push({ t: 0.06 * d + rng.range(0, 0.006), k: 'blowout', at: u, size: 0.44 - 0.14 * d, life: 0.46, bright: 6.0 - 2.5 * d });
+    }
+    // A hairline front at the primary's own weight, not a thick hoop.
+    ev.push({ t: 0.00, k: 'ring', r0: R * 0.20, r1: L * 0.45, life: 0.7, thick: 0.008, intensity: 0.30, axis: 'hull' });
+    ev.push({ t: 0.08, k: 'embers', n: 150 * N, speed: L * 0.30, life: 3.20 });
+    ev.push({ t: 0.16, k: 'smoke', n: 10, size: L * 0.36, speed: L * 0.45, life: 3.60 });
+    ev.push({ t: 0.22, k: 'breach', n: 4, size: R * 0.055, life: 0.75, bright: 11.0 });
     ev.push({ t: 0.14, k: 'hullglow', duration: 0.85, size: L, bright: 0.9 });
     ev.push({ t: 0.30, k: 'breach', n: 3, size: R * 0.070, life: 0.85, bright: 13.0 });
     ev.push({ t: 0.46, k: 'secondary', at: rng.range(-0.5, 0.1), size: R * 0.13, minPx: 12 });
@@ -610,33 +642,14 @@ export class ExplosionFX {
        The buckle, then one primary at the break station, then — 0.24 s later
        and displaced a fifth of a hull down the keel — the cooling shell. Two
        beats, two places. The third coincident flash is gone. */
+    /* R11 fix 2: the primary and its ring moved to the kill frame (act one).
+       What is left of act three is the sections cooking off as the venting
+       ends: a last glow along the broken spine, one secondary at the break
+       station, and the fire still in the wreckage. */
     ev.push({ t: 2.42, k: 'hullglow', duration: 0.62, size: L, bright: 2.4 });
-    ev.push({ t: 2.70, k: 'hullglow', duration: 0.30, size: L * 1.05, bright: 5.8 });
-    /* R7 fix 5: sparse embers, not a dense radial burst. 120 * N sparks at 3-10x
-       stretch drew a white starburst round the carrier's primary. */
-    ev.push({ t: 2.74, k: 'sparks', n: 18 * N, speed: L * 0.6, size: L * 0.012, minPx: 1.8, life: 1.1, stretch: [1.2, 2.4] });
-
-    /* The screen floor scales with hull length as well as the world size does.
-       A flat 110 px floor gave a mothership and a destroyer the same guaranteed
-       core, so the biggest death in the game could measure smaller on screen
-       than a background star's bloom cross. sqrt(L/380) keeps the ladder
-       sub-linear: destroyer 110 px, carrier 156, mothership 246. */
-    const primaryPx = Math.round(110 * Math.sqrt(L / 380));
-    const station = rng.range(-0.26, 0.26);
-    ev.push({
-      t: 2.92, k: 'split', at: station, size: R * 1.7, minPx: primaryPx, life: 0.60,
-      bright: 34.0, core: 0.62, sep: 0.13, keel: 4, n: 40, scale: 1.0, spark: 30 * N,
-    });
-    // R7 fix 5: a hairline front at the break's own weight, not a thick hoop.
-    ev.push({ t: 2.92, k: 'ring', r0: R * 0.35, r1: ring * 1.55, life: 1.6, thick: 0.012, intensity: 1.10, axis: 'hull' });
-    /* The cooling shell: same detonation, seen later and from further down the
-       hull. `shake: 0` — the beat is one shove, not two. */
-    ev.push({
-      t: 3.16, k: 'flash', at: station - 0.20, size: R * 1.05, life: 1.30,
-      minPx: Math.round(primaryPx * 0.60), bright: 11.0, colour: FIRE, shake: 0,
-    });
-    ev.push({ t: 3.42, k: 'embers', n: 240 * N, speed: L * 0.30, life: 3.20 });
-    ev.push({ t: 3.46, k: 'smoke', n: 14, size: L * 0.42, speed: L * 0.5, life: 3.60 });
+    ev.push({ t: 2.80, k: 'secondary', at: station * 2, size: R * 0.30, minPx: 14 });
+    ev.push({ t: 3.42, k: 'embers', n: 90 * N, speed: L * 0.30, life: 3.20 });
+    ev.push({ t: 3.46, k: 'smoke', n: 6, size: L * 0.42, speed: L * 0.5, life: 3.60 });
 
     /* ---- act 4: drifting lit wreckage. The keel sections are already out
        there from the split; this is the fire still in them. */
@@ -734,6 +747,111 @@ export class ExplosionFX {
       strength: strength * Math.pow(seq.L / 380, SHAKE_EXP),
     });
   }
+
+  /* The torn cross-section and the two keel halves of a split (BREAK and the
+     R11 capital primary share it). */
+  _tear(seq, plane, ev, reach) {
+    const f = this.ctx.fields;
+    const q = this.ctx.qscale;
+    const rng = seq.rng;
+    const V = seq.vel;
+    /* The torn cross-section: sparks thrown out *in the plane*, not into a
+       ball. A disc of ejecta edge-on to the keel is the single clearest
+       statement that the break has an orientation. */
+    const sn = Math.round((ev.spark || 90) * q);
+    for (let i = 0; i < sn; i++) {
+      const a = rng.range(0, Math.PI * 2);
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      // In-plane direction, with a small out-of-plane leak so the disc has
+      // thickness and does not read as a decal.
+      this._dir.set(
+        seq.side.x * ca + seq.up.x * sa + seq.axis.x * rng.gaussian(0, 0.22),
+        seq.side.y * ca + seq.up.y * sa + seq.axis.y * rng.gaussian(0, 0.22),
+        seq.side.z * ca + seq.up.z * sa + seq.axis.z * rng.gaussian(0, 0.22),
+      ).normalize();
+      // R7 fix 5: inside `reach` over the ember's life, not a hull length a second.
+      const sp = Math.min(seq.L, reach / (1.1 * seq.T * 1.1)) * rng.range(0.4, 1.0);
+      this._col.copy(CORE).lerp(EMBER, 0.45 + rng.next() * 0.55);
+      f.spark.spawn(plane.x, plane.y, plane.z,
+        V.x + this._dir.x * sp, V.y + this._dir.y * sp, V.z + this._dir.z * sp,
+        rng.range(0.3, 1.1) * seq.T, 0.35, seq.L * 0.02 * rng.range(0.6, 1.6), 0.2,
+        this._col, 2.8, rng.range(1.2, 2.4), 0); // short embers, not radial speed lines (R6 fix 4)
+    }
+
+    /* The two halves. Each is its own debris burst with its own bulk
+       velocity, offset to where that end of the hull actually was, and the
+       keel sections are split between them — so the wreck is two masses
+       drifting apart rather than one expanding cloud. */
+    const sep = (ev.sep || 0.10) * seq.L;
+    const half = Math.max(1, Math.round((ev.n || 16) * 0.5));
+    const keelHalf = Math.max(1, Math.round((ev.keel || 2) * 0.5));
+    for (let s = -1; s <= 1; s += 2) {
+      this._v2.copy(plane).addScaledVector(seq.axis, s * seq.L * 0.22);
+      this._up.copy(V).addScaledVector(seq.axis, s * sep);
+      this.debris.burst({
+        origin: this._v2,
+        velocity: this._up,
+        axis: seq.axis,
+        count: Math.round(half * Math.min(1.2, q + 0.15)),
+        size: seq.L * 0.035 * (ev.scale || 0.5),
+        spread: seq.L * 0.22,
+        speed: seq.L * 0.55,
+        colour: seq.team.primary,
+        hull: seq.hull,
+        blast: seq.axis,
+        keelCount: keelHalf,
+        keelLength: seq.L * 0.25,
+        lifeScale: ev.lifeScale,
+        rng,
+      });
+    }
+  }
+
+  /* R11 fix 2: lumps of burning gas round one keel station, for a capital's
+     primary and its blowouts. A fireball the size of a capital is not one
+     sprite: each lump is a moderate-radiance flare, so its centre clips to a
+     small hot point and the rest is glow, and the union of a few dozen of them
+     has a ragged silhouette that follows the hull rather than a disc. They
+     leave the station outward, down the vent lobes, and brake hard (drag 3.2,
+     so no lump travels past a quarter of the hull as drawn) while they cool
+     from gold to deep orange. `hot` is how far from CORE toward FIRE. */
+  _lumps(seq, t, at, n, Q, bright, life, hot, hullM) {
+    const f = this.ctx.fields;
+    const rng = seq.rng;
+    const V = seq.vel;
+    const k = Math.max(1, Math.round(n * Math.min(1.2, this.ctx.qscale + 0.2)));
+    for (let i = 0; i < k; i++) {
+      this._v2.copy(seq.pos).addScaledVector(V, t)
+        .addScaledVector(seq.axis, (at + rng.gaussian(0, 0.05)) * seq.L)
+        .addScaledVector(seq.side, rng.gaussian(0, seq.L * 0.035))
+        .addScaledVector(seq.up, rng.gaussian(0, seq.L * 0.03));
+      /* Out through the plating on the side we are looking at: a lump born
+         inside the hull is depth-tested away behind the wreck sections, and
+         the first R11 take lost most of its primary to that. */
+      this._dir.copy(this.ctx.camPos).sub(this._v2);
+      const dc = this._dir.length();
+      if (dc > 1e-3) this._v2.addScaledVector(this._dir, Math.min(seq.L * 0.12, dc * 0.25) / dc);
+      const m = this._bias(seq, rng, 0.45, this._dir);
+      const sp = hullM * 0.75 * m;
+      /* Two layers per lump. The hot layer is short and only moderately
+         bright, so it clips to a small point inside a gradient instead of
+         to a flat cream ball, and it carries the flash; the cool layer is
+         wider, slower to die and well under it, the orange the fireball
+         cools to after the flash has peaked. */
+      this._col.copy(CORE).lerp(FIRE, Math.min(1, hot * 0.5 + rng.next() * 0.3));
+      f.flare.spawn(this._v2.x, this._v2.y, this._v2.z,
+        V.x + this._dir.x * sp, V.y + this._dir.y * sp, V.z + this._dir.z * sp,
+        life * rng.range(0.30, 0.45), 3.2, Q * rng.range(0.8, 1.0), Q * rng.range(0.9, 1.1),
+        this._col, bright * rng.range(0.8, 1.15), 0, 0);
+      this._col.copy(FIRE).lerp(EMBER, rng.next() * 0.7);
+      f.flare.spawn(this._v2.x, this._v2.y, this._v2.z,
+        V.x + this._dir.x * sp * 1.1, V.y + this._dir.y * sp * 1.1, V.z + this._dir.z * sp * 1.1,
+        life * rng.range(0.8, 1.2), 3.2, Q * rng.range(0.7, 0.9), Q * rng.range(1.05, 1.3),
+        this._col, bright * 0.35, 0, 0);
+    }
+  }
+
 
   _run(seq, ev) {
     const ctx = this.ctx;
@@ -976,63 +1094,45 @@ export class ExplosionFX {
             ev.life * 1.1, 0, size * 0.18, size * 0.55, FIRE, ev.bright * 0.05, 0.5, 0,
           );
         }
-
-        /* The torn cross-section: sparks thrown out *in the plane*, not into a
-           ball. A disc of ejecta edge-on to the keel is the single clearest
-           statement that the break has an orientation. */
-        const sn = Math.round((ev.spark || 90) * q);
-        for (let i = 0; i < sn; i++) {
-          const a = rng.range(0, Math.PI * 2);
-          const ca = Math.cos(a);
-          const sa = Math.sin(a);
-          // In-plane direction, with a small out-of-plane leak so the disc has
-          // thickness and does not read as a decal.
-          this._dir.set(
-            seq.side.x * ca + seq.up.x * sa + seq.axis.x * rng.gaussian(0, 0.22),
-            seq.side.y * ca + seq.up.y * sa + seq.axis.y * rng.gaussian(0, 0.22),
-            seq.side.z * ca + seq.up.z * sa + seq.axis.z * rng.gaussian(0, 0.22),
-          ).normalize();
-          // R7 fix 5: inside `reach` over the ember's life, not a hull length a second.
-          const sp = Math.min(seq.L, reach / (1.1 * seq.T * 1.1)) * rng.range(0.4, 1.0);
-          this._col.copy(CORE).lerp(EMBER, 0.45 + rng.next() * 0.55);
-          f.spark.spawn(plane.x, plane.y, plane.z,
-            V.x + this._dir.x * sp, V.y + this._dir.y * sp, V.z + this._dir.z * sp,
-            rng.range(0.3, 1.1) * seq.T, 0.35, seq.L * 0.02 * rng.range(0.6, 1.6), 0.2,
-            this._col, 2.8, rng.range(1.2, 2.4), 0); // short embers, not radial speed lines (R6 fix 4)
-        }
-
-        /* The two halves. Each is its own debris burst with its own bulk
-           velocity, offset to where that end of the hull actually was, and the
-           keel sections are split between them — so the wreck is two masses
-           drifting apart rather than one expanding cloud. */
-        const sep = (ev.sep || 0.10) * seq.L;
-        const half = Math.max(1, Math.round((ev.n || 16) * 0.5));
-        const keelHalf = Math.max(1, Math.round((ev.keel || 2) * 0.5));
-        for (let s = -1; s <= 1; s += 2) {
-          this._v2.copy(plane).addScaledVector(seq.axis, s * seq.L * 0.22);
-          this._up.copy(V).addScaledVector(seq.axis, s * sep);
-          this.debris.burst({
-            origin: this._v2,
-            velocity: this._up,
-            axis: seq.axis,
-            count: Math.round(half * Math.min(1.2, q + 0.15)),
-            size: seq.L * 0.035 * (ev.scale || 0.5),
-            spread: seq.L * 0.22,
-            speed: seq.L * 0.55,
-            colour: seq.team.primary,
-            hull: seq.hull,
-            blast: seq.axis,
-            keelCount: keelHalf,
-            keelLength: seq.L * 0.25,
-            lifeScale: ev.lifeScale,
-            rng,
-          });
-        }
-
+        this._tear(seq, plane, ev, reach);
         const shake = ev.shake === undefined ? ev.bright / 34 : ev.shake;
         if (shake > 0) this._blast(seq, plane, seq.m.ring, shake);
         break;
       }
+
+      /* R11 fix 2: a capital's primary detonation, on the kill frame.
+
+         Structured rather than one disc: a small white core at the break
+         station, lumps of burning gas (`_lumps`) thrown out of it down the
+         vent lobes, and the torn cross-section and the two keel halves of the
+         split. The `blowout` beats run the same lumps down the keel inside
+         0.06 s, so the burst takes the hull's own shape. Sized off the hull as
+         drawn (PRIMARY_K), so it is proportionate at every distance; measured
+         on the carrier it peaks at 0.6-0.8 of the hull's box inside 0.1 s,
+         is orange by +0.3 s and gone by +0.8 s. */
+      case 'primary': {
+        const V = seq.vel;
+        const plane = this._v.copy(origin).addScaledVector(seq.axis, (ev.at || 0) * seq.L);
+        const Q = PRIMARY_K * hullM;
+        /* The white core is small on purpose. A hull-sized sprite at core
+           radiance clips to a flat white card with a hard rim (the first R11
+           take); the size of the beat comes from the lumps, not from this. */
+        f.flare.spawn(plane.x, plane.y, plane.z, V.x, V.y, V.z, ev.life * 0.35, 0,
+          Q * 0.30, Q * 0.12, WHITE, ev.bright, 0, 0);
+        this._lumps(seq, ev.t, ev.at || 0, 7, Q * 0.55, 6.5, ev.life, 0.2, hullM);
+        this._tear(seq, plane, ev, reach);
+        // One shove: the destroyer's primary is what anchors fx:blast at 1.0.
+        this._blast(seq, plane, seq.m.ring, 1.0);
+        break;
+      }
+
+      /* The failure arriving at one station down the keel: three lumps on the
+         hull line, no white core, no shake. */
+      case 'blowout': {
+        this._lumps(seq, ev.t, ev.at, 3, Math.max(0.12, ev.size) * hullM, ev.bright, ev.life, 0.5, hullM);
+        break;
+      }
+
 
       case 'ring': {
         const nrm = this._side;

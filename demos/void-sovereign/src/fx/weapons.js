@@ -1009,6 +1009,14 @@ const BEAM_END_MAX_PX = 2.5;
    blasts - to HIT_EXTENT_K. `length` is the target hull length in metres. */
 const HIT_EXTENT_K = 0.6;
 const HIT_CORE_K = 0.2;
+/* R11 fix 2: the wash and the impact star are sized by the round, capped by
+   the target, and the target cap stops growing at a frigate's length. On a
+   760 m carrier 0.2x the hull let a single wash reach its full mag * 19 m, and
+   at the close camera those read as soft white balls about 40 px across
+   sitting on the plating (R11 fix 1 close frame). A gun round does not get
+   bigger because the ship it hits is bigger; spall and sparks keep the hull
+   budget. */
+const HIT_PLATE_M = 130;
 function hitCeil(ctx, metres, x, y, z, length, k = HIT_CORE_K) {
   return Math.min(metres, ctx.hullBudget(length, x, y, z, k));
 }
@@ -1391,7 +1399,7 @@ export class WeaponFX {
     const tl = (ent && ent.def && ent.def.length) || (targetRadius(ent) || 18) / 0.55;
     // R7 fix 5: the whole hit inside 0.6x the hull as drawn, its wash inside 0.2x.
     const ceilM = hitCeil(ctx, Infinity, pt.x, pt.y, pt.z, tl, HIT_EXTENT_K);
-    const washM = hitCeil(ctx, Infinity, pt.x, pt.y, pt.z, tl);
+    const washM = hitCeil(ctx, Infinity, pt.x, pt.y, pt.z, Math.min(tl, HIT_PLATE_M));
     // Molten wash, blown a little way back out of the hole it just made.
     /* Its screen floor is held under the impact star's (0.7 of the shot
        ceiling, was 1.4): floored up to fleet range this round wash is
@@ -1528,7 +1536,7 @@ export class WeaponFX {
        hull as drawn. It used to be held to the hull's full length and, inside
        900 m, to nothing else - which at focus distance was the 510 px X drawn
        over a 500 px interceptor. */
-    const natural = Math.min(mag * 9 * jitter, hitCeil(ctx, Infinity, x, y, z, radius / 0.55, HIT_EXTENT_K));
+    const natural = Math.min(mag * 9 * jitter, hitCeil(ctx, Infinity, x, y, z, Math.min(radius / 0.55, HIT_PLATE_M), HIT_EXTENT_K));
     const floored = Math.max(natural, mpp * capPx);
     // Mirrors FLASH_VERT/FLASH_FRAG: clamp amount, spread dimming, and the
     // 1 + 0.9 * clamp lift the fragment stage already applies.
