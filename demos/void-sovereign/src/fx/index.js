@@ -22,6 +22,9 @@ import { WeaponFX } from './weapons.js';
 import { ExplosionFX } from './explosions.js';
 import { ShieldFX } from './shields.js';
 import { DebrisFX } from './debris.js';
+import { WreckFX } from './wrecks.js';
+import { DamageFX } from './damage.js';
+import { hullFloorPx } from '../ships/catalog.js';
 
 /* ------------------------------------------------------------------ imports
    `render/textures.js` and `render/materials.js` belong to the MAT agent and
@@ -116,17 +119,9 @@ function spriteFlare(size = 128) {
   grad.addColorStop(1.0, 'rgba(255,255,255,0)');
   g.fillStyle = grad;
   g.fillRect(0, 0, size, size);
-  // Faint anamorphic cross so big flares get a lens signature.
-  g.globalCompositeOperation = 'lighter';
-  for (let i = 0; i < 2; i++) {
-    const lg = g.createLinearGradient(i ? 0 : h, i ? h : 0, i ? size : h, i ? h : size);
-    lg.addColorStop(0, 'rgba(255,255,255,0)');
-    lg.addColorStop(0.5, 'rgba(255,255,255,0.28)');
-    lg.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = lg;
-    if (i) g.fillRect(0, h - size * 0.012, size, size * 0.024);
-    else g.fillRect(h - size * 0.012, 0, size * 0.024, size);
-  }
+  /* Round 6 fix 4: the baked anamorphic cross is gone. Every flare in the
+     game carried it, and on a strike craft death it drew a lens-flare
+     firework wider than the ship. Impact stars draw their own spikes. */
   return finishTexture(c);
 }
 
@@ -558,6 +553,7 @@ ${SOFT_PARS}
 uniform sampler2D uMap;
 uniform float uOpacity;
 uniform float uClampLift;
+uniform float uRadial;
 
 varying vec2 vUv;
 varying vec3 vColor;
@@ -570,6 +566,22 @@ varying float vSpread;
 void main() {
   #include <logdepthbuf_fragment>
   vec4 texel = texture2D( uMap, vUv );
+  /* R7 fix 5b: the flare field draws its falloff analytically. The canvas
+     sprite was an 8-bit gradient with knees, and at the 8-34x radiance a
+     death flash carries every texel inside the knee clipped to one flat
+     white disc while the quantised tail drew a ring round it - a placeholder
+     sphere rather than light. Two exponentials in float - a needle core and a
+     longer glare tail - have no shoulder, so what clips is a few pixels. */
+  if ( uRadial > 0.5 ) {
+    float r = length( vUv * 2.0 - 1.0 );
+    float prof = 0.70 * exp( -r / 0.04 ) + 0.30 * exp( -r / 0.16 );
+    /* Windowed to zero well inside the quad mask. At 9-14x radiance the
+       tail is still a few percent at r 0.8, the sRGB curve lifts that to a
+       visible grey, and the mask cut it off as a hard circular edge. */
+    float win = 1.0 - smoothstep( 0.18, 0.68, r );
+    prof *= win * win;
+    texel = vec4( 1.0, 1.0, 1.0, prof );
+  }
   // Sharpen and hot up whatever the pixel floor had to rescue, so a distant
   // impact is a hot dot rather than a wide grey smudge.
   float a = fxSharpen( texel.a, vClamp ) * fxQuadMask( vUv )
@@ -601,6 +613,7 @@ export class ParticleField {
       // Emissive fields get an intensity lift when the pixel floor rescues
       // them; smoke must not, or distant soot glows.
       clampLift = blending === THREE.NormalBlending ? 0.0 : 1.35,
+      radial = false,
     } = opts;
 
     this.ctx = ctx;
@@ -648,6 +661,7 @@ export class ParticleField {
           uMinPixels: { value: minPixels },
           uOpacity: { value: opacity },
           uClampLift: { value: clampLift },
+          uRadial: { value: radial ? 1 : 0 },
         },
         softUniforms(),
       ),
@@ -765,7 +779,7 @@ export class ParticleField {
 
 const R_STRIDE = 16;
 /* 0..2 pos | 3 side | 4..6 dir | 7 birth | 8..10 colour | 11 life
-   12 width | 13 alpha | 14 seed | 15 pad */
+   12 width | 13 alpha | 14 seed | 15 taper (1 = untapered; see maxSpan) */
 
 const RIBBON_VERT = /* glsl */ `
 #include <common>
@@ -779,6 +793,7 @@ attribute float aLife;
 attribute float aWidth;
 attribute float aAlpha;
 attribute float aSeed;
+attribute float aTaper;
 
 uniform float uTime;
 uniform float uPixelScale;
@@ -807,8 +822,20 @@ void main() {
   side = sl > 1e-5 ? side / sl : vec3( 0.0 );
 
   float floorW = dist * uPixelScale * uMinPixels;
-  float natural = aWidth * mix( 1.0, k, uTaper );
-  float w = max( natural, floorW );
+  float shrink = mix( 1.0, k, uTaper );
+  float natural = aWidth * shrink;
+  /* The width floor has to taper with the ribbon, not sit under it.
+     At any range where the floor is the term that wins — which is most of a
+     fleet action — an untapered floor draws a constant-width bar however hard
+     the age ramp or the per-vertex ramp pulls the natural width down, and a
+     constant-width strip is the "drawn line" read rather than exhaust. Held at
+     10% rather than 0 so the very end of a live trail does not alias in and out
+     of existence from frame to frame. */
+  /* And it tapers in space as well as in age. A trail with a length cap in
+     space (maxSpan) carries its distance-from-the-nozzle ramp in aTaper, 1 at
+     the head and 0 at the cap, and without it the floor drew the whole length
+     at one width - the uniform hairline round 3 read as an order line. */
+  float w = max( natural, floorW * mix( 0.10, 1.0, shrink ) * aTaper );
   vClamp = clamp( 1.0 - natural / max( w, 0.0001 ), 0.0, 1.0 );
   /* The energy compensation the plume, the nozzle flare and the running lights
      all carry, and that this batch was the only one missing. Same argument: the
@@ -903,6 +930,7 @@ export class RibbonField {
 
     const verts = capacity * segments * 2;
     this._data = new Float32Array(verts * R_STRIDE);
+    this._along = new Float32Array(segments);
     this._slots = new Array(capacity);
     this._free = [];
     for (let i = capacity - 1; i >= 0; i--) {
@@ -926,6 +954,7 @@ export class RibbonField {
     geo.setAttribute('aWidth', new THREE.InterleavedBufferAttribute(ib, 1, 12));
     geo.setAttribute('aAlpha', new THREE.InterleavedBufferAttribute(ib, 1, 13));
     geo.setAttribute('aSeed', new THREE.InterleavedBufferAttribute(ib, 1, 14));
+    geo.setAttribute('aTaper', new THREE.InterleavedBufferAttribute(ib, 1, 15));
 
     const quads = capacity * (segments - 1);
     const idx = verts > 65535 ? new Uint32Array(quads * 6) : new Uint16Array(quads * 6);
@@ -977,14 +1006,29 @@ export class RibbonField {
     ctx.scene.add(this.mesh);
   }
 
-  /** Returns a handle or null when saturated. */
-  acquire(colour, width, life, minStep) {
+  /** Returns a handle or null when saturated.
+
+      `ramp` is optional and opt-in: `[head, mid, tail]` THREE.Colors held **by
+      reference** (callers share one team-wide triple rather than allocating per
+      trail). With it the ribbon carries a three-stop temperature gradient along
+      its length and a width ramp that reaches zero at the tail, instead of one
+      flat colour and one flat width end to end — which is the difference
+      between exhaust and a drawn line. Without it, behaviour is unchanged.
+
+      `maxSpan` is optional too, in metres: a ceiling on the ribbon's length in
+      *space*, measured back from the head. With it the ramp, the width and the
+      alpha are all laid out over that distance and reach zero at it, so the
+      streak has a fixed proportion to its emitter whatever the frame rate or
+      the sim speed is doing to the age taper. Ramped ribbons only. */
+  acquire(colour, width, life, minStep, ramp, maxSpan) {
     const slot = this._free.pop();
     if (slot === undefined) return null;
     const r = {
       slot,
       n: 0,
       colour: new THREE.Color(colour),
+      ramp: ramp || null,
+      maxSpan: ramp && maxSpan > 0 ? maxSpan : 0,
       width,
       life,
       minStep: minStep || 6,
@@ -1036,7 +1080,9 @@ export class RibbonField {
     } else {
       const head = (r.n - 1) * 4;
       p[head] = x; p[head + 1] = y; p[head + 2] = z; p[head + 3] = now;
-      this._writeRange(r, Math.max(0, r.n - 2), r.n);
+      /* A span-capped strip clips its tail against the head (see _writeRange),
+         so the clipped vertices move whenever the head does. */
+      this._writeRange(r, Math.max(0, r.n - (r.maxSpan > 0 ? 4 : 2)), r.n);
     }
   }
 
@@ -1054,7 +1100,15 @@ export class RibbonField {
       const o = r.n * 4;
       p[o] = x; p[o + 1] = y; p[o + 2] = z; p[o + 3] = now;
       r.n++;
-      this._writeRange(r, Math.max(0, r.n - 3), r.n);
+      /* A ramped ribbon is anchored to its own head and tail, so growing the
+         strip moves every existing point's place in the gradient and the whole
+         thing has to be rewritten. Only while it is filling — once it is full
+         the sliding-window branch above already rewrites everything, so a
+         ramped trail costs no more per push than an unramped one at steady
+         state. Deliberately *not* done on the head-only path in `feed`: that
+         one runs every frame for a slow emitter and n has not changed, so the
+         two head vertices are all that need touching. */
+      this._writeRange(r, r.ramp ? 0 : Math.max(0, r.n - 3), r.n);
     }
   }
 
@@ -1064,7 +1118,22 @@ export class RibbonField {
     const p = r.pts;
     const base = r.slot * S * 2;
     const col = r.colour;
+    const ramp = r.ramp;
+    const span = Math.max(1, r.n - 1);
+    /* Distance from the head, for a span-capped ribbon. Walked from the head
+       down to `from`, so a head-only rewrite costs two steps. */
+    const cap = r.maxSpan;
+    const along = this._along;
+    if (cap > 0) {
+      along[r.n - 1] = 0;
+      for (let j = r.n - 2; j >= from; j--) {
+        const a4 = (j + 1) * 4;
+        const b4 = j * 4;
+        along[j] = along[j + 1] + Math.hypot(p[a4] - p[b4], p[a4 + 1] - p[b4 + 1], p[a4 + 2] - p[b4 + 2]);
+      }
+    }
     for (let j = from; j < to; j++) {
+      const sp = cap > 0 ? Math.max(0, 1 - along[j] / cap) : 1;
       const o4 = j * 4;
       const nx = j < r.n - 1 ? (j + 1) * 4 : o4;
       const px = j > 0 ? (j - 1) * 4 : o4;
@@ -1075,20 +1144,89 @@ export class RibbonField {
       if (len > 1e-5) { dx /= len; dy /= len; dz /= len; } else { dx = 0; dy = 0; dz = 1; }
       // Head is thin, body is full: a trail should look welded to the nozzle.
       const headFade = j === r.n - 1 ? 0.55 : 1;
+      let cr = col.r;
+      let cg = col.g;
+      let cb = col.b;
+      let wf = headFade;
+      if (ramp) {
+        // 0 at the oldest live point, 1 at the head. Two linear segments, so
+        // the mid stop lands exactly halfway down the live strip. A capped
+        // ribbon runs the ramp over its cap instead, whichever ends sooner.
+        const f = cap > 0 ? Math.min(j / span, sp) : j / span;
+        const hot = f > 0.5;
+        const a = hot ? ramp[1] : ramp[2];
+        const b = hot ? ramp[0] : ramp[1];
+        const k = hot ? (f - 0.5) * 2 : f * 2;
+        cr = a.r + (b.r - a.r) * k;
+        cg = a.g + (b.g - a.g) * k;
+        cb = a.b + (b.b - a.b) * k;
+        /* Width to zero at the tail, in *space* rather than in age. The age
+           taper alone cannot do it: a ribbon whose live window is shorter than
+           its own lifetime — which is every fast mover — never reaches the low
+           end of the age ramp, so its tail ends on a hard square cut. */
+        wf = Math.pow(f, 0.55) * headFade;
+      }
+      /* Clip in space (round 6 fix 1). The alpha cap alone ends at the next
+         stored point, and a fighter at cruise lays one every ~9 m, so a strip
+         capped at 5 m still drew a fading quad out to the older point: at 4x,
+         several hull lengths. A vertex past the cap is drawn at the exact cap
+         distance along its segment instead, so the strip stops where the
+         budget says. Past the first clipped vertex everything has zero alpha
+         and width already, so collapsing it onto its newer neighbour is free. */
+      let vx = p[o4];
+      let vy = p[o4 + 1];
+      let vz = p[o4 + 2];
+      if (cap > 0 && j < r.n - 1 && along[j] > cap) {
+        const n4 = (j + 1) * 4;
+        const seg = along[j] - along[j + 1];
+        const t = seg > 1e-5 ? Math.min(1, Math.max(0, (cap - along[j + 1]) / seg)) : 0;
+        vx = p[n4] + (p[o4] - p[n4]) * t;
+        vy = p[n4 + 1] + (p[o4 + 1] - p[n4 + 1]) * t;
+        vz = p[n4 + 2] + (p[o4 + 2] - p[n4 + 2]) * t;
+      }
       for (let s = 0; s < 2; s++) {
         const o = (base + j * 2 + s) * R_STRIDE;
-        d[o] = p[o4]; d[o + 1] = p[o4 + 1]; d[o + 2] = p[o4 + 2];
+        d[o] = vx; d[o + 1] = vy; d[o + 2] = vz;
         d[o + 3] = s === 0 ? -1 : 1;
         d[o + 4] = dx; d[o + 5] = dy; d[o + 6] = dz;
         d[o + 7] = p[o4 + 3];
-        d[o + 8] = col.r; d[o + 9] = col.g; d[o + 10] = col.b;
+        d[o + 8] = cr; d[o + 9] = cg; d[o + 10] = cb;
         d[o + 11] = r.life;
-        d[o + 12] = r.width * headFade;
-        d[o + 13] = 1;
+        d[o + 12] = r.width * wf;
+        /* Alpha fades with distance from the nozzle as well as with age, and
+           a vertex past the cap has zero alpha, which also collapses its width
+           in the vertex stage: the strip simply stops existing there. */
+        d[o + 13] = cap > 0 ? sp * sp * (3 - 2 * sp) : 1;
         d[o + 14] = (r.slot * 0.618034) % 1;
+        d[o + 15] = cap > 0 ? sp : 1;
       }
     }
     this._mark(base + from * 2, (to - from) * 2);
+
+    /* Weld the first unused vertex pair to the head (round 4, fix 5).
+
+       The index buffer joins all `segments` vertices of a slot, so while a
+       ribbon is still filling - every slow mover, every newly acquired trail,
+       every trail that stopped moving - there is one more quad after the head,
+       and its far end is whatever that vertex last held: the previous ribbon
+       in this slot, or the same ribbon before a teleport. Zero alpha there
+       collapses the far end's width but not the quad, so the head drew a
+       tapering line out to an arbitrary stale point, often kilometres away,
+       fading from full head brightness to nothing. That is the uniform
+       hairline round 3 read as an order line, and it outlived every age and
+       span taper because it was never part of the trail at all. Parked on the
+       head with zero width and alpha, the quad has no area. */
+    if (to === r.n && r.n > 0 && r.n < S) {
+      const h4 = (r.n - 1) * 4;
+      for (let s = 0; s < 2; s++) {
+        const o = (base + r.n * 2 + s) * R_STRIDE;
+        d[o] = p[h4]; d[o + 1] = p[h4 + 1]; d[o + 2] = p[h4 + 2];
+        d[o + 7] = p[h4 + 3];
+        d[o + 12] = 0;
+        d[o + 13] = 0;
+      }
+      this._mark(base + r.n * 2, 2);
+    }
   }
 
   /** Stop feeding but let the tail burn down naturally. */
@@ -1155,6 +1293,7 @@ function scaleCaps(scale) {
     debris: s(900),
     trails: s(440),
     smokeTrails: s(220),
+    dmgSmoke: s(1400),
     plumes: s(4200),
     lights: s(9000),
   };
@@ -1268,6 +1407,18 @@ export class FXSystem {
         const c = ctx.camPos;
         return Math.max(1, Math.hypot(x - c.x, y - c.y, z - c.z));
       },
+      /* Round 7 fix 5: the one size rule for everything a hit or a death paints.
+         Returns `k` times the TARGET hull as it is drawn right now, in metres:
+         its length, or the impostor's pixel floor when that is bigger. Every
+         hit, splash, spark, flak or missile blast, death flash and shock ring
+         is held under a multiple of this at every camera distance - a hit
+         0.6x, a strike craft death 1.2x, a capital flash 1.2x and its ring 2x.
+         It replaces the old fixed 8 px ceiling that only applied past 900 m and
+         let go entirely at focus distance. */
+      hullBudget(length, x, y, z, k) {
+        const L = Math.max(1, length || 33);
+        return k * Math.max(L, ctx.px(ctx.distTo(x, y, z)) * hullFloorPx(L));
+      },
       keyLight: { dir: new THREE.Vector3(-0.45, 0.32, -0.83).normalize(), colour: new THREE.Color(0xfff2df) },
       fillLight: new THREE.Color(0x2b3f5c),
       softPars: SOFT_PARS,
@@ -1307,7 +1458,7 @@ export class FXSystem {
     ctx.fields = {
       flare: new ParticleField(ctx, {
         name: 'flare', texture: sprites.flare, capacity: budget.flare,
-        alphaPow: 1.15, minPixels: 5.0, renderOrder: 14, softness: 18,
+        alphaPow: 1.15, minPixels: 5.0, renderOrder: 14, softness: 18, radial: true,
       }),
       spark: new ParticleField(ctx, {
         name: 'spark', texture: sprites.spark, capacity: budget.spark,
@@ -1335,9 +1486,11 @@ export class FXSystem {
            colour signal a ship gives at range (§3.3). At 1.6x it still reads as
            a hot streak but stays cyan or amber instead of going to paper.
 
-           1.2 px, not 1.4: the width floor is what stops a streak disappearing,
-           and a hairline does that. At 1.4 a wing at fleet range painted bars
-           wider than they needed to be, and area is energy.
+           0.9 px, not 1.2 (round 4): the width floor is what stops a streak
+           disappearing, and a hairline does that, but it must stay thinner
+           than the hull it trails - a floored fighter is about 2 px across, and
+           a 1.2 px line at full length out-read it. The floor also tapers in
+           space now (see aTaper), so only the head carries the full 0.9.
 
            farFade is a pop fix, not a dimmer. It ends just under EngineFX's own
            9 km trail gate so the hard cut never shows, and starts late enough to
@@ -1345,14 +1498,27 @@ export class FXSystem {
            [4500, 8800] it deleted them from the 5 km fleet rung outright, which
            throws away the read this batch exists for (see the file header: the
            streaks should arrive before the hulls resolve). */
-        core: 0.6, taper: 0.95, minPixels: 1.2, opacity: 0.55,
+        core: 0.6, taper: 0.95, minPixels: 0.9, opacity: 0.55,
         farFade: [7000, 8800],
         renderOrder: 11, softness: 16,
       }),
+      /* Ordnance smoke. `taper` is up from 0.6 because a missile ribbon that
+         still carries 40% of its width where it dies ends on a square cut, and
+         eight of those across the middle of frame are the "scratches on a film
+         print" read. The three-stop ramp (see `acquire`) does the rest. */
       smokeTrail: new RibbonField(ctx, {
         name: 'smokeTrail', capacity: budget.smokeTrails, segments: 24,
         blending: THREE.NormalBlending, layer: LAYER.DEFAULT,
-        opacity: 0.45, core: 0, taper: 0.6, minPixels: 1.6, renderOrder: 5, softness: 45,
+        opacity: 0.52, core: 0, taper: 0.95, minPixels: 1.5, renderOrder: 5, softness: 45,
+      }),
+      /* Smoke off burning hulls (R11 fix 3, fx/damage.js). Its own field because
+         the shared one is tuned thin for explosions and vanished at fleet
+         range; this one is denser and lit grey, so a hurt capital at 4 km
+         visibly trails smoke. One draw call. */
+      dmgSmoke: new ParticleField(ctx, {
+        name: 'dmgSmoke', texture: sprites.smoke, capacity: budget.dmgSmoke,
+        blending: THREE.NormalBlending, layer: LAYER.DEFAULT,
+        alphaPow: 1.3, opacity: 0.5, minPixels: 3.0, renderOrder: 6, softness: 60,
       }),
     };
 
@@ -1361,12 +1527,13 @@ export class FXSystem {
     this.explosions = new ExplosionFX(ctx, this.debris);
     this.weapons = new WeaponFX(ctx);
     this.shields = new ShieldFX(ctx);
+    this.wrecks = new WreckFX(ctx);
+    this.damage = new DamageFX(ctx, this._entities = new Map());
 
     this._subsystems = [
-      this.engines, this.weapons, this.explosions, this.shields, this.debris,
+      this.engines, this.weapons, this.explosions, this.shields, this.debris, this.wrecks, this.damage,
     ];
 
-    this._entities = new Map();
     this._unsubs = [
       bus.on('sim:spawn', (p) => this._onSpawn(p)),
       bus.on('sim:death', (p) => this._onDeath(p)),
@@ -1448,11 +1615,14 @@ export class FXSystem {
   get stats() {
     const f = this.ctx.fields;
     return {
-      particles: f.flare.count + f.spark.count + f.ember.count + f.smoke.count,
+      particles: f.flare.count + f.spark.count + f.ember.count + f.smoke.count + f.dmgSmoke.count,
       flare: f.flare.count,
       spark: f.spark.count,
       ember: f.ember.count,
       smoke: f.smoke.count,
+      dmgSmoke: f.dmgSmoke.count,
+      burning: this.damage.burning,
+      burningFull: this.damage.full,
       trails: f.trail.live,
       smokeTrails: f.smokeTrail.live,
       plumes: this.engines.plumeCount,
@@ -1498,6 +1668,8 @@ export class FXSystem {
     const e = p && p.entity;
     if (!e) return;
     this.explosions.kill(e, p.killer);
+    // The hull stays: capitals break into drifting, charred sections.
+    this.wrecks.kill(e);
     this.engines.detach(e);
     this.weapons.detachEntity(e);
     this.shields.cancel(e);

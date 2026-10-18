@@ -1,6 +1,6 @@
 import * as THREE from '../../vendor/three/build/three.module.js';
 import { bus } from '../core/events.js';
-import { SHIPS, totalFleetValue } from '../ships/catalog.js';
+import { SHIPS, ROLE, totalFleetValue } from '../ships/catalog.js';
 import {
   CONTROL_SCHEME,
   FORMATIONS as SIM_FORMATIONS,
@@ -10,6 +10,7 @@ import {
 import { SelectionRoster, WorldMarkers } from './select.js';
 import { BuildMenu } from './build.js';
 import { SensorsView } from './sensors.js';
+import { SeamRing } from './seamring.js';
 
 /* VOID SOVEREIGN — HUD facade.
 
@@ -19,21 +20,30 @@ import { SensorsView } from './sensors.js';
 
    Layout, corner by corner:
      top-left      credits, income
-     top-right     population, fleet value, hulls, hostiles, time scale
-     bottom-left   toast stack, then the grouped selection roster
-     bottom-centre stance / formation / utility palette
-     bottom-right  production menu and queue
+     top-right     population, fleet value, hulls, hostiles, match clock, speed
+     bottom-left   toast stack, the grouped selection roster, and the
+                   stance / formation palette docked underneath it
+     bottom-centre the three utility verbs, and nothing else
+     bottom-right  production strip, expanding to the full menu on demand
      over the void selection brackets, health pips, target reticles, orders
    The bottom deck stops short of the page shell's "← Demos" link.
 
+   The palette used to float unanchored in the dead centre-bottom of the frame
+   with keycap hints too small to read. It commands the selection, so round 1's
+   fix #7 docks it to the selection roster: the two now share a block, a scrim
+   and a live state, and the keycaps are set inline at a size a person can
+   actually read. What is left in the centre is three verbs on one line.
+
    **The keyboard belongs to `core/input.js`.** That module is the single
    owner of the control scheme; every key the player presses arrives here as a
-   bus event instead. The HUD binds exactly one key — Escape, to dismiss the
-   controls card, which input.js knows nothing about. Anything else would be
-   handled twice: two Tab handlers cancelled each other out and the Sensors
-   Manager never opened. The palette buttons and the formation/stance/speed
-   readouts mirror `cmd:*` / `ui:speed` so the surface always agrees with the
-   keyboard, whichever one the player used. */
+   bus event instead. The HUD binds **no** keys at all. It used to claim
+   Escape to dismiss the controls card; Escape is now the pause key and it is
+   arbitrated by `ui/shell.js`, which calls `closeOverlays()` here before it
+   opens its own menu. Anything else would be handled twice: two Tab handlers
+   cancelled each other out and the Sensors Manager never opened. The palette
+   buttons and the formation/stance/speed readouts mirror `cmd:*` / `ui:speed`
+   so the surface always agrees with the keyboard, whichever one the player
+   used. */
 
 /* Ordered to match `core/input.js`: Shift+1 … Shift+6 walk this list. */
 const FORMATION_LABELS = {
@@ -140,6 +150,13 @@ const PAUSE_LEDE =
   'Space pauses the battle. Orders you give while it is paused are obeyed the ' +
   'moment it resumes — a fleet engagement is meant to be commanded, not raced.';
 const PAUSE_NOTE = 'Space pauses the battle — you can still give orders.';
+/* The marker legend (critic round 3, fix 5: hostiles wore two unexplained
+   mark forms). One line, under the pause lede, naming every form the world
+   layer in ui/select.js can draw. */
+const MARK_LEGEND =
+  'Marks: outline = ship class · amber theirs, cyan ours (◇ = ours, unselected) · ' +
+  'turning corners = your target · filled = about to die · ' +
+  'red outline = ours below a third of hull · red corners = ours under fire';
 
 /* -------------------------------------------------------------- projection */
 
@@ -209,6 +226,16 @@ function el(tag, className, text) {
 
 function num(v, fallback) {
   return typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+}
+
+/* The hulls that fight. A Mothership is 150,000 hull against an interceptor's
+   160, so counting it would pin the fleet-strength readout near 100% until the
+   match was already over; carriers and collectors are left out for the same
+   reason the sim's engaged count leaves them out. */
+function isWarship(e) {
+  const def = e && (e.def || SHIPS[e.classId]);
+  const role = (e && e.role) || (def && def.role);
+  return !!role && role !== ROLE.RESOURCE && role !== ROLE.STRUCTURE;
 }
 
 /* Storage is a nice-to-have, never a dependency: private mode and blocked
@@ -291,9 +318,29 @@ export class HUD {
     this._helpOpen = false;
     this._overOpen = false;
     this._introDone = false;
+    this._objLive = false;
+    this._fleetHulls = 0;
+    // Frozen at the whistle so the shell's end card reports the match, not the
+    // world as it stands by the time somebody reads the card.
+    this._final = null;
 
     this._teamCache = { credits: 0, income: 0, pop: 0, popCap: 0, queued: 0, queue: [] };
-    this._stats = { built: 0, lost: 0, kills: 0, earned: 0, start: performance.now() };
+    /* Hulls, not orders. Round 11's end card read "Hulls lost 131" against
+       "Hulls commissioned 49" because `built` counted `sim:buildComplete`,
+       which fires once per wing, while `lost` counted every hull that died,
+       the opening fleet included. Now both sides of that ledger count hulls:
+       `builtHulls` from `sim:spawn` after the HUD exists (every spawn after
+       seeding is a production launch), `opening` from the first stats beat,
+       and fielded - lost is exactly the fleet still in service. `built` stays
+       as the number of orders those hulls came from. */
+    this._stats = {
+      built: 0, builtHulls: 0, opening: -1, lost: 0, kills: 0, earned: 0, start: performance.now(),
+    };
+    /* Warship hull that has died, per absolute team index, at its max. With
+       the live fleet's max this is everything each side has fielded, so the
+       strength readout is "what is left of what you brought". */
+    this._deadMax = [0, 0];
+    this._strength = [1, 1];
 
     this._hints = new Set();
     this._obLeft = ONBOARD_STEPS.length;
@@ -322,8 +369,10 @@ export class HUD {
 
     this._buildDom();
     if (this._obDone) this.onboard.classList.add('is-gone');
-    this.markers = new WorldMarkers({ root: this.layerHost, ctx: this.ctx });
-    this.roster = new SelectionRoster({ root: this.leftCol, ctx: this.ctx });
+    this.markers = new WorldMarkers({ root: this.layerHost, ctx: this.ctx, rig: this.rig });
+    // The capture boundary is a HUD mark under the markers, not world geometry.
+    this.seams = new SeamRing({ root: this.layerHost, ctx: this.ctx, camera: this.camera });
+    this.roster = new SelectionRoster({ root: this.rosterHost, ctx: this.ctx });
     this.build = new BuildMenu({ root: this.rightCol, ctx: this.ctx });
     this.sensors = new SensorsView({ root: this.sensorHost, ctx: this.ctx });
 
@@ -421,8 +470,23 @@ export class HUD {
     this.statFoes = this._stat(fleet, 'Hostiles', '0');
     this.statFoes.root.classList.add('vsh-stat--foe');
 
+    /* The match clock. Round 1 found a `TIME` header sitting over the speed
+       controls with no elapsed time under it, while the briefing describes a
+       grace period the player is expected to race — so the header was naming a
+       number that did not exist.
+
+       Sim time, not wall-clock: `world.time` only advances on ticks the loop
+       actually ran, so a match that spent four minutes in the pause menu does
+       not report four minutes more, and it agrees with the duration on the
+       end-of-match card, which is derived the same way. The speed control keeps
+       its own header, now correctly called Speed. */
+    this.statClock = this._stat(fleet, 'Time', '00:00');
+    this.statClock.root.classList.add('vsh-stat--clock');
+    this._clockShown = '';
+    this._clockGrace = null;
+
     const speedStat = el('div', 'vsh-stat vsh-stat--speed');
-    speedStat.append(el('span', 'vsh-stat__k', 'Time'));
+    speedStat.append(el('span', 'vsh-stat__k', 'Speed'));
     const speedRow = el('div', 'vsh-speed');
     this.speedBtns = SPEED_STEPS.map((s) => {
       const b = el('button', 'vsh-speed__b vsh-num', SPEED_LABELS[s] || `×${s}`);
@@ -447,7 +511,7 @@ export class HUD {
        no control. */
     fleet.appendChild(this._buildMuteGlyph());
 
-    top.append(res, fleet);
+    top.append(res, this._buildObjective(), fleet);
     this._add(root, el('div', 'vsh-top__rule')).setAttribute('aria-hidden', 'true');
 
     /* -------------------------------------------------------- bottom deck */
@@ -463,24 +527,36 @@ export class HUD {
     this.leftCol.appendChild(this.toastEl);
 
     /* ------------------------------------------------------------ palette */
+    /* One block: the roster the `SelectionRoster` mounts into, then the two
+       rows that command it. They appear and disappear together and share one
+       scrim, because they are one idea — "here is what you have selected, and
+       here is what you can tell it to do". */
+    this.selBlock = el('div', 'vsh-selblock');
+    this.rosterHost = el('div', 'vsh-selblock__roster');
+    this.selBlock.appendChild(this.rosterHost);
+    this.leftCol.appendChild(this.selBlock);
+
     const palette = el('div', 'vsh-palette');
-    this.stanceRow = el('div', 'vsh-palette__row');
-    this.stanceRow.append(el('span', 'vsh-palette__k', 'Stance'));
-    this.stanceBtns = STANCES.map((s) => this._cmd(this.stanceRow, s.label, s.key, 'stance', s.id));
+    this.stanceRow = this._paletteRow('Stance');
+    this.stanceBtns = STANCES.map((s) =>
+      this._cmd(this.stanceRow.btns, s.label, s.key, 'stance', s.id));
 
-    this.formRow = el('div', 'vsh-palette__row');
-    this.formRow.append(el('span', 'vsh-palette__k', 'Formation'));
+    this.formRow = this._paletteRow('Formation');
     this.formBtns = FORMATIONS.map((f) =>
-      this._cmd(this.formRow, f.label, f.key, 'formation', f.id));
+      this._cmd(this.formRow.btns, f.label, f.key, 'formation', f.id));
 
+    palette.append(this.stanceRow.root, this.formRow.root);
+    this.selBlock.appendChild(palette);
+    this.palette = palette;
+
+    /* The three verbs that have nothing to do with the selection stay in the
+       centre. Three items on one line is not a panel and does not box in the
+       void; the 470×340 grid that used to live beside them did. */
     const util = el('div', 'vsh-palette__util');
     this.sensorBtn = this._cmd(util, 'Sensors', 'Tab', 'util', 'sensors');
     this.focusBtn = this._cmd(util, 'Focus', 'F', 'util', 'focus');
     this.helpBtn = this._cmd(util, 'Keys', 'H', 'util', 'help');
-
-    palette.append(this.stanceRow, this.formRow, util);
-    midCol.appendChild(palette);
-    this.palette = palette;
+    midCol.appendChild(util);
 
     /* --------------------------------------------------------------- help */
     /* Centred, not docked. A 336 px side rail landed straight on top of the
@@ -499,6 +575,9 @@ export class HUD {
     hHead.appendChild(this.helpClose);
     // Promoted out of the "Groups & time" list, where it was one grey row.
     const hLede = el('p', 'vsh-help__lede', PAUSE_LEDE);
+    const hLegend = el('p', 'vsh-help__lede vsh-help__legend', MARK_LEGEND);
+    hLegend.style.maxWidth = 'none';
+    hLegend.style.borderLeftColor = 'var(--vsh-amber)';
 
     /* Straight from `core/input.js`, so the card cannot drift from the
        handlers — every row it publishes is printed, including the four order
@@ -509,18 +588,8 @@ export class HUD {
        work, take it out of `CONTROL_SCHEME`, where the handler can be seen
        next to it. */
     const hGrid = el('div', 'vsh-help__grid');
-    for (const block of CONTROL_SCHEME) {
-      const rows = block.rows;
-      if (!rows.length) continue;
-      const col = el('section', 'vsh-help__col');
-      col.appendChild(el('p', 'vsh-help__grp', block.group));
-      for (const [k, d] of rows) {
-        const row = el('div', 'vsh-help__row');
-        row.append(el('span', 'vsh-help__k', k), el('span', 'vsh-help__d', d));
-        col.appendChild(row);
-      }
-      hGrid.appendChild(col);
-    }
+    this.helpGrid = hGrid;
+    this._fillControlGrid();
 
     /* ------------------------------------------------------------- audio */
     /* Above the reference grid, not inside it.
@@ -562,7 +631,7 @@ export class HUD {
     audio.appendChild(this.audioNote);
     this.audioPanel = audio;
 
-    hInner.append(hHead, hLede, audio, hGrid);
+    hInner.append(hHead, hLede, hLegend, audio, hGrid);
     help.appendChild(hInner);
     this.help = help;
 
@@ -639,21 +708,327 @@ export class HUD {
     boot.appendChild(bi);
     this.boot = boot;
 
-    /* ---------------------------------------------------------- game over */
-    const over = this._add(root, el('section', 'vsh-over'));
-    over.setAttribute('role', 'dialog');
-    over.setAttribute('aria-modal', 'true');
-    over.setAttribute('aria-label', 'Skirmish complete');
-    over.setAttribute('aria-hidden', 'true');
-    const oi = el('div', 'vsh-over__inner');
-    oi.append(el('p', 'vsh-over__eyebrow', 'Skirmish complete'));
-    this.overTitle = el('h2', 'vsh-over__title', 'Fleet lost');
-    this.overStats = el('div', 'vsh-over__stats');
-    this.overRestart = el('button', 'vsh-over__restart', 'New skirmish');
-    this.overRestart.type = 'button';
-    oi.append(this.overTitle, this.overStats, this.overRestart);
-    over.appendChild(oi);
-    this.over = over;
+    /* The end-of-match card used to be built here. It moved to `ui/shell.js`
+       when the shell took ownership of the game lifecycle: it needs the three
+       `sim:gameOver` reasons in plain English and a "Play again" that rebuilds
+       the world in place, and neither is the HUD's business. */
+  }
+
+  /* The standing objective readout.
+
+     `sim/economy.js` has run a seam-control tug-of-war and `sim/world.js` a
+     sovereignty clock since they were written, and neither has ever appeared
+     on screen. A second victory condition the player cannot see is not a
+     victory condition — it is the game ending for a reason nobody can name.
+
+     Three things, in the one gap the top bar had left: what the objective is
+     right now in a sentence, how close each side is to losing, and how much of
+     the contested band is actually yours. Styling lives in `styles/shell.css`
+     because `styles/hud.css` is not this lane's file; the class names stay in
+     this module's namespace so it can move back in one paste. */
+  /* Rebuilt, not built once.
+
+     `CONTROL_SCHEME` is derived from the live binding table in `core/input.js`
+     and is rebuilt in place whenever a key is rebound. Printing it a single
+     time at construction meant the card kept naming the old key for the rest
+     of the session — measured showing `S` while the binding was already
+     `KeyK`. It was correct again on the next reload, which is exactly the kind
+     of defect that survives casual testing. Re-run on `options:changed`. */
+  _fillControlGrid() {
+    const grid = this.helpGrid;
+    if (!grid) return;
+    grid.textContent = '';
+    for (const block of CONTROL_SCHEME) {
+      const rows = block.rows;
+      if (!rows.length) continue;
+      const col = el('section', 'vsh-help__col');
+      col.appendChild(el('p', 'vsh-help__grp', block.group));
+      for (const [k, d] of rows) {
+        const row = el('div', 'vsh-help__row');
+        row.append(el('span', 'vsh-help__k', k), el('span', 'vsh-help__d', d));
+        col.appendChild(row);
+      }
+      grid.appendChild(col);
+    }
+  }
+
+  _buildObjective() {
+    const wrap = el('div', 'vsh-obj');
+    wrap.setAttribute('aria-live', 'off');
+    wrap.append(el('span', 'vsh-obj__k', 'Objective'));
+    this.objLine = el('span', 'vsh-obj__line', 'Take their Mothership, or take the middle.');
+    wrap.appendChild(this.objLine);
+
+    /* Round 9 read "YOU 89 / THEM 8" as fleet strength while the fleet stats
+       beside it said 28 hulls against 89 hostiles. The meters are sovereignty
+       percentages, not ships, so they say so: a key on the row itself (the
+       "Objective" key above is the first thing a narrow bar drops) and a
+       percent sign on every number. */
+    const meters = el('div', 'vsh-obj__meters');
+    meters.append(el('span', 'vsh-obj__mk vsh-obj__mk--sov', 'Sovereignty'));
+    const meter = (side, label) => {
+      const m = el('div', `vsh-obj__m vsh-obj__m--${side}`);
+      m.append(el('span', 'vsh-obj__mk', label));
+      const bar = el('div', 'vsh-obj__bar');
+      const fill = el('i', 'vsh-obj__fill');
+      bar.appendChild(fill);
+      const n = el('span', 'vsh-obj__n vsh-num', '100%');
+      m.append(bar, n);
+      m.setAttribute('aria-label', `${label === 'You' ? 'Your' : 'Their'} sovereignty, percent`);
+      meters.appendChild(m);
+      return { root: m, fill, n };
+    };
+    this.objUs = meter('us', 'You');
+    this.objThem = meter('them', 'Them');
+    this.objSeams = el('span', 'vsh-obj__seams', '');
+    meters.appendChild(this.objSeams);
+    /* What the middle is doing, not just what it holds. A seam only counts as
+       owned at full control and drops out the moment its fleet leaves, so a
+       side winning on seams could read 0/6; this says "taking 63%",
+       "draining them", or, during a held result, how long the battle has. */
+    this.objState = el('span', 'vsh-obj__state', '');
+    meters.appendChild(this.objState);
+    wrap.appendChild(meters);
+
+    /* Who is winning the fight, as opposed to who is winning the clock.
+
+       Round 12 read the player's red hull bars as a losing fleet while the sim
+       had the hostiles at 49% of their hull against the player's 75%. The only
+       side-by-side numbers on screen were sovereignty, which is not fleet
+       strength. This row is: every warship's remaining hull as a share of all
+       the warship hull that side has fielded this match, losses included. It
+       sits under sovereignty with the same hairline meters and its own key, so
+       the two percentages are never read as one. */
+    const str = el('div', 'vsh-obj__meters vsh-obj__meters--str');
+    str.append(el('span', 'vsh-obj__mk vsh-obj__mk--str', 'Fleet hull'));
+    const strMeter = (side, label) => {
+      const m = el('div', `vsh-obj__m vsh-obj__m--${side} vsh-obj__m--str`);
+      m.append(el('span', 'vsh-obj__mk', label));
+      const bar = el('div', 'vsh-obj__bar');
+      const fill = el('i', 'vsh-obj__fill');
+      bar.appendChild(fill);
+      const n = el('span', 'vsh-obj__n vsh-num', '100%');
+      m.append(bar, n);
+      m.setAttribute('aria-label', `${label === 'You' ? 'Your' : 'Their'} warship hull remaining, percent of fielded`);
+      str.appendChild(m);
+      return { root: m, fill, n };
+    };
+    this.strUs = strMeter('us', 'You');
+    this.strThem = strMeter('them', 'Them');
+    str.setAttribute(
+      'title',
+      'Fleet hull: the hull your warships have left, as a share of all the warship hull each side '
+        + 'has fielded this match, losses included. Motherships, carriers and collectors are not counted. '
+        + 'This is fleet strength. Sovereignty, the row above, is the clock on the middle.',
+    );
+    wrap.appendChild(str);
+
+    this.objEl = wrap;
+    return wrap;
+  }
+
+  /* MM:SS of sim time, plus one piece of state the number alone cannot carry:
+     whether the sovereignty clock has started yet. The briefing tells the
+     player the opening is safe and the objective sentence counts it down, but
+     that sentence is the first thing the top bar drops on a narrow viewport —
+     so the tick beside the clock is the readout that survives to 1024. */
+  _refreshClock() {
+    if (!this.statClock) return;
+    const w = this.world;
+    const t = w && typeof w.time === 'number' && Number.isFinite(w.time) ? w.time : 0;
+    const s = Math.max(0, Math.floor(t));
+    const text = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+    if (text !== this._clockShown) {
+      this._clockShown = text;
+      this.statClock.value.textContent = text;
+    }
+    const grace = t < this._objGrace() && !this._sovDraining();
+    if (grace !== this._clockGrace) {
+      this._clockGrace = grace;
+      this.statClock.root.classList.toggle('is-grace', grace);
+      this.statClock.root.setAttribute(
+        'title',
+        grace
+          ? 'Elapsed match time. Nothing drains yet — the sovereignty clock has not started.'
+          : 'Elapsed match time. The sovereignty clock is running.',
+      );
+    }
+  }
+
+  _sovDraining() {
+    const teams = this.world && this.world.teams;
+    if (!teams || teams.length < 2) return false;
+    for (let i = 0; i < teams.length; i++) {
+      if (num(teams[i] && teams[i].sovereignty, 100) < 99.99) return true;
+    }
+    return false;
+  }
+
+  /* Grace period before the sovereignty clock starts, mirrored from
+     `SOVEREIGNTY_GRACE` in `sim/world.js`, which does not export it. The
+     readout stops trusting this the moment it sees real drain, so a drift in
+     the sim shows up as an early switch to "draining" rather than as a lie. */
+  _objGrace() {
+    // It said 240 for good after `standard` pacing moved the grace to 120 s;
+    // read it from the live preset now, with the old figure as the fallback.
+    const pace = this.world && this.world.pace;
+    return pace && Number.isFinite(pace.grace) ? pace.grace : 240;
+  }
+
+  /* Best part-taken seam for each side, as 0..1 of full control, for seams
+     that side does not already own. Control is negative toward team 0. */
+  _seamProgress(out) {
+    out[0] = 0;
+    out[1] = 0;
+    const cl = this.world && this.world.resourceClusters;
+    if (!cl) return out;
+    for (let i = 0; i < cl.length; i++) {
+      const c = cl[i];
+      if (!c || !c.contested || typeof c.control !== 'number') continue;
+      const forUs = this.team === 0 ? -c.control : c.control;
+      if (c.owner === this.team || c.owner === (this.team ^ 1)) continue;
+      if (forUs > out[0]) out[0] = forUs;
+      if (-forUs > out[1]) out[1] = -forUs;
+    }
+    return out;
+  }
+
+  _refreshObjective() {
+    if (!this.objEl) return;
+    const w = this.world;
+    const teams = w && w.teams;
+    if (!teams || teams.length < 2) return;
+
+    const us = teams[this.team];
+    const them = teams[this.team ^ 1];
+    if (!us || them === undefined) return;
+
+    const sovUs = num(us.sovereignty, 100);
+    const sovThem = num(them.sovereignty, 100);
+    const seamsUs = num(us.seams, 0);
+    const seamsThem = num(them.seams, 0);
+    const total = num(w.contestedSeams, seamsUs + seamsThem);
+
+    if (!this._objLive) {
+      this._objLive = true;
+      this.objEl.classList.add('is-live');
+    }
+
+    this.objUs.fill.style.transform = `scaleX(${(sovUs / 100).toFixed(3)})`;
+    this.objThem.fill.style.transform = `scaleX(${(sovThem / 100).toFixed(3)})`;
+    const nUs = `${Math.ceil(sovUs)}%`;
+    const nThem = `${Math.ceil(sovThem)}%`;
+    if (this.objUs.n.textContent !== nUs) this.objUs.n.textContent = nUs;
+    if (this.objThem.n.textContent !== nThem) this.objThem.n.textContent = nThem;
+    this.objUs.root.classList.toggle('is-alert', sovUs <= 25);
+
+    // Both sides' holdings, so a lead reads as a lead: "Seams 2–1 of 6".
+    const seamText = total > 0 ? `Seams ${seamsUs}–${seamsThem} of ${total}` : '';
+    if (this.objSeams.textContent !== seamText) {
+      this.objSeams.replaceChildren();
+      if (total > 0) {
+        this.objSeams.append(
+          document.createTextNode('Seams '),
+          el('b', null, String(seamsUs)),
+          document.createTextNode('–'),
+          el('i', null, String(seamsThem)),
+          document.createTextNode(` of ${total}`),
+        );
+      }
+    }
+
+    const t = num(w.time, 0);
+    const drained = sovUs < 99.99 || sovThem < 99.99;
+    const left = Math.max(0, this._objGrace() - t);
+    const hold = w.sovHold || null;
+    const holdOurs = !!hold && hold.team === this.team;
+    // The drain stops while a battle is on (World._pauseSovereignty).
+    const pause = !hold && drained ? (w.sovPause || null) : null;
+    const clock = (s) => {
+      const v = Math.max(0, Math.ceil(s));
+      return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`;
+    };
+
+    /* Every number in this slot says what it counts. "Paused · 2:31 max" was
+       the match-wide allowance (`SOV_HOLD.CAP`, shared by every pause and
+       hold), not how long this pause lasts — one pause ends at the battle's
+       end or its own limit, well inside that. "yours at 63%" was a seam's
+       capture, sitting in the sovereignty row with a percent sign. */
+    let state = '';
+    let stateKind = '';
+    let stateTitle = '';
+    if (hold) {
+      state = `Battle · ${clock(hold.left)} budget`;
+      stateKind = holdOurs ? 'good' : 'bad';
+      stateTitle = `Battle budget: ${clock(hold.left)} of this match's battle allowance is left. `
+        + 'The result is decided when the battle breaks, or when the allowance runs out.';
+    } else if (pause) {
+      state = `Drain paused · ${clock(pause.left)} budget`;
+      stateTitle = `The sovereignty drain is paused while a battle is on. ${clock(pause.left)} of this `
+        + 'match\'s pause allowance is left; this pause ends when the battle breaks, or sooner.';
+    } else if (total > 0) {
+      const p = this._seamProgress(this._objProg || (this._objProg = [0, 0]));
+      const ticking = drained || left <= 0;
+      if (p[0] >= 0.05 && p[0] >= p[1]) {
+        state = `seam ${Math.floor(p[0] * 100)}% yours`;
+        stateKind = 'good';
+        stateTitle = 'Capture progress of the seam you are taking. A seam counts once it reaches 100%. Not sovereignty.';
+      } else if (p[1] >= 0.05) {
+        state = `seam ${Math.floor(p[1] * 100)}% theirs`;
+        stateKind = 'bad';
+        stateTitle = 'Capture progress of the seam they are taking. A seam counts once it reaches 100%. Not sovereignty.';
+      } else if (ticking && seamsUs > seamsThem) {
+        state = 'draining them';
+        stateKind = 'good';
+      } else if (ticking && seamsThem > seamsUs) {
+        state = 'draining you';
+        stateKind = 'bad';
+      }
+    }
+    if (this.objState.textContent !== state) this.objState.textContent = state;
+    if (this.objState.getAttribute('title') !== stateTitle) this.objState.setAttribute('title', stateTitle);
+    if (this._objStateKind !== stateKind) {
+      this._objStateKind = stateKind;
+      this.objState.classList.toggle('is-good', stateKind === 'good');
+      this.objState.classList.toggle('is-bad', stateKind === 'bad');
+    }
+    if (this._objHold !== !!(hold || pause)) {
+      this._objHold = !!(hold || pause);
+      this.objEl.classList.toggle('is-hold', this._objHold);
+    }
+
+    let line;
+    if (hold) {
+      line = holdOurs
+        ? `Sovereignty secured — the battle decides it · ${hold.engaged} engaged`
+        : `Sovereignty gone — the battle decides it · ${hold.engaged} engaged`;
+    } else if (pause) {
+      line = `Sovereignty drain paused — battle in progress · ${pause.engaged} engaged`;
+    } else if (!drained && left > 0) {
+      const mm = Math.floor(left / 60);
+      const ss = String(Math.floor(left % 60)).padStart(2, '0');
+      line = `Sovereignty clock starts in ${mm}:${ss} — take the middle before it does`;
+    } else if (seamsUs > seamsThem) {
+      line = 'You hold the middle · their sovereignty is draining';
+    } else if (seamsThem > seamsUs) {
+      line = 'They hold the middle · your sovereignty is draining';
+    } else {
+      line = 'The middle is level · take a seam, or take their Mothership';
+    }
+    if (this.objLine.textContent !== line) this.objLine.textContent = line;
+    this.objEl.setAttribute(
+      'title',
+      `Win by destroying their Mothership, by draining their sovereignty to zero, `
+        + `or by breaking their fleet entirely. Your sovereignty ${nUs}, theirs ${nThem}. `
+        + `Sovereignty is a clock on the middle, not fleet strength: fleet strength is the Fleet hull row, `
+        + `and hulls and hostiles are counted on the right.`
+        + (hold
+          ? ` Sovereignty is at zero during a battle, so the result waits until the battle breaks`
+            + ` (at most ${clock(hold.left)} of the match's battle allowance).`
+          : pause
+            ? ` The sovereignty drain is paused while a battle is on; ${clock(pause.left)} of the match's pause allowance is left.`
+            : ''),
+    );
   }
 
   /* Drawn rather than typed: a glyph font would be a binary asset, and "MUTE"
@@ -714,6 +1089,16 @@ export class HUD {
     return { root: s, value: v };
   }
 
+  /* A labelled row whose buttons wrap on their own column rather than under
+     the label — six formation names do not fit beside a caption at 1280. */
+  _paletteRow(label) {
+    const root = el('div', 'vsh-palette__row');
+    root.append(el('span', 'vsh-palette__k', label));
+    const btns = el('div', 'vsh-palette__btns');
+    root.appendChild(btns);
+    return { root, btns };
+  }
+
   _cmd(parent, label, key, kind, id) {
     const b = el('button', 'vsh-cmd');
     b.type = 'button';
@@ -734,7 +1119,10 @@ export class HUD {
     on('sel:changed', (p) => this._onSelection((p && p.ids) || []));
     on('sim:resourceChanged', (p) => this._onCredits(p));
     on('sim:buildComplete', (p) => this._onBuilt(p));
-    on('sim:spawn', () => { this._buildDirty = true; });
+    on('sim:spawn', (p) => {
+      this._buildDirty = true;
+      if (p && p.entity && p.entity.team === this.team) this._stats.builtHulls++;
+    });
     on('sim:death', (p) => this._onDeath(p));
     on('sim:damage', (p) => {
       if (!p || !p.entity) return;
@@ -743,7 +1131,7 @@ export class HUD {
         this._hint('stance', 'Under fire · Z, X and C set the fleet stance', 'warn');
       }
     });
-    on('sim:gameOver', (p) => this._onGameOver(p));
+    on('sim:gameOver', () => this._onGameOver());
     on('ui:toast', (p) => this._onToastEvent(p));
     on('cmd:move', (p) => {
       if (p && p.point) this.markers.addOrder(p.point, 'move');
@@ -780,22 +1168,20 @@ export class HUD {
       this._setSensors(!!(p && p.open), true);
     });
     on('ui:audioChanged', (p) => this._syncAudio(p));
+    /* A rebind changes what this card should say. `core/input.js` emits
+       `bindings.<action>` for a single rebind and a bare `bindings` for a
+       reset to defaults, so match the prefix and take both. */
+    on('options:changed', (p) => {
+      const key = p && p.key;
+      if (typeof key === 'string' && key.indexOf('bindings') === 0) {
+        this._fillControlGrid();
+      }
+    });
     on('ui:progress', (p) => p && this.setLoadProgress(p.value, p.label));
     on('ui:ready', (p) => {
       if (p && p.seed !== undefined) this.seed = p.seed;
       this.finishLoading();
     });
-
-    /* Escape is the only key the HUD claims: it dismisses the controls card,
-       which `core/input.js` has no idea exists. It deliberately does not
-       preventDefault or touch the selection — input.js clears that. */
-    this._onKey = (ev) => {
-      if (ev.key !== 'Escape' || !this._helpOpen) return;
-      const t = ev.target;
-      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || ''))) return;
-      this.setHelp(false);
-    };
-    window.addEventListener('keydown', this._onKey);
 
     this._onClick = (ev) => this._click(ev);
     this.root.addEventListener('click', this._onClick);
@@ -830,10 +1216,6 @@ export class HUD {
     }
     if (t.closest('.vsh-help__close')) {
       this.setHelp(false);
-      return;
-    }
-    if (t.closest('.vsh-over__restart')) {
-      this._restart();
       return;
     }
     if (t.closest('.vsh-boot__skip')) {
@@ -1010,8 +1392,9 @@ export class HUD {
 
   _syncPalette() {
     const live = this.selection.size > 0;
-    this.stanceRow.classList.toggle('is-live', live);
-    this.formRow.classList.toggle('is-live', live);
+    this.selBlock.classList.toggle('is-live', live);
+    this.stanceRow.root.classList.toggle('is-live', live);
+    this.formRow.root.classList.toggle('is-live', live);
     for (let i = 0; i < this.stanceBtns.length; i++) {
       this.stanceBtns[i].setAttribute('aria-pressed', String(STANCES[i].id === this.stance));
     }
@@ -1065,6 +1448,7 @@ export class HUD {
     if (this.sensors.open === open) return;
     this.sensors.setOpen(open);
     this.markers.setHidden(open);
+    this.seams.setHidden(open);
     // The rail would sit on top of the schematic; the schematic wins.
     this.onboard.classList.toggle('is-mute', open);
     this._syncPalette();
@@ -1138,6 +1522,7 @@ export class HUD {
     const e = p.entity;
     if (e.team === this.team) this._stats.lost++;
     else this._stats.kills++;
+    if (isWarship(e) && (e.team === 0 || e.team === 1)) this._deadMax[e.team] += num(e.maxHull, 0);
     // Re-publishing on every casualty would thrash a fleet battle, so the
     // corrected set goes out on the next stats beat instead.
     if (this.selection.delete(e.id)) this._selDirty = true;
@@ -1210,7 +1595,7 @@ export class HUD {
     const out = this._rects || (this._rects = []);
     out.length = 0;
     const base = this.root.getBoundingClientRect();
-    for (const node of [this.build && this.build.el, this.roster && this.roster.el]) {
+    for (const node of [this.build && this.build.el, this.selBlock]) {
       if (!node || !node.classList.contains('is-live')) continue;
       const r = node.getBoundingClientRect();
       if (r.width < 1 || r.height < 1) continue;
@@ -1241,8 +1626,15 @@ export class HUD {
     let hulls = 0;
     let value = 0;
     let foes = 0;
+    const hullNow = this._hullNow || (this._hullNow = [0, 0]);
+    const hullMax = this._hullMax || (this._hullMax = [0, 0]);
+    hullNow[0] = hullNow[1] = hullMax[0] = hullMax[1] = 0;
     for (const e of this.ctx.entities()) {
       if (e.alive === false) continue;
+      if ((e.team === 0 || e.team === 1) && isWarship(e)) {
+        hullNow[e.team] += Math.max(0, num(e.hull, 0));
+        hullMax[e.team] += num(e.maxHull, 0);
+      }
       if (e.team !== this.team) {
         foes++;
         continue;
@@ -1258,6 +1650,12 @@ export class HUD {
     this._popCap = cap;
     this._fleetValue = value;
     this._hostiles = foes;
+    // The opening fleet is whatever was in service before the first hull this
+    // HUD saw launched, so fielded - lost always equals the hulls on the right.
+    if (this._stats.opening < 0) {
+      this._stats.opening = Math.max(0, hulls + this._stats.lost - this._stats.builtHulls);
+    }
+    this._refreshStrength(hullNow, hullMax);
 
     const t = this._readTeam();
     const usedCap = t.popCap || cap;
@@ -1268,9 +1666,17 @@ export class HUD {
       document.createTextNode(String(Math.round(usedCap))),
     );
     this.statPop.root.classList.toggle('is-warn', usedCap > 0 && usedPop / usedCap > 0.9);
+    // Live hulls only. The production panel adds the queue and says so.
+    const popTitle = t.queued > 0
+      ? `Population of hulls in service / cap from your yards. A further ${Math.round(t.queued)} is held by queued wings (shown in the production panel).`
+      : 'Population of hulls in service / cap from your yards.';
+    if (this.statPop.root.getAttribute('title') !== popTitle) this.statPop.root.setAttribute('title', popTitle);
     this.statValue.value.textContent = value.toLocaleString('en-GB');
     this.statHulls.value.textContent = String(hulls);
     this.statFoes.value.textContent = String(foes);
+    this._fleetHulls = hulls;
+    this._refreshClock();
+    this._refreshObjective();
 
     if (force) {
       this._creditsTarget = t.credits;
@@ -1278,6 +1684,29 @@ export class HUD {
       this._creditsLast = Math.round(t.credits);
       this.creditsEl.textContent = this._creditsLast.toLocaleString('en-GB');
     }
+  }
+
+  /* Live warship hull over everything fielded (live max + dead max), per
+     side. Exposed on `_strength` for the end card and for probes. */
+  _refreshStrength(hullNow, hullMax) {
+    for (let s = 0; s < 2; s++) {
+      const field = hullMax[s] + this._deadMax[s];
+      this._strength[s] = field > 0 ? Math.min(1, hullNow[s] / field) : 0;
+    }
+    if (!this.strUs) return;
+    const us = this._strength[this.team];
+    const them = this._strength[this.team ^ 1];
+    this.strUs.fill.style.transform = `scaleX(${us.toFixed(3)})`;
+    this.strThem.fill.style.transform = `scaleX(${them.toFixed(3)})`;
+    const nUs = `${Math.round(us * 100)}%`;
+    const nThem = `${Math.round(them * 100)}%`;
+    if (this.strUs.n.textContent !== nUs) this.strUs.n.textContent = nUs;
+    if (this.strThem.n.textContent !== nThem) this.strThem.n.textContent = nThem;
+    // Which side is losing the fight, without colour alone: the weaker side's
+    // number takes full value and the stronger side's stays at rest.
+    const gap = us - them;
+    this.strUs.root.classList.toggle('is-weaker', gap < -0.05);
+    this.strThem.root.classList.toggle('is-weaker', gap > 0.05);
   }
 
   /* ---------------------------------------------------------------- toasts */
@@ -1367,49 +1796,67 @@ export class HUD {
 
   /* ------------------------------------------------------------- game over */
 
-  _onGameOver(p) {
+  /* The end-of-match card belongs to `ui/shell.js` now — it is the lifecycle
+     owner, it has the three plain-English endings and it is what "Play again"
+     has to talk to in order to rebuild without a page reload. All the HUD does
+     here is retire the first-run rail and freeze the numbers it has been
+     accumulating so `matchStats()` reports the state at the whistle rather
+     than whatever the world has decayed to by the time the card is read. */
+  _onGameOver() {
     if (this._overOpen) return;
     this._overOpen = true;
     this._obRetire();
-    const won = p && p.winner === this.team;
-    this.over.classList.add('is-open');
-    this.over.setAttribute('aria-hidden', 'false');
-    this.over.classList.toggle('vsh-over--won', !!won);
-    this.over.classList.toggle('vsh-over--lost', !won);
-    this.overTitle.textContent = won ? 'Sovereignty established' : 'Fleet lost';
+    this._final = this.matchStats();
+  }
 
+  /**
+   * Everything the end-of-match screen needs, in one plain object. Public
+   * because the shell owns that screen and this module owns the counters.
+   */
+  matchStats() {
+    if (this._final) return this._final;
     const mine = [];
     for (const e of this.ctx.entities()) {
       if (e.alive !== false && e.team === this.team) mine.push(e);
     }
-    const secs = Math.max(0, (performance.now() - this._stats.start) / 1000);
-    const mm = String(Math.floor(secs / 60)).padStart(2, '0');
-    const ss = String(Math.floor(secs % 60)).padStart(2, '0');
-
-    const rows = [
-      ['Hulls commissioned', String(this._stats.built)],
-      ['Hulls lost', String(this._stats.lost)],
-      ['Hostiles destroyed', String(this._stats.kills)],
-      ['Resources gathered', Math.round(this._stats.earned).toLocaleString('en-GB')],
-      ['Fleet remaining', `${mine.length} · ${totalFleetValue(mine).toLocaleString('en-GB')} RU`],
-      ['Duration', `${mm}:${ss}`],
-    ];
-    const frag = document.createDocumentFragment();
-    for (const [k, v] of rows) {
-      const row = el('div', 'vsh-over__row');
-      row.append(el('span', 'vsh-over__k', k), el('span', 'vsh-over__v vsh-num', v));
-      frag.appendChild(row);
-    }
-    this.overStats.replaceChildren(frag);
-    this.overRestart.focus({ preventScroll: true });
+    /* Sim time, not wall-clock. A match that spent four minutes in the pause
+       menu did not last four minutes longer, and `world.time` only advances on
+       ticks the loop actually ran. */
+    const simTime = this.world && typeof this.world.time === 'number' ? this.world.time : null;
+    const duration = simTime !== null
+      ? simTime
+      : Math.max(0, (performance.now() - this._stats.start) / 1000);
+    const opening = Math.max(0, this._stats.opening);
+    return {
+      built: this._stats.built,
+      builtHulls: this._stats.builtHulls,
+      opening,
+      fielded: opening + this._stats.builtHulls,
+      strength: [this._strength[this.team], this._strength[this.team ^ 1]],
+      losses: this._stats.lost,
+      kills: this._stats.kills,
+      harvested: Math.round(this._stats.earned),
+      fleetHulls: mine.length,
+      fleetValue: totalFleetValue(mine),
+      duration,
+    };
   }
 
-  _restart() {
-    const seed = (Math.random() * 0x7fffffff) | 0;
-    this.over.classList.remove('is-open');
-    this.over.setAttribute('aria-hidden', 'true');
-    this._overOpen = false;
-    bus.emit('ui:restart', { seed });
+  /**
+   * Close whatever the HUD has open, topmost first. Returns true if something
+   * was closed. `ui/shell.js` calls this before it opens the pause menu, which
+   * is the whole of the Escape arbitration the contract asks for.
+   */
+  closeOverlays() {
+    if (this._helpOpen) {
+      this.setHelp(false);
+      return true;
+    }
+    if (this.sensors && this.sensors.open) {
+      this._setSensors(false, false);
+      return true;
+    }
+    return false;
   }
 
   /* ---------------------------------------------------------------- update */
@@ -1468,6 +1915,7 @@ export class HUD {
     }
 
     this.roster.update(d);
+    this.seams.update(d);
     this.markers.update(d);
     this.build.update(d);
     this.sensors.update(d);
@@ -1479,7 +1927,6 @@ export class HUD {
   dispose() {
     for (const off of this._offs) off();
     this._offs.length = 0;
-    window.removeEventListener('keydown', this._onKey);
     this.root.removeEventListener('click', this._onClick);
     this.audioPanel.removeEventListener('input', this._onSlide);
     if (this._onResize) window.removeEventListener('resize', this._onResize);
@@ -1489,6 +1936,7 @@ export class HUD {
 
     this.roster.dispose();
     this.markers.dispose();
+    this.seams.dispose();
     this.build.dispose();
     this.sensors.dispose();
 

@@ -278,6 +278,168 @@ default to "not good enough" and to get harsher, not softer, over time.
 
 ## 5. Hard-won knowledge — read before you "fix" these again
 
+**A comment that asserts runtime behaviour is a measurement, and it goes
+stale like one.** Two instances landed in a single session, and both cost a
+round.
+
+`_samplePoints` in `core/camera.js` opened with a visibility gate, above a
+comment claiming `THREE.LOD` "leaves every level visible until its first
+`update()`, which has not happened yet at boot". **False in the running
+game.** By the time `frameOpeningShot` fires, the rig is still at its default
+2,600 m pose, the mothership is far enough away that `LOD.update()` has
+already selected level 1, and level 0 is hidden. The walk ate the finest level
+on its first line, returned zero meshes, and `_composeOpening` silently
+declined — so the opening shot was the spring default on every seed, elevation
+exactly −24.06°, for as long as that comment had been true-sounding.
+
+The tell was that a post-boot probe called the *same function* and got 9,033
+points back. Same code, different moment.
+
+The second: `styles/tutorial.css` carried "the rail is vertically centred,
+which collides with nothing at 1280x720". True when written, and false the
+moment the stance palette was docked into the roster and made that block ~68 px
+taller. Measured 8,576 px² of overlap.
+
+Both are the `setFleetScene()` family — correct code that never runs, or ran
+once under conditions that have since moved. **If a comment states a runtime
+fact, it needs a harness, not a sentence.** `.local/rail-clear.mjs` and the
+`openingSkip` guard in `camera.js` are what those two claims look like when
+they are checked instead of asserted.
+
+Corollary, learned the same session: every silent bail-out should record why it
+bailed. `_composeOpening` declining without a trace is what made a wrong
+diagnosis (the batched fleet renderer) survive long enough to reach a brief.
+
+**The GLSL backtick trap has now bitten seven times, and `syntax-check.mjs`
+does not catch every form of it.** Two more landed in a single session (a
+backtick around `` `k` `` and `` `position` `` in shader comments, then
+`` `cover` ``). The structural detector caught the first two by fingerprint.
+The third presented only as `Unexpected identifier 'cover'` with **no
+truncated-literal warning at all**, so a clean-looking failure message hid the
+real cause.
+
+A related variant costs just as much and is not a backtick: a replacement that
+closes a block comment early, leaving prose loose inside a shader string.
+`syntax-check` passes it, because it is still a valid template literal. Only
+reading the file finds it.
+
+Rule: when a shader file fails to parse and the message names an identifier you
+recognise as English prose, look for an unterminated template literal or an
+early `*/` before you look anywhere else.
+
+**Lanes die at the verification step. The integrator does the looking.**
+Across rounds 2 and 3, five separate lanes were killed — by rate limits or by
+stalls — and *four of them died at the same point*: after editing, after
+`syntax-check` passed, before they had looked at a single rendered frame. Their
+last words are almost interchangeable: "Now the gate that matters — looking at
+the frames", "Now the remaining gates".
+
+Two consequences, both learned the hard way:
+
+1. **Never trust a parse as evidence of a render.** One of those lanes left
+   `src/fx/engines.js` compiling cleanly while the mothership drew as an
+   incoherent pile of plates. It was reverted. Another left the death staging
+   in a state that turned out to be *correct*, and would have been thrown away
+   on the same suspicion if nobody had checked. Both needed a human-equivalent
+   look, in opposite directions.
+2. **Brief lanes to look early and often**, not to save verification for one
+   pass at the end. The end is where the budget runs out.
+
+**Hiding `#vs-hud` does not hide the UI.** The onboarding card is `.vst-root`,
+appended to `document.body`, translucent, and on several seeds it sits directly
+over the hero hull. Any harness that measures hull pixels while hiding only the
+HUD has been measuring the tutorial card as if it were ship — it doubled one
+seed's shadow score before anyone noticed.
+
+Audited 29 Sep: **69 harnesses in `.local/` hide `#vs-hud`; two also hid
+`.vst-root`.** The gate harnesses are patched to
+`#vs-hud, .vs-hud, #hud, .vst-root, #vs-tutorial-root`. `.local/` is gitignored,
+so that patch does not travel — **if you are reading this in a fresh clone, the
+harnesses you regenerate will have the bug again.** `shot.mjs` and
+`play-capture.mjs` are exempt on purpose: they photograph gameplay and the HUD
+belongs in frame.
+
+The general form is worth more than the instance: before trusting any
+screen-space measurement, enumerate what is actually on the canvas. This
+project has now been wrong three separate ways about what its own frames
+contain — a nebula surviving `farScene.visible = false`, TAA history rejected
+by a camera that writes its position every frame, and a translucent tutorial
+card counted as hull.
+
+**A 40-pixel detail cannot be judged in a 1600×900 frame.** `.local/crop.mjs`
+magnifies a region through Chromium's canvas with smoothing off — there is no
+sharp and no ImageMagick on this box, and the `convert` on PATH is the Windows
+FAT-to-NTFS converter. It was written after I spent two rounds asserting "the
+nozzle rings are still visible" from a 1× view where that claim is
+unfalsifiable either way. Use it before reporting a small-detail defect, and
+before reporting one fixed.
+
+**Hero and per-class renders photograph ships at idle. Check throttle-dependent
+effects at both ends.** The nozzle rings that survived the plume rebuild were
+arithmetic, not art: the lip flange is a ring from 0.90 to 1.12 radii, and the
+ribbon's radius was `0.95 + 0.25 * throttle`. At full throttle that reaches
+1.20 and covers the flange; at idle it reaches 1.00 and sits *inside* it. Every
+still this project takes is of a stationary ship, which is why the defect
+looked fixed in capture frames of a fleet under way and was in every hero shot.
+
+**The 3D marker layer covers the selection only.** `src/ui/select.js` draws
+from `for (const id of sel)`; unselected friendlies get nothing and hostiles get
+at most `MAX_RETICLES = 14`. That — not the glyph tier thresholds — is why a
+frame reporting 74 hostiles showed about a dozen marks. I wrote a lane brief
+aimed at the tier thresholds before reading the loop; it would have changed
+nothing. The full-fleet read is the Sensors Manager on Tab, and whether the main
+view *should* mark every contact is an open design decision, recorded in
+CRITIQUE-ROUND-2.md rather than settled by default.
+
+**Fix your instrument before you tune anything.** A whole round of pacing work
+was spent tuning against numbers that turned out to be noise, and the noise was
+entirely mine.
+
+The tell: the same seed, same settings, run three times, gave 17.2, 14.0 and
+35.0 minutes with different winners. Two harness faults, both invisible until
+measured. The render loop advanced the sim while the harness waited for the
+match to become ready, and only then took over and injected the second
+commander — so every run began manual ticking from a different state with the
+opponent joining late by a varying amount. And state persisted between matches
+inside one page, so the first match in a page did not match later ones.
+
+The sim itself is exactly reproducible: same seed, fresh page, three runs,
+identical duration, winner, seams and entity count. **If a measurement varies,
+suspect the harness before the code.** Every soak now records
+`ticksBeforeTakeover`, which must be 0, and uses a fresh page per seed.
+
+**Entity ids are behaviour, not labels — reset them with the world.** `ai.js`
+picks sensor sources with `(e.id & 3) === 0`, `combat.js` sets the flee timer
+from `e.id % 7` and the retarget phase from `e.id % 13`. The id counter was
+module-level and survived a world rebuild, so a restart numbered its ships from
+wherever the last match stopped and all three phases shifted. The result was a
+restart that could not reproduce its own seed, on a demo whose entire pitch is
+that everything derives from one seed. A tick-0 diff was byte-identical and the
+runs still forked inside 30 ticks — the state looked right and the *phase* was
+wrong. If you add another `id %` anywhere, this constraint comes with it.
+
+**Prove which code path actually runs before you believe a fix landed.** This
+has now cost the project twice, and both times the code was correct.
+
+The first was `setFleetScene()`: never called, so the batch root was unparented
+and the fleet did not draw at all. It invalidated a "draw calls are flat"
+claim that had already been reported as good news.
+
+The second was the contested band. `generateResourceClusters` + `markContested`
+in `sim/spawn.js` produce 4–8 contested clusters on every seed — measured over
+40 seeds, histogram `{4:30, 6:9, 8:1}`, mean 4.55, not one seed with none. But
+`resolveResourceClusters` prefers `environment.resourceClusters` when present,
+and it is *always* present. Measured in the running world, **5 seeds in 8 had
+zero contested clusters**, which made the sovereignty victory condition
+unreachable and the whole seam economy inert — on the majority of matches, the
+mechanic written specifically to stop 12:1 stalemates was not running at all.
+A previous agent's fix for mirror-match bias went into that same bypassed path.
+
+The tell in both cases was that the unit-level measurement was clean and the
+integrated measurement was never taken. A generator that produces the right
+answer is not evidence that anything consumes it. Measure the field the running
+game actually uses.
+
 **Sky is equirectangular, not a cubemap. Do not convert it back.**
 Hard straight lines were cutting across the sky. After bisecting the scene
 graph, post-processing, the HUD and the dust, the cause was **cube-map seams**:

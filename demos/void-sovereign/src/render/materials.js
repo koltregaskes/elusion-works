@@ -1,5 +1,6 @@
 import * as THREE from '../../vendor/three/build/three.module.js';
 import { makeRng } from '../core/rng.js';
+import { HULL_HAZE_DEFINE } from './atmosphere.js';
 import {
   initTextureLibrary,
   getHullAtlas,
@@ -10,6 +11,7 @@ import {
   ATLAS,
   familyLayer,
   FAMILY_MACRO_SLOTS,
+  MACRO_TONE,
 } from './textures.js';
 
 /* Ship and structure materials.
@@ -51,6 +53,8 @@ export const TEAM_COLORS = [
     engine: col(0x6fccff),
     trim: col(0x2fb4e6),
     light: col(0xcdf0ff),
+    // R7 hull plate hue (value comes from the atlas mean): cool gunmetal
+    hull: col(0x8996a6),
   },
   {
     // Enemy — bone, crimson-rust, amber drive glow.
@@ -59,6 +63,8 @@ export const TEAM_COLORS = [
     engine: col(0xff8f30),
     trim: col(0xe2761f),
     light: col(0xffd2a0),
+    // R7 hull plate hue: weathered bone
+    hull: col(0xb5a284),
   },
 ];
 
@@ -69,7 +75,33 @@ const NEBULA = {
   fill: new THREE.Color(0x2a2233),
   ambient: 0.085,
   rim: 0.46,
+  /* Sky floor on the hull's shadow side (R8): a cool unit-luminance colour from
+     the baked sky and its strength. ENV sets both through setHullSkyFloor(). */
+  floorColour: new THREE.Color(0.80, 0.95, 1.30),
+  floor: 0,
+  /* World direction toward the key star. ENV hands over the real one through
+     setHullKeyDirection(); the rim below needs it to know which side is dark. */
+  keyDir: new THREE.Vector3(0.5, 0.6, 0.3).normalize(),
 };
+
+/* The rim's colour: cold blue-white at unit luminance, fixed rather than taken
+   from the sky. §3.2 asks for a "cold rim/fill bounce from the nebula", and the
+   one property of it that matters on screen is that it is cold and neutral.
+   Taking the hue from the bake let a warm palette tint every silhouette amber,
+   which is the enemy's hue family. It is also never a team colour: the edge is
+   light, and paint is the livery's job. */
+const RIM_COLD = new THREE.Color(0.80, 0.95, 1.30).multiplyScalar(
+  1 / (0.2126 * 0.80 + 0.7152 * 0.95 + 0.0722 * 1.30),
+);
+
+/* The rim's strength. The term used to be weighted by f0, the dielectric
+   Fresnel floor of 0.045, which made its contract weight (0.019 of the key,
+   ENV's BOUNCE_RIM_OVER_KEY) worth about 0.005 in linear light at the very
+   edge: below the dither. It never drew a pixel, and a dark hull on a dark rock
+   read as one blob. The weight stays where the contract put it; this is what
+   it now multiplies: a gain on the contract weight, not a reflectance, because
+   the job is an edge that reads, not a physical floor. */
+const RIM_GAIN = 2.0;
 
 /* `ref` is the hull length a family is tuned around. ships/index.js asks for a
    material by (team, family) only, so without it every class from a 46 m
@@ -87,6 +119,14 @@ const FAMILY_TUNING = {
 function plateSize(length, tune) {
   const l = Math.max(4, length || tune.ref);
   return Math.min(24, Math.max(0.22, tune.plateK * Math.pow(l, tune.plateExp)));
+}
+
+/** R7 analytic plate size in metres. Steeper than plateSize() on purpose: a
+    fighter should carry a few big plates and a Mothership a hundred along
+    its keel (14 m -> 1.4 m, 150 m -> 5.4 m, 1,900 m -> 24 m). */
+function panelSize(length, tune) {
+  const l = Math.max(4, length || tune.ref);
+  return Math.min(40, Math.max(0.8, 0.30 * Math.pow(l, 0.58)));
 }
 
 /* Livery geometry, in girth units — see `vsLivery` in the shader. Every number
@@ -115,6 +155,104 @@ const LIVERY = {
 
 const SHARED_TIME = { value: 0 };
 
+/* Hit-local damage store (R6). Damage used to be one per-instance fraction
+   pushed through a noise threshold, so it landed uniformly over the whole
+   hull: peach squiggles nose to tail at 50%, leopard print at 20%, and none
+   of it on the side the shots came from (critic round 5). Now every batched
+   hull owns one row of a small float texture holding its last eight hull hits
+   in its own local space, and the scorch grows only around those. One texture
+   for the whole fleet, shared by every hull material, so it costs no draw
+   call and no per-material state; rows are handed out by the batches in
+   ships/index.js. Width 9: eight hits, then the hull length. Row 0 is never
+   handed out and stays empty, so an instance with no row reads clean. */
+const HIT_W = 9;
+const HIT_EMPTY = 1e5;
+const HIT_TEX = { value: null };
+let _hitData = null;
+let _hitRows = 1;
+
+function clearHitRows(from, count) {
+  for (let r = from; r < from + count; r++) {
+    const o = r * HIT_W * 4;
+    for (let k = 0; k < 8; k++) {
+      _hitData[o + k * 4] = HIT_EMPTY;
+      _hitData[o + k * 4 + 1] = HIT_EMPTY;
+      _hitData[o + k * 4 + 2] = HIT_EMPTY;
+      _hitData[o + k * 4 + 3] = -1e4;
+    }
+    _hitData[o + 32] = 0;
+    _hitData[o + 33] = 0;
+    _hitData[o + 34] = 0;
+    _hitData[o + 35] = 0;
+  }
+}
+
+function ensureHitRows(rows) {
+  const have = HIT_TEX.value ? HIT_TEX.value.image.height : 0;
+  if (rows <= have) return;
+  let h = Math.max(256, have);
+  while (h < rows) h *= 2;
+  const data = new Float32Array(HIT_W * 4 * h);
+  const old = _hitData;
+  _hitData = data;
+  clearHitRows(0, h);
+  if (old) data.set(old);
+  const tex = new THREE.DataTexture(data, HIT_W, h, THREE.RGBAFormat, THREE.FloatType);
+  tex.minFilter = THREE.NearestFilter;
+  tex.magFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  const prev = HIT_TEX.value;
+  HIT_TEX.value = tex;
+  if (prev) prev.dispose();
+}
+ensureHitRows(256);
+
+/** Hand out `count` consecutive hit rows, all empty, for hull length `length`. */
+export function allocHitRows(count, length) {
+  const base = _hitRows;
+  _hitRows += count;
+  ensureHitRows(_hitRows);
+  clearHitRows(base, count);
+  for (let r = base; r < base + count; r++) _hitData[r * HIT_W * 4 + 32] = length || 1;
+  HIT_TEX.value.needsUpdate = true;
+  return base;
+}
+
+/** Copy `count` rows (a batch growing keeps its slots' hits). */
+export function copyHitRows(from, to, count) {
+  const n = HIT_W * 4;
+  _hitData.copyWithin(to * n, from * n, (from + count) * n);
+  HIT_TEX.value.needsUpdate = true;
+}
+
+/** Empty one row's hits (a reused slot must not inherit a dead hull's scars). */
+export function resetHitRow(row) {
+  if (!(row > 0)) return;
+  const len = _hitData[row * HIT_W * 4 + 32];
+  clearHitRows(row, 1);
+  _hitData[row * HIT_W * 4 + 32] = len;
+  HIT_TEX.value.needsUpdate = true;
+}
+
+/** Read hit `k` of a row into `out` (x, y, z, time). */
+export function readHit(row, k, out) {
+  const o = (row * HIT_W + k) * 4;
+  out[0] = _hitData[o]; out[1] = _hitData[o + 1]; out[2] = _hitData[o + 2]; out[3] = _hitData[o + 3];
+  return out;
+}
+
+/** Store hit `k` of a row at hull-local (x, y, z), stamped with the shader clock. */
+export function writeHit(row, k, x, y, z) {
+  if (!(row > 0) || k < 0 || k > 7) return;
+  const o = (row * HIT_W + k) * 4;
+  _hitData[o] = x;
+  _hitData[o + 1] = y;
+  _hitData[o + 2] = z;
+  _hitData[o + 3] = SHARED_TIME.value;
+  HIT_TEX.value.needsUpdate = true;
+}
+
 const HULL_PARS = /* glsl */`
 uniform sampler2DArray uPlateMap;
 uniform sampler2DArray uPlateNormal;
@@ -126,7 +264,14 @@ uniform sampler2DArray uMacroOrm;
 uniform sampler2DArray uMacroEmis;
 uniform float uPlateLayer;
 uniform vec4  uMacroSlots;
+/* Column i is the material tone for slot i: rgb = albedo multiplier on the
+   plate layer, w = roughness offset. A mat4 times the one-hot selector below
+   is exactly "pick column i", branchless and in one instruction. */
+uniform mat4  uMacroTone;
+uniform vec4  uMacroMetal;
 uniform float uPlateTexels;
+uniform float uPlateCell;
+uniform vec2  uPlateJit;
 uniform float uBaseTiling;
 uniform float uMacroTiling;
 uniform float uBlendSharp;
@@ -157,12 +302,29 @@ uniform vec3  uNebulaFill;
 uniform vec2  uBounce;
 uniform vec2  uChroma;
 uniform vec2  uTerm;
+uniform vec3  uKeyDir;
+uniform vec3  uRimCold;
+uniform vec4  uSkyFloor;
+uniform vec3  uHullA;
+uniform vec3  uHullB;
+uniform float uPanel;
 
 varying vec3 vObjPos;
 varying vec3 vObjNormal;
 flat varying mat3 vObjToView;
 #ifdef VS_ATTRIBS
+  varying vec3 vCut;
   varying vec3 vAttr;
+  /* x = hand-placed livery region, y = wear. Deliberately *not* folded into
+     vAttr: vAttr.y is a team index and this is a paint mask, and the whole
+     reason the region mask reached nothing for so long is that the two look
+     interchangeable and are not. See the note above vsLivery. */
+  varying vec2 vPaint;
+  /* Hit-local damage (R6). Row vHitRow of uHitTex holds this instance's last
+     eight hull hits: texels 0-7 are (hull-local xyz, uTime at the hit), texel
+     8 is (hull keel length, 0, 0, 0). Row 0 is permanently empty. */
+  uniform highp sampler2D uHitTex;
+  flat varying float vHitRow;
 #endif
 
 vec3 vsAlbedo;
@@ -209,6 +371,141 @@ float vsNoise3( vec3 x ) {
     f.z );
 }
 
+/* R7 hull plating, built in the shader rather than read from the atlas.
+
+   The round-6 critique called the atlas plating stucco on the Mothership and
+   blotch camouflage on the fighters, and both are the same fault: a 2D texture
+   tiled triplanarly has no idea which way the ship points, so its plates run
+   any direction, its paint-cover alpha lands as random patches, and up close
+   its texels show. This lays plates out along the hull's own axes instead.
+
+   - The dominant face axis picks one plane, hard, so a seam never doubles up
+     the way a blended triplanar seam does. On the flanks and deck the long
+     side of a plate runs along +Z, the keel axis; end faces get square plates.
+   - Plate size comes from uPanel, metres, sub-linear in hull length: a 14 m
+     interceptor carries a handful of big plates and a 1,900 m Mothership
+     carries a hundred along its keel.
+   - Seams and bevels are analytic and filtered by the pixel footprint, and
+     fade out before a pixel covers a fifth of a plate, so there is no texel
+     to see and nothing to crawl.
+   - The two shipyards differ in the layout itself, not just in colour. The
+     player yard lays long strakes of plates whose lengths vary from one to
+     eight cells, a third of them split again (R7 follow-up: the first pass
+     was an even running bond and read as brickwork). The hostile yard builds in
+     short segments that line up into rings, every third ring a heavier rib,
+     with wider seams that hold grime.
+
+   hostile is 0 or 1. Outputs: seam darkening, an object-space normal tilt for
+   the plate bevel, per-plate value and roughness offsets, seam grime, a bright
+   worn edge line, and the rib mask. */
+void vsPanels( vec3 P, vec3 GN, float hostile, out float seam, out vec3 tilt,
+    out float pv, out float pr, out float grime, out float edgeW, out float rib ) {
+  vec3 aN = abs( GN );
+  float fx = step( aN.y, aN.x ) * step( aN.z, aN.x );
+  float fy = ( 1.0 - fx ) * step( aN.z, aN.y );
+  float fz = clamp( 1.0 - fx - fy, 0.0, 1.0 );
+  vec2 uv = P.zy * fx + P.zx * fy + P.xy * fz;
+  vec3 tU = vec3( 0.0, 0.0, 1.0 ) * ( fx + fy ) + vec3( 1.0, 0.0, 0.0 ) * fz;
+  vec3 tV = vec3( 0.0, 1.0, 0.0 ) * ( fx + fz ) + vec3( 1.0, 0.0, 0.0 ) * fy;
+  float face = fx + fy * 2.0 + fz * 3.0;
+
+  vec2 fwm = fwidth( uv );
+  float fw = max( max( fwm.x, fwm.y ), 1e-5 );
+
+  /* Base cell. A panel is a run of one to about eight base cells along the run
+     axis; a boundary between two cells is a real seam only where a hash says
+     so, so panel lengths vary strongly and no bond pattern can form. Player:
+     runs go along the keel in long strakes. Hostile: the run axis is turned
+     across the hull, so every cell boundary along the keel is a ring seam and
+     the plates inside a ring are strips of varying height. */
+  vec2 B = mix( vec2( 2.0, 1.8 ), vec2( 0.85, 1.0 ), hostile ) * uPanel;
+  B = mix( B, vec2( 1.8 * uPanel ), fz );
+  float lane0 = floor( uv.y / B.y );
+  uv.x += vsHash13( vec3( lane0, face, 2.3 ) ) * B.x * ( 1.0 - hostile );
+  vec2 g = uv / B;
+  vec2 c = floor( g );
+  vec2 f = g - c;
+
+  vec2 cs = mix( c, c.yx, hostile );     // x = run index, y = lane index
+  vec2 fs = mix( f, f.yx, hostile );
+  vec2 Bs = mix( B, B.yx, hostile );
+  vec3 tR = mix( tU, tV, hostile );
+  vec3 tC = mix( tV, tU, hostile );
+  float pRun = mix( 0.28, 0.40, hostile );
+  float kf = face + 11.0;
+  float aLo = step( vsHash13( vec3( cs.y, cs.x, kf ) ), pRun );
+  float aHi = step( vsHash13( vec3( cs.y, cs.x + 1.0, kf ) ), pRun );
+  float start = cs.x - 8.0;
+  for ( int i = 0; i < 8; i++ ) {
+    float k = cs.x - float( i );
+    if ( vsHash13( vec3( cs.y, k, kf ) ) < pRun ) { start = k; break; }
+  }
+  vec3 pid = vec3( cs.y, start, face );
+  float h1 = vsHash13( pid + 0.31 );
+  float h2 = vsHash13( pid * 1.71 + 5.3 );
+  float h3 = vsHash13( pid * 0.77 + 1.9 );
+
+  float lod = 1.0 - smoothstep( 0.10, 0.30, fw / min( B.x, B.y ) );
+  rib = hostile * step( 1.5, mod( c.x, 3.0 ) ) * ( 1.0 - fz );
+  float w = uPanel * mix( 0.012, 0.020, hostile ) * ( 1.0 + rib * 0.8 );
+
+  // distances in metres to the four sides of this base cell
+  float dR0 = fs.x * Bs.x;
+  float dR1 = ( 1.0 - fs.x ) * Bs.x;
+  float dC0 = fs.y * Bs.y;
+  float dC1 = ( 1.0 - fs.y ) * Bs.y;
+  float eR0 = mix( 1e5, dR0, aLo );
+  float eR1 = mix( 1e5, dR1, aHi );
+  float dMaj = min( min( dC0, dC1 ), min( eR0, eR1 ) );
+
+  /* Hierarchy: about a third of the primary panels are split into two to four
+     smaller ones by thinner, shallower seams on the inactive cell boundaries
+     and down the middle of the lane. */
+  float sub = step( h3, 0.34 );
+  float dMin = min( min( dR0, dR1 ), abs( fs.y - 0.5 ) * Bs.y );
+  float wm = w * 0.6;
+
+  float sMaj = 1.0 - smoothstep( w, w + fw * 1.5, dMaj );
+  float sMin = ( 1.0 - smoothstep( wm, wm + fw * 1.5, dMin ) ) * sub * 0.55;
+
+  /* Rule-placed detail, sparse: an access-hatch outline in about one base cell
+     in eleven, and a rivet line beside the long seams of one lane in three. */
+  vec2 q = abs( f - 0.5 ) * B;
+  vec2 hs = B * vec2( 0.20, 0.26 );
+  float he = max( q.x - hs.x, q.y - hs.y );
+  float hatch = step( vsHash13( vec3( c, face + 5.0 ) ), 0.09 ) * ( 1.0 - fz )
+              * ( 1.0 - smoothstep( wm, wm + fw * 1.5, abs( he ) ) ) * 0.7;
+  float sp = uPanel * 0.22;
+  float runCoord = mix( uv.x, uv.y, hostile );
+  float rv = length( vec2( ( fract( runCoord / sp ) - 0.5 ) * sp, min( dC0, dC1 ) - w * 4.0 ) );
+  float rivLod = 1.0 - smoothstep( 0.12, 0.35, fw / sp );
+  float rivet = step( vsHash13( vec3( cs.y, face, 7.7 ) ), 0.33 ) * ( 1.0 - fz ) * rivLod
+              * ( 1.0 - smoothstep( w * 0.9, w * 0.9 + fw, rv ) ) * 0.6;
+
+  seam = max( max( sMaj, sMin ), max( hatch, rivet ) ) * lod;
+
+  /* Recessed seam with a lip: only the plate side of a major seam is rolled,
+     and narrowly, so the lit side catches a hairline and the shaded side drops
+     into the groove. Nothing here brightens albedo. */
+  float bw = w * 2.2 + fw;
+  float bev = ( 1.0 - smoothstep( w, bw, dMaj ) ) * ( 1.0 - sMaj ) * lod;
+  vec3 dir = -tC;
+  float best = dC0;
+  if ( dC1 < best ) { best = dC1; dir = tC; }
+  if ( eR0 < best ) { best = eR0; dir = -tR; }
+  if ( eR1 < best ) { best = eR1; dir = tR; }
+  tilt = dir * bev * mix( 0.22, 0.34, hostile );
+
+  pv = 1.0 + ( h1 - 0.5 ) * mix( 0.05, 0.16, hostile ) - rib * 0.12;
+  pr = ( h2 - 0.5 ) * mix( 0.16, 0.18, hostile ) + rib * 0.07;
+
+  float gn = vsNoise3( P / uPanel * 2.3 );
+  grime = hostile * ( 1.0 - smoothstep( w, w + uPanel * 0.18, dMaj ) )
+        * ( 0.40 + 0.60 * gn ) * mix( 0.35, 1.0, lod );
+  edgeW = hostile * ( smoothstep( w, w * 1.5 + fw, dMaj ) - smoothstep( w * 1.6, w * 3.0 + fw, dMaj ) )
+        * lod * smoothstep( 0.55, 0.85, gn );
+}
+
 /* Remove an illuminant's chroma while keeping the surface's own. The hue
    argument is the albedo normalised to unit luminance, so at k = 1 this is
    exactly what the fragment would look like under a white light of the same
@@ -225,8 +522,29 @@ vec3 vsWhiten( vec3 c, vec3 hue, float k ) {
    to be as legible on a twenty-pixel frigate at five kilometres as it is from
    fifty metres, and a band that lives in a texture never is.
 
+   That property is also this function's failure mode, and it is what the
+   round-1 critique reported as "trim decals cut straight across geometry edges
+   without respecting the underlying panel breaks". A band that is a pure
+   function of position cannot know a panel break exists. Two things fix it and
+   neither gives up the scale-invariance:
+
+   - blazon is the hand-placed region mask the hull builders have been writing
+     all along (greeble.js::paintTeamMask -> aTeamMask). It is per-triangle,
+     so its boundary is a *part* boundary: a hangar face, an armour belt, a
+     stern plate. That is paint applied to a ship rather than to a mesh.
+   - the analytic bands are now stepped by plate cell rather than run straight.
+     The cell grid is at exactly the plate pitch the atlas is tiled at, so an
+     edge that jitters cell by cell lands on the panel rhythm instead of
+     slicing through it, and a fraction of plates take no paint at all — the
+     replacement panel nobody got round to repainting.
+
+   blazon is a paint mask and nothing else. It must never be routed into the
+   team index: the shader reads that as "which faction", and a player hull whose
+   painted regions resolved to team 1 would wear enemy amber on every one of
+   them. The two channels stay separate all the way through.
+
    Returns the primary mask; the accent output carries the secondary. */
-float vsLivery( vec3 P, vec3 GN, out float accent, out float runLight ) {
+float vsLivery( vec3 P, vec3 GN, float blazon, float hostile, out float accent, out float fieldOut, out float runLight ) {
   float rho = max( length( P.xy ), 1e-3 );  // local girth radius, metres
   float ax = abs( P.x ) / rho;              // 0 on the centreline, ~1 at the beam
   float ay = P.y / rho;                     // -1 keel .. +1 spine
@@ -238,6 +556,17 @@ float vsLivery( vec3 P, vec3 GN, out float accent, out float runLight ) {
   float deck = smoothstep( 0.48, 0.80, abs( GN.y ) );
   float flank = smoothstep( 0.44, 0.78, abs( GN.x ) );
 
+  /* One cell per plate, in object metres. uPlateCell is the reciprocal of the
+     same plate size that sets uBaseTiling, so this grid and the plating in the
+     atlas share a pitch by construction — which is the only reason a stepped
+     edge reads as following a seam rather than as noise. */
+  vec3 cid = floor( P * uPlateCell + 0.37 );
+  float j0 = vsHash13( cid + 7.13 );
+  float j1 = vsHash13( cid * 1.37 - 3.11 );
+
+  float axj = ax + ( j0 - 0.5 ) * uPlateJit.x;
+  float ayj = ay + ( j1 - 0.5 ) * uPlateJit.x;
+
   /* Everything here runs the full length of the hull, because a longitudinal
      band is the only marking whose position does not have to be worked out
      from a hull length this material is never told. It is also the strongest
@@ -245,26 +574,58 @@ float vsLivery( vec3 P, vec3 GN, out float accent, out float runLight ) {
      in a way that a roundel or a stern flash never could. */
 
   // 1. dorsal and ventral spine stripe
-  float spine = deck * ( 1.0 - smoothstep( uSpine.x - uSpine.y, uSpine.x + uSpine.y, ax ) );
+  float spine = deck * ( 1.0 - smoothstep( uSpine.x - uSpine.y, uSpine.x + uSpine.y, axj ) );
 
   // 2. shoulder pinstripes, just outboard of the spine — a two-line livery
   //    reads as deliberate where a single band can read as a lighting accident
-  float sh = abs( ax - uShoulder.x );
+  float sh = abs( axj - uShoulder.x );
   float shoulder = deck * ( 1.0 - smoothstep( uShoulder.y * 0.6, uShoulder.y, sh ) );
 
   // 3. flank stripe at a fixed fraction of the hull's local height
   float side = flank
-    * ( 1.0 - smoothstep( uFlank.y - uFlank.z, uFlank.y + uFlank.z, abs( ay - uFlank.x ) ) );
+    * ( 1.0 - smoothstep( uFlank.y - uFlank.z, uFlank.y + uFlank.z, abs( ayj - uFlank.x ) ) );
+
+  /* R7: the two yards paint by different rules, so livery is a shape cue as
+     well as a hue. The player runs unbroken lines down the keel axis. The
+     hostile yard breaks its spine stripe into segments and swaps the flank
+     stripe for short transverse bars across the side, the way its plating is
+     built in rings. Spacing is in girths, like everything else here. */
+  float segZ = fract( P.z / max( rho * 1.5, 1e-3 ) );
+  spine *= mix( 1.0, step( segZ, 0.55 ), hostile );
+  shoulder *= 1.0 - hostile * 0.7;
+  float barZ = fract( P.z / max( rho * 2.6, 1e-3 ) + 0.3 );
+  float bars = flank * step( barZ, 0.13 ) * ( 1.0 - smoothstep( 0.45, 0.70, abs( ayj ) ) );
+  side = mix( side, bars, hostile );
 
   /* Running lights ride just outboard of the shoulder stripe as dashes spaced
-     by girth, which puts them exactly where the eye is already looking. */
+     by girth, which puts them exactly where the eye is already looking. They
+     take the unjittered axis on purpose — a light is a fitting bolted to the
+     hull, not paint sprayed on to it, so it has no reason to follow a seam. */
   float rim = 1.0 - smoothstep( 0.0, uShoulder.z, abs( ax - uShoulder.x - uShoulder.y * 1.9 ) );
   float ph = fract( P.z / max( rho * uRun, 1e-3 ) );
   float dash = smoothstep( 0.50, 0.55, ph ) * ( 1.0 - smoothstep( 0.70, 0.75, ph ) );
   runLight = deck * rim * dash;
 
-  accent = clamp( max( side, shoulder ), 0.0, 1.0 );
-  return clamp( spine, 0.0, 1.0 );
+  // A plate that never got its coat back. Applies to every painted mark alike.
+  float skip = 1.0 - step( uPlateJit.y, j1 );
+
+  /* The authored region joins the *secondary* channel, not the primary, and
+     that is a colour decision rather than a plumbing one. The secondary is the
+     deep teal / crimson-rust half of the faction pair; the primary is the
+     bright trim. A large area of bright trim does not read as a warship, it
+     reads as a toy — measured on the first pass of this change, where the
+     destroyer came back more cyan than grey. A broad dark painted block with
+     the bright stripe running across it is both the restrained option and the
+     one the reference genre actually uses.
+
+     The stripe keeps priority where the two overlap: HULL_BODY subtracts the
+     primary from the secondary, so a band crossing a blazon stays bright. */
+  /* R7: the field is handed back on its own so HULL_BODY can lay it on as a
+     restrained wash rather than a solid coat. A whole wing in solid secondary
+     was the toy-plane read the round-6 critique called out. */
+  fieldOut = clamp( blazon, 0.0, 1.0 ) * skip;
+  accent = clamp( max( side, shoulder ) * skip, 0.0, 1.0 );
+  return clamp( spine * skip, 0.0, 1.0 );
 }
 `;
 
@@ -278,39 +639,99 @@ const HULL_BODY = /* glsl */`
   vec4 A = vsTri( uPlateMap, P, W, uBaseTiling, uPlateLayer );
   vec4 O = vsTri( uPlateOrm, P, W, uBaseTiling, uPlateLayer );
 
+  /* Faction, needed up front now: the plating itself is built per yard. */
+  float teamP = uTeam;
+#ifdef VS_ATTRIBS
+  teamP = clamp( uTeam + vAttr.y, 0.0, 1.0 );
+#endif
+  float hostile = step( 0.5, teamP );
+  float pSeam, pV, pR, pGrime, pEdge, pRib;
+  vec3 pTilt;
+  vsPanels( P, GN, hostile, pSeam, pTilt, pV, pR, pGrime, pEdge, pRib );
+
   vec3 tX = texture( uPlateNormal, vec3( P.zy * uBaseTiling, uPlateLayer ) ).xyz * 2.0 - 1.0;
   vec3 tY = texture( uPlateNormal, vec3( P.zx * uBaseTiling, uPlateLayer ) ).xyz * 2.0 - 1.0;
   vec3 tZ = texture( uPlateNormal, vec3( P.xy * uBaseTiling, uPlateLayer ) ).xyz * 2.0 - 1.0;
 
+  /* The atlas normal is now fine detail under the analytic plating, so it is
+     run at under half strength and faded out entirely once its texels drop
+     below a couple of pixels: that is where the crawl came from. */
+  float nk = uNormalStrength * 0.40
+    * ( 1.0 - smoothstep( 1.5, 8.0, vsFootprint( P.zy * uBaseTiling, uPlateTexels ) ) );
+
   /* Whiteout triplanar normal blend — folds the geometric normal into every
      plane so curved hulls keep their curvature. */
-  tX = vec3( tX.xy * uNormalStrength + GN.zy, abs( tX.z ) * GN.x );
-  tY = vec3( tY.xy * uNormalStrength + GN.zx, abs( tY.z ) * GN.y );
-  tZ = vec3( tZ.xy * uNormalStrength + GN.xy, abs( tZ.z ) * GN.z );
+  tX = vec3( tX.xy * nk + GN.zy, abs( tX.z ) * GN.x );
+  tY = vec3( tY.xy * nk + GN.zx, abs( tY.z ) * GN.y );
+  tZ = vec3( tZ.xy * nk + GN.xy, abs( tZ.z ) * GN.z );
   vec3 objN = normalize( tX.zyx * W.x + tY.yzx * W.y + tZ.xyz * W.z );
+  objN = normalize( objN + pTilt );
 
-  vec3 albedo = A.rgb;
-  float rough = O.g;
-  float metal = O.b;
-  float ao = O.r;
-  float paintCover = A.a;   // 1 = plate still has its coat, 0 = bare alloy
+  /* Albedo: the yard's own hull colour at the atlas's mean value (so the
+     lighting contract, tuned on the atlas, still holds), varied per plate. The
+     atlas survives only as a faint luminance modulation; at full strength it
+     was the stucco and the camouflage. */
+  vec3 aAvg = textureLod( uPlateMap, vec3( 0.5, 0.5, uPlateLayer ), 16.0 ).rgb;
+  float aL = max( dot( aAvg, VS_LUMA ), 0.02 );
+  vec3 hullC = mix( uHullA, uHullB, hostile );
+  hullC = hullC / max( dot( hullC, VS_LUMA ), 1e-3 ) * aL * mix( 0.96, 1.20, hostile );
+  float detail = clamp( dot( A.rgb, VS_LUMA ) / aL, 0.4, 1.8 );
+  vec3 albedo = hullC * pV * mix( 1.0, detail, 0.18 );
+  albedo *= 1.0 - pSeam * mix( 0.62, 0.66, hostile );
+  albedo *= 1.0 - pGrime * 0.36;
+
+  /* Hostile weathering: long rust-brown streaks that run aft with the keel
+     axis, held dark and low in chroma so they read as age, not as team. */
+  float rn = vsNoise3( vec3( P.x, P.y, P.z * 0.16 ) / uPanel * 0.8 );
+  float rust = hostile * smoothstep( 0.55, 0.85, rn ) * 0.40;
+  albedo = mix( albedo, vec3( 0.32, 0.20, 0.13 ) * ( aL / 0.215 ) * 0.70, rust );
+  albedo *= 1.0 + pEdge * 0.12;
+
+  /* Player plates are clean, smooth gunmetal; hostile plates are rough and
+     dull. The atlas keeps a third of its say. */
+  float rough = mix( mix( 0.40, 0.64, hostile ), O.g, 0.33 ) + pR + pGrime * 0.14 + rust * 0.12;
+  float metal = mix( mix( 0.46, 0.22, hostile ), O.b, 0.33 ) + pEdge * 0.30;
+  float ao = mix( 1.0, O.r, 0.5 ) * ( 1.0 - pSeam * 0.45 );
+  rough += pSeam * 0.20;   // a groove holds no highlight
+  /* Paint cover was the atlas alpha, laid down as random patches: the
+     camouflage. Paint now only goes at a plate's worn edge. */
+  float paintCover = mix( 1.0, A.a, 0.12 ) * ( 1.0 - pEdge * 0.7 );   // 1 = coat, 0 = bare
   vec3 emis = vec3( 0.0 );
   float emisTeam = 0.0;
   float accentMask = 0.0;
 
+  /* Which of the four hull materials this fragment's *geometry* asked for.
+     aVariant is written per part by greeble.js from PLATE.HULL/ARMOUR/
+     PANEL/MECH, so the selector below is authored data, not a texture lookup —
+     which is why the boundary between two materials always falls on a part
+     boundary and never mid-plate. */
+  float fv = uVariant;
+#ifdef VS_ATTRIBS
+  fv = uVariant + vAttr.z;   // offset, not replacement — see the team note
+#endif
+  // Selected with steps rather than a dynamic index: HLSL codegen warns on
+  // dynamically indexed vectors and the branchless form is free anyway.
+  float si = mod( floor( fv ), 4.0 );
+  vec4 sel = vec4( step( si, 0.5 ),
+                   step( 0.5, si ) * step( si, 1.5 ),
+                   step( 1.5, si ) * step( si, 2.5 ),
+                   step( 2.5, si ) );
+
+  /* The macro layer only covers where it stamps, so on its own the four
+     materials would differ only inside a hatch or a sub-panel and the metres of
+     plating between them would stay one grey — which is what the round-1
+     critique measured. This is the same four materials as a tone on the plate
+     itself: bone superstructure, slate hull, dark matte belt armour, near-black
+     machinery with bare alloy under the wear. Applied before the macro mixes
+     over it, so the stamps land on top of a surface that already agrees with
+     them. */
+  vec4 matTone = uMacroTone * sel;   // not "tone" — that name is taken further down
+  albedo *= mix( vec3( 1.0 ), matTone.rgb, 0.65 );
+  rough = clamp( rough + matTone.w, 0.0, 1.0 );
+  metal = clamp( metal + dot( uMacroMetal, sel ), 0.0, 1.0 );
+
 #ifdef VS_MACRO
   {
-    float fv = uVariant;
-  #ifdef VS_ATTRIBS
-    fv = uVariant + vAttr.z;   // offset, not replacement — see the team note
-  #endif
-    // Selected with steps rather than a dynamic index: HLSL codegen warns on
-    // dynamically indexed vectors and the branchless form is free anyway.
-    float si = mod( floor( fv ), 4.0 );
-    vec4 sel = vec4( step( si, 0.5 ),
-                     step( 0.5, si ) * step( si, 1.5 ),
-                     step( 1.5, si ) * step( si, 2.5 ),
-                     step( 2.5, si ) );
     float ml = dot( uMacroSlots, sel );
 
     vec4 mA = vsTri( uMacroMap, P, W, uMacroTiling, ml );
@@ -324,9 +745,12 @@ const HULL_BODY = /* glsl */`
     nZ = vec3( nZ.xy * uNormalStrength + GN.xy, abs( nZ.z ) * GN.z );
     vec3 macroN = normalize( nX.zyx * W.x + nY.yzx * W.y + nZ.xyz * W.z );
 
+    /* The macro stamps (hatches, window rows, sub-panels) now modulate the
+       yard's surface instead of replacing it, so a stamp keeps its shape
+       without dropping the atlas's own grey into the middle of a hull. */
     float cov = clamp( mA.a, 0.0, 1.0 );
-    albedo = mix( albedo, mA.rgb, cov );
-    rough = mix( rough, mO.g, cov );
+    albedo = mix( albedo, albedo * clamp( mA.rgb / max( aAvg, vec3( 0.02 ) ), 0.25, 2.2 ), cov * 0.85 );
+    rough = mix( rough, mO.g, cov * 0.6 );
     metal = mix( metal, mO.b, cov );
     ao = min( ao, mix( 1.0, mO.r, cov ) );
     objN = normalize( mix( objN, macroN, cov ) );
@@ -339,6 +763,21 @@ const HULL_BODY = /* glsl */`
   #endif
   }
 #endif
+
+  /* Per-vertex wear, written by greeble.js::applyWear around thruster mouths,
+     along the leading edge and out at the extremities. It reached nothing until
+     now — the attribute was never declared — which is the other half of the
+     round-1 "no wear" finding. Shaped rather than used raw: the field carries a
+     ~0.1 noise floor across the whole hull and taking that literally sands the
+     entire ship evenly, which is the opposite of what wear is for. */
+  float wear = 0.0;
+#ifdef VS_ATTRIBS
+  wear = smoothstep( 0.10, 0.85, clamp( vPaint.y, 0.0, 1.0 ) );
+#endif
+  paintCover *= 1.0 - wear * 0.85;
+  albedo *= 1.0 + wear * 0.26;      // scoured back to the brighter alloy beneath
+  rough = clamp( rough + wear * 0.13, 0.0, 1.0 );
+  metal = clamp( metal + wear * 0.34, 0.0, 1.0 );
 
   /* Specular anti-aliasing. Mip-filtered normals flatten out with distance,
      which under-roughens the surface and makes a fleet of distant hulls
@@ -376,9 +815,22 @@ const HULL_BODY = /* glsl */`
   albedo *= mix( vec3( 1.0 ), vColor, 0.10 );
 #endif
 
+  /* The hand-placed livery regions. aTeamMask has been written by every hull
+     builder in ships/ since the fleet was authored and was reaching nothing,
+     because this material declared the attribute next to it under a different
+     name. It is a *paint* mask and is kept well away from team above; routing
+     it into the team index instead would have painted every marked region on a
+     player hull in enemy amber, which is the one failure the livery may not
+     have. */
+  float blazon = 0.0;
+#ifdef VS_ATTRIBS
+  blazon = clamp( vPaint.x, 0.0, 1.0 );
+#endif
+
   float runLight = 0.0;
   float accent = 0.0;
-  float livery = vsLivery( P, GN, accent, runLight );
+  float fieldM = 0.0;
+  float livery = vsLivery( P, GN, blazon, hostile, accent, fieldM, runLight );
 
   /* Erode the paint edges. Multiplying a soft-edged mask by noise and
      re-thresholding leaves the middle of a band solid and chews the boundary,
@@ -387,8 +839,9 @@ const HULL_BODY = /* glsl */`
      its coat, so the plate layer's own coverage gates the livery. */
   float chip = vsNoise3( P * uBaseTiling * 22.0 ) * 0.55 + vsNoise3( P * uBaseTiling * 64.0 ) * 0.45;
   float coat = mix( 0.55, 1.0, smoothstep( 0.05, 0.45, paintCover ) );
-  livery = smoothstep( 0.40, 0.58, livery * ( 0.90 + 0.24 * chip ) ) * coat;
-  accent = smoothstep( 0.40, 0.58, accent * ( 0.90 + 0.24 * chip ) ) * coat;
+  livery = smoothstep( 0.40, 0.58, livery * ( 0.90 + mix( 0.12, 0.30, hostile ) * chip ) ) * coat;
+  accent = smoothstep( 0.40, 0.58, accent * ( 0.90 + mix( 0.12, 0.30, hostile ) * chip ) ) * coat;
+  accent = max( accent, smoothstep( 0.40, 0.58, fieldM * ( 0.90 + 0.10 * chip ) ) * coat * 0.42 );
 
   /* The atlas accent mask adds close-range pinstripes on top; it is detail, so
      it is allowed to disappear into the mip chain with everything else. */
@@ -430,19 +883,113 @@ const HULL_BODY = /* glsl */`
 
   /* Damage: scorch, exposed hot metal, flickering cracks. */
   if ( dmg > 0.002 ) {
+    /* R11 fix 3: damage stages. Hull lamps (windows and running lights)
+       start to flicker past 32% damage and go out cell by cell after it:
+       about half out at half hull (R12), nine in ten at 20%. */
+    float cellM = 8.0;
+#ifdef VS_ATTRIBS
+    int hitRow = int( vHitRow + 0.5 );
+    float hullLen = texelFetch( uHitTex, ivec2( 8, hitRow ), 0 ).x;
+    cellM = max( hullLen * 0.03, 1.0 );
+#endif
+    vec3 lampC = floor( P / cellM );
+    float lampH = fract( sin( dot( lampC, vec3( 12.9898, 78.233, 37.719 ) ) ) * 43758.5453 );
+    float lampOut = clamp( ( dmg - 0.30 ) * 2.4, 0.0, 0.92 ); // R12: half out at 50%
+    float lampFl = 0.5 + 0.5 * sin( uTime * ( 6.0 + lampH * 14.0 ) + lampH * 40.0 );
+    vsEmissive *= step( lampOut, lampH ) * mix( 1.0, step( 0.35, lampFl ) * ( 0.6 + 0.4 * lampFl ), smoothstep( 0.32, 0.40, dmg ) );
+    float breach = 0.0;
+    float rim = 0.0;
     float dn = vsNoise3( P * ( uBaseTiling * 1.6 ) + 11.3 );
     float dn2 = vsNoise3( P * ( uBaseTiling * 5.5 ) - 3.1 );
     float field = dn * 0.72 + dn2 * 0.28;
-    float burn = smoothstep( 1.02 - dmg * 1.25, 0.72 - dmg * 1.25, field );
-    float core = smoothstep( 0.86 - dmg * 1.25, 0.46 - dmg * 1.25, field );
-    albedo = mix( albedo, vec3( 0.030, 0.026, 0.024 ), burn );
+    /* Burned area must GROW with damage. It used to be
+       smoothstep( 1.02 - dmg * 1.25, 0.72 - dmg * 1.25, field ): reversed
+       edges, so it burned wherever field < 0.72 - 1.25 * dmg, a threshold
+       that FALLS as damage rises. vsNoise3 is value noise in [0, 1], so past
+       about 58% damage that threshold went below zero and the scorch vanished
+       entirely - heavily damaged ships looked pristine, and lightly damaged
+       ones carried the most hot emissive. That inversion, not the colour
+       alone, is what put a lava pattern on a lightly hit friendly frigate in
+       critic round 3. Now the burned share of the hull tracks the damage
+       fraction, and the albedo never goes fully black, so even a dying hull
+       keeps a readable form. */
+    float burn = 1.0 - smoothstep( dmg * 1.05 - 0.12, dmg * 1.05 + 0.04, field );
+    float heat = 0.5;
+    float wreck = 0.0;
+#ifdef VS_ATTRIBS
+    /* R6: scorch only around the hull's own recorded hits. Each hit burns a
+       zone whose radius grows with the damage fraction, and the noise field
+       above bends its edge so a zone reads as a burn, not a circle. Eight
+       distance tests and nine texel fetches; LOD3 is the unlit impostor and
+       never gets here. heat is how recently the zone was hit: cracks are
+       white-hot for the first few seconds and then cool to a dull red. */
+    /* Zones widen in a step at half hull (R11 fix 3), not only smoothly. */
+    float rad = max( hullLen * ( 0.05 + 0.07 * dmg + 0.07 * smoothstep( 0.36, 0.52, dmg ) ), 1e-3 );
+    /* Breaches: past about 65% damage the three oldest zones (the ones the
+       FX burn and vent from, fx/damage.js) open into dark holes with a
+       glowing rim, ragged by the same noise as the scorch edge. */
+    float brk = smoothstep( 0.62, 0.76, dmg );
+    float edge = ( field - 0.5 ) * rad * 1.1;
+    burn = 0.0;
+    heat = 0.0;
+    for ( int i = 0; i < 8; i++ ) {
+      vec4 h = texelFetch( uHitTex, ivec2( i, hitRow ), 0 );
+      float hd = distance( P, h.xyz );
+      float s = 1.0 - smoothstep( rad * 0.45, rad, hd + edge );
+      if ( i < 3 && brk > 0.0 ) {
+        float br = rad * 0.36 * brk;
+        float bd = hd + edge * 0.3;
+        breach = max( breach, 1.0 - smoothstep( br * 0.7, br * 0.9, bd ) );
+        rim = max( rim, smoothstep( br * 0.55, br * 0.9, bd ) * ( 1.0 - smoothstep( br * 0.95, br * 1.45, bd ) ) );
+      }
+      burn = max( burn, s );
+      heat = max( heat, s * exp( -max( uTime - h.w, 0.0 ) * 0.6 ) );
+    }
+    /* A wreck is charred all over and long cold: its own darker char, not the
+       hot-crack look of a hull still in the fight. */
+    wreck = ( vCut.y > vCut.x || dmg > 0.995 ) ? 1.0 : 0.0;
+    burn = mix( burn, 0.72 + 0.28 * smoothstep( 0.3, 0.7, field ), wreck );
+    heat *= 1.0 - wreck;
+    breach *= 1.0 - wreck;
+    rim *= 1.0 - wreck;
+#endif
+    albedo = mix( albedo, mix( vec3( 0.030, 0.026, 0.024 ), vec3( 0.011, 0.010, 0.009 ), wreck ), burn * 0.9 );
     rough = mix( rough, 0.93, burn );
     metal = mix( metal, 0.28, burn );
     ao = mix( ao, ao * 0.65, burn );
     objN = normalize( mix( objN, GN, burn * 0.45 ) );
+    /* Soot past half hull: broad patches of the whole hull go dull and dark,
+       so a badly hurt ship reads darker even where its hits face away. */
+    float soot = smoothstep( 0.38, 0.85, dmg ) * ( 0.2 + 0.45 * smoothstep( 0.42, 0.68, field ) ) * ( 1.0 - wreck );
+    albedo *= 1.0 - soot;
+    rough = mix( rough, 0.9, soot );
+    albedo = mix( albedo, vec3( 0.002 ), breach );
+    rough = mix( rough, 1.0, breach );
+    metal = mix( metal, 0.0, breach );
+    ao = mix( ao, 0.05, breach );
     float flicker = 0.62 + 0.38 * sin( uTime * 7.3 + field * 41.0 )
       * ( 0.5 + 0.5 * sin( uTime * 2.1 + field * 13.0 ) );
-    vsEmissive += uHotColour * core * dmg * flicker * 2.4;
+    /* Hot metal shows only along thin cracks inside the burned area, never
+       as a filled region. This used to drive the emissive from a broad
+       smoothstep over the same field as the scorch, at 2.4x, so a damaged
+       hull glowed orange over about a third of its surface: the enemy's hue
+       family on a friendly ship, reading as paint rather than damage
+       (critic round 3, first-contact close frame). A crack here is the zero
+       crossing of a second, finer noise, kept only where the scorch is
+       already heavy, and its colour is pushed toward white-hot so the read
+       is heat rather than team. */
+    float cn = vsNoise3( P * ( uBaseTiling * 9.0 ) + 5.7 );
+    float crack = 1.0 - smoothstep( 0.0, 0.022, abs( cn - 0.5 ) );
+    float hot = crack * smoothstep( 0.6, 0.95, burn );
+    /* Fresh: white-hot. Cooled: a dull dark red, about a fifth as bright.
+       A wreck keeps only the faintest embers. */
+    vec3 hotCol = mix( vec3( 0.42, 0.05, 0.015 ), vec3( 1.0, 0.88, 0.72 ), heat );
+    float hotGain = mix( 0.35, 2.4, heat ) * ( 1.0 - 0.8 * wreck );
+    vsEmissive += hotCol * hot * max( dmg, 0.35 ) * flicker * hotGain;
+    /* Breach: a glowing rim round a void with a dull fire deep inside. */
+    vec3 rimCol = mix( vec3( 1.0, 0.30, 0.06 ), vec3( 1.0, 0.58, 0.26 ), rim * flicker );
+    vsEmissive += rimCol * rim * 1.6 * ( 0.75 + 0.25 * flicker );
+    vsEmissive += vec3( 0.55, 0.07, 0.02 ) * breach * 0.35 * flicker;
   }
 
   vsAlbedo = albedo;
@@ -541,7 +1088,6 @@ const HULL_BOUNCE = /* glsl */`
   vec3 wN = normalize( ( vec4( nonPerturbedNormal, 0.0 ) * viewMatrix ).xyz );
   vec3 wNp = normalize( ( vec4( normal, 0.0 ) * viewMatrix ).xyz );
   vec3 wV = normalize( ( vec4( vViewPosition, 0.0 ) * viewMatrix ).xyz );
-  float fres = pow( 1.0 - saturate( dot( wNp, wV ) ), 4.2 );
   vec3 f0 = mix( vec3( 0.045 ), diffuseColor.rgb, vsMetal );
   float gloss = 1.0 - vsRough;
 
@@ -562,7 +1108,63 @@ const HULL_BOUNCE = /* glsl */`
   outgoingLight += hemiN * diffuseColor.rgb * uBounce.x
     * ( 0.35 + 0.65 * skyN ) * ( 1.0 - vsMetal * 0.85 ) * vsAO;
   outgoingLight += hemiR * f0 * uBounce.x * gloss * gloss * vsAO;
-  outgoingLight += hemiN * f0 * uBounce.y * fres * mix( 1.0, 0.4, vsRough ) * vsAO;
+
+  /* Cold rim (§3.2, "cold rim/fill bounce from the nebula"). A thin edge
+     line on the shadow side, which is what separates a dark gunmetal hull from
+     a dark rock behind it and stops a hull in front of the planet reading as a
+     flat black sticker.
+
+     Three factors, and each one is there to keep it an edge rather than a
+     glow:
+       edge   - Fresnel on the *unperturbed* normal, cubed, so it fires where
+                the hull turns away from the lens and is nothing on a face
+                square to it. Hulls are faceted: a fifth power found almost no
+                face oblique enough to light, and drew nothing. The
+                panel-mapped normal would put a speckle of rim on every plate
+                seam across the face of the hull.
+       dark   - zero on any face the key reaches, so the lit side and the
+                terminator are exactly what they were. It is not a fill: it
+                cannot lift the shadow side, only outline it.
+       facing - weighted toward the counter-key, where a nebula bounce would
+                actually come from, but never to zero, so the edge survives
+                when the camera itself sits on the counter-key side.
+     Cold and neutral by construction (RIM_COLD), and added after the chroma
+     pass so team paint does not tint it. */
+  {
+    float eV = 1.0 - saturate( dot( wN, wV ) );
+    float edge = eV * eV * eV;
+    float nk = dot( wN, uKeyDir );
+    float dark = 1.0 - smoothstep( -0.04, 0.22, nk );
+    float facing = 0.45 + 0.55 * saturate( - nk );
+    outgoingLight += uRimCold * ( uBounce.y * ${RIM_GAIN.toFixed(3)} )
+      * edge * dark * facing * mix( 1.0, 0.6, vsRough ) * vsAO;
+  }
+
+  /* Sky floor (R8 fix 2). The terms above are all directional and none of them
+     reaches the broad middle of the shadow side, so at engagement close that
+     side measured 0.02 of the lit value: a black cut-out with no planes in it,
+     which reads as silhouette, not as form, and gives a close frame no depth.
+
+     This is a floor, not an ambient, and three things keep it one:
+       gate    - zero AT the terminator and on every face the key reaches,
+                 rising to full only past it. The hard terminator is untouched
+                 and a dark core-shadow band survives just beyond it, which is
+                 what keeps the shadow side dramatic rather than flat.
+       planes  - weighted by the panel-mapped normal against the counter-key
+                 sky, so each plate in shadow takes a slightly different value
+                 and the plating and its tilt still read there.
+       seams   - multiplied by albedo (which carries the seam grime) and by AO,
+                 so the seams and the recesses stay darker than the plates.
+     The colour is the sky the haze is built from, pulled cold (ENV hands it
+     over at unit luminance); the strength is a contract weight on the key. */
+  {
+    float nkG = dot( wN, uKeyDir );
+    float gate = 1.0 - smoothstep( -0.30, 0.0, nkG );
+    vec3 skyDir = normalize( vec3( 0.0, 0.55, 0.0 ) - uKeyDir );
+    float planes = 0.40 + 0.60 * saturate( dot( wNp, skyDir ) );
+    vec3 base = diffuseColor.rgb * ( 1.0 - 0.45 * vsMetal ) + f0 * 0.35 * vsMetal;
+    outgoingLight += uSkyFloor.rgb * uSkyFloor.w * base * gate * planes * vsAO;
+  }
 }
 `;
 
@@ -572,10 +1174,33 @@ varying vec3 vObjPos;
 varying vec3 vObjNormal;
 flat varying mat3 vObjToView;
 #ifdef VS_ATTRIBS
+  /* Two separate groups, and the split is load-bearing.
+
+     aDamage and aTeam are *per-instance* channels SIM may supply on a batch
+     to shift a subset of it off the material's own team and damage uniforms.
+     Nothing writes them today and an absent attribute reads 0, which is the
+     documented no-op.
+
+     aTeamMask, aVariant and aWear are *per-vertex* and every part built by
+     greeble.js writes all three. aVariant picks the hull material; aTeamMask
+     is the hand-placed livery region; aWear is scouring near thrusters and
+     leading edges. aTeamMask is emphatically not a team index — see vsLivery. */
   attribute float aDamage;
   attribute float aTeam;
   attribute float aVariant;
+  attribute float aTeamMask;
+  attribute float aWear;
+  /* Wreck sections (R5). x..y is the slice of the hull's own keel (object z)
+     this instance keeps; (0, 0), which is what an absent attribute reads, keeps
+     all of it. One dead capital is drawn as 2-4 instances of its own class,
+     each cut to a section, so a wreck costs no extra draw call. */
+  attribute vec2 aCut;
+  varying vec3 vCut;
+  /* Row of the shared hit texture this instance reads, see uHitTex. */
+  attribute float aHitRow;
+  flat varying float vHitRow;
   varying vec3 vAttr;
+  varying vec2 vPaint;
 #endif
 `;
 
@@ -593,6 +1218,9 @@ vObjNormal = objectNormal;
 }
 #ifdef VS_ATTRIBS
   vAttr = vec3( aDamage, aTeam, aVariant );
+  vPaint = vec2( aTeamMask, aWear );
+  vCut = vec3( aCut, position.z );
+  vHitRow = aHitRow;
 #endif
 `;
 
@@ -619,6 +1247,7 @@ const CHROMA = { direct: 0.86, indirect: 0.26 };
    held on both the brightest and the darkest seed. */
 const TERMINATOR = { gamma: 2.0, pivot: 0.62 };
 const termGain = () => Math.pow(TERMINATOR.pivot, 1 - TERMINATOR.gamma);
+const TERMINATOR_SHARED = { value: new THREE.Vector2(TERMINATOR.gamma, termGain()) };
 
 let store = null;
 
@@ -630,6 +1259,21 @@ function hullUniforms(team, family, opts) {
 
   const ps = plateSize(opts.length, tune);
   const baseTiling = 1 / (ATLAS.platesPerRegion * ps);
+
+  /* `slots` is indexed by `PLATE.*`; the shader indexes by the rotated slot
+     index `si = (uVariant + aVariant) mod 4`. Those coincide only while
+     uVariant is 0, which is the default below, and a caller that rotates the
+     whole ship's palette with `opts.variant` gets the tone table rotated with
+     the layer table because both are read through the same selector. */
+  const tone = new THREE.Matrix4();
+  const metalD = new THREE.Vector4();
+  const te = [];
+  for (let i = 0; i < 4; i++) {
+    const t = MACRO_TONE[slots[i]] || MACRO_TONE[0];
+    te.push(t.tint[0], t.tint[1], t.tint[2], t.rough);   // column i
+    metalD.setComponent(i, t.metal);
+  }
+  tone.fromArray(te);   // Matrix4.fromArray is column-major, which is the layout above
 
   const a = TEAM_COLORS[0];
   const b = TEAM_COLORS[1];
@@ -645,7 +1289,18 @@ function hullUniforms(team, family, opts) {
     uMacroEmis: { value: atlas.macroEmissiveMap },
     uPlateLayer: { value: familyLayer(family) },
     uMacroSlots: { value: new THREE.Vector4(slots[0], slots[1], slots[2], slots[3]) },
+    uMacroTone: { value: tone },
+    uMacroMetal: { value: metalD },
     uPlateTexels: { value: atlas.size },
+    // One livery cell per plate. Same pitch as the plating, by construction.
+    uPlateCell: { value: 1 / ps },
+    // (band jitter in girth units, fraction of plates left unpainted)
+    // y = 1: every plate keeps its paint. 0.86 left one plate in seven bare,
+    // and on a painted field that patchwork was the R6 "blotch camouflage".
+    uPlateJit: { value: new THREE.Vector2(0.075, 1.0) },
+    uHullA: { value: a.hull.clone() },
+    uHullB: { value: b.hull.clone() },
+    uPanel: { value: panelSize(opts.length, tune) },
     uBaseTiling: { value: baseTiling },
     uMacroTiling: { value: baseTiling / ATLAS.macroSpan },
     uBlendSharp: { value: 5.0 },
@@ -659,7 +1314,15 @@ function hullUniforms(team, family, opts) {
     uWindowColour: { value: new THREE.Color(0xffd9ac) },
     uHotColour: { value: new THREE.Color(0xff5a1e) },
     uTeam: { value: team === 1 ? 1 : 0 },
-    uVariant: { value: opts.variant === undefined ? (team * 2 + 1) : opts.variant },
+    /* Zero by default, so `si` is exactly the `PLATE.*` value the geometry
+       asked for and every family's slot table can be read in plain semantic
+       order. It used to default to `team * 2 + 1`, which rotated the mapping
+       per faction: the enemy's belt armour was drawn with the layer meant for
+       superstructure skin and vice versa. Faction reads off trim colour, engine
+       colour and running lights — never off which macro layer the armour belt
+       happens to be using — so there was nothing to buy with the rotation and
+       four correct material assignments to lose. */
+    uVariant: { value: opts.variant === undefined ? 0 : opts.variant },
     uTrimStrength: { value: (opts.trim === undefined ? 1 : opts.trim) * tune.trim },
     uLiveryGain: { value: opts.livery === undefined ? 1 : opts.livery },
     uEmissiveGain: { value: opts.emissive === undefined ? tune.emissive : opts.emissive },
@@ -669,6 +1332,7 @@ function hullUniforms(team, family, opts) {
     uAoStrength: { value: opts.ao === undefined ? 1.0 : opts.ao },
     uDamage: { value: opts.damage || 0 },
     uTime: SHARED_TIME,
+    uHitTex: HIT_TEX,
     uSpine: { value: new THREE.Vector2(liv.spine[0], liv.spine[1]) },
     uFlank: { value: new THREE.Vector3(liv.flank[0], liv.flank[1], liv.flank[2]) },
     uShoulder: { value: new THREE.Vector3(liv.shoulder[0], liv.shoulder[1], liv.shoulder[2]) },
@@ -678,9 +1342,19 @@ function hullUniforms(team, family, opts) {
     uBounce: { value: new THREE.Vector2(NEBULA.ambient, NEBULA.rim) },
     uChroma: { value: new THREE.Vector2(CHROMA.direct, CHROMA.indirect) },
     uTerm: { value: new THREE.Vector2(TERMINATOR.gamma, termGain()) },
+    uKeyDir: { value: NEBULA.keyDir.clone() },
+    uRimCold: { value: RIM_COLD.clone() },
+    uSkyFloor: { value: new THREE.Vector4(NEBULA.floorColour.r, NEBULA.floorColour.g, NEBULA.floorColour.b, NEBULA.floor) },
     uModelScale: { value: opts.modelScale === undefined ? 1 : opts.modelScale },
   };
 }
+
+/* Wreck-section clip, see aCut. Runs before any shading work. */
+const HULL_CUT = /* glsl */`
+#ifdef VS_ATTRIBS
+  if ( vCut.y > vCut.x && ( vCut.z < vCut.x || vCut.z > vCut.y ) ) discard;
+#endif
+`;
 
 function patchHull(material, uniforms, flags) {
   material.onBeforeCompile = (shader) => {
@@ -698,14 +1372,15 @@ function patchHull(material, uniforms, flags) {
         '#include <lights_physical_pars_fragment>',
         `#include <lights_physical_pars_fragment>\n${HULL_TERMINATOR}`,
       )
-      .replace('#include <map_fragment>', HULL_BODY)
+      .replace('#include <map_fragment>', HULL_CUT + HULL_BODY)
       .replace('#include <color_fragment>', '')
       .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = vsRough;')
       .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = vsMetal;')
       .replace('#include <normal_fragment_maps>', 'normal = normalize( vObjToView * vsObjN );')
       .replace('#include <emissivemap_fragment>', 'totalEmissiveRadiance += vsEmissive;')
       .replace('#include <aomap_fragment>', HULL_AO)
-      .replace('#include <opaque_fragment>', `${HULL_BOUNCE}\n#include <opaque_fragment>`);
+      .replace('#include <opaque_fragment>', `${HULL_BOUNCE}\n#include <opaque_fragment>`)
+      .replace('#include <fog_pars_fragment>', `${HULL_HAZE_DEFINE}#include <fog_pars_fragment>`);
 
     material.userData.shader = shader;
   };
@@ -805,9 +1480,18 @@ export function getHullMaterial(team, family, opts) {
 }
 
 /**
- * Instanced twin of `getHullMaterial`. Reads `instanceColor` plus the optional
- * per-instance float attributes `aDamage`, `aTeam` and `aVariant`; all three
- * default to 0 when the geometry does not supply them.
+ * Instanced twin of `getHullMaterial`. Reads `instanceColor` plus five float
+ * attributes, all of which default to 0 when the geometry does not supply them.
+ *
+ * Per-instance, supplied by SIM on a mixed batch:
+ *   `aDamage`   additional damage on top of `opts.damage`
+ *   `aTeam`     shifts this instance off the material's own team
+ *
+ * Per-vertex, written by every part greeble.js builds:
+ *   `aVariant`  `PLATE.HULL|ARMOUR|PANEL|MECH` — picks the hull material
+ *   `aTeamMask` hand-placed livery region (`paintTeamMask`). A paint mask, not
+ *               a team index: it never touches faction colour selection.
+ *   `aWear`     scouring near thrusters, leading edges and extremities
  */
 export function getInstancedHullMaterial(team, family, opts) {
   if (!store) throw new Error('materials: initMaterials() must run first');
@@ -1207,6 +1891,7 @@ export function getGlassMaterial(team) {
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGlassObj = position;');
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>\n${GLASS_PARS}`)
+      .replace('#include <fog_pars_fragment>', `${HULL_HAZE_DEFINE}#include <fog_pars_fragment>`)
       .replace('#include <opaque_fragment>', /* glsl */`
 {
   vec3 wN = normalize( ( vec4( normal, 0.0 ) * viewMatrix ).xyz );
@@ -1263,6 +1948,50 @@ export function setNebulaBounce(keyColour, fillColour, ambient, rim) {
 }
 
 /**
+ * The hull's shadow-side sky floor (R8 fix 2). ENV calls this with the baked
+ * sky's haze hue, already pulled cold and normalised to unit luminance, and a
+ * strength that is a fraction of the key.
+ * @param {THREE.Color} [colour] unit-luminance fill colour
+ * @param {number} [strength] radiance multiplier
+ */
+export function setHullSkyFloor(colour, strength) {
+  if (colour) NEBULA.floorColour.copy(colour);
+  if (strength !== undefined) NEBULA.floor = strength;
+  if (!store) return;
+  for (const mat of store.materials) {
+    const u = mat.userData.uniforms;
+    if (u && u.uSkyFloor) u.uSkyFloor.value.set(NEBULA.floorColour.r, NEBULA.floorColour.g, NEBULA.floorColour.b, NEBULA.floor);
+  }
+}
+
+/**
+ * Tell the hull shader where the key star is, so the cold rim lands on the
+ * side the key does not reach. ENV calls this with the same vector it aims the
+ * key light down; there is one key and everything reads it.
+ * @param {THREE.Vector3} dir world direction from the battle toward the star
+ */
+export function setHullKeyDirection(dir) {
+  if (!dir) return;
+  NEBULA.keyDir.copy(dir).normalize();
+  if (!store) return;
+  for (const mat of store.materials) {
+    const u = mat.userData.uniforms;
+    if (u && u.uKeyDir) u.uKeyDir.value.copy(NEBULA.keyDir);
+  }
+}
+
+/**
+ * The live terminator shaping as a shared uniform, (gamma, gain), for
+ * materials outside this module that sit under the same key — the asteroid
+ * field. Handing out the object rather than a copy is the point: a
+ * `setHullTerminator()` retune reaches the rocks in the same call.
+ * @returns {{ value: THREE.Vector2 }}
+ */
+export function getTerminatorUniform() {
+  return TERMINATOR_SHARED;
+}
+
+/**
  * How strongly hulls reject the illuminant's colour. 0 is physically literal
  * and turns every ship the colour of the sky; 1 renders as though the key were
  * white. Live-tunable so the look can be judged against a screenshot.
@@ -1290,8 +2019,9 @@ export function setHullChroma(direct, indirect) {
 export function setHullTerminator(gamma, pivot) {
   if (gamma !== undefined) TERMINATOR.gamma = Math.max(1, Math.min(4, gamma));
   if (pivot !== undefined) TERMINATOR.pivot = Math.max(0.35, Math.min(0.95, pivot));
-  if (!store) return;
   const g = termGain();
+  TERMINATOR_SHARED.value.set(TERMINATOR.gamma, g);
+  if (!store) return;
   for (const mat of store.materials) {
     const u = mat.userData.uniforms;
     if (u && u.uTerm) u.uTerm.value.set(TERMINATOR.gamma, g);
