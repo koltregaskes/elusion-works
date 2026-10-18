@@ -18,7 +18,7 @@
 
    Every element stays under 0.3 of the hull (round 7 hullBudget). Cost is
    bounded three ways: only frigate-size hulls and up burn; at most
-   MAX_FULL of them, the nearest, draw full effects; the rest, and anything
+   MAX_FULL of them, by priority (R12), draw full effects; the rest, and anything
    past FULL_RANGE hull lengths, get the far version - one or two embers and
    the smoke - and past MAX_BURNING nothing at all. Flames, vents and sparks
    ride the shared flare, spark and ember fields; the smoke has its own
@@ -37,8 +37,11 @@ const MIN_LENGTH = 100;
 const STAGE1_HF = 0.66;
 /* At or below this hull fraction the ship is in the critical stage. */
 const STAGE2_HF = 0.34;
-/* Nearest burning hulls that draw the full set. */
+/* Burning hulls that draw the full set: the ones nearest the camera focus,
+   hulls under PRIORITY_HF first (R12 fix 1). */
 const MAX_FULL = 6;
+const PRIORITY_HF = 0.5;
+const byKey = (a, b) => a.key - b.key;
 /* Burning hulls drawn at all; the rest are skipped, farthest first. */
 const MAX_BURNING = 32;
 /* Beyond this many hull lengths a burning ship gets the far version. */
@@ -141,6 +144,15 @@ export class DamageFX {
     const list = this._list;
     list.length = 0;
     const now = ctx.now;
+    /* R12 fix 1: priority, not proximity. Round 11 gave the full set to the
+       nearest six burning hulls, which in a played fight were whichever
+       half-scratched frigates sat by the lens - and no played frame showed a
+       ship in trouble. The key is now distance to the camera's focus point
+       (where the player is looking), with hulls under half weighted to the
+       front, and a hull still has to be inside FULL_RANGE of the lens to draw
+       the full set. Same caps, same cost. */
+    const rig = ctx.focusRig;
+    const focus = (rig && rig.focusPoint) || cam;
 
     for (const e of this.entities.values()) {
       if (!e || e.alive === false || !e.def || !(e.maxHull > 0)) continue;
@@ -150,9 +162,11 @@ export class DamageFX {
       const p = e.object3D ? e.object3D.position : e.position;
       if (!p) continue;
       const d = p.distanceTo(cam);
-      list.push({ e, hf, d });
+      const inRange = d < FULL_RANGE * e.def.length;
+      const key = (inRange ? 0 : 1e9) + p.distanceTo(focus) * (hf < PRIORITY_HF ? 0.3 : 1);
+      list.push({ e, hf, d, key });
     }
-    list.sort((a, b) => a.d - b.d);
+    list.sort(byKey);
     if (list.length > MAX_BURNING) list.length = MAX_BURNING;
 
     // Forget ships that have healed, died or left.
@@ -305,17 +319,21 @@ export class DamageFX {
           f.flare.spawn(si.p.x, si.p.y, si.p.z, vx, vy, vz,
             rng.range(0.3, 0.5), 0, L * (crit ? 0.06 : 0.05), L * 0.025, c, rng.range(2.0, 2.8), 0, 0, 0);
         }
-        const smokeSize = Math.min(cap, L * (0.22 + 0.06 * k2));
-        if (stage > s.stage) s.smoke += stage === 2 ? 8 : 5;
-        s.smoke += (2.4 + 2 * k1 + 3 * k2) * q * dt;
+        /* R12 fix 1: at half hull this plume is what says "hurt" at 4 km, and
+           round 11 drew it as a grey wisp a stranger missed. Denser, longer
+           lived and kept light (lit smoke reads on the void), so a 50% hull
+           trails a column at fleet range; still under 0.3 of the hull a puff. */
+        const smokeSize = Math.min(cap, L * (0.27 + 0.03 * k2));
+        if (stage > s.stage) s.smoke += stage === 2 ? 10 : 8;
+        s.smoke += (3.6 + 3.4 * k1 + 3 * k2) * q * dt;
         while (s.smoke >= 1) {
           s.smoke -= 1;
           const si = this._sites[(rng.next() * Math.min(nEmber, got)) | 0];
           const out = L * rng.range(0.03, 0.05);
-          c.copy(SMOKE).lerp(SMOKE_DARK, rng.next() * 0.4);
+          c.copy(SMOKE).lerp(SMOKE_DARK, rng.next() * (crit ? 0.4 : 0.2));
           f.dmgSmoke.spawn(si.p.x, si.p.y, si.p.z,
             vx * 0.2 + si.n.x * out, vy * 0.2 + si.n.y * out, vz * 0.2 + si.n.z * out,
-            rng.range(5.5, 8.5), 0.03, smokeSize * 0.3, smokeSize,
+            rng.range(7.0, 10.5), 0.03, smokeSize * 0.3, smokeSize,
             c, rng.range(0.8, 1.0), 0, rng.gaussian(0, 0.3), 0);
         }
       }

@@ -344,7 +344,7 @@ export class HUD {
 
     this._buildDom();
     if (this._obDone) this.onboard.classList.add('is-gone');
-    this.markers = new WorldMarkers({ root: this.layerHost, ctx: this.ctx });
+    this.markers = new WorldMarkers({ root: this.layerHost, ctx: this.ctx, rig: this.rig });
     // The capture boundary is a HUD mark under the markers, not world geometry.
     this.seams = new SeamRing({ root: this.layerHost, ctx: this.ctx, camera: this.camera });
     this.roster = new SelectionRoster({ root: this.rosterHost, ctx: this.ctx });

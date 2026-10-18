@@ -1029,8 +1029,10 @@ export class EngineFX {
          third one bell (two near the end) sputters. Read off the hull
          fraction, never written back. */
       const hurt = e.maxHull > 0 ? 1 - Math.max(0, e.hull || 0) / e.maxHull : 0;
-      const lampOut = hurt > 0.4 ? Math.min(0.9, (hurt - 0.4) * 2.2) : 0;
-      const lampFlick = hurt > 0.42;
+      /* R12: earlier and harder, so half hull reads as failing lights at
+         fleet range (about two in five out at 50%), not as a healthy ship. */
+      const lampOut = hurt > 0.32 ? Math.min(0.9, (hurt - 0.32) * 2.3) : 0;
+      const lampFlick = hurt > 0.36;
       const now = ctx.now;
 
       if (entry.lights && ln < lcap && dist2 < LIGHT_RANGE * LIGHT_RANGE) {

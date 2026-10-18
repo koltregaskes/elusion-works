@@ -884,8 +884,8 @@ const HULL_BODY = /* glsl */`
   /* Damage: scorch, exposed hot metal, flickering cracks. */
   if ( dmg > 0.002 ) {
     /* R11 fix 3: damage stages. Hull lamps (windows and running lights)
-       start to flicker past 40% damage and go out cell by cell after it:
-       about a third out at half hull, nine in ten at 20%. */
+       start to flicker past 32% damage and go out cell by cell after it:
+       about half out at half hull (R12), nine in ten at 20%. */
     float cellM = 8.0;
 #ifdef VS_ATTRIBS
     int hitRow = int( vHitRow + 0.5 );
@@ -894,9 +894,9 @@ const HULL_BODY = /* glsl */`
 #endif
     vec3 lampC = floor( P / cellM );
     float lampH = fract( sin( dot( lampC, vec3( 12.9898, 78.233, 37.719 ) ) ) * 43758.5453 );
-    float lampOut = clamp( ( dmg - 0.36 ) * 2.4, 0.0, 0.92 );
+    float lampOut = clamp( ( dmg - 0.30 ) * 2.4, 0.0, 0.92 ); // R12: half out at 50%
     float lampFl = 0.5 + 0.5 * sin( uTime * ( 6.0 + lampH * 14.0 ) + lampH * 40.0 );
-    vsEmissive *= step( lampOut, lampH ) * mix( 1.0, step( 0.35, lampFl ) * ( 0.6 + 0.4 * lampFl ), smoothstep( 0.38, 0.46, dmg ) );
+    vsEmissive *= step( lampOut, lampH ) * mix( 1.0, step( 0.35, lampFl ) * ( 0.6 + 0.4 * lampFl ), smoothstep( 0.32, 0.40, dmg ) );
     float breach = 0.0;
     float rim = 0.0;
     float dn = vsNoise3( P * ( uBaseTiling * 1.6 ) + 11.3 );

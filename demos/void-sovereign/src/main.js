@@ -615,6 +615,9 @@ async function main() {
         }
         if (!M.cameraRig) M.cameraRig = makeFallbackCamera(engine);
         frameOpeningShot(M.world, M.cameraRig);
+        /* Damage FX hand their full set to hurt hulls near where the camera
+           is looking, not to the nearest six (R12 fix 1, fx/damage.js). */
+        if (M.fx && M.fx.ctx) M.fx.ctx.focusRig = M.cameraRig;
 
         const inputMod = await tryImport('./core/input.js', 'input');
         if (inputMod && inputMod.InputController) {

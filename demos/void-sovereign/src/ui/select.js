@@ -95,6 +95,33 @@ const CONTACT_CAND = 512;
 const CONTACT_REFRESH = 0.1;
 const CONTACT_DYING = 0.3;
 
+/* Hull state on contact marks (R12 fix 1, R2 "name the three nearest death").
+
+   Round 11 put diamonds and glyphs on every hull that mattered, and they said
+   *where* the fight was but not *who was dying*: a mark only changed below a
+   third of hull, and nothing at all separated 95% from 40%. So a damaged hull
+   that is engaged, or that sits where the camera is looking, now carries a
+   four-segment hairline bar under its mark, in its team colour (cyan ours,
+   amber theirs). It escalates twice, where the hull art does: a dim thin bar
+   while merely hurt, a full-strength larger one under half, and under 30% a
+   critical bar - ours turning red, the rule every other marker follows -
+   with a bright outline. The three lowest hulls under half pulse, so the
+   "three nearest death" read is a glance rather than a comparison.
+
+   Calm is the other half of the brief (ARCHITECTURE §3.8): a healthy hull
+   never draws one, an unengaged hurt hull away from the camera's interest
+   never draws one, and the pool is capped, lowest hull first. */
+const HBAR_SHOW = 0.8;
+/* Half, as a rounded readout shows it: a hull that has regenerated to 50.4%
+   still reads as half and still escalates. */
+const HBAR_HEAVY = 0.51;
+const HBAR_MAX = 48;
+const HBAR_WORST = 3;
+/* "Camera interest": within this share of the camera's focus distance of its
+   focus point, with a floor so a close-in camera still covers the brawl. */
+const HBAR_INTEREST_K = 0.75;
+const HBAR_INTEREST_MIN = 2500;
+
 /* One hostile mark grammar (critic round 3, fix 5).
 
    Round 3 found hostiles wearing two unexplained forms - the diamond above and
@@ -148,6 +175,11 @@ const ARROW_TURN = (Math.PI + Math.PI / 4).toFixed(4);
 /** Hoisted so the per-refresh sort does not allocate a closure. */
 function byWeight(a, b) {
   return b.w - a.w;
+}
+
+/** Lowest hull first, for the hull-bar cap and the worst-three pulse. */
+function byFrac(a, b) {
+  return a.frac - b.frac;
 }
 
 /** Which contact-mark pool a role draws from. Mass, not threat. */
@@ -608,8 +640,15 @@ export class SelectionRoster {
 /* ========================================================================== */
 
 export class WorldMarkers {
-  constructor({ root, ctx }) {
+  constructor({ root, ctx, rig }) {
     this.ctx = ctx;
+    /* The camera rig, when there is one, for its focus point: hull bars also
+       show on hurt hulls where the player is looking (see HBAR_*). */
+    this.rig = rig || null;
+    this.hullBars = [];
+    this._barReq = [];
+    this._barReqPool = [];
+    this._interest = new Set();
     this.brackets = [];
     this.glyphs = [];
     this.pips = [];
@@ -801,6 +840,96 @@ export class WorldMarkers {
       this.hostileGlyphs[i] = g;
     }
     return g;
+  }
+
+  /* A hull bar: a track and a fill scaled on X, the segment gaps drawn by the
+     stylesheet over both. Tiers are classes, so per frame only `transform`
+     on the root and on the fill are written. */
+  _hullBar(i) {
+    let h = this.hullBars[i];
+    if (!h) {
+      const el = document.createElement('div');
+      el.className = 'vsh-hbar';
+      const fill = document.createElement('i');
+      fill.className = 'vsh-hbar__f';
+      el.appendChild(fill);
+      this.contactHost.appendChild(el);
+      h = { el, fill, live: false, tier: '', enemy: null, worst: false, q: -1 };
+      this.hullBars[i] = h;
+    }
+    return h;
+  }
+
+  /* Queue a bar; `_drawHullBars` sorts the frame's requests lowest hull first
+     so the cap sheds the healthiest and the worst three can be singled out. */
+  _requestBar(e, frac, enemy, sx, sy, off) {
+    const n = this._barReq.length;
+    let r = this._barReqPool[n];
+    if (!r) {
+      r = { frac: 1, enemy: false, sx: 0, sy: 0, off: 0 };
+      this._barReqPool[n] = r;
+    }
+    r.frac = frac;
+    r.enemy = enemy;
+    r.sx = sx;
+    r.sy = sy;
+    r.off = off;
+    this._barReq.push(r);
+  }
+
+  /* Does this hull carry a bar? Damaged, and engaged or in camera interest. */
+  _wantsBar(e, frac) {
+    if (!(frac < HBAR_SHOW) || frac <= 0) return false;
+    return this._hits.has(e.id) || e.targetId >= 0 || this._targeted.has(e.id) || this._interest.has(e.id);
+  }
+
+  _drawHullBars() {
+    const req = this._barReq;
+    if (req.length > 1) req.sort(byFrac);
+    const n = Math.min(req.length, HBAR_MAX);
+    let worst = 0;
+    for (let i = 0; i < n; i++) {
+      const r = req[i];
+      const h = this._hullBar(i);
+      const crit = r.frac <= CONTACT_DYING;
+      const tier = crit ? 'crit' : r.frac < HBAR_HEAVY ? 'heavy' : 'hurt';
+      const isWorst = r.frac < HBAR_HEAVY && worst < HBAR_WORST;
+      if (isWorst) worst++;
+      if (tier !== h.tier) {
+        if (h.tier) h.el.classList.remove(`vsh-hbar--${h.tier}`);
+        h.el.classList.add(`vsh-hbar--${tier}`);
+        h.tier = tier;
+      }
+      if (r.enemy !== h.enemy) {
+        h.enemy = r.enemy;
+        h.el.classList.toggle('vsh-hbar--enemy', r.enemy);
+      }
+      if (isWorst !== h.worst) {
+        h.worst = isWorst;
+        h.el.classList.toggle('is-worst', isWorst);
+      }
+      if (!h.live) {
+        h.live = true;
+        h.el.classList.add('is-live');
+      }
+      h.el.style.transform =
+        `translate3d(${r.sx.toFixed(1)}px,${(r.sy + r.off).toFixed(1)}px,0)`;
+      /* Quantised to the pixel the fill can show, so a hull bleeding slowly
+         does not rewrite the fill every frame. */
+      const q = Math.max(0.04, Math.round(r.frac * 40) / 40);
+      if (q !== h.q) {
+        h.q = q;
+        h.fill.style.transform = `scaleX(${q.toFixed(3)})`;
+      }
+    }
+    for (let i = n; i < this.hullBars.length; i++) {
+      const h = this.hullBars[i];
+      if (h.live) {
+        h.live = false;
+        h.el.classList.remove('is-live');
+      }
+    }
+    req.length = 0;
   }
 
   /* A target lock is the same corner-tick language as a selection bracket,
@@ -1031,6 +1160,9 @@ export class WorldMarkers {
     const frac = (e.hull || 0) / maxHull;
     if (frac <= CONTACT_DYING) w += 3;
     else if (frac < 0.75) w += 1;
+    /* A hurt hull where the camera is looking earns a mark, so its hull bar
+       has something to hang under even when it is not shooting this second. */
+    if (frac < HBAR_SHOW && w < CONTACT_EARN && this._interest.has(e.id)) w = CONTACT_EARN;
     return w;
   }
 
@@ -1047,9 +1179,29 @@ export class WorldMarkers {
     // And where our sensors reach, as flat x,y,z,range-squared quads.
     const sens = this._sensors;
     sens.length = 0;
+    // And what the camera is looking at, for the hull bars.
+    const interest = this._interest;
+    interest.clear();
+    const rig = this.rig;
+    const fp = rig && rig.focusPoint;
+    let fr2 = -1;
+    if (fp) {
+      const td = Number(rig.targetDistance) || 0;
+      const fr = Math.max(HBAR_INTEREST_MIN, td * HBAR_INTEREST_K);
+      fr2 = fr * fr;
+    }
     for (const e of ctx.entities()) {
       if (e.alive === false) continue;
       if (e.targetId >= 0) targeted.add(e.targetId);
+      if (fr2 > 0) {
+        const p = posOf(e);
+        if (p) {
+          const dx = p.x - fp.x;
+          const dy = p.y - fp.y;
+          const dz = p.z - fp.z;
+          if (dx * dx + dy * dy + dz * dz <= fr2) interest.add(e.id);
+        }
+      }
       if (e.team === ctx.team) {
         const p = posOf(e);
         if (!p) continue;
@@ -1113,7 +1265,18 @@ export class WorldMarkers {
       const enemy = e.team !== ctx.team;
       /* A reticle speaks for a friendly. For a hostile it is only the lock:
          the glyph inside it is still what says which class you are shooting. */
-      if (!enemy && this._reticled.has(c.id)) continue;
+      if (!enemy && this._reticled.has(c.id)) {
+        /* ...but the reticle says "under fire", not how badly: a friendly
+           at 8% inside one was the hull the R12 peak frame could not name. */
+        const maxHull = e.maxHull || (e.def ? e.def.hull : 0) || 1;
+        const frac = (e.hull || 0) / maxHull;
+        const p = posOf(e);
+        if (this._wantsBar(e, frac) && p && proj.project(p.x, p.y, p.z)
+          && proj.sx >= -12 && proj.sx <= proj.w + 12 && proj.sy >= -12 && proj.sy <= proj.h + 12) {
+          this._requestBar(e, frac, false, proj.sx, proj.sy, RET_CORNER + 8);
+        }
+        continue;
+      }
       const b = c.bucket;
       if (enemy ? nHost >= MAX_HOSTILE_GLYPHS : (total >= MAX_CONTACTS || used[b] >= CONTACT_CAP[b])) continue;
       const p = posOf(e);
@@ -1124,16 +1287,32 @@ export class WorldMarkers {
       ) continue;
       const radius = e.radius || approxRadius(e.classId);
       const px = (radius * proj.scaleK) / proj.cw;
-      if (px >= CONTACT_SELF_EVIDENT_PX && c.w < CONTACT_EARN_BIG) continue;
+      const maxHull = e.maxHull || (e.def ? e.def.hull : 0) || 1;
+      const frac = (e.hull || 0) / maxHull;
+      const bar = this._wantsBar(e, frac);
+      if (px >= CONTACT_SELF_EVIDENT_PX && c.w < CONTACT_EARN_BIG) {
+        // The hull reads for itself; its condition still does not.
+        if (bar) this._requestBar(e, frac, enemy, proj.sx, proj.sy, Math.min(px, 48) * 0.8 + 4);
+        continue;
+      }
       if (enemy) {
         this._drawHostile(this._hostileGlyph(nHost), e, b, proj.sx, proj.sy);
         nHost++;
+        if (bar) {
+          const k = HOSTILE_K[b] * (frac <= CONTACT_DYING ? 1.3 : 1);
+          this._requestBar(e, frac, true, proj.sx, proj.sy, 10 * k + 3);
+        }
         continue;
       }
       this._drawContact(this._contactMark(b, used[b]), e, proj.sx, proj.sy);
       used[b]++;
       total++;
+      if (bar) {
+        const half = CONTACT_PX[b] * 0.71 * (frac <= CONTACT_DYING ? 1.35 : 1);
+        this._requestBar(e, frac, false, proj.sx, proj.sy, half + 3);
+      }
     }
+    this._drawHullBars();
 
     for (let b = 0; b < 3; b++) {
       const pool = this.contacts[b];
