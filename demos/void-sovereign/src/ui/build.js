@@ -253,11 +253,22 @@ export class BuildMenu {
        you order a wing you have no room for. */
     const pop = t.pop + (t.queued || 0);
     const capped = t.popCap > 0 && pop >= t.popCap;
+    /* The top bar's Population is hulls in service only. This one adds the
+       queue, so it says so — round 11 showed "Population 101 / 77" here with
+       64 / 77 in the top bar and nothing to say the 37 was queued wings. A
+       cap can also fall under the total when a yard dies, and that is said
+       too rather than left as an impossible fraction. */
+    const queued = Math.round(t.queued || 0);
+    const popText = queued > 0
+      ? `Population ${Math.round(t.pop)} + ${queued} queued / ${Math.round(t.popCap)}`
+      : `Population ${Math.round(t.pop)} / ${Math.round(t.popCap)}`;
     const status = !this.producerClass
       ? 'No yard'
       : capped
-        ? `Population ${Math.round(pop)} / ${Math.round(t.popCap)}`
-        : '';
+        ? `${popText}${pop > t.popCap ? ' · over cap' : ' · full'}`
+        : queued > 0
+          ? popText
+          : '';
     if (status !== this._status) {
       this._status = status;
       this.status.textContent = status;
@@ -272,20 +283,23 @@ export class BuildMenu {
       /* Two different kinds of "no". A shortfall is per-ship and worth saying
          on the row; the population cap is a yard-wide state and is said once,
          in the header, so ten identical warnings do not shout down the menu. */
+      // A wing reserves every hull's population at once (`enqueueBuild`), so
+      // the row tests and prints the wing's figure, not one hull's.
+      const wingPop = (def.popCost || 0) * Math.max(1, def.squadSize || 1);
       let blocked = '';
       let note = '';
       if (!this.producerClass) blocked = 'no yard';
       else if (t.credits < def.cost) {
         blocked = 'cost';
         note = `Short ${Math.ceil(def.cost - t.credits)} RU`;
-      } else if (def.popCost > 0 && pop + def.popCost > t.popCap) blocked = 'pop';
+      } else if (wingPop > 0 && pop + wingPop > t.popCap) blocked = 'pop';
 
       if (force || blocked !== it.blocked) {
         it.blocked = blocked;
         it.el.disabled = !!blocked;
         it.sub.classList.toggle('is-blocked', blocked === 'cost');
         it.sub.textContent = note
-          || `${def.buildTime}s · ${def.popCost} pop${def.squadSize > 1 ? ` · ×${def.squadSize}` : ''}`;
+          || `${def.buildTime}s · ${wingPop} pop${def.squadSize > 1 ? ` · ×${def.squadSize}` : ''}`;
         it.el.setAttribute(
           'aria-label',
           blocked

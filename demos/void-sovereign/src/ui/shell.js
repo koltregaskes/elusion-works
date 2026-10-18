@@ -1265,12 +1265,24 @@ export class Shell {
     if (p.held && Number.isFinite(p.held.seconds)) {
       rows.push(['Battle after the clock ran out', `${fmtClock(p.held.seconds)} · ${fmtInt(p.held.peak)} engaged at peak`]);
     }
+    /* One ledger, in hulls. Round 11 printed "Hulls lost 131" over "Hulls
+       commissioned 49": commissioned counted orders (a wing of five is one),
+       and lost counted every hull including the opening fleet nobody built.
+       Now fielded = at the start + built, and fielded - lost = remaining. */
+    const fielded = Number.isFinite(stats.fielded) ? stats.fielded : null;
+    if (Array.isArray(stats.strength) && stats.strength.length >= 2) {
+      const pc = (v) => `${Math.round((Number(v) || 0) * 100)}%`;
+      rows.push(['Fleet hull left', `You ${pc(stats.strength[0])} · Them ${pc(stats.strength[1])}`]);
+    }
     rows.push(
-      ['Hostiles destroyed', fmtInt(stats.kills)],
-      ['Hulls lost', fmtInt(stats.losses)],
-      ['Hulls commissioned', fmtInt(stats.built)],
+      ['Hostile hulls destroyed', fmtInt(stats.kills)],
+      fielded !== null
+        ? ['Hulls fielded', `${fmtInt(fielded)} · ${fmtInt(stats.opening)} at the start, `
+          + `${fmtInt(stats.builtHulls)} built from ${fmtInt(stats.built)} orders`]
+        : ['Hulls commissioned', fmtInt(stats.built)],
+      ['Hulls lost', fielded !== null ? `${fmtInt(stats.losses)} of ${fmtInt(fielded)}` : fmtInt(stats.losses)],
       ['Resources harvested', fmtInt(stats.harvested)],
-      ['Fleet remaining', `${fmtInt(stats.fleetHulls)} · ${fmtInt(stats.fleetValue)} RU`],
+      ['Hulls remaining', `${fmtInt(stats.fleetHulls)} · ${fmtInt(stats.fleetValue)} RU`],
       ['Duration', fmtClock(stats.duration)],
     );
     const frag = document.createDocumentFragment();

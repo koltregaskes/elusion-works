@@ -1186,6 +1186,24 @@ body.vs-body {
 
 .vsh-obj__n { min-width: 3.3em; }
 
+/* Fleet hull: the second row, fleet strength rather than the clock. Same
+   hairline meters, its own key, a touch quieter than sovereignty so the
+   objective still leads. The side losing the fight carries the full-value
+   number; the side ahead rests at the row's grey. */
+.vsh-obj__meters--str {
+  margin-top: 5px;
+}
+
+.vsh-obj__mk--str {
+  color: rgba(255, 255, 255, 0.4);
+  padding-right: 2px;
+}
+
+.vsh-obj__m--str .vsh-obj__bar { height: 2px; }
+.vsh-obj__m--str .vsh-obj__n { color: rgba(255, 255, 255, 0.5); }
+.vsh-obj__m--str.is-weaker .vsh-obj__n { color: rgba(255, 255, 255, 0.92); }
+.vsh-obj__m--us.vsh-obj__m--str.is-weaker .vsh-obj__fill { background: var(--vs-red); }
+
 /* What the middle is doing: "yours at 63%", "draining them", "Battle 0:52". */
 .vsh-obj__state {
   font-family: var(--vs-mono);
@@ -1225,7 +1243,10 @@ body.vs-body {
   .vsh-obj__bar { width: 52px; }
   .vsh-obj__meters { gap: 10px; }
   .vsh-obj__seams { padding-left: 8px; }
-  .vsh-obj__mk--sov { display: none; }
+  /* The row keys stay: with two rows of You/Them percentages, the keys are
+     what keeps sovereignty and fleet hull from reading as one figure. */
+  .vsh-obj__mk--sov,
+  .vsh-obj__mk--str { font-size: 8px; letter-spacing: 0.12em; }
   .vsh-obj__state:not(.is-good):not(.is-bad) { display: none; }
 }
 

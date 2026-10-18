@@ -1,6 +1,6 @@
 import * as THREE from '../../vendor/three/build/three.module.js';
 import { bus } from '../core/events.js';
-import { SHIPS, totalFleetValue } from '../ships/catalog.js';
+import { SHIPS, ROLE, totalFleetValue } from '../ships/catalog.js';
 import {
   CONTROL_SCHEME,
   FORMATIONS as SIM_FORMATIONS,
@@ -228,6 +228,16 @@ function num(v, fallback) {
   return typeof v === 'number' && Number.isFinite(v) ? v : fallback;
 }
 
+/* The hulls that fight. A Mothership is 150,000 hull against an interceptor's
+   160, so counting it would pin the fleet-strength readout near 100% until the
+   match was already over; carriers and collectors are left out for the same
+   reason the sim's engaged count leaves them out. */
+function isWarship(e) {
+  const def = e && (e.def || SHIPS[e.classId]);
+  const role = (e && e.role) || (def && def.role);
+  return !!role && role !== ROLE.RESOURCE && role !== ROLE.STRUCTURE;
+}
+
 /* Storage is a nice-to-have, never a dependency: private mode and blocked
    third-party contexts both throw on access rather than returning null. */
 function readFlag(key) {
@@ -315,7 +325,22 @@ export class HUD {
     this._final = null;
 
     this._teamCache = { credits: 0, income: 0, pop: 0, popCap: 0, queued: 0, queue: [] };
-    this._stats = { built: 0, lost: 0, kills: 0, earned: 0, start: performance.now() };
+    /* Hulls, not orders. Round 11's end card read "Hulls lost 131" against
+       "Hulls commissioned 49" because `built` counted `sim:buildComplete`,
+       which fires once per wing, while `lost` counted every hull that died,
+       the opening fleet included. Now both sides of that ledger count hulls:
+       `builtHulls` from `sim:spawn` after the HUD exists (every spawn after
+       seeding is a production launch), `opening` from the first stats beat,
+       and fielded - lost is exactly the fleet still in service. `built` stays
+       as the number of orders those hulls came from. */
+    this._stats = {
+      built: 0, builtHulls: 0, opening: -1, lost: 0, kills: 0, earned: 0, start: performance.now(),
+    };
+    /* Warship hull that has died, per absolute team index, at its max. With
+       the live fleet's max this is everything each side has fielded, so the
+       strength readout is "what is left of what you brought". */
+    this._deadMax = [0, 0];
+    this._strength = [1, 1];
 
     this._hints = new Set();
     this._obLeft = ONBOARD_STEPS.length;
@@ -764,6 +789,40 @@ export class HUD {
     this.objState = el('span', 'vsh-obj__state', '');
     meters.appendChild(this.objState);
     wrap.appendChild(meters);
+
+    /* Who is winning the fight, as opposed to who is winning the clock.
+
+       Round 12 read the player's red hull bars as a losing fleet while the sim
+       had the hostiles at 49% of their hull against the player's 75%. The only
+       side-by-side numbers on screen were sovereignty, which is not fleet
+       strength. This row is: every warship's remaining hull as a share of all
+       the warship hull that side has fielded this match, losses included. It
+       sits under sovereignty with the same hairline meters and its own key, so
+       the two percentages are never read as one. */
+    const str = el('div', 'vsh-obj__meters vsh-obj__meters--str');
+    str.append(el('span', 'vsh-obj__mk vsh-obj__mk--str', 'Fleet hull'));
+    const strMeter = (side, label) => {
+      const m = el('div', `vsh-obj__m vsh-obj__m--${side} vsh-obj__m--str`);
+      m.append(el('span', 'vsh-obj__mk', label));
+      const bar = el('div', 'vsh-obj__bar');
+      const fill = el('i', 'vsh-obj__fill');
+      bar.appendChild(fill);
+      const n = el('span', 'vsh-obj__n vsh-num', '100%');
+      m.append(bar, n);
+      m.setAttribute('aria-label', `${label === 'You' ? 'Your' : 'Their'} warship hull remaining, percent of fielded`);
+      str.appendChild(m);
+      return { root: m, fill, n };
+    };
+    this.strUs = strMeter('us', 'You');
+    this.strThem = strMeter('them', 'Them');
+    str.setAttribute(
+      'title',
+      'Fleet hull: the hull your warships have left, as a share of all the warship hull each side '
+        + 'has fielded this match, losses included. Motherships, carriers and collectors are not counted. '
+        + 'This is fleet strength. Sovereignty, the row above, is the clock on the middle.',
+    );
+    wrap.appendChild(str);
+
     this.objEl = wrap;
     return wrap;
   }
@@ -890,22 +949,34 @@ export class HUD {
       return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`;
     };
 
+    /* Every number in this slot says what it counts. "Paused · 2:31 max" was
+       the match-wide allowance (`SOV_HOLD.CAP`, shared by every pause and
+       hold), not how long this pause lasts — one pause ends at the battle's
+       end or its own limit, well inside that. "yours at 63%" was a seam's
+       capture, sitting in the sovereignty row with a percent sign. */
     let state = '';
     let stateKind = '';
+    let stateTitle = '';
     if (hold) {
-      state = `Battle ${clock(hold.left)}`;
+      state = `Battle · ${clock(hold.left)} budget`;
       stateKind = holdOurs ? 'good' : 'bad';
+      stateTitle = `Battle budget: ${clock(hold.left)} of this match's battle allowance is left. `
+        + 'The result is decided when the battle breaks, or when the allowance runs out.';
     } else if (pause) {
-      state = `Paused · ${clock(pause.left)} max`;
+      state = `Drain paused · ${clock(pause.left)} budget`;
+      stateTitle = `The sovereignty drain is paused while a battle is on. ${clock(pause.left)} of this `
+        + 'match\'s pause allowance is left; this pause ends when the battle breaks, or sooner.';
     } else if (total > 0) {
       const p = this._seamProgress(this._objProg || (this._objProg = [0, 0]));
       const ticking = drained || left <= 0;
       if (p[0] >= 0.05 && p[0] >= p[1]) {
-        state = `yours at ${Math.floor(p[0] * 100)}%`;
+        state = `seam ${Math.floor(p[0] * 100)}% yours`;
         stateKind = 'good';
+        stateTitle = 'Capture progress of the seam you are taking. A seam counts once it reaches 100%. Not sovereignty.';
       } else if (p[1] >= 0.05) {
-        state = `theirs at ${Math.floor(p[1] * 100)}%`;
+        state = `seam ${Math.floor(p[1] * 100)}% theirs`;
         stateKind = 'bad';
+        stateTitle = 'Capture progress of the seam they are taking. A seam counts once it reaches 100%. Not sovereignty.';
       } else if (ticking && seamsUs > seamsThem) {
         state = 'draining them';
         stateKind = 'good';
@@ -915,6 +986,7 @@ export class HUD {
       }
     }
     if (this.objState.textContent !== state) this.objState.textContent = state;
+    if (this.objState.getAttribute('title') !== stateTitle) this.objState.setAttribute('title', stateTitle);
     if (this._objStateKind !== stateKind) {
       this._objStateKind = stateKind;
       this.objState.classList.toggle('is-good', stateKind === 'good');
@@ -931,7 +1003,7 @@ export class HUD {
         ? `Sovereignty secured — the battle decides it · ${hold.engaged} engaged`
         : `Sovereignty gone — the battle decides it · ${hold.engaged} engaged`;
     } else if (pause) {
-      line = `Sovereignty paused — battle in progress · ${pause.engaged} engaged`;
+      line = `Sovereignty drain paused — battle in progress · ${pause.engaged} engaged`;
     } else if (!drained && left > 0) {
       const mm = Math.floor(left / 60);
       const ss = String(Math.floor(left % 60)).padStart(2, '0');
@@ -948,12 +1020,13 @@ export class HUD {
       'title',
       `Win by destroying their Mothership, by draining their sovereignty to zero, `
         + `or by breaking their fleet entirely. Your sovereignty ${nUs}, theirs ${nThem}. `
-        + `Sovereignty is a clock on the middle, not fleet strength: hulls and hostiles are counted on the right.`
+        + `Sovereignty is a clock on the middle, not fleet strength: fleet strength is the Fleet hull row, `
+        + `and hulls and hostiles are counted on the right.`
         + (hold
           ? ` Sovereignty is at zero during a battle, so the result waits until the battle breaks`
-            + ` (at most ${clock(hold.left)} more).`
+            + ` (at most ${clock(hold.left)} of the match's battle allowance).`
           : pause
-            ? ` The sovereignty clock is paused while a battle is on, for at most ${clock(pause.left)} more this match.`
+            ? ` The sovereignty drain is paused while a battle is on; ${clock(pause.left)} of the match's pause allowance is left.`
             : ''),
     );
   }
@@ -1046,7 +1119,10 @@ export class HUD {
     on('sel:changed', (p) => this._onSelection((p && p.ids) || []));
     on('sim:resourceChanged', (p) => this._onCredits(p));
     on('sim:buildComplete', (p) => this._onBuilt(p));
-    on('sim:spawn', () => { this._buildDirty = true; });
+    on('sim:spawn', (p) => {
+      this._buildDirty = true;
+      if (p && p.entity && p.entity.team === this.team) this._stats.builtHulls++;
+    });
     on('sim:death', (p) => this._onDeath(p));
     on('sim:damage', (p) => {
       if (!p || !p.entity) return;
@@ -1446,6 +1522,7 @@ export class HUD {
     const e = p.entity;
     if (e.team === this.team) this._stats.lost++;
     else this._stats.kills++;
+    if (isWarship(e) && (e.team === 0 || e.team === 1)) this._deadMax[e.team] += num(e.maxHull, 0);
     // Re-publishing on every casualty would thrash a fleet battle, so the
     // corrected set goes out on the next stats beat instead.
     if (this.selection.delete(e.id)) this._selDirty = true;
@@ -1549,8 +1626,15 @@ export class HUD {
     let hulls = 0;
     let value = 0;
     let foes = 0;
+    const hullNow = this._hullNow || (this._hullNow = [0, 0]);
+    const hullMax = this._hullMax || (this._hullMax = [0, 0]);
+    hullNow[0] = hullNow[1] = hullMax[0] = hullMax[1] = 0;
     for (const e of this.ctx.entities()) {
       if (e.alive === false) continue;
+      if ((e.team === 0 || e.team === 1) && isWarship(e)) {
+        hullNow[e.team] += Math.max(0, num(e.hull, 0));
+        hullMax[e.team] += num(e.maxHull, 0);
+      }
       if (e.team !== this.team) {
         foes++;
         continue;
@@ -1566,6 +1650,12 @@ export class HUD {
     this._popCap = cap;
     this._fleetValue = value;
     this._hostiles = foes;
+    // The opening fleet is whatever was in service before the first hull this
+    // HUD saw launched, so fielded - lost always equals the hulls on the right.
+    if (this._stats.opening < 0) {
+      this._stats.opening = Math.max(0, hulls + this._stats.lost - this._stats.builtHulls);
+    }
+    this._refreshStrength(hullNow, hullMax);
 
     const t = this._readTeam();
     const usedCap = t.popCap || cap;
@@ -1576,6 +1666,11 @@ export class HUD {
       document.createTextNode(String(Math.round(usedCap))),
     );
     this.statPop.root.classList.toggle('is-warn', usedCap > 0 && usedPop / usedCap > 0.9);
+    // Live hulls only. The production panel adds the queue and says so.
+    const popTitle = t.queued > 0
+      ? `Population of hulls in service / cap from your yards. A further ${Math.round(t.queued)} is held by queued wings (shown in the production panel).`
+      : 'Population of hulls in service / cap from your yards.';
+    if (this.statPop.root.getAttribute('title') !== popTitle) this.statPop.root.setAttribute('title', popTitle);
     this.statValue.value.textContent = value.toLocaleString('en-GB');
     this.statHulls.value.textContent = String(hulls);
     this.statFoes.value.textContent = String(foes);
@@ -1589,6 +1684,29 @@ export class HUD {
       this._creditsLast = Math.round(t.credits);
       this.creditsEl.textContent = this._creditsLast.toLocaleString('en-GB');
     }
+  }
+
+  /* Live warship hull over everything fielded (live max + dead max), per
+     side. Exposed on `_strength` for the end card and for probes. */
+  _refreshStrength(hullNow, hullMax) {
+    for (let s = 0; s < 2; s++) {
+      const field = hullMax[s] + this._deadMax[s];
+      this._strength[s] = field > 0 ? Math.min(1, hullNow[s] / field) : 0;
+    }
+    if (!this.strUs) return;
+    const us = this._strength[this.team];
+    const them = this._strength[this.team ^ 1];
+    this.strUs.fill.style.transform = `scaleX(${us.toFixed(3)})`;
+    this.strThem.fill.style.transform = `scaleX(${them.toFixed(3)})`;
+    const nUs = `${Math.round(us * 100)}%`;
+    const nThem = `${Math.round(them * 100)}%`;
+    if (this.strUs.n.textContent !== nUs) this.strUs.n.textContent = nUs;
+    if (this.strThem.n.textContent !== nThem) this.strThem.n.textContent = nThem;
+    // Which side is losing the fight, without colour alone: the weaker side's
+    // number takes full value and the stronger side's stays at rest.
+    const gap = us - them;
+    this.strUs.root.classList.toggle('is-weaker', gap < -0.05);
+    this.strThem.root.classList.toggle('is-weaker', gap > 0.05);
   }
 
   /* ---------------------------------------------------------------- toasts */
@@ -1708,8 +1826,13 @@ export class HUD {
     const duration = simTime !== null
       ? simTime
       : Math.max(0, (performance.now() - this._stats.start) / 1000);
+    const opening = Math.max(0, this._stats.opening);
     return {
       built: this._stats.built,
+      builtHulls: this._stats.builtHulls,
+      opening,
+      fielded: opening + this._stats.builtHulls,
+      strength: [this._strength[this.team], this._strength[this.team ^ 1]],
       losses: this._stats.lost,
       kills: this._stats.kills,
       harvested: Math.round(this._stats.earned),

@@ -372,7 +372,7 @@ export class ShipCard {
       this.cost.textContent = def.cost > 0 ? `${def.cost} RU` : '';
       const bits = [ROLE_NAME[def.role] || def.role, `${def.length} m`];
       if (def.buildTime > 0) bits.push(`${def.buildTime} s`);
-      if (def.popCost > 0) bits.push(`${def.popCost} pop`);
+      if (def.popCost > 0) bits.push(def.squadSize > 1 ? `${def.popCost} pop each` : `${def.popCost} pop`);
       if (def.squadSize > 1) bits.push(`wing of ${def.squadSize}`);
       this.meta.textContent = bits.join(' · ');
       this.desc.textContent = def.description || '';

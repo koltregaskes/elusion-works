@@ -1932,7 +1932,8 @@
 .vsh-paused__tag {
   position: absolute;
   left: 50%;
-  top: 58px;
+  /* Below the objective's second row (Fleet hull), which it used to sit on. */
+  top: 82px;
   display: flex;
   align-items: baseline;
   gap: 14px;
