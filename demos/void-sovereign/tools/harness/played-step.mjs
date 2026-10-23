@@ -45,8 +45,11 @@ for (const view of ['wide', 'mid', 'close']) {
   const r = await page.evaluate(({ view, CONVERGE }) => {
     const VS = window.__VS; const w = VS.world; const T = VS.THREE; const rig = VS.cameraRig; const P = window.__P; const eng = VS.engine;
     const eng0 = [...w.entities.values()].filter((e) => e.alive && e.engaged && e.team >= 0 && e.team < 2 && e.def && e.def.role !== 'resource');
-    const cen = new T.Vector3(); eng0.forEach((e) => cen.add(e.position)); cen.multiplyScalar(1 / Math.max(1, eng0.length));
-    const near = eng0.filter((e) => e.position.distanceTo(cen) < 4000);
+    // The densest fight, not the centroid of every skirmish on the map.
+    let seed0 = eng0[0]; let best = -1;
+    for (const e of eng0) { let c = 0; for (const f of eng0) if (e.position.distanceTo(f.position) < 2000) c++; if (c > best) { best = c; seed0 = e; } }
+    const near = eng0.filter((e) => e.position.distanceTo(seed0.position) < 2600);
+    const cen = new T.Vector3(); near.forEach((e) => cen.add(e.position)); cen.multiplyScalar(1 / Math.max(1, near.length));
     if (view === 'wide') rig.frameEntities(near, true);
     else if (view === 'mid') { rig.frameEntities(near, true); for (let i = 0; i < 2; i++) P.frame(1 / 60); rig.focusOn(cen.clone(), Math.max(800, eng.camera.position.distanceTo(cen) * 0.5), true); }
     else { const big = near.slice().sort((a, b) => b.def.length - a.def.length)[0]; rig.frameEntities([big], true); }
@@ -57,7 +60,12 @@ for (const view of ['wide', 'mid', 'close']) {
     const lowFriendly = vis.filter((e) => e.team === w.humanTeam && e.hull / e.maxHull <= 0.3).map((e) => e.classId);
     const nearest = vis.slice().sort((a, b) => a.hull / a.maxHull - b.hull / b.maxHull).slice(0, 3).map((e) => ({ id: e.id, cls: e.classId, team: e.team === w.humanTeam ? 'ours' : 'theirs', hullPct: Math.round(100 * e.hull / e.maxHull) }));
     const hulls = [0, 1].map((t) => Math.round(vis.filter((e) => e.team === t).reduce((s, e) => s + e.hull / e.maxHull, 0) * 100) / 100);
-    return { view, tick: w.tickCount, time: +w.time.toFixed(1), engaged: eng0.length, near: near.length, inFrame: [0, 1].map((t) => vis.filter((e) => e.team === t).length), capsInFrame: [0, 1].map((t) => vis.filter((e) => e.team === t && e.def.length >= 380).length), lowFriendly, nearestDeath: nearest, hullSum: hulls, camDist: Math.round(cam.position.distanceTo(cen)), sov: w.teams.map((t) => Math.round(t.sovereignty)), url: cv.toDataURL('image/png') };
+    const leaves = [...document.querySelectorAll('.vsh-top *')].filter((n) => n.children.length === 0 && (n.textContent || '').trim() && n.getClientRects().length && getComputedStyle(n).display !== 'none');
+    const boxes = leaves.map((n) => { const r = n.getBoundingClientRect(); const c = n.closest('.vsh-obj'); const cr = c && getComputedStyle(c).overflow === 'hidden' ? c.getBoundingClientRect() : null; return { t: n.textContent.trim().slice(0, 24), r: cr ? { left: Math.max(r.left, cr.left), right: Math.min(r.right, cr.right), top: r.top, bottom: r.bottom } : r }; }).filter((b) => b.r.right - b.r.left > 1);
+    const overlaps = [];
+    for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) { const a = boxes[i].r, b = boxes[j].r; const ox = Math.min(a.right, b.right) - Math.max(a.left, b.left); const oy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top); if (ox > 1 && oy > 1) overlaps.push([boxes[i].t, boxes[j].t]); }
+    const objFit = (document.querySelector('.vsh-obj') || {}).className;
+    return { overlaps, objFit, view, tick: w.tickCount, time: +w.time.toFixed(1), engaged: eng0.length, near: near.length, inFrame: [0, 1].map((t) => vis.filter((e) => e.team === t).length), capsInFrame: [0, 1].map((t) => vis.filter((e) => e.team === t && e.def.length >= 380).length), lowFriendly, nearestDeath: nearest, hullSum: hulls, camDist: Math.round(cam.position.distanceTo(cen)), sov: w.teams.map((t) => Math.round(t.sovereignty)), url: cv.toDataURL('image/png') };
   }, { view, CONVERGE });
   fs.writeFileSync(`${OUT}-${view}-canvas.png`, Buffer.from(r.url.split(',')[1], 'base64')); delete r.url;
   try { await page.screenshot({ path: `${OUT}-${view}-hud.png`, timeout: 120000 }); r.hud = true; } catch (e) { r.hud = 'timeout'; }

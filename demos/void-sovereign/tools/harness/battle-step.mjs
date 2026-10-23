@@ -27,6 +27,9 @@ const OUT = g('out', 'out/battle');
 const SEED = g('seed', '13634');
 const CONVERGE = Number(g('converge', 12));
 const EXTRA = g('extra', '');
+const ALTSPLIT = Number(g('altsplit', 0)); // our fleet this many metres above theirs
+const SELECT = args.includes('--select');
+const CY = Number(g('cy', 9000)); // fleet height above the y = 0 plane
 fs.mkdirSync(path.dirname(OUT), { recursive: true });
 const ALL = {
   m1: { simS: 22, dist: 5200, yaw: 0.8, pitch: 0.32 },
@@ -47,7 +50,7 @@ await page.goto(`${BASE}/demos/void-sovereign/?autostart=1&seed=${SEED}&quality=
 await page.waitForFunction(() => !!(window.__VS && window.__VS.ready), null, { timeout: 600000, polling: 50 });
 const bootS = (Date.now() - T0) / 1000;
 
-const setup = await page.evaluate(() => {
+const setup = await page.evaluate(({ ALTSPLIT, SELECT, CY }) => {
   const VS = window.__VS; const T = VS.THREE; const w = VS.world; const loop = VS.loop; loop.stop();
   const t = VS.tutorial && VS.tutorial.tutorial; if (t && t.skip && !t.finished) { try { t.skip(); } catch (e) { /* */ } }
   for (const b of document.querySelectorAll('button')) if (/^\s*(dismiss|skip)\s*$/i.test(b.textContent || '')) b.click();
@@ -65,7 +68,7 @@ const setup = await page.evaluate(() => {
   while (w.time < 3.0) tick(1);
   const me = w.humanTeam; const foe = me ^ 1;
   const a = w.entities.get(w.teams[me].baseId).position; const b = w.entities.get(w.teams[foe].baseId).position;
-  const C = a.clone().add(b).multiplyScalar(0.5).add(new T.Vector3(0, 9000, 0));
+  const C = a.clone().add(b).multiplyScalar(0.5).setY(CY);
   const across = b.clone().sub(a).setY(0).normalize();
   const side = new T.Vector3(-across.z, 0, across.x);
   const mix = [['interceptor', 8], ['bomber', 4], ['corvette', 4], ['assaultFrigate', 2], ['ionFrigate', 2], ['destroyer', 1]];
@@ -73,7 +76,7 @@ const setup = await page.evaluate(() => {
   let s = 99991; const rnd = () => ((s = Math.imul(s ^ (s >>> 15), 2246822507) >>> 0) / 4294967296);
   for (const team of [me, foe]) {
     const sign = team === me ? -1 : 1;
-    const base = C.clone().addScaledVector(across, sign * 1800);
+    const base = C.clone().addScaledVector(across, sign * 1800).add(new T.Vector3(0, team === me ? ALTSPLIT : 0, 0));
     const q = new T.Quaternion().setFromUnitVectors(new T.Vector3(0, 0, 1), across.clone().multiplyScalar(-sign));
     for (const [cls, n] of mix) for (let i = 0; i < n; i++) {
       const p = base.clone().addScaledVector(side, (rnd() - 0.5) * 1400).addScaledVector(across, sign * (rnd() * 500)).add(new T.Vector3(0, (rnd() - 0.5) * 500, 0));
@@ -85,9 +88,10 @@ const setup = await page.evaluate(() => {
   // The hostile fleet is driven the same way (its Commander may also order it).
   w.commandAttackMove({ ids: ids[1], point: C.clone().addScaledVector(across, -1800) });
   const T0s = w.time;
+  if (SELECT && VS.input) VS.input.setSelection(ids[0]);
   window.__B = { frame, tick, ids, C, T0s };
   return { startTick, spawnTick: w.tickCount, spawned: ids[0].length + ids[1].length };
-});
+}, { ALTSPLIT, SELECT, CY });
 
 const moments = [];
 for (const m of MOMENTS) {
@@ -105,7 +109,13 @@ for (const m of MOMENTS) {
     const cv = eng.renderer.domElement; const cam = eng.camera; cam.updateMatrixWorld();
     const ships = all.map((e) => { const p = e.position.clone().project(cam); const d = cam.position.distanceTo(e.position); return { id: e.id, cls: e.classId, team: e.team, hullPct: Math.round(100 * e.hull / e.maxHull), x: Math.round((p.x + 1) * cv.width / 2), y: Math.round((1 - p.y) * cv.height / 2), physPx: +((e.def.length / d) * (cv.height / 2) / Math.tan(cam.fov * Math.PI / 360)).toFixed(1) }; });
     const counts = [0, 1].map((t) => ({ alive: all.filter((e) => e.team === t).length, hull: Math.round(all.filter((e) => e.team === t).reduce((s, e) => s + e.hull, 0)) }));
-    return { hash: h.toString(16), tick: w.tickCount, time: +w.time.toFixed(2), camDist: Math.round(cam.position.distanceTo(cen)), fov: +cam.fov.toFixed(1), counts, ships, url: cv.toDataURL('image/png') };
+    /* Top-bar text overlap: every leaf element with text in the top bar, and
+       every pair whose boxes intersect by more than 1 px. */
+    const leaves = [...document.querySelectorAll('.vsh-top *')].filter((n) => n.children.length === 0 && (n.textContent || '').trim() && n.getClientRects().length && getComputedStyle(n).visibility !== 'hidden' && getComputedStyle(n).display !== 'none');
+    const boxes = leaves.map((n) => { const r = n.getBoundingClientRect(); const c = n.closest('.vsh-obj'); const cr = c ? c.getBoundingClientRect() : null; return { t: n.textContent.trim().slice(0, 24), r: cr ? { left: Math.max(r.left, cr.left), right: Math.min(r.right, cr.right), top: r.top, bottom: r.bottom } : r }; }).filter((b) => b.r.right - b.r.left > 1);
+    const overlaps = [];
+    for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) { const a = boxes[i].r, b = boxes[j].r; const ox = Math.min(a.right, b.right) - Math.max(a.left, b.left); const oy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top); if (ox > 1 && oy > 1) overlaps.push([boxes[i].t, boxes[j].t]); }
+    return { overlaps, hash: h.toString(16), tick: w.tickCount, time: +w.time.toFixed(2), camDist: Math.round(cam.position.distanceTo(cen)), fov: +cam.fov.toFixed(1), counts, ships, url: cv.toDataURL('image/png') };
   }, { m, CONVERGE });
   fs.writeFileSync(`${OUT}-${m.key}-canvas.png`, Buffer.from(res.url.split(',')[1], 'base64')); delete res.url;
   try { await page.screenshot({ path: `${OUT}-${m.key}-hud.png`, timeout: 90000 }); res.hud = true; } catch (e) { res.hud = String(e.message).slice(0, 80); }
@@ -114,4 +124,4 @@ for (const m of MOMENTS) {
 await browser.close();
 const out = { base: BASE, q: Q, bootS, setup, moments, consoleErrors, pageErrors, failed };
 fs.writeFileSync(`${OUT}.json`, JSON.stringify(out, null, 1));
-console.log(JSON.stringify({ bootS, setup, moments: moments.map((m) => ({ key: m.key, hash: m.hash, tick: m.tick, counts: m.counts, hud: m.hud, medPx: m.ships.map((s) => s.physPx).sort((a, b) => a - b)[m.ships.length >> 1] })), errs: [consoleErrors.length, pageErrors.length, failed.length], consoleErrors: consoleErrors.slice(0, 3) }));
+console.log(JSON.stringify({ bootS, setup, moments: moments.map((m) => ({ key: m.key, overlaps: m.overlaps, hash: m.hash, tick: m.tick, counts: m.counts, hud: m.hud, medPx: m.ships.map((s) => s.physPx).sort((a, b) => a - b)[m.ships.length >> 1] })), errs: [consoleErrors.length, pageErrors.length, failed.length], consoleErrors: consoleErrors.slice(0, 3) }));

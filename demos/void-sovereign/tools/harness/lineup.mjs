@@ -8,12 +8,12 @@ const g = (n, d) => { const i = args.indexOf('--' + n); return i >= 0 ? args[i +
 const BASE = g('base', 'http://127.0.0.1:8901'); const OUT = g('out', 'out/lineup'); const Q = g('q', 'medium');
 const CLASSES = g('classes', 'interceptor,corvette,assaultFrigate,ionFrigate,destroyer,cruiser,carrier,mothership').split(',');
 const TEAMS = g('teams', '0,1').split(',').map(Number);
-const YAW = Number(g('yaw', 0.9)), PITCH = Number(g('pitch', 0.28)); const W = Number(g('w', 960)), H = Number(g('h', 540));
+const SEED = g('seed', '13634'); const YAW = Number(g('yaw', 0.9)), PITCH = Number(g('pitch', 0.28)); const W = Number(g('w', 960)), H = Number(g('h', 540));
 fs.mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: W, height: H } });
 const errs = []; page.on('console', (m) => { if (m.type() === 'error') errs.push(m.text().slice(0, 200)); }); page.on('pageerror', (e) => errs.push('PAGE ' + e.message.slice(0, 200)));
-await page.goto(`${BASE}/demos/void-sovereign/?autostart=1&seed=13634&quality=${Q}`, { waitUntil: 'domcontentloaded' });
+await page.goto(`${BASE}/demos/void-sovereign/?autostart=1&seed=${SEED}&quality=${Q}`, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => !!(window.__VS && window.__VS.ready), null, { timeout: 900000, polling: 50 });
 await page.evaluate(() => {
   const VS = window.__VS; VS.loop.stop();
