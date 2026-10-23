@@ -1292,9 +1292,21 @@ body.vs-body {
   transition: opacity 400ms var(--vs-ease);
 }
 
+/* Clip, never overprint: see HUD._fitObjective. */
+.vsh-obj { overflow: hidden; }
+
 .vsh-obj.is-live {
   opacity: 1;
 }
+
+/* Fit levels, set by HUD._fitObjective when the rows do not fit their slot. */
+.vsh-obj.is-fit1:not(.is-hold) .vsh-obj__state:not(.is-good):not(.is-bad),
+.vsh-obj.is-fit2:not(.is-hold) .vsh-obj__state { display: none; }
+.vsh-obj.is-fit1 .vsh-obj__bar { width: 48px; }
+.vsh-obj.is-fit1 .vsh-obj__meters { gap: 9px; }
+.vsh-obj.is-fit2 .vsh-obj__seams { display: none; }
+.vsh-obj.is-fit3 .vsh-obj__bar { width: 30px; }
+.vsh-obj.is-fit3 .vsh-obj__m { gap: 4px; }
 
 .vsh-obj__k {
   display: block;

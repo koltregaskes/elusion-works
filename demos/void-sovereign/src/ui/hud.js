@@ -1029,6 +1029,35 @@ export class HUD {
             ? ` The sovereignty drain is paused while a battle is on; ${clock(pause.left)} of the match's pause allowance is left.`
             : ''),
     );
+    this._fitObjective();
+  }
+
+  /* Round 13 (critic round 12: "+2104.9 /s printed over SOVEREIGNTY, seam 29%
+     yours over 29 / 55"). The objective block shrinks with the bar, but its
+     rows are single lines that do not, so once the fleet hull row and the
+     seam state were added the rows overflowed the block's slot and, being
+     centred, spilled over the credits on one side and the population on the
+     other. The media queries guess at widths; this measures. Twice a second
+     (and whenever the text changes length) the block steps down a level
+     until its rows fit: 1 drops the seam-state phrase and narrows the bars,
+     2 drops the seam count, 3 narrows the bars again. `.vsh-obj` also clips,
+     so a row that still does not fit is cut, never printed over a neighbour. */
+  _fitObjective() {
+    const o = this.objEl;
+    if (!o) return;
+    const now = performance.now();
+    const sig = o.textContent.length;
+    if (this._fitAt !== undefined && now - this._fitAt < 500 && sig === this._fitSig) return;
+    this._fitAt = now;
+    this._fitSig = sig;
+    const levels = ['is-fit1', 'is-fit2', 'is-fit3'];
+    o.classList.remove(...levels);
+    let level = 0;
+    while (level < levels.length && o.scrollWidth > o.clientWidth + 1) {
+      o.classList.add(levels[level]);
+      level++;
+    }
+    this._fitLevel = level;
   }
 
   /* Drawn rather than typed: a glyph font would be a binary asset, and "MUTE"

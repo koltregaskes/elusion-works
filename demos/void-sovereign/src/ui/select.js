@@ -131,6 +131,12 @@ const HBAR_WORST = 3;
    focus point, with a floor so a close-in camera still covers the brawl. */
 const HBAR_INTEREST_K = 0.75;
 const HBAR_INTEREST_MIN = 2500;
+/* Round 13 (critic round 12, R2): the three nearest death per side carry a
+   bar whatever their hull, as long as they are engaged and in camera
+   interest. Below HBAR_SHOW was the only rule, so in a fight where nobody
+   was under 80% the critic could name only the one ship with a bar and had
+   to guess the rest. Above HBAR_SHOW these draw at the quiet "hurt" tier. */
+const HBAR_LOWEST = 3;
 
 /* One hostile mark grammar (critic round 3, fix 5).
 
@@ -689,6 +695,7 @@ export class WorldMarkers {
     this._barReq = [];
     this._barReqPool = [];
     this._interest = new Set();
+    this._lowest = new Set();
     this.brackets = [];
     this.glyphs = [];
     this.pips = [];
@@ -927,7 +934,9 @@ export class WorldMarkers {
 
   /* Does this hull carry a bar? Damaged, and engaged or in camera interest. */
   _wantsBar(e, frac) {
-    if (!(frac < HBAR_SHOW) || frac <= 0) return false;
+    if (frac <= 0) return false;
+    if (this._lowest.has(e.id)) return frac < 0.995;
+    if (!(frac < HBAR_SHOW)) return false;
     return this._hits.has(e.id) || e.targetId >= 0 || this._targeted.has(e.id) || this._interest.has(e.id);
   }
 
@@ -1212,6 +1221,7 @@ export class WorldMarkers {
     /* A hurt hull where the camera is looking earns a mark, so its hull bar
        has something to hang under even when it is not shooting this second. */
     if (frac < HBAR_SHOW && w < CONTACT_EARN && this._interest.has(e.id)) w = CONTACT_EARN;
+    if (w < CONTACT_EARN && this._lowest.has(e.id)) w = CONTACT_EARN;
     return w;
   }
 
@@ -1239,6 +1249,21 @@ export class WorldMarkers {
       const fr = Math.max(HBAR_INTEREST_MIN, td * HBAR_INTEREST_K);
       fr2 = fr * fr;
     }
+    const low = this._lowCand || (this._lowCand = [[], []]);
+    low[0].length = 0;
+    low[1].length = 0;
+    const considerLow = (e) => {
+      const side = e.team === ctx.team ? 0 : 1;
+      const maxHull = e.maxHull || (e.def ? e.def.hull : 0) || 1;
+      const frac = (e.hull || 0) / maxHull;
+      if (!(frac < 0.995) || frac <= 0) return;
+      const L = low[side];
+      if (L.length === HBAR_LOWEST && frac >= L[L.length - 1].frac) return;
+      let i = L.length;
+      if (i === HBAR_LOWEST) { L.pop(); i--; }
+      while (i > 0 && L[i - 1].frac > frac) i--;
+      L.splice(i, 0, { id: e.id, frac });
+    };
     for (const e of ctx.entities()) {
       if (e.alive === false) continue;
       if (e.targetId >= 0) targeted.add(e.targetId);
@@ -1248,7 +1273,10 @@ export class WorldMarkers {
           const dx = p.x - fp.x;
           const dy = p.y - fp.y;
           const dz = p.z - fp.z;
-          if (dx * dx + dy * dy + dz * dz <= fr2) interest.add(e.id);
+          if (dx * dx + dy * dy + dz * dz <= fr2) {
+            interest.add(e.id);
+            if (e.engaged && e.team >= 0 && e.team <= 1) considerLow(e);
+          }
         }
       }
       if (e.team === ctx.team) {
@@ -1258,6 +1286,9 @@ export class WorldMarkers {
         sens.push(p.x, p.y, p.z, r * r);
       }
     }
+    const lowest = this._lowest;
+    lowest.clear();
+    for (const L of low) for (const c of L) lowest.add(c.id);
     const sensed = this._sensed;
     sensed.clear();
 
