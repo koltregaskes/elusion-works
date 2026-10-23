@@ -304,6 +304,29 @@ async function main() {
     bus.emit('ui:toast', { text: message, kind: 'warning' });
   };
 
+  /* Hold the 3D frame while a match is being built (boot speed, P46).
+
+     Measured headless, the old build spent most of its time compiling shader
+     programs inside ordinary render frames. The loop kept drawing behind the
+     loading card, which is opaque, so every stage that added something to the
+     scene paid a synchronous compile on the next frame, one program at a time.
+     Worse, every program compiled before the post stack existed was the
+     direct-to-canvas variant, which is thrown away the moment rendering moves
+     into the post stack's target, and compiled again.
+
+     So the frame is held for the length of a build: nothing is drawn behind
+     the card, nothing is compiled twice, and every program is compiled once,
+     for the variant that is actually drawn, just before the first frame
+     (`compileForFirstFrame`, then one frame drawn behind the card). Measured
+     headless: 44.5 s to 16.2 s from Take command to a live match at low,
+     93.4 s to 28.6 s at default (medians of three). An instance-level wrap
+     rather than an engine change: `core/engine.js` is not this lane's. */
+  let holdFrame = false;
+  const drawFrame = engine.render.bind(engine);
+  engine.render = (dt, elapsed) => {
+    if (!holdFrame) drawFrame(dt, elapsed);
+  };
+
   loop.start();
 
   /* ------------------------------------------------------------- teardown */
@@ -469,9 +492,21 @@ async function main() {
   async function startMatch(setup, progress) {
     if (building) throw new Error('a match is already being built');
     building = true;
+    holdFrame = true;
     const t0 = performance.now();
-    const step = (v, label) => {
-      if (progress) progress(v, label);
+    /* Progress values are weighted by how long each stage takes, not by how
+       many there are (P46). Medians measured headless on the dev box with the
+       frame hold below, averaged over low and default quality: plating 9%,
+       nebula 12%, hulls 17%, fleets and systems 7%, and the image stage the
+       last 55%, almost all of it the first frame, which is where this driver
+       actually compiles its shaders. A real GPU will spend less of its time
+       there, so on the target the bar runs slow and finishes early, never the
+       other way round. A shallow restart skips the first three stages, so its
+       values are stretched over the part it actually runs. */
+    let reuse = false;
+    const step = (v, label, stage) => {
+      const shown = reuse ? Math.max(0, (v - 0.38) / 0.62) : v;
+      if (progress) progress(shown, label, stage);
     };
 
     try {
@@ -482,6 +517,7 @@ async function main() {
         : 'normal';
       const key = `${seed}|${quality}`;
       const deep = A.key !== key;
+      reuse = !deep;
 
       teardown(deep);
       if (quality !== engine.quality) applyQuality(quality);
@@ -495,8 +531,8 @@ async function main() {
          allocates more than its dispose frees is named rather than inferred. */
       const timings = [];
       const mem = engine.renderer.info.memory;
-      const mark = async (v, label, fn) => {
-        step(v, label);
+      const mark = async (v, label, fn, stage) => {
+        step(v, label, stage);
         await yieldFrame();
         const t = performance.now();
         const t0Tex = mem.textures;
@@ -512,7 +548,7 @@ async function main() {
       };
 
       if (deep) {
-        await mark(0.08, 'Printing hull plating…', async () => {
+        await mark(0.01, 'Printing hull plating…', async () => {
           const mod = await tryImport('./render/textures.js', 'textures');
           A.textures = mod;
           if (mod && mod.initTextureLibrary) {
@@ -522,9 +558,9 @@ async function main() {
               loadErrors.push({ label: 'textures:init', error: String(e.message) });
             }
           }
-        });
+        }, 'plating');
 
-        await mark(0.18, 'Mixing paint and primer…', async () => {
+        await mark(0.07, 'Mixing paint and primer…', async () => {
           const mod = await tryImport('./render/materials.js', 'materials');
           A.materials = mod;
           if (mod && mod.initMaterials) {
@@ -534,9 +570,9 @@ async function main() {
               loadErrors.push({ label: 'materials:init', error: String(e.message) });
             }
           }
-        });
+        }, 'plating');
 
-        await mark(0.32, 'Painting the nebula…', async () => {
+        await mark(0.09, 'Painting the nebula…', async () => {
           const mod = await tryImport('./render/environment.js', 'environment');
           A.environment = null;
           if (mod && mod.Environment) {
@@ -554,9 +590,9 @@ async function main() {
             }
           }
           if (!A.environment) A.fallbackLights = installFallbackLighting(engine);
-        });
+        }, 'nebula');
 
-        await mark(0.48, 'Laying down keels…', async () => {
+        await mark(0.21, 'Laying down keels…', async () => {
           const mod = await tryImport('./ships/index.js', 'ships');
           A.ships = mod;
           if (mod && mod.warmShipCache) {
@@ -566,13 +602,13 @@ async function main() {
               loadErrors.push({ label: 'ships:warm', error: String(e.message) });
             }
           }
-        });
+        }, 'keels');
       } else {
-        step(0.5, 'Reusing the warmed universe…');
+        step(0.38, 'Reusing the warmed universe…', 'reuse');
         await yieldFrame();
       }
 
-      await mark(0.62, 'Priming the ordnance…', async () => {
+      await mark(0.38, 'Priming the ordnance…', async () => {
         const mod = await tryImport('./fx/index.js', 'fx');
         if (mod && mod.FXSystem) {
           try {
@@ -586,14 +622,14 @@ async function main() {
             loadErrors.push({ label: 'fx', error: String(e.stack || e.message) });
           }
         }
-      });
+      }, 'fleets');
 
       let worldMod = null;
-      await mark(0.7, 'Reading the sailing orders…', async () => {
+      await mark(0.4, 'Reading the sailing orders…', async () => {
         worldMod = await tryImport('./sim/world.js', 'world');
-      });
+      }, 'fleets');
       if (!worldMod || !worldMod.World) throw new Error('the simulation failed to load');
-      await mark(0.74, 'Deploying the fleets…', async () => {
+      await mark(0.41, 'Deploying the fleets…', async () => {
         M.world = new worldMod.World({
           seed,
           engine,
@@ -602,9 +638,9 @@ async function main() {
           environment: A.environment,
           options: { difficulty, pace: PACE },
         });
-      });
+      }, 'fleets');
 
-      await mark(0.84, 'Handing you the bridge…', async () => {
+      await mark(0.41, 'Handing you the bridge…', async () => {
         const cameraMod = await tryImport('./core/camera.js', 'camera');
         if (cameraMod && cameraMod.CameraRig) {
           try {
@@ -632,9 +668,9 @@ async function main() {
             loadErrors.push({ label: 'input', error: String(e.stack || e.message) });
           }
         }
-      });
+      }, 'fleets');
 
-      await mark(0.9, 'Opening the comms channel…', async () => {
+      await mark(0.42, 'Opening the comms channel…', async () => {
         if (A.audio) {
           /* The soundscape is deterministic per seed and the graph is expensive
              — but the real reason this is re-pointed rather than rebuilt is
@@ -659,9 +695,9 @@ async function main() {
             loadErrors.push({ label: 'audio', error: String(e.stack || e.message) });
           }
         }
-      });
+      }, 'systems');
 
-      await mark(0.95, 'Bringing the displays up…', async () => {
+      await mark(0.44, 'Bringing the displays up…', async () => {
         const hudMod = await tryImport('./ui/hud.js', 'hud');
         if (hudMod && hudMod.HUD) {
           try {
@@ -676,10 +712,10 @@ async function main() {
             loadErrors.push({ label: 'hud', error: String(e.stack || e.message) });
           }
         }
-      });
+      }, 'systems');
 
       if (!post) {
-        await mark(0.98, 'Grading the image…', async () => {
+        await mark(0.45, 'Grading the image…', async () => {
           const postMod = await tryImport('./render/postfx.js', 'postfx');
           if (postMod && postMod.PostFX) {
             try {
@@ -693,14 +729,14 @@ async function main() {
           }
           vs.post = post;
           if (params.get('adaptive') === '1') installAdaptiveQuality(loop, engine, post);
-        });
+        }, 'image');
       }
 
       /* R9 fix 1: every wreck batch is built, and its programs compiled, here
          rather than on the first kill of its class (a carrier kill froze the
          frame for a second while the instanced hull shader linked). Parallel
          compile where the driver has it, so the shell keeps animating. */
-      await mark(0.99, 'Casting the wreck moulds…', async () => {
+      await mark(0.46, 'Casting the wreck moulds…', async () => {
         /* R12 fix 3: and run every death script once, far off-field, so the
            first kill of a match meets no cold path or first buffer upload. */
         if (M.fx && M.fx.warmDeaths) {
@@ -713,10 +749,28 @@ async function main() {
         } catch (e) {
           loadErrors.push({ label: 'ships:compile', error: String(e.message) });
         }
-      });
+      }, 'image');
+
+      await mark(0.47, 'Preparing shaders…', async () => {
+        try {
+          await compileForFirstFrame();
+        } catch (e) {
+          // Not fatal: whatever is missed compiles on the first frame, as before.
+          loadErrors.push({ label: 'shaders:compile', error: String(e.message) });
+        }
+      }, 'image');
 
       A.key = key;
       loop.world = M.world;
+
+      /* Release the held frame and draw the new match once behind the card,
+         so the handoff reveals the battlefield rather than whatever the canvas
+         last showed. The sim is still halted here, so nothing advances. */
+      step(0.48, 'Drawing the first frame and compiling its shaders…', 'image');
+      holdFrame = false;
+      await yieldFrame();
+      await yieldFrame();
+
       // The HUD's boot card is dormant in the shipped build — the shell owns
       // loading — but anything listening for `ui:ready` still gets it.
       bus.emit('ui:ready', { seed, quality, difficulty });
@@ -728,6 +782,41 @@ async function main() {
       return { seed, quality, difficulty };
     } finally {
       building = false;
+      holdFrame = false;
+    }
+  }
+
+  /* Queue every program the first frame will need, in one batch, before it is
+     drawn. `compile()` issues every link before anything waits on one, so a
+     driver with parallel compile (KHR_parallel_shader_compile) works on them
+     together instead of meeting them one at a time mid-frame. Measured on the
+     dev box's software driver, which has no parallel compile, this step takes
+     under 0.1 s and the compiling still happens in the first frame; the boot
+     saving there comes from the frame hold, not from this. Both scenes are compiled into a throwaway
+     target when the post stack is on, because that is where they are drawn:
+     three keys the program on the target (linear output, no tone map), and a
+     canvas-variant program would be the wrong one. Same trick as
+     `compileFleetBatches`. */
+  async function compileForFirstFrame() {
+    const r = engine.renderer;
+    if (typeof r.compileAsync !== 'function') return;
+    const prev = r.getRenderTarget();
+    const rt = post ? new THREE.WebGLRenderTarget(1, 1) : null;
+    let jobs;
+    try {
+      r.setRenderTarget(rt);
+      engine.syncFarCamera();
+      jobs = [
+        r.compileAsync(engine.farScene, engine.farCamera),
+        r.compileAsync(engine.scene, engine.camera),
+      ];
+    } finally {
+      r.setRenderTarget(prev);
+    }
+    try {
+      await Promise.all(jobs);
+    } finally {
+      if (rt) rt.dispose();
     }
   }
 

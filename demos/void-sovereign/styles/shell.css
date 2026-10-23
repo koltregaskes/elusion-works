@@ -803,6 +803,225 @@ body.vs-body {
   transition: transform 420ms var(--vs-ease);
 }
 
+/* The build card (P46). Six real stages, a time-weighted bar and a field note.
+   Everything that moves here is transform or opacity, which the compositor
+   runs on its own: a stage that holds the main thread for seconds must not
+   freeze the one screen whose job is to say the game is still working. */
+
+.vs-stages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: 34rem;
+  border-top: 1px solid var(--vs-hair);
+  font-family: var(--vs-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.vs-stage {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 1.1em;
+  padding: 0.62em 0 0.62em 1.5em;
+  border-bottom: 1px solid var(--vs-hair);
+  color: rgba(223, 232, 242, 0.3);
+  transition: color 240ms ease;
+}
+
+/* The same tick the menu rows grow, here as the stage marker. */
+.vs-stage::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 0.5em;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.5;
+  transform-origin: 0 50%;
+  transition: transform 240ms var(--vs-ease), opacity 240ms ease;
+}
+
+.vs-stage__n {
+  flex: none;
+  color: rgba(223, 232, 242, 0.22);
+}
+
+.vs-stage__l {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.vs-stage__t {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+  text-transform: none;
+}
+
+.vs-stage.is-active {
+  color: var(--vs-ink);
+}
+
+.vs-stage.is-active::before {
+  background: var(--vs-cyan);
+  opacity: 1;
+  transform: scaleX(2.6);
+  animation: vs-stage-pulse 1.3s ease-in-out infinite;
+  will-change: opacity;
+}
+
+@keyframes vs-stage-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+.vs-stage.is-done {
+  color: rgba(223, 232, 242, 0.42);
+}
+
+.vs-stage.is-done::before {
+  background: var(--vs-cyan);
+  opacity: 0.6;
+}
+
+.vs-stage.is-done .vs-stage__t {
+  color: rgba(127, 216, 232, 0.7);
+}
+
+.vs-stage.is-kept .vs-stage__t {
+  color: var(--vs-dim);
+}
+
+.vs-meter {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  max-width: 34rem;
+  margin-top: 1.4rem;
+}
+
+.vs-meter .vs-progress {
+  flex: 1 1 auto;
+  margin-top: 0;
+}
+
+.vs-meter__pct {
+  flex: none;
+  min-width: 3.2em;
+  text-align: right;
+  font-family: var(--vs-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  font-variant-numeric: tabular-nums;
+  color: var(--vs-cyan);
+}
+
+/* A short glint that crosses the track for as long as the card is up. It is
+   what keeps the card visibly alive through a long stage. */
+.vs-progress__sweep {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 22%;
+  background: linear-gradient(90deg, rgba(191, 238, 255, 0), rgba(191, 238, 255, 0.9), rgba(191, 238, 255, 0));
+  transform: translateX(-100%);
+  animation: vs-sweep 1.9s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  will-change: transform;
+}
+
+@keyframes vs-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(460%); }
+}
+
+.vs-screen--loading .vs-status {
+  max-width: 34rem;
+}
+
+.vs-note {
+  max-width: 34rem;
+  margin-top: 2.4rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--vs-hair);
+}
+
+.vs-note__k {
+  margin: 0 0 0.5rem;
+  font-family: var(--vs-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--vs-amber);
+  opacity: 0.8;
+}
+
+.vs-note__t {
+  margin: 0;
+  min-height: 3.2em;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--vs-dim);
+}
+
+/* Page load (P46). The title screen is static markup and paints at once, but
+   its buttons do nothing until the modules behind them have loaded and the
+   shell has adopted the screen. Until then the menu says so, rather than
+   ignoring the first click. `is-live` is set by the shell's constructor. */
+.vs-boot {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  max-width: 26rem;
+  margin: 1.1rem 0 0;
+  font-family: var(--vs-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--vs-dim);
+  transition: opacity 260ms var(--vs-ease);
+}
+
+.vs-boot__bar {
+  position: relative;
+  flex: 0 0 5.5rem;
+  height: 1px;
+  overflow: hidden;
+  background: var(--vs-faint);
+}
+
+.vs-boot__bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: var(--vs-cyan);
+  transform: translateX(-100%);
+  animation: vs-sweep 1.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.vs-shell:not(.is-live) .vs-menu__b[data-act] {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.vs-shell.is-live .vs-boot {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 260ms var(--vs-ease), visibility 0s linear 260ms;
+}
+
+@media (max-width: 520px) {
+  .vs-stage {
+    gap: 0.8em;
+    letter-spacing: 0.12em;
+  }
+}
+
 /* ------------------------------------------------------------- end of match */
 
 .vs-tally {
@@ -1279,5 +1498,18 @@ body.vs-body {
   /* The backdrop holds its composition; it just stops drifting. */
   .vs-art__fleet {
     animation: none;
+  }
+  /* The build card keeps its stage ticks and the bar; it loses the glint and
+     the pulse. */
+  .vs-progress__sweep,
+  .vs-boot__bar::after,
+  .vs-stage.is-active::before {
+    animation: none;
+  }
+  .vs-progress__sweep {
+    display: none;
+  }
+  .vs-boot__bar::after {
+    transform: none;
   }
 }
