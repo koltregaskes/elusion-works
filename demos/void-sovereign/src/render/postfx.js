@@ -357,6 +357,15 @@ export class PostFX {
       shadowTint: new THREE.Color(0.36, 0.52, 0.85),
       highlightTint: new THREE.Color(1.0, 0.86, 0.66),
       taaFeedback: 0.94,
+      /* History weight while the camera shakes, reached once the rig's shake
+         (trauma^SHAKE_CURVE, published on camera.userData.shake) passes
+         taaShakeRamp. Shake jerks the whole image several pixels a frame, so
+         every frame resamples the history at a new sub-pixel offset and at
+         0.94 those resamples stack into a full-frame smear (P44: the R12
+         capital death frames). A short history during the shake keeps each
+         frame sharp; it slides back to taaFeedback as the trauma decays. */
+      taaShakeFeedback: 0.3,
+      taaShakeRamp: 0.08,
       taaClampGamma: 1.25,
       taaFilter: 1.4,
       dofStrength: 0.35,
@@ -940,7 +949,11 @@ export class PostFX {
     u.uReproj.value.copy(this._reproj);
     u.uLogFar.value = Math.log2(e.camera.far + 1);
     u.uNearFar.value.set(e.camera.near, e.camera.far);
-    u.uFeedback.value = this.params.taaFeedback;
+    const shake = (e.camera.userData && e.camera.userData.shake) || 0;
+    const sk = Math.min(1, Math.max(0, shake / Math.max(1e-4, this.params.taaShakeRamp)));
+    const skS = sk * sk * (3 - 2 * sk);
+    u.uFeedback.value = this.params.taaFeedback
+      + (Math.min(this.params.taaShakeFeedback, this.params.taaFeedback) - this.params.taaFeedback) * skS;
     u.uClampGamma.value = this.params.taaClampGamma;
     u.uFilter.value = this.params.taaFilter;
     u.uSharpen.value = this.tier.taaSharpen;
@@ -1250,7 +1263,8 @@ void main() {
   // form behind an interceptor crossing the frame.
   vec2 velPx = ( vUv - prevUv ) / uTexel;
   float speed = clamp( length( velPx ) / 24.0, 0.0, 1.0 );
-  float feedback = mix( uFeedback, 0.72, speed ) * valid * ( 1.0 - uReset );
+  // min(): a shake-shortened uFeedback below 0.72 must not be raised by speed (P44).
+  float feedback = mix( uFeedback, min( uFeedback, 0.72 ), speed ) * valid * ( 1.0 - uReset );
 
   /* R12 fix 3: reactive pixels. Where the FX glow layer is most of this
      pixel and the pixel has just got much brighter than its history, it is a
