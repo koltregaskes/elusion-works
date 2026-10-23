@@ -48,10 +48,12 @@ varying float vSeed;
 varying float vAge;
 varying float vBlotch;
 varying float vFragW;
+varying float vAng;
 
 void main() {
   float age = clamp( ( uTime - iTime.x ) / max( iTime.y, 0.0001 ), 0.0, 1.0 );
   float alive = step( 0.0, uTime - iTime.x ) * step( age, 0.9999 );
+  vAng = uv.x;
 
   // Fast out of the gate, then coasting — a blast front losing energy.
   float e = 1.0 - pow( 1.0 - age, 2.8 );
@@ -256,16 +258,27 @@ varying float vSeed;
 varying float vAge;
 varying float vBlotch;
 varying float vFragW;
+varying float vAng;
+
+uniform sampler2D uNoise;
 
 void main() {
   #include <logdepthbuf_fragment>
   float d = vRr - 1.0;
-  float w = max( vThick, 0.02 );
-  // Soft both sides of the front: no hard lip for the bloom to turn into a line.
-  float front = exp( -pow( d / w, 2.0 ) );
-  float fill = pow( clamp( vRr, 0.0, 1.0 ), 3.0 ) * ( 1.0 - smoothstep( 0.97, 1.03, vRr ) );
+  /* R12 fix 3, second pass: the first disc still drew an outline. Its fill
+     rose as r^3 and was cut at the front, so the brightest gas sat on the
+     rim and the whole thing read as a soap bubble round the fireball. Now
+     the fill peaks inside and thins out before the front, the front is a
+     wide, faint gaussian, and both are broken up by a gas noise that drifts
+     outward with age, so no bearing carries a continuous line. */
+  float w = max( vThick, 0.02 ) * 2.2;
+  float gas = texture2D( uNoise, vec2( vAng * 5.0 + vSeed * 3.3, vRr * 1.6 - vAge * 0.7 + vSeed ) ).r;
+  gas = smoothstep( 0.28, 0.72, gas );
+  float front = exp( -pow( d / w, 2.0 ) ) * mix( 0.25, 1.0, gas );
+  float r = clamp( vRr, 0.0, 1.0 );
+  float fill = smoothstep( 0.0, 0.45, r ) * ( 1.0 - smoothstep( 0.55, 1.02, r ) ) * mix( 0.45, 1.0, gas );
   float rim = 1.0 - smoothstep( RING_OUTER - 0.05, RING_OUTER, vRr );
-  float a = clamp( front * 0.26 + fill * 0.46, 0.0, 1.0 ) * vBlotch * rim * vEnv * fxSoftFade( vFragW );
+  float a = clamp( front * 0.12 + fill * 0.30, 0.0, 1.0 ) * vBlotch * rim * vEnv * fxSoftFade( vFragW );
   if ( a <= 0.004 ) discard;
   float cool = smoothstep( 0.02, 0.55, vAge );
   vec3 edgeC = mix( vec3( 1.00, 0.80, 0.52 ), vec3( 0.60, 0.68, 0.84 ), cool );
@@ -875,10 +888,15 @@ export class ExplosionFX {
     const tMain = 3.0;
     this._plan(seq, [0.24, 0.5, 0.76].map((c) => c + rng.range(-0.04, 0.04)), [tMain, tMain, tMain, tMain], 0.30, [0.06, 0.12]);
     const ev = [
-      // Reactor breach: the kill frame is light escaping, not yet the end.
-      { t: 0.00, k: 'fireball', at: station, r0: 0.06, r1: 0.096, life: 0.9, inten: 1.1, elong: 1.3, toCam: 0.07, shake: 0.35 },
-      { t: 0.00, k: 'breach', n: 5, size: R * 0.05, life: 0.9, bright: 11.0 },
-      { t: 0.30, k: 'vent', n: 3, duration: 2.6, speed: L * 0.8, axis: 'lateral' },
+      /* Reactor breach: the kill frame is light escaping, not yet the end.
+         Second pass: at 0.06 of the hull the breach read as one more hit
+         spark (stepped take, 0.02 of the hull box on the kill frame), so a
+         player who had just killed the flagship saw nothing happen for a
+         second. It is now a fireball a seventh of the hull long, venting at
+         once. */
+      { t: 0.00, k: 'fireball', at: station, r0: 0.13, r1: 0.19, life: 1.1, inten: 1.1, elong: 1.6, toCam: 0.07, shake: 0.45 },
+      { t: 0.00, k: 'breach', n: 5, size: R * 0.07, life: 0.9, bright: 11.0 },
+      { t: 0.04, k: 'vent', n: 3, duration: 2.8, speed: L * 0.8, axis: 'lateral' },
       { t: 0.40, k: 'embers', n: 60 * N, speed: L * 0.20, life: 3.0 },
       { t: 2.10, k: 'hullglow', duration: 0.90, size: L, bright: 2.0 },
       // The main detonation and the breakup.
