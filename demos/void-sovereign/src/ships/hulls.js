@@ -2695,6 +2695,85 @@ function buildMothership(ctx) {
 
 /* ---------------------------------------------------------------- registry */
 
+/* --------------------------------------------------------- keel taper */
+
+/* Round 13 (critic finding "player hulls read as kitbash boxes"). The
+   player's frigates and capitals are lofted along a straight keel with the
+   same cross-section most of its length, so at any range they read as
+   slabs with a blunt end, while the hostile bone kit sweeps to a point. A
+   Homeworld hull is a wedge: long, flat, narrowing to a prow.
+
+   So after a player hull is built and normalised, the whole ship (every
+   material group, every hardpoint, engine and light) is pulled through one
+   smooth taper along the keel: the beam narrows from `from` (0 stern .. 1
+   bow) to `bow` x at the tip, the deck height eases to `deck`, the keel
+   rakes up to `rake` so the underside sweeps into the prow, and the stern
+   pinches to `stern`. It is a function of position alone, so every LOD level
+   gets the same shape and a coarse level is still a subset of the fine one.
+   Normals go through the exact inverse transpose of the deformation, so the
+   flat plates stay flat-shaded and the terminator stays hard. */
+const KEEL_TAPER = {
+  assaultFrigate: { bow: 0.44, from: 0.52, deck: 0.78, rake: 0.42, stern: 0.90 },
+  ionFrigate: { bow: 0.40, from: 0.50, deck: 0.80, rake: 0.40, stern: 0.90 },
+  supportFrigate: { bow: 0.50, from: 0.55, deck: 0.82, rake: 0.46, stern: 0.90 },
+  destroyer: { bow: 0.34, from: 0.45, deck: 0.72, rake: 0.32, stern: 0.86 },
+  cruiser: { bow: 0.32, from: 0.40, deck: 0.68, rake: 0.30, stern: 0.86 },
+  carrier: { bow: 0.42, from: 0.46, deck: 0.82, rake: 0.36, stern: 0.88 },
+  mothership: { bow: 0.62, from: 0.56, deck: 0.90, rake: 0.56, stern: 0.94 },
+};
+
+const _smooth = (t) => { const c = t < 0 ? 0 : t > 1 ? 1 : t; return c * c * (3 - 2 * c); };
+
+/** Scale factors at keel station u (0 stern .. 1 bow): beam, deck, keel. */
+export function keelTaperAt(p, u) {
+  const k = Math.pow(_smooth((u - p.from) / (1 - p.from)), 1.2);
+  const aft = 1 - (1 - p.stern) * (1 - _smooth(u / 0.22));
+  return {
+    s: (1 - (1 - p.bow) * k) * aft,
+    top: 1 - (1 - p.deck) * k,
+    bot: 1 - (1 - p.rake) * k,
+  };
+}
+
+function keelTaperPoint(p, L, v) {
+  const f = keelTaperAt(p, v.z / L + 0.5);
+  v.x *= f.s;
+  v.y *= v.y >= 0 ? f.top : f.bot;
+  return v;
+}
+
+function keelTaperGeometry(p, L, g) {
+  const pos = g.attributes.position;
+  const nor = g.attributes.normal;
+  const P = pos.array;
+  const N = nor ? nor.array : null;
+  const h = 0.002;
+  for (let i = 0; i < pos.count; i++) {
+    const o = i * 3;
+    const x = P[o], y = P[o + 1], z = P[o + 2];
+    const u = z / L + 0.5;
+    const f = keelTaperAt(p, u);
+    const ty = y >= 0 ? f.top : f.bot;
+    P[o] = x * f.s;
+    P[o + 1] = y * ty;
+    if (N) {
+      // d/dz of the factors, per metre.
+      const a = keelTaperAt(p, u + h);
+      const b = keelTaperAt(p, u - h);
+      const ds = (a.s - b.s) / (2 * h * L);
+      const dt = ((y >= 0 ? a.top - b.top : a.bot - b.bot)) / (2 * h * L);
+      const nx = N[o], ny = N[o + 1], nz = N[o + 2];
+      const mx = nx / f.s;
+      const my = ny / ty;
+      const mz = nz - (x * ds / f.s) * nx - (y * dt / ty) * ny;
+      const l = Math.hypot(mx, my, mz) || 1;
+      N[o] = mx / l; N[o + 1] = my / l; N[o + 2] = mz / l;
+    }
+  }
+  pos.needsUpdate = true;
+  if (nor) nor.needsUpdate = true;
+}
+
 const BUILDERS = {
   scout: buildScout,
   interceptor: buildInterceptor,
@@ -2778,6 +2857,17 @@ export function buildHullLevel(classId, detail, xform, team = 0) {
 
   const scale = Math.cbrt(Math.abs(m.determinant()));
 
+  // Round 13: the player's yard tapers its frigates and capitals along the keel.
+  const taper = build === BUILDERS[classId] ? KEEL_TAPER[classId] : null;
+  if (taper) {
+    for (const k of ['hull', 'glass', 'glow', 'bell']) {
+      if (!geo[k]) continue;
+      keelTaperGeometry(taper, def.length, geo[k]);
+      geo[k].computeBoundingBox();
+      geo[k].computeBoundingSphere();
+    }
+  }
+
   // Wear is computed after normalisation so its distance falloffs are in the
   // same metres the rest of the game uses.
   if (geo.hull) {
@@ -2787,6 +2877,7 @@ export function buildHullLevel(classId, detail, xform, team = 0) {
     applyWear(geo.hull, {
       sources: sources.map((e) => {
         const v = new THREE.Vector3(e.x, e.y, e.z).applyMatrix4(m);
+        if (taper) keelTaperPoint(taper, def.length, v);
         return { x: v.x, y: v.y, z: v.z, r: e.r * scale };
       }),
       nose: nb.max.z,
@@ -2805,6 +2896,12 @@ export function buildHullLevel(classId, detail, xform, team = 0) {
   }
   for (const l of ctx.lights) l.pos.applyMatrix4(m);
   for (const d of ctx.dock) d.applyMatrix4(m);
+  if (taper) {
+    for (const p of ctx.hardpoints) keelTaperPoint(taper, def.length, p);
+    for (const e of ctx.engines) keelTaperPoint(taper, def.length, e.pos);
+    for (const l of ctx.lights) keelTaperPoint(taper, def.length, l.pos);
+    for (const d of ctx.dock) keelTaperPoint(taper, def.length, d);
+  }
 
   const radius = new THREE.Sphere();
   box.applyMatrix4(m);
