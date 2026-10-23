@@ -808,7 +808,7 @@ body.vs-body {
    runs on its own: a stage that holds the main thread for seconds must not
    freeze the one screen whose job is to say the game is still working. */
 
-.vs-stages {
+.vs-bsteps {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -820,7 +820,7 @@ body.vs-body {
   text-transform: uppercase;
 }
 
-.vs-stage {
+.vs-bstep {
   position: relative;
   display: flex;
   align-items: baseline;
@@ -832,7 +832,7 @@ body.vs-body {
 }
 
 /* The same tick the menu rows grow, here as the stage marker. */
-.vs-stage::before {
+.vs-bstep::before {
   content: '';
   position: absolute;
   left: 0;
@@ -845,28 +845,28 @@ body.vs-body {
   transition: transform 240ms var(--vs-ease), opacity 240ms ease;
 }
 
-.vs-stage__n {
+.vs-bstep__n {
   flex: none;
   color: rgba(223, 232, 242, 0.22);
 }
 
-.vs-stage__l {
+.vs-bstep__l {
   flex: 1 1 auto;
   min-width: 0;
 }
 
-.vs-stage__t {
+.vs-bstep__t {
   flex: none;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.08em;
   text-transform: none;
 }
 
-.vs-stage.is-active {
+.vs-bstep.is-active {
   color: var(--vs-ink);
 }
 
-.vs-stage.is-active::before {
+.vs-bstep.is-active::before {
   background: var(--vs-cyan);
   opacity: 1;
   transform: scaleX(2.6);
@@ -879,20 +879,20 @@ body.vs-body {
   50% { opacity: 0.25; }
 }
 
-.vs-stage.is-done {
+.vs-bstep.is-done {
   color: rgba(223, 232, 242, 0.42);
 }
 
-.vs-stage.is-done::before {
+.vs-bstep.is-done::before {
   background: var(--vs-cyan);
   opacity: 0.6;
 }
 
-.vs-stage.is-done .vs-stage__t {
+.vs-bstep.is-done .vs-bstep__t {
   color: rgba(127, 216, 232, 0.7);
 }
 
-.vs-stage.is-kept .vs-stage__t {
+.vs-bstep.is-kept .vs-bstep__t {
   color: var(--vs-dim);
 }
 
@@ -1016,7 +1016,7 @@ body.vs-body {
 }
 
 @media (max-width: 520px) {
-  .vs-stage {
+  .vs-bstep {
     gap: 0.8em;
     letter-spacing: 0.12em;
   }
@@ -1503,7 +1503,7 @@ body.vs-body {
      the pulse. */
   .vs-progress__sweep,
   .vs-boot__bar::after,
-  .vs-stage.is-active::before {
+  .vs-bstep.is-active::before {
     animation: none;
   }
   .vs-progress__sweep {

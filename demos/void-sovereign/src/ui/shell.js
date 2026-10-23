@@ -825,16 +825,16 @@ export class Shell {
     this._loadSeedLine = el('p', 'vs-deck', '');
     inner.appendChild(this._loadSeedLine);
 
-    this._loadList = el('ol', 'vs-stages');
+    this._loadList = el('ol', 'vs-bsteps');
     this._loadList.setAttribute('aria-label', 'Build stages');
     this._loadRows = new Map();
     LOAD_STAGES.forEach(([id, name], i) => {
-      const row = el('li', 'vs-stage');
+      const row = el('li', 'vs-bstep');
       row.dataset.stage = id;
-      const time = el('span', 'vs-stage__t', '');
+      const time = el('span', 'vs-bstep__t', '');
       row.append(
-        el('span', 'vs-stage__n', String(i + 1).padStart(2, '0')),
-        el('span', 'vs-stage__l', name),
+        el('span', 'vs-bstep__n', String(i + 1).padStart(2, '0')),
+        el('span', 'vs-bstep__l', name),
         time,
       );
       this._loadList.appendChild(row);
