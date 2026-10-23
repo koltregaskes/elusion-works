@@ -87,7 +87,13 @@ export class WreckFX {
     return Math.min(62, Math.max(30, 24 + 35 * Math.sqrt(L / 620)));
   }
 
-  kill(entity) {
+  /* R12 fix 3: the plan comes from the death script (explosions.js _plan):
+     where the keel is cut (fractions, stern 0 to bow 1), when each section
+     starts to move, how hard and how much it tumbles. So a destroyer
+     ruptures in two at its fireball, a cruiser's sections let go as the chain
+     reaches them, and a mothership holds together until its main detonation.
+     Without a plan the R11 behaviour stands. */
+  kill(entity, plan = null) {
     const def = entity && entity.def;
     const L = (def && def.length) || 0;
     const o = entity && entity.object3D;
@@ -109,10 +115,16 @@ export class WreckFX {
     const axis = new THREE.Vector3(0, 0, 1).applyQuaternion(q0);
 
     const rng = this.ctx.rng.fork((entity.id || 1) * 104729);
-    const n = L < 200 ? 2 : L < 500 ? 3 : 4;
     const span = info.zMax - info.zMin;
+    const planned = !!(plan && plan.cuts && plan.cuts.length);
+    const n = planned ? plan.cuts.length + 1 : L < 200 ? 2 : L < 500 ? 3 : 4;
     const cuts = [info.zMin];
-    for (let i = 1; i < n; i++) cuts.push(info.zMin + span * (i / n + rng.range(-0.07, 0.07)));
+    if (planned) {
+      const fr = plan.cuts.map((c) => Math.min(0.88, Math.max(0.12, c))).sort((a, b) => a - b);
+      for (const c of fr) cuts.push(info.zMin + span * c);
+    } else {
+      for (let i = 1; i < n; i++) cuts.push(info.zMin + span * (i / n + rng.range(-0.07, 0.07)));
+    }
     cuts.push(info.zMax);
 
     const life = WreckFX.lifeFor(L);
@@ -151,18 +163,21 @@ export class WreckFX {
         nextPop: rng.range(0.15, 0.9),
         damage: damage0, shownDamage: -1, rng,
         kick: null, tilt: null, tiltAngle: 0, cutAt: -1,
+        delay: planned && plan.delays && plan.delays[i] !== undefined ? plan.delays[i] : BREAK_DELAY,
       };
-      if (L >= BREAK_KICK_MIN) {
+      if (planned || L >= BREAK_KICK_MIN) {
         const lat = rng.unitVector();
-        sec.kick = new THREE.Vector3().copy(axis).multiplyScalar(L * BREAK_KICK * away)
+        const kk = planned && plan.kick ? plan.kick : BREAK_KICK;
+        sec.kick = new THREE.Vector3().copy(axis).multiplyScalar(L * kk * away)
           .add(new THREE.Vector3(lat.x, lat.y, lat.z).multiplyScalar(L * 0.012));
         const ta = rng.unitVector();
         sec.tilt = new THREE.Vector3(ta.x, ta.y, 0);
         if (!(sec.tilt.lengthSq() > 0.01)) sec.tilt.set(1, 0, 0);
         sec.tilt.normalize();
-        sec.tiltAngle = rng.range(0.06, 0.12) * (rng.next() < 0.5 ? -1 : 1);
+        const tl = planned && plan.tilt ? plan.tilt : [0.06, 0.12];
+        sec.tiltAngle = rng.range(tl[0], tl[1]) * (rng.next() < 0.5 ? -1 : 1);
         // The detonation along this section's forward cut, staggered down the keel.
-        if (i < n - 1) sec.cutAt = 0.18 + 0.08 * i + rng.range(0, 0.06);
+        if (i < n - 1) sec.cutAt = planned ? sec.delay + 0.12 + rng.range(0, 0.06) : 0.18 + 0.08 * i + rng.range(0, 0.06);
       }
       batch.setWreckSection(slot, lo, hi);
       this._place(sec);
@@ -170,9 +185,10 @@ export class WreckFX {
     }
   }
 
-  /* 0 until BREAK_DELAY, then easing to 1 (see BREAK_TAU). */
-  static breakEase(age) {
-    return age <= BREAK_DELAY ? 0 : 1 - Math.exp(-(age - BREAK_DELAY) / BREAK_TAU);
+  /* 0 until the section's delay (BREAK_DELAY by default), then easing to 1
+     (see BREAK_TAU). */
+  static breakEase(age, delay = BREAK_DELAY) {
+    return age <= delay ? 0 : 1 - Math.exp(-(age - delay) / BREAK_TAU);
   }
 
   /* Where the section is drawn now: its drift plus the eased break kick, and
@@ -180,7 +196,7 @@ export class WreckFX {
   _pose(sec) {
     _k.copy(sec.pos);
     if (!sec.kick) return sec.q;
-    const e = WreckFX.breakEase(sec.age);
+    const e = WreckFX.breakEase(sec.age, sec.delay);
     _k.addScaledVector(sec.kick, e);
     // Tilt about a section-local lateral axis, so the cut faces open.
     _kq.setFromAxisAngle(sec.tilt, sec.tiltAngle * e);
@@ -294,9 +310,14 @@ export class WreckFX {
     const drawn = Math.max(sec.L, ctx.px(dist) * hullFloorPx(sec.L));
     const size = drawn * rng.range(0.20, 0.26);
     const V = sec.vel;
-    f.flare.spawn(_p.x, _p.y, _p.z, V.x, V.y, V.z, 0.30, 0, size * 0.7, size * 0.35, CORE, 16.0, 0, 0);
-    f.flare.spawn(_p.x, _p.y, _p.z, V.x, V.y, V.z, 0.75, 0, size * 0.45, size * 1.0, FIRE, 2.4, 0, 0);
     const ax = _o.set(0, 0, 1).applyQuaternion(q);
+    /* R12 fix 3: the cut opens with the same procedural fireball as the death
+       (explosions.js), not a white flare pair that clipped to a cream dot. */
+    if (ctx.fireball) ctx.fireball(_p, V, ax, size * 0.40, size * 0.62, 0.65, 1.0, 1.0);
+    else {
+      f.flare.spawn(_p.x, _p.y, _p.z, V.x, V.y, V.z, 0.30, 0, size * 0.7, size * 0.35, CORE, 16.0, 0, 0);
+      f.flare.spawn(_p.x, _p.y, _p.z, V.x, V.y, V.z, 0.75, 0, size * 0.45, size * 1.0, FIRE, 2.4, 0, 0);
+    }
     const n = Math.round(22 * ctx.qscale);
     for (let i = 0; i < n; i++) {
       const u = rng.unitVector();

@@ -1,4 +1,4 @@
-import { SHIPS, ROLE, approxRadius, damageAffinity } from '../ships/catalog.js';
+import { SHIPS, ROLE, approxRadius, damageAffinity, hullFloorPx, HULL_FLOOR_MAX_GROW } from '../ships/catalog.js';
 
 /* Selection surfaces: the grouped roster along the bottom-left, and the
    world-space marker layer that draws brackets, health pips, target reticles
@@ -45,6 +45,21 @@ const MAX_BRACKETS = 96;
 const MAX_GLYPHS = 140;
 const MAX_PIPS = 320;
 const MAX_RETICLES = 14;
+/* Round 13 (critic finding "no altitude cues outside the Sensors Manager",
+   rubric R5): plumb lines from ships to the y = 0 reference plane, the same
+   hairline-and-foot the move-order marker already drops. Drawn for the
+   selection, for every capital in view (ours and theirs), and for whatever
+   the selection is shooting at, so "which fleet is higher" reads without
+   orbiting the camera. Ships within ALT_MIN_M of the plane draw nothing. */
+const MAX_ALT = 40;
+const ALT_MIN_M = 80;
+const ALT_CAPITAL_M = 300;
+const MAX_ALT_LABELS = 6;
+/* Round 14 (critic round 13: "nothing on the hostiles and no relative
+   reading"): the hostiles nearest the selection get stalks too, and one
+   label by the selection says how far above or below them it sits. */
+const ALT_NEAR_M = 6000;
+const ALT_NEAR_MAX = 10;
 const MAX_ORDERS = 16;
 
 /* Weighted contact marks — round 2 fix 4, and the reason this layer exists.
@@ -121,6 +136,12 @@ const HBAR_WORST = 3;
    focus point, with a floor so a close-in camera still covers the brawl. */
 const HBAR_INTEREST_K = 0.75;
 const HBAR_INTEREST_MIN = 2500;
+/* Round 13 (critic round 12, R2): the three nearest death per side carry a
+   bar whatever their hull, as long as they are engaged and in camera
+   interest. Below HBAR_SHOW was the only rule, so in a fight where nobody
+   was under 80% the critic could name only the one ship with a bar and had
+   to guess the rest. Above HBAR_SHOW these draw at the quiet "hurt" tier. */
+const HBAR_LOWEST = 3;
 
 /* One hostile mark grammar (critic round 3, fix 5).
 
@@ -142,6 +163,36 @@ const HBAR_INTEREST_MIN = 2500;
    seven sparkles over the planet. Sizes are by mass bucket and fixed per
    element, the same reason the diamond pools are. */
 const HOSTILE_K = [0.6, 0.8, 1.05];
+
+/* P49 (combat legibility): the mark yields once the hull reads for itself.
+
+   The fresh-eye critics' first finding was that at combat range "the overlay
+   glyphs do all the work": a 12 px amber silhouette centred on a 9 px grey
+   hull is the brightest thing in that patch of sky and covers the ship it
+   names. With the hull floor at 14-18 px and team strips on it (ships/), the
+   hull can carry the read, so a contact mark scales and fades by how many
+   pixels of hull are actually drawn (the impostor's floored length, the same
+   arithmetic as the shader), and steps up off the hull to sit above it as a
+   tag rather than on it. It never yields while the hull is dying: "about to
+   die" is the one-second read and stays at full strength. */
+const GLYPH_YIELD_PX = [8, 16];     // drawn hull length (px): no yield .. full yield
+const GLYPH_YIELD_FADE = 0.55;      // opacity lost at full yield
+const GLYPH_YIELD_SHRINK = 0.35;    // scale lost at full yield
+const GLYPH_YIELD_LIFT = 5;         // px clear of the hull's top edge at full yield
+
+/** Pixels of hull length as drawn (impostor floor included) at this depth. */
+function drawnHullPx(e, proj) {
+  const def = e.def || SHIPS[e.classId];
+  const L = def && def.length > 0 ? def.length : (e.radius || 10) * 1.8;
+  const phys = (L * proj.scaleK) / proj.cw;
+  return Math.max(phys, Math.min(hullFloorPx(L), phys * HULL_FLOOR_MAX_GROW));
+}
+
+/** 0 = mark at full strength, 1 = mark fully yielded to the hull. */
+function glyphYield(drawnPx) {
+  const u = Math.min(1, Math.max(0, (drawnPx - GLYPH_YIELD_PX[0]) / (GLYPH_YIELD_PX[1] - GLYPH_YIELD_PX[0])));
+  return u * u * (3 - 2 * u);
+}
 const MAX_HOSTILE_GLYPHS = 120;
 const SENSE_RANGE_DEFAULT = 4000;
 
@@ -649,6 +700,7 @@ export class WorldMarkers {
     this._barReq = [];
     this._barReqPool = [];
     this._interest = new Set();
+    this._lowest = new Set();
     this.brackets = [];
     this.glyphs = [];
     this.pips = [];
@@ -673,6 +725,14 @@ export class WorldMarkers {
     el.className = 'vsh-layer vsh-layer--world';
     root.appendChild(el);
     this.el = el;
+
+    // Altitude stalks paint under every mark: they are context, not identity.
+    this.altHost = document.createElement('div');
+    this.altHost.className = 'vsh-layer__alt';
+    this.altHost.style.cssText = 'position:absolute;inset:0;pointer-events:none';
+    el.appendChild(this.altHost);
+    this.alts = [];
+    this._altSeen = new Set();
 
     // Pips paint under everything, glyphs under brackets, so the hosts are
     // created in that order and DOM order settles the stack without z-index.
@@ -879,7 +939,9 @@ export class WorldMarkers {
 
   /* Does this hull carry a bar? Damaged, and engaged or in camera interest. */
   _wantsBar(e, frac) {
-    if (!(frac < HBAR_SHOW) || frac <= 0) return false;
+    if (frac <= 0) return false;
+    if (this._lowest.has(e.id)) return frac < 0.995;
+    if (!(frac < HBAR_SHOW)) return false;
     return this._hits.has(e.id) || e.targetId >= 0 || this._targeted.has(e.id) || this._interest.has(e.id);
   }
 
@@ -1133,6 +1195,7 @@ export class WorldMarkers {
     for (let i = nPip; i < this.pips.length; i++) this._parkPip(this.pips[i]);
 
     this._drawReticles(proj);
+    this._drawAltitudes(proj);
 
     this._contactAcc += dt;
     if (this._contactAcc >= CONTACT_REFRESH) {
@@ -1163,6 +1226,7 @@ export class WorldMarkers {
     /* A hurt hull where the camera is looking earns a mark, so its hull bar
        has something to hang under even when it is not shooting this second. */
     if (frac < HBAR_SHOW && w < CONTACT_EARN && this._interest.has(e.id)) w = CONTACT_EARN;
+    if (w < CONTACT_EARN && this._lowest.has(e.id)) w = CONTACT_EARN;
     return w;
   }
 
@@ -1190,6 +1254,21 @@ export class WorldMarkers {
       const fr = Math.max(HBAR_INTEREST_MIN, td * HBAR_INTEREST_K);
       fr2 = fr * fr;
     }
+    const low = this._lowCand || (this._lowCand = [[], []]);
+    low[0].length = 0;
+    low[1].length = 0;
+    const considerLow = (e) => {
+      const side = e.team === ctx.team ? 0 : 1;
+      const maxHull = e.maxHull || (e.def ? e.def.hull : 0) || 1;
+      const frac = (e.hull || 0) / maxHull;
+      if (!(frac < 0.995) || frac <= 0) return;
+      const L = low[side];
+      if (L.length === HBAR_LOWEST && frac >= L[L.length - 1].frac) return;
+      let i = L.length;
+      if (i === HBAR_LOWEST) { L.pop(); i--; }
+      while (i > 0 && L[i - 1].frac > frac) i--;
+      L.splice(i, 0, { id: e.id, frac });
+    };
     for (const e of ctx.entities()) {
       if (e.alive === false) continue;
       if (e.targetId >= 0) targeted.add(e.targetId);
@@ -1199,7 +1278,10 @@ export class WorldMarkers {
           const dx = p.x - fp.x;
           const dy = p.y - fp.y;
           const dz = p.z - fp.z;
-          if (dx * dx + dy * dy + dz * dz <= fr2) interest.add(e.id);
+          if (dx * dx + dy * dy + dz * dz <= fr2) {
+            interest.add(e.id);
+            if (e.engaged && e.team >= 0 && e.team <= 1) considerLow(e);
+          }
         }
       }
       if (e.team === ctx.team) {
@@ -1209,6 +1291,9 @@ export class WorldMarkers {
         sens.push(p.x, p.y, p.z, r * r);
       }
     }
+    const lowest = this._lowest;
+    lowest.clear();
+    for (const L of low) for (const c of L) lowest.add(c.id);
     const sensed = this._sensed;
     sensed.clear();
 
@@ -1295,8 +1380,10 @@ export class WorldMarkers {
         if (bar) this._requestBar(e, frac, enemy, proj.sx, proj.sy, Math.min(px, 48) * 0.8 + 4);
         continue;
       }
+      const drawn = drawnHullPx(e, proj);
+      const y = frac <= CONTACT_DYING ? 0 : glyphYield(drawn);
       if (enemy) {
-        this._drawHostile(this._hostileGlyph(nHost), e, b, proj.sx, proj.sy);
+        this._drawHostile(this._hostileGlyph(nHost), e, b, proj.sx, proj.sy, y, drawn);
         nHost++;
         if (bar) {
           const k = HOSTILE_K[b] * (frac <= CONTACT_DYING ? 1.3 : 1);
@@ -1304,7 +1391,7 @@ export class WorldMarkers {
         }
         continue;
       }
-      this._drawContact(this._contactMark(b, used[b]), e, proj.sx, proj.sy);
+      this._drawContact(this._contactMark(b, used[b]), e, proj.sx, proj.sy, y, drawn);
       used[b]++;
       total++;
       if (bar) {
@@ -1321,12 +1408,14 @@ export class WorldMarkers {
     for (let i = nHost; i < this.hostileGlyphs.length; i++) this._parkContact(this.hostileGlyphs[i]);
   }
 
-  _drawHostile(g, e, bucket, sx, sy) {
+  _drawHostile(g, e, bucket, sx, sy, yieldT = 0, drawn = 0) {
     const maxHull = e.maxHull || (e.def ? e.def.hull : 0) || 1;
     const dying = (e.hull || 0) <= maxHull * CONTACT_DYING;
-    const k = HOSTILE_K[bucket] * (dying ? 1.3 : 1);
+    const k = HOSTILE_K[bucket] * (dying ? 1.3 : 1) * (1 - GLYPH_YIELD_SHRINK * yieldT);
+    // P49: lift clear of the hull: half the drawn hull, half the glyph (20 px authored), a gap.
+    const lift = yieldT * (drawn * 0.5 + 10 * k + GLYPH_YIELD_LIFT);
     g.el.style.transform =
-      `translate3d(${sx.toFixed(1)}px,${sy.toFixed(1)}px,0) scale(${k.toFixed(3)})`;
+      `translate3d(${sx.toFixed(1)}px,${(sy - lift).toFixed(1)}px,0) scale(${k.toFixed(3)})`;
     if (g.classId !== e.classId) {
       g.classId = e.classId;
       const def = SHIPS[e.classId];
@@ -1339,10 +1428,10 @@ export class WorldMarkers {
     }
     /* Strength is engagement. Merely sensed is the quietest thing on screen
        short of nothing; firing, being hit and dying each step it up. */
-    const a = dying ? 1
+    const a = (dying ? 1
       : this._hits.has(e.id) ? 0.9
         : e.targetId >= 0 || this._targeted.has(e.id) ? 0.7
-          : 0.42;
+          : 0.42) * (1 - GLYPH_YIELD_FADE * yieldT);
     if (a !== g.a) {
       g.a = a;
       g.el.style.opacity = String(a);
@@ -1350,7 +1439,7 @@ export class WorldMarkers {
     g.live = true;
   }
 
-  _drawContact(c, e, sx, sy) {
+  _drawContact(c, e, sx, sy, yieldT = 0, drawn = 0) {
     /* "About to die" has to be unmistakable, and the first pass of this got it
        wrong: filling the diamond with its own hue looked identical to a healthy
        hostile whose engine bloom happened to shine through a hollow one. So
@@ -1367,9 +1456,12 @@ export class WorldMarkers {
     const dying = (e.hull || 0) <= maxHull * CONTACT_DYING;
     const enemy = e.team !== this.ctx.team;
 
+    // P49: shrink, and lift clear of the hull, as the hull becomes legible.
+    const ks = 1 - GLYPH_YIELD_SHRINK * yieldT;
+    const lift = yieldT * (drawn * 0.5 + CONTACT_PX[massBucket(e.role)] * 0.71 * ks + GLYPH_YIELD_LIFT);
     c.el.style.transform =
-      `translate3d(${sx.toFixed(1)}px,${sy.toFixed(1)}px,0) rotate(45deg)`
-      + (dying ? ' scale(1.35)' : '');
+      `translate3d(${sx.toFixed(1)}px,${(sy - lift).toFixed(1)}px,0) rotate(45deg)`
+      + (dying ? ' scale(1.35)' : yieldT > 0 ? ` scale(${ks.toFixed(3)})` : '');
 
     const hue = enemy ? 'var(--vsh-amber)' : dying ? 'var(--vsh-red)' : 'var(--vsh-cyan)';
     if (hue !== c.hue) {
@@ -1381,10 +1473,10 @@ export class WorldMarkers {
       c.el.style.background = dying ? 'currentColor' : 'transparent';
     }
 
-    const a = dying ? 1
+    const a = (dying ? 1
       : this._hits.has(e.id) ? 0.85
         : e.targetId >= 0 ? 0.6
-          : 0.32;
+          : 0.32) * (1 - GLYPH_YIELD_FADE * yieldT);
     if (a !== c.a) {
       c.a = a;
       c.el.style.opacity = String(a);
@@ -1591,6 +1683,183 @@ export class WorldMarkers {
     if (!g.live) {
       g.live = true;
       g.el.classList.add('is-live');
+    }
+  }
+
+  /* ------------------------------------------------------ altitude stalks */
+
+  _alt(i) {
+    let a = this.alts[i];
+    if (!a) {
+      const el = document.createElement('div');
+      el.className = 'vsh-alt';
+      const line = document.createElement('i');
+      line.className = 'vsh-alt__line';
+      const foot = document.createElement('i');
+      foot.className = 'vsh-alt__foot';
+      const label = document.createElement('b');
+      label.className = 'vsh-alt__km vsh-num';
+      el.append(line, foot, label);
+      this.altHost.appendChild(el);
+      a = { el, line, foot, label, live: false, foe: null, text: '' };
+      this.alts[i] = a;
+    }
+    return a;
+  }
+
+  _drawAltitudes(proj) {
+    const ctx = this.ctx;
+    const seen = this._altSeen;
+    seen.clear();
+    let n = 0;
+    let labels = 0;
+    // Label boxes placed this frame (x, y), so two heights never overprint.
+    const taken = this._altTaken || (this._altTaken = []);
+    taken.length = 0;
+    const free = (x, y) => {
+      for (let i = 0; i < taken.length; i += 2) {
+        if (Math.abs(taken[i] - x) < 62 && Math.abs(taken[i + 1] - y) < 13) return false;
+      }
+      return true;
+    };
+    /* Pre-pass: the selection's centroid and the hostiles nearest it. */
+    /* Medians, not means: one straggler 3 km up dragged a mean gap to 2.4 km
+       while every other hull sat 0.5 km above the hostiles. */
+    const median = (a) => { if (!a.length) return 0; a.sort((x, y) => x - y); const m = a.length >> 1; return a.length % 2 ? a[m] : 0.5 * (a[m - 1] + a[m]); };
+    const selY = this._altSelY || (this._altSelY = []);
+    selY.length = 0;
+    let sx0 = 0, sy0 = 0, sz0 = 0, ns = 0;
+    for (const id of ctx.selection) {
+      const e = ctx.entity(id);
+      const p = e && e.alive !== false ? posOf(e) : null;
+      if (p) { sx0 += p.x; sy0 += p.y; sz0 += p.z; ns++; selY.push(p.y); }
+    }
+    const near = this._altNear || (this._altNear = []);
+    near.length = 0;
+    let refY = null;
+    if (ns) {
+      sx0 /= ns; sy0 /= ns; sz0 /= ns;
+      for (const e of ctx.entities()) {
+        if (e.alive === false || e.team === ctx.team || e.team < 0 || e.team > 1) continue;
+        const p = posOf(e);
+        if (!p) continue;
+        const d2 = (p.x - sx0) ** 2 + (p.y - sy0) ** 2 + (p.z - sz0) ** 2;
+        if (d2 > ALT_NEAR_M * ALT_NEAR_M) continue;
+        near.push({ e, d2, y: p.y });
+      }
+      near.sort((a, b) => a.d2 - b.d2);
+      if (near.length > ALT_NEAR_MAX) near.length = ALT_NEAR_MAX;
+      if (near.length) refY = median(near.map((c) => c.y));
+    }
+    // Screen anchor for the fleet label: the labelled selected hull lowest on screen.
+    let anchorX = 0, anchorY = -1, anchorTop = Infinity;
+    const one = (e, label) => {
+      if (n >= MAX_ALT || !e || e.alive === false || seen.has(e.id)) return;
+      seen.add(e.id);
+      const p = posOf(e);
+      if (!p || Math.abs(p.y) < ALT_MIN_M) return;
+      if (!proj.project(p.x, p.y, p.z)) return;
+      const sx = proj.sx;
+      const sy = proj.sy;
+      if (sx < -40 || sx > proj.w + 40 || sy < -40 || sy > proj.h + 40) return;
+      if (!proj.project(p.x, 0, p.z)) return;
+      const dx = proj.sx - sx;
+      const dy = proj.sy - sy;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len < 3 || len > 4000) return;
+      const a = this._alt(n++);
+      const foe = e.team !== ctx.team;
+      if (foe !== a.foe) { a.foe = foe; a.el.classList.toggle('vsh-alt--foe', foe); }
+      a.el.style.transform = `translate3d(${sx.toFixed(1)}px,${sy.toFixed(1)}px,0)`;
+      a.line.style.transform = `rotate(${Math.atan2(-dx, dy).toFixed(4)}rad) scaleY(${len.toFixed(1)})`;
+      a.foot.style.transform = `translate(${dx.toFixed(1)}px,${dy.toFixed(1)}px)`;
+      // Height in km beside the foot, for the selection only and only where
+      // the stalk is long enough to carry it.
+      const lx = proj.sx + 8;
+      const ly = proj.sy - 6;
+      /* Relative to the hostiles nearest the selection when there are any,
+         the same reference as the fleet label, so the two never disagree
+         (critic round 14 read "+0.5 km" beside "2.4 km above hostiles"). */
+      const ref = label && refY !== null ? refY : 0;
+      const hy = p.y - ref;
+      const text = label && labels < MAX_ALT_LABELS && len > 36 && free(lx, ly)
+        ? `${hy > 0 ? '+' : '\u2212'}${(Math.abs(hy) / 1000).toFixed(1)} km` : '';
+      if (label && sy > anchorY) { anchorX = sx; anchorY = sy; }
+      if (label && sy < anchorTop) anchorTop = sy;
+      if (text) {
+        labels++;
+        taken.push(lx, ly);
+        a.label.style.transform = `translate(${(dx + 8).toFixed(1)}px,${(dy - 6).toFixed(1)}px)`;
+      }
+      if (text !== a.text) { a.text = text; a.label.textContent = text; }
+      if (!a.live) { a.live = true; a.el.classList.add('is-live'); }
+    };
+    for (const id of ctx.selection) {
+      const e = ctx.entity(id);
+      one(e, true);
+      if (e && e.targetId >= 0) one(ctx.entity(e.targetId), false);
+    }
+    for (const c of near) one(c.e, false);
+    /* The gap between the two, by the lowest selected hull on screen and
+       kept below the top bar so the HUD clip never hides it. */
+    let rel = '';
+    let relX = 0, relY = 0;
+    if (refY !== null && anchorY >= 0) {
+      const gap = median(selY) - refY;
+      const km = (Math.abs(gap) / 1000).toFixed(1);
+      rel = Math.abs(gap) < 150 ? 'level with hostiles' : gap > 0 ? `${km} km above hostiles` : `${km} km below hostiles`;
+      /* Placed clear of every HUD panel and hint line: below the lowest
+         selected hull on screen, else above or beside it. */
+      // Re-measured four times a second at most: a rect read forces layout.
+      const now = performance.now();
+      if (!this._altBoxes || now - this._altBoxesAt > 250) {
+        this._altBoxesAt = now;
+        const boxes = ((ctx.panelRects && ctx.panelRects()) || []).slice();
+        // The hint lines, not the rail (a full-height column).
+        const lines = document.querySelectorAll('.vsh-toasts > *');
+        if (lines.length) {
+          const base = this.el.getBoundingClientRect();
+          for (const t of lines) {
+            const r = t.getBoundingClientRect();
+            if (r.width > 1) boxes.push({ x: r.left - base.left - 8, y: r.top - base.top - 6, w: r.width + 16, h: r.height + 12 });
+          }
+        }
+        this._altBoxes = boxes;
+      }
+      const boxes = this._altBoxes;
+      const hit = (x, y) => y < 96 || y > proj.h - 30 || boxes.some((b) => x < b.x + b.w && x + 210 > b.x && y < b.y + b.h && y + 16 > b.y);
+      const top = Math.max(anchorTop, 130);
+      const tries = [
+        [anchorX - 60, anchorY + 22], [anchorX - 60, anchorY - 34], [anchorX + 24, anchorY - 8],
+        [anchorX + 24, anchorY + 22], [anchorX - 240, anchorY - 8], [anchorX - 60, top - 34],
+        [anchorX + 60, anchorY - 40], [anchorX - 60, anchorY + 56],
+      ];
+      let pick = null;
+      for (const [x, y] of tries) { const cx = Math.min(proj.w - 220, Math.max(24, x)); if (!hit(cx, y)) { pick = [cx, y]; break; } }
+      if (pick) { relX = pick[0]; relY = pick[1]; } else rel = '';
+    }
+    const rl = this._altRel || (this._altRel = (() => {
+      const b = document.createElement('b');
+      b.className = 'vsh-alt__rel vsh-num';
+      this.altHost.appendChild(b);
+      return { el: b, text: '', live: false };
+    })());
+    if (rel) {
+      if (rel !== rl.text) { rl.text = rel; rl.el.textContent = rel; }
+      rl.el.style.transform = `translate3d(${relX.toFixed(1)}px,${relY.toFixed(1)}px,0)`;
+      if (!rl.live) { rl.live = true; rl.el.classList.add('is-live'); }
+    } else if (rl.live) {
+      rl.live = false;
+      rl.el.classList.remove('is-live');
+    }
+    for (const e of ctx.entities()) {
+      if (n >= MAX_ALT) break;
+      const L = e.def ? e.def.length : 0;
+      if (L >= ALT_CAPITAL_M && e.team >= 0 && e.team <= 1) one(e, false);
+    }
+    for (let i = n; i < this.alts.length; i++) {
+      const a = this.alts[i];
+      if (a.live) { a.live = false; a.el.classList.remove('is-live'); }
     }
   }
 

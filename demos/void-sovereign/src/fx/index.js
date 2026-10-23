@@ -1593,6 +1593,12 @@ export class FXSystem {
     for (const f of Object.values(this.ctx.fields)) f.update();
   }
 
+  /** R12 fix 3: boot-time warm of every death script (see ExplosionFX.warm).
+      Returns ms. */
+  warmDeaths() {
+    return this.explosions.warm();
+  }
+
   /** POSTFX: hand over the scene depth attachment and plumes stop hard-clipping
       against hulls. Without it the fields fall back to a near-camera fade. */
   setSceneDepth(texture, { logarithmic = true, near = 1, far = 400000 } = {}) {
@@ -1631,6 +1637,7 @@ export class FXSystem {
       beams: this.weapons.beamCount,
       missiles: this.weapons.missileCount,
       rings: this.explosions.ringCount,
+      fireballs: this.explosions.fireballCount,
       sequences: this.explosions.sequenceCount,
       shields: this.shields.count,
       debris: this.debris.count,
@@ -1667,9 +1674,10 @@ export class FXSystem {
   _onDeath(p) {
     const e = p && p.entity;
     if (!e) return;
-    this.explosions.kill(e, p.killer);
-    // The hull stays: capitals break into drifting, charred sections.
-    this.wrecks.kill(e);
+    const plan = this.explosions.kill(e, p.killer);
+    // The hull stays: capitals break into drifting, charred sections, cut and
+    // timed by the death script's plan (R12 fix 3).
+    this.wrecks.kill(e, plan);
     this.engines.detach(e);
     this.weapons.detachEntity(e);
     this.shields.cancel(e);

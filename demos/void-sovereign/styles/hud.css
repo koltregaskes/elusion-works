@@ -248,14 +248,19 @@
    class: hurt (thin, dim), heavy (under half: full strength, larger), crit
    (under 30%: ours red, a bright outline). The lowest three under half pulse.
    Only transforms are written per frame; the anchor is the mark's centre. */
+/* Round 14: 25 px (was 19) with one tick at half, not four quarters, so the
+   fill reads as a length rather than a pip count (critic round 13 could not
+   rank 70% against 72%: four segments read as "three of four" for both). */
 .vsh-hbar {
   position: absolute;
-  left: -9.5px;
+  left: -12.5px;
   top: 0;
-  width: 19px;
+  width: 25px;
   height: 3px;
   color: var(--vsh-cyan);
-  background: rgba(2, 6, 11, 0.72);
+  /* A visible empty track (critic round 14): near-black vanished on space,
+     so a short fill read as a short bar rather than a part-empty one. */
+  background: rgba(196, 214, 230, 0.2);
   box-shadow: 0 0 0 1px rgba(2, 6, 11, 0.85);
   opacity: 0;
   transition: opacity 0.16s linear;
@@ -267,10 +272,8 @@
   position: absolute;
   inset: 0;
   background: linear-gradient(90deg,
-    transparent 4px, rgba(2, 6, 11, 0.95) 4px 5px,
-    transparent 5px 9px, rgba(2, 6, 11, 0.95) 9px 10px,
-    transparent 10px 14px, rgba(2, 6, 11, 0.95) 14px 15px,
-    transparent 15px);
+    transparent calc(50% - 0.5px), rgba(2, 6, 11, 0.95) calc(50% - 0.5px) calc(50% + 0.5px),
+    transparent calc(50% + 0.5px));
 }
 
 .vsh-hbar__f {
@@ -287,24 +290,15 @@
 
 .vsh-hbar--heavy.is-live { opacity: 0.95; }
 .vsh-hbar--heavy {
-  left: -11.5px;
-  width: 23px;
+  left: -15.5px;
+  width: 31px;
   height: 4px;
-}
-
-.vsh-hbar--heavy::after,
-.vsh-hbar--crit::after {
-  background: linear-gradient(90deg,
-    transparent 5px, rgba(2, 6, 11, 0.95) 5px 6px,
-    transparent 6px 11px, rgba(2, 6, 11, 0.95) 11px 12px,
-    transparent 12px 17px, rgba(2, 6, 11, 0.95) 17px 18px,
-    transparent 18px);
 }
 
 .vsh-hbar--crit.is-live { opacity: 1; }
 .vsh-hbar--crit {
-  left: -11.5px;
-  width: 23px;
+  left: -15.5px;
+  width: 31px;
   height: 4px;
   color: var(--vsh-red);
   box-shadow: 0 0 0 1px rgba(255, 236, 214, 0.9), 0 0 0 2px rgba(2, 6, 11, 0.85), 0 0 6px 1px rgba(255, 107, 74, 0.45);
@@ -581,6 +575,66 @@
   height: 1px;
   background: currentColor;
   opacity: 0.55;
+}
+
+/* Altitude stalks (round 13): a plumb line from a ship to the y = 0
+   reference plane and a foot tick where it lands, in the move-order marker's
+   language. Ours cyan, theirs amber, both quiet: they are context. */
+.vsh-alt {
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--vsh-cyan);
+  opacity: 0;
+  transition: opacity 180ms linear;
+}
+.vsh-alt.is-live { opacity: 1; }
+.vsh-alt--foe { color: var(--vsh-amber); }
+.vsh-alt__line {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  background: linear-gradient(to bottom, currentColor, transparent);
+  opacity: 0.42;
+  transform-origin: 0 0;
+}
+.vsh-alt--foe .vsh-alt__line { opacity: 0.34; }
+.vsh-alt__foot {
+  position: absolute;
+  left: -5px;
+  top: 0;
+  width: 10px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.5;
+}
+/* The selection's height against the hostiles nearest it (round 14). */
+.vsh-alt__rel {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--vsh-cyan);
+  text-shadow: var(--vsh-halo);
+  opacity: 0;
+  transition: opacity 180ms linear;
+}
+.vsh-alt__rel.is-live { opacity: 0.9; }
+.vsh-alt__km {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  opacity: 0.7;
 }
 
 /* --------------------------------------------------------------- 2. top bar */
@@ -1605,6 +1659,16 @@
   justify-content: flex-end;
   gap: 5px;
   min-height: 0;
+}
+
+/* Round 14 (critic round 13: "sparks drown the hint text"). Each line gets a
+   soft local scrim, a dark wash that fades out to the right, rather than a
+   box: the rail stays hairline type over the void, but a detonation behind it
+   can no longer take the text's contrast away. */
+.vsh-toasts .vsh-toast {
+  background: linear-gradient(90deg, rgba(2, 6, 11, 0.62), rgba(2, 6, 11, 0.42) 70%, rgba(2, 6, 11, 0));
+  padding-right: 22px;
+  text-shadow: var(--vsh-halo);
 }
 
 .vsh-toast {

@@ -86,6 +86,10 @@ export class NoiseBank {
     this._cache = new Map();
   }
 
+  static get KEYS() {
+    return [['pink', 2.5], ['white', 2.5], ['brown', 2.5], ['brown', 4], ['crackle', 3], ['metal', 2.5]];
+  }
+
   /** kind: 'white' | 'pink' | 'brown' | 'crackle' | 'metal' */
   get(kind, seconds) {
     const secs = seconds || 2.5;
@@ -95,6 +99,17 @@ export class NoiseBank {
     const buf = this._build(kind, secs);
     this._cache.set(key, buf);
     return buf;
+  }
+
+  /** R12 fix 3: build every buffer the mixer asks for, once, at boot. Each
+      is built on first use otherwise, and the 'metal' and 'brown' ones are
+      first asked for by a capital's breakup, so a headless CPU profile of the
+      first carrier kill put ~8 ms of noise synthesis on one frame. The keys
+      are the (kind, seconds) pairs in music.js, sfx.js and voice.js; an
+      unknown pair is still built lazily, exactly as before. Fixed order, so
+      the buffers are the same every run. */
+  warm() {
+    for (const [kind, secs] of NoiseBank.KEYS) this.get(kind, secs);
   }
 
   _build(kind, seconds) {

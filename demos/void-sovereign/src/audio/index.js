@@ -226,6 +226,7 @@ export class AudioSystem {
     const rng = makeRng(this.seed).fork(0x5a17);
     this.rng = rng;
     this.noise = new NoiseBank(this.ctx, rng.fork(1));
+    try { this.noise.warm(); } catch (e) { /* built lazily instead */ }
 
     try {
       this._buildGraph();

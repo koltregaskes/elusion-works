@@ -722,6 +722,25 @@ const TRAIL_RANGE = 9000;
    cruise cannot stretch it past the budget either. */
 const TRAIL_HULLS = PLUME_LEN_CAP;
 
+/* P49 (combat legibility): a streak at fleet range, without undoing round 6.
+
+   Round 6 capped the wake at 0.35 hull lengths because, up close, a long wake
+   behind a fighter read as a laser pointer. But the cap is in *physical* hull
+   lengths, so at 5 km a 14 m interceptor's wake was 5 m: about one pixel, i.e.
+   no trail at all, and the Homeworld signature (streaks before hulls) was gone
+   from exactly the range the fights are watched at. The extra span below is in
+   *drawn* hull lengths (the impostor's floored size) and fades in only while
+   the hull is small on screen (TRAIL_FAR_PX, in px of drawn hull), so a
+   close-up wake is still round 6's and a fleet-range one is a short tapered
+   streak about two drawn hulls long. Width and life follow the same smallness:
+   width by grow^TRAIL_WIDTH_GROW_POW (thinner than the floored hull), life up
+   to (1 + TRAIL_FAR_LIFE)x so a slow corvette's streak is not cut by age
+   before it reaches its span. The ribbon count is still the `trails` budget. */
+const TRAIL_FAR_HULLS = 2.2;
+const TRAIL_FAR_PX = [22, 60];
+const TRAIL_WIDTH_GROW_POW = 0.5;
+const TRAIL_FAR_LIFE = 1.0;
+
 /* Station-keeping glow floor. Small enough to read as "hot, idle", large
    enough that a parked mothership is not twelve dead holes — and, at 0.20
    rather than 0.14, enough that a ship holding station in a firefight still
@@ -1085,11 +1104,20 @@ export class EngineFX {
           const life = (0.30 + 0.20 * ctx.qscale) * j;
           const ramp = this._trailRamps[e.team || 0] || this._trailRamps[0];
           entry.trail = trails.acquire(team.engine, r, life, Math.max(5, r * 2.4), ramp, TRAIL_HULLS * entry.L * scale);
+          if (entry.trail) { entry.trailW = r; entry.trailLife = life; }
         } else if (!want && entry.trail) {
           trails.detach(entry.trail);
           entry.trail = null;
         }
         if (entry.trail) {
+          /* P49: span, width and life against the hull as drawn (see TRAIL_FAR_HULLS). */
+          const hullPx = hullDrawn * pxPerM;
+          const u = Math.min(1, Math.max(0, (hullPx - TRAIL_FAR_PX[0]) / (TRAIL_FAR_PX[1] - TRAIL_FAR_PX[0])));
+          const small = 1 - u * u * (3 - 2 * u);
+          const tr = entry.trail;
+          tr.maxSpan = TRAIL_HULLS * entry.L * scale + small * TRAIL_FAR_HULLS * hullDrawn;
+          tr.width = entry.trailW * (1 + small * (Math.pow(grow, TRAIL_WIDTH_GROW_POW) - 1));
+          tr.life = entry.trailLife * (1 + small * TRAIL_FAR_LIFE);
           centre.copy(entry.centre).multiplyScalar(scale * grow).applyQuaternion(oq).add(op);
           trails.feed(entry.trail, centre.x, centre.y, centre.z);
         }

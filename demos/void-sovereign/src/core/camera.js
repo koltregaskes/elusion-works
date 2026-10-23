@@ -1796,10 +1796,12 @@ export class CameraRig {
     }
 
     /* Impact shake. */
+    let shakeNow = 0;
     if (this._trauma > 0) {
       this._trauma = Math.max(0, this._trauma - dt * 1.05);
       const s = Math.pow(this._trauma, SHAKE_CURVE);
       if (s > 0.0001) {
+        shakeNow = s;
         const wpp = this.worldPerPixel(eff);
         const t = this._elapsed * 19;
         const seed = this._shakeSeed;
@@ -1811,6 +1813,12 @@ export class CameraRig {
         roll += noise1(t * 0.8, seed + 0.77) * 0.010 * s;
       }
     }
+    /* Published for POSTFX (P44). The shake moves the whole image several
+       pixels a frame, and TAA resamples its history at a new sub-pixel offset
+       on every one of those frames; at feedback 0.94 the resamples stack into
+       a full-frame smear during a capital death. POSTFX reads this to shorten
+       the history while it lasts. */
+    cam.userData.shake = shakeNow;
 
     /* Rocks between the lens and the subject are faded out (R7 fix 3; alpha-blended since R9). */
     this._occluders(_v1, focus, dt);
