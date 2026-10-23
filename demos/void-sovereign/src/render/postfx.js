@@ -705,6 +705,8 @@ export class PostFX {
       uFilter: { value: 1.4 },
       uSharpen: { value: 0.0 },
       uReset: { value: 1 },
+      tGlow: { value: null },
+      uReactive: { value: 0 },
     }));
 
     this._mLumSeed = keep(fsMaterial(LUM_SEED_FRAG, {
@@ -943,6 +945,9 @@ export class PostFX {
     u.uFilter.value = this.params.taaFilter;
     u.uSharpen.value = this.tier.taaSharpen;
     u.uReset.value = this._historyValid ? 0 : 1;
+    // R12 fix 3: the FX glow layer marks where a new flash must not wait on history.
+    u.tGlow.value = this._rtGlow ? this._rtGlow.texture : this._black;
+    u.uReactive.value = this._rtGlow ? 1 : 0;
 
     this._blit(this._mTaa, next);
     this._taaIndex = 1 - this._taaIndex;
@@ -1141,6 +1146,8 @@ uniform float uClampGamma;
 uniform float uFilter;
 uniform float uSharpen;
 uniform float uReset;
+uniform sampler2D tGlow;
+uniform float uReactive;
 varying vec2 vUv;
 
 /* Catmull-Rom history fetch. Bilinear history is what makes naive TAA look
@@ -1244,6 +1251,23 @@ void main() {
   vec2 velPx = ( vUv - prevUv ) / uTexel;
   float speed = clamp( length( velPx ) / 24.0, 0.0, 1.0 );
   float feedback = mix( uFeedback, 0.72, speed ) * valid * ( 1.0 - uReset );
+
+  /* R12 fix 3: reactive pixels. Where the FX glow layer is most of this
+     pixel and the pixel has just got much brighter than its history, it is a
+     new flash, and the luminance weighting below (which exists to kill
+     fireflies) would otherwise hold it back to the history for a frame or
+     two: a capital's detonation read at 0.04 of its hull on the kill frame
+     and 0.7 on the next. Those pixels drop their history. Steady emitters
+     (plumes, trails, a fireball already burning) are not rising, so they keep
+     the full resolve, and stars are on another layer. */
+  if ( uReactive > 0.5 ) {
+    float lc = luma( cur );
+    float gl = luma( texture2D( tGlow, vUv ).rgb );
+    float share = clamp( gl / max( lc, 1e-4 ), 0.0, 1.0 );
+    float rise = clamp( ( lc - luma( texture2D( tHistory, prevUv ).rgb ) ) / max( lc, 1e-4 ), 0.0, 1.0 );
+    float reactive = smoothstep( 0.35, 0.75, share ) * smoothstep( 0.45, 0.85, rise ) * smoothstep( 0.08, 0.30, gl );
+    feedback *= 1.0 - reactive;
+  }
 
   // Luminance weighting kills fireflies: a single 200x sample cannot dominate
   // the running average.

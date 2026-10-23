@@ -701,6 +701,11 @@ async function main() {
          frame for a second while the instanced hull shader linked). Parallel
          compile where the driver has it, so the shell keeps animating. */
       await mark(0.99, 'Casting the wreck moulds…', async () => {
+        /* R12 fix 3: and run every death script once, far off-field, so the
+           first kill of a match meets no cold path or first buffer upload. */
+        if (M.fx && M.fx.warmDeaths) {
+          try { vs.deathWarmMs = M.fx.warmDeaths(); } catch (e) { loadErrors.push({ label: 'fx:warmDeaths', error: String(e.message) }); }
+        }
         if (!M.fx || !M.fx.wrecks || !A.ships || !A.ships.compileFleetBatches) return;
         try {
           M.fx.wrecks.prepare();
