@@ -583,6 +583,50 @@
   opacity: 0.55;
 }
 
+/* Altitude stalks (round 13): a plumb line from a ship to the y = 0
+   reference plane and a foot tick where it lands, in the move-order marker's
+   language. Ours cyan, theirs amber, both quiet: they are context. */
+.vsh-alt {
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--vsh-cyan);
+  opacity: 0;
+  transition: opacity 180ms linear;
+}
+.vsh-alt.is-live { opacity: 1; }
+.vsh-alt--foe { color: var(--vsh-amber); }
+.vsh-alt__line {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  background: linear-gradient(to bottom, currentColor, transparent);
+  opacity: 0.42;
+  transform-origin: 0 0;
+}
+.vsh-alt--foe .vsh-alt__line { opacity: 0.34; }
+.vsh-alt__foot {
+  position: absolute;
+  left: -5px;
+  top: 0;
+  width: 10px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.5;
+}
+.vsh-alt__km {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+
 /* --------------------------------------------------------------- 2. top bar */
 .vsh-top {
   z-index: 3;

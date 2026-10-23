@@ -45,6 +45,16 @@ const MAX_BRACKETS = 96;
 const MAX_GLYPHS = 140;
 const MAX_PIPS = 320;
 const MAX_RETICLES = 14;
+/* Round 13 (critic finding "no altitude cues outside the Sensors Manager",
+   rubric R5): plumb lines from ships to the y = 0 reference plane, the same
+   hairline-and-foot the move-order marker already drops. Drawn for the
+   selection, for every capital in view (ours and theirs), and for whatever
+   the selection is shooting at, so "which fleet is higher" reads without
+   orbiting the camera. Ships within ALT_MIN_M of the plane draw nothing. */
+const MAX_ALT = 40;
+const ALT_MIN_M = 80;
+const ALT_CAPITAL_M = 300;
+const MAX_ALT_LABELS = 6;
 const MAX_ORDERS = 16;
 
 /* Weighted contact marks — round 2 fix 4, and the reason this layer exists.
@@ -704,6 +714,14 @@ export class WorldMarkers {
     root.appendChild(el);
     this.el = el;
 
+    // Altitude stalks paint under every mark: they are context, not identity.
+    this.altHost = document.createElement('div');
+    this.altHost.className = 'vsh-layer__alt';
+    this.altHost.style.cssText = 'position:absolute;inset:0;pointer-events:none';
+    el.appendChild(this.altHost);
+    this.alts = [];
+    this._altSeen = new Set();
+
     // Pips paint under everything, glyphs under brackets, so the hosts are
     // created in that order and DOM order settles the stack without z-index.
     // Contact marks go under even the pips: a marked contact that is also
@@ -1163,6 +1181,7 @@ export class WorldMarkers {
     for (let i = nPip; i < this.pips.length; i++) this._parkPip(this.pips[i]);
 
     this._drawReticles(proj);
+    this._drawAltitudes(proj);
 
     this._contactAcc += dt;
     if (this._contactAcc >= CONTACT_REFRESH) {
@@ -1628,6 +1647,92 @@ export class WorldMarkers {
     if (!g.live) {
       g.live = true;
       g.el.classList.add('is-live');
+    }
+  }
+
+  /* ------------------------------------------------------ altitude stalks */
+
+  _alt(i) {
+    let a = this.alts[i];
+    if (!a) {
+      const el = document.createElement('div');
+      el.className = 'vsh-alt';
+      const line = document.createElement('i');
+      line.className = 'vsh-alt__line';
+      const foot = document.createElement('i');
+      foot.className = 'vsh-alt__foot';
+      const label = document.createElement('b');
+      label.className = 'vsh-alt__km vsh-num';
+      el.append(line, foot, label);
+      this.altHost.appendChild(el);
+      a = { el, line, foot, label, live: false, foe: null, text: '' };
+      this.alts[i] = a;
+    }
+    return a;
+  }
+
+  _drawAltitudes(proj) {
+    const ctx = this.ctx;
+    const seen = this._altSeen;
+    seen.clear();
+    let n = 0;
+    let labels = 0;
+    // Label boxes placed this frame (x, y), so two heights never overprint.
+    const taken = this._altTaken || (this._altTaken = []);
+    taken.length = 0;
+    const free = (x, y) => {
+      for (let i = 0; i < taken.length; i += 2) {
+        if (Math.abs(taken[i] - x) < 62 && Math.abs(taken[i + 1] - y) < 13) return false;
+      }
+      return true;
+    };
+    const one = (e, label) => {
+      if (n >= MAX_ALT || !e || e.alive === false || seen.has(e.id)) return;
+      seen.add(e.id);
+      const p = posOf(e);
+      if (!p || Math.abs(p.y) < ALT_MIN_M) return;
+      if (!proj.project(p.x, p.y, p.z)) return;
+      const sx = proj.sx;
+      const sy = proj.sy;
+      if (sx < -40 || sx > proj.w + 40 || sy < -40 || sy > proj.h + 40) return;
+      if (!proj.project(p.x, 0, p.z)) return;
+      const dx = proj.sx - sx;
+      const dy = proj.sy - sy;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len < 3 || len > 4000) return;
+      const a = this._alt(n++);
+      const foe = e.team !== ctx.team;
+      if (foe !== a.foe) { a.foe = foe; a.el.classList.toggle('vsh-alt--foe', foe); }
+      a.el.style.transform = `translate3d(${sx.toFixed(1)}px,${sy.toFixed(1)}px,0)`;
+      a.line.style.transform = `rotate(${Math.atan2(-dx, dy).toFixed(4)}rad) scaleY(${len.toFixed(1)})`;
+      a.foot.style.transform = `translate(${dx.toFixed(1)}px,${dy.toFixed(1)}px)`;
+      // Height in km beside the foot, for the selection only and only where
+      // the stalk is long enough to carry it.
+      const lx = proj.sx + 8;
+      const ly = proj.sy - 6;
+      const text = label && labels < MAX_ALT_LABELS && len > 36 && free(lx, ly)
+        ? `${p.y > 0 ? '+' : '\u2212'}${(Math.abs(p.y) / 1000).toFixed(1)} km` : '';
+      if (text) {
+        labels++;
+        taken.push(lx, ly);
+        a.label.style.transform = `translate(${(dx + 8).toFixed(1)}px,${(dy - 6).toFixed(1)}px)`;
+      }
+      if (text !== a.text) { a.text = text; a.label.textContent = text; }
+      if (!a.live) { a.live = true; a.el.classList.add('is-live'); }
+    };
+    for (const id of ctx.selection) {
+      const e = ctx.entity(id);
+      one(e, true);
+      if (e && e.targetId >= 0) one(ctx.entity(e.targetId), false);
+    }
+    for (const e of ctx.entities()) {
+      if (n >= MAX_ALT) break;
+      const L = e.def ? e.def.length : 0;
+      if (L >= ALT_CAPITAL_M && e.team >= 0 && e.team <= 1) one(e, false);
+    }
+    for (let i = n; i < this.alts.length; i++) {
+      const a = this.alts[i];
+      if (a.live) { a.live = false; a.el.classList.remove('is-live'); }
     }
   }
 
