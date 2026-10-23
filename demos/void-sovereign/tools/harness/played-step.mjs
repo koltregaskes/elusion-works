@@ -65,7 +65,8 @@ for (const view of ['wide', 'mid', 'close']) {
     const overlaps = [];
     for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) { const a = boxes[i].r, b = boxes[j].r; const ox = Math.min(a.right, b.right) - Math.max(a.left, b.left); const oy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top); if (ox > 1 && oy > 1) overlaps.push([boxes[i].t, boxes[j].t]); }
     const objFit = (document.querySelector('.vsh-obj') || {}).className;
-    return { overlaps, objFit, view, tick: w.tickCount, time: +w.time.toFixed(1), engaged: eng0.length, near: near.length, inFrame: [0, 1].map((t) => vis.filter((e) => e.team === t).length), capsInFrame: [0, 1].map((t) => vis.filter((e) => e.team === t && e.def.length >= 380).length), lowFriendly, nearestDeath: nearest, hullSum: hulls, camDist: Math.round(cam.position.distanceTo(cen)), sov: w.teams.map((t) => Math.round(t.sovereignty)), url: cv.toDataURL('image/png') };
+    const mh = document.querySelector('.vsh-host--markers'); const clip = mh ? mh.style.clipPath.length : -1; const seams = (document.querySelector('.vsh-obj__seams') || {}).offsetWidth || 0; const rate = (document.querySelector('.vsh-res__rate') || {}).textContent;
+    return { clip, seams, rate, overlaps, objFit, view, tick: w.tickCount, time: +w.time.toFixed(1), engaged: eng0.length, near: near.length, inFrame: [0, 1].map((t) => vis.filter((e) => e.team === t).length), capsInFrame: [0, 1].map((t) => vis.filter((e) => e.team === t && e.def.length >= 380).length), lowFriendly, nearestDeath: nearest, hullSum: hulls, camDist: Math.round(cam.position.distanceTo(cen)), sov: w.teams.map((t) => Math.round(t.sovereignty)), url: cv.toDataURL('image/png') };
   }, { view, CONVERGE });
   fs.writeFileSync(`${OUT}-${view}-canvas.png`, Buffer.from(r.url.split(',')[1], 'base64')); delete r.url;
   try { await page.screenshot({ path: `${OUT}-${view}-hud.png`, timeout: 120000 }); r.hud = true; } catch (e) { r.hud = 'timeout'; }

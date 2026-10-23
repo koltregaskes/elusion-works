@@ -55,6 +55,11 @@ const MAX_ALT = 40;
 const ALT_MIN_M = 80;
 const ALT_CAPITAL_M = 300;
 const MAX_ALT_LABELS = 6;
+/* Round 14 (critic round 13: "nothing on the hostiles and no relative
+   reading"): the hostiles nearest the selection get stalks too, and one
+   label by the selection says how far above or below them it sits. */
+const ALT_NEAR_M = 6000;
+const ALT_NEAR_MAX = 10;
 const MAX_ORDERS = 16;
 
 /* Weighted contact marks — round 2 fix 4, and the reason this layer exists.
@@ -1751,10 +1756,54 @@ export class WorldMarkers {
       if (text !== a.text) { a.text = text; a.label.textContent = text; }
       if (!a.live) { a.live = true; a.el.classList.add('is-live'); }
     };
+    let sx0 = 0, sy0 = 0, sz0 = 0, ns = 0;
     for (const id of ctx.selection) {
       const e = ctx.entity(id);
       one(e, true);
       if (e && e.targetId >= 0) one(ctx.entity(e.targetId), false);
+      const p = e && e.alive !== false ? posOf(e) : null;
+      if (p) { sx0 += p.x; sy0 += p.y; sz0 += p.z; ns++; }
+    }
+    /* The hostiles nearest the selection, and the gap between the two. */
+    let rel = '';
+    let relX = 0, relY = 0;
+    if (ns) {
+      sx0 /= ns; sy0 /= ns; sz0 /= ns;
+      const near = this._altNear || (this._altNear = []);
+      near.length = 0;
+      for (const e of ctx.entities()) {
+        if (e.alive === false || e.team === ctx.team || e.team < 0 || e.team > 1) continue;
+        const p = posOf(e);
+        if (!p) continue;
+        const d2 = (p.x - sx0) ** 2 + (p.y - sy0) ** 2 + (p.z - sz0) ** 2;
+        if (d2 > ALT_NEAR_M * ALT_NEAR_M) continue;
+        near.push({ e, d2, y: p.y });
+      }
+      near.sort((a, b) => a.d2 - b.d2);
+      if (near.length > ALT_NEAR_MAX) near.length = ALT_NEAR_MAX;
+      let hy = 0;
+      for (const c of near) { one(c.e, false); hy += c.y; }
+      if (near.length && proj.project(sx0, sy0, sz0)) {
+        const gap = sy0 - hy / near.length;
+        const km = (Math.abs(gap) / 1000).toFixed(1);
+        rel = Math.abs(gap) < 150 ? 'level with hostiles' : gap > 0 ? `${km} km above hostiles` : `${km} km below hostiles`;
+        relX = proj.sx;
+        relY = proj.sy;
+      }
+    }
+    const rl = this._altRel || (this._altRel = (() => {
+      const b = document.createElement('b');
+      b.className = 'vsh-alt__rel vsh-num';
+      this.altHost.appendChild(b);
+      return { el: b, text: '', live: false };
+    })());
+    if (rel) {
+      if (rel !== rl.text) { rl.text = rel; rl.el.textContent = rel; }
+      rl.el.style.transform = `translate3d(${(relX + 16).toFixed(1)}px,${(relY + 14).toFixed(1)}px,0)`;
+      if (!rl.live) { rl.live = true; rl.el.classList.add('is-live'); }
+    } else if (rl.live) {
+      rl.live = false;
+      rl.el.classList.remove('is-live');
     }
     for (const e of ctx.entities()) {
       if (n >= MAX_ALT) break;

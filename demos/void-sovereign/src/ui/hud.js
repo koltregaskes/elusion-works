@@ -1040,7 +1040,8 @@ export class HUD {
      other. The media queries guess at widths; this measures. Twice a second
      (and whenever the text changes length) the block steps down a level
      until its rows fit: 1 drops the seam-state phrase and narrows the bars,
-     2 drops the seam count, 3 narrows the bars again. `.vsh-obj` also clips,
+     2 drops the per-meter You / Them words, 3 narrows the bars again, and
+     only 4 drops the seam count. `.vsh-obj` also clips,
      so a row that still does not fit is cut, never printed over a neighbour. */
   _fitObjective() {
     const o = this.objEl;
@@ -1050,7 +1051,7 @@ export class HUD {
     if (this._fitAt !== undefined && now - this._fitAt < 500 && sig === this._fitSig) return;
     this._fitAt = now;
     this._fitSig = sig;
-    const levels = ['is-fit1', 'is-fit2', 'is-fit3'];
+    const levels = ['is-fit1', 'is-fit2', 'is-fit3', 'is-fit4'];
     o.classList.remove(...levels);
     let level = 0;
     while (level < levels.length && o.scrollWidth > o.clientWidth + 1) {
@@ -1641,6 +1642,48 @@ export class HUD {
     return out;
   }
 
+  /* Round 14 (critic round 13: "hull bars and hulls print over 2,475 and
+     100%", "sparks drown the hint text and the selection list"). World marks
+     (brackets, pips, glyphs, hull bars, altitude stalks) are clipped out of
+     every HUD panel: the top bar band down to its rule, the production and
+     selection panels (with their scrim margin, from _panelRects), and the
+     hint rail. One evenodd path on the marker host, rebuilt four times a
+     second and written only when it changes. The 3D scene still runs under
+     the panels; their scrims carry it. */
+  _clipMarkers() {
+    const host = this.layerHost;
+    if (!host || !this.root) return;
+    const base = this.root.getBoundingClientRect();
+    const W = Math.round(base.width);
+    const H = Math.round(base.height);
+    if (W < 2 || H < 2) return;
+    const holes = [];
+    const rule = this.root.querySelector('.vsh-top__rule');
+    if (rule) {
+      const r = rule.getBoundingClientRect();
+      holes.push([0, 0, W, Math.round(r.bottom - base.top + 6)]);
+    }
+    for (const r of this._panelRects()) holes.push([Math.round(r.x), Math.round(r.y), Math.round(r.w), Math.round(r.h)]);
+    if (this.toastEl && this.toastEl.childElementCount) {
+      const r = this.toastEl.getBoundingClientRect();
+      if (r.width > 1 && r.height > 1) {
+        holes.push([Math.round(r.left - base.left - 8), Math.round(r.top - base.top - 6), Math.round(r.width + 16), Math.round(r.height + 12)]);
+      }
+    }
+    let d = `M0 0H${W}V${H}H0Z`;
+    for (const [x, y, w, h] of holes) {
+      const x0 = Math.max(0, x), y0 = Math.max(0, y);
+      const x1 = Math.min(W, x + w), y1 = Math.min(H, y + h);
+      if (x1 - x0 < 1 || y1 - y0 < 1) continue;
+      d += `M${x0} ${y0}H${x1}V${y1}H${x0}Z`;
+    }
+    const css = `path(evenodd, "${d}")`;
+    if (css !== this._markerClip) {
+      this._markerClip = css;
+      host.style.clipPath = css;
+    }
+  }
+
   _clusters() {
     const w = this.world;
     if (!w) return null;
@@ -1908,10 +1951,25 @@ export class HUD {
       this.creditsEl.textContent = shown.toLocaleString('en-GB');
     }
 
+    /* Per second of game time, not of frames drawn (round 14). Divided by
+       wall time, the rate read double at x2 speed, zero while paused, and
+       thousands per second whenever the sim ran ahead of the renderer. The
+       window still closes every 1.5 s of wall time so the readout stays
+       live; a paused window keeps the last rate. */
     this._incomeWin += d;
     if (this._incomeWin >= 1.5) {
-      this._income = this._incomeAcc / this._incomeWin;
-      this._incomeAcc = 0;
+      const wt = this.world && typeof this.world.time === 'number' ? this.world.time : null;
+      if (wt !== null && this._incomeT0 === undefined) {
+        // First window: no game-time baseline yet, so only set one.
+        this._incomeAcc = 0;
+      } else {
+        const span = wt !== null ? wt - this._incomeT0 : this._incomeWin;
+        if (span > 1e-3) {
+          this._income = this._incomeAcc / span;
+          this._incomeAcc = 0;
+        }
+      }
+      this._incomeT0 = wt !== null ? wt : undefined;
       this._incomeWin = 0;
       const r = this._income;
       this.rateEl.textContent = r > 0.05 ? `+${r.toFixed(1)} /s` : '—';
@@ -1928,6 +1986,7 @@ export class HUD {
     if (this._statAcc >= 0.25) {
       this._statAcc = 0;
       this._refreshStats(false);
+      this._clipMarkers();
       // Sitting on a pile of ore with an empty yard is the commonest way a
       // first game stalls, so it earns one nudge and never mentions it again.
       if (this._creditsTarget > 900 && !this._teamCache.queue.length) {

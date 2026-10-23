@@ -115,7 +115,8 @@ for (const m of MOMENTS) {
     const boxes = leaves.map((n) => { const r = n.getBoundingClientRect(); const c = n.closest('.vsh-obj'); const cr = c ? c.getBoundingClientRect() : null; return { t: n.textContent.trim().slice(0, 24), r: cr ? { left: Math.max(r.left, cr.left), right: Math.min(r.right, cr.right), top: r.top, bottom: r.bottom } : r }; }).filter((b) => b.r.right - b.r.left > 1);
     const overlaps = [];
     for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) { const a = boxes[i].r, b = boxes[j].r; const ox = Math.min(a.right, b.right) - Math.max(a.left, b.left); const oy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top); if (ox > 1 && oy > 1) overlaps.push([boxes[i].t, boxes[j].t]); }
-    return { overlaps, hash: h.toString(16), tick: w.tickCount, time: +w.time.toFixed(2), camDist: Math.round(cam.position.distanceTo(cen)), fov: +cam.fov.toFixed(1), counts, ships, url: cv.toDataURL('image/png') };
+    const mh = document.querySelector('.vsh-host--markers'); const clip = mh ? mh.style.clipPath.length : -1; const seams = (document.querySelector('.vsh-obj__seams') || {}).offsetWidth || 0; const rate = (document.querySelector('.vsh-res__rate') || {}).textContent;
+    return { clip, seams, rate, overlaps, hash: h.toString(16), tick: w.tickCount, time: +w.time.toFixed(2), camDist: Math.round(cam.position.distanceTo(cen)), fov: +cam.fov.toFixed(1), counts, ships, url: cv.toDataURL('image/png') };
   }, { m, CONVERGE });
   fs.writeFileSync(`${OUT}-${m.key}-canvas.png`, Buffer.from(res.url.split(',')[1], 'base64')); delete res.url;
   try { await page.screenshot({ path: `${OUT}-${m.key}-hud.png`, timeout: 90000 }); res.hud = true; } catch (e) { res.hud = String(e.message).slice(0, 80); }
