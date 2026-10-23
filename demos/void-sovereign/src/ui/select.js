@@ -1,4 +1,4 @@
-import { SHIPS, ROLE, approxRadius, damageAffinity } from '../ships/catalog.js';
+import { SHIPS, ROLE, approxRadius, damageAffinity, hullFloorPx, HULL_FLOOR_MAX_GROW } from '../ships/catalog.js';
 
 /* Selection surfaces: the grouped roster along the bottom-left, and the
    world-space marker layer that draws brackets, health pips, target reticles
@@ -142,6 +142,36 @@ const HBAR_INTEREST_MIN = 2500;
    seven sparkles over the planet. Sizes are by mass bucket and fixed per
    element, the same reason the diamond pools are. */
 const HOSTILE_K = [0.6, 0.8, 1.05];
+
+/* P49 (combat legibility): the mark yields once the hull reads for itself.
+
+   The fresh-eye critics' first finding was that at combat range "the overlay
+   glyphs do all the work": a 12 px amber silhouette centred on a 9 px grey
+   hull is the brightest thing in that patch of sky and covers the ship it
+   names. With the hull floor at 14-18 px and team strips on it (ships/), the
+   hull can carry the read, so a contact mark scales and fades by how many
+   pixels of hull are actually drawn (the impostor's floored length, the same
+   arithmetic as the shader), and steps up off the hull to sit above it as a
+   tag rather than on it. It never yields while the hull is dying: "about to
+   die" is the one-second read and stays at full strength. */
+const GLYPH_YIELD_PX = [8, 16];     // drawn hull length (px): no yield .. full yield
+const GLYPH_YIELD_FADE = 0.55;      // opacity lost at full yield
+const GLYPH_YIELD_SHRINK = 0.35;    // scale lost at full yield
+const GLYPH_YIELD_LIFT = 5;         // px clear of the hull's top edge at full yield
+
+/** Pixels of hull length as drawn (impostor floor included) at this depth. */
+function drawnHullPx(e, proj) {
+  const def = e.def || SHIPS[e.classId];
+  const L = def && def.length > 0 ? def.length : (e.radius || 10) * 1.8;
+  const phys = (L * proj.scaleK) / proj.cw;
+  return Math.max(phys, Math.min(hullFloorPx(L), phys * HULL_FLOOR_MAX_GROW));
+}
+
+/** 0 = mark at full strength, 1 = mark fully yielded to the hull. */
+function glyphYield(drawnPx) {
+  const u = Math.min(1, Math.max(0, (drawnPx - GLYPH_YIELD_PX[0]) / (GLYPH_YIELD_PX[1] - GLYPH_YIELD_PX[0])));
+  return u * u * (3 - 2 * u);
+}
 const MAX_HOSTILE_GLYPHS = 120;
 const SENSE_RANGE_DEFAULT = 4000;
 
@@ -1295,8 +1325,10 @@ export class WorldMarkers {
         if (bar) this._requestBar(e, frac, enemy, proj.sx, proj.sy, Math.min(px, 48) * 0.8 + 4);
         continue;
       }
+      const drawn = drawnHullPx(e, proj);
+      const y = frac <= CONTACT_DYING ? 0 : glyphYield(drawn);
       if (enemy) {
-        this._drawHostile(this._hostileGlyph(nHost), e, b, proj.sx, proj.sy);
+        this._drawHostile(this._hostileGlyph(nHost), e, b, proj.sx, proj.sy, y, drawn);
         nHost++;
         if (bar) {
           const k = HOSTILE_K[b] * (frac <= CONTACT_DYING ? 1.3 : 1);
@@ -1304,7 +1336,7 @@ export class WorldMarkers {
         }
         continue;
       }
-      this._drawContact(this._contactMark(b, used[b]), e, proj.sx, proj.sy);
+      this._drawContact(this._contactMark(b, used[b]), e, proj.sx, proj.sy, y, drawn);
       used[b]++;
       total++;
       if (bar) {
@@ -1321,12 +1353,14 @@ export class WorldMarkers {
     for (let i = nHost; i < this.hostileGlyphs.length; i++) this._parkContact(this.hostileGlyphs[i]);
   }
 
-  _drawHostile(g, e, bucket, sx, sy) {
+  _drawHostile(g, e, bucket, sx, sy, yieldT = 0, drawn = 0) {
     const maxHull = e.maxHull || (e.def ? e.def.hull : 0) || 1;
     const dying = (e.hull || 0) <= maxHull * CONTACT_DYING;
-    const k = HOSTILE_K[bucket] * (dying ? 1.3 : 1);
+    const k = HOSTILE_K[bucket] * (dying ? 1.3 : 1) * (1 - GLYPH_YIELD_SHRINK * yieldT);
+    // P49: lift clear of the hull: half the drawn hull, half the glyph (20 px authored), a gap.
+    const lift = yieldT * (drawn * 0.5 + 10 * k + GLYPH_YIELD_LIFT);
     g.el.style.transform =
-      `translate3d(${sx.toFixed(1)}px,${sy.toFixed(1)}px,0) scale(${k.toFixed(3)})`;
+      `translate3d(${sx.toFixed(1)}px,${(sy - lift).toFixed(1)}px,0) scale(${k.toFixed(3)})`;
     if (g.classId !== e.classId) {
       g.classId = e.classId;
       const def = SHIPS[e.classId];
@@ -1339,10 +1373,10 @@ export class WorldMarkers {
     }
     /* Strength is engagement. Merely sensed is the quietest thing on screen
        short of nothing; firing, being hit and dying each step it up. */
-    const a = dying ? 1
+    const a = (dying ? 1
       : this._hits.has(e.id) ? 0.9
         : e.targetId >= 0 || this._targeted.has(e.id) ? 0.7
-          : 0.42;
+          : 0.42) * (1 - GLYPH_YIELD_FADE * yieldT);
     if (a !== g.a) {
       g.a = a;
       g.el.style.opacity = String(a);
@@ -1350,7 +1384,7 @@ export class WorldMarkers {
     g.live = true;
   }
 
-  _drawContact(c, e, sx, sy) {
+  _drawContact(c, e, sx, sy, yieldT = 0, drawn = 0) {
     /* "About to die" has to be unmistakable, and the first pass of this got it
        wrong: filling the diamond with its own hue looked identical to a healthy
        hostile whose engine bloom happened to shine through a hollow one. So
@@ -1367,9 +1401,12 @@ export class WorldMarkers {
     const dying = (e.hull || 0) <= maxHull * CONTACT_DYING;
     const enemy = e.team !== this.ctx.team;
 
+    // P49: shrink, and lift clear of the hull, as the hull becomes legible.
+    const ks = 1 - GLYPH_YIELD_SHRINK * yieldT;
+    const lift = yieldT * (drawn * 0.5 + CONTACT_PX[massBucket(e.role)] * 0.71 * ks + GLYPH_YIELD_LIFT);
     c.el.style.transform =
-      `translate3d(${sx.toFixed(1)}px,${sy.toFixed(1)}px,0) rotate(45deg)`
-      + (dying ? ' scale(1.35)' : '');
+      `translate3d(${sx.toFixed(1)}px,${(sy - lift).toFixed(1)}px,0) rotate(45deg)`
+      + (dying ? ' scale(1.35)' : yieldT > 0 ? ` scale(${ks.toFixed(3)})` : '');
 
     const hue = enemy ? 'var(--vsh-amber)' : dying ? 'var(--vsh-red)' : 'var(--vsh-cyan)';
     if (hue !== c.hue) {
@@ -1381,10 +1418,10 @@ export class WorldMarkers {
       c.el.style.background = dying ? 'currentColor' : 'transparent';
     }
 
-    const a = dying ? 1
+    const a = (dying ? 1
       : this._hits.has(e.id) ? 0.85
         : e.targetId >= 0 ? 0.6
-          : 0.32;
+          : 0.32) * (1 - GLYPH_YIELD_FADE * yieldT);
     if (a !== c.a) {
       c.a = a;
       c.el.style.opacity = String(a);
