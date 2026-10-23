@@ -52,7 +52,18 @@ for (const view of ['wide', 'mid', 'close']) {
     const cen = new T.Vector3(); near.forEach((e) => cen.add(e.position)); cen.multiplyScalar(1 / Math.max(1, near.length));
     if (view === 'wide') rig.frameEntities(near, true);
     else if (view === 'mid') { rig.frameEntities(near, true); for (let i = 0; i < 2; i++) P.frame(1 / 60); rig.focusOn(cen.clone(), Math.max(800, eng.camera.position.distanceTo(cen) * 0.5), true); }
-    else { const big = near.slice().sort((a, b) => b.def.length - a.def.length)[0]; rig.frameEntities([big], true); }
+    else {
+      /* The close holds a hull from each side: the biggest engaged hull and
+         the nearest engaged hull of the other side. */
+      // The tightest duel: an ours/theirs pair, closest for their size.
+      let pa = near[0], pb = null, ps = Infinity;
+      for (const a of near) for (const b of near) {
+        if (a.team === b.team || a.team !== near[0].team && b.team === near[0].team) continue;
+        const sc = a.position.distanceTo(b.position) / (a.def.length + b.def.length);
+        if (a.team !== b.team && sc < ps) { ps = sc; pa = a; pb = b; }
+      }
+      rig.frameEntities(pb ? [pa, pb] : [pa], true);
+    }
     for (let i = 0; i < CONVERGE; i++) P.frame(1 / 60);
     const cam = eng.camera; cam.updateMatrixWorld(); const cv = eng.renderer.domElement;
     const inFrame = (e) => { const p = e.position.clone().project(cam); return p.z < 1 && Math.abs(p.x) < 1 && Math.abs(p.y) < 1; };
