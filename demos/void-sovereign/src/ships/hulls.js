@@ -2713,13 +2713,15 @@ function buildMothership(ctx) {
    Normals go through the exact inverse transpose of the deformation, so the
    flat plates stay flat-shaded and the terminator stays hard. */
 const KEEL_TAPER = {
-  assaultFrigate: { bow: 0.44, from: 0.52, deck: 0.78, rake: 0.42, stern: 0.90 },
-  ionFrigate: { bow: 0.40, from: 0.50, deck: 0.80, rake: 0.40, stern: 0.90 },
-  supportFrigate: { bow: 0.50, from: 0.55, deck: 0.82, rake: 0.46, stern: 0.90 },
+  assaultFrigate: { bow: 0.32, from: 0.46, deck: 0.70, rake: 0.32, stern: 0.88 },
+  ionFrigate: { bow: 0.34, from: 0.48, deck: 0.74, rake: 0.36, stern: 0.88 },
+  supportFrigate: { bow: 0.40, from: 0.50, deck: 0.76, rake: 0.40, stern: 0.88 },
   destroyer: { bow: 0.34, from: 0.45, deck: 0.72, rake: 0.32, stern: 0.86 },
   cruiser: { bow: 0.32, from: 0.40, deck: 0.68, rake: 0.30, stern: 0.86 },
   carrier: { bow: 0.42, from: 0.46, deck: 0.82, rake: 0.36, stern: 0.88 },
-  mothership: { bow: 0.62, from: 0.56, deck: 0.90, rake: 0.56, stern: 0.94 },
+  /* Round 14: critic round 13 still saw a square bow on the mothership and
+     barely a change on the frigates, so both are pulled harder. */
+  mothership: { bow: 0.40, from: 0.48, deck: 0.74, rake: 0.38, stern: 0.92 },
 };
 
 const _smooth = (t) => { const c = t < 0 ? 0 : t > 1 ? 1 : t; return c * c * (3 - 2 * c); };
