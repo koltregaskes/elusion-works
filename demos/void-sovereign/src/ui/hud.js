@@ -1040,8 +1040,8 @@ export class HUD {
      other. The media queries guess at widths; this measures. Twice a second
      (and whenever the text changes length) the block steps down a level
      until its rows fit: 1 drops the seam-state phrase and narrows the bars,
-     2 drops the per-meter You / Them words, 3 narrows the bars again, and
-     only 4 drops the seam count. `.vsh-obj` also clips,
+     2 narrows them again, 3 drops the per-meter You / Them words, and only
+     4 drops the seam count. `.vsh-obj` also clips,
      so a row that still does not fit is cut, never printed over a neighbour. */
   _fitObjective() {
     const o = this.objEl;
@@ -1664,10 +1664,14 @@ export class HUD {
       holes.push([0, 0, W, Math.round(r.bottom - base.top + 6)]);
     }
     for (const r of this._panelRects()) holes.push([Math.round(r.x), Math.round(r.y), Math.round(r.w), Math.round(r.h)]);
-    if (this.toastEl && this.toastEl.childElementCount) {
-      const r = this.toastEl.getBoundingClientRect();
-      if (r.width > 1 && r.height > 1) {
-        holes.push([Math.round(r.left - base.left - 8), Math.round(r.top - base.top - 6), Math.round(r.width + 16), Math.round(r.height + 12)]);
+    /* The hint lines themselves, not the rail: the rail is a full-height
+       flex column, and its box would cut marks out of the whole left side. */
+    if (this.toastEl) {
+      for (const t of this.toastEl.children) {
+        const r = t.getBoundingClientRect();
+        if (r.width > 1 && r.height > 1) {
+          holes.push([Math.round(r.left - base.left - 8), Math.round(r.top - base.top - 4), Math.round(r.width + 16), Math.round(r.height + 8)]);
+        }
       }
     }
     let d = `M0 0H${W}V${H}H0Z`;
@@ -1951,26 +1955,23 @@ export class HUD {
       this.creditsEl.textContent = shown.toLocaleString('en-GB');
     }
 
-    /* Per second of game time, not of frames drawn (round 14). Divided by
-       wall time, the rate read double at x2 speed, zero while paused, and
-       thousands per second whenever the sim ran ahead of the renderer. The
-       window still closes every 1.5 s of wall time so the readout stays
-       live; a paused window keeps the last rate. */
+    /* Per second of game time, not of frames drawn (round 14), over a
+       rolling 20 s of game time. Divided by wall time the rate read double
+       at x2, nothing while paused, and thousands whenever the sim ran ahead
+       of the renderer; over a 1.5 s window it read "-" most of the time,
+       because collectors deliver in loads (critic round 14). */
     this._incomeWin += d;
-    if (this._incomeWin >= 1.5) {
-      const wt = this.world && typeof this.world.time === 'number' ? this.world.time : null;
-      if (wt !== null && this._incomeT0 === undefined) {
-        // First window: no game-time baseline yet, so only set one.
-        this._incomeAcc = 0;
-      } else {
-        const span = wt !== null ? wt - this._incomeT0 : this._incomeWin;
-        if (span > 1e-3) {
-          this._income = this._incomeAcc / span;
-          this._incomeAcc = 0;
-        }
-      }
-      this._incomeT0 = wt !== null ? wt : undefined;
+    if (this._incomeWin >= 1.0) {
       this._incomeWin = 0;
+      const wt = this.world && typeof this.world.time === 'number' ? this.world.time : 0;
+      const log = this._incomeLog || (this._incomeLog = []);
+      if (this._incomeAcc > 0) { log.push(wt, this._incomeAcc); this._incomeAcc = 0; }
+      if (this._incomeT0 === undefined) this._incomeT0 = wt;
+      while (log.length && log[0] < wt - 20) log.splice(0, 2);
+      let sum = 0;
+      for (let i = 1; i < log.length; i += 2) sum += log[i];
+      const span = Math.min(20, wt - this._incomeT0);
+      this._income = span > 2 ? sum / span : 0;
       const r = this._income;
       this.rateEl.textContent = r > 0.05 ? `+${r.toFixed(1)} /s` : '—';
       this.rateEl.classList.toggle('is-up', r > 0.05);

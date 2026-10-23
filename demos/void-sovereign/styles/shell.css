@@ -1305,11 +1305,11 @@ body.vs-body {
 .vsh-obj.is-fit1 .vsh-obj__bar { width: 48px; }
 .vsh-obj.is-fit1 .vsh-obj__meters { gap: 9px; }
 /* Round 14: the seam count is the last thing to go (critic round 13 missed
-   it at 1280 px). First the per-meter You / Them words go (the bar colours
-   and the row keys still say which is which), then the bars narrow. */
-.vsh-obj.is-fit2 .vsh-obj__m > .vsh-obj__mk { display: none; }
-.vsh-obj.is-fit3 .vsh-obj__bar { width: 30px; }
-.vsh-obj.is-fit3 .vsh-obj__m { gap: 4px; }
+   it at 1280 px). The bars narrow first; the per-meter You / Them words go
+   only after that (critic round 14 missed them), and seams last. */
+.vsh-obj.is-fit2 .vsh-obj__bar { width: 30px; }
+.vsh-obj.is-fit2 .vsh-obj__m { gap: 4px; }
+.vsh-obj.is-fit3 .vsh-obj__m > .vsh-obj__mk { display: none; }
 .vsh-obj.is-fit4 .vsh-obj__seams { display: none; }
 
 .vsh-obj__k {

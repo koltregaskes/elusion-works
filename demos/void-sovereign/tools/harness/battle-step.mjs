@@ -116,7 +116,8 @@ for (const m of MOMENTS) {
     const overlaps = [];
     for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) { const a = boxes[i].r, b = boxes[j].r; const ox = Math.min(a.right, b.right) - Math.max(a.left, b.left); const oy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top); if (ox > 1 && oy > 1) overlaps.push([boxes[i].t, boxes[j].t]); }
     const mh = document.querySelector('.vsh-host--markers'); const clip = mh ? mh.style.clipPath.length : -1; const seams = (document.querySelector('.vsh-obj__seams') || {}).offsetWidth || 0; const rate = (document.querySelector('.vsh-res__rate') || {}).textContent;
-    return { clip, seams, rate, overlaps, hash: h.toString(16), tick: w.tickCount, time: +w.time.toFixed(2), camDist: Math.round(cam.position.distanceTo(cen)), fov: +cam.fov.toFixed(1), counts, ships, url: cv.toDataURL('image/png') };
+    const mk = VS.hud && VS.hud.markers; const altDebug = mk ? JSON.stringify({ rel: mk._altRel && mk._altRel.text, live: mk._altRel && mk._altRel.live, sel: [...(mk.ctx.selection || [])].length }).slice(0, 900) : 'no markers';
+    return { altDebug, clip, seams, rate, overlaps, hash: h.toString(16), tick: w.tickCount, time: +w.time.toFixed(2), camDist: Math.round(cam.position.distanceTo(cen)), fov: +cam.fov.toFixed(1), counts, ships, url: cv.toDataURL('image/png') };
   }, { m, CONVERGE });
   fs.writeFileSync(`${OUT}-${m.key}-canvas.png`, Buffer.from(res.url.split(',')[1], 'base64')); delete res.url;
   try { await page.screenshot({ path: `${OUT}-${m.key}-hud.png`, timeout: 90000 }); res.hud = true; } catch (e) { res.hud = String(e.message).slice(0, 80); }

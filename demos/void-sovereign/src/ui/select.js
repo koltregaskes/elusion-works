@@ -1722,6 +1722,37 @@ export class WorldMarkers {
       }
       return true;
     };
+    /* Pre-pass: the selection's centroid and the hostiles nearest it. */
+    /* Medians, not means: one straggler 3 km up dragged a mean gap to 2.4 km
+       while every other hull sat 0.5 km above the hostiles. */
+    const median = (a) => { if (!a.length) return 0; a.sort((x, y) => x - y); const m = a.length >> 1; return a.length % 2 ? a[m] : 0.5 * (a[m - 1] + a[m]); };
+    const selY = this._altSelY || (this._altSelY = []);
+    selY.length = 0;
+    let sx0 = 0, sy0 = 0, sz0 = 0, ns = 0;
+    for (const id of ctx.selection) {
+      const e = ctx.entity(id);
+      const p = e && e.alive !== false ? posOf(e) : null;
+      if (p) { sx0 += p.x; sy0 += p.y; sz0 += p.z; ns++; selY.push(p.y); }
+    }
+    const near = this._altNear || (this._altNear = []);
+    near.length = 0;
+    let refY = null;
+    if (ns) {
+      sx0 /= ns; sy0 /= ns; sz0 /= ns;
+      for (const e of ctx.entities()) {
+        if (e.alive === false || e.team === ctx.team || e.team < 0 || e.team > 1) continue;
+        const p = posOf(e);
+        if (!p) continue;
+        const d2 = (p.x - sx0) ** 2 + (p.y - sy0) ** 2 + (p.z - sz0) ** 2;
+        if (d2 > ALT_NEAR_M * ALT_NEAR_M) continue;
+        near.push({ e, d2, y: p.y });
+      }
+      near.sort((a, b) => a.d2 - b.d2);
+      if (near.length > ALT_NEAR_MAX) near.length = ALT_NEAR_MAX;
+      if (near.length) refY = median(near.map((c) => c.y));
+    }
+    // Screen anchor for the fleet label: the labelled selected hull lowest on screen.
+    let anchorX = 0, anchorY = -1, anchorTop = Infinity;
     const one = (e, label) => {
       if (n >= MAX_ALT || !e || e.alive === false || seen.has(e.id)) return;
       seen.add(e.id);
@@ -1746,8 +1777,15 @@ export class WorldMarkers {
       // the stalk is long enough to carry it.
       const lx = proj.sx + 8;
       const ly = proj.sy - 6;
+      /* Relative to the hostiles nearest the selection when there are any,
+         the same reference as the fleet label, so the two never disagree
+         (critic round 14 read "+0.5 km" beside "2.4 km above hostiles"). */
+      const ref = label && refY !== null ? refY : 0;
+      const hy = p.y - ref;
       const text = label && labels < MAX_ALT_LABELS && len > 36 && free(lx, ly)
-        ? `${p.y > 0 ? '+' : '\u2212'}${(Math.abs(p.y) / 1000).toFixed(1)} km` : '';
+        ? `${hy > 0 ? '+' : '\u2212'}${(Math.abs(hy) / 1000).toFixed(1)} km` : '';
+      if (label && sy > anchorY) { anchorX = sx; anchorY = sy; }
+      if (label && sy < anchorTop) anchorTop = sy;
       if (text) {
         labels++;
         taken.push(lx, ly);
@@ -1756,40 +1794,49 @@ export class WorldMarkers {
       if (text !== a.text) { a.text = text; a.label.textContent = text; }
       if (!a.live) { a.live = true; a.el.classList.add('is-live'); }
     };
-    let sx0 = 0, sy0 = 0, sz0 = 0, ns = 0;
     for (const id of ctx.selection) {
       const e = ctx.entity(id);
       one(e, true);
       if (e && e.targetId >= 0) one(ctx.entity(e.targetId), false);
-      const p = e && e.alive !== false ? posOf(e) : null;
-      if (p) { sx0 += p.x; sy0 += p.y; sz0 += p.z; ns++; }
     }
-    /* The hostiles nearest the selection, and the gap between the two. */
+    for (const c of near) one(c.e, false);
+    /* The gap between the two, by the lowest selected hull on screen and
+       kept below the top bar so the HUD clip never hides it. */
     let rel = '';
     let relX = 0, relY = 0;
-    if (ns) {
-      sx0 /= ns; sy0 /= ns; sz0 /= ns;
-      const near = this._altNear || (this._altNear = []);
-      near.length = 0;
-      for (const e of ctx.entities()) {
-        if (e.alive === false || e.team === ctx.team || e.team < 0 || e.team > 1) continue;
-        const p = posOf(e);
-        if (!p) continue;
-        const d2 = (p.x - sx0) ** 2 + (p.y - sy0) ** 2 + (p.z - sz0) ** 2;
-        if (d2 > ALT_NEAR_M * ALT_NEAR_M) continue;
-        near.push({ e, d2, y: p.y });
+    if (refY !== null && anchorY >= 0) {
+      const gap = median(selY) - refY;
+      const km = (Math.abs(gap) / 1000).toFixed(1);
+      rel = Math.abs(gap) < 150 ? 'level with hostiles' : gap > 0 ? `${km} km above hostiles` : `${km} km below hostiles`;
+      /* Placed clear of every HUD panel and hint line: below the lowest
+         selected hull on screen, else above or beside it. */
+      // Re-measured four times a second at most: a rect read forces layout.
+      const now = performance.now();
+      if (!this._altBoxes || now - this._altBoxesAt > 250) {
+        this._altBoxesAt = now;
+        const boxes = ((ctx.panelRects && ctx.panelRects()) || []).slice();
+        // The hint lines, not the rail (a full-height column).
+        const lines = document.querySelectorAll('.vsh-toasts > *');
+        if (lines.length) {
+          const base = this.el.getBoundingClientRect();
+          for (const t of lines) {
+            const r = t.getBoundingClientRect();
+            if (r.width > 1) boxes.push({ x: r.left - base.left - 8, y: r.top - base.top - 6, w: r.width + 16, h: r.height + 12 });
+          }
+        }
+        this._altBoxes = boxes;
       }
-      near.sort((a, b) => a.d2 - b.d2);
-      if (near.length > ALT_NEAR_MAX) near.length = ALT_NEAR_MAX;
-      let hy = 0;
-      for (const c of near) { one(c.e, false); hy += c.y; }
-      if (near.length && proj.project(sx0, sy0, sz0)) {
-        const gap = sy0 - hy / near.length;
-        const km = (Math.abs(gap) / 1000).toFixed(1);
-        rel = Math.abs(gap) < 150 ? 'level with hostiles' : gap > 0 ? `${km} km above hostiles` : `${km} km below hostiles`;
-        relX = proj.sx;
-        relY = proj.sy;
-      }
+      const boxes = this._altBoxes;
+      const hit = (x, y) => y < 96 || y > proj.h - 30 || boxes.some((b) => x < b.x + b.w && x + 210 > b.x && y < b.y + b.h && y + 16 > b.y);
+      const top = Math.max(anchorTop, 130);
+      const tries = [
+        [anchorX - 60, anchorY + 22], [anchorX - 60, anchorY - 34], [anchorX + 24, anchorY - 8],
+        [anchorX + 24, anchorY + 22], [anchorX - 240, anchorY - 8], [anchorX - 60, top - 34],
+        [anchorX + 60, anchorY - 40], [anchorX - 60, anchorY + 56],
+      ];
+      let pick = null;
+      for (const [x, y] of tries) { const cx = Math.min(proj.w - 220, Math.max(24, x)); if (!hit(cx, y)) { pick = [cx, y]; break; } }
+      if (pick) { relX = pick[0]; relY = pick[1]; } else rel = '';
     }
     const rl = this._altRel || (this._altRel = (() => {
       const b = document.createElement('b');
@@ -1799,7 +1846,7 @@ export class WorldMarkers {
     })());
     if (rel) {
       if (rel !== rl.text) { rl.text = rel; rl.el.textContent = rel; }
-      rl.el.style.transform = `translate3d(${(relX + 16).toFixed(1)}px,${(relY + 14).toFixed(1)}px,0)`;
+      rl.el.style.transform = `translate3d(${relX.toFixed(1)}px,${relY.toFixed(1)}px,0)`;
       if (!rl.live) { rl.live = true; rl.el.classList.add('is-live'); }
     } else if (rl.live) {
       rl.live = false;
