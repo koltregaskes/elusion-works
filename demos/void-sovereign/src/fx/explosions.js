@@ -817,6 +817,10 @@ export class ExplosionFX {
     const beats = 7;
     const step = 0.30;
     const ev = [
+      /* The failure starts with a burst big enough to read as the kill on its
+         own frame (round 12: the first chain link alone was 0.05 of the hull
+         box, "only a bow burst"). The chain then walks the spine as before. */
+      { t: 0.00, k: 'fireball', at: a0, r0: 0.15, r1: 0.21, life: 0.85, inten: 1.1, elong: 1.5, toCam: 0.04, shake: 0.5 },
       { t: 0.00, k: 'tear', at: a0, spark: 18 * N, n: 8, keel: 0, sep: 0.04, scale: 0.6 },
       { t: 0.00, k: 'disc', r0: R * 0.08, r1: L * 0.38, life: 0.8, thick: 0.075, intensity: 0.49, axis: 'hull', at: a0 },
     ];
@@ -858,7 +862,11 @@ export class ExplosionFX {
     const cuts = [0.25, 0.5, 0.75].map((c) => c + rng.range(-0.05, 0.05));
     this._plan(seq, cuts, [0.12, 0.06, 0.06, 0.12], 0.40, [0.12, 0.22]);
     const ev = [
-      { t: 0.00, k: 'fireball', at: station, r0: 0.33, r1: 0.42, life: 1.05, inten: 1.12, elong: 1.40, toCam: 0.14, shake: 1.0 },
+      /* toCam 0.02 (was 0.14): pulled a seventh of the hull toward the lens,
+         the fireball sat in front of the whole rib cage, and round 12's
+         critic saw the ribs vanish from the kill frame to +0.3 s. At 0.02 it
+         sits inside the hull and the near ribs cut it. */
+      { t: 0.00, k: 'fireball', at: station, r0: 0.33, r1: 0.42, life: 1.05, inten: 1.12, elong: 1.40, toCam: 0.02, shake: 1.0 },
       { t: 0.00, k: 'tear', at: station, spark: 26 * N, n: 30, keel: 4, sep: 0.12, scale: 1.0 },
       { t: 0.00, k: 'disc', r0: R * 0.15, r1: L * 0.95, life: 1.2, thick: 0.075, intensity: 0.56, axis: 'up' },
       { t: 0.10, k: 'embers', n: 120 * N, speed: L * 0.30, life: 3.0 },
