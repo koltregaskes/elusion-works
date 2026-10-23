@@ -258,7 +258,9 @@
   width: 25px;
   height: 3px;
   color: var(--vsh-cyan);
-  background: rgba(2, 6, 11, 0.72);
+  /* A visible empty track (critic round 14): near-black vanished on space,
+     so a short fill read as a short bar rather than a part-empty one. */
+  background: rgba(196, 214, 230, 0.2);
   box-shadow: 0 0 0 1px rgba(2, 6, 11, 0.85);
   opacity: 0;
   transition: opacity 0.16s linear;
