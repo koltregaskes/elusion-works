@@ -1,0 +1,355 @@
+diff --git a/demos/void-sovereign/src/fx/engines.js b/demos/void-sovereign/src/fx/engines.js
+index 7d708ba..141c4bd 100644
+--- a/demos/void-sovereign/src/fx/engines.js
++++ b/demos/void-sovereign/src/fx/engines.js
+@@ -722,6 +722,25 @@ const TRAIL_RANGE = 9000;
+    cruise cannot stretch it past the budget either. */
+ const TRAIL_HULLS = PLUME_LEN_CAP;
+ 
++/* P49 (combat legibility): a streak at fleet range, without undoing round 6.
++
++   Round 6 capped the wake at 0.35 hull lengths because, up close, a long wake
++   behind a fighter read as a laser pointer. But the cap is in *physical* hull
++   lengths, so at 5 km a 14 m interceptor's wake was 5 m: about one pixel, i.e.
++   no trail at all, and the Homeworld signature (streaks before hulls) was gone
++   from exactly the range the fights are watched at. The extra span below is in
++   *drawn* hull lengths (the impostor's floored size) and fades in only while
++   the hull is small on screen (TRAIL_FAR_PX, in px of drawn hull), so a
++   close-up wake is still round 6's and a fleet-range one is a short tapered
++   streak about two drawn hulls long. Width and life follow the same smallness:
++   width by grow^TRAIL_WIDTH_GROW_POW (thinner than the floored hull), life up
++   to (1 + TRAIL_FAR_LIFE)x so a slow corvette's streak is not cut by age
++   before it reaches its span. The ribbon count is still the `trails` budget. */
++const TRAIL_FAR_HULLS = 2.2;
++const TRAIL_FAR_PX = [22, 60];
++const TRAIL_WIDTH_GROW_POW = 0.5;
++const TRAIL_FAR_LIFE = 1.0;
++
+ /* Station-keeping glow floor. Small enough to read as "hot, idle", large
+    enough that a parked mothership is not twelve dead holes — and, at 0.20
+    rather than 0.14, enough that a ship holding station in a firefight still
+@@ -1085,11 +1104,20 @@ export class EngineFX {
+           const life = (0.30 + 0.20 * ctx.qscale) * j;
+           const ramp = this._trailRamps[e.team || 0] || this._trailRamps[0];
+           entry.trail = trails.acquire(team.engine, r, life, Math.max(5, r * 2.4), ramp, TRAIL_HULLS * entry.L * scale);
++          if (entry.trail) { entry.trailW = r; entry.trailLife = life; }
+         } else if (!want && entry.trail) {
+           trails.detach(entry.trail);
+           entry.trail = null;
+         }
+         if (entry.trail) {
++          /* P49: span, width and life against the hull as drawn (see TRAIL_FAR_HULLS). */
++          const hullPx = hullDrawn * pxPerM;
++          const u = Math.min(1, Math.max(0, (hullPx - TRAIL_FAR_PX[0]) / (TRAIL_FAR_PX[1] - TRAIL_FAR_PX[0])));
++          const small = 1 - u * u * (3 - 2 * u);
++          const tr = entry.trail;
++          tr.maxSpan = TRAIL_HULLS * entry.L * scale + small * TRAIL_FAR_HULLS * hullDrawn;
++          tr.width = entry.trailW * (1 + small * (Math.pow(grow, TRAIL_WIDTH_GROW_POW) - 1));
++          tr.life = entry.trailLife * (1 + small * TRAIL_FAR_LIFE);
+           centre.copy(entry.centre).multiplyScalar(scale * grow).applyQuaternion(oq).add(op);
+           trails.feed(entry.trail, centre.x, centre.y, centre.z);
+         }
+diff --git a/demos/void-sovereign/src/ships/catalog.js b/demos/void-sovereign/src/ships/catalog.js
+index afc79ad..2cef788 100644
+--- a/demos/void-sovereign/src/ships/catalog.js
++++ b/demos/void-sovereign/src/ships/catalog.js
+@@ -613,8 +613,17 @@ export function approxRadius(classId) {
+    ceiling is what keeps it a floor and not a blob: past the range where a
+    fighter needs more than HULL_FLOOR_MAX_GROW times its own size it is let go
+    and shrinks naturally, and the LOD thresholds (multiples of hull length,
+-   HANDOFF section 5) are untouched by any of this. */
+-export const HULL_FLOOR_MAX_GROW = 6;
++   HANDOFF section 5) are untouched by any of this.
++
++   P49 (combat legibility, fresh-eye critic finding 1: "fights read as icons,
++   not ships"): 9-12 px of dim grey was a floor that kept a hull on screen but
++   not one that read under a 12 px glyph, so the floor is raised to 14-18 px
++   and the grow ceiling to 8. Same curve, same smooth clamp (no pop: the floor
++   only binds at LOD 2+, which starts at ~46 px of hull). All four numbers are
++   in HULL_FLOOR so they can be tuned in one place. */
++export const HULL_FLOOR = { min: 14, max: 18, ref: 14, exp: 0.15 };
++export const HULL_FLOOR_MAX_GROW = 8;
+ export function hullFloorPx(length) {
+-  return Math.min(12, Math.max(9, 9 * Math.pow(Math.max(1, length) / 14, 0.15)));
++  const f = HULL_FLOOR;
++  return Math.min(f.max, Math.max(f.min, f.min * Math.pow(Math.max(1, length) / f.ref, f.exp)));
+ }
+diff --git a/demos/void-sovereign/src/ships/index.js b/demos/void-sovereign/src/ships/index.js
+index 24c2067..59b2bbd 100644
+--- a/demos/void-sovereign/src/ships/index.js
++++ b/demos/void-sovereign/src/ships/index.js
+@@ -221,6 +221,26 @@ const GLASS_MAX_LOD = 1;
+     disappearing into the other half of the sky. */
+ const IMPOSTOR_FILL = 0.10;
+ 
++/* P49 (combat legibility): team-colour emissive strips on the impostor.
++   Finding 1 of the fresh-eye critics was that at combat range the overlay
++   glyphs carry identity and the hulls carry nothing: grey slivers inside the
++   backdrop's own value range, by design (above), so the only team colour on a
++   distant ship was its drive. The strips are livery, not plating (section 3.3
++   still holds: the plates stay bone grey): a girth band fore of midships and a
++   spine line top and bottom, in the team trim colour and unlit, so they read
++   on the shadow side and against gas. At the 14-18 px floor they are 2-3 px
++   and blend into a team-tinted sliver; at 40+ px they resolve as bands.
++   Object-space, from the LOD 0 hull box, so every class carries them in the
++   same place relative to its own length. One mix() per fragment. */
++export const IMPOSTOR_STRIP = {
++  gain: 1.35,        // trim colour multiplier (unlit, so this is its brightness)
++  band: 0.62,        // girth band centre along the hull, 0 stern .. 1 bow
++  bandHalf: 0.075,   // girth band half-width, share of hull length
++  spineHalf: 0.14,   // spine line half-width, share of hull beam
++  spineFacing: 0.35, // |normal.y| above this counts as top or bottom plating
++  mix: 0.85,         // how much of the plate a strip replaces
++};
++
+ /* Shared uniform objects: one write per frame serves every impostor material.
+    `uPxScale` is pixels per metre at one metre of view depth; `uKeyDir` is the
+    key star in view space. */
+@@ -292,7 +312,11 @@ uniform float uMinPxR;
+ uniform float uMaxGrow;
+ uniform float uFill;
+ uniform vec3 uKeyDir;
++uniform vec3 uBoxMin;
++uniform vec3 uBoxSize;
+ varying float vFace;
++varying vec3 vStripUv;
++varying float vStripUp;
+ `;
+ 
+ /* Runs immediately after <project_vertex>, so `mvPosition` is the view-space
+@@ -327,9 +351,34 @@ const IMPOSTOR_VERT = /* glsl */`
+   /* One key light, hard terminator, deep but never black on the shadow side —
+      §3.2 stated in the only two numbers a mark this small can carry. */
+   vFace = uFill + ( 1.0 - uFill ) * ( vsNdl * vsNdl * ( 3.0 - 2.0 * vsNdl ) );
++  // P49 strips: where on the hull this is, and whether it is top/bottom plating.
++  vStripUv = ( position - uBoxMin ) / max( uBoxSize, vec3( 1e-4 ) );
++  vStripUp = abs( normal.y );
++}
++`;
++
++const IMPOSTOR_FRAG_PARS = /* glsl */`
++varying float vFace;
++varying vec3 vStripUv;
++varying float vStripUp;
++uniform vec3 uStripColor;
++uniform vec4 uStrip; // band centre, band half-width, spine half-width, spine facing
++uniform float uStripMix;
++float vsStripEdge( float d, float hw ) {
++  float fw = max( fwidth( d ), 1e-4 );
++  return 1.0 - smoothstep( hw - fw, hw + fw, d );
+ }
+ `;
+ 
++const IMPOSTOR_FRAG = /* glsl */`
++	diffuseColor.rgb *= vFace;
++	{
++		float band = vsStripEdge( abs( vStripUv.z - uStrip.x ), uStrip.y );
++		float spine = vsStripEdge( abs( vStripUv.x - 0.5 ), uStrip.z ) * smoothstep( uStrip.w, uStrip.w + 0.2, vStripUp );
++		diffuseColor.rgb = mix( diffuseColor.rgb, uStripColor, uStripMix * max( band, spine ) );
++	}
++`;
++
+ const _impostorCache = new Map();
+ 
+ /**
+@@ -337,7 +386,7 @@ const _impostorCache = new Map();
+  * One material per (class, team) — they all compile to the same program, and
+  * the per-class uniform is the bounding radius the size floor works from.
+  */
+-function impostorMaterial(team, classId, radius) {
++function impostorMaterial(team, classId, radius, box = null) {
+   const key = `${team}:${classId}`;
+   const hit = _impostorCache.get(key);
+   if (hit) return hit;
+@@ -363,6 +412,11 @@ function impostorMaterial(team, classId, radius) {
+     uMinPxR: { value: (hullFloorPx(L) * R) / L },
+     uMaxGrow: { value: IMPOSTOR_MAX_GROW },
+     uFill: { value: IMPOSTOR_FILL },
++    uBoxMin: { value: box ? box.min.clone() : new THREE.Vector3(-R, -R, -R) },
++    uBoxSize: { value: box ? box.getSize(new THREE.Vector3()) : new THREE.Vector3(2 * R, 2 * R, 2 * R) },
++    uStripColor: { value: new THREE.Color(pal.trim || pal.engine).multiplyScalar(IMPOSTOR_STRIP.gain) },
++    uStrip: { value: new THREE.Vector4(IMPOSTOR_STRIP.band, IMPOSTOR_STRIP.bandHalf, IMPOSTOR_STRIP.spineHalf, IMPOSTOR_STRIP.spineFacing) },
++    uStripMix: { value: IMPOSTOR_STRIP.mix },
+   };
+ 
+   // Fogged like the full hulls, with the same hull cap, so a ship does not
+@@ -379,8 +433,8 @@ function impostorMaterial(team, classId, radius) {
+       .replace('#include <common>', `#include <common>\n${IMPOSTOR_PARS}`)
+       .replace('#include <project_vertex>', `#include <project_vertex>\n${IMPOSTOR_VERT}`);
+     shader.fragmentShader = shader.fragmentShader
+-      .replace('#include <common>', '#include <common>\nvarying float vFace;')
+-      .replace('#include <color_fragment>', '#include <color_fragment>\n\tdiffuseColor.rgb *= vFace;')
++      .replace('#include <common>', `#include <common>\n${IMPOSTOR_FRAG_PARS}`)
++      .replace('#include <color_fragment>', `#include <color_fragment>\n${IMPOSTOR_FRAG}`)
+       .replace('#include <fog_pars_fragment>', `${HULL_HAZE_DEFINE}#include <fog_pars_fragment>`);
+   };
+   // Every impostor shares one program; only the uniforms differ.
+@@ -503,6 +557,14 @@ function asGlow(mesh) {
+   return mesh;
+ }
+ 
++/** LOD 0 hull bounds in the hull's own space, for the impostor strips. */
++function hullBox0(asset) {
++  const g = asset.levels[0] && asset.levels[0].hull;
++  if (!g) return null;
++  if (!g.boundingBox) g.computeBoundingBox();
++  return g.boundingBox;
++}
++
+ function levelGroup(asset, index, team) {
+   const g = new THREE.Group();
+   g.name = `${asset.classId}:L${index}`;
+@@ -511,7 +573,7 @@ function levelGroup(asset, index, team) {
+   const impostor = index >= IMPOSTOR_LOD;
+   if (geo.hull) {
+     const mat = impostor
+-      ? impostorMaterial(team, asset.classId, asset.radius)
++      ? impostorMaterial(team, asset.classId, asset.radius, hullBox0(asset))
+       : hullMaterial(team, asset.def.family, false, asset.def.length);
+     const mesh = tagged(geo.hull, mat, KIND.HULL, index);
+     // A dilated hull must not cast a dilated shadow, and at this size there is
+@@ -851,7 +913,7 @@ class FleetBatch {
+       make(
+         geo.hull,
+         impostor
+-          ? impostorMaterial(this.team, this.classId, this.asset.radius)
++          ? impostorMaterial(this.team, this.classId, this.asset.radius, this.hullBox())
+           : hullMaterial(this.team, this.asset.def.family, true, this.asset.def.length),
+         KIND.HULL,
+         !impostor,
+diff --git a/demos/void-sovereign/src/ui/select.js b/demos/void-sovereign/src/ui/select.js
+index efd9374..e40b5ef 100644
+--- a/demos/void-sovereign/src/ui/select.js
++++ b/demos/void-sovereign/src/ui/select.js
+@@ -1,4 +1,4 @@
+-import { SHIPS, ROLE, approxRadius, damageAffinity } from '../ships/catalog.js';
++import { SHIPS, ROLE, approxRadius, damageAffinity, hullFloorPx, HULL_FLOOR_MAX_GROW } from '../ships/catalog.js';
+ 
+ /* Selection surfaces: the grouped roster along the bottom-left, and the
+    world-space marker layer that draws brackets, health pips, target reticles
+@@ -142,6 +142,36 @@ const HBAR_INTEREST_MIN = 2500;
+    seven sparkles over the planet. Sizes are by mass bucket and fixed per
+    element, the same reason the diamond pools are. */
+ const HOSTILE_K = [0.6, 0.8, 1.05];
++
++/* P49 (combat legibility): the mark yields once the hull reads for itself.
++
++   The fresh-eye critics' first finding was that at combat range "the overlay
++   glyphs do all the work": a 12 px amber silhouette centred on a 9 px grey
++   hull is the brightest thing in that patch of sky and covers the ship it
++   names. With the hull floor at 14-18 px and team strips on it (ships/), the
++   hull can carry the read, so a contact mark scales and fades by how many
++   pixels of hull are actually drawn (the impostor's floored length, the same
++   arithmetic as the shader), and steps up off the hull to sit above it as a
++   tag rather than on it. It never yields while the hull is dying: "about to
++   die" is the one-second read and stays at full strength. */
++const GLYPH_YIELD_PX = [8, 16];     // drawn hull length (px): no yield .. full yield
++const GLYPH_YIELD_FADE = 0.55;      // opacity lost at full yield
++const GLYPH_YIELD_SHRINK = 0.35;    // scale lost at full yield
++const GLYPH_YIELD_LIFT = 5;         // px clear of the hull's top edge at full yield
++
++/** Pixels of hull length as drawn (impostor floor included) at this depth. */
++function drawnHullPx(e, proj) {
++  const def = e.def || SHIPS[e.classId];
++  const L = def && def.length > 0 ? def.length : (e.radius || 10) * 1.8;
++  const phys = (L * proj.scaleK) / proj.cw;
++  return Math.max(phys, Math.min(hullFloorPx(L), phys * HULL_FLOOR_MAX_GROW));
++}
++
++/** 0 = mark at full strength, 1 = mark fully yielded to the hull. */
++function glyphYield(drawnPx) {
++  const u = Math.min(1, Math.max(0, (drawnPx - GLYPH_YIELD_PX[0]) / (GLYPH_YIELD_PX[1] - GLYPH_YIELD_PX[0])));
++  return u * u * (3 - 2 * u);
++}
+ const MAX_HOSTILE_GLYPHS = 120;
+ const SENSE_RANGE_DEFAULT = 4000;
+ 
+@@ -1295,8 +1325,10 @@ export class WorldMarkers {
+         if (bar) this._requestBar(e, frac, enemy, proj.sx, proj.sy, Math.min(px, 48) * 0.8 + 4);
+         continue;
+       }
++      const drawn = drawnHullPx(e, proj);
++      const y = frac <= CONTACT_DYING ? 0 : glyphYield(drawn);
+       if (enemy) {
+-        this._drawHostile(this._hostileGlyph(nHost), e, b, proj.sx, proj.sy);
++        this._drawHostile(this._hostileGlyph(nHost), e, b, proj.sx, proj.sy, y, drawn);
+         nHost++;
+         if (bar) {
+           const k = HOSTILE_K[b] * (frac <= CONTACT_DYING ? 1.3 : 1);
+@@ -1304,7 +1336,7 @@ export class WorldMarkers {
+         }
+         continue;
+       }
+-      this._drawContact(this._contactMark(b, used[b]), e, proj.sx, proj.sy);
++      this._drawContact(this._contactMark(b, used[b]), e, proj.sx, proj.sy, y, drawn);
+       used[b]++;
+       total++;
+       if (bar) {
+@@ -1321,12 +1353,14 @@ export class WorldMarkers {
+     for (let i = nHost; i < this.hostileGlyphs.length; i++) this._parkContact(this.hostileGlyphs[i]);
+   }
+ 
+-  _drawHostile(g, e, bucket, sx, sy) {
++  _drawHostile(g, e, bucket, sx, sy, yieldT = 0, drawn = 0) {
+     const maxHull = e.maxHull || (e.def ? e.def.hull : 0) || 1;
+     const dying = (e.hull || 0) <= maxHull * CONTACT_DYING;
+-    const k = HOSTILE_K[bucket] * (dying ? 1.3 : 1);
++    const k = HOSTILE_K[bucket] * (dying ? 1.3 : 1) * (1 - GLYPH_YIELD_SHRINK * yieldT);
++    // P49: lift clear of the hull: half the drawn hull, half the glyph (20 px authored), a gap.
++    const lift = yieldT * (drawn * 0.5 + 10 * k + GLYPH_YIELD_LIFT);
+     g.el.style.transform =
+-      `translate3d(${sx.toFixed(1)}px,${sy.toFixed(1)}px,0) scale(${k.toFixed(3)})`;
++      `translate3d(${sx.toFixed(1)}px,${(sy - lift).toFixed(1)}px,0) scale(${k.toFixed(3)})`;
+     if (g.classId !== e.classId) {
+       g.classId = e.classId;
+       const def = SHIPS[e.classId];
+@@ -1339,10 +1373,10 @@ export class WorldMarkers {
+     }
+     /* Strength is engagement. Merely sensed is the quietest thing on screen
+        short of nothing; firing, being hit and dying each step it up. */
+-    const a = dying ? 1
++    const a = (dying ? 1
+       : this._hits.has(e.id) ? 0.9
+         : e.targetId >= 0 || this._targeted.has(e.id) ? 0.7
+-          : 0.42;
++          : 0.42) * (1 - GLYPH_YIELD_FADE * yieldT);
+     if (a !== g.a) {
+       g.a = a;
+       g.el.style.opacity = String(a);
+@@ -1350,7 +1384,7 @@ export class WorldMarkers {
+     g.live = true;
+   }
+ 
+-  _drawContact(c, e, sx, sy) {
++  _drawContact(c, e, sx, sy, yieldT = 0, drawn = 0) {
+     /* "About to die" has to be unmistakable, and the first pass of this got it
+        wrong: filling the diamond with its own hue looked identical to a healthy
+        hostile whose engine bloom happened to shine through a hollow one. So
+@@ -1367,9 +1401,12 @@ export class WorldMarkers {
+     const dying = (e.hull || 0) <= maxHull * CONTACT_DYING;
+     const enemy = e.team !== this.ctx.team;
+ 
++    // P49: shrink, and lift clear of the hull, as the hull becomes legible.
++    const ks = 1 - GLYPH_YIELD_SHRINK * yieldT;
++    const lift = yieldT * (drawn * 0.5 + CONTACT_PX[massBucket(e.role)] * 0.71 * ks + GLYPH_YIELD_LIFT);
+     c.el.style.transform =
+-      `translate3d(${sx.toFixed(1)}px,${sy.toFixed(1)}px,0) rotate(45deg)`
+-      + (dying ? ' scale(1.35)' : '');
++      `translate3d(${sx.toFixed(1)}px,${(sy - lift).toFixed(1)}px,0) rotate(45deg)`
++      + (dying ? ' scale(1.35)' : yieldT > 0 ? ` scale(${ks.toFixed(3)})` : '');
+ 
+     const hue = enemy ? 'var(--vsh-amber)' : dying ? 'var(--vsh-red)' : 'var(--vsh-cyan)';
+     if (hue !== c.hue) {
+@@ -1381,10 +1418,10 @@ export class WorldMarkers {
+       c.el.style.background = dying ? 'currentColor' : 'transparent';
+     }
+ 
+-    const a = dying ? 1
++    const a = (dying ? 1
+       : this._hits.has(e.id) ? 0.85
+         : e.targetId >= 0 ? 0.6
+-          : 0.32;
++          : 0.32) * (1 - GLYPH_YIELD_FADE * yieldT);
+     if (a !== c.a) {
+       c.a = a;
+       c.el.style.opacity = String(a);
