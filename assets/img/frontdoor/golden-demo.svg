@@ -1,0 +1,26 @@
+<svg width="1200" height="900" viewBox="0 0 1200 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="900" fill="#0A0C10"></rect>
+  <rect x="28" y="28" width="1144" height="844" rx="34" stroke="#262A30" stroke-width="4"></rect>
+  <circle cx="954" cy="202" r="174" fill="url(#paint0_radial)"></circle>
+  <circle cx="212" cy="714" r="184" fill="url(#paint1_radial)"></circle>
+  <text x="84" y="102" fill="#B7AEA3" font-family="'IBM Plex Mono', monospace" font-size="22" letter-spacing="5">ELUSION WORKS / SHOWCASE DEMO</text>
+  <text x="84" y="196" fill="#F2ECE3" font-family="'Newsreader', Georgia, serif" font-size="102" letter-spacing="-2">Golden</text>
+  <text x="84" y="272" fill="#F2ECE3" font-family="'Newsreader', Georgia, serif" font-size="72" letter-spacing="-1">Breed Guide Showcase</text>
+  <text x="84" y="336" fill="#B7AEA3" font-family="'Manrope', sans-serif" font-size="28">Editorial showcase and responsive canine breed guide with interactive gallery.</text>
+  <rect x="110" y="420" width="980" height="280" rx="30" fill="#13171C" stroke="#303641" stroke-width="3"></rect>
+  <text x="160" y="490" fill="#EAB308" font-family="'Newsreader', Georgia, serif" font-size="42">Responsive Design · Curated Typography · Gallery</text>
+  <text x="160" y="550" fill="#94A3B8" font-family="'Manrope', sans-serif" font-size="24">First of the planned showcase series on Elusion Works.</text>
+  <text x="160" y="640" fill="#EAB308" font-family="'IBM Plex Mono', monospace" font-size="20" letter-spacing="4">STATUS: APPROVED LIVE DEMO / DEMOS/GOLDEN/</text>
+  <path d="M84 750H1116" stroke="#262A30" stroke-width="3"></path>
+  <text x="84" y="810" fill="#F2ECE3" font-family="'IBM Plex Mono', monospace" font-size="20" letter-spacing="5">EDITORIAL SHOWCASE / GOLDEN RETRIEVER / HTML5 + CSS3</text>
+  <defs>
+    <radialGradient id="paint0_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(954 202) rotate(90) scale(174)">
+      <stop stop-color="#EAB308" stop-opacity="0.30"></stop>
+      <stop offset="1" stop-color="#EAB308" stop-opacity="0"></stop>
+    </radialGradient>
+    <radialGradient id="paint1_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(212 714) rotate(90) scale(184)">
+      <stop stop-color="#CA8A04" stop-opacity="0.20"></stop>
+      <stop offset="1" stop-color="#CA8A04" stop-opacity="0"></stop>
+    </radialGradient>
+  </defs>
+</svg>

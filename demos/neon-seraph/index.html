@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Neon Seraph: Blackout Protocol | Elusion Works Demo</title>
+    <title>Neon Seraph: Blackout Protocol</title>
     <meta
       name="description"
-      content="A cinematic landing page demo for Neon Seraph: Blackout Protocol, a fictional isometric cyberpunk action game."
+      content="Official site for Neon Seraph: Blackout Protocol, an isometric cyberpunk action game set inside a citywide power failure."
     />
     <meta name="theme-color" content="#03070a" />
     <meta name="robots" content="index,follow" />
@@ -14,7 +14,7 @@
     <meta property="og:title" content="Neon Seraph: Blackout Protocol" />
     <meta
       property="og:description"
-      content="A premium cyberpunk game landing page demo with a procedural trailer loop and interactive arcology systems."
+      content="Watch the reveal trailer, scan Eidolon Spire, and join the Neon Seraph launch list."
     />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://elusionworks.com/demos/neon-seraph/" />
@@ -38,21 +38,20 @@
     <header class="site-header" data-header>
       <a class="brand" href="#top" aria-label="Neon Seraph home">
         <img src="assets/seraph-mark.svg" alt="" width="34" height="34" />
-        <span>
-          <strong>Neon Seraph</strong>
-          <small>Blackout Protocol</small>
-        </span>
+        <span><strong>Neon Seraph</strong><small>Blackout Protocol</small></span>
       </a>
       <nav class="site-nav" aria-label="Primary navigation">
-        <a href="#signal">Signal</a>
-        <a href="#arcology">Arcology</a>
-        <a href="#combat">Combat</a>
+        <a href="trailer/">Trailer</a>
+        <a href="#breach">Playable Scan</a>
+        <a href="#rig">Seraph Rig</a>
+        <a href="#combat">Gameplay</a>
+        <a href="#worlds">Worlds</a>
         <a href="#factions">Factions</a>
-        <a href="#launch">Launch</a>
+        <a href="#launch">Wishlist</a>
       </nav>
       <div class="header-actions">
         <button class="audio-toggle" type="button" data-motion-toggle aria-pressed="false">Reduce motion</button>
-        <a class="button button--small" href="#launch">Wishlist</a>
+        <a class="button button--small" href="#launch">Wishlist now</a>
       </div>
     </header>
 
@@ -67,45 +66,28 @@
           playsinline
           preload="metadata"
           poster="assets/poster.webp"
-          aria-label="Procedural cinematic trailer loop for Neon Seraph showing a blackout over a stacked cyberpunk city."
+          aria-label="Cinematic trailer loop for Neon Seraph showing a blackout over a stacked cyberpunk city."
         >
-          <source src="assets/seraph-trailer-loop.webm" type="video/webm" />
+          <source src="assets/neon-seraph-reveal.mp4" type="video/mp4" />
         </video>
         <div class="hero-fallback" aria-hidden="true"></div>
         <div class="hero-shade" aria-hidden="true"></div>
 
         <div class="hero-layout">
           <div class="hero-copy reveal">
-            <p class="eyebrow">Original playable-world concept / Elusion Works demo</p>
-            <h1 id="hero-title">Neon Seraph</h1>
-            <p class="hero-subtitle">Blackout Protocol</p>
-            <p class="hero-lede">
-              Drop into Eidolon Spire after the grid gods go silent. Command a winged breach rig, carve through corporate
-              cathedrals, and keep the last district alive until dawn.
+          <p class="eyebrow">World premiere trailer / Eidolon Spire is falling</p>
+          <h1 id="hero-title">Neon Seraph</h1>
+          <p class="hero-subtitle">Blackout Protocol</p>
+          <p class="hero-lede">
+              Drop into Eidolon Spire after the grid gods go silent. Command a winged breach rig in a solo and co-op
+              arcade action-shooter RPG built around dense isometric combat.
             </p>
             <div class="hero-actions" aria-label="Primary actions">
-              <a class="button button--primary" href="#launch">Wishlist the Signal</a>
-              <button class="button button--ghost" type="button" data-trailer-jump>Watch the Loop</button>
+              <a class="button button--primary" href="#launch">Wishlist now</a>
+              <a class="button button--ghost" href="trailer/">Watch trailer</a>
+              <a class="button button--ghost" href="#breach">Plan a breach</a>
             </div>
           </div>
-
-          <aside class="hero-hud reveal" aria-label="Game status">
-            <div class="hud-row">
-              <span>Status</span>
-              <strong>Reveal build</strong>
-            </div>
-            <div class="hud-row">
-              <span>View</span>
-              <strong>Isometric action</strong>
-            </div>
-            <div class="hud-row">
-              <span>Mode</span>
-              <strong>Solo / duo breach</strong>
-            </div>
-            <div class="signal-meter" aria-hidden="true">
-              <i></i><i></i><i></i><i></i><i></i>
-            </div>
-          </aside>
         </div>
 
         <div class="hero-footer" aria-label="Platform and trailer controls">
@@ -113,50 +95,100 @@
             <span>PC</span>
             <span>PS5</span>
             <span>Xbox Series</span>
-            <span>Cloud demo</span>
+            <span>Steam</span>
           </div>
           <div class="trailer-controls">
-            <button type="button" data-video-toggle>Pause trailer</button>
-            <a href="#arcology">Scroll to mission brief</a>
+            <button type="button" data-video-toggle>Pause background</button>
+            <a href="trailer/">Watch trailer</a>
           </div>
         </div>
       </section>
 
-      <section class="brief section-shell" id="signal" aria-labelledby="signal-title">
-        <div class="brief-copy reveal">
-          <p class="section-number">01 / signal</p>
-          <h2 id="signal-title">A reveal page built like a control-room breach.</h2>
+      <section class="breach section-shell" id="breach" aria-labelledby="breach-title">
+        <div class="section-heading reveal">
+          <p class="section-number">01 / playable scan</p>
+          <h2 id="breach-title">Move through the blackout from the campaign camera.</h2>
+          <p>
+            The site switches into the same locked isometric read the game uses: one camera, one centred operator, and
+            a district route that reacts as Seraph crosses hostile lanes.
+          </p>
         </div>
-        <div class="brief-grid">
-          <article class="brief-panel reveal">
-            <span>Player fantasy</span>
-            <h3>Read the city from above.</h3>
-            <p>
-              Tactical dash-and-cover action from an isometric camera, wrapped in a cinematic story about debt, memory,
-              and a power grid that learned to pray.
-            </p>
-          </article>
-          <article class="brief-panel reveal">
-            <span>Site motion</span>
-            <h3>Trailer first, systems second.</h3>
-            <p>
-              The hero loop sells the world instantly. Every following section behaves like a playable dossier instead
-              of a static marketing strip.
-            </p>
-          </article>
-          <article class="brief-panel reveal">
-            <span>Original assets</span>
-            <h3>Procedural, not borrowed.</h3>
-            <p>
-              The video, poster, mark, district map, and HUD language are generated locally for this fictional game demo.
-            </p>
-          </article>
+
+        <div class="iso-journey reveal" data-iso-journey>
+          <div class="iso-sticky">
+            <canvas
+              class="iso-canvas"
+              data-iso-canvas
+              aria-label="Scroll-controlled animated 3D isometric district sequence with Seraph moving through Eidolon Spire."
+            ></canvas>
+            <div class="iso-fallback" data-iso-fallback aria-hidden="true"></div>
+            <div class="iso-scene-tabs" aria-label="Route chapters">
+              <span class="iso-scene-tab is-active" data-iso-chapter="0">Stack 09</span>
+              <span class="iso-scene-tab" data-iso-chapter="0.34">Saint Gate</span>
+              <span class="iso-scene-tab" data-iso-chapter="0.67">Blackwood</span>
+              <span class="iso-scene-tab" data-iso-chapter="0.93">Relay Exit</span>
+            </div>
+            <aside class="iso-console">
+              <p class="readout-label" data-iso-zone>Stack 09 / blackout rain</p>
+              <h3 data-iso-title>Lantern relay breach</h3>
+              <p data-iso-copy>
+                Seraph crosses the worker-stack roofline, slips debt squad sight cones, and opens the east relay before
+                the district wakes up.
+              </p>
+              <dl class="iso-readout">
+                <div><dt>Sequence</dt><dd data-iso-position>00%</dd></div>
+                <div><dt>Threat</dt><dd data-iso-threat>Debt squad two lanes out</dd></div>
+                <div><dt>Pulse</dt><dd data-iso-pulse>Emergency light phase 1</dd></div>
+                <div><dt>Objective</dt><dd data-iso-objective>Reach east relay</dd></div>
+              </dl>
+            </aside>
+            <div class="iso-progress" aria-hidden="true"><i data-iso-progress></i></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="rig section-shell" id="rig" aria-labelledby="rig-title">
+        <div class="section-heading reveal">
+          <p class="section-number">02 / character spec</p>
+          <h2 id="rig-title">One operator, one rig, four ways to break a room.</h2>
+          <p>
+            The Seraph rig is built for arcade readability from the fixed camera: compact silhouette, hard cyan visor,
+            folded wing vector, and ability glows that only flare when the player commits.
+          </p>
+        </div>
+        <div class="rig-layout">
+          <figure class="rig-portrait reveal">
+            <img src="assets/isometric-concepts/fixed-camera/lead-character-seraph-rig.png" alt="Seraph operator in a dark tactical exosuit with a compact mechanical wing rig." />
+            <figcaption><span>Primary runner</span><strong>Seraph breach operator</strong></figcaption>
+          </figure>
+          <div class="rig-spec-grid">
+            <article class="rig-spec reveal">
+              <span>01</span>
+              <h3>Wing vector</h3>
+              <p>Short burst reposition, cover vault, and finisher entry without turning the player into a glowing fantasy figure.</p>
+            </article>
+            <article class="rig-spec reveal">
+              <span>02</span>
+              <h3>High-low fire</h3>
+              <p>Raised aim breaks shields and balcony threats; low aim rips through floor mobs and crawling machines.</p>
+            </article>
+            <article class="rig-spec reveal">
+              <span>03</span>
+              <h3>Drone slot</h3>
+              <p>Moth utility drone marks elites, blinds turrets, opens relay doors, and keeps co-op players readable in chaos.</p>
+            </article>
+            <article class="rig-spec reveal">
+              <span>04</span>
+              <h3>Blackout pulse</h3>
+              <p>Emergency lighting changes stealth, enemy aim, and damage windows every few seconds across the arena.</p>
+            </article>
+          </div>
         </div>
       </section>
 
       <section class="arcology section-shell" id="arcology" aria-labelledby="arcology-title">
         <div class="section-heading reveal">
-          <p class="section-number">02 / arcology</p>
+          <p class="section-number">03 / arcology</p>
           <h2 id="arcology-title">Choose a district. Watch the briefing mutate.</h2>
           <p>
             Eidolon Spire is one vertical city split across four failing systems. The scanner changes objective, threat,
@@ -202,7 +234,7 @@
 
       <section class="combat section-shell" id="combat" aria-labelledby="combat-title">
         <div class="section-heading reveal">
-          <p class="section-number">03 / combat loop</p>
+          <p class="section-number">04 / combat loop</p>
           <h2 id="combat-title">Fast decisions, heavy silhouettes, readable chaos.</h2>
         </div>
         <div class="combat-grid">
@@ -239,9 +271,38 @@
         </div>
       </section>
 
+      <section class="worlds section-shell" id="worlds" aria-labelledby="worlds-title">
+        <div class="section-heading reveal">
+          <p class="section-number">05 / location plates</p>
+          <h2 id="worlds-title">Campaign plates locked to the same camera language.</h2>
+          <p>
+            The playable route is skinned from the strongest generated plates: city stack, open killbox, black forest,
+            and the grounded Seraph rig. Additional districts remain under blackout until the next transmission clears.
+          </p>
+        </div>
+        <div class="world-gallery">
+          <figure class="world-card world-card--wide reveal">
+            <img src="assets/isometric-concepts/fixed-camera/fixed-01-city.jpg" alt="Isometric cyberpunk city district at night." />
+            <figcaption><span>Stack 09</span><strong>Vertical city breach</strong></figcaption>
+          </figure>
+          <figure class="world-card reveal">
+            <img src="assets/isometric-concepts/fixed-camera/fixed-02-open-arena.jpg" alt="Isometric open cyberpunk combat arena with enemies around the player." />
+            <figcaption><span>Saint Gate</span><strong>Open combat bowl</strong></figcaption>
+          </figure>
+          <figure class="world-card reveal">
+            <img src="assets/isometric-concepts/fixed-camera/fixed-03-forest.jpg" alt="Isometric dark sci-fi forest with hostile drones in the trees." />
+            <figcaption><span>Blackwood</span><strong>Signal forest</strong></figcaption>
+          </figure>
+          <figure class="world-card world-card--wide world-card--character reveal">
+            <img src="assets/isometric-concepts/fixed-camera/lead-character-seraph-rig.png" alt="Grounded sci-fi lead character wearing a compact Seraph wing rig." />
+            <figcaption><span>Seraph rig</span><strong>Operator silhouette</strong></figcaption>
+          </figure>
+        </div>
+      </section>
+
       <section class="factions section-shell" id="factions" aria-labelledby="factions-title">
         <div class="section-heading reveal">
-          <p class="section-number">04 / factions</p>
+          <p class="section-number">06 / factions</p>
           <h2 id="factions-title">Three powers want the blackout to last.</h2>
         </div>
         <div class="faction-shell reveal">
@@ -261,49 +322,42 @@
         </div>
       </section>
 
-      <section class="media section-shell" id="trailer" aria-labelledby="trailer-title">
-        <div class="section-heading reveal">
-          <p class="section-number">05 / trailer room</p>
-          <h2 id="trailer-title">The loop is a mood test, not borrowed footage.</h2>
-          <p>
-            This demo ships a real locally generated WebM trailer loop plus a poster frame. The fallback is a procedural
-            motion plate, so the first viewport still reads if video playback is unavailable.
-          </p>
-        </div>
-        <figure class="trailer-frame reveal">
-          <video controls muted loop playsinline poster="assets/poster.webp" preload="metadata">
-            <source src="assets/seraph-trailer-loop.webm" type="video/webm" />
-          </video>
-          <figcaption>Procedural reveal loop: Eidolon Spire enters emergency blackout.</figcaption>
-        </figure>
-      </section>
-
       <section class="launch section-shell" id="launch" aria-labelledby="launch-title">
         <div class="launch-copy reveal">
-          <p class="section-number">06 / launch vector</p>
-          <h2 id="launch-title">Wishlist the fictional reveal build.</h2>
+          <p class="section-number">07 / launch vector</p>
+          <h2 id="launch-title">Wishlist the blackout.</h2>
           <p>
-            A public portfolio demo for testing high-impact game landing pages with video, interaction, and original
-            procedural assets.
+            First contact begins with the district playable slice. Join the launch list for access windows, platform
+            dates, and closed breach tests.
           </p>
         </div>
-        <form class="launch-form reveal" data-launch-form>
-          <label for="email">Signal address</label>
-          <div>
-            <input id="email" name="email" type="email" placeholder="runner@eidolon.example" autocomplete="email" />
-            <button class="button button--primary" type="submit">Join Watchlist</button>
-          </div>
-          <p data-form-status>Static demo: no email is sent.</p>
-        </form>
+        <div class="store-panel reveal" aria-label="Platform wishlist links">
+          <a class="store-card store-card--featured" href="#top">
+            <span>Steam</span>
+            <strong>Wishlist open</strong>
+            <small>PC breach test first</small>
+          </a>
+          <a class="store-card" href="#top">
+            <span>PlayStation 5</span>
+            <strong>Coming 2027</strong>
+            <small>DualSense haptics</small>
+          </a>
+          <a class="store-card" href="#top">
+            <span>Xbox Series X|S</span>
+            <strong>Coming 2027</strong>
+            <small>Smart delivery</small>
+          </a>
+        </div>
       </section>
     </main>
 
     <footer class="site-footer">
-      <a href="../">Elusion Works demos</a>
-      <span>Neon Seraph: Blackout Protocol is a fictional portfolio concept.</span>
-      <span>Original procedural media. No borrowed game IP.</span>
+      <a href="#top">Neon Seraph</a>
+      <span>Black Lantern Interactive</span>
+      <span>Steam, PlayStation 5, Xbox Series X|S</span>
     </footer>
 
-    <script src="app.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" defer></script>
+    <script src="app.js" defer></script>
   </body>
 </html>

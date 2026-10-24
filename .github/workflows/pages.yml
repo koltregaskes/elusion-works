@@ -28,17 +28,43 @@ jobs:
 
       - name: Assemble static site
         run: |
-          mkdir -p _site/assets _site/data _site/styles _site/scripts
-          cp index.html styles.css showcase-pages.css app.js cursor.js 404.html robots.txt sitemap.xml llms.txt security.txt CNAME _site/
-          cp cross-site-nav.js _site/
-          cp -r assets/. _site/assets/
-          cp -r styles/. _site/styles/
-          cp -r scripts/. _site/scripts/
-          cp data/estate.js data/feed.json _site/data/
-          cp -r experiments creative-radar remix-relay design-notes demos _site/
+          set -euo pipefail
+          mkdir -p _site
+          shopt -s nullglob
+          # Copy every visible top-level entry except authoring, tool, and log paths.
+          # data/ is special: editorial-hub.json must not be published.
+          for entry in *; do
+            case "$entry" in
+              *.log|*.md) continue ;;
+            esac
+            if [ -d "$entry" ]; then
+              case "$entry" in
+                node_modules|output|claude-design|design|docs) continue ;;
+                data)
+                  mkdir -p _site/data
+                  cp data/estate.js data/feed.json _site/data/
+                  ;;
+                *)
+                  mkdir -p "_site/$entry"
+                  cp -a "$entry"/. "_site/$entry/"
+                  ;;
+              esac
+            else
+              cp -a "$entry" _site/
+            fi
+          done
 
       - name: Verify static site bundle
         run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for dir in */; do
+            name="${dir%/}"
+            case "$name" in
+              node_modules|output|claude-design|design|docs|data) continue ;;
+            esac
+            test -d "_site/$name"
+          done
           test -f _site/index.html
           test -f _site/styles.css
           test -f _site/showcase-pages.css
