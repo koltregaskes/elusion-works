@@ -16,8 +16,9 @@ const countTargets = {
 
 const statusRank = {
   live: 0,
-  "in-progress": 1,
-  "coming-soon": 2,
+  "not-yet-public": 1,
+  "in-progress": 2,
+  "coming-soon": 3,
 };
 
 function formatCount(value) {
@@ -34,7 +35,9 @@ function escapeHtml(value) {
 }
 
 function statusLabel(value) {
-  return value === "in-progress" ? "In build" : value.replace(/-/g, " ");
+  if (value === "in-progress") return "In build";
+  if (value === "not-yet-public") return "Not yet public";
+  return value.replace(/-/g, " ");
 }
 
 function sortItems(a, b) {
@@ -56,6 +59,10 @@ function getItemsFor(groups) {
 }
 
 function actionLabel(item) {
+  if (item.status === "not-yet-public") {
+    return "Not yet public";
+  }
+
   if (!item.url) {
     return item.status === "coming-soon" ? "Coming later" : "In progress";
   }
