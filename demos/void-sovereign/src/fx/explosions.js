@@ -48,10 +48,12 @@ varying float vSeed;
 varying float vAge;
 varying float vBlotch;
 varying float vFragW;
+varying float vAng;
 
 void main() {
   float age = clamp( ( uTime - iTime.x ) / max( iTime.y, 0.0001 ), 0.0, 1.0 );
   float alive = step( 0.0, uTime - iTime.x ) * step( age, 0.9999 );
+  vAng = uv.x;
 
   // Fast out of the gate, then coasting — a blast front losing energy.
   float e = 1.0 - pow( 1.0 - age, 2.8 );
@@ -101,7 +103,10 @@ void main() {
   // Value noise clusters hard around 0.5, so it needs a gain and a curve or the
   // modulation is invisible.
   float feed = w2 * 0.6 + w1 * 0.4;
-  vBlotch = clamp( 0.12 + 2.5 * pow( feed, 1.7 ), 0.12, 1.9 );
+  /* Round 6 fix 4: held near flat. Swung from 0.12 to 1.9 round the front, the
+     blotch drew bright and dark spokes across the band that read as radial
+     speed lines; the front is now a hairline of near-even weight. */
+  vBlotch = clamp( 0.80 + 0.35 * pow( feed, 1.7 ), 0.80, 1.15 );
 
   float ang = uv.x * 6.2831853;
   vec3 wp = iCenter + ( t1 * cos( ang ) + t2 * sin( ang ) ) * ( rr * R * ragged );
@@ -114,7 +119,7 @@ void main() {
   float camDist = max( distance( cameraPosition, iCenter ), 1.0 );
   // Clamped: at small R the ratio explodes, and a floor that exceeds the
   // envelope would fill it edge to edge.
-  float thickFloor = min( 0.018, ( camDist * uPixelScale * 5.0 ) / max( R, 1.0 ) );
+  float thickFloor = min( 0.010, ( camDist * uPixelScale * 1.6 ) / max( R, 1.0 ) );
 
   vRr = rr;
   vColor = iColor;
@@ -162,7 +167,7 @@ void main() {
   float lead = exp( -pow( max( d, 0.0 ) / ( thick * 0.90 ), 2.0 ) );
   // Plateau then fall, not a Gaussian: the gas immediately behind the front is
   // still dense, and a front with no body behind it is a wireframe hoop.
-  float trail = exp( -pow( max( -d, 0.0 ) / ( thick * 2.2 ), 1.6 ) );
+  float trail = exp( -pow( max( -d, 0.0 ) / ( thick * 0.9 ), 1.6 ) );
   float band = lead * trail * vBlotch;
   /* The hot leading edge. This was 0.32 of the band thickness, which on a
      3.4 km capital front is about 17 metres — comfortably sub-pixel, so the
@@ -232,6 +237,192 @@ const RING_ATTRS = [
   { name: 'iSeed', size: 1, offset: 15 },
 ];
 
+/* R12 fix 3: the shock front of a frigate or a capital is a soft disc, not a
+   wire. Same vertex stage as the ring (built with RING_INNER 0, so the mesh
+   is a full disc), its own profile: a thin, soft-edged front over a faint
+   fill that thickens toward it, the whole thing cooling from gold to a dusty
+   blue-grey and fading out. The fill is what makes it read as a sheet of gas
+   blown out of the hull instead of a hoop drawn round it, and it is held low
+   so a two-hull-wide disc never turns into a veil over the battle. */
+const DISC_FRAG = /* glsl */ `
+#include <common>
+#include <logdepthbuf_pars_fragment>
+#SOFT_PARS
+
+varying float vRr;
+varying vec3 vColor;
+varying float vEnv;
+varying float vThick;
+varying float vIntensity;
+varying float vSeed;
+varying float vAge;
+varying float vBlotch;
+varying float vFragW;
+varying float vAng;
+
+uniform sampler2D uNoise;
+
+void main() {
+  #include <logdepthbuf_fragment>
+  float d = vRr - 1.0;
+  /* R12 fix 3, second pass: the first disc still drew an outline. Its fill
+     rose as r^3 and was cut at the front, so the brightest gas sat on the
+     rim and the whole thing read as a soap bubble round the fireball. Now
+     the fill peaks inside and thins out before the front, the front is a
+     wide, faint gaussian, and both are broken up by a gas noise that drifts
+     outward with age, so no bearing carries a continuous line. */
+  float w = max( vThick, 0.02 ) * 2.2;
+  float gas = texture2D( uNoise, vec2( vAng * 5.0 + vSeed * 3.3, vRr * 1.6 - vAge * 0.7 + vSeed ) ).r;
+  gas = smoothstep( 0.28, 0.72, gas );
+  float front = exp( -pow( d / w, 2.0 ) ) * mix( 0.25, 1.0, gas );
+  float r = clamp( vRr, 0.0, 1.0 );
+  float fill = smoothstep( 0.0, 0.45, r ) * ( 1.0 - smoothstep( 0.55, 1.02, r ) ) * mix( 0.45, 1.0, gas );
+  float rim = 1.0 - smoothstep( RING_OUTER - 0.05, RING_OUTER, vRr );
+  float a = clamp( front * 0.12 + fill * 0.30, 0.0, 1.0 ) * vBlotch * rim * vEnv * fxSoftFade( vFragW );
+  if ( a <= 0.004 ) discard;
+  float cool = smoothstep( 0.02, 0.55, vAge );
+  vec3 edgeC = mix( vec3( 1.00, 0.80, 0.52 ), vec3( 0.60, 0.68, 0.84 ), cool );
+  vec3 fillC = mix( vec3( 1.00, 0.46, 0.15 ), vec3( 0.34, 0.36, 0.42 ), cool );
+  vec3 col = mix( fillC, edgeC, clamp( front, 0.0, 1.0 ) ) * vColor;
+  col *= vIntensity * uGain * ( 0.36 + 0.24 * front );
+  gl_FragColor = vec4( col, a );
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}
+`;
+
+/* R12 fix 3: a fireball is one procedural billboard, not a pile of flares.
+
+   Round 11 built the primary from fourteen overlapping flare sprites. Each
+   one was a radial falloff at 6.5x radiance, and the sum clipped to one flat
+   cream disc with a hard rim (the "lightbulb"), with no temperature in it and
+   the same shape on every class. This is one quad per fireball, elongated
+   along the dead hull's keel, with the falloff and the colour computed per
+   pixel: a white-yellow core, gold, orange and a dull red edge, the whole ramp
+   sliding cool with age; a billowing silhouette from two noise octaves; and
+   radiance that only clears the bloom cut (2.8) in the core, so what clips is
+   a small hot centre and the rest is fire. It depth-tests against the scene,
+   so the ribs and plating in front of its plane cut it. */
+const FB_STRIDE = 16;
+/* 0..2 centre | 3..5 velocity | 6..9 start,life,r0,r1 | 10..12 keel axis
+   13 elongation | 14 intensity | 15 seed */
+const FB_VERT = /* glsl */ `
+#include <common>
+#include <logdepthbuf_pars_vertex>
+
+attribute vec3 iCenter;
+attribute vec3 iVel;
+attribute vec4 iTime;
+attribute vec3 iAxis;
+attribute float iElong;
+attribute float iIntensity;
+attribute float iSeed;
+
+uniform float uTime;
+
+varying vec2 vP;
+varying float vAge;
+varying float vInt;
+varying float vSeed;
+varying float vFragW;
+
+void main() {
+  float t = uTime - iTime.x;
+  float age = clamp( t / max( iTime.y, 0.0001 ), 0.0, 1.0 );
+  float alive = step( 0.0, t ) * step( age, 0.9999 );
+  // Born at r0 (already hull-sized on the kill frame), easing out to r1.
+  float grow = 1.0 - exp( -max( t, 0.0 ) / max( iTime.y * 0.14, 0.004 ) );
+  float R = mix( iTime.z, iTime.w, grow ) * alive;
+
+  vec4 mv = viewMatrix * vec4( iCenter + iVel * max( t, 0.0 ), 1.0 );
+  vec3 ax = ( viewMatrix * vec4( iAxis, 0.0 ) ).xyz;
+  float l2 = length( ax.xy );
+  vec2 d = l2 > 1e-4 ? ax.xy / l2 : vec2( 1.0, 0.0 );
+  // A keel pointing at the camera is not long on screen, so neither is this.
+  float el = mix( 1.0, iElong, clamp( l2, 0.0, 1.0 ) );
+  vec2 pp = vec2( -d.y, d.x );
+  vec2 q = position.xy * 2.7;
+  mv.xy += d * ( q.x * R * el ) + pp * ( q.y * R );
+  gl_Position = projectionMatrix * mv;
+
+  vP = q;
+  vAge = age;
+  vInt = iIntensity * alive;
+  vSeed = iSeed;
+  vFragW = gl_Position.w;
+  #include <logdepthbuf_vertex>
+}
+`;
+
+const FB_FRAG = /* glsl */ `
+#include <common>
+#include <logdepthbuf_pars_fragment>
+#SOFT_PARS
+
+uniform sampler2D uNoise;
+
+varying vec2 vP;
+varying float vAge;
+varying float vInt;
+varying float vSeed;
+varying float vFragW;
+
+void main() {
+  #include <logdepthbuf_fragment>
+  float r = length( vP );
+  vec2 dir = vP / max( r, 1e-4 );
+  // Two octaves, the coarse one drifting outward with age so the edge billows.
+  vec2 base = vP * 0.30 + vec2( vSeed * 3.7, vSeed * 1.3 );
+  float n1 = texture2D( uNoise, base - dir * vAge * 0.12 ).r;
+  float n2 = texture2D( uNoise, base * 2.6 + vec2( 0.31, vSeed * 5.1 ) ).g;
+  float n = n1 * 0.62 + n2 * 0.38;
+  float edge = 1.0 + ( n - 0.5 ) * 0.95;
+  float d = r / max( edge, 0.25 );
+  if ( d >= 1.0 ) discard;
+  float body = 1.0 - smoothstep( 0.50, 1.0, d );
+
+  /* Temperature: hottest at the centre, falling to the edge, and the whole
+     ramp cooling with age. The fine octave breaks the isotherms up so the
+     core is a ragged hot region, not a target. */
+  float heat = mix( 1.0, 0.16, smoothstep( 0.0, 0.80, vAge ) );
+  float T = clamp( ( 1.0 - d ) * 1.10 * heat + ( n2 - 0.5 ) * 0.40 * ( 1.0 - d ), 0.0, 1.0 );
+  vec3 c = vec3( 0.40, 0.05, 0.015 );
+  c = mix( c, vec3( 1.00, 0.30, 0.05 ), smoothstep( 0.10, 0.36, T ) );
+  c = mix( c, vec3( 1.00, 0.60, 0.19 ), smoothstep( 0.36, 0.60, T ) );
+  c = mix( c, vec3( 1.00, 0.84, 0.52 ), smoothstep( 0.62, 0.88, T ) );
+  c = mix( c, vec3( 1.00, 0.96, 0.86 ), smoothstep( 0.90, 0.99, T ) );
+  // Radiance clears the bloom cut only where T is high: a small searing core.
+  float rad = 0.24 + 2.20 * pow( T, 2.6 );
+  float env = 1.0 - smoothstep( 0.50, 1.0, vAge );
+  // Cooler pockets where the coarse octave is low: gas, not a card.
+  float pocket = mix( 0.55, 1.0, smoothstep( 0.30, 0.62, n1 ) );
+  float a = body * env * pocket * fxSoftFade( vFragW );
+  if ( a <= 0.003 ) discard;
+  gl_FragColor = vec4( c * rad * vInt * uGain, a );
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}
+`;
+
+const FB_ATTRS = [
+  { name: 'iCenter', size: 3, offset: 0 },
+  { name: 'iVel', size: 3, offset: 3 },
+  { name: 'iTime', size: 4, offset: 6 },
+  { name: 'iAxis', size: 3, offset: 10 },
+  { name: 'iElong', size: 1, offset: 13 },
+  { name: 'iIntensity', size: 1, offset: 14 },
+  { name: 'iSeed', size: 1, offset: 15 },
+];
+
+function quadGeometry() {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute([
+    -0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0,
+  ], 3));
+  g.setIndex([0, 1, 2, 0, 2, 3]);
+  return g;
+}
+
 /* Radial span of the annulus, as a fraction of the front radius.
 
    Deliberately tight. This bounds the worst case by construction: even if the
@@ -279,6 +470,14 @@ function annulusGeometry(segments = 96) {
    whole fleet spans 178:1. See `_blast` for the measured table. */
 const SHAKE_EXP = 0.8;
 
+/* Band boundaries in metres of hull length. A death's *shape* is chosen here
+   and nowhere else; `kill()` is the only reader. */
+const BAND_SPARK = 26;
+const BAND_POP = 70;
+const BAND_BREAK = 210;
+/* Beats whose `at` moves the whole event to a keel station. */
+const AT_KINDS = new Set(['sparks', 'debris', 'vent', 'disc']);
+
 const WHITE = new THREE.Color(0xffffff);
 const CORE = new THREE.Color(0xfff2d8);
 const FIRE = new THREE.Color(0xff9a42);
@@ -292,7 +491,7 @@ export class ExplosionFX {
     this.debris = debris;
     this.drawCalls = 1;
 
-    this._quadGeo = annulusGeometry(96);
+    this._quadGeo = annulusGeometry(160);
     const defs = `#define RING_INNER ${RING_INNER.toFixed(3)}\n`
       + `#define RING_OUTER ${RING_OUTER.toFixed(3)}\n`;
     this.rings = ctx.instanceBatch({
@@ -309,6 +508,44 @@ export class ExplosionFX {
       nearFade: 40,
     });
 
+    /* R12 fix 3: the soft shock disc and the procedural fireball. One draw
+       call each; both are in the scene from construction, so their programs
+       link on the boot frames, never on a kill. */
+    this._discGeo = annulusGeometry(128);
+    const ddefs = '#define RING_INNER 0.000\n#define RING_OUTER 1.060\n';
+    this.discs = ctx.instanceBatch({
+      name: 'shockdiscs',
+      base: this._discGeo,
+      attributes: RING_ATTRS,
+      stride: RING_STRIDE,
+      capacity: Math.max(8, Math.round(ctx.budget.rings * 0.5)),
+      vertexShader: ddefs + RING_VERT,
+      fragmentShader: ddefs + DISC_FRAG,
+      uniforms: { uNoise: { value: ctx.noises.fbm } },
+      renderOrder: 16,
+      softness: 80,
+      nearFade: 40,
+    });
+    this._fbGeo = quadGeometry();
+    this.fireballs = ctx.instanceBatch({
+      name: 'fireballs',
+      base: this._fbGeo,
+      attributes: FB_ATTRS,
+      stride: FB_STRIDE,
+      capacity: 96,
+      vertexShader: FB_VERT,
+      fragmentShader: FB_FRAG,
+      uniforms: { uNoise: { value: ctx.noises.fbm } },
+      renderOrder: 15,
+      softness: 30,
+      nearFade: 40,
+    });
+    this.drawCalls = 3;
+    this._discList = [];
+    this._fbs = [];
+    // Wrecks open their cuts with the same fireball (wrecks.js `_cut`).
+    ctx.fireball = (p, v, axis, r0, r1, life, inten, elong) => this._addFireball(p, v, axis, r0, r1, life, inten, elong, null);
+
     this._rings = [];
     this._seqs = [];
     this._jets = [];
@@ -317,6 +554,7 @@ export class ExplosionFX {
 
     this._v = new THREE.Vector3();
     this._v2 = new THREE.Vector3();
+    this._dir = new THREE.Vector3();
     this._axis = new THREE.Vector3();
     this._side = new THREE.Vector3();
     this._up = new THREE.Vector3();
@@ -329,6 +567,8 @@ export class ExplosionFX {
   get sequenceCount() {
     return this._seqs.length + this._jets.length + this._lingers.length + this._glows.length;
   }
+
+  get fireballCount() { return this._fbs.length; }
 
   /* ------------------------------------------------------------------ entry */
 
@@ -347,14 +587,20 @@ export class ExplosionFX {
      distance without touching its world-space magnitude. So a fighter dying at
      4 km still reads, and it still reads as a small thing dying.
 
-     Duration goes as the cube root of length — a big structure takes longer to
-     come apart, but not 135 times longer. */
+     Duration is *not* handled here any more, and that was the round-2 defect.
+     A single `T = clamp(cbrt(L/380), 0.4, 1.75)` stretched one animation over
+     the whole roster: a 4.4:1 duration ladder against the 5:1 floor in
+     CRITIQUE-RUBRIC §3.9/P3, and — worse — the same act structure from a 14 m
+     interceptor to a 1,900 m mothership, which is the "same explosion,
+     different scale factor" the rubric scores at 5. Each band now owns its own
+     script *and* its own stretch, normalised at that band's reference hull, so
+     a 115 m frigate is quicker than a 140 m one without either of them
+     borrowing the capital's four acts. */
   _magnitude(L) {
     return {
       L,
       R: L * 0.95,                                            // fireball radius
       ring: L * 1.8,                                          // shock front
-      T: Math.min(1.75, Math.max(0.4, Math.cbrt(L / 380))),   // timeline stretch
       N: Math.min(3.2, Math.max(0.35, Math.pow(L / 380, 0.55))), // particle mass
     };
   }
@@ -390,117 +636,292 @@ export class ExplosionFX {
       events: null,
     };
 
-    if (L < 45) seq.events = this._scriptPop(seq);
-    else if (L < 210) seq.events = this._scriptBreak(seq);
-    else seq.events = this._scriptCapital(seq);
+    /* The axis the wreck vents along. Mostly the keel — a hull fails along its
+       frames — but pulled off it by a random component so a squadron dying does
+       not produce a row of identical twin-lobed bursts. Drawn once per death,
+       from the death's own fork of the RNG, so it is reproducible from the seed
+       like everything else. */
+    seq.blast = new THREE.Vector3().copy(seq.axis);
+    const w = seq.rng.unitVector();
+    seq.blast.x += w.x * 0.55;
+    seq.blast.y += w.y * 0.55;
+    seq.blast.z += w.z * 0.55;
+    if (seq.blast.lengthSq() < 1e-6) seq.blast.set(0, 0, 1);
+    seq.blast.normalize();
 
-    // One place stretches the whole timeline by hull size.
-    const T = seq.m.T;
-    if (T !== 1) for (const e of seq.events) e.t *= T;
+    /* Which way the failure travels along the keel. Drawn per death so half a
+       squadron fails bow-first and half stern-first; without it every capital
+       in a match walks its secondaries in the same direction, which is a
+       pattern a player notices within two deaths. */
+    seq.sweep = seq.rng.next() < 0.5 ? -1 : 1;
+
+    /* Four bands, four shapes. The boundaries are hull lengths from
+       `ships/catalog.js`: scout 12 / interceptor 14 / bomber 20 sit in SPARK,
+       corvette 34 / collector 46 in POP, the three frigates at 115-140 in
+       BREAK, and destroyer 380 upward in CAPITAL. */
+    /* R12 fix 3: from a frigate up, the death is chosen by class, not only by
+       length, and each script is authored in seconds (T = 1). The scripts
+       also return the wreck's break plan (where the hull is cut and when each
+       section lets go), so the hull comes apart where the fire is. */
+    let T = 1;
+    seq.plan = null;
+    if (L < BAND_SPARK) { seq.events = this._scriptSpark(seq); T = Math.pow(L / 18, 0.50); }
+    else if (L < BAND_POP) { seq.events = this._scriptPop(seq); T = Math.pow(L / 40, 0.50); }
+    else if (L < BAND_BREAK) seq.events = this._scriptFrigate(seq);
+    else {
+      const id = entity.classId || def.id || '';
+      if (id === 'mothership' || L >= 1200) seq.events = this._scriptMothership(seq);
+      else if (id === 'carrier') seq.events = this._scriptCarrier(seq);
+      else if (id === 'cruiser') seq.events = this._scriptCruiser(seq);
+      else seq.events = this._scriptDestroyer(seq);
+    }
+    seq.T = T;
+
+    /* One place stretches the whole timeline by hull size — and it stretches
+       *lifetimes* with the beats, which the round-2 version did not. Scaling
+       only `t` left a mothership's beats spread over six seconds while every
+       fireball on them still burned for the same 0.6 s an interceptor's did,
+       so the acts read as a slideshow of identical pops rather than as one
+       structure failing at its own pace. Particle counts deliberately do not
+       stretch: those are mass, and mass is `m.N`. */
+    if (T !== 1) {
+      for (const e of seq.events) {
+        e.t *= T;
+        if (e.life) e.life *= T;
+        if (e.duration) e.duration *= T;
+        if (e.emberLife) e.emberLife *= T;
+        if (e.smokeLife) e.smokeLife *= T;
+      }
+    }
 
     this._seqs.push(seq);
+    return seq.plan;
   }
 
   /* --------------------------------------------------------------- scripts */
 
-  /* A fighter is gone inside a fifth of a second: one flash, a spray, four
-     chunks. `minPx` keeps it on screen at strategic range without inflating it
-     into something that looks like a frigate dying. */
+  /* SPARK — one frame and a spark, which is literally the brief.
+
+     A 14 m hull has nothing in it that can burn for two seconds, and the
+     round-2 script gave it 1.8 s of embers and 1.4 s of smoke. That single
+     decision is what flattened the duration ladder: the bottom rung sat at
+     ~1.8 s, so no plausible top rung could reach 5:1 without a mothership
+     taking nine seconds to *stop emitting*. Nothing here outlives a third of
+     a second, and the flash is a `point` shape — two flares, not five — so a
+     strike craft dying is one hot dot, not a five-billboard cluster. */
+  _scriptSpark(seq) {
+    const { L, R, ring } = seq.m;
+    return [
+      // R7 fix 5b: peaks on its first frame and decays over 0.2 s (was 0.13 s).
+      { t: 0.00, k: 'flash', shape: 'point', size: R * 1.9, minPx: 11, life: 0.20, bright: 9.0 },
+      /* No shock ring (round 4: a cream hoop round a 14 m hull read as clip
+         art), and the spray is held to a couple of hull lengths. */
+      /* Round 6 fix 4: short and slow enough to stay inside the hull's own
+         length. At L * 4.5 with 3-10x stretch the spray drew a blurred tan
+         X well past the ship, which read as the lens-cross firework. */
+      { t: 0.00, k: 'sparks', n: 18, speed: L * 1.4, size: L * 0.03, minPx: 1.2, life: 0.26, stretch: [1.0, 2.0] },
+      { t: 0.01, k: 'debris', n: 2, scale: 0.26, speed: L * 5.0, lifeScale: 0.12 },
+    ];
+  }
+
+  /* POP — a corvette or a collector. One act, a real fireball, burning
+     wreckage, over inside a second. This is the rung that has to sit visibly
+     between a strike craft and a frigate, so it gets embers and smoke that
+     SPARK is denied and none of the venting that BREAK gets. */
   _scriptPop(seq) {
     const { L, R, ring, N } = seq.m;
     return [
-      { t: 0.00, k: 'flash', size: R * 2.4, minPx: 13, life: 0.22, bright: 11.0 },
-      { t: 0.00, k: 'sparks', n: 44 * N, speed: L * 16, size: L * 0.13, minPx: 2.6 },
-      { t: 0.00, k: 'ring', r0: R * 0.3, r1: ring, life: 0.46, thick: 0.045, intensity: 1.50 },
-      { t: 0.00, k: 'smoke', n: 3, size: R * 2.4, speed: L * 2.2, life: 1.4 },
-      { t: 0.02, k: 'debris', n: 5, scale: 0.30, speed: L * 4.5 },
-      { t: 0.03, k: 'embers', n: 22 * N, speed: L * 3.5, life: 1.8 },
+      { t: 0.00, k: 'flash', size: R * 2.1, minPx: 16, life: 0.20, bright: 12.0 },
+      { t: 0.00, k: 'sparks', n: 40 * N, speed: L * 12, size: L * 0.11, minPx: 2.6, life: 0.48 },
+      { t: 0.00, k: 'ring', r0: R * 0.30, r1: ring, life: 0.38, thick: 0.045, intensity: 1.50 },
+      { t: 0.03, k: 'debris', n: 5, scale: 0.30, speed: L * 4.2, lifeScale: 0.26 },
+      { t: 0.05, k: 'embers', n: 20 * N, speed: L * 3.2, life: 0.46 },
+      { t: 0.07, k: 'smoke', n: 3, size: R * 1.6, speed: L * 2.0, life: 0.60 },
     ];
   }
 
-  /* A frigate comes apart: hit, vent, two secondaries, then the hull goes. */
-  _scriptBreak(seq) {
+  /* R12 fix 3: every death from a frigate up is written per class, because
+     round 11's critic could not tell a cruiser from a carrier: both were the
+     same cream ball at different scales. Sizes are in hull lengths *as drawn*
+     (ctx.hullBudget), times in seconds, and each script is built so that its
+     kill frame and its silhouette over the first second are its own:
+
+       frigate     one sharp burst, the hull snaps in two on the spot
+       destroyer   a keel rupture: a fireball stretched down the keel at one
+                   frame, a disc in the rupture plane, two halves that hinge
+                   apart in a V
+       cruiser     a slow chain: the failure starts at one end and walks the
+                   spine in seven beats over two seconds, and each section
+                   lets go as the chain passes its cut
+       carrier     the big one on the kill frame, then the hangar deck cooks
+                   off down one flank, and the flight deck breaks into four
+                   tumbling sections
+       mothership  a staged sequence: reactor breach, three internal
+                   detonations walking the hull, the hull glowing, and only
+                   at +3 s the main detonation and the breakup
+
+     `fireball` sizes: r0 is the radius on the kill frame, r1 the radius it
+     eases to, both x the hull as drawn; `elong` stretches it down the keel. */
+
+  /* The wreck's break plan. `cuts` are fractions of the keel from stern (0)
+     to bow (1); `delays` are when each section (stern first) starts to move. */
+  _plan(seq, cuts, delays, kick, tilt) {
+    seq.plan = { cuts, delays, kick, tilt };
+  }
+
+  _scriptFrigate(seq) {
     const { L, R, ring, N } = seq.m;
+    const station = seq.rng.range(-0.18, 0.18);
+    this._plan(seq, [station + 0.5], [0.02, 0.02], 0.26, [0.10, 0.18]);
     return [
-      { t: 0.00, k: 'flash', size: R * 0.9, minPx: 20, life: 0.24, bright: 7.0 },
-      { t: 0.00, k: 'sparks', n: 48 * N, speed: L * 5.0, size: L * 0.045, minPx: 2.4 },
-      { t: 0.00, k: 'vent', n: 2, duration: 1.5, speed: L * 3.2 },
-      { t: 0.00, k: 'smoke', n: 5, size: L * 0.8, speed: L * 1.0, life: 2.4 },
-      { t: 0.22, k: 'secondary', at: -0.25, size: R * 0.42 },
-      { t: 0.46, k: 'secondary', at: 0.30, size: R * 0.52 },
-      { t: 0.50, k: 'debris', n: 6, scale: 0.22, speed: L * 1.4 },
-      { t: 0.62, k: 'vent', n: 1, duration: 1.1, speed: L * 2.6 },
-      { t: 0.70, k: 'hullglow', duration: 0.30, size: L, bright: 3.2 },
-      { t: 0.84, k: 'flash', size: R * 1.9, minPx: 52, life: 0.42, bright: 15.0 },
-      { t: 0.84, k: 'ring', r0: R * 0.3, r1: ring * 1.15, life: 0.9, thick: 0.030, intensity: 1.77 },
-      { t: 0.84, k: 'sparks', n: 100 * N, speed: L * 7.0, size: L * 0.06, minPx: 2.6 },
-      { t: 0.86, k: 'debris', n: 18, scale: 0.5, speed: L * 1.9, keel: 2 },
-      { t: 0.86, k: 'embers', n: 70 * N, speed: L * 2.2, life: 3.6 },
-      { t: 0.88, k: 'smoke', n: 8, size: L * 0.7, speed: L * 1.4, life: 4.0 },
-      { t: 1.06, k: 'ring', r0: R * 0.8, r1: ring * 1.6, life: 1.6, thick: 0.020, intensity: 0.88 },
-      { t: 0.90, k: 'linger', duration: 5.0, rate: 11, size: L * 0.5 },
+      { t: 0.00, k: 'fireball', at: station, r0: 0.24, r1: 0.348, life: 0.50, inten: 1.10, elong: 1.45, toCam: 0.10, shake: 0.5 },
+      { t: 0.00, k: 'tear', at: station, spark: 40 * N, n: 12, keel: 2, sep: 0.10, scale: 0.5, lifeScale: 0.5 },
+      { t: 0.00, k: 'sparks', n: 30 * N, speed: L * 5.0, size: L * 0.045, minPx: 2.4, life: 0.55 },
+      { t: 0.00, k: 'disc', r0: R * 0.25, r1: ring * 0.9, life: 0.65, thick: 0.075, intensity: 0.59, axis: 'hull' },
+      { t: 0.06, k: 'embers', n: 50 * N, speed: L * 2.0, life: 1.2 },
+      { t: 0.10, k: 'smoke', n: 6, size: L * 0.55, speed: L * 1.1, life: 1.5 },
+      { t: 0.30, k: 'linger', duration: 1.2, rate: 10, size: L * 0.5, emberLife: 1.4, smokeLife: 1.8 },
     ];
   }
 
-  _scriptCapital(seq) {
-    const { L, R, ring, N } = seq.m;
+  _scriptDestroyer(seq) {
+    const { L, R, N } = seq.m;
     const rng = seq.rng;
-    const ev = [];
-
-    /* Act one: the hull starts failing. Small, contained, walking along the
-       spine so the eye follows it. */
-    ev.push({ t: 0.00, k: 'secondary', at: rng.range(-0.5, 0.1), size: R * 0.14 });
-    ev.push({ t: 0.00, k: 'vent', n: 4, duration: 3.2, speed: L * 1.1 });
-    ev.push({ t: 0.00, k: 'smoke', n: 5, size: L * 0.12, speed: L * 0.30, life: 4.5 });
-
-    const beats = 12 + Math.round(rng.range(0, 4));
-    for (let i = 0; i < beats; i++) {
-      const t = 0.22 + (i / beats) * 2.35 + rng.range(-0.05, 0.05);
-      ev.push({
-        t,
-        k: 'secondary',
-        at: rng.range(-0.62, 0.62),
-        size: R * (0.12 + 0.16 * (i / beats)),
-        minPx: 14,
-      });
-      if (i % 3 === 1) ev.push({ t: t + 0.02, k: 'vent', n: 1, duration: 2.4, speed: L * 0.9 });
-      if (i % 4 === 2) ev.push({ t: t + 0.04, k: 'debris', n: 3, scale: 0.18, speed: L * 0.35 });
+    const station = rng.range(-0.14, 0.14);
+    this._plan(seq, [station + 0.5], [0.04, 0.04], 0.30, [0.14, 0.24]);
+    const ev = [
+      { t: 0.00, k: 'fireball', at: station, r0: 0.18, r1: 0.264, life: 0.95, inten: 1.10, elong: 2.0, toCam: 0.08, shake: 1.0 },
+      { t: 0.00, k: 'tear', at: station, spark: 30 * N, n: 30, keel: 4, sep: 0.12, scale: 1.0 },
+      { t: 0.00, k: 'disc', r0: R * 0.15, r1: L * 0.80, life: 1.0, thick: 0.075, intensity: 0.56, axis: 'hull' },
+      { t: 0.10, k: 'embers', n: 110 * N, speed: L * 0.30, life: 2.6 },
+      { t: 0.16, k: 'smoke', n: 8, size: L * 0.36, speed: L * 0.45, life: 3.0 },
+      { t: 0.20, k: 'vent', n: 2, duration: 1.6, speed: L * 1.0, axis: 'lateral', at: station },
+    ];
+    // The rupture running a short way down the keel each side of the break.
+    for (const s of [-1, 1]) {
+      ev.push({ t: 0.05 + rng.range(0, 0.02), k: 'fireball', at: station + s * 0.13, r0: 0.06, r1: 0.096, life: 0.60, inten: 1.0, elong: 1.4, toCam: 0.08 });
     }
+    // The two open ends keep cooking off.
+    for (const t of [0.45, 0.85, 1.30, 1.85]) {
+      ev.push({ t: t + rng.range(-0.04, 0.04), k: 'fireball', at: station + rng.range(-0.08, 0.08), lat: rng.range(-0.05, 0.05), r0: 0.03, r1: 0.054, life: 0.50, inten: 1.0, elong: 1.0, toCam: 0.06, shake: 0.08 });
+    }
+    ev.push({ t: 1.60, k: 'linger', duration: 4.0, rate: 14, size: L * 0.35, emberLife: 3.0, smokeLife: 3.6 });
+    return ev;
+  }
 
-    /* Act two: the ship gives up. The buckle — the hull lights from the inside
-       along its whole length, which is the beat that makes the primary land. */
-    ev.push({ t: 2.20, k: 'hullglow', duration: 0.95, size: L, bright: 2.2 });
-    ev.push({ t: 2.62, k: 'flash', size: R * 0.7, minPx: 34, life: 0.38, bright: 8.0 });
-    ev.push({ t: 2.62, k: 'ring', r0: R * 0.2, r1: R * 1.2, life: 0.65, thick: 0.035, intensity: 1.09 });
-    ev.push({ t: 2.64, k: 'sparks', n: 120 * N, speed: L * 1.6, size: L * 0.018, minPx: 2.6 });
-    ev.push({ t: 2.66, k: 'hullglow', duration: 0.36, size: L * 1.05, bright: 5.5 });
+  _scriptCruiser(seq) {
+    const { L, R, N } = seq.m;
+    const rng = seq.rng;
+    const a0 = -0.44 * seq.sweep;
+    const a1 = 0.44 * seq.sweep;
+    const beats = 7;
+    const step = 0.30;
+    const ev = [
+      /* The failure starts with a burst big enough to read as the kill on its
+         own frame (round 12: the first chain link alone was 0.05 of the hull
+         box, "only a bow burst"). The chain then walks the spine as before. */
+      { t: 0.00, k: 'fireball', at: a0, r0: 0.15, r1: 0.21, life: 0.85, inten: 1.1, elong: 1.5, toCam: 0.04, shake: 0.5 },
+      { t: 0.00, k: 'tear', at: a0, spark: 18 * N, n: 8, keel: 0, sep: 0.04, scale: 0.6 },
+      { t: 0.00, k: 'disc', r0: R * 0.08, r1: L * 0.38, life: 0.8, thick: 0.075, intensity: 0.49, axis: 'hull', at: a0 },
+    ];
+    for (let i = 0; i < beats; i++) {
+      const u = i / (beats - 1);
+      const at = a0 + (a1 - a0) * u + rng.range(-0.02, 0.02);
+      const t = i * step + (i ? rng.range(-0.03, 0.03) : 0);
+      ev.push({ t, k: 'fireball', at, lat: rng.range(-0.03, 0.03), r0: 0.072, r1: 0.114, life: 0.80, inten: 1.05, elong: 1.25, toCam: 0.07, shake: 0.32 });
+      ev.push({ t: t + 0.04, k: 'sparks', n: 14 * N, speed: L * 0.5, size: L * 0.012, minPx: 2.0, life: 0.7, at });
+      if (i % 2 === 1) ev.push({ t: t + 0.06, k: 'debris', n: 4, scale: 0.22, speed: L * 0.30, at });
+      if (i % 3 === 1) ev.push({ t: t + 0.08, k: 'vent', n: 1, duration: 1.3, speed: L * 0.8, axis: 'lateral', at });
+    }
+    // The chain arrives: the far end goes, bigger than any link before it.
+    const tEnd = (beats - 1) * step + 0.12;
+    ev.push({ t: tEnd, k: 'fireball', at: a1, r0: 0.12, r1: 0.18, life: 1.0, inten: 1.1, elong: 1.5, toCam: 0.07, shake: 0.9 });
+    ev.push({ t: tEnd, k: 'disc', r0: R * 0.12, r1: L * 0.62, life: 1.0, thick: 0.075, intensity: 0.56, axis: 'hull', at: a1 });
+    ev.push({ t: 0.20, k: 'embers', n: 60 * N, speed: L * 0.25, life: 2.6 });
+    ev.push({ t: tEnd + 0.08, k: 'embers', n: 80 * N, speed: L * 0.30, life: 2.8 });
+    ev.push({ t: tEnd + 0.12, k: 'smoke', n: 8, size: L * 0.36, speed: L * 0.45, life: 3.2 });
+    ev.push({ t: tEnd + 0.40, k: 'linger', duration: 4.4, rate: 16, size: L * 0.35, emberLife: 3.0, smokeLife: 3.8 });
+    /* Three sections, each letting go as the chain passes its cut. Cuts are
+       stern-to-bow; the chain runs whichever way `sweep` says. */
+    const c1 = 1 / 3 + rng.range(-0.05, 0.05);
+    const c2 = 2 / 3 + rng.range(-0.05, 0.05);
+    const arrive = (f) => Math.max(0, ((f - 0.5 - a0) / (a1 - a0)) * (beats - 1) * step);
+    const t1 = arrive(c1);
+    const t2 = arrive(c2);
+    const d = seq.sweep > 0 ? [t1, Math.min(t1, t2), t2] : [t1, Math.max(t1, t2), t2];
+    this._plan(seq, [c1, c2], d, 0.22, [0.06, 0.12]);
+    ev.sort((a, b) => a.t - b.t);
+    return ev;
+  }
 
-    /* Act three: primary detonation. This is the frame that has to stop you.
+  _scriptCarrier(seq) {
+    const { L, R, N } = seq.m;
+    const rng = seq.rng;
+    const station = rng.range(-0.10, 0.10);
+    const flank = rng.next() < 0.5 ? -1 : 1;
+    const cuts = [0.25, 0.5, 0.75].map((c) => c + rng.range(-0.05, 0.05));
+    this._plan(seq, cuts, [0.12, 0.06, 0.06, 0.12], 0.40, [0.12, 0.22]);
+    const ev = [
+      /* toCam 0.02 (was 0.14): pulled a seventh of the hull toward the lens,
+         the fireball sat in front of the whole rib cage, and round 12's
+         critic saw the ribs vanish from the kill frame to +0.3 s. At 0.02 it
+         sits inside the hull and the near ribs cut it. */
+      { t: 0.00, k: 'fireball', at: station, r0: 0.33, r1: 0.42, life: 1.05, inten: 1.12, elong: 1.40, toCam: 0.02, shake: 1.0 },
+      { t: 0.00, k: 'tear', at: station, spark: 26 * N, n: 30, keel: 4, sep: 0.12, scale: 1.0 },
+      { t: 0.00, k: 'disc', r0: R * 0.15, r1: L * 0.95, life: 1.2, thick: 0.075, intensity: 0.56, axis: 'up' },
+      { t: 0.10, k: 'embers', n: 120 * N, speed: L * 0.30, life: 3.0 },
+      { t: 0.18, k: 'smoke', n: 10, size: L * 0.36, speed: L * 0.45, life: 3.4 },
+    ];
+    /* The hangar deck: a row of blowouts down one flank, stern to bow or
+       back, each one a small fireball with a jet out through the side. */
+    const pops = 7;
+    for (let i = 0; i < pops; i++) {
+      const at = seq.sweep * (-0.38 + i * (0.76 / (pops - 1))) + rng.range(-0.02, 0.02);
+      const t = 0.14 + i * 0.12 + rng.range(-0.02, 0.02);
+      ev.push({ t, k: 'fireball', at, lat: flank * 0.10, r0: 0.036, r1: 0.06, life: 0.55, inten: 1.15, elong: 1.0, toCam: 0.06, shake: 0.12 });
+      ev.push({ t: t + 0.02, k: 'vent', n: 1, duration: 1.1, speed: L * 0.9, axis: 'side', side: flank, at, spread: 0.18 });
+    }
+    // The flight deck coming apart: plates and spans off the cuts.
+    ev.push({ t: 0.32, k: 'debris', n: 12, scale: 0.55, speed: L * 0.32, keel: 3 });
+    ev.push({ t: 1.10, k: 'fireball', at: station + rng.range(-0.2, 0.2), r0: 0.06, r1: 0.096, life: 0.7, inten: 1.0, elong: 1.2, toCam: 0.06, shake: 0.25 });
+    ev.push({ t: 1.40, k: 'linger', duration: 5.0, rate: 18, size: L * 0.35, emberLife: 3.4, smokeLife: 4.0 });
+    ev.sort((a, b) => a.t - b.t);
+    return ev;
+  }
 
-       The flash is sized to bloom, not to cover. A billboard wide enough to
-       fill the frame just greys the image out and drags auto-exposure down
-       with it; a smaller, far hotter one blooms into the same area and keeps
-       the nebula behind it. */
-    /* The screen floor scales with hull length as well as the world size does.
-       A flat 110 px floor gave a mothership and a destroyer the same guaranteed
-       core, so the biggest death in the game could measure smaller on screen
-       than a background star's bloom cross. sqrt(L/380) keeps the ladder
-       sub-linear: destroyer 110 px, carrier 156, mothership 246. */
-    const primaryPx = Math.round(110 * Math.sqrt(L / 380));
-    ev.push({ t: 2.98, k: 'flash', size: R * 1.7, minPx: primaryPx, life: 0.60, bright: 34.0, core: 0.62 });
-    // The next two are the same detonation seen through a slower, cooler shell.
-    // They carry no impulse of their own — the beat is one shove, not three.
-    ev.push({ t: 2.98, k: 'flash', size: R * 0.9, minPx: Math.round(primaryPx * 0.55), life: 1.7, bright: 12.0, colour: FIRE, shake: 0 });
-    ev.push({ t: 3.00, k: 'flash', size: R * 2.6, minPx: Math.round(primaryPx * 1.36), life: 0.30, bright: 6.0, colour: CORE, shake: 0 });
-    ev.push({ t: 2.98, k: 'ring', r0: R * 0.35, r1: ring * 1.55, life: 1.6, thick: 0.022, intensity: 1.63, axis: 'hull' });
-    ev.push({ t: 3.02, k: 'ring', r0: R * 0.25, r1: ring * 1.05, life: 2.0, thick: 0.030, intensity: 1.16, axis: 'perp' });
-    ev.push({ t: 2.99, k: 'sparks', n: 280 * N, speed: L * 3.4, size: L * 0.024, minPx: 3.0 });
-    ev.push({ t: 3.00, k: 'debris', n: 48, scale: 1.0, speed: L * 0.75, keel: 4 });
-    ev.push({ t: 3.02, k: 'embers', n: 240 * N, speed: L * 0.85, life: 8.0 });
-    ev.push({ t: 3.04, k: 'smoke', n: 14, size: L * 0.42, speed: L * 0.5, life: 9.0 });
-    ev.push({ t: 3.30, k: 'ring', r0: R * 1.1, r1: ring * 2.1, life: 2.8, thick: 0.016, intensity: 0.82 });
-    ev.push({ t: 3.10, k: 'linger', duration: 14.0, rate: 20, size: L * 0.35 });
-
+  _scriptMothership(seq) {
+    const { L, R, N } = seq.m;
+    const rng = seq.rng;
+    const station = rng.range(-0.08, 0.08);
+    const tMain = 3.0;
+    this._plan(seq, [0.24, 0.5, 0.76].map((c) => c + rng.range(-0.04, 0.04)), [tMain, tMain, tMain, tMain], 0.30, [0.06, 0.12]);
+    const ev = [
+      /* Reactor breach: the kill frame is light escaping, not yet the end.
+         Second pass: at 0.06 of the hull the breach read as one more hit
+         spark (stepped take, 0.02 of the hull box on the kill frame), so a
+         player who had just killed the flagship saw nothing happen for a
+         second. It is now a fireball a seventh of the hull long, venting at
+         once. */
+      { t: 0.00, k: 'fireball', at: station, r0: 0.13, r1: 0.19, life: 1.1, inten: 1.1, elong: 1.6, toCam: 0.07, shake: 0.45 },
+      { t: 0.00, k: 'breach', n: 5, size: R * 0.07, life: 0.9, bright: 11.0 },
+      { t: 0.04, k: 'vent', n: 3, duration: 2.8, speed: L * 0.8, axis: 'lateral' },
+      { t: 0.40, k: 'embers', n: 60 * N, speed: L * 0.20, life: 3.0 },
+      { t: 2.10, k: 'hullglow', duration: 0.90, size: L, bright: 2.0 },
+      // The main detonation and the breakup.
+      { t: tMain, k: 'fireball', at: station, r0: 0.252, r1: 0.36, life: 1.4, inten: 1.12, elong: 1.5, toCam: 0.08, shake: 1.0 },
+      { t: tMain, k: 'tear', at: station, spark: 30 * N, n: 40, keel: 4, sep: 0.12, scale: 1.0 },
+      { t: tMain, k: 'disc', r0: R * 0.15, r1: L * 1.0, life: 1.6, thick: 0.075, intensity: 0.59, axis: 'hull' },
+      { t: tMain + 0.12, k: 'embers', n: 140 * N, speed: L * 0.30, life: 3.6 },
+      { t: tMain + 0.20, k: 'smoke', n: 12, size: L * 0.36, speed: L * 0.45, life: 4.0 },
+      { t: tMain + 0.60, k: 'linger', duration: 6.0, rate: 20, size: L * 0.35, emberLife: 3.6, smokeLife: 4.4 },
+    ];
+    // Three internal detonations walking the hull, each bigger than the last.
+    const walk = [[0.75, -0.24], [1.45, 0.22], [2.25, -0.36 * seq.sweep]];
+    walk.forEach(([t, at], i) => {
+      ev.push({ t, k: 'fireball', at: station + at, lat: rng.range(-0.04, 0.04), r0: 0.075 + 0.02 * i, r1: 0.11 + 0.025 * i, life: 0.9, inten: 1.08, elong: 1.3, toCam: 0.07, shake: 0.4 + 0.15 * i });
+      ev.push({ t: t + 0.05, k: 'debris', n: 5, scale: 0.25, speed: L * 0.2, at: station + at });
+      ev.push({ t: t + 0.06, k: 'breach', n: 3, size: R * 0.06, life: 0.8, bright: 12.0 });
+    });
     ev.sort((a, b) => a.t - b.t);
     return ev;
   }
@@ -509,6 +930,39 @@ export class ExplosionFX {
 
   _at(seq, t, out) {
     return out.copy(seq.pos).addScaledVector(seq.vel, t);
+  }
+
+  /* Directional bias for ejecta.
+
+     A ship is not a point charge. It comes apart along its structure, so the
+     blast vents hardest through the two ends of the hull and along whatever
+     axis the failure ran — which is why real wreckage forms lobes and a
+     particle system's `rng.unitVector()` forms a ball. A perfectly isotropic
+     spray is the single loudest "this is a particle emitter" signal a death can
+     give, and it is the reason the puffs read as soft round billboards with
+     nothing behind them.
+
+     `seq.blast` is a per-death axis, drawn once, biased onto the hull's long
+     axis: most ships fail along the keel, some do not. Writes a unit vector to
+     `out` and returns a speed multiplier, so the material moving *along* the
+     lobes is also the material moving fastest — which is what makes the lobes
+     legible rather than merely present. */
+  _bias(seq, rng, amount, out) {
+    const u = rng.unitVector();
+    const b = seq.blast;
+    // Sign per sample so the lobes go both ways down the axis, as a hull that
+    // has broken in the middle actually vents.
+    const s = rng.next() < 0.5 ? -1 : 1;
+    out.set(
+      u.x + b.x * s * amount,
+      u.y + b.y * s * amount,
+      u.z + b.z * s * amount,
+    );
+    const len = Math.max(1e-4, Math.hypot(out.x, out.y, out.z));
+    out.multiplyScalar(1 / len);
+    // Alignment with the lobe, remapped to 0.3 .. 1.25 of nominal speed.
+    const align = Math.abs(out.x * b.x + out.y * b.y + out.z * b.z);
+    return (0.30 + 0.95 * Math.pow(align, 1.6)) * rng.range(0.55, 1.15);
   }
 
   /* `fx:blast` — the one channel anything that shoves the camera goes through.
@@ -558,6 +1012,66 @@ export class ExplosionFX {
     });
   }
 
+  /* The torn cross-section and the two keel halves of a split (BREAK and the
+     R11 capital primary share it). */
+  _tear(seq, plane, ev, reach) {
+    const f = this.ctx.fields;
+    const q = this.ctx.qscale;
+    const rng = seq.rng;
+    const V = seq.vel;
+    /* The torn cross-section: sparks thrown out *in the plane*, not into a
+       ball. A disc of ejecta edge-on to the keel is the single clearest
+       statement that the break has an orientation. */
+    const sn = Math.round((ev.spark || 90) * q);
+    for (let i = 0; i < sn; i++) {
+      const a = rng.range(0, Math.PI * 2);
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      // In-plane direction, with a small out-of-plane leak so the disc has
+      // thickness and does not read as a decal.
+      this._dir.set(
+        seq.side.x * ca + seq.up.x * sa + seq.axis.x * rng.gaussian(0, 0.22),
+        seq.side.y * ca + seq.up.y * sa + seq.axis.y * rng.gaussian(0, 0.22),
+        seq.side.z * ca + seq.up.z * sa + seq.axis.z * rng.gaussian(0, 0.22),
+      ).normalize();
+      // R7 fix 5: inside `reach` over the ember's life, not a hull length a second.
+      const sp = Math.min(seq.L, reach / (1.1 * seq.T * 1.1)) * rng.range(0.4, 1.0);
+      this._col.copy(CORE).lerp(EMBER, 0.45 + rng.next() * 0.55);
+      f.spark.spawn(plane.x, plane.y, plane.z,
+        V.x + this._dir.x * sp, V.y + this._dir.y * sp, V.z + this._dir.z * sp,
+        rng.range(0.3, 1.1) * seq.T, 0.35, seq.L * 0.02 * rng.range(0.6, 1.6), 0.2,
+        this._col, 2.8, rng.range(1.2, 2.4), 0); // short embers, not radial speed lines (R6 fix 4)
+    }
+
+    /* The two halves. Each is its own debris burst with its own bulk
+       velocity, offset to where that end of the hull actually was, and the
+       keel sections are split between them — so the wreck is two masses
+       drifting apart rather than one expanding cloud. */
+    const sep = (ev.sep || 0.10) * seq.L;
+    const half = Math.max(1, Math.round((ev.n || 16) * 0.5));
+    const keelHalf = Math.max(1, Math.round((ev.keel || 2) * 0.5));
+    for (let s = -1; s <= 1; s += 2) {
+      this._v2.copy(plane).addScaledVector(seq.axis, s * seq.L * 0.22);
+      this._up.copy(V).addScaledVector(seq.axis, s * sep);
+      this.debris.burst({
+        origin: this._v2,
+        velocity: this._up,
+        axis: seq.axis,
+        count: Math.round(half * Math.min(1.2, q + 0.15)),
+        size: seq.L * 0.035 * (ev.scale || 0.5),
+        spread: seq.L * 0.22,
+        speed: seq.L * 0.55,
+        colour: seq.team.primary,
+        hull: seq.hull,
+        blast: seq.axis,
+        keelCount: keelHalf,
+        keelLength: seq.L * 0.25,
+        lifeScale: ev.lifeScale,
+        rng,
+      });
+    }
+  }
+
   _run(seq, ev) {
     const ctx = this.ctx;
     const rng = seq.rng;
@@ -568,8 +1082,65 @@ export class ExplosionFX {
     // number of screen pixels for the camera we actually have right now.
     const dist = ctx.distTo(origin.x, origin.y, origin.z);
     const px = (metres, minPx) => (minPx ? ctx.atLeast(metres, dist, minPx) : metres);
+    /* Round 5 ceiling: no flash may draw larger than 1.2x the hull as it is
+       drawn on screen right now (its length, or the impostor's pixel floor
+       when that is bigger). `k` is how far past `size` the widest sprite of
+       that beat reaches. The floors above can lift a beat to legibility; they
+       can no longer lift it past the ship. Shock rings get 2x. */
+    /* R7 fix 5: the shared hull budget (ctx.hullBudget), the same rule hits use. */
+    const hullM = ctx.hullBudget(seq.L, origin.x, origin.y, origin.z, 1);
+    /* Ejecta reach: a spray may travel half the 1.2x box from the centre, so
+       sparks and strike-craft embers stay inside the same box as the flash. */
+    const reach = 0.6 * hullM;
+    const cap = (metres, k) => Math.min(metres, (1.2 * hullM) / k);
+    // R12 fix 3: the per-class scripts place these beats at keel stations.
+    if (ev.at !== undefined && AT_KINDS.has(ev.k)) origin.addScaledVector(seq.axis, ev.at * seq.L);
 
     switch (ev.k) {
+      /* R12 fix 3: one procedural fireball (FB_FRAG), sized off the hull as
+         drawn so it is in proportion at every distance, born already large on
+         the kill frame. Pulled a little toward the camera so it bursts out
+         through the near plating while the ribs in front of it still cut it. */
+      case 'fireball': {
+        const p = this._v.copy(origin).addScaledVector(seq.axis, (ev.at || 0) * seq.L);
+        if (ev.lat) p.addScaledVector(seq.side, ev.lat * seq.L);
+        if (ev.toCam) {
+          this._dir.copy(ctx.camPos).sub(p);
+          const dc = this._dir.length();
+          if (dc > 1e-3) p.addScaledVector(this._dir, Math.min(ev.toCam * hullM, dc * 0.25) / dc);
+        }
+        this._addFireball(p, seq.vel, seq.axis, ev.r0 * hullM, ev.r1 * hullM, ev.life, ev.inten, ev.elong || 1, seq);
+        if (ev.shake) this._blast(seq, p, seq.m.ring, ev.shake);
+        break;
+      }
+
+      /* The torn cross-section and the two keel halves, at a station. */
+      case 'tear': {
+        const plane = this._v.copy(origin).addScaledVector(seq.axis, (ev.at || 0) * seq.L);
+        this._tear(seq, plane, ev, reach);
+        break;
+      }
+
+      /* The soft shock disc (DISC_FRAG). `hull` puts it in the plane across
+         the keel (a rupture), `up` in the deck plane. */
+      case 'disc': {
+        const nrm = this._side;
+        if (ev.axis === 'up') nrm.copy(seq.up);
+        else nrm.copy(seq.axis);
+        /* Tipped toward the camera so it reads as a disc from any view; edge
+           on, a disc is the same hairline the ring was. */
+        this._dir.copy(ctx.camPos).sub(origin);
+        if (this._dir.lengthSq() > 1e-6) {
+          this._dir.normalize();
+          if (nrm.dot(this._dir) < 0) nrm.negate();
+          nrm.addScaledVector(this._dir, 0.9).normalize();
+        }
+        const r1 = Math.min(ev.r1, hullM / 1.06);
+        const r0 = Math.min(ev.r0, r1 * 0.5);
+        this._addDisc(origin, nrm, r0, r1, ev.life, ev.thick, ev.intensity, seq);
+        break;
+      }
+
       /* A fireball is a colour ramp in time, not one coloured blob: a white
          core that collapses almost immediately, a body that cools through
          gold to deep orange as it expands, and soot behind it. Three overlaid
@@ -578,7 +1149,31 @@ export class ExplosionFX {
       case 'flash': {
         const col = ev.colour || CORE;
         const V = seq.vel;
-        const size = px(ev.size, ev.minPx);
+        /* A flash may sit at a station along the keel rather than on the
+           centroid. This is the whole of the de-clumping fix: two fireballs
+           0.24 s and a fifth of a hull apart read as a sequence, and the same
+           two at one point read as one ball with a hard sprite boundary. */
+        if (ev.at) origin.addScaledVector(seq.axis, ev.at * seq.L);
+        /* Round 6 fix 4: a strike craft's pop is sized from the hull as drawn now,
+           halo included - the quad is held to 0.8x the hull (was 1.2x), and the
+           flare sprite no longer carries a lens cross to reach past it. */
+        const size = cap(px(ev.size, ev.minPx), ev.shape === 'point' ? 1.5 : 2.0);
+        /* `point` — two flares instead of five. Right for anything whose whole
+           death is a single beat: a strike craft's pop built from a core, a
+           body, a cooling shell and two lobes is five coincident billboards
+           spent on a 14 m object, and at the 11 px floor they are all the same
+           disc. The lobes exist to give a *large* fireball a direction; a
+           small one has no room for them. */
+        if (ev.shape === 'point') {
+          const pk = ev.core === undefined ? 0.42 : ev.core;
+          f.flare.spawn(origin.x, origin.y, origin.z, V.x, V.y, V.z, ev.life * 0.5, 0,
+            size * pk, size * pk * 0.4, WHITE, ev.bright, 0, 0);
+          f.flare.spawn(origin.x, origin.y, origin.z, V.x, V.y, V.z, ev.life, 0,
+            size * 0.34, size, col, ev.bright * 0.16, 0, 0);
+          const ps = ev.shake === undefined ? ev.bright / 34 : ev.shake;
+          if (ps > 0) this._blast(seq, origin, seq.m.ring, ps);
+          break;
+        }
         /* `bright` is the peak radiance of the *core* only. The body and the
            cooling shell are held far below it: a large billboard at core
            brightness does not read as a fireball, it reads as a white card,
@@ -595,9 +1190,27 @@ export class ExplosionFX {
         // Body: expands and cools through gold.
         f.flare.spawn(origin.x, origin.y, origin.z, V.x, V.y, V.z, ev.life, 0,
           size * 0.32, size, col, ev.bright * 0.14, 0, 0);
-        // Cooling shell: deep orange, slower, wider — the fireball's edge.
-        f.flare.spawn(origin.x, origin.y, origin.z, V.x, V.y, V.z, ev.life * 2.1, 0,
-          size * 0.5, size * 1.5, EMBER, ev.bright * 0.045, 0, 0);
+        /* Cooling shell: deep orange, slower, wider — the fireball's edge. It
+           drifts along the vent axis and stretches with it, so the outside of a
+           fireball is an elongated mass rather than a circle. */
+        const B = seq.blast;
+        const drift = size * 0.55;
+        f.flare.spawn(origin.x, origin.y, origin.z,
+          V.x + B.x * drift, V.y + B.y * drift, V.z + B.z * drift, ev.life * 2.1, 0,
+          size * 0.5, size * 1.5, EMBER, ev.bright * 0.045, 0.75, 0);
+        /* Two lobes thrown down the vent axis. A fireball whose silhouette is a
+           circle has no information in it about what just failed or which way;
+           a pair of offset masses gives the blast a direction from the first
+           frame, which is the whole of the complaint. */
+        for (let s = -1; s <= 1; s += 2) {
+          f.flare.spawn(
+            origin.x + B.x * size * 0.62 * s,
+            origin.y + B.y * size * 0.62 * s,
+            origin.z + B.z * size * 0.62 * s,
+            V.x + B.x * drift * 1.6 * s, V.y + B.y * drift * 1.6 * s, V.z + B.z * drift * 1.6 * s,
+            ev.life * 1.5, 0, size * 0.22, size * 0.85, FIRE, ev.bright * 0.075, 1.3, 0,
+          );
+        }
         /* Brightness is a good proxy for how hard a beat should hit — the
            destroyer's primary is `bright: 34`, which is what anchors the scale
            at 1.0. But a single beat built from three overlaid flares must put
@@ -613,7 +1226,7 @@ export class ExplosionFX {
         this._v.addScaledVector(seq.side, rng.gaussian(0, seq.L * 0.06));
         this._v.addScaledVector(seq.up, rng.gaussian(0, seq.L * 0.05));
         const V = seq.vel;
-        const size = px(ev.size, ev.minPx);
+        const size = cap(px(ev.size, ev.minPx), 2.8);
         f.flare.spawn(this._v.x, this._v.y, this._v.z, V.x, V.y, V.z, 0.22, 0,
           size * 0.4, size * 1.8, CORE, 7.0, 0, 0);
         f.flare.spawn(this._v.x, this._v.y, this._v.z, V.x, V.y, V.z, 0.5, 0,
@@ -637,6 +1250,71 @@ export class ExplosionFX {
         break;
       }
 
+      /* An internal detonation seen through a hole in the hull.
+
+         Deliberately *not* floored to a legible disc. A breach has to stay a
+         few pixels wide or it stops reading as a gap in a structure and
+         becomes one more fireball — which is precisely how act three ended up
+         as a ball in round 2. It gets its legibility from radiance instead of
+         area: the core sits well above bloom threshold, so a 5 px breach
+         paints a 12 px glow without ever being a 12 px sprite.
+
+         Each one also drops a soot puff *outside* it, drifting off the plate.
+         Light with something dark in front of it reads as coming from behind
+         the surface; light on its own reads as sitting on top of it. */
+      case 'breach': {
+        const V = seq.vel;
+        const n = Math.max(1, Math.round(ev.n * Math.min(1.2, q + 0.2)));
+        for (let i = 0; i < n; i++) {
+          // Stations along the keel, laterally off it by a plausible hull
+          // half-width, so the gaps sit on the shape rather than in a line.
+          const u = rng.range(-0.46, 0.46);
+          const lat = rng.range(-1, 1);
+          this._v.copy(origin)
+            .addScaledVector(seq.axis, u * seq.L)
+            .addScaledVector(seq.side, lat * seq.L * 0.07)
+            .addScaledVector(seq.up, rng.gaussian(0, seq.L * 0.035));
+          // Outward normal at the breach, for the vent and the soot.
+          this._dir.copy(seq.side).multiplyScalar(lat >= 0 ? 1 : -1)
+            .addScaledVector(seq.up, rng.gaussian(0, 0.5))
+            .addScaledVector(seq.axis, rng.gaussian(0, 0.25));
+          if (this._dir.lengthSq() < 1e-6) this._dir.copy(seq.side);
+          this._dir.normalize();
+
+          const s = ev.size * rng.range(0.7, 1.35);
+          const life = ev.life * rng.range(0.6, 1.1);
+          // Core: small, searing, flickering out. This is the light.
+          f.flare.spawn(this._v.x, this._v.y, this._v.z, V.x, V.y, V.z, life * 0.55, 0,
+            s * 1.15, s * 0.45, WHITE, ev.bright, 0, 0);
+          // A short hot tongue leaving the hole along the plate normal.
+          f.flare.spawn(this._v.x, this._v.y, this._v.z,
+            V.x + this._dir.x * seq.L * 0.30,
+            V.y + this._dir.y * seq.L * 0.30,
+            V.z + this._dir.z * seq.L * 0.30,
+            life, 0.9, s * 0.8, s * 2.2, FIRE, ev.bright * 0.10, 1.6, 0);
+          // Soot in front of it.
+          f.smoke.spawn(
+            this._v.x + this._dir.x * s * 2.2,
+            this._v.y + this._dir.y * s * 2.2,
+            this._v.z + this._dir.z * s * 2.2,
+            V.x + this._dir.x * seq.L * 0.10,
+            V.y + this._dir.y * seq.L * 0.10,
+            V.z + this._dir.z * seq.L * 0.10,
+            life * 2.4, 0.10, s * 1.4, s * 5.0, SOOT, 0.80, 1.2, rng.gaussian(0, 0.8));
+          if (rng.chance(0.6)) {
+            const g = rng.unitVector();
+            const sp = seq.L * rng.range(0.5, 1.3);
+            f.spark.spawn(this._v.x, this._v.y, this._v.z,
+              V.x + this._dir.x * sp + g.x * sp * 0.2,
+              V.y + this._dir.y * sp + g.y * sp * 0.2,
+              V.z + this._dir.z * sp + g.z * sp * 0.2,
+              rng.range(0.25, 0.7), 0.3, s * 0.3, 0.2, CORE, 3.0, rng.range(4, 11), 0);
+          }
+        }
+        this._blast(seq, origin, seq.m.R * 1.2, 0.045 * n);
+        break;
+      }
+
       case 'ring': {
         const nrm = this._side;
         if (ev.axis === 'hull') nrm.copy(seq.axis);
@@ -645,7 +1323,14 @@ export class ExplosionFX {
           const u = rng.unitVector();
           nrm.set(u.x, u.y, u.z);
         }
-        this._addRing(origin, nrm, ev.r0, ev.r1, ev.life, ev.thick, ev.intensity, seq);
+        /* Outer edge at most 2x the hull's screen length across (RING_OUTER
+           is the annulus' outer lip). */
+        const r1 = Math.min(ev.r1, hullM / RING_OUTER);
+        const r0 = Math.min(ev.r0, r1 * 0.5);
+        // A ring pulled in that far carries the same energy over less area;
+        // dim it with the cut so the shorter front does not read as a halo.
+        const dim = Math.min(1, 0.15 + r1 / Math.max(ev.r1, 1e-3));
+        this._addRing(origin, nrm, r0, r1, ev.life, ev.thick, ev.intensity * dim, seq);
         break;
       }
 
@@ -658,14 +1343,21 @@ export class ExplosionFX {
         const n = Math.round(ev.n * q);
         const V = seq.vel;
         const ss = px(ev.size, ev.minPx);
+        /* Spark lifetime is per-event, and it is part of the duration ladder
+           rather than a constant. A strike craft's spray that outlives its
+           flash by 1.4 s is what made the bottom rung of that ladder 1.8 s
+           long, and no top rung can then reach 5:1 without a capital taking
+           the best part of a minute to finish emitting. */
+        const lmax = ev.life || 1.5;
+        // Bias peaks near 1.44x, drag is 0.35: this keeps the spray inside `reach`.
+        const spd = Math.min(ev.speed, reach / (lmax * 1.35));
         for (let i = 0; i < n; i++) {
-          const u = rng.unitVector();
-          const s = ev.speed * rng.range(0.25, 1.0);
+          const s = spd * this._bias(seq, rng, 0.62, this._dir);
           this._col.copy(CORE).lerp(EMBER, rng.next() * 0.7);
           f.spark.spawn(origin.x, origin.y, origin.z,
-            V.x + u.x * s, V.y + u.y * s, V.z + u.z * s,
-            rng.range(0.35, 1.5), 0.35, ss * rng.range(0.6, 1.6), 0.2,
-            this._col, 2.8, rng.range(3, 10), 0);
+            V.x + this._dir.x * s, V.y + this._dir.y * s, V.z + this._dir.z * s,
+            rng.range(lmax * 0.35, lmax), 0.35, ss * rng.range(0.6, 1.6), 0.2,
+            this._col, 2.8, ev.stretch ? rng.range(ev.stretch[0], ev.stretch[1]) : rng.range(3, 10), 0);
         }
         break;
       }
@@ -673,14 +1365,19 @@ export class ExplosionFX {
       case 'embers': {
         const n = Math.round(ev.n * q);
         const V = seq.vel;
+        // Strike craft and frigates: inside the same box. Capital embers drift on.
+        const spd = seq.L < BAND_BREAK ? Math.min(ev.speed, reach / (ev.life * 1.4 * 1.3)) : ev.speed;
         for (let i = 0; i < n; i++) {
-          const u = rng.ballPoint(1);
-          const s = ev.speed * rng.range(0.1, 1.0);
+          const s = spd * this._bias(seq, rng, 0.48, this._dir) * rng.range(0.35, 1.0);
           this._col.copy(FIRE).lerp(EMBER, rng.next());
           f.ember.spawn(origin.x, origin.y, origin.z,
-            V.x + u.x * s, V.y + u.y * s, V.z + u.z * s,
+            V.x + this._dir.x * s, V.y + this._dir.y * s, V.z + this._dir.z * s,
             ev.life * rng.range(0.5, 1.4), 0.10,
-            seq.L * 0.045, seq.L * 0.010, this._col, 2.4, 0, rng.gaussian(0, 0.6));
+            seq.L * 0.045, seq.L * 0.010, this._col, 2.4,
+            // Motion-stretched, not round. An ember travelling 200 m/s that
+            // draws as a circle is a bubble; the same ember drawn along its own
+            // velocity is burning debris, and it costs nothing.
+            rng.range(1.4, 4.2), rng.gaussian(0, 0.6));
         }
         break;
       }
@@ -689,12 +1386,17 @@ export class ExplosionFX {
         const n = Math.round(ev.n * q);
         const V = seq.vel;
         for (let i = 0; i < n; i++) {
-          const u = rng.unitVector();
-          const s = ev.speed * rng.range(0.2, 1.0);
+          const s = ev.speed * this._bias(seq, rng, 0.55, this._dir);
           f.smoke.spawn(origin.x, origin.y, origin.z,
-            V.x + u.x * s, V.y + u.y * s, V.z + u.z * s,
+            V.x + this._dir.x * s, V.y + this._dir.y * s, V.z + this._dir.z * s,
             ev.life * rng.range(0.6, 1.3), 0.06,
-            ev.size * 0.35, ev.size * rng.range(1.6, 3.2), SOOT, 0.95, 0, rng.gaussian(0, 0.7));
+            ev.size * 0.35, ev.size * rng.range(1.6, 3.2), SOOT, 0.95,
+            /* Soot billows *away* from the blast rather than sitting as a disc.
+               A round billboard with a visible sprite boundary is the read the
+               critic named; elongating it along its own travel is what turns a
+               puff into a plume, and it also hides the boundary because the long
+               axis is where the alpha is already thinnest. */
+            rng.range(0.8, 2.6), rng.gaussian(0, 0.7));
         }
         break;
       }
@@ -727,24 +1429,64 @@ export class ExplosionFX {
           speed: ev.speed,
           colour: seq.team.primary,
           hull: seq.hull,
+          // Wreckage vents down the same lobes the gas does.
+          blast: seq.blast,
           /* Structural spans, 15-25% of hull length, on the beat where the
              ship actually breaks. Only the main break throws them: the
              lead-in bursts are plating coming off, not the keel letting go. */
           keelCount: ev.keel || 0,
           keelLength: seq.L * 0.25,
+          // Wreckage off a 14 m interceptor must not drift for forty seconds.
+          lifeScale: ev.lifeScale,
           rng,
         });
         break;
       }
 
+      /* Venting, along the axes the death already computed.
+
+         Round 2 added `seq.blast` — a per-death axis biased onto the keel —
+         and then drew every jet direction from `rng.unitVector()` anyway, so
+         four jets left a wreck in four unrelated directions and the beat read
+         as a sparkler rather than as a hull losing pressure. Two modes now:
+
+           `blast`    down the vent axes, one lobe or the other
+           `lateral`  out through the plating, perpendicular to the keel
+
+         Both keep a small isotropic component so a squadron dying is not a row
+         of identical twin-lobed bursts, which is the reason the random pick
+         was there in the first place. */
       case 'vent': {
+        const lateral = ev.axis === 'lateral';
+        const spread = ev.spread === undefined ? 0.34 : ev.spread;
         for (let i = 0; i < ev.n; i++) {
           const u = rng.unitVector();
+          const s = rng.next() < 0.5 ? -1 : 1;
+          if (ev.axis === 'side') {
+            // R12 fix 3: out through one flank (a carrier's hangar deck).
+            this._dir.copy(seq.side).multiplyScalar(ev.side || 1).addScaledVector(seq.up, rng.gaussian(0, 0.25));
+          } else if (lateral) {
+            const a = rng.range(0, Math.PI * 2);
+            const ca = Math.cos(a);
+            const sa = Math.sin(a);
+            this._dir.set(
+              seq.side.x * ca + seq.up.x * sa,
+              seq.side.y * ca + seq.up.y * sa,
+              seq.side.z * ca + seq.up.z * sa,
+            );
+          } else {
+            this._dir.copy(seq.blast).multiplyScalar(s);
+          }
+          this._dir.x += u.x * spread;
+          this._dir.y += u.y * spread;
+          this._dir.z += u.z * spread;
+          if (this._dir.lengthSq() < 1e-6) this._dir.copy(seq.blast);
+          this._dir.normalize();
           this._jets.push({
             pos: new THREE.Vector3(origin.x, origin.y, origin.z)
-              .addScaledVector(seq.axis, rng.range(-0.45, 0.45) * seq.L)
+              .addScaledVector(seq.axis, (ev.at !== undefined ? rng.range(-0.04, 0.04) : rng.range(-0.45, 0.45)) * seq.L)
               .addScaledVector(seq.side, rng.gaussian(0, seq.L * 0.05)),
-            dir: new THREE.Vector3(u.x, u.y, u.z),
+            dir: new THREE.Vector3(this._dir.x, this._dir.y, this._dir.z),
             vel: seq.vel,
             until: ctx.now + ev.duration,
             speed: ev.speed,
@@ -764,6 +1506,10 @@ export class ExplosionFX {
           rate: ev.rate,
           size: ev.size,
           spread: seq.L * 0.8,
+          // Held per-event so the tail of a death is on the ladder too: the
+          // wreck of a frigate stops glowing long before a mothership's does.
+          emberLife: ev.emberLife || 6.0,
+          smokeLife: ev.smokeLife || 9.0,
           next: 0,
           rng,
         });
@@ -789,6 +1535,104 @@ export class ExplosionFX {
     });
   }
 
+  _addDisc(centre, normal, r0, r1, life, thick, intensity, seq) {
+    if (this._discList.length >= this.discs.capacity) this._discList.shift();
+    this._discList.push({
+      cx: centre.x, cy: centre.y, cz: centre.z,
+      nx: normal.x, ny: normal.y, nz: normal.z,
+      start: this.ctx.now, life, r0, r1, thick, intensity,
+      r: 1.0, g: 1.0, b: 1.0,
+      seed: seq ? seq.rng.next() : this.ctx.rng.next(),
+      vx: seq ? seq.vel.x : 0, vy: seq ? seq.vel.y : 0, vz: seq ? seq.vel.z : 0,
+    });
+  }
+
+  _addFireball(p, v, axis, r0, r1, life, inten, elong, seq) {
+    if (this._fbs.length >= this.fireballs.capacity) this._fbs.shift();
+    this._fbs.push({
+      x: p.x, y: p.y, z: p.z, vx: v.x, vy: v.y, vz: v.z,
+      ax: axis.x, ay: axis.y, az: axis.z,
+      start: this.ctx.now, life, r0, r1, elong, inten,
+      seed: seq ? seq.rng.next() : (this._fbSeed = ((this._fbSeed || 0) + 0.618034) % 1),
+    });
+  }
+
+  _writeFireballs(now) {
+    const list = this._fbs;
+    for (let i = list.length - 1; i >= 0; i--) if (now > list[i].start + list[i].life) list.splice(i, 1);
+    const d = this.fireballs.data;
+    let n = 0;
+    for (let i = 0; i < list.length && n < this.fireballs.capacity; i++, n++) {
+      const f = list[i];
+      const o = n * FB_STRIDE;
+      d[o] = f.x; d[o + 1] = f.y; d[o + 2] = f.z;
+      d[o + 3] = f.vx; d[o + 4] = f.vy; d[o + 5] = f.vz;
+      d[o + 6] = f.start; d[o + 7] = f.life; d[o + 8] = f.r0; d[o + 9] = f.r1;
+      d[o + 10] = f.ax; d[o + 11] = f.ay; d[o + 12] = f.az;
+      d[o + 13] = f.elong; d[o + 14] = f.inten; d[o + 15] = f.seed;
+    }
+    this.fireballs.flush(n);
+  }
+
+  /** R12 fix 3: run one death of every script far outside the arena, through
+      every beat, then clear what it made. A kill then never meets a code
+      path, a batch upload or a buffer size for the first time; the programs
+      are already linked (the batches are in the scene from boot), and this
+      exercises the CPU side and the instance buffers. Muted: no `fx:blast`
+      reaches the camera or the audio. Returns its cost in ms. */
+  warm() {
+    const t0 = performance.now();
+    const ctx = this.ctx;
+    const save = { now: ctx.now, emit: this._blast };
+    this._blast = () => {};
+    const far = new THREE.Vector3(0, -4.0e6, 0);
+    const lens = [14, 40, 130, 380, 620, 760, 1900];
+    const ids = ['interceptor', 'corvette', 'assaultFrigate', 'destroyer', 'cruiser', 'carrier', 'mothership'];
+    const seqs = [];
+    lens.forEach((L, i) => {
+      this.kill({ id: 900000 + i, classId: ids[i], def: { length: L }, radius: L * 0.4, position: far, team: 1 });
+      seqs.push(this._seqs[this._seqs.length - 1]);
+    });
+    for (const seq of seqs) {
+      for (const ev of seq.events) { try { this._run(seq, ev); } catch (e) { /* warm only */ } }
+      seq.i = seq.events.length;
+    }
+    this._seqs.length = 0;
+    this._updateGlows();
+    this._updateJets(1 / 60);
+    this._updateLingers(1 / 60);
+    this._writeRings(ctx.now);
+    this._writeDiscs(ctx.now);
+    this._writeFireballs(ctx.now);
+    // Clear everything it made; the buffers stay allocated and uploaded.
+    this._rings.length = 0; this._discList.length = 0; this._fbs.length = 0;
+    this._jets.length = 0; this._lingers.length = 0; this._glows.length = 0;
+    this._writeRings(ctx.now); this._writeDiscs(ctx.now); this._writeFireballs(ctx.now);
+    for (const f of Object.values(ctx.fields)) if (typeof f.clear === 'function') f.clear();
+    if (this.debris && typeof this.debris.clear === 'function') this.debris.clear();
+    this._blast = save.emit;
+    ctx.now = save.now;
+    return +(performance.now() - t0).toFixed(1);
+  }
+
+  _writeDiscs(now) {
+    const list = this._discList;
+    for (let i = list.length - 1; i >= 0; i--) if (now > list[i].start + list[i].life) list.splice(i, 1);
+    const d = this.discs.data;
+    let n = 0;
+    for (let i = 0; i < list.length && n < this.discs.capacity; i++, n++) {
+      const r = list[i];
+      const age = now - r.start;
+      const o = n * RING_STRIDE;
+      d[o] = r.cx + r.vx * age; d[o + 1] = r.cy + r.vy * age; d[o + 2] = r.cz + r.vz * age;
+      d[o + 3] = r.nx; d[o + 4] = r.ny; d[o + 5] = r.nz;
+      d[o + 6] = r.start; d[o + 7] = r.life; d[o + 8] = r.r0; d[o + 9] = r.r1;
+      d[o + 10] = r.r; d[o + 11] = r.g; d[o + 12] = r.b;
+      d[o + 13] = r.thick; d[o + 14] = r.intensity; d[o + 15] = r.seed;
+    }
+    this.discs.flush(n);
+  }
+
   /* ----------------------------------------------------------------- update */
 
   update(dt, camera) {
@@ -809,6 +1653,8 @@ export class ExplosionFX {
     this._updateJets(dt);
     this._updateLingers(dt);
     this._writeRings(now);
+    this._writeDiscs(now);
+    this._writeFireballs(now);
   }
 
   /* The hull lighting up from inside before it lets go. Drawn as a chain of
@@ -921,14 +1767,16 @@ export class ExplosionFX {
       const g = rng.unitVector();
       const V = l.vel;
       this._col.copy(EMBER).lerp(FIRE, rng.next() * 0.6);
+      const el = l.emberLife || 6.0;
+      const sl = l.smokeLife || 9.0;
       f.ember.spawn(l.pos.x + u.x, l.pos.y + u.y, l.pos.z + u.z,
         V.x + g.x * l.size * 0.2, V.y + g.y * l.size * 0.2, V.z + g.z * l.size * 0.2,
-        rng.range(2.5, 6.0), 0.08, l.size * 0.16, l.size * 0.03, this._col, 2.2, 0, 0);
+        rng.range(el * 0.42, el), 0.08, l.size * 0.16, l.size * 0.03, this._col, 2.2, 0, 0);
       if (rng.chance(0.55)) {
         const u2 = rng.ballPoint(l.spread * 1.1);
         f.smoke.spawn(l.pos.x + u2.x, l.pos.y + u2.y, l.pos.z + u2.z,
           V.x + g.x * l.size * 0.12, V.y + g.y * l.size * 0.12, V.z + g.z * l.size * 0.12,
-          rng.range(4, 9), 0.05, l.size * 0.7, l.size * 3.0, SOOT, 0.55, 0, rng.gaussian(0, 0.4));
+          rng.range(sl * 0.45, sl), 0.05, l.size * 0.7, l.size * 3.0, SOOT, 0.55, 0, rng.gaussian(0, 0.4));
       }
     }
   }
@@ -960,6 +1808,12 @@ export class ExplosionFX {
   dispose() {
     this.rings.dispose();
     this._quadGeo.dispose();
+    this.discs.dispose();
+    this._discGeo.dispose();
+    this.fireballs.dispose();
+    this._fbGeo.dispose();
+    this._discList.length = 0;
+    this._fbs.length = 0;
     this._rings.length = 0;
     this._seqs.length = 0;
     this._jets.length = 0;

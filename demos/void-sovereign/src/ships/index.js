@@ -16,10 +16,12 @@
    so the coarse levels are genuinely the same vessel with detail removed. */
 
 import * as THREE from '../../vendor/three/build/three.module.js';
-import { SHIPS, ROLE, FAMILY } from './catalog.js';
+import { SHIPS, ROLE, FAMILY, hullFloorPx, HULL_FLOOR_MAX_GROW } from './catalog.js';
 import { buildHullLevel, HULL_CLASSES } from './hulls.js';
 import { KIND } from './greeble.js';
 import { LAYER } from '../core/engine.js';
+import { bus } from '../core/events.js';
+import { HULL_HAZE_DEFINE } from '../render/atmosphere.js';
 
 /* ------------------------------------------------------- material bridge */
 
@@ -80,12 +82,30 @@ function callMat(fn, ...args) {
 }
 
 /* `length` drives plate density: the `bulwark` family spans a 46 m collector to
-   a 380 m destroyer, and without it both would be issued the same plating. */
+   a 380 m destroyer, and without it both would be issued the same plating.
+
+   The `instanced` variant is asked for unconditionally, including for the three
+   unbatched hulls that are drawn as plain Meshes, and that is deliberate.
+
+   [MAT] defines `VS_ATTRIBS` only on the instanced material. That define is
+   what declares the per-vertex `aVariant` attribute every part in greeble.js
+   writes, and `aVariant` is what offsets the macro-texture slot — belt armour
+   away from superstructure panelling away from exposed machinery. Without it
+   `fv = uVariant` for every fragment on the model, so a 1,900 m mothership drew
+   its entire skin from one macro layer: no panel-to-panel value change
+   anywhere, which is exactly the "uniform grey albedo" the round-1 critique
+   called out, and it hit the mothership, the carrier and the cruiser — the
+   three hulls the eye spends longest on.
+
+   Using the instanced material on a plain Mesh is safe. Three.js sets
+   USE_INSTANCING per object, not per material, so the vertex path is unchanged;
+   the two other attributes the define declares, `aDamage` and `aTeam`, are
+   simply absent, and an absent attribute reads the generic default of 0 — which
+   is the value the material's own contract already documents as the no-op. */
 function hullMaterial(team, family, instanced, length) {
   const opts = length ? { length } : undefined;
-  const m = instanced
-    ? callMat(MATLIB && MATLIB.getInstancedHullMaterial, team, family, opts)
-    : callMat(MATLIB && MATLIB.getHullMaterial, team, family, opts);
+  const m = callMat(MATLIB && MATLIB.getInstancedHullMaterial, team, family, opts)
+    || (instanced ? null : callMat(MATLIB && MATLIB.getHullMaterial, team, family, opts));
   if (m) return m;
   return fallbackMaterial(`hull:${team}:${family}:${instanced ? 1 : 0}`, () => {
     const c = TEAM_COLORS[team] || FALLBACK_TEAM_COLORS[0];
@@ -169,9 +189,18 @@ function glassMaterial(team) {
    lit side reads against the void, the shadow side reads against the nebula,
    and the ship is a shape either way instead of a value that happens to
    average into the background. A floor on the painted size then stops a
-   fighter dissolving below one pixel. That floor only binds under ~2.3 px, so
-   it never touches a frigate or a capital and the ranking by hull length —
-   which is the whole of §3.4 — survives.
+   fighter dissolving below one pixel.
+
+   Round 4 (critic round 3, fix 5) raised that floor from 2.3 px to 9-12 px of
+   *hull length* (`hullFloorPx` in catalog.js, shared with FX). At 2.3 px the
+   floor kept a fighter on screen but did not make it a ship: at 5 km the drive
+   glow was a 7 px white blob and the hull a 3 px smudge inside it, so "the
+   engine *is* the ship". The floor now binds on interceptors, corvettes and
+   collectors at fleet range and on frigates only well past 10 km, and it
+   rises gently with hull length so the classes it binds on still rank. It
+   scales the hull's own silhouette about its centre, so a floored fighter is
+   a 9 px sliver with its real proportions, not a disc. EngineFX moves the
+   nozzles out with the same grow so the drive stays on the stern.
 
    This costs nothing. It replaces the hull material at the coarse levels
    rather than adding a pass, so the draw-call count is unchanged, and one
@@ -179,10 +208,9 @@ function glassMaterial(team) {
 
 /** Levels at or beyond this draw as impostors. 2 == under ~55 screen px. */
 const IMPOSTOR_LOD = 2;
-/** Minimum painted diameter, in device pixels, for an impostor hull. */
-const IMPOSTOR_MIN_PX = 2.3;
-/** Ceiling on the size floor, so nothing balloons out at 60 km. */
-const IMPOSTOR_MAX_GROW = 2.4;
+/** Ceiling on the size floor, so nothing balloons out at 60 km. Shared with
+    FX through catalog.js; the floor itself is `hullFloorPx(length)`. */
+const IMPOSTOR_MAX_GROW = HULL_FLOOR_MAX_GROW;
 /** Canopy glass stops resolving well before the blockout does. */
 const GLASS_MAX_LOD = 1;
 /** Shadow-side floor. Deep, but never zero — a hole reads as nothing.
@@ -192,6 +220,30 @@ const GLASS_MAX_LOD = 1;
     reads dark against gas and light against void, rather than picking one and
     disappearing into the other half of the sky. */
 const IMPOSTOR_FILL = 0.10;
+
+/* P49 (combat legibility): team-colour emissive strips on the impostor.
+   Finding 1 of the fresh-eye critics was that at combat range the overlay
+   glyphs carry identity and the hulls carry nothing: grey slivers inside the
+   backdrop's own value range, by design (above), so the only team colour on a
+   distant ship was its drive. The strips are livery, not plating (section 3.3
+   still holds: the plates stay bone grey): a girth band fore of midships and a
+   spine line top and bottom, in the team trim colour and unlit, so they read
+   on the shadow side and against gas. At the 14-18 px floor they are 2-3 px
+   and blend into a team-tinted sliver; at 40+ px they resolve as bands.
+   Object-space, from the LOD 0 hull box, so every class carries them in the
+   same place relative to its own length. One mix() per fragment. */
+export const IMPOSTOR_STRIP = {
+  gain: 1.35,        // trim colour multiplier (unlit, so this is its brightness)
+  band: 0.62,        // girth band centre along the hull, 0 stern .. 1 bow
+  bandHalf: 0.075,   // girth band half-width, share of hull length
+  spineHalf: 0.14,   // spine line half-width, share of hull beam
+  spineFacing: 0.35, // |normal.y| above this counts as top or bottom plating
+  mix: 0.85,         // how much of the plate a strip replaces
+  /* Drawn hull size (px, bounding diameter) over which the strips fade out as
+     a ship approaches the LOD 1/2 switch (~46 px), so a hull crossing it does
+     not gain or lose its stripes in one frame (P49 NOTE, follow-up 1). */
+  fadePx: [30, 44],
+};
 
 /* Shared uniform objects: one write per frame serves every impostor material.
    `uPxScale` is pixels per metre at one metre of view depth; `uKeyDir` is the
@@ -240,11 +292,15 @@ function impostorBeforeRender(renderer, scene, camera) {
     h = _vp.w;
   }
   if (!(h > 0)) h = renderer.getDrawingBufferSize(_dbSize).y;
-  // projectionMatrix[1][1] is 1 / tan( fovY / 2 ); half the viewport height in
-  // device pixels turns that into pixels per metre at one metre of depth. Taken
-  // from the matrix rather than from camera.fov so a post stack that renders at
-  // a reduced scale, or jitters the projection for TAA, is followed exactly.
-  _impostorPx.value = camera.projectionMatrix.elements[5] * h * 0.5;
+  // projectionMatrix[1][1] is 1 / tan( fovY / 2 ); half the viewport height
+  // turns that into pixels per metre at one metre of depth. Taken from the
+  // matrix rather than from camera.fov so a jittered projection is followed
+  // exactly. The height is the canvas's *CSS* height when there is one: the
+  // floor is a promise about how big a hull looks on screen, and FX sizes the
+  // drive glow against the same CSS-pixel hull, so the two must agree whatever
+  // the device pixel ratio or the post stack's internal render scale.
+  const css = renderer.domElement && renderer.domElement.clientHeight;
+  _impostorPx.value = camera.projectionMatrix.elements[5] * (css > 0 ? css : h) * 0.5;
 
   if (_keyCountdown-- <= 0) {
     scanKeyLight(scene);
@@ -260,7 +316,13 @@ uniform float uMinPxR;
 uniform float uMaxGrow;
 uniform float uFill;
 uniform vec3 uKeyDir;
+uniform vec3 uBoxMin;
+uniform vec3 uBoxSize;
+uniform vec2 uStripFade;
 varying float vFace;
+varying vec3 vStripUv;
+varying float vStripUp;
+varying float vStripFade;
 `;
 
 /* Runs immediately after <project_vertex>, so `mvPosition` is the view-space
@@ -295,7 +357,34 @@ const IMPOSTOR_VERT = /* glsl */`
   /* One key light, hard terminator, deep but never black on the shadow side —
      §3.2 stated in the only two numbers a mark this small can carry. */
   vFace = uFill + ( 1.0 - uFill ) * ( vsNdl * vsNdl * ( 3.0 - 2.0 * vsNdl ) );
+  // P49 strips: where on the hull this is, and whether it is top/bottom plating.
+  vStripUv = ( position - uBoxMin ) / max( uBoxSize, vec3( 1e-4 ) );
+  vStripUp = abs( normal.y );
+  vStripFade = 1.0 - smoothstep( uStripFade.x, uStripFade.y, 2.0 * vsPxR * vsGrow );
 }
+`;
+
+const IMPOSTOR_FRAG_PARS = /* glsl */`
+varying float vFace;
+varying vec3 vStripUv;
+varying float vStripUp;
+varying float vStripFade;
+uniform vec3 uStripColor;
+uniform vec4 uStrip; // band centre, band half-width, spine half-width, spine facing
+uniform float uStripMix;
+float vsStripEdge( float d, float hw ) {
+  float fw = max( fwidth( d ), 1e-4 );
+  return 1.0 - smoothstep( hw - fw, hw + fw, d );
+}
+`;
+
+const IMPOSTOR_FRAG = /* glsl */`
+	diffuseColor.rgb *= vFace;
+	{
+		float band = vsStripEdge( abs( vStripUv.z - uStrip.x ), uStrip.y );
+		float spine = vsStripEdge( abs( vStripUv.x - 0.5 ), uStrip.z ) * smoothstep( uStrip.w, uStrip.w + 0.2, vStripUp );
+		diffuseColor.rgb = mix( diffuseColor.rgb, uStripColor, uStripMix * vStripFade * max( band, spine ) );
+	}
 `;
 
 const _impostorCache = new Map();
@@ -305,7 +394,7 @@ const _impostorCache = new Map();
  * One material per (class, team) — they all compile to the same program, and
  * the per-class uniform is the bounding radius the size floor works from.
  */
-function impostorMaterial(team, classId, radius) {
+function impostorMaterial(team, classId, radius, box = null) {
   const key = `${team}:${classId}`;
   const hit = _impostorCache.get(key);
   if (hit) return hit;
@@ -318,16 +407,30 @@ function impostorMaterial(team, classId, radius) {
   const colour = new THREE.Color(0x6d747c);
   colour.lerp(pal.secondary, 0.16);
 
+  /* The floor is on painted hull *length*; the shader measures the bounding
+     radius, so convert: grow = minPxR / (R * s) and the painted length is
+     L * s * grow, so minPxR = floorPx * R / L. */
+  const def = SHIPS[classId];
+  const R = Math.max(1e-3, radius);
+  const L = def && def.length > 0 ? def.length : R * 2;
   const uniforms = {
     uPxScale: _impostorPx,
     uKeyDir: _impostorKey,
-    uBoundR: { value: Math.max(1e-3, radius) },
-    uMinPxR: { value: IMPOSTOR_MIN_PX * 0.5 },
+    uBoundR: { value: R },
+    uMinPxR: { value: (hullFloorPx(L) * R) / L },
     uMaxGrow: { value: IMPOSTOR_MAX_GROW },
     uFill: { value: IMPOSTOR_FILL },
+    uBoxMin: { value: box ? box.min.clone() : new THREE.Vector3(-R, -R, -R) },
+    uBoxSize: { value: box ? box.getSize(new THREE.Vector3()) : new THREE.Vector3(2 * R, 2 * R, 2 * R) },
+    uStripColor: { value: new THREE.Color(pal.trim || pal.engine).multiplyScalar(IMPOSTOR_STRIP.gain) },
+    uStrip: { value: new THREE.Vector4(IMPOSTOR_STRIP.band, IMPOSTOR_STRIP.bandHalf, IMPOSTOR_STRIP.spineHalf, IMPOSTOR_STRIP.spineFacing) },
+    uStripMix: { value: IMPOSTOR_STRIP.mix },
+    uStripFade: { value: new THREE.Vector2(IMPOSTOR_STRIP.fadePx[0], IMPOSTOR_STRIP.fadePx[1]) },
   };
 
-  const m = new THREE.MeshBasicMaterial({ color: colour, fog: false });
+  // Fogged like the full hulls, with the same hull cap, so a ship does not
+  // pop out of the haze when it drops to the impostor.
+  const m = new THREE.MeshBasicMaterial({ color: colour, fog: true });
   m.userData.impostor = true;
   // Exposed so a probe can sweep the size floor and the fill without a rebuild.
   // `uPxScale` and `uKeyDir` are the shared objects — writing them here would
@@ -339,8 +442,9 @@ function impostorMaterial(team, classId, radius) {
       .replace('#include <common>', `#include <common>\n${IMPOSTOR_PARS}`)
       .replace('#include <project_vertex>', `#include <project_vertex>\n${IMPOSTOR_VERT}`);
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vFace;')
-      .replace('#include <color_fragment>', '#include <color_fragment>\n\tdiffuseColor.rgb *= vFace;');
+      .replace('#include <common>', `#include <common>\n${IMPOSTOR_FRAG_PARS}`)
+      .replace('#include <color_fragment>', `#include <color_fragment>\n${IMPOSTOR_FRAG}`)
+      .replace('#include <fog_pars_fragment>', `${HULL_HAZE_DEFINE}#include <fog_pars_fragment>`);
   };
   // Every impostor shares one program; only the uniforms differ.
   m.customProgramCacheKey = () => 'vs-impostor';
@@ -391,20 +495,27 @@ export function pickLod(classId, distance, current = -1) {
 
 const _cache = new Map();
 
-function buildClass(classId) {
-  let asset = _cache.get(classId);
+/* Geometry is per (class, team): the hostile yard builds its own hulls from the
+   bone kit (bone.js), so each team's batch carries its own geometry and LODs.
+   Gameplay size does not change with the shipyard — the hostile asset takes the
+   player hull's radius, which is what the sim reads as the collision radius. */
+function buildClass(classId, team = 0) {
+  const t = team === 1 ? 1 : 0;
+  const key = `${classId}:${t}`;
+  let asset = _cache.get(key);
   if (asset) return asset;
 
   const def = SHIPS[classId];
   if (!def || HULL_CLASSES.indexOf(classId) < 0) return null;
 
-  const base = buildHullLevel(classId, 0, null);
+  const base = buildHullLevel(classId, 0, null, t);
   if (!base) return null;
+  const gameplay = t === 1 ? buildClass(classId, 0) : null;
 
   const levels = [base.geo];
   const tris = [base.tris];
   for (let d = 1; d < 4; d++) {
-    const lvl = buildHullLevel(classId, d, base.xform);
+    const lvl = buildHullLevel(classId, d, base.xform, t);
     if (!lvl) break;
     levels.push(lvl.geo);
     tris.push(lvl.tris);
@@ -412,16 +523,18 @@ function buildClass(classId) {
 
   asset = {
     classId,
+    team: t,
     def,
     levels,
     tris,
-    radius: base.radius,
+    radius: gameplay ? gameplay.radius : base.radius,
+    visualRadius: base.radius,
     hardpoints: base.hardpoints,
     engines: base.engines,
     lights: base.lights,
     dock: base.dock,
   };
-  _cache.set(classId, asset);
+  _cache.set(key, asset);
   return asset;
 }
 
@@ -453,6 +566,14 @@ function asGlow(mesh) {
   return mesh;
 }
 
+/** LOD 0 hull bounds in the hull's own space, for the impostor strips. */
+function hullBox0(asset) {
+  const g = asset.levels[0] && asset.levels[0].hull;
+  if (!g) return null;
+  if (!g.boundingBox) g.computeBoundingBox();
+  return g.boundingBox;
+}
+
 function levelGroup(asset, index, team) {
   const g = new THREE.Group();
   g.name = `${asset.classId}:L${index}`;
@@ -461,7 +582,7 @@ function levelGroup(asset, index, team) {
   const impostor = index >= IMPOSTOR_LOD;
   if (geo.hull) {
     const mat = impostor
-      ? impostorMaterial(team, asset.classId, asset.radius)
+      ? impostorMaterial(team, asset.classId, asset.radius, hullBox0(asset))
       : hullMaterial(team, asset.def.family, false, asset.def.length);
     const mesh = tagged(geo.hull, mat, KIND.HULL, index);
     // A dilated hull must not cast a dilated shadow, and at this size there is
@@ -492,7 +613,7 @@ function levelGroup(asset, index, team) {
  *        phase, never geometry — hulls come from `SHIPS[classId].modelSeed`.
  */
 export function buildShipModel(classId, team = 0, rng = null) {
-  const asset = buildClass(classId);
+  const asset = buildClass(classId, team);
   if (!asset) return null;
 
   const group = new THREE.Group();
@@ -532,7 +653,7 @@ export function buildShipModel(classId, team = 0, rng = null) {
  * visible and the triangle saving is.
  */
 export function buildInstancedBatch(classId, team = 0, count = 1, rng = null) {
-  const asset = buildClass(classId);
+  const asset = buildClass(classId, team);
   if (!asset) return null;
 
   const swarm = asset.def.role === ROLE.FIGHTER || asset.def.role === ROLE.CORVETTE;
@@ -600,7 +721,10 @@ export function buildInstancedBatch(classId, team = 0, count = 1, rng = null) {
 
 /** Pre-build every class so the first frame of a skirmish does not hitch. */
 export function warmShipCache(rng = null) {
-  for (const id of HULL_CLASSES) buildClass(id);
+  for (const id of HULL_CLASSES) {
+    buildClass(id, 0);
+    buildClass(id, 1);
+  }
   return _cache.size;
 }
 
@@ -659,13 +783,33 @@ export function setFleetScene(scene) {
 
 const INITIAL_CAPACITY = 64;
 const _m4 = new THREE.Matrix4();
+const _zero = new THREE.Matrix4().makeScale(0, 0, 0);
 const _col = new THREE.Color();
+const _hv = new THREE.Vector3();
+const _hit4 = [0, 0, 0, 0];
+const PROF_Z = 16;
+const PROF_A = 12;
+
+/* Stable render-side scatter for `addHit`; never touches the sim's RNG. */
+function hash01(n) {
+  const s = Math.sin(n * 12.9898 + 78.233) * 43758.5453;
+  return s - Math.floor(s);
+}
+
+/* Hull hits feed the hit-local damage shading. Listening only: the event is
+   read, never changed, so the sim stays deterministic. */
+bus.on('sim:damage', (p) => {
+  if (!p || p.shield) return;
+  const e = p.entity;
+  const rec = e && e._batchRec;
+  if (rec && rec.batch && typeof rec.batch.addHit === 'function') rec.batch.addHit(e._slot, p.point);
+});
 
 class FleetBatch {
   constructor(classId, team) {
     this.classId = classId;
     this.team = team;
-    this.asset = buildClass(classId);
+    this.asset = buildClass(classId, team);
     this.capacity = 0;
     this.levels = [];
     this.group = new THREE.Group();
@@ -691,13 +835,29 @@ class FleetBatch {
     const slotDamage = new Float32Array(capacity);
     const slotLevel = new Int32Array(capacity).fill(-1);
     const slotIndex = new Int32Array(capacity).fill(-1);
+    const slotCut = new Float32Array(capacity * 2);
+    const slotWreck = new Uint8Array(capacity);
     if (oldCap) {
       slotMatrix.set(this.slotMatrix);
       slotColor.set(this.slotColor);
       slotDamage.set(this.slotDamage);
       slotLevel.set(this.slotLevel);
       slotIndex.set(this.slotIndex);
+      slotCut.set(this.slotCut);
+      slotWreck.set(this.slotWreck);
     }
+    this.slotCut = slotCut;
+    this.slotWreck = slotWreck;
+
+    // Hit-local damage (R6): one row per slot in the shared hit texture, see
+    // `addHit`. A grown batch takes a fresh range and carries its hits over.
+    const slotHits = new Uint8Array(capacity);
+    if (oldCap) slotHits.set(this.slotHits);
+    this.slotHits = slotHits;
+    const hitBase = MATLIB && MATLIB.allocHitRows
+      ? MATLIB.allocHitRows(capacity, this.hullBox().max.z - this.hullBox().min.z) : 0;
+    if (hitBase && oldCap && this.hitBase) MATLIB.copyHitRows(this.hitBase, hitBase, oldCap);
+    this.hitBase = hitBase;
     this.slotMatrix = slotMatrix;
     this.slotColor = slotColor;
     this.slotDamage = slotDamage;
@@ -710,6 +870,8 @@ class FleetBatch {
       const level = {
         parts: [],
         count: old[i] ? old[i].count : 0,
+        // Instances in this level that are wreck slots (see `showParts`).
+        wrecks: old[i] ? old[i].wrecks : 0,
         indexToSlot: new Int32Array(capacity).fill(-1),
         dirty: true,
       };
@@ -725,13 +887,17 @@ class FleetBatch {
         const dmg = new THREE.InstancedBufferAttribute(new Float32Array(capacity), 1);
         dmg.setUsage(THREE.DynamicDrawUsage);
         im.geometry.setAttribute('aDamage', dmg);
+        // Wreck-section keel slice, see `setWreckSection`. (0, 0) = whole hull.
+        const cut = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 2), 2);
+        cut.setUsage(THREE.DynamicDrawUsage);
+        im.geometry.setAttribute('aCut', cut);
         im.castShadow = shadow;
         im.receiveShadow = shadow;
         // Instances are scattered across the whole battle volume, so a bounding
         // sphere round the batch is meaningless — cull per entity in the sim.
         im.frustumCulled = false;
         im.count = level.count;
-        im.visible = level.count > 0;
+        im.visible = level.count > 0 && (kind === KIND.HULL || level.wrecks < level.count);
         im.name = `${this.classId}:${kind}:L${i}`;
         im.userData.kind = kind;
         im.userData.lodLevel = i;
@@ -742,14 +908,21 @@ class FleetBatch {
           im.onBeforeRender = impostorBeforeRender;
         }
         this.group.add(im);
-        level.parts.push({ mesh: im, damage: dmg, kind });
+        // Row of the shared hit texture, hull parts only (nothing else reads it).
+        let row = null;
+        if (kind === KIND.HULL) {
+          row = new THREE.InstancedBufferAttribute(new Float32Array(capacity), 1);
+          row.setUsage(THREE.DynamicDrawUsage);
+          im.geometry.setAttribute('aHitRow', row);
+        }
+        level.parts.push({ mesh: im, damage: dmg, cut, row, kind });
       };
 
       const impostor = i >= IMPOSTOR_LOD;
       make(
         geo.hull,
         impostor
-          ? impostorMaterial(this.team, this.classId, this.asset.radius)
+          ? impostorMaterial(this.team, this.classId, this.asset.radius, this.hullBox())
           : hullMaterial(this.team, this.asset.def.family, true, this.asset.def.length),
         KIND.HULL,
         !impostor,
@@ -779,12 +952,128 @@ class FleetBatch {
     if (index < 0) return;
     _m4.fromArray(this.slotMatrix, slot * 16);
     _col.setRGB(this.slotColor[slot * 3], this.slotColor[slot * 3 + 1], this.slotColor[slot * 3 + 2]);
+    const wreck = this.slotWreck[slot] === 1;
     for (const p of level.parts) {
-      p.mesh.setMatrixAt(index, _m4);
+      // A wreck section is dark plating only: its lights, glass and drive
+      // bells are collapsed to nothing rather than drawn whole across the cut.
+      p.mesh.setMatrixAt(index, wreck && p.kind !== KIND.HULL ? _zero : _m4);
       p.mesh.setColorAt(index, _col);
       p.damage.array[index] = this.slotDamage[slot];
+      p.cut.array[index * 2] = this.slotCut[slot * 2];
+      p.cut.array[index * 2 + 1] = this.slotCut[slot * 2 + 1];
+      if (p.row) p.row.array[index] = this.hitBase ? this.hitBase + slot : 0;
     }
     level.dirty = true;
+  }
+
+  /** LOD0 hull bounds in the hull's own space (the space `aCut` and the hit
+      texture use). */
+  hullBox() {
+    if (!this._hullBox) {
+      const g = this.asset.levels[0] && this.asset.levels[0].hull;
+      if (g && !g.boundingBox) g.computeBoundingBox();
+      this._hullBox = g && g.boundingBox ? g.boundingBox.clone()
+        : new THREE.Box3(new THREE.Vector3(-1, -1, -1), new THREE.Vector3(1, 1, 1));
+    }
+    return this._hullBox;
+  }
+
+  /** Mean radius off the keel axis of the LOD0 hull's vertices, binned by
+      keel station (PROF_Z) and bearing (PROF_A). Built once per class. */
+  hullProfile() {
+    if (this._hullProfile) return this._hullProfile;
+    const b = this.hullBox();
+    const cx = (b.max.x + b.min.x) * 0.5;
+    const cy = (b.max.y + b.min.y) * 0.5;
+    const sz = Math.max(1e-3, b.max.z - b.min.z);
+    const sum = new Float32Array(PROF_Z * PROF_A);
+    const cnt = new Uint32Array(PROF_Z * PROF_A);
+    const g = this.asset.levels[0] && this.asset.levels[0].hull;
+    const pos = g && g.attributes && g.attributes.position;
+    if (pos) {
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i) - cx;
+        const y = pos.getY(i) - cy;
+        const zi = Math.min(PROF_Z - 1, Math.max(0, Math.floor(((pos.getZ(i) - b.min.z) / sz) * PROF_Z)));
+        const a = Math.atan2(y, x) / (Math.PI * 2) + 0.5;
+        const ai = Math.min(PROF_A - 1, Math.floor(a * PROF_A));
+        sum[zi * PROF_A + ai] += Math.hypot(x, y);
+        cnt[zi * PROF_A + ai]++;
+      }
+    }
+    for (let k = 0; k < sum.length; k++) sum[k] = cnt[k] ? sum[k] / cnt[k] : 0;
+    this._hullProfile = sum;
+    return sum;
+  }
+
+  /**
+   * Record a hull hit for the hit-local damage shading (R6). Render-side only:
+   * reads the `sim:damage` point, never changes it. The sim reports the hit on
+   * the target's bounding sphere along the shooter's bearing; that is brought
+   * into hull space through the slot's own matrix, scattered along the keel so
+   * a burst from one bearing marks several places on the facing side instead
+   * of one, and pulled in onto the hull's bounds. A hit close to an existing
+   * one deepens and re-heats that zone instead of starting a new one.
+   */
+  addHit(slot, point) {
+    if (!this.hitBase || slot < 0 || slot >= this.capacity || !point) return;
+    if (this.slotWreck[slot] === 1) return;
+    const row = this.hitBase + slot;
+    _m4.fromArray(this.slotMatrix, slot * 16).invert();
+    _hv.copy(point).applyMatrix4(_m4);
+    const b = this.hullBox();
+    const sx = b.max.x - b.min.x;
+    const sy = b.max.y - b.min.y;
+    const sz = b.max.z - b.min.z;
+    const cx = (b.max.x + b.min.x) * 0.5;
+    const cy = (b.max.y + b.min.y) * 0.5;
+    const cz = (b.max.z + b.min.z) * 0.5;
+    const n = (this._hitSeq = (this._hitSeq || 0) + 1);
+    const r1 = hash01(n * 3 + 1);
+    const r3 = hash01(n * 3 + 3);
+    // Bearing round the keel, scattered a little, and a station along it.
+    const ang = Math.atan2(_hv.y - cy, _hv.x - cx) + (r1 - 0.5) * 1.1;
+    const z = cz + Math.max(-0.46, Math.min(0.46, (_hv.z - cz) / sz + (r3 - 0.5) * 0.8)) * sz;
+    // Onto the skin: the box is no use for that, since the masts and the
+    // bridge make it far taller than the hull, so a hit would float above the
+    // deck. The profile is the hull's mean radius per keel station and bearing.
+    const prof = this.hullProfile();
+    const zi = Math.min(PROF_Z - 1, Math.max(0, Math.floor(((z - b.min.z) / sz) * PROF_Z)));
+    const ai = Math.min(PROF_A - 1, Math.max(0, Math.floor(((ang / (Math.PI * 2)) + 0.5 - Math.floor((ang / (Math.PI * 2)) + 0.5)) * PROF_A)));
+    const rr = prof[zi * PROF_A + ai] || Math.min(sx, sy) * 0.4;
+    _hv.set(cx + Math.cos(ang) * rr, cy + Math.sin(ang) * rr, z);
+    // Merge into a nearby zone rather than spend a ring entry on it.
+    const near = sz * 0.1;
+    for (let k = 0; k < 8; k++) {
+      MATLIB.readHit(row, k, _hit4);
+      const dx = _hit4[0] - _hv.x;
+      const dy = _hit4[1] - _hv.y;
+      const dz = _hit4[2] - _hv.z;
+      if (dx * dx + dy * dy + dz * dz < near * near) {
+        MATLIB.writeHit(row, k, _hit4[0], _hit4[1], _hit4[2]);
+        return;
+      }
+    }
+    const k = this.slotHits[slot] % 8;
+    this.slotHits[slot] = (k + 1) % 8;
+    MATLIB.writeHit(row, k, _hv.x, _hv.y, _hv.z);
+  }
+
+  /** Turn a reserved slot into one section of a wreck: keep only the slice
+      lo..hi of the hull's own keel (object-space z), and drop its emitters.
+      Called again with a narrower slice to burn the section away at the end. */
+  setWreckSection(slot, lo, hi) {
+    if (slot < 0 || slot >= this.capacity) return;
+    const was = this.slotWreck[slot] === 1;
+    this.slotWreck[slot] = 1;
+    this.slotCut[slot * 2] = lo;
+    this.slotCut[slot * 2 + 1] = hi;
+    const lv = this.slotLevel[slot];
+    if (!was && lv >= 0) {
+      this.levels[lv].wrecks++;
+      this.showParts(this.levels[lv]);
+    }
+    if (lv >= 0) this.writeInstance(this.levels[lv], this.slotIndex[slot], slot);
   }
 
   addToLevel(slot, lv) {
@@ -794,11 +1083,19 @@ class FleetBatch {
     level.indexToSlot[index] = slot;
     this.slotIndex[slot] = index;
     this.slotLevel[slot] = lv;
+    if (this.slotWreck[slot] === 1) level.wrecks++;
     this.writeInstance(level, index, slot);
-    for (const p of level.parts) {
-      p.mesh.count = level.count;
-      p.mesh.visible = true;
-    }
+    for (const p of level.parts) p.mesh.count = level.count;
+    this.showParts(level);
+  }
+
+  /** A wreck slot keeps only its hull: its glass, lights and bells are written
+      as zero-scale matrices. A level holding nothing but wreck slots (dead
+      hulls, derelicts) therefore draws only its hull part, so a wreck or a
+      derelict costs one draw call per level it sits in, not two to four. */
+  showParts(level) {
+    const anyLive = level.wrecks < level.count;
+    for (const p of level.parts) p.mesh.visible = level.count > 0 && (p.kind === KIND.HULL || anyLive);
   }
 
   removeFromLevel(slot) {
@@ -816,12 +1113,11 @@ class FleetBatch {
       this.writeInstance(level, index, moved);
     }
     level.count = Math.max(0, last);
+    if (this.slotWreck[slot] === 1) level.wrecks = Math.max(0, level.wrecks - 1);
     level.indexToSlot[level.count] = -1;
     level.dirty = true;
-    for (const p of level.parts) {
-      p.mesh.count = level.count;
-      p.mesh.visible = level.count > 0;
-    }
+    for (const p of level.parts) p.mesh.count = level.count;
+    this.showParts(level);
     this.slotLevel[slot] = -1;
     this.slotIndex[slot] = -1;
   }
@@ -834,6 +1130,11 @@ class FleetBatch {
     this.slotColor[slot * 3 + 1] = 1;
     this.slotColor[slot * 3 + 2] = 1;
     this.slotDamage[slot] = 0;
+    this.slotCut[slot * 2] = 0;
+    this.slotCut[slot * 2 + 1] = 0;
+    this.slotWreck[slot] = 0;
+    this.slotHits[slot] = 0;
+    if (this.hitBase) MATLIB.resetHitRow(this.hitBase + slot);
     this.live++;
     this.addToLevel(slot, 0);
     return slot;
@@ -854,7 +1155,8 @@ class FleetBatch {
     if (lv < 0) return;
     const level = this.levels[lv];
     const index = this.slotIndex[slot];
-    for (const p of level.parts) p.mesh.setMatrixAt(index, matrix);
+    const wreck = this.slotWreck[slot] === 1;
+    for (const p of level.parts) p.mesh.setMatrixAt(index, wreck && p.kind !== KIND.HULL ? _zero : matrix);
     level.dirty = true;
   }
 
@@ -905,6 +1207,8 @@ class FleetBatch {
         p.mesh.instanceMatrix.needsUpdate = true;
         if (p.mesh.instanceColor) p.mesh.instanceColor.needsUpdate = true;
         p.damage.needsUpdate = true;
+        p.cut.needsUpdate = true;
+        if (p.row) p.row.needsUpdate = true;
       }
       level.dirty = false;
     }
@@ -939,10 +1243,55 @@ export function getFleetBatch(classId, team = 0) {
   const key = `${classId}:${team}`;
   let batch = _batches.get(key);
   if (batch) return batch;
-  if (!buildClass(classId)) return null;
+  if (!buildClass(classId, team)) return null;
   batch = new FleetBatch(classId, team);
   _batches.set(key, batch);
   return batch;
+}
+
+/** What FX needs to cut a dead hull of this class into wreck sections: its
+    keel extent in object space, and the finest-shaded level a section may sit
+    on (the impostor levels do not take the cut, so sections stop short of
+    them). Null if the class has no hull. */
+export function wreckInfo(classId, team = 0) {
+  const asset = buildClass(classId, team);
+  const g = asset && asset.levels[0] && asset.levels[0].hull;
+  if (!g) return null;
+  if (!g.boundingBox) g.computeBoundingBox();
+  return { zMin: g.boundingBox.min.z, zMax: g.boundingBox.max.z, maxLod: IMPOSTOR_LOD - 1 };
+}
+
+/**
+ * Compile the shader programs of every batch that exists, off the main thread
+ * where the driver allows it (`compileAsync`, KHR_parallel_shader_compile).
+ *
+ * Why (R9 fix 1): a program is otherwise linked on the first frame that draws
+ * it, synchronously. An instanced hull is its own program (USE_INSTANCING), so
+ * the first wreck of a class drawn only as a plain Mesh in play (carrier,
+ * cruiser, mothership) linked the hull shader mid-battle: 0.9-1.0 s with no
+ * frame. Call this at boot, after the batches are created.
+ *
+ * `offscreen`: the scene is drawn into a render target (the post stack), and
+ * three keys a program on that (no tone mapping, linear output), so compile
+ * against one too or the warmed program is not the one the frame uses.
+ */
+export function compileFleetBatches(renderer, scene, camera, offscreen = false) {
+  if (!renderer || typeof renderer.compileAsync !== 'function' || !_fleetRoot.children.length) {
+    return Promise.resolve(0);
+  }
+  const prev = renderer.getRenderTarget();
+  const rt = offscreen ? new THREE.WebGLRenderTarget(1, 1) : null;
+  let job;
+  try {
+    renderer.setRenderTarget(rt);
+    job = renderer.compileAsync(_fleetRoot, camera, scene);
+  } finally {
+    renderer.setRenderTarget(prev);
+  }
+  return job.then(() => {
+    if (rt) rt.dispose();
+    return _fleetRoot.children.length;
+  });
 }
 
 /** Flush every dirty instance buffer. Call once per frame, after the sim has
@@ -976,8 +1325,8 @@ export function disposeFleetBatches() {
 
 /** Triangle counts and metadata per LOD level. Used by the ship viewer and by
     anyone auditing the draw budget. Not part of the frozen contract. */
-export function shipStats(classId) {
-  const asset = buildClass(classId);
+export function shipStats(classId, team = 0) {
+  const asset = buildClass(classId, team);
   if (!asset) return null;
   const tri = (g) => (g && g.getAttribute('position') ? g.getAttribute('position').count / 3 : 0);
   const lvl0 = asset.levels[0];

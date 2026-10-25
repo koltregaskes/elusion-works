@@ -271,6 +271,15 @@ class GpuTimer {
     }
   }
 
+  /* After a context restore the extension object and every pending query
+     belong to the dead context: drop them unread and ask again. */
+  reset() {
+    this._pending.length = 0;
+    this._active = null;
+    this.results = Object.create(null);
+    this.ext = this.gl.getExtension('EXT_disjoint_timer_query_webgl2');
+  }
+
   dispose() {
     for (const p of this._pending) this.gl.deleteQuery(p.q);
     this._pending.length = 0;
@@ -348,6 +357,15 @@ export class PostFX {
       shadowTint: new THREE.Color(0.36, 0.52, 0.85),
       highlightTint: new THREE.Color(1.0, 0.86, 0.66),
       taaFeedback: 0.94,
+      /* History weight while the camera shakes, reached once the rig's shake
+         (trauma^SHAKE_CURVE, published on camera.userData.shake) passes
+         taaShakeRamp. Shake jerks the whole image several pixels a frame, so
+         every frame resamples the history at a new sub-pixel offset and at
+         0.94 those resamples stack into a full-frame smear (P44: the R12
+         capital death frames). A short history during the shake keeps each
+         frame sharp; it slides back to taaFeedback as the trauma decays. */
+      taaShakeFeedback: 0.3,
+      taaShakeRamp: 0.08,
       taaClampGamma: 1.25,
       taaFilter: 1.4,
       dofStrength: 0.35,
@@ -649,6 +667,13 @@ export class PostFX {
     return this._glowMode !== 'threshold' && !!this.tier.glow;
   }
 
+  /* The context came back: its render targets are blank and its timer queries
+     are gone. The per-frame targets refill themselves; these two do not. */
+  onContextRestored() {
+    this._timer.reset();
+    this._seedExposure();
+  }
+
   /* Prime the adaptation buffers so frame one is not a black flash. */
   _seedExposure() {
     const r = this.renderer;
@@ -689,6 +714,8 @@ export class PostFX {
       uFilter: { value: 1.4 },
       uSharpen: { value: 0.0 },
       uReset: { value: 1 },
+      tGlow: { value: null },
+      uReactive: { value: 0 },
     }));
 
     this._mLumSeed = keep(fsMaterial(LUM_SEED_FRAG, {
@@ -922,11 +949,18 @@ export class PostFX {
     u.uReproj.value.copy(this._reproj);
     u.uLogFar.value = Math.log2(e.camera.far + 1);
     u.uNearFar.value.set(e.camera.near, e.camera.far);
-    u.uFeedback.value = this.params.taaFeedback;
+    const shake = (e.camera.userData && e.camera.userData.shake) || 0;
+    const sk = Math.min(1, Math.max(0, shake / Math.max(1e-4, this.params.taaShakeRamp)));
+    const skS = sk * sk * (3 - 2 * sk);
+    u.uFeedback.value = this.params.taaFeedback
+      + (Math.min(this.params.taaShakeFeedback, this.params.taaFeedback) - this.params.taaFeedback) * skS;
     u.uClampGamma.value = this.params.taaClampGamma;
     u.uFilter.value = this.params.taaFilter;
     u.uSharpen.value = this.tier.taaSharpen;
     u.uReset.value = this._historyValid ? 0 : 1;
+    // R12 fix 3: the FX glow layer marks where a new flash must not wait on history.
+    u.tGlow.value = this._rtGlow ? this._rtGlow.texture : this._black;
+    u.uReactive.value = this._rtGlow ? 1 : 0;
 
     this._blit(this._mTaa, next);
     this._taaIndex = 1 - this._taaIndex;
@@ -1125,6 +1159,8 @@ uniform float uClampGamma;
 uniform float uFilter;
 uniform float uSharpen;
 uniform float uReset;
+uniform sampler2D tGlow;
+uniform float uReactive;
 varying vec2 vUv;
 
 /* Catmull-Rom history fetch. Bilinear history is what makes naive TAA look
@@ -1227,7 +1263,25 @@ void main() {
   // form behind an interceptor crossing the frame.
   vec2 velPx = ( vUv - prevUv ) / uTexel;
   float speed = clamp( length( velPx ) / 24.0, 0.0, 1.0 );
-  float feedback = mix( uFeedback, 0.72, speed ) * valid * ( 1.0 - uReset );
+  // min(): a shake-shortened uFeedback below 0.72 must not be raised by speed (P44).
+  float feedback = mix( uFeedback, min( uFeedback, 0.72 ), speed ) * valid * ( 1.0 - uReset );
+
+  /* R12 fix 3: reactive pixels. Where the FX glow layer is most of this
+     pixel and the pixel has just got much brighter than its history, it is a
+     new flash, and the luminance weighting below (which exists to kill
+     fireflies) would otherwise hold it back to the history for a frame or
+     two: a capital's detonation read at 0.04 of its hull on the kill frame
+     and 0.7 on the next. Those pixels drop their history. Steady emitters
+     (plumes, trails, a fireball already burning) are not rising, so they keep
+     the full resolve, and stars are on another layer. */
+  if ( uReactive > 0.5 ) {
+    float lc = luma( cur );
+    float gl = luma( texture2D( tGlow, vUv ).rgb );
+    float share = clamp( gl / max( lc, 1e-4 ), 0.0, 1.0 );
+    float rise = clamp( ( lc - luma( texture2D( tHistory, prevUv ).rgb ) ) / max( lc, 1e-4 ), 0.0, 1.0 );
+    float reactive = smoothstep( 0.35, 0.75, share ) * smoothstep( 0.45, 0.85, rise ) * smoothstep( 0.08, 0.30, gl );
+    feedback *= 1.0 - reactive;
+  }
 
   // Luminance weighting kills fireflies: a single 200x sample cannot dominate
   // the running average.

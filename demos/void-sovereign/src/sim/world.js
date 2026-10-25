@@ -41,18 +41,78 @@ import { Commander } from './ai.js';
    player somewhere, because an undisclosed pacing rule is indistinguishable
    from the game cheating. */
 
-/** Seconds before the sovereignty clock starts. The opening stays an opening. */
-const SOVEREIGNTY_GRACE = 240;
+/* ------------------------------------------------------------------ pacing */
 
-/** Sovereignty lost per second by a side that holds none of the contested
-    band while the other holds all of it — about four and a half minutes. The
-    rate scales with the *share* of the band held, not the raw seam count, so
-    a seed that puts six seams on the midline runs the same clock as one that
-    puts four. Measured across seeds this lands a control-decided match at
-    roughly minute 26–36, inside the rubric's 30–60 window and well clear of
-    the base-destruction route, which stays the faster win when you can take
-    it. */
-const SOVEREIGNTY_RATE = 0.25;
+/** Match pacing presets.
+
+    `long` is the original rule, kept exactly as it was. `standard` is the
+    shorter default a first-time player is dropped into.
+
+    The problem `standard` solves: the drain rate is set by the *margin* in
+    seams divided by the *whole contested band*, and the band is mostly
+    neutral, because taking a seam needs 22 s of unopposed presence
+    (`CONTROL.CAPTURE`) and a contested middle rarely offers 22 quiet seconds.
+    So the numerator is whatever scrap survives a brawl while the denominator
+    is the entire band. Two evenly matched commanders sit on a one-seam margin
+    and the clock becomes a formality. Measured on the shipped path: seed 1337
+    ran 35.3 minutes to an attrition finish, and seed 20260727 hit the 70-minute
+    cap with no winner at all, seams level at 1–1.
+
+    It got worse, not better, when the contested band was fixed: most seeds went
+    from a band of 4 (or none) to a band of 6, and a bigger denominator makes
+    the same lead drain *slower*.
+
+    `standard` raises that fraction to a power below 1. That lifts narrow
+    margins hard, where the dead zone is, while leaving a total sweep almost
+    untouched, so dominance still wins fastest and the comeback path survives.
+    Modelled over every seam split on bands of 4 and 6, the square root lands
+    61% of them inside a 12–18 minute match against 44% for the linear rule; a
+    fixed denominator (28%) and a margin measured against only the seams held
+    (22%) both score worse than what shipped, by overshooting the other way.
+
+    Model figures assume a constant margin held from minute zero, which never
+    happens, so they choose the candidate rather than predict the result. The
+    ten-seed A/B is what decides, and it moved the exponent below the square
+    root — see the measurements below.
+
+    `exp` is the exponent applied to the margin fraction: 1 is the original
+    linear rule, 0.5 its square root, and lower values lift narrow margins
+    harder still. It is a number rather than a named curve so the pacing can
+    be swept and measured instead of argued about.
+
+    Measured on the shipped path, ten seeds, both chairs filled by a real
+    commander, one fresh page per seed so the runs are reproducible:
+
+      long      median 46.5 min, range 31.2–70.0. Every single match ran past
+                25 minutes, and one hit the cap with no winner at all.
+      standard  median 17.5 min, range 11.0–24.8. No match over 25 minutes,
+                none unresolved, and 9 of 10 decided by sovereignty rather
+                than by grinding the other fleet down.
+
+    `standard` is faster on all ten seeds, not on average — there is no seed
+    where the old rule produced the shorter match. That is why it is the
+    default and `long` is the option, rather than the other way round.
+
+    Do not trust these figures from a harness that reuses one page across
+    seeds. State persists between matches, so the first match in a page
+    differs from later ones: the same seed gave 20.9, 14.6 and 14.2 minutes
+    in one page, and 20.9 three times out of three with a fresh page each. */
+export const PACE = {
+  long: { grace: 240, rate: 0.25, exp: 1 },
+  standard: { grace: 120, rate: 0.38, exp: 0.34 },
+};
+
+/** Default pacing. `standard` on the evidence above: faster on all ten seeds,
+    median inside a demo-sized 12–18 minutes, and it always resolves. `long`
+    stays reachable for anyone who wants the hour-scale grind. */
+const PACE_DEFAULT = 'standard';
+
+/* The grace period and drain rate used to live here as `SOVEREIGNTY_GRACE`
+   and `SOVEREIGNTY_RATE`. They are in `PACE` above now, per preset. They are
+   not left behind as aliases on purpose: a named constant that no longer
+   drives anything is the exact trap this file has already sprung twice —
+   once with a doc comment still describing a four-seam field after the band
+   became six, and once with a whole generator that nothing called. */
 
 /** Share of the drain rate at which the side holding the band recovers. */
 const SOVEREIGNTY_RECOVERY = 0.3;
@@ -66,9 +126,67 @@ const REPAIR_COST_FRACTION = 0.32;
 /** Below this in warships, with no yards and no miners, a side is finished. */
 const BROKEN_FLEET_VALUE = 1400;
 
+/** The sovereignty hold.
+
+    Round 9's played match reached 31 engaged at 12:09 and was then won on
+    sovereignty at 12:13: the clock ended the match four seconds into the
+    climax, so the battle the whole match had built towards was never fought
+    out. A clock that runs out mid-battle is still a result, but the result
+    waits for the battle that is on.
+
+    When a side's sovereignty reaches zero while a battle is live, the result
+    is held until the battle is over. "A battle" is read from the sim, not
+    guessed: at least `START` hulls engaged across both fleets, with at least
+    `SIDE` of them on each side (sixty hostiles shooting a remnant of three is
+    a mopping-up, not a battle). The battle is over once, for `SETTLE` seconds
+    running, fewer than `RELEASE` are engaged or either side has fewer than
+    `SIDE` engaged. The second half was added after the first played hold:
+    the losing fleet was down to one hull shooting back while twenty winners
+    stayed "engaged" on it and its Mothership, and the hold ran to its cap on
+    a battle that had been decided forty seconds earlier.
+
+    The hold cannot be used to stall. The side at zero does not recover while
+    it is behind in the middle, the budget is `CAP` game seconds for the whole
+    match (not per hold), and when it is spent the result stands whatever is
+    still happening. The only way out of a hold other than losing it is to win
+    the middle back, or to kill their Mothership, and either of those is the
+    battle deciding it.
+
+    The pause (R11). Holding the result once the clock read zero still let the
+    clock run down *during* the battle it was meant to wait for: in round 10
+    no evidence match ever triggered the hold, because the drain finished
+    between battles, six or seven minutes after the biggest one. So the drain
+    itself now stops while a battle is live, by the same definition of a
+    battle, and starts again when it breaks. Pause and hold draw on one budget,
+    `CAP` game seconds for the whole match, so between them they can never
+    stall a match for longer than that. With the drain paused through a
+    battle, sovereignty cannot reach zero mid-battle until the budget is
+    spent, at which point the hold is refused as well: the hold stays only as
+    the backstop for a battle that goes live on the very tick the clock runs
+    out.
+
+    The first headless runs spent the whole budget on the skirmish that opens
+    every mirror match as the grace period ends, with both sides near 100%,
+    and had nothing left for the battle at the end. So the pause waits until
+    someone's sovereignty is at or below `PAUSE_BELOW`, the stretch where the
+    clock can actually end the match, and one pause lasts at most `PER`
+    seconds; a battle that outlasts it has to break before the clock can be
+    paused again. */
+const SOV_HOLD = {
+  START: 20,
+  SIDE: 4,
+  RELEASE: 12,
+  SETTLE: 4,
+  CAP: 210,
+  PAUSE_BELOW: 30,
+  PER: 100,
+};
+const _holdEng = [0, 0];
+
 const VICTORY_COPY = {
   base: 'The mothership is gone.',
   sovereignty: 'The contested field decided it.',
+  sovereigntyHeld: 'The contested field decided it, and the battle did not change it.',
   attrition: 'No yards, no miners, no fleet left to rebuild with.',
 };
 
@@ -246,14 +364,40 @@ class Grid {
 
 /* ------------------------------------------------------------------- world */
 
+/* Entity ids. Unique within a world, and deliberately reset per world — see
+   the constructor. */
 let _nextId = 1;
 
 export class World {
   constructor({ seed = 1337, engine = null, fx = null, environment = null, options = {} } = {}) {
+    /* Restart the id sequence with the world.
+
+       Ids are not just labels: the sim uses them as a cheap deterministic
+       phase, so which entity gets which number changes how the match plays.
+       `ai.js` picks sensor sources with `(e.id & 3) === 0`, `combat.js` sets
+       the flee timer from `e.id % 7` and the retarget phase from `e.id % 13`.
+
+       This counter used to be module-level and never reset, so a second match
+       in the same page numbered its ships from wherever the first stopped and
+       every one of those phases shifted. The result was a restart that could
+       not reproduce its own seed: measured, one seed run three times in a page
+       gave 20.9, 14.6 and 14.2 minutes with 235, 90 and 93 surviving entities,
+       while a fresh page per run gave 20.9 three times out of three. The
+       starting state was byte-identical in all of them — 32 entities, 12
+       clusters, same credits — and they still diverged inside 30 ticks.
+
+       Ids only ever need to be unique within one world; nothing outside
+       persists them across a rebuild, because teardown detaches every entity
+       from FX before the world goes. */
+    _nextId = 1;
     this.seed = seed >>> 0 || 1;
     this.engine = engine;
     this.fx = fx;
     this.options = options;
+    /* Match pacing. An unknown name falls back rather than throwing, so a
+       stale link or a typed URL cannot produce a match with no clock. */
+    this.paceName = PACE[options.pace] ? options.pace : PACE_DEFAULT;
+    this.pace = PACE[this.paceName];
     // The bootstrap passes `environment` at the top level; the harness puts it
     // in `options`. Reading only one of the two meant the integrated build
     // silently generated its own ore field and mined coordinates where ENV had
@@ -279,6 +423,19 @@ export class World {
     this.over = false;
     this.winner = -1;
     this.endReason = '';
+    /* The sovereignty hold (see `_holdSovereignty`). `sovHold` is the live
+       hold or null, read by the HUD; `_sovHoldUsed` is the match's spent
+       budget; `sovHoldLog` is what happened, for the end screen and harnesses;
+       `endHeld` is set when a sovereignty result was waited on. */
+    this.sovHold = null;
+    this._sovHoldUsed = 0;
+    this.sovHoldLog = [];
+    /* The drain pause (see `SOV_HOLD`): the live pause or null, read by the
+       HUD, and what happened, for the end screen and harnesses. */
+    this.sovPause = null;
+    this.sovPauseLog = [];
+    this._sovPauseArmed = true;
+    this.endHeld = null;
 
     /* Which side a human is playing, so combat alerts are sent to them and not
        to the commander. -1 in an AI-versus-AI harness silences them entirely. */
@@ -1379,7 +1536,7 @@ export class World {
     this._compact();
     this._sovereignty(dt);
     if (this.tickCount % 15 === 0) this._threatAlerts();
-    this._checkVictory();
+    this._checkVictory(dt);
 
     bus.emit('sim:tick', { tick: this.tickCount, dt });
 
@@ -1399,27 +1556,39 @@ export class World {
    * midline and that until now was only ore.
    *
    * Hold more of the middle than your opponent and their sovereignty drains at
-   * a rate set by the margin — four seams to none is about four and a half
-   * minutes, one seam of margin is nearly twenty. So a side that wins fights
-   * and *stays where it won them* converts that into a clock the other side
-   * must answer, and a side that is behind on fleet value can still answer it
-   * by taking ground rather than by winning a set-piece it would lose.
+   * a rate set by the margin. So a side that wins fights and *stays where it
+   * won them* converts that into a clock the other side must answer, and a
+   * side that is behind on fleet value can still answer it by taking ground
+   * rather than by winning a set-piece it would lose.
    *
-   * The grace period matters as much as the rate: nothing drains for the first
-   * four minutes, so the opening is still an opening.
+   * The numbers that used to be quoted here — "four seams to none is about
+   * four and a half minutes, one seam of margin is nearly twenty" — described
+   * a four-seam band, and the band became six when the contested-cluster bug
+   * was fixed. On a six-seam band the linear rule makes a one-seam margin a
+   * forty-minute clock, which is how a match reached the seventy-minute cap
+   * with the seams level at 1–1. The live figures now depend on the pacing
+   * preset, so they belong in `PACE` at the top of this file, next to the
+   * values that produce them, rather than in prose here that cannot be
+   * checked.
+   *
+   * The grace period matters as much as the rate: nothing drains at all for
+   * the opening, so the opening is still an opening.
    */
   _sovereignty(dt) {
     if (this.over) return;
-    if (this.time < SOVEREIGNTY_GRACE) return;
+    const pace = this.pace || PACE[PACE_DEFAULT];
+    if (this.time < pace.grace) return;
+    if (this._pauseSovereignty(dt)) return;
     const a = this.teams[0].seams;
     const b = this.teams[1].seams;
     if (a === b) return;
     const total = this.contestedSeams || Math.max(1, a + b);
     const leader = a > b ? 0 : 1;
-    const share = Math.min(1, Math.abs(a - b) / total);
+    const frac = Math.abs(a - b) / total;
+    const share = Math.min(1, pace.exp === 1 ? frac : Math.pow(frac, pace.exp));
     const loser = this.teams[leader ^ 1];
     const before = loser.sovereignty;
-    loser.sovereignty = Math.max(0, before - share * SOVEREIGNTY_RATE * dt);
+    loser.sovereignty = Math.max(0, before - share * pace.rate * dt);
 
     /* The side holding the middle claws its own losses back, slowly. Without
        this the clock is a ratchet: a fleet that gives up the band at minute
@@ -1431,7 +1600,7 @@ export class World {
     const held = this.teams[leader];
     if (held.sovereignty < 100) {
       held.sovereignty = Math.min(
-        100, held.sovereignty + share * SOVEREIGNTY_RATE * SOVEREIGNTY_RECOVERY * dt,
+        100, held.sovereignty + share * pace.rate * SOVEREIGNTY_RECOVERY * dt,
       );
     }
 
@@ -1464,8 +1633,13 @@ export class World {
    * cannot come back, and making the player spend twenty minutes hunting the
    * last collector to prove it is the standard tail on a single-condition RTS.
    */
-  _checkVictory() {
+  _checkVictory(dt = 0) {
     if (this.over) return;
+    // A hold whose loser clawed back above zero is over: they took the middle
+    // back mid-battle, which is the battle deciding it the other way.
+    if (this.sovHold && this.teams[0].sovereignty > 0 && this.teams[1].sovereignty > 0) {
+      this._endSovHold('recovered');
+    }
     const aliveBase = [false, false];
     for (let t = 0; t < 2; t++) {
       const base = this.entities.get(this.teams[t].baseId);
@@ -1482,6 +1656,7 @@ export class World {
       const a = this.teams[0].sovereignty;
       const b = this.teams[1].sovereignty;
       winner = a <= 0 && b <= 0 ? -1 : a <= 0 ? 1 : 0;
+      if (winner >= 0 && this._holdSovereignty(winner, dt)) return;
     } else if (this.tickCount % 30 === 0) {
       for (let t = 0; t < 2 && winner === null; t++) {
         if (this._isBroken(t)) {
@@ -1492,20 +1667,186 @@ export class World {
     }
     if (winner === null) return;
 
+    if (this.sovHold) this._endSovHold(reason === 'sovereignty' ? this.sovHold.ending || 'settled' : reason);
+    if (this.sovPause) this._endSovPause('over');
+    const last = this.sovHoldLog.length ? this.sovHoldLog[this.sovHoldLog.length - 1] : null;
+    this.endHeld = reason === 'sovereignty' && last && last.end === this.time ? last : null;
     this.over = true;
     this.winner = winner;
     this.endReason = reason;
-    bus.emit('sim:gameOver', { winner: this.winner, reason });
+    bus.emit('sim:gameOver', { winner: this.winner, reason, held: this.endHeld });
     if (this.notify) {
       const won = this.winner === this.humanTeam;
       const line = this.winner < 0
         ? 'Mutual annihilation.'
         : won ? 'Victory.' : 'Defeat.';
+      const copy = this.endHeld ? VICTORY_COPY.sovereigntyHeld : VICTORY_COPY[reason];
       bus.emit('ui:toast', {
-        text: `${line} ${VICTORY_COPY[reason] || ''}`.trim(),
+        text: `${line} ${copy || ''}`.trim(),
         kind: won ? 'good' : 'alarm',
       });
     }
+  }
+
+  /** Hulls engaged per side right now. Warships only: a mothership taking
+      fire and a collector being chased are not the battle. */
+  _engagedBySide(out) {
+    out[0] = 0;
+    out[1] = 0;
+    for (let i = 0; i < this.dense.length; i++) {
+      const e = this.dense[i];
+      if (!e.alive || !e.engaged || e.team < 0 || e.team > 1) continue;
+      if (e.role === ROLE.RESOURCE || e.role === ROLE.STRUCTURE) continue;
+      out[e.team]++;
+    }
+    return out;
+  }
+
+  /**
+   * Sovereignty has reached zero for `loser = winner ^ 1`. Returns true while
+   * the result is being held for the battle that is on (see `SOV_HOLD`).
+   */
+  _holdSovereignty(winner, dt) {
+    const eng = this._engagedBySide(_holdEng);
+    const total = eng[0] + eng[1];
+    let h = this.sovHold;
+    if (!h) {
+      if (this._sovHoldUsed >= SOV_HOLD.CAP) return false;
+      if (total < SOV_HOLD.START || Math.min(eng[0], eng[1]) < SOV_HOLD.SIDE) return false;
+      h = this.sovHold = {
+        team: winner,
+        since: this.time,
+        usedBefore: this._sovHoldUsed,
+        cap: SOV_HOLD.CAP,
+        left: SOV_HOLD.CAP - this._sovHoldUsed,
+        engaged: total,
+        engagedBySide: [eng[0], eng[1]],
+        startEngaged: total,
+        peak: total,
+        low: total,
+        quiet: 0,
+        ending: '',
+      };
+      if (this.notify) {
+        const ours = winner === this.humanTeam;
+        bus.emit('ui:toast', {
+          text: ours
+            ? 'Sovereignty secured — the battle decides it. Win the fight in front of you.'
+            : 'Sovereignty lost — the battle decides it. Break them or take the middle back.',
+          kind: ours ? 'good' : 'alarm',
+        });
+      }
+      bus.emit('sim:sovHold', { team: winner, engaged: total, cap: SOV_HOLD.CAP });
+      return true;
+    }
+
+    h.team = winner;
+    h.engaged = total;
+    h.engagedBySide[0] = eng[0];
+    h.engagedBySide[1] = eng[1];
+    if (total > h.peak) h.peak = total;
+    if (total < h.low) h.low = total;
+    const used = h.usedBefore + (this.time - h.since);
+    this._sovHoldUsed = used;
+    h.left = Math.max(0, SOV_HOLD.CAP - used);
+    // Over when the shooting stops, or when one side has stopped shooting back:
+    // twenty winners engaged on a lone survivor is a battle already decided.
+    const over = total < SOV_HOLD.RELEASE || Math.min(eng[0], eng[1]) < SOV_HOLD.SIDE;
+    h.quiet = over ? h.quiet + dt : 0;
+    if (used >= SOV_HOLD.CAP) {
+      h.ending = 'cap';
+      return false;
+    }
+    if (h.quiet >= SOV_HOLD.SETTLE) {
+      h.ending = 'settled';
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * True while the sovereignty clock is stopped for a live battle (see the
+   * pause under `SOV_HOLD`). Shares the hold's per-match budget.
+   */
+  _pauseSovereignty(dt) {
+    const eng = this._engagedBySide(_holdEng);
+    const total = eng[0] + eng[1];
+    const side = Math.min(eng[0], eng[1]);
+    const live = total >= SOV_HOLD.START && side >= SOV_HOLD.SIDE;
+    let p = this.sovPause;
+    if (!p) {
+      if (!live) this._sovPauseArmed = true;
+      if (!live || !this._sovPauseArmed || this._sovHoldUsed >= SOV_HOLD.CAP) return false;
+      if (Math.min(this.teams[0].sovereignty, this.teams[1].sovereignty) > SOV_HOLD.PAUSE_BELOW) {
+        return false;
+      }
+      p = this.sovPause = {
+        since: this.time,
+        usedBefore: this._sovHoldUsed,
+        cap: SOV_HOLD.CAP,
+        left: SOV_HOLD.CAP - this._sovHoldUsed,
+        engaged: total,
+        engagedBySide: [eng[0], eng[1]],
+        startEngaged: total,
+        peak: total,
+        quiet: 0,
+        sov: [this.teams[0].sovereignty, this.teams[1].sovereignty],
+      };
+      bus.emit('sim:sovPause', { engaged: total, left: p.left });
+      return true;
+    }
+    p.engaged = total;
+    p.engagedBySide[0] = eng[0];
+    p.engagedBySide[1] = eng[1];
+    if (total > p.peak) p.peak = total;
+    const used = p.usedBefore + (this.time - p.since);
+    this._sovHoldUsed = Math.min(SOV_HOLD.CAP, used);
+    p.left = Math.max(0, SOV_HOLD.CAP - used);
+    const over = total < SOV_HOLD.RELEASE || side < SOV_HOLD.SIDE;
+    p.quiet = over ? p.quiet + dt : 0;
+    let how = '';
+    if (used >= SOV_HOLD.CAP) how = 'cap';
+    else if (p.quiet >= SOV_HOLD.SETTLE) how = 'settled';
+    else if (this.time - p.since >= SOV_HOLD.PER) how = 'long';
+    if (!how) return true;
+    if (how === 'long') this._sovPauseArmed = false;
+    this._endSovPause(how);
+    return false;
+  }
+
+  _endSovPause(how) {
+    const p = this.sovPause;
+    if (!p) return;
+    this.sovPauseLog.push({
+      start: p.since,
+      end: this.time,
+      seconds: this.time - p.since,
+      how,
+      startEngaged: p.startEngaged,
+      peak: p.peak,
+      endEngaged: p.engaged,
+    });
+    this.sovPause = null;
+    bus.emit('sim:sovPauseEnd', { how });
+  }
+
+  _endSovHold(how) {
+    const h = this.sovHold;
+    if (!h) return;
+    this._sovHoldUsed = Math.min(SOV_HOLD.CAP, h.usedBefore + (this.time - h.since));
+    this.sovHoldLog.push({
+      team: h.team,
+      start: h.since,
+      end: this.time,
+      seconds: this.time - h.since,
+      how,
+      startEngaged: h.startEngaged,
+      peak: h.peak,
+      low: h.low,
+      endEngaged: h.engaged,
+    });
+    this.sovHold = null;
+    bus.emit('sim:sovHoldEnd', { team: h.team, how });
   }
 
   /** No yards, no miners, no fleet: there is no route back from here. */
