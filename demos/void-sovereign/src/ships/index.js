@@ -221,6 +221,30 @@ const GLASS_MAX_LOD = 1;
     disappearing into the other half of the sky. */
 const IMPOSTOR_FILL = 0.10;
 
+/* P49 (combat legibility): team-colour emissive strips on the impostor.
+   Finding 1 of the fresh-eye critics was that at combat range the overlay
+   glyphs carry identity and the hulls carry nothing: grey slivers inside the
+   backdrop's own value range, by design (above), so the only team colour on a
+   distant ship was its drive. The strips are livery, not plating (section 3.3
+   still holds: the plates stay bone grey): a girth band fore of midships and a
+   spine line top and bottom, in the team trim colour and unlit, so they read
+   on the shadow side and against gas. At the 14-18 px floor they are 2-3 px
+   and blend into a team-tinted sliver; at 40+ px they resolve as bands.
+   Object-space, from the LOD 0 hull box, so every class carries them in the
+   same place relative to its own length. One mix() per fragment. */
+export const IMPOSTOR_STRIP = {
+  gain: 1.35,        // trim colour multiplier (unlit, so this is its brightness)
+  band: 0.62,        // girth band centre along the hull, 0 stern .. 1 bow
+  bandHalf: 0.075,   // girth band half-width, share of hull length
+  spineHalf: 0.14,   // spine line half-width, share of hull beam
+  spineFacing: 0.35, // |normal.y| above this counts as top or bottom plating
+  mix: 0.85,         // how much of the plate a strip replaces
+  /* Drawn hull size (px, bounding diameter) over which the strips fade out as
+     a ship approaches the LOD 1/2 switch (~46 px), so a hull crossing it does
+     not gain or lose its stripes in one frame (P49 NOTE, follow-up 1). */
+  fadePx: [30, 44],
+};
+
 /* Shared uniform objects: one write per frame serves every impostor material.
    `uPxScale` is pixels per metre at one metre of view depth; `uKeyDir` is the
    key star in view space. */
@@ -292,7 +316,13 @@ uniform float uMinPxR;
 uniform float uMaxGrow;
 uniform float uFill;
 uniform vec3 uKeyDir;
+uniform vec3 uBoxMin;
+uniform vec3 uBoxSize;
+uniform vec2 uStripFade;
 varying float vFace;
+varying vec3 vStripUv;
+varying float vStripUp;
+varying float vStripFade;
 `;
 
 /* Runs immediately after <project_vertex>, so `mvPosition` is the view-space
@@ -327,7 +357,34 @@ const IMPOSTOR_VERT = /* glsl */`
   /* One key light, hard terminator, deep but never black on the shadow side —
      §3.2 stated in the only two numbers a mark this small can carry. */
   vFace = uFill + ( 1.0 - uFill ) * ( vsNdl * vsNdl * ( 3.0 - 2.0 * vsNdl ) );
+  // P49 strips: where on the hull this is, and whether it is top/bottom plating.
+  vStripUv = ( position - uBoxMin ) / max( uBoxSize, vec3( 1e-4 ) );
+  vStripUp = abs( normal.y );
+  vStripFade = 1.0 - smoothstep( uStripFade.x, uStripFade.y, 2.0 * vsPxR * vsGrow );
 }
+`;
+
+const IMPOSTOR_FRAG_PARS = /* glsl */`
+varying float vFace;
+varying vec3 vStripUv;
+varying float vStripUp;
+varying float vStripFade;
+uniform vec3 uStripColor;
+uniform vec4 uStrip; // band centre, band half-width, spine half-width, spine facing
+uniform float uStripMix;
+float vsStripEdge( float d, float hw ) {
+  float fw = max( fwidth( d ), 1e-4 );
+  return 1.0 - smoothstep( hw - fw, hw + fw, d );
+}
+`;
+
+const IMPOSTOR_FRAG = /* glsl */`
+	diffuseColor.rgb *= vFace;
+	{
+		float band = vsStripEdge( abs( vStripUv.z - uStrip.x ), uStrip.y );
+		float spine = vsStripEdge( abs( vStripUv.x - 0.5 ), uStrip.z ) * smoothstep( uStrip.w, uStrip.w + 0.2, vStripUp );
+		diffuseColor.rgb = mix( diffuseColor.rgb, uStripColor, uStripMix * vStripFade * max( band, spine ) );
+	}
 `;
 
 const _impostorCache = new Map();
@@ -337,7 +394,7 @@ const _impostorCache = new Map();
  * One material per (class, team) — they all compile to the same program, and
  * the per-class uniform is the bounding radius the size floor works from.
  */
-function impostorMaterial(team, classId, radius) {
+function impostorMaterial(team, classId, radius, box = null) {
   const key = `${team}:${classId}`;
   const hit = _impostorCache.get(key);
   if (hit) return hit;
@@ -363,6 +420,12 @@ function impostorMaterial(team, classId, radius) {
     uMinPxR: { value: (hullFloorPx(L) * R) / L },
     uMaxGrow: { value: IMPOSTOR_MAX_GROW },
     uFill: { value: IMPOSTOR_FILL },
+    uBoxMin: { value: box ? box.min.clone() : new THREE.Vector3(-R, -R, -R) },
+    uBoxSize: { value: box ? box.getSize(new THREE.Vector3()) : new THREE.Vector3(2 * R, 2 * R, 2 * R) },
+    uStripColor: { value: new THREE.Color(pal.trim || pal.engine).multiplyScalar(IMPOSTOR_STRIP.gain) },
+    uStrip: { value: new THREE.Vector4(IMPOSTOR_STRIP.band, IMPOSTOR_STRIP.bandHalf, IMPOSTOR_STRIP.spineHalf, IMPOSTOR_STRIP.spineFacing) },
+    uStripMix: { value: IMPOSTOR_STRIP.mix },
+    uStripFade: { value: new THREE.Vector2(IMPOSTOR_STRIP.fadePx[0], IMPOSTOR_STRIP.fadePx[1]) },
   };
 
   // Fogged like the full hulls, with the same hull cap, so a ship does not
@@ -379,8 +442,8 @@ function impostorMaterial(team, classId, radius) {
       .replace('#include <common>', `#include <common>\n${IMPOSTOR_PARS}`)
       .replace('#include <project_vertex>', `#include <project_vertex>\n${IMPOSTOR_VERT}`);
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vFace;')
-      .replace('#include <color_fragment>', '#include <color_fragment>\n\tdiffuseColor.rgb *= vFace;')
+      .replace('#include <common>', `#include <common>\n${IMPOSTOR_FRAG_PARS}`)
+      .replace('#include <color_fragment>', `#include <color_fragment>\n${IMPOSTOR_FRAG}`)
       .replace('#include <fog_pars_fragment>', `${HULL_HAZE_DEFINE}#include <fog_pars_fragment>`);
   };
   // Every impostor shares one program; only the uniforms differ.
@@ -503,6 +566,14 @@ function asGlow(mesh) {
   return mesh;
 }
 
+/** LOD 0 hull bounds in the hull's own space, for the impostor strips. */
+function hullBox0(asset) {
+  const g = asset.levels[0] && asset.levels[0].hull;
+  if (!g) return null;
+  if (!g.boundingBox) g.computeBoundingBox();
+  return g.boundingBox;
+}
+
 function levelGroup(asset, index, team) {
   const g = new THREE.Group();
   g.name = `${asset.classId}:L${index}`;
@@ -511,7 +582,7 @@ function levelGroup(asset, index, team) {
   const impostor = index >= IMPOSTOR_LOD;
   if (geo.hull) {
     const mat = impostor
-      ? impostorMaterial(team, asset.classId, asset.radius)
+      ? impostorMaterial(team, asset.classId, asset.radius, hullBox0(asset))
       : hullMaterial(team, asset.def.family, false, asset.def.length);
     const mesh = tagged(geo.hull, mat, KIND.HULL, index);
     // A dilated hull must not cast a dilated shadow, and at this size there is
@@ -851,7 +922,7 @@ class FleetBatch {
       make(
         geo.hull,
         impostor
-          ? impostorMaterial(this.team, this.classId, this.asset.radius)
+          ? impostorMaterial(this.team, this.classId, this.asset.radius, this.hullBox())
           : hullMaterial(this.team, this.asset.def.family, true, this.asset.def.length),
         KIND.HULL,
         !impostor,

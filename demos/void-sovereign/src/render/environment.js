@@ -929,10 +929,18 @@ export class Environment {
           /* Bands: latitude is the only ordering term. Everything else is
              turbulence stretched hard along longitude, which is what gives the
              sheared, curdled look instead of clean stripes. */
-          vec3 q = vec3(lp.x, lp.y * 5.0, lp.z);
+          /* Round 13 (critic round 12: "bands look like a motion-blur
+             smear"). The turbulence was stretched 5x along longitude and the
+             fine layer 11x, so every feature was a hair-thin streak and the
+             disc read as a long exposure. Stretch is now 2.8x and 4.2x, and a
+             third, rounder octave warps the latitude itself, so band edges
+             curdle into eddies and festoons the way a sheared atmosphere's
+             do. The zonal ordering is untouched: latitude still leads. */
+          vec3 q = vec3(lp.x, lp.y * 2.8, lp.z);
           float turb = fbm4e(q * ${num(r.range(1.6, 2.4))} + vec3(${f3([r.range(-20, 20), r.range(-20, 20), r.range(-20, 20)])}));
-          float fine = ridge2e(vec3(lp.x, lp.y * 11.0, lp.z) * ${num(r.range(4.5, 7.0))});
-          float lat = lp.y * ${num(r.range(5.5, 8.5))} + turb * ${num(r.range(0.55, 0.95))};
+          float eddy = fbm4e(vec3(lp.x * 3.4, lp.y * 6.0, lp.z * 3.4) + turb * 1.6 + vec3(7.3, -11.9, 4.1)); // fixed: a new draw here would reshuffle every later seeded planet parameter
+          float fine = ridge2e(vec3(lp.x, lp.y * 4.2, lp.z) * ${num(r.range(4.5, 7.0))} + eddy * 0.9);
+          float lat = lp.y * ${num(r.range(5.5, 8.5))} + turb * ${num(r.range(0.55, 0.95))} + (eddy - 0.5) * 0.42;
 
           float s1 = sin(lat * 3.14159265) * 0.5 + 0.5;
           float s2 = sin(lat * 1.13 + 2.1) * 0.5 + 0.5;

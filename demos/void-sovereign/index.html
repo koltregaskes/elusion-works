@@ -377,6 +377,13 @@
             </button>
             <a class="vs-menu__b vs-menu__b--exit" href="../">Back to the demo shelf</a>
           </nav>
+          <!-- Shown from the first paint until the shell adopts this screen
+               (it sets `is-live` on #vs-shell), so the menu never ignores a
+               click in silence while its modules are still loading. -->
+          <p class="vs-boot" role="status">
+            <span class="vs-boot__bar" aria-hidden="true"></span>
+            <span>Loading the game systems</span>
+          </p>
           <noscript>
             <p class="vs-status">This demo needs JavaScript and WebGL 2.</p>
           </noscript>

@@ -126,6 +126,39 @@ const END_COPY = {
   },
 };
 
+/* The loading card's stages (P46). These are the real build stages in
+   `main.js`, grouped into the six a player can follow: `main.js` names the one
+   it is in with every progress call, and the card ticks them off with the time
+   each one actually took. Profiled headless on the dev box, "Image and
+   shaders" is still the longest: its first frame is where the driver compiles
+   the shaders, so the card says so in the status line while it happens. */
+const LOAD_STAGES = [
+  ['plating', 'Hull plating and paint'],
+  ['nebula', 'Nebula and sky'],
+  ['keels', 'Hulls and keels'],
+  ['fleets', 'Fleets and orders'],
+  ['systems', 'Comms and displays'],
+  ['image', 'Image and shaders'],
+];
+
+/* Stages a shallow restart keeps from the last match instead of rebuilding. */
+const KEPT_STAGES = new Set(['plating', 'nebula', 'keels']);
+
+/* Field notes for the loading card. Taken from STORY.md, the premise the codex
+   is built on, which holds itself to describing only what the sim does. Keep
+   them that way: a tip that is not true of the game is worse than no tip. */
+const FIELD_NOTES = [
+  'A fleet is a thing you keep, not a thing you spend. Hulls that survive their fights get better at them: Blooded, then Veteran, then Elite.',
+  'Presence is warships, weighed by what they cost. Twenty Probes do not hold ground against a Destroyer.',
+  'Collectors are slow, unarmed and out in the open. A side that loses its haulers stops building about ninety seconds later.',
+  'A Collector under fire runs. It downs tools, makes for the nearest yard and unloads what it has.',
+  'Time is yours. Space pauses the battle, and every order you give while it is frozen is obeyed the moment it resumes.',
+  'A big fleet earns less per hull than a lean one. The fiftieth Interceptor is worth less than the fifth.',
+  'The contested band straddles the midline. It is the richest ground on the field, and the least defensible.',
+  'Ground you leave is not ground you hold. Walk away from a seam and it drifts back to neutral.',
+  'The Ochre Reach flies the same thirteen classes off the same drawings. Everything that separates you is judgement.',
+];
+
 const WORD_SEED_RE = /^[\w -]{0,40}$/;
 
 /* The order the contract puts the front door in, used only to break ties
@@ -452,12 +485,19 @@ export class Shell {
     return () => set.delete(fn);
   }
 
-  /** Progress for the loading card. `main.js` drives this per boot stage. */
-  setProgress(value, label) {
+  /**
+   * Progress for the loading card. `main.js` drives this per boot stage.
+   * `stage` is one of the LOAD_STAGES ids, or 'reuse' when a restart keeps the
+   * seed's assets; it is optional, so an older caller still moves the bar.
+   */
+  setProgress(value, label, stage) {
     const v = Math.max(0, Math.min(1, Number(value) || 0));
     this._loadFill.style.transform = `scaleX(${v.toFixed(3)})`;
     this._loadBar.setAttribute('aria-valuenow', String(Math.round(v * 100)));
+    this._loadPct.textContent = `${Math.round(v * 100)}%`;
     if (label) this._loadStatus.textContent = String(label);
+    if (stage) this._setLoadStage(String(stage));
+    if (v >= 1) this._setLoadStage(null);
   }
 
   /**
@@ -487,6 +527,7 @@ export class Shell {
   }
 
   dispose() {
+    this._stopNotes();
     window.removeEventListener('keydown', this._onKey, true);
     window.removeEventListener('keydown', this._onModalityKey, true);
     window.removeEventListener('pointerdown', this._onModalityPointer, true);
@@ -766,23 +807,125 @@ export class Shell {
     inner.appendChild(actions);
   }
 
+  /* The loading card (P46). Same drawing as every other screen: hairlines,
+     tracked mono, no boxes. What it adds is honesty about where the time goes:
+     the six real build stages, each ticked off with the time it took, a bar
+     weighted by how long the stages take rather than how many there are, and
+     something worth reading while it works.
+
+     The bar's sweep and the active stage's pulse are transform and opacity
+     animations on purpose. Those run on the compositor, so the card still
+     visibly moves through a stage that holds the main thread for seconds,
+     which is exactly when a frozen card would look like a crash. */
   _buildLoading() {
     const s = this._makeScreen('loading');
     s.setAttribute('aria-label', 'Building the universe');
     const inner = s.querySelector('.vs-screen__inner');
-    this._head(inner, 'Elusion Works', 'Void Sovereign');
+    this._head(inner, 'Building the universe', 'Void Sovereign');
     this._loadSeedLine = el('p', 'vs-deck', '');
     inner.appendChild(this._loadSeedLine);
 
-    this._loadBar = el('div', 'vs-progress');
+    this._loadList = el('ol', 'vs-bsteps');
+    this._loadList.setAttribute('aria-label', 'Build stages');
+    this._loadRows = new Map();
+    LOAD_STAGES.forEach(([id, name], i) => {
+      const row = el('li', 'vs-bstep');
+      row.dataset.stage = id;
+      const time = el('span', 'vs-bstep__t', '');
+      row.append(
+        el('span', 'vs-bstep__n', String(i + 1).padStart(2, '0')),
+        el('span', 'vs-bstep__l', name),
+        time,
+      );
+      this._loadList.appendChild(row);
+      this._loadRows.set(id, { row, time });
+    });
+    inner.appendChild(this._loadList);
+
+    const meter = el('div', 'vs-meter');
+    this._loadBar = el('div', 'vs-progress vs-progress--load');
     this._loadBar.setAttribute('role', 'progressbar');
+    this._loadBar.setAttribute('aria-label', 'Build progress');
     this._loadBar.setAttribute('aria-valuemin', '0');
     this._loadBar.setAttribute('aria-valuemax', '100');
     this._loadBar.setAttribute('aria-valuenow', '0');
     this._loadFill = el('div', 'vs-progress__fill');
-    this._loadBar.appendChild(this._loadFill);
+    this._loadBar.append(this._loadFill, el('div', 'vs-progress__sweep'));
+    this._loadPct = el('span', 'vs-meter__pct', '0%');
+    this._loadPct.setAttribute('aria-hidden', 'true');
+    meter.append(this._loadBar, this._loadPct);
     this._loadStatus = el('p', 'vs-status', 'Waking the shipyard…');
-    inner.append(this._loadBar, this._loadStatus);
+    inner.append(meter, this._loadStatus);
+
+    const note = el('div', 'vs-note');
+    note.appendChild(el('p', 'vs-note__k', 'Field note'));
+    this._loadNote = el('p', 'vs-note__t', '');
+    note.appendChild(this._loadNote);
+    inner.appendChild(note);
+
+    this._loadStage = null;
+    this._loadStageAt = 0;
+    this._noteTimer = 0;
+    this._noteIndex = 0;
+  }
+
+  /** Put every stage back to pending, for a fresh build. */
+  _resetLoad() {
+    for (const { row, time } of this._loadRows.values()) {
+      row.classList.remove('is-active', 'is-done', 'is-kept');
+      time.textContent = '';
+    }
+    this._loadStage = null;
+    this._loadStageAt = performance.now();
+    this._screens.loading.removeAttribute('data-load-stage');
+    this._loadFill.style.transform = 'scaleX(0)';
+    this._loadPct.textContent = '0%';
+  }
+
+  /** Close the running stage with its real duration and open `id`. */
+  _setLoadStage(id) {
+    if (id === this._loadStage) return;
+    const now = performance.now();
+    const prev = this._loadStage && this._loadRows.get(this._loadStage);
+    if (prev) {
+      prev.row.classList.remove('is-active');
+      prev.row.classList.add('is-done');
+      prev.time.textContent = `${((now - this._loadStageAt) / 1000).toFixed(1)} s`;
+    }
+    if (id === 'reuse') {
+      for (const k of KEPT_STAGES) {
+        const r = this._loadRows.get(k);
+        r.row.classList.add('is-done', 'is-kept');
+        r.time.textContent = 'kept';
+      }
+      this._loadStage = null;
+      this._loadStageAt = now;
+      return;
+    }
+    const next = id && this._loadRows.get(id);
+    if (next) next.row.classList.add('is-active');
+    this._loadStage = next ? id : null;
+    this._loadStageAt = now;
+    if (next) this._screens.loading.dataset.loadStage = id;
+  }
+
+  /* One field note per build, changed every few seconds while it runs. The
+     timer is a main-thread timer, so a note simply stays put through a long
+     stage; that is fine for something meant to be read. */
+  _startNotes() {
+    this._stopNotes();
+    this._noteIndex = Math.floor(Math.random() * FIELD_NOTES.length);
+    const show = () => {
+      this._loadNote.textContent = FIELD_NOTES[this._noteIndex % FIELD_NOTES.length];
+      this._noteIndex++;
+    };
+    show();
+    this._noteTimer = setInterval(show, 7000);
+  }
+
+  _stopNotes() {
+    if (this._noteTimer) clearInterval(this._noteTimer);
+    this._noteTimer = 0;
   }
 
   _buildPause() {
@@ -1107,7 +1250,12 @@ export class Shell {
     this._syncInert();
 
     if (to === 'briefing') this._paintBriefing();
-    if (to === 'loading') this.setProgress(0, 'Waking the shipyard…');
+    if (to === 'loading') {
+      this._resetLoad();
+      this.setProgress(0, 'Waking the shipyard…');
+      this._startNotes();
+    }
+    if (from === 'loading') this._stopNotes();
     if (to === 'title' && from && from !== 'title') this._teardown();
     if (OVERLAY_STATES.has(to)) this._focusFirst(this._screens[to]);
   }
@@ -1196,7 +1344,7 @@ export class Shell {
     try {
       const result = await this.game.start(
         { seed: this.setup.seed, difficulty: this.setup.difficulty, quality: this.setup.quality },
-        (v, label) => this.setProgress(v, label),
+        (v, label, stage) => this.setProgress(v, label, stage),
       );
       this.setProgress(1, 'Ready.');
       this._syncUrl(result || {});

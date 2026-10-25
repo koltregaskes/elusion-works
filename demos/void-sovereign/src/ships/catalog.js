@@ -613,8 +613,17 @@ export function approxRadius(classId) {
    ceiling is what keeps it a floor and not a blob: past the range where a
    fighter needs more than HULL_FLOOR_MAX_GROW times its own size it is let go
    and shrinks naturally, and the LOD thresholds (multiples of hull length,
-   HANDOFF section 5) are untouched by any of this. */
-export const HULL_FLOOR_MAX_GROW = 6;
+   HANDOFF section 5) are untouched by any of this.
+
+   P49 (combat legibility, fresh-eye critic finding 1: "fights read as icons,
+   not ships"): 9-12 px of dim grey was a floor that kept a hull on screen but
+   not one that read under a 12 px glyph, so the floor is raised to 14-18 px
+   and the grow ceiling to 8. Same curve, same smooth clamp (no pop: the floor
+   only binds at LOD 2+, which starts at ~46 px of hull). All four numbers are
+   in HULL_FLOOR so they can be tuned in one place. */
+export const HULL_FLOOR = { min: 14, max: 18, ref: 14, exp: 0.15 };
+export const HULL_FLOOR_MAX_GROW = 8;
 export function hullFloorPx(length) {
-  return Math.min(12, Math.max(9, 9 * Math.pow(Math.max(1, length) / 14, 0.15)));
+  const f = HULL_FLOOR;
+  return Math.min(f.max, Math.max(f.min, f.min * Math.pow(Math.max(1, length) / f.ref, f.exp)));
 }
