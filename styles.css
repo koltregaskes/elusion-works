@@ -936,6 +936,11 @@ main {
   background: rgba(215, 161, 111, 0.16);
 }
 
+.card-status[data-status="not-yet-public"] {
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.05);
+}
+
 .card-body {
   display: grid;
   gap: 0.55rem;

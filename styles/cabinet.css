@@ -412,12 +412,13 @@ html[data-theme="light"] .ew-plate-poster { opacity: 0.88; filter: invert(0.85) 
 .ew-plate:hover .ew-plate-sheen { opacity: 1; }
 
 .ew-plate-meta { display: flex; flex-direction: column; gap: 6px; transform: translateZ(18px); }
-.ew-plate-meta-row { display: flex; justify-content: space-between; align-items: center; }
+.ew-plate-meta-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ew-plate-kind { color: var(--fg-4); }
 .ew-status { font-family: "IBM Plex Mono", monospace; font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; padding: 3px 8px; border-radius: var(--r-pill); }
 .ew-status-live { background: color-mix(in oklab, var(--green) 20%, transparent); color: var(--fg-1); }
 .ew-status-in-progress { background: color-mix(in oklab, var(--copper) 22%, transparent); color: var(--fg-1); }
-.ew-status-coming-soon { background: rgba(255,255,255,0.05); color: var(--fg-3); }
+.ew-status-coming-soon,
+.ew-status-not-yet-public { background: rgba(255,255,255,0.05); color: var(--fg-3); }
 
 .ew-plate-name {
   font-family: "Outfit", system-ui; font-weight: 600; letter-spacing: -0.02em;
