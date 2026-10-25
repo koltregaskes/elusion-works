@@ -111,6 +111,10 @@ const QUALITY = (() => {
    default rather than being rejected here, so there is one place that decides
    what a valid preset is. */
 const PACE = params.get('pace') || '';
+/* `?tick=manual` is the deterministic harness path. The display loop keeps
+   painting, but it never advances the sim. Call `__VS.loop.stepTicks(n)` for
+   an exact number of 1/30 s steps, with no leftover wall-clock frame. */
+const MANUAL_TICK = params.get('tick') === 'manual';
 
 function fatal(message, detail) {
   const el = document.getElementById('vs-fatal');
@@ -280,6 +284,8 @@ async function main() {
     bus.emit('ui:toast', { text: message, kind: 'warning' });
   };
 
+  if (MANUAL_TICK) loop.claimManual();
+  vs.stepTicks = (count) => loop.stepTicks(count);
   loop.start();
 
   /* ------------------------------------------------------------- teardown */

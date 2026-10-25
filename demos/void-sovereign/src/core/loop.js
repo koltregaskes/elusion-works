@@ -23,6 +23,9 @@ export class Loop {
     this._accum = 0;
     this._last = 0;
     this._raf = 0;
+    /* A measurement harness sets this so the display loop cannot sneak
+       wall-clock ticks in before the harness starts stepping. */
+    this._manual = false;
 
     // Rolling frame-time average for the perf readout and adaptive quality.
     this._ftSamples = new Float32Array(60);
@@ -35,6 +38,26 @@ export class Loop {
 
   setTimeScale(s) {
     this.timeScale = Math.max(0, s);
+  }
+
+  /* Drop any live remainder and stop the display loop from ticking the sim.
+     Rendering continues. `stepTicks` is then the only thing that advances
+     `world.tick`, one fixed step at a time. */
+  claimManual() {
+    this._manual = true;
+    this._accum = 0;
+  }
+
+  stepTicks(count) {
+    this.claimManual();
+    const steps = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+    for (let i = 0; i < steps; i++) {
+      this.world.tick(this.step);
+      this.tick += 1;
+    }
+    this.alpha = 1;
+    if (this.world && this.world.syncTransforms) this.world.syncTransforms(1);
+    return this.tick;
   }
 
   start() {
@@ -67,7 +90,9 @@ export class Loop {
 
     this.elapsed += dt;
 
-    if (this.timeScale > 0) {
+    if (this._manual) {
+      this.alpha = 1;
+    } else if (this.timeScale > 0) {
       this._accum += dt * this.timeScale;
       let steps = 0;
       while (this._accum >= this.step && steps < MAX_CATCHUP) {
