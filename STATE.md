@@ -4,6 +4,6 @@ Branch: claude/clever-goodall-dzvbfl (built on wip/void-sovereign-r12-fix3), dra
 Tools: node demos/void-sovereign/tools/sim-test.mjs (determinism tests); stepped GPU-less harnesses in demos/void-sovereign/tools/harness/
 Key light: a brighter key is not the fix (measured); needs a real screen to judge a camera bias or specular rim
 UNVERIFIED (needs the gaming laptop): the rolling income rate in play, GPU frame time and the first-kill hitch, real-GPU boot time, P44 shimmer while shaking, P49 strips and wakes in motion, altitude stalks and HUD clip in motion, how it feels to play
-Blocked on: nothing for the rounds; going live needs Kol to merge PR #29 then #27 (KOL-6004)
-Updated: 2026-10-23 UK by a Claude Code cloud session
-Linear: https://linear.app/koltregaskes/issue/KOL-5966
+Blocked on: nothing for the rounds; going live needs Kol to merge PR #29 then #27 (KOL-6004); its own repo needs Kol to create an empty koltregaskes/void-sovereign (KOL-6605, the GitHub integration got a 403), then KOL-6606 pushes it with full history (git subtree split --prefix=demos/void-sovereign) and clones it to F:\Repos\games\void-sovereign
+Updated: 2026-10-25 UK by a Claude Code cloud session
+Linear: project https://linear.app/koltregaskes/project/200-build-room-void-sovereign-9795f105e86b (next work KOL-6607; findings KOL-6608 to KOL-6611; lane KOL-5966)
