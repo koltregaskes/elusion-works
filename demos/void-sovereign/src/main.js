@@ -259,8 +259,8 @@ async function main() {
      built. Registering a fresh hook per match leaked one closure per restart
      and left dead subsystems being ticked. */
   engine.registerRenderHook((dt, elapsed) => {
-    if (M.cameraRig && M.cameraRig.update) M.cameraRig.update(dt);
-    if (M.input && M.input.update) M.input.update(dt);
+    if (M.cameraRig && M.cameraRig.update) M.cameraRig.update(dt, elapsed);
+    if (M.input && M.input.update) M.input.update(dt, elapsed);
     // Must run every frame, not just on events: the listener frame, distance
     // attenuation, voice stealing and the score's scheduler all advance here.
     if (A.audio) A.audio.update(dt, elapsed, engine.camera);

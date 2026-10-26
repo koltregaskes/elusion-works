@@ -1970,9 +1970,15 @@ export class InputController {
 
   /* --------------------------------------------------------------- update */
 
-  update(dt) {
+  update(dt, elapsed) {
+    // One update per frame; see CameraRig.update for why elapsed comes first.
     const now = performance.now();
-    if (now - this._lastUpdateMs < 2) return;
+    if (elapsed !== undefined) {
+      if (elapsed === this._lastElapsed) return;
+      this._lastElapsed = elapsed;
+    } else if (now - this._lastUpdateMs < 2) {
+      return;
+    }
     this._lastUpdateMs = now;
     const step = clamp(dt || 0, 0, 0.1);
 
