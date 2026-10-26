@@ -120,13 +120,26 @@ export function spacingFor(entities) {
 function delta(n, s, out) {
   // Arrowhead. Rows fan back and outward, with a shallow vertical stagger so
   // the wing has depth instead of being a paper cut-out.
+  //
+  // Up to nine hulls this is the open V it always was. Past that the V fills
+  // in (row r holds 2r + 1 slots), so the width grows with the square root of
+  // the fleet, not with the fleet: two slots a row put the 110th row of a
+  // 220-hull order 64 km out, past the edge of the map (round 15, M2).
   let i = 0;
   let row = 0;
+  const filled = n > 9;
   while (i < n) {
-    const inRow = row === 0 ? 1 : 2;
+    const inRow = row === 0 ? 1 : filled ? 2 * row + 1 : 2;
     for (let k = 0; k < inRow && i < n; k++, i++) {
-      const side = k === 0 ? -1 : 1;
-      const lateral = row === 0 ? 0 : side * row * s * 0.85;
+      let lateral;
+      if (row === 0) lateral = 0;
+      else if (!filled) lateral = (k === 0 ? -1 : 1) * row * s * 0.85;
+      // Outside slots first, so a short last row still reads as wingtips.
+      else {
+        const m = k >> 1;
+        lateral = (k % 2 === 0 ? -1 : 1) * (row - m) * s * 0.85;
+        if (k === inRow - 1 && inRow % 2 === 1) lateral = 0;
+      }
       out[i].set(lateral, ((row % 3) - 1) * s * 0.22, -row * s * 0.72);
     }
     row++;
@@ -183,7 +196,8 @@ function claw(n, s, out) {
 function broad(n, s, out) {
   // Line abreast. Overlong lines wrap into a second rank so a 40-ship broad
   // does not stretch for 20 km.
-  const perRank = Math.max(1, Math.min(n, 12));
+  // Wider ranks for big fleets, so the column stays a few ranks deep.
+  const perRank = Math.max(1, Math.min(n, Math.max(12, Math.ceil(Math.sqrt(n * 3)))));
   for (let i = 0; i < n; i++) {
     const rank = Math.floor(i / perRank);
     const k = i % perRank;
@@ -194,13 +208,19 @@ function broad(n, s, out) {
 
 function xshape(n, s, out) {
   // Four diagonal arms raked backwards — reads unmistakably from any angle.
+  // An arm is at most about sqrt(n) slots long; beyond that it thickens into
+  // further lanes behind the first, so a big X stays a few km across instead
+  // of 36 km (round 15, M2).
+  const kmax = Math.max(4, Math.ceil(Math.sqrt(n)));
   for (let i = 0; i < n; i++) {
     const arm = i % 4;
-    const k = Math.floor(i / 4) + 1;
+    const j = Math.floor(i / 4);
+    const k = (j % kmax) + 1;
+    const lane = Math.floor(j / kmax);
     const dx = arm === 0 || arm === 3 ? -1 : 1;
     const dy = arm < 2 ? 1 : -1;
     const reach = k * s * 0.95;
-    out[i].set(dx * reach * 0.75, dy * reach * 0.6, -k * s * 0.3);
+    out[i].set(dx * reach * 0.75, dy * reach * 0.6, -k * s * 0.3 - lane * s * 0.55);
   }
 }
 
