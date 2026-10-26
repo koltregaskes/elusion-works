@@ -220,7 +220,11 @@ function xshape(n, s, out) {
     const dx = arm === 0 || arm === 3 ? -1 : 1;
     const dy = arm < 2 ? 1 : -1;
     const reach = k * s * 0.95;
-    out[i].set(dx * reach * 0.75, dy * reach * 0.6, -k * s * 0.3 - lane * s * 0.55);
+    // Lanes sit a full 0.9 spacing behind (and a little above) the one in
+    // front: at 0.55 the matching slots of two lanes were inside the hard
+    // separation radius of frigate-sized hulls, which shoved them off their
+    // slots (review on #43).
+    out[i].set(dx * reach * 0.75, dy * reach * 0.6 + lane * s * 0.3, -k * s * 0.3 - lane * s * 0.9);
   }
 }
 
