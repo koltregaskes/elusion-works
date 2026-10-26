@@ -1682,13 +1682,22 @@ export class CameraRig {
 
   /* --------------------------------------------------------------- update */
 
-  update(dt) {
-    /* main.js may call this and the render hook will also fire. Two calls in
-       one frame are microseconds apart; two frames are >= 4 ms apart even at
-       240 Hz. */
-    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    if (now - this._lastUpdateMs < 2) return;
-    this._lastUpdateMs = now;
+  update(dt, elapsed) {
+    /* main.js may call this and the render hook will also fire, so a second
+       call for the same frame is dropped. The frame is identified by its
+       elapsed time when the caller passes one. The wall clock is only the
+       fallback: critic round 17 stepped frames faster than 2 ms of real time
+       apart, every camera update but the first was dropped, and focus-follow
+       appeared to trail a fighter by 2 km when at a real 60 fps it locks on
+       within a second. */
+    if (elapsed !== undefined) {
+      if (elapsed === this._lastElapsed) return;
+      this._lastElapsed = elapsed;
+    } else {
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      if (now - this._lastUpdateMs < 2) return;
+      this._lastUpdateMs = now;
+    }
 
     const step = clamp(dt || 0, 0, 0.1);
     this._elapsed += step;

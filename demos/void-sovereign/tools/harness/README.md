@@ -27,3 +27,10 @@ finds. 0 console, page and request errors is part of every result; read the JSON
 
 Frame timings from SwiftShader are CPU-side only. GPU frame time and anything felt
 in motion must be checked on a real GPU.
+
+When stepping frames by hand, pass the frame's elapsed time to the camera and
+input updates (`rig.update(dt, elapsed)`, `input.update(dt, elapsed)`), or go
+through `engine.render(dt, elapsed)`, which does it for you. Each drops a second
+call for the same frame. Without an elapsed time they fall back to a 2 ms
+wall-clock guard, and a stepped loop runs faster than that, so most updates are
+skipped and the camera appears to lag.
