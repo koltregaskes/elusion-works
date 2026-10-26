@@ -1987,6 +1987,30 @@ export class InputController {
     }
     this._refreshBand();
     this._refreshGizmo();
+    this._refreshCursor(now);
+  }
+
+  /* The cursor says what a right-click will do (rubric C1). It was a
+     crosshair everywhere, so a player could only find out whether a click
+     meant attack or move by making it. Over a hostile hull, with ships
+     selected, it becomes the attack reticle; elsewhere with ships selected,
+     the move chevron; with nothing selected, the plain crosshair. Re-picked
+     ten times a second at most, and only while the pointer is over the view. */
+  _refreshCursor(now) {
+    const c = this.canvas;
+    if (!c || !c.classList) return;
+    if (now - (this._cursorAt || 0) < 100) return;
+    this._cursorAt = now;
+    let want = '';
+    if (this._pointerInside && this._hoverX >= 0 && this._mode === 'idle' &&
+        this._gameKeysLive() && this._commandIds().length) {
+      const enemy = this._pick(this._hoverX, this._hoverY, { notTeam: this.team, radiusPx: PICK_PX });
+      want = enemy ? 'is-attack' : 'is-move';
+    }
+    if (want === this._cursorClass) return;
+    if (this._cursorClass) c.classList.remove(this._cursorClass);
+    if (want) c.classList.add(want);
+    this._cursorClass = want;
   }
 
   _applyKeyPan(dt) {
