@@ -1227,6 +1227,8 @@ export class Shell {
        "Continue" button still had focus left the screen behind fully exposed
        to assistive technology. Blur first, hide second, refocus third. */
     const active = document.activeElement;
+    // Remember where play had focus, so resuming gives the same keys back.
+    if (from === 'playing') this._playFocus = active;
     if (active && active !== document.body && this.root.contains(active) && active.blur) {
       active.blur();
     }
@@ -1236,6 +1238,13 @@ export class Shell {
       const on = key === to && OVERLAY_STATES.has(to);
       s.classList.toggle('is-active', on);
       s.setAttribute('aria-hidden', String(!on));
+      /* A screen that is leaving stays visible through its 260 ms fade, and
+         its buttons stayed focusable all that time. Round 15: Esc, Esc, Tab
+         put focus on the closing pause menu's "Restart match", and the next
+         Space (the pause key) restarted the match. Inert from the moment it
+         leaves. */
+      if (on) s.removeAttribute('inert');
+      else s.setAttribute('inert', '');
     }
     if (to !== 'paused' && to !== 'title' && this._panelOpen) this.closePanel();
 
@@ -1258,6 +1267,18 @@ export class Shell {
     if (from === 'loading') this._stopNotes();
     if (to === 'title' && from && from !== 'title') this._teardown();
     if (OVERLAY_STATES.has(to)) this._focusFirst(this._screens[to]);
+    // Back in the match, focus returns to wherever play had it (the canvas
+    // after any click in the view, so Tab is Sensors again), never to a
+    // button on the screen that just closed.
+    else if (to === 'playing') this._restorePlayFocus();
+  }
+
+  _restorePlayFocus() {
+    const el = this._playFocus;
+    this._playFocus = null;
+    if (el && el !== document.body && el.isConnected && !el.closest('[inert]') && el.focus) {
+      el.focus({ preventScroll: true });
+    }
   }
 
   /** Screens sit over a live canvas, so everything behind one has to leave the
@@ -1268,6 +1289,11 @@ export class Shell {
       if (!node) continue;
       if (blocked) node.setAttribute('inert', '');
       else node.removeAttribute('inert');
+    }
+    // A closed panel fades out like a screen does; keep it out of reach.
+    if (this._panelEl) {
+      if (this._panelOpen) this._panelEl.removeAttribute('inert');
+      else this._panelEl.setAttribute('inert', '');
     }
     // A screen underneath an open panel must not be tabbable either.
     for (const key of Object.keys(this._screens)) {

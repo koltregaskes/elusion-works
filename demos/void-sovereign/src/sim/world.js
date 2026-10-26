@@ -1220,6 +1220,11 @@ export class World {
     const members = this.entitiesByIds(ids);
     const target = this.entities.get(targetId);
     if (!members.length || !target) return;
+    // An attack on your own side's hull is never what was meant: guard it.
+    if (target.team === members[0].team) {
+      this.commandGuard({ ids, targetId, queue });
+      return;
+    }
     const append = queue === true;
     for (let i = 0; i < members.length; i++) {
       const e = members[i];
