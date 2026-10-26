@@ -43,9 +43,9 @@ const LEGAL = {
 const OVERLAY_STATES = new Set(['title', 'setup', 'briefing', 'loading', 'paused', 'gameOver']);
 
 const DIFFICULTIES = [
-  ['easy', 'Cautious', 'Handicapped, not blind. It still builds, still raids.'],
+  ['easy', 'Cautious', 'Mines 10% less and builds 15% slower than you. It still raids.'],
   ['normal', 'Even', 'Same economy as you, same build times. A fair fight.'],
-  ['hard', 'Relentless', 'Earns 15% more and builds 15% faster than you do.'],
+  ['hard', 'Relentless', 'Same economy as you, no bonuses. It thinks faster, raids sooner and fights for the middle first.'],
 ];
 
 const QUALITIES = [
