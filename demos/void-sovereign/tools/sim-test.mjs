@@ -14,7 +14,6 @@
    4. The audio noise bank (src/audio/synth.js) builds the same buffers in
       the same order every time, from a fake audio context. */
 
-import * as THREE from '../vendor/three/build/three.module.js';
 import { World } from '../src/sim/world.js';
 import { NoiseBank } from '../src/audio/synth.js';
 import { makeRng } from '../src/core/rng.js';
@@ -45,8 +44,12 @@ function hashWorld(w) {
   return h.toString(16);
 }
 
+/* The World constructor reads `{ seed, options }`. This used to pass `ai`
+   and `pace` at the top level, where they were silently ignored: the blue
+   side had no Commander, so "an AI match ends" was the AI beating an idle
+   player (critic round 17). Both now go where the constructor reads them. */
 function makeWorld(seed, extra = {}) {
-  return new World(Object.assign({ seed, scene: new THREE.Scene(), ai: { player: true } }, extra));
+  return new World({ seed, options: Object.assign({ ai: { player: true } }, extra) });
 }
 
 const STEP = 1 / 30;
@@ -67,8 +70,10 @@ function runHashes(seed, marks, opts = {}) {
     out.push(hashWorld(w));
   }
   const size = w.entities.size;
+  const perTeam = [0, 0];
+  for (const e of w.entities.values()) if (e.alive && (e.team === 0 || e.team === 1)) perTeam[e.team]++;
   w.dispose();
-  return { out, size };
+  return { out, size, perTeam };
 }
 
 /* 1. Determinism. */
@@ -82,7 +87,9 @@ function runHashes(seed, marks, opts = {}) {
   check('same seed, same tick, same state (5 checkpoints to 5 min)', same,
     same ? a.out.map((h, i) => `t${marks[i]}:${h}`).join(' ') : `first differs at tick ${marks[firstBad]}`);
   check('a different seed gives a different state', a.out.some((h, i) => h !== c.out[i]));
-  check('the AI fielded ships on both sides', a.size > 40, `${a.size} entities at 5 min`);
+  // Each side on its own: a total alone passed while blue had no Commander.
+  check('the AI fielded ships on both sides', a.perTeam[0] > 15 && a.perTeam[1] > 15,
+    `${a.perTeam[0]} blue, ${a.perTeam[1]} amber at 5 min`);
 }
 
 /* 3. syncTransforms between ticks does not move the sim. */
