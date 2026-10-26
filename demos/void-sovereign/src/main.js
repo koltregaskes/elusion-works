@@ -820,16 +820,32 @@ async function main() {
     }
   }
 
-  /* Open on the player's mothership.
+  /* Open on the player's fleet, the mothership in it.
 
      Framed off hull *length*, not bounding radius. Radius × 7.5 put the camera
      9.2 km out — 4.8 hull lengths — and the flagship came in at 324 px of a
-     1920 px frame, one element among asteroids rather than the subject. */
+     1920 px frame, one element among asteroids rather than the subject.
+
+     Round 15 (O1 at 3/10): centred on the mothership at 2.1 hull lengths,
+     only 1 of the 16 starting hulls was on screen. The rest sat 100 to 820 px
+     off the left edge, so the first tutorial card ("take hold of a wing")
+     asked for ships the player could not see. Centred on the fleet at 3 hull
+     lengths, all 16 are in frame (seed 13634, 1280 x 720) and the mothership
+     still draws about 250 px. */
   function frameOpeningShot(world, rig) {
     const playerBase = world.entities.get(world.teams[0].baseId);
     if (playerBase && rig.focusOn) {
       const hullLength = (playerBase.def && playerBase.def.length) || playerBase.radius * 2;
-      rig.focusOn(playerBase.position, hullLength * 2.1, true);
+      const centre = playerBase.position.clone();
+      let n = 1;
+      for (const e of world.entities.values()) {
+        if (e === playerBase || !e.alive || e.team !== 0 || !e.def || e.def.role === 'resource') continue;
+        if (e.position.distanceTo(playerBase.position) > hullLength * 3) continue;
+        centre.add(e.position);
+        n++;
+      }
+      centre.multiplyScalar(1 / n);
+      rig.focusOn(centre, hullLength * 3, true);
       return;
     }
     // Seen on at least one seed: teams[0].baseId did not resolve to an entity.
