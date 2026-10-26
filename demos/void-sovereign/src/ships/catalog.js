@@ -168,8 +168,12 @@ export const SHIPS = {
     silhouette: 'M12 2 L15 6 L15 13 L19 16 L19 20 L5 20 L5 16 L9 13 L9 6 Z',
     weapons: [
       {
+        // Turreted, not fixed forward. At 45 degrees a hull that turns at
+        // 1.15 rad/s never held a fighter in its guns: round 16 found it lost
+        // at equal cost to interceptors, bombers and even scouts, so the
+        // class had no job. More damage changed nothing; arc did.
         id: 'twinAuto', type: WEAPON_TYPE.KINETIC, damage: 16, rate: 4.2, range: 1600,
-        spread: 0.02, projectileSpeed: 2400, arcDeg: 45, hardpoints: 2,
+        spread: 0.02, projectileSpeed: 2400, arcDeg: 200, hardpoints: 2,
         releaseAt: 0.45,
         preferredTargets: [ROLE.FIGHTER, ROLE.CORVETTE, ROLE.RESOURCE],
       },
