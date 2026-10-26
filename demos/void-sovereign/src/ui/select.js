@@ -132,6 +132,10 @@ const HBAR_SHOW = 0.8;
 const HBAR_HEAVY = 0.51;
 const HBAR_MAX = 48;
 const HBAR_WORST = 3;
+/* Overlap test for stacking bars: the bar is 25 px wide and 3 px tall with
+   a 3 px ring, so two bars closer than this collide on screen. */
+const HBAR_W = 27;
+const HBAR_ROW = 7;
 /* "Camera interest": within this share of the camera's focus distance of its
    focus point, with a floor so a close-in camera still covers the brawl. */
 const HBAR_INTEREST_K = 0.75;
@@ -914,7 +918,7 @@ export class WorldMarkers {
       fill.className = 'vsh-hbar__f';
       el.appendChild(fill);
       this.contactHost.appendChild(el);
-      h = { el, fill, live: false, tier: '', enemy: null, worst: false, q: -1 };
+      h = { el, fill, live: false, tier: '', enemy: null, worst: false, q: -1, z: 0 };
       this.hullBars[i] = h;
     }
     return h;
@@ -950,9 +954,34 @@ export class WorldMarkers {
     if (req.length > 1) req.sort(byFrac);
     const n = Math.min(req.length, HBAR_MAX);
     let worst = 0;
+    const placed = this._barPlaced || (this._barPlaced = []);
     for (let i = 0; i < n; i++) {
       const r = req[i];
       const h = this._hullBar(i);
+      /* Round 16 (R2): in a capital cluster the bars landed on top of each
+         other and two destroyers at 8% were hidden under healthier bars,
+         because the list is sorted worst first and later nodes paint on top.
+         The worst bar now paints on top and keeps its true position; a
+         healthier bar that would cover one already placed steps down a row,
+         so a cluster reads as a short stack instead of one smear. */
+      let y = r.sy + r.off;
+      for (let pass = 0; pass < 10; pass++) {
+        let hit = false;
+        for (let k = 0; k < i; k++) {
+          if (Math.abs(placed[2 * k] - r.sx) < HBAR_W && Math.abs(placed[2 * k + 1] - y) < HBAR_ROW) {
+            hit = true;
+            break;
+          }
+        }
+        if (!hit) break;
+        y += HBAR_ROW;
+      }
+      placed[2 * i] = r.sx;
+      placed[2 * i + 1] = y;
+      if (h.z !== HBAR_MAX - i) {
+        h.z = HBAR_MAX - i;
+        h.el.style.zIndex = String(h.z);
+      }
       const crit = r.frac <= CONTACT_DYING;
       const tier = crit ? 'crit' : r.frac < HBAR_HEAVY ? 'heavy' : 'hurt';
       const isWorst = r.frac < HBAR_HEAVY && worst < HBAR_WORST;
@@ -975,7 +1004,7 @@ export class WorldMarkers {
         h.el.classList.add('is-live');
       }
       h.el.style.transform =
-        `translate3d(${r.sx.toFixed(1)}px,${(r.sy + r.off).toFixed(1)}px,0)`;
+        `translate3d(${r.sx.toFixed(1)}px,${y.toFixed(1)}px,0)`;
       /* Quantised to the pixel the fill can show, so a hull bleeding slowly
          does not rewrite the fill every frame. */
       const q = Math.max(0.04, Math.round(r.frac * 40) / 40);
