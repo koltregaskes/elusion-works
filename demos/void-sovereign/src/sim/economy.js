@@ -39,11 +39,18 @@ export const CONTROL = {
 
 /* Upkeep. Company of Heroes' brake, and the reason it is the one the
    literature keeps naming: it is passive, continuous and has no threshold to
-   fall off. A lean fleet earns full rate; a maxed one earns about two thirds.
-   Nothing is ever taken away, so it never reads as a punishment for winning —
-   it just means the fiftieth interceptor is worth less than the fifth. */
-const UPKEEP_FREE_POP = 50;
-const UPKEEP_K = 0.0045;
+   fall off. A lean fleet earns full rate; 55 population earns about half and
+   77 about two fifths. Nothing is ever taken away, so it never reads as a
+   punishment for winning; it just means the fiftieth interceptor is worth
+   less than the fifth.
+
+   It is also what makes the economy attackable (rubric E1). At the old rate
+   (free to 50, then 0.0045) a fleet at its cap earned twice what it could
+   spend, banked 6k to 20k RU, and shrugged off losing every collector. Now
+   income at the cap is roughly what replacing losses costs, so the bank
+   stays thin and a raid shows in the build rate. */
+const UPKEEP_FREE_POP = 25;
+const UPKEEP_K = 0.03;
 
 /* Anything below this much damage-per-second against a hauler is a picket, not
    a raid. A collector that downs tools every time an enemy scout drifts past
@@ -522,18 +529,30 @@ function launch(world, producer, classId, team) {
   return first;
 }
 
+/** 0 for the strike-craft slip, 1 for the line slip. */
+export function laneOf(classId) {
+  const r = SHIPS[classId] && SHIPS[classId].role;
+  return r === ROLE.FIGHTER || r === ROLE.CORVETTE || r === ROLE.RESOURCE ? 0 : 1;
+}
+
 function updateProduction(world, dt) {
   for (let ti = 0; ti < world.teams.length; ti++) {
     const t = world.teams[ti];
     const q = t.queue;
     if (q.length === 0) continue;
 
-    // One item in progress per producer.
+    /* One item in progress per producer per lane: strike craft on one slip,
+       frigates and capitals on the other, the way Homeworld's mothership
+       builds a fighter wing while a frigate is on the stocks. One slip per
+       yard made throughput, not money, the ceiling: round 15 and 16 found the
+       AI banking 6k to 20k RU while a 165 s carrier blocked everything behind
+       it, so killing every collector cut its building by 6%. */
     const busy = world._busyScratch;
     busy.clear();
     for (let i = 0; i < q.length; i++) {
       const item = q[i];
-      if (busy.has(item.producerId)) continue;
+      const slip = item.producerId * 2 + laneOf(item.classId);
+      if (busy.has(slip)) continue;
       const p = world.entities.get(item.producerId);
       if (!p || !p.alive) {
         // Producer died mid-build: refund and drop.
@@ -542,13 +561,13 @@ function updateProduction(world, dt) {
         q.splice(i--, 1);
         continue;
       }
-      busy.add(item.producerId);
+      busy.add(slip);
       item.remaining -= dt * (t.buildRate || 1);
       if (item.remaining <= 0) {
         t.popQueued = Math.max(0, t.popQueued - item.pop);
         launch(world, p, item.classId, ti);
         q.splice(i--, 1);
-        busy.delete(p.id);
+        busy.delete(slip);
       }
     }
   }

@@ -1,6 +1,6 @@
 import * as THREE from '../../vendor/three/build/three.module.js';
 import { SHIPS, ROLE, CLASS_IDS } from '../ships/catalog.js';
-import { canBuild, enqueueBuild, cancelBuild, refreshIncome, CONTROL } from './economy.js';
+import { canBuild, enqueueBuild, cancelBuild, refreshIncome, CONTROL, laneOf } from './economy.js';
 import { dpsAgainst, STANCE } from './combat.js';
 import { FORMATION } from './formations.js';
 
@@ -449,27 +449,37 @@ export class Commander {
       this.linePop = SHIPS[line].popCost || 0;
     }
 
+    /* Every yard has two slips (economy.js): strike craft on one, frigates
+       and capitals on the other. Each is kept two deep on its own, so a 165 s
+       carrier on the line slip no longer leaves the strike slip idle while
+       the treasury swells. The strike slip still spends only what is above
+       the price of the next line hull. */
     const lineQueued = this._queuedPop(ROLE.FRIGATE) + this._queuedPop(ROLE.CAPITAL) > 0;
     for (const id of t.producers) {
       const p = world.entities.get(id);
       if (!p || !p.alive) continue;
-      let load = 0;
-      for (let i = 0; i < t.queue.length; i++) if (t.queue[i].producerId === id) load++;
-      // The line may queue one deep behind whatever is already on the slip.
-      const lineSlot = p.classId === 'mothership' && line && !lineQueued;
-      if (load >= (lineSlot ? 3 : 2)) continue;
-      if (p.classId === 'mothership' && line) {
-        if (canBuild(world, this.team, line, id)) {
+      const load = [0, 0];
+      for (let i = 0; i < t.queue.length; i++) {
+        const it = t.queue[i];
+        if (it.producerId === id) load[laneOf(it.classId)]++;
+      }
+      const yard = p.classId === 'mothership';
+      if (yard && line) {
+        // The line may queue one deep behind whatever is already on the slip.
+        if (load[1] < (lineQueued ? 2 : 3) && canBuild(world, this.team, line, id)) {
           enqueueBuild(world, this.team, line, id);
+          load[1]++;
           this.lineFund = 0;
           this.linePop = 0;
         }
-        // Saving for it, or waiting for berths: either way the yard waits
-        // for the line rather than filling the slot with another fighter wing.
-        if ((this.lineFund > 0 || load > 0) && (this.own.carrier || 0) > 0) continue;
+      } else if (yard && load[1] < 2) {
+        const pick = this._chooseClass(p.classId, 1);
+        if (pick) enqueueBuild(world, this.team, pick, id);
       }
-      const pick = this._chooseClass(p.classId);
-      if (pick) enqueueBuild(world, this.team, pick, id);
+      if (load[0] < 2) {
+        const pick = this._chooseClass(p.classId, 0);
+        if (pick) enqueueBuild(world, this.team, pick, id);
+      }
     }
   }
 
@@ -553,7 +563,7 @@ export class Commander {
    * credits. Population is the real late-game constraint, and it is what makes
    * a destroyer the correct purchase once the yard can afford one.
    */
-  _chooseClass(producerClassId) {
+  _chooseClass(producerClassId, lane) {
     const world = this.world;
     const t = world.teams[this.team];
     const now = this.time;
@@ -567,10 +577,12 @@ export class Commander {
       if (!def.buildableBy.length) continue;
       if (def.role === ROLE.RESOURCE || id === 'carrier') continue;
       if (producerClassId && !def.buildableBy.includes(producerClassId)) continue;
+      if (lane !== undefined && laneOf(id) !== lane) continue;
       const gate = (TECH_GATE[id] === undefined ? 0 : TECH_GATE[id]) * this.cfg.techScale;
       if (now < gate) continue;
-      // The carriers do not spend the money the mothership is saving.
-      const yard = producerClassId === 'mothership';
+      // Strike craft do not spend the money saved for the next line hull,
+      // on any yard. The line slip itself spends it.
+      const yard = producerClassId === 'mothership' && lane !== 0;
       const fund = yard ? 0 : (this.lineFund || 0);
       if (t.credits - fund < def.cost) continue;
       if (!yard && this.linePop &&
