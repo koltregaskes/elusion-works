@@ -432,8 +432,10 @@ export const SHIPS = {
     accel: 90,
     turnRate: 0.8,
     rollRate: 0.6,
-    cost: 150,
-    buildTime: 18,
+    // Was 150 RU and 18 s: it paid for itself in under a minute, so a raid
+    // that killed every collector was rebuilt before the enemy felt it.
+    cost: 400,
+    buildTime: 40,
     popCost: 1,
     sensorRange: 4000,
     squadSize: 1,
