@@ -192,6 +192,9 @@ export class Commander {
     for (let i = 0; i < COMBAT_ROLES.length; i++) this.intel[COMBAT_ROLES[i]] = 0;
     this.intel[ROLE.RESOURCE] = 0;
     this.intel[ROLE.STRUCTURE] = 0;
+    // Bombers share the fighter role with interceptors, but they are the
+    // threat to capitals and the Mothership, so they are counted apart.
+    this.intel.bomber = 0;
 
     this.own = {};
     this.strike = [];
@@ -306,6 +309,7 @@ export class Commander {
     for (let i = 0; i < COMBAT_ROLES.length; i++) seen[COMBAT_ROLES[i]] = 0;
     seen[ROLE.RESOURCE] = 0;
     seen[ROLE.STRUCTURE] = 0;
+    seen.bomber = 0;
 
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
@@ -315,6 +319,7 @@ export class Commander {
         const r = src.def.sensorRange || 4000;
         if (src.position.distanceToSquared(e.position) <= r * r) {
           seen[e.role] = (seen[e.role] || 0) + 1;
+          if (e.classId === 'bomber') seen.bomber++;
           break;
         }
       }
@@ -509,6 +514,14 @@ export class Commander {
     const wantCruiser = now < cGate ? 0 : 1 + Math.floor((now - cGate) / 480);
     const wantDestroyer = now < dGate ? 0 : Math.min(3, 1 + Math.floor((now - dGate) / 240));
     const wantFrigate = Math.min(4, 2 + Math.floor((now - fGate) / 150));
+    /* Answer a bomber fleet (critic round 17, E4): bomber-only spam beat Even
+       9 times in 12, because the line kept laying down the cruisers and
+       destroyers bombers are built to kill. Against a bomber-heavy enemy the
+       flak screen comes first and grows. */
+    const bombers = this._bomberShare();
+    if (bombers > 0.3 && have('assaultFrigate') < Math.min(6, wantFrigate + Math.round(bombers * 4))) {
+      return 'assaultFrigate';
+    }
     if (have('cruiser') < Math.min(2, wantCruiser)) return 'cruiser';
     if (have('destroyer') < wantDestroyer) return 'destroyer';
     const frigates = have('assaultFrigate') + have('ionFrigate');
@@ -517,6 +530,13 @@ export class Commander {
       return have('ionFrigate') < have('assaultFrigate') ? 'ionFrigate' : 'assaultFrigate';
     }
     return null;
+  }
+
+  /** Share of the enemy warships we have seen that are bombers, 0 to 1. */
+  _bomberShare() {
+    let total = 0;
+    for (let r = 0; r < COMBAT_ROLES.length; r++) total += this.intel[COMBAT_ROLES[r]] || 0;
+    return total < 4 ? 0 : Math.min(1, (this.intel.bomber || 0) / total);
   }
 
   _queuedPop(role) {
@@ -611,6 +631,10 @@ export class Commander {
 
       // Diversity: the marginal value of the twentieth interceptor is low.
       score /= 1 + have * 0.14;
+
+      // Interceptors and turreted corvettes are the strike-slip answer to
+      // bombers, which the role shares above cannot tell from interceptors.
+      if (id === 'interceptor' || id === 'corvette') score *= 1 + 1.5 * this._bomberShare();
 
       // Scouts are intel, not fleet — buy one wing and stop.
       if (id === 'scout') score = have < 3 ? 0.55 : 0;
