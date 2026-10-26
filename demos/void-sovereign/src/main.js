@@ -515,6 +515,9 @@ async function main() {
       const difficulty = ['easy', 'normal', 'hard'].includes(setup.difficulty)
         ? setup.difficulty
         : 'normal';
+      const personality = ['raider', 'warden', 'swarm'].includes(setup.personality)
+        ? setup.personality
+        : undefined;
       const key = `${seed}|${quality}`;
       const deep = A.key !== key;
       reuse = !deep;
@@ -636,7 +639,7 @@ async function main() {
           fx: M.fx,
           ships: A.ships,
           environment: A.environment,
-          options: { difficulty, pace: PACE },
+          options: { difficulty, personality, pace: PACE },
         });
       }, 'fleets');
 

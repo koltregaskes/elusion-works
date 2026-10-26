@@ -76,8 +76,9 @@ const DIFFICULTY = {
 export const DIFFICULTY_COPY = {
   easy: {
     name: 'Cadet',
-    line: 'Thinks slowly, masses far too long, and mines a handicapped 90% ' +
-      'income at 85% build speed. The handicap is yours, not its.',
+    line: 'Thinks slowly and commits its main fleet late, though it still ' +
+      'raids early. Mines a handicapped 90% income at 85% build speed. The ' +
+      'handicap is yours, not its.',
   },
   normal: {
     name: 'Line Officer',
@@ -91,6 +92,42 @@ export const DIFFICULTY_COPY = {
       'sooner and goes for the contested band first.',
   },
 };
+
+/* Personalities (rubric A3). Difficulty says how well the AI plays; a
+   personality says how it likes to play. Critic round 17 found Even and
+   Relentless opened with the same first builds on every seed and landed
+   their first warship at 175 s every time. Each personality scales a few
+   difficulty knobs and biases what it buys, so the same seed plays
+   differently against each. `random` picks one from the match seed.
+   `knobs` multiply the difficulty values; `bias` multiplies a class's
+   build score; `collectors` is added to the miner target. */
+export const PERSONALITY = {
+  raider: {
+    name: 'Raider',
+    line: 'Hits your collectors early and often with bombers and corvettes, ' +
+      'and leaves the middle until later.',
+    knobs: { harassAt: 0.7, contestAt: 1.15 },
+    collectors: -1,
+    bias: { bomber: 1.45, corvette: 1.35, interceptor: 1.1 },
+  },
+  warden: {
+    name: 'Warden',
+    line: 'Guards its own yards, raids rarely, and brings capital ships to ' +
+      'the field sooner than anyone else.',
+    knobs: { harassAt: 1.9, defenceShare: 1.6, commitScale: 1.25, techScale: 0.85 },
+    collectors: 0,
+    bias: { assaultFrigate: 1.3, ionFrigate: 1.3, missileCorvette: 1.2 },
+  },
+  swarm: {
+    name: 'Swarm',
+    line: 'Floods the contested middle early with massed strike craft and ' +
+      'fights to hold it.',
+    knobs: { contestAt: 0.85, holdShare: 1.2 },
+    collectors: 1,
+    bias: { interceptor: 1.3, corvette: 1.25, missileCorvette: 1.3 },
+  },
+};
+const PERSONALITY_IDS = Object.keys(PERSONALITY);
 
 /* Earliest sensible time (seconds) for each class. Stops the opening from
    being a coin-flip and gives the match a shape. */
@@ -177,8 +214,18 @@ export class Commander {
     this.world = world;
     this.team = team;
     this.difficulty = DIFFICULTY[opts.difficulty] ? opts.difficulty : 'normal';
-    this.cfg = DIFFICULTY[this.difficulty];
     this.rng = world.rngAi.fork(team + 1);
+    // Picked from its own fork so the choice does not shift the AI's other
+    // random draws.
+    this.personality = PERSONALITY[opts.personality]
+      ? opts.personality
+      : PERSONALITY_IDS[Math.floor(world.rngAi.fork(team + 101).next() * PERSONALITY_IDS.length)];
+    const persona = PERSONALITY[this.personality];
+    const cfg = Object.assign({}, DIFFICULTY[this.difficulty]);
+    for (const k in persona.knobs) cfg[k] *= persona.knobs[k];
+    cfg.collectors = Math.max(4, cfg.collectors + persona.collectors);
+    this.cfg = cfg;
+    this.bias = persona.bias;
 
     const t = world.teams[team];
     // The handicap is the *base*; upkeep and field control multiply it, and
@@ -635,6 +682,7 @@ export class Commander {
       // Interceptors and turreted corvettes are the strike-slip answer to
       // bombers, which the role shares above cannot tell from interceptors.
       if (id === 'interceptor' || id === 'corvette') score *= 1 + 1.5 * this._bomberShare();
+      if (this.bias[id]) score *= this.bias[id];
 
       // Scouts are intel, not fleet — buy one wing and stop.
       if (id === 'scout') score = have < 3 ? 0.55 : 0;

@@ -48,6 +48,15 @@ const DIFFICULTIES = [
   ['hard', 'Relentless', 'Same economy as you, no bonuses. It thinks faster, raids sooner and fights for the middle first.'],
 ];
 
+/* Who the opponent is, apart from how well it plays (rubric A3). The lines
+   match PERSONALITY in sim/ai.js; Any lets the seed pick. */
+const COMMANDERS = [
+  ['random', 'Any', 'The universe picks one of the three below from its seed.'],
+  ['raider', 'Raider', 'Hits your collectors early and often with bombers and corvettes, and leaves the middle until later.'],
+  ['warden', 'Warden', 'Guards its own yards, raids rarely, and brings capital ships to the field sooner than anyone else.'],
+  ['swarm', 'Swarm', 'Floods the contested middle early with massed strike craft and fights to hold it.'],
+];
+
 const QUALITIES = [
   ['low', 'Low'],
   ['medium', 'Medium'],
@@ -340,6 +349,7 @@ export class Shell {
     this.setup = {
       seed: defaults.seed === undefined ? rollSeed() : String(defaults.seed),
       difficulty: defaults.difficulty || 'normal',
+      personality: defaults.personality || 'random',
       quality: defaults.quality || 'high',
     };
 
@@ -599,7 +609,7 @@ export class Shell {
       'New skirmish · step 1 of 2',
       'Choose your universe',
       'Everything in the match — hulls, nebula, asteroid fields, the enemy commander’s '
-        + 'opening — is generated from these three settings.',
+        + 'opening — is generated from these settings.',
     );
 
     const fields = el('div', 'vs-fields');
@@ -651,6 +661,19 @@ export class Shell {
     this._diffHint = el('p', 'vs-hint', '');
     this._diffGroup.field.appendChild(this._diffHint);
 
+    // --- commander
+    this._persGroup = this._choice(
+      'Commander',
+      COMMANDERS.map(([v, l]) => [v, l]),
+      this.setup.personality,
+      (v) => {
+        this.setup.personality = v;
+        this._paintPersHint();
+      },
+    );
+    this._persHint = el('p', 'vs-hint', '');
+    this._persGroup.field.appendChild(this._persHint);
+
     // --- detail
     this._qualGroup = this._choice(
       'Detail',
@@ -664,7 +687,7 @@ export class Shell {
       el('p', 'vs-hint', 'Higher tiers cost load time and frame rate, not gameplay.'),
     );
 
-    fields.append(seedField, this._diffGroup.field, this._qualGroup.field);
+    fields.append(seedField, this._diffGroup.field, this._persGroup.field, this._qualGroup.field);
     inner.appendChild(fields);
     this._paintSeedField();
 
@@ -677,6 +700,7 @@ export class Shell {
     actions.append(back, next);
     inner.appendChild(actions);
     this._paintDiffHint();
+    this._paintPersHint();
   }
 
   _choice(label, options, current, onPick) {
@@ -727,6 +751,11 @@ export class Shell {
       b.setAttribute('aria-checked', String(on));
       b.tabIndex = on ? 0 : -1;
     }
+  }
+
+  _paintPersHint() {
+    const row = COMMANDERS.find(([v]) => v === this.setup.personality);
+    this._persHint.textContent = row ? row[2] : '';
   }
 
   _paintDiffHint() {
@@ -1339,8 +1368,10 @@ export class Shell {
     const q = QUALITIES.find(([v]) => v === this.setup.quality);
     const seed = this.setup.seed || 'random';
     this._briefSeed.textContent = seed;
+    const c = COMMANDERS.find(([v]) => v === this.setup.personality);
+    const who = c && c[0] !== 'random' ? ` ${c[1]}` : '';
     this._briefOpp.textContent =
-      `${d ? d[1] : this.setup.difficulty} opponent · ${q ? q[1] : this.setup.quality} detail`;
+      `${d ? d[1] : this.setup.difficulty}${who} opponent · ${q ? q[1] : this.setup.quality} detail`;
     this._briefSummary.textContent = 'Every asset in the match is built when you press this.';
     paintSigil(this._briefSigil, seed);
   }
@@ -1376,7 +1407,12 @@ export class Shell {
 
     try {
       const result = await this.game.start(
-        { seed: this.setup.seed, difficulty: this.setup.difficulty, quality: this.setup.quality },
+        {
+          seed: this.setup.seed,
+          difficulty: this.setup.difficulty,
+          personality: this.setup.personality,
+          quality: this.setup.quality,
+        },
         (v, label, stage) => this.setProgress(v, label, stage),
       );
       this.setProgress(1, 'Ready.');

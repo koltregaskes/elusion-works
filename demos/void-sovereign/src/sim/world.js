@@ -485,7 +485,10 @@ export class World {
     const ai = options.ai || {};
     const baseDifficulty = ai.difficulty || options.difficulty || 'normal';
     if (ai.enemy !== false) {
-      this._commanders.push(new Commander(this, 1, { difficulty: baseDifficulty }));
+      this._commanders.push(new Commander(this, 1, {
+        difficulty: baseDifficulty,
+        personality: ai.personality || options.personality,
+      }));
     }
     if (ai.player === true) {
       this._commanders.push(new Commander(this, 0, {
