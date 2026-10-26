@@ -1156,6 +1156,7 @@ export class World {
     this.issueMove(members, point, formation, false, {
       queue: queue === true,
       mode: mode === 'attackMove' ? 'attackMove' : 'move',
+      together: true,
     });
   }
 
@@ -1165,6 +1166,7 @@ export class World {
     this.issueMove(members, point, formation, false, {
       queue: queue === true,
       mode: 'attackMove',
+      together: true,
     });
   }
 
@@ -1203,7 +1205,9 @@ export class World {
         e.forcedTargetId = -1;
         e.station = dest.clone();
       }
-      e.orderQueue.push({ type: mode, point: dest, formation: shape });
+      e.orderQueue.push({
+        type: mode, point: dest, formation: shape, group: o.together ? gid : 0, speed: 1,
+      });
       e.harvestOrder = false;
       if (!keepStance && e.stance === STANCE.PASSIVE && e.role !== ROLE.RESOURCE &&
           e.role !== ROLE.STRUCTURE) {
@@ -1387,7 +1391,42 @@ export class World {
     return (e.radius + 60) / Math.max(0.2, formationTightness(e.role));
   }
 
+  /* Arrive together (rubric M2). A player's order to a mixed fleet used to
+     send every hull at its own top speed: round 16 timed 220 hulls landing
+     over 41 to 311 s, interceptors four minutes ahead of the carrier. Twice a
+     second, each hull on a shared move gets the share of its top speed that
+     lands it with the slowest member still travelling. Re-measuring as they
+     fly corrects for turns and acceleration that one estimate at the start
+     gets wrong. A hull fighting under attack-move does not hold the rest
+     back. The AI's orders keep their own pacing. */
+  _paceGroups(dt) {
+    this._paceClock = (this._paceClock || 0) + dt;
+    if (this._paceClock < 0.5) return;
+    this._paceClock = 0;
+    const slowest = this._paceEta || (this._paceEta = new Map());
+    slowest.clear();
+    const list = this.dense;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      const o = e.alive && e.orderQueue[0];
+      if (!o || !o.group || (o.type !== 'move' && o.type !== 'attackMove')) continue;
+      if (o.type === 'attackMove' && e.combatHelm === true && e.engaged) continue;
+      const eta = groupEta(e, o.point);
+      if (eta > (slowest.get(o.group) || 0)) slowest.set(o.group, eta);
+    }
+    if (!slowest.size) return;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      const o = e.alive && e.orderQueue[0];
+      if (!o || !o.group) continue;
+      const worst = slowest.get(o.group);
+      if (!worst) continue;
+      o.speed = Math.min(1, Math.max(MIN_GROUP_SPEED, groupEta(e, o.point) / worst));
+    }
+  }
+
   _updateOrders(dt) {
+    this._paceGroups(dt);
     const list = this.dense;
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
@@ -1495,7 +1534,7 @@ export class World {
           // The nav dead-band covers most of the slack so a ship that is there
           // cuts thrust instead of hunting the exact metre, sailing over it
           // and turning back.
-          setNavArrive(e, point, 1, slack * 0.55);
+          setNavArrive(e, point, o.speed || 1, slack * 0.55);
           setFacePoint(e, null);
         }
       }
@@ -1918,6 +1957,16 @@ export class World {
 /* ------------------------------------------------------------------ helpers */
 
 const EMPTY_OPTS = {};
+
+/* The slowest share a hull is throttled to so its group lands together. */
+const MIN_GROUP_SPEED = 0.15;
+
+/** Seconds a hull needs to reach `point` at full speed, counting the run-up
+    to cruise speed. Only the ratio between members matters. */
+function groupEta(e, point) {
+  const v = Math.max(1, e.maxSpeed);
+  return e.position.distanceTo(point) / v + v / Math.max(1, e.maxAccel);
+}
 
 /** Where a ship will be standing once its current orders are exhausted. */
 function lastWaypoint(e) {
