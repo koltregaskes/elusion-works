@@ -1,6 +1,6 @@
 import * as THREE from '../../vendor/three/build/three.module.js';
 import { bus } from '../core/events.js';
-import { ROLE, damageAffinity, VETERANCY, veterancyTier } from '../ships/catalog.js';
+import { ROLE, damageAffinity, armourPierce, VETERANCY, veterancyTier } from '../ships/catalog.js';
 import { formationEffect } from './formations.js';
 import {
   setNavArrive,
@@ -504,7 +504,7 @@ export function applyDamage(world, target, raw, weaponType, shooter, fromX, from
   }
 
   if (amount > 0) {
-    const through = amount * (1 - (target.def.armour || 0));
+    const through = amount * (1 - (target.def.armour || 0) * (1 - armourPierce(weaponType)));
     target.hull -= through;
     dealt += through;
     if (emit) {
