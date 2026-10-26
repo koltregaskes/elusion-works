@@ -1580,7 +1580,12 @@ export class InputController {
       try {
         this._toNdc(clientX, clientY, _ndc);
         const hit = world.raycastEntities(this.rig.rayFromNdc(_ndc), opts.team);
-        if (hit) best = hit;
+        /* The ray test only filters by `team`, so it must honour `notTeam`
+           here. Without this, a right-click that found no hostile fell back
+           to whatever hull the ray met first, and from the opening camera
+           that was your own mothership: the whole fleet was ordered to
+           attack it (round 15, O1). */
+        if (hit && !(opts.notTeam !== undefined && hit.team === opts.notTeam)) best = hit;
       } catch (err) {
         /* Optional API. */
       }
