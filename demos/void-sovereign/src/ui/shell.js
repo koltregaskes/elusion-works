@@ -962,11 +962,16 @@ export class Shell {
     const again = button('vs-btn vs-btn--primary', 'Play again');
     again.dataset.act = 'over:again';
     again.dataset.autofocus = 'true';
+    /* Play again replays the same seed. Critic round 17 (T4): a different
+       match took about four clicks through setup. New universe is one: a
+       fresh seed, the same opponent and settings. */
+    const fresh = button('vs-btn vs-btn--ghost', 'New universe');
+    fresh.dataset.act = 'over:new';
     const change = button('vs-btn vs-btn--ghost', 'Change setup');
     change.dataset.act = 'over:setup';
     const menu = button('vs-btn vs-btn--ghost', 'Main menu');
     menu.dataset.act = 'over:menu';
-    actions.append(again, change, menu);
+    actions.append(again, fresh, change, menu);
     inner.appendChild(actions);
   }
 
@@ -1633,6 +1638,14 @@ export class Shell {
         this.go('title');
         break;
       case 'over:again':
+        this._launch();
+        break;
+      case 'over:new':
+        this.setup.seed = rollSeed();
+        if (this._seedInput) {
+          this._seedInput.value = this.setup.seed;
+          this._paintSeedField();
+        }
         this._launch();
         break;
       case 'over:setup':
