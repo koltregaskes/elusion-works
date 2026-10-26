@@ -633,6 +633,13 @@ export class InputController {
         this._selSet = new Set(this._selection);
       }),
       bus.on('ui:sensorsToggle', (p) => { this._sensorsOpen = !!(p && p.open); }),
+      /* The HUD speed buttons set the speed too. Without this, Space after a
+         click on x2 paused and then resumed at x1, because the pause key still
+         believed the speed it set last. */
+      bus.on('ui:speed', (p) => {
+        const i = p ? SPEED_STEPS.indexOf(p.scale) : -1;
+        if (i >= 0) this._speedIndex = i;
+      }),
       /* `ui:audioMute` carries the state to move to, not a toggle, so the one
          module that owns the keyboard has to track what the mixer is doing —
          whether the player last used M, the mute button or a slider. */
@@ -733,6 +740,7 @@ export class InputController {
       wheel: (e) => this._onWheel(e),
       context: (e) => { if (e.target === c) e.preventDefault(); },
       aux: (e) => { if (e.target === c) e.preventDefault(); },
+      click: (e) => this._onClickAnywhere(e),
       keyDown: (e) => this._onKeyDown(e),
       keyUp: (e) => this._keys.delete(e.code),
       blur: () => this._onBlur(),
@@ -749,6 +757,7 @@ export class InputController {
     window.addEventListener('pointermove', h.move, { passive: true });
     window.addEventListener('pointerup', h.up, { passive: true });
     window.addEventListener('pointercancel', h.cancel, { passive: true });
+    window.addEventListener('click', h.click);
     window.addEventListener('keydown', h.keyDown);
     window.addEventListener('keyup', h.keyUp, { passive: true });
     window.addEventListener('blur', h.blur, { passive: true });
@@ -1177,6 +1186,22 @@ export class InputController {
 
       default: return false;
     }
+  }
+
+  /** A mouse click on a HUD button leaves focus on that button, and from then
+      on Space and Tab belonged to it: round 16 clicked the speed button twice
+      and the next Space set x4, then muted the sound. Hand focus back to the
+      view after a pointer click so the game keys stay game keys. A keyboard
+      activation (detail 0) keeps its focus, so Tab navigation still works.
+      Focus inside the open controls card stays there, because the card is
+      where the player is working. */
+  _onClickAnywhere(e) {
+    if (!e.detail || !this._gameKeysLive()) return;
+    const a = document.activeElement;
+    if (!(a instanceof Element) || a === this.canvas || a === document.body) return;
+    if (this._isTypingTarget(a) || a.closest('.vsh-help.is-open')) return;
+    if (!a.closest('button, [role="button"], [role="radio"]')) return;
+    this._focusView();
   }
 
   /** Put focus on the view, so Tab is unambiguously a game key from here. */
@@ -2025,6 +2050,7 @@ export class InputController {
     window.removeEventListener('pointermove', h.move);
     window.removeEventListener('pointerup', h.up);
     window.removeEventListener('pointercancel', h.cancel);
+    window.removeEventListener('click', h.click);
     window.removeEventListener('keydown', h.keyDown);
     window.removeEventListener('keyup', h.keyUp);
     window.removeEventListener('blur', h.blur);

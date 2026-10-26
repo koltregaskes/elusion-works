@@ -411,6 +411,11 @@ body.vs-body {
   font-size: 0.95rem;
 }
 
+/* Restart match, armed by its first press and waiting for the second. */
+.vs-menu__b.is-armed {
+  color: var(--vs-amber);
+}
+
 .vs-menu__b--exit {
   color: rgba(223, 232, 242, 0.32);
   font-size: 0.72rem;
