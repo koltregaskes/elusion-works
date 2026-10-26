@@ -125,7 +125,7 @@ export const SHIPS = {
     silhouette: 'M12 3 L16 8 L21 10 L21 14 L14 13 L12 20 L10 13 L3 14 L3 10 L8 8 Z',
     weapons: [
       {
-        id: 'plasmaLance', type: WEAPON_TYPE.MISSILE, damage: 96, rate: 0.8, range: 1900,
+        id: 'plasmaLance', type: WEAPON_TYPE.MISSILE, damage: 150, rate: 0.8, range: 1900,
         spread: 0.01, projectileSpeed: 900, arcDeg: 14, hardpoints: 2,
         /* Stand-off ordnance. `releaseAt` is the fraction of reach at which the
            run breaks off: a torpedo bomber launches and turns, it does not fly
@@ -260,7 +260,7 @@ export const SHIPS = {
     role: ROLE.FRIGATE,
     family: FAMILY.BULWARK,
     length: 140,
-    hull: 3400,
+    hull: 4800,
     armour: 0.30,
     shield: 300,
     speed: 165,
@@ -281,9 +281,11 @@ export const SHIPS = {
          wing was becoming the only one. At 220 damage this gun delivered 0.14
          raw dps per credit against a capital against the bomber's 1.66 — an
          order of magnitude adrift of the ship whose entire description is
-         "cuts capitals in half". */
+         "cuts capitals in half". Round 15: at 300 it still lost every equal-cost
+         pairing, including the assault frigates and destroyers it is listed
+         as countering; 700 with armour piercing makes the listed counters true. */
       {
-        id: 'ionLance', type: WEAPON_TYPE.ION, damage: 300, rate: 0.32, range: 4800,
+        id: 'ionLance', type: WEAPON_TYPE.ION, damage: 700, rate: 0.32, range: 4800,
         spread: 0.0, projectileSpeed: 0, arcDeg: 18, hardpoints: 1, beamDuration: 1.6,
         /* Fights from the edge of its reach. 4,200 m against a destroyer's
            4,000 was not a range advantage, it was a rounding error. */
@@ -560,6 +562,20 @@ export function damageAffinity(weaponType, targetRole) {
   if (!row) return 1;
   const v = row[targetRole];
   return v === undefined ? 1 : v;
+}
+
+/* How much of a target's armour each weapon type ignores. Armour is a flat
+   share of every hit and it grows with hull size (a cruiser shrugs off 62%),
+   so without this the anti-capital weapons' affinity was spent on armour
+   before it landed: a torpedo did 1.3 x 0.38 = 0.49 of its damage to a
+   cruiser, a plain cannon 0.38. Round 15 measured the result: at equal cost
+   the bigger hull won every pairing. Ion and missile ordnance are the
+   armour-breakers; flak and kinetics take armour at full value. */
+const PIERCE = { ion: 0.6, missile: 0.5, beam: 0.3 };
+
+/** Share of armour a weapon type ignores (0 = all of it applies). */
+export function armourPierce(weaponType) {
+  return PIERCE[weaponType] || 0;
 }
 
 /** The whole affinity table, for a UI that wants to show the matchup grid. */
