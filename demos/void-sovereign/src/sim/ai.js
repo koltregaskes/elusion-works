@@ -46,7 +46,10 @@ import { FORMATION } from './formations.js';
    works more seams, raids sooner, reaches for the contested band earlier and
    never makes a random mistake.
 
-   Verified head-to-head after the change: see the report. */
+   It mines with the same eight collectors as normal. Round 15 measured hard
+   at eleven: the extra three ate its opening budget and it beat normal only
+   10 times in 24 (12 seeds, both sides). At eight it wins 21 in 24, and at
+   seven or nine it wins fewer. */
 const DIFFICULTY = {
   easy: {
     think: 2.6, commitScale: 1.75, collectors: 5, harassAt: 200,
@@ -61,7 +64,7 @@ const DIFFICULTY = {
     holdShare: 0.18, contestAt: 170,
   },
   hard: {
-    think: 0.65, commitScale: 0.72, collectors: 11, harassAt: 45,
+    think: 0.65, commitScale: 0.72, collectors: 8, harassAt: 45,
     income: 1.0, buildRate: 1.0, retreatAt: 0.26, techScale: 0.8, sloppiness: 0.0,
     dominance: 0.88, siegeAt: 560, yards: 6, defenceShare: 0.18, reserve: 1.5,
     holdShare: 0.26, contestAt: 110,
@@ -84,8 +87,8 @@ export const DIFFICULTY_COPY = {
   hard: {
     name: 'Fleet Command',
     line: 'Plays the same economy you do. No income bonus, no build bonus. ' +
-      'It simply thinks twice as often, commits on a thinner margin, works ' +
-      'more seams, raids sooner and goes for the contested band first.',
+      'It simply thinks twice as often, commits on a thinner margin, raids ' +
+      'sooner and goes for the contested band first.',
   },
 };
 
