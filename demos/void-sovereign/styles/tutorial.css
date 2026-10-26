@@ -29,6 +29,12 @@
   color: var(--vst-ink);
 }
 
+/* The controls card (H) is open: step aside rather than cover its left
+   column. hud.js sets the class. */
+.vs-help-open .vst-root {
+  visibility: hidden;
+}
+
 .vst-root [hidden] {
   display: none !important;
 }

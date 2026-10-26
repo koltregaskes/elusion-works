@@ -1500,6 +1500,12 @@ export class HUD {
     this._helpOpen = open;
     this.help.classList.toggle('is-open', open);
     this.help.setAttribute('aria-hidden', String(!open));
+    /* The tutorial card is its own page-level layer and sat over the left
+       column of this card (critic round 17, C4). It steps aside while the
+       controls card is up; styles/tutorial.css reads this class. */
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.classList.toggle('vs-help-open', open);
+    }
     if (open) this.help.removeAttribute('inert');
     else this.help.setAttribute('inert', '');
     this._syncPalette();
