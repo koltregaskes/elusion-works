@@ -258,10 +258,14 @@
   width: 25px;
   height: 3px;
   color: var(--vsh-cyan);
-  /* A visible empty track (critic round 14): near-black vanished on space,
-     so a short fill read as a short bar rather than a part-empty one. */
-  background: rgba(196, 214, 230, 0.2);
-  box-shadow: 0 0 0 1px rgba(2, 6, 11, 0.85);
+  /* Which side, on every bar (critic round 15, R2 at 2/10): a 1 px ring in
+     the side's colour between two dark rings. The fill alone carried side
+     before, and over a white kill flash a 3 px fill has no colour left. */
+  --vsh-hbar-side: var(--vsh-cyan);
+  /* An opaque track with a light tint, so the empty part reads as empty on
+     black space (round 14) and the bar keeps its shape over a flash. */
+  background: linear-gradient(rgba(196, 214, 230, 0.24), rgba(196, 214, 230, 0.24)), rgb(4, 8, 13);
+  box-shadow: 0 0 0 1px rgb(2, 6, 11), 0 0 0 2px var(--vsh-hbar-side), 0 0 0 3px rgba(2, 6, 11, 0.92);
   opacity: 0;
   transition: opacity 0.16s linear;
   pointer-events: none;
@@ -283,40 +287,43 @@
   background: currentColor;
 }
 
-.vsh-hbar--enemy { color: var(--vsh-amber); }
+.vsh-hbar--enemy { color: var(--vsh-amber); --vsh-hbar-side: var(--vsh-amber); }
 
-.vsh-hbar--hurt.is-live { opacity: 0.75; }
-.vsh-hbar--hurt { height: 2px; }
+.vsh-hbar--hurt.is-live { opacity: 0.9; }
 
-.vsh-hbar--heavy.is-live { opacity: 0.95; }
+.vsh-hbar--heavy.is-live { opacity: 0.97; }
 .vsh-hbar--heavy {
   left: -15.5px;
   width: 31px;
   height: 4px;
 }
 
+/* Ours below a third: a red fill inside a red ring, which is what the help
+   card promises ("red outline = ours below a third of hull"). */
 .vsh-hbar--crit.is-live { opacity: 1; }
 .vsh-hbar--crit {
   left: -15.5px;
   width: 31px;
   height: 4px;
   color: var(--vsh-red);
-  box-shadow: 0 0 0 1px rgba(255, 236, 214, 0.9), 0 0 0 2px rgba(2, 6, 11, 0.85), 0 0 6px 1px rgba(255, 107, 74, 0.45);
+  --vsh-hbar-side: var(--vsh-red);
+  box-shadow: 0 0 0 1px rgb(2, 6, 11), 0 0 0 2px var(--vsh-hbar-side), 0 0 0 3px rgba(2, 6, 11, 0.92), 0 0 7px 3px rgba(255, 107, 74, 0.5);
 }
 
 /* Red is our trouble, never theirs: a dying hostile stays amber. */
 .vsh-hbar--crit.vsh-hbar--enemy {
   color: var(--vsh-amber);
-  box-shadow: 0 0 0 1px rgba(255, 236, 214, 0.9), 0 0 0 2px rgba(2, 6, 11, 0.85), 0 0 6px 1px rgba(232, 164, 74, 0.45);
+  --vsh-hbar-side: var(--vsh-amber);
+  box-shadow: 0 0 0 1px rgb(2, 6, 11), 0 0 0 2px var(--vsh-hbar-side), 0 0 0 3px rgba(2, 6, 11, 0.92), 0 0 7px 3px rgba(232, 164, 74, 0.45);
 }
 
-/* The pulse is the halo, never the bar: a captured frame at any phase still
-   shows the worst three at full strength, and brighter than the rest. */
+/* The pulse is the halo, never the bar or its side ring: a captured frame at
+   any phase still shows the worst three at full strength, with their side. */
 .vsh-hbar.is-worst.is-live { animation: vsh-hbar-pulse 1.1s ease-in-out infinite; }
 
 @keyframes vsh-hbar-pulse {
-  0%, 100% { box-shadow: 0 0 0 1px rgba(255, 244, 230, 1), 0 0 0 2px rgba(2, 6, 11, 0.85), 0 0 5px 2px rgba(255, 150, 90, 0.55); }
-  50% { box-shadow: 0 0 0 1px rgba(255, 244, 230, 1), 0 0 0 2px rgba(2, 6, 11, 0.85), 0 0 12px 5px rgba(255, 150, 90, 0.85); }
+  0%, 100% { box-shadow: 0 0 0 1px rgb(2, 6, 11), 0 0 0 2px var(--vsh-hbar-side), 0 0 0 3px rgba(2, 6, 11, 0.92), 0 0 6px 3px rgba(255, 150, 90, 0.55); }
+  50% { box-shadow: 0 0 0 1px rgb(2, 6, 11), 0 0 0 2px var(--vsh-hbar-side), 0 0 0 3px rgba(2, 6, 11, 0.92), 0 0 13px 6px rgba(255, 150, 90, 0.85); }
 }
 
 @media (prefers-reduced-motion: reduce) {
