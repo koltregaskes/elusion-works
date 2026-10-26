@@ -633,6 +633,7 @@ export class HUD {
 
     hInner.append(hHead, hLede, hLegend, audio, hGrid);
     help.appendChild(hInner);
+    help.setAttribute('inert', '');
     this.help = help;
 
     /* ---------------------------------------------------------- onboarding */
@@ -1490,11 +1491,28 @@ export class HUD {
   }
 
   setHelp(open) {
+    /* Round 16: H, H left focus on the closing card's close button. The card
+       stays visible through its 220 ms fade, so Tab walked into it and Space
+       pressed a button nobody could see instead of pausing. A closed card is
+       inert, and focus goes back to wherever it was before the card opened. */
+    const active = document.activeElement;
+    if (open && !this._helpOpen) this._helpReturn = active;
     this._helpOpen = open;
     this.help.classList.toggle('is-open', open);
     this.help.setAttribute('aria-hidden', String(!open));
+    if (open) this.help.removeAttribute('inert');
+    else this.help.setAttribute('inert', '');
     this._syncPalette();
-    if (open) this.helpClose.focus({ preventScroll: true });
+    if (open) {
+      this.helpClose.focus({ preventScroll: true });
+      return;
+    }
+    if (active && this.help.contains(active)) {
+      const back = this._helpReturn;
+      if (back && back.isConnected && back.focus) back.focus({ preventScroll: true });
+      else active.blur();
+    }
+    this._helpReturn = null;
   }
 
   focusSelection() {

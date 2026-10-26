@@ -528,6 +528,7 @@ export class Shell {
 
   dispose() {
     this._stopNotes();
+    this._disarmRestart();
     window.removeEventListener('keydown', this._onKey, true);
     window.removeEventListener('keydown', this._onModalityKey, true);
     window.removeEventListener('pointerdown', this._onModalityPointer, true);
@@ -1220,6 +1221,7 @@ export class Shell {
   /* ------------------------------------------------------------ transitions */
 
   _enter(to, from, opts = {}) {
+    this._disarmRestart();
     /* Drop focus before anything is marked `aria-hidden`.
 
        Chrome refuses to apply aria-hidden to an ancestor of the focused
@@ -1559,6 +1561,25 @@ export class Shell {
     window.addEventListener('pointerdown', this._onModalityPointer, true);
   }
 
+  _armRestart(b) {
+    this._disarmRestart();
+    b.dataset.armed = 'true';
+    b.classList.add('is-armed');
+    b.textContent = 'Press again to restart';
+    this._restartArmed = b;
+    this._restartTimer = setTimeout(() => this._disarmRestart(), 4000);
+  }
+
+  _disarmRestart() {
+    clearTimeout(this._restartTimer);
+    const b = this._restartArmed;
+    this._restartArmed = null;
+    if (!b) return;
+    delete b.dataset.armed;
+    b.classList.remove('is-armed');
+    b.textContent = 'Restart match';
+  }
+
   _click(ev) {
     const t = ev.target;
     if (!t || !t.closest) return;
@@ -1598,7 +1619,15 @@ export class Shell {
         this.resume();
         break;
       case 'restart':
-        this._launch();
+        /* Two presses, because the pause key is Space and Space also presses
+           whatever button has focus. Round 16: Esc, Tab, Space threw away a
+           match with no warning. The first press only arms the button. */
+        if (hit.dataset.armed === 'true') {
+          this._disarmRestart();
+          this._launch();
+        } else {
+          this._armRestart(hit);
+        }
         break;
       case 'quit':
         this.go('title');
