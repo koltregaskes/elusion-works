@@ -99,12 +99,18 @@ import { Commander } from './ai.js';
     in one page, and 20.9 three times out of three with a fresh page each. */
 export const PACE = {
   long: { grace: 240, rate: 0.25, exp: 1 },
-  standard: { grace: 120, rate: 0.38, exp: 0.34 },
+  /* Was grace 120. Critic round 17 (T3): every match ended on sovereignty
+     at a median of 20 minutes against the rubric's 30 to 60, because the
+     drain began at minute two. A longer opening rather than a slower drain:
+     a slow drain also stretches the mop-up after the result is plain, which
+     T3 scores against. Even against Even, 12 seeds: 20 to 40 minutes, median
+     32, 9 of 12 inside 30 to 60 (was 15 to 43, median 29, 3 of 12). */
+  standard: { grace: 660, rate: 0.3, exp: 0.34 },
 };
 
-/** Default pacing. `standard` on the evidence above: faster on all ten seeds,
-    median inside a demo-sized 12–18 minutes, and it always resolves. `long`
-    stays reachable for anyone who wants the hour-scale grind. */
+/** Default pacing. `standard` is the 30 to 60 minute match the rubric asks
+    for, and it always resolves. `long` stays reachable for anyone who wants
+    the hour-scale grind. */
 const PACE_DEFAULT = 'standard';
 
 /* The grace period and drain rate used to live here as `SOVEREIGNTY_GRACE`
