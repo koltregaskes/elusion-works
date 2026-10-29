@@ -114,7 +114,7 @@ export const PERSONALITY = {
     name: 'Warden',
     line: 'Guards its own yards, raids rarely, and brings capital ships to ' +
       'the field sooner than anyone else.',
-    knobs: { harassAt: 1.9, defenceShare: 1.6, commitScale: 1.25, techScale: 0.85 },
+    knobs: { harassAt: 1.35, defenceShare: 1.25, commitScale: 1.05, techScale: 0.7 },
     collectors: 0,
     bias: { assaultFrigate: 1.3, ionFrigate: 1.3, missileCorvette: 1.2 },
   },
@@ -122,8 +122,8 @@ export const PERSONALITY = {
     name: 'Swarm',
     line: 'Floods the contested middle early with massed strike craft and ' +
       'fights to hold it.',
-    knobs: { contestAt: 0.85, holdShare: 1.2 },
-    collectors: 1,
+    knobs: { contestAt: 0.9, holdShare: 1.1 },
+    collectors: 0,
     bias: { interceptor: 1.3, corvette: 1.25, missileCorvette: 1.3 },
   },
 };
