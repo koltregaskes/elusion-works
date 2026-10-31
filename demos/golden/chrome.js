@@ -56,7 +56,7 @@
         <div class="container">
           <a href="index.html" class="brand-mark" aria-label="Golden Encyclopedia home">
             <span class="brand-icon">${SVG.paw}</span>
-            <span class="brand-text"><span class="name">GOLDEN</span><span class="sub">Encyclopedia</span></span>
+            <span class="brand-text"><span class="name">GOLDEN</span> <span class="sub">Encyclopedia</span></span>
           </a>
           <nav class="site-nav" aria-label="Primary">
             ${navItems.map(n => `<a href="${n.href}"${n.key === activePage ? ' class="active"' : ''}>${n.label}</a>`).join('')}
@@ -119,7 +119,7 @@
         <div class="container inner">
           <a href="index.html" class="brand-mark">
             <span class="brand-icon">${SVG.paw}</span>
-            <span class="brand-text"><span class="name">GOLDEN</span><span class="sub">Encyclopedia</span></span>
+            <span class="brand-text"><span class="name">GOLDEN</span> <span class="sub">Encyclopedia</span></span>
           </a>
           <nav class="links" aria-label="Footer">
             <a href="about.html">About</a>
