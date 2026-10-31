@@ -43,11 +43,15 @@ function applyTheme(theme) {
   const label = button?.querySelector(".ew-theme-toggle-label");
   const themeColour = document.querySelector('meta[name="theme-color"]');
 
+  const word = next === "light" ? "Light" : "Dark";
   if (button) {
-    button.setAttribute("aria-pressed", String(next === "light"));
+    // The name starts with the visible word (WCAG 2.5.3, label in name) and says what the
+    // button does. It names the current theme, so it is a plain button, not a pressed toggle.
+    button.setAttribute("aria-label", `${word} theme. Switch colour theme`);
+    button.removeAttribute("aria-pressed");
   }
   if (icon) icon.textContent = "";
-  if (label) label.textContent = next === "light" ? "Light" : "Dark";
+  if (label) label.textContent = word;
   if (themeColour) themeColour.setAttribute("content", next === "light" ? "#f7f3ec" : "#030305");
 }
 
