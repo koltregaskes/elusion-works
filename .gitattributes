@@ -1,0 +1,5 @@
+demos/cyberpunk-messenger/index.html -text
+demos/cyberpunk-messenger/favicon.svg -text
+demos/cyberpunk-messenger/thumbnail.png -text
+demos/cyberpunk-messenger/release-manifest.json -text
+demos/cyberpunk-messenger/assets/** -text

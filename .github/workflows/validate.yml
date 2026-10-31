@@ -75,6 +75,9 @@ jobs:
             fi
           done
 
+      - name: Verify demo cards, counts and sitemap routes agree
+        run: node scripts/validate-demo-registry.mjs
+
       - name: Verify no absolute Windows paths leaked into shipped files
         # The deploy workflow already does this on _site/. We mirror it on the source tree
         # so a PR can be caught before the build step.
