@@ -13,7 +13,7 @@
   --paper-warm:   #ebeef5;
   --ink:          #0d0f17;
   --ink-soft:     #353a4d;
-  --ink-faint:    #6b7184;
+  --ink-faint:    #5c6275;   /* 5.0:1 on paper-2 (was #6b7184, 4.0:1) */
   --ink-ghost:    #a8aebf;
 
   /* accents */
@@ -21,15 +21,16 @@
   --plasma-deep:  #4a26d6;
   --plasma-soft:  rgba(111, 76, 255, 0.12);
   --plasma-glow:  rgba(111, 76, 255, 0.35);
+  --plasma-text:  #4a26d6;   /* plasma for small text: 4.5:1+ on paper and plasma-soft */
 
   --lime:         #c8f04a;   /* secondary — acid */
   --lime-deep:    #9bc222;
   --lime-soft:    rgba(200, 240, 74, 0.18);
 
   /* status */
-  --emerald:      #1a9d6c;
+  --emerald:      #0b6c48;   /* 5.3:1 on paper-2 (was #1a9d6c, 2.8:1) */
   --amber:        #d68a14;
-  --magenta:      #d63a89;
+  --magenta:      #b02a70;   /* 5.1:1 on paper-2 (was #d63a89, 3.9:1) */
 
   /* legacy aliases (so old rules don't break) */
   --copper:       var(--plasma);
@@ -71,6 +72,7 @@
   --plasma-deep:  #6f4cff;
   --plasma-soft:  rgba(138, 114, 255, 0.18);
   --plasma-glow:  rgba(138, 114, 255, 0.45);
+  --plasma-text:  #9480ff;   /* 5.1:1 on the dark plasma-soft tag background */
 
   --lime:         #d5f560;
   --lime-deep:    #b8eb3a;

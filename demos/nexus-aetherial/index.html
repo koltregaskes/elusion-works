@@ -26,6 +26,24 @@
 <link rel="stylesheet" href="styles-hifi.css">
 <link rel="stylesheet" href="palette.css">
 <link rel="stylesheet" href="anatomy.css">
+<script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "CreativeWork",
+    "name": "Nexus Aetherial",
+    "description": "An Elusion Works demo for a modern AI reference desk: compare frontier models, inspect anatomy, browse dossiers, and read benchmark digests. Figures are illustrative.",
+    "url": "https://elusionworks.com/demos/nexus-aetherial/",
+    "isPartOf": {
+      "@type": "WebSite",
+      "name": "Elusion Works",
+      "url": "https://elusionworks.com/"
+    },
+    "creator": {
+      "@type": "Organization",
+      "name": "Elusion Works"
+    }
+  }
+</script>
 </head>
 <body data-mode="light">
 
@@ -79,7 +97,7 @@
     <h1>One reference desk.<br><em>All cognitive systems.</em></h1>
     <p class="deck">An analytical encyclopedia for frontier model architectures. Compared, scored, and digested in real time — so you can see the field move before the press release lands.</p>
 
-    <div class="flap-board" aria-label="Live release board">
+    <div class="flap-board" role="region" aria-label="Live release board" tabindex="0">
       <div class="flap-board-head">
         <span>#</span>
         <span>RELEASE</span>
@@ -126,7 +144,7 @@
             <span class="tag" data-bind="context">400K CTX</span>
             <span class="tag copper" data-bind="status">STABLE</span>
           </div>
-          <select class="invisible" data-select="a"></select>
+          <select class="invisible" data-select="a" aria-label="Choose model A"></select>
         </div>
 
         <div class="matrix-vs">
@@ -149,7 +167,7 @@
             <span class="tag" data-bind="context">500K CTX</span>
             <span class="tag" data-bind="status">STABLE</span>
           </div>
-          <select class="invisible" data-select="b"></select>
+          <select class="invisible" data-select="b" aria-label="Choose model B"></select>
         </div>
       </div>
 
@@ -290,11 +308,11 @@
       <aside class="anatomy-canvas-wrap">
         <div class="anatomy-canvas" id="anatomy-canvas">
           <div class="canvas-tabs">
-            <button class="canvas-tab" data-tab="1" aria-selected="true">01 TOKENIZE</button>
-            <button class="canvas-tab" data-tab="2">02 ATTEND</button>
-            <button class="canvas-tab" data-tab="3">03 TRANSFORM</button>
-            <button class="canvas-tab" data-tab="4">04 TRAIN</button>
-            <button class="canvas-tab" data-tab="5">05 HARNESS</button>
+            <button class="canvas-tab" data-tab="1" aria-pressed="true">01 TOKENIZE</button>
+            <button class="canvas-tab" data-tab="2" aria-pressed="false">02 ATTEND</button>
+            <button class="canvas-tab" data-tab="3" aria-pressed="false">03 TRANSFORM</button>
+            <button class="canvas-tab" data-tab="4" aria-pressed="false">04 TRAIN</button>
+            <button class="canvas-tab" data-tab="5" aria-pressed="false">05 HARNESS</button>
           </div>
 
           <div class="canvas-stage" id="canvas-stage">
@@ -351,7 +369,7 @@
         <div class="rail-group">
           <h4>Status</h4>
           <div class="rail-list" id="status-list">
-            <button class="rail-item" data-status="all" aria-selected="true">ALL <span class="n">7</span></button>
+            <button class="rail-item" data-status="all" aria-pressed="true">ALL <span class="n">7</span></button>
             <button class="rail-item" data-status="stable">STABLE <span class="n">3</span></button>
             <button class="rail-item" data-status="training">IN TRAINING <span class="n">2</span></button>
             <button class="rail-item" data-status="experimental">EXPERIMENTAL <span class="n">1</span></button>
@@ -377,7 +395,7 @@
             <button class="btn" style="padding:8px 14px">EXPORT CSV</button>
           </div>
         </div>
-        <div style="max-height:520px;overflow:auto">
+        <div style="max-height:520px;overflow:auto" role="region" aria-label="Benchmark results table" tabindex="0">
           <table class="tbl" id="digest-table">
             <thead></thead>
             <tbody></tbody>
