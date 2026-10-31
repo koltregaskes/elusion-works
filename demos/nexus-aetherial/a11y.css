@@ -1,0 +1,56 @@
+/* ============================================================
+   Nexus Aetherial · accessibility layer
+   Loaded last. Fixes WCAG 2.2 AA contrast, focus visibility and
+   target size without changing layout or behaviour. Colour
+   overrides apply to the default "paper" (light) mode only;
+   the "ink" (dark) palette already passes.
+   ============================================================ */
+
+/* Text contrast on --paper / --paper-2 (was 2.8 to 4.4:1). */
+body:not([data-mode="dark"]) {
+  --ink-faint: #575d70;   /* was #6b7184 */
+  --emerald:   #0e7350;   /* was #1a9d6c (same as the Signal accent's deep shade) */
+  --sage:      #0e7350;
+  --magenta:   #b52a6f;   /* was #d63a89 */
+  --burgundy:  #b52a6f;
+}
+/* Violet used as small text: use the deep accent shade in paper mode. */
+body:not([data-mode="dark"]) .matrix-slot .slot-label,
+body:not([data-mode="dark"]) .tag.copper {
+  color: var(--plasma-deep);
+}
+/* Rail counts were faded with opacity 0.6. */
+.rail-item:not([aria-pressed="true"]) .n {
+  opacity: 1;
+  color: var(--ink-faint);
+}
+
+/* Visible keyboard focus for every control. */
+:where(a, button, select, input, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--plasma-deep);
+  outline-offset: 2px;
+}
+[data-mode="dark"] :where(a, button, select, input, textarea, [tabindex]):focus-visible {
+  outline-color: var(--plasma);
+}
+/* The model pickers are transparent selects laid over each slot. */
+.matrix-slot:focus-within {
+  outline: 2px solid var(--plasma-deep);
+  outline-offset: -2px;
+}
+.digest-search:focus-within {
+  outline: 2px solid var(--plasma-deep);
+  outline-offset: 2px;
+}
+
+/* Footer links: at least 24px tall targets (WCAG 2.5.8). */
+.foot-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+}
+.foot-links div { gap: 2px; }
+
+/* Ink (dark) mode: the two remaining low-contrast pairs. */
+[data-mode="dark"] .tag.copper { color: #9d89ff; }
+[data-mode="dark"] .btn.primary { background: var(--plasma-deep); border-color: var(--plasma-deep); }

@@ -26,6 +26,7 @@
 <link rel="stylesheet" href="styles-hifi.css">
 <link rel="stylesheet" href="palette.css">
 <link rel="stylesheet" href="anatomy.css">
+<link rel="stylesheet" href="a11y.css">
 </head>
 <body data-mode="light">
 
@@ -79,7 +80,7 @@
     <h1>One reference desk.<br><em>All cognitive systems.</em></h1>
     <p class="deck">An analytical encyclopedia for frontier model architectures. Compared, scored, and digested in real time — so you can see the field move before the press release lands.</p>
 
-    <div class="flap-board" aria-label="Live release board">
+    <div class="flap-board" role="region" aria-label="Live release board" tabindex="0">
       <div class="flap-board-head">
         <span>#</span>
         <span>RELEASE</span>
@@ -126,7 +127,7 @@
             <span class="tag" data-bind="context">400K CTX</span>
             <span class="tag copper" data-bind="status">STABLE</span>
           </div>
-          <select class="invisible" data-select="a"></select>
+          <select class="invisible" data-select="a" aria-label="Choose model A"></select>
         </div>
 
         <div class="matrix-vs">
@@ -149,7 +150,7 @@
             <span class="tag" data-bind="context">500K CTX</span>
             <span class="tag" data-bind="status">STABLE</span>
           </div>
-          <select class="invisible" data-select="b"></select>
+          <select class="invisible" data-select="b" aria-label="Choose model B"></select>
         </div>
       </div>
 
@@ -289,8 +290,8 @@
       <!-- RIGHT: sticky diagram -->
       <aside class="anatomy-canvas-wrap">
         <div class="anatomy-canvas" id="anatomy-canvas">
-          <div class="canvas-tabs">
-            <button class="canvas-tab" data-tab="1" aria-selected="true">01 TOKENIZE</button>
+          <div class="canvas-tabs" role="group" aria-label="Anatomy stations">
+            <button class="canvas-tab" data-tab="1" aria-pressed="true">01 TOKENIZE</button>
             <button class="canvas-tab" data-tab="2">02 ATTEND</button>
             <button class="canvas-tab" data-tab="3">03 TRANSFORM</button>
             <button class="canvas-tab" data-tab="4">04 TRAIN</button>
@@ -351,7 +352,7 @@
         <div class="rail-group">
           <h4>Status</h4>
           <div class="rail-list" id="status-list">
-            <button class="rail-item" data-status="all" aria-selected="true">ALL <span class="n">7</span></button>
+            <button class="rail-item" data-status="all" aria-pressed="true">ALL <span class="n">7</span></button>
             <button class="rail-item" data-status="stable">STABLE <span class="n">3</span></button>
             <button class="rail-item" data-status="training">IN TRAINING <span class="n">2</span></button>
             <button class="rail-item" data-status="experimental">EXPERIMENTAL <span class="n">1</span></button>
@@ -370,14 +371,14 @@
         <div class="digest-toolbar">
           <div class="digest-search">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-            <input id="digest-search" type="text" placeholder="FILTER MODELS…">
+            <input id="digest-search" type="text" placeholder="FILTER MODELS…" aria-label="Filter models">
           </div>
           <div class="row gap-3 items-center">
             <span class="label" id="digest-meta">5 MODELS · MMLU-PRO · UPDATED 06:21 UTC</span>
             <button class="btn" style="padding:8px 14px">EXPORT CSV</button>
           </div>
         </div>
-        <div style="max-height:520px;overflow:auto">
+        <div style="max-height:520px;overflow:auto" role="region" aria-label="Benchmark table" tabindex="0">
           <table class="tbl" id="digest-table">
             <thead></thead>
             <tbody></tbody>
