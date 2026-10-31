@@ -550,7 +550,8 @@ html[data-theme="light"] .ew-plate-poster { opacity: 0.88; filter: invert(0.85) 
 .ew-footer-group a:hover { color: var(--fg-1); }
 .ew-footer-base {
   display: flex; justify-content: space-between; padding: 14px 8px 0;
-  color: var(--fg-4);
+  /* fg-3, not fg-4: fg-4 missed 4.5:1 on the page background in both themes. */
+  color: var(--fg-3);
 }
 
 /* Reduced motion */
