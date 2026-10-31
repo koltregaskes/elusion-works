@@ -36,6 +36,10 @@ html[data-theme="light"] .ew-pill-ghost { background: rgba(255,250,242,0.65); }
 html[data-theme="light"] .ew-nav a { color: var(--fg-2); }
 html[data-theme="light"] .ew-nav a:hover { color: var(--fg-1); }
 html[data-theme="light"] .ew-header-inner { background: rgba(255,250,242,0.78); }
+/* Small copper text is 3.2:1 on the light cream, under WCAG AA's 4.5:1. A darker copper
+   for these two uses only: 5.3:1 or better on every light background. */
+html[data-theme="light"] .ew-footer-group p { color: #7a4f25; }
+html[data-theme="light"] .ew-index-count { background: #7a4f25; color: #fffaf2; }
 
 html[data-theme="light"] {
   --bg-0: #f7f3ec;
