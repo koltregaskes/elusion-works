@@ -824,6 +824,14 @@ img {
   gap: 1rem;
 }
 
+/* WCAG 2.2 target size: each footer link is at least 24 x 24 CSS px. */
+.footer-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  min-width: 24px;
+}
+
 .footer-brand {
   display: grid;
   align-content: start;
