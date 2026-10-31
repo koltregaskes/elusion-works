@@ -250,16 +250,16 @@
     </header>
 
     <div class="filter-bar">
-      <div class="filter-pills" id="filterPills">
-        <button class="fp-btn active" data-filter="all">All</button>
-        <button class="fp-btn" data-filter="portrait">Portraits</button>
-        <button class="fp-btn" data-filter="action">Action</button>
-        <button class="fp-btn" data-filter="outdoor">Outdoor</button>
-        <button class="fp-btn" data-filter="puppy">Studio</button>
+      <div class="filter-pills" id="filterPills" role="group" aria-label="Filter photos">
+        <button class="fp-btn active" data-filter="all" aria-pressed="true">All</button>
+        <button class="fp-btn" data-filter="portrait" aria-pressed="false">Portraits</button>
+        <button class="fp-btn" data-filter="action" aria-pressed="false">Action</button>
+        <button class="fp-btn" data-filter="outdoor" aria-pressed="false">Outdoor</button>
+        <button class="fp-btn" data-filter="puppy" aria-pressed="false">Studio</button>
       </div>
-      <div class="view-toggle" role="tablist" id="viewToggle">
-        <button class="active" data-view="masonry">Masonry</button>
-        <button data-view="grid">Grid</button>
+      <div class="view-toggle" role="group" aria-label="Gallery layout" id="viewToggle">
+        <button class="active" data-view="masonry" aria-pressed="true">Masonry</button>
+        <button data-view="grid" aria-pressed="false">Grid</button>
       </div>
     </div>
 
@@ -339,8 +339,8 @@
   const vt = document.getElementById('viewToggle');
   vt.addEventListener('click', e => {
     const b = e.target.closest('button[data-view]'); if (!b) return;
-    vt.querySelectorAll('button').forEach(x => x.classList.remove('active'));
-    b.classList.add('active');
+    vt.querySelectorAll('button').forEach(x => { x.classList.remove('active'); x.setAttribute('aria-pressed', 'false'); });
+    b.classList.add('active'); b.setAttribute('aria-pressed', 'true');
     if (b.dataset.view === 'grid') {
       grid.classList.add('gp-grid-fixed');
       grid.classList.remove('gp-masonry');
@@ -353,8 +353,8 @@
   // Filter
   document.getElementById('filterPills').addEventListener('click', e => {
     const b = e.target.closest('.fp-btn'); if (!b) return;
-    document.querySelectorAll('.fp-btn').forEach(x => x.classList.remove('active'));
-    b.classList.add('active');
+    document.querySelectorAll('.fp-btn').forEach(x => { x.classList.remove('active'); x.setAttribute('aria-pressed', 'false'); });
+    b.classList.add('active'); b.setAttribute('aria-pressed', 'true');
     render(b.dataset.filter);
   });
 
