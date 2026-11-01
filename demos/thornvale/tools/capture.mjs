@@ -56,7 +56,7 @@ if (!failedBoot) {
   result.stats = await page.evaluate(() => window.__TV.stats);
   if (args.includes('--hud')) {
     await page.waitForTimeout(3000);
-    await page.screenshot({ path: path.join(OUT, 'hud.png'), timeout: 300000 });
+    await page.screenshot({ path: path.join(OUT, 'hud.png'), timeout: Number(arg('shotTimeout', 300000)) });
   }
   for (const s of SHOTS.split(',')) {
     const [i, u] = s.split(':').map(Number);
@@ -64,7 +64,7 @@ if (!failedBoot) {
     await page.waitForTimeout(Number(arg('settle', 1500)));
     const file = path.join(OUT, `shot-${i}-${String(u).replace('.', '')}.png`);
     const st = Date.now();
-    await page.screenshot({ path: file, timeout: 300000 });
+    await page.screenshot({ path: file, timeout: Number(arg('shotTimeout', 300000)) });
     const info = await page.evaluate(() => window.__TV.info());
     result.shots.push({ i, u, file, ms: Date.now() - st, ...info });
   }
@@ -78,7 +78,7 @@ if (!failedBoot) {
     await page.keyboard.up('KeyW');
     await page.evaluate(() => { window.__TV.freeze(true); document.body.classList.add('is-capture'); });
     await page.waitForTimeout(1500);
-    await page.screenshot({ path: path.join(OUT, 'walk.png'), timeout: 600000 });
+    await page.screenshot({ path: path.join(OUT, 'walk.png'), timeout: Number(arg('shotTimeout', 600000)) });
     result.walk = await page.evaluate(() => { const p = window.__TV.hero.pos; return [p.x, p.y, p.z].map((v) => +v.toFixed(2)); });
   }
 }
