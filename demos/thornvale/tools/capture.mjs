@@ -47,18 +47,22 @@ const failed = [];
 page.on('requestfailed', (r) => failed.push(r.url()));
 
 const t0 = Date.now();
-await page.goto(`${base}/demos/thornvale/?q=${Q}&aa=${AA}&time=${arg('time', 'golden')}&weather=${arg('weather', 'clear')}`, { waitUntil: 'domcontentloaded' });
+await page.goto(`${base}/demos/thornvale/?q=${Q}&aa=${AA}&time=${arg('time', 'golden')}&weather=${arg('weather', 'clear')}${arg('mode', '') ? '&mode=' + arg('mode') : ''}${args.includes('--lite') ? '&lite=1' : ''}`, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => (window.__TV && window.__TV.state.ready) || document.body.classList.contains('has-error'), null, { timeout: 600000, polling: 250 });
 const bootS = (Date.now() - t0) / 1000;
 const failedBoot = await page.evaluate(() => document.body.classList.contains('has-error') ? document.querySelector('#loader-text').textContent : null);
 const result = { bootS, failedBoot, shots: [] };
 if (!failedBoot) {
   result.stats = await page.evaluate(() => window.__TV.stats);
+  if (args.includes('--first')) {
+    await page.waitForTimeout(2000);
+    await page.screenshot({ path: path.join(OUT, 'first.png'), timeout: Number(arg('shotTimeout', 600000)) });
+  }
   if (args.includes('--hud')) {
     await page.waitForTimeout(3000);
     await page.screenshot({ path: path.join(OUT, 'hud.png'), timeout: Number(arg('shotTimeout', 300000)) });
   }
-  for (const s of SHOTS.split(',')) {
+  for (const s of SHOTS.split(',').filter(Boolean)) {
     const [i, u] = s.split(':').map(Number);
     await page.evaluate(([i, u]) => window.__TV.pose(i, u, 14), [i, u]);
     await page.waitForTimeout(Number(arg('settle', 1500)));

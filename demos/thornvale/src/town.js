@@ -339,7 +339,7 @@ export function buildTown(scene, kitData, ground, opts = {}) {
   }
   // the far forest: thousands of cheap trees in dense stands on the hills
   let farCount = 0;
-  for (let k = 0; k < 60000 && farCount < 9000; k++) {
+  for (let k = 0; k < 60000 && farCount < (opts.lite ? 0 : 9000); k++) {
     const x = R(-WORLD / 2 + 10, WORLD / 2 - 10);
     const z = R(-WORLD / 2 + 10, WORLD / 2 - 10);
     const far = Math.hypot(x, z);

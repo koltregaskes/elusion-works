@@ -61,7 +61,8 @@ async function boot() {
   setLoad(0.7, 'Building the town');
   await new Promise((r) => setTimeout(r, 0));
   const atmo = new Atmosphere(renderer, scene, camera, { shadows: QUALITY.shadows, shadowSize: QUALITY.shadowSize });
-  const town = buildTown(scene, kitData, ground, { seed: Number(params.get('seed')) || 11 });
+  const lite = params.get('lite') === '1'; // test captures only: skip the far forest, thin the grass
+  const town = buildTown(scene, kitData, ground, { seed: Number(params.get('seed')) || 11, lite });
   const masks = buildMasks(town.streets, town.squares);
   const terrain = new THREE.Mesh(terrainGeometry(ground.sample, 512), terrainMaterial(kitData.tex, masks.texture));
   terrain.receiveShadow = true;
@@ -69,7 +70,7 @@ async function boot() {
   const mountains = new THREE.Mesh(mountainGeometry(), mountainMaterial(kitData.tex));
   scene.add(mountains);
   addStair(scene, kitData.mats);
-  const grass = addGrass(scene, heightTex, masks.texture, { side: QUALITY.grass });
+  const grass = addGrass(scene, heightTex, masks.texture, { side: lite ? 60 : QUALITY.grass });
   const rain = addRain(scene, 9000);
   scene.add(character.root);
   character.root.visible = false;
