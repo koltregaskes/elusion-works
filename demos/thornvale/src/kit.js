@@ -61,9 +61,9 @@ export function pbr(set, { tint = [1, 1, 1], uvScale = 1, normalScale = 1, porou
 const TEXTURED = {
   Ashlar: ['ashlar', {}],
   Rubble: ['rubble', {}],
-  Plaster: ['plaster', { porous: 0.3 }],
-  Plaster2: ['plaster', { tint: [1.0, 0.9, 0.72], porous: 0.3 }],
-  Plaster3: ['plaster', { tint: [1.0, 0.84, 0.78], porous: 0.3 }],
+  Plaster: ['plaster', { tint: [0.9, 0.87, 0.8], porous: 0.3 }],
+  Plaster2: ['plaster', { tint: [0.92, 0.8, 0.6], porous: 0.3 }],
+  Plaster3: ['plaster', { tint: [0.9, 0.74, 0.66], porous: 0.3 }],
   Timber: ['timber', {}],
   RoofClay: ['roofclay', { porous: 0.3 }],
   RoofSlate: ['roofslate', { porous: 0.2 }],

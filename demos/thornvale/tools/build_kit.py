@@ -873,9 +873,16 @@ def prop_well():
 def prop_fountain():
     mb = MB()
     n = 8
+    # octagonal basin: outer wall, inner wall, a coping ring on top, water inside
     mb.prism(0, 0, 0, 0.6, 4.2, n, "Ashlar", rot=math.pi / 8, smooth=False, top=False)
-    mb.prism(0, 0, 0.6, 0.75, 4.35, n, "Ashlar", rot=math.pi / 8, smooth=False, bottom=True)
-    mb.prism(0, 0, 0.0, 0.45, 4.0, n, "Water", rot=math.pi / 8, smooth=False)
+    ring_o = [(4.35 * math.cos(math.pi / 8 + k * math.pi / 4), 4.35 * math.sin(math.pi / 8 + k * math.pi / 4)) for k in range(n)]
+    ring_i = [(3.75 * math.cos(math.pi / 8 + k * math.pi / 4), 3.75 * math.sin(math.pi / 8 + k * math.pi / 4)) for k in range(n)]
+    for k in range(n):
+        k2 = (k + 1) % n
+        mb.poly([(*ring_o[k], 0.75), (*ring_o[k2], 0.75), (*ring_i[k2], 0.75), (*ring_i[k], 0.75)], "Ashlar", (0, 0, 0))
+        mb.poly([(*ring_o[k], 0.6), (*ring_o[k2], 0.6), (*ring_o[k2], 0.75), (*ring_o[k], 0.75)], "Ashlar", (0, 0, 0.67))
+        mb.poly([(*ring_i[k], 0.3), (*ring_i[k2], 0.3), (*ring_i[k2], 0.75), (*ring_i[k], 0.75)], "Ashlar", (0, 0, 2.0))
+    mb.prism(0, 0, 0.0, 0.48, 3.76, n, "Water", rot=math.pi / 8, smooth=False)
     mb.prism(0, 0, 0.45, 2.2, 0.55, 16, "Ashlar")
     mb.prism(0, 0, 2.2, 2.5, 1.8, 24, "Ashlar", r2=1.9, bottom=True)
     mb.prism(0, 0, 2.48, 2.52, 1.75, 24, "Water")
@@ -1000,7 +1007,15 @@ def tree_broadleaf(name, seed, height=9.0, crown=4.0):
         d = Vector((math.cos(ang) * 0.6, math.sin(ang) * 0.6, 0.8)).normalized()
         branch(mb, pts[-1], d, height * 0.22, r * 0.6, 1, rng, tips)
     for t in tips:
-        leaf_card(mb, t + Vector((0, 0, 0.2)), crown * rng.uniform(0.32, 0.45), rng, LEAF_CELLS["green"])
+        leaf_card(mb, t + Vector((0, 0, 0.2)), crown * rng.uniform(0.4, 0.55), rng, LEAF_CELLS["green"], n=3)
+    # fill the crown envelope so it reads as a canopy, not separate tufts
+    cz = trunk_h + height * 0.32
+    for k in range(18):
+        th = rng.random() * 2 * math.pi
+        ph = math.acos(rng.uniform(-0.3, 1.0))
+        rr = crown * rng.uniform(0.55, 0.95)
+        c = Vector((math.cos(th) * math.sin(ph) * rr, math.sin(th) * math.sin(ph) * rr, cz + math.cos(ph) * rr * 0.75))
+        leaf_card(mb, c, crown * rng.uniform(0.38, 0.5), rng, LEAF_CELLS["green"], n=2)
     return mb.build(name)
 
 
@@ -1023,19 +1038,19 @@ def tree_pine(name, seed, height=14.0):
     rng = random.Random(seed)
     mb = MB()
     mb.prism(0, 0, 0, height, 0.28, 9, "Bark", r2=0.04, top=False)
-    whorls = int(height / 1.1)
+    whorls = int(height / 0.75)
     for w in range(whorls):
         t = w / whorls
-        z = height * 0.18 + t * height * 0.8
-        reach = (1 - t) * height * 0.28 + 0.4
-        for k in range(6):
-            a = k * math.pi / 3 + rng.uniform(-0.3, 0.3) + w * 0.5
-            d = Vector((math.cos(a), math.sin(a), -0.25)).normalized()
+        z = height * 0.15 + t * height * 0.83
+        reach = (1 - t) ** 0.9 * height * 0.3 + 0.35
+        for k in range(7):
+            a = k * 2 * math.pi / 7 + rng.uniform(-0.3, 0.3) + w * 0.6
+            d = Vector((math.cos(a), math.sin(a), -0.3)).normalized()
             p = Vector((0, 0, z))
             q = p + d * reach
-            mb.pipe(p, q, 0.04, "Bark", 4)
-            for s in (0.45, 0.85):
-                leaf_card(mb, p + (q - p) * s + Vector((0, 0, 0.1)), reach * 0.38 + 0.25, rng, LEAF_CELLS["fir"], n=2)
+            mb.pipe(p, q, 0.035, "Bark", 3)
+            for s in (0.35, 0.7, 1.0):
+                leaf_card(mb, p + (q - p) * s + Vector((0, 0, 0.05)), reach * 0.34 + 0.3, rng, LEAF_CELLS["fir"], n=2)
     leaf_card(mb, Vector((0, 0, height)), 0.6, rng, LEAF_CELLS["fir"], n=3)
     return mb.build(name)
 
@@ -1050,6 +1065,25 @@ def bush(name, seed):
     return mb.build(name)
 
 
+def tree_far(name, seed, kind):
+    """Cheap distant tree: a trunk and a few large crossed cards."""
+    rng = random.Random(seed)
+    mb = MB()
+    if kind == "pine":
+        mb.prism(0, 0, 0, 14, 0.3, 5, "Bark", r2=0.05, top=False)
+        for k in range(5):
+            z = 3.5 + k * 2.3
+            leaf_card(mb, (0, 0, z), 3.4 - k * 0.55, rng, LEAF_CELLS["fir"], n=3)
+    else:
+        mb.prism(0, 0, 0, 5, 0.32, 5, "Bark", r2=0.2, top=False)
+        for k in range(4):
+            c = (rng.uniform(-1, 1), rng.uniform(-1, 1), 6.5 + rng.uniform(-0.8, 1.2))
+            leaf_card(mb, c, 3.2, rng, LEAF_CELLS["green"], n=2)
+    return mb.build(name)
+
+
+tree_far("tree_far_pine", 980, "pine")
+tree_far("tree_far_oak", 981, "oak")
 for k in range(3):
     tree_broadleaf(f"tree_oak_{k}", 900 + k * 11, height=[8.5, 10.5, 7.5][k], crown=[4.2, 5.0, 3.6][k])
 tree_cypress("tree_cypress", 950)

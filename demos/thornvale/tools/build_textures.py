@@ -422,25 +422,41 @@ def leaves():
     leaf_cluster(0, 0, [(0.22, 0.38, 0.1), (0.28, 0.45, 0.12), (0.18, 0.32, 0.08), (0.33, 0.48, 0.15)])
     leaf_cluster(H, 0, [(0.85, 0.38, 0.06), (0.78, 0.25, 0.05), (0.9, 0.5, 0.1), (0.6, 0.2, 0.06)])
     leaf_cluster(0, H, [(0.92, 0.72, 0.12), (0.85, 0.62, 0.08), (0.95, 0.8, 0.25), (0.7, 0.55, 0.1)])
-    # fir branch: central twig with dense needles
-    for b in range(5):
-        by = 0.12 + b * 0.18
-        for s in np.linspace(0.05, 0.95, 220):
-            x = s
-            y = by + (s - 0.5) * 0.08
+    # fir branch: a spray of twigs, each with fine needles either side
+    def seg_paint(x0, y0, x1, y1, w, col):
+        xa, xb = int(max(0, min(x0, x1) * H - 3)), int(min(H, max(x0, x1) * H + 3))
+        ya, yb = int(max(0, min(y0, y1) * H - 3)), int(min(H, max(y0, y1) * H + 3))
+        if xb <= xa or yb <= ya:
+            return
+        px = (np.arange(xa, xb) + 0.5) / H
+        py = (np.arange(ya, yb) + 0.5) / H
+        PX, PY = np.meshgrid(px, py)
+        dx, dy = x1 - x0, y1 - y0
+        t = np.clip(((PX - x0) * dx + (PY - y0) * dy) / (dx * dx + dy * dy + 1e-9), 0, 1)
+        d = np.hypot(PX - x0 - dx * t, PY - y0 - dy * t) * H
+        cov = np.clip(w - d + 0.5, 0, 1)
+        sub_rgb = rgb[H + ya:H + yb, H + xa:H + xb]
+        sub_a = alpha[H + ya:H + yb, H + xa:H + xb]
+        m = cov > sub_a
+        sub_rgb[m] = col
+        sub_a[m] = cov[m]
+    # main stem from the bottom-left corner fanning out
+    for b in range(9):
+        ang = math.radians(14 + b * 8 + rng.uniform(-3, 3))
+        L = rng.uniform(0.7, 0.95)
+        x0, y0 = 0.08, 0.92
+        x1, y1 = x0 + math.cos(ang) * L, y0 - math.sin(ang) * L
+        seg_paint(x0, y0, x1, y1, 2.2, (0.22, 0.16, 0.1))
+        n = 120
+        for k in range(n):
+            t = 0.08 + 0.9 * k / n
+            cx, cy = x0 + (x1 - x0) * t, y0 + (y1 - y0) * t
+            nl = 0.075 * (1 - t * 0.55)
             for side in (-1, 1):
-                ln = 0.06 * (1 - abs(s - 0.5))
-                for k in np.linspace(0, ln, 8):
-                    nx = int((x + k * 0.3) * H)
-                    ny = int((y + side * k) * H)
-                    if 0 <= nx < H and 0 <= ny < H:
-                        rgb[H + ny, H + nx] = (0.1, 0.22 + rng.random() * 0.08, 0.1)
-                        alpha[H + ny, H + nx] = 1.0
-    # widen fir needles a pixel
-    a2 = alpha[H:, H:]
-    grown = np.maximum.reduce([a2, np.roll(a2, 1, 0), np.roll(a2, 1, 1)])
-    rgb[H:, H:] = np.where(grown[..., None] > a2[..., None], np.roll(rgb[H:, H:], 1, 0), rgb[H:, H:])
-    alpha[H:, H:] = grown
+                a2 = ang + side * math.radians(55 + rng.uniform(-10, 10))
+                ex, ey = cx + math.cos(a2) * nl, cy - math.sin(a2) * nl
+                shade = rng.uniform(0.75, 1.15)
+                seg_paint(cx, cy, ex, ey, 1.6, (0.09 * shade, 0.2 * shade, 0.1 * shade))
     # dilate colour into transparent texels so mipmaps don't bleed dark edges
     filled = rgb.copy()
     mask = alpha > 0.5
@@ -455,5 +471,7 @@ def leaves():
     save("leaves", filled, True, alpha)
 
 
+ONLY = [x for x in os.environ.get("ONLY", "").split(",") if x]
 for fn in (ashlar, rubble, plaster, timber, roof_clay, roof_slate, cobbles, flagstone, grass_ground, dirt, rock, bark, planks, leaves):
-    fn()
+    if not ONLY or fn.__name__ in ONLY:
+        fn()

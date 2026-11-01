@@ -88,7 +88,7 @@ export class Atmosphere {
     }
     const sunCol = new THREE.Color().setRGB(1.0, 0.92 - golden * 0.32, 0.82 - golden * 0.5);
     this.sun.color.copy(sunCol);
-    this.sun.intensity = 3.4 * day * W[1];
+    this.sun.intensity = 4.4 * day * W[1];
     this.sun.position.copy(dir).multiplyScalar(400);
     this.sun.target.position.set(0, 0, 0);
     const night = 1 - day;
