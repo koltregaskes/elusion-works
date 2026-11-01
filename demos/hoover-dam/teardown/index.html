@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Hoover Dam HD-1935 — teardown field simulator | Elusion Works</title>
+<meta name="description" content="Hoover Dam as a field simulator you can take apart: open Turbine A5, isolate the intakes, cut through the crown, flood the spillways. Every panel reads the same physics model that moves the parts." />
+<link rel="canonical" href="https://elusionworks.com/demos/hoover-dam/teardown/" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Hoover Dam HD-1935 — take a huge dam apart" />
+<meta property="og:description" content="A field simulator of Hoover Dam: explode it, open a turbine, cut it, flood it. Every gauge reads the same model." />
+<meta property="og:url" content="https://elusionworks.com/demos/hoover-dam/teardown/" />
+<meta property="og:image" content="https://elusionworks.com/demos/hoover-dam/teardown/og-card.jpg" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:image" content="https://elusionworks.com/demos/hoover-dam/teardown/og-card.jpg" />
+<meta name="theme-color" content="#f1efea" />
+<link rel="icon" href="../../../assets/favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+<script type="importmap">
+{ "imports": { "three": "../vendor/three.module.min.js", "three/addons/": "../vendor/addons/" } }
+</script>
+</head>
+<body>
+<div id="boot" class="boot"><b>HD-1935</b><span>assembling 3,512 parts</span></div>
+<canvas id="scene" aria-label="Hoover Dam field simulator. Drag to orbit, scroll to zoom."></canvas>
+<svg id="draft" aria-hidden="true"></svg>
+<svg id="leaders" aria-hidden="true"></svg>
+<div id="callouts" aria-hidden="true"></div>
+
+<!-- top bar -->
+<header class="topbar">
+  <div class="idblock"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18 Q12 2 20 18" fill="none" stroke="#fff" stroke-width="2.2"/><path d="M8 18 Q12 9 16 18" fill="none" stroke="#fff" stroke-width="2.2"/><circle cx="12" cy="20.5" r="1.4" fill="#fff"/></svg><span class="mono">HD-1935</span></div>
+  <div class="ttl">
+    <div class="mono k">Concrete arch-gravity dam · Black Canyon, Colorado River</div>
+    <h1>Hoover Dam <i>/</i></h1>
+    <div class="mono k2">Hydroelectric plant / field simulator</div>
+  </div>
+  <div class="load">
+    <div class="row mono"><span>Dam load</span><b id="loadPct">0%</b></div>
+    <div class="cells" id="loadCells"></div>
+    <div class="row mono sm"><span>Dead pool</span><span>Rated</span><span>Crest</span></div>
+    <div class="crosses mono" aria-hidden="true"></div>
+  </div>
+  <div class="meta">
+    <div><span class="mono">Sim ID</span><b class="mono">HD-1935-A5</b></div>
+    <div><span class="mono">Runtime</span><b class="mono" id="runtime">00:00:00</b></div>
+    <div><span class="mono">Status</span><b class="mono" id="status"><i></i>Generating</b></div>
+    <div><span class="mono">Operator</span><b class="mono">Lab 5 · You</b></div>
+  </div>
+  <nav class="styles">
+    <a href="../" class="mono">Field lab</a><span class="mono on">Teardown</span>
+  </nav>
+</header>
+
+<div class="frame-label mono l" id="frameL">Model HD-1935 · Rev B</div>
+<div class="frame-label mono r" id="frameR">Isolate · Hero</div>
+
+<!-- left column -->
+<aside class="col left">
+  <section class="card" id="cOut">
+    <div class="ch"><b>Output</b><span>01</span></div>
+    <div class="pair"><div><strong id="mw">0</strong><sup>MW</sup><span class="mono lab">Plant output</span></div><div class="r"><strong id="unitsOn">0/17</strong><span class="mono lab">Units on</span></div></div>
+    <canvas id="cvOut"></canvas>
+    <div class="foot mono"><span>Grid</span><b id="grid">60.00 Hz</b><span class="sp"></span><span>Homes</span><b id="homes">0</b></div>
+  </section>
+  <section class="card" id="cLake">
+    <div class="ch"><b>Lake Mead</b><span>02</span></div>
+    <div class="pair"><div><strong id="lakeFt">0</strong><sup>FT</sup><span class="mono lab">Surface elevation</span></div><div class="r"><strong id="headFt">0</strong><span class="mono lab">Head · ft</span></div></div>
+    <canvas id="cvLake"></canvas>
+  </section>
+  <section class="card" id="cUnits">
+    <div class="ch"><b>Unit load</b><span>03</span></div>
+    <div class="sub mono"><span>MW per unit · rated 122</span><em class="pill" id="unitsPill">Holding</em></div>
+    <div class="ubars" id="ubars"></div>
+  </section>
+</aside>
+
+<!-- right column -->
+<aside class="col right">
+  <section class="card" id="cGate">
+    <div class="ch"><b>Turbine A5</b><span>04</span></div>
+    <div class="gate">
+      <canvas id="cvGate"></canvas>
+      <dl>
+        <dt class="mono">Output</dt><dd class="mono" id="aMW">0 MW</dd>
+        <dt class="mono">Wicket</dt><dd class="mono" id="aGate">0%</dd>
+        <dt class="mono">Flow</dt><dd class="mono" id="aQ">0</dd>
+        <dt class="mono">Speed</dt><dd class="mono" id="aRpm">0 rpm</dd>
+        <dt class="mono">Effic.</dt><dd class="mono" id="aEta">—</dd>
+      </dl>
+    </div>
+    <div class="foot mono"><span>Runner</span><b>13 blades</b><span class="sp"></span><span>Rotor</span><b>40 poles</b></div>
+  </section>
+  <section class="card">
+    <div class="ch"><b>Assemblies</b><span>05</span></div>
+    <div class="chips" id="asm"></div>
+  </section>
+  <section class="card">
+    <div class="ch"><b>Display</b><span>06</span></div>
+    <div class="chips" id="disp">
+      <button data-d="labels" class="on">Labels</button><button data-d="exploded">Exploded</button><button data-d="turntable" class="on">Turntable</button><button data-d="glass">Glass</button><button data-d="cut">Cut</button><button data-d="flow" class="on">Flow</button>
+    </div>
+  </section>
+  <section class="card" id="cSys">
+    <div class="ch"><b>Subsystems</b><span>07</span></div>
+    <ol class="sys" id="sysList"></ol>
+  </section>
+</aside>
+
+<!-- operator controls, tucked under the left column -->
+<details class="ctl card" id="ctl">
+  <summary class="mono">Operator controls</summary>
+  <div class="scn" id="scn"><button data-scn="normal">Ordinary day</button><button data-scn="peak">Summer peak</button><button data-scn="flood">1983 flood</button><button data-scn="drought">2022 drought</button></div>
+  <label class="mono">Lake <output id="lakeOut"></output><input type="range" id="lake" min="895" max="1240" step="1" value="1065" /></label>
+  <label class="mono">Inflow · break it <output id="inflowOut"></output><input type="range" id="inflow" min="3000" max="120000" step="500" value="11000" /></label>
+  <label class="mono">Wicket gates <output id="gateOut"></output><input type="range" id="gate" min="0" max="1" step="0.01" value="0.7" /></label>
+  <label class="mono">Drum gates <output id="drumOut"></output><input type="range" id="drum" min="0" max="1" step="0.01" value="1" /></label>
+  <label class="mono">Units online <output id="unitsOut"></output><input type="range" id="units" min="0" max="17" step="1" value="9" /></label>
+</details>
+
+<!-- mode -->
+<div class="mode">
+  <span class="mono">Mode</span>
+  <b id="modeT">Generating</b>
+  <span class="mono" id="modeS">Head 420 ft · 9 units</span>
+</div>
+
+<!-- operation log -->
+<section class="oplog card">
+  <div class="ch"><b>Operation log</b><span>08</span></div>
+  <div class="opl">
+    <button id="play" aria-label="Play or pause the operation log"><svg viewBox="0 0 20 20"><rect class="pa" x="6" y="5" width="2.6" height="10" rx="0.6"/><rect class="pa" x="11.4" y="5" width="2.6" height="10" rx="0.6"/><path class="pl" d="M7 5 L15 10 L7 15 Z"/></svg></button>
+    <div class="trk">
+      <div class="ends mono"><span>Wake</span><b id="beatT">Wake · generating</b><span>Reassemble</span></div>
+      <div class="bar" id="bar"><div class="fill" id="fill"></div><div class="ticks" id="ticks"></div><div class="knob" id="knob"></div></div>
+      <div class="ends mono"><span id="clock">00:00 / 00:36</span><span id="acts">9 operator actions</span></div>
+    </div>
+  </div>
+</section>
+
+<footer class="footline mono">
+  <span>Field simulator · procedural model · 17 units · 4 intake towers · 2 spillways · 726 ft</span>
+  <span>Elusion Works · Hoover lab <i>//////</i></span>
+</footer>
+
+<div class="ghost" id="ghost" hidden></div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

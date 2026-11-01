@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Hoover Dam Field Lab — how a huge dam works | Elusion Works</title>
+<meta name="description" content="Run Hoover Dam yourself. A live 3D model of Black Canyon with a wave-simulated Lake Mead, 17 working turbines, spillways, x-ray tunnels, a pressure map, a construction timeline and hands-on engineering labs." />
+<link rel="canonical" href="https://elusionworks.com/demos/hoover-dam/" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Hoover Dam Field Lab — run the dam yourself" />
+<meta property="og:description" content="Drag the lake, open the spillways, cut the dam open. A live 3D model where every gauge reads one physics model." />
+<meta property="og:url" content="https://elusionworks.com/demos/hoover-dam/" />
+<meta property="og:image" content="https://elusionworks.com/demos/hoover-dam/og-card.jpg" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:image" content="https://elusionworks.com/demos/hoover-dam/og-card.jpg" />
+<meta name="theme-color" content="#0b0d10" />
+<link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js", "three/addons/": "./vendor/addons/" } }
+</script>
+</head>
+<body>
+<div id="boot" class="boot" role="status">
+  <div class="boot-mark">HOOVER DAM</div>
+  <div class="boot-sub mono">Pouring 3.25 million cubic yards of concrete<span class="boot-dots"></span></div>
+  <div class="boot-bar"><span id="bootBar"></span></div>
+  <noscript><p>This field lab needs JavaScript and WebGL.</p></noscript>
+</div>
+
+<section class="stage" id="stage" aria-label="Interactive 3D model of Hoover Dam">
+  <canvas id="scene" aria-label="3D view of Hoover Dam, Lake Mead and Black Canyon. Drag to orbit, scroll to zoom, click the lake to make waves."></canvas>
+  <svg id="leaders" class="leaders" aria-hidden="true"></svg>
+  <div id="callouts" class="callouts"></div>
+
+  <header class="topbar">
+    <nav class="crumbs mono" aria-label="Breadcrumb">
+      <a href="../../">Elusion Works</a><span>/</span><a href="../">Demos</a><span>/</span><b>Hoover Dam</b>
+    </nav>
+    <div class="topbar-actions">
+      <div class="seg" role="group" aria-label="Style"><span class="seg-b on">Field lab</span><a class="seg-b" href="teardown/" style="text-decoration:none">Teardown</a></div>
+      <button class="chip" id="tourBtn" title="Play the guided tour (T)"><span class="dot"></span><span id="tourLabel">Auto tour</span></button>
+      <div class="seg" role="group" aria-label="Units">
+        <button class="seg-b on" data-units="imperial">ft</button><button class="seg-b" data-units="metric">m</button>
+      </div>
+      <button class="icon" id="soundBtn" title="Sound (S)" aria-pressed="false">🔇</button>
+      <button class="icon" id="hideBtn" title="Hide panels (H)">◱</button>
+      <button class="icon" id="fsBtn" title="Fullscreen (F)">⛶</button>
+    </div>
+  </header>
+
+  <div class="hud">
+    <!-- top-left: the live number -->
+    <div class="readout panel" id="readout">
+      <div class="kicker mono">Black Canyon · Nevada | Arizona · <span id="clock">11:00</span></div>
+      <h1 class="title">Hoover Dam <em>Field Lab</em></h1>
+      <div class="big"><span id="bigMW">0</span><small id="bigUnit">MW</small></div>
+      <div class="big-sub" id="bigSub"><span id="bigUnits">0 of 17 units</span> · <span id="bigHomes">0</span> homes' average use</div>
+      <div class="tiles">
+        <div class="tile"><span class="mono">Head</span><b id="tHead">—</b></div>
+        <div class="tile"><span class="mono">Turbine flow</span><b id="tFlow">—</b></div>
+        <div class="tile"><span class="mono">Efficiency</span><b id="tEta">—</b></div>
+        <div class="tile"><span class="mono">Base pressure</span><b id="tPsi">—</b></div>
+        <div class="tile"><span class="mono">Thrust on dam</span><b id="tThrust">—</b></div>
+        <div class="tile"><span class="mono">Spillways</span><b id="tSpill">—</b></div>
+      </div>
+    </div>
+
+    <div class="card panel" id="infoCard" hidden>
+      <button class="x" id="infoClose" aria-label="Close">×</button>
+      <div class="kicker mono" id="infoKicker"></div>
+      <h2 id="infoTitle"></h2>
+      <p id="infoBody"></p>
+      <dl id="infoFacts"></dl>
+    </div>
+
+    <!-- left: the lake gauge -->
+    <div class="rail panel" id="rail" aria-label="Lake Mead elevation">
+      <div class="rail-head mono">Lake Mead</div>
+      <div class="rail-val"><b id="lakeVal">1,065</b><small id="lakeUnit">ft</small></div>
+      <div class="rail-pct mono"><span id="lakePct">35%</span> full · <span id="lakeTrend">±0.00 ft/day</span></div>
+      <div class="rail-track" id="railTrack" role="slider" tabindex="0" aria-label="Lake elevation" aria-valuemin="880" aria-valuemax="1240" aria-valuenow="1065">
+        <div class="rail-fill" id="railFill"></div>
+        <div class="rail-marks" id="railMarks"></div>
+        <div class="rail-handle" id="railHandle"><span>drag</span></div>
+      </div>
+    </div>
+
+    <!-- right: the console -->
+    <aside class="console panel" id="console" aria-label="Controls">
+      <div class="tabs" role="tablist">
+        <button class="tab on" data-tab="operate" role="tab">Operate</button>
+        <button class="tab" data-tab="systems" role="tab">Systems</button>
+        <button class="tab" data-tab="view" role="tab">View</button>
+      </div>
+
+      <div class="tabpane on" data-pane="operate">
+        <div class="group">
+          <div class="label mono">Scenario</div>
+          <div class="chips" id="scenarios"></div>
+          <p class="note" id="scenarioNote"></p>
+        </div>
+        <div class="group">
+          <div class="label mono">Inflow from Glen Canyon <output id="inflowOut"></output></div>
+          <input type="range" id="inflow" min="3000" max="120000" step="500" value="11000" />
+          <div class="hint">Push past ~50,000 ft³/s and the lake rises faster than the turbines can pass it.</div>
+        </div>
+        <div class="group">
+          <div class="label mono">Drum gates <output id="drumOut"></output></div>
+          <input type="range" id="drum" min="0" max="1" step="0.01" value="1" />
+          <div class="hint">Raised gates hold 16 ft more water. Lower them to spill a flood.</div>
+        </div>
+        <div class="group">
+          <div class="label mono">Dispatch</div>
+          <div class="seg wide" role="group" aria-label="Dispatch mode">
+            <button class="seg-b on" data-mode="manual">Manual</button><button class="seg-b" data-mode="auto">Follow demand</button>
+          </div>
+          <div id="manualBox">
+            <div class="label mono">Wicket gates, all running units <output id="gateOut"></output></div>
+            <input type="range" id="gate" min="0" max="1" step="0.01" value="0.7" />
+          </div>
+          <div id="autoBox" hidden>
+            <div class="label mono">Grid demand <output id="demandOut"></output></div>
+            <input type="range" id="demand" min="0" max="2100" step="10" value="1200" />
+          </div>
+        </div>
+        <div class="group">
+          <div class="label mono">Generating units <span class="muted">click to start or stop</span></div>
+          <div class="units" id="units"></div>
+          <div class="unit-legend mono"><span>Nevada wing</span><span>Arizona wing</span></div>
+        </div>
+        <div class="group row">
+          <div>
+            <div class="label mono">Sim speed</div>
+            <div class="seg" role="group" aria-label="Simulation speed" id="speedSeg">
+              <button class="seg-b" data-speed="0">❚❚</button><button class="seg-b on" data-speed="1">1 h/s</button><button class="seg-b" data-speed="24">1 d/s</button><button class="seg-b" data-speed="168">1 wk/s</button>
+            </div>
+          </div>
+        </div>
+        <div class="group">
+          <div class="label mono">Time of day <output id="hourOut"></output></div>
+          <input type="range" id="hour" min="0" max="23.99" step="0.05" value="11" />
+        </div>
+        <div class="group">
+          <button class="btn" id="boulderBtn">Drop a boulder into the lake</button>
+          <div class="hint">Or click the lake anywhere. Waves reflect off the dam and canyon walls.</div>
+        </div>
+      </div>
+
+      <div class="tabpane" data-pane="systems">
+        <p class="note">Every subsystem is a button. Press one and it stands out while the rest of the dam steps aside.</p>
+        <div class="sysgrid" id="systems"></div>
+        <button class="btn ghost" id="sysAll">Show everything</button>
+      </div>
+
+      <div class="tabpane" data-pane="view">
+        <div class="group">
+          <div class="label mono">Mode</div>
+          <div class="modes" id="modes">
+            <button data-mode="normal" class="on"><b>Normal</b><span>As you'd see it</span></button>
+            <button data-mode="xray"><b>X-ray</b><span>Rock turns to glass</span></button>
+            <button data-mode="pressure"><b>Pressure</b><span>Load on the faces</span></button>
+            <button data-mode="section"><b>Section</b><span>Cut through the crown</span></button>
+            <button data-mode="build"><b>Build</b><span>1931 to 1936</span></button>
+          </div>
+        </div>
+        <div class="group" id="buildBox" hidden>
+          <div class="label mono">Construction date <output id="yearOut"></output></div>
+          <input type="range" id="year" min="1931.2" max="1936.9" step="0.01" value="1931.3" />
+          <div class="build-event" id="buildEvent"></div>
+          <button class="btn ghost" id="buildPlay">▶ Play construction</button>
+        </div>
+        <div class="group">
+          <div class="label mono">Camera</div>
+          <div class="chips" id="cams"></div>
+        </div>
+        <div class="group">
+          <label class="check"><input type="checkbox" id="labelsChk" checked /> Callouts</label>
+          <label class="check"><input type="checkbox" id="chartsChk" checked /> Live charts</label>
+        </div>
+      </div>
+    </aside>
+
+    <!-- bottom: live charts and the schematic -->
+    <div class="charts" id="charts">
+      <div class="chart panel"><div class="chart-h mono">Water path · drawn from the model</div><canvas id="schem"></canvas></div>
+      <div class="chart panel"><div class="chart-h mono">Lake level &amp; flows · <span id="simDate">day 196</span></div><canvas id="stripLake"></canvas></div>
+      <div class="chart panel"><div class="chart-h mono">Output per unit · MW</div><canvas id="stripUnits"></canvas></div>
+    </div>
+
+    <div class="legend panel" id="legend" hidden></div>
+    <div class="alerts" id="alerts" aria-live="polite"></div>
+    <div class="tourcap" id="tourCap" hidden><span class="mono">AUTO TOUR</span><p id="tourText"></p><small>Click, drag or press a key to take control</small></div>
+  </div>
+  <div class="cursor-ghost" id="ghost" hidden></div>
+  <a class="scrollcue mono" href="#learn">How it works ↓</a>
+</section>
+
+<main id="learn" class="learn">
+  <section class="intro">
+    <div class="kicker mono">A field guide in eight labs</div>
+    <h2>How do you stop a river with <em>concrete</em>?</h2>
+    <p>Hoover Dam holds back the Colorado River in Black Canyon on the Nevada–Arizona border. Behind it, Lake Mead can store about two years of the river's flow. In front, seventeen turbines turn falling water into electricity. Above, every bit of it is live: the same model drives the 3D canyon, the gauges and the labs below. Change something and watch the numbers follow.</p>
+  </section>
+
+  <section class="lab" id="lab-section">
+    <div class="lab-copy">
+      <div class="kicker mono">Lab 01 · Holding the load</div>
+      <h3>Water pushes hardest at the bottom</h3>
+      <p>Water pressure grows steadily with depth: about 1 psi for every 2.31 ft. At the foot of a full Lake Mead the water pushes on the dam at over 300 psi. That's why the dam is 45 ft thick at the crest and 660 ft at the base.</p>
+      <p>A gravity dam must not <b>slide</b> or <b>tip over</b>. Water seeping under it also pushes up (<b>uplift</b>), making the dam effectively lighter. Hoover's grout curtain and drainage holes cut that uplift. Drag the probe, thin the base, switch off the drains and watch the safety factors.</p>
+      <ul class="facts mono" id="secFacts"></ul>
+    </div>
+    <div class="lab-stage panel">
+      <canvas id="secCanvas"></canvas>
+      <div class="lab-ctrl">
+        <label>Lake <output id="secLakeOut"></output><input type="range" id="secLake" min="895" max="1232" step="1" value="1229" /></label>
+        <label>Base thickness <output id="secBaseOut"></output><input type="range" id="secBase" min="0.35" max="1.2" step="0.01" value="1" /></label>
+        <label class="check"><input type="checkbox" id="secDrains" checked /> Drains and grout curtain working</label>
+        <label class="check"><input type="checkbox" id="secLink" checked /> Follow the live lake</label>
+      </div>
+    </div>
+  </section>
+
+  <section class="lab flip" id="lab-arch">
+    <div class="lab-copy">
+      <div class="kicker mono">Lab 02 · Why it curves</div>
+      <h3>An arch turns push into squeeze</h3>
+      <p>Seen from above, Hoover bows upstream like a bridge laid on its side. Water presses on the convex face; the arch carries that load around its curve and into the canyon walls as compression, which concrete handles superbly.</p>
+      <p>For a ring under pressure, the squeeze in the concrete is roughly <code>σ = p·R / t</code>. A tighter curve (smaller R) means less stress for the same thickness. But a straight wall gets no arch help at all, so it has to rely on weight alone. Hoover splits the work: designers used the <b>trial-load method</b> to share the load between horizontal arches and vertical cantilevers.</p>
+    </div>
+    <div class="lab-stage panel">
+      <canvas id="archCanvas"></canvas>
+      <div class="lab-ctrl">
+        <label>Arch radius <output id="archROut"></output><input type="range" id="archR" min="90" max="900" step="5" value="152" /></label>
+        <label>Depth of slice <output id="archDOut"></output><input type="range" id="archD" min="5" max="215" step="1" value="120" /></label>
+        <label>Arch share of the load <output id="archShareOut"></output><input type="range" id="archShare" min="0" max="1" step="0.01" value="0.6" /></label>
+      </div>
+    </div>
+  </section>
+
+  <section class="lab" id="lab-turbine">
+    <div class="lab-copy">
+      <div class="kicker mono">Lab 03 · Water to wire</div>
+      <h3>One Francis turbine, opened up</h3>
+      <p>Water from the penstock fills a snail-shaped <b>spiral case</b>, is aimed by fixed <b>stay vanes</b>, then metered by movable <b>wicket gates</b> onto the <b>runner</b>. It leaves through the <b>draft tube</b>, which slows it down to recover a little more energy.</p>
+      <p>The runner drives a generator on the same shaft. To make 60 Hz at 180 rpm the rotor needs <b>40 poles</b>: f = poles × rpm ÷ 120. The governor holds that speed exactly while the wicket gates open and close to follow the grid.</p>
+      <p class="formula mono">P = η · ρ · g · Q · H</p>
+    </div>
+    <div class="lab-stage panel">
+      <canvas id="turbCanvas"></canvas>
+      <div class="lab-ctrl">
+        <label>Wicket gate opening <output id="tbGateOut"></output><input type="range" id="tbGate" min="0" max="1" step="0.01" value="0.8" /></label>
+        <label>Lake elevation (head) <output id="tbLakeOut"></output><input type="range" id="tbLake" min="950" max="1229" step="1" value="1100" /></label>
+        <label class="check"><input type="checkbox" id="tbCut" checked /> Cut away the spiral case</label>
+      </div>
+    </div>
+  </section>
+
+  <section class="lab flip" id="lab-cool">
+    <div class="lab-copy">
+      <div class="kicker mono">Lab 04 · The heat problem</div>
+      <h3>A dam that would take a century to cool</h3>
+      <p>Cement gives off heat as it cures. Poured as one block, Hoover's concrete would have stayed hot for more than a century, then cracked as it cooled and shrank.</p>
+      <p>So it was built as interlocking columns, poured in 5 ft lifts, threaded with about 582 miles of 1 inch steel pipe. River water ran through first, then water chilled by a refrigeration plant on site. When a column had cooled and shrunk, the joints were filled with grout to lock the dam into one piece.</p>
+      <p>The model here is simple heat diffusion: cooling time grows with the <b>square</b> of the distance heat has to travel. Halve the spacing, quarter the wait.</p>
+    </div>
+    <div class="lab-stage panel">
+      <canvas id="coolCanvas"></canvas>
+      <div class="lab-ctrl">
+        <label>Cooling pipe spacing <output id="coolSOut"></output><input type="range" id="coolS" min="1.5" max="30" step="0.5" value="5.75" /></label>
+        <label class="check"><input type="checkbox" id="coolPipes" checked /> Cooling pipes on</label>
+        <label class="check"><input type="checkbox" id="coolChill" checked /> Refrigerated water (not river water)</label>
+      </div>
+    </div>
+  </section>
+
+  <section class="lab wide" id="lab-build">
+    <div class="lab-copy">
+      <div class="kicker mono">Lab 05 · Building it</div>
+      <h3>Five years in Black Canyon</h3>
+      <p>Pick a moment. The 3D model jumps to construction mode and shows the dam at that date, columns rising unevenly as each was poured and cooled.</p>
+    </div>
+    <ol class="timeline" id="timeline"></ol>
+  </section>
+
+  <section class="lab" id="lab-ledger">
+    <div class="lab-copy">
+      <div class="kicker mono">Lab 06 · The lake's ledger</div>
+      <h3>Lake Mead is a bank account for water</h3>
+      <p>Every day: change in storage = inflow − releases − evaporation. Lake Mead loses roughly 600,000 acre-feet a year to evaporation alone. Since 2000 a long drought and heavy demand have drawn it down far below full, leaving the white bathtub ring.</p>
+      <p>Lower water means less <b>head</b>, so the same release makes less electricity. At about 950 ft the turbines must stop; at 895 ft, dead pool, no water can leave the dam by gravity.</p>
+      <p class="muted small">Chart values are rounded and approximate, for teaching. Use Reclamation's daily records for anything official.</p>
+    </div>
+    <div class="lab-stage panel">
+      <canvas id="ledgerCanvas"></canvas>
+      <div class="lab-ctrl"><div class="hint">Hover or drag across the chart. Click a year to load that level into the live model above.</div></div>
+    </div>
+  </section>
+
+  <section class="lab quiz-lab" id="lab-quiz">
+    <div class="lab-copy">
+      <div class="kicker mono">Lab 07 · Test yourself</div>
+      <h3>Eight questions</h3>
+      <p>Each answer comes with the why. Several point you back to a control above so you can check it yourself.</p>
+    </div>
+    <div class="quiz panel" id="quiz"></div>
+  </section>
+
+  <section class="lab specs-lab" id="lab-specs">
+    <div class="lab-copy">
+      <div class="kicker mono">Lab 08 · Spec sheet</div>
+      <h3>The numbers</h3>
+      <p>Rounded from U.S. Bureau of Reclamation published figures. The ft / m switch at the top changes the units on this page.</p>
+    </div>
+    <dl class="specs panel" id="specs"></dl>
+  </section>
+
+  <section class="notes">
+    <h3>About this model</h3>
+    <p>The 3D canyon is generated from code, not survey data, and is shaped to Black Canyon's proportions around the real dam dimensions. The reservoir and powerplant model is a teaching simplification: lake storage follows an approximate area–capacity curve, turbines follow P = η ρ g Q H with a simple efficiency curve and a 122 MW cap per unit (2,080 MW nameplate shared across 17), spillways follow the weir equation Q = C L h<sup>1.5</sup> with the real gate lengths, and tailwater is held near Lake Mohave's level. Numbers are good to within the right ballpark, not for operations.</p>
+    <p>Keyboard: <kbd>T</kbd> tour · <kbd>H</kbd> hide panels · <kbd>F</kbd> fullscreen · <kbd>S</kbd> sound · <kbd>1</kbd>–<kbd>5</kbd> view modes · <kbd>Space</kbd> pause.</p>
+  </section>
+
+  <footer class="foot mono">
+    <a href="../">← All demos</a>
+    <span>Elusion Works · Interactive study · Built with Three.js</span>
+  </footer>
+</main>
+
+<script type="module" src="src/app.js"></script>
+</body>
+</html>
