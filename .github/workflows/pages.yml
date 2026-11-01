@@ -91,6 +91,10 @@ jobs:
           test -f _site/demos/hoover-dam/vendor/addons/controls/OrbitControls.js
           test -f _site/demos/hoover-dam/thumbnail.webp
           test -f _site/demos/hoover-dam/og-card.jpg
+          test -f _site/demos/hoover-dam/teardown/index.html
+          test -f _site/demos/hoover-dam/teardown/src/main.js
+          test -f _site/demos/hoover-dam/teardown/thumbnail.webp
+          test -f _site/demos/hoover-dam/vendor/addons/postprocessing/GTAOPass.js
           test -f _site/demos/abyssal-relay/index.html
           test -f _site/demos/abyssal-relay/styles.css
           test -f _site/demos/abyssal-relay/app.js

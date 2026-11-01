@@ -87,3 +87,33 @@ says so. The canyon is generated, not surveyed.
 - Keep the single brass accent for state; water cyan is for water and water data only.
 - Do not add numbers to the UI that are not read from the model or `data.js`.
 - Do not hide a geometry collision with the camera; fix the number in `scene/util.js`.
+
+# Teardown style (`teardown/`)
+
+A second view of the same dam in the study-model style of the teardown skill
+(elvarofficial/teardown): pale studio, one accent, ink outlines, parts that open up.
+It imports the field lab's model (`src/model/`), canyon height field and dam geometry
+(`src/scene/`), so both pages always agree. A segmented control in each top bar
+switches between them.
+
+- **Studio:** paper-gradient backdrop, soft key light onto an invisible shadow-catcher
+  floor, a turntable with an engraved degree ring, RoomEnvironment reflections,
+  GTAO + soft bloom + mild vignette. Quality tiers drop GTAO, bloom, pixel ratio and
+  shadow size; `?q=0|1|2` locks one.
+- **Model:** the canyon is a laser-cut block of 9 m terraces in two halves (Nevada |
+  Arizona), with strata on every cut face and a glass lake whose upstream face shows
+  depth. Structures are white with ink edges; generators graphite.
+- **Accent `#ff5a1f` means working:** water in the penstocks, rotors making power,
+  wicket gates, drum gates while spilling, the focused part's outline.
+- **Take apart:** the canyon halves slide away on a spring and snap back with a small
+  overshoot; the dam lifts, powerhouse walls split, roofs lift, generators rise.
+- **Turbine A5:** a magnified (×4.4) Francis unit with a glass spiral case, 20 stay
+  vanes, 24 wicket gates turned by the live gate setting, a 13-blade runner, shaft and a
+  40-pole generator with a cut window. It has its own explode.
+- **Modes:** Glass (rock and concrete see-through), Cut (clip through the crown with a
+  hatched concrete section and a depth-shaded water section).
+- **Console:** big live MW, output and lake strip charts, per-unit bars, water-path
+  schematic, unit A5 gate dial, lake, spillway and base-pressure stats, sliders
+  including an inflow "break it" control, one button per subsystem, camera views,
+  callouts with ink leaders, and the self-driving tour (25 s idle hand-back).
+- Deep links: `?scn=flood&explode&focus=turbine&mode=glass&view=unit&pause&bare&notour`.

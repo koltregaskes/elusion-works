@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Hoover Dam Teardown — take a huge dam apart | Elusion Works</title>
+<meta name="description" content="Hoover Dam as a white study model on a turntable. Take it apart, open a Francis turbine, cut through the crown and push a flood through it. Every gauge reads the same physics model." />
+<link rel="canonical" href="https://elusionworks.com/demos/hoover-dam/teardown/" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Hoover Dam Teardown — take a huge dam apart" />
+<meta property="og:description" content="A study model you can explode, cut and flood. Every panel reads the same physics model that moves the parts." />
+<meta property="og:url" content="https://elusionworks.com/demos/hoover-dam/teardown/" />
+<meta property="og:image" content="https://elusionworks.com/demos/hoover-dam/teardown/og-card.jpg" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:image" content="https://elusionworks.com/demos/hoover-dam/teardown/og-card.jpg" />
+<meta name="theme-color" content="#eceae5" />
+<link rel="icon" href="../../../assets/favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+<script type="importmap">
+{ "imports": { "three": "../vendor/three.module.min.js", "three/addons/": "../vendor/addons/" } }
+</script>
+</head>
+<body>
+<div id="boot" class="boot"><b>HD-1935</b><span>assembling 3,512 parts</span></div>
+<canvas id="scene" aria-label="Hoover Dam study model on a turntable. Drag to orbit, scroll to zoom."></canvas>
+<svg id="leaders" aria-hidden="true"></svg>
+<div id="callouts" aria-hidden="true"></div>
+
+<header class="head">
+  <div class="kicker mono">HD-1935 · CONCRETE ARCH-GRAVITY · BLACK CANYON, NEVADA | ARIZONA</div>
+  <h1>Hoover Dam <span class="tag mono">teardown</span></h1>
+  <div class="big"><span id="mw">0</span><small>MW</small></div>
+  <div class="sub mono" id="mwSub"></div>
+</header>
+
+<nav class="top">
+  <div class="seg" role="group" aria-label="Style">
+    <a class="segb" href="../">Field lab</a><span class="segb on">Teardown</span>
+  </div>
+  <button class="pill" id="tourBtn"><i></i>Auto tour</button>
+  <button class="pill" id="hideBtn" title="Hide panels (H)">Panels</button>
+  <a class="pill" href="../../">Demos</a>
+</nav>
+
+<div class="warn" id="warn" hidden></div>
+
+<aside class="left">
+  <section class="card"><div class="ch mono">Output · MW</div><canvas id="chartMW"></canvas></section>
+  <section class="card"><div class="ch mono">Lake Mead · elevation</div><canvas id="chartLake"></canvas></section>
+  <section class="card"><div class="ch mono">17 units · MW each</div><canvas id="bars"></canvas></section>
+</aside>
+
+<aside class="controls card">
+  <div class="chips">
+    <button data-scn="normal">Ordinary day</button><button data-scn="peak">Summer peak</button><button data-scn="flood">1983 flood</button><button data-scn="drought">2022 drought</button>
+  </div>
+  <label>Lake Mead <output id="lakeOut"></output><input type="range" id="lake" min="895" max="1240" step="1" value="1065" /></label>
+  <label>Inflow · break it <output id="inflowOut"></output><input type="range" id="inflow" min="3000" max="120000" step="500" value="11000" /></label>
+  <label>Wicket gates <output id="gateOut"></output><input type="range" id="gate" min="0" max="1" step="0.01" value="0.7" /></label>
+  <label>Drum gates <output id="drumOut"></output><input type="range" id="drum" min="0" max="1" step="0.01" value="1" /></label>
+  <label>Units online <output id="unitsOut"></output><input type="range" id="units" min="0" max="17" step="1" value="9" /></label>
+  <label>Sim speed <output id="speedOut"></output><input type="range" id="speed" min="0" max="4" step="1" value="1" /></label>
+</aside>
+
+<aside class="right">
+  <section class="card"><div class="ch mono">Water path · from the model</div><canvas id="schem"></canvas></section>
+  <section class="card" id="unitPanel"><div class="ch mono">Turbine · unit A5</div><canvas id="dial"></canvas></section>
+  <section class="card stat"><div class="ch mono">Lake</div><b id="lakeBig"></b><span class="mono" id="lakeSub"></span></section>
+  <section class="card stat" id="spillPanel"><div class="ch mono">Spillways</div><b id="spillBig"></b><span class="mono">4 × 100 ft drum gates per side</span></section>
+  <section class="card stat"><div class="ch mono">Water pressure at the base</div><b id="psiBig"></b><span class="mono">1 psi every 2.31 ft of depth</span></section>
+</aside>
+
+<div class="dock">
+  <div class="note"><b id="noteK">Teardown</b><span id="note">Press a part to open it. Drag to orbit, scroll to zoom. Push the inflow past the turbines and watch the lake climb.</span></div>
+  <div class="bar">
+    <div class="sysbar" id="sys"></div>
+    <div class="acts">
+      <button class="big-b" id="explodeBtn">Take apart</button>
+      <button data-mode="glass">Glass</button>
+      <button data-mode="cut">Cut</button>
+      <span class="sep"></span>
+      <button data-cam="hero">Hero</button><button data-cam="front">Front</button><button data-cam="side">Side</button><button data-cam="top">Top</button>
+      <button id="turnBtn" class="on" title="Turntable">⟳</button>
+    </div>
+  </div>
+</div>
+
+<div class="cap" id="cap" hidden><span class="mono">AUTO TOUR</span><p id="capText"></p><small>Click, drag or press a key to take over</small></div>
+<div class="ghost" id="ghost" hidden></div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
