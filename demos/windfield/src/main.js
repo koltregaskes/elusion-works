@@ -1,0 +1,560 @@
+import * as THREE from '../vendor/three/build/three.module.js';
+import { EffectComposer } from '../vendor/three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from '../vendor/three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from '../vendor/three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from '../vendor/three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from '../vendor/three/addons/postprocessing/ShaderPass.js';
+
+import { PRESETS, PARAMS, COLOUR_KEYS, presetValues } from './presets.js';
+import { windUniforms, cpuGust } from './wind.js';
+import { buildGround, heightAt } from './terrain.js';
+import { buildGrass, grassUniforms } from './grass.js';
+import { buildHeroOak, buildBackgroundTrees, treeUniforms } from './tree.js';
+import { buildSky, skyUniforms, buildMist, mistUniforms } from './sky.js';
+import { buildParticles, particleUniforms, FallingLeaves, Birds } from './particles.js';
+import { buildMonolith, buildStones, Bonfire } from './subjects.js';
+import { CameraRig } from './controls.js';
+import { StudioUI } from './ui.js';
+import { WindAudio } from './audio.js';
+
+const url = new URLSearchParams(location.search);
+const MANUAL = url.has('manual'); // frame-stepped capture mode, driven from outside
+const coarse = matchMedia('(pointer: coarse)').matches;
+let quality = url.get('q') || (coarse ? 'low' : 'medium');
+
+// ---------------------------------------------------------------- renderer and scene
+const canvas = document.getElementById('scene');
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+} catch (err) {
+  document.body.classList.add('no-webgl');
+  throw err;
+}
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2('#bcd3e6', 0.004);
+const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 6000);
+
+const sky = buildSky();
+scene.add(sky);
+
+const ground = buildGround();
+scene.add(ground);
+
+let grass = buildGrass(quality);
+scene.add(grass);
+
+const oak = buildHeroOak();
+scene.add(oak);
+let bgTrees = buildBackgroundTrees(quality);
+scene.add(bgTrees);
+const monolith = buildMonolith();
+scene.add(monolith);
+const stones = buildStones();
+scene.add(stones);
+const bonfire = new Bonfire();
+scene.add(bonfire.group);
+
+const mist = buildMist();
+scene.add(mist);
+const particles = buildParticles();
+scene.add(particles);
+const leaves = new FallingLeaves(280);
+scene.add(leaves.mesh);
+const birds = new Birds(40);
+scene.add(birds.mesh);
+
+const sun = new THREE.DirectionalLight('#ffffff', 3);
+sun.castShadow = true;
+sun.shadow.camera.left = -30;
+sun.shadow.camera.right = 30;
+sun.shadow.camera.top = 30;
+sun.shadow.camera.bottom = -30;
+sun.shadow.camera.near = 1;
+sun.shadow.camera.far = 260;
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.04;
+scene.add(sun, sun.target);
+const hemi = new THREE.HemisphereLight('#a9c4e0', '#4a5a2a', 1);
+scene.add(hemi);
+
+// Environment map baked from the sky alone, refreshed while the sky is changing.
+const envScene = new THREE.Scene();
+const envSky = buildSky();
+envSky.scale.setScalar(100);
+envScene.add(envSky);
+const pmrem = new THREE.PMREMGenerator(renderer);
+let envRT = null;
+let envDirty = true;
+let envTimer = 0;
+function refreshEnv() {
+  const old = envRT;
+  envRT = pmrem.fromScene(envScene, 0, 0.1, 200);
+  scene.environment = envRT.texture;
+  scene.environmentIntensity = 0.35;
+  if (old) old.dispose();
+}
+
+// ---------------------------------------------------------------- post
+const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+const composer = new EffectComposer(renderer, rt);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.4, 0.55, 0.86);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+const finish = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, uTime: windUniforms.uTime, uVignette: { value: 0.32 }, uGrain: { value: 0.035 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse; uniform float uTime; uniform float uVignette; uniform float uGrain;
+    varying vec2 vUv;
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233)) + uTime * 3.1) * 43758.5453); }
+    void main(){
+      vec4 c = texture2D(tDiffuse, vUv);
+      vec2 q = vUv - 0.5;
+      float v = 1.0 - dot(q, q) * uVignette * 2.2;
+      c.rgb *= v;
+      c.rgb += (hash(vUv * 1000.0) - 0.5) * uGrain;
+      gl_FragColor = c;
+    }`,
+});
+composer.addPass(finish);
+
+// ---------------------------------------------------------------- state and tweening
+const state = {};
+const colours = {};
+COLOUR_KEYS.forEach((k) => (colours[k] = new THREE.Color()));
+let tween = null;
+let presetIndex = Math.max(0, PRESETS.findIndex((p) => p.id === (url.get('preset') || 'golden')));
+
+function snapshot() {
+  const s = {};
+  for (const [k, v] of Object.entries(state)) if (typeof v === 'number') s[k] = v;
+  const c = {};
+  COLOUR_KEYS.forEach((k) => (c[k] = colours[k].clone()));
+  return { s, c };
+}
+
+function setPreset(i, instant = false) {
+  presetIndex = i;
+  const p = PRESETS[i];
+  const target = presetValues(p);
+  rig.setFrame(p.camera);
+  ui.setPreset(i);
+  document.documentElement.style.setProperty('--accent', target.accent);
+  if (instant || !state.subject) {
+    for (const [k, v] of Object.entries(target)) {
+      if (COLOUR_KEYS.includes(k)) colours[k].set(v);
+      else state[k] = v;
+    }
+    tween = null;
+    applyState();
+    return;
+  }
+  const from = snapshot();
+  const to = { s: {}, c: {} };
+  for (const [k, v] of Object.entries(target)) {
+    if (COLOUR_KEYS.includes(k)) to.c[k] = new THREE.Color(v);
+    else if (typeof v === 'number') to.s[k] = v;
+  }
+  // Wind direction takes the short way round.
+  if (to.s.windDir !== undefined) {
+    let d = to.s.windDir - from.s.windDir;
+    if (d > 180) d -= 360;
+    if (d < -180) d += 360;
+    to.s.windDir = from.s.windDir + d;
+  }
+  tween = { from, to, t: 0, dur: 2.6, subject: target.subject, swapped: false };
+}
+
+function stepTween(dt) {
+  if (!tween) return;
+  tween.t = Math.min(1, tween.t + dt / tween.dur);
+  const e = tween.t < 0.5 ? 4 * tween.t ** 3 : 1 - Math.pow(-2 * tween.t + 2, 3) / 2;
+  for (const [k, v] of Object.entries(tween.to.s)) state[k] = tween.from.s[k] + (v - tween.from.s[k]) * e;
+  for (const [k, v] of Object.entries(tween.to.c)) colours[k].copy(tween.from.c[k]).lerp(v, e);
+  if (!tween.swapped && tween.t > 0.5) {
+    setSubject(tween.subject);
+    tween.swapped = true;
+  }
+  envDirty = true;
+  if (tween.t >= 1) {
+    state.windDir = ((state.windDir % 360) + 360) % 360;
+    tween = null;
+    ui.sync(state);
+  }
+}
+
+function setSubject(id) {
+  state.subject = id;
+  subjectPop = 0;
+}
+let subjectPop = 1;
+
+// ---------------------------------------------------------------- applying state
+const tmpV = new THREE.Vector3();
+const sunDir = new THREE.Vector3();
+const flash = { level: 0, next: 4 };
+const accent = new THREE.Color();
+
+function firePosition() {
+  if (state.subject === 'oak') return [9, 6.5];
+  if (state.subject === 'monolith') return [6.5, -6];
+  return [0, 0];
+}
+
+function applyState() {
+  const s = state;
+  const rad = THREE.MathUtils.degToRad;
+  // Wind direction is where the wind blows towards.
+  windUniforms.uWindDir.value.set(Math.cos(rad(s.windDir)), Math.sin(rad(s.windDir)));
+  windUniforms.uWindStrength.value = s.windStrength;
+  windUniforms.uGustStrength.value = s.gustStrength;
+  windUniforms.uGustScale.value = 1 / s.gustSize;
+  windUniforms.uGustSpeed.value = s.gustSpeed;
+  windUniforms.uTurbulence.value = s.turbulence;
+
+  grassUniforms.uGrassHeight.value = s.grassHeight;
+  grassUniforms.uHeightVar.value = s.heightVariation;
+  grassUniforms.uDryness.value = s.dryness;
+  grassUniforms.uSheen.value = s.sheen;
+  grassUniforms.uTranslucency.value = s.translucency;
+  grassUniforms.uFlowerAmount.value = s.flowers;
+  grassUniforms.uGrassBase.value.copy(colours.grassBase);
+  grassUniforms.uGrassTip.value.copy(colours.grassTip);
+  grassUniforms.uGrassDry.value.copy(colours.grassDry);
+
+  const el = rad(s.sunElevation);
+  const az = rad(s.sunAzimuth);
+  sunDir.set(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)).normalize();
+  const above = THREE.MathUtils.smoothstep(s.sunElevation, -3, 3);
+  sun.color.copy(colours.sunColor);
+  sun.intensity = s.sunIntensity * above;
+  hemi.color.copy(colours.hemiSky);
+  hemi.groundColor.copy(colours.hemiGround);
+  hemi.intensity = s.hemiIntensity;
+
+  skyUniforms.uZenith.value.copy(colours.skyZenith);
+  skyUniforms.uHorizon.value.copy(colours.skyHorizon);
+  skyUniforms.uSunDir.value.copy(sunDir);
+  skyUniforms.uSunColor.value.copy(colours.sunColor);
+  skyUniforms.uSunDisc.value.copy(colours.sunDisc);
+  skyUniforms.uSunSize.value = s.sunSize;
+  skyUniforms.uGlow.value = s.glow;
+  skyUniforms.uCloudCover.value = s.cloudCover;
+  skyUniforms.uCloudDensity.value = s.cloudDensity;
+  skyUniforms.uCloudLit.value.copy(colours.cloudLit);
+  skyUniforms.uCloudShade.value.copy(colours.cloudShade);
+  skyUniforms.uHighClouds.value = s.highClouds;
+  skyUniforms.uStars.value = s.stars;
+  skyUniforms.uHaze.value = s.haze;
+
+  scene.fog.color.copy(colours.skyHorizon).lerp(colours.mistColor, s.mist * 0.4);
+  scene.fog.density = 0.0012 + s.haze * 0.0085 + s.mist * 0.004;
+  renderer.toneMappingExposure = s.exposure;
+  bloom.strength = s.bloom;
+
+  mistUniforms.uMist.value = s.mist;
+  mistUniforms.uMistColor.value.copy(colours.mistColor);
+
+  const tint = colours.sunColor.clone().multiplyScalar(Math.min(s.sunIntensity, 4) * 0.3 * (0.25 + above * 0.75));
+  grassUniforms.uSunTint.value.copy(tint);
+  treeUniforms.uSunTint.value.copy(tint);
+  particleUniforms.uSunTint.value.copy(colours.sunColor).multiplyScalar(0.4 + s.sunIntensity * 0.25);
+
+  treeUniforms.uLeafSummer.value.copy(colours.leafSummer);
+  treeUniforms.uLeafAutumn.value.copy(colours.leafAutumn);
+  treeUniforms.uSeason.value = s.leafSeason;
+  treeUniforms.uCanopy.value = s.canopy;
+  treeUniforms.uTranslucency.value = s.translucency * 0.7;
+  leaves.mat.color.copy(colours.leafAutumn);
+  leaves.amount = s.leafFall;
+
+  particleUniforms.uPollen.value = s.pollen;
+  particleUniforms.uFireflies.value = s.fireflies;
+  particleUniforms.uEmbers.value = s.fire;
+  particleUniforms.uRain.value = s.rain;
+  birds.amount = s.birds;
+  bonfire.amount = s.fire;
+
+  const [fx, fz] = firePosition();
+  bonfire.place(fx, fz);
+  particleUniforms.uFirePos.value.copy(bonfire.group.position);
+  grassUniforms.uClear1.value.set(fx, fz, 3.0, Math.min(1, s.fire * 1.5));
+  const clearR = { oak: 1.9, monolith: 3.0, stones: 0, none: 0 }[s.subject];
+  grassUniforms.uClear0.value.set(0, 0, clearR, 0);
+  ground.userData.uniforms.uGroundA.value.copy(colours.groundA);
+  ground.userData.uniforms.uGroundB.value.copy(colours.groundB);
+  ground.userData.uniforms.uScorch.value.set(fx, fz, 3.4, Math.min(1, s.fire * 1.5));
+
+  accent.copy(colours.accent);
+  if (state.subject === 'oak') {
+    leaves.source.set(0, oak.position.y + 12, 0);
+    leaves.sourceRadius = 9;
+  } else {
+    // No oak: leaves arrive on the wind from the hedgerows upwind.
+    const wd = windUniforms.uWindDir.value;
+    leaves.source.set(-wd.x * 40, 16, -wd.y * 40);
+    leaves.sourceRadius = 30;
+  }
+}
+
+function updateSubjects(dt, t) {
+  subjectPop = Math.min(1, subjectPop + dt * 1.4);
+  const pop = 1 - Math.pow(1 - subjectPop, 3);
+  const setVis = (obj, on) => {
+    obj.visible = on;
+    if (on) obj.scale.setScalar((obj.userData.baseScale ??= obj.scale.x) * (0.85 + pop * 0.15));
+  };
+  setVis(oak, state.subject === 'oak');
+  setVis(monolith, state.subject === 'monolith');
+  setVis(stones, state.subject === 'stones');
+  monolith.userData.update(t, accent);
+  bonfire.update(t);
+}
+
+// ---------------------------------------------------------------- lightning
+function updateLightning(dt) {
+  flash.level *= Math.exp(-dt * 9);
+  if (state.lightning > 0.02) {
+    flash.next -= dt * state.lightning;
+    if (flash.next <= 0) {
+      flash.level = 1;
+      flash.double = Math.random() < 0.5 ? 0.12 : -1;
+      flash.next = 2.5 + Math.random() * 7;
+    }
+    if (flash.double > 0) {
+      flash.double -= dt;
+      if (flash.double <= 0) flash.level = 0.8;
+    }
+  }
+  skyUniforms.uFlash.value = flash.level * state.lightning;
+  hemi.intensity = state.hemiIntensity + flash.level * state.lightning * 2.5;
+}
+
+// ---------------------------------------------------------------- quality
+const QUALITY = {
+  low: { ratio: 1, shadow: 1024, bloomDiv: 2 },
+  medium: { ratio: 1.25, shadow: 2048, bloomDiv: 2 },
+  high: { ratio: 1.5, shadow: 2048, bloomDiv: 2 },
+  ultra: { ratio: 2, shadow: 4096, bloomDiv: 2 },
+};
+
+function setQuality(q, rebuild = true) {
+  quality = QUALITY[q] ? q : 'medium';
+  const Q = QUALITY[quality];
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, Q.ratio));
+  sun.shadow.mapSize.set(Q.shadow, Q.shadow);
+  if (sun.shadow.map) {
+    sun.shadow.map.dispose();
+    sun.shadow.map = null;
+  }
+  if (rebuild) {
+    scene.remove(grass);
+    grass.userData.dispose();
+    grass = buildGrass(quality);
+    scene.add(grass);
+    scene.remove(bgTrees);
+    bgTrees = buildBackgroundTrees(quality);
+    scene.add(bgTrees);
+  }
+  ui?.setQuality(quality);
+  resize();
+}
+
+function resize() {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  renderer.setSize(w, h, false);
+  composer.setPixelRatio(renderer.getPixelRatio());
+  composer.setSize(w, h);
+  const div = QUALITY[quality].bloomDiv;
+  bloom.resolution.set(w / div, h / div);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  particleUniforms.uPixelRatio.value = renderer.getPixelRatio();
+}
+window.addEventListener('resize', resize);
+
+// ---------------------------------------------------------------- UI, camera, audio
+const rig = new CameraRig(camera, canvas);
+const audio = new WindAudio();
+let paused = false;
+let shotRequested = false;
+
+const ui = new StudioUI({
+  onChange(key, v) {
+    state[key] = v;
+    if (tween) delete tween.to.s[key];
+    envDirty = true;
+    applyState();
+  },
+  onPreset(i) {
+    setPreset(i);
+  },
+  onSubject(id) {
+    setSubject(id);
+    if (tween) tween.swapped = true;
+    applyState();
+    ui.sync(state);
+  },
+  onReset() {
+    setPreset(presetIndex);
+  },
+  onQuality(q) {
+    setQuality(q);
+  },
+  onPause() {
+    paused = !paused;
+    return paused;
+  },
+  onSound() {
+    if (audio.on) audio.stop();
+    else audio.start();
+    return audio.on;
+  },
+  onCamera() {
+    rig.mode === 'cinematic' ? rig.goFree() : rig.goCinematic();
+  },
+  onShot() {
+    shotRequested = true;
+  },
+});
+rig.onModeChange = (m) => ui.setCameraMode(m);
+ui.setCameraMode(rig.mode);
+
+// Narrow screens start with the panel tucked away.
+document.body.classList.add(window.innerWidth < 960 ? 'panel-closed' : 'panel-open');
+
+setQuality(quality, false);
+setPreset(presetIndex, true);
+rig.angle = PRESETS[presetIndex].camera.startAngle;
+ui.sync(state);
+
+// ---------------------------------------------------------------- frame
+let time = 0;
+let cloudX = 0;
+let cloudY = 0;
+let mistX = 0;
+let fpsSmooth = 60;
+let uiSyncTimer = 0;
+let lowFpsTime = 0;
+let autoDropped = !!url.get('q');
+
+function frame(dt) {
+  if (!paused) time += dt;
+  windUniforms.uTime.value = time;
+  const simDt = paused ? 0 : dt;
+
+  stepTween(simDt || dt);
+  if (tween) applyState();
+  updateLightning(simDt);
+
+  // Clouds and mist drift with the wind.
+  const wd = windUniforms.uWindDir.value;
+  cloudX += wd.x * state.cloudSpeed * simDt * 0.012;
+  cloudY += wd.y * state.cloudSpeed * simDt * 0.012;
+  skyUniforms.uCloudOffset.value.set(cloudX, cloudY);
+  mistX += simDt * 0.02 * (0.3 + state.windStrength);
+  mistUniforms.uMistOffset.value.set(wd.x * mistX, wd.y * mistX);
+
+  rig.update(dt, time);
+  camera.updateMatrixWorld();
+  sky.position.copy(camera.position);
+  mist.position.set(0, heightAt(camera.position.x, camera.position.z) * 0.6 - 0.3, 0);
+
+  // Shadow camera follows the subject but snaps to texels to stop shimmering.
+  sun.target.position.set(0, heightAt(0, 0), 0);
+  sun.position.copy(sun.target.position).addScaledVector(sunDir, 120);
+
+  const sunView = tmpV.copy(sunDir).transformDirection(camera.matrixWorldInverse);
+  grassUniforms.uSunViewDir.value.copy(sunView);
+  treeUniforms.uSunViewDir.value.copy(sunView);
+  particleUniforms.uSunViewDir.value.copy(sunView);
+
+  updateSubjects(simDt, time);
+  if (!paused) {
+    leaves.update(simDt, time);
+    birds.update(time);
+  }
+
+  envTimer -= dt;
+  if (envDirty && envTimer <= 0) {
+    refreshEnv();
+    envDirty = false;
+    envTimer = 0.5;
+  }
+
+  if (audio.on) {
+    const [fx, fz] = firePosition();
+    audio.update({
+      wind: state.windStrength,
+      gust: cpuGust(camera.position.x, camera.position.z, time) * state.gustStrength,
+      rain: state.rain,
+      fire: state.fire,
+      fireDistance: Math.hypot(camera.position.x - fx, camera.position.z - fz),
+    });
+  }
+
+  composer.render(dt);
+
+  if (shotRequested) {
+    shotRequested = false;
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `windfield-${PRESETS[presetIndex].id}.png`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    });
+  }
+
+  if (dt > 0) fpsSmooth += (1 / dt - fpsSmooth) * 0.05;
+  uiSyncTimer -= dt;
+  if (uiSyncTimer <= 0) {
+    ui.setFps(fpsSmooth);
+    if (tween) ui.sync(state);
+    uiSyncTimer = 0.25;
+  }
+
+  // If the default quality is too heavy for this machine, step down once, quietly.
+  if (!autoDropped && !MANUAL && time > 3) {
+    lowFpsTime = fpsSmooth < 34 ? lowFpsTime + dt : 0;
+    if (lowFpsTime > 2.5) {
+      autoDropped = true;
+      if (quality !== 'low') setQuality(quality === 'medium' ? 'low' : 'medium');
+    }
+  }
+}
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  frame(dt);
+  requestAnimationFrame(loop);
+}
+
+document.body.classList.add('is-ready');
+if (MANUAL) {
+  // Capture hook: advance the scene in fixed steps and render on demand.
+  window.__windfield = {
+    step(dt = 1 / 30, n = 1) {
+      for (let i = 0; i < n; i++) frame(dt);
+    },
+    preset(i, instant = false) {
+      setPreset(i, instant);
+      if (instant) rig.snapNext = true;
+    },
+    ready: true,
+  };
+  frame(1 / 30);
+} else {
+  requestAnimationFrame(loop);
+}

@@ -77,6 +77,8 @@ jobs:
           test -f _site/design-notes/index.html
           test -f _site/demos/index.html
           test -f _site/demos/exploded-views/index.html
+          test -f _site/demos/windfield/index.html
+          test -f _site/demos/windfield/vendor/three/build/three.module.js
           test -f _site/demos/exploded-views/laptop.html
           test -f _site/demos/exploded-views/solar.html
           test -f _site/demos/exploded-views/engine.html
