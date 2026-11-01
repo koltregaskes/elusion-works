@@ -293,7 +293,7 @@ export function buildTown(scene, kitData, ground, opts = {}) {
   }
 
   // ------------------------------------------------------------------ trees
-  const trees = { tree_oak_0: [], tree_oak_1: [], tree_oak_2: [], tree_cypress: [], tree_pine_0: [], tree_pine_1: [], bush_0: [] };
+  const trees = { tree_oak_0: [], tree_oak_1: [], tree_oak_2: [], tree_cypress: [], tree_pine_0: [], tree_pine_1: [], bush_0: [], tree_far_pine: [], tree_far_oak: [] };
   const plantTree = (name, x, z, s, cell = 0) => {
     trees[name].push({ m: M4(x, H(x, z) - 0.2, z, rand() * Math.PI * 2, s), cell });
     circles.push({ x, z, r: 0.5 * s });
@@ -317,9 +317,9 @@ export function buildTown(scene, kitData, ground, opts = {}) {
   for (let x = CHURCH_SQ.x - 13; x <= CHURCH_SQ.x + 13; x += 6.5) plantTree('tree_cypress', x, CHURCH_SQ.z + 7, 1.1);
   // outside: forest, meadows, autumn colour
   let planted = 0;
-  for (let k = 0; k < 9000 && planted < 1700; k++) {
-    const x = R(-WORLD / 2 + 30, WORLD / 2 - 30);
-    const z = R(-WORLD / 2 + 30, WORLD / 2 - 30);
+  for (let k = 0; k < 12000 && planted < 1600; k++) {
+    const x = R(-260, 260);
+    const z = R(-260, 260);
     const r = townR(x, z);
     if (r < 1.3) continue;
     if (distToPolyline(x, z, ROAD) < 9) continue;
@@ -336,6 +336,24 @@ export function buildTown(scene, kitData, ground, opts = {}) {
       plantTree(['tree_oak_0', 'tree_oak_1', 'tree_oak_2'][Math.floor(rand() * 3)], x, z, R(0.9, 1.35), cell);
     }
     planted++;
+  }
+  // the far forest: thousands of cheap trees in dense stands on the hills
+  let farCount = 0;
+  for (let k = 0; k < 60000 && farCount < 9000; k++) {
+    const x = R(-WORLD / 2 + 10, WORLD / 2 - 10);
+    const z = R(-WORLD / 2 + 10, WORLD / 2 - 10);
+    const far = Math.hypot(x, z);
+    if (far < 230 || townR(x, z) < 1.6) continue;
+    if (distToPolyline(x, z, ROAD) < 10) continue;
+    const dens = fbm(x * 0.006 + 7, z * 0.006 - 2);
+    if (dens < 0.4) continue;
+    const slope = Math.abs(H(x + 3, z) - H(x - 3, z)) + Math.abs(H(x, z + 3) - H(x, z - 3));
+    if (slope > 9) continue;
+    const s = R(0.8, 1.4);
+    const pine = rand() < 0.45 + Math.min(0.45, (far - 230) / 700);
+    const name = pine ? 'tree_far_pine' : 'tree_far_oak';
+    trees[name].push({ m: M4(x, H(x, z) - 0.3, z, rand() * 6.28, s), cell: rand() < 0.4 ? 0 : rand() < 0.6 ? 1 : 2 });
+    farCount++;
   }
   // cypress pairs along the road
   for (let i = 0; i < ROAD.length - 1; i++) {
@@ -371,7 +389,7 @@ export function buildTown(scene, kitData, ground, opts = {}) {
   }
   for (const [name, list] of Object.entries(trees)) {
     if (!list.length) continue;
-    const isOak = name.startsWith('tree_oak') || name === 'bush_0';
+    const isOak = name.startsWith('tree_oak') || name === 'bush_0' || name === 'tree_far_oak';
     const b = new Batch(kit.get(name), list.length, scene, { attrs: isOak ? ['cell'] : [], materialFor });
     for (const t of list) b.add(t.m, isOak ? { cell: t.cell } : {});
     b.commit();
