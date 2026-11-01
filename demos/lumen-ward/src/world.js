@@ -187,7 +187,8 @@ export function addLightCones(scene, heads) {
   const n = normalize(positionWorld.sub(axis));
   const edge = pow(abs(dot(n, V)), 1.5);
   const shimmer = mx_noise_float(vec3(positionWorld.x.mul(0.8), positionWorld.y.mul(0.3).add(uTime.mul(1.5)), positionWorld.z.mul(0.8))).mul(0.25).add(0.85);
-  m.colorNode = vec3(0.6, 0.78, 1.0).mul(pow(v, 1.6)).mul(edge).mul(shimmer).mul(0.09);
+  const near = smoothstep(80.0, 25.0, length(cameraPosition.sub(positionWorld)));
+  m.colorNode = vec3(0.6, 0.78, 1.0).mul(pow(v, 1.6)).mul(edge).mul(shimmer).mul(near).mul(0.08);
   const mesh = new THREE.InstancedMesh(geo, m, Math.max(1, heads.length));
   const mm = new THREE.Matrix4();
   heads.forEach((h, i) => mesh.setMatrixAt(i, mm.makeTranslation(h.x, h.y - 0.15, h.z)));

@@ -25,7 +25,7 @@ const qParam = params.get('q');
 const qName = ['low', 'high', 'ultra'].includes(qParam) ? qParam : coarse ? 'low' : 'high';
 const QUALITY = {
   ultra: { dpr: 2, ssr: true, ao: true, rain: 14000, lights: 56, ssrScale: 1, aoScale: 0.75 },
-  high: { dpr: 1.5, ssr: true, ao: true, rain: 10000, lights: 40, ssrScale: 0.5, aoScale: 0.5 },
+  high: { dpr: 1.5, ssr: true, ao: true, rain: 10000, lights: 40, ssrScale: 0.75, aoScale: 0.5 },
   low: { dpr: 1, ssr: false, ao: false, rain: 4000, lights: 16, ssrScale: 0.5, aoScale: 0.5 },
 }[qName];
 const AA = params.get('aa') === 'fxaa' || qName === 'low' ? 'fxaa' : 'traa';
@@ -102,6 +102,7 @@ async function boot() {
     ssrPass.maxDistance.value = 60;
     ssrPass.thickness.value = 0.6;
     ssrPass.quality.value = 0.6;
+    ssrPass.blurQuality = 2;
     lit = lit.add(ssrPass.rgb);
   }
   const glow = bloom(lit, 0.55, 0.45, 0.92);
