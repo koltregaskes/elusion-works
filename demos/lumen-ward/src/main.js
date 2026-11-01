@@ -1,16 +1,16 @@
 // Lumen Ward: boot, render pipeline, loop, modes and HUD.
 // WebGPU renderer (falls back to WebGL2), TSL post-processing: ambient
 // occlusion, screen-space reflections, bloom, temporal anti-aliasing, grade.
-import * as THREE from '../vendor/three/build/three.webgpu.js';
+import * as THREE from '../../shared/three-r187/build/three.webgpu.js';
 import {
   pass, mrt, output, normalView, metalness, roughness, velocity, vec2, vec3, float, sample, packNormalToRGB,
   unpackRGBToNormal, renderOutput, screenUV, length, smoothstep, hash, uniform, mix, Fn,
-} from '../vendor/three/build/three.tsl.js';
-import { ao } from '../vendor/three/addons/tsl/display/GTAONode.js';
-import { ssr } from '../vendor/three/addons/tsl/display/SSRNode.js';
-import { bloom } from '../vendor/three/addons/tsl/display/BloomNode.js';
-import { traa } from '../vendor/three/addons/tsl/display/TRAANode.js';
-import { fxaa } from '../vendor/three/addons/tsl/display/FXAANode.js';
+} from '../../shared/three-r187/build/three.tsl.js';
+import { ao } from '../../shared/three-r187/addons/tsl/display/GTAONode.js';
+import { ssr } from '../../shared/three-r187/addons/tsl/display/SSRNode.js';
+import { bloom } from '../../shared/three-r187/addons/tsl/display/BloomNode.js';
+import { traa } from '../../shared/three-r187/addons/tsl/display/TRAANode.js';
+import { fxaa } from '../../shared/three-r187/addons/tsl/display/FXAANode.js';
 import { loadKits } from './kit.js';
 import { uTime } from './materials.js';
 import { buildCity } from './city.js';
