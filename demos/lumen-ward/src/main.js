@@ -60,7 +60,7 @@ async function boot() {
   await new Promise((r) => setTimeout(r, 0));
 
   scene.environment = makeEnv(renderer);
-  scene.environmentIntensity = 0.6;
+  scene.environmentIntensity = 0.9;
   setSky(scene);
   const seed = Number(params.get('seed')) || 7;
   const city = buildCity(scene, kitData, { seed });
@@ -68,7 +68,8 @@ async function boot() {
   const { cam: rainCam } = addRain(scene, QUALITY.rain);
   addSteam(scene, city.steam);
   addLightCones(scene, city.lampHeads);
-  scene.add(new THREE.HemisphereLight(0x3a3060, 0x0a0608, 0.35));
+  // night sky above, warm sodium-and-neon city glow bouncing up from the streets
+  scene.add(new THREE.HemisphereLight(0x5a4a9a, 0x8a4a3a, 0.9));
   const moon = new THREE.DirectionalLight(0x8090ff, 0.25);
   moon.position.set(-0.4, 1, 0.3);
   scene.add(moon);
