@@ -520,7 +520,7 @@ export function buildCity(scene, kitData, opts = {}) {
   }
   if (lanternPos.length) {
     const lm = new THREE.MeshBasicNodeMaterial();
-    lm.colorNode = Fn(() => vec3(1.6, 0.55, 0.25).mul(sin(uTime.mul(2).add(uv().x.mul(6))).mul(0.1).add(0.9)))();
+    lm.colorNode = Fn(() => vec3(3.2, 0.85, 0.22).mul(sin(uTime.mul(2).add(uv().x.mul(6))).mul(0.1).add(0.9)))();
     const lan = new THREE.InstancedMesh(new THREE.SphereGeometry(0.16, 12, 8).scale(1, 1.3, 1), lm, lanternPos.length);
     lanternPos.forEach((p, i) => lan.setMatrixAt(i, new THREE.Matrix4().makeTranslation(p.x, p.y, p.z)));
     lan.computeBoundingSphere();
