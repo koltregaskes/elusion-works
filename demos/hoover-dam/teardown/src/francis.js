@@ -3,6 +3,7 @@
 // runner, the shaft and a 40-pole generator. Proportions are representative.
 import * as THREE from 'three';
 import { INK, ACCENT } from './stage.js';
+import { MAT } from './details.js';
 
 const ink = (m, th = 35, op = 0.5) => { const l = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry, th), new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: op })); l.raycast = () => {}; m.add(l); return m; };
 
@@ -51,9 +52,10 @@ export class FrancisUnit {
   constructor() {
     const root = new THREE.Group();
     this.root = root;
-    const white = new THREE.MeshStandardMaterial({ color: 0xf2efe9, roughness: 0.6 });
-    const steel = new THREE.MeshStandardMaterial({ color: 0xc9ccd0, roughness: 0.45, metalness: 0.75, envMapIntensity: 0.5 });
-    const graphite = new THREE.MeshStandardMaterial({ color: 0x2b2e33, roughness: 0.45, metalness: 0.35, envMapIntensity: 0.5 });
+    const white = MAT.shell();
+    const steel = MAT.steel();
+    const graphite = MAT.graphite();
+    const orange = MAT.orange();
     const copper = new THREE.MeshStandardMaterial({ color: 0xb06a3c, roughness: 0.5, metalness: 0.6 });
     this.glass = new THREE.MeshPhysicalMaterial({ color: 0x9fd0e0, roughness: 0.06, transparent: true, opacity: 0.2, depthWrite: false, clearcoat: 1, side: THREE.DoubleSide });
     this.accent = new THREE.MeshStandardMaterial({ color: ACCENT, roughness: 0.45, metalness: 0.2, emissive: new THREE.Color(ACCENT), emissiveIntensity: 0.15 });
@@ -70,6 +72,7 @@ export class FrancisUnit {
     const stay = part('stay');
     const ringTop = ink(new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.6, 0.18, 64, 1, false), white)); ringTop.position.y = 0.95; stay.add(ringTop);
     const ringBot = ringTop.clone(); ringBot.position.y = -0.95; stay.add(ringBot);
+    const sr = new THREE.Mesh(new THREE.TorusGeometry(3.6, 0.12, 6, 64), orange); sr.rotation.x = Math.PI / 2; sr.position.y = 1.05; stay.add(sr);
     for (let i = 0; i < 20; i++) {
       const a = i / 20 * Math.PI * 2;
       const v = ink(new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.7, 0.9), white));
@@ -110,6 +113,8 @@ export class FrancisUnit {
     graphite.side = THREE.DoubleSide;
     const stator = ink(new THREE.Mesh(new THREE.CylinderGeometry(7.0, 7.0, 3.2, 80, 1, true, 0.6, Math.PI * 1.45), graphite), 50); stator.position.y = 11.6; st.add(stator);
     const statorIn = new THREE.Mesh(new THREE.CylinderGeometry(6.35, 6.35, 3.0, 80, 1, true, 0.6, Math.PI * 1.45), copper); statorIn.material.side = THREE.BackSide; statorIn.position.y = 11.6; st.add(statorIn);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(7.05, 0.28, 8, 80, Math.PI * 1.45), orange); rim.rotation.x = -Math.PI / 2; rim.rotation.z = -0.6; rim.position.y = 13.25; st.add(rim);
+    const foot = new THREE.Mesh(new THREE.TorusGeometry(7.05, 0.28, 8, 80, Math.PI * 1.45), orange); foot.rotation.x = -Math.PI / 2; foot.rotation.z = -0.6; foot.position.y = 9.95; st.add(foot);
     const lid = ink(new THREE.Mesh(new THREE.RingGeometry(1.2, 7.0, 80, 1, 0.6, Math.PI * 1.45), white), 40); lid.rotation.x = -Math.PI / 2; lid.position.y = 13.25; st.add(lid);
     const rotorG = part('rotor');
     const spider = new THREE.Mesh(new THREE.CylinderGeometry(5.6, 5.6, 2.6, 48), graphite); spider.position.y = 11.6; rotorG.add(spider);
@@ -125,7 +130,7 @@ export class FrancisUnit {
 
     this.e = 0; this.ev = 0; this.eTarget = 0; this.gateAngle = 0;
     // explode offsets (metres, before the inset scale)
-    this.offsets = { stator: 6.5, rotor: 4, shaft: 2.2, runner: -2.2, draft: -4.6, spiral: -0.5, stay: 0, wicket: 0 };
+    this.offsets = { stator: 4.6, rotor: 2.9, shaft: 1.6, runner: -2.0, draft: -4.0, spiral: -0.4, stay: 0, wicket: 0 };
   }
 
   explode(on) { this.eTarget = on ? 1 : 0; }

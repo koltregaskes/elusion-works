@@ -52,7 +52,7 @@ export class Stage {
     this.controls.maxPolarAngle = Math.PI * 0.49;
 
     // key, fill, rim
-    const key = new THREE.DirectionalLight(0xfff6ea, 2.6);
+    const key = new THREE.DirectionalLight(0xfff6ea, 2.25);
     key.position.set(-700, 1300, 600);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
@@ -127,7 +127,7 @@ export class Stage {
     this.quality = q;
     const dpr = window.devicePixelRatio || 1;
     this.renderer.setPixelRatio(q === 2 ? Math.min(2, dpr) : q === 1 ? Math.min(1.25, dpr) : 0.85);
-    this.gtao.enabled = q === 2;
+    this.gtao.enabled = q === 2 && !this.noAO;
     this.bloom.enabled = q >= 1;
     const s = q === 2 ? 2048 : q === 1 ? 1024 : 512;
     if (this.key.shadow.mapSize.x !== s) { this.key.shadow.mapSize.set(s, s); this.key.shadow.map?.dispose(); this.key.shadow.map = null; }

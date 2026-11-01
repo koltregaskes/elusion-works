@@ -8,6 +8,7 @@ import { buildStructures } from '../../src/scene/dam.js';
 import { Tracers, Particles } from '../../src/scene/particles.js';
 import { ELEV } from '../../src/model/data.js';
 import { INK, ACCENT } from './stage.js';
+import { addDetails, MAT } from './details.js';
 
 export const BOX = { x: 300, z0: -400, z1: 380, base: -48, step: 9 };
 const CELL = 2;
@@ -55,9 +56,11 @@ function clayMaterial(color, cut) {
           ${cut ? `
           // cut face: strata lines at every sheet
           float f = abs(fract(t) - 0.5);
-          float w = fwidth(t) * 1.3;
+          float w = fwidth(t) * 1.2;
           float line = 1.0 - smoothstep(0.5 - w, 0.5, f);
-          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.18, 0.17, 0.16), line * 0.55);
+          float major = step(0.5, fract(lv / 3.0 + 0.01)) * 0.0 + (mod(lv, 3.0) < 0.5 ? 1.0 : 0.35);
+          float fade = 1.0 - smoothstep(0.25, 0.6, w);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.18, 0.17, 0.16), line * 0.5 * major * fade);
           diffuseColor.rgb *= 0.93 + 0.07 * hh(lv + 7.0);` : `
           // tread edges: ink where a riser meets the sheet above
           float ny = normalize(vN).y;
@@ -140,9 +143,15 @@ export class StudyModel {
     const S = buildStructures(this.uniforms);
     this.S = S;
     S.groups.bridge.visible = false;
-    const white = () => new THREE.MeshStandardMaterial({ color: 0xf2efe9, roughness: 0.62, metalness: 0 });
-    const conc = new THREE.MeshStandardMaterial({ color: 0xd9d3c8, roughness: 0.72 });
-    const graphite = new THREE.MeshStandardMaterial({ color: 0x2b2e33, roughness: 0.45, metalness: 0.35, envMapIntensity: 0.5 });
+    const white = () => MAT.shell();
+    // panel decals: lift lines every 15 m, column joints every 15 m along the arc
+    const dc = document.createElement('canvas'); dc.width = 256; dc.height = 128; const dg = dc.getContext('2d');
+    dg.fillStyle = '#ffffff'; dg.fillRect(0, 0, 256, 128);
+    dg.fillStyle = 'rgba(22,24,27,0.30)'; dg.fillRect(0, 0, 256, 6); dg.fillRect(0, 0, 5, 128); dg.fillStyle = 'rgba(22,24,27,0.16)'; dg.fillRect(128, 0, 4, 128);
+    dg.fillStyle = 'rgba(22,24,27,0.10)'; dg.fillRect(0, 63, 256, 3);
+    const dtex = new THREE.CanvasTexture(dc); dtex.wrapS = dtex.wrapT = THREE.RepeatWrapping; dtex.colorSpace = THREE.SRGBColorSpace; dtex.anisotropy = 8;
+    const conc = new THREE.MeshPhysicalMaterial({ color: 0xc9c3b8, map: dtex, roughness: 0.5, clearcoat: 0.35, clearcoatRoughness: 0.4 });
+    const graphite = MAT.graphite();
     this.mats = { conc, graphite };
     const dress = (group, sys, matFn, inkTh = 32) => {
       group.traverse((m) => {
@@ -155,9 +164,9 @@ export class StudyModel {
     };
     dress(S.groups.dam, 'dam', (m) => (m.name === 'dam-body' ? conc : white()), 28);
     dress(S.groups.towers, 'towers', white, 40);
-    dress(S.groups.spillways, 'spillways', (m) => (S.spill.some((sp) => sp.gates.includes(m)) ? new THREE.MeshStandardMaterial({ color: 0x5f666d, roughness: 0.45, metalness: 0.5 }) : white()), 30);
+    dress(S.groups.spillways, 'spillways', (m) => (S.spill.some((sp) => sp.gates.includes(m)) ? new THREE.MeshPhysicalMaterial({ color: 0x1c1f23, roughness: 0.35, metalness: 0.2, clearcoat: 0.5 }) : white()), 30);
     dress(S.groups.powerhouse, 'powerhouse', (m) => (m.geometry.parameters?.height === 6 ? graphite : white()), 30);
-    dress(S.groups.generators, 'powerhouse', (m) => (m.parent && S.ph.gens.some((g) => g.rotor === m.parent) ? new THREE.MeshStandardMaterial({ color: 0xd8d8d8, roughness: 0.4, metalness: 0.6 }) : m.geometry.type === 'TorusGeometry' ? new THREE.MeshStandardMaterial({ color: 0x9fb4c0, roughness: 0.45, metalness: 0.4 }) : new THREE.MeshStandardMaterial({ color: 0x2b2e33, roughness: 0.45, metalness: 0.35, emissive: new THREE.Color(ACCENT), emissiveIntensity: 0 })), 0);
+    dress(S.groups.generators, 'powerhouse', (m) => (m.parent && S.ph.gens.some((g) => g.rotor === m.parent) ? MAT.steel() : m.geometry.type === 'TorusGeometry' ? new THREE.MeshStandardMaterial({ color: 0x9fb4c0, roughness: 0.45, metalness: 0.4 }) : new THREE.MeshPhysicalMaterial({ color: 0x1c1f23, roughness: 0.32, metalness: 0.25, clearcoat: 0.6, emissive: new THREE.Color(ACCENT), emissiveIntensity: 0 })), 0);
     for (const g of S.ph.gens) g.mat = g.group.children[0].material;
     const glass = (m) => new THREE.MeshPhysicalMaterial({ color: m.userData.kind === 'diversion' ? 0xc9b89c : m.userData.kind === 'penstock' ? 0x6fb3cc : 0x9cc9d8, roughness: 0.08, transparent: true, opacity: m.userData.kind === 'diversion' ? 0.28 : 0.5, depthWrite: false, clearcoat: 1, side: THREE.DoubleSide });
     dress(S.groups.tunnels, 'tunnels', glass, 0);
@@ -171,6 +180,7 @@ export class StudyModel {
       if (m.userData.kind === 'spill') { m.geometry.dispose(); m.geometry = new THREE.TubeGeometry(S.curves.spill[si++].c, 90, 7.6, 16, false); }
       if (m.userData.kind === 'diversion') { m.geometry.dispose(); m.geometry = new THREE.TubeGeometry(S.curves.diversion[di++].c, 70, 8.5, 14, false); }
     });
+    this.details = addDetails(S);
     for (const g of Object.values(S.groups)) root.add(g);
     S.groups.generators.visible = true;
     S.groups.tunnels.visible = true;
@@ -321,6 +331,12 @@ export class StudyModel {
     }
     this.cap.visible = cut;
     this.waterCap.visible = cut;
+    // GTAO renders its own normal pass: it must be cut the same way or it shades what is not drawn
+    if (this.stage.gtao?.normalMaterial) { this.stage.gtao.normalMaterial.clippingPlanes = planes; this.stage.gtao.normalMaterial.needsUpdate = true; }
+    // the section is a flat diagram: ambient occlusion only adds artefacts across the open cut
+    if (this.stage.gtao) this.stage.gtao.enabled = !cut && this.stage.quality === 2;
+    // the Nevada half lies wholly on the cut side; drawing it would only fight the Arizona cut face
+    this.nev.visible = !cut;
     this.pen.points.visible = true;
   }
 
@@ -348,7 +364,7 @@ export class StudyModel {
     for (const m of G.powerhouse.children) {
       const r = R.get(m); const s = Math.sign(r.x) || 1;
       m.position.x = r.x + s * 30 * e;
-      m.position.y = r.y + (r.y > 80 ? 46 * e : 0);
+      m.position.y = r.y + (r.y > 85 ? 46 * e : 0);
     }
     const waterOp = Math.max(0, 1 - e * 1.6);
     this.lake.visible = this.river.visible = this.lakeFace.visible = this.riverFace.visible = waterOp > 0.02 && this.mode !== 'cut-hide';
@@ -368,14 +384,14 @@ export class StudyModel {
     const spilling = out.spillQ > 1;
     for (const sp of this.S.spill) for (const g of sp.gates) {
       g.position.y = crestY - 2.44 + 4.88 * st.drum;
-      g.material.color.set(spilling ? ACCENT : 0x5f666d);
+      g.material.color.set(spilling ? ACCENT : 0x1c1f23);
       g.material.emissive = g.material.emissive || new THREE.Color();
       g.material.emissive.set(spilling ? ACCENT : 0x000000); g.material.emissiveIntensity = spilling ? 0.25 : 0;
     }
     for (const g of this.S.ph.gens) {
       const u = st.units.find((uu) => uu.id === g.id);
       g.rotor.rotation.y += ((u?.rpm || 0) / 60) * Math.PI * 2 * dt / 12;
-      g.mat.emissiveIntensity = Math.min(0.85, (u?.mw || 0) / 140);
+      g.mat.emissiveIntensity = Math.min(0.28, (u?.mw || 0) / 400);
     }
     let sideQ = { '-1': 0, '1': 0 };
     for (const u of st.units) sideQ[u.id[0] === 'N' ? '-1' : '1'] += u.q || 0;
@@ -405,6 +421,6 @@ export class StudyModel {
       this.waterCap.geometry.dispose(); this.waterCap.geometry = g; this.waterCap.material.uniforms.uTop.value = wy;
     }
     // keep the clip plane in world space as the turntable turns
-    if (this.mode === 'cut') { this.clip.set(new THREE.Vector3(1, 0, 0), 0).applyMatrix4(this.root.matrixWorld); }
+    if (this.mode === 'cut') { this.clip.set(new THREE.Vector3(1, 0, 0), 0.5).applyMatrix4(this.root.matrixWorld); }
   }
 }

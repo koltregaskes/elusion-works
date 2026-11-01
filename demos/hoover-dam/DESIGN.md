@@ -112,8 +112,20 @@ switches between them.
   40-pole generator with a cut window. It has its own explode.
 - **Modes:** Glass (rock and concrete see-through), Cut (clip through the crown with a
   hatched concrete section and a depth-shaded water section).
-- **Console:** big live MW, output and lake strip charts, per-unit bars, water-path
-  schematic, unit A5 gate dial, lake, spillway and base-pressure stats, sliders
-  including an inflow "break it" control, one button per subsystem, camera views,
-  callouts with ink leaders, and the self-driving tour (25 s idle hand-back).
-- Deep links: `?scn=flood&explode&focus=turbine&mode=glass&view=unit&pause&bare&notour`.
+- **Console (1600 × 900 field-simulator layout):** orange ID block and title with a slash
+  mark; a 40-cell dam-load meter (thrust as a share of thrust at the crest); sim ID,
+  runtime, status and operator columns; numbered cards with an orange tick header
+  (01 Output, 02 Lake Mead, 03 Unit load, 04 Turbine A5 with a live wicket-gate dial,
+  05 Assemblies, 06 Display, 07 Subsystems with status pills computed from the model);
+  a huge orange MODE title; tucked-away operator sliders; a footer spec line.
+- **Operation log:** a 38 s script of ten operator beats (isolate intake, penstock in
+  glass, open unit A5, close and reopen the wicket gates, take apart, flood and drop
+  the drum gates, section, reassemble). It plays with a ghost cursor tapping the real
+  controls, can be scrubbed on its beat-ticked bar, pauses on any input and restarts
+  after 25 s of quiet. Seeking replays every beat up to that time, so a still at `?t=`
+  is exactly that moment of the film.
+- **Drafting overlay:** orbit circles, dashed arcs, travelling nodes, a crosshair on the
+  subject and a dashed model frame, redrawn from the camera every other frame.
+- **Callouts:** orange dot, elbow leader, two-line mono label; the set changes with the
+  isolated assembly.
+- Deep links: `?t=13.5` (film time), `?q=0|1|2`, `?pause`, `?clean`, `?notour`.
