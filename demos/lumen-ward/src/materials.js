@@ -49,8 +49,8 @@ export function texturedMaterial(set, { tint = 1, rough = 1, wet = 0.75, uvNode 
 const yawAttr = (attr) => instancedBufferAttribute(attr);
 
 function roomPalette(seed) {
-  const warm = vec3(1.0, 0.68, 0.4);
-  const cool = vec3(0.62, 0.8, 1.0);
+  const warm = vec3(1.0, 0.6, 0.32);
+  const cool = vec3(0.5, 0.72, 1.0);
   const pink = vec3(1.0, 0.25, 0.65);
   const cyan = vec3(0.2, 0.9, 1.0);
   const h = hash(seed.add(3.1));
@@ -87,7 +87,7 @@ export function windowMaterial(yawAttribute, seedAttribute, { w = 1.5, h = 2.0, 
     const lit = step(shop ? 0.12 : 0.58, hash(seed.add(epoch)).mul(0.5).add(hash(seed.add(1.7)).mul(0.5)));
     const pal = shop ? mix(vec3(1.0, 0.85, 0.65), roomPalette(seed), 0.45) : roomPalette(seed);
     // depth falloff and ceiling lamp pool
-    const fall = mix(float(1.0), float(0.45), hit.z);
+    const fall = mix(float(1.0), float(0.3), hit.z).mul(mix(float(0.55), float(1.0), smoothstep(0.0, 0.25, hit.x.min(hit.x.oneMinus()))));
     const lamp = smoothstep(0.55, 0.0, length(hit.xz.sub(vec2(0.5, 0.45)))).mul(isCeil);
     // back wall details: a picture, a dark furniture block and shelves
     const hx = hit.x;
@@ -112,7 +112,7 @@ export function windowMaterial(yawAttribute, seedAttribute, { w = 1.5, h = 2.0, 
     const slats = smoothstep(0.3, 0.5, fract(v0.mul(38))).mul(0.25).add(0.75);
     const blindCol = pal.mul(0.55).mul(slats);
     const inside = mix(col.mul(lit), blindCol.mul(lit.mul(0.9).add(0.04)), blindMask).add(tvCol);
-    const intensity = shop ? 2.2 : 1.35;
+    const intensity = shop ? 1.15 : 0.7;
     return inside.mul(intensity);
   });
   m.colorNode = vec3(0.004, 0.005, 0.007);
@@ -243,7 +243,7 @@ export function wetGroundMaterial(set, scale, { puddles = 0.55, tint = 1 } = {})
   })();
   // blend in tangent space, then hand the result to normalMap as an encoded map
   const tn = texture(set.normal, wuv).rgb.mul(2).sub(1);
-  const rip = ripple.mul(0.4);
+  const rip = ripple.mul(0.2);
   const mixed = normalize(mix(tn, vec3(rip, rip.mul(0.7), 1), pmask));
   m.normalNode = normalMap(mixed.mul(0.5).add(0.5));
   // reflectivity for SSR: puddles act as mirrors, wet asphalt faintly reflects
