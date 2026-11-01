@@ -23,7 +23,7 @@ import sys
 import bpy
 from mathutils import Matrix, Vector
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "shared", "tools"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "_shared", "tools"))
 import mb as mbm  # noqa: E402
 from mb import MB  # noqa: E402
 

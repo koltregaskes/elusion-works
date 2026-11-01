@@ -1,8 +1,8 @@
 // Loads the Blender kits (detailed district kit + light far-skyline kit), the
 // facade layout JSON and the texture sets, and turns each kit object into an
 // instancing template with browser materials.
-import * as THREE from '../../shared/three-r187/build/three.webgpu.js';
-import { GLTFLoader } from '../../shared/three-r187/addons/loaders/GLTFLoader.js';
+import * as THREE from '../../_shared/three-r187/build/three.webgpu.js';
+import { GLTFLoader } from '../../_shared/three-r187/addons/loaders/GLTFLoader.js';
 import { loadTextures, texturedMaterial, windowMaterial, farFacadeMaterial, signMaterial, screenMaterial } from './materials.js';
 
 // Sign atlases drawn on a canvas.

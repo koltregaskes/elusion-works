@@ -2,7 +2,7 @@
 // battered slope down to meadows, forested hills and a ring of snowy
 // mountains. One height function feeds the terrain mesh, the grass and every
 // placement, so everything sits on the same ground.
-import * as THREE from '../../shared/three-r187/build/three.webgpu.js';
+import * as THREE from '../../_shared/three-r187/build/three.webgpu.js';
 
 export const WORLD = 1600; // metres covered by the main terrain
 export const RES = 1024; // heightmap texels per side

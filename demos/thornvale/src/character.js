@@ -1,8 +1,8 @@
 // Third-person character: Michelle (Mixamo) driven by the idle/walk/run clips
 // from the Xbot file (same Mixamo skeleton), with a follow camera, terrain
 // following and collisions against buildings, trees, walls and the terrace.
-import * as THREE from '../../shared/three-r187/build/three.webgpu.js';
-import { GLTFLoader } from '../../shared/three-r187/addons/loaders/GLTFLoader.js';
+import * as THREE from '../../_shared/three-r187/build/three.webgpu.js';
+import { GLTFLoader } from '../../_shared/three-r187/addons/loaders/GLTFLoader.js';
 import { TOWN, townR } from './terrain.js';
 
 export async function loadCharacter(base) {
