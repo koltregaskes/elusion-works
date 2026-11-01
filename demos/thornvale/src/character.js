@@ -65,9 +65,9 @@ export class ThirdPerson {
     this.pos = new THREE.Vector3(0, TOWN.base, 60);
     this.heading = Math.PI; // facing -z (towards the square)
     this.vel = new THREE.Vector2();
-    this.yaw = Math.PI; // camera orbit
+    this.yaw = 0; // camera orbit: 0 puts the camera behind a character facing -z
     this.pitch = 0.22;
-    this.dist = 5.5;
+    this.dist = 4.2;
     this.keys = new Set();
     this.enabled = false;
     this.locked = false;

@@ -55,6 +55,7 @@ const result = { bootS, failedBoot, shots: [] };
 if (!failedBoot) {
   result.stats = await page.evaluate(() => window.__TV.stats);
   if (args.includes('--first')) {
+    await page.evaluate(() => document.body.classList.add('is-capture'));
     await page.waitForTimeout(2000);
     await page.screenshot({ path: path.join(OUT, 'first.png'), timeout: Number(arg('shotTimeout', 600000)) });
   }
