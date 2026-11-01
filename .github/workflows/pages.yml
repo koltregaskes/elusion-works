@@ -196,7 +196,7 @@ jobs:
           test -f _site/demos/thornvale/index.html
           test -f _site/demos/thornvale/src/main.js
           test -f _site/demos/thornvale/assets/thornvale-kit.glb
-          test -f _site/demos/thornvale/assets/characters/Michelle.glb
+          test -f _site/demos/thornvale/assets/characters/Soldier.glb
           test -f _site/demos/thornvale/assets/tex/leaves.webp
           test -f _site/demos/thornvale/thumbnail.webp
           grep -q 'thornvale/' _site/demos/index.html
