@@ -1,35 +1,45 @@
-// Lumen Ward: boot, render loop, modes and HUD.
-import * as THREE from '../vendor/three/build/three.module.min.js';
-import { EffectComposer } from '../vendor/three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from '../vendor/three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from '../vendor/three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from '../vendor/three/addons/postprocessing/OutputPass.js';
-import { loadKit, shared } from './kit.js';
+// Lumen Ward: boot, render pipeline, loop, modes and HUD.
+// WebGPU renderer (falls back to WebGL2), TSL post-processing: ambient
+// occlusion, screen-space reflections, bloom, temporal anti-aliasing, grade.
+import * as THREE from '../vendor/three/build/three.webgpu.js';
+import {
+  pass, mrt, output, normalView, metalness, roughness, velocity, vec2, vec3, float, sample, packNormalToRGB,
+  unpackRGBToNormal, renderOutput, screenUV, length, smoothstep, hash, uniform, mix, Fn,
+} from '../vendor/three/build/three.tsl.js';
+import { ao } from '../vendor/three/addons/tsl/display/GTAONode.js';
+import { ssr } from '../vendor/three/addons/tsl/display/SSRNode.js';
+import { bloom } from '../vendor/three/addons/tsl/display/BloomNode.js';
+import { traa } from '../vendor/three/addons/tsl/display/TRAANode.js';
+import { fxaa } from '../vendor/three/addons/tsl/display/FXAANode.js';
+import { loadKits } from './kit.js';
+import { uTime } from './materials.js';
 import { buildCity } from './city.js';
-import { addSky, makeEnv, addGround, addRain, addSteam, FOG } from './world.js';
+import { setSky, makeEnv, addGround, addRain, addSteam, addLightCones, LightPool, FOG } from './world.js';
 import { Explorer } from './controls.js';
 import { Flyover } from './flyover.js';
 
 const $ = (s) => document.querySelector(s);
 const params = new URLSearchParams(location.search);
 const coarse = matchMedia('(pointer: coarse)').matches;
-const qName = params.get('q') === 'low' || params.get('q') === 'high' ? params.get('q') : coarse ? 'low' : 'high';
+const qParam = params.get('q');
+const qName = ['low', 'high', 'ultra'].includes(qParam) ? qParam : coarse ? 'low' : 'high';
 const QUALITY = {
-  high: { dpr: 1.5, refl: true, reflScale: 0.5, rain: 9000, msaa: 4, bloomScale: 0.5 },
-  low: { dpr: 1, refl: false, reflScale: 0, rain: 3500, msaa: 0, bloomScale: 0.35 },
+  ultra: { dpr: 2, ssr: true, ao: true, rain: 14000, lights: 56, ssrScale: 1, aoScale: 0.75 },
+  high: { dpr: 1.5, ssr: true, ao: true, rain: 10000, lights: 40, ssrScale: 0.5, aoScale: 0.5 },
+  low: { dpr: 1, ssr: false, ao: false, rain: 4000, lights: 16, ssrScale: 0.5, aoScale: 0.5 },
 }[qName];
+const AA = params.get('aa') === 'fxaa' || qName === 'low' ? 'fxaa' : 'traa';
 
 const canvas = $('#scene');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+const renderer = new THREE.WebGPURenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, QUALITY.dpr));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.95;
-renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMappingExposure = 1.0;
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(FOG, 0.005);
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 4000);
+scene.fog = new THREE.FogExp2(FOG, 0.0048);
+const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.1, 3000);
 camera.position.set(-340, 118, 66);
 camera.lookAt(0, 20, 0);
 
@@ -39,65 +49,86 @@ const setLoad = (f, msg) => {
   loaderBar.style.transform = `scaleX(${f})`;
   if (msg) loaderText.textContent = msg;
 };
-
 const state = { mode: 'flyover', ready: false, t: 0 };
 
 async function boot() {
-  setLoad(0.05, 'Loading the Blender kit');
-  const kitData = await loadKit('assets/lumen-ward-kit.glb', (f) => setLoad(0.05 + f * 0.6));
-  setLoad(0.7, 'Laying out the ward');
+  await renderer.init();
+  const backend = renderer.backend.isWebGPUBackend ? 'WebGPU' : 'WebGL2';
+  setLoad(0.04, `Loading the Blender kit (${backend})`);
+  const kitData = await loadKits('assets', (f) => setLoad(0.04 + f * 0.6));
+  setLoad(0.66, 'Laying out the ward');
   await new Promise((r) => setTimeout(r, 0));
 
   scene.environment = makeEnv(renderer);
-  addSky(scene);
+  scene.environmentIntensity = 0.6;
+  setSky(scene);
   const seed = Number(params.get('seed')) || 7;
   const city = buildCity(scene, kitData, { seed });
-  const ground = addGround(scene, city, { reflections: QUALITY.refl, resScale: QUALITY.reflScale });
-  const rain = addRain(scene, QUALITY.rain);
+  addGround(scene, city, kitData.tex);
+  const { cam: rainCam } = addRain(scene, QUALITY.rain);
   addSteam(scene, city.steam);
-
-  scene.add(new THREE.HemisphereLight(0x463a78, 0x120a10, 0.55));
-  const moon = new THREE.DirectionalLight(0x8fa0ff, 0.35);
+  addLightCones(scene, city.lampHeads);
+  scene.add(new THREE.HemisphereLight(0x3a3060, 0x0a0608, 0.35));
+  const moon = new THREE.DirectionalLight(0x8090ff, 0.25);
   moon.position.set(-0.4, 1, 0.3);
   scene.add(moon);
-  for (const L of city.lights.slice(0, 10)) {
-    const p = new THREE.PointLight(L.color, L.i, L.d, 2);
-    p.position.set(L.x, L.y, L.z);
-    scene.add(p);
-  }
+  const pool = new LightPool(scene, city.lights, QUALITY.lights);
 
-  setLoad(0.85, 'Compiling shaders');
-  const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: QUALITY.msaa });
-  const composer = new EffectComposer(renderer, rt);
-  composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.45, 0.95);
-  composer.addPass(bloom);
-  composer.addPass(new OutputPass());
+  // ------------------------------------------------------------ post-processing
+  setLoad(0.8, 'Building the render pipeline');
+  const pipeline = new THREE.RenderPipeline(renderer);
+  pipeline.outputColorTransform = false;
+  const scenePass = pass(scene, camera);
+  scenePass.setMRT(mrt({ output, normal: packNormalToRGB(normalView), metalrough: vec2(metalness, roughness), velocity }));
+  scenePass.getTexture('normal').type = THREE.UnsignedByteType;
+  scenePass.getTexture('metalrough').type = THREE.UnsignedByteType;
+  const col = scenePass.getTextureNode('output');
+  const depth = scenePass.getTextureNode('depth');
+  const normalTex = scenePass.getTextureNode('normal');
+  const mr = scenePass.getTextureNode('metalrough');
+  const vel = scenePass.getTextureNode('velocity');
+  const sceneNormal = sample((u) => unpackRGBToNormal(normalTex.sample(u)));
+
+  let lit = col;
+  if (QUALITY.ao) {
+    const aoPass = ao(depth, sceneNormal, camera);
+    aoPass.resolutionScale = QUALITY.aoScale;
+    aoPass.radius.value = 1.2;
+    lit = lit.mul(mix(float(1), aoPass.getTextureNode().r, 0.85));
+  }
+  if (QUALITY.ssr) {
+    const ssrPass = ssr(col, depth, sceneNormal, { metalnessNode: mr.r, roughnessNode: mr.g });
+    ssrPass.resolutionScale = QUALITY.ssrScale;
+    ssrPass.maxDistance.value = 60;
+    ssrPass.thickness.value = 0.6;
+    ssrPass.quality.value = 0.6;
+    lit = lit.add(ssrPass.rgb);
+  }
+  const glow = bloom(lit, 0.55, 0.45, 0.92);
+  const combined = lit.add(glow);
+  const aa = AA === 'traa' ? traa(combined, depth, vel, camera) : combined;
+  // grade in display space: vignette and a little film grain
+  const display = renderOutput(aa);
+  const graded = Fn(() => {
+    const v = smoothstep(1.05, 0.35, length(screenUV.sub(0.5).mul(vec2(1.0, 0.8))));
+    const g = hash(screenUV.x.mul(1913.0).add(screenUV.y.mul(7137.0)).add(uTime.mul(61.0))).sub(0.5).mul(0.025);
+    return vec3(display.rgb.mul(v.mul(0.25).add(0.75)).add(g));
+  })();
+  pipeline.outputNode = AA === 'fxaa' ? fxaa(graded) : graded;
 
   const resize = () => {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    renderer.setSize(w, h);
-    composer.setPixelRatio(renderer.getPixelRatio());
-    composer.setSize(w, h);
-    bloom.resolution.set(w * QUALITY.bloomScale, h * QUALITY.bloomScale);
-    camera.aspect = w / h;
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
-    ground.userData.resize?.(w * renderer.getPixelRatio(), h * renderer.getPixelRatio());
   };
-  resize();
   window.addEventListener('resize', resize);
 
+  // ------------------------------------------------------------ controls and modes
   const explorer = new Explorer(camera, canvas, city);
   const flyover = new Flyover(camera, city, $('#fade'), $('#caption'));
-
   const hint = $('#hint');
-  const showHint = () => {
-    const on = state.mode !== 'flyover' && !explorer.locked && !coarse;
-    hint.classList.toggle('is-on', on);
-  };
+  const showHint = () => hint.classList.toggle('is-on', state.mode !== 'flyover' && !explorer.locked && !coarse);
   explorer.onLockChange = showHint;
-
   const setMode = (m) => {
     state.mode = m;
     document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
@@ -139,58 +170,57 @@ async function boot() {
     if (e.code === 'KeyB' && state.mode === 'flyover') flyover.next(-1);
   });
 
-  // compile everything before the first visible frame
-  renderer.compile(scene, camera);
+  setLoad(0.9, 'Compiling shaders');
+  await renderer.compileAsync(scene, camera);
   setLoad(1, 'Ready');
 
   const startMode = ['walk', 'fly', 'flyover'].includes(params.get('mode')) ? params.get('mode') : 'flyover';
-  const startShot = Number(params.get('shot')) || 0;
-  flyover.i = startShot;
+  flyover.i = Number(params.get('shot')) || 0;
   setMode(startMode);
 
-  const clock = new THREE.Clock();
+  const timer = new THREE.Timer();
   const fpsEl = $('#fps');
   let frames = 0;
   let acc = 0;
   let frozen = false;
   function frame() {
-    const dt = Math.min(clock.getDelta(), 0.05);
+    timer.update();
+    const dt = Math.min(timer.getDelta(), 0.05);
     if (!frozen) {
       state.t += dt;
-      shared.time.value = state.t;
+      uTime.value = state.t;
       city.update(dt, state.t);
       if (state.mode === 'flyover') flyover.update(dt);
       else explorer.update(dt);
     }
-    rain.material.uniforms.uCam.value.copy(camera.position);
-    composer.render();
+    pool.update(camera);
+    rainCam.value.copy(camera.position);
+    pipeline.render();
     frames++;
     acc += dt;
     if (acc > 0.5) {
-      fpsEl.textContent = `${Math.round(frames / acc)} fps`;
+      fpsEl.textContent = `${Math.round(frames / acc)} fps · ${backend}`;
       frames = 0;
       acc = 0;
     }
   }
   renderer.setAnimationLoop(frame);
-
   $('#loader').classList.add('is-done');
   state.ready = true;
 
   // hooks for automated captures
   window.__LW = {
     state,
-    stats: { ...city.stats, quality: qName },
+    stats: { ...city.stats, quality: qName, backend, aa: AA },
     renderer,
     setMode,
     flyover,
     explorer,
-    // Pose the camera at shot i, progress u, at scene time t, and hold there.
     pose(i, u, t = 12) {
       frozen = true;
       document.body.classList.add('is-capture');
       state.t = t;
-      shared.time.value = t;
+      uTime.value = t;
       city.update(0.016, t);
       if (flyover.shots[i].follow === 'train') {
         city.trainState.s = city.railLen - 118 + u * flyover.shots[i].dur * city.trainState.speed;
@@ -199,10 +229,15 @@ async function boot() {
       const { p, look } = flyover.pose(i, u);
       camera.position.copy(p);
       camera.lookAt(look);
+      pool.update(camera, true);
       $('#fade').style.opacity = 0;
     },
     resume() {
       frozen = false;
+    },
+    info() {
+      const r = renderer.info.render;
+      return { calls: r.drawCalls ?? r.calls, triangles: r.triangles };
     },
   };
 }

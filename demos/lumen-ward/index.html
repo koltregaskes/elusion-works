@@ -54,14 +54,14 @@
     <aside class="lw-help" id="help" aria-label="Controls and credits">
       <button type="button" class="lw-help-close" id="help-close" aria-label="Close help">&times;</button>
       <h2>Lumen Ward</h2>
-      <p>A small rain-soaked district, about 240 metres across. Every building and prop was modelled in Blender by Claude from a script, then laid out and lit here in Three.js.</p>
+      <p>A small rain-soaked district, about 240 metres across. Every building, window bay and prop was modelled in Blender by Claude from a script, then laid out, lit and rendered here with three.js on WebGPU.</p>
       <dl>
         <dt>Walk</dt><dd><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move, mouse looks, <kbd>Shift</kbd> runs</dd>
         <dt>Fly</dt><dd>as Walk, plus <kbd>Space</kbd>/<kbd>E</kbd> up and <kbd>Q</kbd>/<kbd>C</kbd> down</dd>
         <dt>Flyover</dt><dd><kbd>N</kbd> next shot, <kbd>B</kbd> previous</dd>
         <dt>Touch</dt><dd>drag left side to move, right side to look</dd>
       </dl>
-      <p class="lw-small">Add <code>?q=low</code> to the address for slower machines (no street reflections).</p>
+      <p class="lw-small">Runs on WebGPU where the browser has it (WebGL2 otherwise). Quality: <code>?q=ultra</code> for a strong GPU, <code>?q=low</code> for laptops and phones (no reflections or ambient occlusion).</p>
     </aside>
 
     <div class="lw-loader" id="loader" role="status">

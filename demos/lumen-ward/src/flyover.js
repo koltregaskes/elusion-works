@@ -1,6 +1,6 @@
 // Cinematic flyover: a loop of camera shots built from the city's landmarks,
 // cut together with short fades.
-import * as THREE from '../vendor/three/build/three.module.min.js';
+import * as THREE from '../vendor/three/build/three.webgpu.js';
 import { RAIL_Y } from './city.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);

@@ -20,12 +20,13 @@ const args = process.argv.slice(2);
 const arg = (n, d) => { const i = args.indexOf('--' + n); return i >= 0 ? args[i + 1] : d; };
 const OUT = arg('out', '/tmp/lw');
 const Q = arg('q', 'high');
+const AA = arg('aa', 'fxaa'); // TRAA needs many frames to converge; FXAA keeps captures to one frame
 const W = Number(arg('w', 1280));
 const H = Number(arg('h', 720));
 const SHOTS = arg('shots', '0:0.6,1:0.75,2:0.35,3:0.5,4:0.45,4:0.95,5:0.5,6:0.3,6:0.9');
 fs.mkdirSync(OUT, { recursive: true });
 
-const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.glb': 'model/gltf-binary', '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp' };
+const TYPES = { '.json': 'application/json', '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.glb': 'model/gltf-binary', '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp' };
 const server = http.createServer((req, res) => {
   let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
   if (p.endsWith('/')) p += 'index.html';
@@ -46,7 +47,7 @@ const failed = [];
 page.on('requestfailed', (r) => failed.push(r.url()));
 
 const t0 = Date.now();
-await page.goto(`${base}/demos/lumen-ward/?q=${Q}`, { waitUntil: 'domcontentloaded' });
+await page.goto(`${base}/demos/lumen-ward/?q=${Q}&aa=${AA}`, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => (window.__LW && window.__LW.state.ready) || document.body.classList.contains('has-error'), null, { timeout: 600000, polling: 250 });
 const bootS = (Date.now() - t0) / 1000;
 const failedBoot = await page.evaluate(() => document.body.classList.contains('has-error') ? document.querySelector('#loader-text').textContent : null);
@@ -60,11 +61,11 @@ if (!failedBoot) {
   for (const s of SHOTS.split(',')) {
     const [i, u] = s.split(':').map(Number);
     await page.evaluate(([i, u]) => window.__LW.pose(i, u, 14), [i, u]);
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(Number(arg('settle', 1500)));
     const file = path.join(OUT, `shot-${i}-${String(u).replace('.', '')}.png`);
     const st = Date.now();
     await page.screenshot({ path: file, timeout: 300000 });
-    const info = await page.evaluate(() => { const r = window.__LW.renderer.info.render; return { calls: r.calls, triangles: r.triangles }; });
+    const info = await page.evaluate(() => window.__LW.info());
     result.shots.push({ i, u, file, ms: Date.now() - st, ...info });
   }
   if (args.includes('--walk')) {
