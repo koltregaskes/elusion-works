@@ -138,6 +138,13 @@ jobs:
           test -f _site/demos/lumen-ward/assets/tex/concrete_color.webp
           test -f _site/demos/lumen-ward/thumbnail.webp
           grep -q 'lumen-ward/' _site/demos/index.html
+          test -f _site/demos/thornvale/index.html
+          test -f _site/demos/thornvale/src/main.js
+          test -f _site/demos/thornvale/assets/thornvale-kit.glb
+          test -f _site/demos/thornvale/assets/characters/Michelle.glb
+          test -f _site/demos/thornvale/assets/tex/leaves.webp
+          test -f _site/demos/thornvale/thumbnail.webp
+          grep -q 'thornvale/' _site/demos/index.html
           grep -q 'atmosphere/' _site/demos/index.html
           grep -q 'abyssal-relay/' _site/demos/index.html
           grep -q 'exploded-views/' _site/demos/index.html
