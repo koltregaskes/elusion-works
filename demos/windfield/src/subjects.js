@@ -130,11 +130,11 @@ export class Bonfire {
         void main() {
           vec2 uv = vUv;
           float n = vn(vec2(uv.x * 5.0, uv.y * 4.0 - uTime * 3.2)) * 0.6 + vn(vec2(uv.x * 11.0, uv.y * 9.0 - uTime * 5.5)) * 0.4;
-          float w = (1.0 - uv.y) * 0.42 + 0.06;
-          float shape = 1.0 - smoothstep(w * 0.45, w, abs(uv.x - 0.5) + (n - 0.5) * 0.35 * uv.y);
+          float w = (1.0 - pow(uv.y, 0.8)) * 0.46 + 0.05;
+          float shape = 1.0 - smoothstep(w * 0.3, w, abs(uv.x - 0.5) + (n - 0.5) * 0.4 * uv.y);
           shape *= smoothstep(1.0, 0.25, uv.y + n * 0.35) * smoothstep(0.0, 0.08, uv.y);
-          vec3 col = mix(vec3(1.0, 0.85, 0.45), vec3(1.0, 0.28, 0.04), smoothstep(0.1, 0.7, uv.y + n * 0.2));
-          gl_FragColor = vec4(col * shape * 2.2 * uAmount, 1.0);
+          vec3 col = mix(vec3(1.0, 0.7, 0.32), vec3(1.0, 0.22, 0.03), smoothstep(0.05, 0.6, uv.y + n * 0.2));
+          gl_FragColor = vec4(col * shape * 1.8 * uAmount, 1.0);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
         }`,

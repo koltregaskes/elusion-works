@@ -27,6 +27,7 @@ export const PARAMS = [
   { key: 'sunAzimuth', tab: 'sky', section: 'Light', label: 'Sun bearing', min: 0, max: 360, step: 1, unit: '°' },
   { key: 'exposure', tab: 'sky', section: 'Light', label: 'Exposure', min: 0.2, max: 2, step: 0.01, unit: '×' },
   { key: 'bloom', tab: 'sky', section: 'Light', label: 'Bloom', min: 0, max: 1.5, step: 0.01, unit: '' },
+  { key: 'shafts', tab: 'sky', section: 'Light', label: 'Light shafts', min: 0, max: 1.5, step: 0.01, unit: '×' },
   { key: 'cloudCover', tab: 'sky', section: 'Clouds', label: 'Cloud cover', min: 0, max: 1, step: 0.01, unit: '%', pct: true },
   { key: 'cloudDensity', tab: 'sky', section: 'Clouds', label: 'Cloud density', min: 0.2, max: 1.6, step: 0.01, unit: '×' },
   { key: 'cloudSpeed', tab: 'sky', section: 'Clouds', label: 'Cloud speed', min: 0, max: 2, step: 0.01, unit: '×' },
@@ -68,7 +69,7 @@ const DEFAULTS = {
   windStrength: 0.55, windDir: 35, gustStrength: 1, gustSize: 34, gustSpeed: 1, turbulence: 0.45,
   pollen: 0.4, leafFall: 0, rain: 0,
   grassHeight: 0.8, heightVariation: 0.55, flowers: 0.35, dryness: 0.15, translucency: 1, sheen: 0.5,
-  sunElevation: 32, sunAzimuth: 210, sunIntensity: 3.2, hemiIntensity: 1.1, exposure: 1, bloom: 0.35,
+  sunElevation: 32, sunAzimuth: 210, sunIntensity: 3.2, hemiIntensity: 1.1, exposure: 1, bloom: 0.35, shafts: 0.3,
   cloudCover: 0.42, cloudDensity: 0.9, cloudSpeed: 0.5, highClouds: 0.35,
   haze: 0.35, mist: 0, stars: 0, lightning: 0,
   leafSeason: 0, canopy: 1, fire: 0, fireflies: 0, birds: 0.6,
@@ -92,7 +93,7 @@ export const PRESETS = [
     camera: { radius: 33, height: 2.2, speed: 0.012, startAngle: 2.6 },
     values: {
       windStrength: 0.18, gustStrength: 0.6, gustSpeed: 0.45, turbulence: 0.25, pollen: 0.15,
-      sunElevation: 3.5, sunAzimuth: 95, sunIntensity: 2.2, hemiIntensity: 0.75, exposure: 1.05, bloom: 0.55,
+      sunElevation: 3.5, sunAzimuth: 95, sunIntensity: 2.2, hemiIntensity: 0.75, exposure: 1.05, bloom: 0.55, shafts: 0.8,
       cloudCover: 0.35, cloudDensity: 0.7, cloudSpeed: 0.2, highClouds: 0.6, haze: 0.62, mist: 0.85,
       dryness: 0.05, translucency: 1.5, flowers: 0.2, birds: 0.35,
       skyZenith: '#46628f', skyHorizon: '#f2c7a2', sunColor: '#ffbf86', sunDisc: '#ffe3c2',
@@ -122,7 +123,7 @@ export const PRESETS = [
     camera: { radius: 32, height: 1.7, speed: 0.014, startAngle: 0.35 },
     values: {
       windStrength: 0.48, gustStrength: 1.2, pollen: 0.75, dryness: 0.45, translucency: 1.9, sheen: 0.7,
-      sunElevation: 6.5, sunAzimuth: 255, sunIntensity: 3.6, hemiIntensity: 0.8, exposure: 1.0, bloom: 0.75,
+      sunElevation: 6.5, sunAzimuth: 255, sunIntensity: 3.6, hemiIntensity: 0.8, exposure: 1.0, bloom: 0.75, shafts: 1.0,
       cloudCover: 0.32, cloudDensity: 0.8, highClouds: 0.55, haze: 0.36, mist: 0.12, flowers: 0.3, birds: 0.5,
       skyZenith: '#40507f', skyHorizon: '#ffb26b', sunColor: '#ffb062', sunDisc: '#fff0cf',
       hemiSky: '#9a8f9a', hemiGround: '#4a3a1a', grassBase: '#2e3a14', grassTip: '#c3b24e', grassDry: '#e0b35a',
@@ -138,7 +139,7 @@ export const PRESETS = [
     camera: { radius: 29, height: 2.4, speed: 0.022, startAngle: 4.0 },
     values: {
       windStrength: 1.35, gustStrength: 1.8, gustSize: 26, gustSpeed: 2.2, turbulence: 0.9, pollen: 0, rain: 0.75,
-      leafFall: 0.35, sunElevation: 22, sunAzimuth: 150, sunIntensity: 0.9, hemiIntensity: 0.9, exposure: 1.1, bloom: 0.25,
+      leafFall: 0.35, sunElevation: 22, sunAzimuth: 150, sunIntensity: 0.9, hemiIntensity: 0.9, exposure: 1.1, bloom: 0.25, shafts: 0,
       cloudCover: 0.95, cloudDensity: 1.5, cloudSpeed: 1.8, highClouds: 0.2, haze: 0.65, mist: 0.25, lightning: 0.8,
       flowers: 0.15, birds: 0, translucency: 0.4, sheen: 0.9,
       skyZenith: '#22282f', skyHorizon: '#6b737a', sunColor: '#c5ccd6', sunDisc: '#b8c0c8',
@@ -155,7 +156,7 @@ export const PRESETS = [
     camera: { radius: 28, height: 2.0, speed: 0.013, startAngle: 5.2 },
     values: {
       windStrength: 0.5, gustStrength: 1.3, pollen: 0.1, leafFall: 0.85, leafSeason: 0.92, canopy: 0.8,
-      dryness: 0.7, flowers: 0.05, sunElevation: 14, sunAzimuth: 230, sunIntensity: 2.8, bloom: 0.4,
+      dryness: 0.7, flowers: 0.05, sunElevation: 14, sunAzimuth: 230, sunIntensity: 2.8, bloom: 0.4, shafts: 0.6,
       cloudCover: 0.5, highClouds: 0.4, haze: 0.45, mist: 0.2, birds: 0.45, translucency: 1.3,
       skyZenith: '#4b6a95', skyHorizon: '#e3c9a8', sunColor: '#ffcf96',
       grassBase: '#2c3517', grassTip: '#9a9a45', grassDry: '#c18f4a', groundA: '#32301a', groundB: '#45381e',
@@ -170,7 +171,7 @@ export const PRESETS = [
     camera: { radius: 27, height: 1.8, speed: 0.01, startAngle: 1.8 },
     values: {
       windStrength: 0.25, gustStrength: 0.8, gustSpeed: 0.6, turbulence: 0.3, pollen: 0, fireflies: 1,
-      sunElevation: 28, sunAzimuth: 140, sunIntensity: 0.55, hemiIntensity: 0.35, exposure: 1.25, bloom: 0.9,
+      sunElevation: 28, sunAzimuth: 140, sunIntensity: 0.55, hemiIntensity: 0.35, exposure: 1.25, bloom: 0.9, shafts: 0.35,
       cloudCover: 0.3, cloudDensity: 0.6, cloudSpeed: 0.25, highClouds: 0.25, haze: 0.4, mist: 0.45, stars: 1,
       flowers: 0.2, birds: 0, translucency: 0.5, sunSize: 0.75, glow: 0.4,
       skyZenith: '#050913', skyHorizon: '#1a2638', sunColor: '#9fb6e0', sunDisc: '#e8eefc',
@@ -188,7 +189,7 @@ export const PRESETS = [
     values: {
       subject: 'stones',
       windStrength: 0.4, gustStrength: 1.1, turbulence: 0.5, pollen: 0, fire: 1, fireflies: 0,
-      sunElevation: 9, sunAzimuth: 300, sunIntensity: 0.6, hemiIntensity: 0.35, exposure: 1.15, bloom: 1.0,
+      sunElevation: 9, sunAzimuth: 300, sunIntensity: 0.6, hemiIntensity: 0.35, exposure: 1.15, bloom: 1.0, shafts: 0.15,
       cloudCover: 0.8, cloudDensity: 1.2, cloudSpeed: 0.6, highClouds: 0.5, haze: 0.7, mist: 0.35, stars: 0.25,
       flowers: 0, dryness: 0.5, birds: 0, translucency: 0.6, glow: 0.5, sunSize: 0.8,
       skyZenith: '#120608', skyHorizon: '#6b1f12', sunColor: '#ff6a3a', sunDisc: '#ffb08a',

@@ -33,7 +33,7 @@ the falling leaves.
 | `src/particles.js` | Pollen, fireflies, bonfire embers and rain as stateless GPU particles. Falling leaves and birds on the CPU. |
 | `src/subjects.js` | The alternatives to the oak (a copper-seamed monolith, a standing-stone circle) and the bonfire. |
 | `src/presets.js` | Every parameter once, with range and tab. Presets are sparse overrides. |
-| `src/main.js` | Renderer, post (bloom, ACES, vignette, grain), preset tweening, lightning, quality levels. |
+| `src/main.js` | Renderer, post (light shafts, bloom, ACES, vignette, grain), preset tweening, lightning, quality levels. |
 | `src/controls.js` | Cinematic orbit, and free camera on drag or WASD. |
 
 ## Moods

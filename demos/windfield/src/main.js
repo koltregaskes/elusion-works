@@ -104,6 +104,41 @@ function refreshEnv() {
 const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
 const composer = new EffectComposer(renderer, rt);
 composer.addPass(new RenderPass(scene, camera));
+// Light shafts: radial blur of the bright sky towards the sun's screen position, so the
+// oak and the grass cut dark gaps into the beams. Runs on HDR colour, before bloom.
+const shafts = new ShaderPass({
+  uniforms: {
+    tDiffuse: { value: null },
+    uSun: { value: new THREE.Vector2(0.5, 0.5) },
+    uStrength: { value: 0 },
+    uTint: { value: new THREE.Color() },
+  },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse; uniform vec2 uSun; uniform float uStrength; uniform vec3 uTint;
+    varying vec2 vUv;
+    void main(){
+      vec4 base = texture2D(tDiffuse, vUv);
+      if (uStrength <= 0.001) { gl_FragColor = base; return; }
+      const int N = 40;
+      vec2 delta = (uSun - vUv) / float(N) * 0.92;
+      vec2 uv = vUv;
+      float illum = 0.0;
+      float decay = 1.0;
+      for (int i = 0; i < N; i++) {
+        uv += delta;
+        vec2 c = clamp(uv, 0.001, 0.999);
+        vec3 s = texture2D(tDiffuse, c).rgb;
+        float l = max(dot(s, vec3(0.2126, 0.7152, 0.0722)) - 0.9, 0.0);
+        illum += min(l, 6.0) * decay;
+        decay *= 0.962;
+      }
+      illum /= float(N);
+      float reach = 1.0 - smoothstep(0.15, 1.1, length((vUv - uSun) * vec2(1.6, 1.0)));
+      gl_FragColor = vec4(base.rgb + uTint * illum * uStrength * reach, base.a);
+    }`,
+});
+composer.addPass(shafts);
 const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.4, 0.55, 0.86);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
@@ -258,6 +293,7 @@ function applyState() {
   scene.fog.density = 0.0012 + s.haze * 0.0085 + s.mist * 0.004;
   renderer.toneMappingExposure = s.exposure;
   bloom.strength = s.bloom;
+  shafts.uniforms.uTint.value.copy(colours.sunColor);
 
   mistUniforms.uMist.value = s.mist;
   mistUniforms.uMistColor.value.copy(colours.mistColor);
@@ -376,6 +412,8 @@ function resize() {
   const div = QUALITY[quality].bloomDiv;
   bloom.resolution.set(w / div, h / div);
   camera.aspect = w / h;
+  // Portrait screens get a wider lens so the subject still fits side to side.
+  camera.fov = w / h < 1 ? 64 : 48;
   camera.updateProjectionMatrix();
   particleUniforms.uPixelRatio.value = renderer.getPixelRatio();
 }
@@ -472,6 +510,12 @@ function frame(dt) {
   sun.target.position.set(0, heightAt(0, 0), 0);
   sun.position.copy(sun.target.position).addScaledVector(sunDir, 120);
 
+  const sunScreen = tmpV.copy(camera.position).addScaledVector(sunDir, 1000).project(camera);
+  const facing = camera.getWorldDirection(new THREE.Vector3()).dot(sunDir);
+  const onScreen = THREE.MathUtils.smoothstep(facing, 0.35, 0.75) *
+    (1 - THREE.MathUtils.smoothstep(Math.max(Math.abs(sunScreen.x), Math.abs(sunScreen.y)), 1.0, 1.6));
+  shafts.uniforms.uSun.value.set(sunScreen.x * 0.5 + 0.5, sunScreen.y * 0.5 + 0.5);
+  shafts.uniforms.uStrength.value = (state.shafts ?? 0) * onScreen * THREE.MathUtils.smoothstep(state.sunElevation, -2, 2) * 1.8;
   const sunView = tmpV.copy(sunDir).transformDirection(camera.matrixWorldInverse);
   grassUniforms.uSunViewDir.value.copy(sunView);
   treeUniforms.uSunViewDir.value.copy(sunView);

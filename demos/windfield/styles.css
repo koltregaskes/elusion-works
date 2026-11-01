@@ -324,6 +324,7 @@ input[type='range']:focus-visible { outline: 2px solid var(--accent); outline-of
   -webkit-backdrop-filter: blur(14px);
   color: var(--fg-2);
   min-width: 170px;
+  white-space: nowrap;
 }
 .wf-sep { width: 1px; height: 12px; background: var(--line); }
 
@@ -415,6 +416,7 @@ input[type='range']:focus-visible { outline: 2px solid var(--accent); outline-of
   .wf-bottom { grid-template-columns: 1fr auto; padding: 0 12px 18px; gap: 10px; }
   .wf-presets { grid-column: 1 / -1; grid-row: 1; justify-self: stretch; }
   .wf-fps { min-width: 0; }
+  .wf-fps .wf-sep, .wf-fps [data-preset-name] { display: none; }
   .wf-hints { display: none; }
 }
 
