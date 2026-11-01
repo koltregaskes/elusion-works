@@ -1,7 +1,10 @@
 // District layout: places the Blender kit into a small cyberpunk ward.
 // Everything is seeded, so a seed always gives the same city.
-import * as THREE from '../vendor/three/build/three.module.min.js';
-import { Batch, hologramMaterial, shared } from './kit.js';
+import * as THREE from '../vendor/three/build/three.webgpu.js';
+import { mergeGeometries } from '../vendor/three/addons/utils/BufferGeometryUtils.js';
+import { Batch, materialForFactory, tileColour } from './kit.js';
+import { hologramMaterial, uTime } from './materials.js';
+import { Fn, uv, vec3, sin, float } from '../vendor/three/build/three.tsl.js';
 
 export const ROADS = [-64, 0, 64];
 export const EDGE = 112;
@@ -36,37 +39,38 @@ const nearRoad = (v, pad) => ROADS.some((c) => Math.abs(v - c) < pad);
 const inPlaza = (x, z, pad = 0) => Math.abs(x) < PLAZA + pad && Math.abs(z) < PLAZA + pad;
 
 export function buildCity(scene, kitData, opts = {}) {
-  const { kit, signMaterials } = kitData;
+  const { kit, farKit, layout, atlases } = kitData;
   const rand = mulberry32(opts.seed ?? 7);
   const R = (a, b) => a + (b - a) * rand();
   const pick = (arr) => arr[Math.floor(rand() * arr.length)];
 
   const placements = new Map();
-  const place = (name, m, tile = 0) => {
+  const farPlacements = new Map();
+  const place = (name, m, values = {}) => {
     if (!kit.has(name)) throw new Error('kit item missing: ' + name);
     if (!placements.has(name)) placements.set(name, []);
-    placements.get(name).push({ m, tile });
+    placements.get(name).push({ m, values: typeof values === 'number' ? { tile: values } : values });
+  };
+  const placeFar = (name, m) => {
+    if (!farPlacements.has(name)) farPlacements.set(name, []);
+    farPlacements.get(name).push(m);
   };
   const colliders = [];
   const addBox = (cx, cz, hx, hz) => colliders.push({ x0: cx - hx, x1: cx + hx, z0: cz - hz, z1: cz + hz });
   const sidewalks = [];
   const steam = [];
   const lights = [];
+  const lampHeads = [];
 
-  // Roof height of a tower template: top of its facade geometry.
+  // Tower info from the facade layout the Blender script wrote.
   for (const t of kit.values()) {
     if (!t.name.startsWith('tower_')) continue;
-    let roof = 0;
-    const v = new THREE.Vector3();
-    for (const p of t.parts) {
-      if (p.matName !== 'Facade' && p.matName !== 'FacadeGlass') continue;
-      const pos = p.geometry.attributes.position;
-      for (let i = 0; i < pos.count; i++) roof = Math.max(roof, v.fromBufferAttribute(pos, i).applyMatrix4(p.matrix).y);
-    }
-    t.roof = roof;
+    const L = layout.towers[t.name];
+    t.layout = L;
+    t.roof = Math.max(...L.walls.filter((w) => w.fam !== 'shop').map((w) => w.s[1] + w.rows * w.ch));
     t.style = t.name.split('_')[1];
-    t.fw = t.foot.max.x - t.foot.min.x;
-    t.fd = t.foot.max.z - t.foot.min.z;
+    t.fw = L.w;
+    t.fd = L.d;
   }
   const towers = [...kit.values()].filter((t) => t.name.startsWith('tower_'));
 
@@ -163,8 +167,8 @@ export function buildCity(scene, kitData, opts = {}) {
       s = ch.o.sc;
     }
     const tallish = t.style === 'stack' || t.style === 'block' || t.style === 'slab';
-    let sy = tallish ? s * R(0.85, 1.35) : s;
-    if (!lot.nearPlaza && tallish && rand() < 0.3) sy *= 1.3;
+    // modest vertical stretch only: facade modules stretch with it
+    const sy = tallish ? s * R(0.95, 1.15) : s;
     const angle = rot * Math.PI / 2;
     place(t.name, mat(lot.cx, 0.15, lot.cz, angle, s, sy, s));
     const hw = ((rot % 2 ? t.fd : t.fw) * s) / 2;
@@ -178,7 +182,7 @@ export function buildCity(scene, kitData, opts = {}) {
   for (const P of placedTowers) {
     const { lot, t, hw, hd, roof } = P;
     const styleOk = t.style !== 'glass' && t.style !== 'cylinder';
-    const inset = t.style === 'stack' ? 1.8 : t.style === 'setback' ? 0.9 : 0.75;
+    const inset = 0.5; // upper facade walls sit 0.5 m behind the podium face
     for (const [nx, nz] of lot.streets) {
       const faceLen = nx ? hd * 2 : hw * 2;
       const fx = lot.cx + nx * hw;
@@ -195,7 +199,8 @@ export function buildCity(scene, kitData, opts = {}) {
           tile = 0;
           elusionPlaced = true;
         } else if (tile === 0) tile = 10;
-        place('sign_wide', mat(fx + tx * a + nx * 0.02, 3.65, fz + tz * a + nz * 0.02, rotF), tile);
+        place('sign_wide', mat(fx + tx * a + nx * 0.27, 3.75, fz + tz * a + nz * 0.27, rotF), tile);
+        lights.push({ x: fx + tx * a + nx * 1.6, y: 4.2, z: fz + tz * a + nz * 1.6, color: tileColour(tile), i: 9, d: 12 });
       }
       // blade signs up the facade
       if (styleOk) {
@@ -207,7 +212,9 @@ export function buildCity(scene, kitData, opts = {}) {
           if (top < 7) break;
           const y = R(6.5, top);
           const d = 1.5 - inset;
-          place('sign_blade', mat(fx + tx * a + nx * (d - 0.05), y, fz + tz * a + nz * (d - 0.05), rotF), Math.floor(rand() * 32));
+          const tile = Math.floor(rand() * 32);
+          place('sign_blade', mat(fx + tx * a + nx * (d - 0.05), y, fz + tz * a + nz * (d - 0.05), rotF), tile);
+          if (y < 16) lights.push({ x: fx + tx * a + nx * (d + 1.2), y: y + 2.5, z: fz + tz * a + nz * (d + 1.2), color: tileColour(tile), i: 7, d: 10 });
         }
       }
       // rooftop billboard facing the street
@@ -247,7 +254,10 @@ export function buildCity(scene, kitData, opts = {}) {
             const toRoad = axis === 'x' ? [0, -side] : [-side, 0];
             place('prop_lamp', mat(x, 0.15, z, alongX(toRoad[0], toRoad[1])));
             addBox(x, z, 0.3, 0.3);
-            if (rand() < 0.2) lights.push({ x: x + toRoad[0] * 1.4, y: 6.0, z: z + toRoad[1] * 1.4, color: 0x9fd8ff, i: 18, d: 22 });
+            const hx = x + toRoad[0] * 1.8;
+            const hz = z + toRoad[1] * 1.8;
+            lampHeads.push(new THREE.Vector3(hx, 7.05, hz));
+            lights.push({ x: hx, y: 6.6, z: hz, color: 0xbfe2ff, i: 26, d: 20 });
           }
           // parked cars every 7 m
           if (Math.abs((along + 203) % 7) < 0.01 && rand() < 0.4 && Math.abs(c) !== 64) {
@@ -260,9 +270,9 @@ export function buildCity(scene, kitData, opts = {}) {
           if (c === 0 && Math.abs((along + 211) % 13) < 0.01 && rand() < 0.65) {
             const [kx, kz] = pos(c + side * (HALF_ROAD + 1.6));
             const toRoad = axis === 'x' ? [0, -side] : [-side, 0];
-            place('prop_kiosk', mat(kx, 0.15, kz, faceZ(toRoad[0], toRoad[1])));
+            place('prop_kiosk', mat(kx, 0.15, kz, faceZ(toRoad[0], toRoad[1])), { tile: Math.floor(rand() * 16) });
             addBox(kx, kz, axis === 'x' ? 1.7 : 1.2, axis === 'x' ? 1.2 : 1.7);
-            if (rand() < 0.45) lights.push({ x: kx + toRoad[0] * 2, y: 2.6, z: kz + toRoad[1] * 2, color: 0xffa860, i: 10, d: 14 });
+            lights.push({ x: kx + toRoad[0] * 1.6, y: 2.2, z: kz + toRoad[1] * 1.6, color: 0xffa860, i: 10, d: 12 });
           }
           // manhole steam in the road
           if (Math.abs((along + 205) % 37) < 0.01 && rand() < 0.5) {
@@ -318,7 +328,8 @@ export function buildCity(scene, kitData, opts = {}) {
     const x = Math.cos(a) * 24;
     const z = Math.sin(a) * 24;
     if (nearRoad(x, 6) || nearRoad(z, 6)) continue;
-    place('prop_kiosk', mat(x, 0, z, faceZ(-x, -z)));
+    place('prop_kiosk', mat(x, 0, z, faceZ(-x, -z)), { tile: Math.floor(rand() * 16) });
+    lights.push({ x: x * 0.92, y: 2.2, z: z * 0.92, color: 0xffa860, i: 10, d: 12 });
     addBox(x, z, 1.7, 1.7);
   }
   for (const [x, z] of [[-30, -6], [-30, 6], [30, -6], [30, 6], [-6, -30], [6, -30], [-6, 30], [6, 30]]) {
@@ -398,7 +409,7 @@ export function buildCity(scene, kitData, opts = {}) {
     highLanes.push({ axis: highLanes.length % 2 ? 'x' : 'z', c, alt: R(120, 170), dir: rand() < 0.5 ? -1 : 1, len: 900 });
   }
   const nearHigh = (x, z) => highLanes.some((l) => Math.abs((l.axis === 'x' ? z : x) - l.c) < 34);
-  const farNames = towers.filter((t) => t.style !== 'market').map((t) => t.name);
+  const farNames = [...farKit.keys()].filter((n) => !n.includes('market'));
   let far = 0;
   for (let tries = 0; far < 170 && tries < 4000; tries++) {
     const x = R(-480, 480);
@@ -408,23 +419,132 @@ export function buildCity(scene, kitData, opts = {}) {
     if (nearRoad(x, 34) || nearRoad(z, 34) || nearHigh(x, z)) continue;
     const n = pick(farNames);
     const s = R(1.1, 2.0) * (r > 300 ? 1.25 : 1);
-    place(n, mat(x, 0, z, Math.floor(R(0, 4)) * Math.PI / 2, s, s * R(0.9, 1.4), s));
+    placeFar(n, mat(x, 0, z, Math.floor(R(0, 4)) * Math.PI / 2, s, s * R(0.9, 1.4), s));
     far++;
   }
-  place('tower_glass_a', mat(-330, 0, -400, 0.3, 3.2, 3.4, 3.2));
-  place('tower_cylinder_a', mat(360, 0, -340, 0, 3, 3.6, 3));
+  placeFar('tower_glass_a', mat(-330, 0, -400, 0.3, 3.2, 3.4, 3.2));
+  placeFar('tower_cylinder_a', mat(360, 0, -340, 0, 3, 3.6, 3));
+
+  // ---------------------------------------------------------------- facades: fill every wall with module instances
+  const FAMILY = {
+    shop: [['shop_glass', 0.55], ['shop_shutter', 0.3], ['shop_neon', 0.15]],
+    std: [['cell_std', 0.66], ['cell_ac', 0.2], ['cell_balcony', 0.06], ['cell_blank', 0.05], ['cell_awning', 0.03]],
+    clad: [['cell_clad', 0.72], ['cell_clad_ac', 0.17], ['cell_clad_blank', 0.11]],
+    balcony: [['cell_balcony', 0.8], ['cell_std', 0.12], ['cell_ac', 0.08]],
+    flat: [['cell_std', 0.75], ['cell_blank', 0.25]],
+    ribbon: [['cell_ribbon', 1]],
+  };
+  const NOMINAL = layout.cells; // module nominal sizes [w, h]
+  const pickModule = (fam, r) => {
+    const list = FAMILY[fam] || FAMILY.std;
+    let k = r;
+    for (const [n, w] of list) {
+      k -= w;
+      if (k <= 0) return n;
+    }
+    return list[0][0];
+  };
+  const tm = new THREE.Matrix4();
+  const cm = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  let cells = 0;
+  for (const P of placedTowers) {
+    tm.copy(mat(P.lot.cx, 0.15, P.lot.cz, P.angle, P.s, P.sy, P.s));
+    for (const w of P.t.layout.walls) {
+      const famKey = w.fam === 'shop' ? 'shop' : w.fam === 'ribbon' ? 'ribbon' : 'std';
+      const [nw, nh] = NOMINAL[famKey];
+      const wallYaw = Math.atan2(w.n[0], w.n[2]);
+      const worldYaw = wallYaw + P.angle;
+      q.setFromAxisAngle(_y, wallYaw);
+      for (let i = 0; i < w.cols; i++) {
+        for (let j = 0; j < w.rows; j++) {
+          const lx = w.s[0] + w.u[0] * w.cw * (i + 0.5);
+          const lz = w.s[2] + w.u[2] * w.cw * (i + 0.5);
+          const ly = w.s[1] + j * w.ch;
+          let fam = w.fam;
+          // keep the corner columns plain so they read as structure
+          const name = pickModule(fam, rand());
+          cm.compose(new THREE.Vector3(lx, ly, lz), q, new THREE.Vector3(w.cw / nw, w.ch / nh, 1));
+          const world = new THREE.Matrix4().multiplyMatrices(tm, cm);
+          place(name, world, { yaw: worldYaw, seed: rand() * 1000 });
+          cells++;
+          if (fam === 'shop' && name !== 'shop_shutter' && rand() < 0.55) {
+            const p = new THREE.Vector3(0, 2.2, 1.6).applyMatrix4(world);
+            lights.push({ x: p.x, y: p.y, z: p.z, color: name === 'shop_neon' ? 0xff3a9a : rand() < 0.7 ? 0xffb070 : 0x9fd8ff, i: 8, d: 11 });
+          }
+        }
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------- overhead cables and lantern strings
+  const cableGeoms = [];
+  const lanternPos = [];
+  const catenary = (a, b, sag, lanterns) => {
+    const pts = [];
+    for (let k = 0; k <= 14; k++) {
+      const t = k / 14;
+      const p = a.clone().lerp(b, t);
+      p.y -= sag * 4 * t * (1 - t);
+      pts.push(p);
+      if (lanterns && k > 0 && k < 14 && k % 2 === 0) lanternPos.push(p.clone().add(new THREE.Vector3(0, -0.35, 0)));
+    }
+    cableGeoms.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 16, lanterns ? 0.025 : 0.035, 4, false));
+  };
+  for (const A of placedTowers) {
+    for (const B of placedTowers) {
+      if (A === B) continue;
+      const dx = B.lot.cx - A.lot.cx;
+      const dz = B.lot.cz - A.lot.cz;
+      // facing across a street or alley along x
+      const acrossX = Math.abs(dz) < 1 && dx > 0 && dx < 40 && Math.abs(B.lot.x0 - A.lot.x1) < 20;
+      const acrossZ = Math.abs(dx) < 1 && dz > 0 && dz < 40 && Math.abs(B.lot.z0 - A.lot.z1) < 20;
+      if (!acrossX && !acrossZ) continue;
+      const gap = acrossX ? B.lot.x0 - A.lot.x1 : B.lot.z0 - A.lot.z1;
+      const market = gap > 10 && ((acrossX && Math.abs(A.lot.cz) < 50 && Math.abs(A.lot.cx) < 30) || (acrossZ && Math.abs(A.lot.cx) < 50 && Math.abs(A.lot.cz) < 30));
+      const n = gap < 6 ? 3 : market ? 4 : 2;
+      for (let k = 0; k < n; k++) {
+        if (!market && rand() < 0.35) continue;
+        const y1 = market ? R(5.5, 8) : R(6, Math.min(16, A.roof - 2, B.roof - 2));
+        const y2 = y1 + R(-1.5, 1.5);
+        const off = R(-0.4, 0.4) * (acrossX ? A.hd : A.hw);
+        const a = acrossX ? new THREE.Vector3(A.lot.cx + A.hw - 0.3, y1, A.lot.cz + off) : new THREE.Vector3(A.lot.cx + off, y1, A.lot.cz + A.hd - 0.3);
+        const b = acrossX ? new THREE.Vector3(B.lot.cx - B.hw + 0.3, y2, A.lot.cz + off + R(-2, 2)) : new THREE.Vector3(A.lot.cx + off + R(-2, 2), y2, B.lot.cz - B.hd + 0.3);
+        catenary(a, b, R(0.5, 1.6), market);
+      }
+    }
+  }
+  if (cableGeoms.length) {
+    const cables = new THREE.Mesh(mergeGeometries(cableGeoms), new THREE.MeshStandardNodeMaterial({ color: 0x050506, roughness: 0.5, metalness: 0.2 }));
+    scene.add(cables);
+  }
+  if (lanternPos.length) {
+    const lm = new THREE.MeshBasicNodeMaterial();
+    lm.colorNode = Fn(() => vec3(1.6, 0.55, 0.25).mul(sin(uTime.mul(2).add(uv().x.mul(6))).mul(0.1).add(0.9)))();
+    const lan = new THREE.InstancedMesh(new THREE.SphereGeometry(0.16, 12, 8).scale(1, 1.3, 1), lm, lanternPos.length);
+    lanternPos.forEach((p, i) => lan.setMatrixAt(i, new THREE.Matrix4().makeTranslation(p.x, p.y, p.z)));
+    lan.computeBoundingSphere();
+    scene.add(lan);
+    lanternPos.forEach((p, i) => { if (i % 3 === 0) lights.push({ x: p.x, y: p.y - 0.3, z: p.z, color: 0xff9a50, i: 5, d: 9 }); });
+  }
 
   // ---------------------------------------------------------------- build static batches
+  const materialFor = materialForFactory(atlases);
   const batches = new Map();
   let instances = 0;
   for (const [name, list] of placements) {
-    const isSign = name === 'sign_blade' || name === 'sign_wide';
-    const b = new Batch(kit.get(name), list.length, scene, isSign
-      ? { tiles: true, material: { match: 'SignFace', material: name === 'sign_blade' ? signMaterials.blade : signMaterials.wide } }
-      : {});
-    for (const p of list) b.add(p.m, p.tile);
+    const isCell = name.startsWith('cell_') || name.startsWith('shop_');
+    const attrs = isCell ? ['yaw', 'seed'] : (name.startsWith('sign_') || name === 'prop_kiosk') ? ['tile'] : [];
+    const b = new Batch(kit.get(name), list.length, scene, { attrs, materialFor });
+    for (const p of list) b.add(p.m, p.values);
     b.commit();
     batches.set(name, b);
+    instances += list.length;
+  }
+  for (const [name, list] of farPlacements) {
+    const b = new Batch(farKit.get(name), list.length, scene);
+    for (const m of list) b.add(m);
+    b.commit();
     instances += list.length;
   }
 
@@ -465,6 +585,7 @@ export function buildCity(scene, kitData, opts = {}) {
     const g = new THREE.Group();
     for (const p of koiTemplate.parts) {
       const m = new THREE.Mesh(p.geometry, hologramMaterial(tints[k]));
+      m.frustumCulled = false;
       m.applyMatrix4(p.matrix);
       g.add(m);
     }
@@ -474,17 +595,8 @@ export function buildCity(scene, kitData, opts = {}) {
     koi.push({ g, r: 6 + k * 3.2, h: 13 + k * 4, sp: 0.22 + k * 0.06, ph: k * 2.1 });
   }
   // holo beam
-  const beamMat = new THREE.ShaderMaterial({
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    side: THREE.DoubleSide,
-    uniforms: { uTime: shared.time },
-    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
-    fragmentShader: `uniform float uTime; varying vec2 vUv;
-      void main(){ float a = (1.0 - vUv.y) * 0.16 * (0.8 + 0.2 * sin(vUv.x * 60.0 + uTime * 3.0));
-      gl_FragColor = vec4(vec3(0.2, 0.75, 1.0) * a, 1.0); }`,
-  });
+  const beamMat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  beamMat.colorNode = Fn(() => vec3(0.2, 0.75, 1.0).mul(float(1).sub(uv().y).mul(0.16)).mul(sin(uv().x.mul(60).add(uTime.mul(3))).mul(0.2).add(0.8)))();
   const beam = new THREE.Mesh(new THREE.CylinderGeometry(9, 3.4, 34, 32, 1, true), beamMat);
   beam.position.y = 1.3 + 17;
   scene.add(beam);
@@ -544,6 +656,7 @@ export function buildCity(scene, kitData, opts = {}) {
     landmark,
     placedTowers,
     update,
-    stats: { instances, kitItems: placements.size, towers: placedTowers.length, cars: cars.length },
+    lampHeads,
+    stats: { instances, cells, lights: lights.length, kitItems: placements.size, towers: placedTowers.length, cars: cars.length },
   };
 }

@@ -1,73 +1,87 @@
 # Lumen Ward
 
 A small cyberpunk district (about 240 m across) that you can walk, fly or watch
-as a looping flyover. Inspired by the "Opus built a city in Unreal, assets in
-Blender" posts, but built to run in a browser on the Elusion Works site.
+as a looping flyover. It runs in the browser on three.js r187 with the WebGPU
+renderer, and falls back to WebGL2 where WebGPU is missing.
 
 ## How it is made
 
-The work splits the same way as the Unreal + Blender MCP route:
-
-| Step | Unreal route | Here |
+| Step | Unreal + Blender MCP route | Here |
 | --- | --- | --- |
 | Model the assets | Claude drives Blender through the Blender MCP add-on | Claude writes `tools/build_kit.py`, run in headless Blender (`bpy`) |
-| Export | FBX or glTF into Unreal | one glTF binary: `assets/lumen-ward-kit.glb` |
-| Assemble the level | Claude drives the Unreal editor through its MCP server | `src/city.js` lays the kit out from a seed at load time |
-| Light and render | Lumen, Niagara rain, post-process | `src/world.js` + bloom, wet-street reflections, rain, steam, fog |
-| Cameras | Sequencer shots | `src/flyover.js` (7 shots), `src/controls.js` (walk and fly) |
+| Textures | Substance or Blender bakes | `tools/build_textures.py`: tileable PBR sets generated in Blender's Python |
+| Assemble the level | Claude drives the Unreal editor through its MCP server | `src/city.js` lays the kit out from a seed and the facade JSON |
+| Light and render | Lumen, Niagara, post-process | WebGPU renderer, TSL materials, AO + SSR + bloom + TRAA |
+| Cameras | Sequencer | `src/flyover.js` (7 shots), `src/controls.js` (walk and fly) |
 
-### The kit (Blender)
+### Detail: modular facades
 
-`tools/build_kit.py` models 37 objects, about 35k triangles in total:
+Buildings are assembled the way game engines build cities:
 
-- 14 tower variants in seven styles: stacked residential blocks, plain
-  blocks, setback towers, balcony slabs, glass towers with neon crowns, a round
-  tower and low night-market buildings. Each has a shopfront podium with
-  awnings, rooftop clutter (water tanks, AC plant, masts with beacons, dishes)
-  and wall AC units and pipes.
-- Street props: lamps, vending machines, food kiosks, dumpsters, crates,
-  barriers, benches, bollards, steam vents, glowing planter trees, parked cars.
-- Signs and screens: blade signs, fascia signs, billboards.
-- Transport: elevated rail beam and pylon, a train car, three hover vehicles.
-- Plaza: hologram plinth and a stylised koi.
+- **Facade cell modules** (`cell_*`, `shop_*` in the kit): one window bay
+  each, with real depth. Piers and spandrels, recessed glass, frames,
+  mullions, transoms, sills, wall AC units with grilles and drip pipes,
+  balconies with railings, plants and washing, louvred blank panels,
+  curtain-wall cells, and shopfronts (glass, roller shutter, neon).
+- **Tower shells** (`tower_*`): podium fascia with a lit soffit, chamfered
+  corner pillars, ledges, cores, parapets with coping, and detailed roofs
+  (lift overruns, AC plant with fans and louvres, timber water tanks on braced
+  stands with ladders, vent stacks, lattice masts with guy wires and beacons,
+  dishes, cable trays). Some towers carry fire escapes and downpipes.
+- `assets/lumen-ward-kit.json` lists every facade wall per tower: start
+  corner, direction, columns, floors and which module family fills it. The
+  browser places about 20,000 module instances from it.
+- Windows are **interior-mapped**: each pane traces the view ray through a
+  fake room (back wall, side walls, floor, ceiling lamp, furniture, blinds, TV
+  flicker), so rooms have depth and parallax without real geometry.
+- The far skyline ring uses the older low-detail kit (`tools/build_far.py`,
+  `assets/lumen-ward-far.glb`) with procedural windows, since fog hides detail
+  out there.
 
-The script is deterministic: the same script always writes the same `.glb`.
+### Textures
 
-Rebuild (no Blender install needed, `bpy` comes from PyPI):
+`tools/build_textures.py` writes six tileable 1024² sets (colour, ORM,
+normal): concrete panels with joints, pits and rain streaks; metal cladding
+with seams and rivets; asphalt with cracks, patches and oil; pavement slabs;
+rusting painted metal; roof membrane. They are converted to WebP in
+`assets/tex/`. The kit's faces carry box-projected UVs in metres, so the
+textures keep a real-world scale on any building.
+
+### Rendering
+
+- `src/materials.js`: TSL materials (interior windows, textured PBR, wet
+  ground with puddles and animated rain ripples, signs with flicker, advert
+  screens, hologram, far facades).
+- Post-processing (`src/main.js`): GTAO ambient occlusion, screen-space
+  reflections (puddles and glass write their own reflectivity into the
+  metal/rough target), bloom, temporal anti-aliasing (TRAA), then a
+  vignette and film-grain grade.
+- **Light pool** (`src/world.js`): the city defines about 670 light sources
+  (street lamps, shopfronts, signs, kiosks, lanterns, plaza). Each frame the
+  nearest 40 (56 on ultra) become real point lights, faded by rank so nothing
+  pops. Three.js's clustered lighting was tried, but it rendered black on the
+  WebGL2 fallback, so it isn't used.
+- Rain, steam and lamp light cones are positioned in the vertex shader.
+
+### Quality
+
+- `?q=ultra`: full-resolution SSR, more lights and rain, up to 2x pixel ratio.
+- `?q=high` (desktop default): half-resolution SSR and AO.
+- `?q=low` (touch default): no SSR or AO, FXAA instead of TRAA.
+
+## Rebuild the assets
 
 ```bash
 uv venv --python 3.13 /tmp/blender-venv
 uv pip install --python /tmp/blender-venv/bin/python bpy
-/tmp/blender-venv/bin/python -I demos/lumen-ward/tools/build_kit.py demos/lumen-ward/assets/lumen-ward-kit.glb
+B=/tmp/blender-venv/bin/python
+$B -I demos/lumen-ward/tools/build_kit.py demos/lumen-ward/assets/lumen-ward-kit.glb
+$B -I demos/lumen-ward/tools/build_far.py demos/lumen-ward/assets/lumen-ward-far.glb
+$B -I demos/lumen-ward/tools/build_textures.py /tmp/lwtex
+for f in /tmp/lwtex/*.png; do ffmpeg -y -i $f -quality 90 demos/lumen-ward/assets/tex/$(basename $f .png).webp; done
 ```
 
-Placeholder materials are swapped in the browser by name:
-`Facade`/`FacadeGlass` become procedural lit windows (worked out from world
-position, so every tower differs and scaling never stretches them),
-`SignFace` uses a canvas text atlas, `Screen` is an animated advert shader and
-`Hologram` is the additive koi shader.
-
-Note: glTF stores the V texture coordinate flipped relative to Blender. The
-sign and screen shaders undo that.
-
-### The city (browser)
-
-- 16 blocks on a grid of three streets each way, split into lots with 3 m
-  alleys. The four lots round the centre are left open as the koi plaza.
-- Towers are fitted to lots by footprint; a few landmarks are pinned so the
-  flyover shots always have something to frame.
-- Everything is instanced (one `InstancedMesh` per kit part), about 1,060
-  placed objects plus 63 hover cars, a four-car train and three koi.
-- A far skyline ring of scaled-up towers sits outside the walkable area, with
-  gaps left for the traffic lanes.
-- `?seed=N` changes the layout.
-
-### Quality
-
-- `high` (desktop default): half-resolution planar reflection on the streets,
-  4x MSAA, bloom, 9,000 rain streaks.
-- `low` (`?q=low`, and the default on touch devices): no reflection pass, fewer
-  rain streaks.
+All three scripts are deterministic.
 
 ## Controls
 
@@ -76,28 +90,21 @@ sign and screen shaders undo that.
 - **3 Flyover**: seven shots on a loop. N next, B previous.
 - Touch: drag the left side to move, the right side to look.
 
-URL options: `?mode=walk|fly|flyover`, `?shot=N`, `?q=low|high`, `?seed=N`.
+URL options: `?mode=walk|fly|flyover`, `?shot=N`, `?q=low|high|ultra`, `?seed=N`, `?aa=fxaa`.
 
 ## Checks
 
 `tools/capture.mjs` serves the repo, opens the demo in headless Chromium
-(software WebGL), reports console errors and saves frames of each shot:
-
-```bash
-node demos/lumen-ward/tools/capture.mjs --out /tmp/lw --shots 0:0.6,2:0.35 --walk
-```
-
-Software rendering takes about a minute a frame, so its fps figure is not a
-real-GPU number. Real-GPU frame rate has not been measured yet.
+(software rendering, WebGL2 fallback), reports console errors and saves frames
+of each shot. Software rendering takes minutes a frame at this detail, so its
+numbers say nothing about real-GPU speed.
 
 ## Doing it in Unreal instead
 
 On a machine with Unreal Engine 5 and Blender:
 
-1. Install the Blender MCP add-on and an Unreal MCP server, and connect both
-   to Claude Code.
-2. Import `assets/lumen-ward-kit.glb` into Unreal (File, Import, glTF). Every
-   object comes in as a separate static mesh.
-3. Ask Claude to rebuild the layout from `src/city.js` with the Unreal MCP,
-   replacing the placeholder materials with Unreal ones, and to add Lumen
+1. Install the Blender MCP add-on and an Unreal MCP server, and connect both to Claude Code.
+2. Import `assets/lumen-ward-kit.glb` (File, Import). Each module and shell comes in as a static mesh.
+3. Ask Claude to rebuild the layout from `src/city.js` and `assets/lumen-ward-kit.json` with
+   instanced static meshes, swap in Unreal materials using the texture sets, and add Lumen
    lighting, a Niagara rain system and Sequencer flyover shots.
