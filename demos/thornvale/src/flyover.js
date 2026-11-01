@@ -1,5 +1,5 @@
 // Cinematic flyover for Thornvale: a loop of drone-style shots with fades.
-import * as THREE from '../../shared/three-r187/build/three.webgpu.js';
+import * as THREE from '../../_shared/three-r187/build/three.webgpu.js';
 import { TOWN } from './terrain.js';
 import { SQUARE, CHURCH_SQ } from './town.js';
 

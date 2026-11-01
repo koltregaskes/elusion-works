@@ -1,6 +1,6 @@
 // Walk (first person, collides with buildings) and Fly (free drone) controls.
 // Mouse look uses pointer lock; touch gets a move pad on the left and drag-to-look on the right.
-import * as THREE from '../../shared/three-r187/build/three.webgpu.js';
+import * as THREE from '../../_shared/three-r187/build/three.webgpu.js';
 
 export class Explorer {
   constructor(camera, dom, city) {

@@ -1,11 +1,11 @@
 // Sky, fog, environment, wet streets and pavements, rain, steam, lamp light
 // cones and the light pool.
-import * as THREE from '../../shared/three-r187/build/three.webgpu.js';
+import * as THREE from '../../_shared/three-r187/build/three.webgpu.js';
 import {
   Fn, vec3, vec4, float, uv, positionWorld, positionLocal, cameraPosition, instanceIndex, hash, mix, step,
   smoothstep, fract, normalize, sin, cos, abs, max, mx_noise_float, uniform, pow, dot, length, positionWorldDirection,
   modelWorldMatrix, attribute,
-} from '../../shared/three-r187/build/three.tsl.js';
+} from '../../_shared/three-r187/build/three.tsl.js';
 import { uTime, wetGroundMaterial } from './materials.js';
 import { ROADS, EDGE, HALF_ROAD, PLAZA } from './city.js';
 

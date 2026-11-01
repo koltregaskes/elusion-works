@@ -1,11 +1,11 @@
 // TSL (three.js shading language) materials for Lumen Ward. Runs on WebGPU,
 // and on the WebGL2 fallback.
-import * as THREE from '../../shared/three-r187/build/three.webgpu.js';
+import * as THREE from '../../_shared/three-r187/build/three.webgpu.js';
 import {
   Fn, vec2, vec3, vec4, float, uniform, texture, uv, positionWorld, positionLocal, cameraPosition, normalWorld,
   instancedBufferAttribute, mix, step, smoothstep, fract, floor, abs, min, max, dot, normalize, sin, cos, hash,
   select, mx_noise_float, normalMap, clamp, pow, length, exp, mrt, roughness,
-} from '../../shared/three-r187/build/three.tsl.js';
+} from '../../_shared/three-r187/build/three.tsl.js';
 
 export const uTime = uniform(0);
 

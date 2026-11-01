@@ -1,13 +1,13 @@
 // Thornvale: boot, render pipeline, loop, modes and HUD.
-import * as THREE from '../../shared/three-r187/build/three.webgpu.js';
+import * as THREE from '../../_shared/three-r187/build/three.webgpu.js';
 import {
   pass, mrt, output, normalView, velocity, vec2, vec3, float, sample, packNormalToRGB, unpackRGBToNormal, renderOutput,
   screenUV, length, smoothstep, hash, mix, Fn,
-} from '../../shared/three-r187/build/three.tsl.js';
-import { ao } from '../../shared/three-r187/addons/tsl/display/GTAONode.js';
-import { bloom } from '../../shared/three-r187/addons/tsl/display/BloomNode.js';
-import { traa } from '../../shared/three-r187/addons/tsl/display/TRAANode.js';
-import { fxaa } from '../../shared/three-r187/addons/tsl/display/FXAANode.js';
+} from '../../_shared/three-r187/build/three.tsl.js';
+import { ao } from '../../_shared/three-r187/addons/tsl/display/GTAONode.js';
+import { bloom } from '../../_shared/three-r187/addons/tsl/display/BloomNode.js';
+import { traa } from '../../_shared/three-r187/addons/tsl/display/TRAANode.js';
+import { fxaa } from '../../_shared/three-r187/addons/tsl/display/FXAANode.js';
 import { loadKit, env } from './kit.js';
 import { buildHeightmap, heightTexture, buildMasks, terrainGeometry, mountainGeometry } from './terrain.js';
 import { buildTown } from './town.js';

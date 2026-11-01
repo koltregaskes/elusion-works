@@ -1,11 +1,11 @@
 // Sky, sun, shadows, day/night and weather; terrain, mountains and grass; rain.
-import * as THREE from '../../shared/three-r187/build/three.webgpu.js';
+import * as THREE from '../../_shared/three-r187/build/three.webgpu.js';
 import {
   Fn, vec2, vec3, vec4, float, uniform, texture, uv, positionWorld, positionLocal, normalWorld, cameraPosition, instanceIndex,
   hash, mix, step, smoothstep, clamp, sin, cos, normalize, length, normalMap, abs, floor, fract, mx_noise_float, max, min, varying,
-} from '../../shared/three-r187/build/three.tsl.js';
-import { SkyMesh } from '../../shared/three-r187/addons/objects/SkyMesh.js';
-import { CSMShadowNode } from '../../shared/three-r187/addons/csm/CSMShadowNode.js';
+} from '../../_shared/three-r187/build/three.tsl.js';
+import { SkyMesh } from '../../_shared/three-r187/addons/objects/SkyMesh.js';
+import { CSMShadowNode } from '../../_shared/three-r187/addons/csm/CSMShadowNode.js';
 import { env } from './kit.js';
 import { WORLD, RES, TOWN } from './terrain.js';
 

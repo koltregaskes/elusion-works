@@ -132,7 +132,7 @@ jobs:
           test -f _site/demos/lumen-ward/index.html
           test -f _site/demos/lumen-ward/src/main.js
           test -f _site/demos/lumen-ward/assets/lumen-ward-kit.glb
-          test -f _site/demos/shared/three-r187/build/three.webgpu.js
+          test -f _site/demos/_shared/three-r187/build/three.webgpu.js
           test -f _site/demos/lumen-ward/assets/lumen-ward-kit.json
           test -f _site/demos/lumen-ward/assets/lumen-ward-far.glb
           test -f _site/demos/lumen-ward/assets/tex/concrete_color.webp

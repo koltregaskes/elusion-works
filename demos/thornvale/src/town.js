@@ -1,7 +1,7 @@
 // Thornvale layout: walls, towers and gate around an elliptical hill-top
 // plateau; an upper terrace with church and keep behind an arcaded retaining
 // wall; a market square; houses along cobbled streets; forest outside.
-import * as THREE from '../../shared/three-r187/build/three.webgpu.js';
+import * as THREE from '../../_shared/three-r187/build/three.webgpu.js';
 import { Batch, leafMaterial } from './kit.js';
 import { TOWN, WORLD, townR, townHeight, distToPolyline, ROAD, fbm } from './terrain.js';
 

@@ -1,10 +1,10 @@
 // District layout: places the Blender kit into a small cyberpunk ward.
 // Everything is seeded, so a seed always gives the same city.
-import * as THREE from '../../shared/three-r187/build/three.webgpu.js';
-import { mergeGeometries } from '../../shared/three-r187/addons/utils/BufferGeometryUtils.js';
+import * as THREE from '../../_shared/three-r187/build/three.webgpu.js';
+import { mergeGeometries } from '../../_shared/three-r187/addons/utils/BufferGeometryUtils.js';
 import { Batch, materialForFactory, tileColour } from './kit.js';
 import { hologramMaterial, uTime } from './materials.js';
-import { Fn, uv, vec3, sin, float } from '../../shared/three-r187/build/three.tsl.js';
+import { Fn, uv, vec3, sin, float } from '../../_shared/three-r187/build/three.tsl.js';
 
 export const ROADS = [-64, 0, 64];
 export const EDGE = 112;

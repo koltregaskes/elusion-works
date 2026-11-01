@@ -1,12 +1,12 @@
 // Loads the Blender kit and texture sets and builds the browser materials:
 // textured PBR stone, plaster, timber and roofs; wind-blown leaf cards;
 // window glass and lanterns that light up at night.
-import * as THREE from '../../shared/three-r187/build/three.webgpu.js';
-import { GLTFLoader } from '../../shared/three-r187/addons/loaders/GLTFLoader.js';
+import * as THREE from '../../_shared/three-r187/build/three.webgpu.js';
+import { GLTFLoader } from '../../_shared/three-r187/addons/loaders/GLTFLoader.js';
 import {
   Fn, vec2, vec3, float, uniform, texture, uv, positionWorld, positionLocal, normalMap, clamp, mix, step, hash, floor,
   sin, instancedBufferAttribute, smoothstep, fract, dot, vec4,
-} from '../../shared/three-r187/build/three.tsl.js';
+} from '../../_shared/three-r187/build/three.tsl.js';
 
 export const env = {
   time: uniform(0), // seconds, for wind and flicker
