@@ -1,14 +1,14 @@
-// Third-person character: Michelle (Mixamo) driven by the idle/walk/run clips
-// from the Xbot file (same Mixamo skeleton), with a follow camera, terrain
-// following and collisions against buildings, trees, walls and the terrace.
+// Third-person character: the Mixamo soldier from the three.js examples with
+// its own idle, walk and run clips, a follow camera, terrain following and
+// collisions against buildings, trees, walls and the terrace.
 import * as THREE from '../../_shared/three-r187/build/three.webgpu.js';
 import { GLTFLoader } from '../../_shared/three-r187/addons/loaders/GLTFLoader.js';
 import { TOWN, townR } from './terrain.js';
 
 export async function loadCharacter(base) {
   const loader = new GLTFLoader();
-  const [body, anims] = await Promise.all([loader.loadAsync(`${base}/Michelle.glb`), loader.loadAsync(`${base}/Xbot.glb`)]);
-  const model = body.scene;
+  const gltf = await loader.loadAsync(`${base}/Soldier.glb`);
+  const model = gltf.scene;
   model.traverse((o) => {
     if (o.isMesh) {
       o.castShadow = true;
@@ -16,40 +16,20 @@ export async function loadCharacter(base) {
       o.frustumCulled = false;
     }
   });
-  // normalise to 1.7 m tall, feet at y = 0
+  // normalise to 1.75 m tall, feet at y = 0
   const box = new THREE.Box3().setFromObject(model);
-  const s = 1.7 / (box.max.y - box.min.y);
+  const s = 1.75 / (box.max.y - box.min.y);
   model.scale.multiplyScalar(s);
   model.position.y -= box.min.y * s;
+  model.rotation.y = Math.PI; // the soldier faces -z in the file; the controller expects +z forward
   const root = new THREE.Group();
   root.add(model);
-  // Michelle's hips carry a -90 degree X rest rotation that Xbot's don't:
-  // rotate the hips track into her frame, and drop root translation.
-  let hipsRest = null;
-  model.traverse((o) => {
-    if (o.name === 'mixamorigHips' || o.name === 'mixamorig:Hips') hipsRest = o.quaternion.clone();
-  });
-  const fix = (clip) => {
-    const c = clip.clone();
-    c.tracks = c.tracks.filter((t) => !t.name.endsWith('.position') && !t.name.endsWith('.scale'));
-    for (const t of c.tracks) {
-      if (/Hips\.quaternion$/.test(t.name) && hipsRest) {
-        const q = new THREE.Quaternion();
-        for (let i = 0; i < t.values.length; i += 4) {
-          q.fromArray(t.values, i).premultiply(hipsRest);
-          q.toArray(t.values, i);
-        }
-      }
-    }
-    return c;
-  };
-  const byName = (n) => anims.animations.find((a) => a.name.toLowerCase() === n);
   const mixer = new THREE.AnimationMixer(model);
   const actions = {};
-  for (const n of ['idle', 'walk', 'run']) {
-    const clip = byName(n);
-    if (!clip) continue;
-    actions[n] = mixer.clipAction(fix(clip));
+  for (const clip of gltf.animations) {
+    const n = clip.name.toLowerCase();
+    if (!['idle', 'walk', 'run'].includes(n)) continue;
+    actions[n] = mixer.clipAction(clip);
     actions[n].play();
     actions[n].setEffectiveWeight(n === 'idle' ? 1 : 0);
   }
