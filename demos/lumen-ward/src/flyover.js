@@ -1,6 +1,6 @@
 // Cinematic flyover: a loop of camera shots built from the city's landmarks,
 // cut together with short fades.
-import * as THREE from '../vendor/three/build/three.webgpu.js';
+import * as THREE from '../../shared/three-r187/build/three.webgpu.js';
 import { RAIL_Y } from './city.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -29,7 +29,7 @@ export function makeShots(city) {
   });
   // 3. Hologram orbit
   shots.push({
-    title: 'Koi plaza',
+    title: 'Holo plaza',
     dur: 13,
     pos: { getPointAt: (t) => { const a = -0.6 + t * 1.9; return V(Math.cos(a) * 25, 8 + t * 9, Math.sin(a) * 25); } },
     look: () => V(0, 15, 0),

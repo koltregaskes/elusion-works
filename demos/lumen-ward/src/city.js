@@ -1,10 +1,10 @@
 // District layout: places the Blender kit into a small cyberpunk ward.
 // Everything is seeded, so a seed always gives the same city.
-import * as THREE from '../vendor/three/build/three.webgpu.js';
-import { mergeGeometries } from '../vendor/three/addons/utils/BufferGeometryUtils.js';
+import * as THREE from '../../shared/three-r187/build/three.webgpu.js';
+import { mergeGeometries } from '../../shared/three-r187/addons/utils/BufferGeometryUtils.js';
 import { Batch, materialForFactory, tileColour } from './kit.js';
 import { hologramMaterial, uTime } from './materials.js';
-import { Fn, uv, vec3, sin, float } from '../vendor/three/build/three.tsl.js';
+import { Fn, uv, vec3, sin, float } from '../../shared/three-r187/build/three.tsl.js';
 
 export const ROADS = [-64, 0, 64];
 export const EDGE = 112;
@@ -581,7 +581,8 @@ export function buildCity(scene, kitData, opts = {}) {
   const koi = [];
   const koiTemplate = kit.get('holo_koi');
   const tints = [new THREE.Color(0.15, 0.85, 1.0), new THREE.Color(1.0, 0.35, 0.75), new THREE.Color(0.55, 0.4, 1.0)];
-  for (let k = 0; k < 3; k++) {
+  // The hologram koi were cut after feedback; the plinth and beam stay.
+  for (let k = 0; k < 0; k++) {
     const g = new THREE.Group();
     for (const p of koiTemplate.parts) {
       const m = new THREE.Mesh(p.geometry, hologramMaterial(tints[k]));
