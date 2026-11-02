@@ -16,11 +16,20 @@ This folder is **not** deployed to elusionworks.com. The Pages workflow copies o
 | --- | --- | --- |
 | Dashboards | 16 | 4 layouts (Command, Bento, Briefing, Console) × 4 themes |
 | Infographics | 12 | 3 layouts (Poster, Explainer, Small multiples) × 4 themes |
+| Web pages | 16 | 4 layouts (Statement, Showcase, Split, Index) × 4 themes |
+| App UI | 16 | 4 layouts (Three-pane, Board, Command palette, Timeline) × 4 themes |
 | Motion | 12 | 12 motion styles on one fixed scene |
 
 The four themes are Swiss, Graphite, Field Notes and Signal. Each is a complete token set in `candidates/themes.js`.
 
-The dashboards use internally consistent sample data about scheduled runs, labelled as sample data. The infographics use the NASA Planetary Fact Sheet.
+Content by category:
+
+- **Dashboards:** internally consistent sample data about scheduled runs, labelled as sample data.
+- **Infographics:** the NASA Planetary Fact Sheet.
+- **Web pages:** the real Elusion Works estate, using its sites, screenshots, tools and demos.
+- **App UI:** a sample day of agent sessions, labelled as sample data.
+
+The web candidates load screenshots from `candidates/img/`. That folder is not committed. At publish time, map each file there from `assets/showcase/` using the Artifact tool's `files` map.
 
 ## Why candidates are generated, not hand-made
 

@@ -182,6 +182,18 @@ kbd { font: 500 11px/1 var(--mono); padding: 3px 5px; border: 1px solid var(--li
     explainer: { Layout: "Explainer", Structure: "One big annotated diagram", Voice: "Story per item" },
     multiples: { Layout: "Small multiples", Structure: "Card grid", Voice: "Side by side" }
   };
+  const WEB_LAYOUTS = {
+    statement: { Layout: "Statement", Hero: "Giant type", Imagery: "Thumbnails in a list" },
+    showcase: { Layout: "Showcase", Hero: "Copy + screenshot stack", Imagery: "Card grid" },
+    split: { Layout: "Split", Hero: "Copy + generative art", Imagery: "Feature rows" },
+    index: { Layout: "Index", Hero: "Brand + manifesto", Imagery: "Directory table" }
+  };
+  const APP_LAYOUTS = {
+    threepane: { Layout: "Three-pane", Navigation: "Sidebar + list + detail", Density: "Balanced" },
+    board: { Layout: "Board", Navigation: "Status columns", Density: "Airy" },
+    command: { Layout: "Command palette", Navigation: "Keyboard first", Density: "Focused" },
+    timeline: { Layout: "Timeline", Navigation: "Time tracks", Density: "Overview" }
+  };
   const MOTION = {
     standard: { Motion: "Standard decelerate", Curve: "Ease-out curve", Energy: "Measured", Choreography: "Stagger" },
     damped: { Motion: "Spring, no overshoot", Curve: "Spring", Energy: "Smooth", Choreography: "Stagger" },
@@ -203,6 +215,12 @@ kbd { font: 500 11px/1 var(--mono); padding: 3px 5px; border: 1px solid var(--li
     { id: "infographics", name: "Infographics", src: "candidates/infographic.html", w: 1080, h: 1350,
       aspects: ["Layout", "Colour", "Type", "Clarity", "Storytelling", "Mood"],
       items: Object.entries(INFO_LAYOUTS).flatMap(([l, lt]) => Object.entries(THEME_TAGS).map(([t, tt]) => ({ key: l + "-" + t, tags: { ...lt, ...tt } }))) },
+    { id: "web", name: "Web pages", src: "candidates/web.html", w: 1440, h: 1600,
+      aspects: ["Hero", "Layout", "Colour", "Type", "Imagery", "Mood"],
+      items: Object.entries(WEB_LAYOUTS).flatMap(([l, lt]) => Object.entries(THEME_TAGS).map(([t, tt]) => ({ key: l + "-" + t, tags: { ...lt, ...tt } }))) },
+    { id: "app", name: "App UI", src: "candidates/app.html", w: 1280, h: 800,
+      aspects: ["Layout", "Colour", "Type", "Density", "Clarity", "Mood"],
+      items: Object.entries(APP_LAYOUTS).flatMap(([l, lt]) => Object.entries(THEME_TAGS).map(([t, tt]) => ({ key: l + "-" + t, tags: { ...lt, ...tt } }))) },
     { id: "motion", name: "Motion", src: "candidates/motion.html", w: 960, h: 600,
       aspects: ["Speed", "Feel", "Order", "Restraint", "Polish", "Mood"],
       items: Object.entries(MOTION).map(([k, t]) => ({ key: k, tags: t })) }

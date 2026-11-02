@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280">
+<title>App UI candidate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<script src="themes.js"></script>
+<style>
+  :root { --bg:#fff; --surface:#fff; --raised:#f4f4f2; --ink:#111; --muted:#666; --faint:#aaa; --line:#e2e2e0;
+    --accent:#e2231a; --accent-ink:#fff; --ok:#111; --fail:#e2231a; --silent:#bbb; --display:sans-serif; --body:sans-serif;
+    --mono:monospace; --radius:0; --display-weight:700; --display-tracking:0; --label-case:uppercase; --label-tracking:.08em; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { width: 1280px; height: 800px; overflow: hidden; background: var(--bg); color: var(--ink); font: 13.5px/1.45 var(--body);
+    -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; position: relative; }
+  .label { font: 600 11px/1.2 var(--body); color: var(--muted); text-transform: var(--label-case); letter-spacing: var(--label-tracking); }
+  .mono { font-family: var(--mono); }
+  .muted { color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+  .s-running { background: var(--ok); } .s-needs { background: var(--accent); } .s-blocked { background: var(--fail); }
+  .s-done { background: var(--faint); } .s-scheduled { background: transparent; box-shadow: inset 0 0 0 1.5px var(--faint); }
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; padding: 3px 9px 3px 7px;
+    border-radius: calc(var(--radius) + 3px); background: var(--raised); white-space: nowrap; }
+  .pill.needs { background: var(--accent); color: var(--accent-ink); } .pill.needs .dot { background: var(--accent-ink); }
+  .pill.blocked { color: var(--fail); }
+  .kbd { font: 500 11px/1 var(--mono); padding: 3px 5px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 8px 13px; border-radius: var(--radius); font: 600 13px/1 var(--body);
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+  .btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .bar { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; } .bar i { display: block; height: 100%; background: var(--ink); }
+  .sample { font: 500 10.5px/1 var(--mono); letter-spacing: .06em; color: var(--muted); border: 1px solid var(--line); padding: 4px 6px; border-radius: var(--radius); }
+  .ev { display: grid; grid-template-columns: 52px 14px 1fr; gap: 10px; padding: 9px 0; align-items: start; }
+  .ev time { font: 12px var(--mono); color: var(--muted); padding-top: 1px; }
+  .ev .rail { position: relative; height: 100%; } .ev .rail::before { content: ""; position: absolute; left: 6px; top: 14px; bottom: -14px; width: 1px; background: var(--line); }
+  .ev:last-child .rail::before { display: none; }
+  .ev .rail i { position: absolute; left: 2px; top: 4px; width: 9px; height: 9px; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--muted); }
+  .ev.k-you .rail i { background: var(--accent); border-color: var(--accent); } .ev.k-done .rail i { background: var(--ink); border-color: var(--ink); }
+  .ev p { margin: 0; } .ev small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+  /* ===== Three-pane ===== */
+  .tp { display: grid; grid-template-columns: 220px 400px 1fr; height: 800px; }
+  .tp aside { background: var(--surface); border-right: 1px solid var(--line); padding: 18px 14px; display: flex; flex-direction: column; gap: 4px; }
+  .tp aside .brand { font: var(--display-weight) 16px/1 var(--display); letter-spacing: var(--display-tracking); padding: 4px 8px 18px; display: flex; gap: 9px; align-items: center; }
+  .tp aside .brand i { width: 18px; height: 18px; background: var(--accent); border-radius: calc(var(--radius) / 2); }
+  .tp aside a { display: flex; justify-content: space-between; padding: 7px 8px; border-radius: var(--radius); color: var(--muted); }
+  .tp aside a.on { background: var(--raised); color: var(--ink); font-weight: 600; }
+  .tp aside .label { padding: 18px 8px 6px; }
+  .tp .list { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0; }
+  .tp .list header { padding: 18px 18px 12px; border-bottom: 1px solid var(--line); }
+  .tp .list h1 { margin: 0 0 12px; font: var(--display-weight) 20px/1 var(--display); letter-spacing: var(--display-tracking); display: flex; justify-content: space-between; align-items: center; }
+  .tabs { display: flex; gap: 4px; } .tabs span { padding: 5px 10px; border-radius: calc(var(--radius) + 3px); color: var(--muted); font-size: 12.5px; }
+  .tabs span.on { background: var(--ink); color: var(--bg); }
+  .tp .item { display: grid; grid-template-columns: 14px 1fr auto; gap: 10px; padding: 12px 18px; border-bottom: 1px solid var(--line); align-items: start; }
+  .tp .item.sel { background: var(--raised); box-shadow: inset 2px 0 0 var(--ink); }
+  .tp .item .dot { margin-top: 5px; }
+  .tp .item b { font-weight: 600; font-family: var(--mono); font-size: 12.5px; letter-spacing: .02em; }
+  .tp .item p { margin: 2px 0 0; color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tp .item .r { text-align: right; font-size: 12px; color: var(--muted); }
+  .tp .detail { padding: 22px 28px; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+  .tp .detail h2 { margin: 6px 0 4px; font: var(--display-weight) 26px/1.1 var(--display); letter-spacing: var(--display-tracking); }
+  .facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .facts div { background: var(--surface); padding: 10px 12px; } .facts b { display: block; margin-top: 4px; font-weight: 600; }
+  .callout { border: 1px solid var(--accent); border-radius: var(--radius); padding: 14px 16px; display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: center; }
+
+  /* ===== Board ===== */
+  .bd { height: 800px; display: grid; grid-template-rows: auto auto 1fr; }
+  .bd header { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--line); }
+  .bd header h1 { margin: 0; font: var(--display-weight) 22px/1 var(--display); letter-spacing: var(--display-tracking); }
+  .bd .next { display: flex; gap: 18px; padding: 10px 24px; border-bottom: 1px solid var(--line); font-size: 12.5px; color: var(--muted); align-items: center; }
+  .bd .cols { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; padding: 16px 24px; min-height: 0; }
+  .bd .col { background: var(--raised); border-radius: calc(var(--radius) + 2px); padding: 10px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .bd .col h2 { margin: 2px 4px 2px; font: 600 13px/1 var(--body); display: flex; align-items: center; gap: 8px; }
+  .bd .col h2 span { margin-left: auto; color: var(--muted); font: 12px var(--mono); }
+  .bd .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; display: grid; gap: 8px; }
+  .bd .card b { font: 600 12.5px var(--mono); letter-spacing: .02em; }
+  .bd .card p { margin: 0; color: var(--muted); font-size: 12.5px; }
+  .bd .card .meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  .bd .card.needs { border-color: var(--accent); }
+
+  /* ===== Command ===== */
+  .cm { height: 800px; position: relative; }
+  .cm .under { position: absolute; inset: 0; padding: 22px 28px; opacity: .35; filter: blur(1.5px); }
+  .cm .under .row { display: grid; grid-template-columns: 14px 220px 1fr 140px; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); align-items: center; }
+  .cm .scrim { position: absolute; inset: 0; background: color-mix(in srgb, var(--bg) 55%, transparent); }
+  .cm .pal { position: absolute; left: 50%; top: 92px; transform: translateX(-50%); width: 880px; background: var(--surface); border: 1px solid var(--line);
+    border-radius: calc(var(--radius) + 4px); box-shadow: 0 30px 80px -20px rgba(0,0,0,.45); overflow: hidden; }
+  .cm .q { display: flex; align-items: center; gap: 12px; padding: 18px 20px; border-bottom: 1px solid var(--line); font-size: 18px; }
+  .cm .q .caret { width: 2px; height: 22px; background: var(--accent); }
+  .cm .body { display: grid; grid-template-columns: 1fr 340px; min-height: 420px; }
+  .cm .res { padding: 10px; border-right: 1px solid var(--line); }
+  .cm .res .label { padding: 10px 10px 6px; }
+  .cm .r { display: grid; grid-template-columns: 14px 1fr auto; gap: 10px; align-items: center; padding: 10px; border-radius: var(--radius); }
+  .cm .r.sel { background: var(--raised); box-shadow: inset 2px 0 0 var(--accent); }
+  .cm .r b { font: 600 13px var(--mono); } .cm .r em { font-style: normal; background: color-mix(in srgb, var(--accent) 28%, transparent); }
+  .cm .prev { padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; }
+  .cm .prev h3 { margin: 0; font: var(--display-weight) 20px/1.15 var(--display); letter-spacing: var(--display-tracking); }
+  .cm .foot { display: flex; gap: 18px; padding: 11px 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; align-items: center; }
+
+  /* ===== Timeline ===== */
+  .tl { height: 800px; display: grid; grid-template-rows: auto 1fr auto; }
+  .tl header { display: flex; align-items: center; justify-content: space-between; padding: 18px 28px; border-bottom: 1px solid var(--line); }
+  .tl header h1 { margin: 0; font: var(--display-weight) 22px/1 var(--display); letter-spacing: var(--display-tracking); }
+  .tl .chart { padding: 18px 28px 0; position: relative; }
+  .tl .lane { display: grid; grid-template-columns: 140px 1fr; align-items: center; border-bottom: 1px solid var(--line); }
+  .tl .lane > b { font-weight: 600; } .tl .lane > b small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+  .tl .track { position: relative; height: 100%; }
+  .tl .seg { position: absolute; top: 10px; height: 44px; border-radius: var(--radius); padding: 7px 9px; font-size: 12px; overflow: hidden; white-space: nowrap;
+    background: color-mix(in srgb, var(--ok) 18%, var(--surface)); border-left: 3px solid var(--ok); }
+  .tl .seg b { display: block; font: 600 11.5px var(--mono); letter-spacing: .02em; }
+  .tl .seg span { color: var(--muted); }
+  .tl .seg.needs { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); border-left-color: var(--accent); }
+  .tl .seg.blocked { background: color-mix(in srgb, var(--fail) 16%, var(--surface)); border-left-color: var(--fail); }
+  .tl .seg.done { background: var(--raised); border-left-color: var(--faint); }
+  .tl .seg.scheduled { background: transparent; border: 1px dashed var(--faint); border-left: 3px solid var(--faint); }
+  .tl .axis { display: grid; grid-template-columns: 140px 1fr; font: 11px var(--mono); color: var(--muted); padding-bottom: 6px; }
+  .tl .axis div { position: relative; height: 14px; } .tl .axis span { position: absolute; transform: translateX(-50%); }
+  .tl .now { position: absolute; top: 18px; bottom: 0; width: 2px; background: var(--accent); }
+  .tl .now span { position: absolute; top: -2px; left: 6px; font: 600 11px var(--mono); color: var(--accent); }
+  .tl .below { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 1px; background: var(--line); border-top: 1px solid var(--line); }
+  .tl .below > div { background: var(--bg); padding: 16px 28px; }
+  .tl .below .big { font: var(--display-weight) 34px/1 var(--display); letter-spacing: var(--display-tracking); margin-top: 6px; }
+</style>
+</head>
+<body>
+<script>
+(function () {
+  /* Sample data: a day in the agent estate on 2 Nov 2026. Clearly marked as sample in every layout. */
+  const S = [
+    { t: "TASTE LAB", lane: "Studio", agent: "Claude Code", st: "needs", what: "Rate 40 dashboard pairs to seed the profile", start: 19.6, end: 21.3, last: "4m", step: [7, 8] },
+    { t: "VOID SOVEREIGN", lane: "Build", agent: "Claude Code", st: "running", what: "Round 19: rebalance the AI personalities", start: 14.2, end: 21.3, last: "now", step: [6, 9] },
+    { t: "NEWS PIPELINE", lane: "Build", agent: "Codex", st: "blocked", what: "Silent since 31 Oct, feed credential expired", start: 9.0, end: 11.5, last: "9h", step: [3, 7] },
+    { t: "X LANE", lane: "Content", agent: "Hark", st: "needs", what: "Approve three drafts queued in Typefully", start: 16.0, end: 18.4, last: "2h", step: [4, 5] },
+    { t: "ROOMS OS WIKI", lane: "Ops", agent: "Grok Bot", st: "running", what: "Weekly maintenance pass on 46 pages", start: 18.8, end: 21.3, last: "1m", step: [31, 46] },
+    { t: "TRADING PAPER", lane: "Trading", agent: "Codex", st: "running", what: "Paper playbook v1, £250 virtual", start: 12.5, end: 21.3, last: "12m", step: [2, 6] },
+    { t: "WINDFIELD", lane: "Games", agent: "Claude Code", st: "done", what: "Light shafts, portrait lens, phone layout", start: 8.0, end: 12.6, last: "8h", step: [5, 5] },
+    { t: "NAS BACKUP CHECK", lane: "Home Lab", agent: "Codex", st: "done", what: "Weekly restore test, 3 of 3 passed", start: 3.0, end: 4.2, last: "17h", step: [3, 3] },
+    { t: "MORNING BRIEF", lane: "Chief of Staff", agent: "Grok Bot", st: "done", what: "07:00 brief sent, 11 items", start: 6.9, end: 7.4, last: "14h", step: [1, 1] },
+    { t: "SITE HEALTH", lane: "Sites", agent: "Hark", st: "scheduled", what: "Next browser check at 23:15", start: 23.25, end: 23.9, last: "–", step: [0, 4] }
+  ];
+  const WORD = { needs: "Needs you", running: "Running", blocked: "Blocked", done: "Done", scheduled: "Scheduled" };
+  const LANES = [...new Set(S.map(s => s.lane))];
+  const count = st => S.filter(s => s.st === st).length;
+  const pill = st => `<span class="pill ${st}"><span class="dot s-${st}"></span>${WORD[st]}</span>`;
+  const sel = S[0];
+  const EVENTS = [
+    ["19:36", "Session started from Kol's message", "Quality reset: research, catalogue, taste lab", ""],
+    ["19:58", "Six research agents finished", "259 references verified", "done"],
+    ["20:39", "This or That published", "Shared vote store tested", "done"],
+    ["21:05", "PR #68 opened, CI green", "", "done"],
+    ["21:11", "Waiting on Kol", "Rate 40 pairs per category, about 5 minutes each", "you"]
+  ];
+  const evs = () => EVENTS.map(e => `<div class="ev k-${e[3]}"><time>${e[0]}</time><span class="rail"><i></i></span><div><p>${e[1]}</p>${e[2] ? `<small>${e[2]}</small>` : ""}</div></div>`).join("");
+  const facts = () => `<div class="facts"><div><span class="label">Agent</span><b>${sel.agent}</b></div><div><span class="label">Lane</span><b>${sel.lane}</b></div><div><span class="label">Started</span><b>19:36</b></div><div><span class="label">Progress</span><b>${sel.step[0]} of ${sel.step[1]} steps</b></div></div>`;
+  const icon = p => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+
+  const L = {};
+  L.threepane = () => `<div class="tp">
+    <aside><div class="brand"><i></i>Rooms OS</div>
+      <a class="on"><span>Sessions</span><span class="mono">${S.length}</span></a><a><span>Routines</span><span class="mono">34</span></a><a><span>Linear</span></a><a><span>Artifacts</span></a>
+      <div class="label">Lanes</div>${LANES.slice(0, 8).map(l => `<a><span>${l}</span><span class="mono">${S.filter(s => s.lane === l).length}</span></a>`).join("")}
+      <div style="margin-top:auto"><span class="sample">SAMPLE DATA</span></div></aside>
+    <section class="list"><header><h1>Sessions <span class="btn" style="padding:6px 10px">${icon('<path d="M12 5v14M5 12h14"/>')}New</span></h1>
+      <div class="tabs"><span class="on">All ${S.length}</span><span>Needs you ${count("needs")}</span><span>Running ${count("running")}</span><span>Blocked ${count("blocked")}</span></div></header>
+      ${S.slice(0, 9).map((s, i) => `<div class="item ${i === 0 ? "sel" : ""}"><span class="dot s-${s.st}"></span><div style="min-width:0"><b>${s.t}</b><p>${s.what}</p></div><div class="r">${s.last}<br>${s.agent}</div></div>`).join("")}
+    </section>
+    <section class="detail"><div><div style="display:flex;gap:10px;align-items:center">${pill(sel.st)}<span class="muted mono" style="font-size:12px">KOL-6633</span></div>
+      <h2>${sel.t}</h2><div class="muted">${sel.what}</div></div>
+      ${facts()}
+      <div class="callout"><div><b>Waiting on you</b><div class="muted" style="font-size:12.5px;margin-top:2px">The profile needs about 40 judgements per category before agents can use it.</div></div><span class="btn primary">Open This or That</span></div>
+      <div><div class="label" style="margin-bottom:6px">Activity</div>${evs()}</div>
+      <div style="margin-top:auto;display:flex;gap:8px"><span class="btn">Message session</span><span class="btn">Open in Linear</span><span class="btn" style="margin-left:auto">Archive</span></div>
+    </section></div>`;
+
+  L.board = () => {
+    const col = (st, title) => `<div class="col"><h2><span class="dot s-${st}"></span>${title}<span>${count(st)}</span></h2>
+      ${S.filter(s => s.st === st).map(s => `<div class="card ${st}"><b>${s.t}</b><p>${s.what}</p><div class="bar"><i style="width:${(100 * s.step[0] / s.step[1]).toFixed(0)}%"></i></div><div class="meta"><span>${s.agent} · ${s.lane}</span><span>${s.last}</span></div>${st === "needs" ? `<span class="btn primary" style="justify-content:center">Open</span>` : ""}</div>`).join("")}</div>`;
+    return `<div class="bd"><header><div style="display:flex;gap:14px;align-items:baseline"><h1>Sessions</h1><span class="muted">Sunday 2 November · 21:14</span></div>
+      <div style="display:flex;gap:8px;align-items:center"><span class="sample">SAMPLE DATA</span><span class="btn">Filter</span><span class="btn primary">New session</span></div></header>
+      <div class="next"><span class="label">Up next</span><span><span class="dot s-scheduled"></span> Site health · 23:15</span><span><span class="dot s-scheduled"></span> Morning brief · 07:00</span><span style="margin-left:auto">${count("needs")} waiting on you</span></div>
+      <div class="cols">${col("needs", "Needs you")}${col("running", "Running")}${col("blocked", "Blocked")}${col("done", "Done today")}</div></div>`;
+  };
+
+  L.command = () => `<div class="cm"><div class="under">
+      <div style="display:flex;justify-content:space-between;margin-bottom:14px"><b style="font:var(--display-weight) 22px var(--display)">Sessions</b><span class="sample">SAMPLE DATA</span></div>
+      ${S.map(s => `<div class="row"><span class="dot s-${s.st}"></span><b class="mono">${s.t}</b><span class="muted">${s.what}</span><span class="muted">${s.agent}</span></div>`).join("")}</div>
+    <div class="scrim"></div>
+    <div class="pal">
+      <div class="q">${icon('<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>')}<span>void</span><span class="caret"></span><span class="muted" style="margin-left:auto;font-size:13px">Sessions, lanes and actions</span></div>
+      <div class="body"><div class="res">
+        <div class="label">Sessions</div>
+        <div class="r sel"><span class="dot s-running"></span><span><b><em>VOID</em> SOVEREIGN</b> <span class="muted">· Build</span></span><span class="kbd">↵</span></div>
+        <div class="r"><span class="dot s-done"></span><span><b><em>VOID</em> SOVEREIGN ROUND 18</b> <span class="muted">· archived</span></span><span class="muted" style="font-size:12px">6d</span></div>
+        <div class="label">Actions</div>
+        <div class="r"><span class="muted">${icon('<path d="M4 5h16v11H8l-4 4z"/>')}</span><span>Message <b><em>VOID</em> SOVEREIGN</b></span><span class="kbd">M</span></div>
+        <div class="r"><span class="muted">${icon('<path d="M7 17L17 7M8 7h9v9"/>')}</span><span>Open its Linear issue</span><span class="kbd">L</span></div>
+        <div class="r"><span class="muted">${icon('<path d="M10 9V5L3 12l7 7v-4c5 0 8 1.5 11 5-1-6-4-10-11-11z"/>')}</span><span>Hand over to a new session</span><span class="kbd">H</span></div>
+        <div class="r"><span class="muted">${icon('<rect x="3" y="5" width="18" height="4"/><path d="M5 9v10h14V9M10 13h4"/>')}</span><span>Archive</span><span class="kbd">⌫</span></div>
+      </div>
+      <div class="prev">${pill("running")}<h3>VOID SOVEREIGN</h3><div class="muted">${S[1].what}</div>
+        <div><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:6px"><span>Step 6 of 9</span><span class="muted">last activity now</span></div><div class="bar"><i style="width:67%"></i></div></div>
+        <div style="font-size:12.5px;display:grid;gap:6px;margin-top:4px"><div style="display:flex;justify-content:space-between"><span class="muted">Agent</span><span>Claude Code</span></div><div style="display:flex;justify-content:space-between"><span class="muted">Started</span><span>14:12</span></div><div style="display:flex;justify-content:space-between"><span class="muted">Mean score</span><span>6.52 of 10</span></div></div>
+      </div></div>
+      <div class="foot"><span><span class="kbd">↑</span> <span class="kbd">↓</span> move</span><span><span class="kbd">↵</span> open</span><span><span class="kbd">Tab</span> actions</span><span style="margin-left:auto"><span class="kbd">Esc</span> close</span></div>
+    </div></div>`;
+
+  L.timeline = () => {
+    const agents = ["Claude Code", "Codex", "Grok Bot", "Hark"];
+    const x = h => (h / 24 * 100).toFixed(2) + "%";
+    const now = 21.23;
+    const rows = agents.map(a => {
+      const mine = S.filter(s => s.agent === a).sort((p, q) => p.start - q.start), ends = [];
+      mine.forEach(s => { let r = ends.findIndex(e => e <= s.start); if (r < 0) { r = ends.length; ends.push(0); } ends[r] = s.end; s.row = r; });
+      const h = 16 + ends.length * 52;
+      return `<div class="lane" style="height:${h}px"><b>${a}<small>${mine.filter(s => s.st === "running").length} running · ${mine.length} today</small></b><div class="track">
+      ${mine.map(s => `<div class="seg ${s.st}" title="${s.t}" style="top:${10 + s.row * 52}px;left:${x(s.start)};width:calc(${x(s.end - s.start)} - 3px)"><b>${s.t}</b><span>${WORD[s.st]}</span></div>`).join("")}</div></div>`;
+    }).join("");
+    return `<div class="tl"><header><div style="display:flex;gap:14px;align-items:baseline"><h1>Today</h1><span class="muted">Sunday 2 November</span></div>
+      <div style="display:flex;gap:8px;align-items:center"><span class="sample">SAMPLE DATA</span><div class="tabs"><span class="on">Day</span><span>Week</span></div></div></header>
+      <div class="chart"><div class="axis"><i></i><div>${[0, 3, 6, 9, 12, 15, 18, 21, 24].map(h => `<span style="left:${x(h)}">${String(h % 24).padStart(2, "0")}:00</span>`).join("")}</div></div>
+        ${rows}
+        <div class="now" style="left:calc(28px + 140px + (100% - 56px - 140px) * ${now / 24})"><span>21:14</span></div></div>
+      <div class="below"><div><span class="label">Waiting on you</span>${S.filter(s => s.st === "needs").map(s => `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)"><span><b class="mono" style="font-size:12.5px">${s.t}</b> <span class="muted">· ${s.what}</span></span><span class="btn" style="padding:6px 10px">Open</span></div>`).join("")}</div>
+        <div><span class="label">Running now</span><div class="big">${count("running")}</div><div class="muted" style="margin-top:6px">across ${new Set(S.filter(s => s.st === "running").map(s => s.agent)).size} agents</div></div>
+        <div><span class="label">Blocked</span><div class="big" style="color:var(--fail)">${count("blocked")}</div><div class="muted" style="margin-top:6px">NEWS PIPELINE: feed credential expired</div></div></div></div>`;
+  };
+
+  function render() {
+    const { layout, theme } = TL.readHash("threepane", "swiss");
+    TL.applyTheme(theme);
+    document.body.innerHTML = (L[layout] || L.threepane)();
+  }
+  render();
+  addEventListener("hashchange", render);
+})();
+</script>
+</body>
+</html>

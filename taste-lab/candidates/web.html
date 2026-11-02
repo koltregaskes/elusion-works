@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Web page candidate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<script src="themes.js"></script>
+<style>
+  :root { --bg:#fff; --surface:#fff; --raised:#f4f4f2; --ink:#111; --muted:#666; --faint:#aaa; --line:#e2e2e0;
+    --accent:#e2231a; --accent-ink:#fff; --s1:#111; --s2:#e2231a; --s3:#bbb; --display:sans-serif; --body:sans-serif;
+    --mono:monospace; --radius:0; --display-weight:700; --display-tracking:0; --label-case:uppercase; --label-tracking:.08em; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { width: 1440px; height: 1600px; overflow: hidden; background: var(--bg); color: var(--ink);
+    font: 17px/1.5 var(--body); -webkit-font-smoothing: antialiased; }
+  a { color: inherit; text-decoration: none; }
+  img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .label { font: 600 12px/1.2 var(--body); color: var(--muted); text-transform: var(--label-case); letter-spacing: var(--label-tracking); }
+  .mono { font-family: var(--mono); }
+  .wrap { padding: 0 72px; }
+  nav.top { display: flex; align-items: center; justify-content: space-between; height: 84px; }
+  nav.top .brand { font: var(--display-weight) 20px/1 var(--display); letter-spacing: var(--display-tracking); display: flex; align-items: center; gap: 12px; }
+  nav.top .brand i { width: 22px; height: 22px; background: var(--accent); border-radius: calc(var(--radius) / 2); display: block; }
+  nav.top ul { list-style: none; display: flex; gap: 34px; margin: 0; padding: 0; font-size: 15px; color: var(--muted); }
+  nav.top ul li:first-child { color: var(--ink); }
+  .btn { display: inline-flex; align-items: center; gap: 10px; padding: 14px 22px; font: 600 15px/1 var(--body); border-radius: var(--radius);
+    background: var(--ink); color: var(--bg); }
+  .btn.alt { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  .status { display: inline-flex; align-items: center; gap: 7px; font: 500 12px/1 var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .status i { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); display: block; }
+  .status.live i { background: var(--accent); }
+  .shot { border-radius: var(--radius); overflow: hidden; background: var(--raised); border: 1px solid var(--line); }
+
+  /* ===== Statement ===== */
+  .statement h1 { font: var(--display-weight) 132px/0.92 var(--display); letter-spacing: var(--display-tracking); margin: 92px 0 0; max-width: 13ch; text-wrap: balance; }
+  .statement h1 em { font-style: normal; color: var(--accent); }
+  .statement .meta { display: grid; grid-template-columns: 1fr 1fr 1fr 1.4fr; gap: 24px; margin: 64px 0 0; padding: 22px 0; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--line); }
+  .statement .meta strong { display: block; font: var(--display-weight) 36px/1 var(--display); margin-top: 8px; }
+  .statement .meta p { margin: 0; color: var(--muted); font-size: 16px; }
+  .statement .work { margin-top: 70px; }
+  .statement .work .row { display: grid; grid-template-columns: 60px 1.4fr 1.6fr 180px 230px; gap: 24px; align-items: center; padding: 22px 0; border-top: 1px solid var(--line); }
+  .statement .work .row h3 { margin: 0; font: var(--display-weight) 34px/1.05 var(--display); letter-spacing: var(--display-tracking); }
+  .statement .work .row p { margin: 0; color: var(--muted); font-size: 16px; }
+  .statement .work .row .shot { height: 128px; }
+
+  /* ===== Showcase ===== */
+  .showcase .hero { display: grid; grid-template-columns: 1fr 1.05fr; gap: 56px; align-items: center; padding-top: 56px; }
+  .showcase h1 { font: var(--display-weight) 84px/0.98 var(--display); letter-spacing: var(--display-tracking); margin: 18px 0 24px; text-wrap: balance; }
+  .showcase .hero p { font-size: 20px; color: var(--muted); margin: 0 0 34px; max-width: 34ch; }
+  .showcase .stack { position: relative; height: 560px; }
+  .showcase .stack .shot { position: absolute; width: 560px; height: 360px; box-shadow: 0 30px 60px -30px rgba(0,0,0,.45); }
+  .showcase .stack .shot:nth-child(1) { left: 0; top: 0; transform: rotate(-3deg); }
+  .showcase .stack .shot:nth-child(2) { right: 0; top: 70px; transform: rotate(2.5deg); }
+  .showcase .stack .shot:nth-child(3) { left: 80px; top: 200px; transform: rotate(-.5deg); }
+  .showcase .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; margin-top: 88px; }
+  .showcase .card .shot { height: 230px; }
+  .showcase .card h3 { margin: 18px 0 4px; font: var(--display-weight) 24px/1.15 var(--display); letter-spacing: var(--display-tracking); display: flex; justify-content: space-between; align-items: baseline; }
+  .showcase .card p { margin: 0; color: var(--muted); font-size: 15.5px; }
+  .showcase .sechead { display: flex; justify-content: space-between; align-items: end; margin-top: 96px; }
+  .showcase .sechead h2 { margin: 0; font: var(--display-weight) 44px/1 var(--display); letter-spacing: var(--display-tracking); }
+
+  /* ===== Split ===== */
+  .split .hero { display: grid; grid-template-columns: 1fr 1fr; min-height: 760px; }
+  .split .hero .copy { padding: 0 64px 0 72px; display: flex; flex-direction: column; }
+  .split .hero .copy .inner { margin: auto 0; }
+  .split h1 { font: var(--display-weight) 76px/1 var(--display); letter-spacing: var(--display-tracking); margin: 18px 0 24px; text-wrap: balance; }
+  .split .hero p { font-size: 20px; color: var(--muted); margin: 0 0 34px; max-width: 36ch; }
+  .split .visual { background: var(--surface); border-left: 1px solid var(--line); position: relative; overflow: hidden; }
+  .split .visual svg { position: absolute; inset: 0; }
+  .split .visual .cap { position: absolute; left: 36px; bottom: 30px; right: 36px; display: flex; justify-content: space-between; font: 12px var(--mono); color: var(--muted); }
+  .split .rows { display: grid; gap: 0; }
+  .split .feat { display: grid; grid-template-columns: 1fr 1.3fr; gap: 64px; padding: 64px 72px; border-top: 1px solid var(--line); align-items: center; }
+  .split .feat h2 { margin: 10px 0 14px; font: var(--display-weight) 44px/1.02 var(--display); letter-spacing: var(--display-tracking); }
+  .split .feat p { color: var(--muted); margin: 0 0 18px; }
+  .split .feat .strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .split .feat .strip .shot { height: 170px; }
+  .split .feat ul { list-style: none; margin: 0; padding: 0; }
+  .split .feat ul li { display: flex; justify-content: space-between; padding: 14px 0; border-top: 1px solid var(--line); }
+
+  /* ===== Index ===== */
+  .index header { display: grid; grid-template-columns: 1fr 1fr; gap: 72px; padding: 48px 72px 40px; border-bottom: 1px solid var(--ink); }
+  .index header .brand { font: var(--display-weight) 64px/0.95 var(--display); letter-spacing: var(--display-tracking); }
+  .index header p { margin: 0; font-size: 22px; line-height: 1.4; max-width: 40ch; align-self: end; }
+  .index .bar { display: grid; grid-template-columns: repeat(5, auto) 1fr; gap: 34px; padding: 16px 72px; border-bottom: 1px solid var(--line); font: 13px var(--mono); color: var(--muted); }
+  .index .bar span:first-child { color: var(--ink); }
+  .index table { width: calc(100% - 144px); margin: 0 72px; border-collapse: collapse; }
+  .index th { text-align: left; font: 500 12px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .08em; padding: 22px 16px 12px 0; border-bottom: 1px solid var(--line); }
+  .index td { padding: 16px 16px 16px 0; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  .index td.n { font: 13px var(--mono); color: var(--muted); width: 48px; }
+  .index td.t { width: 136px; } .index td.t .shot { height: 76px; width: 120px; }
+  .index td h3 { margin: 0; font: var(--display-weight) 22px/1.2 var(--display); letter-spacing: var(--display-tracking); }
+  .index td p { margin: 3px 0 0; color: var(--muted); font-size: 15px; }
+  .index td .tags { font: 13px var(--mono); color: var(--muted); }
+  .index .kind { font: 13px var(--mono); }
+  .index .demos { padding: 56px 72px 0; }
+  .index .dgrid { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--ink); margin-top: 14px; }
+  .index .dgrid > div { padding: 22px 22px 26px 0; border-bottom: 1px solid var(--line); display: grid; gap: 8px; }
+  .index .dgrid > div:nth-child(3n+2), .index .dgrid > div:nth-child(3n) { padding-left: 22px; border-left: 1px solid var(--line); }
+  .index .dgrid h3 { margin: 0; font: var(--display-weight) 30px/1.05 var(--display); letter-spacing: var(--display-tracking); }
+  .index .foot { display: flex; justify-content: space-between; padding: 40px 72px; font: 13px var(--mono); color: var(--muted); }
+</style>
+</head>
+<body>
+<script>
+(function () {
+  const IMG = "img/";
+  const SITES = [
+    { n: "AI Resource Hub", kind: "Reference hub", status: "live", img: "ai-resource-hub-site.jpg", blurb: "Models, benchmarks, pricing and dated AI updates.", tags: "AI reference · benchmarks", url: "theairesourcehub.com" },
+    { n: "Kol's Korner", kind: "Publishing", status: "live", img: "kols-korner-site.jpg", blurb: "Essays, AI digest archives and commentary.", tags: "essays · news", url: "koltregaskes.com" },
+    { n: "Ghost in the Model", kind: "Editorial", status: "live", img: "ghost-in-the-model-site.jpg", blurb: "Publishing experiments around agents and machine culture.", tags: "editorial · agents", url: "ghostinthemodels.com" },
+    { n: "Axy Lusion", kind: "Portfolio", status: "in progress", img: "axylusion-site.jpg", blurb: "AI art, music and video with a cinematic direction.", tags: "AI art · music · video", url: "axylusion.com" },
+    { n: "A-List", kind: "Directory", status: "live", img: "a-list-site.jpg", blurb: "Ranked creative tools inside the Axy Lusion world.", tags: "tools · discovery", url: "axylusion.com/a-list" },
+    { n: "Kol Tregaskes Photography", kind: "Portfolio", status: "in progress", img: "kol-tregaskes-photography-site.jpg", blurb: "A quiet photography portfolio, moving to a fuller release.", tags: "photography", url: "koltregaskesphotography.com" }
+  ];
+  const TOOLS = [
+    ["Website News Pipeline", "Collects, filters and routes updates to every site"],
+    ["Published Gallery Pipeline", "Archive and delivery for visual work"],
+    ["Shared Website Tools", "Components and publishing infrastructure"]
+  ];
+  const DEMOS = ["Void Sovereign", "Windfield", "Hoover Dam Field Lab", "Solar System Field Lab", "Exploded Views", "Abyssal Relay"];
+  const HEAD = "Websites, tools and browser games from one small studio.";
+  const SUB = "Elusion Works is where Kol Tregaskes builds and ships: six sites, the shared pipelines behind them, and playable demos on the way to full games.";
+  const live = SITES.filter(s => s.status === "live").length;
+  const nav = `<nav class="top wrap"><a class="brand"><i></i>Elusion Works</a><ul><li>Work</li><li>Tools</li><li>Games</li><li>Demos</li><li>About</li></ul><a class="btn alt" style="padding:11px 18px">Play the demos</a></nav>`;
+  const st = s => `<span class="status ${s.status === "live" ? "live" : ""}"><i></i>${s.status}</span>`;
+  const shot = (s, extra = "") => `<div class="shot" ${extra}><img src="${IMG + s.img}" alt="${s.n} homepage"></div>`;
+
+  /* Deterministic flow-field drawing for the split hero, coloured from theme tokens. */
+  function field(w, h) {
+    const r = TL.rng(7); let g = "";
+    const ang = (x, y) => Math.sin(x * 0.006) * 1.6 + Math.cos(y * 0.008) * 1.2 + Math.sin((x + y) * 0.003);
+    for (let i = 0; i < 160; i++) {
+      let x = r() * w, y = r() * h, d = `M${x.toFixed(1)} ${y.toFixed(1)}`;
+      for (let k = 0; k < 40; k++) { const a = ang(x, y); x += Math.cos(a) * 9; y += Math.sin(a) * 9; d += ` L${x.toFixed(1)} ${y.toFixed(1)}`; }
+      const c = i % 9 === 0 ? "var(--accent)" : "var(--ink)";
+      g += `<path d="${d}" fill="none" stroke="${c}" stroke-width="${i % 9 === 0 ? 1.6 : 1}" opacity="${i % 9 === 0 ? .9 : .22}" stroke-linecap="round"/>`;
+    }
+    return `<svg width="100%" height="100%" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid slice">${g}</svg>`;
+  }
+
+  const L = {};
+  L.statement = () => `<div class="statement">${nav}<div class="wrap">
+    <h1>Websites, tools and browser games from <em>one small studio.</em></h1>
+    <div class="meta"><div><span class="label">Live sites</span><strong>${live}</strong></div><div><span class="label">Pipelines</span><strong>${TOOLS.length}</strong></div><div><span class="label">Playable demos</span><strong>${DEMOS.length}</strong></div><p>${SUB}</p></div>
+    <div class="work"><div class="label" style="margin-bottom:14px">Selected work</div>
+      ${SITES.slice(0, 5).map((s, i) => `<div class="row"><span class="mono" style="color:var(--muted)">${String(i + 1).padStart(2, "0")}</span><h3>${s.n}</h3><p>${s.blurb}</p>${st(s)}${shot(s)}</div>`).join("")}
+    </div></div></div>`;
+
+  L.showcase = () => `<div class="showcase">${nav}<div class="wrap">
+    <div class="hero"><div><span class="label">Studio of Kol Tregaskes</span><h1>${HEAD}</h1><p>${SUB}</p><div style="display:flex;gap:12px"><a class="btn">See the work →</a><a class="btn alt">Play the demos</a></div></div>
+      <div class="stack">${shot(SITES[3])}${shot(SITES[0])}${shot(SITES[2])}</div></div>
+    <div class="sechead"><h2>Websites</h2><span class="label">${live} live · ${SITES.length - live} in progress</span></div>
+    <div class="grid" style="margin-top:32px">${SITES.slice(0, 3).map(s => `<a class="card">${shot(s)}<h3>${s.n}${st(s)}</h3><p>${s.blurb}</p></a>`).join("")}</div>
+    <div class="grid" style="margin-top:36px">${SITES.slice(3, 6).map(s => `<a class="card">${shot(s)}<h3>${s.n}${st(s)}</h3><p>${s.blurb}</p></a>`).join("")}</div>
+  </div></div>`;
+
+  L.split = () => `<div class="split">${nav.replace('class="top wrap"', 'class="top wrap" style="border-bottom:1px solid var(--line)"')}
+    <div class="hero"><div class="copy"><div class="inner"><span class="label">Studio of Kol Tregaskes</span><h1>${HEAD}</h1><p>${SUB}</p><div style="display:flex;gap:12px"><a class="btn">See the work →</a><a class="btn alt">Play the demos</a></div></div></div>
+      <div class="visual">${field(720, 760)}<div class="cap"><span>Field study 07 · generated</span><span>${DEMOS.length} demos playable now</span></div></div></div>
+    <div class="rows">
+      <section class="feat"><div><span class="label">01 · Websites</span><h2>${live} live sites, two more on the way</h2><p>Reference, publishing, portfolios and a ranked directory. Each with its own voice, all on shared tools.</p><a class="btn alt">All websites</a></div>
+        <div class="strip">${SITES.slice(0, 3).map(s => shot(s)).join("")}</div></section>
+      <section class="feat"><div><span class="label">02 · Tools and games</span><h2>The pipelines behind them, and what's playable</h2><p>Everything ships through the same publishing pipeline. Demos become games when they earn it.</p></div>
+        <ul>${TOOLS.map(t => `<li><span>${t[0]}</span><span style="color:var(--muted)">${t[1]}</span></li>`).join("")}${DEMOS.slice(0, 2).map(d => `<li><span>${d}</span><span style="color:var(--muted)">Playable demo</span></li>`).join("")}</ul></section>
+    </div></div>`;
+
+  L.index = () => `<div class="index">
+    <header><div class="brand">Elusion<br>Works</div><p>${HEAD} ${SUB.split(": ")[0].replace("Elusion Works is where Kol Tregaskes builds and ships", "Built and shipped by Kol Tregaskes")}.</p></header>
+    <div class="bar"><span>Index</span><span>Websites ${SITES.length}</span><span>Tools ${TOOLS.length}</span><span>Demos ${DEMOS.length}</span><span>Updated 2 Nov 2026</span><span style="text-align:right">elusionworks.com</span></div>
+    <table><thead><tr><th>No.</th><th></th><th>Name</th><th>Kind</th><th>Status</th><th>Address</th></tr></thead><tbody>
+      ${SITES.map((s, i) => `<tr><td class="n">${String(i + 1).padStart(2, "0")}</td><td class="t">${shot(s)}</td><td><h3>${s.n}</h3><p>${s.blurb}</p></td><td class="kind">${s.kind}</td><td>${st(s)}</td><td class="tags">${s.url}</td></tr>`).join("")}
+      ${TOOLS.map((t, i) => `<tr><td class="n">${String(i + 7).padStart(2, "0")}</td><td class="t"></td><td><h3>${t[0]}</h3><p>${t[1]}</p></td><td class="kind">Tool</td><td><span class="status"><i></i>internal</span></td><td class="tags">–</td></tr>`).join("")}
+    </tbody></table>
+    <section class="demos"><div class="label">Playable demos</div><div class="dgrid">${DEMOS.map((d, i) => `<div><span class="mono" style="color:var(--muted)">D${String(i + 1).padStart(2, "0")}</span><h3>${d}</h3><span class="status live"><i></i>playable</span></div>`).join("")}</div></section>
+    <footer class="foot"><span>Elusion Works · Kol Tregaskes</span><span>Built in public, shipped when it earns it</span><span>© 2026</span></footer></div>`;
+
+  function render() {
+    const { layout, theme } = TL.readHash("statement", "swiss");
+    TL.applyTheme(theme);
+    document.body.innerHTML = (L[layout] || L.statement)();
+  }
+  render();
+  addEventListener("hashchange", render);
+})();
+</script>
+</body>
+</html>
