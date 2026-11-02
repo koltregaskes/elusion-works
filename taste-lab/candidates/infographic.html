@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1080">
+<title>Infographic candidate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<script src="themes.js"></script>
+<style>
+  :root { --bg:#fff; --surface:#fff; --raised:#f4f4f2; --ink:#111; --muted:#666; --faint:#aaa; --line:#e2e2e0;
+    --accent:#e2231a; --accent-ink:#fff; --s1:#111; --s2:#e2231a; --s3:#bbb; --display:sans-serif; --body:sans-serif;
+    --mono:monospace; --radius:0; --display-weight:700; --display-tracking:0; --label-case:uppercase; --label-tracking:.08em; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { width: 1080px; height: 1350px; overflow: hidden; background: var(--bg); color: var(--ink);
+    font: 16px/1.45 var(--body); -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
+  .label { font: 600 12px/1.2 var(--body); color: var(--muted); text-transform: var(--label-case); letter-spacing: var(--label-tracking); }
+  .mono { font-family: var(--mono); }
+  svg text { font-family: var(--body); fill: var(--ink); }
+  svg .m { fill: var(--muted); font-size: 13px; }
+  svg .mono { font-family: var(--mono); }
+  .source { font: 12px/1.4 var(--mono); color: var(--muted); }
+
+  /* ===== Poster ===== */
+  .poster { padding: 64px 72px 48px; height: 100%; display: grid; grid-template-rows: auto auto auto 1fr auto; gap: 34px; }
+  .poster h1 { margin: 14px 0 0; font: var(--display-weight) 104px/0.9 var(--display); letter-spacing: var(--display-tracking); }
+  .poster h1 span { color: var(--accent); }
+  .poster .intro { display: flex; justify-content: space-between; align-items: end; gap: 40px; margin-top: 22px; }
+  .poster .intro p { margin: 0; font-size: 19px; color: var(--muted); max-width: 30ch; }
+  .poster section { border-top: 2px solid var(--ink); padding-top: 14px; }
+  .poster .rows { display: grid; gap: 18px; }
+  .poster .row { display: grid; grid-template-columns: 170px 1fr; gap: 20px; align-items: center; }
+  .poster .row h3 { margin: 0; font: 600 15px/1.25 var(--body); }
+  .poster .row h3 small { display: block; font-weight: 400; color: var(--muted); font-size: 13px; margin-top: 2px; }
+
+  /* ===== Explainer ===== */
+  .explainer { height: 100%; position: relative; }
+  .explainer header { position: absolute; top: 64px; right: 72px; width: 420px; text-align: left; }
+  .explainer h1 { margin: 10px 0 14px; font: var(--display-weight) 60px/0.98 var(--display); letter-spacing: var(--display-tracking); text-wrap: balance; }
+  .explainer header p { margin: 0; color: var(--muted); font-size: 17px; }
+  .explainer .foot { position: absolute; left: 72px; right: 72px; bottom: 44px; display: flex; justify-content: space-between; gap: 30px; }
+
+  /* ===== Multiples ===== */
+  .multiples { padding: 60px 64px 44px; height: 100%; display: grid; grid-template-rows: auto 1fr auto; gap: 30px; }
+  .multiples header { display: grid; grid-template-columns: 1fr auto; gap: 30px; align-items: end; }
+  .multiples h1 { margin: 8px 0 0; font: var(--display-weight) 64px/0.95 var(--display); letter-spacing: var(--display-tracking); }
+  .multiples header p { margin: 0; color: var(--muted); font-size: 15px; max-width: 34ch; }
+  .multiples .cards { display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); }
+  .multiples .card { background: var(--surface); padding: 18px 18px 16px; display: grid; grid-template-rows: auto 150px 1fr; gap: 8px; min-width: 0; }
+  .multiples .card .top { display: flex; justify-content: space-between; align-items: baseline; }
+  .multiples .card h2 { margin: 0; font: var(--display-weight) 26px/1 var(--display); letter-spacing: var(--display-tracking); }
+  .multiples .card .ord { font: 12px var(--mono); color: var(--muted); }
+  .multiples dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; font-size: 13.5px; align-content: end; }
+  .multiples dt { color: var(--muted); }
+  .multiples dd { margin: 0; text-align: right; font-weight: 500; }
+  .multiples .temp { grid-column: 1 / -1; margin-top: 6px; }
+</style>
+</head>
+<body>
+<script>
+(function () {
+  /* NASA Planetary Fact Sheet (nssdc.gsfc.nasa.gov/planetary/factsheet). Day = solar day. */
+  const P = [
+    { n: "Mercury", d: 4879, au: 57.9, yr: 88.0, day: 4222.6, t: 167 },
+    { n: "Venus", d: 12104, au: 108.2, yr: 224.7, day: 2802.0, t: 464 },
+    { n: "Earth", d: 12756, au: 149.6, yr: 365.2, day: 24.0, t: 15 },
+    { n: "Mars", d: 6792, au: 228.0, yr: 687.0, day: 24.7, t: -65 },
+    { n: "Jupiter", d: 142984, au: 778.5, yr: 4331, day: 9.9, t: -110 },
+    { n: "Saturn", d: 120536, au: 1432.0, yr: 10747, day: 10.7, t: -140 },
+    { n: "Uranus", d: 51118, au: 2867.0, yr: 30589, day: 17.2, t: -195 },
+    { n: "Neptune", d: 49528, au: 4515.0, yr: 59800, day: 16.1, t: -200 }
+  ];
+  const SOURCE = "Source: NASA Planetary Fact Sheet. Distance is mean distance from the Sun; day is the solar day; temperature is mean surface or 1-bar temperature.";
+  const fill = p => p.n === "Earth" ? "var(--accent)" : "var(--ink)";
+  const nf = new Intl.NumberFormat("en-GB");
+  const yrs = p => p.yr < 1000 ? nf.format(Math.round(p.yr)) + " days" : (p.yr / 365.25).toFixed(1) + " years";
+  const dayf = p => p.day > 100 ? nf.format(Math.round(p.day / 24)) + " days" : p.day.toFixed(1) + " hours";
+  const tf = t => (t > 0 ? "" : t < 0 ? "−" : "") + Math.abs(t) + "°C";
+  const mkm = v => nf.format(v) + "m km";
+
+  /* Planets to scale on a shared baseline. */
+  function sizes(w, h, labels = true) {
+    const total = P.reduce((a, p) => a + p.d, 0), gap = 18;
+    const k = Math.min((w - gap * 7) / total, (h - 44) / 142984);
+    let x = (w - (total * k + gap * 7)) / 2, g = "";
+    P.forEach(p => {
+      const r = (p.d * k) / 2, cx = x + r, cy = h - 34 - r;
+      g += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill(p)}"/>`;
+      if (labels && r > 12) g += `<text x="${cx}" y="${h - 10}" text-anchor="middle" style="font-size:13px">${p.n}</text>`;
+      x += p.d * k + gap;
+      if (p.n === "Mars") { const x0 = (w - (total * k + gap * 7)) / 2, x1 = x - gap; g += `<path d="M${x0} ${h - 28} V${h - 24} H${x1} V${h - 28}" fill="none" stroke="var(--muted)"/><text x="${x0}" y="${h - 8}" style="font-size:13px">Mercury, Venus, Earth, Mars</text>`; }
+    });
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${g}</svg>`;
+  }
+  /* Linear distance axis with an inset for the crowded inner planets. */
+  function distance(w, h) {
+    const max = 4600, x = v => 8 + (v / max) * (w - 16), base = 46;
+    let g = `<line x1="8" x2="${w - 8}" y1="${base}" y2="${base}" stroke="var(--line)" stroke-width="2"/>`;
+    [0, 1000, 2000, 3000, 4000].forEach(v => g += `<line x1="${x(v)}" x2="${x(v)}" y1="${base}" y2="${base + 6}" stroke="var(--muted)"/><text x="${x(v)}" y="${base + 22}" text-anchor="${v ? "middle" : "start"}" class="m mono">${v ? nf.format(v) : "Sun"}</text>`);
+    P.forEach((p, i) => {
+      const outer = i > 3;
+      g += `<circle cx="${x(p.au)}" cy="${base}" r="${outer ? 7 : 4}" fill="${fill(p)}"/>`;
+      if (outer) g += `<text x="${x(p.au)}" y="${base - 16}" text-anchor="middle" style="font-size:13px">${p.n}</text>`;
+    });
+    g += `<path d="M${x(0)} ${base - 14} V${base - 26} H${x(228)} V${base - 14}" fill="none" stroke="var(--muted)"/><text x="${x(0)}" y="${base - 32}" class="m">Mercury to Mars, all inside the first 5%</text>`;
+    g += `<text x="${w - 8}" y="${base + 42}" text-anchor="end" class="m">million km from the Sun</text>`;
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${g}</svg>`;
+  }
+  /* A labelled strip of values per planet (log or linear). */
+  function strip(w, vals, fmt, log, colorBy) {
+    const h = 40, lo = log ? Math.log10(Math.min(...vals)) : Math.min(...vals, 0), hi = log ? Math.log10(Math.max(...vals)) : Math.max(...vals);
+    const x = v => 44 + ((log ? Math.log10(v) : v) - lo) / (hi - lo) * (w - 88);
+    let g = `<line x1="44" x2="${w - 44}" y1="14" y2="14" stroke="var(--line)" stroke-width="6" stroke-linecap="round"/>`;
+    const placed = [];
+    vals.map((v, i) => ({ v, i })).sort((a, b) => a.v - b.v).forEach(({ v, i }) => {
+      const cx = x(v);
+      g += `<circle cx="${cx}" cy="14" r="6" fill="${fill(P[i])}"/>`;
+      let row = 0; while (placed.some(pl => pl.row === row && Math.abs(pl.x - cx) < 96)) row++;
+      placed.push({ x: cx, row });
+      const anc = cx < 90 ? "start" : cx > w - 90 ? "end" : "middle", tx = anc === "start" ? cx - 6 : anc === "end" ? cx + 6 : cx;
+      if (row < 2) g += `<text x="${tx}" y="${36 + row * 15}" text-anchor="${anc}" style="font-size:12px"><tspan>${P[i].n}</tspan><tspan class="m" dx="4" style="font-size:12px">${fmt(v)}</tspan></text>`;
+    });
+    return `<svg width="${w}" height="${h + 16}" viewBox="0 0 ${w} ${h + 16}">${g}</svg>`;
+  }
+
+  const L = {};
+  L.poster = () => `<div class="poster">
+    <header><div class="label">The solar system, by the numbers</div>
+      <h1>The eight<br>planets, <span>measured.</span></h1>
+      <div class="intro"><p>Sizes, distances, years and days, drawn to scale where scale is possible.</p><span class="label">Earth in ${"accent"}</span></div></header>
+    <section><div class="label" style="margin-bottom:10px">Diameter, to scale</div>${sizes(936, 230)}</section>
+    <section><div class="label">Distance from the Sun, to scale</div>${distance(936, 100)}</section>
+    <section class="rows">
+      <div class="row"><h3>Length of year<small>log scale</small></h3>${strip(746, P.map(p => p.yr), v => v < 1000 ? Math.round(v) + "d" : (v / 365.25).toFixed(0) + "y", true)}</div>
+      <div class="row"><h3>Length of day<small>log scale, hours</small></h3>${strip(746, P.map(p => p.day), v => v > 100 ? Math.round(v / 24) + "d" : v.toFixed(0) + "h", true)}</div>
+      <div class="row"><h3>Mean temperature<small>°C</small></h3>${strip(746, P.map(p => p.t), v => (v < 0 ? "−" : "") + Math.abs(v) + "°", false)}</div>
+    </section>
+    <footer class="source">${SOURCE}</footer></div>`.replace('Earth in accent', 'Earth shown in colour');
+
+  L.explainer = () => {
+    const W = 1080, H = 1350, ax = 250, top = 330, bottom = 1200;
+    const y = km => top + Math.sqrt(km / 4515) * (bottom - top);
+    const notes = {
+      Mercury: "A year lasts 88 days. A single day lasts 176.",
+      Venus: "Hottest planet at 464°C, though Mercury is closer.",
+      Earth: "You are here.",
+      Mars: "A day of 24.7 hours, almost ours.",
+      Jupiter: "More than twice the mass of every other planet combined.",
+      Saturn: "Less dense than water.",
+      Uranus: "One orbit takes 84 Earth years.",
+      Neptune: "Coldest on average at −200°C. A year lasts 165 of ours."
+    };
+    let g = `<circle cx="${ax}" cy="-250" r="430" fill="var(--accent)"/><text x="${ax + 14}" y="160" class="m" style="fill:var(--accent-ink);font-size:14px;letter-spacing:.08em">THE SUN</text>`;
+    g += `<line x1="${ax}" x2="${ax}" y1="186" y2="${bottom + 30}" stroke="var(--line)" stroke-width="2" stroke-dasharray="2 6"/>`;
+    [500, 1000, 2000, 3000, 4000].forEach(v => g += `<text x="${ax - 28}" y="${y(v) + 4}" text-anchor="end" class="m mono" style="font-size:12px">${nf.format(v)}m km</text><line x1="${ax - 18}" x2="${ax - 8}" y1="${y(v)}" y2="${y(v)}" stroke="var(--muted)"/>`);
+    let prevLy = -1e9;
+    P.forEach(p => {
+      const cy = y(p.au), pr = Math.max(4.5, Math.sqrt(p.d / 142984) * 36), inner = p.au < 300;
+      const ly0 = Math.max(cy, prevLy + 30); prevLy = ly0;
+      g += `<circle cx="${ax}" cy="${cy}" r="${pr}" fill="${fill(p)}"/>`;
+      const lx = ax + Math.max(pr, 10) + 26;
+      g += `<path d="M${ax + pr + 6} ${cy} L${lx - 14} ${cy} L${lx - 8} ${ly0}" fill="none" stroke="var(--line)"/>`;
+      g += `<text x="${lx}" y="${ly0 + (inner ? 5 : -2)}" style="font-size:${inner ? 16 : 22}px;font-weight:600">${p.n}${inner ? `<tspan class="m" dx="12" style="font-size:14px;font-weight:400">${notes[p.n]}</tspan>` : ""}</text>`;
+      if (!inner) g += `<text x="${lx}" y="${cy + 22}" class="m" style="font-size:15px">${notes[p.n]}</text>`;
+    });
+    return `<div class="explainer"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="position:absolute;inset:0">${g}</svg>
+      <header><div class="label">The solar system, explained</div><h1>Eight planets, eight very different worlds</h1>
+      <p>Arranged by distance from the Sun on a square-root scale, so the inner four stay readable. Planet size is scaled by the square root of diameter.</p></header>
+      <div class="foot"><span class="source" style="max-width:80ch">${SOURCE}</span></div></div>`;
+  };
+
+  L.multiples = () => {
+    const tmin = -220, tmax = 480, tx = t => ((t - tmin) / (tmax - tmin)) * 100;
+    const card = (p, i) => {
+      const r = Math.max(3, (p.d / 142984) * 70);
+      return `<div class="card"><div class="top"><h2>${p.n}</h2><span class="ord">${String(i + 1).padStart(2, "0")}</span></div>
+        <svg width="100%" height="150" viewBox="0 0 200 150"><circle cx="100" cy="75" r="70" fill="none" stroke="var(--line)" stroke-dasharray="3 4"/><circle cx="100" cy="75" r="${r}" fill="${fill(p)}"/></svg>
+        <dl><dt>Diameter</dt><dd>${nf.format(p.d)} km</dd><dt>From Sun</dt><dd>${mkm(p.au)}</dd><dt>Year</dt><dd>${yrs(p)}</dd><dt>Day</dt><dd>${dayf(p)}</dd><dt>Mean temp</dt><dd>${tf(p.t)}</dd>
+          <div class="temp"><svg width="100%" height="16" viewBox="0 0 100 16" preserveAspectRatio="none"><rect x="0" y="6" width="100" height="4" fill="var(--line)"/><rect x="${tx(0) - .3}" y="2" width=".6" height="12" fill="var(--muted)"/><circle cx="${tx(p.t)}" cy="8" r="0"/><rect x="${tx(p.t) - 1.2}" y="3" width="2.4" height="10" fill="${p.t > 100 ? "var(--s2)" : fill(p)}"/></svg></div></dl></div>`;
+    };
+    return `<div class="multiples"><header><div><div class="label">The solar system, side by side</div><h1>Eight planets,<br>one set of measures</h1></div>
+      <p>Each card uses the same scales. Circles are drawn against Jupiter's size; the bar under each card runs from −220°C to 480°C, with a tick at 0°C.</p></header>
+      <div class="cards">${P.map(card).join("")}</div><footer class="source">${SOURCE}</footer></div>`;
+  };
+
+  function render() {
+    const { layout, theme } = TL.readHash("poster", "swiss");
+    TL.applyTheme(theme);
+    document.body.innerHTML = (L[layout] || L.poster)();
+  }
+  render();
+  addEventListener("hashchange", render);
+})();
+</script>
+</body>
+</html>

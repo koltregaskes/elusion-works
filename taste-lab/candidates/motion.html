@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=960">
+<title>Motion candidate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+  /* One fixed, neutral scene so motion is the only variable between candidates. */
+  :root { --bg: #ececea; --card: #ffffff; --ink: #18181a; --muted: #7a7a7d; --line: #e6e6e3; --accent: #2f54d8; --ok: #2f8f5b;
+    color-scheme: light; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { width: 960px; height: 600px; overflow: hidden; background: var(--bg); color: var(--ink);
+    font: 14px/1.4 "Geist", "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums;
+    display: grid; place-items: center; position: relative; }
+  .panel { width: 540px; zoom: 1.12; background: var(--card); border-radius: 14px; padding: 22px 24px 18px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 12px 32px -12px rgba(0,0,0,.18); }
+  .head { display: flex; justify-content: space-between; align-items: center; }
+  .head h1 { margin: 0; font-size: 15px; font-weight: 600; }
+  .head p { margin: 2px 0 0; color: var(--muted); font-size: 12.5px; }
+  .chip { font-size: 12px; font-weight: 500; color: var(--ok); background: #e7f3ec; padding: 4px 10px 4px 8px; border-radius: 999px;
+    display: inline-flex; align-items: center; gap: 6px; }
+  .chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+  .hero { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: end; margin: 22px 0 18px; }
+  .big { font-size: 56px; font-weight: 600; letter-spacing: -0.03em; line-height: .9; }
+  .big small { display: block; font-size: 12.5px; font-weight: 400; letter-spacing: 0; color: var(--muted); margin-top: 8px; }
+  .bars { display: flex; gap: 6px; align-items: end; height: 64px; justify-content: end; }
+  .bars b { width: 22px; background: var(--ink); border-radius: 3px 3px 1px 1px; transform-origin: 50% 100%; display: block; }
+  .bars b:last-child { background: var(--accent); }
+  .rows { border-top: 1px solid var(--line); }
+  .row { display: grid; grid-template-columns: 12px 1fr auto; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line);
+    font-size: 13px; }
+  .row:last-child { border-bottom: 0; }
+  .row i { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+  .row code { font: 12.5px "Geist Mono", ui-monospace, monospace; }
+  .row span { color: var(--muted); font-family: "Geist Mono", ui-monospace, monospace; font-size: 12px; }
+  .toast { position: absolute; right: 40px; bottom: 36px; background: var(--ink); color: #fff; border-radius: 10px; padding: 11px 16px 11px 12px;
+    display: flex; align-items: center; gap: 10px; font-size: 13px; box-shadow: 0 10px 30px -10px rgba(0,0,0,.4); }
+  .toast svg path { stroke-dasharray: 24; stroke-dashoffset: 24; }
+</style>
+</head>
+<body>
+<div class="panel" data-m="panel">
+  <div class="head"><div><h1>Nightly run</h1><p>2 Nov 2026, 03:00 · 12 jobs</p></div><span class="chip" data-m="chip"><i></i>Complete</span></div>
+  <div class="hero"><div class="big" data-m="num"><span id="count">0</span><small>runs succeeded of 214</small></div>
+    <div class="bars">
+      <b data-m="bar" style="height:46%"></b><b data-m="bar" style="height:62%"></b><b data-m="bar" style="height:54%"></b><b data-m="bar" style="height:78%"></b><b data-m="bar" style="height:94%"></b></div></div>
+  <div class="rows">
+    <div class="row" data-m="row"><i></i><code>nas-backup</code><span>31m 02s</span></div>
+    <div class="row" data-m="row"><i></i><code>site-health</code><span>1m 36s</span></div>
+    <div class="row" data-m="row"><i style="background:#c8962e"></i><code>news-pipeline</code><span>5m 12s</span></div>
+  </div>
+</div>
+<div class="toast" data-m="toast"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7be0a6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>Report saved to Linear</div>
+<script>
+(function () {
+  /* ---- Easing functions: every motion language is a JS curve, sampled into CSS linear() ---- */
+  function bezier(x1, y1, x2, y2) {
+    const cx = 3 * x1, bx = 3 * (x2 - x1) - cx, ax = 1 - cx - bx, cy = 3 * y1, by = 3 * (y2 - y1) - cy, ay = 1 - cy - by;
+    const sx = t => ((ax * t + bx) * t + cx) * t, sy = t => ((ay * t + by) * t + cy) * t, dx = t => (3 * ax * t + 2 * bx) * t + cx;
+    return x => { let t = x; for (let i = 0; i < 8; i++) { const e = sx(t) - x, d = dx(t); if (Math.abs(e) < 1e-5 || !d) break; t -= e / d; }
+      return sy(Math.min(1, Math.max(0, t))); };
+  }
+  function spring(k, c, m = 1) {
+    let x = 0, v = 0, t = 0; const dt = 1 / 240, pts = [];
+    while (t < 3) { const a = (-k * (x - 1) - c * v) / m; v += a * dt; x += v * dt; t += dt; pts.push(x);
+      if (t > 0.1 && Math.abs(x - 1) < 0.001 && Math.abs(v) < 0.01) break; }
+    const dur = t * 1000;
+    return { dur, f: p => pts[Math.min(pts.length - 1, Math.floor(p * (pts.length - 1)))] };
+  }
+  const bounce = x => { const n = 7.5625, d = 2.75;
+    if (x < 1 / d) return n * x * x; if (x < 2 / d) return n * (x -= 1.5 / d) * x + .75;
+    if (x < 2.5 / d) return n * (x -= 2.25 / d) * x + .9375; return n * (x -= 2.625 / d) * x + .984375; };
+  const steps = n => x => Math.min(1, Math.ceil(x * n) / n);
+  const toLinear = f => "linear(" + Array.from({ length: 41 }, (_, i) => f(i / 40).toFixed(4)).join(", ") + ")";
+
+  /* ---- The twelve motion languages ---- */
+  const LANG = {
+    standard: { name: "Standard decelerate", f: bezier(.2, 0, 0, 1), dur: 420, stagger: 45, y: 16 },
+    damped: { name: "Spring, no overshoot", ...(s => ({ f: s.f, dur: s.dur }))(spring(170, 26)), stagger: 55, y: 20 },
+    bouncy: { name: "Spring, overshoot", ...(s => ({ f: s.f, dur: s.dur }))(spring(320, 13)), stagger: 60, y: 22, scale: .9 },
+    snap: { name: "Snap", f: bezier(.16, 1, .3, 1), dur: 230, stagger: 22, y: 8 },
+    cinematic: { name: "Cinematic", f: bezier(.65, 0, .35, 1), dur: 1100, stagger: 150, y: 36, blur: 14 },
+    terminal: { name: "Terminal", f: steps(5), dur: 260, stagger: 110, y: 0 },
+    fade: { name: "Fade only", f: bezier(.25, .1, .25, 1), dur: 320, stagger: 0, y: 0 },
+    origin: { name: "Grow from origin", ...(s => ({ f: s.f, dur: s.dur }))(spring(220, 22)), stagger: 30, y: 0, scale: .55, origin: "0 0" },
+    wave: { name: "Wave", ...(s => ({ f: s.f, dur: s.dur }))(spring(210, 15)), stagger: 95, y: 30 },
+    wipe: { name: "Mask wipe", f: bezier(.16, 1, .3, 1), dur: 560, stagger: 70, y: 0, wipe: true },
+    gravity: { name: "Gravity", f: bounce, dur: 820, stagger: 80, y: -70 },
+    instant: { name: "No motion", instant: true }
+  };
+
+  const els = [...document.querySelectorAll("[data-m]")];
+  const count = document.getElementById("count");
+  let timers = [], raf = 0;
+
+  function reset() {
+    timers.forEach(clearTimeout); timers = []; cancelAnimationFrame(raf);
+    document.getAnimations().forEach(a => a.cancel());
+  }
+
+  function play() {
+    reset();
+    const key = (location.hash || "#standard").slice(1);
+    const L = LANG[key] || LANG.standard;
+    const tick = document.querySelector(".toast path");
+    if (L.instant) {
+      els.forEach(e => (e.style.opacity = 1)); count.textContent = "201"; tick.style.strokeDashoffset = 0;
+      timers.push(setTimeout(play, 5200));
+      return;
+    }
+    tick.style.strokeDashoffset = 24;
+    const easing = toLinear(L.f);
+    let t = 0, last = 0;
+    els.forEach((e, i) => {
+      const role = e.dataset.m;
+      const delay = i === 0 ? 0 : 120 + (i - 1) * L.stagger;
+      const from = { opacity: 0 }, to = { opacity: 1 };
+      if (role === "bar") { from.transform = "scaleY(0)"; to.transform = "scaleY(1)"; }
+      else {
+        const tf = [];
+        if (L.y) tf.push(`translateY(${L.y}px)`);
+        if (L.scale) tf.push(`scale(${L.scale})`);
+        if (tf.length) { from.transform = tf.join(" "); to.transform = "translateY(0) scale(1)"; }
+      }
+      if (L.blur) { from.filter = `blur(${L.blur}px)`; to.filter = "blur(0)"; }
+      if (L.wipe && role !== "bar") { from.clipPath = "inset(0 100% 0 0)"; to.clipPath = "inset(0 0% 0 0)"; from.opacity = 1; }
+      if (L.origin) e.style.transformOrigin = role === "bar" ? "50% 100%" : L.origin;
+      e.style.opacity = 0;
+      const a = e.animate([from, to], { duration: L.dur, delay, easing, fill: "both" });
+      last = Math.max(last, delay + L.dur);
+      if (role === "num") {
+        timers.push(setTimeout(() => {
+          const start = performance.now(), D = Math.max(L.dur * 1.6, 500);
+          const step = now => { const p = Math.min(1, (now - start) / D); count.textContent = Math.min(201, Math.max(0, Math.round(L.f(p) * 201))); if (p < 1) raf = requestAnimationFrame(step); };
+          raf = requestAnimationFrame(step);
+        }, delay));
+      }
+      if (role === "toast") tick.animate([{ strokeDashoffset: 24 }, { strokeDashoffset: 0 }], { duration: Math.max(L.dur, 300), delay: delay + L.dur * .4, easing, fill: "forwards" });
+    });
+    // hold, then fade everything out together and loop
+    const hold = last + 2000;
+    timers.push(setTimeout(() => {
+      els.forEach(e => e.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, easing: "ease-in", fill: "forwards" }));
+      timers.push(setTimeout(play, 520));
+    }, hold));
+  }
+  window.MOTION = LANG;
+  addEventListener("hashchange", play);
+  play();
+})();
+</script>
+</body>
+</html>

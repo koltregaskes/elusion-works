@@ -1,0 +1,529 @@
+<title>This or That</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a neutral viewing room. Two candidates fill the stage, decisions sit in one bar below.
+   The surround is deliberately hueless, like a grading suite, so the room never tints the work. */
+:root {
+  --bg: #d9d9d8; --stage: #cfcfce; --panel: #ececeb; --ink: #151515; --muted: #5d5d5d; --faint: #8a8a8a;
+  --line: #bdbdbb; --focus: #151515; --inverse: #fafafa; --hi: #151515; --hi-ink: #fafafa; --good: #1f7a4d; --weak: #a33a2a;
+  --ui: "Instrument Sans", "Segoe UI", system-ui, sans-serif; --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #1f1f1f; --stage: #262626; --panel: #2d2d2d; --ink: #ececec; --muted: #a3a3a3; --faint: #777;
+  --line: #3b3b3b; --focus: #ececec; --inverse: #151515; --hi: #ececec; --hi-ink: #151515; --good: #6cc495; --weak: #ec8a78; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #1f1f1f; --stage: #262626; --panel: #2d2d2d; --ink: #ececec; --muted: #a3a3a3; --faint: #777;
+  --line: #3b3b3b; --focus: #ececec; --inverse: #151515; --hi: #ececec; --hi-ink: #151515; --good: #6cc495; --weak: #ec8a78; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--ui); -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.mono { font-family: var(--mono); }
+.num { font-variant-numeric: tabular-nums; }
+kbd { font: 500 11px/1 var(--mono); padding: 3px 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; color: var(--muted); background: var(--panel); }
+
+.app { height: 100%; display: grid; grid-template-rows: auto 1fr auto; }
+.top { display: flex; align-items: center; gap: 18px; padding-block: 10px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.brand { display: flex; align-items: baseline; gap: 10px; margin-right: 6px; }
+.brand b { font: 700 17px/1 var(--ui); letter-spacing: -0.02em; }
+.brand span { font-size: 12px; color: var(--muted); }
+.tabs { display: flex; gap: 2px; background: var(--stage); padding: 3px; border-radius: 9px; }
+.tabs button { border: 0; background: none; padding: 6px 12px; border-radius: 7px; cursor: pointer; font-weight: 500; color: var(--muted); display: flex; gap: 7px; align-items: baseline; }
+.tabs button .num { font-size: 11px; color: var(--faint); }
+.tabs button[aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.views { margin-left: auto; display: flex; gap: 4px; }
+.views button { border: 1px solid transparent; background: none; padding: 6px 10px; border-radius: 7px; cursor: pointer; color: var(--muted); font-weight: 500; }
+.views button[aria-pressed="true"] { border-color: var(--line); color: var(--ink); background: var(--panel); }
+.status { font-size: 12px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.status i { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); display: block; }
+.status.live i { background: var(--good); }
+.status.local i { background: var(--weak); }
+
+/* ---- Judge view ---- */
+.stage { min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding-block: 14px 8px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.side { min-height: 0; min-width: 0; display: grid; grid-template-rows: auto 1fr auto; gap: 8px; }
+.side header { display: flex; justify-content: space-between; align-items: center; }
+.side header .tag { font: 600 13px/1 var(--mono); display: flex; gap: 10px; align-items: center; }
+.side header .tag b { width: 22px; height: 22px; border-radius: 6px; background: var(--hi); color: var(--hi-ink); display: grid; place-items: center; font-size: 12px; }
+.ghost { border: 1px solid var(--line); background: var(--panel); border-radius: 7px; padding: 5px 10px; font-size: 12px; cursor: pointer; color: var(--muted); }
+.ghost:hover { color: var(--ink); }
+.frame { position: relative; min-height: 0; background: var(--stage); border-radius: 10px; overflow: hidden; display: grid; place-items: center; cursor: pointer;
+  outline: 2px solid transparent; outline-offset: 3px; transition: outline-color .15s; }
+.frame:hover { outline-color: var(--line); }
+.frame.picked { outline-color: var(--focus); }
+.frame .holder { position: absolute; top: 50%; left: 50%; transform-origin: 0 0; box-shadow: 0 1px 3px rgba(0,0,0,.12), 0 18px 40px -20px rgba(0,0,0,.35); border-radius: 2px; overflow: hidden; }
+.frame iframe { border: 0; display: block; pointer-events: none; background: #fff; }
+.likes { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.likes span { font-size: 12px; color: var(--muted); margin-right: 2px; }
+.likes button { border: 1px solid var(--line); background: transparent; border-radius: 999px; padding: 3px 10px; font-size: 12px; cursor: pointer; color: var(--muted); }
+.likes button[aria-pressed="true"] { background: var(--hi); color: var(--hi-ink); border-color: var(--hi); }
+
+.decide { border-top: 1px solid var(--line); background: var(--panel); padding-block: 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "meta meta" "note btns"; gap: 8px 12px; align-items: center; }
+.decide .meta { grid-area: meta; }
+.decide .note { grid-area: note; }
+.decide .btns { grid-area: btns; }
+.decide .note { display: flex; }
+.decide textarea { width: 100%; resize: none; height: 40px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 8px;
+  padding: 10px 12px; font: 14px/1.3 var(--ui); }
+.decide textarea::placeholder { color: var(--faint); }
+.btns { display: flex; gap: 6px; }
+.btn { border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 9px 14px; cursor: pointer; font-weight: 600; display: flex; gap: 8px; align-items: center; white-space: nowrap; }
+.btn kbd { background: transparent; }
+.btn.pick { background: var(--hi); color: var(--hi-ink); border-color: var(--hi); }
+.btn.pick kbd { color: var(--hi-ink); border-color: color-mix(in srgb, var(--hi-ink) 35%, transparent); opacity: .8; }
+.btn:active { transform: translateY(1px); }
+.meta { display: flex; gap: 14px; align-items: center; font-size: 12px; color: var(--muted); }
+.meta .bar { width: 120px; height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.meta .bar i { display: block; height: 100%; background: var(--ink); }
+
+/* ---- Toast ---- */
+.toast { position: fixed; left: 50%; bottom: calc(86px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 8px); background: var(--hi); color: var(--hi-ink);
+  padding: 9px 14px; border-radius: 9px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s; max-width: calc(100% - 32px); }
+.toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+/* ---- Large view ---- */
+.large { position: fixed; inset: 0; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(6px); display: grid;
+  grid-template-rows: auto 1fr; padding: calc(12px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); z-index: 20; gap: 10px; }
+.large header { display: flex; justify-content: space-between; align-items: center; }
+.large .frame { cursor: default; }
+.large .frame iframe { pointer-events: auto; }
+
+/* ---- Rankings and taste ---- */
+.report { overflow: auto; padding-block: 22px 40px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.report .wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 28px; }
+.report h2 { font: 700 22px/1.15 var(--ui); letter-spacing: -0.02em; margin: 0; text-wrap: balance; }
+.report h3 { font: 600 13px/1.2 var(--ui); margin: 0 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.report p.lede { margin: 6px 0 0; color: var(--muted); max-width: 70ch; }
+.ranks { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+.rank { background: var(--panel); border-radius: 10px; padding: 10px; display: grid; gap: 8px; }
+.rank .frame { aspect-ratio: var(--ar); cursor: zoom-in; }
+.rank .row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.rank .row b { font-weight: 600; }
+.rank .row span { font: 12px var(--mono); color: var(--muted); }
+.factors { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+.factor { background: var(--panel); border-radius: 10px; padding: 16px; }
+.lvl { display: grid; grid-template-columns: minmax(0, 1fr) 120px 64px; gap: 10px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.lvl:first-of-type { border-top: 0; }
+.lvl .track { height: 6px; background: var(--line); border-radius: 3px; position: relative; overflow: hidden; }
+.lvl .track i { position: absolute; inset: 0 auto 0 0; background: var(--ink); border-radius: 3px; }
+.lvl .track::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--muted); opacity: .6; }
+.lvl span:last-child { text-align: right; font: 12px var(--mono); color: var(--muted); }
+.notes { display: grid; gap: 10px; }
+.notes article { background: var(--panel); border-radius: 10px; padding: 12px 14px; display: grid; gap: 4px; }
+.notes .who { font: 12px var(--mono); color: var(--muted); }
+.notes q { quotes: none; font-size: 15px; }
+.empty { background: var(--panel); border-radius: 10px; padding: 22px; color: var(--muted); }
+.copyrow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.hidden-copy { position: absolute; left: -9999px; }
+
+@media (max-width: 860px) {
+  .stage { grid-template-columns: 1fr; overflow: auto; grid-auto-rows: max-content; align-content: start; }
+  .side { min-height: auto; grid-template-rows: auto auto auto; }
+  .side .frame { aspect-ratio: var(--ar); max-height: 62vh; width: 100%; }
+  .decide { grid-template-columns: 1fr; grid-template-areas: "meta" "note" "btns"; }
+  .meta { justify-content: space-between; }
+  .meta .bar { flex: 1; }
+  .btns { display: grid; grid-template-columns: repeat(6, 1fr); }
+  .btns .btn { grid-column: span 2; padding: 8px 6px; font-size: 13px; }
+  .btns .btn.pick { grid-column: span 3; padding: 12px; }
+  .btns .btn[data-act="b"] { order: -1; grid-column: 4 / span 3; grid-row: 1; }
+  .btns .btn[data-act="a"] { grid-row: 1; grid-column: 1 / span 3; }
+  .btn { justify-content: center; }
+  .btn kbd { display: none; }
+  .views { margin-left: 0; }
+  .toast { bottom: calc(230px + env(safe-area-inset-bottom, 0px)); }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="app" id="app">
+  <div class="top">
+    <div class="brand"><b>This or That</b><span>taste lab</span></div>
+    <div class="tabs" id="tabs" role="group" aria-label="Category"></div>
+    <div class="views" role="group" aria-label="View">
+      <button id="v-judge" aria-pressed="true">Judge</button>
+      <button id="v-rank" aria-pressed="false">Rankings</button>
+      <button id="v-taste" aria-pressed="false">What it learned</button>
+    </div>
+    <div class="status" id="status"><i></i><span>Connecting to the shared store…</span></div>
+  </div>
+  <main id="main" style="min-height:0;display:grid"></main>
+  <div id="decideSlot"></div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<textarea class="hidden-copy" id="copyBuf" aria-hidden="true" tabindex="-1"></textarea>
+
+<script>
+(function () {
+  /* ================= Catalogue: every candidate and its factor tags ================= */
+  const THEME_TAGS = {
+    swiss: { Theme: "Swiss", Palette: "Mono + red", Mode: "Light", Type: "Grotesk", Shape: "Square" },
+    graphite: { Theme: "Graphite", Palette: "Blue on charcoal", Mode: "Dark", Type: "Geometric sans", Shape: "Rounded" },
+    field: { Theme: "Field Notes", Palette: "Sage, forest + rust", Mode: "Light", Type: "Serif + sans", Shape: "Soft" },
+    signal: { Theme: "Signal", Palette: "Amber + cyan on navy", Mode: "Dark", Type: "Condensed sans", Shape: "Sharp" }
+  };
+  const DASH_LAYOUTS = {
+    command: { Layout: "Command", Density: "Balanced", Structure: "Nav rail + KPI strip" },
+    bento: { Layout: "Bento", Density: "Airy", Structure: "Asymmetric tiles" },
+    briefing: { Layout: "Briefing", Density: "Editorial", Structure: "Narrative report" },
+    console: { Layout: "Console", Density: "Dense", Structure: "Telemetry panels" }
+  };
+  const INFO_LAYOUTS = {
+    poster: { Layout: "Poster", Structure: "Stacked sections", Voice: "By the numbers" },
+    explainer: { Layout: "Explainer", Structure: "One big annotated diagram", Voice: "Story per item" },
+    multiples: { Layout: "Small multiples", Structure: "Card grid", Voice: "Side by side" }
+  };
+  const MOTION = {
+    standard: { Motion: "Standard decelerate", Curve: "Ease-out curve", Energy: "Measured", Choreography: "Stagger" },
+    damped: { Motion: "Spring, no overshoot", Curve: "Spring", Energy: "Smooth", Choreography: "Stagger" },
+    bouncy: { Motion: "Spring, overshoot", Curve: "Spring", Energy: "Playful", Choreography: "Stagger" },
+    snap: { Motion: "Snap", Curve: "Ease-out curve", Energy: "Brisk", Choreography: "Tight stagger" },
+    cinematic: { Motion: "Cinematic", Curve: "Ease-in-out curve", Energy: "Slow", Choreography: "Sequence" },
+    terminal: { Motion: "Terminal", Curve: "Stepped", Energy: "Mechanical", Choreography: "Sequence" },
+    fade: { Motion: "Fade only", Curve: "Ease-out curve", Energy: "Minimal", Choreography: "All at once" },
+    origin: { Motion: "Grow from origin", Curve: "Spring", Energy: "Spatial", Choreography: "Tight stagger" },
+    wave: { Motion: "Wave", Curve: "Spring", Energy: "Playful", Choreography: "Wide stagger" },
+    wipe: { Motion: "Mask wipe", Curve: "Ease-out curve", Energy: "Editorial", Choreography: "Stagger" },
+    gravity: { Motion: "Gravity", Curve: "Bounce", Energy: "Physical", Choreography: "Stagger" },
+    instant: { Motion: "No motion", Curve: "None", Energy: "None", Choreography: "None" }
+  };
+  const CATS = [
+    { id: "dashboards", name: "Dashboards", src: "candidates/dashboard.html", w: 1440, h: 900,
+      aspects: ["Layout", "Colour", "Type", "Density", "Charts", "Mood"],
+      items: Object.entries(DASH_LAYOUTS).flatMap(([l, lt]) => Object.entries(THEME_TAGS).map(([t, tt]) => ({ key: l + "-" + t, tags: { ...lt, ...tt } }))) },
+    { id: "infographics", name: "Infographics", src: "candidates/infographic.html", w: 1080, h: 1350,
+      aspects: ["Layout", "Colour", "Type", "Clarity", "Storytelling", "Mood"],
+      items: Object.entries(INFO_LAYOUTS).flatMap(([l, lt]) => Object.entries(THEME_TAGS).map(([t, tt]) => ({ key: l + "-" + t, tags: { ...lt, ...tt } }))) },
+    { id: "motion", name: "Motion", src: "candidates/motion.html", w: 960, h: 600,
+      aspects: ["Speed", "Feel", "Order", "Restraint", "Polish", "Mood"],
+      items: Object.entries(MOTION).map(([k, t]) => ({ key: k, tags: t })) }
+  ];
+  CATS.forEach(c => c.items.forEach(it => { it.id = c.id + "/" + it.key; it.cat = c.id; it.name = Object.values(it.tags).slice(0, c.id === "motion" ? 1 : 1).join("") + (c.id === "motion" ? "" : " · " + (it.tags.Theme)); }));
+  const BY_ID = Object.fromEntries(CATS.flatMap(c => c.items.map(i => [i.id, i])));
+
+  /* ================= State ================= */
+  let votes = [];           // every saved vote, oldest first
+  let pending = [];         // votes made before the store answered
+  let mode = "connecting";  // connecting | live | local
+  let db = null, me = null;
+  let cat = loadPref("tot-cat", "dashboards");
+  let view = "judge";
+  let pair = null, likes = { a: new Set(), b: new Set() };
+  let sessionCount = 0, myLastIds = [];
+
+  function loadPref(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
+  function savePref(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+  /* ================= Scoring ================= */
+  function score(catId) {
+    const c = CATS.find(x => x.id === catId);
+    const S = Object.fromEntries(c.items.map(i => [i.id, { elo: 1000, n: 0, w: 0, l: 0, good: 0, weak: 0 }]));
+    const seen = {};
+    allVotes().filter(v => v.cat === catId).forEach(v => {
+      const A = S[v.a], B = S[v.b]; if (!A || !B) return;
+      const k = [v.a, v.b].sort().join("|"); seen[k] = (seen[k] || 0) + 1;
+      if (v.pick === "skip") return;
+      A.n++; B.n++;
+      if (v.pick === "a" || v.pick === "b") {
+        const W = v.pick === "a" ? A : B, L = v.pick === "a" ? B : A;
+        const e = 1 / (1 + Math.pow(10, (L.elo - W.elo) / 400));
+        W.elo += 24 * (1 - e); L.elo -= 24 * (1 - e); W.w++; L.l++;
+      } else if (v.pick === "both-good") { A.elo += 8; B.elo += 8; A.good++; B.good++; }
+      else if (v.pick === "both-weak") { A.elo -= 8; B.elo -= 8; A.weak++; B.weak++; }
+    });
+    return { S, seen };
+  }
+  function allVotes() { return votes.concat(pending); }
+
+  function nextPair() {
+    const c = CATS.find(x => x.id === cat);
+    const { S, seen } = score(cat);
+    const items = c.items.slice();
+    const minN = Math.min(...items.map(i => S[i.id].n));
+    const pool = items.filter(i => S[i.id].n <= minN + 1);
+    const a = pool[Math.floor(Math.random() * pool.length)];
+    const others = items.filter(i => i.id !== a.id).map(i => {
+      const times = seen[[a.id, i.id].sort().join("|")] || 0;
+      return { i, cost: times * 1000 + Math.abs(S[i.id].elo - S[a.id].elo) + Math.random() * 60 };
+    }).sort((x, y) => x.cost - y.cost);
+    const b = others[0].i;
+    return Math.random() < 0.5 ? { a, b } : { a: b, b: a };
+  }
+
+  /* ================= Persistence ================= */
+  const statusEl = document.getElementById("status");
+  function setStatus(m, text) { mode = m; statusEl.className = "status " + m; statusEl.querySelector("span").textContent = text; }
+
+  async function connect() {
+    const timer = setTimeout(() => { if (mode === "connecting") goLocal("Shared store not reachable. Saving in this browser."); }, 10000);
+    let api = null;
+    try { api = window.claude && window.claude.use ? await window.claude.use("db") : null; } catch (e) { api = null; }
+    if (!api) { clearTimeout(timer); goLocal("Saving in this browser only. Open it on claude.ai to save for agents."); return; }
+    db = api;
+    try { const u = await window.claude.use("user"); me = u ? await u.id() : null; } catch (e) { me = null; }
+    db.collection("votes").onSnapshot(snap => {
+      clearTimeout(timer);
+      votes = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((x, y) => (x.at < y.at ? -1 : 1));
+      if (mode !== "live") { setStatus("live", votes.length + " judgements saved, agents can read them"); flush(); }
+      else setStatus("live", votes.length + " judgements saved, agents can read them");
+      refreshCounts();
+      if (view !== "judge") render();
+    }, err => { clearTimeout(timer); goLocal("Shared store stopped answering. Saving in this browser."); });
+  }
+  function goLocal(msg) {
+    setStatus("local", msg);
+    try { votes = JSON.parse(localStorage.getItem("tot-votes") || "[]"); } catch (e) { votes = []; }
+    votes = votes.concat(pending); pending = [];
+    persistLocal(); refreshCounts();
+  }
+  function persistLocal() { try { localStorage.setItem("tot-votes", JSON.stringify(votes)); } catch (e) {} }
+  async function flush() {
+    const queue = pending.slice();
+    for (const v of queue) {
+      try { await db.collection("votes").doc(v.id).set(stripId(v)); pending = pending.filter(p => p.id !== v.id); }
+      catch (e) { toast("Could not save one judgement. It is kept on this page until the store answers."); break; }
+    }
+  }
+  const stripId = v => { const { id, ...rest } = v; return rest; };
+  async function save(v) {
+    if (mode === "live") {
+      pending.push(v);
+      try { await db.collection("votes").doc(v.id).set(stripId(v)); pending = pending.filter(p => p.id !== v.id); }
+      catch (e) { toast(e && e.code === "quota_exceeded" ? "The store is full. Export what you have." : "Not saved yet. Will retry with the next judgement."); }
+    } else if (mode === "local") { votes.push(v); persistLocal(); }
+    else pending.push(v);
+  }
+  async function undo() {
+    const id = myLastIds.pop();
+    if (!id) { toast("Nothing to undo in this visit."); return; }
+    if (pending.some(p => p.id === id)) pending = pending.filter(p => p.id !== id);
+    else if (mode === "live") { try { await db.collection("votes").doc(id).delete(); } catch (e) { toast("Undo failed. Try again."); myLastIds.push(id); return; } }
+    else { votes = votes.filter(v => v.id !== id); persistLocal(); }
+    sessionCount = Math.max(0, sessionCount - 1);
+    toast("Last judgement removed.");
+    refreshCounts(); updateMeta();
+  }
+
+  /* ================= Rendering helpers ================= */
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+  let toastT = 0;
+  function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("on"), 2600); }
+
+  function frameHTML(c, item, extra = "") {
+    return `<div class="frame" style="--ar:${c.w}/${c.h}" ${extra}><div class="holder"><iframe title="${esc(item.name)}" loading="lazy" width="${c.w}" height="${c.h}" src="${c.src}#${item.key}"></iframe></div></div>`;
+  }
+  const ro = new ResizeObserver(entries => entries.forEach(e => fit(e.target)));
+  function fit(frame) {
+    const h = frame.querySelector(".holder"), f = frame.querySelector("iframe"); if (!h || !f) return;
+    const W = frame.clientWidth - 16, H = frame.clientHeight - 16, cw = +f.width, ch = +f.height;
+    const s = Math.max(0.05, Math.min(W / cw, H / ch));
+    h.style.width = cw + "px"; h.style.height = ch + "px";
+    h.style.transform = `scale(${s}) translate(-50%, -50%)`;
+  }
+  function watchFrames(root) { root.querySelectorAll(".frame").forEach(fr => { ro.observe(fr); fit(fr); }); }
+
+  function refreshCounts() {
+    const tabs = $("#tabs");
+    tabs.innerHTML = CATS.map(c => {
+      const n = allVotes().filter(v => v.cat === c.id).length;
+      return `<button data-cat="${c.id}" aria-pressed="${c.id === cat}">${c.name}<span class="num">${n}</span></button>`;
+    }).join("");
+    tabs.querySelectorAll("button").forEach(b => b.onclick = () => { cat = b.dataset.cat; savePref("tot-cat", cat); pair = null; render(); refreshCounts(); });
+  }
+
+  /* ================= Judge view ================= */
+  function judgeTarget(c) { return Math.round(c.items.length * 2.5); }
+  function updateMeta() {
+    const c = CATS.find(x => x.id === cat), n = allVotes().filter(v => v.cat === cat && v.pick !== "skip").length, t = judgeTarget(c);
+    const m = $("#meta"); if (!m) return;
+    m.innerHTML = `<span class="num">${n} of ~${t} for a stable ranking</span><span class="bar"><i style="width:${Math.min(100, 100 * n / t)}%"></i></span><span class="num">${sessionCount} this visit</span>`;
+  }
+  function renderJudge() {
+    const c = CATS.find(x => x.id === cat);
+    if (!pair || pair.a.cat !== cat) pair = nextPair();
+    likes = { a: new Set(), b: new Set() };
+    const side = (s, item) => `<section class="side" data-side="${s}">
+        <header><span class="tag"><b>${s.toUpperCase()}</b>${s === "a" ? "This" : "That"}</span><button class="ghost" data-large="${s}">Open large</button></header>
+        ${frameHTML(c, item, `data-pick="${s}" role="button" aria-label="Pick ${s.toUpperCase()}" tabindex="0"`)}
+        <div class="likes" data-likes="${s}"><span>Liked here:</span>${c.aspects.map(a => `<button aria-pressed="false" data-aspect="${a}">${a}</button>`).join("")}</div>
+      </section>`;
+    $("#main").innerHTML = `<div class="stage">${side("a", pair.a)}${side("b", pair.b)}</div>`;
+    $("#decideSlot").innerHTML = `<div class="decide">
+        <div class="meta" id="meta"></div>
+        <div class="note"><textarea id="note" placeholder="Why? Optional: what works, what doesn't." aria-label="Reason (optional)"></textarea></div>
+        <div class="btns">
+          <button class="btn pick" data-act="a"><kbd>←</kbd>A is better</button>
+          <button class="btn" data-act="both-good"><kbd>↑</kbd>Both good</button>
+          <button class="btn" data-act="skip"><kbd>Space</kbd>Skip</button>
+          <button class="btn" data-act="both-weak"><kbd>↓</kbd>Both weak</button>
+          <button class="btn pick" data-act="b">B is better<kbd>→</kbd></button>
+        </div></div>`;
+    watchFrames($("#main"));
+    updateMeta();
+    document.querySelectorAll("[data-pick]").forEach(f => {
+      f.onclick = () => decide(f.dataset.pick);
+      f.onkeydown = e => { if (e.key === "Enter") decide(f.dataset.pick); };
+    });
+    document.querySelectorAll("[data-act]").forEach(b => b.onclick = () => decide(b.dataset.act));
+    document.querySelectorAll("[data-large]").forEach(b => b.onclick = () => openLarge(pair[b.dataset.large]));
+    document.querySelectorAll("[data-likes]").forEach(group => group.querySelectorAll("button").forEach(b => b.onclick = () => {
+      const set = likes[group.dataset.likes], a = b.dataset.aspect;
+      set.has(a) ? set.delete(a) : set.add(a); b.setAttribute("aria-pressed", set.has(a));
+    }));
+  }
+  function decide(pick) {
+    if (!pair) return;
+    const note = ($("#note") && $("#note").value.trim()) || "";
+    const v = { id: "v" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), cat, a: pair.a.id, b: pair.b.id, pick,
+      likedA: [...likes.a], likedB: [...likes.b], note, at: new Date().toISOString(), by: me || "anon", v: 1 };
+    save(v); myLastIds.push(v.id); if (myLastIds.length > 50) myLastIds.shift();
+    sessionCount++;
+    const word = { a: "A", b: "B", "both-good": "Both good", "both-weak": "Both weak", skip: "Skipped" }[pick];
+    toast(`${word}. A was ${pair.a.name}; B was ${pair.b.name}.`);
+    if (pick !== "skip") document.querySelectorAll(".frame").forEach(f => f.classList.toggle("picked", f.dataset.pick === pick));
+    pair = nextPair();
+    setTimeout(() => { renderJudge(); refreshCounts(); }, 140);
+  }
+
+  /* ================= Large view ================= */
+  function openLarge(item) {
+    const c = CATS.find(x => x.id === item.cat);
+    const el = document.createElement("div");
+    el.className = "large"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "Large view");
+    el.innerHTML = `<header><span class="mono" style="color:var(--muted)">${view === "judge" ? "Blind preview" : esc(item.name)}</span><button class="ghost" id="closeLarge">Close <kbd>Esc</kbd></button></header>${frameHTML(c, item)}`;
+    document.body.appendChild(el); watchFrames(el);
+    const close = () => { el.remove(); document.removeEventListener("keydown", onKey, true); };
+    const onKey = e => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
+    document.addEventListener("keydown", onKey, true);
+    el.querySelector("#closeLarge").onclick = close; el.querySelector("#closeLarge").focus();
+  }
+
+  /* ================= Rankings view ================= */
+  function renderRank() {
+    $("#decideSlot").innerHTML = "";
+    const c = CATS.find(x => x.id === cat), { S } = score(cat);
+    const list = c.items.slice().sort((x, y) => S[y.id].elo - S[x.id].elo);
+    const judged = allVotes().filter(v => v.cat === cat && v.pick !== "skip").length;
+    $("#main").innerHTML = `<div class="report"><div class="wrap">
+      <div><h2>${c.name}, ranked</h2><p class="lede">Elo from ${judged} judgements. "Both good" and "both weak" nudge each by 8 points without a head-to-head result. A preference record, not proof of quality: under about ${judgeTarget(c)} judgements the order still moves.</p></div>
+      <div class="ranks">${list.map((it, i) => { const s = S[it.id];
+        return `<div class="rank">${frameHTML(c, it, `data-open="${it.id}"`)}<div class="row"><b>${i + 1}. ${esc(it.name)}</b><span>${Math.round(s.elo)}</span></div><div class="row"><span>${s.w}W ${s.l}L · ${s.good} good · ${s.weak} weak</span></div></div>`; }).join("")}</div>
+    </div></div>`;
+    watchFrames($("#main"));
+    document.querySelectorAll("[data-open]").forEach(f => f.onclick = () => openLarge(BY_ID[f.dataset.open]));
+  }
+
+  /* ================= Taste view: what the votes say about each factor ================= */
+  function factorStats(catId) {
+    const c = CATS.find(x => x.id === catId), F = {};
+    const keys = Object.keys(c.items[0].tags);
+    keys.forEach(k => F[k] = {});
+    const bump = (k, lvl, f, n = 1) => { F[k][lvl] = F[k][lvl] || { w: 0, l: 0, good: 0, weak: 0, liked: 0 }; F[k][lvl][f] += n; };
+    allVotes().filter(v => v.cat === catId && v.pick !== "skip").forEach(v => {
+      const A = BY_ID[v.a], B = BY_ID[v.b]; if (!A || !B) return;
+      keys.forEach(k => {
+        const la = A.tags[k], lb = B.tags[k];
+        if (v.pick === "both-good") { bump(k, la, "good"); if (lb !== la) bump(k, lb, "good"); }
+        else if (v.pick === "both-weak") { bump(k, la, "weak"); if (lb !== la) bump(k, lb, "weak"); }
+        else if (la !== lb) { const win = v.pick === "a" ? la : lb, lose = v.pick === "a" ? lb : la; bump(k, win, "w"); bump(k, lose, "l"); }
+      });
+    });
+    return { keys, F };
+  }
+  function aspectStats(catId) {
+    const out = {};
+    allVotes().filter(v => v.cat === catId).forEach(v => {
+      [["a", v.likedA], ["b", v.likedB]].forEach(([s, arr]) => (arr || []).forEach(asp => {
+        const it = BY_ID[s === "a" ? v.a : v.b]; if (!it) return;
+        const k = asp + " of " + it.name; out[k] = (out[k] || 0) + 1;
+      }));
+    });
+    return Object.entries(out).sort((a, b) => b[1] - a[1]);
+  }
+  function tasteMarkdown() {
+    const lines = ["# Taste profile from This or That", "", "Generated " + new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC from " + allVotes().length + " judgements.", ""];
+    CATS.forEach(c => {
+      const { S } = score(c.id), n = allVotes().filter(v => v.cat === c.id && v.pick !== "skip").length;
+      if (!n) return;
+      const list = c.items.slice().sort((x, y) => S[y.id].elo - S[x.id].elo);
+      lines.push("## " + c.name + " (" + n + " judgements)", "", "Top: " + list.slice(0, 3).map(i => i.name).join("; "), "Bottom: " + list.slice(-3).map(i => i.name).join("; "), "");
+      const { keys, F } = factorStats(c.id);
+      keys.forEach(k => {
+        const rows = Object.entries(F[k]).filter(([, s]) => s.w + s.l > 0).sort((a, b) => (b[1].w / (b[1].w + b[1].l)) - (a[1].w / (a[1].w + a[1].l)));
+        if (rows.length) lines.push("- " + k + ": " + rows.map(([lvl, s]) => `${lvl} ${Math.round(100 * s.w / (s.w + s.l))}% (n=${s.w + s.l})`).join(", "));
+      });
+      const asp = aspectStats(c.id).slice(0, 8);
+      if (asp.length) lines.push("- Singled out: " + asp.map(([k, n]) => `${k} x${n}`).join("; "));
+      const notes = allVotes().filter(v => v.cat === c.id && v.note).slice(-12);
+      if (notes.length) { lines.push("", "Kol's words:"); notes.forEach(v => lines.push(`- "${v.note}" (${pickText(v)})`)); }
+      lines.push("");
+    });
+    return lines.join("\n");
+  }
+  function pickText(v) {
+    const A = BY_ID[v.a], B = BY_ID[v.b];
+    if (v.pick === "a") return `chose ${A.name} over ${B.name}`;
+    if (v.pick === "b") return `chose ${B.name} over ${A.name}`;
+    return `${v.pick === "both-good" ? "both good" : "both weak"}: ${A.name} and ${B.name}`;
+  }
+  function renderTaste() {
+    $("#decideSlot").innerHTML = "";
+    const c = CATS.find(x => x.id === cat), { keys, F } = factorStats(cat);
+    const n = allVotes().filter(v => v.cat === cat && v.pick !== "skip").length;
+    const notes = allVotes().filter(v => v.cat === cat && v.note).slice().reverse();
+    const asp = aspectStats(cat);
+    const factorHTML = keys.map(k => {
+      const rows = Object.entries(F[k]).filter(([, s]) => s.w + s.l + s.good + s.weak > 0)
+        .map(([lvl, s]) => ({ lvl, s, r: s.w + s.l ? s.w / (s.w + s.l) : 0.5 })).sort((a, b) => b.r - a.r);
+      if (rows.length < 2) return "";
+      return `<div class="factor"><h3>${esc(k)}</h3>${rows.map(({ lvl, s, r }) => `<div class="lvl"><span>${esc(lvl)}</span><span class="track" title="Win rate when this differed"><i style="width:${(r * 100).toFixed(0)}%"></i></span><span>${s.w + s.l ? Math.round(r * 100) + "%" : "–"} · ${s.w + s.l}</span></div>`).join("")}</div>`;
+    }).join("");
+    $("#main").innerHTML = `<div class="report"><div class="wrap">
+      <div><h2>What ${n ? n + " judgements say" : "the lab will learn"} about your taste in ${c.name.toLowerCase()}</h2>
+        <p class="lede">Each candidate is one layout, theme or motion style crossed with others, so every pick also votes on the parts. Bars show how often a level wins when the two candidates differ on it; the tick marks 50%. The number after the dot is how many times it was tested.</p></div>
+      ${n ? `<div class="factors">${factorHTML}</div>` : `<div class="empty">No judgements in this category yet. Pick a few pairs in Judge and this fills in.</div>`}
+      ${asp.length ? `<div><h3>Parts you singled out</h3><div class="likes">${asp.slice(0, 18).map(([k, v]) => `<button aria-pressed="true" tabindex="-1">${esc(k)} ×${v}</button>`).join("")}</div></div>` : ""}
+      <div><h3>In your words</h3>${notes.length ? `<div class="notes">${notes.slice(0, 40).map(v => `<article><q>${esc(v.note)}</q><span class="who">${esc(pickText(v))} · ${new Date(v.at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span></article>`).join("")}</div>` : `<div class="empty">Notes you add while judging appear here, next to what you picked.</div>`}</div>
+      <div class="copyrow"><button class="btn pick" id="copyMd">Copy taste profile for agents</button><span style="color:var(--muted);font-size:13px">Markdown covering every category. Agents can also read the votes directly from this page's store.</span></div>
+    </div></div>`;
+    $("#copyMd").onclick = async () => {
+      const md = tasteMarkdown();
+      try { await navigator.clipboard.writeText(md); toast("Copied. Paste it into the brief or Linear."); }
+      catch (e) { const b = $("#copyBuf"); b.value = md; b.select(); toast("Selected the text. Press Ctrl+C or ⌘C to copy."); }
+    };
+  }
+
+  function render() {
+    ["judge", "rank", "taste"].forEach(v => $("#v-" + v).setAttribute("aria-pressed", v === view));
+    if (view === "judge") renderJudge(); else if (view === "rank") renderRank(); else renderTaste();
+  }
+  $("#v-judge").onclick = () => { view = "judge"; render(); };
+  $("#v-rank").onclick = () => { view = "rank"; render(); };
+  $("#v-taste").onclick = () => { view = "taste"; render(); };
+
+  document.addEventListener("keydown", e => {
+    if (view !== "judge" || document.querySelector(".large")) return;
+    const typing = e.target && (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT");
+    if (typing) { if (e.key === "Escape") e.target.blur(); return; }
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const map = { ArrowLeft: "a", ArrowRight: "b", ArrowUp: "both-good", ArrowDown: "both-weak", " ": "skip" };
+    if (map[e.key]) { e.preventDefault(); decide(map[e.key]); }
+    else if (e.key === "z" || e.key === "Z") { e.preventDefault(); undo(); }
+    else if (e.key === "n" || e.key === "N") { e.preventDefault(); $("#note") && $("#note").focus(); }
+  });
+
+  refreshCounts();
+  render();
+  connect();
+})();
+</script>

@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Dashboard candidate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<script src="themes.js"></script>
+<style>
+  /* Defaults: overwritten by the selected theme before first paint. */
+  :root { --bg:#fff; --surface:#fff; --raised:#f4f4f2; --ink:#111; --muted:#666; --faint:#aaa; --line:#e2e2e0;
+    --accent:#e2231a; --accent-ink:#fff; --ok:#111; --fail:#e2231a; --silent:#bbb; --s1:#111; --s2:#e2231a; --s3:#bbb;
+    --display:sans-serif; --body:sans-serif; --mono:monospace; --radius:0; --panel-border:1px solid var(--line);
+    --panel-shadow:none; --display-weight:700; --display-tracking:0; --label-case:uppercase; --label-tracking:.08em;
+    --gap:12px; --pad:20px; --panel-bg:var(--surface); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--ink); font: 14px/1.45 var(--body); -webkit-font-smoothing: antialiased;
+    font-feature-settings: "tnum" 1; overflow: hidden; }
+  .num { font-variant-numeric: tabular-nums; }
+  .mono { font-family: var(--mono); }
+  .label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: var(--label-case);
+    letter-spacing: var(--label-tracking); }
+  .panel { background: var(--panel-bg); border: var(--panel-border); border-radius: var(--radius);
+    box-shadow: var(--panel-shadow); padding: var(--pad); min-width: 0; }
+  .panel h3 { margin: 0 0 14px; font: 600 13px/1.2 var(--body); color: var(--ink); display: flex;
+    justify-content: space-between; align-items: baseline; gap: 12px; }
+  .panel h3 small { font-weight: 400; color: var(--muted); font-size: 12px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500;
+    padding: 2px 8px 2px 6px; border-radius: calc(var(--radius) + 2px); background: var(--raised); color: var(--ink); white-space: nowrap; }
+  .pill i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; display: block; }
+  .pill.ok i { background: var(--ok); } .pill.fail i { background: var(--fail); } .pill.silent i { background: var(--silent); }
+  .pill.fail { color: var(--fail); }
+  .chip { font: 500 11px/1 var(--mono); color: var(--muted); border: 1px solid var(--line); padding: 5px 7px;
+    border-radius: var(--radius); letter-spacing: .02em; }
+  .delta { font-size: 12px; color: var(--muted); }
+  .delta.up-bad { color: var(--fail); }
+  .delta.down-good { color: var(--ok); }
+  svg text { fill: var(--muted); font: 11px var(--mono); }
+  svg .grid { stroke: var(--line); stroke-width: 1; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 10px; height: 10px; display: block; border-radius: 2px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-weight: 500; color: var(--muted); font-size: 11px; text-transform: var(--label-case);
+    letter-spacing: var(--label-tracking); padding: 0 8px 8px 0; border-bottom: 1px solid var(--line); }
+  td { padding: 9px 8px 9px 0; border-bottom: 1px solid var(--line); vertical-align: middle; white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  .strip { display: flex; gap: 2px; }
+  .strip b { width: 9px; height: 14px; border-radius: 1px; display: block; }
+  .s-ok { background: var(--ok); opacity: .9; } .s-fail { background: var(--fail); } .s-silent { background: var(--silent); }
+  .s-none { background: var(--line); }
+
+  /* ===== Layout: Command (rail + KPI strip + chart/table grid) ===== */
+  body.l-command { display: grid; grid-template-columns: 64px 1fr; }
+  .l-command .rail { border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center;
+    padding: 18px 0; gap: 8px; background: var(--surface); }
+  .l-command .rail .mark { width: 30px; height: 30px; border-radius: var(--radius); background: var(--ink); margin-bottom: 18px;
+    display: grid; place-items: center; color: var(--bg); font: 700 13px var(--display); }
+  .l-command .rail a { width: 40px; height: 40px; display: grid; place-items: center; border-radius: var(--radius); color: var(--muted); }
+  .l-command .rail a.on { background: var(--raised); color: var(--ink); }
+  .l-command main { padding: 22px 28px; display: grid; grid-template-rows: auto auto 1fr 1fr; gap: 16px; min-width: 0; height: 100vh; }
+  .l-command header { display: flex; justify-content: space-between; align-items: center; }
+  .l-command header h1 { margin: 0; font: var(--display-weight) 24px/1.1 var(--display); letter-spacing: var(--display-tracking); }
+  .l-command header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .seg button { all: unset; padding: 7px 12px; font-size: 12px; color: var(--muted); }
+  .seg button.on { background: var(--ink); color: var(--bg); }
+  .l-command .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--gap); }
+  .l-command .kpi { display: grid; grid-template-columns: 1fr auto; align-items: end; }
+  .l-command .kpi .v { font: var(--display-weight) 32px/1 var(--display); letter-spacing: var(--display-tracking); margin-top: 10px; }
+  .l-command .row { display: grid; grid-template-columns: 2fr 1fr; gap: var(--gap); min-height: 0; }
+  .feed { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; font-size: 13px; }
+  .feed li { display: grid; grid-template-columns: 44px 1fr; gap: 10px; }
+  .feed time { font: 12px var(--mono); color: var(--muted); }
+  .feed em { font-style: normal; color: var(--muted); }
+
+  /* ===== Layout: Bento ===== */
+  body.l-bento { padding: 24px 28px; display: grid; grid-template-rows: auto 1fr; gap: 16px; height: 100vh; }
+  .l-bento header { display: flex; justify-content: space-between; align-items: center; }
+  .l-bento header h1 { margin: 0; font: var(--display-weight) 22px/1 var(--display); letter-spacing: var(--display-tracking); }
+  .l-bento .grid { display: grid; grid-template-columns: repeat(12, 1fr); grid-template-rows: 1fr 1fr 1.1fr;
+    gap: max(var(--gap), 10px); min-height: 0; }
+  .l-bento .panel { display: flex; flex-direction: column; overflow: hidden; }
+  .l-bento .big { font: var(--display-weight) 64px/0.9 var(--display); letter-spacing: var(--display-tracking); }
+  .l-bento .hero { grid-column: 1 / 5; grid-row: 1 / 3; background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .l-bento .hero .label { color: var(--accent-ink); opacity: .75; }
+  .l-bento .mini-list { list-style: none; margin: auto 0 0; padding: 0; display: grid; gap: 7px; font-size: 13px; }
+  .l-bento .mini-list li { display: flex; justify-content: space-between; gap: 10px; border-top: 1px solid var(--line); padding-top: 7px; }
+
+  /* ===== Layout: Briefing (editorial report) ===== */
+  body.l-briefing { overflow-y: auto; }
+  .l-briefing .page { display: grid; grid-template-columns: minmax(0, 780px) 280px; gap: 64px; padding: 44px 80px 60px; }
+  .l-briefing .kicker { display: flex; gap: 14px; align-items: center; }
+  .l-briefing h1 { font: var(--display-weight) 50px/1.02 var(--display); letter-spacing: var(--display-tracking);
+    margin: 14px 0 16px; text-wrap: balance; }
+  .l-briefing h1 em { font-style: normal; color: var(--fail); }
+  .l-briefing .deck { font-size: 18px; line-height: 1.5; color: var(--muted); margin: 0 0 28px; max-width: 64ch; }
+  .l-briefing .deck b { color: var(--ink); font-weight: 600; }
+  .l-briefing .figs { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 2px solid var(--ink);
+    border-bottom: 1px solid var(--line); margin-bottom: 28px; }
+  .l-briefing .figs div { padding: 14px 0 16px; }
+  .l-briefing .figs div + div { padding-left: 20px; border-left: 1px solid var(--line); }
+  .l-briefing .figs strong { display: block; font: var(--display-weight) 40px/1 var(--display); letter-spacing: var(--display-tracking); margin-top: 8px; }
+  .l-briefing h2 { font: 600 15px/1.3 var(--body); margin: 0 0 12px; }
+  .l-briefing ol { margin: 0; padding: 0; list-style: none; counter-reset: n; }
+  .l-briefing ol li { counter-increment: n; display: grid; grid-template-columns: 34px 1fr auto; gap: 12px; padding: 12px 0;
+    border-top: 1px solid var(--line); align-items: baseline; }
+  .l-briefing ol li::before { content: counter(n); font: 600 13px var(--mono); color: var(--muted); }
+  .l-briefing ol li p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+  .l-briefing aside { padding-top: 54px; display: grid; gap: 22px; align-content: start; font-size: 13px; color: var(--muted); }
+  .l-briefing aside dl { margin: 0; }
+  .l-briefing aside dt { color: var(--ink); font-weight: 600; }
+  .l-briefing aside dd { margin: 3px 0 16px; line-height: 1.5; }
+
+  /* ===== Layout: Console (dense telemetry) ===== */
+  body.l-console { font-family: var(--mono); font-size: 12px; display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
+  .l-console .bar { display: flex; gap: 22px; align-items: center; padding: 10px 18px; border-bottom: 1px solid var(--line);
+    background: var(--surface); text-transform: uppercase; letter-spacing: .06em; font-size: 11px; color: var(--muted); }
+  .l-console .bar b { color: var(--ink); font-weight: 500; }
+  .l-console .bar .alert { color: var(--fail); }
+  .l-console .cols { display: grid; grid-template-columns: 1.25fr 1fr 1fr; gap: 1px; background: var(--line); min-height: 0; }
+  .l-console .col { background: var(--bg); padding: 14px 16px; min-width: 0; overflow: hidden; display: flex; flex-direction: column; gap: 12px; }
+  .l-console h3 { margin: 0; font: 500 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+    display: flex; justify-content: space-between; }
+  .l-console .lanes { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); }
+  .l-console .lane { background: var(--bg); padding: 10px; display: grid; gap: 4px; }
+  .l-console .lane .v { font-size: 20px; color: var(--ink); }
+  .l-console .log { margin: 0; padding: 0; list-style: none; display: grid; gap: 5px; font-size: 11.5px; }
+  .l-console .log li { display: grid; grid-template-columns: 66px 52px 1fr; gap: 8px; white-space: nowrap; overflow: hidden; }
+  .l-console .log .t { color: var(--faint); }
+  .l-console .log .OK { color: var(--ok); } .l-console .log .FAIL { color: var(--fail); } .l-console .log .SILENT { color: var(--silent); }
+  .l-console .foot { display: grid; grid-template-columns: repeat(6, 1fr); border-top: 1px solid var(--line); background: var(--surface); }
+  .l-console .foot div { padding: 10px 18px; border-right: 1px solid var(--line); }
+  .l-console .foot b { display: block; font-size: 22px; font-weight: 500; color: var(--ink); margin-top: 2px; }
+</style>
+</head>
+<body>
+<script>
+(function () {
+  const { layout, theme } = TL.readHash("command", "swiss");
+  TL.applyTheme(theme);
+
+  /* ---------- Sample data: deterministic, internally consistent ---------- */
+  const DAYS = Array.from({ length: 14 }, (_, i) => new Date(Date.UTC(2026, 9, 20 + i)));
+  const dayLabel = d => d.toLocaleDateString("en-GB", { day: "numeric", timeZone: "UTC" });
+  const wk = d => d.toLocaleDateString("en-GB", { weekday: "narrow", timeZone: "UTC" });
+  const JOBS = [
+    { id: "news-pipeline", lane: "Build", per: 2, ok: .5, fail: .05, dur: 312 },
+    { id: "x-lane-posts", lane: "Content", per: 3, ok: .55, fail: .1, dur: 48 },
+    { id: "nas-backup", lane: "Home Lab", per: 1, ok: .97, fail: .03, dur: 1840 },
+    { id: "site-health", lane: "Sites", per: 2, ok: .98, fail: .02, dur: 96 },
+    { id: "linear-drain", lane: "Ops", per: 2, ok: .86, fail: .02, dur: 140 },
+    { id: "trakt-sync", lane: "Life", per: 1, ok: .95, fail: .05, dur: 22, breakFrom: 10 },
+    { id: "suno-ingest", lane: "Studio", per: 1, ok: .78, fail: .04, dur: 75 },
+    { id: "morning-brief", lane: "Ops", per: 1, ok: .95, fail: .03, dur: 205 },
+    { id: "void-sovereign-loop", lane: "Build", per: 4, ok: .9, fail: .07, dur: 610 },
+    { id: "price-watch", lane: "Trading", per: 4, ok: .82, fail: .16, dur: 12 },
+    { id: "wiki-maint", lane: "Ops", per: 1, ok: .84, fail: .02, dur: 260 },
+    { id: "photo-publish", lane: "Content", per: 1, ok: .88, fail: .02, dur: 118 }
+  ];
+  const r = TL.rng(44);
+  const runs = [];
+  JOBS.forEach((j, ji) => {
+    j.days = DAYS.map((d, di) => {
+      const cell = { ok: 0, fail: 0, silent: 0 };
+      for (let k = 0; k < j.per; k++) {
+        const x = r();
+        let s = x < j.ok ? "ok" : x < j.ok + j.fail ? "fail" : "silent";
+        if (j.breakFrom != null && di >= j.breakFrom) s = "fail";
+        cell[s]++;
+        const hour = Math.floor((24 / j.per) * k + 3 + ji % 4);
+        runs.push({ job: j.id, lane: j.lane, day: di, hour, min: Math.floor(r() * 60), status: s,
+          dur: Math.round(j.dur * (0.75 + r() * 0.6)) });
+      }
+      cell.status = cell.fail ? "fail" : cell.silent ? "silent" : "ok";
+      return cell;
+    });
+    j.fails = j.days.reduce((a, c) => a + c.fail, 0);
+    j.silents = j.days.reduce((a, c) => a + c.silent, 0);
+    j.oks = j.days.reduce((a, c) => a + c.ok, 0);
+    j.last = runs.filter(x => x.job === j.id).at(-1);
+    j.median = (() => { const ds = runs.filter(x => x.job === j.id).map(x => x.dur).sort((a, b) => a - b); return ds[ds.length >> 1]; })();
+  });
+  const perDay = DAYS.map((d, di) => {
+    const t = { ok: 0, fail: 0, silent: 0 };
+    JOBS.forEach(j => { t.ok += j.days[di].ok; t.fail += j.days[di].fail; t.silent += j.days[di].silent; });
+    return t;
+  });
+  const sum = (arr, k) => arr.reduce((a, c) => a + c[k], 0);
+  const w1 = perDay.slice(0, 7), w2 = perDay.slice(7);
+  const T = { ok: sum(perDay, "ok"), fail: sum(perDay, "fail"), silent: sum(perDay, "silent") };
+  T.all = T.ok + T.fail + T.silent;
+  const W1 = { fail: sum(w1, "fail"), silent: sum(w1, "silent"), ok: sum(w1, "ok") };
+  const W2 = { fail: sum(w2, "fail"), silent: sum(w2, "silent"), ok: sum(w2, "ok") };
+  W1.all = W1.ok + W1.fail + W1.silent; W2.all = W2.ok + W2.fail + W2.silent;
+  const pct = (a, b) => (100 * a / b).toFixed(1);
+  const LANES = [...new Set(JOBS.map(j => j.lane))].map(l => {
+    const js = JOBS.filter(j => j.lane === l);
+    const ok = js.reduce((a, j) => a + j.oks, 0), fail = js.reduce((a, j) => a + j.fails, 0), silent = js.reduce((a, j) => a + j.silents, 0);
+    return { lane: l, ok, fail, silent, all: ok + fail + silent,
+      series: DAYS.map((_, di) => js.reduce((a, j) => a + j.days[di].ok, 0) / js.reduce((a, j) => a + j.per, 0)) };
+  }).sort((a, b) => (b.fail + b.silent) / b.all - (a.fail + a.silent) / a.all);
+  const attention = [...JOBS].sort((a, b) => (b.fails * 2 + b.silents) - (a.fails * 2 + a.silents));
+  const fmtDur = s => s >= 60 ? Math.floor(s / 60) + "m " + String(s % 60).padStart(2, "0") + "s" : s + "s";
+  const fmtRun = x => dayLabel(DAYS[x.day]) + " " + DAYS[x.day].toLocaleDateString("en-GB", { month: "short", timeZone: "UTC" }) +
+    ", " + String(x.hour % 24).padStart(2, "0") + ":" + String(x.min).padStart(2, "0");
+  const statusWord = { ok: "Succeeded", fail: "Failed", silent: "Silent" };
+  const recent = runs.filter(x => x.day === 13).sort((a, b) => (b.hour * 60 + b.min) - (a.hour * 60 + a.min));
+  const notable = runs.filter(x => x.day >= 12 && x.status !== "ok").sort((a, b) => (b.day * 1440 + b.hour * 60 + b.min) - (a.day * 1440 + a.hour * 60 + a.min));
+
+  /* ---------- SVG helpers (all colours come from theme tokens) ---------- */
+  function bars(w, h, opts = {}) {
+    const pad = { l: 30, r: 6, t: opts.annotate ? 30 : 8, b: 22 };
+    const iw = w - pad.l - pad.r, ih = h - pad.t - pad.b;
+    const peak = Math.max(...perDay.map(d => d.ok + d.fail + d.silent));
+    const step = 5, max = Math.ceil(peak / step) * step;
+    const bw = iw / perDay.length;
+    let g = "";
+    for (let v = 0; v <= max; v += step) {
+      const y = pad.t + ih - (v / max) * ih;
+      g += `<line class="grid" x1="${pad.l}" x2="${w - pad.r}" y1="${y}" y2="${y}"/><text x="${pad.l - 8}" y="${y + 4}" text-anchor="end">${v}</text>`;
+    }
+    perDay.forEach((d, i) => {
+      const x = pad.l + i * bw + bw * 0.18, bwi = bw * 0.64;
+      let y = pad.t + ih;
+      [["ok", d.ok], ["silent", d.silent], ["fail", d.fail]].forEach(([k, v]) => {
+        const hh = (v / max) * ih;
+        y -= hh;
+        g += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bwi.toFixed(1)}" height="${Math.max(hh - 1, 0).toFixed(1)}" fill="var(--${k})" rx="${opts.round ? 2 : 0}"/>`;
+      });
+      g += `<text x="${(x + bwi / 2).toFixed(1)}" y="${h - 6}" text-anchor="middle">${opts.weekday ? wk(DAYS[i]) : dayLabel(DAYS[i])}</text>`;
+    });
+    if (opts.annotate) {
+      const worst = perDay.reduce((bi, d, i, a) => (d.fail + d.silent > a[bi].fail + a[bi].silent ? i : bi), 0);
+      const d = perDay[worst], x = pad.l + worst * bw + bw / 2, y = pad.t + ih - ((d.ok + d.fail + d.silent) / max) * ih - 8;
+      const right = x > w * 0.6;
+      g += `<line x1="${x}" x2="${x}" y1="${y + 4}" y2="${y - 14}" stroke="var(--ink)"/><text x="${right ? x - 6 : x + 6}" y="${y - 8}" text-anchor="${right ? "end" : "start"}" style="fill:var(--ink)">Worst day: ${d.fail + d.silent} runs need a look</text>`;
+    }
+    return `<svg width="100%" viewBox="0 0 ${w} ${h}" style="display:block;width:100%;height:auto">${g}</svg>`;
+  }
+  function spark(vals, w = 96, h = 28, color = "var(--ink)") {
+    const max = Math.max(...vals), min = Math.min(...vals), span = max - min || 1;
+    const pts = vals.map((v, i) => [(i / (vals.length - 1)) * (w - 4) + 2, h - 3 - ((v - min) / span) * (h - 6)]);
+    const d = pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
+    const last = pts.at(-1);
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><path d="${d} L${w - 2} ${h} L2 ${h} Z" fill="${color}" opacity=".08"/><path d="${d}" fill="none" stroke="${color}" stroke-width="1.5"/><circle cx="${last[0]}" cy="${last[1]}" r="2.5" fill="${color}"/></svg>`;
+  }
+  function ring(p, size = 180, stroke = 14, track = "var(--line)", color = "var(--accent)") {
+    const rr = (size - stroke) / 2, c = 2 * Math.PI * rr;
+    return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${size / 2}" cy="${size / 2}" r="${rr}" fill="none" stroke="${track}" stroke-width="${stroke}"/><circle cx="${size / 2}" cy="${size / 2}" r="${rr}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-dasharray="${(c * p).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 ${size / 2} ${size / 2})" stroke-linecap="butt"/></svg>`;
+  }
+  function heat(cell = 13, gap = 2, labelW = 140, showDays = true) {
+    let g = "";
+    const w = labelW + DAYS.length * (cell + gap), h = JOBS.length * (cell + gap) + (showDays ? 16 : 0);
+    JOBS.forEach((j, ji) => {
+      const y = ji * (cell + gap);
+      g += `<text x="0" y="${y + cell - 2}" style="fill:var(--ink)">${j.id}</text>`;
+      j.days.forEach((c, di) => {
+        g += `<rect x="${labelW + di * (cell + gap)}" y="${y}" width="${cell}" height="${cell}" fill="var(--${c.status})" rx="1"/>`;
+      });
+    });
+    if (showDays) DAYS.forEach((d, di) => { if (di % 2 === 0) g += `<text x="${labelW + di * (cell + gap) + cell / 2}" y="${h - 2}" text-anchor="middle">${dayLabel(d)}</text>`; });
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block;max-width:100%">${g}</svg>`;
+  }
+  function laneBars(w = 300) {
+    return LANES.map(l => {
+      const f = l.fail / l.all, s = l.silent / l.all, o = l.ok / l.all;
+      return `<div style="display:grid;grid-template-columns:76px 1fr 44px;gap:10px;align-items:center;font-size:12.5px;margin-bottom:9px">
+        <span>${l.lane}</span>
+        <span style="display:flex;height:8px;background:var(--line);border-radius:calc(var(--radius) / 3);overflow:hidden">
+          <i style="width:${(o * 100).toFixed(1)}%;background:var(--ok);opacity:.85"></i><i style="width:${(s * 100).toFixed(1)}%;background:var(--silent)"></i><i style="width:${(f * 100).toFixed(1)}%;background:var(--fail)"></i></span>
+        <span class="num" style="text-align:right;color:var(--muted)">${((1 - o) * 100).toFixed(0)}%</span></div>`;
+    }).join("");
+  }
+  const legend = `<div class="legend"><span><i style="background:var(--ok)"></i>Succeeded</span><span><i style="background:var(--silent)"></i>Silent</span><span><i style="background:var(--fail)"></i>Failed</span></div>`;
+  const strip = j => `<span class="strip">${j.days.map(c => `<b class="s-${c.status}"></b>`).join("")}</span>`;
+  const pill = s => `<span class="pill ${s}"><i></i>${statusWord[s]}</span>`;
+  const dlt = (now, before, badWhenUp = true) => {
+    const d = now - before;
+    const cls = d > 0 && badWhenUp ? "up-bad" : d < 0 && badWhenUp ? "down-good" : "";
+    return `<span class="delta ${cls} num">${d > 0 ? "+" : d < 0 ? "−" : "±"}${Math.abs(d)} vs last week</span>`;
+  };
+  const icon = p => `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+  const ICONS = [
+    '<path d="M3 13h4l3 7 4-16 3 9h4"/>', '<rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/><rect x="4" y="13" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/>',
+    '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>', '<path d="M5 7h14M5 12h14M5 17h9"/>', '<path d="M12 3v3M12 18v3M4.6 6.6l2.1 2.1M17.3 15.3l2.1 2.1M3 12h3M18 12h3M4.6 17.4l2.1-2.1M17.3 8.7l2.1-2.1"/>'
+  ];
+  const worstSilent = [...JOBS].sort((a, b) => b.silents - a.silents);
+  const worstFail = [...JOBS].sort((a, b) => b.fails - a.fails);
+  const range = "20 Oct – 2 Nov 2026";
+  const sample = `<span class="chip">SAMPLE DATA</span>`;
+
+  /* ---------- Layouts ---------- */
+  const L = {};
+  L.command = () => {
+    document.body.className = "l-command";
+    const kpi = (label, v, sub, series, color) => `<div class="panel kpi"><div><div class="label">${label}</div><div class="v num">${v}</div><div style="margin-top:8px">${sub}</div></div>${spark(series, 96, 34, color)}</div>`;
+    return `<nav class="rail"><div class="mark">EW</div>${ICONS.map((p, i) => `<a class="${i === 0 ? "on" : ""}">${icon(p)}</a>`).join("")}</nav>
+    <main>
+      <header><div><h1>Scheduled runs</h1><p>${JOBS.length} jobs across ${LANES.length} lanes · ${range}</p></div>
+        <div style="display:flex;gap:10px;align-items:center">${sample}<div class="seg"><button>7 days</button><button class="on">14 days</button><button>30 days</button></div></div></header>
+      <section class="kpis">
+        ${kpi("Runs", T.all, `<span class="delta num">${W2.all} this week</span>`, perDay.map(d => d.ok + d.fail + d.silent), "var(--ink)")}
+        ${kpi("Succeeded", pct(T.ok, T.all) + "%", `<span class="delta num">${T.ok} of ${T.all}</span>`, perDay.map(d => d.ok / (d.ok + d.fail + d.silent)), "var(--ok)")}
+        ${kpi("Silent", T.silent, dlt(W2.silent, W1.silent), perDay.map(d => d.silent), "var(--silent)")}
+        ${kpi("Failed", T.fail, dlt(W2.fail, W1.fail), perDay.map(d => d.fail), "var(--fail)")}
+      </section>
+      <section class="row">
+        <div class="panel"><h3>Runs per day ${legend}</h3>${bars(860, 210, { round: true })}</div>
+        <div class="panel"><h3>Needs a look, by lane <small>failed + silent</small></h3>${laneBars()}</div>
+      </section>
+      <section class="row">
+        <div class="panel" style="overflow:hidden"><h3>Jobs needing attention <small>last 14 days, newest right</small></h3>
+          <table><thead><tr><th>Job</th><th>Lane</th><th>Last run</th><th>Status</th><th>History</th><th style="text-align:right">Median</th></tr></thead><tbody>
+          ${attention.slice(0, 5).map(j => `<tr><td class="mono">${j.id}</td><td>${j.lane}</td><td class="num" style="color:var(--muted)">${fmtRun(j.last)}</td><td>${pill(j.last.status)}</td><td>${strip(j)}</td><td class="num" style="text-align:right">${fmtDur(j.median)}</td></tr>`).join("")}
+          </tbody></table></div>
+        <div class="panel"><h3>Recent problems</h3><ul class="feed">
+          ${notable.slice(0, 6).map(x => `<li><time>${String(x.hour % 24).padStart(2, "0")}:${String(x.min).padStart(2, "0")}</time><div><span class="mono">${x.job}</span> <em>${x.status === "fail" ? "failed" : "finished with no output"}</em></div></li>`).join("")}
+        </ul></div>
+      </section>
+    </main>`;
+  };
+  L.bento = () => {
+    document.body.className = "l-bento";
+    return `<header><div style="display:flex;gap:16px;align-items:baseline"><h1>Scheduled runs</h1><span style="color:var(--muted)">${range}</span></div>${sample}</header>
+    <div class="grid">
+      <div class="panel hero">
+        <div class="label">Success rate</div>
+        <div style="display:grid;place-items:center;margin:auto 0;position:relative">${ring(T.ok / T.all, 220, 16, "color-mix(in srgb, var(--accent-ink) 22%, transparent)", "var(--accent-ink)")}
+          <div style="position:absolute;text-align:center"><div class="big num" style="font-size:54px">${pct(T.ok, T.all)}<span style="font-size:24px">%</span></div><div style="opacity:.7;font-size:13px;margin-top:6px">${T.ok} of ${T.all} runs</div></div></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;border-top:1px solid color-mix(in srgb, var(--accent-ink) 30%, transparent);padding-top:14px">
+          <div><div class="label">Silent</div><div class="num" style="font:var(--display-weight) 26px var(--display)">${T.silent}</div></div>
+          <div><div class="label">Failed</div><div class="num" style="font:var(--display-weight) 26px var(--display)">${T.fail}</div></div></div>
+      </div>
+      <div class="panel" style="grid-column:5/13;grid-row:1"><h3>Runs per day ${legend}</h3><div style="margin-top:auto">${bars(980, 170, { round: true })}</div></div>
+      <div class="panel" style="grid-column:5/9;grid-row:2"><div class="label">Silent runs</div><div style="display:flex;align-items:baseline;gap:10px;margin-top:6px"><span class="big num" style="color:var(--silent)">${T.silent}</span>${dlt(W2.silent, W1.silent)}</div>
+        <ul class="mini-list">${worstSilent.slice(0, 3).map(j => `<li><span class="mono">${j.id}</span><span class="num">${j.silents}</span></li>`).join("")}</ul></div>
+      <div class="panel" style="grid-column:9/13;grid-row:2"><div class="label">Failed runs</div><div style="display:flex;align-items:baseline;gap:10px;margin-top:6px"><span class="big num" style="color:var(--fail)">${T.fail}</span>${dlt(W2.fail, W1.fail)}</div>
+        <ul class="mini-list">${worstFail.slice(0, 3).map(j => `<li><span class="mono">${j.id}</span><span class="num">${j.fails}</span></li>`).join("")}</ul></div>
+      <div class="panel" style="grid-column:1/7;grid-row:3"><h3>Every job, every day <small>worst outcome per day</small></h3>${heat(14, 3, 150, true)}</div>
+      <div class="panel" style="grid-column:7/13;grid-row:3"><h3>By lane <small>share needing a look</small></h3>${laneBars()}</div>
+    </div>`;
+  };
+  L.briefing = () => {
+    document.body.className = "l-briefing";
+    const top2 = worstSilent.slice(0, 2);
+    return `<div class="page"><article>
+      <div class="kicker"><span class="label">Operations brief · week 44</span>${sample}</div>
+      <h1>${T.silent} runs finished <em>without producing anything</em>.</h1>
+      <p class="deck">Silent runs outnumbered failures <b>${T.silent} to ${T.fail}</b> across ${range}. Two jobs account for ${Math.round(100 * (top2[0].silents + top2[1].silents) / T.silent)}% of them: <b>${top2[0].id}</b> and <b>${top2[1].id}</b>. A silent run exits cleanly, so nothing alerts on it.</p>
+      <div class="figs">
+        <div><span class="label">Runs</span><strong class="num">${T.all}</strong><span class="delta num">${W2.all} this week</span></div>
+        <div><span class="label">Silent</span><strong class="num" style="color:var(--silent)">${T.silent}</strong>${dlt(W2.silent, W1.silent)}</div>
+        <div><span class="label">Failed</span><strong class="num" style="color:var(--fail)">${T.fail}</strong>${dlt(W2.fail, W1.fail)}</div>
+      </div>
+      <h2>Runs per day</h2>${legend}<div style="margin:10px 0 30px">${bars(780, 200, { annotate: true })}</div>
+      <h2>What needs you, in order</h2>
+      <ol>${attention.slice(0, 4).map(j => `<li><div><span class="mono">${j.id}</span><p>${j.fails ? j.fails + " failed" : ""}${j.fails && j.silents ? ", " : ""}${j.silents ? j.silents + " silent" : ""} of ${j.per * 14} runs · ${j.lane}</p></div>${strip(j)}</li>`).join("")}</ol>
+    </article>
+    <aside>
+      <dl><dt>Silent</dt><dd>The job exited 0 but wrote no output. Treated as a problem, not a pass.</dd>
+      <dt>Failed</dt><dd>Non-zero exit, timeout or crash.</dd>
+      <dt>History strip</dt><dd>Worst outcome per day, oldest left.</dd></dl>
+      <div><div class="label" style="margin-bottom:10px">Share needing a look</div>${laneBars()}</div>
+    </aside></div>`;
+  };
+  L.console = () => {
+    document.body.className = "l-console";
+    const log = [...recent, ...runs.filter(x => x.day === 12)].slice(0, 26);
+    return `<div class="bar"><b>ESTATE / RUNS</b><span>${range}</span><span>JOBS <b>${JOBS.length}</b></span><span>LANES <b>${LANES.length}</b></span>
+      <span class="alert">▲ ${worstFail.filter(j => j.last.status === "fail").length} FAILING NOW</span><span style="margin-left:auto">SAMPLE DATA</span></div>
+    <div class="cols">
+      <div class="col"><h3><span>Status matrix</span><span>14d</span></h3>${heat(15, 3, 158, true)}
+        ${legend}
+        <h3 style="margin-top:6px"><span>Runs / day</span><span>n=${T.all}</span></h3>${bars(540, 150, { weekday: true })}</div>
+      <div class="col"><h3><span>Lanes</span><span>success</span></h3>
+        <div class="lanes">${LANES.map(l => `<div class="lane"><span style="color:var(--muted)">${l.lane.toUpperCase()}</span><span class="v num">${(100 * l.ok / l.all).toFixed(0)}%</span>${spark(l.series, 160, 26, l.fail / l.all > .1 ? "var(--fail)" : l.silent / l.all > .1 ? "var(--silent)" : "var(--ok)")}</div>`).join("")}</div>
+        <h3 style="margin-top:4px"><span>Slowest median</span><span>per run</span></h3>
+        <ul class="log">${[...JOBS].sort((a, b) => b.median - a.median).slice(0, 6).map(j => `<li style="grid-template-columns:1fr auto"><span>${j.id}</span><span class="num" style="color:var(--ink)">${fmtDur(j.median)}</span></li>`).join("")}</ul></div>
+      <div class="col"><h3><span>Tail · today</span><span>live</span></h3>
+        <ul class="log">${log.map(x => `<li><span class="t">${dayLabel(DAYS[x.day]).padStart(2, "0")}·${String(x.hour % 24).padStart(2, "0")}:${String(x.min).padStart(2, "0")}</span><span class="${x.status.toUpperCase()}">${x.status === "ok" ? "OK" : x.status.toUpperCase()}</span><span>${x.job} <span class="t">${fmtDur(x.dur)}</span></span></li>`).join("")}</ul></div>
+    </div>
+    <div class="foot">
+      <div>RUNS<b class="num">${T.all}</b></div><div>OK<b class="num">${T.ok}</b></div><div style="color:var(--silent)">SILENT<b class="num" style="color:var(--silent)">${T.silent}</b></div>
+      <div style="color:var(--fail)">FAILED<b class="num" style="color:var(--fail)">${T.fail}</b></div><div>SUCCESS<b class="num">${pct(T.ok, T.all)}%</b></div><div>MEDIAN<b class="num">${fmtDur(JOBS.map(j => j.median).sort((a, b) => a - b)[6])}</b></div>
+    </div>`;
+  };
+
+  function render() {
+    const { layout, theme } = TL.readHash("command", "swiss");
+    TL.applyTheme(theme);
+    document.body.innerHTML = (L[layout] || L.command)();
+  }
+  render();
+  addEventListener("hashchange", render);
+})();
+</script>
+</body>
+</html>
