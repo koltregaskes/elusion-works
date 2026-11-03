@@ -179,3 +179,17 @@ select {
 .layerrow.sel { background: var(--accent-soft); border-color: var(--accent); }
 .layerrow .sw { width: 11px; height: 11px; border-radius: 3px; flex: none; border: 1px solid rgba(0,0,0,0.25); }
 .layerrow .dep { margin-left: auto; font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* ── Accessibility ─────────────────────────────────────────── */
+/* White on the orange accent was 2.6-2.9:1; dark text is 6.7:1+. */
+.btn.primary, .btn.primary:hover { color: #14110d; }
+/* Keyboard focus: visible ring on every control, including the
+   visually hidden checkbox inside each switch. */
+:where(a, button, select, input, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.switch input:focus-visible + .tr {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
