@@ -473,6 +473,11 @@ html, body {
   gap: 0.3rem;
 }
 
+.console-body:focus-visible {
+  outline: 2px solid var(--color-copper);
+  outline-offset: -2px;
+}
+
 .console-line {
   font-family: var(--font-mono);
   font-size: 0.7rem;
