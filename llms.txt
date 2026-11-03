@@ -7,6 +7,8 @@ Elusion Works is the umbrella brand and index for websites, tools, hubs, and fut
 - [Home and estate index](https://elusionworks.com/)
 - [Demo index](https://elusionworks.com/demos/)
 - [Golden Retriever static demo](https://elusionworks.com/demos/golden/)
+- [Orbit Census: live satellite and debris tracker](https://elusionworks.com/demos/orbit-census/)
+- [Planetary Teardown: the eight planets taken apart](https://elusionworks.com/demos/planet-teardown/)
 - [Solar System Field Lab demo](https://elusionworks.com/demos/solar-system/)
 - [The Last Cartridge demo](https://elusionworks.com/demos/last-cartridge/)
 
