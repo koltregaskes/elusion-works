@@ -22,43 +22,63 @@ export const treeUniforms = {
 const UP = new THREE.Vector3(0, 1, 0);
 
 function leafTexture() {
-  const size = 256;
+  const size = 512;
   const c = document.createElement('canvas');
   c.width = c.height = size;
   const g = c.getContext('2d');
   const rng = makeRng(5);
   g.clearRect(0, 0, size, size);
-  // Twigs first, leaves on top.
+  // Twigs first, then many small lobed leaves, each with a stalk and a darker midrib.
   g.strokeStyle = 'rgba(70,55,40,1)';
-  g.lineWidth = 2;
-  for (let i = 0; i < 5; i++) {
+  g.lineCap = 'round';
+  for (let i = 0; i < 7; i++) {
+    g.lineWidth = 2 + rng() * 2;
     g.beginPath();
     g.moveTo(size / 2, size / 2);
-    g.lineTo(size / 2 + (rng() - 0.5) * size * 0.8, size / 2 + (rng() - 0.5) * size * 0.8);
+    g.quadraticCurveTo(
+      size / 2 + (rng() - 0.5) * size * 0.5, size / 2 + (rng() - 0.5) * size * 0.5,
+      size / 2 + (rng() - 0.5) * size * 0.85, size / 2 + (rng() - 0.5) * size * 0.85
+    );
     g.stroke();
   }
-  for (let i = 0; i < 46; i++) {
+  for (let i = 0; i < 260; i++) {
     const a = rng() * Math.PI * 2;
-    const r = Math.sqrt(rng()) * size * 0.4;
+    const r = Math.pow(rng(), 0.75) * size * 0.43;
     const x = size / 2 + Math.cos(a) * r;
     const y = size / 2 + Math.sin(a) * r;
-    const len = 16 + rng() * 16;
-    const v = 150 + Math.floor(rng() * 105);
+    const len = 34 + rng() * 22;
+    const v = 140 + Math.floor(rng() * 115);
     g.save();
     g.translate(x, y);
     g.rotate(rng() * Math.PI * 2);
-    g.fillStyle = `rgb(${v},${v},${v})`;
-    // Lobed oak-ish leaf: three overlapping ellipses.
-    for (let k = 0; k < 3; k++) {
+    g.strokeStyle = 'rgba(80,70,50,1)';
+    g.lineWidth = 1.2;
+    g.beginPath();
+    g.moveTo(0, len * 0.55);
+    g.lineTo(0, len * 0.95);
+    g.stroke();
+    const grad = g.createLinearGradient(-len * 0.3, 0, len * 0.3, 0);
+    grad.addColorStop(0, `rgb(${v - 25},${v - 25},${v - 25})`);
+    grad.addColorStop(1, `rgb(${v},${v},${v})`);
+    g.fillStyle = grad;
+    // Oak-ish outline: five overlapping lobes tapering to the tip.
+    for (let k = 0; k < 5; k++) {
+      const t = k / 4 - 0.5;
       g.beginPath();
-      g.ellipse(0, (k - 1) * len * 0.3, len * (0.32 - Math.abs(k - 1) * 0.06), len * 0.28, 0, 0, Math.PI * 2);
+      g.ellipse(0, t * len * 0.85, len * (0.3 - Math.abs(t) * 0.22), len * 0.2, 0, 0, Math.PI * 2);
       g.fill();
     }
+    g.strokeStyle = `rgba(${v - 60},${v - 60},${v - 60},0.9)`;
+    g.lineWidth = 1;
+    g.beginPath();
+    g.moveTo(0, -len * 0.42);
+    g.lineTo(0, len * 0.5);
+    g.stroke();
     g.restore();
   }
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
+  tex.anisotropy = 8;
   return tex;
 }
 
@@ -103,7 +123,7 @@ function generate(seed, o) {
   };
 
   const branch = (start, dir, len, radius, depth) => {
-    const segs = depth === 0 ? 4 : 3;
+    const segs = depth === 0 ? 6 : depth < 3 ? 4 : 3;
     let p = start.clone();
     let d = dir.clone();
     let r = radius;
@@ -114,7 +134,7 @@ function generate(seed, o) {
       const gn = depth === 0 ? o.gnarl * 0.3 : o.gnarl;
       d.add(new THREE.Vector3((rng() - 0.5) * gn, (rng() - 0.3) * gn * 0.6, (rng() - 0.5) * gn)).normalize();
       const r1 = THREE.MathUtils.lerp(radius, endR, (s + 1) / segs);
-      const geo = new THREE.CylinderGeometry(r1, r, segLen, depth < 2 ? 9 : 6, 1, true);
+      const geo = new THREE.CylinderGeometry(r1, r, segLen, depth < 2 ? 16 : depth < 4 ? 9 : 6, 1, true);
       const swayA = Math.pow((depth + s / segs) / (o.depth + 1), 2.0);
       const swayB = Math.pow((depth + (s + 1) / segs) / (o.depth + 1), 2.0);
       const sw = new Float32Array(geo.attributes.position.count);
@@ -325,7 +345,7 @@ function makeDepthMaterial(tex, isLeaf) {
 const OAK = {
   trunkLen: 4.3, trunkRadius: 0.68, crownLift: 3.4, depth: 5, trunkKids: 4, children: 2,
   trunkSpread: 0.95, spread: 0.6, lenDecay: 0.76, taper: 0.6, gnarl: 0.34, upward: 0.42,
-  sideChance: 0.45, leavesPerTip: 7, leafSpread: 1.5, leafSize: 1.45,
+  sideChance: 0.45, leavesPerTip: 10, leafSpread: 1.7, leafSize: 1.5,
 };
 
 export function buildHeroOak() {
