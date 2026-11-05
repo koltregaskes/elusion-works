@@ -58,6 +58,13 @@ Votes live in the artifact's shared store, in collection `votes`, one document p
 
 An agent reads them with the ArtifactData tool (`action: "list"`, `collection: "votes"`) on the URL above. The page's "What it learned" tab also copies a Markdown taste profile.
 
+To turn votes into a versioned profile, run the rater's own scoring code with `tools/profile.mjs`:
+
+1. Export the votes with ArtifactData `list` (`collection: "votes"`, `out_dir` set).
+2. Run `node taste-lab/tools/profile.mjs <out_dir> --version N --out profile.md`.
+
+It also accepts a single JSON array of votes. Kol's notes are personal, so keep the profiles in Notion or Linear, not in this public repo.
+
 If the page is opened outside claude.ai, it saves in that browser only, and the status line says so.
 
 ## Adding a category
