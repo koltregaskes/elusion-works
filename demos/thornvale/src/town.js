@@ -141,7 +141,8 @@ export function buildTown(scene, kitData, ground, opts = {}) {
     place(k % 2 ? 'stall_orange' : 'stall_blue', M4(x, TOWN.base, z, yaw));
     addObb(x, z, 1.8, 1.4, yaw);
     stalls.push([x, z]);
-    lights.push({ x, y: TOWN.base + 2.4, z, color: 0xffb070, i: 6, d: 10 });
+    // under the awning (2.2-2.6 m), above the counter, so it lights the produce rather than the fabric
+    lights.push({ x, y: TOWN.base + 1.7, z, color: 0xffb070, i: 4, d: 9 });
   }
   for (const [x, z] of [[-17, 12], [17, 12], [-17, 32], [17, 32]]) {
     place('prop_planter', M4(SQUARE.x + x, TOWN.base, z, 0));
