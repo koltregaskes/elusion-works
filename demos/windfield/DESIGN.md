@@ -75,6 +75,11 @@ about 34 fps for a few seconds, it drops one level, once and quietly. Quality ch
 the near-patch blade count and radius, the share of stalks carrying wheat ears, the far
 field, the background tree count, shadow resolution and pixel ratio.
 
+To measure a real machine, open the page with `?bench`. It runs each quality level for
+two seconds of warm-up and five of measurement, then shows average and slow-frame
+(95th percentile) rates, recommends the highest level that stays above 50 fps, and
+gives a one-line summary with a copy button.
+
 ## Deliberately left out
 
 **Animals up close.** A convincing deer or horse needs a rigged, scanned or sculpted

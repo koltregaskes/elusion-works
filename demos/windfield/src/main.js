@@ -18,9 +18,11 @@ import { buildMonolith, buildStones, Bonfire } from './subjects.js';
 import { CameraRig } from './controls.js';
 import { StudioUI } from './ui.js';
 import { WindAudio } from './audio.js';
+import { Bench } from './bench.js';
 
 const url = new URLSearchParams(location.search);
 const MANUAL = url.has('manual'); // frame-stepped capture mode, driven from outside
+const BENCH = url.has('bench'); // one-click frame-rate test across quality levels
 const coarse = matchMedia('(pointer: coarse)').matches;
 let quality = url.get('q') || (coarse ? 'low' : 'high');
 
@@ -540,7 +542,7 @@ let mistX = 0;
 let fpsSmooth = 60;
 let uiSyncTimer = 0;
 let lowFpsTime = 0;
-let autoDropped = !!url.get('q');
+let autoDropped = !!url.get('q') || BENCH;
 
 function frame(dt) {
   if (!paused) time += dt;
@@ -652,10 +654,12 @@ function frame(dt) {
 }
 
 let last = performance.now();
+const bench = BENCH ? new Bench({ setQuality, renderer, getQuality: () => quality }) : null;
 function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   frame(dt);
+  bench?.onFrame(now);
   requestAnimationFrame(loop);
 }
 
@@ -698,5 +702,6 @@ if (MANUAL) {
   };
   frame(1 / 30);
 } else {
+  if (bench) bench.start(performance.now());
   requestAnimationFrame(loop);
 }
