@@ -51,7 +51,7 @@ export function pbr(set, { tint = [1, 1, 1], uvScale = 1, normalScale = 1, porou
   const orm = texture(set.orm, u);
   const wetDarken = mix(float(1), float(1 - porous * 0.45), env.wet);
   m.colorNode = texture(set.color, u).rgb.mul(vec3(...tint)).mul(wetDarken);
-  m.roughnessNode = clamp(mix(orm.g, orm.g.mul(0.35), env.wet), 0.05, 1);
+  m.roughnessNode = clamp(mix(orm.g, orm.g.mul(0.55), env.wet), 0.05, 1);
   m.metalnessNode = orm.b;
   m.aoNode = orm.r;
   m.normalNode = normalMap(texture(set.normal, u), vec2(normalScale));
@@ -94,7 +94,7 @@ export function leafMaterial(atlas, cellAttr) {
   const sway = vec3(sin(env.time.mul(1.3).add(ph)).mul(w), 0, sin(env.time.mul(1.1).add(ph.mul(1.3))).mul(w.mul(0.7)));
   const flutter = sin(env.time.mul(7).add(positionLocal.x.mul(3).add(positionLocal.z.mul(3)))).mul(0.03).mul(env.wind);
   m.positionNode = positionLocal.add(sway).add(vec3(flutter, flutter.mul(0.5), 0));
-  m.emissiveNode = c.rgb.mul(0.06); // faint translucency
+  m.emissiveNode = c.rgb.mul(0.06).mul(float(1).sub(env.night)); // faint translucency, daylight only
   return m;
 }
 

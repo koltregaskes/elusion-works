@@ -100,7 +100,7 @@ async function boot() {
       L.position.copy(s.pos);
       L.color.copy(s.col);
       L.distance = s.range * 1.6;
-      L.intensity = s.power * 2.2 * n * (1 - THREE.MathUtils.smoothstep(Math.sqrt(s.d2), far * 0.75, far));
+      L.intensity = s.power * 1.5 * n * (1 - THREE.MathUtils.smoothstep(Math.sqrt(s.d2), far * 0.75, far));
     });
   };
 
