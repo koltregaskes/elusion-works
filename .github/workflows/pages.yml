@@ -95,6 +95,8 @@ jobs:
           test -f _site/demos/hoover-dam/og-card.jpg
           test -f _site/demos/hoover-dam/teardown/index.html
           test -f _site/demos/hoover-dam/teardown/src/main.js
+          test -f _site/demos/_teardown-kit/stage.js
+          test -f _site/demos/_teardown-kit/materials.js
           test -f _site/demos/hoover-dam/teardown/thumbnail.webp
           test -f _site/demos/hoover-dam/vendor/addons/postprocessing/GTAOPass.js
           test -f _site/demos/abyssal-relay/index.html

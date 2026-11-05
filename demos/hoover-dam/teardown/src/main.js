@@ -3,7 +3,7 @@
 // The operation log is a script of operator beats; it plays itself, can be scrubbed,
 // and hands control to the visitor on any input (25 s of quiet hands it back).
 import * as THREE from 'three';
-import { Stage, ACCENT } from './stage.js';
+import { Stage, ACCENT } from '../../../_teardown-kit/stage.js';
 import { StudyModel } from './model3d.js';
 import { FrancisUnit } from './francis.js';
 import { createState, step, UNIT_IDS, thrustMN } from '../../src/model/hydro.js';

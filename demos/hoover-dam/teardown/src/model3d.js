@@ -7,8 +7,9 @@ import { terrainHeight, DAM, damSection, elevToY, SPILL } from '../../src/scene/
 import { buildStructures } from '../../src/scene/dam.js';
 import { Tracers, Particles } from '../../src/scene/particles.js';
 import { ELEV } from '../../src/model/data.js';
-import { INK, ACCENT } from './stage.js';
-import { addDetails, MAT } from './details.js';
+import { INK, ACCENT } from '../../../_teardown-kit/stage.js';
+import { MAT, addInk as ink } from '../../../_teardown-kit/materials.js';
+import { addDetails } from './details.js';
 
 export const BOX = { x: 300, z0: -400, z1: 380, base: -48, step: 9 };
 const CELL = 2;
@@ -25,13 +26,6 @@ export function hq(x, z) {
   return BOX.step * (L + sstep(0.74, 1, f));
 }
 
-function ink(mesh, threshold = 30, opacity = 0.55) {
-  const e = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, threshold), new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity }));
-  e.userData.ink = true;
-  e.raycast = () => {};
-  mesh.add(e);
-  return e;
-}
 
 // ---------------------------------------------------------------------------
 const clayVert = (sh) => {

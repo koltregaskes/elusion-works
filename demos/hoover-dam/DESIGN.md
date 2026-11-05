@@ -129,3 +129,5 @@ switches between them.
 - **Callouts:** orange dot, elbow leader, two-line mono label; the set changes with the
   isolated assembly.
 - Deep links: `?t=13.5` (film time), `?q=0|1|2`, `?pause`, `?clean`, `?notour`.
+- **Shared kit:** the stage and the material palette live in `demos/_teardown-kit/` so the next
+  teardown machine reuses them; the Hoover page imports them from there.
