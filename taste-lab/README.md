@@ -38,6 +38,10 @@ Each generator page draws every combination from one URL hash: `candidates/dashb
 1. **It keeps tokens low.** One layout crossed with four themes gives four candidates for the cost of one.
 2. **Every vote scores the parts.** Because each candidate is tagged with its factors, a pick also counts as a win for its layout, palette, type, density or motion curve wherever the pair differs. The "What it learned" tab shows those win rates.
 
+## Quick round
+
+The lab opens on **Quick round**: 20 pairs mixed across every category, always serving the least-judged category next, then a summary of what the round covered. It is the fastest way to give every category data. The category tabs are still there for focused sessions.
+
 ## How the ranking works
 
 - Elo, K = 24, starting at 1000.
