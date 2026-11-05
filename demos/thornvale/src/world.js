@@ -102,8 +102,9 @@ export class Atmosphere {
     this.fog.color.copy(fogNight).lerp(fogDay, day);
     if (this.weather === 'rain' || this.weather === 'mist') this.fog.color.lerp(new THREE.Color().setRGB(0.5, 0.53, 0.56).multiplyScalar(0.25 + 0.75 * day), 0.6);
     this.fog.density = W[2];
-    this.renderer.toneMappingExposure = 0.55 + night * 0.9;
-    this.scene.environmentIntensity = 0.25 + 0.4 * day;
+    // overcast rain: the cloud-white sky would otherwise flood the image-based light and wet reflections
+    this.renderer.toneMappingExposure = (0.55 + night * 0.9) * (1 - 0.35 * this.rain);
+    this.scene.environmentIntensity = (0.25 + 0.4 * day) * (1 - 0.45 * this.rain);
     this.wetTarget = this.rain;
     env.wet.value += (this.wetTarget - env.wet.value) * (force ? 1 : 0.003);
     env.wind.value = 0.7 + this.cloud * 0.8 + this.rain * 1.2;
@@ -147,7 +148,7 @@ export function terrainMaterial(tex, maskTex) {
   const grassy = float(1).sub(wDirt).mul(float(1).sub(wRock)).mul(float(1).sub(wCob)).mul(float(1).sub(wFlag));
   const wet = env.wet;
   m.colorNode = L.c.mul(mix(vec3(1), tint, grassy)).mul(mix(float(1), float(0.62), wet));
-  m.roughnessNode = clamp(mix(L.o.g, L.o.g.mul(0.3), wet.mul(float(1).sub(grassy.mul(0.6)))), 0.04, 1);
+  m.roughnessNode = clamp(mix(L.o.g, L.o.g.mul(0.5), wet.mul(float(1).sub(grassy.mul(0.6)))), 0.04, 1);
   m.aoNode = L.o.r;
   m.metalnessNode = float(0);
   m.normalNode = normalMap(L.n);
