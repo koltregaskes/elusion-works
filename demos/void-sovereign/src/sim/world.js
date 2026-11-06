@@ -493,6 +493,7 @@ export class World {
     if (ai.player === true) {
       this._commanders.push(new Commander(this, 0, {
         difficulty: ai.playerDifficulty || baseDifficulty,
+        personality: ai.playerPersonality,
       }));
     }
   }
