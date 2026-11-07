@@ -389,12 +389,13 @@ export function buildTown(scene, kitData, ground, opts = {}) {
   // shadow cascades together. A near tile holds its detailed trees and a
   // matching set of cheap stand-ins (same place, colour and rough size); past
   // LOD_FAR the stand-ins show instead. Only tiles near the camera cast shadows.
+  // Tiles are 100 m near the town and 250 m for the far forest.
   const STAND_IN = { tree_pine_0: ['tree_far_pine', 1.0], tree_pine_1: ['tree_far_pine', 1.29], tree_oak_0: ['tree_far_oak', 1.0], tree_oak_1: ['tree_far_oak', 1.2], tree_oak_2: ['tree_far_oak', 0.85] };
   const tileMap = new Map();
   const _tp = new THREE.Vector3();
   for (const [name, list] of Object.entries(trees)) {
     const farKind = name.startsWith('tree_far');
-    const size = farKind ? 250 : 80;
+    const size = farKind ? 250 : 100;
     for (const t of list) {
       _tp.setFromMatrixPosition(t.m);
       const i = Math.floor(_tp.x / size);
@@ -442,7 +443,8 @@ export function buildTown(scene, kitData, ground, opts = {}) {
         for (const b of t.near) b.setVisible(!lod);
         for (const b of t.stand) b.setVisible(lod);
       }
-      const shadow = d < (t.far ? 320 : 220);
+      // to the far edge of the shadow cascades (420 m); past 230 m these are the cheap stand-ins
+      const shadow = d < (t.far ? 320 : 420);
       if (shadow !== t.shadow) {
         t.shadow = shadow;
         for (const b of t.all) b.setShadow(shadow);
