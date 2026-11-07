@@ -43,6 +43,27 @@ An Unreal Engine 5 route for the same town is in `unreal/`.
   from one atlas, chosen per tree), cypresses, two pines and bushes.
   Leaves sway in the wind in the shader.
 
+### Performance
+
+- **Forest tiles:** the 10,758 trees are split into 100 m tiles near the town
+  and 250 m tiles for the far forest. Off-screen tiles are skipped, in the
+  main view and in each shadow cascade.
+- **Stand-ins:** each near tile also holds cheap stand-in trees (about 50
+  triangles each) in the same spots and colours. A tile shows its stand-ins
+  instead of its detailed trees when its centre is more than about 230 m from
+  the camera.
+- **Shadows:** tiles cast shadows only within the shadow range (420 m for
+  near tiles, 320 m for the far forest).
+- **One leaf material:** all trees share it. Each batch carries its colour as
+  a geometry attribute.
+- **Grass:** skipped when the camera is more than 45 m above the ground.
+- **Measured** in headless software rendering, the seven flyover shots at
+  golden hour:
+  - before: 22.1 to 22.9 million triangles a frame;
+  - after: 8.4 to 10.6 million, roughly 55 to 63% fewer.
+  - Draw calls rose from about 1,000 to about 1,500.
+  - Real-GPU frame rate is still to be measured.
+
 ### Lighting and weather
 
 - `SkyMesh` (physical sky with clouds) drives the sky and, through a cube
