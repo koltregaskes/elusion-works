@@ -262,9 +262,12 @@ async function boot() {
     }
     atmo.apply();
     grass.update(camera);
+    // blades are only drawn within ~35 m; from high up they are sub-pixel, so skip them
+    grass.mesh.visible = camera.position.y - ground.sample(camera.position.x, camera.position.z) < 45;
     rain.cam.value.copy(camera.position);
     rain.amount.value = atmo.rain;
     updatePool();
+    town.updateForest(camera.position);
     if (atmo.csm) atmo.csm.updateFrustums?.();
     pipeline.render();
     frames++;
@@ -297,6 +300,7 @@ async function boot() {
       camera.lookAt(look);
       $('#fade').style.opacity = 0;
       updatePool(true);
+      town.updateForest(camera.position);
     },
     walkPose(x, z, heading, camYaw) {
       frozen = false;
