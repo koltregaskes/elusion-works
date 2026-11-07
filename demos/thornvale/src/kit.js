@@ -5,7 +5,7 @@ import * as THREE from '../../_shared/three-r187/build/three.webgpu.js';
 import { GLTFLoader } from '../../_shared/three-r187/addons/loaders/GLTFLoader.js';
 import {
   Fn, vec2, vec3, float, uniform, texture, uv, positionWorld, positionLocal, normalMap, clamp, mix, step, hash, floor,
-  sin, instancedBufferAttribute, attribute, smoothstep, fract, dot, vec4,
+  sin, instancedBufferAttribute, attribute, smoothstep, fract, dot, vec4, cameraPosition, normalize, pow, max,
 } from '../../_shared/three-r187/build/three.tsl.js';
 
 export const env = {
@@ -13,6 +13,8 @@ export const env = {
   night: uniform(0), // 0 day .. 1 night
   wet: uniform(0), // 0 dry .. 1 soaked
   wind: uniform(1),
+  sunDir: uniform(new THREE.Vector3(0, 1, 0)), // towards the sun
+  sunCol: uniform(new THREE.Color(0, 0, 0)), // sun colour times strength (0 at night, dim in cloud)
 };
 
 const SETS = ['ashlar', 'rubble', 'plaster', 'timber', 'roofclay', 'roofslate', 'cobbles', 'flagstone', 'grass', 'dirt', 'rock', 'bark', 'planks'];
@@ -97,7 +99,11 @@ export function leafMaterial(atlas, cellAttr) {
   const sway = vec3(sin(env.time.mul(1.3).add(ph)).mul(w), 0, sin(env.time.mul(1.1).add(ph.mul(1.3))).mul(w.mul(0.7)));
   const flutter = sin(env.time.mul(7).add(positionLocal.x.mul(3).add(positionLocal.z.mul(3)))).mul(0.03).mul(env.wind);
   m.positionNode = positionLocal.add(sway).add(vec3(flutter, flutter.mul(0.5), 0));
-  m.emissiveNode = c.rgb.mul(0.06).mul(float(1).sub(env.night)); // faint translucency, daylight only
+  // translucency: a faint glow all day, and a strong forward-scatter glow when
+  // looking towards the sun through the leaves (backlit foliage)
+  const toFrag = normalize(positionWorld.sub(cameraPosition));
+  const scatter = pow(max(dot(toFrag, env.sunDir), 0), 6);
+  m.emissiveNode = c.rgb.mul(float(0.06).mul(float(1).sub(env.night)).add(scatter.mul(env.sunCol).mul(0.09)));
   return m;
 }
 
