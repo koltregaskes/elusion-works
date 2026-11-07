@@ -374,13 +374,10 @@ export function buildTown(scene, kitData, ground, opts = {}) {
   }
 
   // ------------------------------------------------------------------ batches
-  const leafMats = new Map();
-  const materialFor = (p, attrs) => {
-    if (p.matName !== 'Leaves') return null;
-    const key = attrs.cell ? 'cell' : 'plain';
-    if (!leafMats.has(key)) leafMats.set(key, leafMaterial(tex.leaves, attrs.cell || null));
-    return attrs.cell ? leafMaterial(tex.leaves, attrs.cell) : leafMats.get(key);
-  };
+  // one leaf material for every tree: each batch carries its own 'cell'
+  // attribute (green, orange, gold) on its geometry
+  const leafMat = leafMaterial(tex.leaves, 'geometry');
+  const materialFor = (p) => (p.matName === 'Leaves' ? leafMat : null);
   let instances = 0;
   for (const [name, list] of placements) {
     const b = new Batch(kit.get(name), list.length, scene);
@@ -388,14 +385,70 @@ export function buildTown(scene, kitData, ground, opts = {}) {
     b.commit();
     instances += list.length;
   }
+  // the forest in square tiles, so whole tiles drop out of view and out of the
+  // shadow cascades together. A near tile holds its detailed trees and a
+  // matching set of cheap stand-ins (same place, colour and rough size); past
+  // LOD_FAR the stand-ins show instead. Only tiles near the camera cast shadows.
+  const STAND_IN = { tree_pine_0: ['tree_far_pine', 1.0], tree_pine_1: ['tree_far_pine', 1.29], tree_oak_0: ['tree_far_oak', 1.0], tree_oak_1: ['tree_far_oak', 1.2], tree_oak_2: ['tree_far_oak', 0.85] };
+  const tileMap = new Map();
+  const _tp = new THREE.Vector3();
   for (const [name, list] of Object.entries(trees)) {
-    if (!list.length) continue;
-    const isOak = name.startsWith('tree_oak') || name === 'bush_0' || name === 'tree_far_oak';
-    const b = new Batch(kit.get(name), list.length, scene, { attrs: isOak ? ['cell'] : [], materialFor });
-    for (const t of list) b.add(t.m, isOak ? { cell: t.cell } : {});
-    b.commit();
-    instances += list.length;
+    const farKind = name.startsWith('tree_far');
+    const size = farKind ? 250 : 80;
+    for (const t of list) {
+      _tp.setFromMatrixPosition(t.m);
+      const i = Math.floor(_tp.x / size);
+      const j = Math.floor(_tp.z / size);
+      const key = `${farKind ? 'f' : 'n'}:${i}:${j}`;
+      if (!tileMap.has(key)) tileMap.set(key, { x: (i + 0.5) * size, z: (j + 0.5) * size, far: farKind, lists: {} });
+      (tileMap.get(key).lists[name] ||= []).push(t);
+    }
   }
+  const treeBatch = (name, list) => {
+    const b = new Batch(kit.get(name), list.length, scene, { attrs: ['cell'], geomAttrs: true, materialFor });
+    for (const t of list) b.add(t.m, { cell: t.cell });
+    b.commit();
+    return b;
+  };
+  const forest = [];
+  for (const tile of tileMap.values()) {
+    const near = [];
+    const stand = [];
+    const always = [];
+    const standLists = {};
+    for (const [name, list] of Object.entries(tile.lists)) {
+      instances += list.length;
+      if (!STAND_IN[name]) {
+        always.push(treeBatch(name, list));
+        continue;
+      }
+      near.push(treeBatch(name, list));
+      const [fname, sc] = STAND_IN[name];
+      const sm = new THREE.Matrix4().makeScale(sc, sc, sc);
+      (standLists[fname] ||= []).push(...list.map((t) => ({ m: t.m.clone().multiply(sm), cell: t.cell })));
+    }
+    for (const [fname, list] of Object.entries(standLists)) stand.push(treeBatch(fname, list));
+    for (const b of stand) b.setVisible(false);
+    forest.push({ x: tile.x, z: tile.z, far: tile.far, near, stand, all: [...near, ...stand, ...always], lod: null, shadow: null });
+  }
+  const LOD_FAR = 230; // metres from the camera to a tile's centre
+  const HYST = 20;
+  const updateForest = (cam) => {
+    for (const t of forest) {
+      const d = Math.hypot(cam.x - t.x, cam.y - TOWN.base, cam.z - t.z);
+      const lod = t.lod ? d > LOD_FAR - HYST : d > LOD_FAR + HYST;
+      if (lod !== t.lod) {
+        t.lod = lod;
+        for (const b of t.near) b.setVisible(!lod);
+        for (const b of t.stand) b.setVisible(lod);
+      }
+      const shadow = d < (t.far ? 320 : 220);
+      if (shadow !== t.shadow) {
+        t.shadow = shadow;
+        for (const b of t.all) b.setShadow(shadow);
+      }
+    }
+  };
 
   // every placed instance, for rebuilding the level elsewhere (Unreal)
   const layout = [];
@@ -420,6 +473,7 @@ export function buildTown(scene, kitData, ground, opts = {}) {
     houses,
     stalls,
     gate: { x: gx, z: gz },
-    stats: { instances, houses: houses.length, trees: Object.values(trees).reduce((a, l) => a + l.length, 0), lights: lights.length },
+    updateForest,
+    stats: { instances, tiles: forest.length, houses: houses.length, trees: Object.values(trees).reduce((a, l) => a + l.length, 0), lights: lights.length },
   };
 }

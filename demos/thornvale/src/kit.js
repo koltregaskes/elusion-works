@@ -5,7 +5,7 @@ import * as THREE from '../../_shared/three-r187/build/three.webgpu.js';
 import { GLTFLoader } from '../../_shared/three-r187/addons/loaders/GLTFLoader.js';
 import {
   Fn, vec2, vec3, float, uniform, texture, uv, positionWorld, positionLocal, normalMap, clamp, mix, step, hash, floor,
-  sin, instancedBufferAttribute, smoothstep, fract, dot, vec4,
+  sin, instancedBufferAttribute, attribute, smoothstep, fract, dot, vec4,
 } from '../../_shared/three-r187/build/three.tsl.js';
 
 export const env = {
@@ -75,9 +75,12 @@ const TEXTURED = {
 
 // Leaf cards: alpha-tested atlas, per-instance colour cell, wind sway, and a
 // little light let through from behind.
+// cellAttr: 'geometry' reads a per-instance 'cell' attribute from the mesh's own
+// geometry, so one material serves every tree batch; an attribute object binds
+// that attribute; nothing means green.
 export function leafMaterial(atlas, cellAttr) {
   const m = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide, alphaTest: 0.5, transparent: false });
-  const cell = cellAttr ? instancedBufferAttribute(cellAttr) : float(0);
+  const cell = cellAttr === 'geometry' ? attribute('cell', 'float') : cellAttr ? instancedBufferAttribute(cellAttr) : float(0);
   // 0 green (no shift), 1 autumn orange (+u), 2 golden yellow (+v)
   const off = vec2(step(0.5, cell).mul(step(cell, 1.5)).mul(0.5), step(1.5, cell).mul(0.5));
   const isFir = step(0.5, uv().x).mul(step(0.5, uv().y)); // the fir cell never shifts
@@ -174,15 +177,29 @@ export async function loadKit(base, onProgress) {
 }
 
 // One batch of instances of a template: one InstancedMesh per part.
+// A geometry that shares the template's buffers and adds per-instance attributes.
+function shareGeometry(src, attrs) {
+  const g = new THREE.BufferGeometry();
+  g.setIndex(src.index);
+  for (const [k, a] of Object.entries(src.attributes)) g.setAttribute(k, a);
+  for (const [k, a] of Object.entries(attrs)) g.setAttribute(k, a);
+  if (!src.boundingSphere) src.computeBoundingSphere();
+  if (!src.boundingBox) src.computeBoundingBox();
+  g.boundingSphere = src.boundingSphere;
+  g.boundingBox = src.boundingBox;
+  return g;
+}
+
 export class Batch {
-  constructor(template, capacity, scene, { attrs = [], materialFor = null, dynamic = false, shadows = true } = {}) {
+  constructor(template, capacity, scene, { attrs = [], geomAttrs = false, materialFor = null, dynamic = false, shadows = true } = {}) {
     this.count = 0;
     this.capacity = Math.max(1, capacity);
     this.attrs = {};
     for (const a of attrs) this.attrs[a] = new THREE.InstancedBufferAttribute(new Float32Array(this.capacity), 1);
     this.meshes = template.parts.map((p) => {
       const mat = (materialFor && materialFor(p, this.attrs)) || p.material;
-      const m = new THREE.InstancedMesh(p.geometry, mat, this.capacity);
+      const geo = geomAttrs ? shareGeometry(p.geometry, this.attrs) : p.geometry;
+      const m = new THREE.InstancedMesh(geo, mat, this.capacity);
       m.count = 0;
       m.userData.local = p.matrix;
       m.castShadow = shadows;
@@ -207,6 +224,14 @@ export class Batch {
     }
     for (const [k, v] of Object.entries(values)) this.attrs[k]?.setX(i, v);
     return i;
+  }
+
+  setVisible(v) {
+    for (const m of this.meshes) m.visible = v;
+  }
+
+  setShadow(v) {
+    for (const m of this.meshes) m.castShadow = v;
   }
 
   commit() {
