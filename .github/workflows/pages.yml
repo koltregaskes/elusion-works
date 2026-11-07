@@ -77,11 +77,26 @@ jobs:
           test -f _site/design-notes/index.html
           test -f _site/demos/index.html
           test -f _site/demos/exploded-views/index.html
+          test -f _site/demos/windfield/index.html
+          test -f _site/demos/windfield/vendor/three/build/three.module.js
           test -f _site/demos/exploded-views/laptop.html
           test -f _site/demos/exploded-views/solar.html
           test -f _site/demos/exploded-views/engine.html
           test -f _site/demos/exploded-views/ui.css
           test -f _site/demos/exploded-views/thumbnail.webp
+          test -f _site/demos/hoover-dam/index.html
+          test -f _site/demos/hoover-dam/styles.css
+          test -f _site/demos/hoover-dam/src/app.js
+          test -f _site/demos/hoover-dam/src/engine.js
+          test -f _site/demos/hoover-dam/vendor/three.module.min.js
+          test -f _site/demos/hoover-dam/vendor/three.core.min.js
+          test -f _site/demos/hoover-dam/vendor/addons/controls/OrbitControls.js
+          test -f _site/demos/hoover-dam/thumbnail.webp
+          test -f _site/demos/hoover-dam/og-card.jpg
+          test -f _site/demos/hoover-dam/teardown/index.html
+          test -f _site/demos/hoover-dam/teardown/src/main.js
+          test -f _site/demos/hoover-dam/teardown/thumbnail.webp
+          test -f _site/demos/hoover-dam/vendor/addons/postprocessing/GTAOPass.js
           test -f _site/demos/abyssal-relay/index.html
           test -f _site/demos/abyssal-relay/styles.css
           test -f _site/demos/abyssal-relay/app.js
@@ -134,6 +149,7 @@ jobs:
           grep -q 'exploded-views/' _site/demos/index.html
           grep -q 'nexus-aetherial/' _site/demos/index.html
           grep -q 'solar-system-field-lab/' _site/demos/index.html
+          grep -q 'hoover-dam/' _site/demos/index.html
           # d6 front-door section markers (replaced legacy *-grid and showcase/launch-card IDs)
           grep -q 'id="sites"' _site/index.html
           grep -q 'id="tools"' _site/index.html

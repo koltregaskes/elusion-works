@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Windfield | Elusion Works</title>
+    <meta
+      name="description"
+      content="Windfield is a real-time meadow in the browser: a lone oak, hundreds of thousands of grass blades and a wind you can see rolling across the field. Seven moods, every dial exposed."
+    />
+    <meta name="theme-color" content="#0c0a08" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta name="color-scheme" content="dark" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data: blob:; media-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
+    />
+    <link rel="canonical" href="https://elusionworks.com/demos/windfield/" />
+    <meta property="og:title" content="Windfield | Elusion Works" />
+    <meta
+      property="og:description"
+      content="A real-time meadow in WebGL. Grass that moves in visible gusts, a lone oak, and seven moods from dawn mist to a Bonfire Night stone circle."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://elusionworks.com/demos/windfield/" />
+    <meta property="og:image" content="https://elusionworks.com/demos/windfield/thumbnail.webp" />
+    <meta property="og:image:alt" content="A lone oak in a wind-blown meadow at golden hour." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Windfield | Elusion Works" />
+    <meta name="twitter:description" content="A real-time meadow in WebGL, with wind you can watch." />
+    <meta name="twitter:image" content="https://elusionworks.com/demos/windfield/thumbnail.webp" />
+    <link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <canvas id="scene" aria-label="A live 3D meadow. Drag to look around, WASD to move." role="img"></canvas>
+
+    <div class="wf-ui">
+      <header class="wf-top">
+        <a class="wf-brand" href="../" aria-label="Back to Elusion Works demos">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <path d="M3 9c3-3 6 3 9 0s6 3 9 0M3 15c3-3 6 3 9 0s6 3 9 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+          </svg>
+          <span>
+            <strong>Field <i>/</i> Meadow</strong>
+            <small>Wind studio · 02</small>
+          </span>
+        </a>
+        <div class="wf-top-right">
+          <span class="wf-live wf-mono"><span class="wf-dot"></span>Live WebGL</span>
+          <button class="wf-icon" type="button" data-toggle-panel aria-label="Show or hide the controls">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
+          </button>
+        </div>
+      </header>
+
+      <section class="wf-hero" data-hero aria-live="polite">
+        <span class="wf-eyebrow wf-mono" data-eyebrow></span>
+        <h1 data-title></h1>
+        <p data-sub></p>
+      </section>
+
+      <aside class="wf-panel" aria-label="Scene controls">
+        <div class="wf-panel-head">
+          <div>
+            <span class="wf-eyebrow wf-mono">Your field</span>
+            <h2>Make it your own</h2>
+          </div>
+          <button class="wf-icon wf-icon-plain" type="button" data-reset aria-label="Reset to this preset" title="Reset to this preset">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4.5h4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+          </button>
+        </div>
+        <div class="wf-tabs" role="tablist" data-tabs></div>
+        <div class="wf-panel-body" data-panel-body></div>
+        <div class="wf-panel-foot">
+          <label for="wf-quality">Quality</label>
+          <select id="wf-quality" data-quality>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="ultra">Ultra</option>
+          </select>
+        </div>
+        <p class="wf-note">Every blade is bent on the GPU by one shared wind field, so gusts travel visibly across the meadow and through the oak.</p>
+      </aside>
+
+      <footer class="wf-bottom">
+        <div class="wf-fps wf-mono"><span class="wf-dot"></span><span data-fps>-- FPS</span><span class="wf-sep"></span><span data-preset-name></span></div>
+        <nav class="wf-presets" data-presets aria-label="Moods"></nav>
+        <div class="wf-actions">
+          <button class="wf-icon" type="button" data-sound aria-pressed="false" aria-label="Wind sound" title="Wind sound">
+            <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M4 10h4l5-4v12l-5-4H4zM16 9c1.5 1.5 1.5 4.5 0 6M18.5 7c2.6 2.8 2.6 7.2 0 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+          </button>
+          <button class="wf-icon" type="button" data-camera aria-pressed="true" aria-label="Cinematic camera">
+            <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M4 8h11v8H4zM15 11l5-3v8l-5-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" /></svg>
+          </button>
+          <button class="wf-icon" type="button" data-shot aria-label="Save a still" title="Save a still">
+            <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M4 8h3l2-2h6l2 2h3v11H4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" /><circle cx="12" cy="13" r="3.2" fill="none" stroke="currentColor" stroke-width="1.5" /></svg>
+          </button>
+          <button class="wf-icon" type="button" data-pause aria-pressed="false" aria-label="Pause">
+            <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M9 6v12M15 6v12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
+          </button>
+          <button class="wf-icon" type="button" data-fullscreen aria-label="Full screen">
+            <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg>
+          </button>
+        </div>
+        <p class="wf-hints wf-mono">
+          <span>Drag to look around</span><span>WASD move</span><span>Q / E height</span><span>F cinematic camera</span><span>1 to 7 moods</span><span>H interface</span>
+        </p>
+      </footer>
+    </div>
+
+    <div class="wf-loading" aria-hidden="true"><span>Growing the field</span></div>
+    <div class="wf-fallback" role="alert">
+      <p>Windfield needs WebGL 2, which this browser has switched off.</p>
+      <a href="../">Back to the demos</a>
+    </div>
+    <noscript><div class="wf-fallback wf-fallback-show"><p>Windfield runs entirely in JavaScript. Switch it on to see the field.</p></div></noscript>
+
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>
