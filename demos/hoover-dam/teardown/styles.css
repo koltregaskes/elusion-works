@@ -180,7 +180,7 @@ input[type=range]::-moz-range-thumb { width: 9px; height: 9px; border-radius: 50
 body.clean .topbar, body.clean .col, body.clean .ctl, body.clean .mode, body.clean .oplog, body.clean .footline, body.clean .frame-label, body.clean #callouts, body.clean #leaders { display: none !important; }
 
 @media (max-width: 1280px) { .meta > div:nth-child(4) { display: none; } .load { width: 180px; } }
-@media (max-width: 1100px) { .col.left, .ctl { display: none; } .mode { left: 24px; } .frame-label.l { left: 24px; } .meta { display: none; } }
+@media (max-width: 1100px) { .styles > * { white-space: nowrap; } .ttl { min-width: 0; } .ttl .k { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .col.left, .ctl { display: none; } .mode { left: 24px; } .frame-label.l { left: 24px; } .meta { display: none; } }
 @media (max-width: 760px) {
   .col.right { display: none; } .load { display: none; } .ttl { min-width: 0; }
   .oplog { width: calc(100% - 20px); bottom: 34px; } .mode { bottom: 128px; } .mode b { font-size: 26px; }
