@@ -286,6 +286,21 @@ const pool = Array.from({ length: 6 }, () => {
   const pl = document.createElementNS(SVGNS, 'polyline'); const dot = document.createElementNS(SVGNS, 'circle'); dot.setAttribute('r', 3); svgL.append(pl, dot);
   return { div, pl, dot, sx: null, sy: null };
 });
+// free band between the side columns (whole width when they are hidden on small screens);
+// measured once per resize so the callouts never force a layout pass per frame
+let bandCache = null;
+addEventListener('resize', () => { bandCache = null; });
+// the columns appear after boot and change size with the media queries: re-measure when they do
+if (window.ResizeObserver) { const ro = new ResizeObserver(() => { bandCache = null; }); document.querySelectorAll('.col').forEach((c) => ro.observe(c)); }
+function bands() {
+  if (bandCache) return bandCache;
+  const colL = $('.col.left'), colR = $('.col.right'), W = innerWidth;
+  // a side column is taller than it is wide; on phones the right column becomes a short strip
+  const rect = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > r.width ? r : null; };
+  const rl = rect(colL), rr = rect(colR);
+  bandCache = { LL: rl ? rl.right + 8 : 10, RL: rr ? rr.left - 8 : W - 10 };
+  return bandCache;
+}
 function drawCallouts() {
   const set = S.look === 'cut' ? [] : (CALLS[S.focus === null ? 'hero' : S.focus] || []);
   const W = innerWidth, H = innerHeight;
@@ -301,15 +316,20 @@ function drawCallouts() {
     const A = want[a], B = want[b]; if (!A || !B || A.side !== B.side) continue;
     if (Math.abs(A.tx - B.tx) < 150 && Math.abs(A.ty - B.ty) < 30) { const d = (30 - Math.abs(A.ty - B.ty)) / 2, s = A.ty <= B.ty ? -1 : 1; A.ty += s * d; B.ty -= s * d; }
   }
+  const { LL, RL } = bands();
   pool.forEach((p, i) => {
     const c = set[i];
     if (!c) { p.div.style.display = 'none'; p.pl.style.display = p.dot.style.display = 'none'; p.sx = null; return; }
-    const { x, y, side, tx, ty } = want[i];
-    const ok = want[i].z < 1 && x > 230 && x < W - 230 && y > 100 && y < H - 150;
+    const { x, y, ty } = want[i];
+    let { side, tx } = want[i];
+    const ok = want[i].z < 1 && x > LL && x < RL && y > 100 && y < H - 150;
     p.div.style.display = ok ? '' : 'none'; p.pl.style.display = p.dot.style.display = ok ? '' : 'none';
     if (!ok) return;
-    p.sx = p.sx === null ? tx : p.sx + (tx - p.sx) * 0.2; p.sy = p.sy === null ? ty : p.sy + (ty - p.sy) * 0.2;
-    p.div.querySelector('b').textContent = c[1]; p.div.querySelector('span').textContent = c[2];
+    if (p.label !== c[1]) { p.label = c[1]; p.div.querySelector('b').textContent = c[1]; p.div.querySelector('span').textContent = c[2]; p.w = p.div.offsetWidth || 150; }
+    // keep the label in the gap between the side columns: flip it, or slide it inward
+    if (side > 0 && tx + 8 + p.w > RL) { if (x - 90 - 8 - p.w >= LL) { side = -1; tx = x - 90; } else tx = RL - 8 - p.w; }
+    else if (side < 0 && tx - 8 - p.w < LL) { if (x + 90 + 8 + p.w <= RL) { side = 1; tx = x + 90; } else tx = LL + 8 + p.w; }
+    p.sx = p.sx === null || p.side !== side ? tx : p.sx + (tx - p.sx) * 0.2; p.sy = p.sy === null ? ty : p.sy + (ty - p.sy) * 0.2; p.side = side;
     p.div.style.transform = `translate(${side > 0 ? p.sx + 8 : p.sx - 8}px, ${p.sy - 9}px) translateX(${side > 0 ? 0 : -100}%)`;
     p.div.style.textAlign = side > 0 ? 'left' : 'right';
     p.pl.setAttribute('points', `${x},${y} ${x + (p.sx - x) * 0.35},${p.sy} ${p.sx},${p.sy}`);
