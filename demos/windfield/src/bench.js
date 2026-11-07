@@ -44,6 +44,13 @@ export class Bench {
 
   onFrame(now) {
     if (this.phase === 'idle' || this.phase === 'done') return;
+    if (document.hidden) {
+      // A hidden tab stops rendering; start this level's warm-up again when it returns.
+      this.phase = 'warm';
+      this.phaseStart = now;
+      this.last = now;
+      return;
+    }
     const dt = now - this.last;
     this.last = now;
     if (this.phase === 'warm') {
@@ -55,7 +62,7 @@ export class Bench {
       return;
     }
     this.frames.push(dt);
-    if (now - this.phaseStart >= MEASURE_MS) {
+    if (now - this.phaseStart >= MEASURE_MS && this.frames.length >= 3) {
       const total = this.frames.reduce((a, b) => a + b, 0);
       const sorted = [...this.frames].sort((a, b) => a - b);
       const p95 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] || total;

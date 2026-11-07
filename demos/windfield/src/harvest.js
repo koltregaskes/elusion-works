@@ -1,5 +1,5 @@
 import * as THREE from '../vendor/three/build/three.module.js';
-import { heightAt } from './terrain.js';
+import { heightAtFast as heightAt } from './terrain.js';
 import { CutMask, fieldUniforms } from './field.js';
 import { Combine, Harvester } from './combine.js';
 import { makeRng } from './noise.js';
@@ -93,6 +93,7 @@ class Debris {
     this.life[i] = life;
     this.kind[i] = kind;
     this.size[i] = size;
+    this.static = true;
   }
 
   update(dt, wind) {
@@ -129,8 +130,11 @@ class Debris {
     }
     this.aPos.needsUpdate = true;
     this.aAge.needsUpdate = true;
-    this.aKind.needsUpdate = true;
-    this.aSize.needsUpdate = true;
+    if (this.static) {
+      this.aKind.needsUpdate = true;
+      this.aSize.needsUpdate = true;
+      this.static = false;
+    }
   }
 }
 
@@ -175,7 +179,7 @@ export class HarvestSystem {
   }
 
   setDriving(on) {
-    this.driver.mode = on ? 'drive' : 'auto';
+    this.driver.mode = on ? 'drive' : 'return';
     this.prevHeader = null;
     if (!on) {
       // Rejoin the autopilot from the nearest point on its route.

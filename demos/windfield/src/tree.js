@@ -281,8 +281,10 @@ function makeWoodMaterial() {
 }
 
 function makeLeafMaterial(tex) {
-  const mat = new THREE.MeshStandardMaterial({
-    map: tex, alphaTest: 0.5, alphaToCoverage: true, side: THREE.DoubleSide, roughness: 0.82, metalness: 0,
+  // Lambert, not Standard: leaves seen edge-on picked up Fresnel sky reflection and
+  // read as pale grey cards, and the diffuse-only model is cheaper on a canopy of cards.
+  const mat = new THREE.MeshLambertMaterial({
+    map: tex, alphaTest: 0.5, alphaToCoverage: true, side: THREE.DoubleSide,
   });
   mat.onBeforeCompile = (s) => {
     windInject(s, true);
@@ -305,7 +307,7 @@ function makeLeafMaterial(tex) {
         `float turn = smoothstep(vTint * 0.7, vTint * 0.7 + 0.3, uSeason);
         vec3 leafCol = mix(uLeafSummer, uLeafAutumn * mix(0.75, 1.2, fract(vTint * 17.0)), turn);
         leafCol *= 0.8 + fract(vTint * 53.0) * 0.4;
-        leafCol *= mix(0.35, 1.15, vAO);
+        leafCol *= mix(0.35, 1.15, vAO) * 1.55;
         vec4 diffuseColor = vec4( leafCol, opacity );`
       )
       .replace(

@@ -38,6 +38,7 @@ export const grassUniforms = {
   uClear1: { value: new THREE.Vector4(0, 0, 0, 0) },
   uSunViewDir: { value: new THREE.Vector3(0, 1, 0) },
   uSunTint: { value: new THREE.Color() },
+  uSkyFill: { value: new THREE.Color() },
   uFieldRadius: { value: 100 },
   uPatch: { value: new THREE.Vector4(0, 0, 52, 26) }, // centre x, centre z, size, radius
 };
@@ -167,8 +168,8 @@ function earGeometry() {
   const pos = [];
   const part = [];
   const idx = [];
-  const sides = 5;
-  const rings = 5;
+  const sides = 4;
+  const rings = 4;
   for (let r = 0; r <= rings; r++) {
     const t = r / rings;
     const rad = Math.pow(Math.sin(Math.PI * Math.min(0.98, 0.12 + t * 0.86)), 0.7);
@@ -186,8 +187,8 @@ function earGeometry() {
     }
   }
   // Awns: thin slivers fanning up from the top third.
-  for (let k = 0; k < 4; k++) {
-    const a = (k / 4) * Math.PI * 2 + 0.4;
+  for (let k = 0; k < 3; k++) {
+    const a = (k / 3) * Math.PI * 2 + 0.4;
     const base = pos.length / 3;
     const y0 = 0.6 + k * 0.08;
     pos.push(Math.cos(a) * 0.6, y0, Math.sin(a) * 0.6);
@@ -322,7 +323,9 @@ function headBody(kind) {
   ${ROOT_NEAR}
   ${SHARED_HEIGHT}
   ${ear ? `
-  float vis = uCrop * (1.0 - cut.x) * (1.0 - straw);
+  // Stalks that carry a flower head carry no ear.
+  float flowerStalk = float(gl_InstanceID) < uFlowerInstances ? step(pick, uFlowerAmount) : 0.0;
+  float vis = uCrop * (1.0 - cut.x) * (1.0 - straw) * (1.0 - flowerStalk);
   ` : `
   float vis = step(pick, uFlowerAmount) * (1.0 - cut.x) * (1.0 - straw);
   h *= 1.3;
@@ -361,7 +364,9 @@ function headBody(kind) {
 }
 
 function makeMaterial(kind) {
-  const mat = new THREE.MeshStandardMaterial({ roughness: 0.78, metalness: 0, side: THREE.DoubleSide });
+  // Lambert: grass is diffuse, and the blades are most of the pixels on screen, so the
+  // physically based specular path was the single largest fragment cost.
+  const mat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
   const head = kind === 'ear' || kind === 'flower';
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, windUniforms, grassUniforms, fieldUniforms);
@@ -383,6 +388,7 @@ function makeMaterial(kind) {
         uniform float uTranslucency;
         uniform vec3 uSunViewDir;
         uniform vec3 uSunTint;
+        uniform vec3 uSkyFill;
         varying vec3 vGrassCol;
         varying float vT;
         varying float vGust;`
@@ -393,18 +399,26 @@ function makeMaterial(kind) {
         '#include <emissivemap_fragment>',
         `#include <emissivemap_fragment>
         float back = pow(max(dot(normalize(-vViewPosition), uSunViewDir), 0.0), 4.0);
-        totalEmissiveRadiance += uSunTint * vGrassCol * uTranslucency * back * vT * vT * 1.15;`
+        totalEmissiveRadiance += uSunTint * vGrassCol * uTranslucency * back * vT * vT * 1.15;
+        // Cheap stand-in for the specular sheen a physically based material gave: blades
+        // seen at a glancing angle catch the sky. Most of the field is seen this way.
+        float graze = 1.0 - abs(dot(normal, normalize(vViewPosition)));
+        totalEmissiveRadiance += uSkyFill * (vGrassCol * 0.6 + 0.04) * graze * graze * vT;`
       );
   };
   mat.customProgramCacheKey = () => `windfield-grass-${kind}`;
   return mat;
 }
 
+// Near counts are sized for the patch lead (PATCH_LEAD): with the patch pushed ahead of
+// the camera, about 1.37x more of it is on screen, so 27% fewer blades give the same
+// visible density. Ears are the most expensive instances (a spindle plus awns), so they
+// ride on a smaller share of stalks; the golden blade tips carry the look beyond that.
 const QUALITY = {
-  low: { near: 110000, radius: 20, far: 45000, ears: 0.2, flowers: 0.1 },
-  medium: { near: 230000, radius: 24, far: 80000, ears: 0.3, flowers: 0.1 },
-  high: { near: 400000, radius: 27, far: 120000, ears: 0.4, flowers: 0.1 },
-  ultra: { near: 720000, radius: 32, far: 180000, ears: 0.5, flowers: 0.1 },
+  low: { near: 80000, radius: 20, far: 45000, ears: 0.18, flowers: 0.1 },
+  medium: { near: 170000, radius: 24, far: 80000, ears: 0.24, flowers: 0.1 },
+  high: { near: 290000, radius: 27, far: 120000, ears: 0.3, flowers: 0.1 },
+  ultra: { near: 525000, radius: 32, far: 180000, ears: 0.36, flowers: 0.1 },
 };
 
 export function buildGrass(quality) {
@@ -460,13 +474,16 @@ export function buildGrass(quality) {
   return group;
 }
 
-// Centre the near patch a little ahead of the camera, so most blades are in view.
+// Centre the near patch ahead of the camera so most blades are in view. At 0.7 of the
+// radius the camera still sits inside the fully dense zone, but far fewer blades are
+// spent behind it.
+const PATCH_LEAD = 0.7;
 const fwd = new THREE.Vector3();
 export function updateGrassPatch(camera) {
   camera.getWorldDirection(fwd);
   fwd.y = 0;
   if (fwd.lengthSq() > 1e-6) fwd.normalize();
   const r = grassUniforms.uPatch.value.w;
-  grassUniforms.uPatch.value.x = camera.position.x + fwd.x * r * 0.45;
-  grassUniforms.uPatch.value.y = camera.position.z + fwd.z * r * 0.45;
+  grassUniforms.uPatch.value.x = camera.position.x + fwd.x * r * PATCH_LEAD;
+  grassUniforms.uPatch.value.y = camera.position.z + fwd.z * r * PATCH_LEAD;
 }

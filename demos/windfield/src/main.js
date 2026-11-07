@@ -63,7 +63,7 @@ scene.add(monolith);
 const stones = buildStones();
 scene.add(stones);
 const bonfire = new Bonfire();
-scene.add(bonfire.group);
+scene.add(bonfire.group, bonfire.lightHolder);
 
 const mist = buildMist();
 scene.add(mist);
@@ -88,6 +88,9 @@ sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.04;
 scene.add(sun, sun.target);
 const hemi = new THREE.HemisphereLight('#a9c4e0', '#4a5a2a', 1);
+// Grass, leaves and ground are Lambert (no environment-map irradiance), so the sky fill
+// carries the ambient light the environment map used to add.
+const HEMI_FILL = 2.4;
 scene.add(hemi);
 
 // Environment map baked from the sky alone, refreshed while the sky is changing.
@@ -127,9 +130,12 @@ const shafts = new ShaderPass({
     void main(){
       vec4 base = texture2D(tDiffuse, vUv);
       if (uStrength <= 0.001) { gl_FragColor = base; return; }
-      const int N = 40;
+      // 24 jittered taps look like 40 even ones: the per-pixel offset turns banding into
+      // fine noise that the film grain pass hides.
+      const int N = 24;
       vec2 delta = (uSun - vUv) / float(N) * 0.92;
-      vec2 uv = vUv;
+      float jitter = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+      vec2 uv = vUv + delta * jitter;
       float illum = 0.0;
       float decay = 1.0;
       for (int i = 0; i < N; i++) {
@@ -138,7 +144,7 @@ const shafts = new ShaderPass({
         vec3 s = texture2D(tDiffuse, c).rgb;
         float l = max(dot(s, vec3(0.2126, 0.7152, 0.0722)) - 0.9, 0.0);
         illum += min(l, 6.0) * decay;
-        decay *= 0.962;
+        decay *= 0.936;
       }
       illum /= float(N);
       float reach = 1.0 - smoothstep(0.15, 1.1, length((vUv - uSun) * vec2(1.6, 1.0)));
@@ -284,7 +290,7 @@ function applyState() {
   sun.intensity = s.sunIntensity * above;
   hemi.color.copy(colours.hemiSky);
   hemi.groundColor.copy(colours.hemiGround);
-  hemi.intensity = s.hemiIntensity;
+  hemi.intensity = s.hemiIntensity * HEMI_FILL;
 
   skyUniforms.uZenith.value.copy(colours.skyZenith);
   skyUniforms.uHorizon.value.copy(colours.skyHorizon);
@@ -312,6 +318,7 @@ function applyState() {
 
   const tint = colours.sunColor.clone().multiplyScalar(Math.min(s.sunIntensity, 4) * 0.3 * (0.25 + above * 0.75));
   grassUniforms.uSunTint.value.copy(tint);
+  grassUniforms.uSkyFill.value.copy(colours.hemiSky).multiplyScalar(s.hemiIntensity * 0.9);
   treeUniforms.uSunTint.value.copy(tint);
   particleUniforms.uSunTint.value.copy(colours.sunColor).multiplyScalar(0.4 + s.sunIntensity * 0.25);
 
@@ -384,7 +391,7 @@ function updateLightning(dt) {
     }
   }
   skyUniforms.uFlash.value = flash.level * state.lightning;
-  hemi.intensity = state.hemiIntensity + flash.level * state.lightning * 2.5;
+  hemi.intensity = state.hemiIntensity * HEMI_FILL + flash.level * state.lightning * 2.5;
 }
 
 // ---------------------------------------------------------------- quality
@@ -674,6 +681,11 @@ if (MANUAL) {
       setPreset(i, instant);
       if (instant) rig.snapNext = true;
     },
+    set(key, value) {
+      state[key] = value;
+      envDirty = true;
+      applyState();
+    },
     look(x, y, z, tx, ty, tz) {
       rig.mode = 'free';
       camera.position.set(x, y, z);
@@ -682,7 +694,7 @@ if (MANUAL) {
     },
     combineAt() {
       const p = harvest.position;
-      return { x: p.x, z: p.z, heading: harvest.driver.heading };
+      return { x: p.x, z: p.z, heading: harvest.driver.heading, mode: harvest.driver.mode };
     },
     drive(on, throttle = 0, turn = 0) {
       if (on !== driving) setDriving(on);
