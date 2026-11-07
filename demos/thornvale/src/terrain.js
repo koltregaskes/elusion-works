@@ -218,7 +218,10 @@ export function mountainGeometry() {
       const lift = smooth(0.0, 0.35, t) * (1 - smooth(0.85, 1.0, t) * 0.3);
       // tallest to the north, behind the citadel
       const north = 0.55 + 0.45 * smooth(0.3, -1.0, Math.sin(a));
-      const h = j === 0 ? heightAt(x, z) - 1 : (ridge ** 2.2 * 1300 + fbm(x * 0.003, z * 0.003) * 160) * lift * north + heightAt(Math.cos(a) * r0, Math.sin(a) * r0) * (1 - lift);
+      // peak height grows with distance, so the range sits about 4-7 degrees above
+      // the horizon seen from the town: a distant ring, not a wall over the walls
+      const peak = r * 0.13;
+      const h = j === 0 ? heightAt(x, z) - 1 : (ridge ** 2.2 * peak + fbm(x * 0.003, z * 0.003) * peak * 0.12) * lift * north + heightAt(Math.cos(a) * r0, Math.sin(a) * r0) * (1 - lift);
       pos.push(x, h, z);
     }
   }
