@@ -1023,14 +1023,15 @@ def tree_cypress(name, seed, height=11.0):
     rng = random.Random(seed)
     mb = MB()
     mb.pipe((0, 0, 0), (0, 0, height * 0.9), 0.14, "Bark", 7)
-    n = int(height * 4)
+    # dense column of fir cards so it reads as a solid flame shape, not a post
+    n = int(height * 7)
     for k in range(n):
         t = k / n
         z = 0.8 + t * (height - 0.8)
-        rad = 0.9 * math.sin(min(1.0, t * 1.3 + 0.08) * math.pi) ** 0.8 * (1 - t * 0.35)
+        rad = 0.95 * math.sin(min(1.0, t * 1.3 + 0.08) * math.pi) ** 0.8 * (1 - t * 0.35)
         a = rng.random() * 6.28
-        c = Vector((math.cos(a) * rad * 0.4, math.sin(a) * rad * 0.4, z))
-        leaf_card(mb, c, 0.45 + rad * 0.35, rng, LEAF_CELLS["fir"], n=2)
+        c = Vector((math.cos(a) * rad * 0.45, math.sin(a) * rad * 0.45, z))
+        leaf_card(mb, c, 0.55 + rad * 0.42, rng, LEAF_CELLS["fir"], n=2)
     return mb.build(name)
 
 

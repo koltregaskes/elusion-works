@@ -226,7 +226,8 @@ export function mountainGeometry() {
     for (let i = 0; i < segs; i++) {
       const a = j * (segs + 1) + i;
       const b = a + segs + 1;
-      idx.push(a, b, a + 1, b, b + 1, a + 1);
+      // counter-clockwise seen from above, so the faces (and normals) point up
+      idx.push(a, a + 1, b, b, a + 1, b + 1);
     }
   }
   const g = new THREE.BufferGeometry();

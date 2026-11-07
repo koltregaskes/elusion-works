@@ -89,6 +89,8 @@ export class Atmosphere {
     const sunCol = new THREE.Color().setRGB(1.0, 0.92 - golden * 0.32, 0.82 - golden * 0.5);
     this.sun.color.copy(sunCol);
     this.sun.intensity = 4.4 * day * W[1];
+    env.sunDir.value.copy(dir);
+    env.sunCol.value.copy(sunCol).multiplyScalar(this.sun.intensity);
     this.sun.position.copy(dir).multiplyScalar(400);
     this.sun.target.position.set(0, 0, 0);
     const night = 1 - day;
@@ -131,6 +133,9 @@ export function terrainMaterial(tex, maskTex) {
     return { c: texture(set.color, u).rgb, o: texture(set.orm, u), n: texture(set.normal, u).rgb };
   };
   const g = lay(tex.grass, 5.0);
+  // break up the 5 m grass repeat with a second, rotated and larger sample under a noise mask
+  const g2 = texture(tex.grass.color, vec2(p.x.mul(0.8).sub(p.y.mul(0.6)), p.x.mul(0.6).add(p.y.mul(0.8))).div(13.7)).rgb;
+  g.c = mix(g.c, g2, smoothstep(0.3, 0.7, mx_noise_float(p.mul(0.045)).mul(0.5).add(0.5)).mul(0.65));
   const d = lay(tex.dirt, 3.5);
   const r = lay(tex.rock, 10.0);
   const cb = lay(tex.cobbles, 2.4);
