@@ -1216,6 +1216,12 @@ export function createLevel(scene, materials, game) {
    * Anything drawn more than eight times goes through here: one geometry upload, one draw
    * call, per-instance transform and per-instance colour so the repetition never reads.
    */
+  /**
+   * Instanced sets whose shadow is not worth a cascade submission: flat-lying or sub-texel
+   * scatter. Anything that stands proud enough to throw a readable shadow stays out of this.
+   */
+  const NO_CAST_SETS = new Set(['stone', 'litter', 'tuft', 'bird', 'offcut', 'weed', 'sleeper']);
+
   function inst(key, matName, buildFn) {
     let set = instanceSets.get(key);
     if (!set) {
@@ -7372,7 +7378,11 @@ export function createLevel(scene, materials, game) {
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     if (key === 'chainLink') mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    mesh.castShadow = true;
+    // Ground scatter does not cast. A ballast stone is 16 triangles lying on the ballast;
+    // at the shipping cascade resolution its shadow is a fraction of a texel, so submitting it
+    // to every cascade costs its whole triangle count once per cascade and returns nothing the
+    // player can resolve. These sets still RECEIVE shadow, which is the half that reads.
+    mesh.castShadow = !NO_CAST_SETS.has(key);
     mesh.receiveShadow = true;
     mesh.name = `level:inst:${key}`;
     mesh.computeBoundingSphere();
