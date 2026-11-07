@@ -7,7 +7,7 @@ export { MAT };
 
 function ringsAlong(curve, every, r, tube, mat, startT = 0.04, endT = 0.97) {
   const L = curve.getLength(), n = Math.max(2, Math.floor(L / every));
-  const geo = new THREE.TorusGeometry(r, tube, 8, 28);
+  const geo = new THREE.TorusGeometry(r, tube, 6, 20);
   const im = new THREE.InstancedMesh(geo, mat, n);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), z = new THREE.Vector3(0, 0, 1), s = new THREE.Vector3(1, 1, 1);
   for (let i = 0; i < n; i++) {
