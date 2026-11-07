@@ -123,7 +123,9 @@ async function boot() {
     aoPass.radius.value = 1.0;
     lit = lit.mul(mix(float(1), aoPass.getTextureNode().r, 0.9));
   }
-  const glow = bloom(lit, 0.18, 0.5, 1.1);
+  // the sun disc is thousands of times brighter than anything else: cap what feeds the
+  // bloom so it gives a glow around the sun, not a milky veil over the whole frame
+  const glow = bloom(lit.min(vec3(5)), 0.18, 0.35, 1.1);
   const combined = lit.add(glow);
   const aa = AA === 'traa' ? traa(combined, depth, vel, camera) : combined;
   const display = renderOutput(aa);
