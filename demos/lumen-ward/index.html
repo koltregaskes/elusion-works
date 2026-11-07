@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Lumen Ward — Elusion Works</title>
+    <meta
+      name="description"
+      content="Lumen Ward is a small rain-soaked cyberpunk district you can walk, fly or watch as a flyover. Every asset was modelled in Blender by Claude and assembled live in Three.js."
+    />
+    <meta name="theme-color" content="#0b0712" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta name="robots" content="index,follow" />
+    <meta name="color-scheme" content="dark" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self' blob: data:; object-src 'none'; base-uri 'self'; form-action 'self'"
+    />
+    <link rel="canonical" href="https://elusionworks.com/demos/lumen-ward/" />
+    <meta property="og:title" content="Lumen Ward — Elusion Works" />
+    <meta property="og:description" content="A small cyberpunk district in the browser: walk it, fly it, or sit back for the flyover. Assets modelled in Blender by Claude." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://elusionworks.com/demos/lumen-ward/" />
+    <meta property="og:image" content="https://elusionworks.com/demos/lumen-ward/thumbnail.png" />
+    <meta property="og:image:alt" content="Lumen Ward: neon towers, a holographic koi and wet streets at night." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Lumen Ward — Elusion Works" />
+    <meta name="twitter:description" content="A small cyberpunk district in the browser. Walk, fly or watch the flyover." />
+    <meta name="twitter:image" content="https://elusionworks.com/demos/lumen-ward/thumbnail.png" />
+    <link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body data-mode="flyover">
+    <canvas id="scene" aria-label="Lumen Ward, a 3D cyberpunk district"></canvas>
+    <div class="lw-fade" id="fade" aria-hidden="true"></div>
+
+    <header class="lw-top">
+      <a class="lw-back" href="../">&larr; Demos</a>
+      <p class="lw-brand"><span>Lumen</span> Ward</p>
+      <span class="lw-fps" id="fps" aria-hidden="true"></span>
+    </header>
+
+    <p class="lw-caption" id="caption" aria-live="polite"></p>
+    <p class="lw-hint" id="hint">Click to look around. Esc releases the mouse.</p>
+
+    <nav class="lw-modes" aria-label="Camera mode">
+      <button type="button" data-mode="walk" aria-pressed="false"><kbd>1</kbd> Walk</button>
+      <button type="button" data-mode="fly" aria-pressed="false"><kbd>2</kbd> Fly</button>
+      <button type="button" data-mode="flyover" aria-pressed="true"><kbd>3</kbd> Flyover</button>
+      <button type="button" class="lw-next" id="next-shot" title="Next shot (N)">Next shot &rarr;</button>
+      <button type="button" id="help-toggle" aria-expanded="false" aria-controls="help"><kbd>H</kbd> Help</button>
+    </nav>
+
+    <aside class="lw-help" id="help" aria-label="Controls and credits">
+      <button type="button" class="lw-help-close" id="help-close" aria-label="Close help">&times;</button>
+      <h2>Lumen Ward</h2>
+      <p>A small rain-soaked district, about 240 metres across. Every building, window bay and prop was modelled in Blender by Claude from a script, then laid out, lit and rendered here with three.js on WebGPU.</p>
+      <dl>
+        <dt>Walk</dt><dd><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move, mouse looks, <kbd>Shift</kbd> runs</dd>
+        <dt>Fly</dt><dd>as Walk, plus <kbd>Space</kbd>/<kbd>E</kbd> up and <kbd>Q</kbd>/<kbd>C</kbd> down</dd>
+        <dt>Flyover</dt><dd><kbd>N</kbd> next shot, <kbd>B</kbd> previous</dd>
+        <dt>Touch</dt><dd>drag left side to move, right side to look</dd>
+      </dl>
+      <p class="lw-small">Runs on WebGPU where the browser has it (WebGL2 otherwise). Quality: <code>?q=ultra</code> for a strong GPU, <code>?q=low</code> for laptops and phones (no reflections or ambient occlusion).</p>
+    </aside>
+
+    <div class="lw-loader" id="loader" role="status">
+      <p class="lw-brand lw-brand-big"><span>Lumen</span> Ward</p>
+      <div class="lw-bar"><span id="loader-bar"></span></div>
+      <p id="loader-text">Starting</p>
+    </div>
+
+    <noscript><p class="lw-noscript">Lumen Ward needs JavaScript and WebGL.</p></noscript>
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>
