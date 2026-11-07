@@ -2,10 +2,9 @@
 // 20 stay vanes, 24 wicket gates that turn with the governor, a 13-blade Francis
 // runner, the shaft and a 40-pole generator. Proportions are representative.
 import * as THREE from 'three';
-import { INK, ACCENT } from './stage.js';
-import { MAT } from './details.js';
+import { ACCENT } from '../../../_teardown-kit/stage.js';
+import { MAT, inked as ink } from '../../../_teardown-kit/materials.js';
 
-const ink = (m, th = 35, op = 0.5) => { const l = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry, th), new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: op })); l.raycast = () => {}; m.add(l); return m; };
 
 function spiralCase() {
   const segT = 90, segR = 22, pos = [], idx = [];
