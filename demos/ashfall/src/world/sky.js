@@ -1338,13 +1338,9 @@ export function createSky(engine, materials) {
      * the shafts come out around a twentieth of this.
      */
     godrayProxyGain: 2.6,
-    /**
-     * postfx composites the buffer with ATMOSPHERE.godrayStrength (0.55) applied on top, and
-     * the art direction (§4, "the dust in the air is what makes light visible") wants an
-     * effective ~1.4. Make the difference up here so the shafts are right in the frame we can
-     * actually render; if art.js is ever re-authored to 1.4 this collapses to 1.0 on its own.
-     */
-    godrayGain: 1.4 / Math.max(ATMOSPHERE.godrayStrength, 1e-3),
+    // postfx already multiplies the shaft buffer by ATMOSPHERE.godrayStrength, so any
+    // compensation here cancels against it and leaves the art.js knob inert. It is 1.
+    godrayGain: 1.0,
 
     /* --- Fog -------------------------------------------------------------
      * materials.js evaluates the integral but reads every one of these from here, so this is

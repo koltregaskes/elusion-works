@@ -160,9 +160,23 @@ export const ATMOSPHERE = {
   fogColourNear: '#c9b79c',
   fogColourFar: '#a8b3bd',
   /** How strongly fog brightens looking into the sun. This sells the dusty air. */
-  inscatterStrength: 1.35,
+  /**
+   * Looking toward the sun, inscatter is what makes the air visible. At 1.35 it stopped being
+   * air and became a veil: with the sun at 18 degrees the terraces vantage measured a 5th
+   * percentile of 71 — the frame had no dark values left at all, and its luminance spread
+   * collapsed while every other vantage's widened. Haze should sit behind the scene, not over
+   * it.
+   */
+  inscatterStrength: 0.8,
   inscatterAnisotropy: 0.76, // Henyey-Greenstein g, forward scattering
-  godrayStrength: 0.55,
+  /**
+   * Live only because sky.js no longer divides it back out. The two were reciprocal, so the
+   * product was pinned at 1.4 and editing this changed nothing — proven by measurement: moving
+   * it from 0.55 to 0.4 left a sun-facing frame identical to three significant figures.
+   * 0.9 is that effective 1.4 brought down, because shafts over a whole sun-facing frame stop
+   * reading as shafts and start reading as a veil.
+   */
+  godrayStrength: 0.9,
   godrayDecay: 0.965,
   godrayDensity: 0.72,
   dustMoteDensity: 1.0,
@@ -296,7 +310,9 @@ export const GRADE = {
   sharpen: 0.32,
   motionBlurAmount: 0.55,
   taaFeedback: 0.91,
-  lensDirtStrength: 0.22,
+  // Lens dirt multiplies bloom across the whole frame, so into the sun it is a veil rather
+  // than a lens artefact. 0.10 keeps the suggestion without flattening the sun-facing vantages.
+  lensDirtStrength: 0.1,
 };
 
 /** Map footprint in metres. The three combat spaces are laid out inside this. */
