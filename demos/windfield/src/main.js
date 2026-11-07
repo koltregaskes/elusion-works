@@ -8,7 +8,9 @@ import { ShaderPass } from '../vendor/three/addons/postprocessing/ShaderPass.js'
 import { PRESETS, PARAMS, COLOUR_KEYS, presetValues } from './presets.js';
 import { windUniforms, cpuGust } from './wind.js';
 import { buildGround, heightAt } from './terrain.js';
-import { buildGrass, grassUniforms } from './grass.js';
+import { buildGrass, grassUniforms, updateGrassPatch } from './grass.js';
+import { buildHeightTexture } from './field.js';
+import { HarvestSystem } from './harvest.js';
 import { buildHeroOak, buildBackgroundTrees, treeUniforms } from './tree.js';
 import { buildSky, skyUniforms, buildMist, mistUniforms } from './sky.js';
 import { buildParticles, particleUniforms, FallingLeaves, Birds } from './particles.js';
@@ -16,11 +18,13 @@ import { buildMonolith, buildStones, Bonfire } from './subjects.js';
 import { CameraRig } from './controls.js';
 import { StudioUI } from './ui.js';
 import { WindAudio } from './audio.js';
+import { Bench } from './bench.js';
 
 const url = new URLSearchParams(location.search);
 const MANUAL = url.has('manual'); // frame-stepped capture mode, driven from outside
+const BENCH = url.has('bench'); // one-click frame-rate test across quality levels
 const coarse = matchMedia('(pointer: coarse)').matches;
-let quality = url.get('q') || (coarse ? 'low' : 'medium');
+let quality = url.get('q') || (coarse ? 'low' : 'high');
 
 // ---------------------------------------------------------------- renderer and scene
 const canvas = document.getElementById('scene');
@@ -43,6 +47,7 @@ const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 6000);
 const sky = buildSky();
 scene.add(sky);
 
+buildHeightTexture();
 const ground = buildGround();
 scene.add(ground);
 
@@ -58,7 +63,7 @@ scene.add(monolith);
 const stones = buildStones();
 scene.add(stones);
 const bonfire = new Bonfire();
-scene.add(bonfire.group);
+scene.add(bonfire.group, bonfire.lightHolder);
 
 const mist = buildMist();
 scene.add(mist);
@@ -68,6 +73,8 @@ const leaves = new FallingLeaves(280);
 scene.add(leaves.mesh);
 const birds = new Birds(40);
 scene.add(birds.mesh);
+const harvest = new HarvestSystem(renderer, scene);
+let driving = false;
 
 const sun = new THREE.DirectionalLight('#ffffff', 3);
 sun.castShadow = true;
@@ -81,6 +88,9 @@ sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.04;
 scene.add(sun, sun.target);
 const hemi = new THREE.HemisphereLight('#a9c4e0', '#4a5a2a', 1);
+// Grass, leaves and ground are Lambert (no environment-map irradiance), so the sky fill
+// carries the ambient light the environment map used to add.
+const HEMI_FILL = 2.4;
 scene.add(hemi);
 
 // Environment map baked from the sky alone, refreshed while the sky is changing.
@@ -120,9 +130,12 @@ const shafts = new ShaderPass({
     void main(){
       vec4 base = texture2D(tDiffuse, vUv);
       if (uStrength <= 0.001) { gl_FragColor = base; return; }
-      const int N = 40;
+      // 24 jittered taps look like 40 even ones: the per-pixel offset turns banding into
+      // fine noise that the film grain pass hides.
+      const int N = 24;
       vec2 delta = (uSun - vUv) / float(N) * 0.92;
-      vec2 uv = vUv;
+      float jitter = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+      vec2 uv = vUv + delta * jitter;
       float illum = 0.0;
       float decay = 1.0;
       for (int i = 0; i < N; i++) {
@@ -131,7 +144,7 @@ const shafts = new ShaderPass({
         vec3 s = texture2D(tDiffuse, c).rgb;
         float l = max(dot(s, vec3(0.2126, 0.7152, 0.0722)) - 0.9, 0.0);
         illum += min(l, 6.0) * decay;
-        decay *= 0.962;
+        decay *= 0.936;
       }
       illum /= float(N);
       float reach = 1.0 - smoothstep(0.15, 1.1, length((vUv - uSun) * vec2(1.6, 1.0)));
@@ -165,7 +178,7 @@ const state = {};
 const colours = {};
 COLOUR_KEYS.forEach((k) => (colours[k] = new THREE.Color()));
 let tween = null;
-let presetIndex = Math.max(0, PRESETS.findIndex((p) => p.id === (url.get('preset') || 'golden')));
+let presetIndex = Math.max(0, PRESETS.findIndex((p) => p.id === (url.get('preset') || 'harvest')));
 
 function snapshot() {
   const s = {};
@@ -238,7 +251,7 @@ const flash = { level: 0, next: 4 };
 const accent = new THREE.Color();
 
 function firePosition() {
-  if (state.subject === 'oak') return [9, 6.5];
+  if (state.subject === 'oak' || state.subject === 'combine') return [9, 6.5];
   if (state.subject === 'monolith') return [6.5, -6];
   return [0, 0];
 }
@@ -263,6 +276,11 @@ function applyState() {
   grassUniforms.uGrassBase.value.copy(colours.grassBase);
   grassUniforms.uGrassTip.value.copy(colours.grassTip);
   grassUniforms.uGrassDry.value.copy(colours.grassDry);
+  grassUniforms.uCrop.value = s.crop;
+  grassUniforms.uEarColor.value.copy(colours.grassTip).lerp(colours.grassDry, 0.35).multiplyScalar(1.05);
+  grassUniforms.uStubbleColor.value.copy(colours.grassDry).multiplyScalar(0.82);
+  grassUniforms.uStrawColor.value.copy(colours.grassDry).lerp(colours.grassTip, 0.3);
+  ground.userData.uniforms.uStubbleGround.value.copy(colours.grassDry).multiplyScalar(0.5);
 
   const el = rad(s.sunElevation);
   const az = rad(s.sunAzimuth);
@@ -272,7 +290,7 @@ function applyState() {
   sun.intensity = s.sunIntensity * above;
   hemi.color.copy(colours.hemiSky);
   hemi.groundColor.copy(colours.hemiGround);
-  hemi.intensity = s.hemiIntensity;
+  hemi.intensity = s.hemiIntensity * HEMI_FILL;
 
   skyUniforms.uZenith.value.copy(colours.skyZenith);
   skyUniforms.uHorizon.value.copy(colours.skyHorizon);
@@ -300,6 +318,7 @@ function applyState() {
 
   const tint = colours.sunColor.clone().multiplyScalar(Math.min(s.sunIntensity, 4) * 0.3 * (0.25 + above * 0.75));
   grassUniforms.uSunTint.value.copy(tint);
+  grassUniforms.uSkyFill.value.copy(colours.hemiSky).multiplyScalar(s.hemiIntensity * 0.9);
   treeUniforms.uSunTint.value.copy(tint);
   particleUniforms.uSunTint.value.copy(colours.sunColor).multiplyScalar(0.4 + s.sunIntensity * 0.25);
 
@@ -322,14 +341,14 @@ function applyState() {
   bonfire.place(fx, fz);
   particleUniforms.uFirePos.value.copy(bonfire.group.position);
   grassUniforms.uClear1.value.set(fx, fz, 3.0, Math.min(1, s.fire * 1.5));
-  const clearR = { oak: 1.9, monolith: 3.0, stones: 0, none: 0 }[s.subject];
+  const clearR = { oak: 1.9, combine: 1.9, monolith: 3.0, stones: 0, none: 0 }[s.subject] ?? 0;
   grassUniforms.uClear0.value.set(0, 0, clearR, 0);
   ground.userData.uniforms.uGroundA.value.copy(colours.groundA);
   ground.userData.uniforms.uGroundB.value.copy(colours.groundB);
   ground.userData.uniforms.uScorch.value.set(fx, fz, 3.4, Math.min(1, s.fire * 1.5));
 
   accent.copy(colours.accent);
-  if (state.subject === 'oak') {
+  if (state.subject === 'oak' || state.subject === 'combine') {
     leaves.source.set(0, oak.position.y + 12, 0);
     leaves.sourceRadius = 9;
   } else {
@@ -347,7 +366,9 @@ function updateSubjects(dt, t) {
     obj.visible = on;
     if (on) obj.scale.setScalar((obj.userData.baseScale ??= obj.scale.x) * (0.85 + pop * 0.15));
   };
-  setVis(oak, state.subject === 'oak');
+  setVis(oak, state.subject === 'oak' || state.subject === 'combine');
+  harvest.setActive(state.subject === 'combine');
+  if (driving && state.subject !== 'combine') setDriving(false);
   setVis(monolith, state.subject === 'monolith');
   setVis(stones, state.subject === 'stones');
   monolith.userData.update(t, accent);
@@ -370,7 +391,7 @@ function updateLightning(dt) {
     }
   }
   skyUniforms.uFlash.value = flash.level * state.lightning;
-  hemi.intensity = state.hemiIntensity + flash.level * state.lightning * 2.5;
+  hemi.intensity = state.hemiIntensity * HEMI_FILL + flash.level * state.lightning * 2.5;
 }
 
 // ---------------------------------------------------------------- quality
@@ -416,6 +437,7 @@ function resize() {
   camera.fov = w / h < 1 ? 64 : 48;
   camera.updateProjectionMatrix();
   particleUniforms.uPixelRatio.value = renderer.getPixelRatio();
+  harvest.setViewScale(camera, renderer);
 }
 window.addEventListener('resize', resize);
 
@@ -462,6 +484,51 @@ const ui = new StudioUI({
   onShot() {
     shotRequested = true;
   },
+  onDrive() {
+    if (state.subject !== 'combine') {
+      setSubject('combine');
+      applyState();
+      ui.sync(state);
+    }
+    setDriving(!driving);
+  },
+});
+
+function setDriving(on) {
+  driving = on;
+  harvest.setDriving(on);
+  if (on) rig.goChase();
+  else {
+    rig.mode = 'free';
+    rig.goCinematic();
+  }
+  ui.setDriving(on);
+}
+
+// Driving keys. WASD or the arrow keys; they only steer while you have the wheel.
+const driveKeys = new Set();
+function syncDriveInput() {
+  const k = driveKeys;
+  harvest.driver.input.throttle = (k.has('w') || k.has('arrowup') ? 1 : 0) - (k.has('s') || k.has('arrowdown') ? 0.6 : 0);
+  harvest.driver.input.turn = (k.has('a') || k.has('arrowleft') ? 1 : 0) - (k.has('d') || k.has('arrowright') ? 1 : 0);
+}
+window.addEventListener('keydown', (e) => {
+  if (!driving || e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+  const k = e.key.toLowerCase();
+  if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) {
+    e.preventDefault();
+    driveKeys.add(k);
+    syncDriveInput();
+  }
+  if (k === 'escape') setDriving(false);
+});
+window.addEventListener('keyup', (e) => {
+  driveKeys.delete(e.key.toLowerCase());
+  syncDriveInput();
+});
+window.addEventListener('blur', () => {
+  driveKeys.clear();
+  syncDriveInput();
 });
 rig.onModeChange = (m) => ui.setCameraMode(m);
 ui.setCameraMode(rig.mode);
@@ -482,7 +549,7 @@ let mistX = 0;
 let fpsSmooth = 60;
 let uiSyncTimer = 0;
 let lowFpsTime = 0;
-let autoDropped = !!url.get('q');
+let autoDropped = !!url.get('q') || BENCH;
 
 function frame(dt) {
   if (!paused) time += dt;
@@ -501,13 +568,27 @@ function frame(dt) {
   mistX += simDt * 0.02 * (0.3 + state.windStrength);
   mistUniforms.uMistOffset.value.set(wd.x * mistX, wd.y * mistX);
 
+  harvest.update(simDt, time, {
+    windDir: windUniforms.uWindDir.value,
+    windStrength: state.windStrength,
+    sunElevation: state.sunElevation,
+    speedScale: state.combineSpeed ?? 1,
+  });
+  if (harvest.active) {
+    rig.focus.lerp(harvest.position, rig.mode === 'chase' ? 1 : 1 - Math.exp(-dt * 3));
+    rig.chase.heading = harvest.driver.heading;
+  } else {
+    rig.focus.lerp(new THREE.Vector3(), 1 - Math.exp(-dt * 2));
+  }
+
   rig.update(dt, time);
   camera.updateMatrixWorld();
+  updateGrassPatch(camera);
   sky.position.copy(camera.position);
   mist.position.set(0, heightAt(camera.position.x, camera.position.z) * 0.6 - 0.3, 0);
 
   // Shadow camera follows the subject but snaps to texels to stop shimmering.
-  sun.target.position.set(0, heightAt(0, 0), 0);
+  sun.target.position.set(rig.focus.x, heightAt(rig.focus.x, rig.focus.z), rig.focus.z);
   sun.position.copy(sun.target.position).addScaledVector(sunDir, 120);
 
   const sunScreen = tmpV.copy(camera.position).addScaledVector(sunDir, 1000).project(camera);
@@ -542,6 +623,8 @@ function frame(dt) {
       rain: state.rain,
       fire: state.fire,
       fireDistance: Math.hypot(camera.position.x - fx, camera.position.z - fz),
+      engine: harvest.active ? 1 / (1 + camera.position.distanceTo(harvest.position) * 0.06) : 0,
+      engineLoad: harvest.driver.cutting ? 1 : 0.4,
     });
   }
 
@@ -578,10 +661,12 @@ function frame(dt) {
 }
 
 let last = performance.now();
+const bench = BENCH ? new Bench({ setQuality, renderer, getQuality: () => quality }) : null;
 function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   frame(dt);
+  bench?.onFrame(now);
   requestAnimationFrame(loop);
 }
 
@@ -596,9 +681,39 @@ if (MANUAL) {
       setPreset(i, instant);
       if (instant) rig.snapNext = true;
     },
+    set(key, value) {
+      state[key] = value;
+      envDirty = true;
+      applyState();
+    },
+    look(x, y, z, tx, ty, tz) {
+      rig.mode = 'free';
+      camera.position.set(x, y, z);
+      camera.lookAt(tx, ty, tz);
+      rig.syncAnglesFromCamera();
+    },
+    combineAt() {
+      const p = harvest.position;
+      return { x: p.x, z: p.z, heading: harvest.driver.heading, mode: harvest.driver.mode };
+    },
+    drive(on, throttle = 0, turn = 0) {
+      if (on !== driving) setDriving(on);
+      harvest.driver.input.throttle = throttle;
+      harvest.driver.input.turn = turn;
+    },
+    advanceCombine(seconds) {
+      // Fast-forward the autopilot so captures can show a part-harvested field.
+      const step = 1 / 15;
+      for (let k = 0; k < seconds / step; k++) {
+        harvest.update(step, time, { windDir: windUniforms.uWindDir.value, windStrength: state.windStrength, sunElevation: state.sunElevation, speedScale: state.combineSpeed ?? 1 });
+      }
+      rig.focus.copy(harvest.position);
+      rig.snapNext = true;
+    },
     ready: true,
   };
   frame(1 / 30);
 } else {
+  if (bench) bench.start(performance.now());
   requestAnimationFrame(loop);
 }
