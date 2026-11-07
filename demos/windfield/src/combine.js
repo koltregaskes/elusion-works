@@ -399,15 +399,29 @@ export class Combine {
     this.rearPoint = new THREE.Vector3(-6.0, 1.0, 0);
     this.headerPoint = new THREE.Vector3(4.0, 0.5, 0);
 
-    // Headlights for dusk and night.
-    this.headlights = [];
-    for (const z of [-0.7, 0.7]) {
-      const l = new THREE.SpotLight('#ffe9c4', 0, 60, 0.6, 0.6, 1.4);
-      l.position.set(2.0, 4.15, z);
-      l.target.position.set(9, 0, z * 2);
-      this.body.add(l, l.target);
-      this.headlights.push(l);
-    }
+    // Work lights at dusk. Real spotlights would put two extra lights into every grass
+    // fragment and recompile every material when the combine appears, so the glow is
+    // faked: an additive pool of light on the crop ahead of the header.
+    const glowTex = (() => {
+      const c = document.createElement('canvas');
+      c.width = c.height = 128;
+      const g = c.getContext('2d');
+      const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+      grad.addColorStop(0, 'rgba(255,240,210,1)');
+      grad.addColorStop(0.5, 'rgba(255,225,180,0.35)');
+      grad.addColorStop(1, 'rgba(255,220,170,0)');
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 128, 128);
+      return new THREE.CanvasTexture(c);
+    })();
+    this.glowMat = new THREE.MeshBasicMaterial({
+      map: glowTex, color: '#ffe6c0', transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    this.glow = new THREE.Mesh(new THREE.PlaneGeometry(16, 11), this.glowMat);
+    this.glow.rotation.x = -Math.PI / 2;
+    this.glow.position.set(9.5, 1.1, 0);
+    this.glow.renderOrder = 6;
+    this.body.add(this.glow);
 
     this.distance = 0;
   }
@@ -436,7 +450,8 @@ export class Combine {
     this.header.rotation.z = this.header.position.y * -0.1;
     this.beaconMat.emissiveIntensity = (Math.sin(t * 7) > 0.2 ? 6 : 0.4) * lights.beacon;
     this.lightMat.emissiveIntensity = 0.3 + lights.work * 8;
-    for (const l of this.headlights) l.intensity = lights.work * 90;
+    this.glowMat.opacity = lights.work * 0.55;
+    this.glow.visible = lights.work > 0.01;
     this.tailMat.emissiveIntensity = 0.6 + lights.work * 3;
   }
 
@@ -519,7 +534,45 @@ export class Harvester {
     this.finished = false;
   }
 
+  // Steer (rear-wheel) towards a point at a given speed. Used by drive and return modes.
+  steerTowards(dt, tx, tz, speed) {
+    let d = Math.atan2(tz - this.z, tx - this.x) - this.heading;
+    d = Math.atan2(Math.sin(d), Math.cos(d));
+    this.steer += (THREE.MathUtils.clamp(d * 1.4, -0.55, 0.55) - this.steer) * Math.min(1, dt * 3);
+    this.speed += (speed - this.speed) * Math.min(1, dt * 1.2);
+    this.heading += (this.speed * Math.tan(this.steer)) / 3.7 * dt;
+    this.x += Math.cos(this.heading) * this.speed * dt;
+    this.z += Math.sin(this.heading) * this.speed * dt;
+  }
+
   update(dt) {
+    if (this.mode === 'return') {
+      // Drive back onto the route instead of jumping to it, then hand over to the autopilot.
+      this.returnTime = (this.returnTime || 0) + dt;
+      const dist = (q) => Math.hypot(q.x - this.x, q.z - this.z);
+      let cur = dist(this.sample(this.s));
+      while (this.s < this.length) {
+        const n = dist(this.sample(this.s + 0.5));
+        if (n >= cur) break;
+        this.s += 0.5;
+        cur = n;
+      }
+      const target = this.sample(Math.min(this.length, this.s + 7));
+      this.steerTowards(dt, target.x, target.z, 3.2 * this.speedScale);
+      this.cutting = true;
+      const p = this.sample(this.s);
+      const ahead = this.sample(Math.min(this.length, this.s + 2.5));
+      let dh = Math.atan2(ahead.z - p.z, ahead.x - p.x) - this.heading;
+      dh = Math.atan2(Math.sin(dh), Math.cos(dh));
+      if ((cur < 2.5 && Math.abs(dh) < 0.4) || this.returnTime > 30) {
+        // Whatever gap is left melts away over a second or two rather than snapping.
+        this.offX = this.x - p.x;
+        this.offZ = this.z - p.z;
+        this.mode = 'auto';
+        this.returnTime = 0;
+      }
+      return;
+    }
     if (this.mode === 'auto') {
       const v = 2.6 * this.speedScale;
       this.speed = v;
@@ -533,8 +586,11 @@ export class Harvester {
         this.steer = THREE.MathUtils.clamp(-d * 1.6, -0.6, 0.6);
         this.heading += d * Math.min(1, dt * 4);
       }
-      this.x = p.x;
-      this.z = p.z;
+      const decay = Math.exp(-dt * 1.5);
+      this.offX = (this.offX || 0) * decay;
+      this.offZ = (this.offZ || 0) * decay;
+      this.x = p.x + this.offX;
+      this.z = p.z + this.offZ;
       this.cutting = p.cut;
       if (this.s >= this.length) this.finished = true;
     } else {

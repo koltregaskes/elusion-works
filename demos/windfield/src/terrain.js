@@ -21,6 +21,39 @@ export function heightAt(x, z) {
   return h;
 }
 
+// The same terrain baked into a grid once, for the many per-frame lookups (particles,
+// leaves, the combine's wheels) that do not need the exact fbm.
+export const HEIGHT_GRID = { size: 512, extent: 520, data: null };
+
+export function heightGrid() {
+  if (HEIGHT_GRID.data) return HEIGHT_GRID.data;
+  const { size, extent } = HEIGHT_GRID;
+  const data = new Float32Array(size * size);
+  for (let j = 0; j < size; j++) {
+    for (let i = 0; i < size; i++) {
+      data[j * size + i] = heightAt(-extent / 2 + ((i + 0.5) / size) * extent, -extent / 2 + ((j + 0.5) / size) * extent);
+    }
+  }
+  HEIGHT_GRID.data = data;
+  return data;
+}
+
+export function heightAtFast(x, z) {
+  const { size, extent } = HEIGHT_GRID;
+  const data = HEIGHT_GRID.data || heightGrid();
+  const fx = ((x + extent / 2) / extent) * size - 0.5;
+  const fz = ((z + extent / 2) / extent) * size - 0.5;
+  if (fx < 0 || fz < 0 || fx >= size - 1 || fz >= size - 1) return heightAt(x, z);
+  const i = Math.floor(fx);
+  const j = Math.floor(fz);
+  const u = fx - i;
+  const v = fz - j;
+  const k = j * size + i;
+  const a = data[k] + (data[k + 1] - data[k]) * u;
+  const b = data[k + size] + (data[k + size + 1] - data[k + size]) * u;
+  return a + (b - a) * v;
+}
+
 export function buildGround(params) {
   const size = 1400;
   const seg = 260;
@@ -46,7 +79,7 @@ export function buildGround(params) {
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geo.computeVertexNormals();
 
-  const mat = new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0, vertexColors: false });
+  const mat = new THREE.MeshLambertMaterial();
   const uniforms = {
     uGroundA: { value: new THREE.Color() },
     uGroundB: { value: new THREE.Color() },

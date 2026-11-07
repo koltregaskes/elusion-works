@@ -75,6 +75,26 @@ about 34 fps for a few seconds, it drops one level, once and quietly. Quality ch
 the near-patch blade count and radius, the share of stalks carrying wheat ears, the far
 field, the background tree count, shadow resolution and pixel ratio.
 
+What keeps it fast, measured headless on the same Harvest shot (software rendering, so
+read the percentages, not the absolute times):
+
+- **Grass, leaves and ground use Lambert shading**, not the physically based material.
+  They are most of the pixels on screen, and the diffuse-only model cut the full frame
+  by about 40%. A cheap glancing-angle sky sheen on the blades stands in for the
+  specular the old material gave, and a stronger sky fill (`HEMI_FILL` in `main.js`)
+  replaces the environment-map ambient. It also fixed leaf cards that read as pale grey
+  when seen edge-on.
+- **The near patch leads the camera** by 0.7 of its radius, so about 1.37 times more of
+  it is on screen and blade counts are 27% lower for the same visible density. Wheat ears
+  ride on fewer stalks and use a lighter spindle. Together these cut vertex-bound frame
+  time by about a third.
+- **Lights never change count.** The combine's work lights are an emissive bar plus an
+  additive pool of light on the crop, and the bonfire's light stays in the scene at zero
+  rather than being hidden, so switching subject or mood never recompiles every material.
+- **Per-frame CPU work uses a cached height grid** (`heightAtFast`) instead of the full
+  terrain noise for particles, leaves and the combine's wheels.
+- **Light shafts take 24 jittered samples** instead of 40 even ones, which look the same.
+
 To measure a real machine, open the page with `?bench`. It runs each quality level for
 two seconds of warm-up and five of measurement, then shows average and slow-frame
 (95th percentile) rates, recommends the highest level that stays above 50 fps, and

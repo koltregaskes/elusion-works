@@ -1,5 +1,5 @@
 import * as THREE from '../vendor/three/build/three.module.js';
-import { heightAt } from './terrain.js';
+import { heightGrid } from './terrain.js';
 
 // Shared field state on the GPU:
 //  - a height texture, so grass that is positioned in the shader (the camera-following
@@ -8,6 +8,7 @@ import { heightAt } from './terrain.js';
 //    "straw lying in the windrow". Grass, wheat ears and the ground all read it, so a
 //    lane the combine has harvested stays harvested.
 
+// Must match HEIGHT_GRID in terrain.js (read lazily there: the two modules import each other).
 const HEIGHT_SIZE = 512;
 const HEIGHT_EXTENT = 520; // metres covered by the height texture, centred on the origin
 const CUT_SIZE = 1024;
@@ -42,14 +43,9 @@ vec2 fieldCut(vec2 p) {
 `;
 
 export function buildHeightTexture() {
-  const data = new Uint16Array(HEIGHT_SIZE * HEIGHT_SIZE);
-  for (let j = 0; j < HEIGHT_SIZE; j++) {
-    for (let i = 0; i < HEIGHT_SIZE; i++) {
-      const x = -HEIGHT_EXTENT / 2 + ((i + 0.5) / HEIGHT_SIZE) * HEIGHT_EXTENT;
-      const z = -HEIGHT_EXTENT / 2 + ((j + 0.5) / HEIGHT_SIZE) * HEIGHT_EXTENT;
-      data[j * HEIGHT_SIZE + i] = THREE.DataUtils.toHalfFloat(heightAt(x, z));
-    }
-  }
+  const grid = heightGrid();
+  const data = new Uint16Array(grid.length);
+  for (let k = 0; k < grid.length; k++) data[k] = THREE.DataUtils.toHalfFloat(grid[k]);
   const tex = new THREE.DataTexture(data, HEIGHT_SIZE, HEIGHT_SIZE, THREE.RedFormat, THREE.HalfFloatType);
   tex.minFilter = THREE.LinearFilter;
   tex.magFilter = THREE.LinearFilter;
@@ -112,8 +108,11 @@ export class CutMask {
     const prevAuto = r.autoClear;
     r.setRenderTarget(this.rt);
     if (this.needsClear) {
+      r.getClearColor(this.prevClear ??= new THREE.Color());
+      const prevAlpha = r.getClearAlpha();
       r.setClearColor(0x000000, 1);
       r.clear(true, false, false);
+      r.setClearColor(this.prevClear, prevAlpha);
       this.needsClear = false;
     }
     r.autoClear = false;

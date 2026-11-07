@@ -152,11 +152,15 @@ export class Bonfire {
     }
     this.light = new THREE.PointLight('#ff7a2e', 0, 45, 1.6);
     this.light.position.y = 2.2;
-    this.group.add(this.light);
+    // The light lives outside the group and only ever dims to zero, so hiding the fire
+    // never changes the scene's light count (which would recompile every material).
+    this.lightHolder = new THREE.Group();
+    this.lightHolder.add(this.light);
   }
 
   place(x, z) {
     this.group.position.set(x, heightAt(x, z) - 0.1, z);
+    this.lightHolder.position.copy(this.group.position);
   }
 
   update(t) {
