@@ -88,7 +88,7 @@ export const PALETTE = {
 };
 
 /** Sun elevation in degrees. 8° is the golden-hour rake the whole scene is composed around. */
-export const SUN_ELEVATION = 8.0;
+export const SUN_ELEVATION = 18.0;
 /** Sun azimuth in degrees, measured from +Z clockwise. Puts the key over the west stacks. */
 export const SUN_AZIMUTH = 252.0;
 
@@ -114,7 +114,7 @@ export const LIGHTING = {
    * cool grey. 0.55 restores the intended relationship: the sky tints the shade, the grade's
    * `lift` does the rest, and the sun stays overwhelmingly dominant at 4.6 : 0.55.
    */
-  hemiSkyIntensity: 0.55,
+  hemiSkyIntensity: 0.42,
   /**
    * Warm ground bounce, the other half of §4's "bounce is warm off the ground, cool from the
    * sky". Raised from 0.35.
@@ -145,7 +145,7 @@ export const LIGHTING = {
    * blue and flattens the frame toward one hue family. 0.70 keeps the specular response and
    * the sense of an open sky while leaving the diffuse shadow fill to the hemisphere.
    */
-  envIntensity: 0.7,
+  envIntensity: 0.4,
   /** Practical lights are the only point lights and must have a visible fixture. */
   practicalIntensity: 12.0,
   practicalColour: '#ffb765',
@@ -288,9 +288,9 @@ export const GRADE = {
   bloomStrength: 0.14,
   bloomThreshold: 0.75,
   bloomSoftKnee: 0.55,
-  ssaoIntensity: 0.85,
-  ssaoRadius: 0.55,
-  vignette: 0.34,
+  ssaoIntensity: 0.75,
+  ssaoRadius: 1.6,
+  vignette: 0.24,
   chromatic: 0.0016,
   grainAmount: 0.028,
   sharpen: 0.32,
