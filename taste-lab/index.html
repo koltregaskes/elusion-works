@@ -127,6 +127,14 @@ kbd { font: 500 11px/1 var(--mono); padding: 3px 5px; border: 1px solid var(--li
 .copyrow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .hidden-copy { position: absolute; left: -9999px; }
 
+.qwrap { max-width: 760px; }
+.qmeta { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+.qtext { font-size: clamp(24px, 3.4vw, 34px) !important; line-height: 1.15 !important; }
+.qopts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.qopt { display: flex; gap: 12px; align-items: center; text-align: left; padding: 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; font-size: 16px; font-weight: 500; }
+.qopt:hover { border-color: var(--ink); }
+.qother { display: flex; gap: 8px; }
+.qother input { flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 8px; padding: 10px 12px; font: 15px var(--ui); }
 @media (max-width: 860px) {
   .stage { grid-template-columns: 1fr; overflow: auto; grid-auto-rows: max-content; align-content: start; }
   .side { min-height: auto; grid-template-rows: auto auto auto; }
@@ -275,7 +283,7 @@ kbd { font: 500 11px/1 var(--mono); padding: 3px 5px; border: 1px solid var(--li
   }
   function pickPair() { return nextPair(cat === "quick" ? quickCat() : cat); }
   function viewCat() {
-    if (cat !== "quick") return cat;
+    if (cat !== "quick" && cat !== "questions") return cat;
     const n = c => allVotes().filter(v => v.cat === c.id).length;
     return CATS.slice().sort((a, b) => n(b) - n(a))[0].id;
   }
@@ -314,11 +322,17 @@ kbd { font: 500 11px/1 var(--mono); padding: 3px 5px; border: 1px solid var(--li
       refreshCounts();
       if (view !== "judge") render();
     }, err => { clearTimeout(timer); goLocal("Shared store stopped answering. Saving in this browser."); });
+    db.collection("answers").onSnapshot(snap => {
+      answers = {}; snap.docs.forEach(d => { answers[d.id] = d.data(); });
+      refreshCounts();
+      if (cat === "questions" && view !== "judge") render();
+    }, () => {});
   }
   function goLocal(msg) {
     setStatus("local", msg);
     try { votes = JSON.parse(localStorage.getItem("tot-votes") || "[]"); } catch (e) { votes = []; }
     votes = votes.concat(pending); pending = [];
+    try { answers = JSON.parse(localStorage.getItem("tot-answers") || "{}"); } catch (e) { answers = {}; }
     persistLocal(); refreshCounts();
   }
   function persistLocal() { try { localStorage.setItem("tot-votes", JSON.stringify(votes)); } catch (e) {} }
@@ -371,7 +385,8 @@ kbd { font: 500 11px/1 var(--mono); padding: 3px 5px; border: 1px solid var(--li
   function refreshCounts() {
     const tabs = $("#tabs");
     const total = allVotes().length;
-    tabs.innerHTML = `<button data-cat="quick" aria-pressed="${cat === "quick"}">Quick round<span class="num">${total}</span></button>` + CATS.map(c => {
+    tabs.innerHTML = `<button data-cat="quick" aria-pressed="${cat === "quick"}">Quick round<span class="num">${total}</span></button>` +
+      `<button data-cat="questions" aria-pressed="${cat === "questions"}">Questions<span class="num">${Object.keys(answers).length}/${QUESTIONS.length || 452}</span></button>` + CATS.map(c => {
       const n = allVotes().filter(v => v.cat === c.id).length;
       return `<button data-cat="${c.id}" aria-pressed="${c.id === cat}">${c.name}<span class="num">${n}</span></button>`;
     }).join("");
@@ -526,6 +541,8 @@ kbd { font: 500 11px/1 var(--mono); padding: 3px 5px; border: 1px solid var(--li
       if (notes.length) { lines.push("", "Kol's words:"); notes.forEach(v => lines.push(`- "${v.note}" (${pickText(v)})`)); }
       lines.push("");
     });
+    const qa = typeof answerLines === "function" ? answerLines() : [];
+    if (qa.length) lines.push("## Quick answers (" + qa.length + ")", "", ...qa, "");
     return lines.join("\n");
   }
   function pickText(v) {
@@ -561,8 +578,78 @@ kbd { font: 500 11px/1 var(--mono); padding: 3px 5px; border: 1px solid var(--li
     };
   }
 
+  /* ================= Quick questions (Hark Pro's 452 QQ items) ================= */
+  let QUESTIONS = [], answers = {}, currentQ = null, skippedQ = new Set(), lastQ = [];
+  fetch("candidates/questions.json").then(r => r.json()).then(d => { QUESTIONS = d.questions || []; refreshCounts(); if (cat === "questions") render(); }).catch(() => {});
+  function nextQuestion() {
+    const open = QUESTIONS.filter(q => !answers[q.id] && !skippedQ.has(q.id));
+    if (!open.length) return null;
+    const done = a => QUESTIONS.filter(q => q.area === a && answers[q.id]).length;
+    const areas = [...new Set(open.map(q => q.area))].sort((a, b) => done(a) - done(b) || Math.random() - .5);
+    return open.find(q => q.area === areas[0]);
+  }
+  function answerLines() {
+    return QUESTIONS.filter(q => answers[q.id]).map(q => {
+      const a = String(answers[q.id].answer);
+      return `- ${q.id} (${q.area}) ${q.q} **${a}**`;
+    });
+  }
+  function harkLine() {
+    return QUESTIONS.filter(q => answers[q.id]).map(q => {
+      const a = String(answers[q.id].answer);
+      return q.id + "=" + (/^[\w-]+$/.test(a) ? a : '"' + a.replace(/"/g, "'") + '"');
+    }).join(" ");
+  }
+  async function answerQ(q, value) {
+    const v = String(value || "").trim(); if (!v) return;
+    const doc = { qid: q.id, area: q.area, question: q.q, answer: v, at: new Date().toISOString(), by: me || "anon", source: "hark-qq" };
+    answers[q.id] = doc; lastQ.push(q.id); sessionCount++;
+    if (mode === "live") { try { await db.collection("answers").doc(q.id).set(doc); } catch (e) { toast("Not saved yet. Try again in a moment."); } }
+    else { try { localStorage.setItem("tot-answers", JSON.stringify(answers)); } catch (e) {} }
+    refreshCounts(); renderQuestion();
+  }
+  function skipQ(q) { skippedQ.add(q.id); renderQuestion(); }
+  async function undoQ() {
+    const id = lastQ.pop(); if (!id) { toast("Nothing to undo in this visit."); return; }
+    delete answers[id]; sessionCount = Math.max(0, sessionCount - 1);
+    if (mode === "live") { try { await db.collection("answers").doc(id).delete(); } catch (e) {} }
+    else { try { localStorage.setItem("tot-answers", JSON.stringify(answers)); } catch (e) {} }
+    toast("Last answer removed."); refreshCounts(); renderQuestion();
+  }
+  function renderQuestion() {
+    $("#decideSlot").innerHTML = "";
+    const total = QUESTIONS.length, done = Object.keys(answers).length;
+    currentQ = nextQuestion();
+    if (!total) { $("#main").innerHTML = `<div class="report"><div class="wrap" style="max-width:720px"><div class="empty">Loading questions…</div></div></div>`; return; }
+    if (!currentQ) {
+      $("#main").innerHTML = `<div class="report"><div class="wrap" style="max-width:720px"><h2>${done === total ? "Every question answered" : "No more questions this visit"}</h2>
+        <p class="lede">${done} of ${total} answered. Skipped questions come back next visit.</p>
+        <div class="copyrow"><button class="btn pick" id="copyHark">Copy answers for Hark</button><button class="btn" id="seeTaste">See what it learned</button></div></div></div>`;
+      $("#copyHark").onclick = () => copyText(harkLine(), "Copied in Hark's QQ format.");
+      $("#seeTaste").onclick = () => { view = "taste"; render(); };
+      return;
+    }
+    const q = currentQ, free = q.o.length === 1 && q.o[0] === "free text";
+    $("#main").innerHTML = `<div class="report"><div class="wrap qwrap">
+      <div class="qmeta"><span class="mono">${esc(q.id)} · ${esc(q.area)}</span><span class="num">${done} of ${total} answered</span></div>
+      <h2 class="qtext">${esc(q.q.replace(" (type it)", ""))}</h2>
+      ${free ? "" : `<div class="qopts">${q.o.map((o, i) => `<button class="qopt" data-i="${i}"><kbd>${i + 1}</kbd>${esc(o)}</button>`).join("")}</div>`}
+      <form class="qother" id="qother"><input id="qtext" type="text" autocomplete="off" placeholder="${free ? "Type your answer" : "Or type your own answer"}" aria-label="Your own answer"><button class="btn" type="submit">Save</button></form>
+      <div class="copyrow"><button class="btn" id="qskip"><kbd>Space</kbd>Skip</button><button class="btn" id="qundo"><kbd>Z</kbd>Undo</button><span style="color:var(--muted);font-size:13px">Answers save as you tap. Hark's tools read them as <span class="mono">QQ-001=synthwave</span>.</span></div>
+    </div></div>`;
+    document.querySelectorAll(".qopt").forEach(b => b.onclick = () => answerQ(q, q.o[+b.dataset.i]));
+    $("#qother").onsubmit = e => { e.preventDefault(); answerQ(q, $("#qtext").value); };
+    $("#qskip").onclick = () => skipQ(q); $("#qundo").onclick = () => undoQ();
+    if (free) $("#qtext").focus();
+  }
+  async function copyText(t, ok) {
+    try { await navigator.clipboard.writeText(t); toast(ok); }
+    catch (e) { const b = $("#copyBuf"); b.value = t; b.select(); toast("Selected the text. Press Ctrl+C or ⌘C to copy."); }
+  }
+
   function render() {
     ["judge", "rank", "taste"].forEach(v => $("#v-" + v).setAttribute("aria-pressed", v === view));
+    if (cat === "questions" && view === "judge") return renderQuestion();
     if (view === "judge") renderJudge(); else if (view === "rank") renderRank(); else renderTaste();
   }
   $("#v-judge").onclick = () => { view = "judge"; render(); };
@@ -574,6 +661,13 @@ kbd { font: 500 11px/1 var(--mono); padding: 3px 5px; border: 1px solid var(--li
     const typing = e.target && (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT");
     if (typing) { if (e.key === "Escape") e.target.blur(); return; }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (cat === "questions") {
+      const q = currentQ; if (!q) return;
+      if (/^[1-9]$/.test(e.key) && q.o[+e.key - 1] && q.o[0] !== "free text") { e.preventDefault(); answerQ(q, q.o[+e.key - 1]); }
+      else if (e.key === " ") { e.preventDefault(); skipQ(q); }
+      else if (e.key === "z" || e.key === "Z") { e.preventDefault(); undoQ(); }
+      return;
+    }
     const map = { ArrowLeft: "a", ArrowRight: "b", ArrowUp: "both-good", ArrowDown: "both-weak", " ": "skip" };
     if (map[e.key]) { e.preventDefault(); decide(map[e.key]); }
     else if (e.key === "z" || e.key === "Z") { e.preventDefault(); undo(); }

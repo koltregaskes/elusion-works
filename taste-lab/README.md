@@ -42,6 +42,17 @@ Each generator page draws every combination from one URL hash: `candidates/dashb
 
 The lab opens on **Quick round**: 20 pairs mixed across every category, always serving the least-judged category next, then a summary of what the round covered. It is the fastest way to give every category data. The category tabs are still there for focused sessions.
 
+## Questions (from Hark Pro's Taste Lab)
+
+The **Questions** tab serves Hark Pro's 452 quick taste questions (`candidates/questions.json`, exported from Hark's `manifest.json`, schema `taste-lab-manifest/1`). They cover music, film, TV, games, books, writing, design, images, AI tools, food and admin.
+
+- Tap an option, press its number key, or type your own answer. Space skips and Z undoes.
+- Answers are saved to the store's `answers` collection, one document per question id, so a later answer overrides an earlier one.
+- "Copy answers for Hark" gives a line in Hark's `QQ-001=synthwave` format, which Hark's `tools/pick.py` ingests.
+- The Markdown taste profile includes the answers.
+
+Hark's 1,976 image items are not in this rater yet: their previews are still in the Hark workspace. Once the 1400px JPGs are reachable (Drive, R2 or the repo), they can be added as within-category A/B pairs.
+
 ## How the ranking works
 
 - Elo, K = 24, starting at 1000.
