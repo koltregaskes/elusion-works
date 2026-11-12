@@ -205,7 +205,6 @@
     }
 
     soundToggle.setAttribute("aria-pressed", String(audioEnabled));
-    soundToggle.setAttribute("aria-label", audioEnabled ? "Mute sonar audio" : "Enable sonar audio");
     soundLabel.textContent = audioEnabled ? "Sonar audio on" : "Sonar audio off";
     updateFrequency();
   }
