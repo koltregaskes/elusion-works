@@ -187,3 +187,4 @@ body.clean .topbar, body.clean .col, body.clean .ctl, body.clean .mode, body.cle
   .footline span:first-child { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+.idblock, .chips button.on, .pill.or { color: #16181b; } .pill:not(.ink):not(.gr) { color: #101410; } .pill.gr { color: #474b50; }
