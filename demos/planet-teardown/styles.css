@@ -231,3 +231,6 @@ body.clean .topbar, body.clean .col, body.clean .ctl, body.clean .mode, body.cle
   .footline span:first-child { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* WCAG AA controls and text. */
+.accents button { width: 24px; height: 24px; }
