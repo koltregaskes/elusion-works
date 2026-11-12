@@ -33,17 +33,17 @@
       <button class="btn" id="resetBtn">↺ Reset</button>
     </div>
     <div class="sliderrow">
-      <div class="top"><label>Speed</label><span class="val" id="speedVal">10 d/s</span></div>
+      <div class="top"><label for="speedSlider">Speed</label><span class="val" id="speedVal">10 d/s</span></div>
       <input type="range" id="speedSlider" min="0" max="1" step="0.001" value="0.5" />
     </div>
-    <div class="row"><label>Simulation date</label><span class="val" id="dateVal" style="min-width:84px">—</span></div>
+    <div class="row"><label for="tOrbits">Simulation date</label><span class="val" id="dateVal" style="min-width:84px">—</span></div>
 
     <div class="sec">Scene</div>
     <div class="row"><label>Orbit lines</label><span class="switch"><input type="checkbox" id="tOrbits" checked /><span class="tr"></span></span></div>
-    <div class="row"><label>Labels</label><span class="switch"><input type="checkbox" id="tLabels" checked /><span class="tr"></span></span></div>
-    <div class="row"><label>Moons</label><span class="switch"><input type="checkbox" id="tMoons" checked /><span class="tr"></span></span></div>
-    <div class="row"><label>Asteroid belt</label><span class="switch"><input type="checkbox" id="tBelt" checked /><span class="tr"></span></span></div>
-    <div class="row"><label>Compressed distances</label><span class="switch"><input type="checkbox" id="tCompress" checked /><span class="tr"></span></span></div>
+    <div class="row"><label for="tLabels">Labels</label><span class="switch"><input type="checkbox" id="tLabels" checked /><span class="tr"></span></span></div>
+    <div class="row"><label for="tMoons">Moons</label><span class="switch"><input type="checkbox" id="tMoons" checked /><span class="tr"></span></span></div>
+    <div class="row"><label for="tBelt">Asteroid belt</label><span class="switch"><input type="checkbox" id="tBelt" checked /><span class="tr"></span></span></div>
+    <div class="row"><label for="tCompress">Compressed distances</label><span class="switch"><input type="checkbox" id="tCompress" checked /><span class="tr"></span></span></div>
     <p class="fact">Click any planet — or the Sun — to fly to it, then press <b>Play</b> to slice it open.</p>
   </div>
 
@@ -67,11 +67,11 @@
       <button class="btn" id="sliceResetBtn">↺ Close up</button>
     </div>
     <div class="sliderrow">
-      <div class="top"><label>Slice depth</label><span class="val" id="sliceVal">0.00</span></div>
+      <div class="top"><label for="sliceSlider">Slice depth</label><span class="val" id="sliceVal">0.00</span></div>
       <input type="range" id="sliceSlider" min="0" max="1" step="0.005" value="0" />
     </div>
-    <div class="row"><label>Slow spin</label><span class="switch"><input type="checkbox" id="dSpin" /><span class="tr"></span></span></div>
-    <div class="row"><label>Layer labels</label><span class="switch"><input type="checkbox" id="dLabels" checked /><span class="tr"></span></span></div>
+    <div class="row"><label for="dSpin">Slow spin</label><span class="switch"><input type="checkbox" id="dSpin" /><span class="tr"></span></span></div>
+    <div class="row"><label for="dLabels">Layer labels</label><span class="switch"><input type="checkbox" id="dLabels" checked /><span class="tr"></span></span></div>
 
     <div class="sec">Layers</div>
     <div id="layerRows"></div>

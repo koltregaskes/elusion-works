@@ -179,3 +179,6 @@ select {
 .layerrow.sel { background: var(--accent-soft); border-color: var(--accent); }
 .layerrow .sw { width: 11px; height: 11px; border-radius: 3px; flex: none; border: 1px solid rgba(0,0,0,0.25); }
 .layerrow .dep { margin-left: auto; font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* WCAG AA controls and text. */
+.btn.primary { color: #17120d; }
