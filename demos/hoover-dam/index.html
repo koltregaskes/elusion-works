@@ -106,13 +106,13 @@
           <p class="note" id="scenarioNote"></p>
         </div>
         <div class="group">
-          <div class="label mono">Inflow from Glen Canyon <output id="inflowOut"></output></div>
-          <input type="range" id="inflow" min="3000" max="120000" step="500" value="11000" />
+          <div class="label mono" id="inflowLabel">Inflow from Glen Canyon <output id="inflowOut"></output></div>
+          <input type="range" id="inflow" aria-labelledby="inflowLabel" min="3000" max="120000" step="500" value="11000" />
           <div class="hint">Push past ~50,000 ft³/s and the lake rises faster than the turbines can pass it.</div>
         </div>
         <div class="group">
-          <div class="label mono">Drum gates <output id="drumOut"></output></div>
-          <input type="range" id="drum" min="0" max="1" step="0.01" value="1" />
+          <div class="label mono" id="drumLabel">Drum gates <output id="drumOut"></output></div>
+          <input type="range" id="drum" aria-labelledby="drumLabel" min="0" max="1" step="0.01" value="1" />
           <div class="hint">Raised gates hold 16 ft more water. Lower them to spill a flood.</div>
         </div>
         <div class="group">
@@ -121,12 +121,12 @@
             <button class="seg-b on" data-mode="manual">Manual</button><button class="seg-b" data-mode="auto">Follow demand</button>
           </div>
           <div id="manualBox">
-            <div class="label mono">Wicket gates, all running units <output id="gateOut"></output></div>
-            <input type="range" id="gate" min="0" max="1" step="0.01" value="0.7" />
+            <div class="label mono" id="gateLabel">Wicket gates, all running units <output id="gateOut"></output></div>
+            <input type="range" id="gate" aria-labelledby="gateLabel" min="0" max="1" step="0.01" value="0.7" />
           </div>
           <div id="autoBox" hidden>
-            <div class="label mono">Grid demand <output id="demandOut"></output></div>
-            <input type="range" id="demand" min="0" max="2100" step="10" value="1200" />
+            <div class="label mono" id="demandLabel">Grid demand <output id="demandOut"></output></div>
+            <input type="range" id="demand" aria-labelledby="demandLabel" min="0" max="2100" step="10" value="1200" />
           </div>
         </div>
         <div class="group">
@@ -143,8 +143,8 @@
           </div>
         </div>
         <div class="group">
-          <div class="label mono">Time of day <output id="hourOut"></output></div>
-          <input type="range" id="hour" min="0" max="23.99" step="0.05" value="11" />
+          <div class="label mono" id="hourLabel">Time of day <output id="hourOut"></output></div>
+          <input type="range" id="hour" aria-labelledby="hourLabel" min="0" max="23.99" step="0.05" value="11" />
         </div>
         <div class="group">
           <button class="btn" id="boulderBtn">Drop a boulder into the lake</button>
@@ -170,8 +170,8 @@
           </div>
         </div>
         <div class="group" id="buildBox" hidden>
-          <div class="label mono">Construction date <output id="yearOut"></output></div>
-          <input type="range" id="year" min="1931.2" max="1936.9" step="0.01" value="1931.3" />
+          <div class="label mono" id="yearLabel">Construction date <output id="yearOut"></output></div>
+          <input type="range" id="year" aria-labelledby="yearLabel" min="1931.2" max="1936.9" step="0.01" value="1931.3" />
           <div class="build-event" id="buildEvent"></div>
           <button class="btn ghost" id="buildPlay">▶ Play construction</button>
         </div>
