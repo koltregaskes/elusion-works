@@ -40,3 +40,6 @@ SESSION-NOTES.md
 design/
 design/archive/
 demos/**/archive/
+
+# Orbit Census: built from CelesTrak in the Pages deploy, never committed
+demos/orbit-census/data/catalog.json

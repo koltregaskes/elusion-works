@@ -37,6 +37,25 @@ jobs:
           cp data/estate.js data/feed.json _site/data/
           cp -r experiments creative-radar remix-relay design-notes demos _site/
 
+      # Orbit Census reads a catalogue of every tracked object, rebuilt from CelesTrak on each
+      # deploy (twice a day by the schedule above, matching CelesTrak's own update rhythm).
+      # A failed fetch must not block the site: the page then asks CelesTrak directly and says so.
+      - name: Build Orbit Census catalogue from CelesTrak
+        id: orbitcat
+        continue-on-error: true
+        run: node demos/orbit-census/tools/build-catalog.mjs _site/demos/orbit-census/data/catalog.json
+
+      - name: Report Orbit Census catalogue
+        run: |
+          f=_site/demos/orbit-census/data/catalog.json
+          if [ -s "$f" ]; then
+            n=$(node -e "const d=require('./$f'); console.log(d.rows.length)")
+            echo "Orbit Census catalogue: $n objects"
+            if [ "$n" -lt 2000 ]; then echo "::warning::Orbit Census catalogue has only $n objects"; fi
+          else
+            echo "::warning::Orbit Census catalogue was not built (outcome: ${{ steps.orbitcat.outcome }}); the page will fall back to a live CelesTrak fetch"
+          fi
+
       - name: Verify static site bundle
         run: |
           test -f _site/index.html
@@ -78,6 +97,19 @@ jobs:
           test -f _site/demos/index.html
           test -f _site/demos/exploded-views/index.html
           test -f _site/demos/windfield/index.html
+          test -f _site/demos/orbit-census/index.html
+          test -f _site/demos/orbit-census/src/main.js
+          test -f _site/demos/orbit-census/src/worker.js
+          test -f _site/demos/orbit-census/data/earth.json
+          test -f _site/demos/orbit-census/vendor/satellite/index.js
+          test -f _site/demos/orbit-census/vendor/three/three.module.min.js
+          test -f _site/demos/orbit-census/thumbnail.webp
+          test -f _site/demos/planet-teardown/index.html
+          test -f _site/demos/planet-teardown/src/main.js
+          test -f _site/demos/planet-teardown/src/data.js
+          test -f _site/demos/planet-teardown/vendor/three.module.min.js
+          test -f _site/demos/planet-teardown/vendor/addons/postprocessing/UnrealBloomPass.js
+          test -f _site/demos/planet-teardown/thumbnail.webp
           test -f _site/demos/windfield/vendor/three/build/three.module.js
           test -f _site/demos/exploded-views/laptop.html
           test -f _site/demos/exploded-views/solar.html
@@ -150,6 +182,8 @@ jobs:
           grep -q 'nexus-aetherial/' _site/demos/index.html
           grep -q 'solar-system-field-lab/' _site/demos/index.html
           grep -q 'hoover-dam/' _site/demos/index.html
+          grep -q 'orbit-census/' _site/demos/index.html
+          grep -q 'planet-teardown/' _site/demos/index.html
           # d6 front-door section markers (replaced legacy *-grid and showcase/launch-card IDs)
           grep -q 'id="sites"' _site/index.html
           grep -q 'id="tools"' _site/index.html
