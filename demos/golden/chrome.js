@@ -54,7 +54,7 @@
     return `
       <header class="site-header" id="siteHeader">
         <div class="container">
-          <a href="index.html" class="brand-mark" aria-label="Golden Encyclopedia home">
+          <a href="index.html" class="brand-mark">
             <span class="brand-icon">${SVG.paw}</span>
             <span class="brand-text"><span class="name">GOLDEN</span><span class="sub">Encyclopedia</span></span>
           </a>
