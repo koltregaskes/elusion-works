@@ -824,7 +824,7 @@ main {
   text-transform: uppercase;
 }
 .rail-item:hover { background: var(--copper-soft); color: var(--ink); }
-.rail-item[aria-selected="true"] { background: var(--ink); color: var(--paper); }
+.rail-item[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
 .rail-item .n { margin-left: auto; opacity: 0.6; }
 
 .digest-main { display: flex; flex-direction: column; }

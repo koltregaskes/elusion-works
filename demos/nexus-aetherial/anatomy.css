@@ -131,7 +131,7 @@
 }
 .canvas-tab:last-child { border-right: none; }
 .canvas-tab:hover { color: var(--ink); background: var(--plasma-soft); }
-.canvas-tab[aria-selected="true"] {
+.canvas-tab[aria-pressed="true"] {
   background: var(--ink);
   color: var(--paper);
 }
@@ -300,12 +300,12 @@
   cursor: pointer;
   transition: var(--t-fast);
 }
-.at-head[aria-selected="true"] {
+.at-head[aria-pressed="true"] {
   background: var(--plasma);
   border-color: var(--plasma);
   color: #fff;
 }
-.at-head:not([aria-selected="true"]):hover {
+.at-head:not([aria-pressed="true"]):hover {
   border-color: var(--plasma);
   color: var(--plasma);
 }

@@ -13,11 +13,11 @@
   --paper-warm:   #ebeef5;
   --ink:          #0d0f17;
   --ink-soft:     #353a4d;
-  --ink-faint:    #6b7184;
+  --ink-faint:    #565d70;
   --ink-ghost:    #a8aebf;
 
   /* accents */
-  --plasma:       #6f4cff;   /* primary  — electric violet */
+  --plasma:       #5934dd;   /* primary  — electric violet */
   --plasma-deep:  #4a26d6;
   --plasma-soft:  rgba(111, 76, 255, 0.12);
   --plasma-glow:  rgba(111, 76, 255, 0.35);
@@ -27,9 +27,9 @@
   --lime-soft:    rgba(200, 240, 74, 0.18);
 
   /* status */
-  --emerald:      #1a9d6c;
+  --emerald:      #13734f;
   --amber:        #d68a14;
-  --magenta:      #d63a89;
+  --magenta:      #b5266f;
 
   /* legacy aliases (so old rules don't break) */
   --copper:       var(--plasma);
@@ -91,3 +91,7 @@
   --rule-faint:   rgba(240, 242, 248, 0.08);
   --grid:         rgba(240, 242, 248, 0.04);
 }
+
+/* WCAG AA controls and text. */
+.rail-item .n { opacity: 1; }
+.foot-links a { min-height: 24px; display: inline-flex; align-items: center; }

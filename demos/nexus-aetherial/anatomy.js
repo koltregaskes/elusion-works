@@ -79,7 +79,7 @@
     const initialW = heads.entities;
 
     const headBtns = labels.map((l, i) =>
-      `<button class="at-head" data-head="${l}" aria-selected="${i === 1 ? 'true' : 'false'}">${l}</button>`
+      `<button class="at-head" data-head="${l}" aria-pressed="${i === 1 ? 'true' : 'false'}">${l}</button>`
     ).join('');
 
     // attention arrows from query (last token) to all others
@@ -248,7 +248,7 @@
   document.addEventListener('click', e => {
     const head = e.target.closest('.at-head');
     if (head) {
-      document.querySelectorAll('.at-head').forEach(b => b.setAttribute('aria-selected', b === head ? 'true' : 'false'));
+      document.querySelectorAll('.at-head').forEach(b => b.setAttribute('aria-pressed', b === head ? 'true' : 'false'));
       rebuildAttention(head.dataset.head);
     }
   });
@@ -261,7 +261,7 @@
     stage.querySelectorAll('.canvas-panel').forEach(p => {
       p.classList.toggle('is-active', Number(p.dataset.panel) === n);
     });
-    tabs.forEach(t => t.setAttribute('aria-selected', Number(t.dataset.tab) === n ? 'true' : 'false'));
+    tabs.forEach(t => t.setAttribute('aria-pressed', Number(t.dataset.tab) === n ? 'true' : 'false'));
     stations.forEach(s => s.classList.toggle('is-active', Number(s.dataset.station) === n));
     if (stepEl) stepEl.textContent = String(n).padStart(2, '0');
     if (progressFill) progressFill.style.width = `${(n / 5) * 100}%`;
