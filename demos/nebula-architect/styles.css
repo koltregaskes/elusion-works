@@ -955,3 +955,4 @@ html, body {
     display: block !important;
   }
 }
+#consoleBody:focus-visible { outline: 2px solid var(--copper, #ffb067); outline-offset: 3px; }
