@@ -40,7 +40,8 @@
     />
     <link rel="stylesheet" href="../styles/cabinet.css?v=20260725b" />
     <link rel="stylesheet" href="../styles/motion.css?v=20260725b" />
-  </head>
+  <style>html:not([data-theme="light"]) { --fg-4: #92929b; }</style>
+</head>
   <body id="top" class="ew-demos-page">
     <a class="skip-link" href="#main-content">Skip to content</a>
 
@@ -62,7 +63,7 @@
         </nav>
 
         <div class="ew-header-actions">
-          <a class="ew-pill ew-pill-ghost ew-index-link ew-magnet" href="#demo-index" aria-label="Open the 16-item Demo Index">
+          <a class="ew-pill ew-pill-ghost ew-index-link ew-magnet" href="#demo-index" >
             <span>Demo index</span>
             <span class="ew-index-count" aria-hidden="true">16</span>
           </a>
@@ -74,7 +75,7 @@
       class="ew-pill ew-pill-ghost ew-theme-toggle ew-magnet"
       type="button"
       data-theme-toggle
-      aria-label="Toggle colour theme"
+      
       aria-pressed="false"
     >
       <span class="ew-theme-toggle-icon" aria-hidden="true"></span>
