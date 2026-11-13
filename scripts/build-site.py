@@ -81,5 +81,6 @@ for p in sorted(OUT.rglob('*.html')):
 subprocess.run([sys.executable,str(ROOT/'scripts/build-rss.py'),'--output',str(OUT/'feed.xml')],check=True)
 subprocess.run([sys.executable,str(ROOT/'scripts/check-launch-seo.py')],check=True)
 subprocess.run([sys.executable,str(ROOT/'scripts/check-contact.py')],check=True)
+subprocess.run([sys.executable,str(ROOT/'scripts/check-html.py')],check=True)
 assert not (OUT/'scripts').exists()
 print(f'Built {len(urls)} indexable routes from one Pages/CI assembly')
