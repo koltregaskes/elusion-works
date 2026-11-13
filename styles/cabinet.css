@@ -711,3 +711,6 @@ html[data-theme="light"] .ew-plate-poster { opacity: 0.88; filter: invert(0.85) 
   .ew-plate-blurb { -webkit-line-clamp: 3; }
   .ew-footer-links { align-items: flex-start; flex-direction: column; }
 }
+
+/* Maintain readable muted text in the dark theme. */
+html:not([data-theme="light"]) { --fg-4: #92929b; }
