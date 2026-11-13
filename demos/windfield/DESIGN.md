@@ -42,7 +42,7 @@ starts again. Press **T** (or "Take the wheel" in the Subject tab) to drive it y
 
 | File | What it does |
 | --- | --- |
-| `src/grass.js` | Two layers of instanced blades. A dense **near patch** (110k to 720k blades) travels with the camera, each blade owning a world-fixed lattice point so nothing pops, with wheat ears and flower heads riding on a subset. A lighter **far field** fills the distance. Bending, colour, crop, stubble and straw all happen in the vertex shader. |
+| `src/grass.js` | Two layers of instanced blades. A dense **near patch** (80k to 525k blades) travels with the camera, each blade owning a world-fixed lattice point so nothing pops, with wheat ears and flower heads riding on a subset. A lighter **far field** fills the distance. Bending, colour, crop, stubble and straw all happen in the vertex shader. |
 | `src/field.js` | The terrain height texture (so shader-placed grass sits on the ground) and the cut mask. |
 | `src/combine.js` | The procedural combine: bevelled panels, lathed tyres with chevron lugs, a header with a turning reel, auger and knife guards, a glass cab, ladder, mirrors, grilles, lights, beacon and spreaders. Also the lane autopilot and the drive model (rear-wheel steering). |
 | `src/harvest.js` | Ties the combine to the field: stamping, chaff, dust and exhaust particles, regrowth. |

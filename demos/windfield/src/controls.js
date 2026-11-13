@@ -57,7 +57,7 @@ export class CameraRig {
     window.addEventListener('keydown', (e) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
       const k = e.key.toLowerCase();
-      if (this.mode === 'chase') return; // the keys are driving the combine
+      if (this.mode === 'chase' || this.driving) return; // the keys are driving the combine
       if (['w', 'a', 's', 'd', 'q', 'e', 'shift'].includes(k)) {
         this.keys.add(k);
         if (k !== 'shift') this.goFree();

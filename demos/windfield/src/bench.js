@@ -17,6 +17,16 @@ export class Bench {
     this.results = [];
     this.index = -1;
     this.phase = 'idle';
+    // Browsers stop animation frames in a hidden tab, so the frame after returning
+    // would carry the whole hidden gap. Restart the current level's warm-up whenever
+    // visibility changes, and let the next frame set the clock.
+    document.addEventListener('visibilitychange', () => {
+      if (this.phase === 'warm' || this.phase === 'measure') {
+        this.phase = 'warm';
+        this.phaseStart = null;
+        this.frames = [];
+      }
+    });
     this.banner = document.createElement('div');
     this.banner.className = 'wf-bench-banner wf-mono';
     this.banner.setAttribute('role', 'status');
@@ -44,9 +54,7 @@ export class Bench {
 
   onFrame(now) {
     if (this.phase === 'idle' || this.phase === 'done') return;
-    if (document.hidden) {
-      // A hidden tab stops rendering; start this level's warm-up again when it returns.
-      this.phase = 'warm';
+    if (this.phaseStart === null) {
       this.phaseStart = now;
       this.last = now;
       return;
@@ -122,12 +130,15 @@ export class Bench {
         <button type="button" data-close>Close</button>
       </div>`;
     card.querySelector('.wf-bench-line').textContent = line;
-    card.querySelector('[data-copy]').addEventListener('click', async (e) => {
+    const copyButton = card.querySelector('[data-copy]');
+    // Keep the button reference: event.currentTarget is cleared once dispatch ends,
+    // which is before the clipboard promise settles.
+    copyButton.addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(line);
-        e.currentTarget.textContent = 'Copied';
+        copyButton.textContent = 'Copied';
       } catch {
-        e.currentTarget.textContent = 'Select the line above to copy';
+        copyButton.textContent = 'Select the line above to copy';
       }
     });
     card.querySelector('[data-close]').addEventListener('click', () => card.remove());

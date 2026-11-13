@@ -479,6 +479,12 @@ const ui = new StudioUI({
     return audio.on;
   },
   onCamera() {
+    if (driving) {
+      // Leaving the chase camera means leaving the driver's seat, so the two
+      // controllers never share the movement keys.
+      setDriving(false);
+      return;
+    }
     rig.mode === 'cinematic' ? rig.goFree() : rig.goCinematic();
   },
   onShot() {
@@ -496,6 +502,7 @@ const ui = new StudioUI({
 
 function setDriving(on) {
   driving = on;
+  rig.driving = on;
   harvest.setDriving(on);
   if (on) rig.goChase();
   else {

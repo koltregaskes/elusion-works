@@ -70,9 +70,14 @@ float clearing(vec2 p) {
 
 // World root for a near-patch instance: the lattice point congruent to off * size that
 // lies inside the patch around its centre.
+// Built as the fixed instance offset plus a whole number of patch widths, so a lattice
+// point that has not wrapped keeps bit-identical coordinates (and so the same hashed
+// height, angle and colour) however the camera moves.
 vec2 patchRoot(vec2 off) {
   vec2 lo = uPatch.xy - 0.5 * uPatch.z;
-  return lo + mod(off * uPatch.z - lo, uPatch.z);
+  vec2 base = off * uPatch.z;
+  vec2 k = ceil((lo - base) / uPatch.z);
+  return base + k * uPatch.z;
 }
 
 // Bends a vertical strip (local x = across, t = 0..1 along) rooted at root.

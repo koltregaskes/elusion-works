@@ -538,9 +538,11 @@ export class Harvester {
   steerTowards(dt, tx, tz, speed) {
     let d = Math.atan2(tz - this.z, tx - this.x) - this.heading;
     d = Math.atan2(Math.sin(d), Math.cos(d));
-    this.steer += (THREE.MathUtils.clamp(d * 1.4, -0.55, 0.55) - this.steer) * Math.min(1, dt * 3);
+    this.steer += (THREE.MathUtils.clamp(-d * 1.4, -0.55, 0.55) - this.steer) * Math.min(1, dt * 3);
     this.speed += (speed - this.speed) * Math.min(1, dt * 1.2);
-    this.heading += (this.speed * Math.tan(this.steer)) / 3.7 * dt;
+    // Positive steer turns left (heading decreases, as the chase camera sees it), the
+    // same convention the autopilot uses for the rear-wheel visuals.
+    this.heading -= (this.speed * Math.tan(this.steer)) / 3.7 * dt;
     this.x += Math.cos(this.heading) * this.speed * dt;
     this.z += Math.sin(this.heading) * this.speed * dt;
   }
@@ -548,8 +550,12 @@ export class Harvester {
   update(dt) {
     if (this.mode === 'return') {
       // Drive back onto the route instead of jumping to it, then hand over to the autopilot.
-      this.returnTime = (this.returnTime || 0) + dt;
       const dist = (q) => Math.hypot(q.x - this.x, q.z - this.z);
+      if (!this.returnTime) {
+        // Allow enough time to drive the whole way back at return speed, plus turning.
+        this.returnLimit = 20 + dist(this.sample(this.s)) / Math.max(0.5, 3.2 * this.speedScale) * 1.5;
+      }
+      this.returnTime = (this.returnTime || 0) + dt;
       let cur = dist(this.sample(this.s));
       while (this.s < this.length) {
         const n = dist(this.sample(this.s + 0.5));
@@ -564,7 +570,7 @@ export class Harvester {
       const ahead = this.sample(Math.min(this.length, this.s + 2.5));
       let dh = Math.atan2(ahead.z - p.z, ahead.x - p.x) - this.heading;
       dh = Math.atan2(Math.sin(dh), Math.cos(dh));
-      if ((cur < 2.5 && Math.abs(dh) < 0.4) || this.returnTime > 30) {
+      if ((cur < 2.5 && Math.abs(dh) < 0.4) || this.returnTime > this.returnLimit) {
         // Whatever gap is left melts away over a second or two rather than snapping.
         this.offX = this.x - p.x;
         this.offZ = this.z - p.z;
@@ -598,7 +604,9 @@ export class Harvester {
       this.speed += (target - this.speed) * Math.min(1, dt * 1.2);
       this.steer += (this.input.turn * 0.55 - this.steer) * Math.min(1, dt * 3);
       // Rear-wheel steering: the back swings out, which is what makes combines look odd.
-      this.heading += (this.speed * Math.tan(this.steer)) / 3.7 * dt;
+      // Positive steer turns left (heading decreases, as the chase camera sees it), the
+    // same convention the autopilot uses for the rear-wheel visuals.
+    this.heading -= (this.speed * Math.tan(this.steer)) / 3.7 * dt;
       this.x += Math.cos(this.heading) * this.speed * dt;
       this.z += Math.sin(this.heading) * this.speed * dt;
       const lim = 92;
