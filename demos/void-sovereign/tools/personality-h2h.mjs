@@ -1,9 +1,12 @@
 // Head-to-head personality measurement for Void Sovereign (headless sim).
 // usage (repo root): node demos/void-sovereign/tools/personality-h2h.mjs demos/void-sovereign <pA> <pB> <seeds,comma> [variant] [diffA] [diffB]
 // Plays each seed twice (A as blue then A as amber). variant "noswarmbias"
-// clears Swarm's build bias in-process; "soft" uses a softer bias.
+// clears Swarm's build bias in-process. Unsupported variants are rejected.
 import { pathToFileURL } from 'node:url';
 const [gameDir, pA, pB, seedsArg, variant = 'base', dA = 'normal', dB = 'normal'] = process.argv.slice(2);
+if (!['base', 'noswarmbias'].includes(variant) && !variant.startsWith('bias=') && !variant.startsWith('patch=')) {
+  throw new Error(`Unsupported variant: ${variant}. Use base, noswarmbias, bias=<JSON> or patch=<JSON>.`);
+}
 const imp = (p) => import(pathToFileURL(`${gameDir}/${p}`).href);
 const { World } = await imp('src/sim/world.js');
 const { PERSONALITY } = await imp('src/sim/ai.js');
