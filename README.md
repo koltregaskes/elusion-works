@@ -96,3 +96,10 @@ test origin; outside requests are blocked and no server or port is started.
 This deterministic fallback-font/offline pass complements final deployed,
 keyboard, screen-reader and real-GPU acceptance; it does not prove external API
 availability or content rendered only by third-party scripts.
+
+The browser gate uses Windfield's supported `?q=low` render setting to keep
+software-rendered CI within its five-minute limit. The viewport remains 320px
+or 1280px; every route, control and axe rule stays in scope. Default/high-quality
+render performance remains a real-GPU acceptance check. Reports record this
+render profile and save each completed route before closing its page, so a
+cancelled run retains partial coverage and findings rather than an empty artifact.
