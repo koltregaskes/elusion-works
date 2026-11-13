@@ -20,6 +20,7 @@ jobs:
         with:
           node-version: '24'
       - run: python scripts/build-site.py
+      - run: python scripts/test-seo-content.py
       - run: node scripts/check-links.mjs --external
   accessibility:
     name: Axe ${{ matrix.width }}px (${{ matrix.shard }}/4)
