@@ -111,8 +111,9 @@ export function buildTown(scene, kitData, ground, opts = {}) {
   });
   const [gx, gz] = ell(GATE_ANGLE);
   place('gatehouse', M4(gx, TOWN.base - 0.5, gz, 0)); // passage floor just under the street
-  addObb(gx - 4.6, gz, 4.3, 5.5, 0);
-  addObb(gx + 4.6, gz, 4.3, 5.5, 0);
+  // The model has a four-metre passage (inner faces x = -2 and +2).
+  addObb(gx - 4.6, gz, 2.6, 5.5, 0);
+  addObb(gx + 4.6, gz, 2.6, 5.5, 0);
 
   // ------------------------------------------------------------------ terrace: arcade wall, stair, church, keep
   const tz = TOWN.terraceZ;

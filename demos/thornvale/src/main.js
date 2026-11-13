@@ -14,6 +14,7 @@ import { buildTown } from './town.js';
 import { Atmosphere, terrainMaterial, mountainMaterial, addGrass, addRain, addStair } from './world.js';
 import { loadCharacter, ThirdPerson } from './character.js';
 import { Flyover } from './flyover.js';
+import { updateFly, lookFly } from './fly-controls.js';
 
 const $ = (s) => document.querySelector(s);
 const params = new URLSearchParams(location.search);
@@ -148,7 +149,11 @@ async function boot() {
   const world = { sample: ground.sample, obbs: town.obbs, circles: town.circles };
   const hero = new ThirdPerson(camera, canvas, character, world);
   const flyover = new Flyover(camera, ground.sample, $('#fade'), $('#caption'));
-  const fly = { yaw: 0, pitch: -0.2, pos: new THREE.Vector3(), keys: hero.keys };
+  const fly = { yaw: 0, pitch: -0.2, pos: new THREE.Vector3(), keys: hero.keys, touchMove: hero.touchMove };
+  hero.onTouchLook = (dx, dy) => {
+    if (state.mode !== 'fly') return;
+    lookFly(fly, dx, dy);
+  };
   document.addEventListener('mousemove', (e) => {
     if (state.mode !== 'fly' || document.pointerLockElement !== canvas) return;
     fly.yaw -= e.movementX * 0.0022;
@@ -177,6 +182,7 @@ async function boot() {
         fly.yaw = e.y;
         fly.pitch = e.x;
         fly.pos.copy(camera.position);
+        hero.touchEnabled = true;
       }
       if (!coarse) canvas.requestPointerLock?.()?.catch?.(() => {});
     }
@@ -249,17 +255,7 @@ async function boot() {
       if (state.mode === 'flyover') flyover.update(dt);
       else if (state.mode === 'walk') hero.update(dt);
       else {
-        const k = fly.keys;
-        const f = (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0);
-        const r = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
-        const u = (k.has('Space') || k.has('KeyE') ? 1 : 0) - (k.has('KeyQ') || k.has('KeyC') ? 1 : 0);
-        const sp = (k.has('ShiftLeft') ? 80 : 22) * dt;
-        const cp = Math.cos(fly.pitch);
-        fly.pos.add(new THREE.Vector3(-Math.sin(fly.yaw) * cp, Math.sin(fly.pitch), -Math.cos(fly.yaw) * cp).multiplyScalar(f * sp));
-        fly.pos.add(new THREE.Vector3(Math.cos(fly.yaw), 0, -Math.sin(fly.yaw)).multiplyScalar(r * sp));
-        fly.pos.y = Math.max(fly.pos.y + u * sp, ground.sample(fly.pos.x, fly.pos.z) + 1.5);
-        camera.position.copy(fly.pos);
-        camera.quaternion.setFromEuler(new THREE.Euler(fly.pitch, fly.yaw, 0, 'YXZ'));
+        updateFly(fly, camera, ground, dt);
       }
     }
     atmo.apply();

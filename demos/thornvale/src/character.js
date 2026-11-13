@@ -50,6 +50,7 @@ export class ThirdPerson {
     this.dist = 4.2;
     this.keys = new Set();
     this.enabled = false;
+    this.touchEnabled = false;
     this.locked = false;
     this.camPos = new THREE.Vector3();
     this.speed = 0;
@@ -67,7 +68,7 @@ export class ThirdPerson {
     };
     window.addEventListener('keydown', key);
     window.addEventListener('keyup', key);
-    window.addEventListener('blur', () => this.keys.clear());
+    window.addEventListener('blur', () => { this.keys.clear(); this.resetTouch?.(); });
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === this.dom;
       this.onLockChange?.(this.locked);
@@ -77,7 +78,7 @@ export class ThirdPerson {
     const look = { id: null, x: 0, y: 0 };
     const move = { id: null, x: 0, y: 0 };
     dom.addEventListener('touchstart', (e) => {
-      if (!this.enabled) return;
+      if (!this.enabled && !this.touchEnabled) return;
       for (const t of e.changedTouches) {
         const s = t.clientX < innerWidth * 0.45 ? move : look;
         if (s.id === null) Object.assign(s, { id: t.identifier, x: t.clientX, y: t.clientY });
@@ -85,11 +86,13 @@ export class ThirdPerson {
       e.preventDefault();
     }, { passive: false });
     dom.addEventListener('touchmove', (e) => {
-      if (!this.enabled) return;
+      if (!this.enabled && !this.touchEnabled) return;
       for (const t of e.changedTouches) {
         if (t.identifier === look.id) {
-          this.yaw -= (t.clientX - look.x) * 0.006;
-          this.pitch = THREE.MathUtils.clamp(this.pitch + (t.clientY - look.y) * 0.005, -0.35, 1.2);
+          if (this.enabled) {
+            this.yaw -= (t.clientX - look.x) * 0.006;
+            this.pitch = THREE.MathUtils.clamp(this.pitch + (t.clientY - look.y) * 0.005, -0.35, 1.2);
+          } else this.onTouchLook?.(t.clientX - look.x, t.clientY - look.y);
           look.x = t.clientX;
           look.y = t.clientY;
         }
@@ -106,6 +109,7 @@ export class ThirdPerson {
         }
       }
     };
+    this.resetTouch = () => { look.id = null; move.id = null; this.touchMove.set(0, 0); };
     dom.addEventListener('touchend', end);
     dom.addEventListener('touchcancel', end);
   }
@@ -120,12 +124,16 @@ export class ThirdPerson {
   }
 
   start() {
+    this.resetTouch();
+    this.touchEnabled = false;
     this.enabled = true;
     this.char.root.visible = true;
   }
 
   stop() {
     this.enabled = false;
+    this.touchEnabled = false;
+    this.resetTouch();
   }
 
   blocked(x, z) {
