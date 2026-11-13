@@ -33,9 +33,9 @@ button, input, a { font: inherit; color: inherit; }
 #leaders polyline { fill: none; stroke: var(--or); stroke-width: 1; }
 #leaders circle { fill: var(--or); }
 #callouts { position: fixed; inset: 0; pointer-events: none; z-index: 4; }
-.call { position: absolute; left: 0; top: 0; white-space: nowrap; }
+.call { position: absolute; left: 0; top: 0; white-space: nowrap; text-shadow: 0 0 3px var(--paper), 0 0 3px var(--paper), 0 0 6px var(--paper); }
 .call b { display: block; font: 600 9.5px/1.2 var(--mono); text-transform: uppercase; letter-spacing: .09em; color: var(--ink); }
-.call span { display: block; font: 500 8px/1.3 var(--mono); text-transform: uppercase; letter-spacing: .09em; color: var(--mute); }
+.call span { display: block; font: 500 8px/1.3 var(--mono); text-transform: uppercase; letter-spacing: .09em; color: var(--ink-2); }
 body.nolabels #callouts, body.nolabels #leaders { display: none; }
 
 .boot { position: fixed; inset: 0; z-index: 60; display: grid; place-content: center; gap: 6px; text-align: center; background: var(--paper); transition: opacity .6s, visibility .6s; }
@@ -180,11 +180,29 @@ input[type=range]::-moz-range-thumb { width: 9px; height: 9px; border-radius: 50
 body.clean .topbar, body.clean .col, body.clean .ctl, body.clean .mode, body.clean .oplog, body.clean .footline, body.clean .frame-label, body.clean #callouts, body.clean #leaders { display: none !important; }
 
 @media (max-width: 1280px) { .meta > div:nth-child(4) { display: none; } .load { width: 180px; } }
-@media (max-width: 1100px) { .col.left, .ctl { display: none; } .mode { left: 24px; } .frame-label.l { left: 24px; } .meta { display: none; } }
+@media (max-width: 1100px) { .styles > * { white-space: nowrap; } .ttl { min-width: 0; } .ttl .k { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .col.left, .ctl { display: none; } .mode { left: 24px; } .frame-label.l { left: 24px; } .meta { display: none; } }
 @media (max-width: 760px) {
   .col.right { display: none; } .load { display: none; } .ttl { min-width: 0; }
   .oplog { width: calc(100% - 20px); bottom: 34px; } .mode { bottom: 128px; } .mode b { font-size: 26px; }
   .footline span:first-child { display: none; }
+}
+/* short laptop screens: compact the left column so the unit list clears the controls */
+@media (max-height: 820px) and (min-width: 1101px) {
+  .col { gap: 6px; } .col .card { padding: 8px 10px; }
+  #cvOut { height: 34px; } #cvLake { height: 28px; }
+  .ubars { gap: 2px; } .ub { font-size: 7.5px; }
+  .pair strong { font-size: 21px; }
+}
+/* phones: a single scrolling strip of the assembly and display chips above the log */
+@media (max-width: 760px) {
+  .frame-label, .ttl .k, .ttl .k2 { display: none; }
+  .ttl { padding-top: 22px; } .ttl h1 { font-size: 22px; white-space: nowrap; }
+  .idblock { width: 76px; } .styles { padding-right: 10px; }
+  .col.right { display: flex; flex-direction: row; top: auto; bottom: 118px; left: 10px; right: 10px; width: auto; overflow-x: auto; gap: 8px; scrollbar-width: none; }
+  .col.right .card:not(.chipcard) { display: none; }
+  .col.right .chipcard { flex: 0 0 auto; }
+  .chipcard .chips { flex-wrap: nowrap; }
+  .mode { bottom: 186px; right: 24px; } .mode #modeS { font-size: 8px; line-height: 1.5; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 .idblock, .chips button.on, .pill.or { color: #16181b; } .pill:not(.ink):not(.gr) { color: #101410; } .pill.gr { color: #474b50; }
