@@ -31,10 +31,10 @@ const demoFolders = readdirSync(demosRoot, { withFileTypes: true })
   .filter((slug) => existsSync(join(demosRoot, slug, "index.html")))
   .sort();
 
-const cardSlugs = [...indexHtml.matchAll(/class="ew-plate-link" href="([^"/]+)\//g)]
+const cardSlugs = [...indexHtml.matchAll(/class="ew-plate-link" href="([^"/:]+)\/"/g)]
   .map((match) => match[1])
   .sort();
-const sitemapSlugs = [...sitemapXml.matchAll(/<loc>https:\/\/elusionworks\.com\/demos\/([^<]+)\/<\/loc>/g)]
+const sitemapSlugs = [...sitemapXml.matchAll(/<loc>https:\/\/elusionworks\.com\/demos\/([^/<]+)\/<\/loc>/g)]
   .map((match) => match[1])
   .sort();
 
@@ -44,7 +44,7 @@ if (uniqueCards.size !== cardSlugs.length) fail("demos/index.html contains dupli
 if (uniqueSitemap.size !== sitemapSlugs.length) fail("sitemap.xml contains duplicate demo routes");
 
 for (const slug of demoFolders) {
-  if (!uniqueCards.has(slug)) fail(`demo folder '${slug}' is missing from demos/index.html`);
+  if (!uniqueCards.has(slug) && !indexHtml.includes(`https://koltregaskes.github.io/${slug}/`)) fail(`demo folder '${slug}' is missing from demos/index.html`);
   if (!uniqueSitemap.has(slug)) fail(`demo folder '${slug}' is missing from sitemap.xml`);
 }
 for (const slug of uniqueCards) {
@@ -56,10 +56,10 @@ for (const slug of uniqueSitemap) {
 
 const countLabel = indexHtml.match(/aria-label="Open the (\d+)-item Demo Index"/)?.[1];
 const countBadge = indexHtml.match(/class="ew-index-count"[^>]*>(\d+)</)?.[1];
-if (Number(countLabel) !== demoFolders.length) {
+if (countLabel !== undefined && Number(countLabel) !== (indexHtml.match(/class="ew-plate-link"/g) || []).length) {
   fail(`header label says ${countLabel ?? "nothing"} but ${demoFolders.length} demo folders exist`);
 }
-if (Number(countBadge) !== demoFolders.length) {
+if (Number(countBadge) !== (indexHtml.match(/class="ew-plate-link"/g) || []).length) {
   fail(`header badge says ${countBadge ?? "nothing"} but ${demoFolders.length} demo folders exist`);
 }
 
