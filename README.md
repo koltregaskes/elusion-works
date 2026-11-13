@@ -114,3 +114,5 @@ routing. After Kol confirms routing and an external delivery/receipt test,
 change this one value to `mailto:contact@elusionworks.com` and rerun the build.
 The source configuration and validation scripts are not published. Fictional
 forms inside demos are separate from this real site contact route.
+
+Orbit Census catalogue provenance distinguishes successful SATCAT enrichment from GP-only fallback. A missing or empty SATCAT map sets satcat:false and explicitly labels types as inferred from names. This does not prove successful acquisition or imply SATCAT ran merely because Pages deployed.
