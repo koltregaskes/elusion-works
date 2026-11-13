@@ -281,3 +281,14 @@ kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line-2)
 }
 
 .callout { min-height: 28px; }
+
+@media (max-width: 600px) {
+  .topbar-actions { flex-wrap: wrap; max-width: 100%; }
+  .topbar-actions .icon { flex-shrink: 0; }
+}
+
+@media (max-width: 900px) {
+  .lab, .lab.flip { grid-template-columns: minmax(0, 1fr); }
+  .lab-copy { min-width: 0; }
+  .timeline { grid-template-columns: repeat(2, minmax(0, 1fr)); overflow-wrap: anywhere; }
+}

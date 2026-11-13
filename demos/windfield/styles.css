@@ -426,3 +426,6 @@ input[type='range']:focus-visible { outline: 2px solid var(--accent); outline-of
 
 /* WCAG AA controls and text. */
 .wf-preset.is-active .wf-mono { color: #34220f; }
+
+/* Loading copy must retain AA contrast over the dark scene. */
+.wf-loading > span { color: #d5cec4; opacity: 1; }
