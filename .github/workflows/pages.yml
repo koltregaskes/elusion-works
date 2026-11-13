@@ -26,22 +26,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Assemble static site
-        run: |
-          mkdir -p _site/assets _site/data _site/styles
-          cp index.html styles.css showcase-pages.css app.js cursor.js 404.html robots.txt sitemap.xml llms.txt security.txt CNAME _site/
-          cp cross-site-nav.js _site/
-          cp -r assets/. _site/assets/
-          cp -r styles/. _site/styles/
-          cp cabinet.js _site/
-          cp data/estate.js data/feed.json _site/data/
-          cp -r experiments creative-radar remix-relay design-notes demos _site/
-
-      - name: Build project RSS into the published root
-        run: python scripts/build-rss.py --output _site/feed.xml
-
-      - name: Check published SEO contract
-        run: python scripts/check-seo.py --site-root _site
+      - name: Assemble and validate the launch bundle
+        run: python scripts/build-site.py
 
       # Orbit Census reads a catalogue of every tracked object, rebuilt from CelesTrak on each
       # deploy (twice a day by the schedule above, matching CelesTrak's own update rhythm).

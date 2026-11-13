@@ -495,3 +495,6 @@ input[type='range']:focus-visible { outline: 2px solid var(--accent); outline-of
   cursor: pointer;
 }
 .wf-bench-actions [data-copy] { background: var(--accent); color: #140d07; border-color: transparent; }
+
+/* Loading copy must retain AA contrast over the dark scene. */
+.wf-loading > span { color: #d5cec4; opacity: 1; }

@@ -963,3 +963,13 @@ h1 {
     grid-template-columns: 1fr;
   }
 }
+
+/* Fit the heading with the fallback font as well as the downloaded display font. */
+@media (max-width: 720px) {
+  .hero-layout { grid-template-columns: minmax(0, 1fr); }
+  .hero-copy, .hero-hud { min-width: 0; }
+  h1 { font-size: clamp(3rem, 20vw, 7.2rem); }
+}
+
+/* Long display-heading words must also fit narrow columns and fallback fonts. */
+h1, h2, h3 { overflow-wrap: anywhere; }
