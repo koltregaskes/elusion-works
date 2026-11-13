@@ -188,6 +188,22 @@ jobs:
           test -f _site/demos/solar-system-field-lab/planet-detail.jsx
           test -f _site/demos/solar-system-field-lab/tweaks-panel.jsx
           test -f _site/demos/solar-system-field-lab/thumbnail.webp
+          test -f _site/demos/lumen-ward/index.html
+          test -f _site/demos/lumen-ward/src/main.js
+          test -f _site/demos/lumen-ward/assets/lumen-ward-kit.glb
+          test -f _site/demos/_shared/three-r187/build/three.webgpu.js
+          test -f _site/demos/lumen-ward/assets/lumen-ward-kit.json
+          test -f _site/demos/lumen-ward/assets/lumen-ward-far.glb
+          test -f _site/demos/lumen-ward/assets/tex/concrete_color.webp
+          test -f _site/demos/lumen-ward/thumbnail.webp
+          grep -q 'lumen-ward/' _site/demos/index.html
+          test -f _site/demos/thornvale/index.html
+          test -f _site/demos/thornvale/src/main.js
+          test -f _site/demos/thornvale/assets/thornvale-kit.glb
+          test -f _site/demos/thornvale/assets/characters/Soldier.glb
+          test -f _site/demos/thornvale/assets/tex/leaves.webp
+          test -f _site/demos/thornvale/thumbnail.webp
+          grep -q 'thornvale/' _site/demos/index.html
           grep -q 'atmosphere/' _site/demos/index.html
           grep -q 'abyssal-relay/' _site/demos/index.html
           grep -q 'exploded-views/' _site/demos/index.html
