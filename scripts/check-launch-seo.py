@@ -16,6 +16,7 @@ class Head(HTMLParser):
         if self.schema is not None:self.schema+=data
     def handle_endtag(self,tag):
         if tag=='script' and self.schema is not None:self.schemas.append(json.loads(self.schema));self.schema=None
+assert (ROOT.parent/'sitemap.xml').read_bytes()==(ROOT/'sitemap.xml').read_bytes(),'Tracked sitemap.xml differs from generated _site/sitemap.xml; regenerate the root copy'
 urls=[n.text for n in ET.parse(ROOT/'sitemap.xml').findall('.//{*}loc')];assert len(urls)==len(set(urls))
 seen=[]
 for p in sorted(ROOT.rglob('*.html')):

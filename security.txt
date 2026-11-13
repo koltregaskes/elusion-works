@@ -1,5 +1,6 @@
-Contact: https://github.com/koltregaskes/elusion-works/issues
+Contact: {{CONTACT_URL}}
 Policy: https://github.com/koltregaskes/elusion-works/blob/main/SECURITY.md
+Canonical: https://elusionworks.com/.well-known/security.txt
 Canonical: https://elusionworks.com/security.txt
 Preferred-Languages: en
 Expires: 2027-04-09T00:00:00.000Z

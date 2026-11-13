@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parent.parent
 BASE = 'https://elusionworks.com/'
 FEED = 'feed.xml'
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--site-root', type=Path, default=ROOT)
+parser.add_argument('--site-root', type=Path, default=ROOT / '_site')
 parser.add_argument('--feed', type=Path)
 args = parser.parse_args()
 ROOT = args.site_root.resolve()

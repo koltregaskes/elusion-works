@@ -2,7 +2,7 @@
 from pathlib import Path
 from html import escape
 from html.parser import HTMLParser
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 import json, re, shutil, subprocess, sys, uuid
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / '_site'
@@ -18,6 +18,21 @@ for name in ['assets','styles','experiments','creative-radar','remix-relay','des
     shutil.copytree(ROOT / name, OUT / name, ignore=shutil.ignore_patterns('tools','__pycache__','*.pyc','.env','.env.*'))
 (OUT / 'data').mkdir()
 for name in ['estate.js','feed.json']: shutil.copy2(ROOT / 'data' / name, OUT / 'data' / name)
+# One configured public destination, retained until its replacement is verified.
+contact = json.loads((ROOT / 'site.config.json').read_text(encoding='utf-8'))['contactUrl']
+parsed = urlparse(contact)
+assert parsed.scheme in ['https','mailto'] and parsed.path, 'Contact must be an HTTPS or mailto destination'
+assert not any(c in contact for c in ['"', "'", '<', '>', '\r', '\n']), 'Unsafe contact destination'
+if parsed.scheme == 'https': assert parsed.netloc and not parsed.username and not parsed.password, 'Invalid HTTPS contact destination'
+else: assert '@' in parsed.path and not parsed.query and not parsed.fragment, 'Invalid email destination'
+for page in OUT.rglob('*.html'):
+    text = page.read_text(encoding='utf-8-sig').replace('{{CONTACT_URL}}', escape(contact, quote=True))
+    page.write_text(text, encoding='utf-8', newline='\n')
+text = (OUT/'security.txt').read_text().replace('{{CONTACT_URL}}', contact)
+(OUT/'security.txt').write_text(text, encoding='utf-8', newline='\n')
+(OUT/'.well-known').mkdir()
+(OUT/'.well-known/security.txt').write_text(text, encoding='utf-8', newline='\n')
+
 class Head(HTMLParser):
     def __init__(self):
         super().__init__(); self.meta={}; self.title=''; self.in_title=False
@@ -65,5 +80,7 @@ for p in sorted(OUT.rglob('*.html')):
 (OUT/'sitemap.xml').write_text('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'+''.join('<url><loc>'+escape(u)+'</loc></url>\n' for u in urls)+'</urlset>\n',encoding='utf-8',newline='\n')
 subprocess.run([sys.executable,str(ROOT/'scripts/build-rss.py'),'--output',str(OUT/'feed.xml')],check=True)
 subprocess.run([sys.executable,str(ROOT/'scripts/check-launch-seo.py')],check=True)
+subprocess.run([sys.executable,str(ROOT/'scripts/check-contact.py')],check=True)
+subprocess.run([sys.executable,str(ROOT/'scripts/check-html.py')],check=True)
 assert not (OUT/'scripts').exists()
 print(f'Built {len(urls)} indexable routes from one Pages/CI assembly')

@@ -58,6 +58,7 @@ jobs:
           test -f _site/cross-site-nav.js
           test -f _site/404.html
           test -f _site/security.txt
+          test -f _site/.well-known/security.txt
           test -f _site/CNAME
           grep -qx 'elusionworks.com' _site/CNAME
           test -f _site/data/estate.js
@@ -211,10 +212,21 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v6
 
+      - name: Archive Pages artifact
+        run: |
+          tar --dereference --hard-dereference --directory _site \
+            --exclude=.git --exclude=.github -cf "$RUNNER_TEMP/artifact.tar" .
+          tar -tf "$RUNNER_TEMP/artifact.tar" > "$RUNNER_TEMP/artifact-files.txt"
+          cat "$RUNNER_TEMP/artifact-files.txt"
+          grep -Fx './.well-known/security.txt' "$RUNNER_TEMP/artifact-files.txt"
+
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-artifact@v4
         with:
-          path: _site
+          name: github-pages
+          path: ${{ runner.temp }}/artifact.tar
+          retention-days: 1
+          if-no-files-found: error
 
   deploy:
     needs: build
