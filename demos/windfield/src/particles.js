@@ -1,5 +1,5 @@
 import * as THREE from '../vendor/three/build/three.module.js';
-import { heightAt } from './terrain.js';
+import { heightAt, heightAtFast } from './terrain.js';
 import { makeRng } from './noise.js';
 import { windUniforms, cpuGust } from './wind.js';
 
@@ -281,7 +281,7 @@ export class FallingLeaves {
       target.x += Math.sin(t * 1.7 + l.phase) * 0.8;
       target.z += Math.cos(t * 1.3 + l.phase) * 0.8;
       l.v.lerp(target, Math.min(1, dt * 1.5));
-      const ground = heightAt(l.p.x, l.p.z) + 0.05;
+      const ground = heightAtFast(l.p.x, l.p.z) + 0.05;
       if (l.p.y > ground) {
         l.p.addScaledVector(l.v, dt);
         l.rot.x += l.spin.x * dt;

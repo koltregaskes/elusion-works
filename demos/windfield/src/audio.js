@@ -59,11 +59,29 @@ export class WindAudio {
       this.fireGain.gain.value = 0;
       fireSrc.connect(fireF).connect(this.fireGain);
 
+      // Combine engine: two slightly detuned saws through a low-pass filter.
+      this.engineGain = ctx.createGain();
+      this.engineGain.gain.value = 0;
+      this.engineFilter = ctx.createBiquadFilter();
+      this.engineFilter.type = 'lowpass';
+      this.engineFilter.frequency.value = 260;
+      this.engineOsc = [ctx.createOscillator(), ctx.createOscillator()];
+      this.engineOsc[0].type = 'sawtooth';
+      this.engineOsc[1].type = 'sawtooth';
+      this.engineOsc[0].frequency.value = 46;
+      this.engineOsc[1].frequency.value = 46.7;
+      for (const o of this.engineOsc) {
+        o.connect(this.engineFilter);
+        o.start();
+      }
+      this.engineFilter.connect(this.engineGain);
+
       this.master = ctx.createGain();
       this.master.gain.value = 0.0;
       this.windGain.connect(this.master);
       this.rainGain.connect(this.master);
       this.fireGain.connect(this.master);
+      this.engineGain.connect(this.master);
       this.master.connect(ctx.destination);
       src.start();
       rainSrc.start();
@@ -81,7 +99,7 @@ export class WindAudio {
     this.on = false;
   }
 
-  update({ wind, gust, rain, fire, fireDistance }) {
+  update({ wind, gust, rain, fire, fireDistance, engine = 0, engineLoad = 0.5 }) {
     if (!this.ctx || !this.on) return;
     const now = this.ctx.currentTime;
     const level = Math.min(1, 0.04 + wind * (0.12 + gust * 0.5));
@@ -91,5 +109,10 @@ export class WindAudio {
     const crackle = Math.random() < 0.25 ? 1 : 0.15;
     const near = fire / (1 + fireDistance * 0.08);
     this.fireGain.gain.setTargetAtTime(near * crackle * 0.12, now, 0.02);
+    this.engineGain.gain.setTargetAtTime(engine * 0.09, now, 0.3);
+    const rpm = 44 + engineLoad * 10;
+    this.engineOsc[0].frequency.setTargetAtTime(rpm, now, 0.6);
+    this.engineOsc[1].frequency.setTargetAtTime(rpm * 1.015, now, 0.6);
+    this.engineFilter.frequency.setTargetAtTime(200 + engineLoad * 180, now, 0.6);
   }
 }

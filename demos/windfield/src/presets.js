@@ -19,6 +19,7 @@ export const PARAMS = [
   { key: 'heightVariation', tab: 'grass', section: 'Field', label: 'Unevenness', min: 0, max: 1, step: 0.01, unit: '%', pct: true },
   { key: 'flowers', tab: 'grass', section: 'Field', label: 'Wildflowers', min: 0, max: 1, step: 0.01, unit: '%', pct: true },
   { key: 'dryness', tab: 'grass', section: 'Field', label: 'Dry grass', min: 0, max: 1, step: 0.01, unit: '%', pct: true },
+  { key: 'crop', tab: 'grass', section: 'Field', label: 'Meadow to wheat', min: 0, max: 1, step: 0.01, unit: '%', pct: true },
   { key: 'translucency', tab: 'grass', section: 'Light through blades', label: 'Backlight glow', min: 0, max: 2, step: 0.01, unit: '×' },
   { key: 'sheen', tab: 'grass', section: 'Light through blades', label: 'Gust sheen', min: 0, max: 1, step: 0.01, unit: '%', pct: true },
 
@@ -42,6 +43,7 @@ export const PARAMS = [
   { key: 'canopy', tab: 'subject', section: 'The oak', label: 'Canopy', min: 0.2, max: 1, step: 0.01, unit: '%', pct: true },
   { key: 'fire', tab: 'subject', section: 'Fire', label: 'Bonfire', min: 0, max: 1, step: 0.01, unit: '%', pct: true },
   { key: 'fireflies', tab: 'subject', section: 'Life', label: 'Fireflies', min: 0, max: 1, step: 0.01, unit: '%', pct: true },
+  { key: 'combineSpeed', tab: 'subject', section: 'Combine', label: 'Combine speed', min: 0.3, max: 2.5, step: 0.01, unit: '×' },
   { key: 'birds', tab: 'subject', section: 'Life', label: 'Birds', min: 0, max: 1, step: 0.01, unit: '%', pct: true },
 ];
 
@@ -56,6 +58,7 @@ export const SUBJECTS = [
   { id: 'oak', label: 'Oak' },
   { id: 'monolith', label: 'Monolith' },
   { id: 'stones', label: 'Stones' },
+  { id: 'combine', label: 'Combine' },
   { id: 'none', label: 'Open field' },
 ];
 
@@ -73,6 +76,7 @@ const DEFAULTS = {
   cloudCover: 0.42, cloudDensity: 0.9, cloudSpeed: 0.5, highClouds: 0.35,
   haze: 0.35, mist: 0, stars: 0, lightning: 0,
   leafSeason: 0, canopy: 1, fire: 0, fireflies: 0, birds: 0.6,
+  crop: 0, combineSpeed: 1,
   sunSize: 1, glow: 1,
   subject: 'oak',
   skyZenith: '#3a6db5', skyHorizon: '#bcd3e6', sunColor: '#fff2dc', sunDisc: '#fff6e6',
@@ -129,6 +133,24 @@ export const PRESETS = [
       hemiSky: '#9a8f9a', hemiGround: '#4a3a1a', grassBase: '#2e3a14', grassTip: '#c3b24e', grassDry: '#e0b35a',
       groundA: '#33351a', groundB: '#46401f', cloudLit: '#ffc78a', cloudShade: '#8a6a74', mistColor: '#ffcf9a',
       leafSummer: '#4c6a1e', accent: '#f0a24a',
+    },
+  },
+  {
+    id: 'harvest', name: 'Harvest',
+    eyebrow: 'Late August',
+    title: 'Bringing it in.',
+    sub: 'Wheat to the hedgerows, a combine working the lanes and chaff drifting gold on the wind.',
+    camera: { radius: 24, height: 4.2, speed: 0.012, startAngle: 2.2, lookY: 2.4 },
+    values: {
+      subject: 'combine', crop: 1, combineSpeed: 1,
+      grassHeight: 0.95, heightVariation: 0.15, flowers: 0.03, dryness: 0.18, translucency: 1.4, sheen: 0.75,
+      windStrength: 0.42, gustStrength: 1.35, gustSize: 30, gustSpeed: 1.1, turbulence: 0.35, pollen: 0.15,
+      sunElevation: 17, sunAzimuth: 238, sunIntensity: 3.3, hemiIntensity: 0.9, exposure: 1.0, bloom: 0.5, shafts: 0.45,
+      cloudCover: 0.3, cloudDensity: 0.85, highClouds: 0.45, haze: 0.18, mist: 0, birds: 0.5,
+      skyZenith: '#2f63b4', skyHorizon: '#e9d8b8', sunColor: '#ffd29a', sunDisc: '#fff3dc',
+      hemiSky: '#a7b4c8', hemiGround: '#5a4a28', grassBase: '#6d5a2a', grassTip: '#e6c874', grassDry: '#d8b45e',
+      groundA: '#4a3d22', groundB: '#5a4a2a', cloudLit: '#fff0dc', cloudShade: '#9a8f96', mistColor: '#f0dcc0',
+      leafSummer: '#3f5e20', accent: '#e8b450',
     },
   },
   {
