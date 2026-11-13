@@ -1,4 +1,4 @@
-import { estateItems } from "../data/estate.js";
+import { estateItems } from "./data/estate.js";
 
 const fallbackFeed = {
   stats: { sites: 8, tools: 4, games: 2 },
