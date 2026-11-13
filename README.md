@@ -114,3 +114,5 @@ routing. After Kol confirms routing and an external delivery/receipt test,
 change this one value to `mailto:contact@elusionworks.com` and rerun the build.
 The source configuration and validation scripts are not published. Fictional
 forms inside demos are separate from this real site contact route.
+
+Studio pulse rows show original editorial dates and explicitly label updates older than 30 days as an editorial archive. Invalid/future dates are unverified; deploying the site does not refresh these dates. Archive ticker dots do not pulse. This does not prove the separate Orbit Census acquisition or seven-day delivery window.
