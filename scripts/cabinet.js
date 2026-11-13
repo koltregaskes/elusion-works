@@ -44,10 +44,11 @@ function applyTheme(theme) {
   const themeColour = document.querySelector('meta[name="theme-color"]');
 
   if (button) {
-    button.setAttribute("aria-pressed", String(next === "light"));
+    button.removeAttribute("aria-pressed");
+    button.title = next === "light" ? "Switch to dark theme" : "Switch to light theme";
   }
   if (icon) icon.textContent = "";
-  if (label) label.textContent = next === "light" ? "Light" : "Dark";
+  if (label) label.textContent = "Theme";
   if (themeColour) themeColour.setAttribute("content", next === "light" ? "#f7f3ec" : "#030305");
 }
 
