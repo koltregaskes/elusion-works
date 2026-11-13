@@ -38,3 +38,7 @@ The demos are static concept builds. They should not be interpreted as real orga
 Owner: Kol Tregaskes.
 
 This file is for agent navigation and summarisation. It is not a permissions grant for scraping, training, or republication beyond the site's public terms and robots policy.
+
+## Project updates
+
+- [RSS feed](https://elusionworks.com/feed.xml): selected editorial updates. Deployments do not imply new editorial content.
