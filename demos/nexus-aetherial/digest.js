@@ -28,7 +28,7 @@
 
   // populate suite rail
   suiteList.innerHTML = data.benchSuites.map(s => `
-    <button class="rail-item" data-suite="${s.id}" aria-selected="${s.id === activeSuite}">
+    <button class="rail-item" data-suite="${s.id}" aria-pressed="${s.id === activeSuite}">
       ${s.name} <span class="n">${s.n.toLocaleString()}</span>
     </button>
   `).join('');
@@ -175,7 +175,7 @@
     const b = e.target.closest('[data-suite]');
     if (!b) return;
     activeSuite = b.dataset.suite;
-    suiteList.querySelectorAll('.rail-item').forEach(x => x.setAttribute('aria-selected', x === b ? 'true' : 'false'));
+    suiteList.querySelectorAll('.rail-item').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
     sortCol = 'score'; sortDir = 'desc';
     if (view !== 'suite') {
       view = 'suite';
@@ -188,7 +188,7 @@
     const b = e.target.closest('[data-status]');
     if (!b) return;
     activeStatus = b.dataset.status;
-    statusList.querySelectorAll('.rail-item').forEach(x => x.setAttribute('aria-selected', x === b ? 'true' : 'false'));
+    statusList.querySelectorAll('.rail-item').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
     render();
   });
 
@@ -223,7 +223,7 @@
 
   // initial select first suite item
   const first = suiteList.querySelector(`[data-suite="${activeSuite}"]`);
-  if (first) first.setAttribute('aria-selected', 'true');
+  if (first) first.setAttribute('aria-pressed', 'true');
   render();
 
   // click row → load into matrix as model A
