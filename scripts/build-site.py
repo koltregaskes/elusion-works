@@ -33,6 +33,9 @@ urls=[]
 for p in sorted(OUT.rglob('*.html')):
     s=p.read_text(encoding='utf-8-sig'); h=Head();h.feed(s)
     rel=p.relative_to(OUT).as_posix();url=BASE+(rel[:-10] if rel.endswith('index.html') else rel)
+    if 'referrer' not in h.meta:
+        s=re.sub(r'</head>', '<meta name="referrer" content="strict-origin-when-cross-origin" /></head>',s,count=1,flags=re.I)
+        p.write_text(s,encoding='utf-8',newline='\n')
     if 'noindex' in h.meta.get('robots','').lower(): continue
     urls.append(url)
     description=h.meta.get('description') or f'{h.title.strip()} - an Elusion Works interactive project. Explore the demo and its controls.'

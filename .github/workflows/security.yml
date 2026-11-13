@@ -1,0 +1,34 @@
+name: Security
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  security:
+    name: Audit, redacted secret scan and host policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm audit --audit-level=low
+      - run: python scripts/build-site.py
+      - name: Install checksum-pinned Gitleaks
+        run: |
+          curl --fail --location --max-time 60 --output /tmp/gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tar.gz' | sha256sum --check
+          mkdir -p /tmp/ew-gitleaks
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp/ew-gitleaks gitleaks
+          echo '/tmp/ew-gitleaks' >> "$GITHUB_PATH"
+      - run: python scripts/scan-secrets.py
+      - run: python scripts/check-security.py --live
