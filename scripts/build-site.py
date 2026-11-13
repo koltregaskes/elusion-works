@@ -78,6 +78,7 @@ for p in sorted(OUT.rglob('*.html')):
     s=re.sub(r'</head>',lambda m:'\n'+'\n'.join(tags)+'\n</head>',s,count=1,flags=re.I)
     p.write_text(s,encoding='utf-8',newline='\n')
 (OUT/'sitemap.xml').write_text('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'+''.join('<url><loc>'+escape(u)+'</loc></url>\n' for u in urls)+'</urlset>\n',encoding='utf-8',newline='\n')
+subprocess.run(['node',str(ROOT/'scripts/prepare-demo-csp.mjs')],check=True)
 subprocess.run([sys.executable,str(ROOT/'scripts/build-rss.py'),'--output',str(OUT/'feed.xml')],check=True)
 subprocess.run([sys.executable,str(ROOT/'scripts/check-launch-seo.py')],check=True)
 subprocess.run([sys.executable,str(ROOT/'scripts/check-contact.py')],check=True)

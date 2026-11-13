@@ -31,4 +31,24 @@ jobs:
           tar -xzf /tmp/gitleaks.tar.gz -C /tmp/ew-gitleaks gitleaks
           echo '/tmp/ew-gitleaks' >> "$GITHUB_PATH"
       - run: python scripts/scan-secrets.py
+      - run: python scripts/test-demo-csp.py
       - run: python scripts/check-security.py --live
+
+  demo-csp:
+    name: Demo CSP in installed Edge
+    runs-on: windows-latest
+    env:
+      PLAYWRIGHT_CHANNEL: msedge
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: python scripts/build-site.py
+      - run: node scripts/test-demo-csp.mjs
+      - run: python scripts/test-demo-csp.py

@@ -114,3 +114,5 @@ routing. After Kol confirms routing and an external delivery/receipt test,
 change this one value to `mailto:contact@elusionworks.com` and rerun the build.
 The source configuration and validation scripts are not published. Fictional
 forms inside demos are separate from this real site contact route.
+
+The demo CSP build requires npm ci --ignore-scripts before python scripts/build-site.py, with Node 24+ and Python 3. Browser JSX compilation is replaced only in the assembled artifact; source recipes remain unchanged. CSP/runtime CI uses installed Edge on Windows and does not download browsers.
