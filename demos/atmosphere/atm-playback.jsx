@@ -94,7 +94,7 @@ function PlaybackBar({ virtualOffset, setVirtualOffset, playing, setPlaying, acc
             {/* Now marker on the track */}
             <div className="pb-scrub-now" style={{ left: '50%' }} />
             <input
-              type="range"
+              type="range" aria-label="Playback time offset in hours"
               min={-24} max={24} step={0.1}
               value={virtualOffset}
               onChange={(e) => { setPlaying(false); setVirtualOffset(parseFloat(e.target.value)); }}

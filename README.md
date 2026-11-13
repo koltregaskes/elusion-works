@@ -114,3 +114,7 @@ routing. After Kol confirms routing and an external delivery/receipt test,
 change this one value to `mailto:contact@elusionworks.com` and rerun the build.
 The source configuration and validation scripts are not published. Fictional
 forms inside demos are separate from this real site contact route.
+
+Launch CI checks every built HTML route, including demos, at 320, 390 and 1280px. A final artifact coverage gate rejects missing, duplicate, failed or timed-out results. PLAYWRIGHT_CHANNEL selects an installed browser for local checks. Software-rendered q=low Windfield acceptance is layout/accessibility evidence, not real-GPU acceptance.
+
+Three React demos are audited after their real mount appears, using pinned local fixtures for the already referenced runtime versions. This exposes actual controls instead of an empty shell when external requests are blocked. Every route also receives a basic keyboard-Tab visible-focus smoke check; manual screen-reader and interaction acceptance remain open.

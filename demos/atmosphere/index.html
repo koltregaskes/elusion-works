@@ -25,10 +25,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <style>
   :root {
-    --atm-accent: #c2410c;
+    --atm-accent: #ef9c77;
     --atm-text: #f5f3ee;
     --atm-text-soft: rgba(245, 243, 238, 0.7);
-    --atm-text-faint: rgba(245, 243, 238, 0.45);
+    --atm-text-faint: rgba(245, 243, 238, 0.65);
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: #0a0e24; color: var(--atm-text); font-family: 'Geist', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
@@ -152,6 +152,7 @@
   .estate-footer .legal,
   .estate-footer h3,
   .estate-footer a {
+    display: inline-flex; align-items: center; min-height: 24px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 10px;
     letter-spacing: 1.4px;
@@ -185,8 +186,10 @@
     .hero,
     .cloud-section,
     .telemetry-grid {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
     }
+    .glass-panel, .cloud-section > *, .telemetry-grid > * { min-width: 0; }
+    svg { max-width: 100%; height: auto; }
     .hero {
       gap: 32px;
       overflow: hidden;
@@ -233,7 +236,7 @@
 
 <script type="text/babel">
 const DEFAULTS = /*EDITMODE-BEGIN*/{
-  "accent": "#c2410c"
+  "accent": "#ef9c77"
 }/*EDITMODE-END*/;
 
 const PAGES = [
@@ -573,7 +576,7 @@ function App() {
             label="Accent color"
             value={t.accent}
             onChange={(v) => setTweak('accent', v)}
-            options={['#c2410c', '#d97757', '#e8b04a', '#16a34a']}
+            options={['#ef9c77', '#d97757', '#e8b04a', '#16a34a']}
           />
         </TweakSection>
         <TweakSection label="Virtual time">

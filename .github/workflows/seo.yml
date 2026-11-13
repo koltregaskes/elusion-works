@@ -23,12 +23,14 @@ jobs:
       - run: node scripts/check-links.mjs --external
   accessibility:
     name: Axe ${{ matrix.width }}px (${{ matrix.shard }}/4)
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
+    env:
+      PLAYWRIGHT_CHANNEL: msedge
     timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
-        width: [320, 1280]
+        width: [320, 390, 1280]
         shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v6
@@ -40,7 +42,6 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci --ignore-scripts
-      - run: npx playwright install --with-deps chromium
       - run: python scripts/build-site.py
       - run: node scripts/launch-browser.mjs --width=${{ matrix.width }} --shard=${{ matrix.shard }}/4
       - uses: actions/upload-artifact@v4
@@ -48,3 +49,24 @@ jobs:
         with:
           name: axe-${{ matrix.width }}-${{ matrix.shard }}
           path: test-results/
+
+  coverage:
+    name: Complete route and viewport acceptance
+    needs: accessibility
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - run: python scripts/build-site.py
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: axe-*
+          merge-multiple: true
+          path: test-results
+      - run: node --test scripts/launch-coverage.test.mjs
+      - run: node scripts/launch-coverage.mjs
