@@ -1,0 +1,18 @@
+{
+  "name": "elusion-works",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "python scripts/build-site.py",
+    "test:seo": "python scripts/check-launch-seo.py",
+    "test:links": "node scripts/check-links.mjs",
+    "test:launch": "node scripts/launch-browser.mjs"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "1.65.0"
+  }
+}

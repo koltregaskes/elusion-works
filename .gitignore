@@ -43,3 +43,8 @@ demos/**/archive/
 
 # Orbit Census: built from CelesTrak in the Pages deploy, never committed
 demos/orbit-census/data/catalog.json
+
+# Generated launch bundle and reports.
+_site/
+test-results/
+playwright-report/

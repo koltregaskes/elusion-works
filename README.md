@@ -74,3 +74,25 @@ The current recommended structure is:
 - experiments, curation formats, and small social toys should launch inside Elusion Works before they earn their own domains or brands
 
 See [docs/brand-architecture.md](docs/brand-architecture.md) for the current naming model.
+
+## Launch checks
+
+`npm ci --ignore-scripts` installs the pinned test tools. `npm run build` uses the
+same allowlisted assembly as Pages; it generates the sitemap, complete route
+metadata and RSS in `_site/`, never in tracked source. Previous local output is
+retained under ignored `.local/`. The source `scripts/` and demo build tools are
+not published.
+
+`npm run test:links -- --external` checks every built HTML destination and asset.
+Only confirmed HTTP 404/410 results fail the crawl. Rate limits, bot denials and
+network failures are explicitly unverified warnings, not proof that a URL works.
+Preconnect/DNS hints are not navigable links.
+
+`npm run test:launch -- --width=320` and `--width=1280` check **every** built HTML
+page, including pages marked noindex, for serious/critical WCAG A/AA axe findings
+and horizontal overflow. CI splits each width into four shards and preserves
+JSON diagnostics. Requests are fulfilled from the actual bundle using an HTTPS
+test origin; outside requests are blocked and no server or port is started.
+This deterministic fallback-font/offline pass complements final deployed,
+keyboard, screen-reader and real-GPU acceptance; it does not prove external API
+availability or content rendered only by third-party scripts.

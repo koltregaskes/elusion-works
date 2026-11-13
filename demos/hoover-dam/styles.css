@@ -271,3 +271,13 @@ kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line-2)
   .scrollcue { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* On phones, keep every callout a readable control below the scene instead of
+   projecting partially clipped buttons beyond the viewport. */
+@media (max-width: 900px) {
+  .leaders { overflow: hidden; }
+  .callouts { position: relative; inset: auto; height: auto; display: flex; flex-wrap: wrap; gap: 8px; padding: 8px; }
+  .callout { position: static; transform: none; min-height: 28px; }
+}
+
+.callout { min-height: 28px; }
