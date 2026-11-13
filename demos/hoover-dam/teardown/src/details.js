@@ -1,18 +1,13 @@
 // Identity detail: glossy shells, graphite joints and orange rings on the parts that
 // move water. Instanced where there are many, so the look costs little to draw.
 import * as THREE from 'three';
-import { ACCENT } from './stage.js';
+import { MAT } from '../../../_teardown-kit/materials.js';
 
-export const MAT = {
-  shell: () => new THREE.MeshPhysicalMaterial({ color: 0xf6f4f0, roughness: 0.34, metalness: 0, clearcoat: 0.7, clearcoatRoughness: 0.22, envMapIntensity: 0.7 }),
-  graphite: () => new THREE.MeshPhysicalMaterial({ color: 0x1c1f23, roughness: 0.32, metalness: 0.25, clearcoat: 0.6, clearcoatRoughness: 0.25, envMapIntensity: 0.6 }),
-  orange: () => new THREE.MeshPhysicalMaterial({ color: ACCENT, roughness: 0.38, metalness: 0.05, clearcoat: 0.6, clearcoatRoughness: 0.3, envMapIntensity: 0.6 }),
-  steel: () => new THREE.MeshPhysicalMaterial({ color: 0xc8ccd1, roughness: 0.42, metalness: 0.75, envMapIntensity: 0.6 }),
-};
+export { MAT };
 
 function ringsAlong(curve, every, r, tube, mat, startT = 0.04, endT = 0.97) {
   const L = curve.getLength(), n = Math.max(2, Math.floor(L / every));
-  const geo = new THREE.TorusGeometry(r, tube, 8, 28);
+  const geo = new THREE.TorusGeometry(r, tube, 6, 20);
   const im = new THREE.InstancedMesh(geo, mat, n);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), z = new THREE.Vector3(0, 0, 1), s = new THREE.Vector3(1, 1, 1);
   for (let i = 0; i < n; i++) {

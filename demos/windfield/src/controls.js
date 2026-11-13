@@ -16,6 +16,10 @@ export class CameraRig {
     this.frame = { radius: 30, height: 2.4, speed: 0.015, startAngle: 0.8, lookY: 8 };
     this.angle = 0.8;
     this.target = new THREE.Vector3(0, 6, 0);
+    // What the cinematic camera orbits (the oak, or the combine while it works), and
+    // the chase offset used while you drive.
+    this.focus = new THREE.Vector3();
+    this.chase = { heading: 0, yaw: 0 };
     this.snapNext = true;
     this.drag = null;
     this.onModeChange = () => {};
@@ -29,9 +33,13 @@ export class CameraRig {
       if (!this.drag || e.pointerId !== this.drag.id) return;
       const dx = e.clientX - this.drag.x;
       const dy = e.clientY - this.drag.y;
-      if (Math.abs(dx) + Math.abs(dy) > 2) this.goFree();
       this.drag.x = e.clientX;
       this.drag.y = e.clientY;
+      if (this.mode === 'chase') {
+        this.chase.yaw -= dx * 0.005;
+        return;
+      }
+      if (Math.abs(dx) + Math.abs(dy) > 2) this.goFree();
       this.yaw -= dx * 0.0032;
       this.pitch = THREE.MathUtils.clamp(this.pitch - dy * 0.0028, -1.2, 1.2);
     });
@@ -49,6 +57,7 @@ export class CameraRig {
     window.addEventListener('keydown', (e) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
       const k = e.key.toLowerCase();
+      if (this.mode === 'chase' || this.driving) return; // the keys are driving the combine
       if (['w', 'a', 's', 'd', 'q', 'e', 'shift'].includes(k)) {
         this.keys.add(k);
         if (k !== 'shift') this.goFree();
@@ -77,10 +86,18 @@ export class CameraRig {
     this.onModeChange(this.mode);
   }
 
+  goChase() {
+    if (this.mode === 'chase') return;
+    this.keys.clear();
+    this.chase.yaw = 0;
+    this.mode = 'chase';
+    this.onModeChange(this.mode);
+  }
+
   goCinematic() {
     if (this.mode === 'cinematic') return;
     const p = this.camera.position;
-    this.angle = Math.atan2(p.z, p.x);
+    this.angle = Math.atan2(p.z - this.focus.z, p.x - this.focus.x);
     this.mode = 'cinematic';
     this.onModeChange(this.mode);
   }
@@ -91,8 +108,8 @@ export class CameraRig {
       const f = this.frame;
       this.angle += f.speed * dt * 6.0;
       const r = f.radius + Math.sin(t * 0.07) * 3;
-      const x = Math.cos(this.angle) * r;
-      const z = Math.sin(this.angle) * r;
+      const x = this.focus.x + Math.cos(this.angle) * r;
+      const z = this.focus.z + Math.sin(this.angle) * r;
       const y = heightAt(x, z) + f.height + Math.sin(t * 0.21) * 0.35;
       const goal = new THREE.Vector3(x, y, z);
       // Always ease towards the moving goal: smooth on entry, and the lag is negligible
@@ -100,11 +117,26 @@ export class CameraRig {
       const snap = this.snapNext;
       this.snapNext = false;
       cam.position.lerp(goal, snap ? 1 : 1 - Math.exp(-dt * 1.6));
-      const look = this.target.clone();
-      look.y = heightAt(0, 0) + (this.frame.lookY ?? 8) + Math.sin(t * 0.13) * 0.4;
+      const look = this.focus.clone();
+      look.y = heightAt(this.focus.x, this.focus.z) + (this.frame.lookY ?? 8) + Math.sin(t * 0.13) * 0.4;
       const m = new THREE.Matrix4().lookAt(cam.position, look, new THREE.Vector3(0, 1, 0));
       const q = new THREE.Quaternion().setFromRotationMatrix(m);
       cam.quaternion.slerp(q, snap ? 1 : 1 - Math.exp(-dt * 2.2));
+      return;
+    }
+    if (this.mode === 'chase') {
+      // Sit behind and above the machine, looking a little ahead of it.
+      const h = this.chase.heading + Math.PI + this.chase.yaw;
+      const goal = new THREE.Vector3(this.focus.x + Math.cos(h) * 17, 0, this.focus.z + Math.sin(h) * 17);
+      goal.y = Math.max(heightAt(goal.x, goal.z) + 1.5, heightAt(this.focus.x, this.focus.z) + 7.5);
+      cam.position.lerp(goal, 1 - Math.exp(-dt * 2.5));
+      const look = new THREE.Vector3(
+        this.focus.x + Math.cos(this.chase.heading) * 6,
+        heightAt(this.focus.x, this.focus.z) + 2.2,
+        this.focus.z + Math.sin(this.chase.heading) * 6
+      );
+      const m = new THREE.Matrix4().lookAt(cam.position, look, new THREE.Vector3(0, 1, 0));
+      cam.quaternion.slerp(new THREE.Quaternion().setFromRotationMatrix(m), 1 - Math.exp(-dt * 4));
       return;
     }
     const speed = (this.keys.has('shift') ? 16 : 5) * dt;

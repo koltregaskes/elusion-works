@@ -114,7 +114,13 @@ export const PERSONALITY = {
     name: 'Warden',
     line: 'Guards its own yards, raids rarely, and brings capital ships to ' +
       'the field sooner than anyone else.',
-    knobs: { harassAt: 1.9, defenceShare: 1.6, commitScale: 1.25, techScale: 0.85 },
+    /* Round 19: commitScale 1.25 and defenceShare 1.6 kept so much of the
+       fleet home, and waited for so wide a margin, that Warden beat Swarm 6
+       times in 48 (seeds 1 to 24, both sides). Committing like everyone else
+       with a lighter home guard brings that to 18 in 48: better, not yet
+       parity. Cutting Swarm's build bias instead did nothing (4 in 24), and
+       cutting it on top of this change made Warden worse (7 in 24). */
+    knobs: { harassAt: 1.9, defenceShare: 1.25, techScale: 0.85 },
     collectors: 0,
     bias: { assaultFrigate: 1.3, ionFrigate: 1.3, missileCorvette: 1.2 },
   },
