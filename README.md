@@ -114,3 +114,5 @@ routing. After Kol confirms routing and an external delivery/receipt test,
 change this one value to `mailto:contact@elusionworks.com` and rerun the build.
 The source configuration and validation scripts are not published. Fictional
 forms inside demos are separate from this real site contact route.
+
+The existing Pages workflow reports catalogue acquisition through a separate health job. Failed/skipped acquisition makes that job red while build/publication retain their existing fallback path. This uses the existing Actions failure signal, not a new issue alert, controller or schedule. A green static deployment alone is not catalogue freshness proof; real notification delivery still needs operational rehearsal.
