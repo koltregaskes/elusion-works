@@ -103,3 +103,14 @@ or 1280px; every route, control and axe rule stays in scope. Default/high-qualit
 render performance remains a real-GPU acceptance check. Reports record this
 render profile and save each completed route before closing its page, so a
 cancelled run retains partial coverage and findings rather than an empty artifact.
+
+## Public contact destination
+
+`site.config.json` contains the single `contactUrl` value used to build the site
+contact links and both `/security.txt` and `/.well-known/security.txt`. The current
+working public contact form is retained. There is no existing Elusion Works email
+address in source, so the build does not guess one or switch to unconfirmed mail
+routing. After Kol confirms routing and an external delivery/receipt test,
+change this one value to `mailto:contact@elusionworks.com` and rerun the build.
+The source configuration and validation scripts are not published. Fictional
+forms inside demos are separate from this real site contact route.
