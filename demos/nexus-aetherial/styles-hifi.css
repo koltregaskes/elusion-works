@@ -1174,3 +1174,6 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
     grid-template-columns: 1fr;
   }
 }
+
+/* Keep small primary-action labels legible in the dark hover state. */
+[data-mode="dark"] .btn.primary:hover { color: #ffffff; }
