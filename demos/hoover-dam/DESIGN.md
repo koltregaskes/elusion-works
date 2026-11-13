@@ -129,3 +129,13 @@ switches between them.
 - **Callouts:** orange dot, elbow leader, two-line mono label; the set changes with the
   isolated assembly.
 - Deep links: `?t=13.5` (film time), `?q=0|1|2`, `?pause`, `?clean`, `?notour`.
+- **Shared kit:** the stage and the material palette live in `demos/_teardown-kit/` so the next
+  teardown machine reuses them; the Hoover page imports them from there.
+- **Draw-call budget:** materials are shared per subsystem and static parts are merged per
+  material after the model is built (`_teardown-kit/merge.js`). Measured in headless
+  Chromium over one composed frame: draw calls 1,669 → ~720, triangles 1.7M → 1.04M,
+  materials 521 → 160. Rotors, gates, the open unit and the dam body stay separate so they
+  can move, glow, ghost or clip. Real-GPU frame rate has not been measured yet.
+- **Callouts** stay in the gap between the side columns: a label that would run under a
+  column flips to the other side of its leader, or slides inward. Column bounds are cached
+  and re-measured on resize.

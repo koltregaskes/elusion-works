@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "buildMode": "elusion",
+  "files": [
+    {
+      "path": "assets/CyberWorld-DYYJxaYU.js",
+      "bytes": 616097,
+      "sha256": "fe5cbadcbc047b78d727ebebd2184b552aa06724b32ef4baa246e8f8d9164aa9"
+    },
+    {
+      "path": "assets/cyberpunk-courier-D9gIW4OG.glb",
+      "bytes": 306152,
+      "sha256": "679b6ddc5eb85741a572256e71947e47161ce6652fa6395b10bd11e11dfb5dc5"
+    },
+    {
+      "path": "assets/cyberpunk-title-background-86TywnRS.webp",
+      "bytes": 118544,
+      "sha256": "1ecaca68eef6f717965b9bcbb637e7533c12493fa481946b4e3554b05d4ebf04"
+    },
+    {
+      "path": "assets/index-CpW-WDVN.js",
+      "bytes": 205856,
+      "sha256": "23295cfccb3362565abb5ba3e67dff006fccc062fdec70a6f2584fd7516e7c51"
+    },
+    {
+      "path": "assets/index-DN90n5wP.css",
+      "bytes": 13609,
+      "sha256": "e08f6945d3354bbe2d4eeebef6d792b2dcc8cd7957cfeafbb0d284fb6210c0b9"
+    },
+    {
+      "path": "favicon.svg",
+      "bytes": 505,
+      "sha256": "4f55e0a4a7c1dea851beaef8d3ffd3ac788a2c9baecbd3ef19c28f5d5c595266"
+    },
+    {
+      "path": "index.html",
+      "bytes": 1878,
+      "sha256": "1c8e48333b77b8e0b37fb17c30359c9690fb2457c2f4e73481d8ef17420f9c1b"
+    },
+    {
+      "path": "thumbnail.png",
+      "bytes": 93134,
+      "sha256": "aecef4940faf988de5baa69d5f77e979b8e533d6d66de9eb6c3d86921ad865bf"
+    }
+  ]
+}

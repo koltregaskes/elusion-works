@@ -48,3 +48,6 @@ demos/orbit-census/data/catalog.json
 _site/
 test-results/
 playwright-report/
+# Python build caches are local only.
+__pycache__/
+*.pyc

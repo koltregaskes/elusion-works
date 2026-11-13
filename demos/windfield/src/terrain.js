@@ -1,5 +1,6 @@
 import * as THREE from '../vendor/three/build/three.module.js';
 import { makeSimplex, fbm, smoothstep } from './noise.js';
+import { fieldUniforms, FIELD_GLSL } from './field.js';
 
 // One height function drives the ground mesh, grass roots, trees and the camera floor,
 // so nothing ever floats or sinks.
@@ -18,6 +19,39 @@ export function heightAt(x, z) {
   const far = smoothstep(160, 420, r);
   h += far * (fbm(n, x * 0.0035 + 9, z * 0.0035 + 3, 4) * 0.5 + 0.55) * 46;
   return h;
+}
+
+// The same terrain baked into a grid once, for the many per-frame lookups (particles,
+// leaves, the combine's wheels) that do not need the exact fbm.
+export const HEIGHT_GRID = { size: 512, extent: 520, data: null };
+
+export function heightGrid() {
+  if (HEIGHT_GRID.data) return HEIGHT_GRID.data;
+  const { size, extent } = HEIGHT_GRID;
+  const data = new Float32Array(size * size);
+  for (let j = 0; j < size; j++) {
+    for (let i = 0; i < size; i++) {
+      data[j * size + i] = heightAt(-extent / 2 + ((i + 0.5) / size) * extent, -extent / 2 + ((j + 0.5) / size) * extent);
+    }
+  }
+  HEIGHT_GRID.data = data;
+  return data;
+}
+
+export function heightAtFast(x, z) {
+  const { size, extent } = HEIGHT_GRID;
+  const data = HEIGHT_GRID.data || heightGrid();
+  const fx = ((x + extent / 2) / extent) * size - 0.5;
+  const fz = ((z + extent / 2) / extent) * size - 0.5;
+  if (fx < 0 || fz < 0 || fx >= size - 1 || fz >= size - 1) return heightAt(x, z);
+  const i = Math.floor(fx);
+  const j = Math.floor(fz);
+  const u = fx - i;
+  const v = fz - j;
+  const k = j * size + i;
+  const a = data[k] + (data[k + 1] - data[k]) * u;
+  const b = data[k + size] + (data[k + size + 1] - data[k + size]) * u;
+  return a + (b - a) * v;
 }
 
 export function buildGround(params) {
@@ -45,27 +79,30 @@ export function buildGround(params) {
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geo.computeVertexNormals();
 
-  const mat = new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0, vertexColors: false });
+  const mat = new THREE.MeshLambertMaterial();
   const uniforms = {
     uGroundA: { value: new THREE.Color() },
     uGroundB: { value: new THREE.Color() },
     uScorch: { value: new THREE.Vector4(0, 0, 0, 0) },
+    uStubbleGround: { value: new THREE.Color('#8a7448') },
   };
   mat.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, uniforms);
+    Object.assign(shader.uniforms, uniforms, fieldUniforms);
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute float aTint;\nvarying float vTint;\nvarying vec3 vGWorld;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvTint = aTint;\nvGWorld = (modelMatrix * vec4(position,1.0)).xyz;');
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
-        '#include <common>\nuniform vec3 uGroundA;\nuniform vec3 uGroundB;\nuniform vec4 uScorch;\nvarying float vTint;\nvarying vec3 vGWorld;'
+        '#include <common>\n' + FIELD_GLSL + '\nuniform vec3 uGroundA;\nuniform vec3 uGroundB;\nuniform vec4 uScorch;\nuniform vec3 uStubbleGround;\nvarying float vTint;\nvarying vec3 vGWorld;'
       )
       .replace(
         'vec4 diffuseColor = vec4( diffuse, opacity );',
         `vec3 gcol = mix(uGroundA, uGroundB, smoothstep(0.25, 0.8, vTint));
          float sc = 1.0 - smoothstep(uScorch.z * 0.4, uScorch.z, distance(vGWorld.xz, uScorch.xy));
          gcol = mix(gcol, vec3(0.05, 0.035, 0.025), sc * uScorch.w);
+         vec2 gc = fieldCut(vGWorld.xz);
+         gcol = mix(gcol, uStubbleGround * (0.75 + vTint * 0.4), clamp(gc.x * 0.85 + gc.y * 0.3, 0.0, 1.0));
          vec4 diffuseColor = vec4( gcol, opacity );`
       );
   };
