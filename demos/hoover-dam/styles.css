@@ -292,3 +292,6 @@ kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line-2)
   .lab-copy { min-width: 0; }
   .timeline { grid-template-columns: repeat(2, minmax(0, 1fr)); overflow-wrap: anywhere; }
 }
+
+/* Occluded/unfocused callouts are still actionable: keep their text legible. */
+.callout.dim { opacity: 1; background: rgba(10,12,15,.9); border-style: dashed; }
