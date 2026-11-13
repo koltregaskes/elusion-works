@@ -2,13 +2,19 @@
 from pathlib import Path
 from html.parser import HTMLParser
 from urllib.parse import urlparse, unquote
+import argparse
 import json
 import struct
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parent.parent
 BASE = 'https://elusionworks.com/'
-FEED = 'scripts/feed.xml'
+FEED = 'feed.xml'
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--site-root', type=Path, default=ROOT)
+parser.add_argument('--feed', type=Path)
+args = parser.parse_args()
+ROOT = args.site_root.resolve()
 class Head(HTMLParser):
     def __init__(self):
         super().__init__(); self.links = {}; self.meta = {}; self.schemas = []; self.schema = None
@@ -46,8 +52,9 @@ for rel in ['index.html']:
     assert url in urls
 assert BASE + 'sitemap.xml' in (ROOT / 'robots.txt').read_text()
 assert BASE in (ROOT / 'llms.txt').read_text()
-feed = ET.parse(ROOT / FEED)
+feed = ET.parse(args.feed or ROOT / FEED)
 assert feed.getroot().tag == 'rss'
 assert feed.find('channel/link').text == BASE
+assert feed.find('channel/{http://www.w3.org/2005/Atom}link').get('href') == BASE + FEED
 assert feed.find('channel/item') is not None
 print(f'SEO contract passed: {len(urls)} sitemap entries, core metadata, PNG and RSS')
