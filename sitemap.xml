@@ -73,6 +73,9 @@
     <loc>https://elusionworks.com/demos/chronicles-of-bone/</loc>
   </url>
   <url>
+    <loc>https://elusionworks.com/demos/nebula-architect/</loc>
+  </url>
+  <url>
     <loc>https://elusionworks.com/demos/golden/</loc>
   </url>
   <url>
@@ -105,4 +108,7 @@
   <url>
     <loc>https://elusionworks.com/design-notes/</loc>
   </url>
+  <url><loc>https://elusionworks.com/demos/cyberpunk-messenger/</loc></url>
+  <url><loc>https://elusionworks.com/demos/nitro-circuit-overdrive/</loc></url>
+  <url><loc>https://elusionworks.com/demos/void-sovereign/</loc></url>
 </urlset>
