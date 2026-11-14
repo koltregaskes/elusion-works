@@ -76,12 +76,12 @@ An Unreal Engine 5 route for the same town is in `unreal/`.
 
 ## Controls
 
-- **1 Explore**: WASD to walk, mouse to turn the camera, Shift to run, wheel to zoom.
+- **1 Explore**: WASD to walk, drag (or click to lock the mouse) to turn the camera, Shift to run, wheel to zoom. Drag-to-look keeps working where pointer lock is refused, such as a sandboxed embed.
 - **2 Fly**: free camera, Space/E up and Q/C down.
 - **3 Flyover**: seven shots on a loop, N and B to skip.
 - **T** time of day, **R** weather, **H** help.
 
-URL options: `?mode=walk|fly|flyover`, `?time=dawn|midday|golden|night`,
+URL options (as a query string or after `#`, for embeds that strip queries): `?mode=walk|fly|flyover`, `?time=dawn|midday|golden|night`,
 `?weather=clear|cloudy|rain|mist`, `?q=low|high|ultra`, `?shot=N`, `?aa=fxaa`.
 
 ## Rebuild the assets
