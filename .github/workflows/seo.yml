@@ -44,6 +44,7 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: python scripts/build-site.py
+      - run: node scripts/test-editorial-render.mjs
       - run: node scripts/launch-browser.mjs --width=${{ matrix.width }} --shard=${{ matrix.shard }}/4
       - uses: actions/upload-artifact@v4
         if: always()
