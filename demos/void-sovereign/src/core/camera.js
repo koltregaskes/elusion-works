@@ -564,6 +564,13 @@ const COMPOSE = {
    3). Strike craft keep R7's behaviour; a frigate or a capital that comes out
    a speck or overflowing the frame is pulled to `want`. */
 const FILL = {
+  /* Round 18 (P2, C5): a focused interceptor filled the frame like a capital,
+     so focusing a hull told you nothing about its size. A lone fighter or
+     corvette is now framed small, with the field around it, and each step up
+     in class fills more of the frame. Groups keep the old framing (see
+     `_fillFor`): a band this tight would shrink a whole wing to a speck. */
+  fighter: { lo: 0.05, hi: 0.20, want: 0.10 },
+  corvette: { lo: 0.07, hi: 0.28, want: 0.15 },
   frigate: { lo: 0.14, hi: 0.75, want: 0.30 },
   support: { lo: 0.14, hi: 0.75, want: 0.30 },
   capital: { lo: 0.22, hi: 0.85, want: 0.42 },
@@ -820,7 +827,7 @@ export class CameraRig {
   /** Dolly out until a bounding sphere of the given entities fits the frame,
       accounting for aspect: on a wide window the vertical FOV is the binding
       constraint, on a tall one it is the horizontal. */
-  frameEntities(entities, instant = false) {
+  frameEntities(entities, instant = false, opts = null) {
     const list = this._toList(entities);
     if (!list.length) return;
     this._releaseCompose();
@@ -857,7 +864,7 @@ export class CameraRig {
     for (const e of list) if (e.quaternion && (!hero || (e.radius || 0) > (hero.radius || 0))) hero = e;
 
     if (instant) this._focus.snap(this._focus.target);
-    this._compose(instant, hero, list);
+    this._compose(instant, hero, list, !!(opts && opts.keepAngle));
     if (instant) {
       this._logDist.snap(this._logDist.target);
       this._apply(0);
@@ -2591,9 +2598,13 @@ export class CameraRig {
       cheapest wins. This replaces the key swing, `_clearView`'s sight and
       backdrop passes and its buried fallback, which used to run one after
       another and overrule each other (R7 fix 3). */
-  _compose(instant, hero, list) {
+  _compose(instant, hero, list, keepAngle = false) {
     const yawIn = this._yaw.target;
-    this._keyQuarter(false, hero);
+    /* `keepAngle`: a "back to the fleet" framing keeps the angle the player
+       chose. Round 18: F with nothing selected swung the lens to the key
+       light and could end up under the fleet looking up. The search below
+       still steers round rocks, but from the angle the player already had. */
+    if (!keepAngle) this._keyQuarter(false, hero);
     const yaw0 = this._yaw.target;
     this._yaw.target = yawIn;
     const pitch0 = this._pitch.target;
@@ -2826,10 +2837,12 @@ export class CameraRig {
     return s;
   }
 
-  /** The fill band for the biggest hull in `list`, by role; null for strike
-      craft, which R7 already frames well. */
+  /** The fill band for the biggest hull in `list`, by role. Strike craft get
+      one only on their own: a group of them is framed as a group. */
   _fillFor(list) {
     if (!list) return null;
+    let alive = 0;
+    for (let i = 0; i < list.length; i++) if (list[i] && list[i].alive !== false) alive++;
     let big = null;
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
@@ -2837,6 +2850,7 @@ export class CameraRig {
     }
     if (!big) return null;
     const role = big.role || (big.def && big.def.role);
+    if (alive > 1 && (role === 'fighter' || role === 'corvette')) return null;
     return FILL[role] || null;
   }
 
