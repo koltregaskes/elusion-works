@@ -329,6 +329,7 @@ input[type='range']:focus-visible { outline: 2px solid var(--accent); outline-of
 .wf-sep { width: 1px; height: 12px; background: var(--line); }
 
 .wf-presets {
+  position: relative; /* offset parent for keeping the active mood in view */
   display: flex;
   gap: 2px;
   padding: 5px;
@@ -497,4 +498,34 @@ input[type='range']:focus-visible { outline: 2px solid var(--accent); outline-of
 .wf-bench-actions [data-copy] { background: var(--accent); color: #140d07; border-color: transparent; }
 
 /* Loading copy must retain AA contrast over the dark scene. */
-.wf-loading > span { color: #d5cec4; opacity: 1; }
+.wf-loading > span { color: #d5cec4; opacity: 1; display: grid; justify-items: center; gap: 18px; }
+/* A thin line with light travelling along it, like a gust over the crop. */
+.wf-loading > span::after {
+  content: '';
+  width: 140px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent) no-repeat -140px 0 / 70px 1px, rgba(255, 255, 255, 0.12);
+  animation: wf-gust 1.6s cubic-bezier(0.45, 0, 0.3, 1) infinite;
+}
+@keyframes wf-gust { to { background-position: 210px 0, 0 0; } }
+
+/* Soft scrims top and bottom so the headline and the bars read over a bright sky or
+   crop, without boxing them in. They fade with the rest of the interface (H). */
+.wf-ui::before,
+.wf-ui::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+.wf-ui::before { top: 0; height: 60%; background: radial-gradient(ellipse 52% 62% at 12% 24%, rgba(10, 8, 6, 0.3), rgba(10, 8, 6, 0) 72%); }
+.wf-ui::after { bottom: 0; height: 24%; background: linear-gradient(0deg, rgba(10, 8, 6, 0.3), rgba(10, 8, 6, 0)); }
+@media (max-width: 960px) {
+  .wf-ui::before { height: 46%; background: linear-gradient(180deg, rgba(10, 8, 6, 0.42), rgba(10, 8, 6, 0.14) 60%, rgba(10, 8, 6, 0)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wf-loading > span::after { animation: none; }
+}
