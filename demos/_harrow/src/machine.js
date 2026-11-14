@@ -186,13 +186,11 @@ export class Machine {
   // four flank cells in saddles, each with a band that brightens under draw
   buildCells() {
     const g = new THREE.Group(); this.body.add(g); this.cellsG = g; this.cellParts = [];
-    const pts = [];
-    for (let i = 0; i <= 16; i++) { const a = (i / 16) * Math.PI; pts.push(new THREE.Vector2(Math.sin(a) * 12 + (i > 0 && i < 16 ? 1 : 0), -Math.cos(a) * 24)); }
-    const body = new THREE.LatheGeometry(pts, 36); body.rotateZ(Math.PI / 2);
+    const body = new THREE.CapsuleGeometry(11.5, 26, 8, 28); body.rotateZ(Math.PI / 2);
     for (const s of [1, -1]) for (const x of [30, -40]) {
       const h = new THREE.Group(); h.position.set(x, 160, s * 44); g.add(h);
       this.add(h, new THREE.Mesh(body, this.white('cells')), 'cells', { glass: true, inkAt: 40 });
-      const band = new THREE.Mesh(new THREE.TorusGeometry(12.8, 1.7, 8, 36), this.mat.band); band.rotation.y = Math.PI / 2;
+      const band = new THREE.Mesh(new THREE.TorusGeometry(12.2, 1.7, 8, 36), this.mat.band); band.rotation.y = Math.PI / 2;
       this.add(h, band, 'cells', { ink: false });
       const inner = new THREE.Mesh(new THREE.CylinderGeometry(7, 7, 38, 18), this.mat.graphite); inner.rotation.z = Math.PI / 2;
       this.add(h, inner, 'cells', { ink: false });
@@ -437,8 +435,8 @@ export class Machine {
     this.cellParts.forEach((c) => c.h.position.set(c.base.x, c.base.y + 10 * e, c.base.z + c.s * 96 * e));
 
     // drill: the shaft telescopes down until the bit is 6 cm into the ground, and spins
-    const d = st.drillDepth, reach = 16 + 100 * d; // bit tip = housing − reach − 34
-    this.bit.position.y = -reach; this.shaft.scale.y = reach; this.shaft.position.y = -reach / 2;
+    const d = st.drillDepth, reach = 116 * d; // stowed: bit inside the housing; full depth: tip 6 cm into the ground
+    this.bit.position.y = 14 - reach; this.shaft.scale.y = Math.max(0.01, reach); this.shaft.position.y = -reach / 2; this.shaft.visible = reach > 1;
     this.drillG.position.y = 122 - 110 * e;
     this.bit.rotation.y += dt * (d > 0.02 ? 16 : 0);
 

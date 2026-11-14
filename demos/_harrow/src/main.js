@@ -27,7 +27,7 @@ let out = step(st, 0);
 // console + film state
 const S = { focus: null, exploded: false, look: 'solid', labels: true, turntable: true, prints: true, view: 'hero' };
 const VIEWS = {
-  hero: { pos: [690, 340, 800], tgt: [20, 104, 0] },
+  hero: { pos: [760, 370, 880], tgt: [20, 104, 0] },
   wide: { pos: [1150, 700, 1300], tgt: [0, 130, 0] },
   head: { pos: [640, 280, 470], tgt: [200, 160, 0] },
   carapace: { pos: [-420, 760, 660], tgt: [0, 140, 0] },
@@ -436,7 +436,7 @@ function loop() {
     $('#runtime').textContent = `${String(Math.floor(rt / 3600)).padStart(2, '0')}:${String(Math.floor(rt / 60) % 60).padStart(2, '0')}:${String(rt % 60).padStart(2, '0')}`;
     const mode = modeLabel();
     if ($('#modeT').textContent !== mode) $('#modeT').textContent = mode;
-    $('#modeS').textContent = st.drillDepth > 0.02 ? `Drill depth ${Math.round(st.drillDepth * 78)} cm · cores ${st.cores}` : out.gait === 'stand' ? `All feet down · ${f1(out.P / 1000)} kW` : `${GAITNAME[out.gait]} · ${f1(out.v)} m/s · Fr ${f2(out.Fr)}${st.grade ? ` · grade ${st.grade > 0 ? '+' : ''}${Math.round(st.grade)}%` : ''}${out.throttle < 0.97 ? ' · governed' : ''}`;
+    $('#modeS').textContent = st.drillDepth > 0.02 ? `Bit depth ${Math.round(Math.max(0, st.drillDepth * 116 - 110))} cm into soil · cores ${st.cores}` : out.gait === 'stand' ? `All feet down · ${f1(out.P / 1000)} kW` : `${GAITNAME[out.gait]} · ${f1(out.v)} m/s · Fr ${f2(out.Fr)}${st.grade ? ` · grade ${st.grade > 0 ? '+' : ''}${Math.round(st.grade)}%` : ''}${out.throttle < 0.97 ? ' · governed' : ''}`;
     if (!film.playing) $('#status').innerHTML = `<i></i>${mode}`;
     for (const r of sysRows) { const [txt, cls] = sysStatus(r); r.pill.textContent = txt; r.pill.className = `pill ${cls}`; r.li.classList.toggle('on', S.focus === r.id); }
     const f = film.t / FILM;
