@@ -102,6 +102,35 @@ export function windowMaterial(yawAttribute, seedAttribute, { w = 1.5, h = 2.0, 
     col = col.add(roomPalette(seed.add(5.0)).mul(pic).mul(0.6));
     col = col.add(roomPalette(seed.add(9.0)).mul(goods).mul(0.9));
     col = col.add(pal.mul(lamp).mul(1.4));
+    // A midground layer 55% of the way in: a sofa back, a floor lamp, a plant and
+    // now and then a person, in silhouette against the lit room. It sits in front
+    // of the back wall, so it slides against it as the camera moves (parallax).
+    if (!shop) {
+      const tMid = float(0.55).div(rd.z);
+      const mid = vec2(u0, v0).add(vec2(rx, ry).mul(tMid));
+      const mx = mid.x;
+      const my = mid.y;
+      const inFront = step(tMid, tmin).mul(step(0.0, mx)).mul(step(mx, 1.0)).mul(step(0.0, my));
+      const leftLamp = step(0.5, hash(seed.add(31.0)));
+      const sofaX = hash(seed.add(32.0)).mul(0.25).add(0.2);
+      const couch = step(sofaX, mx).mul(step(mx, sofaX.add(0.4))).mul(step(my, smoothstep(0.0, 0.05, mx.sub(sofaX)).mul(0.05).add(0.2)));
+      const poleX = select(leftLamp.greaterThan(0.5), float(0.1), float(0.88));
+      const pole = step(abs(mx.sub(poleX)), 0.01).mul(step(my, 0.6));
+      const shadeMask = step(abs(mx.sub(poleX)), my.sub(0.6).mul(0.5).add(0.05)).mul(step(0.6, my)).mul(step(my, 0.7));
+      const plantX = select(leftLamp.greaterThan(0.5), float(0.88), float(0.1));
+      const plant = step(length(vec2(mx.sub(plantX), my.sub(0.24).mul(1.3))), 0.085).add(step(abs(mx.sub(plantX)), 0.035).mul(step(my, 0.12))).min(1);
+      const px = hash(seed.add(33.0)).mul(0.5).add(0.25);
+      const person = step(0.78, hash(seed.add(34.0)));
+      const body = step(abs(mx.sub(px)), my.mul(-0.04).add(0.07)).mul(step(my, 0.5));
+      const head = step(length(vec2(mx.sub(px), my.sub(0.56))), 0.05);
+      const figure = person.mul(max(body, head));
+      const solid = max(max(couch, pole), max(plant, figure)).mul(inFront);
+      col = mix(col, pal.mul(0.06), solid);
+      // the lamp shade glows warm and lights the wall behind it
+      const glow = shadeMask.mul(inFront);
+      col = col.add(vec3(1.0, 0.72, 0.42).mul(glow).mul(1.6));
+      col = col.add(vec3(1.0, 0.72, 0.42).mul(back).mul(smoothstep(0.35, 0.0, length(vec2(hit.x.sub(poleX), hit.y.sub(0.66))))).mul(0.5));
+    }
     // TV flicker in some dark rooms
     const tv = step(0.93, hash(seed.add(12.3))).mul(lit.oneMinus()).mul(sin(uTime.mul(9).add(seed.mul(40))).mul(0.3).add(0.5));
     const tvCol = vec3(0.25, 0.45, 1.0).mul(tv).mul(back.add(side.mul(0.6)));

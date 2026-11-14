@@ -197,6 +197,8 @@ async function boot() {
     }
     pool.update(camera);
     rainCam.value.copy(camera.position);
+    // smog hangs low: thin it as the camera climbs above the rooftops, so aerial shots still read
+    scene.fog.density = 0.0048 * THREE.MathUtils.lerp(1, 0.4, THREE.MathUtils.smoothstep(camera.position.y, 45, 180));
     pipeline.render();
     frames++;
     acc += dt;
