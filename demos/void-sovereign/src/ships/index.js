@@ -255,6 +255,35 @@ const _dbSize = new THREE.Vector2();
 const _keyWorld = new THREE.Vector3(0, 0, 1);
 let _keyFound = false;
 let _keyCountdown = 0;
+/* The hook below fires once per impostor mesh per pass (about 140 times a
+   frame in a big fight), but what it writes is shared by all of them and only
+   changes between render calls. So it does its work once per render call and
+   returns at once for every other mesh in that call. */
+let _lastRenderFrame = -1;
+let _lastCamera = null;
+/* The canvas's CSS height, kept by a ResizeObserver so the hook never reads
+   clientHeight: that read forces a layout whenever the HUD has touched the DOM
+   earlier in the frame, which it does every frame. */
+let _cssH = 0;
+let _cssObserved = null;
+let _cssObserver = null;
+function cssHeight(canvas) {
+  if (!canvas) return 0;
+  if (_cssObserved !== canvas) {
+    if (_cssObserver) _cssObserver.disconnect();
+    _cssObserver = null;
+    _cssObserved = canvas;
+    _cssH = canvas.clientHeight || 0;
+    if (typeof ResizeObserver === 'function') {
+      _cssObserver = new ResizeObserver((entries) => {
+        const e = entries[entries.length - 1];
+        _cssH = e && e.contentRect ? e.contentRect.height : canvas.clientHeight || 0;
+      });
+      _cssObserver.observe(canvas);
+    }
+  }
+  return _cssObserver ? _cssH : canvas.clientHeight || 0;
+}
 
 /* The key star belongs to [ENV] and its direction is not on any frozen API, so
    read it out of the scene rather than duplicating a constant that would then
@@ -285,6 +314,10 @@ function scanKeyLight(scene) {
    hook into the frame that SHIPS owns — nothing here may reach into main.js. */
 function impostorBeforeRender(renderer, scene, camera) {
   if (!renderer || !camera || !camera.isPerspectiveCamera) return;
+  const frame = renderer.info && renderer.info.render ? renderer.info.render.frame : -2;
+  if (frame === _lastRenderFrame && camera === _lastCamera && frame !== -2) return;
+  _lastRenderFrame = frame;
+  _lastCamera = camera;
 
   let h = 0;
   if (typeof renderer.getCurrentViewport === 'function') {
@@ -299,12 +332,12 @@ function impostorBeforeRender(renderer, scene, camera) {
   // floor is a promise about how big a hull looks on screen, and FX sizes the
   // drive glow against the same CSS-pixel hull, so the two must agree whatever
   // the device pixel ratio or the post stack's internal render scale.
-  const css = renderer.domElement && renderer.domElement.clientHeight;
+  const css = cssHeight(renderer.domElement);
   _impostorPx.value = camera.projectionMatrix.elements[5] * (css > 0 ? css : h) * 0.5;
 
   if (_keyCountdown-- <= 0) {
     scanKeyLight(scene);
-    _keyCountdown = _keyFound ? 120 : 8;
+    _keyCountdown = _keyFound ? 240 : 8; // render calls, so about every second or two
   }
   _impostorKey.value.copy(_keyWorld).transformDirection(camera.matrixWorldInverse);
 }
@@ -1377,6 +1410,11 @@ export function disposeShipCache() {
   _impostorCache.clear();
   _keyFound = false;
   _keyCountdown = 0;
+  _lastRenderFrame = -1;
+  _lastCamera = null;
+  if (_cssObserver) _cssObserver.disconnect();
+  _cssObserver = null;
+  _cssObserved = null;
 }
 
 export { HULL_CLASSES };

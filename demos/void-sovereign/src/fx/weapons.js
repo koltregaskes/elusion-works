@@ -2125,6 +2125,8 @@ export class WeaponFX {
     const nx = normal.x;
     const ny = normal.y;
     const nz = normal.z;
+    const room = f.spark.room();
+    if (room < count) count = room;
     for (let i = 0; i < count; i++) {
       const u = rng.unitVector();
       // Push every sample onto the outward side of the surface.

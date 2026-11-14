@@ -614,6 +614,13 @@ export class ParticleField {
       // them; smoke must not, or distant soot glows.
       clampLift = blending === THREE.NormalBlending ? 0.0 : 1.35,
       radial = false,
+      /* Seconds over which the field may refill its whole capacity. 0 means no
+         limit. In a 400-hull fight the spark field was asked for about 4,600
+         sparks a frame into 4,900 slots, so every spark was evicted a frame
+         after it was born and each spawn paid for an eviction scan. With a
+         turnover, spawns past the budget for the frame are dropped cheaply and
+         the sparks that are drawn live out their life. */
+      turnover = 0,
     } = opts;
 
     this.ctx = ctx;
@@ -625,6 +632,10 @@ export class ParticleField {
     this._evictCursor = 0;
     this._lo = capacity;
     this._hi = 0;
+    this._turnover = turnover;
+    this._spent = 0;
+    this._budget = Infinity;
+    this._budgetAt = -1;
 
     // Hand-rolled unit quad: sharing attributes with a PlaneGeometry we then
     // dispose would tear the buffers out from under this geometry.
@@ -689,6 +700,8 @@ export class ParticleField {
   /** Positional args on purpose: this is called thousands of times a second.
       `capPx` is optional and defaults to no ceiling. */
   spawn(px, py, pz, vx, vy, vz, life, drag, size0, size1, colour, brightness, stretch, spin, capPx) {
+    if (this._spent >= this._budget) return -1;
+    this._spent++;
     let slot;
     if (this.count < this.capacity) {
       slot = this.count++;
@@ -730,6 +743,12 @@ export class ParticleField {
     return slot;
   }
 
+  /** How many more spawns this frame's budget allows (Infinity without one).
+      Emitters check it first so they can skip the random rolls as well. */
+  room() {
+    return this._budget - this._spent;
+  }
+
   _touch(slot) {
     if (slot < this._lo) this._lo = slot;
     if (slot > this._hi) this._hi = slot;
@@ -738,6 +757,15 @@ export class ParticleField {
   update() {
     const now = this.ctx.now;
     const d = this._data;
+    if (this._turnover > 0) {
+      /* The budget for the next frame: the share of the capacity the elapsed
+         time is of the turnover, never less than 2% so a paused or stepped
+         frame still gets a few. */
+      const span = this._budgetAt >= 0 ? Math.max(0, now - this._budgetAt) : 1 / 60;
+      this._budgetAt = now;
+      this._budget = Math.ceil(this.capacity * Math.max(0.02, Math.min(1, span / this._turnover)));
+      this._spent = 0;
+    }
     for (let i = 0; i < this.count; i++) {
       if (this._death[i] <= now) {
         const last = --this.count;
@@ -1461,7 +1489,7 @@ export class FXSystem {
         alphaPow: 1.15, minPixels: 5.0, renderOrder: 14, softness: 18, radial: true,
       }),
       spark: new ParticleField(ctx, {
-        name: 'spark', texture: sprites.spark, capacity: budget.spark,
+        name: 'spark', texture: sprites.spark, capacity: budget.spark, turnover: 0.25,
         alphaPow: 1.9, minPixels: 2.4, renderOrder: 13, softness: 10,
       }),
       ember: new ParticleField(ctx, {
