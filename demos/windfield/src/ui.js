@@ -72,7 +72,19 @@ export class StudioUI {
       wrap.append(b);
     });
     this.subjectWrap = wrap;
-    return wrap;
+    const outer = document.createElement('div');
+    outer.append(wrap);
+    const drive = document.createElement('button');
+    drive.type = 'button';
+    drive.className = 'wf-drive';
+    drive.dataset.drive = '';
+    drive.innerHTML = '<span>Take the wheel</span><span class="wf-mono">T</span>';
+    drive.setAttribute('aria-pressed', 'false');
+    drive.hidden = true;
+    drive.addEventListener('click', () => this.h.onDrive());
+    outer.append(drive);
+    this.driveButton = drive;
+    return outer;
   }
 
   slider(def) {
@@ -115,6 +127,7 @@ export class StudioUI {
       input.value = v;
       this.paintSlider(def, input, this.outputs.get(def.key), v);
     });
+    this.driveButton.hidden = state.subject !== 'combine';
     this.subjectWrap.querySelectorAll('button').forEach((b) => {
       const on = b.dataset.subject === state.subject;
       b.classList.toggle('is-active', on);
@@ -190,7 +203,8 @@ export class StudioUI {
     window.addEventListener('keydown', (e) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
       if (e.key.toLowerCase() === 'h') document.body.classList.toggle('ui-hidden');
-      if (/^[1-7]$/.test(e.key)) this.h.onPreset(Number(e.key) - 1);
+      if (/^[1-8]$/.test(e.key)) this.h.onPreset(Number(e.key) - 1);
+      if (e.key.toLowerCase() === 't') this.h.onDrive();
       if (e.key === ' ') {
         e.preventDefault();
         document.querySelector('[data-pause]').click();
@@ -202,6 +216,12 @@ export class StudioUI {
     const b = document.querySelector('[data-camera]');
     b.setAttribute('aria-pressed', mode === 'cinematic' ? 'true' : 'false');
     b.title = mode === 'cinematic' ? 'Cinematic camera (F)' : 'Free camera, press F for cinematic';
+  }
+
+  setDriving(on) {
+    this.driveButton.setAttribute('aria-pressed', on ? 'true' : 'false');
+    this.driveButton.querySelector('span').textContent = on ? 'Back to autopilot' : 'Take the wheel';
+    document.body.classList.toggle('is-driving', on);
   }
 
   setQuality(q) {

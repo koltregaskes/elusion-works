@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Planetary Teardown — the eight planets, taken apart | Elusion Works</title>
+<meta name="description" content="A teardown field simulator for the eight planets: cut each one open, explode its layers, read its atmosphere, moons, rings and missions, and see where it is in the sky today." />
+<link rel="canonical" href="https://elusionworks.com/demos/planet-teardown/" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Planetary Teardown — the eight planets, taken apart" />
+<meta property="og:description" content="Cut each planet open, explode its layers, and read live positions, atmospheres, moons and missions." />
+<meta property="og:url" content="https://elusionworks.com/demos/planet-teardown/" />
+<meta property="og:image" content="https://elusionworks.com/demos/planet-teardown/thumbnail.webp" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="theme-color" content="#000000" />
+<link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js", "three/addons/": "./vendor/addons/" } }
+</script>
+</head>
+<body>
+<div id="boot" class="boot"><b>SOL-08</b><span>assembling eight planets</span></div>
+<canvas id="scene" aria-label="Planet study model on a turntable. Drag to orbit, scroll to zoom."></canvas>
+<svg id="draft" aria-hidden="true"></svg>
+<svg id="leaders" aria-hidden="true"></svg>
+<div id="callouts" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="idblock"><span class="sym" id="sym">♃</span><span class="mono" id="code">SOL-05</span></div>
+  <div class="ttl">
+    <div class="mono k" id="kick">Gas giant · 5th from the Sun</div>
+    <h1><span id="pname">Jupiter</span> <i>/</i></h1>
+    <div class="mono k2">Planetary teardown / field simulator</div>
+  </div>
+  <div class="load">
+    <div class="row mono"><span>Sun distance · <em id="loadDate">today</em></span><b id="loadAu">0 AU</b></div>
+    <div class="cells" id="loadCells"></div>
+    <div class="row mono sm"><span>Perihelion</span><span>Mean</span><span>Aphelion</span></div>
+    <div class="crosses mono" aria-hidden="true"></div>
+  </div>
+  <div class="meta">
+    <div><span class="mono">Sim ID</span><b class="mono" id="simId">SOL-05-A</b></div>
+    <div><span class="mono">Runtime</span><b class="mono" id="runtime">00:00:00</b></div>
+    <div><span class="mono">Status</span><b class="mono" id="status"><i></i>Operator log</b></div>
+    <div><span class="mono">Sunlight takes</span><b class="mono" id="lightT">—</b></div>
+  </div>
+  <button class="panels-btn mono" id="panelsBtn" aria-expanded="false">Panels</button>
+</header>
+
+<nav class="planets" id="planets" aria-label="Choose a planet"></nav>
+
+<div class="frame-label mono l" id="frameL">Study model · mean radius = 1</div>
+<div class="frame-label mono r" id="frameR">Isolate · Whole planet</div>
+
+<aside class="col left" id="colLeft">
+  <section class="card" id="cVit">
+    <div class="ch"><b>Vital signs</b><span>01</span></div>
+    <div class="pair"><div><strong id="vR">0</strong><sup>KM</sup><span class="mono lab">Mean radius</span></div><div class="r"><strong id="vRx">0×</strong><span class="mono lab">Earth widths</span></div></div>
+    <dl class="kv mono" id="vitals"></dl>
+  </section>
+  <section class="card" id="cOrb">
+    <div class="ch"><b>Orbit · <em id="orbDate">today</em></b><span>02</span></div>
+    <canvas id="cvOrrery"></canvas>
+    <dl class="kv mono" id="orbit"></dl>
+    <div class="dates mono" id="dates"><button data-d="-365">−1 yr</button><button data-d="-30">−1 mo</button><button data-d="0" class="on">Today</button><button data-d="30">+1 mo</button><button data-d="365">+1 yr</button><button data-d="run" title="Run the clock at 20 days a second">Run</button></div>
+  </section>
+  <section class="card" id="cAtm">
+    <div class="ch"><b>Atmosphere</b><span>03</span></div>
+    <div class="gasbar" id="gasbar"></div>
+    <ul class="gases mono" id="gases"></ul>
+    <dl class="kv mono" id="atmo"></dl>
+  </section>
+</aside>
+
+<aside class="col right" id="colRight">
+  <section class="card" id="cInt">
+    <div class="ch"><b>Interior</b><span>04</span></div>
+    <ol class="sys" id="layers"></ol>
+    <p class="note mono" id="layersNote"></p>
+  </section>
+  <section class="card">
+    <div class="ch"><b>Display</b><span>05</span></div>
+    <div class="chips" id="modes"><button data-m="surface" class="on">Surface</button><button data-m="cutaway">Cutaway</button><button data-m="exploded">Exploded</button></div>
+    <div class="chips" id="disp"><button data-d="labels" class="on">Labels</button><button data-d="turntable" class="on">Turntable</button><button data-d="axis" class="on">Axis</button><button data-d="rings" class="on">Rings</button><button data-d="moons">Moons</button><button data-d="compare">Earth to scale</button><button data-d="glass">Glass</button></div>
+    <div class="accents mono" id="accents"><span>Accent</span></div>
+  </section>
+  <section class="card" id="cDos">
+    <div class="ch"><b>Dossier</b><span>06</span></div>
+    <div class="tabs mono" id="dosTabs"><button data-t="moons" class="on">Moons</button><button data-t="features">Features</button><button data-t="missions">Missions</button><button data-t="facts">Facts</button></div>
+    <div id="dossier" class="dossier"></div>
+  </section>
+</aside>
+
+<details class="ctl card" id="ctl">
+  <summary class="mono">You, there</summary>
+  <label class="mono">Your weight on Earth <output id="wOut">70 kg</output><input type="range" id="w" min="20" max="140" step="1" value="70" /></label>
+  <label class="mono">Your age <output id="ageOut">30 yr</output><input type="range" id="age" min="1" max="100" step="1" value="30" /></label>
+  <dl class="kv mono" id="you"></dl>
+</details>
+
+<div class="mode">
+  <span class="mono">Mode</span>
+  <b id="modeT">Surface</b>
+  <span class="mono" id="modeS">—</span>
+</div>
+
+<section class="oplog card">
+  <div class="ch"><b>Operation log</b><span>07</span></div>
+  <div class="opl">
+    <button id="play" aria-label="Play or pause the operation log"><svg viewBox="0 0 20 20"><rect class="pa" x="6" y="5" width="2.6" height="10" rx="0.6"/><rect class="pa" x="11.4" y="5" width="2.6" height="10" rx="0.6"/><path class="pl" d="M7 5 L15 10 L7 15 Z"/></svg></button>
+    <div class="trk">
+      <div class="ends mono"><span>Mercury</span><b id="beatT">Select · Mercury</b><span>Neptune</span></div>
+      <div class="bar" id="bar"><div class="fill" id="fill"></div><div class="ticks" id="ticks"></div><div class="knob" id="knob"></div></div>
+      <div class="ends mono"><span id="clock">00:00 / 00:45</span><span id="acts">16 operator actions</span></div>
+    </div>
+  </div>
+</section>
+
+<footer class="footline mono">
+  <span>Field simulator · procedural models · 8 planets · 456 known moons · data NASA fact sheets, JPL elements</span>
+  <span>Elusion Works · Planetary teardown <i>//////</i></span>
+</footer>
+
+<div class="ghost" id="ghost" hidden></div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

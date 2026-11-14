@@ -1,3 +1,6 @@
+import { editorialStamp } from "./editorial-age.js";
+import { estateItems } from "./data/estate.js";
+
 const fallbackFeed = {
   stats: { sites: 8, tools: 4, games: 2 },
   ticker: [
@@ -33,6 +36,97 @@ function isExternalHref(href) {
   return /^https?:\/\//i.test(href);
 }
 
+function estateStatusLabel(item) {
+  if (item.status === "live") return item.type === "game" ? "Playable" : "Live";
+  if (item.status === "in-progress") return "In build";
+  return "Coming soon";
+}
+
+function estateActionLabel(item) {
+  if (!item.url) return item.status === "coming-soon" ? "Coming later" : "In progress";
+  if (item.type === "game") return item.status === "live" ? "Begin" : "Preview";
+  return item.status === "live" ? "Open" : "Preview";
+}
+
+function renderEstatePlate(plate, item) {
+  plate.dataset.status = item.status;
+  plate.dataset.kind = item.type;
+
+  const halo = document.createElement("span");
+  halo.className = "ew-plate-halo";
+  halo.setAttribute("aria-hidden", "true");
+
+  const link = document.createElement("a");
+  link.className = "ew-plate-link";
+  link.href = normaliseHref(item.url);
+  link.setAttribute("aria-label", `Open ${item.name}`);
+  if (isExternalHref(item.url)) {
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+  }
+
+  const media = document.createElement("div");
+  media.className = "ew-plate-media";
+  const frame = document.createElement("div");
+  frame.className = "ew-plate-frame";
+  const image = document.createElement("img");
+  image.src = item.media.src;
+  image.alt = item.media.alt ?? "";
+  image.width = 1280;
+  image.height = 720;
+  image.loading = "lazy";
+  image.decoding = "async";
+  if (item.media.position) image.style.objectPosition = item.media.position;
+  const sheen = document.createElement("span");
+  sheen.className = "ew-plate-sheen";
+  sheen.setAttribute("aria-hidden", "true");
+  frame.append(image, sheen);
+  media.append(frame);
+
+  const meta = document.createElement("div");
+  meta.className = "ew-plate-meta";
+  const metaRow = document.createElement("div");
+  metaRow.className = "ew-plate-meta-row";
+  const kind = document.createElement("span");
+  kind.className = "ew-mono ew-plate-kind";
+  kind.textContent = item.type === "game" ? "Game" : item.type;
+  const status = document.createElement("span");
+  status.className = `ew-status ew-status-${item.status}`;
+  status.textContent = `Status: ${estateStatusLabel(item)}`;
+  metaRow.append(kind, status);
+
+  const name = document.createElement("h3");
+  name.className = "ew-plate-name";
+  name.textContent = item.name;
+  const blurb = document.createElement("p");
+  blurb.className = "ew-plate-blurb";
+  blurb.textContent = item.blurb;
+
+  const footer = document.createElement("div");
+  footer.className = "ew-plate-footer";
+  const family = document.createElement("span");
+  family.className = "ew-mono ew-plate-family";
+  family.textContent = item.family;
+  const action = document.createElement("span");
+  action.className = "ew-plate-cta";
+  action.append(`${estateActionLabel(item)} `);
+  const arrow = document.createElement("span");
+  arrow.className = "ew-cta-arrow";
+  arrow.textContent = "->";
+  action.append(arrow);
+  footer.append(family, action);
+
+  meta.append(metaRow, name, blurb, footer);
+  plate.replaceChildren(halo, link, media, meta);
+}
+
+function renderEstatePlates() {
+  document.querySelectorAll("[data-estate-item]").forEach((plate) => {
+    const item = estateItems.find((candidate) => candidate.id === plate.dataset.estateItem);
+    if (item) renderEstatePlate(plate, item);
+  });
+}
+
 function applyTheme(theme) {
   const next = theme === "light" ? "light" : "dark";
   root.setAttribute("data-theme", next);
@@ -44,10 +138,11 @@ function applyTheme(theme) {
   const themeColour = document.querySelector('meta[name="theme-color"]');
 
   if (button) {
-    button.setAttribute("aria-pressed", String(next === "light"));
+    button.removeAttribute("aria-pressed");
+    button.title = next === "light" ? "Switch to dark theme" : "Switch to light theme";
   }
   if (icon) icon.textContent = "";
-  if (label) label.textContent = next === "light" ? "Light" : "Dark";
+  if (label) label.textContent = "Theme";
   if (themeColour) themeColour.setAttribute("content", next === "light" ? "#f7f3ec" : "#030305");
 }
 
@@ -186,7 +281,7 @@ function renderTicker(lines) {
   windowEl.innerHTML = sorted
     .map((line, index) => `
       <div class="ew-ticker-line" data-ticker-line="${index}">
-        <span class="ew-mono ew-ticker-kicker">${escapeHtml(line.kind)}</span>
+        <span class="ew-mono ew-ticker-kicker">${escapeHtml(line.kind)} / ${escapeHtml(editorialStamp(line.timestamp))}</span>
         <span class="ew-ticker-text">${escapeHtml(line.text)}</span>
       </div>
     `)
@@ -200,7 +295,7 @@ function renderTicker(lines) {
       .map((line) => `
         <span class="ew-mini-marquee-item">
           <span class="ew-live-dot" aria-hidden="true"></span>
-          <span class="ew-mono">${escapeHtml(line.kind)}</span>
+          <span class="ew-mono">${escapeHtml(line.kind)} / ${escapeHtml(editorialStamp(line.timestamp))}</span>
           <span>${escapeHtml(line.text)}</span>
           <span class="ew-marquee-sep" aria-hidden="true">::</span>
         </span>
@@ -227,6 +322,7 @@ function renderTicker(lines) {
       dotEl.classList.toggle("on", dotIndex === current);
     });
 
+    ticker.dataset.editorialAge = editorialStamp(active.timestamp).startsWith("Editorial archive") ? "archive" : "dated";
     tagEl.textContent = active.tag ?? "Studio";
     tagEl.setAttribute("href", normaliseHref(active.href));
     if (isExternalHref(active.href ?? "")) {
@@ -380,6 +476,7 @@ function setupPlateTilt() {
 }
 
 async function boot() {
+  renderEstatePlates();
   setupThemeToggle();
   setupSplitHeading();
   setupPointerEffects();

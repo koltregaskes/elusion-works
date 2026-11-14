@@ -74,3 +74,53 @@ The current recommended structure is:
 - experiments, curation formats, and small social toys should launch inside Elusion Works before they earn their own domains or brands
 
 See [docs/brand-architecture.md](docs/brand-architecture.md) for the current naming model.
+
+## Launch checks
+
+`npm ci --ignore-scripts` installs the pinned test tools. `npm run build` uses the
+same allowlisted assembly as Pages; it generates the sitemap, complete route
+metadata and RSS in `_site/`, never in tracked source. Previous local output is
+retained under ignored `.local/`. The source `scripts/` and demo build tools are
+not published.
+
+`npm run test:links -- --external` checks every built HTML destination and asset.
+Only confirmed HTTP 404/410 results fail the crawl. Rate limits, bot denials and
+network failures are explicitly unverified warnings, not proof that a URL works.
+Preconnect/DNS hints are not navigable links.
+
+`npm run test:launch -- --width=320` and `--width=1280` check **every** built HTML
+page, including pages marked noindex, for serious/critical WCAG A/AA axe findings
+and horizontal overflow. CI splits each width into four shards and preserves
+JSON diagnostics. Requests are fulfilled from the actual bundle using an HTTPS
+test origin; outside requests are blocked and no server or port is started.
+This deterministic fallback-font/offline pass complements final deployed,
+keyboard, screen-reader and real-GPU acceptance; it does not prove external API
+availability or content rendered only by third-party scripts.
+
+The browser gate uses Windfield's supported `?q=low` render setting to keep
+software-rendered CI within its five-minute limit. The viewport remains 320px
+or 1280px; every route, control and axe rule stays in scope. Default/high-quality
+render performance remains a real-GPU acceptance check. Reports record this
+render profile and save each completed route before closing its page, so a
+cancelled run retains partial coverage and findings rather than an empty artifact.
+
+## Public contact destination
+
+`site.config.json` contains the single `contactUrl` value used to build the site
+contact links and both `/security.txt` and `/.well-known/security.txt`. The current
+working public contact form is retained. There is no existing Elusion Works email
+address in source, so the build does not guess one or switch to unconfirmed mail
+routing. After Kol confirms routing and an external delivery/receipt test,
+change this one value to `mailto:contact@elusionworks.com` and rerun the build.
+The source configuration and validation scripts are not published. Fictional
+forms inside demos are separate from this real site contact route.
+
+Launch CI checks every built HTML route, including demos, at 320, 390 and 1280px. A final artifact coverage gate rejects missing, duplicate, failed or timed-out results. PLAYWRIGHT_CHANNEL selects an installed browser for local checks. Software-rendered q=low Windfield acceptance is layout/accessibility evidence, not real-GPU acceptance.
+
+Three React demos are audited after their real mount appears, using pinned local fixtures for the already referenced runtime versions. This exposes actual controls instead of an empty shell when external requests are blocked. Every route also receives a basic keyboard-Tab visible-focus smoke check; manual screen-reader and interaction acceptance remain open.
+The demo CSP build requires npm ci --ignore-scripts before python scripts/build-site.py, with Node 24+ and Python 3. Browser JSX compilation is replaced only in the assembled artifact; source recipes remain unchanged. CSP/runtime CI uses installed Edge on Windows and does not download browsers.
+Studio pulse rows show original editorial dates and explicitly label updates older than 30 days as an editorial archive. Invalid/future dates are unverified; deploying the site does not refresh these dates. Archive ticker dots do not pulse. This does not prove the separate Orbit Census acquisition or seven-day delivery window.
+The existing Pages workflow reports catalogue acquisition through a separate health job. Failed/skipped acquisition makes that job red while build/publication retain their existing fallback path. This uses the existing Actions failure signal, not a new issue alert, controller or schedule. A green static deployment alone is not catalogue freshness proof; real notification delivery still needs operational rehearsal.
+Orbit Census catalogue provenance distinguishes successful SATCAT enrichment from GP-only fallback. A missing or empty SATCAT map sets satcat:false and explicitly labels types as inferred from names. This does not prove successful acquisition or imply SATCAT ran merely because Pages deployed.
+External link checks validate each redirect hop before requesting it: HTTPS only, no embedded credentials, bounded hops and no loops. Confirmed 404/410 and unsafe redirects fail; access blocks and network failures remain explicitly unverified.
+Built SEO additionally binds JSON-LD to the current page URL and RSS links/dates to their original editorial source rows. Mutation tests reject unrelated schema graphs and fabricated RSS freshness without changing source dates.

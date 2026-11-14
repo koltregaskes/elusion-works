@@ -2,6 +2,8 @@ name: Elusion Works Site Health Check
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  PLAYWRIGHT_CHANNEL: msedge
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
 
 on:
   schedule:
@@ -14,119 +16,55 @@ permissions:
 jobs:
   verify-live-site:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout
+        id: checkout
         uses: actions/checkout@v6
 
       - name: Setup Node
+        id: node
         uses: actions/setup-node@v6
         with:
-          node-version: "22.23.4"
+          node-version: "24.22.1"
 
-      - name: Install Playwright
+      - name: Install locked monitor dependencies (no browser download)
+        id: dependencies
+        run: npm ci
+
+      - name: Prove monitor setup faults are distinct from site failures
+        id: regression
         run: |
-          npm install --no-save playwright
-          npx playwright install --with-deps chromium
+          node --input-type=module <<'EOF'
+          import assert from 'node:assert/strict';
+          import {checkSiteHealth} from './scripts/check-site-health.mjs';
+          const readFeed=async()=>({stats:{sites:1,tools:1,games:1}});
+          let navigations=0,closed=false;
+          const setup=await checkSiteHealth({readFeed,launchBrowser:async()=>{throw new Error('synthetic browser unavailable');}});
+          assert.equal(setup.status,'monitor_setup_failed');
+          assert.equal(setup.navigationAttempted,false);
+          const unavailable=await checkSiteHealth({readFeed,launchBrowser:async()=>({newPage:async()=>({setDefaultTimeout(){},on(){},goto:async()=>{navigations++;throw new Error('net::ERR_CONNECTION_REFUSED');}}),close:async()=>{closed=true;}})});
+          assert.equal(unavailable.status,'site_down');
+          assert.equal(unavailable.navigationAttempted,true);
+          assert.equal(navigations,1);
+          assert.equal(closed,true);
+          const invalid=await checkSiteHealth({readFeed:async()=>{throw new Error('synthetic invalid monitor input');},launchBrowser:async()=>{throw new Error('must not launch');}});
+          assert.equal(invalid.status,'monitor_setup_failed');
+          assert.equal(invalid.navigationAttempted,false);
+          console.log('Monitor regressions passed: setup failures do not report site down; navigation failure does; browser cleanup ran.');
+          EOF
 
-      - name: Verify live site
+      - name: Verify live site with installed Edge
         env:
           SITE_URL: https://elusionworks.com/
+        run: node scripts/check-site-health.mjs
+
+      - name: Explain monitor setup failure (site was not checked)
+        if: always() && (steps.checkout.outcome != 'success' || steps.node.outcome != 'success' || steps.dependencies.outcome != 'success' || steps.regression.outcome != 'success')
         run: |
-          mkdir -p healthchecks
-          node --input-type=module <<'EOF'
-          import path from "node:path";
-          import { readFile } from "node:fs/promises";
-          import { chromium } from "playwright";
-
-          const feed = JSON.parse(
-            await readFile(path.join(process.cwd(), "data", "feed.json"), "utf8"),
-          );
-          const expectedCounts = [
-            String(feed?.stats?.sites ?? 0),
-            String(feed?.stats?.tools ?? 0),
-            String(feed?.stats?.games ?? 0),
-          ];
-
-          const errors = [];
-          const browser = await chromium.launch();
-          const page = await browser.newPage({ viewport: { width: 1440, height: 1200 } });
-          page.on("console", (message) => {
-            if (message.type() === "error") {
-              errors.push(message.text());
-            }
-          });
-
-          const visitUrl = `${process.env.SITE_URL}?health=${Date.now()}`;
-          await page.goto(visitUrl, { waitUntil: "networkidle" });
-          await page.waitForSelector(".ew-cabinet-grid .ew-plate");
-
-          const snapshot = await page.evaluate(() => ({
-            counts: [...document.querySelectorAll("[data-count-to]")].map((node) =>
-              node.getAttribute("data-count-to")?.trim() ?? ""
-            ),
-            cards: {
-              total: document.querySelectorAll(".ew-cabinet-grid .ew-plate").length,
-              websites: document.querySelectorAll('.ew-cabinet-grid .ew-plate[data-kind="website"]').length,
-              tools: document.querySelectorAll('.ew-cabinet-grid .ew-plate[data-kind="tool"]').length,
-              games: document.querySelectorAll('.ew-cabinet-grid .ew-plate[data-kind="game"]').length,
-            },
-            hasEditorialSection: Boolean(document.querySelector("#editorial")),
-            hasEditorialResource: performance
-              .getEntriesByType("resource")
-              .some((entry) => entry.name.includes("editorial-hub")),
-            footerLinks: [...document.querySelectorAll(".ew-footer-group a, .ew-footer-links a")].map((link) =>
-              link.textContent.trim(),
-            ),
-          }));
-
-          await page.screenshot({ path: "healthchecks/elusion-works-home.png", fullPage: false });
-          await browser.close();
-
-          const securityResponse = await fetch(`${process.env.SITE_URL}security.txt`, {
-            headers: { "cache-control": "no-cache" },
-          });
-          const securityBody = await securityResponse.text();
-
-          if (errors.length > 0) {
-            throw new Error(`Console errors detected: ${errors.join(" | ")}`);
-          }
-
-          if (snapshot.counts.length < expectedCounts.length) {
-            throw new Error(
-              `Count badge mismatch: expected at least ${expectedCounts.length}, received ${snapshot.counts.length}`,
-            );
-          }
-
-          expectedCounts.forEach((value, index) => {
-            if (snapshot.counts[index] !== value) {
-              throw new Error(`Count mismatch at index ${index}: expected ${value}, received ${snapshot.counts[index]}`);
-            }
-          });
-
-          if (snapshot.cards.total < 10) {
-            throw new Error(`Cabinet card mismatch: expected at least 10 plates, received ${snapshot.cards.total}`);
-          }
-
-          for (const group of ["websites", "tools", "games"]) {
-            if (snapshot.cards[group] < 1) {
-              throw new Error(`Cabinet group missing visible plates for ${group}`);
-            }
-          }
-
-          if (snapshot.hasEditorialSection || snapshot.hasEditorialResource) {
-            throw new Error("Editorial-only content appeared in the public site");
-          }
-
-          if (!snapshot.footerLinks.includes("Security")) {
-            throw new Error("Security link missing from footer");
-          }
-
-          if (!securityResponse.ok || !securityBody.includes("Canonical:")) {
-            throw new Error("security.txt is missing or incomplete");
-          }
-
-          console.log("Live site verified", { expectedCounts, snapshot });
-          EOF
+          echo '::error title=Monitor setup failed::monitor setup failed: checkout, Node, dependency installation or monitor regressions failed; no site outage was established.'
+          echo 'Monitor setup failed. The live site was not checked; this is not evidence of a site outage.' >> "$GITHUB_STEP_SUMMARY"
+          exit 1
 
       - name: Upload healthcheck artifact
         if: always()

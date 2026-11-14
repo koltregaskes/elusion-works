@@ -1,96 +1,46 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>https://elusionworks.com/</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/experiments/</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/experiments/motion-poster/</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/experiments/photography-contact-story/</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/experiments/interactive-product-story/</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/experiments/data-story/</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/demos/</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/demos/windfield/</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/demos/hoover-dam/</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/demos/hoover-dam/teardown/</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/demos/neon-seraph/</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/demos/ashfall/</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/demos/exploded-views/</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/demos/abyssal-relay/</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/demos/atmosphere/</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/demos/solar-system-field-lab/</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/demos/nexus-aetherial/</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/demos/solar-system/</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/demos/last-cartridge/</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/demos/chronicles-of-bone/</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/demos/golden/</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/demos/golden/breed-guide.html</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/demos/golden/gallery.html</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/demos/golden/about.html</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/demos/golden/contact.html</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/demos/golden/privacy.html</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/demos/golden/terms.html</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/demos/golden/sitemap.html</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/creative-radar/</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/remix-relay/</loc>
-  </url>
-  <url>
-    <loc>https://elusionworks.com/design-notes/</loc>
-  </url>
+<url><loc>https://elusionworks.com/creative-radar/</loc></url>
+<url><loc>https://elusionworks.com/demos/abyssal-relay/</loc></url>
+<url><loc>https://elusionworks.com/demos/ashfall/</loc></url>
+<url><loc>https://elusionworks.com/demos/atmosphere/</loc></url>
+<url><loc>https://elusionworks.com/demos/chronicles-of-bone/</loc></url>
+<url><loc>https://elusionworks.com/demos/cyberpunk-messenger/</loc></url>
+<url><loc>https://elusionworks.com/demos/exploded-views/engine.html</loc></url>
+<url><loc>https://elusionworks.com/demos/exploded-views/</loc></url>
+<url><loc>https://elusionworks.com/demos/exploded-views/laptop.html</loc></url>
+<url><loc>https://elusionworks.com/demos/exploded-views/solar.html</loc></url>
+<url><loc>https://elusionworks.com/demos/golden/about.html</loc></url>
+<url><loc>https://elusionworks.com/demos/golden/breed-guide.html</loc></url>
+<url><loc>https://elusionworks.com/demos/golden/contact.html</loc></url>
+<url><loc>https://elusionworks.com/demos/golden/gallery.html</loc></url>
+<url><loc>https://elusionworks.com/demos/golden/</loc></url>
+<url><loc>https://elusionworks.com/demos/golden/privacy.html</loc></url>
+<url><loc>https://elusionworks.com/demos/golden/sitemap.html</loc></url>
+<url><loc>https://elusionworks.com/demos/golden/terms.html</loc></url>
+<url><loc>https://elusionworks.com/demos/hoover-dam/</loc></url>
+<url><loc>https://elusionworks.com/demos/hoover-dam/teardown/</loc></url>
+<url><loc>https://elusionworks.com/demos/</loc></url>
+<url><loc>https://elusionworks.com/demos/last-cartridge/</loc></url>
+<url><loc>https://elusionworks.com/demos/lumen-ward/</loc></url>
+<url><loc>https://elusionworks.com/demos/nebula-architect/</loc></url>
+<url><loc>https://elusionworks.com/demos/neon-seraph/</loc></url>
+<url><loc>https://elusionworks.com/demos/nexus-aetherial/</loc></url>
+<url><loc>https://elusionworks.com/demos/nitro-circuit-overdrive/</loc></url>
+<url><loc>https://elusionworks.com/demos/orbit-census/</loc></url>
+<url><loc>https://elusionworks.com/demos/planet-teardown/</loc></url>
+<url><loc>https://elusionworks.com/demos/solar-system/demo-card-snippet.html</loc></url>
+<url><loc>https://elusionworks.com/demos/solar-system/</loc></url>
+<url><loc>https://elusionworks.com/demos/solar-system-field-lab/</loc></url>
+<url><loc>https://elusionworks.com/demos/thornvale/</loc></url>
+<url><loc>https://elusionworks.com/demos/void-sovereign/</loc></url>
+<url><loc>https://elusionworks.com/demos/windfield/</loc></url>
+<url><loc>https://elusionworks.com/design-notes/</loc></url>
+<url><loc>https://elusionworks.com/experiments/data-story/</loc></url>
+<url><loc>https://elusionworks.com/experiments/</loc></url>
+<url><loc>https://elusionworks.com/experiments/interactive-product-story/</loc></url>
+<url><loc>https://elusionworks.com/experiments/motion-poster/</loc></url>
+<url><loc>https://elusionworks.com/experiments/photography-contact-story/</loc></url>
+<url><loc>https://elusionworks.com/</loc></url>
+<url><loc>https://elusionworks.com/remix-relay/</loc></url>
 </urlset>

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Thornvale — Elusion Works</title>
+    <meta name="description" content="Thornvale is a walled medieval hill town you can explore on foot, fly over or watch from the air, with a day and night cycle and changing weather. Every building, wall and tree was modelled in Blender by Claude and rendered live with three.js on WebGPU." />
+    <meta name="theme-color" content="#1a140d" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta name="robots" content="index,follow" />
+    <meta name="color-scheme" content="dark" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self' blob: data:; object-src 'none'; base-uri 'self'; form-action 'self'" />
+    <link rel="canonical" href="https://elusionworks.com/demos/thornvale/" />
+    <meta property="og:title" content="Thornvale — Elusion Works" />
+    <meta property="og:description" content="A walled medieval hill town in the browser: walk its streets, fly over its walls, change the time and the weather." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://elusionworks.com/demos/thornvale/" />
+    <meta property="og:image" content="https://elusionworks.com/demos/thornvale/thumbnail.png" />
+    <meta property="og:image:alt" content="Thornvale: a walled hill town with half-timbered houses, a church and towers in golden light." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Thornvale — Elusion Works" />
+    <meta name="twitter:description" content="Walk, fly or watch a walled medieval hill town, with day, night and weather." />
+    <meta name="twitter:image" content="https://elusionworks.com/demos/thornvale/thumbnail.png" />
+    <link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body data-mode="flyover">
+    <canvas id="scene" aria-label="Thornvale, a 3D medieval hill town"></canvas>
+    <div class="lw-fade" id="fade" aria-hidden="true"></div>
+
+    <header class="lw-top">
+      <a class="lw-back" href="../">&larr; Demos</a>
+      <p class="lw-brand"><span>Thorn</span>vale</p>
+      <span class="lw-fps" id="fps" aria-hidden="true"></span>
+    </header>
+
+    <p class="lw-caption" id="caption" aria-live="polite"></p>
+    <p class="lw-hint" id="hint">Click to look around. Esc releases the mouse.</p>
+
+    <nav class="lw-modes" aria-label="Camera, time and weather">
+      <button type="button" data-mode="walk" aria-pressed="false"><kbd>1</kbd> Explore</button>
+      <button type="button" data-mode="fly" aria-pressed="false"><kbd>2</kbd> Fly</button>
+      <button type="button" data-mode="flyover" aria-pressed="true"><kbd>3</kbd> Flyover</button>
+      <button type="button" class="lw-next" id="next-shot" title="Next shot (N)">Next &rarr;</button>
+      <span class="lw-sep" aria-hidden="true"></span>
+      <button type="button" id="time-btn" title="Time of day (T)">Golden hour</button>
+      <button type="button" id="weather-btn" title="Weather (R)">Clear</button>
+      <button type="button" id="help-toggle" aria-controls="help" aria-label="Help (keyboard shortcut H)"><kbd>H</kbd></button>
+    </nav>
+
+    <aside class="lw-help" id="help" aria-label="Controls and credits">
+      <button type="button" class="lw-help-close" id="help-close" aria-label="Close help">&times;</button>
+      <h2>Thornvale</h2>
+      <p>A walled hill town with an upper terrace, a church and a keep. Every house, wall, tower and tree was modelled in Blender by Claude from a script; the textures were generated too. It is rendered live with three.js on WebGPU.</p>
+      <dl>
+        <dt>Explore</dt><dd><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk, mouse turns the camera, <kbd>Shift</kbd> runs, wheel zooms</dd>
+        <dt>Fly</dt><dd>as Explore, plus <kbd>Space</kbd>/<kbd>E</kbd> up and <kbd>Q</kbd>/<kbd>C</kbd> down</dd>
+        <dt>Flyover</dt><dd><kbd>N</kbd> next shot, <kbd>B</kbd> previous</dd>
+        <dt>World</dt><dd><kbd>T</kbd> time of day, <kbd>R</kbd> weather</dd>
+        <dt>Touch</dt><dd>drag the left side to move, the right side to look</dd>
+      </dl>
+      <p class="lw-small">Character and animations: the Mixamo soldier from the three.js examples. Quality: <code>?q=ultra</code> for a strong GPU, <code>?q=low</code> for laptops and phones.</p>
+    </aside>
+
+    <div class="lw-loader" id="loader" role="status">
+      <p class="lw-brand lw-brand-big"><span>Thorn</span>vale</p>
+      <div class="lw-bar"><span id="loader-bar"></span></div>
+      <p id="loader-text">Starting</p>
+    </div>
+
+    <noscript><p class="lw-noscript">Thornvale needs JavaScript and WebGL or WebGPU.</p></noscript>
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>

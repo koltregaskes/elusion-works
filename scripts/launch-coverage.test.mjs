@@ -1,0 +1,3 @@
+import test from'node:test';import assert from'node:assert/strict';import{assertCoverage}from'./launch-coverage.mjs';
+const routes=['index.html','demos/test/index.html'];const reports=[320,390,1280].map(width=>({width,routes,completed:routes,findings:[]}));
+test('every demo and phone width must have successful completed acceptance',()=>{assert.doesNotThrow(()=>assertCoverage(reports,routes));assert.throws(()=>assertCoverage(reports.filter(r=>r.width!==390),routes),/390/);assert.throws(()=>assertCoverage(reports.map(r=>({...r,completed:['index.html']})),routes),/demos/);assert.throws(()=>assertCoverage(reports.map(r=>({...r,findings:[{error:'timeout'}]})),routes),/findings/);});

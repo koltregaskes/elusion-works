@@ -7,7 +7,7 @@
   --line-2: rgba(236, 228, 214, 0.22);
   --ink: #ede7dc;
   --ink-2: #b4ad9f;
-  --ink-3: #7f796e;
+  --ink-3: #999184;
   --brass: #e4a94f;
   --brass-2: #f5cd8a;
   --water: #5cc8d6;
@@ -271,3 +271,27 @@ kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line-2)
   .scrollcue { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* On phones, keep every callout a readable control below the scene instead of
+   projecting partially clipped buttons beyond the viewport. */
+@media (max-width: 900px) {
+  .leaders { overflow: hidden; }
+  .callouts { position: relative; inset: auto; height: auto; display: flex; flex-wrap: wrap; gap: 8px; padding: 8px; }
+  .callout { position: static; transform: none; min-height: 28px; }
+}
+
+.callout { min-height: 28px; }
+
+@media (max-width: 600px) {
+  .topbar-actions { flex-wrap: wrap; max-width: 100%; }
+  .topbar-actions .icon { flex-shrink: 0; }
+}
+
+@media (max-width: 900px) {
+  .lab, .lab.flip { grid-template-columns: minmax(0, 1fr); }
+  .lab-copy { min-width: 0; }
+  .timeline { grid-template-columns: repeat(2, minmax(0, 1fr)); overflow-wrap: anywhere; }
+}
+
+/* Occluded/unfocused callouts are still actionable: keep their text legible. */
+.callout.dim { opacity: 1; background: rgba(10,12,15,.9); border-style: dashed; }

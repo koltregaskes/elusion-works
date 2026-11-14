@@ -1,4 +1,4 @@
-﻿/* ==========================================================================
+/* ==========================================================================
    Nebula Architect Master Stylesheet
    Rooms OS â€” Studio Room Reference OS
    ========================================================================== */
@@ -954,4 +954,11 @@ html, body {
   .timeline-beat-card {
     display: block !important;
   }
+}
+#consoleBody:focus-visible { outline: 2px solid var(--copper, #ffb067); outline-offset: 3px; }
+
+/* Keep notification text and its decorative icon stable for reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .notification-banner { transition: none; }
+  .notif-icon { animation: none; }
 }

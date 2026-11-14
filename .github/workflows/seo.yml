@@ -1,0 +1,81 @@
+name: Launch contract
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contract:
+    name: Build, SEO and links
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts
+      - run: node --test scripts/editorial-age.test.mjs
+      - run: python scripts/build-site.py
+      - run: node --test scripts/catalogue-health.test.mjs
+      - run: node --check demos/orbit-census/tools/build-catalog.mjs
+      - run: node --test scripts/catalogue-source.test.mjs
+      - run: node --test scripts/redirect-safety.test.mjs
+      - run: python scripts/test-seo-content.py
+      - run: node scripts/check-links.mjs --external
+  accessibility:
+    name: Axe ${{ matrix.width }}px (${{ matrix.shard }}/4)
+    runs-on: windows-latest
+    env:
+      PLAYWRIGHT_CHANNEL: msedge
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        width: [320, 390, 1280]
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: python scripts/build-site.py
+      - run: node scripts/test-editorial-render.mjs
+      - run: node scripts/launch-browser.mjs --width=${{ matrix.width }} --shard=${{ matrix.shard }}/4
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: axe-${{ matrix.width }}-${{ matrix.shard }}
+          path: test-results/
+
+  coverage:
+    name: Complete route and viewport acceptance
+    needs: accessibility
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts
+      - run: python scripts/build-site.py
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: axe-*
+          merge-multiple: true
+          path: test-results
+      - run: node --test scripts/launch-coverage.test.mjs
+      - run: node scripts/launch-coverage.mjs

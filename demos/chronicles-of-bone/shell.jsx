@@ -56,10 +56,10 @@ function SideRail({ activeIndex, onJump, muted, onToggleMute }) {
             className={"rail-act" + (i === activeIndex ? " is-active" : "")}
             onClick={() => onJump(i)}
             data-hot
-            aria-label={"Jump to act " + a.numeral + " — " + a.label}
+            aria-label={a.numeral + " " + a.label + ", jump to act"}
           >
             <span className="tick" />
-            <span className="rail-numeral">{a.numeral}</span>
+            <span className="rail-numeral">{a.numeral}</span>{" "}
             <span className="rail-label">{a.label}</span>
           </button>
         ))}

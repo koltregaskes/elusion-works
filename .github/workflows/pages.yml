@@ -21,21 +21,40 @@ concurrency:
 
 jobs:
   build:
+    outputs:
+      catalogue_outcome: ${{ steps.orbitcat.outcome }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Assemble static site
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+
+      - name: Assemble and validate the launch bundle
+        run: python scripts/build-site.py
+
+      # Orbit Census reads a catalogue of every tracked object, rebuilt from CelesTrak on each
+      # deploy (twice a day by the schedule above, matching CelesTrak's own update rhythm).
+      # A failed fetch must not block the site: the page then asks CelesTrak directly and says so.
+      - name: Build Orbit Census catalogue from CelesTrak
+        id: orbitcat
+        continue-on-error: true
+        run: node demos/orbit-census/tools/build-catalog.mjs _site/demos/orbit-census/data/catalog.json
+
+      - name: Report Orbit Census catalogue
         run: |
-          mkdir -p _site/assets _site/data _site/styles _site/scripts
-          cp index.html styles.css showcase-pages.css app.js cursor.js 404.html robots.txt sitemap.xml llms.txt security.txt CNAME _site/
-          cp cross-site-nav.js _site/
-          cp -r assets/. _site/assets/
-          cp -r styles/. _site/styles/
-          cp -r scripts/. _site/scripts/
-          cp data/estate.js data/feed.json _site/data/
-          cp -r experiments creative-radar remix-relay design-notes demos _site/
+          f=_site/demos/orbit-census/data/catalog.json
+          if [ -s "$f" ]; then
+            n=$(node -e "const d=require('./$f'); console.log(d.rows.length)")
+            echo "Orbit Census catalogue: $n objects"
+            if [ "$n" -lt 2000 ]; then echo "::warning::Orbit Census catalogue has only $n objects"; fi
+          else
+            echo "::warning::Orbit Census catalogue was not built (outcome: ${{ steps.orbitcat.outcome }}); the page will fall back to a live CelesTrak fetch"
+          fi
 
       - name: Verify static site bundle
         run: |
@@ -47,13 +66,16 @@ jobs:
           test -f _site/cross-site-nav.js
           test -f _site/404.html
           test -f _site/security.txt
+          test -f _site/.well-known/security.txt
           test -f _site/CNAME
           grep -qx 'elusionworks.com' _site/CNAME
           test -f _site/data/estate.js
           test -f _site/data/feed.json
           test -f _site/styles/cabinet.css
           test -f _site/styles/motion.css
-          test -f _site/scripts/cabinet.js
+          test -f _site/cabinet.js
+          test -s _site/feed.xml
+          test ! -d _site/scripts
           test ! -f _site/data/editorial-hub.json
           test -f _site/assets/og-card.png
           test -f _site/assets/showcase/ai-resource-hub-site.jpg
@@ -78,6 +100,19 @@ jobs:
           test -f _site/demos/index.html
           test -f _site/demos/exploded-views/index.html
           test -f _site/demos/windfield/index.html
+          test -f _site/demos/orbit-census/index.html
+          test -f _site/demos/orbit-census/src/main.js
+          test -f _site/demos/orbit-census/src/worker.js
+          test -f _site/demos/orbit-census/data/earth.json
+          test -f _site/demos/orbit-census/vendor/satellite/index.js
+          test -f _site/demos/orbit-census/vendor/three/three.module.min.js
+          test -f _site/demos/orbit-census/thumbnail.webp
+          test -f _site/demos/planet-teardown/index.html
+          test -f _site/demos/planet-teardown/src/main.js
+          test -f _site/demos/planet-teardown/src/data.js
+          test -f _site/demos/planet-teardown/vendor/three.module.min.js
+          test -f _site/demos/planet-teardown/vendor/addons/postprocessing/UnrealBloomPass.js
+          test -f _site/demos/planet-teardown/thumbnail.webp
           test -f _site/demos/windfield/vendor/three/build/three.module.js
           test -f _site/demos/exploded-views/laptop.html
           test -f _site/demos/exploded-views/solar.html
@@ -95,6 +130,10 @@ jobs:
           test -f _site/demos/hoover-dam/og-card.jpg
           test -f _site/demos/hoover-dam/teardown/index.html
           test -f _site/demos/hoover-dam/teardown/src/main.js
+          test -f _site/demos/_teardown-kit/stage.js
+          test -f _site/demos/_teardown-kit/materials.js
+          test -f _site/demos/_teardown-kit/merge.js
+          test -f _site/demos/hoover-dam/vendor/addons/utils/BufferGeometryUtils.js
           test -f _site/demos/hoover-dam/teardown/thumbnail.webp
           test -f _site/demos/hoover-dam/vendor/addons/postprocessing/GTAOPass.js
           test -f _site/demos/abyssal-relay/index.html
@@ -144,12 +183,30 @@ jobs:
           test -f _site/demos/solar-system-field-lab/planet-detail.jsx
           test -f _site/demos/solar-system-field-lab/tweaks-panel.jsx
           test -f _site/demos/solar-system-field-lab/thumbnail.webp
+          test -f _site/demos/lumen-ward/index.html
+          test -f _site/demos/lumen-ward/src/main.js
+          test -f _site/demos/lumen-ward/assets/lumen-ward-kit.glb
+          test -f _site/demos/_shared/three-r187/build/three.webgpu.js
+          test -f _site/demos/lumen-ward/assets/lumen-ward-kit.json
+          test -f _site/demos/lumen-ward/assets/lumen-ward-far.glb
+          test -f _site/demos/lumen-ward/assets/tex/concrete_color.webp
+          test -f _site/demos/lumen-ward/thumbnail.webp
+          grep -q 'lumen-ward/' _site/demos/index.html
+          test -f _site/demos/thornvale/index.html
+          test -f _site/demos/thornvale/src/main.js
+          test -f _site/demos/thornvale/assets/thornvale-kit.glb
+          test -f _site/demos/thornvale/assets/characters/Soldier.glb
+          test -f _site/demos/thornvale/assets/tex/leaves.webp
+          test -f _site/demos/thornvale/thumbnail.webp
+          grep -q 'thornvale/' _site/demos/index.html
           grep -q 'atmosphere/' _site/demos/index.html
           grep -q 'abyssal-relay/' _site/demos/index.html
           grep -q 'exploded-views/' _site/demos/index.html
           grep -q 'nexus-aetherial/' _site/demos/index.html
           grep -q 'solar-system-field-lab/' _site/demos/index.html
           grep -q 'hoover-dam/' _site/demos/index.html
+          grep -q 'orbit-census/' _site/demos/index.html
+          grep -q 'planet-teardown/' _site/demos/index.html
           # d6 front-door section markers (replaced legacy *-grid and showcase/launch-card IDs)
           grep -q 'id="sites"' _site/index.html
           grep -q 'id="tools"' _site/index.html
@@ -163,10 +220,21 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v6
 
+      - name: Archive Pages artifact
+        run: |
+          tar --dereference --hard-dereference --directory _site \
+            --exclude=.git --exclude=.github -cf "$RUNNER_TEMP/artifact.tar" .
+          tar -tf "$RUNNER_TEMP/artifact.tar" > "$RUNNER_TEMP/artifact-files.txt"
+          cat "$RUNNER_TEMP/artifact-files.txt"
+          grep -Fx './.well-known/security.txt' "$RUNNER_TEMP/artifact-files.txt"
+
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-artifact@v4
         with:
-          path: _site
+          name: github-pages
+          path: ${{ runner.temp }}/artifact.tar
+          retention-days: 1
+          if-no-files-found: error
 
   deploy:
     needs: build
@@ -178,3 +246,17 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+
+  catalogue-health:
+    name: Orbit Census acquisition signal
+    needs: build
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - run: node scripts/catalogue-health.mjs
+        env:
+          CATALOGUE_OUTCOME: ${{ needs.build.outputs.catalogue_outcome }}

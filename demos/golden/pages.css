@@ -191,3 +191,7 @@
     height: 32px;
   }
 }
+
+/* Accessibility: inputs drop the outline on focus, so show a ring for keyboard users. */
+.contact-form input:focus-visible,
+.contact-form textarea:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }

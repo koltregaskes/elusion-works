@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Orbit Census — every tracked object in Earth orbit, live | Elusion Works</title>
+<meta name="description" content="A real-time 3D census of the tens of thousands of satellites, rocket bodies and debris fragments in Earth orbit. Live SGP4 propagation of CelesTrak elements, debris clouds, megaconstellations, close approaches and passes over you." />
+<link rel="canonical" href="https://elusionworks.com/demos/orbit-census/" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Orbit Census — every tracked object in Earth orbit, live" />
+<meta property="og:description" content="Satellites, rocket bodies and debris, propagated live with SGP4 from public CelesTrak elements. Filter, follow, find passes over you." />
+<meta property="og:url" content="https://elusionworks.com/demos/orbit-census/" />
+<meta property="og:image" content="https://elusionworks.com/demos/orbit-census/thumbnail.webp" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="theme-color" content="#04070c" />
+<link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.min.js", "three/addons/": "./vendor/three/addons/" } }
+</script>
+</head>
+<body>
+<div id="boot" class="boot">
+  <b>Orbit Census</b>
+  <span id="bootMsg">Loading the catalogue</span>
+  <i class="bootbar"><em id="bootBar"></em></i>
+</div>
+<canvas id="scene" aria-label="Globe of Earth with every tracked object in orbit. Drag to orbit, scroll to zoom, click a point to select it."></canvas>
+<div id="labels" aria-hidden="true"></div>
+<div id="tip" class="tip" hidden></div>
+
+<header class="topbar">
+  <div class="idblock"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.8"/><ellipse cx="12" cy="12" rx="10" ry="4" fill="none" stroke="currentColor" stroke-width="1.3" transform="rotate(-28 12 12)"/><circle cx="20.2" cy="7.6" r="1.6" fill="currentColor"/></svg><span class="mono">OC·<b id="idCount">—</b></span></div>
+  <div class="ttl">
+    <div class="mono k">Live SGP4 · public element sets</div>
+    <h1>Orbit Census <i>/</i></h1>
+    <div class="mono k2">Every tracked object in Earth orbit</div>
+  </div>
+  <div class="meta">
+    <div><span class="mono">Sim time · UTC</span><b class="mono" id="simClock">—</b></div>
+    <div><span class="mono">Warp</span><b class="mono" id="warpLbl">1×</b></div>
+    <div><span class="mono">Elements</span><b class="mono" id="ageLbl">—</b></div>
+    <div><span class="mono">Source</span><b class="mono" id="srcLbl"><i></i>—</b></div>
+  </div>
+  <button class="panels-btn mono" id="panelsBtn" aria-expanded="false">Panels</button>
+</header>
+
+<aside class="col left" id="colLeft">
+  <section class="card" id="cCensus">
+    <div class="ch"><b>Census</b><span>01</span></div>
+    <div class="big"><strong id="visCount">0</strong><span class="mono">of <em id="allCount">0</em> shown</span></div>
+    <div class="stack" id="typeStack"></div>
+    <ul class="legend" id="legend"></ul>
+    <p class="note mono" id="censusNote"></p>
+  </section>
+  <section class="card">
+    <div class="ch"><b>Lens</b><span>02</span></div>
+    <div class="chips" id="lenses"></div>
+  </section>
+  <section class="card">
+    <div class="ch"><b>Colour by</b><span>03</span></div>
+    <div class="chips" id="colors"></div>
+    <div class="ch sub"><b>Orbit regime</b></div>
+    <div class="chips" id="regimes"></div>
+  </section>
+  <section class="card">
+    <div class="ch"><b>Find</b><span>04</span></div>
+    <input id="search" class="mono" type="search" placeholder="Name or NORAD id · ISS, 25544" autocomplete="off" spellcheck="false" />
+    <ol class="results" id="results"></ol>
+  </section>
+</aside>
+
+<aside class="col right" id="colRight">
+  <section class="card" id="cSel">
+    <div class="ch"><b>Object</b><span>05</span></div>
+    <div id="selEmpty" class="empty mono">Click any point, or search. Hover to read.</div>
+    <div id="selBody" hidden>
+      <div class="selhead">
+        <h2 id="sName">—</h2>
+        <div class="mono tags"><em class="pill" id="sType">PAY</em><em class="pill ghost" id="sRegime">LEO</em><em class="pill ghost" id="sFam" hidden></em></div>
+      </div>
+      <div class="quad">
+        <div><strong id="sAlt">—</strong><span class="mono">Altitude km</span></div>
+        <div><strong id="sVel">—</strong><span class="mono">Speed km/s</span></div>
+        <div><strong id="sLat">—</strong><span class="mono">Sub-point</span></div>
+        <div><strong id="sPer">—</strong><span class="mono">Period</span></div>
+      </div>
+      <dl class="facts mono" id="sFacts"></dl>
+      <div class="pass mono" id="sPass"></div>
+      <div class="selbtns"><button class="mono" id="followBtn">Follow</button><button class="mono" id="clearBtn">Clear</button></div>
+    </div>
+  </section>
+  <section class="card" id="cCharts">
+    <div class="ch"><b>Distribution</b><span>06</span></div>
+    <div class="tabs mono" id="chartTabs"><button data-c="alt" class="on">Altitude</button><button data-c="inc">Inclination</button><button data-c="gab">Gabbard</button><button data-c="yr">Launch year</button></div>
+    <canvas id="chart"></canvas>
+    <p class="note mono" id="chartNote">Live altitude of the shown set · drag to filter a band</p>
+  </section>
+  <section class="card" id="cConj">
+    <div class="ch"><b>Close approaches now</b><span>07</span></div>
+    <ol class="conj mono" id="conj"><li class="dim">Screening…</li></ol>
+    <p class="note mono">Across the whole catalogue: pairs from different launches under 25 km apart at this instant. A distance screen, not a collision probability.</p>
+  </section>
+</aside>
+
+<section class="card obs" id="cObs">
+  <div class="ch"><b>Over you</b><span>08</span></div>
+  <div class="obsrow"><strong id="obsCount">0</strong><span class="mono">above 10° from <em id="obsName">London</em></span></div>
+  <ol class="mono over" id="overList"></ol>
+  <button class="mono" id="locBtn">Use my location</button>
+</section>
+
+<section class="story" id="story" aria-live="polite">
+  <span class="mono" id="storyK">Lens</span>
+  <b id="storyT">Everything</b>
+  <p id="storyP"></p>
+</section>
+
+<section class="timebar card" aria-label="Time controls">
+  <button id="play" class="play" aria-label="Pause or play time"><svg viewBox="0 0 20 20"><rect class="pa" x="6" y="5" width="2.6" height="10" rx="0.6"/><rect class="pa" x="11.4" y="5" width="2.6" height="10" rx="0.6"/><path class="pl" d="M7 5 L15 10 L7 15 Z"/></svg></button>
+  <div class="warps mono" id="warps"></div>
+  <div class="scrub">
+    <div class="ends mono"><span>−12 h</span><b id="offLbl">Live</b><span>+12 h</span></div>
+    <input type="range" id="scrub" min="-720" max="720" step="1" value="0" aria-label="Time offset from now, minutes" />
+  </div>
+  <button class="mono live" id="liveBtn">Now</button>
+  <div class="frames mono" id="frames"><button data-f="eci" class="on" title="Inertial: the Earth turns under the orbits">Inertial</button><button data-f="ecef" title="Earth-fixed: geostationary satellites stand still">Earth-fixed</button></div>
+  <div class="frames mono" id="toggles"><button data-t="rings" class="on" title="Reference shells">Shells</button><button data-t="shadow" class="on" title="Dim objects in Earth's shadow">Eclipse</button><button data-t="spin" class="on" title="Slow camera drift when idle">Drift</button></div>
+</section>
+
+<footer class="footline mono">
+  <span id="footSrc">Elements: CelesTrak · propagation: SGP4 (satellite.js) · coastlines: Natural Earth</span>
+  <span>Elusion Works · Orbit Census <i>//////</i></span>
+</footer>
+
+<div class="nodata card" id="nodata" hidden>
+  <b class="mono">No orbital data loaded</b>
+  <p>The bundled catalogue was missing and the live request to CelesTrak did not answer. The globe still works; try again in a minute, or run <code>node demos/orbit-census/tools/build-catalog.mjs</code> locally.</p>
+  <button class="mono" id="retryBtn">Try again</button>
+</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

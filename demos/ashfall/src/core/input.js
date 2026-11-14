@@ -155,7 +155,7 @@ export function createInput(canvas) {
     // Space and the arrows scroll the page otherwise, which fights pointer lock.
     if (
       e.code === 'Space' ||
-      e.code === 'Tab' ||
+      (e.code === 'Tab' && input.locked) ||
       e.code.startsWith('Arrow') ||
       (e.code.startsWith('Digit') && input.locked)
     ) {

@@ -481,7 +481,7 @@ function ActCut() {
             frame by frame — until it fell exactly where memory said it should."
           </p>
           <div className="cut-attr">
-            <div className="av" aria-hidden="true">
+            <div className="av">
               <image-slot id="director-avatar" shape="circle" placeholder="Drop your headshot" class="avatar-slot"></image-slot>
             </div>
             <div>

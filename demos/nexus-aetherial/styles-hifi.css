@@ -390,6 +390,15 @@ main {
   color: #fff;
 }
 .btn.primary:hover { background: var(--copper-deep); border-color: var(--copper-deep); color: #fff; }
+/* dark plasma is light enough that white text drops to 3.5:1 */
+[data-mode="dark"] .btn.primary { color: var(--paper); }
+
+/* keyboard focus: every control shows a ring */
+a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--plasma-text);
+  outline-offset: 2px;
+}
 .btn.solid { background: var(--ink); border-color: var(--ink); color: var(--paper); }
 .btn .arrow { transition: transform var(--t-fast); }
 .btn:hover .arrow { transform: translateX(3px); }
@@ -458,7 +467,7 @@ main {
 .matrix-slot .slot-label {
   font: 500 10px/1 var(--ff-mono);
   letter-spacing: 0.18em;
-  color: var(--copper);
+  color: var(--plasma-text);
   margin-bottom: 10px;
 }
 .matrix-slot .model-line {
@@ -515,7 +524,7 @@ main {
   border-radius: 2px;
   color: var(--ink-soft);
 }
-.tag.copper { color: var(--plasma); border-color: var(--plasma); background: var(--plasma-soft); }
+.tag.copper { color: var(--plasma-text); border-color: var(--plasma); background: var(--plasma-soft); }
 .tag.sage { color: var(--emerald); border-color: var(--emerald); }
 .tag.burgundy { color: var(--magenta); border-color: var(--magenta); }
 .tag.solid { background: var(--ink); color: var(--paper); border-color: var(--ink); }
@@ -824,8 +833,8 @@ main {
   text-transform: uppercase;
 }
 .rail-item:hover { background: var(--copper-soft); color: var(--ink); }
-.rail-item[aria-selected="true"] { background: var(--ink); color: var(--paper); }
-.rail-item .n { margin-left: auto; opacity: 0.6; }
+.rail-item[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.rail-item .n { margin-left: auto; opacity: 0.8; }
 
 .digest-main { display: flex; flex-direction: column; }
 .digest-toolbar {
@@ -982,6 +991,9 @@ main {
   text-transform: uppercase;
 }
 .foot-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;   /* WCAG 2.2 target size */
   font: 600 11px/1.3 var(--ff-mono);
   letter-spacing: 0.08em;
   color: var(--ink-soft);
@@ -1162,3 +1174,6 @@ main {
     grid-template-columns: 1fr;
   }
 }
+
+/* Keep small primary-action labels legible in the dark hover state. */
+[data-mode="dark"] .btn.primary:hover { color: #ffffff; }

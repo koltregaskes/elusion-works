@@ -36,7 +36,7 @@ export class Callouts {
       const a = anchors[it.h.id];
       const p = e.project(a);
       const off = p.behind || p.x < -40 || p.y < -40 || p.x > r.width + 40 || p.y > r.height + 40;
-      const show = !hidden && !off;
+      const show = !hidden && (r.width <= 900 || !off);
       it.el.style.display = show ? '' : 'none';
       it.line.style.display = it.dot.style.display = show ? '' : 'none';
       if (!show) continue;
@@ -60,10 +60,29 @@ export class Callouts {
         if (ox > 0 && oy > 0) { const s = A.ty <= B.ty ? -1 : 1; A.ty += s * oy / 2; B.ty -= s * oy / 2; }
       }
     }
+    // Keep projected controls outside fixed panels and other callouts. The phone
+    // layout is a normal wrapping control list, so it needs no projection repair.
+    const occupied = r.width > 900 ? [...document.querySelectorAll('.hud > *, .topbar > *')]
+      .filter((el) => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden')
+      .map((el) => { const b = el.getBoundingClientRect(); return { left: b.left-r.left, right: b.right-r.left, top: b.top-r.top, bottom: b.bottom-r.top }; }) : [];
     for (const it of live) {
       const p = it.p;
       if (!it.init) { it.sx = it.tx; it.sy = it.ty; it.init = true; }
       it.sx += (it.tx - it.sx) * 0.25; it.sy += (it.ty - it.sy) * 0.25;
+      if (r.width > 900) {
+        const hw = it.w / 2, hh = Math.max(28, it.el.offsetHeight) / 2;
+        const box = (x, y) => ({ left: x-hw-3, right: x+hw+3, top: y-hh-3, bottom: y+hh+3 });
+        const clear = (b) => !occupied.some((o) => b.left < o.right && b.right > o.left && b.top < o.bottom && b.bottom > o.top);
+        let best = null, score = Infinity;
+        for (let y = hh+8; y < r.height-hh-8; y += 34) {
+          for (let x = hw+8; x < r.width-hw-8; x += 40) {
+            const d = (x-it.sx)**2 + (y-it.sy)**2;
+            if (d < score && clear(box(x,y))) { best = { x, y }; score = d; }
+          }
+        }
+        if (best) { it.sx = best.x; it.sy = best.y; }
+        occupied.push(box(it.sx, it.sy));
+      }
       it.el.style.left = `${it.sx}px`; it.el.style.top = `${it.sy}px`;
       it.line.setAttribute('x1', p.x); it.line.setAttribute('y1', p.y); it.line.setAttribute('x2', it.sx); it.line.setAttribute('y2', it.sy);
       it.dot.setAttribute('cx', p.x); it.dot.setAttribute('cy', p.y);

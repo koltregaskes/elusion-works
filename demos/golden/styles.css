@@ -18,7 +18,7 @@
   --border-strong: #8A6723;
   --text-primary: #F3E9D6;
   --text-secondary: #B8AA91;
-  --text-muted: #746B5B;
+  --text-muted: #8F8571; /* was #746B5B: 3.5-3.8:1 on the dark surfaces, now 5.0:1+ */
   --moss: #5C6B4D;
   --on-primary: #0B0D10;
 
@@ -727,3 +727,6 @@ section { position: relative; }
     grid-column: 1 / -1;
   }
 }
+
+/* Accessibility: keyboard focus ring on the newsletter field (its :focus rule removes the outline). */
+.newsletter input:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }

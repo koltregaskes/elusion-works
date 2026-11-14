@@ -1,0 +1,22 @@
+{
+  "name": "elusion-works",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "python scripts/build-site.py",
+    "test:seo": "python scripts/check-launch-seo.py",
+    "test:links": "node scripts/check-links.mjs",
+    "test:launch": "node scripts/launch-browser.mjs"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@babel/standalone": "7.29.0",
+    "@playwright/test": "1.65.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "three": "0.160.0"
+  }
+}

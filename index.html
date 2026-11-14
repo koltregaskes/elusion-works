@@ -16,7 +16,7 @@
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self' 'nonce-elusion-frontdoor-schema'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests"
+      content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests"
     />
     <meta property="og:title" content="Elusion Works - One studio, many projects" />
     <meta
@@ -44,7 +44,7 @@
     />
     <link rel="stylesheet" href="styles/cabinet.css?v=20260725b" />
     <link rel="stylesheet" href="styles/motion.css?v=20260725b" />
-    <script type="application/ld+json" nonce="elusion-frontdoor-schema">
+    <script type="application/ld+json">
       {
         "@context": "https://schema.org",
         "@graph": [
@@ -230,6 +230,7 @@
         ]
       }
     </script>
+    <link rel="alternate" type="application/rss+xml" title="Elusion Works updates" href="https://elusionworks.com/feed.xml" />
   </head>
   <body id="top">
     <a class="skip-link" href="#main-content">Skip to content</a>
@@ -253,7 +254,7 @@
         </nav>
 
         <div class="ew-header-actions">
-          <a class="ew-pill ew-pill-ghost ew-index-link ew-magnet" href="#cabinet" aria-label="Open the 13-project Studio Index">
+          <a class="ew-pill ew-pill-ghost ew-index-link ew-magnet" href="#cabinet" aria-label="Studio index, 13 items">
             <span>Studio index</span>
             <span class="ew-index-count" aria-hidden="true">13</span>
           </a>
@@ -265,11 +266,10 @@
       class="ew-pill ew-pill-ghost ew-theme-toggle ew-magnet"
       type="button"
       data-theme-toggle
-      aria-label="Toggle colour theme"
-      aria-pressed="false"
+        aria-label="Switch colour theme"
     >
       <span class="ew-theme-toggle-icon" aria-hidden="true"></span>
-      <span class="ew-theme-toggle-label">Dark</span>
+      <span class="ew-theme-toggle-label">Theme</span>
     </button>
 
     <div class="ew-cursor" aria-hidden="true">
@@ -309,7 +309,7 @@
             </div>
             <div class="ew-ticker-window" data-ticker-window>
               <div class="ew-ticker-line">
-                <span class="ew-mono ew-ticker-kicker">Building</span>
+                <span class="ew-mono ew-ticker-kicker">Building / Editorial date: 16 May 2026</span>
                 <span class="ew-ticker-text">Creative Radar - permission-first directory v0.2</span>
               </div>
             </div>
@@ -331,7 +331,7 @@
           </div>
           <div class="ew-stat">
             <span class="ew-count" data-count-to="2">2</span>
-            <span class="ew-stat-label">Games in concept</span>
+            <span class="ew-stat-label">Game and experiment plates</span>
           </div>
           <div class="ew-stat ew-stat-marquee">
             <span class="ew-stat-label">Manual studio pulse</span>
@@ -609,25 +609,25 @@
             </div>
           </article>
 
-          <article class="ew-plate" data-status="coming-soon" data-kind="game" style="grid-column: span 3; grid-row: span 2;">
+          <article class="ew-plate" data-estate-item="cyberpunk-messenger" data-status="live" data-kind="game" style="grid-column: span 3; grid-row: span 2;">
             <span class="ew-plate-halo" aria-hidden="true"></span>
-            <a class="ew-plate-link" href="https://github.com/koltregaskes" target="_blank" rel="noopener noreferrer" aria-label="Open Kol Tregaskes on GitHub for games in development"></a>
+            <a class="ew-plate-link" href="demos/cyberpunk-messenger/" aria-label="Open Cyberpunk Messenger"></a>
             <div class="ew-plate-media">
               <div class="ew-plate-frame">
-                <img class="ew-plate-poster" src="assets/img/frontdoor/games-in-development.svg" alt="" width="1200" height="900" loading="lazy" decoding="async" />
+                <img src="demos/cyberpunk-messenger/thumbnail.png" alt="" width="1280" height="720" loading="lazy" decoding="async" />
                 <span class="ew-plate-sheen" aria-hidden="true"></span>
               </div>
             </div>
             <div class="ew-plate-meta">
               <div class="ew-plate-meta-row">
                 <span class="ew-mono ew-plate-kind">Game</span>
-                <span class="ew-status ew-status-coming-soon">Status: Coming soon</span>
+                <span class="ew-status ew-status-live">Status: Playable</span>
               </div>
-              <h3 class="ew-plate-name">Games In Development</h3>
-              <p class="ew-plate-blurb">Future browser-first releases under the same evolving umbrella brand.</p>
+              <h3 class="ew-plate-name">Cyberpunk Messenger</h3>
+              <p class="ew-plate-blurb">Carry three signals across a curved neon city in a compact browser-first delivery game.</p>
               <div class="ew-plate-footer">
                 <span class="ew-mono ew-plate-family">Elusion Works</span>
-                <span class="ew-plate-cta">GitHub <span class="ew-cta-arrow">-&gt;</span></span>
+                <span class="ew-plate-cta">Begin <span class="ew-cta-arrow">-&gt;</span></span>
               </div>
             </div>
           </article>
@@ -684,6 +684,7 @@
         <nav class="ew-footer-group" aria-label="Footer contact and social">
           <p>Contact</p>
           <a href="https://github.com/koltregaskes" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a class="footer-link" data-contact href="{{CONTACT_URL}}">Contact</a>
           <a href="https://x.com/koltregaskes" target="_blank" rel="noopener noreferrer">X / Twitter</a>
           <a href="security.txt">Security</a>
           <a href="#top">Back to top</a>
@@ -695,7 +696,7 @@
       </div>
     </footer>
 
-    <script type="module" src="scripts/cabinet.js?v=20260725b"></script>
+    <script type="module" src="cabinet.js?v=20260725b"></script>
     <script src="cross-site-nav.js?v=20260725b" defer></script>
   </body>
 </html>

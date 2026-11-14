@@ -7,11 +7,13 @@ import { terrainHeight, DAM, damSection, elevToY, SPILL } from '../../src/scene/
 import { buildStructures } from '../../src/scene/dam.js';
 import { Tracers, Particles } from '../../src/scene/particles.js';
 import { ELEV } from '../../src/model/data.js';
-import { INK, ACCENT } from './stage.js';
-import { addDetails, MAT } from './details.js';
+import { INK, ACCENT } from '../../../_teardown-kit/stage.js';
+import { MAT, addInk as ink } from '../../../_teardown-kit/materials.js';
+import { mergeStatic } from '../../../_teardown-kit/merge.js';
+import { addDetails } from './details.js';
 
 export const BOX = { x: 300, z0: -400, z1: 380, base: -48, step: 9 };
-const CELL = 2;
+const CELL = 3;
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -25,13 +27,6 @@ export function hq(x, z) {
   return BOX.step * (L + sstep(0.74, 1, f));
 }
 
-function ink(mesh, threshold = 30, opacity = 0.55) {
-  const e = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, threshold), new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity }));
-  e.userData.ink = true;
-  e.raycast = () => {};
-  mesh.add(e);
-  return e;
-}
 
 // ---------------------------------------------------------------------------
 const clayVert = (sh) => {
@@ -143,7 +138,9 @@ export class StudyModel {
     const S = buildStructures(this.uniforms);
     this.S = S;
     S.groups.bridge.visible = false;
-    const white = () => MAT.shell();
+    // one shared material per part (focus and glass modes change opacity per part)
+    const shells = {}; let dressing = '';
+    const white = () => (shells[dressing] ??= MAT.shell());
     // panel decals: lift lines every 15 m, column joints every 15 m along the arc
     const dc = document.createElement('canvas'); dc.width = 256; dc.height = 128; const dg = dc.getContext('2d');
     dg.fillStyle = '#ffffff'; dg.fillRect(0, 0, 256, 128);
@@ -153,7 +150,9 @@ export class StudyModel {
     const conc = new THREE.MeshPhysicalMaterial({ color: 0xc9c3b8, map: dtex, roughness: 0.5, clearcoat: 0.35, clearcoatRoughness: 0.4 });
     const graphite = MAT.graphite();
     this.mats = { conc, graphite };
+    const gateMat = new THREE.MeshPhysicalMaterial({ color: 0x1c1f23, roughness: 0.35, metalness: 0.2, clearcoat: 0.5 });
     const dress = (group, sys, matFn, inkTh = 32) => {
+      dressing = sys;
       group.traverse((m) => {
         if (!m.isMesh) return;
         m.material = typeof matFn === 'function' ? matFn(m) : matFn;
@@ -164,9 +163,11 @@ export class StudyModel {
     };
     dress(S.groups.dam, 'dam', (m) => (m.name === 'dam-body' ? conc : white()), 28);
     dress(S.groups.towers, 'towers', white, 40);
-    dress(S.groups.spillways, 'spillways', (m) => (S.spill.some((sp) => sp.gates.includes(m)) ? new THREE.MeshPhysicalMaterial({ color: 0x1c1f23, roughness: 0.35, metalness: 0.2, clearcoat: 0.5 }) : white()), 30);
+    dress(S.groups.spillways, 'spillways', (m) => (S.spill.some((sp) => sp.gates.includes(m)) ? gateMat : white()), 30);
     dress(S.groups.powerhouse, 'powerhouse', (m) => (m.geometry.parameters?.height === 6 ? graphite : white()), 30);
-    dress(S.groups.generators, 'powerhouse', (m) => (m.parent && S.ph.gens.some((g) => g.rotor === m.parent) ? MAT.steel() : m.geometry.type === 'TorusGeometry' ? new THREE.MeshStandardMaterial({ color: 0x9fb4c0, roughness: 0.45, metalness: 0.4 }) : new THREE.MeshPhysicalMaterial({ color: 0x1c1f23, roughness: 0.32, metalness: 0.25, clearcoat: 0.6, emissive: new THREE.Color(ACCENT), emissiveIntensity: 0 })), 0);
+    // generator body: one material per unit (its glow follows that unit's output); the rest shared
+    const rotorSteel = MAT.steel(), scrollMat = new THREE.MeshStandardMaterial({ color: 0x9fb4c0, roughness: 0.45, metalness: 0.4 }), shaftMat = MAT.graphite();
+    dress(S.groups.generators, 'powerhouse', (m) => (m.parent && S.ph.gens.some((g) => g.rotor === m.parent) ? rotorSteel : m.geometry.type === 'TorusGeometry' ? scrollMat : S.ph.gens.some((g) => g.group.children[0] === m) ? new THREE.MeshPhysicalMaterial({ color: 0x1c1f23, roughness: 0.32, metalness: 0.25, clearcoat: 0.6, emissive: new THREE.Color(ACCENT), emissiveIntensity: 0 }) : shaftMat), 0);
     for (const g of S.ph.gens) g.mat = g.group.children[0].material;
     const glass = (m) => new THREE.MeshPhysicalMaterial({ color: m.userData.kind === 'diversion' ? 0xc9b89c : m.userData.kind === 'penstock' ? 0x6fb3cc : 0x9cc9d8, roughness: 0.08, transparent: true, opacity: m.userData.kind === 'diversion' ? 0.28 : 0.5, depthWrite: false, clearcoat: 1, side: THREE.DoubleSide });
     dress(S.groups.tunnels, 'tunnels', glass, 0);
@@ -181,6 +182,17 @@ export class StudyModel {
       if (m.userData.kind === 'diversion') { m.geometry.dispose(); m.geometry = new THREE.TubeGeometry(S.curves.diversion[di++].c, 70, 8.5, 14, false); }
     });
     this.details = addDetails(S);
+    // merge the parts that never move on their own (one draw call per material + one for ink)
+    const gateSet = new Set(S.spill.flatMap((sp) => sp.gates));
+    const rotors = new Set(S.ph.gens.map((g) => g.rotor));
+    const bodies = new Set(S.ph.gens.map((g) => g.group.children[0]));
+    this.mergeReport = {
+      dam: mergeStatic(S.groups.dam, { skip: (m) => m.name === 'dam-body' }),
+      towers: mergeStatic(S.groups.towers),
+      spillways: mergeStatic(S.groups.spillways, { skip: (m) => gateSet.has(m) }),
+      generators: mergeStatic(S.groups.generators, { skip: (m) => rotors.has(m) || bodies.has(m) }),
+    };
+    S.groups.generators.traverse((m) => { if (m.isMesh) m.userData.gen = true; });
     for (const g of Object.values(S.groups)) root.add(g);
     S.groups.generators.visible = true;
     S.groups.tunnels.visible = true;
@@ -290,15 +302,20 @@ export class StudyModel {
 
   collect() {
     this.meshes = [];
+    const matOwner = new Map(), clones = new Map();
     this.root.traverse((m) => {
       if (!(m.isMesh || m.isLine)) return;
       if (m === this.cap || m.parent === this.cap) return;
-      const mat = m.material;
-      if (!mat.userData.orig) mat.userData.orig = { opacity: mat.opacity, transparent: mat.transparent, depthWrite: mat.depthWrite, color: mat.color ? mat.color.clone() : null };
       let sys = m.userData.sys;
       if (!sys && m.parent) sys = m.parent.userData.sys;
       if (!sys) { let o = m; while (o && !sys) { if (o === this.nev || o === this.ari) sys = 'rock'; else if (o.name && this.S.groups[o.name]) sys = o.name === 'generators' ? 'powerhouse' : o.name; o = o.parent; } }
       m.userData.sys = sys;
+      // focus and glass change opacity per material, so a material may serve one part only
+      const owner = matOwner.get(m.material);
+      if (owner === undefined) matOwner.set(m.material, sys);
+      else if (owner !== sys) { const key = m.material.uuid + sys; m.material = clones.get(key) ?? clones.set(key, m.material.clone()).get(key); }
+      const mat = m.material;
+      if (!mat.userData.orig) mat.userData.orig = { opacity: mat.opacity, transparent: mat.transparent, depthWrite: mat.depthWrite, color: mat.color ? mat.color.clone() : null };
       this.meshes.push(m);
     });
   }
@@ -317,11 +334,11 @@ export class StudyModel {
       const mat = m.material, o = mat.userData.orig;
       let op = o.opacity, tr = o.transparent, dw = o.depthWrite;
       const sys = m.userData.sys;
-      if (glass && (sys === 'rock' || sys === 'dam' || sys === 'powerhouse') && !(m.parent && this.S.ph.gens.some((g) => g.group === m.parent || g.rotor === m.parent))) {
+      if (glass && (sys === 'rock' || sys === 'dam' || sys === 'powerhouse') && !m.userData.gen) {
         op = sys === 'rock' ? (m.isLine ? 0.25 : 0.14) : 0.3; tr = true; dw = false;
       }
       if (this.focus && sys !== this.focus && !(this.focus === 'penstocks' && sys === 'tunnels' && false)) {
-        const keepGen = this.focus === 'penstocks' && m.parent && this.S.ph.gens.some((g) => g.group === m.parent || g.rotor === m.parent);
+        const keepGen = this.focus === 'penstocks' && m.userData.gen;
         if (!keepGen) { op = Math.min(op, m.isLine ? 0.12 : sys === 'rock' ? 0.16 : 0.1); tr = true; dw = false; }
       }
       mat.opacity = op; mat.transparent = tr; mat.depthWrite = dw;
