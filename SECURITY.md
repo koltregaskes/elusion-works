@@ -51,3 +51,11 @@ sign-up or payment services. Existing outbound API/data fetches and final deploy
 contact, keyboard/screen-reader, CSP and third-party runtime checks remain launch
 acceptance work. A red Actions run is the current failure signal; these checks
 add no database secret, issue-alert workflow or repository setting change.
+
+## Demo CSP follow-up
+
+The shared build supplies CSP only where a demo previously had none, after final HTML assembly so hashes match the exact inline/import-map bytes. Inline scripts are hash-bound; external scripts use only explicitly referenced unpkg/jsDelivr origins. Objects, bases, forms and workers are bounded separately. Images retain HTTPS access and inline styles remain necessary. Orbit Census retains same-origin workers and CelesTrak. Existing policies are preserved. These meta policies are not HTTP response headers.
+
+The three JSX demos compile ahead of time using pinned Babel; the browser compiler is removed from the publish artifact. React and Three runtime versions are unchanged, with pinned local test fixtures proving actual render startup. No fixed nonce, unsafe-inline script or unsafe-eval permission is added. Golden printing uses a trusted parent load listener instead of injecting a child script.
+
+References: [MDN script-src](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/script-src), [Babel standalone](https://babeljs.io/docs/babel-standalone/). Browser CI uses preinstalled Edge on Windows without downloading browsers. Full interactions and real-GPU acceptance remain separate.

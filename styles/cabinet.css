@@ -721,3 +721,4 @@ html[data-theme="light"] .ew-plate-poster { opacity: 0.88; filter: invert(0.85) 
 html:not([data-theme="light"]) { --fg-4: #92929b; }
 
 .ew-plate-media > img { display:block; max-width:100%; width:100%; height:auto; }
+.ew-ticker[data-editorial-age="archive"] .ew-live-dot { animation: none; box-shadow: none; }
