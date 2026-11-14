@@ -114,3 +114,5 @@ routing. After Kol confirms routing and an external delivery/receipt test,
 change this one value to `mailto:contact@elusionworks.com` and rerun the build.
 The source configuration and validation scripts are not published. Fictional
 forms inside demos are separate from this real site contact route.
+
+Built SEO additionally binds JSON-LD to the current page URL and RSS links/dates to their original editorial source rows. Mutation tests reject unrelated schema graphs and fabricated RSS freshness without changing source dates.

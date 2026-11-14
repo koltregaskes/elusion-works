@@ -20,10 +20,13 @@ jobs:
         with:
           node-version: '24'
       - run: python scripts/build-site.py
+      - run: python scripts/test-seo-content.py
       - run: node scripts/check-links.mjs --external
   accessibility:
     name: Axe ${{ matrix.width }}px (${{ matrix.shard }}/4)
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
+    env:
+      PLAYWRIGHT_CHANNEL: msedge
     timeout-minutes: 5
     strategy:
       fail-fast: false
@@ -40,7 +43,6 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci --ignore-scripts
-      - run: npx playwright install --with-deps chromium
       - run: python scripts/build-site.py
       - run: node scripts/launch-browser.mjs --width=${{ matrix.width }} --shard=${{ matrix.shard }}/4
       - uses: actions/upload-artifact@v4
