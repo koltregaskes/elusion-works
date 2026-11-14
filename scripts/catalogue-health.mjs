@@ -1,0 +1,1 @@
+const outcome=process.env.CATALOGUE_OUTCOME;if(outcome!=='success'){console.error('Orbit Census acquisition did not complete successfully; published fallback is not proof of freshness.');process.exitCode=1;}else console.log('Orbit Census acquisition step succeeded; inspect source timestamps and destination readback separately.');
