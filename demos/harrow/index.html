@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Harrow TK-4 Teardown</title>
+<meta name="description" content="An original quadruped field machine you can take apart: watch it change gait at the Froude number, haul, climb, take a soil core, open its heat-sink crest and cut it through the spine." />
+<meta name="theme-color" content="#f1efea" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+<script type="importmap">
+{ "imports": { "three": "../hoover-dam/vendor/three.module.min.js", "three/addons/": "../hoover-dam/vendor/addons/", "kit/": "../_teardown-kit/" } }
+</script>
+</head>
+<body>
+<div id="boot" class="boot"><b>TK-4</b><span>assembling the study model</span></div>
+<canvas id="scene" aria-label="Harrow TK-4 machine teardown. Drag to orbit, scroll to zoom."></canvas>
+<svg id="draft" aria-hidden="true"></svg>
+<svg id="leaders" aria-hidden="true"></svg>
+<div id="callouts" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="idblock"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2" class="dot"/></svg><span class="mono">TK-4</span></div>
+  <div class="ttl">
+    <div class="mono k">Tiller-class field machine · original design</div>
+    <h1>Harrow <i>/</i></h1>
+    <div class="mono k2">Quadruped study model / teardown simulator</div>
+  </div>
+  <div class="load">
+    <div class="row mono"><span>Core load</span><b id="loadPct">0%</b></div>
+    <div class="cells" id="loadCells"></div>
+    <div class="row mono sm"><span>Hotel</span><span>Half</span><span>Rated</span></div>
+    <div class="crosses mono" aria-hidden="true"></div>
+  </div>
+  <div class="meta">
+    <div><span class="mono">Unit</span><b class="mono">TK-4 · 0127</b></div>
+    <div><span class="mono">Runtime</span><b class="mono" id="runtime">00:00:00</b></div>
+    <div><span class="mono">Status</span><b class="mono" id="status"><i></i>Grazing</b></div>
+    <div><span class="mono">Operator</span><b class="mono">Lab 5 · You</b></div>
+  </div>
+  <nav class="styles"><span class="badge">Study model</span></nav>
+</header>
+
+<div class="frame-label mono l" id="frameL">Model TK-4 · Rev A</div>
+<div class="frame-label mono r" id="frameR">Isolate · Hero</div>
+
+<aside class="col left">
+  <section class="card" id="cDrive">
+    <div class="ch"><b>Drive</b><span>01</span></div>
+    <div class="pair"><div><strong id="spd">0.0</strong><sup>M/S</sup><span class="mono lab">Ground speed</span></div><div class="r"><strong class="gaitname" id="gaitBig">Walk</strong><span class="mono lab">Gait</span></div></div>
+    <canvas id="cvP"></canvas>
+    <div class="foot mono"><span>Power</span><b id="pkw">0 kW</b><span class="sp"></span><span>Fr</span><b id="fr">0.00</b></div>
+  </section>
+  <section class="card" id="cCore">
+    <div class="ch"><b>Core</b><span>02</span></div>
+    <div class="pair"><div><strong id="temp">0</strong><sup>°C</sup><span class="mono lab">Core temperature</span></div><div class="r"><strong id="soc">0%</strong><span class="mono lab">Charge</span></div></div>
+    <canvas id="cvT"></canvas>
+    <div class="foot mono"><span>Fins</span><b id="finsPct">0%</b><span class="sp"></span><span>Endurance</span><b id="endur">—</b></div>
+  </section>
+  <section class="card" id="cLegs">
+    <div class="ch"><b>Leg load</b><span>03</span></div>
+    <div class="sub mono"><span>Knee ram · rated 210 bar</span><em class="pill" id="stancePill">4 down</em></div>
+    <div class="ubars legs" id="legBars"></div>
+  </section>
+</aside>
+
+<aside class="col right">
+  <section class="card" id="cGait">
+    <div class="ch"><b>Footfall</b><span>04</span></div>
+    <canvas id="cvGait"></canvas>
+    <div class="gaitkey"><span>Stride <b id="stride">0.00 m</b></span><span>Duty <b id="duty">0.00</b></span><span><b id="hz">0.00</b> Hz</span></div>
+  </section>
+  <section class="card chipcard">
+    <div class="ch"><b>Assemblies</b><span>05</span></div>
+    <div class="chips" id="asm"></div>
+  </section>
+  <section class="card chipcard">
+    <div class="ch"><b>Display</b><span>06</span></div>
+    <div class="chips" id="disp">
+      <button type="button" data-d="labels" class="on">Labels</button><button type="button" data-d="exploded">Exploded</button><button type="button" data-d="turntable" class="on">Turntable</button><button type="button" data-d="glass">X-ray</button><button type="button" data-d="cut">Cut</button><button type="button" data-d="prints" class="on">Prints</button>
+    </div>
+  </section>
+  <section class="card" id="cSys">
+    <div class="ch"><b>Subsystems</b><span>07</span></div>
+    <ol class="sys" id="sysList"></ol>
+  </section>
+</aside>
+
+<details class="ctl card" id="ctl">
+  <summary class="mono">Operator controls</summary>
+  <div class="scn" id="scn"><button type="button" data-scn="graze">Graze</button><button type="button" data-scn="sample">Sample</button><button type="button" data-scn="haul">Haul</button><button type="button" data-scn="climb">Climb</button><button type="button" data-scn="sprint">Sprint</button></div>
+  <label class="mono" for="spdIn">Speed <output id="spdInOut"></output></label><input type="range" id="spdIn" min="0" max="6" step="0.1" value="0.9" />
+  <label class="mono" for="payload">Payload <output id="payloadOut"></output></label><input type="range" id="payload" min="0" max="320" step="10" value="60" />
+  <label class="mono" for="grade">Grade <output id="gradeOut"></output></label><input type="range" id="grade" min="-20" max="25" step="1" value="0" />
+  <div class="seg" id="gaitSel" role="group" aria-label="Gait"><button type="button" data-g="auto" class="on">Auto</button><button type="button" data-g="walk">Walk</button><button type="button" data-g="trot">Trot</button><button type="button" data-g="bound">Bound</button></div>
+  <div class="seg" id="tog" role="group" aria-label="Tools"><button type="button" data-t="scan" class="on">Scan</button><button type="button" data-t="drill">Drill</button></div>
+  <div class="hint mono">Auto changes gait at Froude 0.42 and 1.9</div>
+</details>
+
+<div class="mode">
+  <span class="mono">Mode</span>
+  <b id="modeT">Grazing</b>
+  <span class="mono" id="modeS">Walk · 0.9 m/s</span>
+</div>
+
+<section class="oplog card">
+  <div class="ch"><b>Operation log</b><span>08</span></div>
+  <div class="opl">
+    <button type="button" id="play" aria-label="Play or pause the operation log"><svg viewBox="0 0 20 20"><rect class="pa" x="6" y="5" width="2.6" height="10" rx="0.6"/><rect class="pa" x="11.4" y="5" width="2.6" height="10" rx="0.6"/><path class="pl" d="M7 5 L15 10 L7 15 Z"/></svg></button>
+    <div class="trk">
+      <div class="ends mono"><span>Wake</span><b id="beatT">Wake · grazing</b><span>Sprint</span></div>
+      <div class="bar" id="bar"><div class="fill" id="fill"></div><div class="ticks" id="ticks"></div><div class="knob" id="knob"></div></div>
+      <div class="ends mono"><span id="clock">00:00 / 00:41</span><span id="acts">9 operator actions</span></div>
+    </div>
+  </div>
+</section>
+
+<footer class="footline mono">
+  <span>Original machine · procedural study model · gait by Froude number (Alexander 1976) · 840 kg dry</span>
+  <span>Elusion Works · Machine lab <i>//////</i></span>
+</footer>
+
+<div class="ghost" id="ghost" hidden></div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
