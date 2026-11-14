@@ -664,6 +664,7 @@ function doHover() {
 }
 
 window.addEventListener('keydown', e => {
+  if (e.target.closest('input,select,textarea,[contenteditable]')) return;
   if (tour) { endTour(); return; }
   if (e.key === 'Escape') select(null);
   else if (e.key === 'ArrowRight') { e.preventDefault(); step(1); }

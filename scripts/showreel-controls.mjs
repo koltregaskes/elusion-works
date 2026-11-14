@@ -7,6 +7,8 @@ export async function verifyShowreelControls(page, route) {
   if (route.includes('/turbofan-teardown/')) {
     await page.locator('#explode').fill('700');
     assert.equal(await page.locator('#explode').inputValue(), '700');
+    await page.locator('#explode').press('ArrowRight');
+    assert.ok(Number(await page.locator('#explode').inputValue()) > 700);
   } else if (route.includes('/cinematic-dive/')) {
     await page.locator('#magnet').click();
     assert.match(await page.locator('#toast').textContent(), /No reservation/);
