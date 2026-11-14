@@ -859,7 +859,7 @@ export class CameraRig {
        Left to the search, the cost of moving out could outweigh the cost of
        an oversized subject, and a corvette stayed frame-filling (round 19). */
     const fill = this._fillFor(list);
-    if (list.length === 1 && fill && fill.want < FILL.frigate.lo) {
+    if (list.length === 1 && (fill === FILL.fighter || fill === FILL.corvette)) {
       const e = list[0];
       const len = (e.def && e.def.length) || biggest * 2;
       dist = clamp(Math.max(dist, len / (fill.want * 2 * Math.tan(vHalf))), this._minDistance(biggest), this.options.maxDistance);
