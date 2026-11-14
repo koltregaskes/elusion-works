@@ -2,9 +2,13 @@ export function elementOverflow(){
  const out=[];
  for(const el of document.querySelectorAll('body *')){
   if(!(el instanceof HTMLElement))continue;
+  // World-space globe labels intentionally cross the canvas edge; no controls are exempt.
+  if(location.pathname.includes('/orbit-census/')&&el.closest('.lab3'))continue;
   if(el.id==='ringCursor'||(location.pathname.includes('/chronicles-of-bone/')&&el.matches('.noise,.tick')))continue;
   const r=el.getBoundingClientRect(),s=getComputedStyle(el);
   if(!r.width||!r.height||s.visibility==='hidden'||s.opacity==='0')continue;
+  let transparent=false;for(let p=el.parentElement;p;p=p.parentElement){if(getComputedStyle(p).opacity==='0'){transparent=true;break;}}
+  if(transparent)continue;
   if(r.right<=innerWidth+1&&r.left>=-1)continue;
   let contained=false;
   for(let p=el.parentElement;p&&p!==document.body&&p!==document.documentElement;p=p.parentElement){
