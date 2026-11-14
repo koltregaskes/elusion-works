@@ -577,8 +577,20 @@ export class Commander {
        destroyers bombers are built to kill. Against a bomber-heavy enemy the
        flak screen comes first and grows. */
     const bombers = this._bomberShare();
-    if (bombers > 0.3 && have('assaultFrigate') < Math.min(6, wantFrigate + Math.round(bombers * 4))) {
-      return 'assaultFrigate';
+    /* Round 19: in ordinary matches the bomber share seen runs 0.4 to 0.8,
+       so this answer fired almost every think, the flak frigates kept dying
+       short of the target, and the line never reached a capital: in Even
+       against Even only 1 side in 6 built a destroyer, and treasuries sat on
+       7,000 credits. Against real bomber spam (over 0.7) the flak screen
+       still comes first; otherwise two flak frigates are enough to let a
+       capital that is behind schedule go next. */
+    if (bombers > 0.3) {
+      const flak = have('assaultFrigate');
+      const capsBehind = have('cruiser') < Math.min(2, wantCruiser) || have('destroyer') < wantDestroyer;
+      if (flak < Math.min(6, wantFrigate + Math.round(bombers * 4)) &&
+          (bombers > 0.7 || flak < 2 || !capsBehind)) {
+        return 'assaultFrigate';
+      }
     }
     if (have('cruiser') < Math.min(2, wantCruiser)) return 'cruiser';
     if (have('destroyer') < wantDestroyer) return 'destroyer';
