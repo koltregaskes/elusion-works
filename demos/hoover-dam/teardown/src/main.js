@@ -14,7 +14,8 @@ const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 const n0 = (v) => Math.round(v).toLocaleString('en-GB');
 const EASE = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
-const q = new URLSearchParams(location.search);
+// deep links work as ?t=12 or #t=12 (the hash form survives hosts that drop query strings)
+const q = new URLSearchParams(location.search.length > 1 ? location.search : location.hash.slice(1));
 
 // ---------------------------------------------------------------------------
 // scene
@@ -51,12 +52,20 @@ const VIEWS = {
   top: { pos: [0, 1600, 90], tgt: [0, 0, 20] },
 };
 let fly = null, turnTo = null;
+// portrait screens see far less width through the same lens: back the camera off so the
+// subject still fits (about 2x on a phone held upright, nothing on landscape screens)
+const reach = () => Math.min(2.2, Math.max(1, Math.pow(1.25 / (innerWidth / innerHeight), 0.7)));
+function viewPose(v) {
+  const t = new THREE.Vector3(...v.tgt);
+  return { p: new THREE.Vector3(...v.pos).sub(t).multiplyScalar(reach()).add(t), t };
+}
 function flyTo(name, dur = 1.7, instant = false) {
   const v = VIEWS[name]; if (!v) return;
   S.view = name;
   if (!S.turntable) turnTo = 0;
-  if (instant) { stage.camera.position.set(...v.pos); stage.controls.target.set(...v.tgt); fly = null; return; }
-  fly = { t: 0, dur, p0: stage.camera.position.clone(), t0: stage.controls.target.clone(), p1: new THREE.Vector3(...v.pos), t1: new THREE.Vector3(...v.tgt) };
+  const { p, t } = viewPose(v);
+  if (instant) { stage.camera.position.copy(p); stage.controls.target.copy(t); fly = null; return; }
+  fly = { t: 0, dur, p0: stage.camera.position.clone(), t0: stage.controls.target.clone(), p1: p, t1: t };
 }
 
 const ASM = [
@@ -290,6 +299,8 @@ const pool = Array.from({ length: 6 }, () => {
 // measured once per resize so the callouts never force a layout pass per frame
 let bandCache = null;
 addEventListener('resize', () => { bandCache = null; });
+// label widths are cached; the web fonts may land after the first measure
+document.fonts?.ready.then(() => { bandCache = null; pool.forEach((p) => { p.label = null; }); });
 // the columns appear after boot and change size with the media queries: re-measure when they do
 if (window.ResizeObserver) { const ro = new ResizeObserver(() => { bandCache = null; }); document.querySelectorAll('.col').forEach((c) => ro.observe(c)); }
 function bands() {
@@ -298,7 +309,7 @@ function bands() {
   // a side column is taller than it is wide; on phones the right column becomes a short strip
   const rect = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > r.width ? r : null; };
   const rl = rect(colL), rr = rect(colR);
-  bandCache = { LL: rl ? rl.right + 8 : 10, RL: rr ? rr.left - 8 : W - 10 };
+  bandCache = { LL: rl ? rl.right + 8 : 14, RL: rr ? rr.left - 8 : W - 14 };
   return bandCache;
 }
 function drawCallouts() {
@@ -357,11 +368,28 @@ const ticks = $('#ticks');
 BEATS.forEach((b) => { const i = document.createElement('i'); i.style.left = `${b.t / FILM * 100}%`; ticks.appendChild(i); });
 $('#acts').textContent = `${BEATS.length - 1} operator actions`;
 const ghost = $('#ghost');
+// the cursor waits off to one side until its first tap, so it never sits on the logo
+ghost.style.transform = `translate(${innerWidth * 0.5}px, ${innerHeight * 0.62}px)`;
+let ghostTimer = 0;
 function ghostTap(sel) {
-  const e = $(sel); if (!e || document.body.classList.contains('clean')) return;
-  const r = e.getBoundingClientRect(); ghost.hidden = false;
-  ghost.style.transform = `translate(${r.left + r.width / 2}px, ${r.top + r.height / 2}px)`;
-  setTimeout(() => { ghost.classList.remove('tap'); void ghost.offsetWidth; ghost.classList.add('tap'); }, 820);
+  const e = $(sel); if (!e || document.body.classList.contains('clean') || !film.playing) return;
+  let r = e.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+  // phones: the chips live in a sideways-scrolling strip, so bring the target into view first
+  const strip = e.closest('.col.right');
+  if (strip && r.width > 0 && strip.scrollWidth > strip.clientWidth + 1) {
+    const sr = strip.getBoundingClientRect();
+    if (r.left < sr.left + 12 || r.right > sr.right - 12) {
+      const want = Math.max(0, Math.min(strip.scrollWidth - strip.clientWidth, strip.scrollLeft + (x - (sr.left + sr.width / 2))));
+      x -= want - strip.scrollLeft;
+      strip.scrollTo({ left: want, behavior: 'smooth' });
+    }
+  }
+  // a control hidden at this screen size (the turbine card on a phone): tap the model instead
+  if (r.width === 0 || r.height === 0) { x = innerWidth / 2; y = innerHeight * 0.42; }
+  ghost.hidden = false; ghost.classList.add('live');
+  ghost.style.transform = `translate(${x}px, ${y}px)`;
+  clearTimeout(ghostTimer);
+  ghostTimer = setTimeout(() => { ghost.classList.remove('tap'); void ghost.offsetWidth; ghost.classList.add('tap'); }, 820);
 }
 function beatAt(t) { let k = 0; for (let i = 0; i < BEATS.length; i++) if (BEATS[i].t <= t) k = i; return k; }
 function seek(t, instant = true) {
@@ -372,7 +400,7 @@ function seek(t, instant = true) {
   for (let i = 0; i <= k; i++) { const b = BEATS[i]; if (b.ramp) { const [key, a, z, d] = b.ramp; const f = Math.min(1, (film.t - b.t) / d); R[key].set(a + (z - a) * EASE(f)); } }
   film.idx = k;
 }
-function setPlaying(v) { film.playing = v; if (v) film.touched = false; $('#play').classList.toggle('paused', !v); ghost.hidden = !v; $('#status').innerHTML = `<i></i>${v ? 'Operator log' : 'Hands on'}`; }
+function setPlaying(v) { film.playing = v; if (v) film.touched = false; $('#play').classList.toggle('paused', !v); ghost.hidden = !v || !ghost.classList.contains('live'); $('#status').innerHTML = `<i></i>${v ? 'Operator log' : 'Hands on'}`; }
 $('#play').addEventListener('click', () => { if (!film.playing) { if (film.t > FILM - 0.5) film.t = 0; seek(film.t, false); } setPlaying(!film.playing); });
 $('#bar').addEventListener('pointerdown', (e) => { const r = $('#bar').getBoundingClientRect(); film.touched = false; seek((e.clientX - r.left) / r.width * FILM, true); });
 ['pointerdown', 'wheel', 'keydown', 'touchstart'].forEach((tp) => addEventListener(tp, (e) => {
@@ -386,6 +414,7 @@ function filmTick(dt) {
     if (!q.has('notour') && performance.now() - film.lastInput > 25000) { film.t = 0; film.idx = -1; setPlaying(true); }
     return;
   }
+  if (intro) return; // the opening shot holds the clock at 00:00
   film.t += dt;
   if (film.t >= FILM) { film.t = 0; film.idx = -1; }
   const k = beatAt(film.t);
@@ -409,8 +438,19 @@ function modeLabel() {
   if (S.look === 'glass') return 'Glass';
   return out.mw > 1 ? 'Generating' : 'Idle';
 }
+// opening: the model arrives in pieces, the camera swings in from high and wide, and the
+// parts snap together; then the ghost cursor makes its first tap
+let intro = null;
+function introTick(dt) {
+  if (!intro) return;
+  intro.t += dt;
+  if (!intro.snapped && intro.t > 0.7) { intro.snapped = true; model.explode(S.exploded); }
+  if (!intro.tapped && intro.t > 2.6) { intro.tapped = true; ghostTap(BEATS[0].target); }
+  if (intro.t > 3) intro = null;
+}
 function loop() {
   const dt = Math.min(0.05, clock.getDelta()); T += dt; frame++;
+  introTick(dt);
   filmTick(dt);
   out = step(st, dt);
   if (st.lake > ELEV.crest + 1) st.lake = ELEV.crest + 1;
@@ -468,14 +508,26 @@ function loop() {
 // ---------------------------------------------------------------------------
 // boot + deep links: ?t=12 (film time), ?q=0|1|2, ?clean, ?notour, ?pause
 if (q.has('q')) { stage.lock = true; stage.setQuality(+q.get('q')); }
+// phones and small tablets start one tier down (no GTAO, lighter pixel ratio); they can still step down further
+else if (Math.min(innerWidth, innerHeight) < 600 || matchMedia('(pointer: coarse)').matches) stage.setQuality(1);
 if (q.has('clean')) document.body.classList.add('clean');
 seek(q.has('t') ? +q.get('t') : 0, true);
 if (q.has('t')) { // let springs settle for stills
   model.e = S.exploded ? 1 : 0; unit.e = S.unitOpen ? 1 : 0; stage.pivot.rotation.y = 0;
 }
 setPlaying(!q.has('notour') && !q.has('pause'));
+if (!q.has('t')) {
+  // the opening shot: start apart, high and wide, then swing in to the hero view as it assembles
+  model.e = 1; model.explode(true);
+  const h = viewPose(VIEWS.hero), lift = h.p.clone().sub(h.t);
+  lift.applyAxisAngle(new THREE.Vector3(0, 1, 0), -0.55).multiplyScalar(1.9); lift.y *= 1.35;
+  stage.camera.position.copy(h.t).add(lift); stage.controls.target.copy(h.t).add(new THREE.Vector3(0, -30, 0));
+  flyTo('hero', 3.2);
+  intro = { t: 0 };
+}
+addEventListener('resize', () => { if (film.playing && !fly) flyTo(S.view, 0.6); });
 if (q.has('pause')) { st.paused = true; }
 stage.renderer.compile(stage.scene, stage.camera);
 $('#boot').classList.add('done');
 requestAnimationFrame(loop);
-window.teardown = { stage, model, unit, st, S, film, seek, get out() { return out; } };
+window.teardown = { stage, model, unit, st, S, film, seek, get intro() { return intro; }, get out() { return out; } };
