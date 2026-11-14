@@ -569,12 +569,20 @@ const FILL = {
      corvette is now framed small, with the field around it, and each step up
      in class fills more of the frame. Groups keep the old framing (see
      `_fillFor`): a band this tight would shrink a whole wing to a speck. */
+  /* Round 19 critic: above corvettes the ladder broke. A lone 130 m frigate
+     filled 0.77 of the frame height, a 380 m destroyer 0.71 and a 620 m
+     cruiser 0.59. The bands now climb with the hull: frigate, destroyer,
+     cruiser, each larger on screen than the class below it. */
   fighter: { lo: 0.05, hi: 0.20, want: 0.10 },
   corvette: { lo: 0.07, hi: 0.28, want: 0.15 },
-  frigate: { lo: 0.14, hi: 0.75, want: 0.30 },
-  support: { lo: 0.14, hi: 0.75, want: 0.30 },
-  capital: { lo: 0.22, hi: 0.85, want: 0.42 },
+  frigate: { lo: 0.14, hi: 0.36, want: 0.24 },
+  support: { lo: 0.14, hi: 0.36, want: 0.24 },
+  capital: { lo: 0.26, hi: 0.60, want: 0.40 },
   structure: { lo: 0.22, hi: 0.90, want: 0.48 },
+};
+/* Per class where one role spans very different hulls. */
+const FILL_CLASS = {
+  cruiser: { lo: 0.38, hi: 0.80, want: 0.55 },
 };
 const FOLLOW_MAX_SPEED = 6000;   // m/s; anything faster is a jump
 /* A sliding focus that has not closed on its target for this long is wedged
@@ -859,10 +867,12 @@ export class CameraRig {
        Left to the search, the cost of moving out could outweigh the cost of
        an oversized subject, and a corvette stayed frame-filling (round 19). */
     const fill = this._fillFor(list);
-    if (list.length === 1 && (fill === FILL.fighter || fill === FILL.corvette)) {
+    /* Every lone hull starts at its band's distance (round 19: the ladder
+       only held for strike craft, which were the only ones started there). */
+    if (list.length === 1 && fill && fill !== FILL.structure) {
       const e = list[0];
       const len = (e.def && e.def.length) || biggest * 2;
-      dist = clamp(Math.max(dist, len / (fill.want * 2 * Math.tan(vHalf))), this._minDistance(biggest), this.options.maxDistance);
+      dist = clamp(len / (fill.want * 2 * Math.tan(vHalf)), this._minDistance(biggest), this.options.maxDistance);
     }
     this._keepAngle = !!(opts && opts.keepAngle);
 
@@ -2865,6 +2875,7 @@ export class CameraRig {
     if (!big) return null;
     const role = big.role || (big.def && big.def.role);
     if (alive > 1 && (role === 'fighter' || role === 'corvette')) return null;
+    if (alive === 1 && FILL_CLASS[big.classId]) return FILL_CLASS[big.classId];
     return FILL[role] || null;
   }
 
