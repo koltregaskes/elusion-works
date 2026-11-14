@@ -87,11 +87,11 @@ const SHOTS = [
     },
   },
   {
-    preset: 'night', duration: 11, fov: 40,
+    preset: 'night', duration: 11, fov: 44,
     // Push in low through the fireflies.
     camera: (t, c) => ({
-      pos: v(15, c.ground + 0.9, 19).lerp(v(9, c.ground + 1.1, 12), ease(t)),
-      look: v(0, c.ground + 4.5, 0),
+      pos: v(20, c.ground + 0.9, 25).lerp(v(14, c.ground + 1.1, 17.5), ease(t)),
+      look: v(0, c.ground + 6, 0),
     }),
   },
   {
