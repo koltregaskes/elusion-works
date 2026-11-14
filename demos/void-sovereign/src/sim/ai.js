@@ -42,7 +42,7 @@ import { FORMATION } from './formations.js';
    complaint in the whole genre: if you must handicap, handicap *downward* on
    easy rather than upward on hard. Easy therefore keeps 0.9 / 0.85 — a
    disclosed handicap in the player's favour — and hard is bought entirely with
-   decision quality: it thinks twice as often, commits on a lower margin,
+   decision quality: it thinks about three times as often, commits on a lower margin,
    works more seams, raids sooner, reaches for the contested band earlier and
    never makes a random mistake.
 
@@ -64,7 +64,12 @@ const DIFFICULTY = {
     holdShare: 0.18, contestAt: 170,
   },
   hard: {
-    think: 0.65, commitScale: 0.72, collectors: 8, harassAt: 45,
+    /* think 0.4 (was 0.65): Relentless beat Even only 30 of 48 at 0.65
+       (seeds 1 to 24, both sides, seed-picked personalities). At 0.4 it wins
+       39 of 48, 20 of 24 on seeds 1 to 12 and 19 of 24 on the unseen 13 to
+       24. Reserve, commit, hold, contest, yards and siege changes each moved
+       it by one win or less, and 0.5 gave 16 of 24. */
+    think: 0.4, commitScale: 0.72, collectors: 8, harassAt: 45,
     income: 1.0, buildRate: 1.0, retreatAt: 0.26, techScale: 0.8, sloppiness: 0.0,
     dominance: 0.88, siegeAt: 560, yards: 6, defenceShare: 0.18, reserve: 1.5,
     holdShare: 0.26, contestAt: 110,
@@ -88,7 +93,7 @@ export const DIFFICULTY_COPY = {
   hard: {
     name: 'Fleet Command',
     line: 'Plays the same economy you do. No income bonus, no build bonus. ' +
-      'It simply thinks twice as often, commits on a thinner margin, raids ' +
+      'It simply thinks about three times as often, commits on a thinner margin, raids ' +
       'sooner and goes for the contested band first.',
   },
 };
