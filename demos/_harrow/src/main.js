@@ -32,19 +32,23 @@ const VIEWS = {
   head: { pos: [640, 280, 470], tgt: [200, 160, 0] },
   carapace: { pos: [-420, 760, 660], tgt: [0, 140, 0] },
   legs: { pos: [80, 150, 1050], tgt: [0, 70, 0] },
-  core: { pos: [430, 360, 720], tgt: [10, 116, 0] },
+  core: { pos: [560, 380, 860], tgt: [10, 130, 0] },
   cells: { pos: [-260, 260, 820], tgt: [-6, 104, 40] },
   fins: { pos: [-640, 680, 520], tgt: [-20, 170, 0] },
   drill: { pos: [380, 70, 640], tgt: [-14, 46, 0] },
-  section: { pos: [40, 260, 1150], tgt: [0, 110, 0] },
+  section: { pos: [60, 300, 1350], tgt: [10, 118, 0] },
 };
 let fly = null, turnTo = null;
 function flyTo(name, dur = 1.7, instant = false) {
   const v = VIEWS[name]; if (!v) return;
   S.view = name;
   if (!S.turntable) turnTo = 0;
-  if (instant) { stage.camera.position.set(...v.pos); stage.controls.target.set(...v.tgt); fly = null; return; }
-  fly = { t: 0, dur, p0: stage.camera.position.clone(), t0: stage.controls.target.clone(), p1: new THREE.Vector3(...v.pos), t1: new THREE.Vector3(...v.tgt) };
+  // views are framed for a wide screen; on tall screens pull back so the machine still fits
+  const tgt = new THREE.Vector3(...v.tgt), pos = new THREE.Vector3(...v.pos);
+  const k = Math.pow(Math.max(1, 1.45 / stage.camera.aspect), 0.65);
+  pos.sub(tgt).multiplyScalar(k).add(tgt);
+  if (instant) { stage.camera.position.copy(pos); stage.controls.target.copy(tgt); fly = null; return; }
+  fly = { t: 0, dur, p0: stage.camera.position.clone(), t0: stage.controls.target.clone(), p1: pos, t1: tgt };
 }
 
 const ASM = [
@@ -126,12 +130,12 @@ function syncChips() {
 // subsystems list
 const SYS = [
   { id: 'head', name: 'Sensor head', sub: '3 lenses · tiller tines' },
-  { id: 'carapace', name: 'Carapace', sub: '7 plates · 2 skirts' },
+  { id: 'carapace', name: 'Carapace', sub: '7 plates · graphite flanks' },
   { id: 'legs', name: 'Legs', sub: '4 · digitigrade · ram knees' },
   { id: 'core', name: 'Power core', sub: `${SPEC.ratedKW} kW rated · manifold` },
   { id: 'cells', name: 'Flank cells', sub: `${SPEC.cells} × ${SPEC.cellKWh} kWh` },
   { id: 'fins', name: 'Heat-sink crest', sub: `9 blades · open ${SPEC.finOnset}–${SPEC.finOnset + SPEC.finSpan} °C` },
-  { id: 'drill', name: 'Coring drill', sub: 'telescoping · 0.8 m' },
+  { id: 'drill', name: 'Coring drill', sub: 'telescoping · 1.2 m reach' },
 ];
 const sysEl = $('#sysList');
 const sysRows = SYS.map((s, i) => {
@@ -293,7 +297,7 @@ function bands() {
   return bandCache;
 }
 function drawCallouts() {
-  const set = S.look === 'cut' ? (CALLS.core) : (CALLS[S.focus === null ? 'hero' : S.focus] || []);
+  const set = (S.look === 'cut' ? CALLS.core : (CALLS[S.focus === null ? 'hero' : S.focus] || [])).slice(0, innerWidth < 760 ? 3 : 6);
   const W = innerWidth, H = innerHeight;
   const want = pool.map((p, i) => {
     const c = set[i]; if (!c) return null;

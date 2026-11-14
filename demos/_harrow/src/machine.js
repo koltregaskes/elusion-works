@@ -96,12 +96,12 @@ export class Machine {
     const gm = this.mat.graphite;
     // graphite torso: the dark flanks the white plates sit on
     const keel = new THREE.Mesh(new THREE.CapsuleGeometry(40, 196, 8, 28), gm); keel.rotation.z = Math.PI / 2; keel.position.set(-6, 168, 0); keel.scale.set(0.96, 1, 1.06);
-    this.add(g, keel, 'frame', { inkAt: 40 });
+    this.add(g, keel, 'frame', { inkAt: 40, glass: true });
     // flank ribs and a ventral keel plate
     for (let i = 0; i < 7; i++) {
       const x = -96 + i * 30;
       const rib = new THREE.Mesh(new THREE.TorusGeometry(43, 2.6, 8, 40, Math.PI * 1.25), gm); rib.rotation.set(0, Math.PI / 2, Math.PI * 0.12 + Math.PI); rib.position.set(x, 168, 0);
-      this.add(g, rib, 'frame', { ink: false });
+      this.add(g, rib, 'frame', { ink: false, glass: true });
     }
     const vk = new THREE.Mesh(new THREE.BoxGeometry(170, 8, 26), this.mat.steel); vk.position.set(-6, 126, 0);
     this.add(g, vk, 'frame', { inkOp: 0.4 });
