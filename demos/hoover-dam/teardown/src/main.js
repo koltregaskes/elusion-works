@@ -368,8 +368,11 @@ function seek(t, instant = true) {
   film.t = Math.max(0, Math.min(FILM - 0.01, t));
   const k = beatAt(film.t);
   // replay every beat up to here so the state is exactly the film's at time t
-  for (let i = 0; i <= k; i++) BEATS[i].apply(instant || i < k);
-  for (let i = 0; i <= k; i++) { const b = BEATS[i]; if (b.ramp) { const [key, a, z, d] = b.ramp; const f = Math.min(1, (film.t - b.t) / d); R[key].set(a + (z - a) * EASE(f)); } }
+  // replay each beat and its ramp in order, so a later beat's settings win over an earlier ramp
+  for (let i = 0; i <= k; i++) {
+    const b = BEATS[i]; b.apply(instant || i < k);
+    if (b.ramp) { const [key, a, z, d] = b.ramp; const f = Math.min(1, (film.t - b.t) / d); R[key].set(a + (z - a) * EASE(f)); }
+  }
   film.idx = k;
 }
 function setPlaying(v) { film.playing = v; if (v) film.touched = false; $('#play').classList.toggle('paused', !v); ghost.hidden = !v; $('#status').innerHTML = `<i></i>${v ? 'Operator log' : 'Hands on'}`; }
