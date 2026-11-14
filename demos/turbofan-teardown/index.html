@@ -1,0 +1,874 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Turbofan Teardown</title>
+<meta name="description" content="An interactive exploded-view study of a high-bypass turbofan engine, built entirely from code with three.js.">
+<style>
+  :root{
+    --ink:#1b1d20; --ink2:#555b63; --ink3:#8a9098; --line:rgba(24,26,30,.10);
+    --card:rgba(255,255,255,.74); --card-solid:#ffffff;
+    --accent:#ff5a1f; --accent-ink:#d9420d; --accent-soft:rgba(255,90,31,.10);
+    --radius:14px;
+    --shadow:0 1px 0 rgba(255,255,255,.7) inset, 0 10px 30px -8px rgba(30,32,36,.16), 0 2px 6px rgba(30,32,36,.05);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden}
+  body{
+    background:radial-gradient(125% 95% at 50% 36%, #fcfcfb 0%, #f0f0ee 40%, #dedfdf 76%, #cfd0d2 100%);
+    color:var(--ink);
+    font:13px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+    user-select:none; -webkit-user-select:none;
+  }
+  .mono{font-family:ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace; font-variant-numeric:tabular-nums}
+  #stage{position:fixed; inset:0}
+  #stage canvas{display:block; touch-action:none; outline:none}
+  .card{background:var(--card); backdrop-filter:blur(16px) saturate(1.2); -webkit-backdrop-filter:blur(16px) saturate(1.2);
+        border:1px solid rgba(255,255,255,.85); border-radius:var(--radius); box-shadow:var(--shadow)}
+
+  /* Brand */
+  #brand{position:fixed; left:28px; top:24px; z-index:5; pointer-events:none}
+  #brand .eyebrow{font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink3); display:flex; gap:10px; align-items:center}
+  #brand .eyebrow i{display:inline-block; width:18px; height:2px; background:var(--accent); border-radius:2px}
+  #brand h1{margin:6px 0 2px; font-size:30px; line-height:1.05; font-weight:650; letter-spacing:-.025em}
+  #brand p{margin:0; color:var(--ink2); font-size:12.5px; max-width:300px}
+
+  /* Tools */
+  #tools{position:fixed; right:24px; top:22px; z-index:6; display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end}
+  .btn{appearance:none; border:1px solid rgba(255,255,255,.9); background:var(--card); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+       box-shadow:var(--shadow); color:var(--ink); font:inherit; font-size:12px; font-weight:550; padding:8px 13px; border-radius:999px; cursor:pointer;
+       display:inline-flex; gap:7px; align-items:center; transition:transform .15s ease, background .15s ease, color .15s}
+  .btn:hover{background:#fff}
+  .btn:active{transform:translateY(1px)}
+  .btn svg{width:13px; height:13px}
+  .btn[aria-pressed="true"] .led{background:var(--accent); box-shadow:0 0 0 3px var(--accent-soft)}
+  .led{width:7px; height:7px; border-radius:50%; background:#c4c7cb; transition:all .2s}
+  .btn:focus-visible,.pi:focus-visible,input:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  #partsToggle{display:none}
+
+  /* Parts index */
+  #parts{position:fixed; left:24px; top:146px; bottom:118px; width:232px; z-index:5; padding:10px 8px 10px 8px; overflow:auto; scrollbar-width:thin}
+  #parts .sec{font-size:10px; letter-spacing:.15em; text-transform:uppercase; color:var(--ink3); padding:10px 10px 4px}
+  #parts .sec:first-child{padding-top:4px}
+  .pi{display:flex; width:100%; gap:10px; align-items:center; text-align:left; border:0; background:transparent; font:inherit; color:var(--ink);
+      padding:5px 10px; border-radius:8px; cursor:pointer; position:relative; font-size:12.5px}
+  .pi .n{color:var(--ink3); font-size:10.5px; width:18px}
+  .pi:hover{background:rgba(255,255,255,.85)}
+  .pi.on{background:#fff; color:var(--accent-ink); font-weight:600; box-shadow:0 1px 3px rgba(0,0,0,.06)}
+  .pi.on .n{color:var(--accent)}
+  .pi.on::before{content:""; position:absolute; left:0; top:7px; bottom:7px; width:2.5px; border-radius:2px; background:var(--accent)}
+
+  /* Info card */
+  #info{position:fixed; right:24px; top:76px; width:316px; z-index:5; padding:16px 18px 14px; opacity:0; transform:translateY(-6px); pointer-events:none;
+        transition:opacity .25s ease, transform .25s ease}
+  #info.show{opacity:1; transform:none; pointer-events:auto}
+  #info .row{display:flex; gap:6px; align-items:center; flex-wrap:wrap}
+  #info .num{font-size:11px; color:#fff; background:var(--accent); padding:2px 7px; border-radius:6px; font-weight:600}
+  .tag{font-size:10.5px; color:var(--ink2); border:1px solid var(--line); padding:2px 8px; border-radius:999px; background:rgba(255,255,255,.6)}
+  #info h2{margin:10px 0 6px; font-size:20px; letter-spacing:-.02em; font-weight:650; line-height:1.15}
+  #info p{margin:0; color:var(--ink2); font-size:13px; line-height:1.5}
+  #info .nav{display:flex; align-items:center; gap:6px; margin-top:14px; padding-top:12px; border-top:1px solid var(--line)}
+  #info .nav .idx{font-size:11px; color:var(--ink3); margin-right:auto}
+  .mini{appearance:none; border:1px solid var(--line); background:#fff; color:var(--ink); border-radius:8px; height:28px; min-width:28px; padding:0 9px;
+        font:inherit; font-size:12px; cursor:pointer}
+  .mini:hover{border-color:rgba(255,90,31,.5); color:var(--accent-ink)}
+
+  /* Dock / slider */
+  #dock{position:fixed; left:50%; bottom:24px; transform:translateX(-50%); width:min(560px, calc(100% - 32px)); z-index:6; padding:12px 18px 14px}
+  #dock .top{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px}
+  #dock .lbl{font-size:10.5px; letter-spacing:.15em; text-transform:uppercase; color:var(--ink3)}
+  #dock .state{font-size:12px; color:var(--ink2)}
+  #dock .state b{color:var(--ink); font-weight:600}
+  #dock .ends{display:flex; justify-content:space-between; font-size:11px; color:var(--ink3); margin-top:4px}
+  input[type=range]{--fill:0%; -webkit-appearance:none; appearance:none; width:100%; height:26px; background:transparent; margin:0; cursor:pointer}
+  input[type=range]::-webkit-slider-runnable-track{height:3px; border-radius:3px; background:linear-gradient(90deg,var(--accent) 0 var(--fill), rgba(24,26,30,.14) var(--fill) 100%)}
+  input[type=range]::-moz-range-track{height:3px; border-radius:3px; background:linear-gradient(90deg,var(--accent) 0 var(--fill), rgba(24,26,30,.14) var(--fill) 100%)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:22px; height:22px; margin-top:-9.5px; border-radius:50%; background:#fff;
+      border:2px solid var(--accent); box-shadow:0 2px 8px rgba(0,0,0,.18)}
+  input[type=range]::-moz-range-thumb{width:18px; height:18px; border-radius:50%; background:#fff; border:2px solid var(--accent); box-shadow:0 2px 8px rgba(0,0,0,.18)}
+
+  #hint{position:fixed; left:28px; bottom:30px; z-index:4; font-size:11px; color:var(--ink3); line-height:1.7; pointer-events:none}
+  #hint b{color:var(--ink2); font-weight:600}
+
+  /* Tour */
+  #tourbar{position:fixed; left:50%; top:22px; transform:translateX(-50%); z-index:7; display:flex; align-items:center; gap:12px; padding:7px 8px 7px 14px;
+           border-radius:999px; opacity:0; pointer-events:none; transition:opacity .3s}
+  #tourbar.show{opacity:1; pointer-events:auto}
+  #tourbar .t{font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink2); white-space:nowrap}
+  #tourbar .prog{width:120px; height:3px; border-radius:3px; background:rgba(24,26,30,.12); overflow:hidden}
+  #tourbar .prog i{display:block; height:100%; width:0; background:var(--accent)}
+  #ghost{position:fixed; left:0; top:0; z-index:30; pointer-events:none; opacity:0; transition:opacity .35s; will-change:transform}
+  #ghost svg{display:block; filter:drop-shadow(0 3px 5px rgba(0,0,0,.25)); transition:transform .12s ease; transform-origin:4px 3px}
+  #ghost.press svg{transform:scale(.84)}
+  .ripple{position:fixed; z-index:29; width:14px; height:14px; margin:-7px 0 0 -7px; border-radius:50%; border:2px solid var(--accent); pointer-events:none;
+          animation:rip .6s ease-out forwards}
+  @keyframes rip{from{transform:scale(.4); opacity:1} to{transform:scale(3.4); opacity:0}}
+
+  #callout{position:fixed; left:0; top:0; z-index:20; pointer-events:none; opacity:0; transition:opacity .25s; will-change:transform}
+  #callout.show{opacity:1}
+  #callout .dot{position:absolute; left:-6px; top:-6px; width:12px; height:12px; border-radius:50%; background:var(--accent); box-shadow:0 0 0 3px #fff, 0 2px 8px rgba(0,0,0,.25)}
+  #callout svg{position:absolute; left:0; top:0; overflow:visible}
+  #callout .box{position:absolute; top:-54px; left:56px; transform:translateY(-50%); width:max-content; max-width:260px; padding:10px 13px 11px; background:var(--card-solid);
+                border-radius:12px; box-shadow:0 12px 30px -10px rgba(0,0,0,.28), 0 1px 3px rgba(0,0,0,.08)}
+  #callout.flip .box{left:-56px; transform:translate(-100%,-50%)}
+  #callout .box .k{font-size:10.5px; color:var(--accent); font-weight:700; letter-spacing:.08em}
+  #callout .box b{display:block; font-size:15px; letter-spacing:-.01em; margin:1px 0 3px}
+  #callout .box small{display:block; font-size:12px; color:var(--ink2); line-height:1.4}
+
+  #tip{position:fixed; left:0; top:0; z-index:15; pointer-events:none; padding:4px 9px; border-radius:7px; background:rgba(27,29,32,.88); color:#fff; font-size:11.5px;
+       opacity:0; transition:opacity .12s; white-space:nowrap}
+  #tip.show{opacity:1}
+  #tip .mono{color:#ffb08f; margin-right:6px}
+
+  #toast{position:fixed; left:50%; bottom:122px; transform:translate(-50%,8px); z-index:8; padding:11px 16px; font-size:13px; opacity:0; pointer-events:none;
+         transition:opacity .35s, transform .35s; white-space:nowrap}
+  #toast.show{opacity:1; transform:translate(-50%,0)}
+  #toast b{color:var(--accent-ink)}
+
+  #nogl[hidden]{display:none}
+  #nogl{position:fixed; inset:0; display:grid; place-items:center; z-index:50; font-size:15px; color:var(--ink2)}
+
+  @media (max-width: 860px){
+    #parts{display:none; top:120px; bottom:auto; max-height:52vh; left:16px}
+    body.show-parts #parts{display:block}
+    #partsToggle{display:inline-flex}
+    #hint{display:none}
+    #brand{left:18px; top:16px}
+    #brand h1{font-size:24px}
+    #brand p{display:none}
+    #tools{right:16px; top:16px; max-width:60%}
+    #info{left:16px; right:16px; width:auto; top:auto; bottom:118px}
+    #tourbar{top:auto; bottom:112px}
+    #toast{white-space:normal; width:calc(100% - 32px); text-align:center; bottom:180px}
+  }
+  @media (prefers-reduced-motion: reduce){ .ripple{animation:none; opacity:0} }
+</style>
+</head>
+<body>
+<div id="stage" role="img" aria-label="Interactive 3D turbofan engine"></div>
+<div id="nogl" hidden>WebGL is not available in this browser, so the 3D model cannot be shown.</div>
+
+<header id="brand">
+  <div class="eyebrow"><i></i>Exploded study · No. 01</div>
+  <h1>Turbofan</h1>
+  <p>High-bypass, two-spool jet engine. Twenty-four parts, every one of them built from code.</p>
+</header>
+
+<nav id="tools">
+  <button class="btn" id="partsToggle" type="button">Parts</button>
+  <button class="btn" id="replay" type="button"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5v11l9-5.5z"/></svg>Replay tour</button>
+  <button class="btn" id="spin" type="button" aria-pressed="true"><span class="led"></span>Spin</button>
+  <button class="btn" id="reset" type="button"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9M2.5 2.5v3h3"/></svg>Reset view</button>
+</nav>
+
+<aside id="parts" class="card" aria-label="Parts index"><p style="font-size:11px">Illustrative engine; dimensions and blade counts are artistic. <a href="https://www.grc.nasa.gov/www/k-12/BGP/turbfan.html">NASA: turbofan principles</a>.</p></aside>
+
+<aside id="info" class="card" aria-live="polite">
+  <div class="row"><span class="num mono" id="iNum">01</span><span class="tag" id="iSec">Section</span><span class="tag" id="iSpool">Spool</span></div>
+  <h2 id="iName">Part</h2>
+  <p id="iDesc">Description</p>
+  <div class="nav">
+    <span class="idx mono" id="iIdx">01 / 24</span>
+    <button class="mini" id="prev" type="button" aria-label="Previous part">&#8592;</button>
+    <button class="mini" id="next" type="button" aria-label="Next part">&#8594;</button>
+    <button class="mini" id="clear" type="button">Show all</button>
+  </div>
+</aside>
+
+<section id="dock" class="card">
+  <div class="top"><span class="lbl">Explode</span><span class="state"><b id="stateWord">Assembled</b> · <span class="mono" id="pct">0%</span></span></div>
+  <input type="range" id="explode" min="0" max="1000" value="0" aria-label="Explode amount, from assembled to fully exploded">
+  <div class="ends"><span>Assembled</span><span>Fully exploded</span></div>
+</section>
+
+<div id="hint"><b>Drag</b> orbit &nbsp;·&nbsp; <b>Right-drag</b> pan &nbsp;·&nbsp; <b>Scroll</b> zoom<br><b>Click</b> a part to isolate &nbsp;·&nbsp; <b>&#8592; &#8594;</b> step &nbsp;·&nbsp; <b>Esc</b> show all</div>
+
+<div id="tourbar" class="card"><span class="t">Guided tour</span><span class="prog"><i id="tprog"></i></span><button class="mini" id="skip" type="button">Skip</button></div>
+<div id="ghost"><svg width="28" height="28" viewBox="0 0 28 28"><path d="M4 3 L4 22.5 L9.3 17.6 L12.7 25.2 L16.2 23.7 L12.9 16.2 L19.8 16.2 Z" fill="#fff" stroke="#1b1d20" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+<div id="callout"><svg width="1" height="1"><polyline id="lead" points="0,0 44,-54 52,-54" fill="none" stroke="#ff5a1f" stroke-width="1.6"/></svg><div class="dot"></div><div class="box"><div class="k mono" id="cK">01</div><b id="cName">Part</b><small id="cLine">Line</small></div></div>
+<div id="tip"></div>
+<div id="toast" class="card"><b>Your turn.</b> Drag to orbit, scroll to zoom, and click any part to isolate it.</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "../_shared/three-r160/build/three.module.js",
+  "three/addons/": "../_shared/three-r160/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+
+/* ------------------------------------------------------------------ utils */
+const V3 = THREE.Vector3;
+const $ = id => document.getElementById(id);
+const lerp = (a, b, t) => a + (b - a) * t;
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const clamp01 = t => clamp(t, 0, 1);
+const easeIO = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const ss = (e0, e1, x) => { const t = clamp01((x - e0) / (e1 - e0)); return t * t * (3 - 2 * t); };
+const pad = n => String(n).padStart(2, '0');
+
+const ACCENT  = new THREE.Color('#ff5a1f');
+const C_COLD  = new THREE.Color('#e8e6e1');
+const C_HOT   = new THREE.Color('#e0dcd5');
+const C_STEEL = new THREE.Color('#dcdee1');
+const C_SHELL = new THREE.Color('#ecebe7');
+
+/* --------------------------------------------------------------- renderer */
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+} catch (e) { $('nogl').hidden = false; throw e; }
+let DPR = Math.min(window.devicePixelRatio || 1, 1.75);
+renderer.setPixelRatio(DPR);
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+$('stage').appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
+
+const camera = new THREE.PerspectiveCamera(26, innerWidth / innerHeight, 0.1, 300);
+camera.position.set(-9, 4, 12);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.minDistance = 2.2; controls.maxDistance = 48;
+controls.maxPolarAngle = Math.PI * 0.9;
+controls.enabled = false;
+
+const key = new THREE.DirectionalLight(0xffffff, 2.8);
+key.position.set(-4, 12, 7);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+Object.assign(key.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12, near: 1, far: 40 });
+key.shadow.bias = -0.0004; key.shadow.normalBias = 0.025;
+scene.add(key);
+scene.add(new THREE.HemisphereLight(0xffffff, 0xc9cacc, 0.35));
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(90, 90), new THREE.ShadowMaterial({ opacity: 0.12 }));
+ground.rotation.x = -Math.PI / 2; ground.position.y = -4.7; ground.receiveShadow = true;
+scene.add(ground);
+
+// technical-drawing centre line along the engine axis
+{
+  const g = new THREE.BufferGeometry().setFromPoints([new V3(-11.5, 0, 0), new V3(11.5, 0, 0)]);
+  const l = new THREE.Line(g, new THREE.LineDashedMaterial({ color: 0x8b9198, dashSize: 0.55, gapSize: 0.14, transparent: true, opacity: 0.5 }));
+  l.computeLineDistances(); scene.add(l);
+}
+
+/* Engine frame: built with the axis on local +Y (a = axial station, 0 = inlet),
+   rotated so the axis runs along world +X. Local +X therefore points world DOWN. */
+const A_MID = 3.38;
+const engine = new THREE.Group();
+engine.rotation.z = -Math.PI / 2;
+engine.position.x = -A_MID;
+scene.add(engine);
+
+/* --------------------------------------------------------- geometry kit */
+function revolve(runs, seg = 64, phiStart = 0, phiLen = Math.PI * 2) {
+  // each run is a smooth polyline in (r, a); runs meet at sharp corners
+  const geos = runs.map(run => new THREE.LatheGeometry(run.map(([r, a]) => new THREE.Vector2(Math.max(0, r), a)), seg, phiStart, phiLen));
+  return geos.length > 1 ? mergeGeometries(geos) : geos[0];
+}
+const loopRuns = pts => pts.map((p, i) => [p, pts[(i + 1) % pts.length]]);
+function sample(fn, a0, a1, n) { const o = []; for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n; o.push([fn(a), a]); } return o; }
+const band = (a0, a1, r0, r1, seg = 64) => revolve(loopRuns([[r0, a0], [r1, a0], [r1, a1], [r0, a1]]), seg);
+
+function diskGeo(a0, a1, rb, rh) {
+  const w = a1 - a0, c = (a0 + a1) / 2, d = rh - rb;
+  return revolve(loopRuns([
+    [rb, c - .36 * w], [rb + .22 * d, c - .36 * w], [rb + .32 * d, c - .16 * w], [rh - .26 * d, c - .16 * w],
+    [rh - .16 * d, c - .5 * w], [rh, c - .5 * w], [rh, c + .5 * w], [rh - .16 * d, c + .5 * w],
+    [rh - .26 * d, c + .16 * w], [rb + .32 * d, c + .16 * w], [rb + .22 * d, c + .36 * w], [rb, c + .36 * w]
+  ]), 64);
+}
+
+// twisted, cambered, lens-section aerofoil; span along local X, chord along Y (axial)
+function bladeGeo({ r0, r1, c0, c1, th, s0, s1, camber = .08, sweep = 0, ws = 4, hs = 3 }) {
+  const g = new THREE.BoxGeometry(1, 1, 1, ws, hs, 1);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const t = x + .5, u = y * 2;
+    const r = lerp(r0, r1, t), c = lerp(c0, c1, t);
+    const thk = th * (1 - .4 * t) * (1 - .6 * u * u);
+    const Y = y * c, Z = z * thk + camber * c * (1 - u * u) * .5;
+    const b = lerp(s0, s1, t), cb = Math.cos(b), sb = Math.sin(b);
+    p.setXYZ(i, r, Y * cb - Z * sb + sweep * t * t, Y * sb + Z * cb);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
+function mesh(geo, mat) { const m = new THREE.Mesh(geo, mat); m.castShadow = m.receiveShadow = true; return m; }
+function ring(geo, n, mat, phase = 0) {
+  const m = new THREE.InstancedMesh(geo, mat, n), M = new THREE.Matrix4();
+  for (let i = 0; i < n; i++) { M.makeRotationY(phase + i / n * Math.PI * 2); m.setMatrixAt(i, M); }
+  m.instanceMatrix.needsUpdate = true;
+  m.castShadow = m.receiveShadow = true;
+  m.computeBoundingSphere();
+  return m;
+}
+
+// half of a shell of revolution (phi 0..PI), capped on both cut faces
+function shellHalf(runs, seg = 48) {
+  const lathe = revolve(runs, seg, 0, Math.PI);
+  const pts = [];
+  runs.forEach((run, ri) => run.forEach((p, i) => { if (ri > 0 && i === 0) return; pts.push(p); }));
+  const f = pts[0], l = pts[pts.length - 1];
+  if (Math.hypot(f[0] - l[0], f[1] - l[1]) < 1e-6) pts.pop();
+  const capA = new THREE.ShapeGeometry(new THREE.Shape(pts.map(([r, a]) => new THREE.Vector2(r, a)))); capA.rotateY(-Math.PI / 2);
+  const capB = new THREE.ShapeGeometry(new THREE.Shape(pts.map(([r, a]) => new THREE.Vector2(-r, a)))); capB.rotateY(-Math.PI / 2);
+  return mergeGeometries([lathe, capA, capB]);
+}
+
+function compStage(root, mat, { a0, len, rh, rt, rb, nR, nS }) {
+  const rotor = new THREE.Group();
+  const aR = a0 + len * .3, aS = a0 + len * .74, cR = len * .5, cS = len * .42;
+  rotor.add(mesh(diskGeo(a0 + len * .06, a0 + len * .54, rb, rh), mat));
+  const bg = bladeGeo({ r0: rh - .012, r1: rt, c0: cR, c1: cR * .82, th: cR * .16, s0: .55, s1: .98, camber: .1 });
+  bg.translate(0, aR, 0); rotor.add(ring(bg, nR, mat));
+  const sg = bladeGeo({ r0: rh + .004, r1: rt + .014, c0: cS, c1: cS * .95, th: cS * .14, s0: -.38, s1: -.5, camber: -.1, ws: 3 });
+  sg.translate(0, aS, 0); root.add(ring(sg, nS, mat, .13));
+  root.add(mesh(band(aS - cS * .46, aS + cS * .46, rh - .026, rh + .006), mat));
+  root.add(mesh(band(aS - cS * .5, aS + cS * .5, rt + .012, rt + .034), mat));
+  root.add(rotor);
+  return { rotors: [rotor] };
+}
+
+function turbStage(root, mat, { a0, len, rh, rt, rb, nR, nS, shroud }) {
+  const rotor = new THREE.Group();
+  const aS = a0 + len * .27, aR = a0 + len * .72, cS = len * .46, cR = len * .44;
+  const ng = bladeGeo({ r0: rh - .004, r1: rt + .016, c0: cS, c1: cS * .95, th: cS * .3, s0: .78, s1: .7, camber: .2, ws: 3 });
+  ng.translate(0, aS, 0); root.add(ring(ng, nS, mat, .07));
+  root.add(mesh(band(aS - cS * .4, aS + cS * .4, rh - .03, rh + .004), mat));
+  root.add(mesh(band(aS - cS * .42, aS + cS * .42, rt + .014, rt + .04), mat));
+  rotor.add(mesh(diskGeo(a0 + len * .5, a0 + len * .96, rb, rh), mat));
+  const rg = bladeGeo({ r0: rh - .012, r1: rt, c0: cR, c1: cR * .9, th: cR * .3, s0: -.9, s1: -1.02, camber: -.2 });
+  rg.translate(0, aR, 0); rotor.add(ring(rg, nR, mat));
+  if (shroud) rotor.add(mesh(band(aR - cR * .22, aR + cR * .22, rt - .004, rt + .016), mat));
+  root.add(rotor);
+  return { rotors: [rotor] };
+}
+
+/* ------------------------------------------------------------------ parts */
+const parts = [], pickables = [], byId = {};
+function P(def, build) {
+  const mat = new THREE.MeshStandardMaterial({
+    color: def.base.clone(), roughness: def.rough ?? .5, metalness: def.metal ?? 0, envMapIntensity: .5
+  });
+  const root = new THREE.Group();
+  const out = build(mat, root) || {};
+  const part = Object.assign({
+    root, mat, rotors: out.rotors || [], subs: out.subs || null,
+    anchorObj: out.anchorObj || root,
+    anchorLocal: out.anchorLocal || new V3(-def.rTop, (def.a0 + def.a1) / 2, 0),
+    h: 0, f: 0, meshes: [], dA: 0, lift: def.lift || 0, d: 0, w: .6, shadow: true, prog: 0
+  }, def);
+  root.traverse(o => { if (o.isMesh) { o.userData.part = part; part.meshes.push(o); pickables.push(o); } });
+  engine.add(root);
+  part.index = parts.length; part.num = pad(parts.length + 1);
+  parts.push(part); byId[part.id] = part;
+  return part;
+}
+
+/* Intake & fan */
+P({ id: 'spinner', name: 'Spinner', section: 'Intake & fan', cluster: 'spin', spool: 'LP spool', kind: 'line', spin: 'lp',
+    a0: 0, a1: .56, rTop: .37, base: C_COLD,
+    desc: 'Rotating nose cone that guides incoming air cleanly onto the fan roots and sheds ice.' },
+  (mat, root) => {
+    const rotor = new THREE.Group();
+    const curve = []; for (let i = 0; i <= 28; i++) { const s = i / 28; curve.push([.37 * (1 - Math.pow(1 - s, 1.8)), .56 * s]); }
+    rotor.add(mesh(revolve([curve, [[.37, .56], [0, .56]]], 72), mat));
+    root.add(rotor); return { rotors: [rotor] };
+  });
+
+P({ id: 'fan', name: 'Fan', section: 'Intake & fan', cluster: 'fan', spool: 'LP spool', kind: 'line', spin: 'lp',
+    a0: .5, a1: .95, rTop: 1.3, base: C_COLD,
+    desc: 'Twenty-two wide-chord blades move a huge mass of air; most of it bypasses the core and provides much of the thrust.' },
+  (mat, root) => {
+    const rotor = new THREE.Group();
+    rotor.add(mesh(diskGeo(.53, .93, .1, .41), mat));
+    const bg = bladeGeo({ r0: .38, r1: 1.3, c0: .34, c1: .52, th: .07, s0: .42, s1: 1.08, camber: .14, sweep: -.06, ws: 14, hs: 5 });
+    bg.translate(0, .73, 0); rotor.add(ring(bg, 22, mat));
+    root.add(rotor); return { rotors: [rotor], anchorLocal: new V3(-1.3, .73, 0) };
+  });
+
+P({ id: 'ogv', name: 'Outlet guide vanes', section: 'Intake & fan', cluster: 'ogv', spool: 'Static', kind: 'line',
+    a0: 1.62, a1: 1.88, rTop: 1.375, base: C_COLD,
+    desc: 'Static vanes that straighten the swirling bypass flow into thrust and tie the core to the nacelle.' },
+  (mat, root) => {
+    const g = bladeGeo({ r0: .975, r1: 1.35, c0: .22, c1: .24, th: .035, s0: -.32, s1: -.18, camber: -.06, ws: 5 });
+    g.translate(0, 1.75, 0); root.add(ring(g, 40, mat));
+    root.add(mesh(band(1.63, 1.87, .955, .985), mat));
+    root.add(mesh(band(1.63, 1.87, 1.345, 1.375), mat));
+  });
+
+/* Compressor */
+for (let i = 0; i < 3; i++) {
+  const a0 = 1.08 + i * .23, rt = .73 - .02 * i;
+  P({ id: 'lpc' + (i + 1), name: `LP compressor stage ${i + 1}`, section: 'Compressor', cluster: 'lpc', spool: 'LP spool', kind: 'line', spin: 'lp',
+      a0, a1: a0 + .23, rTop: rt + .034, base: C_COLD,
+      desc: `Booster stage ${i + 1} of 3: a rotor–stator pair on the fan's shaft that gives the core air its first pressure rise.` },
+    (mat, root) => compStage(root, mat, { a0, len: .23, rh: .44, rt, rb: .1, nR: 34, nS: 40 }));
+}
+for (let i = 0; i < 6; i++) {
+  const a0 = 1.95 + i * .215, rt = .62 - .02 * i;
+  P({ id: 'hpc' + (i + 1), name: `HP compressor stage ${i + 1}`, section: 'Compressor', cluster: 'hpc', spool: 'HP spool', kind: 'line', spin: 'hp',
+      a0, a1: a0 + .215, rTop: rt + .034, base: C_COLD,
+      desc: `Stage ${i + 1} of 6: the rotor adds energy to the air and the stator behind it turns that speed into pressure.` },
+    (mat, root) => compStage(root, mat, { a0, len: .215, rh: .40 + .01 * i, rt, rb: .18, nR: 30 + 4 * i, nS: 36 + 4 * i }));
+}
+
+/* Hot section */
+P({ id: 'combustor', name: 'Combustor', section: 'Hot section', cluster: 'comb', spool: 'Static', kind: 'line',
+    a0: 3.22, a1: 3.99, rTop: .70, base: C_HOT,
+    desc: 'Annular chamber where eighteen fuel nozzles burn kerosene continuously, heating the core gas to around 1,500 °C.' },
+  (mat, root) => {
+    const dome = []; for (let i = 0; i <= 16; i++) { const t = Math.PI + Math.PI * i / 16; dome.push([.515 + .115 * Math.cos(t), 3.47 + .115 * Math.sin(t)]); }
+    const geos = [revolve([dome, [[.63, 3.47], [.63, 3.8]], [[.63, 3.8], [.6, 3.98]], [[.6, 3.98], [.44, 3.98]],
+                           [[.44, 3.98], [.40, 3.8]], [[.40, 3.8], [.40, 3.47]]], 72)];
+    for (const a of [3.57, 3.69]) { geos.push(band(a - .016, a + .016, .62, .645, 72)); geos.push(band(a - .016, a + .016, .385, .41, 72)); }
+    root.add(mesh(mergeGeometries(geos), mat));
+    const arm = new THREE.CylinderGeometry(.02, .02, .12, 10); arm.translate(.515, 3.30, 0);
+    const stem = new THREE.CylinderGeometry(.016, .016, .2, 8); stem.rotateZ(Math.PI / 2); stem.translate(.6, 3.25, 0);
+    const flange = new THREE.CylinderGeometry(.036, .036, .02, 14); flange.rotateZ(Math.PI / 2); flange.translate(.70, 3.25, 0);
+    root.add(ring(mergeGeometries([arm, stem, flange]), 18, mat));
+  });
+
+for (let i = 0; i < 2; i++) {
+  const a0 = 4.02 + i * .21, rt = .60 + .02 * i;
+  P({ id: 'hpt' + (i + 1), name: `HP turbine stage ${i + 1}`, section: 'Hot section', cluster: 'hpt', spool: 'HP spool', kind: 'line', spin: 'hp',
+      a0, a1: a0 + .21, rTop: rt + .04, base: C_HOT,
+      desc: `Stage ${i + 1} of 2: internally cooled blades take energy from the hottest gas to drive the HP compressor.` },
+    (mat, root) => turbStage(root, mat, { a0, len: .21, rh: .45, rt, rb: .18, nR: 38, nS: 28 }));
+}
+for (let i = 0; i < 4; i++) {
+  const a0 = 4.46 + i * .28, rt = .68 + .045 * i;
+  P({ id: 'lpt' + (i + 1), name: `LP turbine stage ${i + 1}`, section: 'Hot section', cluster: 'lpt', spool: 'LP spool', kind: 'line', spin: 'lp',
+      a0, a1: a0 + .28, rTop: rt + .04, base: C_HOT,
+      desc: `Stage ${i + 1} of 4: larger, cooler blades harvest the remaining energy to turn the fan and booster.` },
+    (mat, root) => turbStage(root, mat, { a0, len: .28, rh: .46, rt, rb: .1, nR: 46, nS: 40, shroud: true }));
+}
+
+P({ id: 'exhaust', name: 'Exhaust cone & rear frame', section: 'Hot section', cluster: 'exh', spool: 'Static', kind: 'line',
+    a0: 5.6, a1: 6.76, rTop: .86, base: C_HOT,
+    desc: 'Rear-frame struts carry the aft bearing while the cone smooths the hot core jet as it leaves the engine.' },
+  (mat, root) => {
+    const curve = []; for (let i = 0; i <= 22; i++) { const s = i / 22; curve.push([.44 * (1 - Math.pow(s, 1.7)), 5.62 + 1.14 * s]); }
+    root.add(mesh(revolve([[[0, 5.62], [.44, 5.62]], curve], 72), mat));
+    const g = bladeGeo({ r0: .43, r1: .86, c0: .2, c1: .2, th: .045, s0: 0, s1: 0, camber: 0, ws: 3 }); g.translate(0, 5.74, 0);
+    root.add(ring(g, 10, mat));
+    root.add(mesh(band(5.62, 5.86, .83, .855), mat));
+  });
+
+/* Spools */
+P({ id: 'lpshaft', name: 'LP shaft', section: 'Spools', cluster: 'shaft', spool: 'LP spool', kind: 'shaft', spin: 'lp',
+    a0: .6, a1: 5.75, rTop: .11, lift: 1.86, base: C_STEEL, metal: .35, rough: .32,
+    desc: 'Long, slender inner shaft linking the LP turbine to the fan and booster: the slow, high-torque spool.' },
+  (mat, root) => {
+    const rotor = new THREE.Group();
+    const geos = [revolve([[[0, .6], [.085, .6]], [[.085, .6], [.085, 5.75]], [[.085, 5.75], [0, 5.75]]], 40)];
+    for (const a of [.66, 1.2, 4.5, 5.55]) geos.push(band(a - .025, a + .025, .08, .108, 40));
+    rotor.add(mesh(mergeGeometries(geos), mat)); root.add(rotor); return { rotors: [rotor] };
+  });
+P({ id: 'hpshaft', name: 'HP shaft', section: 'Spools', cluster: 'shaft', spool: 'HP spool', kind: 'shaft', spin: 'hp',
+    a0: 1.92, a1: 4.48, rTop: .19, lift: 1.42, base: C_STEEL, metal: .35, rough: .32,
+    desc: 'Hollow outer spool joining the HP turbine to the HP compressor; it turns much faster than the LP shaft inside it.' },
+  (mat, root) => {
+    const rotor = new THREE.Group();
+    const geos = [revolve(loopRuns([[.125, 1.92], [.165, 1.92], [.165, 4.48], [.125, 4.48]]), 48)];
+    for (const a of [2.0, 3.2, 4.38]) geos.push(band(a - .03, a + .03, .16, .19, 48));
+    rotor.add(mesh(mergeGeometries(geos), mat)); root.add(rotor); return { rotors: [rotor] };
+  });
+
+/* Housing (clamshell halves) */
+function shellPart(def, runs) {
+  return P(def, (mat, root) => {
+    const g = shellHalf(runs);
+    const A = mesh(g, mat), B = mesh(g, mat);
+    B.rotation.y = Math.PI;         // B occupies local -X = world up
+    root.add(A, B);
+    return { subs: [{ obj: A, dir: 1 }, { obj: B, dir: -1 }], anchorObj: B, anchorLocal: new V3(def.rTop, (def.a0 + def.a1) / 2, 0) };
+  });
+}
+{
+  const outerR = a => 1.52 + .08 * ss(0, .9, a) - .18 * ss(2.4, 4.1, a);
+  const innerR = a => 1.34 + .04 * ss(1.4, 4.1, a) - .02 * (1 - ss(0, .3, a));
+  const lip = []; for (let i = 0; i <= 16; i++) { const t = Math.PI + Math.PI * i / 16; lip.push([1.42 + .1 * Math.cos(t), .1 * Math.sin(t)]); }
+  shellPart({ id: 'nacelle', name: 'Nacelle', section: 'Housing', cluster: 'shell', spool: 'Static', kind: 'shell',
+              a0: -.1, a1: 4.1, rTop: 1.6, lift: 2.4, base: C_SHELL, rough: .42,
+              desc: 'Aerodynamic housing: the inlet feeds the fan smoothly, and the cowls split open like clamshells for maintenance.' },
+    [lip, sample(outerR, 0, 4.1, 36), [[outerR(4.1), 4.1], [innerR(4.1), 4.1]], sample(innerR, 4.1, 0, 36)]);
+
+  const rO = a => .79 + .21 * ss(1.02, 1.7, a) - .10 * ss(3.8, 5.9, a);
+  const rI = a => .76 - .06 * ss(1.8, 2.3, a) + .16 * ss(3.6, 4.6, a);
+  shellPart({ id: 'corecowl', name: 'Core cowl', section: 'Housing', cluster: 'shell', spool: 'Static', kind: 'shell',
+              a0: 1.02, a1: 5.9, rTop: 1.0, lift: 2.4, base: C_SHELL, rough: .42,
+              desc: 'Inner fairing around the core: it forms the inside wall of the bypass duct and ends in the core exhaust nozzle.' },
+    [[[rI(1.02), 1.02], [rO(1.02), 1.02]], sample(rO, 1.02, 5.9, 40), [[rO(5.9), 5.9], [rI(5.9), 5.9]], sample(rI, 5.9, 1.02, 40)]);
+}
+
+/* -------------------------------------------------------- explode layout */
+{
+  const GAP_IN = .16, GAP_OUT = .5;
+  const line = parts.filter(p => p.kind === 'line');
+  let cur = 0, prev = null;
+  for (const p of line) {
+    const len = p.a1 - p.a0, gap = prev ? (prev.cluster === p.cluster ? GAP_IN : GAP_OUT) : 0;
+    const start = cur + gap; p.eC = start + len / 2; cur = start + len; prev = p;
+  }
+  const total = cur, start = A_MID - total / 2;
+  line.forEach((p, i) => { p.dA = start + p.eC - (p.a0 + p.a1) / 2; p.d = .18 + .22 * i / (line.length - 1); p.w = .6; });
+  const nac = byId.nacelle, cc = byId.corecowl;
+  nac.dA = start + total * .22 - (nac.a0 + nac.a1) / 2;
+  cc.dA = start + total * .75 - (cc.a0 + cc.a1) / 2;
+  nac.d = cc.d = 0; nac.w = cc.w = .42;
+  for (const id of ['lpshaft', 'hpshaft']) { const s = byId[id]; s.dA = A_MID - (s.a0 + s.a1) / 2; s.d = .4; s.w = .6; }
+}
+
+function applyExplode(e) {
+  for (const p of parts) {
+    const k = easeIO(clamp01((e - p.d) / p.w)); p.prog = k;
+    p.root.position.set(p.kind === 'shaft' ? p.lift * k : 0, p.dA * k, 0);
+    if (p.subs) for (const s of p.subs) s.obj.position.x = s.dir * p.lift * k;
+  }
+}
+
+/* ------------------------------------------------------------- framing */
+const tanHalf = () => Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+function fitDist(e) {
+  const hh = lerp(4.9, 7.6, e), vh = lerp(2.3, 4.4, e);
+  return Math.max(vh / tanHalf(), hh / (tanHalf() * camera.aspect)) * 1.4;
+}
+const HOME_PHI = 1.2, HOME_THETA = -.46;
+function homePos(dist, theta = HOME_THETA, phi = HOME_PHI) { return new V3().setFromSphericalCoords(dist, phi, theta); }
+
+let camTween = null;
+function tweenTo(target, dist, dir = null, dur = .9) {
+  const fromT = controls.target.clone(), fromP = camera.position.clone();
+  const d = (dir ? dir.clone() : fromP.clone().sub(fromT)).normalize();
+  camTween = { t: 0, dur, fromT, fromP, toT: target.clone(), toP: target.clone().add(d.multiplyScalar(dist)) };
+}
+function stepTween(dt) {
+  camTween.t += dt; const k = easeIO(clamp01(camTween.t / camTween.dur));
+  controls.target.lerpVectors(camTween.fromT, camTween.toT, k);
+  camera.position.lerpVectors(camTween.fromP, camTween.toP, k);
+  if (camTween.t >= camTween.dur) camTween = null;
+}
+controls.addEventListener('start', () => { camTween = null; });
+
+const _v = new V3();
+function partCenter(p) { return p.root.localToWorld(new V3(0, (p.a0 + p.a1) / 2, 0)); }
+function focusDist(p) {
+  const R = p.kind === 'shell' ? Math.max(p.rTop + p.lift * p.prog, (p.a1 - p.a0) / 2)
+          : p.kind === 'shaft' ? (p.a1 - p.a0) / 2 : Math.max(p.rTop, (p.a1 - p.a0) / 2);
+  return clamp(R / tanHalf() * (camera.aspect < 1 ? 2.9 : 1.9) + 1.2, 3.2, 28);
+}
+
+/* -------------------------------------------------------------- state */
+let explode = 0, explodeTarget = 0, spinOn = true;
+let selected = null, hovered = null, listHover = null, followC = null;
+const tourFocus = new Set();
+
+/* ----------------------------------------------------------- parts UI */
+{
+  const el = $('parts'); let last = null;
+  for (const p of parts) {
+    if (p.section !== last) { const h = document.createElement('div'); h.className = 'sec'; h.textContent = p.section; el.appendChild(h); last = p.section; }
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'pi';
+    b.innerHTML = `<span class="n mono">${p.num}</span><span>${p.name}</span>`;
+    b.addEventListener('click', () => { select(selected === p ? null : p); document.body.classList.remove('show-parts'); });
+    b.addEventListener('mouseenter', () => { listHover = p; });
+    b.addEventListener('mouseleave', () => { if (listHover === p) listHover = null; });
+    p.li = b; el.appendChild(b);
+  }
+}
+function renderSelection() {
+  for (const p of parts) p.li.classList.toggle('on', p === selected);
+  const el = $('info');
+  if (!selected) { el.classList.remove('show'); return; }
+  $('iNum').textContent = selected.num; $('iSec').textContent = selected.section; $('iSpool').textContent = selected.spool;
+  $('iName').textContent = selected.name; $('iDesc').textContent = selected.desc;
+  $('iIdx').textContent = `${selected.num} / ${pad(parts.length)}`;
+  el.classList.add('show');
+  selected.li.scrollIntoView({ block: 'nearest' });
+}
+function select(p, focus = true) {
+  selected = p || null;
+  if (selected) { followC = partCenter(selected); if (focus) tweenTo(followC, focusDist(selected)); }
+  else { followC = null; if (focus) tweenTo(new V3(), fitDist(explode)); }
+  renderSelection();
+}
+const step = d => select(parts[((selected ? selected.index : (d > 0 ? -1 : 0)) + d + parts.length) % parts.length]);
+$('prev').onclick = () => step(-1);
+$('next').onclick = () => step(1);
+$('clear').onclick = () => select(null);
+
+/* ------------------------------------------------------------- slider */
+const slider = $('explode');
+function syncSlider(v) { slider.value = Math.round(v * 1000); slider.style.setProperty('--fill', (v * 100).toFixed(1) + '%'); }
+slider.addEventListener('input', () => { explodeTarget = slider.value / 1000; slider.style.setProperty('--fill', (explodeTarget * 100).toFixed(1) + '%'); });
+
+/* ------------------------------------------------------------ toolbar */
+$('spin').onclick = e => { spinOn = !spinOn; e.currentTarget.setAttribute('aria-pressed', String(spinOn)); };
+$('reset').onclick = () => { select(null, false); tweenTo(new V3(), fitDist(explodeTarget), homePos(1)); };
+$('replay').onclick = () => startTour();
+$('skip').onclick = () => endTour();
+$('partsToggle').onclick = () => document.body.classList.toggle('show-parts');
+
+/* ------------------------------------------------------------ picking */
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+function pickAt(x, y) {
+  ndc.set(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hits = ray.intersectObjects(pickables, false);
+  if (!hits.length) return null;
+  const solid = hits.find(h => h.object.userData.part.f < .5);
+  return (solid || hits[0]).object.userData.part;
+}
+const mouse = { x: 0, y: 0, dirty: false, inside: false, down: null, touch: false };
+const cvs = renderer.domElement;
+cvs.addEventListener('pointerdown', e => { mouse.down = { x: e.clientX, y: e.clientY, t: performance.now() }; mouse.touch = e.pointerType === 'touch'; });
+cvs.addEventListener('pointermove', e => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.dirty = true; mouse.inside = true; mouse.touch = e.pointerType === 'touch'; });
+cvs.addEventListener('pointerleave', () => { mouse.inside = false; hovered = null; $('tip').classList.remove('show'); });
+cvs.addEventListener('pointerup', e => {
+  const d = mouse.down; mouse.down = null;
+  if (!d || tour) return;
+  if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6 && performance.now() - d.t < 600) {
+    const p = pickAt(e.clientX, e.clientY);
+    select(p);
+  }
+});
+function doHover() {
+  mouse.dirty = false;
+  const tip = $('tip');
+  if (!mouse.inside || mouse.down || mouse.touch) { hovered = null; tip.classList.remove('show'); return; }
+  hovered = pickAt(mouse.x, mouse.y);
+  cvs.style.cursor = hovered ? 'pointer' : 'grab';
+  if (hovered) {
+    tip.innerHTML = `<span class="mono">${hovered.num}</span>${hovered.name}`;
+    tip.style.transform = `translate(${mouse.x + 14}px, ${mouse.y + 16}px)`;
+    tip.classList.add('show');
+  } else tip.classList.remove('show');
+}
+
+window.addEventListener('keydown', e => {
+  if (tour) { endTour(); return; }
+  if (e.key === 'Escape') select(null);
+  else if (e.key === 'ArrowRight') { e.preventDefault(); step(1); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
+});
+
+/* -------------------------------------------------------------- tour */
+const STOPS = [
+  { ids: ['nacelle', 'corecowl'], at: 'nacelle', name: 'Nacelle & cowls', line: 'Streamlined housing whose cowls split open like clamshells.' },
+  { ids: ['spinner', 'fan'], at: 'fan', name: 'Fan', line: 'Moves a huge mass of air: about 80% of the thrust.' },
+  { ids: ['lpc1', 'lpc2', 'lpc3'], at: 'lpc2', name: 'Low-pressure compressor', line: 'Booster stages give the core air its first squeeze.' },
+  { ids: ['hpc1', 'hpc2', 'hpc3', 'hpc4', 'hpc5', 'hpc6'], at: 'hpc3', name: 'High-pressure compressor', line: 'Six rotor–stator stages raise the pressure step by step.' },
+  { ids: ['combustor'], at: 'combustor', name: 'Combustor', line: 'Fuel burns continuously in a ring-shaped chamber.' },
+  { ids: ['hpt1', 'hpt2'], at: 'hpt1', name: 'High-pressure turbine', line: 'Takes energy from the hottest gas to drive the HP compressor.' },
+  { ids: ['lpt1', 'lpt2', 'lpt3', 'lpt4'], at: 'lpt2', name: 'Low-pressure turbine', line: 'Turns the fan and booster through the LP shaft.' },
+  { ids: ['lpshaft', 'hpshaft'], at: 'hpshaft', name: 'Shafts', line: 'Two concentric spools that turn at different speeds.' },
+  { ids: ['exhaust'], at: 'exhaust', name: 'Exhaust', line: 'Rear frame and cone tidy the core jet as it leaves.' },
+];
+const T_LEN = 20, T_PRESS = 1.3, T_DRAG0 = 1.6, T_DRAG1 = 4.6, T_STOP0 = 5.0, T_STOP = 1.4, T_MOVE = .55;
+const T_OUT = T_STOP0 + STOPS.length * T_STOP; // 17.6
+let tour = null;
+
+function screenOf(obj, local) {
+  _v.copy(local); obj.localToWorld(_v); _v.project(camera);
+  return { x: (_v.x + 1) / 2 * innerWidth, y: (1 - _v.y) / 2 * innerHeight };
+}
+const anchorXY = s => { const p = byId[s.at]; return screenOf(p.anchorObj, p.anchorLocal); };
+function thumbXY(v) {
+  const r = slider.getBoundingClientRect(), th = 22;
+  return { x: r.left + th / 2 + (r.width - th) * v, y: r.top + r.height / 2 };
+}
+const mix = (a, b, t) => ({ x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) });
+
+function startTour() {
+  select(null, false);
+  camTween = null; controls.enabled = false;
+  tour = { t: 0, sp: camera.position.clone(), st: controls.target.clone(), stop: -1, lastClick: -9, from: { x: innerWidth * .82, y: innerHeight + 30 }, outro: false };
+  explodeTarget = 0;
+  $('tourbar').classList.add('show'); $('ghost').style.opacity = 1;
+  $('toast').classList.remove('show');
+}
+function endTour() {
+  if (!tour) return;
+  tour = null; tourFocus.clear();
+  explodeTarget = explode; syncSlider(explode);
+  controls.enabled = true; controls.update();
+  $('tourbar').classList.remove('show'); $('ghost').style.opacity = 0; $('ghost').classList.remove('press');
+  $('callout').classList.remove('show');
+  showToast();
+}
+let toastTimer = 0;
+function showToast() { const t = $('toast'); t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 3600); }
+// any real interaction hands control straight to the viewer
+window.addEventListener('pointerdown', e => { if (tour && !e.target.closest('#skip')) endTour(); }, true);
+window.addEventListener('wheel', () => { if (tour) endTour(); }, { passive: true, capture: true });
+
+function tourLogic(dt) {
+  tour.t += dt; const tt = tour.t;
+  // explode drive
+  if (tt < T_DRAG0) explode += (0 - explode) * (1 - Math.exp(-dt * 9));
+  else explode = easeIO(clamp01((tt - T_DRAG0) / (T_DRAG1 - T_DRAG0)));
+  explodeTarget = explode; syncSlider(explode);
+  // camera: blend from wherever the viewer was into a slow, framed orbit
+  const blend = easeIO(clamp01(tt / 1.4));
+  const theta = lerp(-.82, HOME_THETA, easeIO(clamp01(tt / T_LEN)));
+  const phi = lerp(1.18, HOME_PHI, clamp01(tt / T_LEN));
+  const pose = homePos(fitDist(explode), theta, phi);
+  camera.position.lerpVectors(tour.sp, pose, blend);
+  controls.target.lerpVectors(tour.st, new V3(), blend);
+  camera.lookAt(controls.target);
+  // stops
+  const k = tt >= T_STOP0 && tt < T_OUT ? Math.floor((tt - T_STOP0) / T_STOP) : -1;
+  const clickT = T_STOP0 + k * T_STOP + T_MOVE;
+  if (k >= 0 && tt >= clickT && tour.stop !== k) {
+    tour.stop = k; tour.lastClick = tt;
+    tourFocus.clear(); STOPS[k].ids.forEach(id => tourFocus.add(byId[id]));
+    const s = STOPS[k], first = byId[s.ids[0]], lastP = byId[s.ids[s.ids.length - 1]];
+    $('cK').textContent = s.ids.length > 1 ? `${first.num}–${lastP.num}` : first.num;
+    $('cName').textContent = s.name; $('cLine').textContent = s.line;
+    $('callout').classList.add('show');
+    const a = anchorXY(s), r = document.createElement('div'); r.className = 'ripple';
+    r.style.left = a.x + 'px'; r.style.top = a.y + 'px'; document.body.appendChild(r); setTimeout(() => r.remove(), 700);
+  }
+  if (tt >= T_OUT && !tour.outro) { tour.outro = true; tourFocus.clear(); $('callout').classList.remove('show'); showToast(); }
+  if (tt >= T_OUT + 1.0) $('ghost').style.opacity = 0;
+  if (tt >= T_LEN) endTour();
+}
+
+function tourUI() {
+  const tt = tour.t; let p;
+  if (tt < T_PRESS) p = mix(tour.from, thumbXY(0), easeIO(tt / T_PRESS));
+  else if (tt < T_STOP0) p = thumbXY(explode);
+  else if (tt < T_OUT) {
+    const k = Math.floor((tt - T_STOP0) / T_STOP), ts = T_STOP0 + k * T_STOP;
+    const from = k === 0 ? thumbXY(1) : anchorXY(STOPS[k - 1]);
+    p = mix(from, anchorXY(STOPS[k]), easeIO(clamp01((tt - ts) / T_MOVE)));
+  } else p = mix(anchorXY(STOPS[STOPS.length - 1]), { x: innerWidth / 2 + 30, y: innerHeight * .6 }, easeIO(clamp01((tt - T_OUT) / .9)));
+  const g = $('ghost');
+  g.style.transform = `translate(${p.x - 4}px, ${p.y - 3}px)`;
+  const pressed = (tt > T_PRESS && tt < T_DRAG1 + .1) || (tt - tour.lastClick < .16);
+  g.classList.toggle('press', pressed);
+  $('tprog').style.width = (clamp01(tt / T_LEN) * 100).toFixed(1) + '%';
+  if (tour.stop >= 0 && !tour.outro) {
+    const a = anchorXY(STOPS[tour.stop]), c = $('callout'), flip = a.x > innerWidth - 330;
+    c.style.transform = `translate(${a.x}px, ${a.y}px)`;
+    c.classList.toggle('flip', flip);
+    $('lead').setAttribute('points', flip ? '0,0 -44,-54 -52,-54' : '0,0 44,-54 52,-54');
+  }
+}
+
+/* ------------------------------------------------------------- frame */
+const SPIN = { lp: .45, hp: .95 };
+function updateMaterials(dt) {
+  const k = 1 - Math.exp(-dt * 10);
+  const hov = hovered || listHover;
+  for (const p of parts) {
+    const focus = p === selected || tourFocus.has(p);
+    const th = focus ? 1 : (p === hov ? .45 : 0);
+    const tf = selected ? (p === selected ? 0 : 1) : (tourFocus.size ? (tourFocus.has(p) ? 0 : .62) : 0);
+    p.h += (th - p.h) * k; p.f += (tf - p.f) * k;
+    const m = p.mat;
+    m.color.copy(p.base).lerp(ACCENT, p.h * .92);
+    m.emissive.copy(ACCENT).multiplyScalar(p.h * .14);
+    const op = 1 - p.f * .9, tr = op < .995;
+    if (tr !== m.transparent) { m.transparent = tr; m.depthWrite = !tr; m.needsUpdate = true; }
+    m.opacity = op;
+    const sh = p.f < .5;
+    if (sh !== p.shadow) { p.shadow = sh; for (const o of p.meshes) o.castShadow = sh; }
+  }
+}
+function followSelected() {
+  if (!selected || !followC) return;
+  const c = partCenter(selected), d = c.clone().sub(followC);
+  if (d.lengthSq() > 1e-10) {
+    controls.target.add(d); camera.position.add(d);
+    if (camTween) { camTween.fromT.add(d); camTween.fromP.add(d); camTween.toT.add(d); camTween.toP.add(d); }
+  }
+  followC.copy(c);
+}
+let lastWord = '';
+function updateReadout() {
+  $('pct').textContent = Math.round(explode * 100) + '%';
+  const w = explode < .005 ? 'Assembled' : explode > .995 ? 'Fully exploded' : 'Exploding';
+  if (w !== lastWord) { $('stateWord').textContent = w; lastWord = w; }
+}
+
+let perf = { t: 0, n: 0, done: false, skip: 1.0 };
+function perfCheck(dt) {
+  if (perf.done) return;
+  if (perf.skip > 0) { perf.skip -= dt; return; }
+  perf.t += dt; perf.n++;
+  if (perf.t > 2.5) {
+    const fps = perf.n / perf.t; perf.done = true;
+    if (fps < 48 && DPR > 1) { DPR = 1; renderer.setPixelRatio(1); }
+    if (fps < 32) { key.shadow.mapSize.set(1024, 1024); if (key.shadow.map) { key.shadow.map.dispose(); key.shadow.map = null; } }
+  }
+}
+
+let last = performance.now();
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  if (tour) tourLogic(dt);
+  else {
+    explode += (explodeTarget - explode) * (1 - Math.exp(-dt * 9));
+    if (Math.abs(explodeTarget - explode) < 1e-4) explode = explodeTarget;
+  }
+  applyExplode(explode);
+  if (!tour) { followSelected(); if (camTween) stepTween(dt); controls.update(); }
+  if (spinOn) for (const p of parts) if (p.spin) for (const r of p.rotors) r.rotation.y += SPIN[p.spin] * dt;
+  updateMaterials(dt);
+  if (mouse.dirty && !tour) doHover();
+  renderer.render(scene, camera);
+  if (tour) tourUI();
+  updateReadout();
+  perfCheck(dt);
+}
+
+function applyViewOffset() { // keep the model centred in the space right of the parts panel
+  camera.aspect = innerWidth / innerHeight;
+  camera.setViewOffset(innerWidth, innerHeight, innerWidth > 860 ? -130 : 0, innerHeight > 560 ? 34 : 0, innerWidth, innerHeight);
+}
+applyViewOffset();
+addEventListener('resize', () => {
+  applyViewOffset();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// initial pose and go. Shareable state: ?explode=0..1&part=<id> skips the tour.
+const q = new URLSearchParams(location.search);
+const qExplode = q.has('explode') ? clamp01(parseFloat(q.get('explode')) || 0) : null;
+const qPart = q.get('part') && byId[q.get('part')] ? byId[q.get('part')] : null;
+const deepLink = qExplode !== null || qPart || q.get('tour') === '0';
+explode = explodeTarget = qExplode ?? 0;
+applyExplode(explode);
+camera.position.copy(deepLink ? homePos(fitDist(explode)) : homePos(fitDist(0), -.82, 1.18));
+controls.target.set(0, 0, 0); camera.lookAt(0, 0, 0);
+syncSlider(explode);
+if (deepLink) {
+  controls.enabled = true; controls.update();
+  if (qPart) { scene.updateMatrixWorld(true); select(qPart, false); followC = partCenter(qPart);
+    controls.target.copy(followC); camera.position.copy(followC.clone().add(homePos(focusDist(qPart)))); controls.update(); }
+}
+requestAnimationFrame(frame);
+if (!deepLink) setTimeout(() => { if (!tour && explodeTarget === 0 && !selected) startTour(); }, 700);
+</script>
+</body>
+</html>
