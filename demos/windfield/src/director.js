@@ -87,11 +87,11 @@ const SHOTS = [
     },
   },
   {
-    preset: 'night', duration: 11, fov: 44,
+    preset: 'night', duration: 11, fov: 48,
     // Push in low through the fireflies.
     camera: (t, c) => ({
       pos: v(20, c.ground + 0.9, 25).lerp(v(14, c.ground + 1.1, 17.5), ease(t)),
-      look: v(0, c.ground + 6, 0),
+      look: v(0, c.ground + 7, 0),
     }),
   },
   {
@@ -149,6 +149,9 @@ export class FilmDirector {
 
   // Capture hook: jump to shot i, t seconds in.
   seek(i, t = 0) {
+    // A straight cut inherits its mood (and combine progress) from the shot before it.
+    const k = ((i % SHOTS.length) + SHOTS.length) % SHOTS.length;
+    if (SHOTS[k].cut) this.seek(k - 1);
     this.index = ((i % SHOTS.length) + SHOTS.length - 1) % SHOTS.length;
     this.next();
     this.t = t;
