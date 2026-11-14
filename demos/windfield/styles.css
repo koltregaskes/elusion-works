@@ -424,6 +424,12 @@ input[type='range']:focus-visible { outline: 2px solid var(--accent); outline-of
   .wf-hero, .wf-panel, .wf-ui { transition: none; }
 }
 
+/* The narrowest phones: seven action buttons only fit side by side if they tighten up. */
+@media (max-width: 380px) {
+  .wf-actions { gap: 4px; }
+  .wf-actions .wf-icon { width: 34px; height: 34px; }
+}
+
 /* WCAG AA controls and text. */
 .wf-preset.is-active .wf-mono { color: #34220f; }
 /* ------------------------------------------------------------------ driving */
