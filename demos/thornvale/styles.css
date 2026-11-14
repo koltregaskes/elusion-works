@@ -241,11 +241,12 @@ kbd {
 .lw-noscript { position: fixed; inset: auto 0 40% 0; text-align: center; }
 
 @media (max-width: 640px) {
+  .lw-title-name { font-size: clamp(24px, 6vw, 32px); letter-spacing: 0.2em; text-indent: 0.2em; }
   .lw-title-kicker { font-size: 10px; letter-spacing: 0.2em; }
   .lw-title-sub { font-size: 13px; }
   .lw-caption { bottom: 84px; font-size: 16px; }
   .lw-modes { gap: 2px; padding: 5px; }
-  .lw-modes button { padding: 8px 7px; font-size: 12px; white-space: nowrap; }
+  .lw-modes button { padding: 8px 4px; font-size: 12px; white-space: nowrap; }
   .lw-modes kbd, .lw-next { display: none; }
   .lw-modes #help-toggle kbd { display: inline-block; margin: 0; }
 }
