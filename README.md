@@ -115,6 +115,7 @@ change this one value to `mailto:contact@elusionworks.com` and rerun the build.
 The source configuration and validation scripts are not published. Fictional
 forms inside demos are separate from this real site contact route.
 
+The demo CSP build requires npm ci --ignore-scripts before python scripts/build-site.py, with Node 24+ and Python 3. Browser JSX compilation is replaced only in the assembled artifact; source recipes remain unchanged. CSP/runtime CI uses installed Edge on Windows and does not download browsers.
 Studio pulse rows show original editorial dates and explicitly label updates older than 30 days as an editorial archive. Invalid/future dates are unverified; deploying the site does not refresh these dates. Archive ticker dots do not pulse. This does not prove the separate Orbit Census acquisition or seven-day delivery window.
 The existing Pages workflow reports catalogue acquisition through a separate health job. Failed/skipped acquisition makes that job red while build/publication retain their existing fallback path. This uses the existing Actions failure signal, not a new issue alert, controller or schedule. A green static deployment alone is not catalogue freshness proof; real notification delivery still needs operational rehearsal.
 Orbit Census catalogue provenance distinguishes successful SATCAT enrichment from GP-only fallback. A missing or empty SATCAT map sets satcat:false and explicitly labels types as inferred from names. This does not prove successful acquisition or imply SATCAT ran merely because Pages deployed.

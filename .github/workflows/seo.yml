@@ -19,6 +19,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
+      - run: npm ci --ignore-scripts
       - run: node --test scripts/editorial-age.test.mjs
       - run: python scripts/build-site.py
       - run: node --test scripts/catalogue-health.test.mjs

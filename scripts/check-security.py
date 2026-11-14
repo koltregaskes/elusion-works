@@ -16,7 +16,7 @@ for p in (ROOT/'_site').rglob('*.html'):
 h=Meta();h.feed((ROOT/'_site/index.html').read_text());policy=h.meta['content-security-policy'];assert "script-src 'self';" in policy and 'nonce-elusion-frontdoor-schema' not in policy
 assert "object-src 'none'" in policy and "base-uri 'self'" in policy and "form-action 'self'" in policy
 assert not (ROOT/'_site/scripts').exists()
-print(f'Code policy: referrer on {count} HTML routes; existing CSP retained on {csp}; root script rule tightened without inline execution. Other routes still require individual CSP review.')
+print(f'Code policy: referrer on {count} HTML routes; CSP present on {csp}; previously missing demo policies are generated with hashes. Meta policies do not supply HTTP framing/MIME headers; interaction review remains separate.')
 parser=argparse.ArgumentParser();parser.add_argument('--live',action='store_true');args=parser.parse_args()
 if args.live:
     expected=json.loads((ROOT/'config/response-headers.json').read_text());request=urllib.request.Request('https://elusionworks.com/',method='HEAD')
