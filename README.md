@@ -116,3 +116,4 @@ The source configuration and validation scripts are not published. Fictional
 forms inside demos are separate from this real site contact route.
 
 External link checks validate each redirect hop before requesting it: HTTPS only, no embedded credentials, bounded hops and no loops. Confirmed 404/410 and unsafe redirects fail; access blocks and network failures remain explicitly unverified.
+Built SEO additionally binds JSON-LD to the current page URL and RSS links/dates to their original editorial source rows. Mutation tests reject unrelated schema graphs and fabricated RSS freshness without changing source dates.
