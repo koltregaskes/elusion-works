@@ -99,7 +99,7 @@ body:not([data-mode="flyover"]) .lw-caption { opacity: 0; }
 .lw-title {
   position: fixed;
   left: 50%;
-  top: 42%;
+  top: 27%;
   transform: translate(-50%, -50%) scale(0.985);
   width: max-content;
   max-width: calc(100vw - 32px);
@@ -112,7 +112,7 @@ body:not([data-mode="flyover"]) .lw-caption { opacity: 0; }
 .lw-title.is-on { opacity: 1; transform: translate(-50%, -50%) scale(1); transition-delay: 0.5s; }
 .lw-title p { margin: 0; }
 .lw-title-kicker { text-wrap: balance; font: 600 11px var(--mono); letter-spacing: 0.28em; text-transform: uppercase; color: var(--cyan); }
-.lw-title-name { margin: 12px 0 14px !important; font: 800 clamp(32px, 8vw, 84px)/1 var(--sans); letter-spacing: 0.3em; text-indent: 0.3em; text-transform: uppercase; color: var(--ink); }
+.lw-title-name { margin: 12px 0 14px !important; font: 800 clamp(32px, 6vw, 64px)/1 var(--sans); letter-spacing: 0.3em; text-indent: 0.3em; text-transform: uppercase; color: var(--ink); }
 .lw-title-name span { color: var(--pink); }
 .lw-title-sub { text-wrap: balance; font: 14px/1.5 var(--sans); color: var(--ink); opacity: 0.88; }
 .lw-title-sub kbd { margin: 0 2px; }
