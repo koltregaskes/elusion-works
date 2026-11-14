@@ -165,7 +165,14 @@ export class StudioUI {
       const on = Number(b.dataset.index) === i;
       b.classList.toggle('is-active', on);
       b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      // On a narrow screen the mood bar scrolls; keep the active mood in view. Scrolled
+      // by hand rather than scrollIntoView, which would also scroll any embedding page.
+      if (on && this.presetsEl.scrollWidth > this.presetsEl.clientWidth) {
+        const left = b.offsetLeft - (this.presetsEl.clientWidth - b.offsetWidth) / 2;
+        this.presetsEl.scrollTo({ left: Math.max(0, left), behavior: this.presetsPlaced ? 'smooth' : 'auto' });
+      }
     });
+    this.presetsPlaced = true;
     document.querySelector('[data-preset-name]').textContent = p.name;
     const hero = document.querySelector('[data-hero]');
     hero.classList.add('is-swapping');
@@ -197,8 +204,13 @@ export class StudioUI {
     document.querySelector('[data-camera]').addEventListener('click', () => this.h.onCamera());
     document.querySelector('[data-shot]').addEventListener('click', () => this.h.onShot());
     document.querySelector('[data-fullscreen]').addEventListener('click', () => {
-      if (document.fullscreenElement) document.exitFullscreen();
-      else document.documentElement.requestFullscreen?.();
+      // Embedded pages (an iframe without allowfullscreen) refuse; that is fine, stay put.
+      try {
+        const p = document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.();
+        p?.catch?.(() => {});
+      } catch {
+        /* not allowed here */
+      }
     });
     window.addEventListener('keydown', (e) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
