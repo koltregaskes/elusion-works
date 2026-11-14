@@ -21,6 +21,12 @@ export async function verifyShowreelControls(page, route) {
     await page.locator('[data-m="2"]').click();
     await page.waitForFunction(() => document.getElementById('moodName').textContent === 'Moonlit night');
     await page.locator('[data-m="0"]').click();
+    await page.locator('#hideBtn').click();
+    assert.equal(await page.locator('#ui').evaluate(el => el.inert), true);
+    assert.equal(await page.locator('[data-m="0"]').isVisible(), false);
+    await page.locator('#showUI').click();
+    assert.equal(await page.locator('#ui').evaluate(el => el.inert), false);
+    assert.equal(await page.locator('[data-m="0"]').isVisible(), true);
   } else if (route.includes('/wrecking-ball/')) {
     await page.locator('#mass').fill('1000');
     assert.equal(await page.locator('#massVal').textContent(), '1000 kg');

@@ -11,7 +11,9 @@
   body.walk canvas#c { cursor: crosshair; }
   #ui { position: fixed; inset: 0; pointer-events: none; color: var(--ink);
         font: 13px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; transition: opacity .6s; }
-  #ui.hidden { opacity: 0; }
+  #ui.hidden { opacity: 0; visibility: hidden; }
+  #showUI { position: fixed; bottom: 16px; left: 16px; color: #fff8eb; background: #241c14; border: 1px solid #a18b6f; min-height: 36px; }
+  #showUI[hidden] { display: none; }
   #title { position: absolute; left: 34px; top: 28px; text-shadow: 0 1px 12px rgba(0,0,0,.45); transition: opacity 1.4s; }
   #title .t1 { font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; font-size: 30px;
                letter-spacing: .32em; text-transform: uppercase; font-weight: 400; }
@@ -62,6 +64,7 @@
     </div>
   </div>
 </div>
+<button id="showUI" hidden>Show UI</button>
 <div id="err"></div>
 
 <script type="module">
@@ -1072,8 +1075,17 @@ function setSound(v){
 document.querySelectorAll('#moods button').forEach(b => b.addEventListener('click', () => setMood(+b.dataset.m)));
 camBtn.addEventListener('click', () => camMode === 'cine' ? enterWalk() : enterCine());
 sndBtn.addEventListener('click', () => setSound(!Sound.on));
-document.getElementById('hideBtn').addEventListener('click', () => ui.classList.toggle('hidden'));
-window.addEventListener('pointerdown', e => { if (!Sound.ctx && e.target !== sndBtn) setSound(true); }, true);
+const showUI = document.getElementById('showUI');
+function setUIHidden(hidden) {
+  ui.classList.toggle('hidden', hidden);
+  ui.inert = hidden;
+  showUI.hidden = !hidden;
+  if (hidden) showUI.focus();
+  else document.getElementById('hideBtn').focus();
+}
+document.getElementById('hideBtn').addEventListener('click', () => setUIHidden(true));
+showUI.addEventListener('click', () => setUIHidden(false));
+window.addEventListener('pointerdown', e => { if (!Sound.ctx && !e.target.closest('button')) setSound(true); }, true);
 
 let dragging = false, dragDist = 0, lastX = 0, lastY = 0;
 canvas.addEventListener('pointerdown', e => {
@@ -1101,7 +1113,7 @@ window.addEventListener('keydown', e => {
   if (e.code >= 'Digit1' && e.code <= 'Digit4') setMood(+e.code.slice(5) - 1);
   if (e.code === 'KeyC') camMode === 'cine' ? enterWalk() : enterCine();
   if (e.code === 'KeyM') setSound(!Sound.on);
-  if (e.code === 'KeyH') ui.classList.toggle('hidden');
+  if (e.code === 'KeyH') setUIHidden(!ui.classList.contains('hidden'));
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
