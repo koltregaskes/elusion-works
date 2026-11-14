@@ -704,7 +704,15 @@ export class Commander {
 
       // Interceptors and turreted corvettes are the strike-slip answer to
       // bombers, which the role shares above cannot tell from interceptors.
-      if (id === 'interceptor' || id === 'corvette') score *= 1 + 1.5 * this._bomberShare();
+      // Round 19: against a fleet that is mostly bombers the answer was too
+      // soft. Even kept buying bombers of its own, which have nothing to hit
+      // in a bomber swarm, and bomber-only spam beat it 20 times in 24. Past
+      // a bomber share of one half the answer steepens, up to three times as
+      // strong at all bombers, and spam now wins 10 in 24.
+      if (id === 'interceptor' || id === 'corvette') {
+        const bs = this._bomberShare();
+        score *= (1 + 1.5 * bs) * (1 + 4 * Math.max(0, bs - 0.5));
+      }
       if (this.bias[id]) score *= this.bias[id];
 
       // Scouts are intel, not fleet — buy one wing and stop.
