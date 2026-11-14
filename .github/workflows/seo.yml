@@ -20,6 +20,7 @@ jobs:
         with:
           node-version: '24'
       - run: python scripts/build-site.py
+      - run: node --test scripts/catalogue-health.test.mjs
       - run: node --check demos/orbit-census/tools/build-catalog.mjs
       - run: node --test scripts/catalogue-source.test.mjs
       - run: node --test scripts/redirect-safety.test.mjs
