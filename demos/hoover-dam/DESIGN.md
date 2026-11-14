@@ -128,7 +128,12 @@ switches between them.
   subject and a dashed model frame, redrawn from the camera every other frame.
 - **Callouts:** orange dot, elbow leader, two-line mono label; the set changes with the
   isolated assembly.
-- Deep links: `?t=13.5` (film time), `?q=0|1|2`, `?pause`, `?clean`, `?notour`.
+- Deep links: `?t=13.5` (film time), `?q=0|1|2`, `?pause`, `?clean`, `?notour`. The same
+  keys work after a hash (`#t=13.5&pause`) for hosts that drop query strings.
+- **Opening shot:** without `?t=`, the model boots in pieces, the camera swings in from high
+  and wide while the parts snap together, and the film clock holds at 00:00 until the ghost
+  cursor's first tap (about 3 s). Portrait screens back the camera off (up to 2.2x) so the
+  subject still fits, and phones start one quality tier down.
 - **Shared kit:** the stage and the material palette live in `demos/_teardown-kit/` so the next
   teardown machine reuses them; the Hoover page imports them from there.
 - **Draw-call budget:** materials are shared per subsystem and static parts are merged per
