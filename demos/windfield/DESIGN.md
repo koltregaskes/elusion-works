@@ -64,9 +64,25 @@ field into a crop, and the Combine subject works in any mood.
 ## Controls
 
 Drag to look around. WASD to move, Q and E for height, Shift to hurry. F toggles the
-cinematic camera. T takes the wheel of the combine (W and S throttle, A and D steer,
+cinematic camera. M plays the film. T takes the wheel of the combine (W and S throttle, A and D steer,
 drag to swing the camera, Esc hands back to the autopilot). Keys 1 to 8 switch mood,
 Space pauses, H hides the interface. The camera button saves a still.
+
+## Film
+
+Press **M** (or the film button) for a self-directing short film through every mood,
+about a minute and a half, looping. `src/director.js` holds the shot list: a crane up
+out of the dawn grass, a low slide through the meadow, a dolly into the golden-hour
+sun, a long lens trackside as the combine works past, an aerial follow over the cut
+lanes, a tilt up into the turning oak, a wide orbit in the storm, a push-in through
+the fireflies and an orbit through the stones to the bonfire.
+
+Each shot has its own lens and camera move. A change of mood dips to black and the new
+mood is set instantly in the dark, so there is never a cross-fade through the wrong
+colours; shots within one mood cut straight. The frame is letterboxed to 2.39:1 (with
+thinner bars on tall screens, which also get a wider lens), the interface is hidden,
+and each mood gets a caption. Esc, M or grabbing the scene hands the camera back.
+`?film` opens straight into it. Starting it from the button also turns the sound on.
 
 ## Performance
 
@@ -113,5 +129,5 @@ scene got its ship.
 
 `?manual` stops the render loop and exposes `window.__windfield`: `step(dt, n)`,
 `preset(i)`, `advanceCombine(seconds)`, `drive(on, throttle, turn)`, `combineAt()` and
-`look(x, y, z, tx, ty, tz)`, so frames can be rendered deterministically for video.
-`?q=low|medium|high|ultra` and `?preset=<id>` set the starting state.
+`look(x, y, z, tx, ty, tz)` and `film(on, shot, seconds)`, so frames can be rendered deterministically for video.
+`?q=low|medium|high|ultra`, `?preset=<id>` and `?film` set the starting state.

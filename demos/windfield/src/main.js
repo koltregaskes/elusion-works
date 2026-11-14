@@ -19,6 +19,7 @@ import { CameraRig } from './controls.js';
 import { StudioUI } from './ui.js';
 import { WindAudio } from './audio.js';
 import { Bench } from './bench.js';
+import { FilmDirector } from './director.js';
 
 const url = new URLSearchParams(location.search);
 const MANUAL = url.has('manual'); // frame-stepped capture mode, driven from outside
@@ -434,7 +435,7 @@ function resize() {
   bloom.resolution.set(w / div, h / div);
   camera.aspect = w / h;
   // Portrait screens get a wider lens so the subject still fits side to side.
-  camera.fov = w / h < 1 ? 64 : 48;
+  if (!document.body.classList.contains('is-film')) camera.fov = w / h < 1 ? 64 : 48;
   camera.updateProjectionMatrix();
   particleUniforms.uPixelRatio.value = renderer.getPixelRatio();
   harvest.setViewScale(camera, renderer);
@@ -537,6 +538,100 @@ window.addEventListener('blur', () => {
   driveKeys.clear();
   syncDriveInput();
 });
+// ---------------------------------------------------------------- film mode
+// A self-directing, letterboxed short film through every mood (src/director.js).
+const filmEl = {
+  fade: document.querySelector('[data-film-fade]'),
+  caption: document.querySelector('[data-film-caption]'),
+  eyebrow: document.querySelector('[data-film-eyebrow]'),
+  title: document.querySelector('[data-film-title]'),
+  sound: document.querySelector('[data-film-sound]'),
+  button: document.querySelector('[data-film]'),
+};
+const film = new FilmDirector({
+  presets: PRESETS,
+  setPreset: (i) => setPreset(i, true),
+  advanceHarvest: (seconds) => advanceCombine(seconds),
+  combine: () => ({ x: harvest.position.x, z: harvest.position.z, heading: harvest.driver.heading }),
+  onShot(preset, shot, index) {
+    if (shot.cut) return;
+    const c = filmEl.caption;
+    const opening = index === 0;
+    c.classList.toggle('is-title', opening);
+    filmEl.eyebrow.textContent = opening ? 'Elusion Works presents' : preset.eyebrow;
+    filmEl.title.textContent = opening ? 'Windfield' : preset.title;
+    c.style.setProperty('--shot', `${shot.duration}s`);
+    c.classList.remove('is-on');
+    void c.offsetWidth; // restart the caption animation
+    c.classList.add('is-on');
+  },
+  onFade(a) {
+    filmEl.fade.style.opacity = a.toFixed(3);
+  },
+});
+
+function baseFov() {
+  return camera.aspect < 1 ? 64 : 48;
+}
+
+function syncSoundButtons() {
+  document.querySelector('[data-sound]').setAttribute('aria-pressed', audio.on ? 'true' : 'false');
+  filmEl.sound.setAttribute('aria-pressed', audio.on ? 'true' : 'false');
+  filmEl.sound.textContent = audio.on ? 'Sound on' : 'Sound off';
+}
+
+function setFilm(on, { withSound = false } = {}) {
+  if (on === film.active) return;
+  if (on) {
+    if (driving) setDriving(false);
+    if (withSound && !audio.on) audio.start();
+    syncSoundButtons();
+    document.body.classList.add('is-film');
+    film.start();
+  } else {
+    film.stop();
+    document.body.classList.remove('is-film');
+    filmEl.caption.classList.remove('is-on');
+    camera.fov = baseFov();
+    camera.updateProjectionMatrix();
+    harvest.setViewScale(camera, renderer);
+    rig.syncAnglesFromCamera();
+    rig.mode = 'free';
+    rig.goCinematic();
+  }
+  filmEl.button.setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+
+filmEl.button.addEventListener('click', () => setFilm(!film.active, { withSound: true }));
+document.querySelector('[data-film-exit]').addEventListener('click', () => setFilm(false));
+filmEl.sound.addEventListener('click', () => {
+  if (audio.on) audio.stop();
+  else audio.start();
+  syncSoundButtons();
+});
+document.querySelector('[data-sound]').addEventListener('click', syncSoundButtons);
+// Grabbing the scene hands the camera back.
+canvas.addEventListener('pointerdown', () => setFilm(false));
+// While the film runs, the director owns the camera and the moods, so the scene keys
+// are held back. M starts or stops the film; Esc leaves it; Space still pauses.
+const FILM_HELD_KEYS = new Set(['w', 'a', 's', 'd', 'q', 'e', 'f', 't', 'shift', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', '1', '2', '3', '4', '5', '6', '7', '8']);
+window.addEventListener('keydown', (e) => {
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+  const k = e.key.toLowerCase();
+  if (k === 'm' && !e.repeat) {
+    setFilm(!film.active, { withSound: true });
+    e.stopPropagation();
+    return;
+  }
+  if (!film.active) return;
+  if (k === 'escape') {
+    setFilm(false);
+    e.stopPropagation();
+  } else if (FILM_HELD_KEYS.has(k)) {
+    e.stopPropagation();
+  }
+}, true);
+
 rig.onModeChange = (m) => ui.setCameraMode(m);
 ui.setCameraMode(rig.mode);
 
@@ -588,7 +683,11 @@ function frame(dt) {
     rig.focus.lerp(new THREE.Vector3(), 1 - Math.exp(-dt * 2));
   }
 
-  rig.update(dt, time);
+  if (film.active) {
+    if (film.apply(camera, simDt, time)) harvest.setViewScale(camera, renderer);
+  } else {
+    rig.update(dt, time);
+  }
   camera.updateMatrixWorld();
   updateGrassPatch(camera);
   sky.position.copy(camera.position);
@@ -667,6 +766,16 @@ function frame(dt) {
   }
 }
 
+// Fast-forward the autopilot, so captures and the film can show a part-harvested field.
+function advanceCombine(seconds) {
+  const step = 1 / 15;
+  for (let k = 0; k < seconds / step; k++) {
+    harvest.update(step, time, { windDir: windUniforms.uWindDir.value, windStrength: state.windStrength, sunElevation: state.sunElevation, speedScale: state.combineSpeed ?? 1 });
+  }
+  rig.focus.copy(harvest.position);
+  rig.snapNext = true;
+}
+
 let last = performance.now();
 const bench = BENCH ? new Bench({ setQuality, renderer, getQuality: () => quality }) : null;
 function loop(now) {
@@ -708,19 +817,17 @@ if (MANUAL) {
       harvest.driver.input.throttle = throttle;
       harvest.driver.input.turn = turn;
     },
-    advanceCombine(seconds) {
-      // Fast-forward the autopilot so captures can show a part-harvested field.
-      const step = 1 / 15;
-      for (let k = 0; k < seconds / step; k++) {
-        harvest.update(step, time, { windDir: windUniforms.uWindDir.value, windStrength: state.windStrength, sunElevation: state.sunElevation, speedScale: state.combineSpeed ?? 1 });
-      }
-      rig.focus.copy(harvest.position);
-      rig.snapNext = true;
+    advanceCombine,
+    film(on, shot, t) {
+      setFilm(on);
+      if (on && shot !== undefined) film.seek(shot, t);
     },
     ready: true,
   };
   frame(1 / 30);
 } else {
   if (bench) bench.start(performance.now());
+  // ?film (or data-autofilm on the body) opens straight into the film.
+  if (!BENCH && (url.has('film') || document.body.hasAttribute('data-autofilm'))) setFilm(true);
   requestAnimationFrame(loop);
 }
