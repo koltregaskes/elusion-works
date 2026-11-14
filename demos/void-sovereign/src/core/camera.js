@@ -2613,6 +2613,8 @@ export class CameraRig {
        search prefers a pose that needs none. */
     this._forcedN = 0;
     const ctx = this._shotContext(this._focus.target, list);
+    /* Kept angle: no pull toward the lit side either, only round rocks. */
+    if (keepAngle) ctx.haveSun = false;
     const best = this._bestShot(ctx, yaw0, pitch0, dist0);
     this._takeShot(best, instant);
     this._forceHeld(ctx, best);
