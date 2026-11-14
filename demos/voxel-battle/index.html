@@ -1,0 +1,664 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hastings 1066 Diorama</title>
+<style>
+  :root{--ink:#f3ead8;--muted:#c9bda4;--panel:rgba(20,17,14,.74);--line:rgba(214,186,120,.35);--accent:#d6b46a;}
+  html,body{margin:0;height:100%;overflow:hidden;background:#151311;color:var(--ink);
+    font-family:"Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;}
+  body{background:radial-gradient(ellipse at 50% 38%,#3b3732 0%,#1d1b18 55%,#0d0c0b 100%);}
+  #app{position:fixed;inset:0}
+  #app canvas{display:block}
+  #caption{position:fixed;top:16px;left:50%;transform:translateX(-50%);width:min(700px,calc(100% - 32px));box-sizing:border-box;
+    text-align:center;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:9px 18px 12px;
+    backdrop-filter:blur(4px);pointer-events:none}
+  #cap-num{font-size:11px;letter-spacing:.32em;color:var(--accent);text-transform:uppercase}
+  #cap-title{font-size:clamp(20px,3.2vw,30px);margin:2px 0 4px;letter-spacing:.02em}
+  #cap-sub{font-size:clamp(13px,1.6vw,15px);color:var(--muted);line-height:1.4}
+  .fade{animation:fade .9s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+  #hud{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);width:min(880px,calc(100% - 32px));box-sizing:border-box;
+    background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 12px 9px;backdrop-filter:blur(4px)}
+  #controls{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:7px}
+  button{font:inherit;font-size:13px;color:var(--ink);background:rgba(255,255,255,.06);border:1px solid var(--line);
+    border-radius:4px;padding:4px 10px;cursor:pointer}
+  button:hover{background:rgba(214,180,106,.2)}
+  #clock{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--muted);font-size:13px}
+  #timeline{position:relative;height:26px;cursor:pointer;touch-action:none;user-select:none}
+  #segs{display:flex;height:100%;gap:2px}
+  .seg{background:rgba(255,255,255,.07);border-radius:2px;font-size:11px;color:var(--muted);display:flex;align-items:center;
+    justify-content:center;overflow:hidden;white-space:nowrap;position:relative;min-width:0}
+  .seg .fill{position:absolute;left:0;top:0;bottom:0;background:rgba(214,180,106,.32);width:0}
+  .seg span{position:relative;padding:0 3px;overflow:hidden;text-overflow:ellipsis}
+  .seg.active{color:var(--ink)}
+  #playhead{position:absolute;top:-3px;bottom:-3px;width:2px;margin-left:-1px;background:var(--accent);box-shadow:0 0 6px var(--accent);pointer-events:none}
+  #hint{font-size:11px;color:var(--muted);margin-top:6px;text-align:center;opacity:.85}
+  .lb{position:fixed;left:0;top:0;font-size:12px;letter-spacing:.06em;white-space:nowrap;color:#fff;
+    text-shadow:0 1px 3px #000,0 0 8px #000;pointer-events:none;transition:opacity .5s;padding-bottom:7px;will-change:transform}
+  .lb::after{content:'';position:absolute;left:50%;bottom:0;width:1px;height:7px;background:rgba(255,255,255,.8)}
+  .lb.en{color:#ffd9c9}.lb.no{color:#d5e4ff}
+  #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:16px;letter-spacing:.1em}
+  @media (max-width:640px){ .seg span{display:none} #hint{display:none} #cap-sub{font-size:12px} .lb{font-size:10px} }
+</style>
+<script type="importmap">
+{"imports":{
+  "three":"../_shared/three-r160/build/three.module.js",
+  "three/addons/":"../_shared/three-r160/examples/jsm/"
+}}
+</script>
+</head>
+<body>
+<div id="app"></div>
+<div id="labels"></div>
+<div id="loading">Raising the shield wall&hellip;</div>
+<div id="caption"><div id="cap-num"></div><div id="cap-title"></div><div id="cap-sub"></div></div>
+<div id="hud">
+  <div id="controls">
+    <button id="bPlay">Pause</button>
+    <button id="bRestart">Restart</button>
+    <button id="bOrbit">Auto-orbit: on</button>
+    <button id="bLabels">Labels: auto</button>
+    <span id="clock">0:00 / 1:00</span>
+  </div>
+  <div id="timeline"><div id="segs"></div><div id="playhead"></div></div>
+  <div id="hint">Drag to orbit &middot; scroll to zoom &middot; right-drag to pan &middot; click the timeline to jump &middot; space to pause</div>
+</div>
+<script>
+  setTimeout(function(){var l=document.getElementById('loading');if(l)l.textContent='Could not load three.js from the CDN. Check your connection and reload.';},12000);
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ---------------------------------------------------------------- utilities */
+const DUR = 60, HOLD = 3.5, U = 0.18;
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const rand = mulberry32(1066);
+const R = (a,b)=>a+(b-a)*rand();
+const pick = arr=>arr[Math.floor(rand()*arr.length)];
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const lerp=(a,b,u)=>a+(b-a)*u;
+const smooth=u=>{u=clamp(u,0,1);return u*u*(3-2*u);};
+function keyEval(k,t){
+  if(t<=k[0][0]) return k[0][1];
+  for(let i=0;i<k.length-1;i++){
+    if(t<k[i+1][0]){const u=(t-k[i][0])/(k[i+1][0]-k[i][0]);return lerp(k[i][1],k[i+1][1],smooth(u));}
+  }
+  return k[k.length-1][1];
+}
+
+/* ---------------------------------------------------------------- phases */
+const PHASES = [
+  {t0:0, t1:6,  n:'I',   short:'Deploy',          title:'Senlac Hill, 14 October 1066',
+   sub:'King Harold’s English form a shield wall along the ridge. Duke William’s Bretons, Normans and Franco-Flemish deploy at the foot of the slope.'},
+  {t0:6, t1:14, n:'II',  short:'Arrow volleys',   title:'Arrow volleys',
+   sub:'Norman archers advance and loose up the slope. Shooting uphill, most arrows thud into the raised shields.'},
+  {t0:14,t1:23, n:'III', short:'Infantry',        title:'The infantry assault',
+   sub:'Mail-clad foot soldiers climb the hill and crash into the wall. Axes, spears and thrown stones drive them back.'},
+  {t0:23,t1:30, n:'IV',  short:'Cavalry',         title:'The knights charge',
+   sub:'William’s mounted knights charge uphill. Horses will not ride into an unbroken wall of shields, and the line holds.'},
+  {t0:30,t1:40, n:'V',   short:'Feigned retreat', title:'The feigned retreat',
+   sub:'On the Norman left the horsemen turn and flee. English levies break ranks to chase them downhill, and the knights wheel round and cut them down.'},
+  {t0:40,t1:48, n:'VI',  short:'High arrows',     title:'Arrows from above',
+   sub:'Archers shoot high so arrows drop behind the shields. Harold is killed; tradition says an arrow struck him in the eye.'},
+  {t0:48,t1:56, n:'VII', short:'Wall breaks',     title:'The shield wall breaks',
+   sub:'Archers, foot and horse attack together. The thinned line gives way and the royal standards fall.'},
+  {t0:56,t1:60, n:'VIII',short:'Dusk',            title:'Dusk: William’s victory',
+   sub:'The last English flee into the Weald. The Norman Conquest of England has begun.'},
+];
+
+/* ---------------------------------------------------------------- terrain model */
+const X0=-50, Z0=-40, NX=101, NZ=81;
+const ridgeZ = x => -16 + 0.0045*x*x;          // crest line of Senlac ridge (curves south at the flanks)
+const streamZ = x => 35 + 2*Math.sin(x*0.12);   // marshy stream at the foot of the field
+function rawH(x,z){
+  const d = z - ridgeZ(x);
+  let h = d<0 ? 10 - 0.012*d*d : 1.5 + 8.5*Math.exp(-(d/19)*(d/19));
+  const edge = 1 - 0.4*smooth((Math.abs(x)-34)/16);
+  h = 1.5 + (h-1.5)*edge;
+  h += 0.5*Math.sin(x*0.31+z*0.17)*Math.cos(z*0.23-x*0.11);
+  if (Math.abs(z-streamZ(x))<1.4) h = 0.5;
+  return Math.max(0.5, Math.round(h*2)/2);
+}
+const H = new Float32Array(NX*NZ);
+for(let ix=0;ix<NX;ix++) for(let iz=0;iz<NZ;iz++) H[ix*NZ+iz]=rawH(ix+X0, iz+Z0);
+function gy(x,z){
+  const ix=clamp(Math.round(x)-X0,0,NX-1), iz=clamp(Math.round(z)-Z0,0,NZ-1);
+  return H[ix*NZ+iz];
+}
+
+/* ---------------------------------------------------------------- renderer / scene */
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.setClearColor(0x000000, 0);
+app.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(38, innerWidth/innerHeight, 0.5, 1000);
+camera.position.set(54, 50, 80);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 4, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.07;
+controls.minDistance = 22;
+controls.maxDistance = 220;
+controls.maxPolarAngle = 1.38;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.45;
+
+const hemi = new THREE.HemisphereLight(0xcfd8e6, 0x4a3d2a, 0.95);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff1dc, 2.4);
+sun.position.set(45, 80, 35);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, {left:-75,right:75,top:75,bottom:-75,near:1,far:320});
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.03;
+scene.add(sun); scene.add(sun.target);
+const fillLight = new THREE.DirectionalLight(0x9fb3d1, 0.35);
+fillLight.position.set(-60, 40, -50);
+scene.add(fillLight);
+
+const tmpC = new THREE.Color();
+const IDQ = new THREE.Quaternion();
+const V3 = (x,y,z)=>new THREE.Vector3(x,y,z);
+
+/* ---------------------------------------------------------------- terrain voxels */
+{
+  const geo = new THREE.BoxGeometry(1,1,1); geo.translate(0,0.5,0);
+  const mat = new THREE.MeshLambertMaterial({color:0xffffff});
+  const mesh = new THREE.InstancedMesh(geo, mat, NX*NZ);
+  const m = new THREE.Matrix4();
+  let i=0;
+  const grassLo = new THREE.Color(0x667f36), grassHi = new THREE.Color(0x938f4c), grassBack = new THREE.Color(0x56703a);
+  for(let ix=0;ix<NX;ix++) for(let iz=0;iz<NZ;iz++){
+    const x=ix+X0, z=iz+Z0, h=H[ix*NZ+iz];
+    m.compose(V3(x,-2,z), IDQ, V3(1,h+2,1));
+    mesh.setMatrixAt(i, m);
+    const sd = Math.abs(z-streamZ(x)), rz = ridgeZ(x);
+    if (sd<1.4) tmpC.setHex(0x3f6f8c);
+    else if (sd<3.4) tmpC.setHex(0x6a7440);
+    else if (z<rz-1.5 && Math.abs(x-(2+Math.sin(z*0.15)*2.2))<1.0) tmpC.setHex(0x8a7352);  // track north to London
+    else {
+      const u = clamp((h-2)/8,0,1);
+      tmpC.copy(grassLo).lerp(grassHi, u*0.75);
+      if (z<rz-2) tmpC.lerp(grassBack, 0.5);
+      const n = Math.sin(x*0.7+z*0.3)*Math.cos(z*0.5-x*0.2);
+      if (n>0.82) tmpC.lerp(new THREE.Color(0xa08a45), 0.45);     // autumn patches
+    }
+    tmpC.offsetHSL(0, 0, (rand()-0.5)*0.045);
+    mesh.setColorAt(i, tmpC);
+    i++;
+  }
+  mesh.receiveShadow = true; mesh.castShadow = true;
+  scene.add(mesh);
+
+  // museum plinth
+  const wood = new THREE.MeshLambertMaterial({color:0x3a2416});
+  const plinth = new THREE.Mesh(new THREE.BoxGeometry(103, 5, 83), wood);
+  plinth.position.set(0,-4.5,0); plinth.receiveShadow = true; scene.add(plinth);
+  const trim = new THREE.Mesh(new THREE.BoxGeometry(104.4, 0.8, 84.4), new THREE.MeshLambertMaterial({color:0x22150c}));
+  trim.position.set(0,-6.6,0); scene.add(trim);
+  // brass plaque
+  const cv = document.createElement('canvas'); cv.width=2048; cv.height=160;
+  const g = cv.getContext('2d');
+  const grad = g.createLinearGradient(0,0,0,160); grad.addColorStop(0,'#b8924a'); grad.addColorStop(1,'#7a5a26');
+  g.fillStyle=grad; g.fillRect(0,0,2048,160);
+  g.strokeStyle='#4a3414'; g.lineWidth=8; g.strokeRect(8,8,2032,144);
+  g.fillStyle='#2a1c0a'; g.font='bold 74px Palatino Linotype, Georgia, serif'; g.textAlign='center'; g.textBaseline='middle';
+  g.fillText('THE BATTLE OF HASTINGS  ·  SENLAC HILL  ·  14 OCTOBER 1066', 1024, 84);
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+  const plaque = new THREE.Mesh(new THREE.PlaneGeometry(52, 4.06), new THREE.MeshLambertMaterial({map:tex}));
+  plaque.position.set(0,-4.4,41.56); scene.add(plaque);
+}
+
+/* ---------------------------------------------------------------- trees and scrub */
+{
+  const geo = new THREE.BoxGeometry(1,1,1);
+  const parts = [];
+  const leaf = ['#4f6b2c','#5d7a30','#8a7a2c','#a0662a','#7a4a22','#3f5a28','#6b6a2a'];
+  function tree(x,z,s){
+    const y = gy(x,z);
+    parts.push([x,y+1.0*s,z,0.5*s,2*s,0.5*s,'#4a3220']);
+    const c = pick(leaf);
+    parts.push([x,y+2.8*s,z,2.6*s,2.2*s,2.6*s,c]);
+    parts.push([x+R(-0.6,0.6)*s,y+4.0*s,z+R(-0.6,0.6)*s,1.8*s,1.4*s,1.8*s,c]);
+    parts.push([x+R(-1,1)*s,y+2.4*s,z+R(-1,1)*s,1.6*s,1.4*s,1.6*s,pick(leaf)]);
+  }
+  for(let k=0;k<170;k++){ const x=R(-49,49), z=R(-40,-29); if(z>ridgeZ(x)-10) continue; tree(x,z,R(0.9,1.4)); }
+  for(let k=0;k<50;k++){ const s=rand()<.5?-1:1; tree(s*R(43,49), R(-28,30), R(0.8,1.2)); }
+  for(let k=0;k<30;k++){ const x=R(-48,48); tree(x, streamZ(x)+R(3,5), R(0.7,1.0)); }
+  for(let k=0;k<90;k++){ const x=R(-48,48), z=R(-10,38); if(Math.abs(z-streamZ(x))<1.6) continue;
+    const y=gy(x,z); parts.push([x,y+0.3,z,R(0.6,1.1),0.6,R(0.6,1.1), rand()<.5?'#5b6e2e':'#7a7034']); }
+  // reed tufts in the marsh
+  for(let k=0;k<120;k++){ const x=R(-49,49), z=streamZ(x)+R(-3,3); if(Math.abs(z-streamZ(x))<1.5) continue;
+    parts.push([x,gy(x,z)+0.45,z,0.25,0.9,0.25,'#8a8a4a']); }
+  const mesh = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({color:0xffffff}), parts.length);
+  const m = new THREE.Matrix4();
+  parts.forEach((p,i)=>{ m.compose(V3(p[0],p[1],p[2]),IDQ,V3(p[3],p[4],p[5])); mesh.setMatrixAt(i,m);
+    tmpC.set(p[6]).offsetHSL(0,0,(rand()-.5)*0.05); mesh.setColorAt(i,tmpC); });
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  scene.add(mesh);
+}
+
+/* ---------------------------------------------------------------- soldier templates (voxels, units of U) */
+const PAL = {skin:0xd9a87e, mail:0x7d838c, steel:0xa9b0b8, leg:0x4a3b2c, wood:0x7a5230, boss:0xc8a64a, leather:0x5c3a1e,
+  mane:0x2a1d14, hair:0x5a3a22, shield:0xaa3333, shield2:0xeeeeee, horse:0x6b4226, body:0x7d838c,
+  bnR:0xa52a22, bnY:0xe0b43a, bnW:0xf0ece0, bnK:0x1d1b1a, bnB:0x2f4f8f};
+const FOOT = [
+  [-0.8,1.5,0, 1.2,3,1.2,'leg'], [0.8,1.5,0, 1.2,3,1.2,'leg'],
+  [0,5,0, 3.2,4,2,'body'],
+  [-1.9,5.2,0.2, 0.9,3.4,1,'body'], [1.9,5.2,0.2, 0.9,3.4,1,'body'],
+  [0,7.9,0, 1.8,1.8,1.8,'skin']];
+const HELM = [[0,9.0,0, 2.1,0.9,2.1,'steel'], [0,8.1,1.0, 0.35,1.0,0.3,'steel']];
+const CONE = [[0,9.0,0, 2.1,0.9,2.1,'steel'], [0,9.75,0, 1.2,0.7,1.2,'steel'], [0,8.1,1.0, 0.35,1.0,0.3,'steel']];
+const V_HC = [...FOOT, ...HELM, [0,5,1.45, 4.2,4.2,0.5,'shield'], [0,5,1.8, 1.0,1.0,0.4,'boss'],
+  [2.2,7.5,0.7, 0.35,8.5,0.35,'wood'], [2.2,11,1.25, 0.35,1.8,1.6,'steel']];                       // housecarl with Dane axe
+const V_FY = [...FOOT, [0,9.0,0, 1.9,0.6,1.9,'hair'], [0,4.8,1.45, 3.4,3.4,0.5,'shield'], [0,4.8,1.75, 0.8,0.8,0.3,'boss'],
+  [2.2,8,0.6, 0.3,12,0.3,'wood'], [2.2,14.4,0.6, 0.45,1.3,0.45,'steel']];                         // fyrdman with spear
+const V_NI = [...FOOT, ...CONE, [0,5.9,1.45, 3.4,3.0,0.5,'shield'], [0,3.7,1.45, 2.0,2.0,0.5,'shield'], [0,2.1,1.45, 0.9,1.3,0.5,'shield'],
+  [0,4.8,1.75, 0.6,4.8,0.2,'shield2'], [2.2,8.5,0.6, 0.3,13,0.3,'wood'], [2.2,15.4,0.6, 0.45,1.3,0.45,'steel']]; // Norman foot, kite shield
+const V_AR = [...FOOT, [0,8.95,0, 1.9,0.7,1.9,'hair'], [-2.1,6,0.9, 0.3,8,0.3,'wood'], [-2.1,9.8,0.6, 0.3,0.6,0.6,'wood'],
+  [-2.1,2.2,0.6, 0.3,0.6,0.6,'wood'], [0.9,6.4,-1.3, 0.8,2.8,0.8,'leather']];                      // archer
+const HORSE = [[0,8.5,0, 3.0,3.2,7.2,'horse'], [-1.0,3.5,2.6, 1,7,1,'horse'], [1.0,3.5,2.6, 1,7,1,'horse'],
+  [-1.0,3.5,-2.6, 1,7,1,'horse'], [1.0,3.5,-2.6, 1,7,1,'horse'], [0,11.4,3.6, 1.8,3.8,1.8,'horse'],
+  [0,12.6,5.1, 1.6,1.6,2.8,'horse'], [0,12.4,2.9, 0.6,3.6,0.9,'mane'], [0,8.2,-4.0, 0.7,3.2,0.7,'mane'],
+  [0,10.4,-0.4, 3.4,0.6,3.4,'shield2']];
+const RIDER = [[-1.8,9.9,0.6, 0.8,3.2,1.4,'leg'], [1.8,9.9,0.6, 0.8,3.2,1.4,'leg'], [0,12.8,0, 3.0,3.6,2.0,'body'],
+  [0,15.5,0, 1.8,1.8,1.8,'skin'], [0,16.6,0, 2.0,0.8,2.0,'steel'], [0,17.3,0, 1.1,0.7,1.1,'steel'],
+  [-2.0,12.6,0.6, 0.5,4.2,2.6,'shield']];
+const LANCE = [[1.9,13.2,3.4, 0.35,0.35,13,'wood'], [1.9,13.2,10.4, 0.45,0.45,1.3,'steel']];
+const V_CAV = [...HORSE, ...RIDER, ...LANCE];
+
+function withBanner(base, poleX, baseY, len, pattern){
+  const v = [...base, [poleX, baseY+len/2, -0.3, 0.45, len, 0.45, 'wood'], [poleX, baseY+len+0.3, -0.3, 0.7,0.7,0.7,'boss']];
+  const c = 2.0, top = baseY + len - 0.6;
+  pattern.forEach((row,r)=>[...row].forEach((ch,j)=>v.push([poleX+0.3+c*(j+0.5), top-c*(r+0.5), -0.3, c, c, 0.3, 'bn'+ch, j+1])));
+  return v;
+}
+const DRAGON = ['RRRRRRR','RYYRRRR','RRYYYRR','RRYRYYR','RYRRRYR'];   // Dragon of Wessex
+const FIGHTING_MAN = ['YYYYYY','YYKKYY','YKKKKY','YYKKYY','YKYYKY']; // Harold's "Fighting Man"
+const PAPAL = ['WWYWW','YYYYY','WWYWW','WWYWW'];                     // papal banner
+const BEARER = [...FOOT, ...HELM];
+
+const tmpM = new THREE.Matrix4();
+function prep(vox, cav=false){
+  return {cav, vox, mats: vox.map(v=>new THREE.Matrix4().compose(V3(v[0],v[1],v[2]), IDQ, V3(v[3],v[4],v[5]))), wave: vox.map(v=>v[7]||0)};
+}
+const T = {
+  hc: prep(V_HC), fy: prep(V_FY), ni: prep(V_NI), ar: prep(V_AR), cav: prep(V_CAV, true),
+  harold: prep(V_HC),
+  dragon: prep(withBanner(BEARER, 2.2, 0, 21, DRAGON)),
+  fman: prep(withBanner(BEARER, 2.2, 0, 21, FIGHTING_MAN)),
+  william: prep([...HORSE, ...RIDER, [1.9,14.6,1.2, 0.5,3.6,0.5,'wood'], [1.9,16.6,1.2, 0.9,0.9,0.9,'steel']], true),
+  papal: prep(withBanner([...HORSE, ...RIDER], 2.2, 11, 15, PAPAL), true),
+};
+
+/* ---------------------------------------------------------------- the armies */
+const soldiers = [];
+const ENG_SHIELDS = ['#b5402e','#d9b24c','#7a4a2a','#e3d7b8','#8a2f3a','#3f5f88','#c27a2a'];
+const NOR_SHIELDS = ['#3b5f9a','#e9e2cc','#a83a2c','#4f7a3a','#d4ab3c','#2f3f6a'];
+const FY_TUNIC = ['#7a5a34','#5f6b3a','#8a4a2e','#6d6a5e','#4e5a6e','#94704a'];
+const AR_TUNIC = ['#5a6e3a','#7b5b34','#8c3b2e','#4d5f78','#6e4e6a'];
+const HORSES = ['#6b4226','#8a4b22','#a8a39a','#2b2420','#5a3a22','#d1c9b8'];
+
+function mk(o){
+  const s = Object.assign({side:'E', hx:0, hz:0, tz:0, keys:null, lag:0, rank:0, deathT:Infinity, fleeT:Infinity, fdx:0,
+    pursuer:false, survivor:false, pdx:0, jz:0, front:false, archer:false, colors:{}, seed:rand(), spread:rand()-0.5,
+    fallDir: rand()<0.8?1:-1}, o);
+  s.cav = s.tpl.cav;
+  s.defYaw = s.side==='E' ? 0 : Math.PI;
+  soldiers.push(s); return s;
+}
+
+// --- English: two ranks of housecarls at the front of the wall
+const english = [];
+for(let r=0;r<2;r++) for(let x=-40;x<=40.01;x+=0.95){
+  const xx = x + (r?0.47:0) + R(-0.08,0.08); if (xx>40.5) continue;
+  const s = mk({tpl:T.hc, side:'E', hx:xx, hz:ridgeZ(xx)+1.7-r*1.05, rank:r, front:true,
+    colors:{body:PAL.mail, shield:pick(ENG_SHIELDS)}});
+  const q = rand();
+  if (q<0.04) s.deathT = R(8.5,13.8);
+  else if (q<0.10) s.deathT = R(18.4,21.6);
+  else if (q<0.16) s.deathT = R(26.6,28.8);
+  else if (q<0.30) s.deathT = R(41.6,47.6);
+  else if (q<0.80) s.deathT = R(51.2,55.5);
+  else { s.fleeT = R(52.5,55.5); s.fdx = R(-0.8,0.8); }
+  english.push(s);
+}
+// --- English: three ranks of fyrd behind (gap in the centre for the king and his standards)
+for(let r=0;r<3;r++) for(let x=-41;x<=41.01;x+=1.0){
+  const xx = x + (r%2?0.5:0) + R(-0.1,0.1); if (Math.abs(xx)<3.2 || xx>41.5) continue;
+  const s = mk({tpl:T.fy, side:'E', hx:xx, hz:ridgeZ(xx)-0.6-r*1.1, rank:r+2,
+    colors:{body:pick(FY_TUNIC), shield:pick(ENG_SHIELDS), hair:pick(['#5a3a22','#3a2a1a','#8a6a3a','#6a6a6a','#7a3a1a'])}});
+  // the English right (west, -x) pursues the "fleeing" Normans
+  if (xx<-12 && xx>-40 && rand()<0.7){
+    s.pursuer = true; s.lag = R(0,0.9); s.pdx = R(-2,2); s.jz = R(-2.5,2.5);
+    if (rand()<0.85) s.deathT = R(36.9,39.7); else s.survivor = true;
+  }
+  if (s.deathT===Infinity){
+    const q = rand();
+    if (q<0.03) s.deathT = R(8.5,13.8);
+    else if (q<0.20) s.deathT = R(41.6,47.6);
+    else if (q<0.55) s.deathT = R(51.5,56);
+    else { s.fleeT = R(50.5,54); s.fdx = R(-1,1); }
+  }
+  english.push(s);
+}
+// --- Harold and the royal standards
+const harold = mk({tpl:T.harold, side:'E', hx:-0.4, hz:ridgeZ(0)-1.4, deathT:46.6, fallDir:1,
+  colors:{body:'#8a2a22', steel:'#d2b048', shield:'#d9b24c'}});
+const dragonBearer = mk({tpl:T.dragon, side:'E', hx:-2.4, hz:ridgeZ(0)-2.2, deathT:52.4, fallDir:-1, colors:{body:PAL.mail}});
+const fmanBearer = mk({tpl:T.fman, side:'E', hx:1.3, hz:ridgeZ(0)-2.4, deathT:53.1, fallDir:1, colors:{body:PAL.mail}});
+
+// --- Normans: key-framed advance (p=0 at start line, p=1 at the English front)
+const K_ARCH  = [[0,0],[5.2,0],[6.8,1],[13.3,1],[14.8,0.25],[39,0.25],[40.6,1],[47.5,1],[48.3,1.1],[60,1.1]];
+const K_INF   = [[0,0],[14,0],[18,1],[21.5,1],[23.6,0.25],[48,0.25],[51.5,1],[54,1.15],[57,1.35],[60,1.4]];
+const K_INF_L = [[0,0],[14,0],[18,1],[21.5,1],[23.6,0.25],[31,0.25],[33.5,-0.12],[36,-0.12],[38.2,0.44],[40.5,0.44],[42.5,0.25],[48,0.25],[51.5,1],[54,1.15],[57,1.35],[60,1.4]];
+const K_CAV   = [[0,0],[23,0],[26.5,1],[28.5,1],[30.5,0.3],[48.5,0.3],[51.5,1],[54,1.2],[57,1.4],[60,1.45]];
+const K_CAV_L = [[0,0],[23,0],[26.5,1],[28.5,1],[30.5,0.3],[31,0.3],[32.3,0.93],[33.2,0.93],[35.4,-0.08],[36.2,-0.08],[38,0.56],[40.5,0.56],[42.5,0.3],[48.5,0.3],[51.5,1],[54,1.2],[57,1.4],[60,1.45]];
+const K_WILL  = [[0,0],[48.5,0],[53,0.45],[58,0.7]];
+
+const normans = [];
+const refs = {};
+// archers
+for(let r=0;r<2;r++) for(let x=-38;x<=38.01;x+=1.6){
+  const xx = x + (r?0.8:0) + R(-0.15,0.15);
+  const s = mk({tpl:T.ar, side:'N', archer:true, hx:xx, hz:12+r*1.3, tz:ridgeZ(xx)+15+r*1.3, keys:K_ARCH, lag:R(0,0.5)+r*0.2, rank:r,
+    colors:{body:pick(AR_TUNIC), hair:pick(['#5a3a22','#3a2a1a','#6a5a3a','#7d838c'])}});
+  normans.push(s);
+  if (r===0 && Math.abs(xx)<0.9) refs.archers = s;
+}
+// infantry: Bretons (left), Normans (centre), Franco-Flemish (right)
+const groups = [['L',-40,-14],['C',-12,12],['R',14,40]];
+for(const [g,a,b] of groups){
+  const mid = (a+b)/2;
+  for(let r=0;r<3;r++) for(let x=a;x<=b+0.01;x+=1.05){
+    const xx = x + (r%2?0.5:0) + R(-0.1,0.1);
+    const s = mk({tpl:T.ni, side:'N', hx:xx, hz:19+r*1.15, tz:ridgeZ(xx)+3.0+r*1.15, keys:g==='L'?K_INF_L:K_INF,
+      lag:R(0,0.6)+r*0.25, rank:r, colors:{body:PAL.mail, shield:pick(NOR_SHIELDS), shield2:pick(NOR_SHIELDS)}});
+    const q = rand();
+    if (r===0 && q<0.25) s.deathT = R(18.3,21.6);
+    else if (r===1 && q<0.08) s.deathT = R(18.6,21.6);
+    else if (r===0 && q<0.33) s.deathT = R(51.6,54);
+    normans.push(s);
+    if (r===0 && !refs['inf'+g] && xx>=mid-0.6) refs['inf'+g] = s;
+  }
+  // cavalry
+  for(let r=0;r<2;r++) for(let x=a+0.4;x<=b+0.01;x+=1.75){
+    const xx = x + (r?0.85:0) + R(-0.1,0.1);
+    const s = mk({tpl:T.cav, side:'N', hx:xx, hz:26+r*2.2, tz:ridgeZ(xx)+3.6+r*2.2, keys:g==='L'?K_CAV_L:K_CAV,
+      lag:R(0,0.5)+r*0.3, rank:r, colors:{body:PAL.mail, horse:pick(HORSES), shield:pick(NOR_SHIELDS), shield2:pick(NOR_SHIELDS)}});
+    const q = rand();
+    if (r===0 && q<0.2) s.deathT = R(26.7,28.6);
+    else if (q<0.06) s.deathT = R(51.6,54);
+    normans.push(s);
+    if (r===0 && g==='C' && !refs.cav && xx>=mid-1) refs.cav = s;
+  }
+}
+const william = mk({tpl:T.william, side:'N', hx:-1.2, hz:31.5, tz:ridgeZ(0)+7, keys:K_WILL,
+  colors:{body:PAL.mail, horse:'#2b2420', shield:'#a52a22', shield2:'#a52a22', steel:'#c9b06a'}});
+const papal = mk({tpl:T.papal, side:'N', hx:1.6, hz:32.3, tz:ridgeZ(0)+7.8, keys:K_WILL, lag:0.2,
+  colors:{body:PAL.mail, horse:'#d1c9b8', shield:'#e9e2cc', shield2:'#e9e2cc'}});
+
+/* ---------------------------------------------------------------- deterministic motion */
+const CLASH = [[17.9,21.6],[26.4,28.6],[32.2,33.3],[51.3,55]];
+const inClash = t => CLASH.some(w=>t>w[0]&&t<w[1]);
+function sPos(s, t, out){
+  if (s.side==='N'){
+    const p = keyEval(s.keys, t - s.lag);
+    let z = s.hz + (s.tz - s.hz)*p, x = s.hx;
+    if (p>1) x += s.spread*(p-1)*9;
+    out.x = clamp(x,-48,48); out.z = Math.max(z,-38); out.p = p; return out;
+  }
+  let x = s.hx, z = s.hz;
+  if (s.pursuer){
+    const u1 = smooth((t-33.6-s.lag)/2.8);
+    const tz = ridgeZ(x) + 22 + s.jz;
+    x += s.pdx*u1; z = lerp(z, tz, u1);
+    if (s.survivor){ const u2 = smooth((t-39.8-s.lag)/2.6); x = lerp(x, s.hx, u2); z = lerp(z, s.hz, u2); }
+  }
+  if (t > s.fleeT){ const d = t - s.fleeT; z -= 3.3*d; x += s.fdx*d; }
+  out.x = clamp(x,-48,48); out.z = Math.max(z,-38.5); out.p = 0; return out;
+}
+
+/* ---------------------------------------------------------------- soldier instanced mesh */
+let total = 0; for(const s of soldiers){ s.start = total; total += s.tpl.mats.length; }
+const soldierMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1), new THREE.MeshLambertMaterial({color:0xffffff}), total);
+soldierMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+soldierMesh.castShadow = true; soldierMesh.receiveShadow = true; soldierMesh.frustumCulled = false;
+for(const s of soldiers){
+  s.tpl.vox.forEach((v,i)=>{
+    const key = v[6];
+    const col = s.colors[key] !== undefined ? s.colors[key] : PAL[key];
+    tmpC.set(col);
+    if (!key.startsWith('bn')) tmpC.offsetHSL(0,0,(rand()-0.5)*0.06);
+    soldierMesh.setColorAt(s.start+i, tmpC);
+  });
+}
+scene.add(soldierMesh);
+
+const mSold = new THREE.Matrix4(), mRot = new THREE.Matrix4(), mTilt = new THREE.Matrix4(), mScale = new THREE.Matrix4().makeScale(U,U,U), mW = new THREE.Matrix4(), mWave = new THREE.Matrix4();
+const P={x:0,z:0,p:0}, A={x:0,z:0,p:0}, B={x:0,z:0,p:0};
+function updateSoldiers(t){
+  const arr = soldierMesh.instanceMatrix.array;
+  const clash = inClash(t);
+  for(const s of soldiers){
+    const dead = t >= s.deathT;
+    const tt = dead ? s.deathT : t;
+    sPos(s, tt, P); const px=P.x, pz=P.z, pp=P.p;
+    sPos(s, tt-0.12, A); sPos(s, tt+0.12, B);
+    const vx=(B.x-A.x)/0.24, vz=(B.z-A.z)/0.24, sp=Math.hypot(vx,vz);
+    const yaw = sp>0.9 ? Math.atan2(vx,vz) : s.defYaw;
+    let x=px, z=pz, y=gy(x,z);
+    if (!dead){
+      if (sp>0.9) y += Math.abs(Math.sin(t*(s.cav?9:11)+s.seed*6))*(s.cav?0.22:0.1);
+      if (s.front && clash) z += 0.2*Math.sin(t*7+s.seed*10);
+      if (s.side==='N' && !s.archer && pp>0.95 && pp<1.06) z += 0.3*Math.sin(t*6.5+s.seed*10);
+    }
+    mSold.makeTranslation(x,y,z);
+    mRot.makeRotationY(yaw); mSold.multiply(mRot);
+    if (dead){
+      const f = smooth((t-s.deathT)/0.6);
+      if (s.cav) mTilt.makeRotationZ(f*Math.PI/2*s.fallDir); else mTilt.makeRotationX(-f*Math.PI/2*s.fallDir);
+      mSold.multiply(mTilt);
+    }
+    mSold.multiply(mScale);
+    const tp = s.tpl;
+    for(let i=0;i<tp.mats.length;i++){
+      let lm = tp.mats[i];
+      const w = tp.wave[i];
+      if (w){ mWave.copy(lm); mWave.elements[14] += Math.sin(t*4.2 - w*0.9 + s.seed*6)*0.25*w; lm = mWave; }
+      mW.multiplyMatrices(mSold, lm);
+      mW.toArray(arr, (s.start+i)*16);
+    }
+  }
+  soldierMesh.instanceMatrix.needsUpdate = true;
+}
+
+/* ---------------------------------------------------------------- arrows */
+const VOLLEYS = [[7.0,'low'],[8.7,'low'],[10.4,'low'],[12.1,'low'],[41.2,'high'],[42.8,'high'],[44.4,'high'],[46.0,'high'],[49.0,'high'],[50.4,'low']];
+const arrows = [];
+const archers = normans.filter(s=>s.archer);
+for(const [vt,type] of VOLLEYS){
+  for(const a of archers){
+    if (rand()<0.12) continue;
+    const t0 = vt + rand()*0.35;
+    sPos(a, t0, P);
+    const x0=P.x, z0=P.z-0.4, y0=gy(x0,z0)+1.5;
+    const x1 = clamp(x0 + R(-5,5), -41, 41), zr = ridgeZ(x1);
+    let z1, y1, Tf, ap;
+    if (type==='low'){ z1 = zr + 1.7 + R(-0.6,1.4); y1 = gy(x1,z1) + (rand()<0.7?0.95:0.1); Tf = R(1.45,1.7); ap = R(5,7.5); }
+    else { z1 = zr - R(0.5,5.5); y1 = gy(x1,z1)+0.12; Tf = R(2.2,2.6); ap = R(15,20); }
+    arrows.push({t0,x0,y0,z0,x1,y1,z1,T:Tf,ap});
+  }
+}
+const arrowMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.14,0.14,1.3), new THREE.MeshBasicMaterial({color:0xf2e6c4}), arrows.length);
+arrowMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); arrowMesh.frustumCulled = false;
+scene.add(arrowMesh);
+const ZERO = new THREE.Matrix4().makeScale(0,0,0).toArray();
+const qA = new THREE.Quaternion(), zAx = V3(0,0,1), dirA = V3(0,0,1), posA = V3(0,0,0), ONE = V3(1,1,1);
+function updateArrows(t){
+  const arr = arrowMesh.instanceMatrix.array;
+  for(let i=0;i<arrows.length;i++){
+    const a = arrows[i], age = t - a.t0;
+    if (age<0 || age>a.T+4.5){ arr.set(ZERO, i*16); continue; }
+    const s = Math.min(1, age/a.T);
+    posA.set(lerp(a.x0,a.x1,s), lerp(a.y0,a.y1,s)+a.ap*4*s*(1-s), lerp(a.z0,a.z1,s));
+    dirA.set(a.x1-a.x0, (a.y1-a.y0)+a.ap*4*(1-2*s), a.z1-a.z0).normalize();
+    qA.setFromUnitVectors(zAx, dirA);
+    mW.compose(posA, qA, ONE); mW.toArray(arr, i*16);
+  }
+  arrowMesh.instanceMatrix.needsUpdate = true;
+}
+
+/* ---------------------------------------------------------------- dust of the melee */
+const dust = [];
+const DUSTW = [
+  [17.6,22, ()=>{const x=R(-40,40); return [x, ridgeZ(x)+R(1.5,3.5)];}],
+  [26.2,29, ()=>{const x=R(-40,40); return [x, ridgeZ(x)+R(1.5,4)];}],
+  [32,33.6, ()=>{const x=R(-40,-14); return [x, ridgeZ(x)+R(1.5,3.5)];}],
+  [36.4,39.8,()=>{const x=R(-40,-12); return [x, ridgeZ(x)+22+R(-3,3)];}],
+  [50.8,56.5,()=>{const x=R(-40,40); return [x, ridgeZ(x)+R(-3,3)];}],
+];
+for(const [a,b,fn] of DUSTW){ const n = Math.round((b-a)*45); for(let k=0;k<n;k++){ const [x,z]=fn(); dust.push({t0:R(a,b), life:R(1.2,2.2), x, z, y:gy(x,z)+0.3, rise:R(0.6,1.5), sz:R(0.5,1.1), dx:R(-0.4,0.4)}); } }
+const dustMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1), new THREE.MeshLambertMaterial({color:0xc9b48a, transparent:true, opacity:0.5, depthWrite:false}), dust.length);
+dustMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); dustMesh.frustumCulled = false;
+scene.add(dustMesh);
+function updateDust(t){
+  const arr = dustMesh.instanceMatrix.array;
+  for(let i=0;i<dust.length;i++){
+    const d = dust[i], age = t - d.t0;
+    if (age<0 || age>d.life){ arr.set(ZERO, i*16); continue; }
+    const k = age/d.life, s = d.sz*Math.sin(Math.PI*k)*(0.6+k);
+    posA.set(d.x + d.dx*age, d.y + d.rise*age, d.z);
+    mW.compose(posA, IDQ, V3(s,s,s)); mW.toArray(arr, i*16);
+  }
+  dustMesh.instanceMatrix.needsUpdate = true;
+}
+
+/* ---------------------------------------------------------------- light: October afternoon to dusk */
+const SUN_DAY = new THREE.Color(0xfff1dc), SUN_DUSK = new THREE.Color(0xff9a52);
+const SKY_DAY = new THREE.Color(0xcfd8e6), SKY_DUSK = new THREE.Color(0xb08a9a);
+function updateLight(t){
+  const k = smooth((t-46)/14);
+  sun.color.lerpColors(SUN_DAY, SUN_DUSK, k);
+  sun.intensity = lerp(2.4, 2.1, k);
+  sun.position.set(lerp(45,-70,k), lerp(80,50,k), lerp(35,50,k));
+  hemi.color.lerpColors(SKY_DAY, SKY_DUSK, k);
+  hemi.intensity = lerp(0.95, 1.05, k);
+  document.body.style.background = `radial-gradient(ellipse at 50% 38%, ${k>0?'#'+new THREE.Color(0x3b3732).lerp(new THREE.Color(0x4a3328),k).getHexString():'#3b3732'} 0%, #1d1b18 55%, #0d0c0b 100%)`;
+}
+
+/* ---------------------------------------------------------------- UI: captions, timeline, labels */
+const $ = id => document.getElementById(id);
+const segs = $('segs');
+PHASES.forEach((p,i)=>{
+  const d = document.createElement('div'); d.className='seg'; d.style.flex = String(p.t1-p.t0);
+  d.innerHTML = `<div class="fill"></div><span>${p.short}</span>`; d.title = p.title;
+  segs.appendChild(d); p.el = d; p.fill = d.firstChild;
+});
+let curPhase = -1;
+function updateUI(t){
+  const tc = Math.min(t, DUR);
+  let idx = PHASES.findIndex(p=>tc>=p.t0 && tc<p.t1); if (idx<0) idx = PHASES.length-1;
+  if (idx!==curPhase){
+    curPhase = idx; const p = PHASES[idx];
+    $('cap-num').textContent = `Phase ${p.n}`;
+    $('cap-title').textContent = p.title;
+    $('cap-sub').textContent = p.sub;
+    const c = $('caption'); c.classList.remove('fade'); void c.offsetWidth; c.classList.add('fade');
+  }
+  PHASES.forEach((p,i)=>{ p.fill.style.width = (clamp((tc-p.t0)/(p.t1-p.t0),0,1)*100)+'%'; p.el.classList.toggle('active', i===idx); });
+  // playhead position accounts for flex gaps by measuring the active segment
+  const el = PHASES[idx].el, tl = $('timeline').getBoundingClientRect(), r = el.getBoundingClientRect();
+  const f = clamp((tc-PHASES[idx].t0)/(PHASES[idx].t1-PHASES[idx].t0),0,1);
+  $('playhead').style.left = (r.left - tl.left + f*r.width) + 'px';
+  const fm = v => `${Math.floor(v/60)}:${String(Math.floor(v%60)).padStart(2,'0')}`;
+  $('clock').textContent = `${fm(tc)} / ${fm(DUR)}`;
+}
+
+const LABELS = [
+  {ref:harold, dy:3.2, cls:'en', text:t=>t>=harold.deathT?'† Harold II':'Harold II, King of the English', show:t=>t<6.5||(t>40&&t<50)},
+  {ref:english.find(s=>s.rank===0 && s.hx>-26), dy:2.4, cls:'en', text:()=>'Shield wall: housecarls', show:t=>t<6.5},
+  {ref:english.find(s=>s.rank===4 && s.hx>22), dy:3.2, cls:'en', text:()=>'Fyrd: shire levies', show:t=>t<6.5},
+  {ref:refs.archers, dy:2.4, cls:'no', text:()=>'Archers', show:t=>t<6.5||(t>6.5&&t<9)},
+  {ref:refs.infL, dy:3.3, cls:'no', text:()=>'Bretons', show:t=>t<6.5||(t>30&&t<36)},
+  {ref:refs.infC, dy:3.3, cls:'no', text:()=>'Normans', show:t=>t<6.5},
+  {ref:refs.infR, dy:3.3, cls:'no', text:()=>'Franco-Flemish', show:t=>t<6.5},
+  {ref:refs.cav, dy:3.9, cls:'no', text:()=>'Mounted knights', show:t=>t<6.5||(t>23&&t<26)},
+  {ref:william, dy:4.4, cls:'no', text:()=>'William, Duke of Normandy', show:t=>t<6.5||t>55},
+];
+const labelLayer = $('labels');
+LABELS.forEach(L=>{ L.el = document.createElement('div'); L.el.className = 'lb '+L.cls; L.el.style.opacity = 0; labelLayer.appendChild(L.el); });
+let labelMode = 'auto';
+const vProj = V3(0,0,0);
+function updateLabels(t){
+  for(const L of LABELS){
+    if (!L.ref){ L.el.style.opacity = 0; continue; }
+    const on = labelMode==='on' || (labelMode==='auto' && L.show(t));
+    const tt = Math.min(t, L.ref.deathT);
+    sPos(L.ref, tt, P);
+    vProj.set(P.x, gy(P.x,P.z) + (t>=L.ref.deathT?0.8:L.dy), P.z).project(camera);
+    const vis = on && vProj.z<1 && Math.abs(vProj.x)<1.1 && Math.abs(vProj.y)<1.1;
+    L.el.style.opacity = vis ? 1 : 0;
+    if (vis){
+      L.el.textContent = L.text(t);
+      const half = L.el.offsetWidth / 2 + 8;
+      const x = Math.max(half, Math.min(innerWidth-half, (vProj.x*0.5+0.5)*innerWidth));
+      L.el.style.transform = `translate(${x}px,${Math.max(30,(-vProj.y*0.5+0.5)*innerHeight)}px) translate(-50%,-100%)`;
+    }
+  }
+}
+
+/* ---------------------------------------------------------------- controls */
+let simT = 0, playing = true, autoOrbit = true, lastInteract = -1e9;
+$('bPlay').onclick = ()=>{ playing = !playing; $('bPlay').textContent = playing?'Pause':'Play'; };
+$('bRestart').onclick = ()=>{ simT = 0; playing = true; $('bPlay').textContent='Pause'; };
+$('bOrbit').onclick = ()=>{ autoOrbit = !autoOrbit; controls.autoRotate = autoOrbit; $('bOrbit').textContent = 'Auto-orbit: '+(autoOrbit?'on':'off'); };
+$('bLabels').onclick = ()=>{ labelMode = {auto:'on', on:'off', off:'auto'}[labelMode]; $('bLabels').textContent = 'Labels: '+labelMode; };
+addEventListener('keydown', e=>{ if (e.code==='Space'){ e.preventDefault(); $('bPlay').click(); } });
+controls.addEventListener('start', ()=>{ controls.autoRotate = false; lastInteract = performance.now(); });
+controls.addEventListener('end', ()=>{ lastInteract = performance.now(); });
+const tlEl = $('timeline');
+function seekFromEvent(e){
+  const r = tlEl.getBoundingClientRect(); const x = e.clientX - r.left;
+  // map pixel to time through the segment under the pointer
+  for(const p of PHASES){ const sr = p.el.getBoundingClientRect(); if (e.clientX <= sr.right+1){ simT = p.t0 + clamp((e.clientX-sr.left)/sr.width,0,1)*(p.t1-p.t0); return; } }
+  simT = clamp(x/r.width,0,1)*DUR;
+}
+let dragging = false;
+tlEl.addEventListener('pointerdown', e=>{ dragging = true; tlEl.setPointerCapture(e.pointerId); seekFromEvent(e); });
+tlEl.addEventListener('pointermove', e=>{ if (dragging) seekFromEvent(e); });
+tlEl.addEventListener('pointerup', ()=>{ dragging = false; });
+
+addEventListener('resize', ()=>{ camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+/* ---------------------------------------------------------------- loop */
+const clock = new THREE.Clock();
+function frame(){
+  const dt = Math.min(clock.getDelta(), 0.1);
+  if (playing && !dragging){ simT += dt; if (simT > DUR + HOLD) simT = 0; }
+  const t = Math.min(simT, DUR);
+  if (autoOrbit && !controls.autoRotate && performance.now() - lastInteract > 15000) controls.autoRotate = true;
+  updateSoldiers(t); updateArrows(t); updateDust(t); updateLight(t);
+  controls.update();
+  renderer.render(scene, camera);
+  updateUI(t); updateLabels(t);
+  requestAnimationFrame(frame);
+}
+document.getElementById('loading').remove();
+frame();
+window.__diorama = { soldiers: soldiers.length, voxels: total, arrows: arrows.length, seek: v=>{ simT=v; } };
+</script>
+<a href="https://www.english-heritage.org.uk/visit/places/1066-battle-of-hastings-abbey-and-battlefield/history-and-stories/what-happened-battle-hastings" style="position:fixed;right:8px;top:150px;font-size:10px;color:#fff;background:#19170e;padding:4px">History source · stylised reconstruction</a></body>
+</html>
