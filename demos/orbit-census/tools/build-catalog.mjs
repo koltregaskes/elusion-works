@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { catalogueSource } from "../src/source-label.js";
 // Builds data/catalog.json for Orbit Census from CelesTrak.
 // Runs in the Pages deploy (twice a day, matching CelesTrak's own update rhythm) and can be
 // run by hand: `node demos/orbit-census/tools/build-catalog.mjs`.
@@ -63,9 +64,9 @@ if (rows.length < 2000) { console.error(`Only ${rows.length} objects: refusing t
 const doc = {
   v: 1,
   generated: new Date().toISOString(),
-  source: 'CelesTrak GP data (celestrak.org) and SATCAT',
+  source: catalogueSource(Boolean(satcat?.size)),
   groups: counts,
-  satcat: !!satcat,
+  satcat: Boolean(satcat?.size),
   census,
   fields: FIELDS,
   rows,
