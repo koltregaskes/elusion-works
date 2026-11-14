@@ -193,3 +193,12 @@ select {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* Reserve phone header space for navigation and the theme control. */
+@media(max-width:600px){
+ #topbar{gap:6px;padding:0 8px;}
+ #topbar .crumbs{min-width:0;flex:1;flex-wrap:wrap;gap:2px 5px;font-size:10px;}
+ #topbar .crumbs .here{overflow-wrap:anywhere;}
+ #topbar .spacer,#topbar .ver{display:none;}
+ #topbar .iconbtn{flex:0 0 30px;}
+}

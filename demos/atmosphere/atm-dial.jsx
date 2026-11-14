@@ -2,7 +2,7 @@
 // Sun puck rides an ellipse; user drags it around to set the hour.
 // Emits hour changes via onChange.
 
-function PolarDialLive({ hour, onChange, size = 460, accent = '#c2410c' }) {
+function PolarDialLive({ hour, onChange, size = 460, accent = '#ef9c77' }) {
   const cx = size / 2;
   const cy = size / 2 + 10;
   const rx = size * 0.42;

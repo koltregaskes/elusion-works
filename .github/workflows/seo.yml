@@ -37,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        width: [320, 1280]
+        width: [320, 390, 1280]
         shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v6
@@ -57,3 +57,25 @@ jobs:
         with:
           name: axe-${{ matrix.width }}-${{ matrix.shard }}
           path: test-results/
+
+  coverage:
+    name: Complete route and viewport acceptance
+    needs: accessibility
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts
+      - run: python scripts/build-site.py
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: axe-*
+          merge-multiple: true
+          path: test-results
+      - run: node --test scripts/launch-coverage.test.mjs
+      - run: node scripts/launch-coverage.mjs

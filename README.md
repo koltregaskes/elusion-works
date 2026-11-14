@@ -115,6 +115,9 @@ change this one value to `mailto:contact@elusionworks.com` and rerun the build.
 The source configuration and validation scripts are not published. Fictional
 forms inside demos are separate from this real site contact route.
 
+Launch CI checks every built HTML route, including demos, at 320, 390 and 1280px. A final artifact coverage gate rejects missing, duplicate, failed or timed-out results. PLAYWRIGHT_CHANNEL selects an installed browser for local checks. Software-rendered q=low Windfield acceptance is layout/accessibility evidence, not real-GPU acceptance.
+
+Three React demos are audited after their real mount appears, using pinned local fixtures for the already referenced runtime versions. This exposes actual controls instead of an empty shell when external requests are blocked. Every route also receives a basic keyboard-Tab visible-focus smoke check; manual screen-reader and interaction acceptance remain open.
 The demo CSP build requires npm ci --ignore-scripts before python scripts/build-site.py, with Node 24+ and Python 3. Browser JSX compilation is replaced only in the assembled artifact; source recipes remain unchanged. CSP/runtime CI uses installed Edge on Windows and does not download browsers.
 Studio pulse rows show original editorial dates and explicitly label updates older than 30 days as an editorial archive. Invalid/future dates are unverified; deploying the site does not refresh these dates. Archive ticker dots do not pulse. This does not prove the separate Orbit Census acquisition or seven-day delivery window.
 The existing Pages workflow reports catalogue acquisition through a separate health job. Failed/skipped acquisition makes that job red while build/publication retain their existing fallback path. This uses the existing Actions failure signal, not a new issue alert, controller or schedule. A green static deployment alone is not catalogue freshness proof; real notification delivery still needs operational rehearsal.
