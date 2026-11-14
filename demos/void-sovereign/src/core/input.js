@@ -1343,7 +1343,20 @@ export class InputController {
       const role = e.role || (e.def && e.def.role);
       if (role !== 'resource' && role !== 'structure') war.push(e);
     });
-    const list = war.length ? war : own;
+    let list = war.length ? war : own;
+    /* Round 19 critic: one straggler 18 km out pushed the fleet view to
+       16 km and left the fleet a 250 px smear. Frame the body of the fleet:
+       hulls within two and a half times the median distance from its
+       median point (and never fewer than 3 km of it). */
+    if (list.length > 4) {
+      const ax = (k) => list.map((e) => e.position[k]).sort((a, b) => a - b)[list.length >> 1];
+      const mx = ax('x'), my = ax('y'), mz = ax('z');
+      const d = list.map((e) => Math.hypot(e.position.x - mx, e.position.y - my, e.position.z - mz));
+      const med = d.slice().sort((a, b) => a - b)[d.length >> 1];
+      const cut = Math.max(3000, med * 2.5);
+      const core = list.filter((e, i) => d[i] <= cut);
+      if (core.length) list = core;
+    }
     if (list.length) this.rig.frameEntities(list, false, { keepAngle: true });
   }
 
