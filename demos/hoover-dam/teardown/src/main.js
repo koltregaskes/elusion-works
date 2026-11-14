@@ -273,9 +273,9 @@ function drawDraft(t) {
 const CALLS = {
   hero: [['dam', 'Arch-gravity dam', '726 ft · 3.25M yd³'], ['towers', 'Intake towers', '4 × 395 ft'], ['powerhouse', 'Powerhouse', '17 units · 2,080 MW'], ['spill', 'Spillway', '4 drum gates per side']],
   towers: [['towerTop', 'Clock crown', 'Nevada | Arizona time'], ['towerGate', 'Cylinder gate', '2 intake levels'], ['towers', 'Trash racks', 'screened openings']],
-  penstocks: [['pen1', 'Penstock', '30 ft steel · glass'], ['pen2', 'Flange ring', 'every 26 m'], ['powerhouse', 'Header', 'branches to 8–9 units']],
-  turbine: [['uGen', 'Generator', '40 poles · 60 Hz'], ['uShaft', 'Shaft', '180 rpm'], ['uWicket', 'Wicket gates', '24 · live opening'], ['uRunner', 'Runner', '13 blades'], ['uCase', 'Spiral case', 'glass · cut away']],
-  spillways: [['spill', 'Drum gates', '100 × 16 ft each'], ['spillChan', 'Side channel', 'to the 50 ft shaft'], ['tunnelIn', 'Spillway tunnel', 'around the dam']],
+  penstocks: [['pen1', 'Penstock', '30 ft steel · glass'], ['pen2', 'Flange ring', 'every 26 m'], ['powerhouse', 'Header', 'feeds a wing of 8–9 units']],
+  turbine: [['uGen', 'Generator', '40 poles · 60 Hz'], ['uShaft', 'Shaft', '180 rpm'], ['uWicket', 'Wicket gates', '24 · live opening'], ['uRunner', 'Runner', 'Francis type'], ['uCase', 'Spiral case', 'glass · cut away']],
+  spillways: [['spill', 'Drum gates', '100 × 16 ft each'], ['spillChan', 'Side channel', 'to the 50 ft tunnel'], ['tunnelIn', 'Spillway tunnel', 'around the dam']],
   dam: [['dam', 'Crown cantilever', '45 ft crest · 660 ft base'], ['crest', 'Crest road', 'Nevada | Arizona'], ['damToe', 'Toe', 'into the powerhouse']],
   tunnels: [['tunnelIn', 'Spillway tunnel', '50 ft lined'], ['divert', 'Diversion tunnel', '56 ft bored · 1932']],
 };
