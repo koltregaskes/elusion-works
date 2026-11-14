@@ -19,7 +19,8 @@ export async function verifyShowreelControls(page, route) {
     await page.locator('#bRestart').click();
   } else if (route.includes('/living-scene/')) {
     await page.locator('[data-m="2"]').click();
-    await page.waitForFunction(() => document.getElementById('moodName').textContent === 'Moonlit night');
+    assert.equal(await page.locator('[data-m="2"]').evaluate(el => el.classList.contains('on')), true);
+    assert.equal(await page.locator('#moodName').textContent(), 'Moonlit night');
     await page.locator('[data-m="0"]').click();
     await page.locator('#hideBtn').click();
     assert.equal(await page.locator('#ui').evaluate(el => el.inert), true);
@@ -33,7 +34,7 @@ export async function verifyShowreelControls(page, route) {
     await page.locator('#reset').click();
   } else if (route.includes('/octopus-jar/')) {
     await page.locator('#phaseBtns button').nth(3).click();
-    await page.waitForFunction(() => document.getElementById('h-phase').textContent.includes('climb'));
+    await page.waitForFunction(() => document.getElementById('h-phase').textContent.includes('climb'), null, {polling:100});
   } else if (route.includes('/drivable-town/')) {
     await page.locator('[data-key="KeyE"]').click();
     assert.equal(await page.evaluate(() => window.__town.player.walking), true);

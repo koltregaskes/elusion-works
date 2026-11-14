@@ -1061,8 +1061,7 @@ function syncUI(){
 }
 let titleTimer = 0;
 function setMood(i){
-  moodIdx = i; moodName.style.opacity = 0;
-  setTimeout(() => { moodName.textContent = MOODS[i].name; moodName.style.opacity = 1; }, 400);
+  moodIdx = i; moodName.textContent = MOODS[i].name; moodName.style.opacity = 1;
   titleEl.style.opacity = 1; titleTimer = 7;
   syncUI();
 }
