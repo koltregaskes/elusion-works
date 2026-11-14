@@ -22,6 +22,8 @@ jobs:
       - run: python scripts/build-site.py
       - run: node --check demos/orbit-census/tools/build-catalog.mjs
       - run: node --test scripts/catalogue-source.test.mjs
+      - run: node --test scripts/redirect-safety.test.mjs
+      - run: python scripts/test-seo-content.py
       - run: node scripts/check-links.mjs --external
   accessibility:
     name: Axe ${{ matrix.width }}px (${{ matrix.shard }}/4)
