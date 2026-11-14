@@ -3434,13 +3434,17 @@ const FRAG_ASH = /* glsl */ `
     // is both metallic and convex, i.e. on the wear band.
     ashMask *= mix( 1.0, uAshMetalKeep, metalnessFactor * ( 0.45 + 0.55 * ashEdge ) );
     ashMask = clamp( ashMask, 0.0, 1.0 );
+    // Ash does not sit on a convex arris: traffic and weather wipe it. Keeping the edges
+    // clean is what gives an object a bright rim to catch the sun on, which is most of what
+    // separates one object from another at a glance.
+    ashMask *= 1.0 - ashEdge * 0.75;
 
     diffuseColor.rgb = mix( diffuseColor.rgb, uDustColour, ashMask * 0.84 );
     // A dust film is a powder lying ON the surface, not a stain in it: it raises the albedo
     // floor as well as pulling the hue. Squared so only the properly drifted texels lift,
     // which keeps the effect as deposits rather than an overall exposure change.
     diffuseColor.rgb += uDustColour * ( ashMask * ashMask * 0.10 );
-    roughnessFactor = mix( roughnessFactor, uAshRoughness, ashMask * 0.9 );
+    roughnessFactor = mix( roughnessFactor, uAshRoughness, ashMask * 0.55 );
     // A dust film is a dielectric.
     metalnessFactor *= ( 1.0 - ashMask * 0.94 );
 
@@ -3503,7 +3507,7 @@ const FRAG_ASH = /* glsl */ `
     vec3 ashNdx = dFdx( normal );
     vec3 ashNdy = dFdy( normal );
     float ashVar = uSpecAAStrength * ( dot( ashNdx, ashNdx ) + dot( ashNdy, ashNdy ) );
-    roughnessFactor = min( 1.0, sqrt( roughnessFactor * roughnessFactor + min( 0.16, ashVar ) ) );
+    roughnessFactor = min( 1.0, sqrt( roughnessFactor * roughnessFactor + min( 0.05, ashVar ) ) );
   }
 `;
 
@@ -3767,7 +3771,7 @@ export function createMaterials(renderer, shadows) {
       uDustColour: { value: dustColour },
       uAshAmount: { value: def.ash ?? 1.0 },
       uAshSharpness: { value: 2.8 },
-      uAshRoughness: { value: 0.95 },
+      uAshRoughness: { value: 0.8 },
       // ~1.7 m fundamental. Its three octaves land on 1.7 / 0.8 / 0.37 m, which is exactly
       // the meso band the ground was missing.
       uAshNoiseScale: { value: 0.58 },
@@ -3788,7 +3792,7 @@ export function createMaterials(renderer, shadows) {
       uOxideColour: { value: oxideColour },
       uOxideStrength: { value: def.oxide ?? 0.0 },
       uFogAmount: { value: def.view ? 0.0 : 1.0 },
-      uSpecAAStrength: { value: 0.6 },
+      uSpecAAStrength: { value: 0.28 },
     };
     if (triplanar) {
       // The caller's scale is the fine octave. The coarse octave is derived from the surface's

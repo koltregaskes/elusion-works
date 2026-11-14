@@ -432,7 +432,7 @@ original — do not reproduce another game's exact HUD artwork.
 - Ammo block: mag/reserve with tabular figures, a low-ammo state, and a reload prompt.
 - Health: regenerating, with a blood-vignette that intensifies as health drops, plus a
   directional damage indicator arc showing where fire came from.
-- Kill feed, killstreak callouts, XP pop-ups that rise and fade.
+- Kill feed, streak callouts, XP pop-ups that rise and fade.
 - Compass strip with cardinal ticks and objective markers.
 - Minimap: top-down canvas render of `level.navGrid` with the player arrow, enemy blips that
   only appear when the enemy fires, and a rotating view cone.
