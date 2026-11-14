@@ -17,7 +17,10 @@ import { Flyover } from './flyover.js';
 import { updateFly, lookFly } from './fly-controls.js';
 
 const $ = (s) => document.querySelector(s);
+// options come from the query string or the hash (#mode=fly&time=night), so they
+// still work where query strings are stripped, such as an embedded copy
 const params = new URLSearchParams(location.search);
+for (const [k, v] of new URLSearchParams(location.hash.slice(1))) if (!params.has(k)) params.set(k, v);
 const coarse = matchMedia('(pointer: coarse)').matches;
 const qName = ['low', 'high', 'ultra'].includes(params.get('q')) ? params.get('q') : coarse ? 'low' : 'high';
 const QUALITY = {
@@ -159,8 +162,41 @@ async function boot() {
     fly.yaw -= e.movementX * 0.0022;
     fly.pitch = THREE.MathUtils.clamp(fly.pitch - e.movementY * 0.0022, -1.45, 1.45);
   });
+  // pointer lock is a bonus: it can be refused (sandboxed or embedded pages), and
+  // dragging with the mouse looks around either way
+  let lockRefused = false;
+  const tryLock = () => {
+    if (coarse || lockRefused || document.pointerLockElement === canvas) return;
+    const refuse = () => {
+      lockRefused = true;
+      showHint();
+    };
+    try {
+      const p = canvas.requestPointerLock?.();
+      if (p && p.catch) p.catch(refuse);
+    } catch {
+      refuse();
+    }
+  };
+  document.addEventListener('pointerlockerror', () => {
+    lockRefused = true;
+    showHint();
+  });
   const hint = $('#hint');
-  const showHint = () => hint.classList.toggle('is-on', state.mode !== 'flyover' && document.pointerLockElement !== canvas && !coarse);
+  let hintTimer = 0;
+  const showHint = () => {
+    const locked = document.pointerLockElement === canvas;
+    const on = state.mode !== 'flyover' && !locked;
+    clearTimeout(hintTimer);
+    if (on) {
+      const move = state.mode === 'walk' ? '<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk, <kbd>Shift</kbd> runs' : '<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> fly, <kbd>Space</kbd>/<kbd>Q</kbd> up and down';
+      hint.innerHTML = coarse
+        ? 'Drag the left side to move, the right side to look'
+        : `Drag to look. ${move}${lockRefused ? '' : '. Click to lock the mouse'}`;
+      hintTimer = setTimeout(() => hint.classList.remove('is-on'), 7000);
+    }
+    hint.classList.toggle('is-on', on);
+  };
   document.addEventListener('pointerlockchange', showHint);
   const setMode = (m) => {
     state.mode = m;
@@ -184,7 +220,7 @@ async function boot() {
         fly.pos.copy(camera.position);
         hero.touchEnabled = true;
       }
-      if (!coarse) canvas.requestPointerLock?.()?.catch?.(() => {});
+      tryLock();
     }
     showHint();
   };
@@ -193,7 +229,7 @@ async function boot() {
     setMode(b.dataset.mode);
   }));
   canvas.addEventListener('click', () => {
-    if (state.mode !== 'flyover' && document.pointerLockElement !== canvas && !coarse) canvas.requestPointerLock?.()?.catch?.(() => {});
+    if (state.mode !== 'flyover' && !hero.wasDrag()) tryLock();
   });
   const TIMES = [[6.6, 'Dawn'], [12.5, 'Midday'], [17.3, 'Golden hour'], [22.5, 'Night']];
   let timeIdx = 2;
@@ -268,6 +304,9 @@ async function boot() {
     town.updateForest(camera.position);
     if (atmo.csm) atmo.csm.updateFrustums?.();
     pipeline.render();
+    // reveal the town only once real frames are on screen, so the loader never
+    // fades to a blank or half-built canvas
+    if (++shown === 3) reveal();
     frames++;
     acc += dt;
     if (acc > 0.5) {
@@ -276,9 +315,20 @@ async function boot() {
       acc = 0;
     }
   }
+  let shown = 0;
+  const title = $('#title');
+  const reveal = () => {
+    $('#loader').classList.add('is-done');
+    if (state.mode === 'flyover' && title) {
+      title.classList.add('is-on');
+      const hide = () => title.classList.remove('is-on');
+      setTimeout(hide, 6500);
+      window.addEventListener('pointerdown', hide, { once: true });
+      window.addEventListener('keydown', hide, { once: true });
+    }
+    state.ready = true;
+  };
   renderer.setAnimationLoop(frame);
-  $('#loader').classList.add('is-done');
-  state.ready = true;
 
   window.__TV = {
     state,
@@ -321,8 +371,25 @@ async function boot() {
   };
 }
 
+function canWebGL2() {
+  try {
+    return !!document.createElement('canvas').getContext('webgl2');
+  } catch {
+    return false;
+  }
+}
+
 boot().catch((err) => {
   console.error(err);
-  $('#loader-text').textContent = 'Could not start: ' + (err && err.message ? err.message : err);
+  const noGpu = !('gpu' in navigator) && !canWebGL2();
+  $('#loader-text').textContent = noGpu
+    ? 'This browser cannot draw 3D here: Thornvale needs WebGPU or WebGL 2.'
+    : 'The town could not be built on this device.';
+  const detail = $('#loader-detail');
+  if (detail) {
+    detail.textContent = noGpu
+      ? 'Try an up-to-date Edge, Chrome, Firefox or Safari, and check that hardware acceleration is switched on in the browser settings.'
+      : 'Reloading often helps. If it keeps happening, try #q=low at the end of the address. Detail: ' + (err && err.message ? err.message : String(err));
+  }
   document.body.classList.add('has-error');
 });
