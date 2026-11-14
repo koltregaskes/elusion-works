@@ -3,7 +3,9 @@ export function elementOverflow(){
  for(const el of document.querySelectorAll('body *')){
   if(!(el instanceof HTMLElement))continue;
   // World-space globe labels intentionally cross the canvas edge; no controls are exempt.
-  if(location.pathname.includes('/orbit-census/')&&el.closest('.lab3'))continue;
+  const textLabel=el.closest('.lab3');
+  const interactive='a,button,input,select,textarea,[tabindex],[contenteditable],[role]';
+  if(location.pathname.includes('/orbit-census/')&&textLabel&&el.matches('.lab3,b,span')&&!el.matches(interactive)&&!el.querySelector(interactive)&&[...el.querySelectorAll('*')].every(n=>n.matches('b,span')))continue;
   if(el.id==='ringCursor'||(location.pathname.includes('/chronicles-of-bone/')&&el.matches('.noise,.tick')))continue;
   const r=el.getBoundingClientRect(),s=getComputedStyle(el);
   if(!r.width||!r.height||s.visibility==='hidden'||s.opacity==='0')continue;
