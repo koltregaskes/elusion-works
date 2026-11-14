@@ -798,6 +798,7 @@ export class CameraRig {
   /* ------------------------------------------------------------- navigation */
 
   focusOn(point, distance, instant = false) {
+    this._keepAngle = false;
     if (!point) return;
     /* The bootstrap asks for the hero frame by focusing the player's flagship
        with a distance derived from hull length. The rig takes that as the cue,
@@ -853,7 +854,17 @@ export class CameraRig {
     const vHalf = this.baseFov * DEG * 0.5;
     const hHalf = Math.atan(Math.tan(vHalf) * Math.max(0.2, this.camera.aspect));
     const half = Math.min(vHalf, hHalf);
-    const dist = clamp((radius / Math.sin(half)) * 1.25, this._minDistance(biggest), this.options.maxDistance);
+    let dist = clamp((radius / Math.sin(half)) * 1.25, this._minDistance(biggest), this.options.maxDistance);
+    /* A lone fighter or corvette starts at the distance its fill band wants.
+       Left to the search, the cost of moving out could outweigh the cost of
+       an oversized subject, and a corvette stayed frame-filling (round 19). */
+    const fill = this._fillFor(list);
+    if (list.length === 1 && fill && fill.want < FILL.frigate.lo) {
+      const e = list[0];
+      const len = (e.def && e.def.length) || biggest * 2;
+      dist = clamp(Math.max(dist, len / (fill.want * 2 * Math.tan(vHalf))), this._minDistance(biggest), this.options.maxDistance);
+    }
+    this._keepAngle = !!(opts && opts.keepAngle);
 
     this._cancelTransition();
     this._focus.target.copy(_v1);
@@ -2649,6 +2660,7 @@ export class CameraRig {
     if (this._composeGain.target > 0 && this._composeGain.value > 0.01) return;
     const focus = this._focus.target;
     const ctx = this._shotContext(focus, list);
+    if (this._keepAngle) ctx.haveSun = false;
     const yaw = this._yaw.target;
     const pitch = this._pitch.target;
     const dist = Math.exp(this._logDist.target);
