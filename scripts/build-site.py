@@ -12,7 +12,7 @@ if OUT.exists():
     archive.parent.mkdir(exist_ok=True)
     OUT.rename(archive)
 OUT.mkdir()
-for name in ['index.html','styles.css','showcase-pages.css','app.js','cursor.js','404.html','robots.txt','llms.txt','security.txt','CNAME','cross-site-nav.js','cabinet.js']:
+for name in ['index.html','styles.css','showcase-pages.css','app.js','cursor.js','404.html','robots.txt','llms.txt','security.txt','CNAME','cross-site-nav.js','cabinet.js','editorial-age.js']:
     shutil.copy2(ROOT / name, OUT / name)
 for name in ['assets','styles','experiments','creative-radar','remix-relay','design-notes','demos']:
     shutil.copytree(ROOT / name, OUT / name, ignore=shutil.ignore_patterns('tools','__pycache__','*.pyc','.env','.env.*'))

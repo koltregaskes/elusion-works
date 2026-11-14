@@ -21,6 +21,8 @@ concurrency:
 
 jobs:
   build:
+    outputs:
+      catalogue_outcome: ${{ steps.orbitcat.outcome }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -244,3 +246,17 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+
+  catalogue-health:
+    name: Orbit Census acquisition signal
+    needs: build
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - run: node scripts/catalogue-health.mjs
+        env:
+          CATALOGUE_OUTCOME: ${{ needs.build.outputs.catalogue_outcome }}

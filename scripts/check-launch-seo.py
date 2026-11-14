@@ -3,6 +3,15 @@ from pathlib import Path
 from html.parser import HTMLParser
 from urllib.parse import urlparse, unquote
 import json,struct,xml.etree.ElementTree as ET
+from datetime import datetime
+from email.utils import parsedate_to_datetime
+def schema_urls(value):
+    if isinstance(value,dict):
+        for key,child in value.items():
+            if key in ["url","@id"] and isinstance(child,str): yield child.split("#")[0]
+            yield from schema_urls(child)
+    elif isinstance(value,list):
+        for child in value: yield from schema_urls(child)
 ROOT=Path(__file__).resolve().parent.parent/'_site';BASE='https://elusionworks.com/'
 class Head(HTMLParser):
     def __init__(self):
@@ -27,6 +36,7 @@ for p in sorted(ROOT.rglob('*.html')):
     assert [a['href'] for a in h.links if a.get('rel')=='canonical']==[url],(rel,'canonical')
     assert h.meta.get('description') and h.meta.get('og:url')==url,(rel,'metadata')
     assert len(h.schemas)==1,(rel,'exactly one JSON-LD block')
+    assert url in set(schema_urls(h.schemas[0])),(rel,'JSON-LD current page URL')
     image=h.meta.get('og:image','');assert image.startswith(BASE),(rel,'local OG')
     raw=(ROOT/unquote(image[len(BASE):])).read_bytes();assert raw[:8]==b'\x89PNG\r\n\x1a\n',(rel,'real PNG')
     w,ht=struct.unpack('>II',raw[16:24]);assert w>=600 and ht>=315,(rel,'OG dimensions')
@@ -36,7 +46,12 @@ assert BASE+'sitemap.xml' in (ROOT/'robots.txt').read_text()
 assert BASE in (ROOT/'llms.txt').read_text()
 feed=ET.parse(ROOT/'feed.xml');assert feed.getroot().tag=='rss';assert feed.find('channel/link').text==BASE
 assert feed.find('channel/{http://www.w3.org/2005/Atom}link').get('href')==BASE+'feed.xml'
-for item in feed.findall('channel/item'):
+items=feed.findall('channel/item');source=json.loads((ROOT/'data/feed.json').read_text())['ticker']
+assert len(items)==len(source)>0,'RSS item coverage'
+for item,row in zip(items,source):
+    expected_link=('https://elusionworks.com'+row['href']) if row['href'].startswith('/') else row['href']
+    assert item.findtext('link')==expected_link,'RSS source link'
+    assert parsedate_to_datetime(item.findtext('pubDate'))==datetime.fromisoformat(row['timestamp'].replace('Z','+00:00')),'RSS source timestamp'
     link=item.findtext('link');assert link.startswith('https://') and not urlparse(link).path.endswith('.md'),('RSS HTML link',link)
     if link.startswith(BASE):
         path=ROOT/unquote(urlparse(link).path.lstrip('/'));assert path.exists(),('RSS destination',link)

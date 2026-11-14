@@ -719,3 +719,5 @@ html[data-theme="light"] .ew-plate-poster { opacity: 0.88; filter: invert(0.85) 
 
 /* Maintain readable muted text in the dark theme. */
 html:not([data-theme="light"]) { --fg-4: #92929b; }
+
+.ew-ticker[data-editorial-age="archive"] .ew-live-dot { animation: none; box-shadow: none; }

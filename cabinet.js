@@ -1,3 +1,4 @@
+import { editorialStamp } from "./editorial-age.js";
 import { estateItems } from "./data/estate.js";
 
 const fallbackFeed = {
@@ -280,7 +281,7 @@ function renderTicker(lines) {
   windowEl.innerHTML = sorted
     .map((line, index) => `
       <div class="ew-ticker-line" data-ticker-line="${index}">
-        <span class="ew-mono ew-ticker-kicker">${escapeHtml(line.kind)}</span>
+        <span class="ew-mono ew-ticker-kicker">${escapeHtml(line.kind)} / ${escapeHtml(editorialStamp(line.timestamp))}</span>
         <span class="ew-ticker-text">${escapeHtml(line.text)}</span>
       </div>
     `)
@@ -294,7 +295,7 @@ function renderTicker(lines) {
       .map((line) => `
         <span class="ew-mini-marquee-item">
           <span class="ew-live-dot" aria-hidden="true"></span>
-          <span class="ew-mono">${escapeHtml(line.kind)}</span>
+          <span class="ew-mono">${escapeHtml(line.kind)} / ${escapeHtml(editorialStamp(line.timestamp))}</span>
           <span>${escapeHtml(line.text)}</span>
           <span class="ew-marquee-sep" aria-hidden="true">::</span>
         </span>
@@ -321,6 +322,7 @@ function renderTicker(lines) {
       dotEl.classList.toggle("on", dotIndex === current);
     });
 
+    ticker.dataset.editorialAge = editorialStamp(active.timestamp).startsWith("Editorial archive") ? "archive" : "dated";
     tagEl.textContent = active.tag ?? "Studio";
     tagEl.setAttribute("href", normaliseHref(active.href));
     if (isExternalHref(active.href ?? "")) {
