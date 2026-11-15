@@ -92,6 +92,7 @@ export function rowToOmm(row) {
 }
 
 // Minimal RFC 4180 CSV parser (SATCAT names can contain commas inside quotes).
+const BLANK = Symbol('blank CSV line');
 export function parseCsv(text) {
   const rows = []; let row = []; let f = ''; let q = false; let closed = false;
   for (let i = 0; i < text.length; i++) {
@@ -102,7 +103,12 @@ export function parseCsv(text) {
       if (f || closed) throw new Error('Unexpected quote in CSV field');
       q = true;
     } else if (c === ',') { row.push(f); f = ''; closed = false; }
-    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(f); rows.push(row); row = []; f = ''; closed = false; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      // A truly blank line (no fields, no quotes) is marked BLANK, not read as an empty record.
+      if (!row.length && !f && !closed) rows.push(BLANK); else { row.push(f); rows.push(row); }
+      row = []; f = ''; closed = false;
+    }
     else {
       if (closed) throw new Error('Unexpected text after quoted CSV field');
       f += c;
@@ -110,6 +116,9 @@ export function parseCsv(text) {
   }
   if (q) throw new Error('Unclosed quote in CSV record');
   if (f || row.length || closed) { row.push(f); rows.push(row); }
+  // Tolerate blank lines at the end of the file only; a blank line anywhere else is malformed.
+  while (rows.length && rows[rows.length - 1] === BLANK) rows.pop();
+  if (rows.includes(BLANK)) throw new Error('Blank line inside CSV');
   const head = rows.shift() || [];
   if (rows.some(x => x.length !== head.length)) throw new Error('CSV record width differs from header');
   return rows.map((x) => Object.fromEntries(head.map((h, i) => [h, x[i]])));

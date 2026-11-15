@@ -112,6 +112,12 @@ for (const ending of ['', '\n', '\r\n']) test('CSV preserves quoted commas, esca
   assert.deepEqual(parseCsv('NAME,TYPE\r\n"Name, ""quoted""\r\ncontinued",PAY' + ending),
     [{ NAME: 'Name, "quoted"\r\ncontinued', TYPE: 'PAY' }]);
 });
+for (const tail of ['\n', '\r\n', '\n\n', '\r\n\r\n', '\n\r\n\n']) test('CSV tolerates trailing blank lines ' + JSON.stringify(tail), () => {
+  assert.deepEqual(parseCsv('NAME,TYPE\r\nISS,PAY\r\n' + tail), [{ NAME: 'ISS', TYPE: 'PAY' }]);
+});
+test('CSV rejects a blank line inside the records', () => {
+  assert.throws(() => parseCsv('NAME,TYPE\r\nISS,PAY\r\n\r\nHST,PAY\r\n'), /Blank line/);
+});
 test('CSV preserves an empty quoted final field', () => {
   assert.deepEqual(parseCsv('NAME\r\n""'), [{ NAME: '' }]);
 });
