@@ -404,14 +404,14 @@ function App() {
                 <div className="cloud-section">
                   <GlassPanel style={{ padding: 24 }}>
                     <CloudHorizon hour={hour} accent={t.accent} />
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 18, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, justifyContent: 'space-between', marginTop: 18, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                       <div>
                         <MonoLabel>Verdict</MonoLabel>
                         <div className="display" style={{ fontSize: 22, marginTop: 6 }}>
                           {alt > 5 ? AtmWeather.conditionLabel(snapshot.condition) : alt > 0 ? 'Sun near horizon' : 'Below horizon'}
                         </div>
                       </div>
-                      <div style={{ display: 'flex', gap: 32 }}>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px 32px' }}>
                         <div style={{ textAlign: 'right' }}>
                           <MonoLabel>Net transmittance</MonoLabel>
                           <BigNum value={`${Math.round(conf * 0.92)}`} unit="%" size={36} />
