@@ -9,7 +9,7 @@ import { catalogueSource } from "../src/source-label.js";
 import { writeFile, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CELESTRAK_GP, CELESTRAK_SATCAT, GROUPS, FIELDS, mergeGroups, parseCsv } from '../src/catalog.js';
+import { CELESTRAK_GP, CELESTRAK_SATCAT, GROUPS, FIELDS, TYPES, mergeGroups, parseCsv } from '../src/catalog.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const out = resolve(process.argv[2] || resolve(here, '../data/catalog.json'));
@@ -33,8 +33,16 @@ async function get(url, kind) {
 
 const byGroup = [];
 const counts = {};
+const orbitalFields = ['MEAN_MOTION', 'ECCENTRICITY', 'INCLINATION', 'RA_OF_ASC_NODE',
+  'ARG_OF_PERICENTER', 'MEAN_ANOMALY', 'BSTAR', 'MEAN_MOTION_DOT', 'MEAN_MOTION_DDOT'];
 for (const g of GROUPS) {
   const recs = await get(`${CELESTRAK_GP}?GROUP=${g.id}&FORMAT=json`, 'json');
+  // toRow's numeric defaults must not disguise corrupt orbital input as valid zeroes.
+  if (Array.isArray(recs) && recs.some(rec => !rec || orbitalFields.some(field =>
+    !['number', 'string'].includes(typeof rec[field]) || String(rec[field]).trim() === '' || !Number.isFinite(Number(rec[field]))))) {
+    console.error(`GP ${g.id}: missing or non-finite orbital element; refusing to overwrite.`);
+    process.exit(1);
+  }
   counts[g.id] = Array.isArray(recs) ? recs.length : null;
   console.log(`GP ${g.id}: ${counts[g.id] ?? 'failed'}`);
   if (Array.isArray(recs)) byGroup.push({ id: g.id, records: recs });
@@ -44,16 +52,31 @@ for (const g of GROUPS) {
 let satcat = null; let census = null;
 const csv = await get(CELESTRAK_SATCAT, 'text');
 if (csv) {
-  const rows = parseCsv(csv);
-  satcat = new Map(rows.map((r) => [Number(r.NORAD_CAT_ID), r]));
-  // The whole public catalogue still in Earth orbit, tracked or not, by type.
-  census = { total: 0, PAY: 0, 'R/B': 0, DEB: 0, UNK: 0, decayed: 0 };
-  for (const r of rows) {
-    if (r.DECAY_DATE) { census.decayed++; continue; }
-    if (r.ORBIT_CENTER && r.ORBIT_CENTER !== 'EA') continue;
-    census.total++; census[r.OBJECT_TYPE] = (census[r.OBJECT_TYPE] || 0) + 1;
-  }
-  console.log(`SATCAT: ${rows.length} rows, ${census.total} on orbit`);
+  let rows = [];
+  try { rows = parseCsv(csv); }
+  catch (error) { console.warn(`SATCAT CSV: ${error.message}`); }
+  // Validate the columns used for enrichment/census and every catalogue id/type before
+  // claiming SATCAT succeeded. Error pages and header-only CSV are failed acquisitions.
+  const required = ['NORAD_CAT_ID', 'OBJECT_TYPE', 'DECAY_DATE', 'ORBIT_CENTER'];
+  const ids = new Set();
+  const valid = rows.length > 0 && rows.every(r => {
+    const id = Number(r.NORAD_CAT_ID);
+    if (!required.every(field => Object.hasOwn(r, field)) || !/^[1-9]\d*$/.test(r.NORAD_CAT_ID) ||
+        !Number.isSafeInteger(id) || ids.has(id) || !Object.hasOwn(TYPES, r.OBJECT_TYPE)) return false;
+    ids.add(id);
+    return true;
+  });
+  if (valid) {
+    satcat = new Map(rows.map((r) => [Number(r.NORAD_CAT_ID), r]));
+    // The whole public catalogue still in Earth orbit, tracked or not, by type.
+    census = { total: 0, PAY: 0, 'R/B': 0, DEB: 0, UNK: 0, decayed: 0 };
+    for (const r of rows) {
+      if (r.DECAY_DATE) { census.decayed++; continue; }
+      if (r.ORBIT_CENTER && r.ORBIT_CENTER !== 'EA') continue;
+      census.total++; census[r.OBJECT_TYPE] = (census[r.OBJECT_TYPE] || 0) + 1;
+    }
+    console.log(`SATCAT: ${rows.length} rows, ${census.total} on orbit`);
+  } else console.warn('SATCAT failed: malformed CSV, invalid header, catalogue identifiers or object types, or no rows; types fall back to names');
 } else console.warn('SATCAT failed: types fall back to names');
 
 const rows = mergeGroups(byGroup, satcat);
