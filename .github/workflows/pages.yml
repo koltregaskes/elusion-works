@@ -59,6 +59,20 @@ jobs:
               FIELDS.some((field, i) => doc.fields[i] !== field)) fail('unexpected catalogue schema.');
           const groupIds = new Set(GROUPS.map(g => g.id));
           const ids = new Set();
+          const validEpoch = value => {
+            // satellite.js treats an epoch without a timezone as UTC and appends Z.
+            const parts = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?Z?$/);
+            if (!parts) return false;
+            const [year, month, day, hour, minute, second] = parts.slice(1).map(Number);
+            const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+            const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+            if (year < 1 || month < 1 || month > 12 || day < 1 || day > days[month - 1] ||
+                hour > 23 || minute > 59 || second > 59) return false;
+            const date = new Date(value.endsWith('Z') ? value : `${value}Z`);
+            return Number.isFinite(date.getTime()) && date.getUTCFullYear() === year &&
+              date.getUTCMonth() + 1 === month && date.getUTCDate() === day &&
+              date.getUTCHours() === hour && date.getUTCMinutes() === minute && date.getUTCSeconds() === second;
+          };
           // Rows are compact arrays matching FIELDS, consumed by main.js and rowToOmm.
           // No malformed rows are allowed through publication, even if the worker could skip them.
           for (const [index, row] of doc.rows.entries()) {
@@ -69,9 +83,7 @@ jobs:
             ids.add(row[1]);
             if (!Object.hasOwn(TYPES, row[3]) || !groupIds.has(row[8])) bad('unknown type or GP group');
             if (row[7] !== null && (!Number.isFinite(row[7]) || row[7] < 0)) bad('invalid radar cross-section');
-            // satellite.js treats an epoch without a timezone as UTC and appends Z.
-            if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?$/.test(row[9]) ||
-                !Number.isFinite(Date.parse(row[9].endsWith('Z') ? row[9] : `${row[9]}Z`))) bad('invalid epoch');
+            if (!validEpoch(row[9])) bad('invalid epoch');
             if (row.slice(10).some(value => !Number.isFinite(value))) bad('non-finite orbital element');
             // Bound Earth orbits: mean motion in rev/day (20 allows margin above surface orbit),
             // eccentricity [0,1), inclination [0,180], and cyclic angles [0,360) degrees.

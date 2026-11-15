@@ -6,7 +6,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
-import { GROUPS, FIELDS } from '../demos/orbit-census/src/catalog.js';
+import { GROUPS, FIELDS, parseCsv } from '../demos/orbit-census/src/catalog.js';
 
 const root = process.cwd();
 const wf = fs.readFileSync('.github/workflows/pages.yml', 'utf8');
@@ -95,6 +95,29 @@ test('valid orbital boundaries, Z/fractional epoch and signed drag/derivatives p
     13: 0, 14: 359.999, 15: 0, 16: -0.001, 17: -0.01, 18: -0.001 });
   const r = validate(d); assert.equal(r.status, 0, r.stderr);
 });
+for (const [epoch, accepted] of [
+  ['2000-02-31T00:00:00', false], ['2001-02-29T00:00:00', false],
+  ['1900-02-29T00:00:00', false], ['2000-02-29T00:00:00', true],
+  ['2024-02-29T23:59:59.123456Z', true], ['2000-13-01T00:00:00', false],
+  ['2000-00-01T00:00:00', false], ['2000-01-00T00:00:00', false],
+  ['2000-04-31T00:00:00', false], ['2000-01-01T24:00:00', false],
+  ['2000-01-01T00:60:00', false], ['2000-01-01T00:00:60', false],
+  ['0000-01-01T00:00:00', false], ['2000-01-01T00:00:00', true],
+]) test(`epoch calendar and UTC round-trip: ${epoch}`, () => {
+  const d = valid(); d.rows[0][9] = epoch;
+  const r = validate(d); assert.equal(r.status, accepted ? 0 : 1, r.stdout + r.stderr);
+  if (!accepted) assert.match(r.stderr, /row 1: invalid epoch/);
+});
+for (const ending of ['', '\n', '\r\n']) test('CSV preserves quoted commas, escaped quotes and CRLF with ending ' + JSON.stringify(ending), () => {
+  assert.deepEqual(parseCsv('NAME,TYPE\r\n"Name, ""quoted""\r\ncontinued",PAY' + ending),
+    [{ NAME: 'Name, "quoted"\r\ncontinued', TYPE: 'PAY' }]);
+});
+test('CSV preserves an empty quoted final field', () => {
+  assert.deepEqual(parseCsv('NAME\r\n""'), [{ NAME: '' }]);
+});
+for (const csv of ['NAME\npart"quoted"', 'NAME\n"quoted"text', 'NAME\n"']) test('CSV rejects malformed quoting: ' + JSON.stringify(csv), () => {
+  assert.throws(() => parseCsv(csv), /quote|quoted/);
+});
 const preload = new URL('./fixtures/catalogue-fetch.mjs', import.meta.url).href;
 function build(scenario) {
   return spawnSync(process.execPath, ['--import', preload, path.join(root, 'demos/orbit-census/tools/build-catalog.mjs'), catalogue, scenario], { cwd: fixture, encoding: 'utf8' });
@@ -105,6 +128,7 @@ for (const [scenario, expectedBuild, expectedGate] of [
   ['tiny-census', 0, 1], ['missing-header', 0, 1], ['bad-identifier', 0, 1], ['zero-identifier', 0, 1],
   ['fractional-identifier', 0, 1], ['unsafe-identifier', 0, 1], ['unknown-type', 0, 1],
   ['inherited-type', 0, 1], ['duplicate-identifier', 0, 1], ['out-of-range-gp', 0, 1],
+  ['extra-column', 0, 1], ['truncated-row', 0, 1], ['unclosed-quote', 0, 1],
   ['missing-orbital-field', 1, null],
   ...['MEAN_MOTION', 'ECCENTRICITY', 'INCLINATION', 'RA_OF_ASC_NODE', 'ARG_OF_PERICENTER',
     'MEAN_ANOMALY', 'BSTAR', 'MEAN_MOTION_DOT', 'MEAN_MOTION_DDOT'].map(f => ['non-finite:' + f, 1, null]),
@@ -118,7 +142,8 @@ for (const [scenario, expectedBuild, expectedGate] of [
   }
   const doc = JSON.parse(fs.readFileSync(catalogue, 'utf8'));
   const badSatcat = ['satcat-failed', 'invalid-satcat', 'header-only', 'missing-header', 'bad-identifier',
-    'zero-identifier', 'fractional-identifier', 'unsafe-identifier', 'unknown-type', 'inherited-type', 'duplicate-identifier'].includes(scenario);
+    'zero-identifier', 'fractional-identifier', 'unsafe-identifier', 'unknown-type', 'inherited-type', 'duplicate-identifier',
+    'extra-column', 'truncated-row', 'unclosed-quote'].includes(scenario);
   assert.equal(doc.satcat, !badSatcat);
   if (badSatcat) { assert.equal(doc.census, null); assert.match(doc.source, /SATCAT unavailable/); }
   if (scenario === 'complete') assert.deepEqual(doc.census, { total: 10000, PAY: 2500, 'R/B': 2500, DEB: 2500, UNK: 2500, decayed: 1 });

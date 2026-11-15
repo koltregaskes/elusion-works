@@ -29,6 +29,9 @@ if (scenario === 'unsafe-identifier') csv += '9007199254740992,PAY,,EA\n';
 if (scenario === 'unknown-type') csv += '10001,ALIEN,,EA\n';
 if (scenario === 'inherited-type') csv += '10001,toString,,EA\n';
 if (scenario === 'duplicate-identifier') csv += '1,PAY,,EA\n';
+if (scenario === 'extra-column') csv += 'no-id,PAY,,EA,unexpected\n';
+if (scenario === 'truncated-row') csv += '10001,PAY,\n';
+if (scenario === 'unclosed-quote') csv += '10001,"PAY,,EA';
 globalThis.fetch = async url => {
   const s = String(url);
   if (!s.startsWith('https://celestrak.org/')) throw Error('Unexpected fixture request');

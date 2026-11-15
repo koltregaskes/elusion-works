@@ -93,17 +93,24 @@ export function rowToOmm(row) {
 
 // Minimal RFC 4180 CSV parser (SATCAT names can contain commas inside quotes).
 export function parseCsv(text) {
-  const rows = []; let row = []; let f = ''; let q = false;
+  const rows = []; let row = []; let f = ''; let q = false; let closed = false;
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
     if (q) {
-      if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c;
-    } else if (c === '"') q = true;
-    else if (c === ',') { row.push(f); f = ''; }
-    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(f); rows.push(row); row = []; f = ''; }
-    else f += c;
+      if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else { q = false; closed = true; } } else f += c;
+    } else if (c === '"') {
+      if (f || closed) throw new Error('Unexpected quote in CSV field');
+      q = true;
+    } else if (c === ',') { row.push(f); f = ''; closed = false; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(f); rows.push(row); row = []; f = ''; closed = false; }
+    else {
+      if (closed) throw new Error('Unexpected text after quoted CSV field');
+      f += c;
+    }
   }
-  if (f || row.length) { row.push(f); rows.push(row); }
+  if (q) throw new Error('Unclosed quote in CSV record');
+  if (f || row.length || closed) { row.push(f); rows.push(row); }
   const head = rows.shift() || [];
-  return rows.filter((x) => x.length === head.length).map((x) => Object.fromEntries(head.map((h, i) => [h, x[i]])));
+  if (rows.some(x => x.length !== head.length)) throw new Error('CSV record width differs from header');
+  return rows.map((x) => Object.fromEntries(head.map((h, i) => [h, x[i]])));
 }

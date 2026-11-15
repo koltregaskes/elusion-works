@@ -52,7 +52,9 @@ for (const g of GROUPS) {
 let satcat = null; let census = null;
 const csv = await get(CELESTRAK_SATCAT, 'text');
 if (csv) {
-  const rows = parseCsv(csv);
+  let rows = [];
+  try { rows = parseCsv(csv); }
+  catch (error) { console.warn(`SATCAT CSV: ${error.message}`); }
   // Validate the columns used for enrichment/census and every catalogue id/type before
   // claiming SATCAT succeeded. Error pages and header-only CSV are failed acquisitions.
   const required = ['NORAD_CAT_ID', 'OBJECT_TYPE', 'DECAY_DATE', 'ORBIT_CENTER'];
@@ -74,7 +76,7 @@ if (csv) {
       census.total++; census[r.OBJECT_TYPE] = (census[r.OBJECT_TYPE] || 0) + 1;
     }
     console.log(`SATCAT: ${rows.length} rows, ${census.total} on orbit`);
-  } else console.warn('SATCAT failed: invalid header, catalogue identifiers or object types, or no rows; types fall back to names');
+  } else console.warn('SATCAT failed: malformed CSV, invalid header, catalogue identifiers or object types, or no rows; types fall back to names');
 } else console.warn('SATCAT failed: types fall back to names');
 
 const rows = mergeGroups(byGroup, satcat);
