@@ -14,8 +14,18 @@ if OUT.exists():
 OUT.mkdir()
 for name in ['index.html','styles.css','showcase-pages.css','app.js','cursor.js','404.html','robots.txt','llms.txt','security.txt','CNAME','cross-site-nav.js','cabinet.js','editorial-age.js']:
     shutil.copy2(ROOT / name, OUT / name)
+# No demo page loads Markdown. Keep the bundled third-party licence only;
+# working notes stay in source and are never part of the public demo bundle.
+PUBLIC_DEMO_MARKDOWN = {'orbit-census/vendor/satellite/LICENSE.md'}
+def ignore_demo_notes(directory, names):
+    ignored = set(shutil.ignore_patterns('tools','__pycache__','*.pyc','.env','.env.*')(directory, names))
+    ignored.update(name for name in names if name.lower().endswith('.md')
+                   and (Path(directory) / name).relative_to(ROOT / 'demos').as_posix() not in PUBLIC_DEMO_MARKDOWN)
+    return ignored
+
 for name in ['assets','styles','experiments','creative-radar','remix-relay','design-notes','demos']:
-    shutil.copytree(ROOT / name, OUT / name, ignore=shutil.ignore_patterns('tools','__pycache__','*.pyc','.env','.env.*'))
+    ignore = ignore_demo_notes if name == 'demos' else shutil.ignore_patterns('tools','__pycache__','*.pyc','.env','.env.*')
+    shutil.copytree(ROOT / name, OUT / name, ignore=ignore)
 (OUT / 'data').mkdir()
 for name in ['estate.js','feed.json']: shutil.copy2(ROOT / 'data' / name, OUT / 'data' / name)
 # One configured public destination, retained until its replacement is verified.
