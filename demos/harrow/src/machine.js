@@ -435,7 +435,9 @@ export class Machine {
     this.cellParts.forEach((c) => c.h.position.set(c.base.x, c.base.y + 10 * e, c.base.z + c.s * 96 * e));
 
     // drill: the shaft telescopes down until the bit is 6 cm into the ground, and spins
-    const d = st.drillDepth, reach = 116 * d; // stowed: bit inside the housing; full depth: tip 6 cm into the ground
+    // full reach puts the tip 6 cm into the ground: housing at 122 in body space, bit origin 14 above
+    // the housing centre when stowed, cone tip 34 below the bit origin, body raised by its live height
+    const d = st.drillDepth, reach = d * (122 + 14 - 34 + 6 + this.body.position.y);
     this.bit.position.y = 14 - reach; this.shaft.scale.y = Math.max(0.01, reach); this.shaft.position.y = -reach / 2; this.shaft.visible = reach > 1;
     this.drillG.position.y = 122 - 110 * e;
     this.bit.rotation.y += dt * (d > 0.02 ? 16 : 0);
