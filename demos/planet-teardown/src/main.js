@@ -431,7 +431,8 @@ function filmTick(dt) {
 
 // keyboard
 addEventListener('keydown', (e) => {
-  if (e.target.tagName === 'INPUT') return;
+  // leave typing and native control keys alone (search box, city picker, focused buttons)
+  if (e.target.closest?.('input, select, textarea, [contenteditable]') || (e.key === ' ' && e.target.closest?.('button'))) return;
   const k = e.key.toLowerCase();
   if (/^[1-8]$/.test(k)) selectPlanet(PLANETS[+k - 1].id);
   else if (k === 's') setMode('surface'); else if (k === 'c') setMode('cutaway'); else if (k === 'x') setMode('exploded');

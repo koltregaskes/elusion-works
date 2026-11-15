@@ -297,7 +297,9 @@ function renderFacts() {
   const it = S.items[S.sel]; if (!it) return;
   const age = (S.simT - it.epoch);
   const yrs = it.launch ? ((Date.now() - Date.parse(it.launch)) / (365.25 * DAY)) : null;
-  const rcs = it.rcs == null ? 'not published' : `${it.rcs < 0.1 ? it.rcs.toFixed(3) : it.rcs.toFixed(2)} m² · ${it.rcs < 0.1 ? 'small' : it.rcs < 1 ? 'medium' : 'large'}`;
+  // SATCAT leaves RCS blank for most objects now; only say so when this object was matched in SATCAT
+  const satcatMatched = !!S.doc?.satcat && !!it.launch;
+  const rcs = it.rcs == null ? (satcatMatched ? 'not in SATCAT' : 'unavailable') : `${it.rcs < 0.1 ? it.rcs.toFixed(3) : it.rcs.toFixed(2)} m² · ${it.rcs < 0.1 ? 'small' : it.rcs < 1 ? 'medium' : 'large'}`;
   const grp = GROUPS.find((g) => g.id === it.group)?.label || it.group;
   const rows = [
     ['NORAD id', it.norad], ['COSPAR id', it.cospar || '—'], ['Owner', ownerName(it.owner)],
@@ -543,7 +545,8 @@ search.addEventListener('input', () => {
 });
 search.addEventListener('keydown', (e) => { if (e.key === 'Enter') { const li = results.querySelector('li[data-i]'); if (li) li.click(); } });
 addEventListener('keydown', (e) => {
-  if (e.target.tagName === 'INPUT') return;
+  // leave typing and native control keys alone (search box, city picker, focused buttons)
+  if (e.target.closest?.('input, select, textarea, [contenteditable]') || (e.key === ' ' && e.target.closest?.('button'))) return;
   if (e.key === ' ') { e.preventDefault(); $('#play').click(); }
   else if (e.key === 'Escape') select(-1);
   else if (e.key.toLowerCase() === 'f') setFollow(!S.follow);

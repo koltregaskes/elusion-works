@@ -59,5 +59,6 @@ Captured on 15 Nov 2026 from a real CelesTrak build (19,716 objects), with label
 - CelesTrak answers `satcat.csv` with HTTP 406 to `Accept: text/csv`; the build now sends `*/*`.
 - Close approaches leave out pairs moving under 10 m/s relative to each other: the ISS modules
   have separate catalogue entries and otherwise filled the list as "0.0 km" approaches.
-- Most SATCAT rows no longer carry a radar cross-section, so the object card says "not published".
+- Most SATCAT rows no longer carry a radar cross-section. The object card says "not in SATCAT" when the
+  object was matched in SATCAT with a blank RCS, and "unavailable" when there was no SATCAT match at all.
 - Running the build script locally behind a proxy needs `NODE_USE_ENV_PROXY=1` (Node 22+).
