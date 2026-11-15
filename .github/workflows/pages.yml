@@ -135,6 +135,12 @@ jobs:
           test -f _site/demos/_teardown-kit/merge.js
           test -f _site/demos/hoover-dam/vendor/addons/utils/BufferGeometryUtils.js
           test -f _site/demos/hoover-dam/teardown/thumbnail.webp
+          test -f _site/demos/harrow/index.html
+          test -f _site/demos/harrow/src/main.js
+          test -f _site/demos/harrow/src/machine.js
+          test -f _site/demos/harrow/src/sim.js
+          test -f _site/demos/harrow/thumbnail.webp
+          test -f _site/demos/harrow/og-card.jpg
           test -f _site/demos/hoover-dam/vendor/addons/postprocessing/GTAOPass.js
           test -f _site/demos/abyssal-relay/index.html
           test -f _site/demos/abyssal-relay/styles.css
