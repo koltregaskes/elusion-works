@@ -49,16 +49,46 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
-          import { GROUPS } from './demos/orbit-census/src/catalog.js';
+          import { GROUPS, FIELDS, TYPES } from './demos/orbit-census/src/catalog.js';
           const fail = message => { console.error(`::error::Orbit Census: ${message}`); process.exit(1); };
           let doc;
           try { doc = JSON.parse(readFileSync('_site/demos/orbit-census/data/catalog.json', 'utf8')); }
           catch { fail('catalogue is missing, empty or invalid JSON; keeping the previous deployment.'); }
           if (!Array.isArray(doc?.rows) || doc.rows.length < 2000) fail('fewer than 2000 objects.');
+          if (doc.v !== 1 || !Array.isArray(doc.fields) || doc.fields.length !== FIELDS.length ||
+              FIELDS.some((field, i) => doc.fields[i] !== field)) fail('unexpected catalogue schema.');
+          const groupIds = new Set(GROUPS.map(g => g.id));
+          const ids = new Set();
+          // Rows are compact arrays matching FIELDS, consumed by main.js and rowToOmm.
+          // No malformed rows are allowed through publication, even if the worker could skip them.
+          for (const [index, row] of doc.rows.entries()) {
+            const bad = reason => fail(`row ${index + 1}: ${reason}.`);
+            if (!Array.isArray(row) || row.length !== FIELDS.length) bad('expected a complete compact row');
+            if ([0, 2, 3, 4, 5, 6, 8, 9].some(i => typeof row[i] !== 'string') || !row[0].trim()) bad('invalid text fields');
+            if (!Number.isSafeInteger(row[1]) || row[1] <= 0 || ids.has(row[1])) bad('invalid or duplicate NORAD identifier');
+            ids.add(row[1]);
+            if (!Object.hasOwn(TYPES, row[3]) || !groupIds.has(row[8])) bad('unknown type or GP group');
+            if (row[7] !== null && (!Number.isFinite(row[7]) || row[7] < 0)) bad('invalid radar cross-section');
+            // satellite.js treats an epoch without a timezone as UTC and appends Z.
+            if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?$/.test(row[9]) ||
+                !Number.isFinite(Date.parse(row[9].endsWith('Z') ? row[9] : `${row[9]}Z`))) bad('invalid epoch');
+            if (row.slice(10).some(value => !Number.isFinite(value))) bad('non-finite orbital element');
+            // Bound Earth orbits: mean motion in rev/day (20 allows margin above surface orbit),
+            // eccentricity [0,1), inclination [0,180], and cyclic angles [0,360) degrees.
+            // Drag and derivatives may be signed; require finite numbers without arbitrary caps.
+            if (!(row[10] > 0 && row[10] <= 20) || row[11] < 0 || row[11] >= 1 ||
+                row[12] < 0 || row[12] > 180 || [13, 14, 15].some(i => row[i] < 0 || row[i] >= 360)) bad('orbital element out of range');
+          }
           for (const { id } of GROUPS) {
             if (!Number.isInteger(doc.groups?.[id]) || doc.groups[id] <= 0) fail(`GP group ${id} failed or was empty.`);
           }
-          if (doc.satcat !== true || !Number.isInteger(doc.census?.total) || doc.census.total <= 0) fail('SATCAT fetch failed or was empty.');
+          // DESIGN.md describes roughly 19,000 tracked GP objects; index.html describes tens
+          // of thousands overall. SATCAT covers the wider population. 10,000 is deliberately
+          // below even the documented GP subset, allowing large normal day-to-day changes.
+          if (doc.satcat !== true || !Number.isSafeInteger(doc.census?.total) || doc.census.total < 10000) fail('SATCAT fetch failed or census has fewer than 10000 objects.');
+          const typeCounts = Object.keys(TYPES).map(type => doc.census[type]);
+          if (typeCounts.some(count => !Number.isSafeInteger(count) || count < 0) ||
+              typeCounts.reduce((sum, count) => sum + count, 0) !== doc.census.total) fail('inconsistent SATCAT census counts.');
           console.log(`Orbit Census catalogue: ${doc.rows.length} objects; all GP groups and SATCAT acquired.`);
           NODE
 
