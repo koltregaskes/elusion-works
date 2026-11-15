@@ -453,7 +453,7 @@ function syncUrl() {
   const u = new URLSearchParams();
   u.set('p', P.id); if (S.mode !== 'surface') u.set('mode', S.mode); if (S.accent !== 'lime') u.set('accent', S.accent);
   for (const k of ['clean', 'notour', 'q']) if (q.has(k)) u.set(k, q.get(k));
-  history.replaceState(null, '', `?${u}`);
+  try { history.replaceState(null, '', `?${u}`); } catch { /* sandboxed frame */ }
 }
 
 // ---------------------------------------------------------------------------

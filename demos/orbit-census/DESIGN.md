@@ -52,5 +52,12 @@ the real Sun for the sim time.
 
 ## Thumbnail
 
-The card image was captured from a local run with stand-in orbits (CelesTrak is not
-reachable from the build sandbox). The live page only ever shows real catalogue data.
+Captured on 15 Nov 2026 from a real CelesTrak build (19,716 objects), with labels hidden.
+
+## Notes from the first live builds
+
+- CelesTrak answers `satcat.csv` with HTTP 406 to `Accept: text/csv`; the build now sends `*/*`.
+- Close approaches leave out pairs moving under 10 m/s relative to each other: the ISS modules
+  have separate catalogue entries and otherwise filled the list as "0.0 km" approaches.
+- Most SATCAT rows no longer carry a radar cross-section, so the object card says "not published".
+- Running the build script locally behind a proxy needs `NODE_USE_ENV_PROXY=1` (Node 22+).

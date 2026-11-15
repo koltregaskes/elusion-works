@@ -19,7 +19,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function get(url, kind) {
   for (let a = 0; a < 3; a++) {
     try {
-      const res = await fetch(url, { headers: { 'User-Agent': UA, Accept: kind === 'json' ? 'application/json' : 'text/csv' } });
+      const res = await fetch(url, { headers: { 'User-Agent': UA, Accept: kind === 'json' ? 'application/json' : '*/*' } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = kind === 'json' ? await res.json() : await res.text();
       return body;
