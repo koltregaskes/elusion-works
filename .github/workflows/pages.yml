@@ -22,7 +22,7 @@ concurrency:
 jobs:
   build:
     outputs:
-      catalogue_outcome: ${{ steps.orbitcat.outcome }}
+      catalogue_outcome: ${{ steps.orbitcat.outcome == 'success' && steps.orbitcheck.outcome == 'success' && 'success' || 'failure' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -39,22 +39,28 @@ jobs:
 
       # Orbit Census reads a catalogue of every tracked object, rebuilt from CelesTrak on each
       # deploy (twice a day by the schedule above, matching CelesTrak's own update rhythm).
-      # A failed fetch must not block the site: the page then asks CelesTrak directly and says so.
+      # A failed or empty acquisition blocks publication, keeping the previous Pages deployment live.
       - name: Build Orbit Census catalogue from CelesTrak
         id: orbitcat
-        continue-on-error: true
         run: node demos/orbit-census/tools/build-catalog.mjs _site/demos/orbit-census/data/catalog.json
 
-      - name: Report Orbit Census catalogue
+      - name: Validate Orbit Census catalogue before publication
+        id: orbitcheck
         run: |
-          f=_site/demos/orbit-census/data/catalog.json
-          if [ -s "$f" ]; then
-            n=$(node -e "const d=require('./$f'); console.log(d.rows.length)")
-            echo "Orbit Census catalogue: $n objects"
-            if [ "$n" -lt 2000 ]; then echo "::warning::Orbit Census catalogue has only $n objects"; fi
-          else
-            echo "::warning::Orbit Census catalogue was not built (outcome: ${{ steps.orbitcat.outcome }}); the page will fall back to a live CelesTrak fetch"
-          fi
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { GROUPS } from './demos/orbit-census/src/catalog.js';
+          const fail = message => { console.error(`::error::Orbit Census: ${message}`); process.exit(1); };
+          let doc;
+          try { doc = JSON.parse(readFileSync('_site/demos/orbit-census/data/catalog.json', 'utf8')); }
+          catch { fail('catalogue is missing, empty or invalid JSON; keeping the previous deployment.'); }
+          if (!Array.isArray(doc?.rows) || doc.rows.length < 2000) fail('fewer than 2000 objects.');
+          for (const { id } of GROUPS) {
+            if (!Number.isInteger(doc.groups?.[id]) || doc.groups[id] <= 0) fail(`GP group ${id} failed or was empty.`);
+          }
+          if (doc.satcat !== true || !Number.isInteger(doc.census?.total) || doc.census.total <= 0) fail('SATCAT fetch failed or was empty.');
+          console.log(`Orbit Census catalogue: ${doc.rows.length} objects; all GP groups and SATCAT acquired.`);
+          NODE
 
       - name: Verify static site bundle
         run: |
@@ -238,6 +244,7 @@ jobs:
 
   deploy:
     needs: build
+    if: needs.build.result == 'success'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -250,7 +257,7 @@ jobs:
   catalogue-health:
     name: Orbit Census acquisition signal
     needs: build
-    if: always() && needs.build.result == 'success'
+    if: always() && needs.build.result != 'cancelled'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
