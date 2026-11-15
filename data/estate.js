@@ -5,7 +5,8 @@ export const estateItems = [
     group: "hubs",
     type: "hub",
     family: "Elusion Works",
-    status: "live",
+    // Planned launch: 11 January 2027.
+    status: "coming-soon",
     url: "https://theairesourcehub.com/",
     blurb: "Reference hub for models, benchmarks, pricing, and dated AI updates.",
     tags: ["AI reference", "benchmarks", "pricing"],
@@ -23,6 +24,7 @@ export const estateItems = [
     group: "websites",
     type: "website",
     family: "Kol Tregaskes",
+    // Planned launch: 14 December 2026.
     status: "live",
     url: "https://koltregaskes.com/",
     blurb: "Essays, AI digest archives, and commentary with a sharper editorial tone.",
@@ -40,6 +42,7 @@ export const estateItems = [
     group: "websites",
     type: "website",
     family: "Elusion Works",
+    // Planned launch: 17 December 2026.
     status: "in-progress",
     url: "https://axylusion.com/",
     blurb: "AI art, music, and video portfolio with a cinematic visual direction.",
@@ -57,7 +60,8 @@ export const estateItems = [
     group: "websites",
     type: "website",
     family: "Elusion Works",
-    status: "live",
+    // Planned launch: 18 December 2026.
+    status: "coming-soon",
     url: "https://ghostinthemodels.com/",
     blurb: "Editorial publishing experiments around agents, autonomy, and machine culture.",
     tags: ["editorial", "agents", "publishing"],
@@ -74,6 +78,7 @@ export const estateItems = [
     group: "websites",
     type: "website",
     family: "Kol Tregaskes",
+    // Planned launch: 16 December 2026.
     status: "in-progress",
     url: "https://koltregaskesphotography.com/",
     blurb: "Quiet photography portfolio moving toward a fuller image-led release.",
@@ -193,7 +198,8 @@ export const featureItems = [
     group: "features",
     type: "feature",
     family: "AI Resource Hub",
-    status: "live",
+    // Planned launch: 11 January 2027 (with AI Resource Hub).
+    status: "coming-soon",
     url: "https://theairesourcehub.com/",
     blurb: "Weighted model ranking and frontier signal in a compact reference desk.",
     tags: ["leaderboard", "benchmarks", "signal"],
