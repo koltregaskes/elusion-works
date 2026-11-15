@@ -19,9 +19,9 @@
 
   const sites = [
     { id: 'kols-korner', name: "Kol's Korner", url: 'https://koltregaskes.com', desc: 'AI news and essays' },
-    { id: 'ai-resource-hub', name: 'AI Resource Hub', url: 'https://theairesourcehub.com', desc: 'Model comparison' },
+    { id: 'ai-resource-hub', name: 'AI Resource Hub', url: 'https://theairesourcehub.com', desc: 'Model comparison', status: 'Coming soon' },
     { id: 'axylusion', name: 'Axy Lusion', url: 'https://axylusion.com', desc: 'AI art and creative work' },
-    { id: 'ghost-in-the-models', name: 'Ghost in the Models', url: 'https://ghostinthemodels.com', desc: 'AI agent articles' },
+    { id: 'ghost-in-the-models', name: 'Ghost in the Models', url: 'https://ghostinthemodels.com', desc: 'AI agent articles', status: 'Coming soon' },
     { id: 'kol-tregaskes-photography', name: 'KT Photography', url: 'https://koltregaskesphotography.com', desc: 'Photo portfolio' }
   ];
 
@@ -93,7 +93,7 @@
   for (const site of siblings) {
     const link = document.createElement('a');
     link.href = site.url;
-    link.textContent = site.name;
+    link.textContent = site.status ? `${site.name} (${site.status})` : site.name;
     link.title = site.desc;
     link.rel = 'noopener';
     link.style.cssText = `

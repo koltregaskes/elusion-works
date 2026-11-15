@@ -1,3 +1,5 @@
+// Launch order set by Kol on 15 Nov 2026: 1) Kol's Korner, 2) Axy Lusion, 3) the remaining sites,
+// 4) AI Resource Hub second from last, 5) Elusion Works itself last. Flip each status to "live" on its launch day.
 export const estateItems = [
   {
     id: "ai-resource-hub",
@@ -5,7 +7,8 @@ export const estateItems = [
     group: "hubs",
     type: "hub",
     family: "Elusion Works",
-    status: "live",
+    // Launch order: second from last, just before Elusion Works. Date to be confirmed (was 11 January 2027).
+    status: "coming-soon",
     url: "https://theairesourcehub.com/",
     blurb: "Reference hub for models, benchmarks, pricing, and dated AI updates.",
     tags: ["AI reference", "benchmarks", "pricing"],
@@ -23,6 +26,7 @@ export const estateItems = [
     group: "websites",
     type: "website",
     family: "Kol Tregaskes",
+    // Launch order: first, 14 December 2026.
     status: "live",
     url: "https://koltregaskes.com/",
     blurb: "Essays, AI digest archives, and commentary with a sharper editorial tone.",
@@ -40,6 +44,7 @@ export const estateItems = [
     group: "websites",
     type: "website",
     family: "Elusion Works",
+    // Launch order: second. Date to be confirmed (was 17 December 2026).
     status: "in-progress",
     url: "https://axylusion.com/",
     blurb: "AI art, music, and video portfolio with a cinematic visual direction.",
@@ -57,7 +62,8 @@ export const estateItems = [
     group: "websites",
     type: "website",
     family: "Elusion Works",
-    status: "live",
+    // Launch order: with the remaining sites, after Axy Lusion. Date to be confirmed (was 18 December 2026).
+    status: "coming-soon",
     url: "https://ghostinthemodels.com/",
     blurb: "Editorial publishing experiments around agents, autonomy, and machine culture.",
     tags: ["editorial", "agents", "publishing"],
@@ -74,6 +80,7 @@ export const estateItems = [
     group: "websites",
     type: "website",
     family: "Kol Tregaskes",
+    // Launch order: with the remaining sites, after Axy Lusion. Date to be confirmed (was 16 December 2026).
     status: "in-progress",
     url: "https://koltregaskesphotography.com/",
     blurb: "Quiet photography portfolio moving toward a fuller image-led release.",
@@ -193,7 +200,8 @@ export const featureItems = [
     group: "features",
     type: "feature",
     family: "AI Resource Hub",
-    status: "live",
+    // Launch order: with AI Resource Hub, second from last. Date to be confirmed.
+    status: "coming-soon",
     url: "https://theairesourcehub.com/",
     blurb: "Weighted model ranking and frontier signal in a compact reference desk.",
     tags: ["leaderboard", "benchmarks", "signal"],
