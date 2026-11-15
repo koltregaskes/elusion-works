@@ -73,6 +73,29 @@ export class ThirdPerson {
       this.locked = document.pointerLockElement === this.dom;
       this.onLockChange?.(this.locked);
     });
+    // mouse drag looks around too, so the controls work where pointer lock is
+    // refused (sandboxed or embedded pages) or before the first click locks it
+    const drag = { on: false, x: 0, y: 0, moved: 0 };
+    dom.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'mouse' || e.button !== 0 || this.locked) return;
+      Object.assign(drag, { on: true, x: e.clientX, y: e.clientY, moved: 0 });
+    });
+    window.addEventListener('pointermove', (e) => {
+      if (!drag.on || this.locked || e.pointerType !== 'mouse') return;
+      const dx = e.clientX - drag.x;
+      const dy = e.clientY - drag.y;
+      drag.x = e.clientX;
+      drag.y = e.clientY;
+      drag.moved += Math.abs(dx) + Math.abs(dy);
+      if (this.enabled) {
+        this.yaw -= dx * 0.005;
+        this.pitch = THREE.MathUtils.clamp(this.pitch + dy * 0.004, -0.35, 1.2);
+      } else if (this.touchEnabled) this.onTouchLook?.(dx * 0.8, dy * 0.8);
+    });
+    const dragEnd = () => { drag.on = false; };
+    window.addEventListener('pointerup', dragEnd);
+    window.addEventListener('pointercancel', dragEnd);
+    this.wasDrag = () => drag.moved > 6;
     // touch: left half moves, right half looks
     this.touchMove = new THREE.Vector2();
     const look = { id: null, x: 0, y: 0 };

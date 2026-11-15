@@ -73,7 +73,12 @@ void main() {
 
   // Base gradient, with a warm band hugging the horizon on the sun side.
   float hgt = clamp(up, 0.0, 1.0);
-  vec3 col = mix(uHorizon, uZenith, pow(hgt, 0.45));
+  float k = pow(hgt, 0.45);
+  vec3 col = mix(uHorizon, uZenith, k);
+  // A warm horizon and a blue zenith average to grey half-way up, which is exactly the
+  // band of sky most shots see. Restore some saturation there.
+  float midSat = 1.0 + 2.0 * k * (1.0 - k);
+  col = max(mix(vec3(dot(col, vec3(0.2126, 0.7152, 0.0722))), col, midSat), 0.0);
   float sunSide = pow(max(sunDot, 0.0), 2.0);
   col = mix(col, mix(uHorizon, uSunColor, 0.35), sunSide * (1.0 - hgt) * 0.6);
   // Below the horizon: haze colour, so distant hills dissolve into it.

@@ -14,8 +14,10 @@ export function makeShots(sample) {
     {
       title: 'Thornvale',
       dur: 14,
-      pos: { getPointAt: (t) => { const a = -0.9 + t * 0.9; return V(Math.cos(a) * 210, 150 - t * 20, Math.sin(a) * 210 + 40); } },
-      look: () => V(0, B + 4, -10),
+      // the arrival: a slow arc from the north-west with the low sun behind the
+      // camera, so the walls and roofs are lit and the sky and hills fill the top
+      pos: { getPointAt: (t) => { const a = -2.25 + t * 0.85; return V(Math.cos(a) * (250 - t * 30), 105 - t * 30, Math.sin(a) * (250 - t * 30)); } },
+      look: (t) => V(0, B + 10 - t * 4, 6),
     },
     {
       title: 'The south gate',

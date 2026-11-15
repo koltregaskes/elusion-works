@@ -42,7 +42,7 @@ import { FORMATION } from './formations.js';
    complaint in the whole genre: if you must handicap, handicap *downward* on
    easy rather than upward on hard. Easy therefore keeps 0.9 / 0.85 — a
    disclosed handicap in the player's favour — and hard is bought entirely with
-   decision quality: it thinks twice as often, commits on a lower margin,
+   decision quality: it thinks about three times as often, commits on a lower margin,
    works more seams, raids sooner, reaches for the contested band earlier and
    never makes a random mistake.
 
@@ -64,7 +64,12 @@ const DIFFICULTY = {
     holdShare: 0.18, contestAt: 170,
   },
   hard: {
-    think: 0.65, commitScale: 0.72, collectors: 8, harassAt: 45,
+    /* think 0.4 (was 0.65): Relentless beat Even only 30 of 48 at 0.65
+       (seeds 1 to 24, both sides, seed-picked personalities). At 0.4 it wins
+       39 of 48, 20 of 24 on seeds 1 to 12 and 19 of 24 on the unseen 13 to
+       24. Reserve, commit, hold, contest, yards and siege changes each moved
+       it by one win or less, and 0.5 gave 16 of 24. */
+    think: 0.4, commitScale: 0.72, collectors: 8, harassAt: 45,
     income: 1.0, buildRate: 1.0, retreatAt: 0.26, techScale: 0.8, sloppiness: 0.0,
     dominance: 0.88, siegeAt: 560, yards: 6, defenceShare: 0.18, reserve: 1.5,
     holdShare: 0.26, contestAt: 110,
@@ -88,7 +93,7 @@ export const DIFFICULTY_COPY = {
   hard: {
     name: 'Fleet Command',
     line: 'Plays the same economy you do. No income bonus, no build bonus. ' +
-      'It simply thinks twice as often, commits on a thinner margin, raids ' +
+      'It simply thinks about three times as often, commits on a thinner margin, raids ' +
       'sooner and goes for the contested band first.',
   },
 };
@@ -572,8 +577,20 @@ export class Commander {
        destroyers bombers are built to kill. Against a bomber-heavy enemy the
        flak screen comes first and grows. */
     const bombers = this._bomberShare();
-    if (bombers > 0.3 && have('assaultFrigate') < Math.min(6, wantFrigate + Math.round(bombers * 4))) {
-      return 'assaultFrigate';
+    /* Round 19: in ordinary matches the bomber share seen runs 0.4 to 0.8,
+       so this answer fired almost every think, the flak frigates kept dying
+       short of the target, and the line never reached a capital: in Even
+       against Even only 1 side in 6 built a destroyer, and treasuries sat on
+       7,000 credits. Against real bomber spam (over 0.7) the flak screen
+       still comes first; otherwise two flak frigates are enough to let a
+       capital that is behind schedule go next. */
+    if (bombers > 0.3) {
+      const flak = have('assaultFrigate');
+      const capsBehind = have('cruiser') < Math.min(2, wantCruiser) || have('destroyer') < wantDestroyer;
+      if (flak < Math.min(6, wantFrigate + Math.round(bombers * 4)) &&
+          (bombers > 0.7 || flak < 2 || !capsBehind)) {
+        return 'assaultFrigate';
+      }
     }
     if (have('cruiser') < Math.min(2, wantCruiser)) return 'cruiser';
     if (have('destroyer') < wantDestroyer) return 'destroyer';
@@ -687,7 +704,15 @@ export class Commander {
 
       // Interceptors and turreted corvettes are the strike-slip answer to
       // bombers, which the role shares above cannot tell from interceptors.
-      if (id === 'interceptor' || id === 'corvette') score *= 1 + 1.5 * this._bomberShare();
+      // Round 19: against a fleet that is mostly bombers the answer was too
+      // soft. Even kept buying bombers of its own, which have nothing to hit
+      // in a bomber swarm, and bomber-only spam beat it 20 times in 24. Past
+      // a bomber share of one half the answer steepens, up to three times as
+      // strong at all bombers, and spam now wins 10 in 24.
+      if (id === 'interceptor' || id === 'corvette') {
+        const bs = this._bomberShare();
+        score *= (1 + 1.5 * bs) * (1 + 4 * Math.max(0, bs - 0.5));
+      }
       if (this.bias[id]) score *= this.bias[id];
 
       // Scouts are intel, not fleet — buy one wing and stop.

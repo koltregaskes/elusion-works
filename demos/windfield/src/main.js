@@ -20,7 +20,9 @@ import { StudioUI } from './ui.js';
 import { WindAudio } from './audio.js';
 import { Bench } from './bench.js';
 
-const url = new URLSearchParams(location.search);
+// Options read from the query string, or from the hash where a host drops the query
+// (an embedded copy): ?bench and #bench both work.
+const url = new URLSearchParams(location.search || location.hash.slice(1));
 const MANUAL = url.has('manual'); // frame-stepped capture mode, driven from outside
 const BENCH = url.has('bench'); // one-click frame-rate test across quality levels
 const coarse = matchMedia('(pointer: coarse)').matches;
@@ -548,6 +550,37 @@ setPreset(presetIndex, true);
 rig.angle = PRESETS[presetIndex].camera.startAngle;
 ui.sync(state);
 
+// Open on the combine already at work: a couple of lanes cut to stubble beside the
+// standing crop, and the camera on the machine rather than easing across from the oak.
+const OPENING_HARVEST_SECONDS = 80;
+function primeHarvest(seconds) {
+  updateSubjects(0, 0);
+  const step = 1 / 10;
+  const opts = { windDir: windUniforms.uWindDir.value, windStrength: state.windStrength, sunElevation: state.sunElevation, speedScale: state.combineSpeed ?? 1 };
+  for (let k = 0; k < seconds / step; k++) harvest.update(step, 0, opts);
+  rig.focus.copy(harvest.position);
+  rig.snapNext = true;
+}
+if (state.subject === 'combine' && !MANUAL) primeHarvest(OPENING_HARVEST_SECONDS);
+
+// Keep the subject in the open part of the screen: with the control panel open on a
+// wide screen, shift the view so the focus sits centred in the space left of it.
+let viewShift = 0;
+function updateViewShift(dt, instant = false) {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  const b = document.body.classList;
+  const goal = w >= 960 && b.contains('panel-open') && !b.contains('ui-hidden') ? 162 : 0;
+  viewShift = instant ? goal : viewShift + (goal - viewShift) * (1 - Math.exp(-dt * 3.5));
+  if (Math.abs(viewShift) < 0.25 && goal === 0) {
+    viewShift = 0;
+    if (camera.view?.enabled) camera.clearViewOffset();
+    return;
+  }
+  camera.setViewOffset(w, h, viewShift, 0, w, h);
+}
+updateViewShift(0, true);
+
 // ---------------------------------------------------------------- frame
 let time = 0;
 let cloudX = 0;
@@ -589,6 +622,7 @@ function frame(dt) {
   }
 
   rig.update(dt, time);
+  updateViewShift(dt);
   camera.updateMatrixWorld();
   updateGrassPatch(camera);
   sky.position.copy(camera.position);
@@ -669,16 +703,20 @@ function frame(dt) {
 
 let last = performance.now();
 const bench = BENCH ? new Bench({ setQuality, renderer, getQuality: () => quality }) : null;
+// The loading veil lifts only once real frames are on screen, so the first thing anyone
+// sees is the field, not a half-compiled scene.
+let framesDrawn = 0;
 function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  frame(dt);
+  frame(framesDrawn === 0 ? 1 / 60 : dt);
+  if (++framesDrawn === 3) document.body.classList.add('is-ready');
   bench?.onFrame(now);
   requestAnimationFrame(loop);
 }
 
-document.body.classList.add('is-ready');
 if (MANUAL) {
+  document.body.classList.add('is-ready');
   // Capture hook: advance the scene in fixed steps and render on demand.
   window.__windfield = {
     step(dt = 1 / 30, n = 1) {

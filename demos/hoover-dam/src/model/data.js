@@ -39,13 +39,13 @@ export const SPECS = [
   { k: 'Mass of dam', v: '≈ 6.6 million short tons' },
   { k: 'Reservoir', v: 'Lake Mead' },
   { k: 'Capacity at full pool', v: '≈ 26.1 million acre-ft (≈ 32.2 km³)' },
-  { k: 'Lake length when full', v: '≈ 112 miles (180 km)' },
+  { k: 'Lake length when full', v: '≈ 110 miles (177 km)' },
   { k: 'Main generating units', v: '17 Francis turbines' },
   { k: 'Nameplate capacity', v: '≈ 2,080 MW' },
-  { k: 'Spillway capacity', v: '≈ 400,000 ft³/s (11,300 m³/s), both sides' },
+  { k: 'Spillway capacity', v: 'Designed for ≈ 400,000 ft³/s (both sides); safe limit today ≈ 135,000 ft³/s per side' },
   { k: 'Built', v: '1931 to 1936 (dedicated 30 Sep 1935)' },
   { k: 'Builder', v: 'Six Companies, Inc. for the Bureau of Reclamation' },
-  { k: 'Workforce', v: 'Average ≈ 3,500, peak 5,251 (July 1934)' },
+  { k: 'Workforce', v: 'Average ≈ 3,500, peak 5,218 (June 1934)' },
   { k: 'Original cost', v: '$49 million for the dam (1930s dollars)' },
 ];
 
@@ -79,7 +79,7 @@ export const HOTSPOTS = [
     id: 'spillways', n: 5, title: 'Spillways', kicker: 'Flood safety',
     view: 'spillway',
     body: 'A side-channel spillway sits on each rim upstream of the dam. Four steel drum gates, each 100 ft long and 16 ft high, can be raised to hold more water or lowered to spill. Overflow plunges into a 50 ft tunnel and leaves far downstream, so flood water never pours over the dam itself. They have run in earnest only in 1941 and 1983.',
-    facts: [['Gates per side', '4 × (100 × 16 ft)'], ['Crest', '1,205.4 ft'], ['Capacity', '≈ 400,000 ft³/s'], ['Used', '1941, 1983']],
+    facts: [['Gates per side', '4 × (100 × 16 ft)'], ['Crest', '1,205.4 ft'], ['Design capacity', '≈ 400,000 ft³/s'], ['Used', '1941, 1983']],
   },
   {
     id: 'tunnels', n: 6, title: 'Diversion tunnels', kicker: 'Construction',
@@ -91,7 +91,7 @@ export const HOTSPOTS = [
     id: 'lake', n: 7, title: 'Lake Mead', kicker: 'Storage',
     view: 'upstream',
     body: 'The largest reservoir in the United States by capacity when full: about 26 million acre-feet, roughly two years of the Colorado River\'s average flow. The white "bathtub ring" on the rocks is mineral staining left where water used to stand. Click the lake to make waves; they reflect off the dam and canyon walls.',
-    facts: [['Full pool', '1,229 ft'], ['Capacity', '≈ 26.1 million acre-ft'], ['Length when full', '≈ 112 miles'], ['Record low', '≈ 1,040 ft (2022)']],
+    facts: [['Full pool', '1,229 ft'], ['Capacity', '≈ 26.1 million acre-ft'], ['Length when full', '≈ 110 miles'], ['Record low', '≈ 1,040 ft (2022)']],
   },
   {
     id: 'tailrace', n: 8, title: 'Tailrace and the river', kicker: 'Water out',
@@ -120,7 +120,7 @@ export const TIMELINE = [
   { t: 1931.4, date: 'May 1931', title: 'Diversion tunnels started', body: 'Four tunnels, 56 ft across, are blasted through the canyon walls, two on each side. Work runs around the clock in heat above 120 °F.' },
   { t: 1932.87, date: 'Nov 1932', title: 'River diverted', body: 'An upstream cofferdam turns the Colorado into the tunnels. The riverbed is dug out down to bedrock, more than 100 ft below the old bed in places.' },
   { t: 1933.43, date: 'Jun 1933', title: 'First concrete', body: 'Concrete is poured into interlocking columns in 5 ft lifts. Cooling pipes laid in each lift carry river water, then refrigerated water, to pull out the heat of curing.' },
-  { t: 1934.55, date: 'Jul 1934', title: 'Peak workforce', body: '5,251 people on the job. High scalers dangle on ropes to trim loose rock from the walls with jackhammers and dynamite.' },
+  { t: 1934.45, date: 'Jun 1934', title: 'Peak workforce', body: '5,218 people on the job. High scalers dangle on ropes to trim loose rock from the walls with jackhammers and dynamite.' },
   { t: 1935.08, date: 'Feb 1935', title: 'Lake Mead begins to fill', body: 'Diversion tunnel gates close. The lake starts rising behind the still-unfinished dam.' },
   { t: 1935.41, date: 'May 1935', title: 'Last concrete in the dam', body: 'About 3.25 million cubic yards placed in under two years, two years ahead of schedule.' },
   { t: 1935.75, date: 'Sep 1935', title: 'Dedication', body: 'President Franklin D. Roosevelt dedicates the dam on 30 September 1935.' },

@@ -98,6 +98,8 @@ export const ACTIONS = [
     fixed: '1 – 6 (Shift or numpad)' },
 
   { id: 'camera.focus', group: 'Camera', label: 'Focus and follow the selection', key: 'KeyF' },
+  { id: 'camera.fleet', group: 'Camera', label: 'Back to your fleet', key: 'KeyB',
+    note: 'Frames your warships at the angle you already have, and keeps your selection.' },
   { id: 'camera.panUp', group: 'Camera', label: 'Pan up', key: 'ArrowUp', hold: true, prevent: true },
   { id: 'camera.panDown', group: 'Camera', label: 'Pan down', key: 'ArrowDown', hold: true, prevent: true },
   { id: 'camera.panLeft', group: 'Camera', label: 'Pan left', key: 'ArrowLeft', hold: true, prevent: true },
@@ -441,7 +443,8 @@ function buildControlScheme() {
         [panKeys, 'Pan across the focus plane (Shift to hurry)'],
         [`${K('camera.orbitLeft')} / ${K('camera.orbitRight')}`, 'Swing the camera left / right'],
         ['Screen edge', 'Edge-scroll'],
-        [K('camera.focus'), 'Focus and follow the selection'],
+        [K('camera.focus'), 'Focus and follow the selection (your fleet if nothing is selected)'],
+        [K('camera.fleet'), 'Back to your fleet, keeping the angle and your selection'],
         [K('ui.sensors'), 'Sensors manager'],
       ],
     },
@@ -1180,6 +1183,7 @@ export class InputController {
       case 'orders.stanceAggressive': this._setStance(STANCES[2]); return true;
 
       case 'camera.focus': this._focusSelection(); return true;
+      case 'camera.fleet': this._focusFleet(); return true;
       case 'camera.zoomIn': this.rig.zoomBy(2); return true;
       case 'camera.zoomOut': this.rig.zoomBy(-2); return true;
       case 'ui.sensors': this._toggleSensors(); return true;
@@ -1323,12 +1327,37 @@ export class InputController {
       this.rig.frameEntities(ents);
       return;
     }
+    this._focusFleet();
+  }
+
+  /** Frame the fleet without touching the selection: your warships if you
+      have any, otherwise everything you own. It keeps the angle you have, so
+      it is a way back, not a cut to a new shot (round 18, C5 and C1). */
+  _focusFleet() {
     if (!this.world || !this.world.entities) return;
     const own = [];
+    const war = [];
     this.world.entities.forEach((e) => {
-      if (e && e.team === this.team && e.alive !== false) own.push(e);
+      if (!e || e.team !== this.team || e.alive === false) return;
+      own.push(e);
+      const role = e.role || (e.def && e.def.role);
+      if (role !== 'resource' && role !== 'structure') war.push(e);
     });
-    if (own.length) this.rig.frameEntities(own);
+    let list = war.length ? war : own;
+    /* Round 19 critic: one straggler 18 km out pushed the fleet view to
+       16 km and left the fleet a 250 px smear. Frame the body of the fleet:
+       hulls within two and a half times the median distance from its
+       median point (and never fewer than 3 km of it). */
+    if (list.length > 4) {
+      const ax = (k) => list.map((e) => e.position[k]).sort((a, b) => a - b)[list.length >> 1];
+      const mx = ax('x'), my = ax('y'), mz = ax('z');
+      const d = list.map((e) => Math.hypot(e.position.x - mx, e.position.y - my, e.position.z - mz));
+      const med = d.slice().sort((a, b) => a - b)[d.length >> 1];
+      const cut = Math.max(3000, med * 2.5);
+      const core = list.filter((e, i) => d[i] <= cut);
+      if (core.length) list = core;
+    }
+    if (list.length) this.rig.frameEntities(list, false, { keepAngle: true });
   }
 
   _issueMove(point, queue) {

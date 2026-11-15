@@ -56,7 +56,11 @@ starts again. Press **T** (or "Take the wheel" in the Subject tab) to drive it y
 
 ## Moods
 
-Dawn, Meadow, Golden, Harvest (default), Storm, Autumn, Night, Bonfire. Switching mood
+Dawn, Meadow, Golden, Harvest (default), Storm, Autumn, Night, Bonfire. Harvest opens with
+the combine already a couple of lanes in (the autopilot is fast-forwarded before the first
+frame) and the camera on the machine, and the loading veil only lifts once real frames are
+drawn. With the control panel open on a wide screen the view is shifted so the subject sits
+in the open space left of it. Switching mood
 tweens every number and colour over about 2.5 seconds. The headline, the accent colour
 and the camera framing follow. "Meadow to wheat" in the Grass tab turns any mood's
 field into a crop, and the Combine subject works in any mood.
@@ -95,7 +99,8 @@ read the percentages, not the absolute times):
   terrain noise for particles, leaves and the combine's wheels.
 - **Light shafts take 24 jittered samples** instead of 40 even ones, which look the same.
 
-To measure a real machine, open the page with `?bench`. It runs each quality level for
+To measure a real machine, open the page with `?bench` (or `#bench` where the query string
+is dropped, as in an embedded copy). It runs each quality level for
 two seconds of warm-up and five of measurement, then shows average and slow-frame
 (95th percentile) rates, recommends the highest level that stays above 50 fps, and
 gives a one-line summary with a copy button.

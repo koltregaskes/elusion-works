@@ -1,0 +1,1005 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Octopus Jar Escape</title>
+<style>
+  html,body{margin:0;height:100%;background:#060403;overflow:hidden}
+  body{font:12px/1.45 ui-monospace,Consolas,Menlo,monospace;color:#ead9c2}
+  canvas{display:block}
+  #hud{position:fixed;top:12px;left:12px;width:286px;background:rgba(12,9,7,.82);border:1px solid #3b2c1f;border-radius:8px;padding:10px 12px;backdrop-filter:blur(3px);user-select:none}
+  #hud.hidden{display:none}
+  #hud h1{font-size:12px;margin:0 0 6px;color:#ffbf7a;letter-spacing:.06em;text-transform:uppercase}
+  #hud .row{display:flex;justify-content:space-between;gap:8px}
+  #hud .k{color:#9c8873}
+  #hud .ok{color:#8fdc8f}#hud .bad{color:#ff7a6a}
+  #grips{display:flex;gap:4px;margin:6px 0}
+  #grips span{flex:1;text-align:center;padding:2px 0;border-radius:4px;background:#2a211a;color:#8b7a68;font-size:10px}
+  #grips span.grip{background:#2f6b33;color:#dfffd9}
+  #grips span.reach{background:#6b5520;color:#fff1c7}
+  #grips span.release{background:#6b2a24;color:#ffd9d3}
+  #grips span.brace,#grips span.plant{background:#24456b;color:#d9ecff}
+  #grips span.step{background:#4c3a6b;color:#eadcff}
+  .btns{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+  .btns button{flex:1 1 30%;background:#2a2019;color:#ead9c2;border:1px solid #4a3828;border-radius:5px;padding:4px 0;font:inherit;cursor:pointer}
+  .btns button:hover{background:#3a2c20}
+  .btns button.on{background:#7a4a1c;border-color:#c07a35;color:#fff}
+  #help{color:#7c6b5a;margin-top:6px;font-size:10.5px}
+  #fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none}
+#hud .row:not(:first-of-type),#grips,#b-mark{display:none}.btns button{min-height:36px}#help{color:#c6b29c}#hud{top:auto;bottom:12px;max-width:calc(100vw - 50px)}</style>
+<script type="importmap">
+{"imports":{
+  "three":"../_shared/three-r160/build/three.module.js",
+  "three/addons/":"../_shared/three-r160/examples/jsm/"
+}}
+</script>
+</head>
+<body>
+<div id="fade"></div>
+<div id="hud">
+  <h1>Octopus jar escape</h1>
+  <div class="row"><span class="k">phase</span><span id="h-phase">-</span></div>
+  <div class="row"><span class="k">lid angle</span><span id="h-angle">-</span></div>
+  <div class="row"><span class="k">lid rise (thread)</span><span id="h-rise">-</span></div>
+  <div class="row"><span class="k">lid &omega;</span><span id="h-omega">-</span></div>
+  <div class="row"><span class="k">arms holding lid</span><span id="h-gc">-</span></div>
+  <div id="grips"></div>
+  <div class="row"><span class="k">turn w/o grip</span><span id="h-v1">-</span></div>
+  <div class="row"><span class="k">thread error max</span><span id="h-v2">-</span></div>
+  <div class="row"><span class="k">grip slip max</span><span id="h-v3">-</span></div>
+  <div class="row"><span class="k">grabs / releases</span><span id="h-v4">-</span></div>
+  <div class="row"><span class="k">loops / fps</span><span id="h-fps">-</span></div>
+  <div class="btns" id="phaseBtns"></div>
+  <div class="btns">
+    <button id="b-pause">pause</button><button id="b-step">step</button><button id="b-speed">1x</button>
+    <button id="b-mark">markers</button>
+  </div>
+  <div id="help">keys 1-6 jump &middot; space pause &middot; . step &middot; m markers &middot; h hide<br>Drag the scene to orbit. Pinch or scroll to zoom.</div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ============================================================
+   Constants
+   ============================================================ */
+const TAU = Math.PI * 2;
+const NECK_TOP = 2.97;            // top of the jar's glass neck
+const LID_Y0 = NECK_TOP;          // lid plate underside when fully screwed on
+const PITCH = 0.1;                // lid rise per full turn (thread pitch)
+const TURNS_FREE = 2.0;           // turns until the lid clears the thread
+const N_ARMS = 8, N_J = 14, ARM_LEN = 2.4, SEG = ARM_LEN / (N_J - 1);
+const TABLE_X = 3.6, TABLE_Z = 2.2;
+const LID_R = 0.9;
+const LID_ARMS = [0, 1, 3, 4, 6];
+const BRACE_ARMS = [2, 5, 7];
+const PHASES = ['settle', 'unscrew', 'pushoff', 'climb', 'slide', 'fall'];
+const GRIP_K = 0.62;              // rad/s of lid spin per fully squeezed, holding arm
+const HOLD_EPS = 0.1;             // tip must be within this of the contact to transmit torque
+const DT = 1 / 60;
+
+let seed = 20261110;
+function rnd() { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; }
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const smooth = t => t * t * (3 - 2 * t);
+function innerR(y) {
+  if (y < 2.3) return 0.98;
+  if (y > 2.6) return 0.76;
+  return 0.98 + (0.76 - 0.98) * smooth((y - 2.3) / 0.3);
+}
+const outerR = y => innerR(y) + 0.06;
+// world angle that increases with +Y rotation (CCW seen from above)
+const worldAngle = p => Math.atan2(-p.z, p.x);
+function moveTowards(v, goal, maxStep) {
+  const dx = goal.x - v.x, dy = goal.y - v.y, dz = goal.z - v.z;
+  const d = Math.hypot(dx, dy, dz);
+  if (d <= maxStep || d < 1e-9) v.copy(goal); else { const s = maxStep / d; v.x += dx * s; v.y += dy * s; v.z += dz * s; }
+}
+
+/* ============================================================
+   Renderer, camera, light
+   ============================================================ */
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x060403);
+scene.fog = new THREE.Fog(0x060403, 10, 22);
+
+const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 0.1, 60);
+camera.position.set(0.9, 3.9, 9.6);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0.5, 1.55, 0);
+controls.enableDamping = true;
+controls.maxPolarAngle = 1.52;
+controls.minDistance = 3; controls.maxDistance = 15;
+
+// the one warm side light
+const lamp = new THREE.SpotLight(0xffa25a, 150, 26, 0.6, 0.7, 1.7);
+lamp.position.set(-6.4, 4.8, 2.6);
+lamp.target.position.set(0.4, 0.9, 0);
+lamp.castShadow = true;
+lamp.shadow.mapSize.set(1024, 1024);
+lamp.shadow.bias = -0.0005;
+lamp.shadow.normalBias = 0.025;
+lamp.shadow.camera.near = 2; lamp.shadow.camera.far = 20;
+scene.add(lamp, lamp.target);
+scene.add(new THREE.HemisphereLight(0x1c2230, 0x0a0604, 0.55)); // faint room bounce, not a source
+
+/* ============================================================
+   Procedural textures (all drawn in code)
+   ============================================================ */
+function canvasTex(w, h, draw, srgb = true) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d'); draw(g, w, h);
+  const t = new THREE.CanvasTexture(c);
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+const woodTex = canvasTex(1024, 512, (g, w, h) => {
+  const img = g.createImageData(w, h), d = img.data;
+  for (let y = 0; y < h; y++) {
+    const plank = Math.floor(y / 128), py = y % 128;
+    for (let x = 0; x < w; x++) {
+      const warp = Math.sin(x * 0.004 + plank * 2.1 + Math.sin(y * 0.03) * 1.2) * 9 + Math.sin(x * 0.017 + y * 0.004) * 2.5;
+      const ring = 0.5 + 0.5 * Math.sin((py + warp) * 0.42 + Math.sin(x * 0.0023 + plank) * 5);
+      const n = ((Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1 + 1) % 1;
+      let k = Math.pow(ring, 1.6) * 0.32 + n * 0.1 + 0.3;
+      if (py < 2 || py > 125) k *= 0.35; // plank seams
+      const i = (y * w + x) * 4;
+      d[i] = 42 + k * 78; d[i + 1] = 27 + k * 50; d[i + 2] = 16 + k * 28; d[i + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+});
+woodTex.wrapS = woodTex.wrapT = THREE.RepeatWrapping;
+
+const wallTex = canvasTex(512, 512, (g, w, h) => {
+  g.fillStyle = '#2a2420'; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 4000; i++) {
+    g.fillStyle = `rgba(${rnd() < .5 ? '0,0,0' : '90,80,70'},${rnd() * 0.08})`;
+    g.fillRect(rnd() * w, rnd() * h, 2 + rnd() * 10, 2 + rnd() * 10);
+  }
+});
+wallTex.wrapS = wallTex.wrapT = THREE.RepeatWrapping; wallTex.repeat.set(4, 2);
+
+const skinTex = canvasTex(512, 256, (g, w, h) => {
+  const gr = g.createLinearGradient(0, 0, 0, h);
+  gr.addColorStop(0, '#9c3a20'); gr.addColorStop(1, '#c4583a');
+  g.fillStyle = gr; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 1400; i++) {
+    const r = 1 + rnd() * 5;
+    g.fillStyle = rnd() < 0.55 ? `rgba(70,16,8,${0.12 + rnd() * 0.3})` : `rgba(235,140,95,${0.1 + rnd() * 0.25})`;
+    g.beginPath(); g.arc(rnd() * w, rnd() * h, r, 0, TAU); g.fill();
+  }
+});
+const armTex = canvasTex(1024, 128, (g, w, h) => {
+  g.fillStyle = '#a8402a'; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 700; i++) {
+    g.fillStyle = rnd() < 0.5 ? `rgba(70,16,8,${0.1 + rnd() * 0.3})` : `rgba(235,140,95,${0.08 + rnd() * 0.2})`;
+    g.beginPath(); g.arc(rnd() * w, rnd() * 56, 1 + rnd() * 3, 0, TAU); g.fill();
+  }
+  g.fillStyle = 'rgba(245,175,145,0.55)'; g.fillRect(0, 62, w, 66); // pale underside
+  const n = 30;
+  for (let i = 0; i < n; i++) for (let row = 0; row < 2; row++) {
+    const x = (i + 0.5 + row * 0.5) / n * w, s = 1 - (x / w) * 0.8;
+    const y = row ? 108 : 82, r = 10 * s + 1.5;
+    g.fillStyle = '#f1c2aa'; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
+    g.fillStyle = '#b8705a'; g.beginPath(); g.arc(x, y, r * 0.45, 0, TAU); g.fill();
+  }
+});
+const lidTopTex = canvasTex(512, 512, (g, w, h) => {
+  const c = w / 2;
+  const gr = g.createRadialGradient(c * 0.8, c * 0.7, 10, c, c, c);
+  gr.addColorStop(0, '#e9cf8e'); gr.addColorStop(1, '#8c6c33');
+  g.fillStyle = gr; g.fillRect(0, 0, w, h);
+  g.strokeStyle = 'rgba(60,40,15,.55)';
+  for (const r of [240, 228, 150, 140]) { g.lineWidth = 3; g.beginPath(); g.arc(c, c, r, 0, TAU); g.stroke(); }
+  g.fillStyle = '#3d2a10'; g.font = 'bold 26px Georgia, serif'; g.textAlign = 'center';
+  const txt = 'OCTOPUS PRESERVES · KEEP SEALED · ';
+  for (let i = 0; i < txt.length; i++) {
+    const a = i / txt.length * TAU;
+    g.save(); g.translate(c + Math.sin(a) * 186, c - Math.cos(a) * 186); g.rotate(a); g.fillText(txt[i], 0, 9); g.restore();
+  }
+  g.fillStyle = '#8e1f16'; g.beginPath(); g.moveTo(c - 18, c - 118); g.lineTo(c + 18, c - 118); g.lineTo(c, c - 70); g.fill();
+  g.font = 'italic 34px Georgia, serif'; g.fillStyle = '#4a3312'; g.fillText('No. 8', c, c + 14);
+});
+const shadowDecal = canvasTex(256, 256, (g, w, h) => {
+  const gr = g.createRadialGradient(w / 2, h / 2, 40, w / 2, h / 2, w / 2);
+  gr.addColorStop(0, 'rgba(0,0,0,0.55)'); gr.addColorStop(0.75, 'rgba(0,0,0,0.25)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, w, h);
+}, false);
+
+/* environment map for glass/metal reflections: a dark room with one warm window, built in code */
+const pmrem = new THREE.PMREMGenerator(renderer);
+const envScene = new THREE.Scene();
+envScene.add(new THREE.Mesh(new THREE.BoxGeometry(20, 10, 20), new THREE.MeshBasicMaterial({ color: 0x0a0705, side: THREE.BackSide })));
+const envPanel = new THREE.Mesh(new THREE.PlaneGeometry(3, 4.5), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.6, 0.28).multiplyScalar(7) }));
+envPanel.position.set(-9.8, 2.5, 2.5); envPanel.rotation.y = Math.PI / 2; envScene.add(envPanel);
+const envStrip = new THREE.Mesh(new THREE.PlaneGeometry(14, 0.6), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.5, 0.35, 0.22) }));
+envStrip.position.set(0, -4.9, 0); envStrip.rotation.x = -Math.PI / 2; envScene.add(envStrip);
+const envTex = pmrem.fromScene(envScene, 0.02).texture;
+
+/* ============================================================
+   Room, table
+   ============================================================ */
+const woodMat = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.62, metalness: 0 });
+const table = new THREE.Mesh(new THREE.BoxGeometry(TABLE_X * 2, 0.24, TABLE_Z * 2), woodMat);
+table.position.y = -0.12; table.receiveShadow = true; table.castShadow = true; scene.add(table);
+woodTex.repeat.set(1.4, 1);
+const legMat = new THREE.MeshStandardMaterial({ color: 0x2c1a0e, roughness: 0.7 });
+for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+  const leg = new THREE.Mesh(new THREE.BoxGeometry(0.22, 3.2, 0.22), legMat);
+  leg.position.set(sx * (TABLE_X - 0.3), -1.84, sz * (TABLE_Z - 0.3)); leg.castShadow = true; scene.add(leg);
+}
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshStandardMaterial({ color: 0x1a120c, roughness: 0.9 }));
+floor.rotation.x = -Math.PI / 2; floor.position.y = -3.44; floor.receiveShadow = true; scene.add(floor);
+const wall = new THREE.Mesh(new THREE.PlaneGeometry(40, 14), new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.95 }));
+wall.position.set(0, 2.5, -4.6); wall.receiveShadow = true; scene.add(wall);
+
+/* ============================================================
+   Glass jar
+   ============================================================ */
+const profile = [];
+profile.push(new THREE.Vector2(0.001, 0), new THREE.Vector2(0.96, 0), new THREE.Vector2(1.03, 0.03), new THREE.Vector2(1.04, 0.1));
+for (let i = 0; i <= 10; i++) { const y = 0.1 + i / 10 * 2.2; profile.push(new THREE.Vector2(outerR(y), y)); }
+for (let i = 1; i <= 8; i++) { const y = 2.3 + i / 8 * 0.3; profile.push(new THREE.Vector2(outerR(y), y)); }
+profile.push(new THREE.Vector2(0.82, NECK_TOP - 0.01), new THREE.Vector2(0.80, NECK_TOP), new THREE.Vector2(0.77, NECK_TOP - 0.01));
+for (let i = 0; i <= 8; i++) { const y = 2.6 - i / 8 * 0.3; profile.push(new THREE.Vector2(innerR(y), y)); }
+profile.push(new THREE.Vector2(innerR(0.2), 0.18), new THREE.Vector2(0.9, 0.1), new THREE.Vector2(0.001, 0.1));
+const glassMat = new THREE.MeshPhysicalMaterial({
+  color: 0xd8efe6, roughness: 0.05, metalness: 0, transparent: true, opacity: 0.1,
+  envMap: envTex, envMapIntensity: 2.4, side: THREE.DoubleSide, depthWrite: false,
+  clearcoat: 1, clearcoatRoughness: 0.04,
+});
+glassMat.onBeforeCompile = sh => {
+  sh.fragmentShader = sh.fragmentShader.replace('#include <opaque_fragment>', `
+    float fr = pow(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), 2.4);
+    diffuseColor.a = clamp(diffuseColor.a + fr * 0.6, 0.0, 0.85);
+    #include <opaque_fragment>`);
+};
+const jar = new THREE.Mesh(new THREE.LatheGeometry(profile, 72), glassMat);
+jar.renderOrder = 2; scene.add(jar);
+class Helix extends THREE.Curve {
+  getPoint(t, out = new THREE.Vector3()) {
+    const a = t * TAU * 2.15, r = 0.835;
+    return out.set(r * Math.cos(a), 2.73 + t * 0.2, -r * Math.sin(a));
+  }
+}
+const threadMat = glassMat.clone(); threadMat.opacity = 0.28; threadMat.onBeforeCompile = glassMat.onBeforeCompile;
+const jarThread = new THREE.Mesh(new THREE.TubeGeometry(new Helix(), 180, 0.016, 6), threadMat);
+jarThread.renderOrder = 2; scene.add(jarThread);
+const jarShadow = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 2.8), new THREE.MeshBasicMaterial({ map: shadowDecal, transparent: true, depthWrite: false, opacity: 0.6 }));
+jarShadow.rotation.x = -Math.PI / 2; jarShadow.position.set(0.25, 0.003, -0.05); scene.add(jarShadow);
+
+/* ============================================================
+   Lid: outer group (position + tumble), inner spin group (screw angle)
+   ============================================================ */
+const metalMat = new THREE.MeshStandardMaterial({ color: 0xc9a45c, metalness: 0.85, roughness: 0.33, envMap: envTex, envMapIntensity: 1.3 });
+const lidTopMat = new THREE.MeshStandardMaterial({ map: lidTopTex, metalness: 0.6, roughness: 0.38, envMap: envTex, envMapIntensity: 1.0 });
+const lidOuter = new THREE.Group(), lidSpin = new THREE.Group();
+lidOuter.add(lidSpin); scene.add(lidOuter);
+{
+  const plate = new THREE.Mesh(new THREE.CylinderGeometry(LID_R, LID_R, 0.05, 96), [metalMat, lidTopMat, metalMat]);
+  plate.position.y = 0.025;
+  const skirtGeo = new THREE.CylinderGeometry(LID_R, LID_R, 0.22, 96, 1, true);
+  const p = skirtGeo.attributes.position;
+  for (let i = 0; i < p.count; i++) { // knurled grip ridges
+    const x = p.getX(i), z = p.getZ(i), a = Math.atan2(z, x), k = 1 + 0.014 * Math.sign(Math.sin(a * 60));
+    p.setX(i, x * k); p.setZ(i, z * k);
+  }
+  skirtGeo.computeVertexNormals();
+  const skirt = new THREE.Mesh(skirtGeo, new THREE.MeshStandardMaterial({ color: 0xc9a45c, metalness: 0.85, roughness: 0.33, envMap: envTex, envMapIntensity: 1.3, side: THREE.DoubleSide }));
+  skirt.position.y = -0.085;
+  const bead = new THREE.Mesh(new THREE.TorusGeometry(LID_R, 0.018, 6, 96), metalMat);
+  bead.rotation.x = Math.PI / 2; bead.position.y = -0.195;
+  const bevel = new THREE.Mesh(new THREE.TorusGeometry(LID_R - 0.01, 0.022, 6, 96), metalMat);
+  bevel.rotation.x = Math.PI / 2; bevel.position.y = 0.05;
+  for (const m of [plate, skirt, bead, bevel]) { m.castShadow = true; m.receiveShadow = true; lidSpin.add(m); }
+}
+
+/* ============================================================
+   Octopus body
+   ============================================================ */
+const skinMat = new THREE.MeshStandardMaterial({ map: skinTex, roughness: 0.42, metalness: 0 });
+const body = new THREE.Group(); scene.add(body);
+const mantleGeo = new THREE.SphereGeometry(1, 36, 24);
+{
+  const p = mantleGeo.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    p.setZ(i, z - 0.18 * Math.max(0, y) * Math.max(0, y) + 0.03 * Math.sin(x * 9) * Math.sin(y * 7));
+  }
+  mantleGeo.computeVertexNormals();
+}
+const mantle = new THREE.Mesh(mantleGeo, skinMat);
+mantle.position.set(0, 0.55, -0.06); mantle.castShadow = true; body.add(mantle);
+const MANTLE_LOCAL = new THREE.Vector3(0, 0.55, -0.06);
+const head = new THREE.Mesh(new THREE.SphereGeometry(0.29, 28, 18), skinMat);
+head.scale.set(1.08, 0.78, 1); head.position.set(0, 0.13, 0.02); head.castShadow = true; body.add(head);
+const eyes = [];
+for (const sx of [-1, 1]) {
+  const eg = new THREE.Group(); eg.position.set(sx * 0.2, 0.3, 0.29);
+  const sclera = new THREE.Mesh(new THREE.SphereGeometry(0.1, 18, 12), new THREE.MeshStandardMaterial({ color: 0xe6d49a, roughness: 0.18 }));
+  const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.06, 14, 10), new THREE.MeshStandardMaterial({ color: 0x050302, roughness: 0.1 }));
+  pupil.scale.set(1.1, 0.34, 0.5); pupil.position.z = 0.072;
+  const brow = new THREE.Mesh(new THREE.SphereGeometry(0.115, 16, 10, 0, TAU, 0, Math.PI * 0.42), skinMat);
+  brow.rotation.x = -0.35;
+  eg.add(sclera, pupil); body.add(eg); body.add(brow); brow.position.copy(eg.position);
+  eyes.push(eg);
+}
+
+/* ============================================================
+   Arms: FABRIK chains with collisions, skinned into tapered tubes
+   ============================================================ */
+const RINGS = 2 * (N_J - 1) + 1, RAD = 10, VPR = RAD + 1;
+const armMat = new THREE.MeshStandardMaterial({ map: armTex, roughness: 0.45, metalness: 0 });
+const markerGeo = new THREE.SphereGeometry(0.06, 10, 8);
+const COL = { grip: 0x44ff66, reach: 0xffc040, release: 0xff5040, free: 0x888888, brace: 0x4aa0ff, plant: 0x4aa0ff, step: 0xb080ff, air: 0x888888 };
+const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _u = new THREE.Vector3(), _q = new THREE.Quaternion();
+const ctx = { lidAttached: true, lidUnderY: LID_Y0, mantleC: new THREE.Vector3(), mantleR: 0.47, bodyUp: new THREE.Vector3(0, 1, 0) };
+
+function collide(J, k) {
+  const o = k * 3;
+  let x = J[o], y = J[o + 1], z = J[o + 2];
+  let r = Math.hypot(x, z);
+  // glass shell (wall, shoulder, neck): keep joints off the glass on whichever side they are
+  if (y < NECK_TOP + 0.02 && y > -0.05) {
+    const ri = innerR(y), ro = ri + 0.06, m = 0.05;
+    if (r > ri - m && r < ro + m) {
+      const nr = r < (ri + ro) * 0.5 ? ri - m : ro + m, s = nr / Math.max(r, 1e-6);
+      x *= s; z *= s; r = nr;
+    }
+    if (r < ri && y < 0.15) y = 0.15; // jar floor
+  }
+  // rim lip
+  if (r > 0.72 && r < 0.87 && y < NECK_TOP + 0.05 && y > NECK_TOP - 0.03) y = NECK_TOP + 0.05;
+  // lid underside ceiling while the lid is still screwed on
+  if (ctx.lidAttached && r < LID_R && y > ctx.lidUnderY - 0.03 && y < ctx.lidUnderY + 0.35) y = ctx.lidUnderY - 0.03;
+  // mantle
+  if (k > 2) {
+    const dx = x - ctx.mantleC.x, dy = y - ctx.mantleC.y, dz = z - ctx.mantleC.z, d = Math.hypot(dx, dy, dz);
+    if (d < ctx.mantleR && d > 1e-6) { const s = ctx.mantleR / d; x = ctx.mantleC.x + dx * s; y = ctx.mantleC.y + dy * s; z = ctx.mantleC.z + dz * s; }
+  }
+  // table top
+  if (Math.abs(x) < TABLE_X && Math.abs(z) < TABLE_Z && y < 0.04 && y > -0.4 && r > 1.0) y = 0.04;
+  J[o] = x; J[o + 1] = y; J[o + 2] = z;
+}
+
+class Arm {
+  constructor(i) {
+    this.i = i;
+    this.a = i / N_ARMS * TAU + Math.PI / 8;
+    this.dir = new THREE.Vector3(Math.cos(this.a), 0, -Math.sin(this.a));
+    this.baseLocal = new THREE.Vector3(0.19 * Math.cos(this.a), 0.02, -0.19 * Math.sin(this.a));
+    this.j = new Float32Array(N_J * 3);
+    this.base = new THREE.Vector3(); this.tgt = new THREE.Vector3(); this.goal = new THREE.Vector3();
+    this.anchor = new THREE.Vector3(); this.from = new THREE.Vector3(); this.to = new THREE.Vector3();
+    this.tipV = new THREE.Vector3();
+    this.mode = 'free'; this.timer = 0; this.alpha = 0; this.cr = 0.5; this.sqz = 0; this.held = false;
+    this.stepT = 0; this.cool = 0; this.jit = 0; this.slip = 0;
+    // geometry
+    const g = new THREE.BufferGeometry();
+    this.pos = new Float32Array(RINGS * VPR * 3); this.nor = new Float32Array(RINGS * VPR * 3);
+    const uv = new Float32Array(RINGS * VPR * 2), idx = [];
+    for (let k = 0; k < RINGS; k++) for (let j = 0; j < VPR; j++) { const q = (k * VPR + j) * 2; uv[q] = k / (RINGS - 1); uv[q + 1] = j / RAD; }
+    for (let k = 0; k < RINGS - 1; k++) for (let j = 0; j < RAD; j++) {
+      const a = k * VPR + j, b = a + VPR; idx.push(a, a + 1, b, b, a + 1, b + 1);
+    }
+    g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
+    g.setAttribute('normal', new THREE.BufferAttribute(this.nor, 3).setUsage(THREE.DynamicDrawUsage));
+    g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    this.mesh = new THREE.Mesh(g, armMat);
+    this.mesh.castShadow = true; this.mesh.receiveShadow = true; this.mesh.frustumCulled = false;
+    scene.add(this.mesh);
+    this.marker = new THREE.Mesh(markerGeo, new THREE.MeshBasicMaterial({ color: 0x888888, depthTest: false }));
+    this.marker.renderOrder = 10; this.marker.visible = false; scene.add(this.marker);
+    this.pts = new Float32Array(RINGS * 3);
+  }
+  tip(out) { return out.fromArray(this.j, (N_J - 1) * 3); }
+  updateBase() { this.base.copy(this.baseLocal); body.localToWorld(this.base); }
+  reinit() {
+    this.updateBase();
+    _v.copy(this.dir).multiplyScalar(0.7).add(_w.set(0, -0.7, 0)).normalize();
+    for (let k = 0; k < N_J; k++) {
+      this.j[k * 3] = this.base.x + _v.x * SEG * k * 0.6;
+      this.j[k * 3 + 1] = this.base.y + _v.y * SEG * k * 0.6;
+      this.j[k * 3 + 2] = this.base.z + _v.z * SEG * k * 0.6;
+      if (k) collide(this.j, k);
+    }
+    this.tip(this.tgt);
+  }
+  wiggle(t, amp) {
+    const J = this.j, i = this.i;
+    for (let k = 1; k < N_J - 1; k++) for (let c = 0; c < 3; c++) {
+      const o = k * 3 + c; J[o] += 0.22 * ((J[o - 3] + J[o + 3]) * 0.5 - J[o]);
+    }
+    for (let k = 2; k < N_J - 1; k++) {
+      const f = amp * k / N_J, o = k * 3;
+      J[o] += Math.sin(t * 2.1 + i * 1.7 + k * 0.6) * f;
+      J[o + 1] += Math.cos(t * 1.7 + i + k * 0.5) * f;
+      J[o + 2] += Math.sin(t * 1.3 + i * 2.3 + k * 0.4) * f;
+    }
+  }
+  solve(iters) {
+    const J = this.j, n = N_J, T = this.tgt, B = this.base;
+    for (let it = 0; it < iters; it++) {
+      let o = (n - 1) * 3; J[o] = T.x; J[o + 1] = T.y; J[o + 2] = T.z;
+      for (let k = n - 2; k >= 0; k--) {
+        const a = k * 3, b = a + 3;
+        let dx = J[a] - J[b], dy = J[a + 1] - J[b + 1], dz = J[a + 2] - J[b + 2];
+        const d = Math.hypot(dx, dy, dz) || 1e-6, s = SEG / d;
+        J[a] = J[b] + dx * s; J[a + 1] = J[b + 1] + dy * s; J[a + 2] = J[b + 2] + dz * s;
+      }
+      J[0] = B.x; J[1] = B.y; J[2] = B.z;
+      for (let k = 1; k < n; k++) {
+        const a = k * 3, b = a - 3;
+        let dx = J[a] - J[b], dy = J[a + 1] - J[b + 1], dz = J[a + 2] - J[b + 2];
+        const d = Math.hypot(dx, dy, dz) || 1e-6, s = SEG / d;
+        J[a] = J[b] + dx * s; J[a + 1] = J[b + 1] + dy * s; J[a + 2] = J[b + 2] + dz * s;
+        collide(J, k);
+      }
+    }
+  }
+  updateMesh() {
+    const J = this.j, P = this.pts, n = N_J;
+    for (let k = 0; k < RINGS; k++) {
+      const s = k >> 1, f = (k & 1) * 0.5;
+      const i0 = Math.max(s - 1, 0) * 3, i1 = s * 3, i2 = Math.min(s + 1, n - 1) * 3, i3 = Math.min(s + 2, n - 1) * 3;
+      const f2 = f * f, f3 = f2 * f;
+      for (let c = 0; c < 3; c++) {
+        const p0 = J[i0 + c], p1 = J[i1 + c], p2 = J[i2 + c], p3 = J[i3 + c];
+        P[k * 3 + c] = 0.5 * (2 * p1 + (-p0 + p2) * f + (2 * p0 - 5 * p1 + 4 * p2 - p3) * f2 + (-p0 + 3 * p1 - 3 * p2 + p3) * f3);
+      }
+    }
+    let nx = 0, ny = 0, nz = 0;
+    for (let k = 0; k < RINGS; k++) {
+      const a = Math.max(k - 1, 0) * 3, b = Math.min(k + 1, RINGS - 1) * 3;
+      let tx = P[b] - P[a], ty = P[b + 1] - P[a + 1], tz = P[b + 2] - P[a + 2];
+      const tl = Math.hypot(tx, ty, tz) || 1e-6; tx /= tl; ty /= tl; tz /= tl;
+      if (k === 0) { // initial normal: body up, made perpendicular
+        const u = ctx.bodyUp; nx = u.y * tz - u.z * ty; ny = u.z * tx - u.x * tz; nz = u.x * ty - u.y * tx;
+        if (Math.hypot(nx, ny, nz) < 1e-3) { nx = 1; ny = 0; nz = 0; }
+      }
+      const dt = nx * tx + ny * ty + nz * tz; nx -= dt * tx; ny -= dt * ty; nz -= dt * tz;
+      const nl = Math.hypot(nx, ny, nz) || 1e-6; nx /= nl; ny /= nl; nz /= nl;
+      const bx = ty * nz - tz * ny, by = tz * nx - tx * nz, bz = tx * ny - ty * nx;
+      const t = k / (RINGS - 1);
+      let r = 0.1 * Math.pow(1 - t, 0.85) + 0.011;
+      if (t < 0.1) r *= 1 + (0.1 - t) * 4;
+      if (this.mode === 'grip' && t > 0.85) r *= 1 - 0.25 * this.sqz; // squeeze flattens the tip
+      for (let j = 0; j < VPR; j++) {
+        const ang = j / RAD * TAU, c = Math.cos(ang), s = Math.sin(ang);
+        const ox = c * nx + s * bx, oy = c * ny + s * by, oz = c * nz + s * bz;
+        const q = (k * VPR + j) * 3;
+        this.nor[q] = ox; this.nor[q + 1] = oy; this.nor[q + 2] = oz;
+        this.pos[q] = P[k * 3] + ox * r; this.pos[q + 1] = P[k * 3 + 1] + oy * r; this.pos[q + 2] = P[k * 3 + 2] + oz * r;
+      }
+    }
+    const g = this.mesh.geometry;
+    g.attributes.position.needsUpdate = true; g.attributes.normal.needsUpdate = true;
+    this.tip(this.marker.position);
+    this.marker.material.color.setHex(this.mode === 'grip' ? (this.held ? COL.grip : COL.reach) : (COL[this.mode] ?? 0x888888));
+  }
+}
+const arms = [];
+for (let i = 0; i < N_ARMS; i++) arms.push(new Arm(i));
+
+/* ============================================================
+   Simulation state
+   ============================================================ */
+const S = {
+  phase: 'settle', phaseTime: 0, time: 0,
+  theta: 0, omega: 0,
+  lid: { free: false, launched: false, settled: false, pos: new THREE.Vector3(0, LID_Y0, 0), v: new THREE.Vector3(), tilt: 0, w: 0, bounces: 0 },
+  hub: new THREE.Vector3(0, 0.38, 0), mantleDir: new THREE.Vector3(0, 1, 0), spin: 0,
+  climbS: 0, fallV: new THREE.Vector3(), lookAt: new THREE.Vector3(),
+  cycles: 0, fade: 0, fadeDir: 0, paused: false, speed: 1, markers: false,
+  checks: { turnWithoutGrip: 0, maxThreadError: 0, maxGripSlip: 0, grabs: 0, releases: 0 },
+};
+const pub = {
+  phase: 'settle', phaseTime: 0, lidAngle: 0, lidAngleDeg: 0, lidTurns: 0, lidRise: 0, lidOmega: 0,
+  lidFree: false, grip: [], gripping: [], gripCount: 0, anyGrip: false, checks: S.checks, loops: 0, fps: 0,
+};
+window.octoState = pub;
+
+const climbCurve = new THREE.CatmullRomCurve3([
+  new THREE.Vector3(0, 1.15, 0), new THREE.Vector3(0, 2.2, 0), new THREE.Vector3(0.04, 2.95, 0),
+  new THREE.Vector3(0.45, 3.24, 0.05), new THREE.Vector3(1.1, 3.08, 0.1), new THREE.Vector3(1.55, 2.45, 0.15),
+  new THREE.Vector3(1.62, 1.35, 0.2), new THREE.Vector3(1.8, 0.45, 0.25), new THREE.Vector3(2.25, 0.36, 0.25),
+], false, 'centripetal');
+const CLIMB_LEN = climbCurve.getLength();
+const _tan = new THREE.Vector3(), _ideal = new THREE.Vector3(), _tip = new THREE.Vector3();
+
+function syncLid() {
+  const L = S.lid;
+  if (!L.free) { L.pos.set(0, LID_Y0 + PITCH * S.theta / TAU, 0); L.tilt = 0; }
+  lidOuter.position.copy(L.pos);
+  lidOuter.rotation.set(0, 0, L.tilt);
+  lidSpin.rotation.y = S.theta;
+  lidOuter.updateMatrixWorld(true);
+  ctx.lidAttached = !L.free;
+  ctx.lidUnderY = L.pos.y;
+}
+function lidPoint(alpha, r, out) { out.set(r * Math.cos(alpha), -0.035, -r * Math.sin(alpha)); return lidSpin.localToWorld(out); }
+
+function syncBody(dt, rate = 5) {
+  body.position.copy(S.hub);
+  _q.setFromUnitVectors(_v.set(0, 1, 0), S.mantleDir);
+  if (S.spin) _q.premultiply(new THREE.Quaternion().setFromAxisAngle(_w.set(0, 0, 1), -S.spin));
+  body.quaternion.slerp(_q, dt > 0 ? 1 - Math.exp(-rate * dt) : 1);
+  const breathe = 1 + 0.045 * Math.sin(S.time * 2.3);
+  let sq = 1;
+  if (S.phase === 'climb' && S.hub.y > 2.35 && S.hub.y < 3.15 && Math.hypot(S.hub.x, S.hub.z) < 0.8) sq = 0.8; // squeeze through the neck
+  mantle.scale.set(0.42 * breathe * sq, 0.6 / Math.sqrt(sq), 0.44 * breathe * sq);
+  body.updateMatrixWorld(true);
+  ctx.mantleC.copy(MANTLE_LOCAL); body.localToWorld(ctx.mantleC);
+  ctx.bodyUp.set(0, 1, 0).applyQuaternion(body.quaternion);
+  for (const a of arms) a.updateBase();
+}
+
+/* nearest walkable surface to p (inner wall/floor if p is inside the jar, otherwise rim/outer wall/table) */
+function project(p, out) {
+  const r = Math.hypot(p.x, p.z) || 1e-6, ux = p.x / r, uz = p.z / r;
+  const inside = p.y < NECK_TOP && p.y > 0 && r < innerR(clamp(p.y, 0, NECK_TOP));
+  let best = 1e9;
+  const cand = (x, y, z) => { const d = Math.hypot(p.x - x, p.y - y, p.z - z); if (d < best) { best = d; out.set(x, y, z); } };
+  if (inside) {
+    const y = clamp(p.y, 0.2, NECK_TOP - 0.06), ri = innerR(y) - 0.05;
+    cand(ux * ri, y, uz * ri);
+    const rf = Math.min(r, 0.85); cand(ux * rf, 0.17, uz * rf);
+  } else {
+    cand(ux * 0.79, NECK_TOP + 0.06, uz * 0.79);
+    const y = clamp(p.y, 0.08, NECK_TOP - 0.04), ro = outerR(y) + 0.05;
+    cand(ux * ro, y, uz * ro);
+    let tx = clamp(p.x, -TABLE_X + 0.08, TABLE_X - 0.08), tz = clamp(p.z, -TABLE_Z + 0.08, TABLE_Z - 0.08);
+    const tr = Math.hypot(tx, tz);
+    if (tr < 1.15) { const s = 1.15 / Math.max(tr, 1e-6); tx *= s; tz *= s; }
+    cand(tx, 0.05, tz);
+  }
+  return out;
+}
+
+/* ============================================================
+   Phase control
+   ============================================================ */
+function enter(phase) {
+  S.phase = phase; S.phaseTime = 0;
+  if (phase === 'settle') {
+    arms.forEach(a => { a.mode = 'free'; a.sqz = 0; a.held = false; });
+  } else if (phase === 'unscrew') {
+    LID_ARMS.forEach((i, k) => { const a = arms[i]; a.mode = 'free'; a.timer = 0.35 + k * 0.33; a.sqz = 0; a.held = false; });
+    BRACE_ARMS.forEach(i => { arms[i].mode = 'brace'; });
+  } else if (phase === 'pushoff') {
+    S.lid.free = true; S.lid.launched = false; S.lid.settled = false; S.lid.v.set(0, 0, 0); S.lid.w = 0; S.lid.bounces = 0;
+    for (const i of LID_ARMS) { const a = arms[i]; if (a.mode !== 'grip') { chooseContact(a); a.mode = 'grip'; a.sqz = 0.5; } }
+  } else if (phase === 'climb') {
+    for (const a of arms) { a.mode = 'plant'; a.tip(_tip); project(_tip, a.anchor); a.cool = rnd() * 0.3; a.held = false; }
+  } else if (phase === 'slide') {
+    for (const a of arms) { if (a.mode !== 'plant' && a.mode !== 'step') { a.mode = 'plant'; a.tip(_tip); project(_tip, a.anchor); } }
+  } else if (phase === 'fall') {
+    S.fallV.set(0.45, 0, 0); S.spin = 0;
+    for (const a of arms) if (a.mode === 'step') { a.mode = 'plant'; a.anchor.copy(a.to); }
+  } else if (phase === 'reset') {
+    S.fadeDir = 1;
+  }
+}
+
+function chooseContact(a) {
+  const phi = a.a - 0.55 + (rnd() - 0.5) * 0.3;
+  a.alpha = phi - S.theta;
+  a.cr = 0.42 + rnd() * 0.22;
+  a.jit = (rnd() - 0.5) * 0.3;
+}
+
+function resetWorld() {
+  seed = 20261110 + S.cycles * 7919;
+  S.theta = 0; S.omega = 0; S.spin = 0; S.climbS = 0;
+  const L = S.lid; L.free = false; L.launched = false; L.settled = false; L.v.set(0, 0, 0); L.tilt = 0; L.w = 0; L.bounces = 0;
+  S.hub.set(0, 0.38, 0); S.mantleDir.set(0, 1, 0);
+  body.quaternion.identity();
+  syncLid(); syncBody(0);
+}
+function placeLidOnTable() {
+  const L = S.lid; L.free = true; L.launched = true; L.settled = true; L.bounces = 2;
+  S.theta = TURNS_FREE * TAU; L.tilt = Math.PI; L.pos.set(-2.9, 0.05, 0.45); L.v.set(0, 0, 0); L.w = 0;
+  syncLid();
+}
+function reinitArms(iters = 30) {
+  for (const a of arms) a.reinit();
+  for (const a of arms) a.solve(iters);
+}
+function jump(name) {
+  if (!PHASES.includes(name)) throw new Error('unknown phase ' + name + '; use one of ' + PHASES.join(', '));
+  resetWorld();
+  S.fade = 0; S.fadeDir = 0;
+  switch (name) {
+    case 'settle':
+      reinitArms(); break;
+    case 'unscrew':
+      S.hub.set(0, 1.15, 0); syncBody(0); reinitArms(); break;
+    case 'pushoff':
+      S.theta = TURNS_FREE * TAU; syncLid(); S.hub.set(0, 1.15, 0); syncBody(0); reinitArms();
+      for (const i of LID_ARMS) { const a = arms[i]; chooseContact(a); a.mode = 'grip'; a.sqz = 1; lidPoint(a.alpha, a.cr, a.tgt); a.solve(40); }
+      break;
+    case 'climb':
+      placeLidOnTable(); S.hub.set(0, 1.15, 0); syncBody(0); reinitArms(); break;
+    case 'slide':
+      placeLidOnTable(); S.hub.set(2.25, 0.36, 0.25); syncBody(0); reinitArms();
+      for (const a of arms) { a.tip(_tip); project(_tip, a.tgt); a.solve(30); }
+      break;
+    case 'fall':
+      placeLidOnTable(); S.hub.set(3.2, 0.36, 0.25); syncBody(0); reinitArms();
+      for (const a of arms) { a.tip(_tip); project(_tip, a.tgt); a.solve(30); a.mode = 'plant'; a.anchor.copy(a.tgt); }
+      break;
+  }
+  enter(name);
+  if (name === 'slide') for (const a of arms) { a.mode = 'plant'; a.anchor.copy(a.tgt); }
+  publish();
+}
+
+/* ---- walking gait shared by climb and slide: arms step only when planted feet are left behind ---- */
+function walk(dt, fwd) {
+  let stepping = 0, planted = 0;
+  for (const a of arms) if (a.mode === 'step') stepping++;
+  for (const a of arms) {
+    _ideal.copy(S.hub).addScaledVector(a.dir, 0.85).addScaledVector(fwd, 0.5);
+    if (a.mode === 'plant') {
+      a.tgt.copy(a.anchor); a.cool -= dt;
+      const tipDist = a.tip(_tip).distanceTo(a.anchor);
+      if (tipDist < 0.18) planted++;
+      if (stepping < 3 && a.cool <= 0 && (a.anchor.distanceTo(_ideal) > 0.72 || tipDist > 0.4)) {
+        a.from.copy(_tip); project(_ideal.addScaledVector(fwd, 0.35), a.to);
+        a.mode = 'step'; a.stepT = 0; stepping++;
+      }
+    } else if (a.mode === 'step') {
+      a.stepT += dt / 0.3;
+      const e = smooth(Math.min(1, a.stepT));
+      a.tgt.lerpVectors(a.from, a.to, e);
+      a.tgt.y += Math.sin(Math.PI * Math.min(1, a.stepT)) * 0.28;
+      if (a.stepT >= 1) { a.mode = 'plant'; a.anchor.copy(a.to); a.cool = 0.12 + rnd() * 0.15; }
+    }
+  }
+  return planted;
+}
+
+/* ---- per-phase logic ---- */
+function stepPhase(dt) {
+  const t = S.time, P = S.phase;
+
+  if (P === 'settle') {
+    S.hub.set(0, 0.38 + 0.025 * Math.sin(t * 1.3), 0);
+    S.mantleDir.set(0.08 * Math.sin(t * 0.7), 1, 0).normalize();
+    const explorer = (S.cycles * 3 + 1) % N_ARMS;
+    for (const a of arms) {
+      if (a.i === explorer && S.phaseTime > 0.6 && S.phaseTime < 2.6) {
+        const ri = innerR(1.1) - 0.05, ang = a.a + 0.3 * Math.sin(t);
+        a.goal.set(ri * Math.cos(ang), 1.1 + 0.35 * Math.sin(t * 1.6), -ri * Math.sin(ang));
+      } else {
+        const ang = a.a + 0.2 * Math.sin(t * 0.6 + a.i), r = 0.72 + 0.08 * Math.sin(t * 0.9 + a.i * 2);
+        a.goal.set(r * Math.cos(ang), 0.17, -r * Math.sin(ang));
+      }
+      moveTowards(a.tgt, a.goal, 2.2 * dt);
+    }
+    S.lookAt.copy(camera.position);
+    if (S.phaseTime > 3) enter('unscrew');
+  }
+
+  else if (P === 'unscrew') {
+    // rise up under the lid, braced against the glass; strain shows as a tremble when the lid is moving
+    _v.set(0.012 * Math.sin(t * 23) * Math.min(1, S.omega), 1.15, 0);
+    S.hub.lerp(_v, 1 - Math.exp(-2.2 * dt));
+    S.mantleDir.set(0.06 * Math.sin(t * 0.9), 1, 0.05).normalize();
+    for (const i of BRACE_ARMS) {
+      const a = arms[i], y = 0.85 + 0.06 * Math.sin(t * 0.8 + i), ri = innerR(y) - 0.05;
+      a.goal.set(ri * Math.cos(a.a), y, -ri * Math.sin(a.a));
+      moveTowards(a.tgt, a.goal, 2.5 * dt);
+    }
+    for (const i of LID_ARMS) {
+      const a = arms[i];
+      if (a.mode === 'free') {
+        const r = 0.6; a.goal.set(r * Math.cos(a.a), 0.6, -r * Math.sin(a.a));
+        moveTowards(a.tgt, a.goal, 2 * dt);
+        a.timer -= dt; if (a.timer <= 0) { chooseContact(a); a.mode = 'reach'; }
+      } else if (a.mode === 'reach') {
+        lidPoint(a.alpha, a.cr, a.goal);
+        moveTowards(a.tgt, a.goal, 2.8 * dt);
+        if (a.tip(_tip).distanceTo(a.goal) < 0.06) { a.mode = 'grip'; a.sqz = 0; S.checks.grabs++; }
+      } else if (a.mode === 'grip') {
+        lidPoint(a.alpha, a.cr, a.goal);
+        a.tgt.copy(a.goal);
+        a.sqz = Math.min(1, a.sqz + dt / 0.25);
+        // twist until this arm has swept its range, then let go
+        if (a.alpha + S.theta >= a.a + 0.6 + a.jit) { a.mode = 'release'; a.timer = 0.3 + rnd() * 0.35; a.sqz = 0; a.held = false; S.checks.releases++; }
+      } else if (a.mode === 'release') {
+        lidPoint(a.alpha, a.cr * 0.85, a.goal); a.goal.y -= 0.45;
+        moveTowards(a.tgt, a.goal, 2.2 * dt);
+        a.timer -= dt; if (a.timer <= 0) { chooseContact(a); a.mode = 'reach'; }
+      }
+    }
+    S.lookAt.set(0, NECK_TOP + 0.1, 0.2);
+  }
+
+  else if (P === 'pushoff') {
+    const L = S.lid;
+    if (!L.launched) {
+      L.pos.y += 0.55 * dt; // arms shove the freed lid upward
+      for (const i of LID_ARMS) { const a = arms[i]; a.mode = 'grip'; a.sqz = 1; lidPoint(a.alpha, a.cr, a.goal); a.tgt.copy(a.goal); }
+      if (S.phaseTime > 0.45) {
+        L.launched = true; L.v.set(-2.6, 2.0, 0.3); L.w = 4.2;
+        for (const i of LID_ARMS) { const a = arms[i]; a.mode = 'release'; a.held = false; a.sqz = 0; a.timer = 0.4; S.checks.releases++; }
+      }
+    } else {
+      for (const i of LID_ARMS) {
+        const a = arms[i], r = 0.5;
+        a.goal.set(r * Math.cos(a.a), 2.7, -r * Math.sin(a.a));
+        moveTowards(a.tgt, a.goal, 2.5 * dt);
+        a.mode = 'free';
+      }
+    }
+    for (const i of BRACE_ARMS) moveTowards(arms[i].tgt, arms[i].goal, 2 * dt);
+    S.lookAt.copy(L.pos);
+    if (S.phaseTime > 1.5) enter('climb');
+  }
+
+  else if (P === 'climb') {
+    climbCurve.getTangentAt(S.climbS, _tan);
+    const planted = walk(dt, _tan);
+    const grip = clamp((planted - 1) / 3, 0, 1); // body only advances while enough arms are holding on
+    S.climbS = Math.min(1, S.climbS + dt * 0.62 / CLIMB_LEN * grip);
+    climbCurve.getPointAt(S.climbS, S.hub);
+    S.mantleDir.set(0, 0.85, 0).addScaledVector(_tan, -0.6).normalize();
+    S.lookAt.copy(S.hub).addScaledVector(_tan, 2).add(_v.set(0, 0, 1.5));
+    if (S.climbS >= 1) enter('slide');
+  }
+
+  else if (P === 'slide') {
+    _tan.set(1, 0, 0);
+    const planted = walk(dt, _tan);
+    const grip = clamp((planted - 1) / 3, 0, 1);
+    S.hub.x += 0.7 * grip * dt;
+    S.hub.y += (0.36 - S.hub.y) * (1 - Math.exp(-4 * dt));
+    S.hub.z += (0.25 - S.hub.z) * (1 - Math.exp(-2 * dt));
+    S.mantleDir.set(-0.45, 1, 0).normalize();
+    S.lookAt.set(TABLE_X + 1, -0.5, 0.6);
+    if (S.hub.x >= 3.2) enter('fall');
+  }
+
+  else if (P === 'fall') {
+    const V = S.fallV;
+    if (S.hub.x < TABLE_X + 0.15) { // slipping over the edge
+      V.x += 1.4 * dt;
+      S.hub.x += V.x * dt;
+      S.hub.y = 0.36 - Math.max(0, S.hub.x - (TABLE_X - 0.2)) * 0.9;
+      S.spin += Math.max(0, S.hub.x - (TABLE_X - 0.3)) * 2.2 * dt;
+    } else {
+      V.y -= 9.8 * dt; S.hub.addScaledVector(V, dt); S.spin += 2.6 * dt;
+    }
+    S.mantleDir.set(-0.5, 1, 0).normalize();
+    for (const a of arms) {
+      if (a.mode === 'plant') {
+        a.tgt.copy(a.anchor);
+        if (a.tip(_tip).distanceTo(a.anchor) > 0.35 || S.hub.y < -0.6) a.mode = 'air';
+      } else {
+        a.goal.copy(S.hub).addScaledVector(a.dir, 0.8).add(_v.set(-0.2, 0.9, 0)).addScaledVector(V, -0.12);
+        moveTowards(a.tgt, a.goal, 7 * dt);
+        a.mode = 'air';
+      }
+    }
+    S.lookAt.set(TABLE_X + 0.5, -2, 1);
+    if (S.hub.y < -3.0) enter('reset');
+  }
+
+  else if (P === 'reset') {
+    for (const a of arms) moveTowards(a.tgt, a.goal, 4 * dt);
+    S.hub.addScaledVector(S.fallV, dt); S.fallV.y -= 9.8 * dt;
+  }
+}
+
+/* ---- lid as a loose rigid body once it leaves the thread ---- */
+function stepLidBody(dt) {
+  const L = S.lid;
+  if (!L.free || !L.launched) return;
+  if (!L.settled) {
+    L.v.y -= 9.8 * dt;
+    L.pos.addScaledVector(L.v, dt);
+    L.tilt += L.w * dt;
+  } else {
+    L.v.multiplyScalar(Math.exp(-6 * dt)); L.pos.addScaledVector(L.v, dt);
+    const target = Math.round(L.tilt / Math.PI) * Math.PI;
+    L.tilt += (target - L.tilt) * (1 - Math.exp(-6 * dt));
+  }
+  const s = Math.abs(Math.sin(L.tilt)), c = Math.cos(L.tilt);
+  const low = L.pos.y - LID_R * s + Math.min(-0.2 * c, 0.05 * c);
+  // keep clear of the jar while falling past it
+  const rr = Math.hypot(L.pos.x, L.pos.z);
+  if (low < NECK_TOP + 0.02 && rr < 1.98) {
+    const k = 1.98 / Math.max(rr, 1e-6); L.pos.x *= k; L.pos.z *= k;
+    const vr = (L.v.x * L.pos.x + L.v.z * L.pos.z) / 1.98;
+    if (vr < 0) { L.v.x -= vr * L.pos.x / 1.98; L.v.z -= vr * L.pos.z / 1.98; }
+  }
+  if (low < 0 && Math.abs(L.pos.x) < TABLE_X) {
+    L.pos.y -= low;
+    if (!L.settled && L.v.y < 0) {
+      L.v.y = -L.v.y * 0.32; L.v.x *= 0.55; L.v.z *= 0.55; L.w *= 0.45; L.bounces++;
+      if (L.bounces >= 2 || Math.abs(L.v.y) < 0.6) { L.settled = true; L.v.y = 0; L.w = 0; }
+    }
+  }
+  L.pos.x = Math.max(L.pos.x, -TABLE_X + 0.95);
+}
+
+/* ---- one fixed simulation tick ---- */
+function tick(dt) {
+  S.time += dt; S.phaseTime += dt;
+  stepPhase(dt);
+  syncBody(dt, S.phase === 'fall' ? 12 : 5);
+
+  // arms: organic wiggle, then solve towards targets under collisions
+  for (const a of arms) {
+    a.wiggle(S.time, a.mode === 'grip' ? 0.0015 : a.mode === 'plant' || a.mode === 'brace' ? 0.003 : 0.006);
+    a.solve(3);
+  }
+
+  // lid mechanics: torque only comes from arms that are gripping AND actually holding the contact point
+  const thetaBefore = S.theta;
+  let drive = 0, holding = 0;
+  if (S.phase === 'unscrew') {
+    for (const i of LID_ARMS) {
+      const a = arms[i];
+      if (a.mode === 'grip') {
+        a.slip = a.tip(_tip).distanceTo(a.goal);
+        a.held = a.slip < HOLD_EPS;
+        if (a.sqz >= 1) S.checks.maxGripSlip = Math.max(S.checks.maxGripSlip, a.slip);
+        if (a.held) { drive += a.sqz; holding++; }
+      } else a.held = false;
+    }
+    S.omega = GRIP_K * drive;           // friction-dominated: no grip, no spin, no coasting
+    S.theta += S.omega * dt;
+    if (S.theta - thetaBefore > 1e-9 && holding === 0) S.checks.turnWithoutGrip++;
+    if (S.theta >= TURNS_FREE * TAU) { S.theta = TURNS_FREE * TAU; syncLid(); enter('pushoff'); }
+  } else {
+    S.omega = 0;
+    for (const a of arms) if (S.phase !== 'pushoff' || !LID_ARMS.includes(a.i)) a.held = false;
+    if (S.phase === 'pushoff' && !S.lid.launched) for (const i of LID_ARMS) arms[i].held = true;
+  }
+  stepLidBody(dt);
+  syncLid();
+  if (!S.lid.free) {
+    const err = Math.abs((lidOuter.position.y - LID_Y0) - PITCH * S.theta / TAU);
+    S.checks.maxThreadError = Math.max(S.checks.maxThreadError, err);
+  }
+
+  // fade/loop
+  if (S.fadeDir) {
+    S.fade = clamp(S.fade + S.fadeDir * dt * 2.4, 0, 1);
+    if (S.fadeDir > 0 && S.fade >= 1) { S.cycles++; const f = 1; jump('settle'); S.fade = f; S.fadeDir = -1; }
+    else if (S.fadeDir < 0 && S.fade <= 0) S.fadeDir = 0;
+  }
+}
+
+function publish() {
+  pub.phase = S.phase; pub.phaseTime = +S.phaseTime.toFixed(3);
+  pub.lidAngle = S.theta; pub.lidAngleDeg = S.theta * 180 / Math.PI; pub.lidTurns = S.theta / TAU;
+  pub.lidRise = S.lid.free ? null : lidOuter.position.y - LID_Y0;
+  pub.lidOmega = S.omega; pub.lidFree = S.lid.free;
+  pub.grip = arms.map(a => a.mode === 'grip' ? (a.held ? 'grip' : 'grip-slipping') : a.mode);
+  pub.gripping = arms.map(a => a.mode === 'grip' && a.held);
+  pub.gripCount = pub.gripping.filter(Boolean).length;
+  pub.anyGrip = pub.gripCount > 0;
+  pub.loops = S.cycles;
+}
+
+/* ============================================================
+   Dust in the light beam (cheap atmosphere)
+   ============================================================ */
+const dustN = 220, dustPos = new Float32Array(dustN * 3);
+for (let i = 0; i < dustN; i++) { dustPos[i * 3] = -4 + rnd() * 7; dustPos[i * 3 + 1] = rnd() * 5; dustPos[i * 3 + 2] = -2 + rnd() * 4; }
+const dustGeo = new THREE.BufferGeometry(); dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0xffc58a, size: 0.025, transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending }));
+scene.add(dust);
+
+/* ============================================================
+   Inspector HUD + window API
+   ============================================================ */
+const $ = id => document.getElementById(id);
+const hud = $('hud'), fadeEl = $('fade');
+const gripsEl = $('grips');
+const gripSpans = arms.map((a, i) => { const s = document.createElement('span'); s.title = 'arm ' + i; gripsEl.appendChild(s); return s; });
+const phaseBtns = PHASES.map((p, i) => {
+  const b = document.createElement('button'); b.textContent = (i + 1) + ' ' + p; b.onclick = () => jump(p); $('phaseBtns').appendChild(b); return b;
+});
+function setPaused(v) { S.paused = v; $('b-pause').textContent = v ? 'play' : 'pause'; $('b-pause').classList.toggle('on', v); }
+function setSpeed(v) { S.speed = v; $('b-speed').textContent = v + 'x'; }
+function setMarkers(v) { S.markers = v; arms.forEach(a => a.marker.visible = v); $('b-mark').classList.toggle('on', v); }
+$('b-pause').onclick = () => setPaused(!S.paused);
+$('b-step').onclick = () => { setPaused(true); tick(DT); publish(); };
+$('b-speed').onclick = () => setSpeed(S.speed === 1 ? 2 : S.speed === 2 ? 4 : S.speed === 4 ? 0.25 : 1);
+$('b-mark').onclick = () => setMarkers(!S.markers);
+addEventListener('keydown', e => {
+  if (e.key >= '1' && e.key <= '6') jump(PHASES[+e.key - 1]);
+  else if (e.key === ' ') { setPaused(!S.paused); e.preventDefault(); }
+  else if (e.key === '.') { setPaused(true); tick(DT); publish(); }
+  else if (e.key === 'm') setMarkers(!S.markers);
+  else if (e.key === 'h') hud.classList.toggle('hidden');
+});
+const SHORT = { grip: 'G', 'grip-slipping': 'g', reach: 'R', release: 'L', free: '-', brace: 'B', plant: 'P', step: 'S', air: 'A' };
+function renderHud() {
+  $('h-phase').textContent = `${pub.phase}  ${pub.phaseTime.toFixed(1)}s`;
+  $('h-angle').textContent = `${pub.lidAngleDeg.toFixed(1)}°  (${pub.lidTurns.toFixed(2)} / ${TURNS_FREE} turns)`;
+  $('h-rise').textContent = pub.lidFree ? 'off the thread' : `${(pub.lidRise * 1000 / 10).toFixed(2)} cm-units  (${pub.lidRise.toFixed(4)})`;
+  $('h-omega').textContent = pub.lidOmega.toFixed(2) + ' rad/s';
+  $('h-gc').textContent = pub.gripCount + (pub.lidOmega > 0 ? '  turning' : '  still');
+  pub.grip.forEach((g, i) => { const s = gripSpans[i]; s.textContent = SHORT[g] ?? g; s.className = g === 'grip-slipping' ? 'reach' : g; });
+  const c = S.checks;
+  $('h-v1').innerHTML = `<span class="${c.turnWithoutGrip ? 'bad' : 'ok'}">${c.turnWithoutGrip}</span>`;
+  $('h-v2').innerHTML = `<span class="${c.maxThreadError > 1e-6 ? 'bad' : 'ok'}">${c.maxThreadError.toExponential(1)}</span>`;
+  $('h-v3').innerHTML = `<span class="${c.maxGripSlip > HOLD_EPS ? 'bad' : 'ok'}">${c.maxGripSlip.toFixed(3)}</span>`;
+  $('h-v4').textContent = `${c.grabs} / ${c.releases}`;
+  $('h-fps').textContent = `${pub.loops} / ${pub.fps}`;
+  phaseBtns.forEach((b, i) => b.classList.toggle('on', PHASES[i] === pub.phase));
+}
+
+window.octo = {
+  get state() { return pub; },
+  phases: PHASES.slice(),
+  jump, pause: () => setPaused(true), resume: () => setPaused(false),
+  step(n = 1) { for (let i = 0; i < n; i++) tick(DT); publish(); return pub; },
+  // run the simulation headlessly for `seconds` (no rendering) and return the state; handy for tests
+  advance(seconds) { const n = Math.round(seconds / DT); for (let i = 0; i < n; i++) tick(DT); publish(); return pub; },
+  setSpeed, setMarkers,
+  constants: { PITCH, TURNS_FREE, NECK_TOP, GRIP_K, HOLD_EPS },
+};
+
+/* ============================================================
+   Main loop: fixed 60 Hz simulation, render every frame
+   ============================================================ */
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+const params = new URLSearchParams(location.search);
+if (params.get('hud') === '0') hud.classList.add('hidden');
+if (params.get('speed')) setSpeed(+params.get('speed') || 1);
+if (params.get('markers') === '1') setMarkers(true);
+jump(PHASES.includes(params.get('phase')) ? params.get('phase') : 'settle');
+if (params.get('paused') === '1') setPaused(true);
+
+let last = performance.now(), acc = 0, frames = 0, fpsT = 0, hudT = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  const real = Math.min(0.1, (now - last) / 1000); last = now;
+  if (!S.paused) {
+    acc += real * S.speed;
+    let n = 0;
+    while (acc >= DT && n < 8) { tick(DT); acc -= DT; n++; }
+    if (n === 8) acc = 0;
+  }
+  for (const a of arms) a.updateMesh();
+  // eyes track whatever the octopus cares about
+  for (const e of eyes) e.lookAt(S.lookAt);
+  // dust drift
+  const dp = dustGeo.attributes.position.array;
+  for (let i = 0; i < dustN; i++) { dp[i * 3 + 1] += 0.0016 * Math.sin(S.time * 0.3 + i); dp[i * 3] += 0.0009; if (dp[i * 3] > 3) dp[i * 3] = -4; }
+  dustGeo.attributes.position.needsUpdate = true;
+  fadeEl.style.opacity = S.fade;
+  controls.update();
+  renderer.render(scene, camera);
+  publish();
+  frames++; fpsT += real; hudT += real;
+  if (fpsT >= 0.5) { pub.fps = Math.round(frames / fpsT); frames = 0; fpsT = 0; }
+  if (hudT >= 0.1 && !hud.classList.contains('hidden')) { hudT = 0; renderHud(); }
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

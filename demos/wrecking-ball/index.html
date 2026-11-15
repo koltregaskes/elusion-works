@@ -1,0 +1,778 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Wrecking Ball</title>
+<style>
+  :root { --panel: rgba(16,18,22,0.78); --ink: #e9ecf1; --muted: #9aa3ad; --accent: #f2b33d; }
+  html, body { margin: 0; height: 100%; background: #15181d; overflow: hidden; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ink); }
+  canvas { display: block; touch-action: none; }
+  #hud { position: fixed; top: 16px; left: 16px; width: 270px; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 14px 16px; background: var(--panel); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; backdrop-filter: blur(6px); user-select: none; }
+  #hud h1 { font-size: 15px; margin: 0 0 4px; letter-spacing: 0.02em; }
+  #hud p { margin: 0 0 12px; font-size: 12px; color: var(--muted); line-height: 1.4; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 0; font-size: 13px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  button { background: var(--accent); color: #1a1407; border: 0; border-radius: 6px; padding: 8px 14px; font-weight: 600; font-size: 13px; cursor: pointer; }
+  button:hover { filter: brightness(1.08); }
+  label.chk { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); cursor: pointer; }
+  #stats { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 8px; }
+  #slowmo { position: fixed; top: 22px; left: 50%; transform: translateX(-50%); padding: 6px 14px; border-radius: 999px; background: rgba(242,179,61,0.92); color: #1a1407; font-weight: 700; font-size: 13px; letter-spacing: 0.08em; opacity: 0; transition: opacity 0.2s; pointer-events: none; font-variant-numeric: tabular-nums; }
+  #hint { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); font-size: 12px; color: var(--muted); background: var(--panel); padding: 6px 12px; border-radius: 999px; pointer-events: none; white-space: nowrap; max-width: calc(100vw - 32px); overflow: hidden; text-overflow: ellipsis; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "../_shared/three-r160/build/three.module.js",
+  "three/addons/": "../_shared/three-r160/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="hud">
+  <h1>Wrecking Ball</h1>
+  <p>40 wooden blocks, hand-written rigid-body physics (SAT box contacts, sequential impulses, Coulomb friction, sleeping).</p>
+  <div class="row"><span>Ball mass</span><strong id="massVal">800 kg</strong></div>
+  <input id="mass" aria-label="Ball mass in kilograms" type="range" min="100" max="3000" step="50" value="800">
+  <div class="row">
+    <button id="reset">Reset</button>
+    <label class="chk"><input id="slowChk" type="checkbox" checked> Slow-mo on impact</label>
+  </div>
+  <div id="stats">-</div>
+</div>
+<div id="slowmo">SLOW MOTION</div>
+<div id="hint">Drag the chrome ball to pull it back, release to swing. Drag elsewhere to orbit. R = reset.</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+
+/* =====================================================================
+   Vector / quaternion helpers (plain arrays, row-major 3x3 matrices)
+   ===================================================================== */
+const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const scl = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
+const madd = (a, b, s) => [a[0] + b[0] * s, a[1] + b[1] * s, a[2] + b[2] * s];
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const len = a => Math.hypot(a[0], a[1], a[2]);
+const neg = a => [-a[0], -a[1], -a[2]];
+const clamp = (x, lo, hi) => x < lo ? lo : x > hi ? hi : x;
+const mulMV = (m, v) => [m[0] * v[0] + m[1] * v[1] + m[2] * v[2], m[3] * v[0] + m[4] * v[1] + m[5] * v[2], m[6] * v[0] + m[7] * v[1] + m[8] * v[2]];
+const mulMTV = (m, v) => [m[0] * v[0] + m[3] * v[1] + m[6] * v[2], m[1] * v[0] + m[4] * v[1] + m[7] * v[2], m[2] * v[0] + m[5] * v[1] + m[8] * v[2]];
+function qMul(a, b) {
+  return [a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3],
+          a[0] * b[1] + a[1] * b[0] + a[2] * b[3] - a[3] * b[2],
+          a[0] * b[2] - a[1] * b[3] + a[2] * b[0] + a[3] * b[1],
+          a[0] * b[3] + a[1] * b[2] - a[2] * b[1] + a[3] * b[0]];
+}
+function qToM(q, m) {
+  const w = q[0], x = q[1], y = q[2], z = q[3];
+  m[0] = 1 - 2 * (y * y + z * z); m[1] = 2 * (x * y - w * z);     m[2] = 2 * (x * z + w * y);
+  m[3] = 2 * (x * y + w * z);     m[4] = 1 - 2 * (x * x + z * z); m[5] = 2 * (y * z - w * x);
+  m[6] = 2 * (x * z - w * y);     m[7] = 2 * (y * z + w * x);     m[8] = 1 - 2 * (x * x + y * y);
+}
+
+/* =====================================================================
+   Physics constants and world layout (SI units: metres, kg, seconds)
+   ===================================================================== */
+const GRAV = -9.81;
+const MARGIN = 0.02;         // speculative contact distance
+const SLOP = 0.003;          // allowed penetration
+const BETA = 0.2;            // penetration correction factor
+const MAX_BIAS = 1.2;        // m/s cap on correction velocity
+const ITER = 8;              // solver iterations per substep
+const SUB_DT = 1 / 360;      // target substep length
+const MU_WOOD = 0.55, MU_FLOOR = 0.65, MU_BALL = 0.3;
+const E_WOOD = 0.08, E_BALL = 0.15;
+const SLEEP_LIN = 0.06, SLEEP_ANG = 0.12, SLEEP_TIME = 0.5, WAKE_ACT = 0.08;
+
+const BLOCK_H = [0.448, 0.15, 0.148];                         // half extents (0.896 x 0.30 x 0.296 m)
+const WOOD_DENSITY = 650;                                     // kg/m^3 (pine/oak-ish)
+const BLOCK_MASS = WOOD_DENSITY * 8 * BLOCK_H[0] * BLOCK_H[1] * BLOCK_H[2]; // ~52 kg
+const LAYERS = 10;
+
+const PIVOT = [-0.6, 8.0, 0];
+const BALL_R = 0.45;
+const ROPE_L = 6.0;                    // pivot -> ball centre
+const CHAIN_L = ROPE_L - BALL_R;       // visible chain
+const START_ANGLE = 62 * Math.PI / 180;
+
+/* ---------- bodies ---------- */
+function makeBox(pos, yaw) {
+  const h = BLOCK_H.slice();
+  const m = BLOCK_MASS;
+  const sx = 2 * h[0], sy = 2 * h[1], sz = 2 * h[2];
+  const b = {
+    kind: 0, pos: pos.slice(), q: [Math.cos(yaw / 2), 0, Math.sin(yaw / 2), 0],
+    v: [0, 0, 0], w: [0, 0, 0], h, invM: 1 / m,
+    invIb: [12 / (m * (sy * sy + sz * sz)), 12 / (m * (sx * sx + sz * sz)), 12 / (m * (sx * sx + sy * sy))],
+    R: new Array(9).fill(0), invIw: new Array(9).fill(0), ax: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+    ext: [0, 0, 0], asleep: true, sleepT: 0,
+  };
+  updateDerived(b);
+  return b;
+}
+function updateDerived(b) {
+  const R = b.R; qToM(b.q, R);
+  for (let k = 0; k < 3; k++) b.ax[k] = [R[k], R[3 + k], R[6 + k]];
+  const d = b.invIb, I = b.invIw;
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++)
+    I[i * 3 + j] = R[i * 3] * d[0] * R[j * 3] + R[i * 3 + 1] * d[1] * R[j * 3 + 1] + R[i * 3 + 2] * d[2] * R[j * 3 + 2];
+  for (let i = 0; i < 3; i++)
+    b.ext[i] = Math.abs(R[i * 3]) * b.h[0] + Math.abs(R[i * 3 + 1]) * b.h[1] + Math.abs(R[i * 3 + 2]) * b.h[2];
+}
+
+const boxes = [];
+function towerLayout() {
+  // Pinwheel ring, mirrored every layer so vertical joints are staggered (brick bond).
+  const out = [];
+  for (let k = 0; k < LAYERS; k++) {
+    const y = BLOCK_H[1] + k * 2 * BLOCK_H[1];
+    const s = k % 2 === 0 ? 1 : -1;
+    out.push({ p: [-0.15 * s, y, 0.45], yaw: 0 });
+    out.push({ p: [0.45 * s, y, 0.15], yaw: Math.PI / 2 });
+    out.push({ p: [0.15 * s, y, -0.45], yaw: 0 });
+    out.push({ p: [-0.45 * s, y, -0.15], yaw: Math.PI / 2 });
+  }
+  return out;
+}
+const LAYOUT = towerLayout();
+for (const L of LAYOUT) boxes.push(makeBox(L.p, L.yaw));
+
+// Wrecking ball: point mass on an inextensible chain (no spin: the chain shackle keeps it oriented).
+const ball = { kind: 1, pos: [0, 0, 0], v: [0, 0, 0], w: [0, 0, 0], r: BALL_R, mass: 800, invM: 0,
+  invIw: new Array(9).fill(0), held: true, asleep: false };
+
+/* =====================================================================
+   Collision detection
+   ===================================================================== */
+let contacts = [];
+function mkContact(a, b, p, n, depth, mu, e) {
+  return { a, b, p, n, depth, mu, e, ra: null, rb: null, t1: null, t2: null,
+           kn: 0, kt1: 0, kt2: 0, bias: 0, jn: 0, jt1: 0, jt2: 0, da: false, db: false };
+}
+const isDyn = b => !!b && !b.asleep && b.invM > 0;
+const activity = b => b === ball ? (ball.held ? 0 : len(ball.v)) : len(b.v) + 0.5 * len(b.w);
+function wake(b) { if (b.asleep) { b.asleep = false; b.sleepT = 0; } }
+
+function clipPoly(poly, n, off) {
+  const out = [];
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i], q = poly[(i + 1) % poly.length];
+    const dp = dot(n, p) - off, dq = dot(n, q) - off;
+    if (dp <= 0) out.push(p);
+    if ((dp < 0 && dq > 0) || (dp > 0 && dq < 0)) out.push(madd(p, sub(q, p), dp / (dp - dq)));
+  }
+  return out;
+}
+
+// Reference-face clipping. nRI points from reference box R toward incident box I.
+function faceContacts(R, I, k, nRI, A, B, flip) {
+  const fc = madd(R.pos, nRI, R.h[k]);
+  const k1 = (k + 1) % 3, k2 = (k + 2) % 3;
+  const t1 = R.ax[k1], t2 = R.ax[k2];
+  const c1 = dot(t1, R.pos), c2 = dot(t2, R.pos);
+  let j = 0, best = -1;
+  for (let m = 0; m < 3; m++) { const d = Math.abs(dot(I.ax[m], nRI)); if (d > best) { best = d; j = m; } }
+  const s = dot(I.ax[j], nRI) > 0 ? -1 : 1;
+  const ic = madd(I.pos, I.ax[j], s * I.h[j]);
+  const u = scl(I.ax[(j + 1) % 3], I.h[(j + 1) % 3]), v = scl(I.ax[(j + 2) % 3], I.h[(j + 2) % 3]);
+  let poly = [add(add(ic, u), v), add(sub(ic, u), v), sub(sub(ic, u), v), sub(add(ic, u), v)];
+  poly = clipPoly(poly, t1, c1 + R.h[k1]); if (!poly.length) return;
+  poly = clipPoly(poly, neg(t1), -c1 + R.h[k1]); if (!poly.length) return;
+  poly = clipPoly(poly, t2, c2 + R.h[k2]); if (!poly.length) return;
+  poly = clipPoly(poly, neg(t2), -c2 + R.h[k2]); if (!poly.length) return;
+  const nAB = flip ? neg(nRI) : nRI;
+  for (const p of poly) {
+    const sep = dot(nRI, sub(p, fc));
+    if (sep < MARGIN) contacts.push(mkContact(A, B, madd(p, nRI, -sep * 0.5), nAB, -sep, MU_WOOD, E_WOOD));
+  }
+}
+
+// Separating axis test over 15 axes, then face clipping or edge-edge contact.
+function boxBox(A, B) {
+  const d = sub(B.pos, A.pos);
+  const a = A.ax, b = B.ax, ha = A.h, hb = B.h;
+  const AC = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) AC[i][j] = Math.abs(dot(a[i], b[j])) + 1e-7;
+  let fa = Infinity, fai = 0, fb = Infinity, fbi = 0, fe = Infinity, ei = 0, ej = 0, eN = null;
+  for (let i = 0; i < 3; i++) {
+    const pen = ha[i] + hb[0] * AC[i][0] + hb[1] * AC[i][1] + hb[2] * AC[i][2] - Math.abs(dot(d, a[i]));
+    if (pen < -MARGIN) return;
+    if (pen < fa) { fa = pen; fai = i; }
+  }
+  for (let j = 0; j < 3; j++) {
+    const pen = hb[j] + ha[0] * AC[0][j] + ha[1] * AC[1][j] + ha[2] * AC[2][j] - Math.abs(dot(d, b[j]));
+    if (pen < -MARGIN) return;
+    if (pen < fb) { fb = pen; fbi = j; }
+  }
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
+    let L = cross(a[i], b[j]); const l = len(L);
+    if (l < 1e-3) continue;
+    L = scl(L, 1 / l);
+    const rA = ha[0] * Math.abs(dot(a[0], L)) + ha[1] * Math.abs(dot(a[1], L)) + ha[2] * Math.abs(dot(a[2], L));
+    const rB = hb[0] * Math.abs(dot(b[0], L)) + hb[1] * Math.abs(dot(b[1], L)) + hb[2] * Math.abs(dot(b[2], L));
+    const dl = dot(d, L);
+    const pen = rA + rB - Math.abs(dl);
+    if (pen < -MARGIN) return;
+    if (pen < fe) { fe = pen; ei = i; ej = j; eN = dl < 0 ? neg(L) : L; }
+  }
+  const faceBest = Math.min(fa, fb);
+  if (eN && fe < 0.9 * faceBest - 0.01) {
+    // edge-edge
+    const ua = a[ei], ub = b[ej];
+    let pA = A.pos.slice(), pB = B.pos.slice();
+    for (let k = 0; k < 3; k++) {
+      if (k !== ei) pA = madd(pA, a[k], ha[k] * (dot(a[k], eN) > 0 ? 1 : -1));
+      if (k !== ej) pB = madd(pB, b[k], hb[k] * (dot(b[k], eN) > 0 ? -1 : 1));
+    }
+    const r = sub(pA, pB), bb = dot(ua, ub), c = dot(ua, r), f = dot(ub, r), den = 1 - bb * bb;
+    if (den < 1e-6) return;
+    const s = clamp((bb * f - c) / den, -ha[ei], ha[ei]);
+    const t = clamp((f - bb * c) / den, -hb[ej], hb[ej]);
+    const p = scl(add(madd(pA, ua, s), madd(pB, ub, t)), 0.5);
+    contacts.push(mkContact(A, B, p, eN, fe, MU_WOOD, E_WOOD));
+  } else if (fb < fa - 1e-4) {
+    const nRI = dot(d, b[fbi]) > 0 ? neg(b[fbi]) : b[fbi];   // from B toward A
+    faceContacts(B, A, fbi, nRI, A, B, true);
+  } else {
+    const nRI = dot(d, a[fai]) > 0 ? a[fai] : neg(a[fai]);   // from A toward B
+    faceContacts(A, B, fai, nRI, A, B, false);
+  }
+}
+
+function sphereBox(S, B) {
+  const l = mulMTV(B.R, sub(S.pos, B.pos));
+  const q = [clamp(l[0], -B.h[0], B.h[0]), clamp(l[1], -B.h[1], B.h[1]), clamp(l[2], -B.h[2], B.h[2])];
+  const diff = sub(l, q); const dist = len(diff);
+  let nL, depth, pl;
+  if (dist > 1e-6) {
+    if (dist > S.r + MARGIN) return false;
+    nL = scl(diff, 1 / dist); depth = S.r - dist; pl = q;
+  } else {
+    let k = 0, m = Infinity;
+    for (let i = 0; i < 3; i++) { const g = B.h[i] - Math.abs(l[i]); if (g < m) { m = g; k = i; } }
+    nL = [0, 0, 0]; nL[k] = l[k] < 0 ? -1 : 1; depth = S.r + m; pl = l.slice(); pl[k] = nL[k] * B.h[k];
+  }
+  contacts.push(mkContact(B, S, add(B.pos, mulMV(B.R, pl)), mulMV(B.R, nL), depth, MU_BALL, E_BALL));
+  return true;
+}
+
+const SIGNS = [[-1, -1, -1], [1, -1, -1], [-1, 1, -1], [1, 1, -1], [-1, -1, 1], [1, -1, 1], [-1, 1, 1], [1, 1, 1]];
+function generateContacts() {
+  contacts = [];
+  const n = boxes.length;
+  for (let i = 0; i < n; i++) {
+    const b = boxes[i];
+    if (b.asleep) continue;
+    if (b.pos[1] - b.ext[1] < MARGIN) {
+      for (const s of SIGNS) {
+        const c = add(b.pos, mulMV(b.R, [s[0] * b.h[0], s[1] * b.h[1], s[2] * b.h[2]]));
+        if (c[1] < MARGIN) contacts.push(mkContact(null, b, c, [0, 1, 0], -c[1], MU_FLOOR, E_WOOD));
+      }
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    const A = boxes[i];
+    for (let j = i + 1; j < n; j++) {
+      const B = boxes[j];
+      if (A.asleep && B.asleep) continue;
+      if (Math.abs(A.pos[0] - B.pos[0]) > A.ext[0] + B.ext[0] + MARGIN) continue;
+      if (Math.abs(A.pos[1] - B.pos[1]) > A.ext[1] + B.ext[1] + MARGIN) continue;
+      if (Math.abs(A.pos[2] - B.pos[2]) > A.ext[2] + B.ext[2] + MARGIN) continue;
+      if (A.asleep && activity(B) > WAKE_ACT) wake(A);
+      if (B.asleep && activity(A) > WAKE_ACT) wake(B);
+      boxBox(A, B);
+    }
+  }
+  // ball vs blocks
+  const bs = len(ball.v);
+  for (const B of boxes) {
+    const dx = Math.max(0, Math.abs(ball.pos[0] - B.pos[0]) - B.ext[0]);
+    const dy = Math.max(0, Math.abs(ball.pos[1] - B.pos[1]) - B.ext[1]);
+    const dz = Math.max(0, Math.abs(ball.pos[2] - B.pos[2]) - B.ext[2]);
+    const gap = Math.hypot(dx, dy, dz) - BALL_R;
+    if (!slow.fired && slow.armed && !ball.held && bs > 2 && gap < bs * 0.05) triggerSlowMo();
+    if (gap > MARGIN) continue;
+    if (B.asleep && activity(ball) > WAKE_ACT) wake(B);
+    sphereBox(ball, B);
+  }
+  if (ball.pos[1] - BALL_R < MARGIN)
+    contacts.push(mkContact(null, ball, [ball.pos[0], 0, ball.pos[2]], [0, 1, 0], BALL_R - ball.pos[1], MU_FLOOR, 0.1));
+}
+
+/* =====================================================================
+   Sequential-impulse solver
+   ===================================================================== */
+const ZERO = [0, 0, 0];
+function velAt(b, r) {
+  const v = b.v, w = b.w;
+  return [v[0] + w[1] * r[2] - w[2] * r[1], v[1] + w[2] * r[0] - w[0] * r[2], v[2] + w[0] * r[1] - w[1] * r[0]];
+}
+function kTerm(b, dyn, r, n) {
+  if (!dyn) return 0;
+  const rn = cross(r, n);
+  return b.invM + dot(cross(mulMV(b.invIw, rn), r), n);
+}
+function relVel(c) {
+  const vb = c.db ? velAt(c.b, c.rb) : ZERO;
+  const va = c.da ? velAt(c.a, c.ra) : ZERO;
+  return sub(vb, va);
+}
+function applyImp(b, P, r) {
+  const im = b.invM;
+  b.v[0] += P[0] * im; b.v[1] += P[1] * im; b.v[2] += P[2] * im;
+  const dw = mulMV(b.invIw, cross(r, P));
+  b.w[0] += dw[0]; b.w[1] += dw[1]; b.w[2] += dw[2];
+}
+function applyPair(c, dir, l) {
+  const P = scl(dir, l);
+  if (c.da) applyImp(c.a, neg(P), c.ra);
+  if (c.db) applyImp(c.b, P, c.rb);
+}
+function prepContact(c, h) {
+  c.da = isDyn(c.a); c.db = isDyn(c.b);
+  c.ra = c.a ? sub(c.p, c.a.pos) : ZERO;
+  c.rb = c.b ? sub(c.p, c.b.pos) : ZERO;
+  const n = c.n;
+  c.t1 = Math.abs(n[0]) > 0.57 ? scl([n[1], -n[0], 0], 1 / Math.hypot(n[0], n[1])) : scl([0, n[2], -n[1]], 1 / Math.hypot(n[1], n[2]));
+  c.t2 = cross(n, c.t1);
+  const kn = kTerm(c.a, c.da, c.ra, n) + kTerm(c.b, c.db, c.rb, n);
+  c.kn = kn > 0 ? 1 / kn : 0;
+  const k1 = kTerm(c.a, c.da, c.ra, c.t1) + kTerm(c.b, c.db, c.rb, c.t1);
+  const k2 = kTerm(c.a, c.da, c.ra, c.t2) + kTerm(c.b, c.db, c.rb, c.t2);
+  c.kt1 = k1 > 0 ? 1 / k1 : 0; c.kt2 = k2 > 0 ? 1 / k2 : 0;
+  const vn = c.kn ? dot(relVel(c), n) : 0;
+  if (c.depth < 0) c.bias = c.depth / h;                  // speculative: allow closing the gap exactly
+  else c.bias = Math.min(MAX_BIAS, BETA / h * Math.max(c.depth - SLOP, 0));
+  if (vn < -1 && c.depth > -0.005) c.bias = Math.max(c.bias, -c.e * vn);
+  c.jn = c.jt1 = c.jt2 = 0;
+}
+function solveContact(c) {
+  if (!c.kn) return;
+  // friction (uses last normal impulse as the Coulomb limit)
+  const lim = c.mu * c.jn;
+  if (lim > 0) {
+    let dv = relVel(c);
+    let l = -dot(dv, c.t1) * c.kt1, old = c.jt1;
+    c.jt1 = clamp(old + l, -lim, lim); l = c.jt1 - old; if (l) applyPair(c, c.t1, l);
+    dv = relVel(c);
+    l = -dot(dv, c.t2) * c.kt2; old = c.jt2;
+    c.jt2 = clamp(old + l, -lim, lim); l = c.jt2 - old; if (l) applyPair(c, c.t2, l);
+  }
+  const vn = dot(relVel(c), c.n);
+  let l = (c.bias - vn) * c.kn; const old = c.jn;
+  c.jn = Math.max(old + l, 0); l = c.jn - old;
+  if (l) applyPair(c, c.n, l);
+}
+
+// chain: inequality distance constraint (can go slack, cannot stretch)
+const rope = { active: false, n: [0, 0, 0], j: 0 };
+function ropePrep() {
+  rope.active = false;
+  if (ball.held) return;
+  const d = sub(ball.pos, PIVOT), dist = len(d);
+  if (dist < ROPE_L - 0.002) return;
+  rope.n = scl(d, 1 / dist); rope.j = 0; rope.active = true;
+}
+function ropeSolve() {
+  if (!rope.active) return;
+  const vr = dot(ball.v, rope.n);
+  let l = -vr * ball.mass; const old = rope.j;
+  rope.j = Math.min(old + l, 0); l = rope.j - old;
+  if (l) { ball.v = madd(ball.v, rope.n, l * ball.invM); }
+}
+
+function substep(h) {
+  // forces
+  const linD = 1 / (1 + h * 0.04), angD = 1 / (1 + h * 0.25);
+  for (const b of boxes) {
+    if (b.asleep) continue;
+    b.v[1] += GRAV * h;
+    b.v = scl(b.v, linD); b.w = scl(b.w, angD);
+  }
+  if (!ball.held) { ball.v[1] += GRAV * h; ball.v = scl(ball.v, 1 / (1 + h * 0.01)); }
+
+  generateContacts();
+  contacts.sort((x, y) => x.p[1] - y.p[1]);
+  for (const c of contacts) prepContact(c, h);
+  ropePrep();
+  for (let it = 0; it < ITER; it++) {
+    ropeSolve();
+    for (let i = 0; i < contacts.length; i++) solveContact(contacts[i]);
+  }
+
+  // integrate positions
+  for (const b of boxes) {
+    if (b.asleep) continue;
+    b.pos = madd(b.pos, b.v, h);
+    const dq = qMul([0, b.w[0], b.w[1], b.w[2]], b.q);
+    const q = [b.q[0] + dq[0] * 0.5 * h, b.q[1] + dq[1] * 0.5 * h, b.q[2] + dq[2] * 0.5 * h, b.q[3] + dq[3] * 0.5 * h];
+    const ql = Math.hypot(q[0], q[1], q[2], q[3]);
+    b.q = [q[0] / ql, q[1] / ql, q[2] / ql, q[3] / ql];
+    updateDerived(b);
+    // sleeping
+    if (dot(b.v, b.v) < SLEEP_LIN * SLEEP_LIN && dot(b.w, b.w) < SLEEP_ANG * SLEEP_ANG) {
+      b.sleepT += h;
+      if (b.sleepT > SLEEP_TIME) { b.asleep = true; b.v = [0, 0, 0]; b.w = [0, 0, 0]; }
+    } else b.sleepT = 0;
+  }
+  if (!ball.held) {
+    ball.pos = madd(ball.pos, ball.v, h);
+    // hard projection onto the chain length (removes drift, chain cannot stretch)
+    const d = sub(ball.pos, PIVOT), dist = len(d);
+    if (dist > ROPE_L) {
+      const n = scl(d, 1 / dist);
+      ball.pos = madd(PIVOT, n, ROPE_L);
+      const vr = dot(ball.v, n);
+      if (vr > 0) ball.v = madd(ball.v, n, -vr);
+    }
+  }
+}
+
+/* =====================================================================
+   Slow motion controller
+   ===================================================================== */
+const slow = { armed: false, fired: false, t: 0, active: false, scale: 1 };
+const SLOW_FACTOR = 0.1, SLOW_IN = 0.12, SLOW_HOLD = 2.4, SLOW_OUT = 1.0;
+function triggerSlowMo() {
+  slow.fired = true;
+  if (!document.getElementById('slowChk').checked) return;
+  slow.active = true; slow.t = 0;
+}
+function updateSlowMo(dt) {
+  if (!slow.active) { slow.scale = 1; return; }
+  slow.t += dt;
+  const t = slow.t;
+  if (t < SLOW_IN) slow.scale = 1 + (SLOW_FACTOR - 1) * (t / SLOW_IN);
+  else if (t < SLOW_HOLD) slow.scale = SLOW_FACTOR;
+  else if (t < SLOW_HOLD + SLOW_OUT) { const u = (t - SLOW_HOLD) / SLOW_OUT; slow.scale = SLOW_FACTOR + (1 - SLOW_FACTOR) * (u * u * (3 - 2 * u)); }
+  else { slow.scale = 1; slow.active = false; }
+}
+
+/* =====================================================================
+   Rendering
+   ===================================================================== */
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1b1f25);
+scene.fog = new THREE.Fog(0x1b1f25, 22, 55);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.03).texture;
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 200);
+camera.position.set(3.5, 3.8, 11.5);
+const BASE_FOV = 45;
+
+scene.add(new THREE.HemisphereLight(0xcfd8e6, 0x3a3631, 0.35));
+const sun = new THREE.DirectionalLight(0xfff1dc, 2.6);
+sun.position.set(6, 12, 8);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -9, right: 9, top: 11, bottom: -6, near: 1, far: 40 });
+sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.02;
+scene.add(sun);
+
+// --- procedural textures ---
+function rnd(a, b) { return a + Math.random() * (b - a); }
+function woodTexture() {
+  const c = document.createElement('canvas'); c.width = 1024; c.height = 256;
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 0, 256);
+  grad.addColorStop(0, '#c49563'); grad.addColorStop(0.5, '#b8875a'); grad.addColorStop(1, '#c79a68');
+  g.fillStyle = grad; g.fillRect(0, 0, 1024, 256);
+  for (let i = 0; i < 260; i++) {
+    const y0 = Math.random() * 256, amp = rnd(1, 7), f = rnd(0.002, 0.009), ph = rnd(0, 6.28);
+    g.strokeStyle = `rgba(${rnd(80, 120) | 0},${rnd(48, 70) | 0},${rnd(22, 36) | 0},${rnd(0.06, 0.22)})`;
+    g.lineWidth = rnd(0.5, 2.6);
+    g.beginPath();
+    for (let x = 0; x <= 1024; x += 12) { const y = y0 + Math.sin(x * f + ph) * amp + Math.sin(x * f * 3.1) * amp * 0.25; x ? g.lineTo(x, y) : g.moveTo(x, y); }
+    g.stroke();
+  }
+  for (let k = 0; k < 3; k++) {
+    const x = rnd(100, 924), y = rnd(40, 216), rx = rnd(8, 18);
+    for (let r = rx; r > 1; r -= 2) { g.strokeStyle = `rgba(80,45,20,${0.12 + (rx - r) / rx * 0.3})`; g.lineWidth = 1.4; g.beginPath(); g.ellipse(x, y, r * 2.2, r * 0.8, 0, 0, Math.PI * 2); g.stroke(); }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+function concreteTexture() {
+  const S = 1024, c = document.createElement('canvas'); c.width = c.height = S;
+  const g = c.getContext('2d');
+  g.fillStyle = '#85847f'; g.fillRect(0, 0, S, S);
+  for (let i = 0; i < 900; i++) {
+    const x = Math.random() * S, y = Math.random() * S, r = rnd(10, 70), l = rnd(-1, 1);
+    const gr = g.createRadialGradient(x, y, 0, x, y, r);
+    const col = l > 0 ? '255,255,250' : '20,20,18';
+    gr.addColorStop(0, `rgba(${col},${Math.abs(l) * 0.05})`); gr.addColorStop(1, `rgba(${col},0)`);
+    g.fillStyle = gr; g.fillRect(x - r, y - r, 2 * r, 2 * r);
+  }
+  const img = g.getImageData(0, 0, S, S), d = img.data;
+  for (let i = 0; i < d.length; i += 4) { const n = (Math.random() - 0.5) * 22; d[i] += n; d[i + 1] += n; d[i + 2] += n; }
+  g.putImageData(img, 0, 0);
+  g.strokeStyle = 'rgba(30,30,28,0.55)'; g.lineWidth = 3;
+  for (let k = 0; k <= 4; k++) { const p = k * S / 4; g.beginPath(); g.moveTo(p, 0); g.lineTo(p, S); g.moveTo(0, p); g.lineTo(S, p); g.stroke(); }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(8, 8);
+  return t;
+}
+
+// floor
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(64, 64),
+  new THREE.MeshStandardMaterial({ map: concreteTexture(), roughness: 0.92, metalness: 0 }));
+floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true;
+scene.add(floor);
+
+// blocks
+const woodTex = woodTexture();
+const blockGeo = new RoundedBoxGeometry(2 * BLOCK_H[0], 2 * BLOCK_H[1], 2 * BLOCK_H[2], 2, 0.012);
+const blockMeshes = boxes.map(() => {
+  const tex = woodTex.clone(); tex.needsUpdate = true;
+  tex.offset.set(Math.random(), Math.random()); tex.repeat.set(rnd(0.7, 1.0), rnd(0.8, 1.0));
+  const v = rnd(0.78, 1.05);
+  const m = new THREE.Mesh(blockGeo, new THREE.MeshStandardMaterial({
+    map: tex, color: new THREE.Color(v, v * rnd(0.94, 1.0), v * rnd(0.86, 0.95)), roughness: 0.72, metalness: 0, envMapIntensity: 0.4 }));
+  m.castShadow = true; m.receiveShadow = true;
+  scene.add(m);
+  return m;
+});
+
+// ball
+const chrome = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 1.0, roughness: 0.05 });
+const ballMesh = new THREE.Mesh(new THREE.SphereGeometry(BALL_R, 64, 48), chrome);
+ballMesh.castShadow = true; ballMesh.receiveShadow = true;
+scene.add(ballMesh);
+const shackle = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.022, 10, 20), new THREE.MeshStandardMaterial({ color: 0xb8bcc2, metalness: 1, roughness: 0.25 }));
+shackle.castShadow = true; scene.add(shackle);
+
+// gantry
+const steel = new THREE.MeshStandardMaterial({ color: 0xd59a1e, roughness: 0.55, metalness: 0.35 });
+function beam(w, hgt, d, x, y, z) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, hgt, d), steel);
+  m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; scene.add(m);
+}
+beam(0.3, 8.6, 0.3, PIVOT[0], 4.3, 3.6);
+beam(0.3, 8.6, 0.3, PIVOT[0], 4.3, -3.6);
+beam(0.36, 0.4, 7.6, PIVOT[0], 8.35, 0);
+beam(0.8, 0.12, 0.8, PIVOT[0], 0.06, 3.6);
+beam(0.8, 0.12, 0.8, PIVOT[0], 0.06, -3.6);
+const hookBlock = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.25, 16), new THREE.MeshStandardMaterial({ color: 0x333539, metalness: 0.8, roughness: 0.35 }));
+hookBlock.position.set(PIVOT[0], PIVOT[1] + 0.06, 0); hookBlock.rotation.x = Math.PI / 2; scene.add(hookBlock);
+
+// chain: verlet rope for shape, instanced torus links for looks
+const NP = 30, SEG = CHAIN_L / NP;
+let rp = [], rpp = [];
+const LINKS = Math.round(CHAIN_L / 0.12);
+const linkMesh = new THREE.InstancedMesh(new THREE.TorusGeometry(0.045, 0.013, 6, 14),
+  new THREE.MeshStandardMaterial({ color: 0xa8acb2, metalness: 1, roughness: 0.3 }), LINKS);
+linkMesh.castShadow = true; scene.add(linkMesh);
+
+function attachPoint() {
+  const d = sub(PIVOT, ball.pos), l = len(d) || 1;
+  return madd(ball.pos, d, BALL_R / l);
+}
+function resetRope() {
+  const att = attachPoint();
+  rp = []; rpp = [];
+  for (let i = 0; i <= NP; i++) { const p = madd(PIVOT, sub(att, PIVOT), i / NP); rp.push(p); rpp.push(p.slice()); }
+}
+function updateRope(dt) {
+  const att = attachPoint();
+  const g = GRAV * dt * dt;
+  for (let i = 1; i < NP; i++) {
+    const p = rp[i], pp = rpp[i];
+    const nx = p[0] + (p[0] - pp[0]) * 0.97, ny = p[1] + (p[1] - pp[1]) * 0.97 + g, nz = p[2] + (p[2] - pp[2]) * 0.97;
+    rpp[i] = p; rp[i] = [nx, ny, nz];
+  }
+  rp[0] = PIVOT.slice(); rp[NP] = att;
+  for (let it = 0; it < 30; it++) {
+    for (let i = 0; i < NP; i++) {
+      const a = rp[i], b = rp[i + 1];
+      const d = sub(b, a), l = len(d) || 1e-9, diff = (l - SEG) / l;
+      const wa = i === 0 ? 0 : 1, wb = i + 1 === NP ? 0 : 1, ws = wa + wb;
+      if (!ws) continue;
+      rp[i] = madd(a, d, diff * wa / ws);
+      rp[i + 1] = madd(b, d, -diff * wb / ws);
+    }
+  }
+  // taut chain: straighten exactly
+  const span = len(sub(att, PIVOT));
+  if (span > CHAIN_L * 0.995) for (let i = 1; i < NP; i++) rp[i] = madd(PIVOT, sub(att, PIVOT), i / NP);
+}
+const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _qt = new THREE.Quaternion(), _p = new THREE.Vector3(), _d = new THREE.Vector3(), _s = new THREE.Vector3(1, 1.6, 1);
+const Y = new THREE.Vector3(0, 1, 0);
+function drawChain() {
+  const cum = [0];
+  for (let i = 0; i < NP; i++) cum.push(cum[i] + len(sub(rp[i + 1], rp[i])));
+  const total = cum[NP], pitch = total / LINKS;
+  let seg = 0;
+  for (let k = 0; k < LINKS; k++) {
+    const s = (k + 0.5) * pitch;
+    while (seg < NP - 1 && cum[seg + 1] < s) seg++;
+    const a = rp[seg], b = rp[seg + 1], sl = cum[seg + 1] - cum[seg] || 1e-9;
+    const t = (s - cum[seg]) / sl;
+    _p.set(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t);
+    _d.set(a[0] - b[0], a[1] - b[1], a[2] - b[2]).normalize();
+    _q.setFromUnitVectors(Y, _d);
+    if (k % 2) { _qt.setFromAxisAngle(Y, Math.PI / 2); _q.multiply(_qt); }
+    _m.compose(_p, _q, _s);
+    linkMesh.setMatrixAt(k, _m);
+  }
+  linkMesh.instanceMatrix.needsUpdate = true;
+  const att = attachPoint();
+  shackle.position.set(att[0], att[1], att[2]);
+  _d.set(PIVOT[0] - ball.pos[0], PIVOT[1] - ball.pos[1], PIVOT[2] - ball.pos[2]).normalize();
+  shackle.quaternion.setFromUnitVectors(Y, _d);
+}
+
+function syncMeshes() {
+  for (let i = 0; i < boxes.length; i++) {
+    const b = boxes[i], m = blockMeshes[i];
+    m.position.set(b.pos[0], b.pos[1], b.pos[2]);
+    m.quaternion.set(b.q[1], b.q[2], b.q[3], b.q[0]);
+  }
+  ballMesh.position.set(ball.pos[0], ball.pos[1], ball.pos[2]);
+  drawChain();
+}
+
+/* =====================================================================
+   Controls: orbit, ball drag, reset, mass
+   ===================================================================== */
+const raycaster = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+const dragPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+let dragging = false, autoRelease = 0;
+
+function setPointer(e) {
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+}
+renderer.domElement.addEventListener('pointerdown', e => {
+  setPointer(e);
+  if (raycaster.intersectObject(ballMesh).length) {
+    dragging = true; controls.enabled = false;
+    ball.held = true; ball.invM = 0; ball.v = [0, 0, 0]; autoRelease = 0;
+    renderer.domElement.style.cursor = 'grabbing';
+    e.preventDefault();
+  }
+});
+window.addEventListener('pointermove', e => {
+  setPointer(e);
+  if (!dragging) {
+    renderer.domElement.style.cursor = raycaster.intersectObject(ballMesh).length ? 'grab' : '';
+    return;
+  }
+  const hit = new THREE.Vector3();
+  if (!raycaster.ray.intersectPlane(dragPlane, hit)) return;
+  let d = [hit.x - PIVOT[0], hit.y - PIVOT[1], 0];
+  let l = len(d) || 1;
+  d = scl(d, clamp(l, 1.2, ROPE_L) / l);
+  const p = add(PIVOT, d);
+  p[0] = Math.min(p[0], -1.1);                         // keep clear of the tower while held
+  p[1] = Math.max(p[1], BALL_R + 0.03);
+  const dd = sub(p, PIVOT), dl = len(dd);
+  ball.pos = dl > ROPE_L ? madd(PIVOT, dd, ROPE_L / dl) : p;
+});
+window.addEventListener('pointerup', () => {
+  if (!dragging) return;
+  dragging = false; controls.enabled = true;
+  renderer.domElement.style.cursor = '';
+  release();
+});
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(-1.4, 2.6, 0);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI * 0.49;
+controls.minDistance = 4; controls.maxDistance = 30;
+controls.update();
+
+function release() {
+  ball.held = false; ball.invM = 1 / ball.mass; ball.v = [0, 0, 0];
+  slow.armed = true; slow.fired = false;
+}
+
+const massInput = document.getElementById('mass'), massVal = document.getElementById('massVal');
+massInput.addEventListener('input', () => {
+  ball.mass = +massInput.value;
+  massVal.textContent = ball.mass + ' kg';
+  if (!ball.held) ball.invM = 1 / ball.mass;
+});
+
+function reset() {
+  for (let i = 0; i < boxes.length; i++) {
+    const nb = makeBox(LAYOUT[i].p, LAYOUT[i].yaw);
+    Object.assign(boxes[i], nb);
+  }
+  ball.mass = +massInput.value;
+  ball.pos = [PIVOT[0] - ROPE_L * Math.sin(START_ANGLE), PIVOT[1] - ROPE_L * Math.cos(START_ANGLE), 0];
+  ball.v = [0, 0, 0]; ball.held = true; ball.invM = 0;
+  slow.armed = false; slow.fired = false; slow.active = false; slow.scale = 1;
+  autoRelease = 1.2;
+  resetRope();
+}
+document.getElementById('reset').addEventListener('click', reset);
+window.addEventListener('keydown', e => { if (e.key === 'r' || e.key === 'R') reset(); });
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+/* =====================================================================
+   Main loop
+   ===================================================================== */
+const slowEl = document.getElementById('slowmo'), statsEl = document.getElementById('stats');
+let last = performance.now(), fpsFrames = 0, fpsT = 0, fps = 0, physMs = 0;
+reset();
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min((now - last) / 1000, 1 / 30); last = now;
+
+  if (ball.held && !dragging && autoRelease > 0) { autoRelease -= dt; if (autoRelease <= 0) release(); }
+  updateSlowMo(dt);
+  const simDt = dt * slow.scale;
+  const t0 = performance.now();
+  const n = Math.max(1, Math.ceil(simDt / SUB_DT - 1e-6));
+  const h = simDt / n;
+  for (let i = 0; i < n; i++) substep(h);
+  updateRope(simDt);
+  physMs = physMs * 0.9 + (performance.now() - t0) * 0.1;
+
+  syncMeshes();
+  // slight lens push-in while in slow motion
+  const targetFov = BASE_FOV - (1 - slow.scale) * 7;
+  if (Math.abs(camera.fov - targetFov) > 0.01) { camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 6); camera.updateProjectionMatrix(); }
+  slowEl.style.opacity = slow.active ? 1 : 0;
+  if (slow.active) slowEl.textContent = 'SLOW MOTION  ' + slow.scale.toFixed(2) + '×';
+
+  controls.update();
+  renderer.render(scene, camera);
+
+  fpsFrames++; fpsT += dt;
+  if (fpsT > 0.5) {
+    fps = fpsFrames / fpsT; fpsFrames = 0; fpsT = 0;
+    const awake = boxes.filter(b => !b.asleep).length;
+    statsEl.textContent = `${fps.toFixed(0)} fps · physics ${physMs.toFixed(1)} ms · ${contacts.length} contacts · ${awake}/40 awake`;
+  }
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
