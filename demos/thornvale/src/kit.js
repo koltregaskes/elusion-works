@@ -5,7 +5,7 @@ import * as THREE from '../../_shared/three-r187/build/three.webgpu.js';
 import { GLTFLoader } from '../../_shared/three-r187/addons/loaders/GLTFLoader.js';
 import {
   Fn, vec2, vec3, float, uniform, texture, uv, positionWorld, positionLocal, normalMap, clamp, mix, step, hash, floor,
-  sin, instancedBufferAttribute, attribute, smoothstep, fract, dot, vec4, cameraPosition, normalize, pow, max,
+  sin, instancedBufferAttribute, attribute, smoothstep, fract, dot, vec4, cameraPosition, normalize, pow, max, mx_noise_float,
 } from '../../_shared/three-r187/build/three.tsl.js';
 
 export const env = {
@@ -128,9 +128,12 @@ function lanternMaterial() {
 
 function waterMaterial() {
   const m = new THREE.MeshStandardNodeMaterial({ color: 0x0c1a1e, roughness: 0.03, metalness: 0.2 });
-  const p = positionWorld.xz.mul(3.0);
-  const n = sin(p.x.add(env.time.mul(1.7))).mul(sin(p.y.sub(env.time.mul(1.3)))).mul(0.15);
-  m.normalNode = normalMap(vec3(n.mul(0.5).add(0.5), n.mul(-0.5).add(0.5), 1.0));
+  // drifting noise ripples (a product of two sines tiled into a visible checkerboard)
+  const p = positionWorld.xz.mul(2.2);
+  const t = env.time.mul(0.7);
+  const nx = mx_noise_float(vec3(p.x, p.y, t)).add(mx_noise_float(vec3(p.x.mul(2.3), p.y.mul(2.3), t.mul(1.6))).mul(0.5));
+  const ny = mx_noise_float(vec3(p.x.add(17.0), p.y.sub(9.0), t)).add(mx_noise_float(vec3(p.x.mul(2.3).add(5.0), p.y.mul(2.3), t.mul(1.6))).mul(0.5));
+  m.normalNode = normalMap(vec3(nx.mul(0.09).add(0.5), ny.mul(0.09).add(0.5), 1.0));
   return m;
 }
 
