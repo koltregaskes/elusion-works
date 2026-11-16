@@ -1,3 +1,4 @@
+import {decodedTextViews,MAX_DOCUMENT_DEPTH} from './privacy-data-documents.mjs';
 import {decodeReferenceText} from './privacy-source-references.mjs';
 
 // This sweep is deliberately independent of HTML/CSS/JS reference recognition.
@@ -13,7 +14,9 @@ function normaliseEscapes(source,kind) {
 }
 
 export function backstopHosts(source,{baseURL='https://elusionworks.com/',decodedText}={}) {
-    const decoded=decodedText??decodeReferenceText(source);
+    // Without an entity opener, HTML entity decoding is the identity function.
+    // Avoid starting Python for each vendor-code comment/context in that case.
+    const decoded=decodedText??(/&(?:#|[a-z])/i.test(source)?decodeReferenceText(source):source);
     const views=new Set([decoded]);
     for(const kind of ['js','css']){
         let text=decoded;
@@ -22,6 +25,17 @@ export function backstopHosts(source,{baseURL='https://elusionworks.com/',decode
             if(next===text)break;
             if(depth===7)throw Error('Backstop escape nesting exceeds the inspection limit');
             text=next;
+        }
+    }
+    const queue=[...views].map(text=>({text,depth:0}));
+    for(let index=0;index<queue.length;index++){
+        const {text,depth}=queue[index];
+        const candidates=[...decodedTextViews(text),normaliseEscapes(text,'js'),normaliseEscapes(text,'css')];
+        if(/&(?:#|[a-z])/i.test(text))candidates.push(decodeReferenceText(text));
+        for(const candidate of candidates){
+            if(views.has(candidate))continue;
+            if(depth>=MAX_DOCUMENT_DEPTH)throw Error('Data URL inspection exceeds the nesting limit');
+            views.add(candidate);queue.push({text:candidate,depth:depth+1});
         }
     }
     const hosts=new Set();

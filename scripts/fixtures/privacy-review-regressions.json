@@ -1403,11 +1403,13 @@
       "group": "earlier",
       "file": "page.html",
       "source": "<!-- https://fonts.gstatic.com --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
-      "expected": "pass",
+      "expected": "fail",
       "base": "https://site.invalid/",
       "allowedHosts": [
         "fonts.gstatic.com"
-      ]
+      ],
+      "expectedBeforeGuardParity": "pass",
+      "reason": "Declared and own-origin hosts do not account for inert backstop tokens. An exact reviewed inert file/host mention is required; it cannot authorise an active or unknown reference."
     },
     {
       "id": "128",
@@ -1513,11 +1515,13 @@
       "group": "earlier",
       "file": "page.html",
       "source": "<!-- HTTPS://FONTS.GSTATIC.COM:443?font=1 --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
-      "expected": "pass",
+      "expected": "fail",
       "base": "https://site.invalid/",
       "allowedHosts": [
         "fonts.gstatic.com"
-      ]
+      ],
+      "expectedBeforeGuardParity": "pass",
+      "reason": "Declared and own-origin hosts do not account for inert backstop tokens. An exact reviewed inert file/host mention is required; it cannot authorise an active or unknown reference."
     },
     {
       "id": "138",
@@ -1623,11 +1627,13 @@
       "group": "earlier",
       "file": "page.html",
       "source": "<!-- //fonts.gstatic.com#frag --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
-      "expected": "pass",
+      "expected": "fail",
       "base": "https://site.invalid/",
       "allowedHosts": [
         "fonts.gstatic.com"
-      ]
+      ],
+      "expectedBeforeGuardParity": "pass",
+      "reason": "Declared and own-origin hosts do not account for inert backstop tokens. An exact reviewed inert file/host mention is required; it cannot authorise an active or unknown reference."
     },
     {
       "id": "148",
@@ -1733,11 +1739,13 @@
       "group": "earlier",
       "file": "page.html",
       "source": "<!-- https://user:pass@fonts.gstatic.com:8443/a --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
-      "expected": "pass",
+      "expected": "fail",
       "base": "https://site.invalid/",
       "allowedHosts": [
         "fonts.gstatic.com"
-      ]
+      ],
+      "expectedBeforeGuardParity": "pass",
+      "reason": "Declared and own-origin hosts do not account for inert backstop tokens. An exact reviewed inert file/host mention is required; it cannot authorise an active or unknown reference."
     },
     {
       "id": "158",
@@ -1942,22 +1950,26 @@
       "group": "earlier",
       "file": "page.html",
       "source": "<!-- https://bücher.example?x=1 --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
-      "expected": "pass",
+      "expected": "fail",
       "base": "https://site.invalid/",
       "allowedHosts": [
         "xn--bcher-kva.example"
-      ]
+      ],
+      "expectedBeforeGuardParity": "pass",
+      "reason": "Declared and own-origin hosts do not account for inert backstop tokens. An exact reviewed inert file/host mention is required; it cannot authorise an active or unknown reference."
     },
     {
       "id": "177",
       "group": "earlier",
       "file": "page.html",
       "source": "<!-- https://site.invalid/image --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
-      "expected": "pass",
+      "expected": "fail",
       "base": "https://site.invalid/",
       "allowedHosts": [
         "fonts.gstatic.com"
-      ]
+      ],
+      "expectedBeforeGuardParity": "pass",
+      "reason": "Declared and own-origin hosts do not account for inert backstop tokens. An exact reviewed inert file/host mention is required; it cannot authorise an active or unknown reference."
     },
     {
       "id": "178",

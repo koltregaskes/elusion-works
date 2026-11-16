@@ -76,7 +76,7 @@ for(const source of [
     '<!-- ftp://evil.invalid/x -->',
 ])test('backstop normalisation case '+[...source].reduce((n,c)=>n+c.codePointAt(0),0),()=>assert.ok(backstopHosts(source).has('evil.invalid')));
 
-const valid={base:null,references:[{kind:'url',value:'/local'}],decodedText:'<img src="/local">'};
+const valid={base:null,references:[{kind:'url',value:'/local'}],contexts:[],decodedText:'<img src="/local">'};
 for(const [name,mutant] of [
     ['null',null],['array',[]],['missing base',{references:[],decodedText:'x'}],
     ['false base',{base:false,references:[],decodedText:'x'}],['missing references',{base:null,decodedText:'x'}],
@@ -98,7 +98,7 @@ for(const [name,payload] of [
 ])test('malformed helper output fails the actual checker: '+name,async()=>{
     const dir=await fixture('page.html','<img src="https://evil.invalid/x">'+footer);
     await fs.mkdir(path.join(dir,'scripts'));
-    for(const name of ['check-privacy-hosts.mjs','privacy-source-references.mjs','privacy-backstop.mjs'])await fs.copyFile(path.join(root,'scripts',name),path.join(dir,'scripts',name));
+    for(const name of ['check-privacy-hosts.mjs','privacy-source-references.mjs','privacy-backstop.mjs','privacy-data-documents.mjs'])await fs.copyFile(path.join(root,'scripts',name),path.join(dir,'scripts',name));
     await fs.writeFile(path.join(dir,'scripts/privacy-html-references.py'),'import sys\nsys.stdout.write('+JSON.stringify(JSON.stringify(payload))+')\n');
     const result=cli(dir,path.join(dir,'scripts/check-privacy-hosts.mjs'));
     assert.equal(result.status,1);assertRedacted(result);

@@ -3,117 +3,9 @@
   "mentions": [
     {
       "kind": "non-request mention",
-      "file": "assets/elusion-mark.svg",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "assets/favicon.svg",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "assets/img/frontdoor/elusion-mark.svg",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "assets/img/frontdoor/games-in-development.svg",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "assets/img/frontdoor/gametrackdaily.svg",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "assets/img/frontdoor/interactive-experiments.svg",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "assets/img/frontdoor/published-gallery-pipeline.svg",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "assets/img/frontdoor/repo-foundry.svg",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "assets/img/frontdoor/shared-website-tools.svg",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "assets/img/frontdoor/stackscout.svg",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "assets/img/frontdoor/website-news-pipeline.svg",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "assets/og-card.svg",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "assets/showcase/games-in-development.svg",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "assets/showcase/interactive-experiments.svg",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "assets/showcase/published-gallery-pipeline.svg",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "assets/showcase/shared-website-tools.svg",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "assets/showcase/website-news-pipeline.svg",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
       "file": "demos/ashfall/styles.css",
       "host": "scripts.sil.org",
       "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "demos/ashfall/styles.css",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
     },
     {
       "kind": "non-request mention",
@@ -123,45 +15,9 @@
     },
     {
       "kind": "non-request mention",
-      "file": "demos/atmosphere/tweaks-panel.jsx",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "demos/chronicles-of-bone/tweaks-panel.jsx",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "demos/cinematic-dive/index.html",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
       "file": "demos/cinematic-dive/vendor/gsap.min.js",
       "host": "gsap.com",
       "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "demos/cyberpunk-messenger/favicon.svg",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "demos/hoover-dam/styles.css",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "demos/hoover-dam/teardown/styles.css",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
     },
     {
       "kind": "non-request mention",
@@ -201,18 +57,6 @@
     },
     {
       "kind": "non-request mention",
-      "file": "demos/last-cartridge/assets/icons/logo-mark.svg",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "demos/neon-seraph/assets/seraph-mark.svg",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
       "file": "demos/orbit-census/vendor/satellite/propagation/sgp4.js",
       "host": "0.0.0.3",
       "reason": "Source line-comment boundary normalised by the independent backstop; not a URL reference."
@@ -225,39 +69,9 @@
     },
     {
       "kind": "non-request mention",
-      "file": "demos/planet-teardown/styles.css",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
       "file": "demos/planet-teardown/vendor/addons/postprocessing/UnrealBloomPass.js",
       "host": "docs.unrealengine.com",
       "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "demos/solar-system/assets/brand/favicon.svg",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "demos/solar-system-field-lab/index.html",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "demos/solar-system-field-lab/tweaks-panel.jsx",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "demos/void-sovereign/styles/shell.css",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace identifier in markup or source text; not a resource request."
     },
     {
       "kind": "non-request mention",
@@ -498,18 +312,6 @@
       "file": "demos/_shared/three-r187/addons/tsl/display/TRAANode.js",
       "host": "developer.download.nvidia.com",
       "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "demos/chronicles-of-bone/styles.css",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace in markup, embedded data image or inert recipe; not a network request."
-    },
-    {
-      "kind": "non-request mention",
-      "file": "demos/atmosphere/atm-sky.jsx",
-      "host": "www.w3.org",
-      "reason": "SVG/XML namespace in markup, embedded data image or inert recipe; not a network request."
     },
     {
       "kind": "non-request mention",
@@ -1848,6 +1650,276 @@
       "file": "demos/_shared/three-r187/build/three.webgpu.js",
       "host": "renderer.tonemapping",
       "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/ashfall/styles.css",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/hoover-dam/vendor/addons/environments/RoomEnvironment.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/hoover-dam/vendor/addons/postprocessing/Pass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/hoover-dam/vendor/addons/postprocessing/RenderPass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/hoover-dam/vendor/addons/postprocessing/ShaderPass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/hoover-dam/vendor/addons/shaders/GTAOShader.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/orbit-census/vendor/satellite/index.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/orbit-census/vendor/satellite/io.js",
+      "host": "celestrak.org",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/orbit-census/vendor/satellite/propagation/check-for-decay.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/orbit-census/vendor/satellite/sun.js",
+      "host": "celestrak.org",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/planet-teardown/vendor/addons/postprocessing/Pass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/planet-teardown/vendor/addons/postprocessing/RenderPass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/planet-teardown/vendor/addons/postprocessing/ShaderPass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/addons/postprocessing/Pass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/addons/postprocessing/RenderPass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/addons/postprocessing/ShaderPass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/addons/shaders/SMAAShader.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "developer.mozilla.org",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.module.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.module.js",
+      "host": "developer.mozilla.org",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/addons/postprocessing/Pass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/addons/postprocessing/RenderPass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/addons/postprocessing/ShaderPass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "developer.mozilla.org",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.module.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.module.js",
+      "host": "developer.mozilla.org",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/examples/jsm/environments/RoomEnvironment.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/examples/jsm/postprocessing/Pass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/examples/jsm/postprocessing/RenderPass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/examples/jsm/postprocessing/ShaderPass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/loaders/GLTFLoader.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/display/BloomNode.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/display/boxBlur.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/display/GodraysNode.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/display/ImportanceSampledEnvironment.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/display/SSRNode.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/utils/SpecularHelpers.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/utils/TAAUtils.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "developer.mozilla.org",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
     }
   ]
 }

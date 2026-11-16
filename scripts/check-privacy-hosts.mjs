@@ -1,45 +1,73 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
-import {sourceReferences} from './privacy-source-references.mjs';
+import {sourceReferences,referenceContexts} from './privacy-source-references.mjs';
 import {backstopHosts,validateMentions} from './privacy-backstop.mjs';
-function documentURL(value) {
-  if(!/^data:/i.test(value))return null;
-  const match=value.match(/^data:([^,]*),([\s\S]*)$/i);if(!match)return null; // A scheme/MIME prefix alone cannot embed a document.
-  const mime=match[1].split(';')[0].toLowerCase();
-  const kinds={'text/html':'html','image/svg+xml':'html','application/xhtml+xml':'html','text/css':'css','text/javascript':'js','application/javascript':'js'};
-  if(!kinds[mime]){
-    if(/^(?:image\/(?:png|jpeg|webp|gif|avif)|font\/|application\/(?:font-woff|x-font-ttf|vnd.ms-fontobject)|audio\/|video\/|application\/octet-stream)/.test(mime))return null;
-    throw Error('Unclassified data document');
-  }
-  let source;
-  if(/;base64$/i.test(match[1])){
-    if(!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(match[2]))throw Error('Malformed base64 document');
-    source=new TextDecoder('utf-8',{fatal:true}).decode(Buffer.from(match[2],'base64'));
-  }else {
-    const bytes=[];
-    for(let i=0;i<match[2].length;){const hex=match[2].slice(i).match(/^%([0-9a-f]{2})/i);if(hex){bytes.push(parseInt(hex[1],16));i+=3;}else{const char=String.fromCodePoint(match[2].codePointAt(i));bytes.push(...new TextEncoder().encode(char));i+=char.length;}}
-    source=new TextDecoder('utf-8',{fatal:true}).decode(Uint8Array.from(bytes));
-  }
-  return {source,kind:kinds[mime]};
-}
-function structured(references,baseURL,depth=0,result={loads:new Set(),navigation:new Set(),mentions:new Set()}) {
-  if(depth>32)throw Error('Nested documents exceed inspection limit');
-  const base=new URL(references.base??baseURL,baseURL);
-  for(const [type,values] of [['loads',references.values],['navigation',references.navigation||[]]]){
-    for(const value of values){
-      const document=documentURL(value);
-      if(document){structured(sourceReferences(document.source,document.kind),base.href,depth+1,result);continue;}
-      const url=new URL(value,base);
-      if(url.hostname){if(/\$\{|[{}]/.test(url.hostname))throw Error('Unresolved hostname');result[type].add(url.hostname);}
+import {decodeDataURL,MAX_DOCUMENT_DEPTH} from './privacy-data-documents.mjs';
+function referenceEvidence(references,{baseURL,sweep=false},depth=0) {
+    if(depth>MAX_DOCUMENT_DEPTH)throw Error('Nested document exceeds the inspection limit');
+    let base;
+    try {base=new URL(references.base ?? baseURL,baseURL);} catch {throw Error('Cannot parse the page base reference');}
+    const hosts = new Map(), backstop = new Set(), accounted = new Set(), inert = new Set(), unaccounted = new Set();
+    const merge=child=>{
+        for(const [host,roles] of child.hosts){if(!hosts.has(host))hosts.set(host,new Set());for(const role of roles)hosts.get(host).add(role);}
+        for(const host of child.backstop)backstop.add(host);
+        for(const host of child.accounted)accounted.add(host);
+        for(const host of child.inert)inert.add(host);
+        for(const host of child.unaccounted)unaccounted.add(host);
+    };
+    if(sweep&&references.decodedText!==undefined)for(const host of backstopHosts(references.decodedText,{baseURL:base.href,decodedText:references.decodedText}))backstop.add(host);
+    for (const request of references.requests) {
+        const {value,role}=request;
+        // WHATWG URL handles internal ASCII tabs/newlines, C0/space trimming,
+        // backslashes, userinfo, ports, IDNs and relative references as a unit.
+        const clean=value.replace(/[\t\n\r]/g,'').replace(/^[\x00-\x20]+|[\x00-\x20]+$/g,'');
+        try {
+            const url=new URL(value,base);
+            if(!url.hostname&&/^(?:https?:|[\\/]{2})/i.test(clean))throw Error('Missing hostname');
+            if(url.hostname){if(/\$\{|[{}]/.test(url.hostname))throw Error('Unresolved hostname');if(!hosts.has(url.hostname))hosts.set(url.hostname,new Set());hosts.get(url.hostname).add(role);}
+            if(url.protocol==='data:'){
+                const document=decodeDataURL(url.href,{required:request.document});
+                if(document.kind)merge(referenceEvidence(sourceReferences(document.source,document.kind),{baseURL:base.href,sweep},depth+1));
+            }
+        } catch {
+            throw Error('Cannot parse an external URL reference in public source');
+        }
     }
-  }
-  for(const value of references.mentions||[])for(const host of backstopHosts(value,{baseURL:base.href}))result.mentions.add(host);
-  for(const document of references.documents||[])structured(sourceReferences(document,'html'),base.href,depth+1,result);
-  return result;
+    for(const document of references.documents||[]){
+        merge(referenceEvidence(sourceReferences(document,'html'),{baseURL:base.href,sweep},depth+1));
+    }
+    if(sweep)for(const context of referenceContexts(references)){
+        if(context.kind==='html')continue; // Recursed above as its own document.
+        const hits=backstopHosts(context.value,{baseURL:base.href,decodedText:context.decodedText});
+        for(const host of hits)backstop.add(host);
+        if(context.inertMaskedSource){
+            // Tokens present only before proven inert spans were masked are
+            // normalisation artefacts (e.g. // + newline + code.property).
+            // Every active masked context is still swept and validated below.
+            for(const host of backstopHosts(context.inertMaskedSource,{baseURL:base.href}))if(!hits.has(host))inert.add(host);
+        }
+        if(context.kind==='recipe'){
+            // Source recipes are not executable; compiled output is scanned.
+            // Inline Babel/JSX separately makes the containing file fail.
+            for(const host of hits){if(!hosts.has(host))hosts.set(host,new Set());hosts.get(host).add('metadata');accounted.add(host);}
+            continue;
+        }
+        if(context.kind==='inert'){for(const host of hits)inert.add(host);continue;}
+        if(context.kind==='unknown'){for(const host of hits)unaccounted.add(host);continue;}
+        const primary=referenceEvidence(sourceReferences(context.value,context.kind),{baseURL:base.href},depth);
+        merge(primary); // Recovered references must carry their roles into policy validation.
+        for(const host of hits){
+            // Matching roles are established within THIS source context, not by
+            // an unrelated anchor or metadata reference elsewhere in the file.
+            if(primary.hosts.has(host))accounted.add(host);
+            else unaccounted.add(host);
+        }
+    }
+    return {hosts,backstop,accounted,inert,unaccounted};
 }
 export function referencedHosts(source,{kind='url',baseURL='https://elusionworks.com/'}={}) {
-  const r=structured(sourceReferences(source,kind),baseURL);return new Set([...r.loads,...r.navigation,...r.mentions]);
+  return new Set(referenceEvidence(sourceReferences(source,kind),{baseURL}).hosts.keys());
 }
 export async function inspectPrivacyHosts(root,{onFile=()=>{}}={}) {
   const privacy=await fs.readFile(path.join(root,'privacy.html'),'utf8');
@@ -62,24 +90,25 @@ export async function inspectPrivacyHosts(root,{onFile=()=>{}}={}) {
     try {
       if (/serviceWorker\s*\.\s*register\s*\(/.test(source)) errors.push(relative+': service worker registration requires a demo-path and cache-prefix review');
       let kind=path.extname(file).slice(1).toLowerCase();const inertRecipe=kind==='jsx'; // Final compiled JS is checked separately.
-      if (/type=["']text\/(?:babel|jsx)["']/.test(source)) errors.push(relative+': JSX compilation is incomplete; complete build required');if(kind==='svg')kind='html';if(kind==='json'){
-        const data=JSON.parse(source),values=[],navigation=[];
-        const walk=(v,key='')=>{if(typeof v==='string'&&/^(?:https?:|\/\/)/i.test(v))(key==='href'||key==='url'?navigation:values).push(v);else if(v&&typeof v==='object')for(const [k,x]of Object.entries(v))walk(x,k);};walk(data);
-        kind='json-data'; var jsonRefs={base:null,values,navigation};
+      if (/type=["']text\/(?:babel|jsx)["']/.test(source)) errors.push(relative+': JSX compilation is incomplete; complete build required');if(kind==='svg')kind='html';if(kind==='json')kind='json-data';
+      const baseURL=new URL(relative,siteBase).href,extracted=sourceReferences(source,inertRecipe?'recipe':kind),refs=referenceEvidence(extracted,{baseURL,sweep:true});
+      for(const [host,roles]of refs.hosts){
+        if(roles.has('load'))observed.loads.add(host);
+        if(roles.has('navigation'))observed.navigation.add(host);
+        if(roles.has('metadata'))observed.mentions.add(host);
+        if(host!==siteBase.hostname&&roles.has('load')&&!allowed.has(host))errors.push(relative+': unlisted external host '+host);
+        if(host!==siteBase.hostname&&roles.has('navigation')&&!navigation.has(host)&&!allowed.has(host))errors.push(relative+': unlisted external host '+host);
       }
-      const baseURL=new URL(relative,siteBase).href,extracted=inertRecipe?{base:null,values:[]}:kind==='json-data'?jsonRefs:sourceReferences(source,kind),refs=structured(extracted,baseURL);
-      for(const key of Object.keys(observed))for(const h of refs[key])observed[key].add(h);
-      for(const host of refs.loads)if(host!==siteBase.hostname&&!allowed.has(host))errors.push(relative+': unlisted external host '+host);
-      for(const host of refs.navigation)if(host!==siteBase.hostname&&!navigation.has(host)&&!allowed.has(host))errors.push(relative+': unlisted navigation host '+host);
-      for(const host of backstopHosts(source,{baseURL,decodedText:extracted.decodedText})){
-        if(host===siteBase.hostname||allowed.has(host)||navigation.has(host)||refs.mentions.has(host))continue;
+      for(const host of backstopHosts(source,{baseURL,decodedText:extracted.decodedText}))refs.backstop.add(host);
+      for(const host of refs.backstop){
         const mention=mentions.find(m=>m.file===relative&&m.host===host);
-        if(mention&&!refs.loads.has(host)&&!refs.navigation.has(host))used.add(mention);
-        else if(!refs.loads.has(host)&&!refs.navigation.has(host))errors.push(relative+': backstop found unlisted host '+host);
+        if(refs.unaccounted.has(host)||!refs.accounted.has(host)&&!refs.inert.has(host))errors.push(relative+': backstop found unaccounted active host '+host);
+        else if(mention&&refs.inert.has(host))used.add(mention);
+        else if(!refs.accounted.has(host))errors.push(relative+': backstop found unlisted host '+host);
       }
     }catch{errors.push(relative+': cannot parse complete public references');}
   }
-  for(const m of mentions)if(!used.has(m))errors.push(m.file+': unused or active non-request mention entry');
+  for(const m of mentions)if(!used.has(m))errors.push(m.file+': unused or active non-request mention entry '+m.host);
   return {files:files.length,hosts:allowed.size,errors,observed:Object.fromEntries(Object.entries(observed).map(([k,v])=>[k,[...v].sort()]))};
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
