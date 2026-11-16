@@ -1,4 +1,5 @@
-import {GROUPS,FIELDS,TYPES,CELESTRAK_SATCAT} from './catalog.js';
+import {ASSEMBLY_FRESHNESS_MS,GP_FRESHNESS_MS,SATCAT_FRESHNESS_MS,responseFreshnessLimit} from './freshness-policy.js';
+import {GROUPS,FIELDS,TYPES} from './catalog.js';
 import {orbitShape} from './classify.js';
 const HOUR=3600000, DAY=24*HOUR;
 // Gross consistency check using the same two-body mean-element model as the UI.
@@ -70,10 +71,10 @@ for (const [index, row] of doc.rows.entries()) {
     if(!Number.isFinite(time)||time>now+5*60000) fail('invalid response acquisition time.');
     // SATCAT's 24-hour cache must not force another provider download at 18 h.
     // GP and assembly retain the existing 18-hour application freshness limit.
-    return {time,limit:url===CELESTRAK_SATCAT?24*HOUR:18*HOUR};
+    return {time,limit:responseFreshnessLimit(url)};
   });
   const oldestAcquisition=Math.min(acquired,...responses.map(r=>r.time));
-  const staleAcquisition=now-acquired>18*HOUR || responses.some(r=>now-r.time>r.limit);
+  const staleAcquisition=now-acquired>ASSEMBLY_FRESHNESS_MS || responses.some(r=>now-r.time>r.limit);
   const partial=missingGroups.length>0 || !censusValid || doc.rows.length<2000;
   if(requireComplete){
     if(doc.rows.length<2000)fail('fewer than 2000 objects.');
@@ -91,5 +92,5 @@ export function catalogueNotice(doc,report) {
   return flags.join(' · ')+'. Catalogue assembled '+date(report.acquired)+'. Oldest acquisition '+date(report.oldestAcquisition)+
     '. Element epochs '+date(report.epochOldest)+' to '+date(report.epochNewest)+'. Missing groups: '+(report.missingGroups.join(', ')||'none')+
     '. '+(doc.satcat===true?'SATCAT enrichment reported.':'SATCAT unavailable; object types inferred from names.')+
-    ' Provider edition is unverified unless response metadata supplies it. Acquisition time is not element epoch. Positions are propagated estimates. Freshness limits: assembly and GP acquisition 18 hours; SATCAT acquisition 24 hours.';
+    ' Provider edition is unverified unless response metadata supplies it. Acquisition time is not element epoch. Positions are propagated estimates. '+`Freshness limits: assembly ${ASSEMBLY_FRESHNESS_MS/HOUR} hours; GP acquisition ${GP_FRESHNESS_MS/HOUR} hours; SATCAT acquisition ${SATCAT_FRESHNESS_MS/HOUR} hours.`;
 }

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {GP_CACHE_MS,SATCAT_CACHE_MS} from '../src/freshness-policy.js';
 import { createAcquirer } from "./acquire.mjs";
 import { catalogueSource } from "../src/source-label.js";
 // Builds data/catalog.json for Orbit Census from CelesTrak.
@@ -38,7 +39,7 @@ const counts = {};
 const orbitalFields = ['MEAN_MOTION', 'ECCENTRICITY', 'INCLINATION', 'RA_OF_ASC_NODE',
   'ARG_OF_PERICENTER', 'MEAN_ANOMALY', 'BSTAR', 'MEAN_MOTION_DOT', 'MEAN_MOTION_DDOT'];
 for (const g of GROUPS) {
-  const recs = parseCsv(await csvData(`${CELESTRAK_GP}?GROUP=${g.id}&FORMAT=csv`, 2 * 3600000));
+  const recs = parseCsv(await csvData(`${CELESTRAK_GP}?GROUP=${g.id}&FORMAT=csv`, GP_CACHE_MS));
   // toRow's numeric defaults must not disguise corrupt orbital input as valid zeroes.
   if (Array.isArray(recs) && recs.some(rec => !rec || orbitalFields.some(field =>
     !['number', 'string'].includes(typeof rec[field]) || String(rec[field]).trim() === '' || !Number.isFinite(Number(rec[field]))))) {
@@ -52,7 +53,7 @@ for (const g of GROUPS) {
 }
 
 let satcat = null; let census = null;
-const csv = await csvData(CELESTRAK_SATCAT, 24 * 3600000);
+const csv = await csvData(CELESTRAK_SATCAT, SATCAT_CACHE_MS);
 if (csv) {
   let rows = [];
   try { rows = parseCsv(csv); }

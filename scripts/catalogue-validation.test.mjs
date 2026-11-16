@@ -19,6 +19,7 @@ fs.mkdirSync(path.join(fixture, 'demos/orbit-census/src'), { recursive: true });
 fs.mkdirSync(path.join(fixture, '_site/demos/orbit-census/data'), { recursive: true });
 fs.writeFileSync(path.join(fixture, 'package.json'), '{"type":"module"}');
 fs.copyFileSync('demos/orbit-census/src/catalog.js', path.join(fixture, 'demos/orbit-census/src/catalog.js'));
+fs.copyFileSync('demos/orbit-census/src/freshness-policy.js', path.join(fixture,'demos/orbit-census/src/freshness-policy.js'));
 fs.copyFileSync('demos/orbit-census/src/classify.js', path.join(fixture,'demos/orbit-census/src/classify.js'));
 fs.copyFileSync('demos/orbit-census/src/catalogue-status.js', path.join(fixture,'demos/orbit-census/src/catalogue-status.js'));
 const catalogue = path.join(fixture, '_site/demos/orbit-census/data/catalog.json');
