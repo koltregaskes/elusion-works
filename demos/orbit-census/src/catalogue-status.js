@@ -1,5 +1,11 @@
-import {GROUPS,FIELDS,TYPES} from './catalog.js';
+import {GROUPS,FIELDS,TYPES,CELESTRAK_SATCAT} from './catalog.js';
+import {orbitShape} from './classify.js';
 const HOUR=3600000, DAY=24*HOUR;
+// Gross consistency check using the same two-body mean-element model as the UI.
+// A 50 km allowance below the model's reference surface avoids pretending these
+// mean elements resolve the real surface/ellipsoid or re-entry trajectory.
+// This is not an SGP4 viability, collision or operational-safety determination.
+export const ORBIT_ALTITUDE_TOLERANCE_KM=50;
 export function inspectCatalogue(doc,{now=Date.now(),requireComplete=false}={}) {
   const fail=message=>{throw Error(message);};
   if (!Array.isArray(doc?.rows) || !doc.rows.length) fail('empty catalogue.');
@@ -37,6 +43,10 @@ for (const [index, row] of doc.rows.entries()) {
   // Drag and derivatives may be signed; require finite numbers without arbitrary caps.
   if (!(row[10] > 0 && row[10] <= 20) || row[11] < 0 || row[11] >= 1 ||
       row[12] < 0 || row[12] > 180 || [13, 14, 15].some(i => row[i] < 0 || row[i] >= 360)) bad('orbital element out of range');
+  const geometry=orbitShape(row[10],row[11]);
+  if (![geometry.a,geometry.peri,geometry.apo].every(Number.isFinite) || geometry.a<=0 ||
+      geometry.peri < -ORBIT_ALTITUDE_TOLERANCE_KM || geometry.apo < -ORBIT_ALTITUDE_TOLERANCE_KM ||
+      geometry.apo < geometry.peri) bad('combined orbit geometry inconsistent with the model surface tolerance');
 }
 
   if (typeof doc.generated!=='string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(doc.generated) || !validEpoch(doc.generated)) fail('invalid acquisition time.');
@@ -51,10 +61,19 @@ for (const [index, row] of doc.rows.entries()) {
   const futureElements=epochs.filter(t=>t>now+DAY).length;
   // A cached response keeps its original acquisition date; regenerating a document
   // must not turn old upstream bytes into a fresh acquisition.
-  const responseTimes=Object.values(doc.acquisition||{}).map(m=>Date.parse(m?.acquired));
-  if(responseTimes.some(t=>!Number.isFinite(t)||t>now+5*60000)) fail('invalid response acquisition time.');
-  const oldestAcquisition=Math.min(acquired,...responseTimes);
-  const staleAcquisition=now-oldestAcquisition>18*HOUR;
+  const responses=Object.entries(doc.acquisition||{}).map(([url,metadata])=>{
+    const value=metadata?.acquired;
+    // #121 keeps each response's original acquisition date, even on cache hits.
+    // Date.parse alone normalises nonexistent days; validate the calendar first.
+    if(typeof value!=='string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value) || !validEpoch(value)) fail('invalid response acquisition time.');
+    const time=Date.parse(value);
+    if(!Number.isFinite(time)||time>now+5*60000) fail('invalid response acquisition time.');
+    // SATCAT's 24-hour cache must not force another provider download at 18 h.
+    // GP and assembly retain the existing 18-hour application freshness limit.
+    return {time,limit:url===CELESTRAK_SATCAT?24*HOUR:18*HOUR};
+  });
+  const oldestAcquisition=Math.min(acquired,...responses.map(r=>r.time));
+  const staleAcquisition=now-acquired>18*HOUR || responses.some(r=>now-r.time>r.limit);
   const partial=missingGroups.length>0 || !censusValid || doc.rows.length<2000;
   if(requireComplete){
     if(doc.rows.length<2000)fail('fewer than 2000 objects.');
@@ -72,5 +91,5 @@ export function catalogueNotice(doc,report) {
   return flags.join(' · ')+'. Catalogue assembled '+date(report.acquired)+'. Oldest acquisition '+date(report.oldestAcquisition)+
     '. Element epochs '+date(report.epochOldest)+' to '+date(report.epochNewest)+'. Missing groups: '+(report.missingGroups.join(', ')||'none')+
     '. '+(doc.satcat===true?'SATCAT enrichment reported.':'SATCAT unavailable; object types inferred from names.')+
-    ' Provider edition is unverified unless response metadata supplies it. Acquisition time is not element epoch. Positions are propagated estimates.';
+    ' Provider edition is unverified unless response metadata supplies it. Acquisition time is not element epoch. Positions are propagated estimates. Freshness limits: assembly and GP acquisition 18 hours; SATCAT acquisition 24 hours.';
 }

@@ -19,6 +19,7 @@ fs.mkdirSync(path.join(fixture, 'demos/orbit-census/src'), { recursive: true });
 fs.mkdirSync(path.join(fixture, '_site/demos/orbit-census/data'), { recursive: true });
 fs.writeFileSync(path.join(fixture, 'package.json'), '{"type":"module"}');
 fs.copyFileSync('demos/orbit-census/src/catalog.js', path.join(fixture, 'demos/orbit-census/src/catalog.js'));
+fs.copyFileSync('demos/orbit-census/src/classify.js', path.join(fixture,'demos/orbit-census/src/classify.js'));
 fs.copyFileSync('demos/orbit-census/src/catalogue-status.js', path.join(fixture,'demos/orbit-census/src/catalogue-status.js'));
 const catalogue = path.join(fixture, '_site/demos/orbit-census/data/catalog.json');
 const row = ['Fixture', 1, '2000-001A', 'PAY', '', '', '', null, 'active',
@@ -92,7 +93,7 @@ test('JSON exponent overflow is rejected as non-finite', () => {
   assert.equal(r.status, 1, r.stderr); assert.match(r.stderr, /non-finite/);
 });
 test('valid orbital boundaries, Z/fractional epoch and signed drag/derivatives pass', () => {
-  const d = valid(); Object.assign(d.rows[0], { 7: 0, 9: '2000-01-01T00:00:00.123456Z', 10: 20, 11: 0, 12: 180,
+  const d = valid(); Object.assign(d.rows[0], { 7: 0, 9: '2000-01-01T00:00:00.123456Z', 10: 17, 11: 0, 12: 180,
     13: 0, 14: 359.999, 15: 0, 16: -0.001, 17: -0.01, 18: -0.001 });
   const r = validate(d); assert.equal(r.status, 0, r.stderr);
 });
