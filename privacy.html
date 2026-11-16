@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy notice | Elusion Works</title>
+  <meta name="description" content="How Elusion Works and its interactive demos use hosting, external resources, local settings and optional location.">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main class="container" style="max-width:900px;padding:32px 20px;line-height:1.7">
+  <h1>Elusion Works privacy notice</h1>
+  <p>Last updated: 16 November 2026. This notice covers the Elusion Works studio site and demos. Kol Tregaskes operates the studio. Use the <a href="https://koltregaskes.com/contact/">existing contact route</a> for privacy enquiries. It opens a separate site with its own notice.</p>
+  <h2>Hosting and requests</h2>
+  <p>This is a static site hosted on GitHub Pages. GitHub receives network information such as your IP address and requested URLs and may retain hosting and security logs under its own policies. The studio does not set GitHub's log retention period. Ordinary browser and CDN caches may retain downloaded files; use your browser controls to clear them.</p>
+  <h2>External resources</h2>
+  <p>Some demos request the following hosts. These providers receive request information, including your IP address and browser headers. Their retention and international processing are governed by their own policies. A font or script request can occur as soon as the relevant page opens. Listing a provider is not a claim that every page loads it.</p>
+  <ul>
+    <li><code data-privacy-host="fonts.googleapis.com">fonts.googleapis.com</code>: Google Fonts stylesheets.</li>
+    <li><code data-privacy-host="fonts.gstatic.com">fonts.gstatic.com</code>: Google Fonts files requested by those stylesheets.</li>
+    <li><code data-privacy-host="cdn.jsdelivr.net">cdn.jsdelivr.net</code>: demo JavaScript libraries.</li>
+    <li><code data-privacy-host="unpkg.com">unpkg.com</code>: React, Three.js and browser JSX tooling in source demos. The complete production build replaces browser JSX compilation with local compiled files.</li>
+    <li><code data-privacy-host="celestrak.org">celestrak.org</code>: Orbit Census orbital data. Some source editions request this host directly when the shared catalogue is absent. Current source behaviour is checked before release. Server-side catalogue acquisition does not itself send a visitor's location.</li>
+  </ul>
+  <h2>Links you choose to open</h2>
+  <p>Contact, project, social and educational links lead to the following hosts. Clicking a link sends a request to that destination. This list does not authorise loading scripts, images or other resources from those hosts.</p>
+  <ul id="navigation-hosts">
+    <li><code data-privacy-navigation="axylusion.com">axylusion.com</code></li>
+    <li><code data-privacy-navigation="developer.chrome.com">developer.chrome.com</code></li>
+    <li><code data-privacy-navigation="developer.mozilla.org">developer.mozilla.org</code></li>
+    <li><code data-privacy-navigation="docs.astro.build">docs.astro.build</code></li>
+    <li><code data-privacy-navigation="ghostinthemodels.com">ghostinthemodels.com</code></li>
+    <li><code data-privacy-navigation="github.com">github.com</code></li>
+    <li><code data-privacy-navigation="grca.org">grca.org</code></li>
+    <li><code data-privacy-navigation="iau.org">iau.org</code></li>
+    <li><code data-privacy-navigation="ico.org.uk">ico.org.uk</code></li>
+    <li><code data-privacy-navigation="koltregaskes.com">koltregaskes.com</code></li>
+    <li><code data-privacy-navigation="koltregaskes.github.io">koltregaskes.github.io</code></li>
+    <li><code data-privacy-navigation="koltregaskesphotography.com">koltregaskesphotography.com</code></li>
+    <li><code data-privacy-navigation="oceanexplorer.noaa.gov">oceanexplorer.noaa.gov</code></li>
+    <li><code data-privacy-navigation="science.nasa.gov">science.nasa.gov</code></li>
+    <li><code data-privacy-navigation="ssd.jpl.nasa.gov">ssd.jpl.nasa.gov</code></li>
+    <li><code data-privacy-navigation="theairesourcehub.com">theairesourcehub.com</code></li>
+    <li><code data-privacy-navigation="web.dev">web.dev</code></li>
+    <li><code data-privacy-navigation="www.akc.org">www.akc.org</code></li>
+    <li><code data-privacy-navigation="www.english-heritage.org.uk">www.english-heritage.org.uk</code></li>
+    <li><code data-privacy-navigation="www.grc.nasa.gov">www.grc.nasa.gov</code></li>
+    <li><code data-privacy-navigation="www.thekennelclub.org.uk">www.thekennelclub.org.uk</code></li>
+    <li><code data-privacy-navigation="x.com">x.com</code></li>
+  </ul>
+  <h2>Storage and your choices</h2>
+  <p>The studio remembers a theme preference in localStorage. Atmosphere stores display and playback preferences, place and station labels, units and design settings. Older editions accepted unused weather and maps keys without contacting a provider. These may remain in browser storage until cleared or removed by the updated demo. No API credentials are needed; do not enter credentials. You can clear this site's storage in your browser at any time.</p>
+  <p>Ashfall and Void Sovereign keep game, menu, tutorial, control and audio preferences in persistent localStorage. Demo design panels may also keep their settings there. These persistent values remain until you clear site data or the demo replaces them. Last Cartridge keeps its boot-screen dismissal state in sessionStorage, which also ends with the page session. Some demos offer image-drop previews; do not supply private images. No studio upload endpoint is implemented for these previews. Browser storage belongs to the origin: project paths on koltregaskes.github.io can share it.</p>
+  <p>Orbit Census asks for location only after you choose its locate control and the browser grants permission. Its code uses coordinates locally to estimate overhead passes; it does not send those coordinates to CelesTrak. You can deny or revoke permission in your browser. No demo service worker is registered in this source edition; this does not establish what was previously installed in a visitor's browser.</p>
+  <h2>Analytics, forms and contact</h2>
+  <p>No analytics integration, advertising tracker or first-party cookie writer is present in this code edition. Hosting logs and third-party resource requests still occur. Golden and Neon forms are fictional demonstrations and do not send messages. Use the studio contact link for a real enquiry. The separate contact site explains how it handles a submitted enquiry.</p>
+  <h2>Your UK data protection rights</h2>
+  <p>Depending on the circumstances, UK GDPR rights include access, correction, erasure, restriction, objection and portability. Where consent is the basis, you can withdraw it. Contact the studio using the route above to exercise applicable rights or raise a concern. You can also complain to the UK Information Commissioner's Office at <a href="https://ico.org.uk/">ico.org.uk</a>. Third-party providers control their own logs and processing; the studio cannot promise to erase records it does not control.</p>
+  <p>We use local preferences to provide the choices you request and hosting request information to deliver and protect the site. This notice must be reviewed before adding analytics, real forms, new providers or server-side storage. No fixed retention period or international-transfer safeguard is claimed here without provider evidence.</p>
+</main>
+<footer class="container"><a href="./">Elusion Works</a> · <a href="privacy.html">Privacy notice</a></footer>
+</body>
+</html>

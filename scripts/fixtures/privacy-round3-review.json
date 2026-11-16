@@ -1,0 +1,466 @@
+[
+  {
+    "name": "numeric tab in host",
+    "file": "page.html",
+    "source": "<img src=\"https://fonts.gstatic.com&#9;.evil.invalid/x\">",
+    "mentionHost": "fonts.gstatic.com.evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "host;@evil",
+    "file": "page.html",
+    "source": "<img src=\"https://fonts.gstatic.com;@evil.invalid/x\">",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "evil\\@allowed",
+    "file": "page.html",
+    "source": "<img src=\"https://evil.invalid\\@fonts.gstatic.com/x\">",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "bare https://",
+    "file": "page.html",
+    "source": "<img src=\"https://\">",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "srcdoc",
+    "file": "page.html",
+    "source": "<iframe srcdoc=\"&lt;img src=&quot;https://evil.invalid/x&quot;&gt;\"></iframe>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "image-set",
+    "file": "site.css",
+    "source": "a{background:image-set(\"https://evil.invalid/x\" 1x)}",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "template fetch",
+    "file": "site.js",
+    "source": "const p=`result ${fetch(\"https://evil.invalid/x\")}`;",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "refresh \"0,url=https://evil.invalid/x\"",
+    "file": "page.html",
+    "source": "<meta http-equiv=\"Refresh\" content=\"0,url=https://evil.invalid/x\">",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "refresh \"0, URL=https://evil.invalid/x\"",
+    "file": "page.html",
+    "source": "<meta http-equiv=\"Refresh\" content=\"0, URL=https://evil.invalid/x\">",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "refresh \"0 ; url = https://evil.invalid/x\"",
+    "file": "page.html",
+    "source": "<meta http-equiv=\"Refresh\" content=\"0 ; url = https://evil.invalid/x\">",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "refresh \"0;URL='https://evil.invalid/x'\"",
+    "file": "page.html",
+    "source": "<meta http-equiv=\"Refresh\" content=\"0;URL='https://evil.invalid/x'\">",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "refresh \"0,https://evil.invalid/x\"",
+    "file": "page.html",
+    "source": "<meta http-equiv=\"Refresh\" content=\"0,https://evil.invalid/x\">",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "refresh \"  3.5 ,  \\\"https://evil.invalid/x\\\"\"",
+    "file": "page.html",
+    "source": "<meta http-equiv=\"Refresh\" content=\"  3.5 ,  \"https://evil.invalid/x\"\">",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "refresh \"0 https://evil.invalid/x\"",
+    "file": "page.html",
+    "source": "<meta http-equiv=\"Refresh\" content=\"0 https://evil.invalid/x\">",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "refresh \".5;url=https://evil.invalid/x\"",
+    "file": "page.html",
+    "source": "<meta http-equiv=\"Refresh\" content=\".5;url=https://evil.invalid/x\">",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "refresh \"0;url=https://evil.invalid/x' junk\"",
+    "file": "page.html",
+    "source": "<meta http-equiv=\"Refresh\" content=\"0;url=https://evil.invalid/x' junk\">",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "refresh \"0,url=//evil.invalid/x\"",
+    "file": "page.html",
+    "source": "<meta http-equiv=\"Refresh\" content=\"0,url=//evil.invalid/x\">",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "refresh \"0,url=ht&#9;tps://evil.invalid/x\"",
+    "file": "page.html",
+    "source": "<meta http-equiv=\"Refresh\" content=\"0,url=ht&#9;tps://evil.invalid/x\">",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "refresh \"0,url=https&colon;//evil.invalid/x\"",
+    "file": "page.html",
+    "source": "<meta http-equiv=\"Refresh\" content=\"0,url=https&colon;//evil.invalid/x\">",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "refresh nav to navigation host (allowed)",
+    "file": "page.html",
+    "source": "<meta http-equiv=\"refresh\" content=\"0,url=https://github.com/\">",
+    "mentionHost": null,
+    "expectedReject": false,
+    "expectedMentionReject": false
+  },
+  {
+    "name": "data html iframe",
+    "file": "page.html",
+    "source": "<iframe src=\"data:text/html,<img src=https://evil.invalid/x>\"></iframe>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "data html iframe base64",
+    "file": "page.html",
+    "source": "<iframe src=\"data:text/html;base64,PGltZyBzcmM9Imh0dHBzOi8vZXZpbC5pbnZhbGlkL3giPg==\"></iframe>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "data html pct",
+    "file": "page.html",
+    "source": "<iframe src=\"data:text/html,%3Cimg%20src%3D%22https%3A%2F%2Fevil.invalid%2Fx%22%3E\"></iframe>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "data nested data",
+    "file": "page.html",
+    "source": "<iframe src=\"data:text/html;base64,PGlmcmFtZSBzcmM9ImRhdGE6dGV4dC9odG1sO2Jhc2U2NCxQR2x0WnlCemNtTTlJbWgwZEhCek9pOHZaWFpwYkM1cGJuWmhiR2xrTDNnaVBnPT0iPjwvaWZyYW1lPg==\"></iframe>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "data svg object",
+    "file": "page.html",
+    "source": "<object data=\"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxpbWFnZSBocmVmPSJodHRwczovL2V2aWwuaW52YWxpZC94Ii8+PC9zdmc+\"></object>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "data xhtml iframe (unsupported type)",
+    "file": "page.html",
+    "source": "<iframe src=\"data:application/xhtml+xml;base64,PGh0bWwgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGh0bWwiPjxpbWcgc3JjPSJodHRwczovL2V2aWwuaW52YWxpZC94Ii8+PC9odG1sPg==\"></iframe>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "data css stylesheet plain",
+    "file": "page.html",
+    "source": "<link rel=\"stylesheet\" href=\"data:text/css,@import 'https://evil.invalid/x.css';\">",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "data css stylesheet base64",
+    "file": "page.html",
+    "source": "<link rel=\"stylesheet\" href=\"data:text/css;base64,QGltcG9ydCAiaHR0cHM6Ly9ldmlsLmludmFsaWQveC5jc3MiOw==\">",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "data js script base64",
+    "file": "page.html",
+    "source": "<script src=\"data:text/javascript;base64,ZmV0Y2goImh0dHBzOi8vZXZpbC5pbnZhbGlkL3giKQ==\"></script>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "data css base64 via navigation host",
+    "file": "page.html",
+    "source": "<link rel=\"stylesheet\" href=\"data:text/css;base64,Ym9keXtiYWNrZ3JvdW5kOnVybChodHRwczovL2dpdGh1Yi5jb20veC5wbmcpfQ==\">",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "css @import data css base64",
+    "file": "site.css",
+    "source": "@import url(\"data:text/css;base64,QGltcG9ydCAiaHR0cHM6Ly9ldmlsLmludmFsaWQveS5jc3MiOw==\");",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "underscore-prefixed scheme in comment",
+    "file": "page.html",
+    "source": "<!-- _https://evil.invalid/x --><img src=\"/a.png\">",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": false
+  },
+  {
+    "name": "scheme glued after word char",
+    "file": "site.js",
+    "source": "const s=\"xhttps://evil.invalid/x\";",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "nav-host load: svg image href",
+    "file": "page.html",
+    "source": "<svg><image href=\"https://github.com/x.png\"/></svg>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "nav-host load: svg image xlink",
+    "file": "page.html",
+    "source": "<svg><image xlink:href=\"https://github.com/x.png\"/></svg>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "nav-host load: link icon",
+    "file": "page.html",
+    "source": "<link rel=\"icon\" href=\"https://github.com/favicon.ico\">",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "nav-host load: link alternate icon",
+    "file": "page.html",
+    "source": "<link rel=\"alternate icon\" href=\"https://github.com/favicon.ico\">",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "nav-host load: link preload",
+    "file": "page.html",
+    "source": "<link rel=\"preload\" as=\"image\" href=\"https://github.com/x.png\">",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "nav-host load: link modulepreload",
+    "file": "page.html",
+    "source": "<link rel=\"modulepreload\" href=\"https://github.com/x.js\">",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "nav-host load: link manifest",
+    "file": "page.html",
+    "source": "<link rel=\"manifest\" href=\"https://github.com/m.json\">",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "nav-host load: a ping",
+    "file": "page.html",
+    "source": "<a href=\"/x\" ping=\"https://github.com/p\">x</a>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "nav-host load: iframe",
+    "file": "page.html",
+    "source": "<iframe src=\"https://github.com/\"></iframe>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "nav-host load: og:image",
+    "file": "page.html",
+    "source": "<meta property=\"og:image\" content=\"https://github.com/x.png\">",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "nav-host load: imagesrcset on alternate",
+    "file": "page.html",
+    "source": "<link rel=\"alternate\" href=\"/a\" imagesrcset=\"https://github.com/x.png 1x\">",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "nav-host load: link alternate stylesheet",
+    "file": "page.html",
+    "source": "<link rel=\"alternate stylesheet\" href=\"https://github.com/x.css\">",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "nav-host load: svg feImage",
+    "file": "page.html",
+    "source": "<svg><filter><feImage href=\"https://github.com/x.png\"/></filter></svg>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "svg <style> breakout img (evil)",
+    "file": "page.html",
+    "source": "<svg><style><img src=\"https://evil.invalid/x.png\"></style></svg>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "svg <style> breakout img (nav host)",
+    "file": "page.html",
+    "source": "<svg><style><img src=\"https://github.com/x.png\"></style></svg>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "math <style> breakout img",
+    "file": "page.html",
+    "source": "<math><style><img src=\"https://evil.invalid/x.png\"></style></math>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "svg <script> breakout img",
+    "file": "page.html",
+    "source": "<svg><script><img src=\"https://evil.invalid/x.png\"></script></svg>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "svg set href on image (evil)",
+    "file": "page.html",
+    "source": "<svg><image><set attributeName=\"href\" to=\"https://evil.invalid/x.png\"/></image></svg>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "svg animate href on image (nav host)",
+    "file": "page.html",
+    "source": "<svg><image width=\"1\" height=\"1\"><animate attributeName=\"href\" values=\"https://github.com/x.png\" dur=\"1s\"/></image></svg>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "empty comment <!-->",
+    "file": "page.html",
+    "source": "<!--><img src=\"https://evil.invalid/x.png\"><!-- -->",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "comment --!>",
+    "file": "page.html",
+    "source": "<!-- x --!><img src=\"https://evil.invalid/x.png\"><!-- -->",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "CDATA in HTML is bogus comment",
+    "file": "page.html",
+    "source": "<![CDATA[ > <img src=\"https://evil.invalid/x.png\"> ]]>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "slash before attr",
+    "file": "page.html",
+    "source": "<img/src=\"https://evil.invalid/x.png\">",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "formfeed attr sep",
+    "file": "page.html",
+    "source": "<img\fsrc=\"https://evil.invalid/x.png\">",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "</ x> bogus comment",
+    "file": "page.html",
+    "source": "</ x><img src=\"https://evil.invalid/x.png\">",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true
+  }
+]

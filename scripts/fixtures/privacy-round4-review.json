@@ -1,0 +1,551 @@
+[
+  {
+    "name": "svg noscript style img",
+    "file": "page.html",
+    "source": "<svg><noscript><style><img src=\"https://evil.invalid/x.png\"></style></noscript></svg>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "svg template style img",
+    "file": "page.html",
+    "source": "<svg><template><style><img src=\"https://evil.invalid/x.png\"></style></template></svg>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "svg noscript style img (nav host)",
+    "file": "page.html",
+    "source": "<svg><noscript><style><img src=\"https://github.com/x.png\"></style></noscript></svg>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "math mi svg style img",
+    "file": "page.html",
+    "source": "<math><mi><svg><style><img src=\"https://evil.invalid/x.png\"></style></svg></mi></math>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "math mi svg style img (nav host)",
+    "file": "page.html",
+    "source": "<math><mi><svg><style><img src=\"https://github.com/x.png\"></style></svg></mi></math>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "math mtext mglyph style img",
+    "file": "page.html",
+    "source": "<math><mtext><mglyph><style><img src=\"https://evil.invalid/x.png\"></style></mglyph></mtext></math>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "svg foreignObject style (html raw text; browser inert)",
+    "file": "page.html",
+    "source": "<svg><foreignObject><style><img src=\"https://evil.invalid/x.png\"></style></foreignObject></svg>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "info"
+  },
+  {
+    "name": "svg foreignObject svg style img",
+    "file": "page.html",
+    "source": "<svg><foreignObject><svg><style><img src=\"https://evil.invalid/x.png\"></style></svg></foreignObject></svg>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "svg desc b CDATA (HTML bogus comment -> img loads)",
+    "file": "page.html",
+    "source": "<svg><desc><b><![CDATA[ > <img src=\"https://evil.invalid/x.png\"> ]]></b></desc></svg>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "svg desc CDATA (foreign text; browser inert)",
+    "file": "page.html",
+    "source": "<svg><desc><![CDATA[ > <img src=\"https://evil.invalid/x.png\"> ]]></desc></svg>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": false,
+    "reviewExpectation": "info"
+  },
+  {
+    "name": "svg desc svg style img",
+    "file": "page.html",
+    "source": "<svg><desc><svg><style><img src=\"https://evil.invalid/x.png\"></style></svg></desc></svg>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "svg desc style css import",
+    "file": "page.html",
+    "source": "<svg><desc><style>@import url(https://evil.invalid/x.css);</style></desc></svg>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "uppercase SVG STYLE",
+    "file": "page.html",
+    "source": "<SVG><STYLE><img src=\"https://evil.invalid/x.png\"></STYLE></SVG>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "uppercase MATH Style",
+    "file": "page.html",
+    "source": "<MaTh><StYlE><IMG SRC=\"https://evil.invalid/x.png\"></StYlE></MaTh>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "svg style @import (foreign)",
+    "file": "page.html",
+    "source": "<svg><style>@import url(\"https://evil.invalid/x.css\");</style></svg>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "set attributeName XLINK:HREF",
+    "file": "page.html",
+    "source": "<svg><image><set attributeName=\"XLINK:HREF\" to=\"https://evil.invalid/x.png\"/></image></svg>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "set attributeName Href nav host",
+    "file": "page.html",
+    "source": "<svg><image><set attributeName=\"Href\" to=\"https://github.com/x.png\"/></image></svg>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "set attributeName xl:href (prefix)",
+    "file": "page.html",
+    "source": "<svg xmlns:xl=\"http://www.w3.org/1999/xlink\"><image><set attributeName=\"xl:href\" to=\"https://evil.invalid/x.png\"/></image></svg>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "set attributeName xl:href nav host",
+    "file": "page.html",
+    "source": "<svg xmlns:xl=\"http://www.w3.org/1999/xlink\"><image><set attributeName=\"xl:href\" to=\"https://github.com/x.png\"/></image></svg>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "animate values whitespace list mixed",
+    "file": "page.html",
+    "source": "<svg><image><animate attributeName=\"href\" values=\"  https://github.com/x.png ;\n https://evil.invalid/x.png  ;\" dur=\"1s\"/></image></svg>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "animate values whitespace nav-host only",
+    "file": "page.html",
+    "source": "<svg><image><animate attributeName=\"href\" values=\" https://github.com/x.png ;\thttps://github.com/x.png \" dur=\"1s\"/></image></svg>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "animate from/to href nav host",
+    "file": "page.html",
+    "source": "<svg><image><animate attributeName=\"xlink:href\" from=\"https://github.com/x.png\" to=\"/a.png\" dur=\"1s\"/></image></svg>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "animate by href scheme-relative",
+    "file": "page.html",
+    "source": "<svg><image><animate attributeName=\"href\" by=\"//evil.invalid/x.png\" dur=\"1s\"/></image></svg>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "set to entity-encoded",
+    "file": "page.html",
+    "source": "<svg><image><set attributeName=\"href\" to=\"https&#58;//evil&#46;invalid/x.png\"/></image></svg>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "img pct-encoded host",
+    "file": "page.html",
+    "source": "<img src=\"https://%65vil.invalid/x.png\">",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "iframe data html pct-encoded payload with pct host",
+    "file": "page.html",
+    "source": "<iframe src=\"data:text/html,%3Cimg%20src%3D%22https%3A%2F%2F%2565vil.invalid%2Fx%22%3E\"></iframe>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "iframe data text/xml xhtml",
+    "file": "page.html",
+    "source": "<iframe src=\"data:text/xml,%3Cx%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F1999%2Fxhtml%22%3E%3Cimg%20src%3D%22https%3A%2F%2Fevil.invalid%2Fx%22%2F%3E%3C%2Fx%3E\"></iframe>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "object data application/xml base64",
+    "file": "page.html",
+    "source": "<object data=\"data:application/xml;base64,PHggeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGh0bWwiPjxpbWcgc3JjPSJodHRwczovL2V2aWwuaW52YWxpZC94Ii8+PC94Pg==\"></object>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "iframe data TEXT/HTML ;charset=utf-8 ;base64",
+    "file": "page.html",
+    "source": "<iframe src=\"data:TEXT/HTML ;charset=utf-8;base64,PGltZyBzcmM9Imh0dHBzOi8vZXZpbC5pbnZhbGlkL3giPg==\"></iframe>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "link stylesheet data:text/css ;charset=utf-8 base64",
+    "file": "page.html",
+    "source": "<link rel=\"stylesheet\" href=\"data:text/css ;charset=utf-8;base64,QGltcG9ydCAiaHR0cHM6Ly9ldmlsLmludmFsaWQveC5jc3MiOw==\">",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "link stylesheet data:text/css base64",
+    "file": "page.html",
+    "source": "<link rel=\"stylesheet\" href=\"data:text/css;base64,QGltcG9ydCAiaHR0cHM6Ly9ldmlsLmludmFsaWQveC5jc3MiOw==\">",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "link stylesheet data:TEXT/CSS base64",
+    "file": "page.html",
+    "source": "<link rel=\"stylesheet\" href=\"data:TEXT/CSS;base64,QGltcG9ydCAiaHR0cHM6Ly9ldmlsLmludmFsaWQveC5jc3MiOw==\">",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "script src data:application/ecmascript base64",
+    "file": "page.html",
+    "source": "<script src=\"data:application/ecmascript;base64,ZmV0Y2goImh0dHBzOi8vZXZpbC5pbnZhbGlkL3giKQ==\"></script>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "script src data:text/ecmascript base64",
+    "file": "page.html",
+    "source": "<script src=\"data:text/ecmascript;base64,ZmV0Y2goImh0dHBzOi8vZXZpbC5pbnZhbGlkL3giKQ==\"></script>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "script src data:text/x-javascript base64",
+    "file": "page.html",
+    "source": "<script src=\"data:text/x-javascript;base64,ZmV0Y2goImh0dHBzOi8vZXZpbC5pbnZhbGlkL3giKQ==\"></script>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "script src data:application/x-ecmascript base64",
+    "file": "page.html",
+    "source": "<script src=\"data:application/x-ecmascript;base64,ZmV0Y2goImh0dHBzOi8vZXZpbC5pbnZhbGlkL3giKQ==\"></script>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "script src data:text/jscript base64",
+    "file": "page.html",
+    "source": "<script src=\"data:text/jscript;base64,ZmV0Y2goImh0dHBzOi8vZXZpbC5pbnZhbGlkL3giKQ==\"></script>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "script src data:text/livescript base64",
+    "file": "page.html",
+    "source": "<script src=\"data:text/livescript;base64,ZmV0Y2goImh0dHBzOi8vZXZpbC5pbnZhbGlkL3giKQ==\"></script>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "script src data:text/javascript1.5 base64",
+    "file": "page.html",
+    "source": "<script src=\"data:text/javascript1.5;base64,ZmV0Y2goImh0dHBzOi8vZXZpbC5pbnZhbGlkL3giKQ==\"></script>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "script src data: text/javascript ;charset=utf-8 base64",
+    "file": "page.html",
+    "source": "<script src=\"data: text/javascript ;charset=utf-8;base64,ZmV0Y2goImh0dHBzOi8vZXZpbC5pbnZhbGlkL3giKQ==\"></script>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "svg script href data:text/javascript base64",
+    "file": "page.html",
+    "source": "<svg><script href=\"data:text/javascript;base64,ZmV0Y2goImh0dHBzOi8vZXZpbC5pbnZhbGlkL3giKQ==\"></script></svg>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "svg script href data:application/ecmascript base64",
+    "file": "page.html",
+    "source": "<svg><script href=\"data:application/ecmascript;base64,ZmV0Y2goImh0dHBzOi8vZXZpbC5pbnZhbGlkL3giKQ==\"></script></svg>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "svg script href data:text/x-javascript base64",
+    "file": "page.html",
+    "source": "<svg><script href=\"data:text/x-javascript;base64,ZmV0Y2goImh0dHBzOi8vZXZpbC5pbnZhbGlkL3giKQ==\"></script></svg>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "svg script href data:application/x-ecmascript base64",
+    "file": "page.html",
+    "source": "<svg><script href=\"data:application/x-ecmascript;base64,ZmV0Y2goImh0dHBzOi8vZXZpbC5pbnZhbGlkL3giKQ==\"></script></svg>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "svg script href data:text/jscript base64",
+    "file": "page.html",
+    "source": "<svg><script href=\"data:text/jscript;base64,ZmV0Y2goImh0dHBzOi8vZXZpbC5pbnZhbGlkL3giKQ==\"></script></svg>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "svg script xlink:href data:text/x-javascript base64",
+    "file": "page.html",
+    "source": "<svg><script xlink:href=\"data:text/x-javascript;base64,ZmV0Y2goImh0dHBzOi8vZXZpbC5pbnZhbGlkL3giKQ==\"></script></svg>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "svg script href data: omitted MIME base64",
+    "file": "page.html",
+    "source": "<svg><script href=\"data:;base64,ZmV0Y2goImh0dHBzOi8vZXZpbC5pbnZhbGlkL3giKQ==\"></script></svg>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "css @\\69mport data",
+    "file": "site.css",
+    "source": "@\\69mport url(\"data:text/css;base64,QGltcG9ydCAiaHR0cHM6Ly9ldmlsLmludmFsaWQveC5jc3MiOw==\");",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "css @import url( spaced data )",
+    "file": "site.css",
+    "source": "@import url(   data:text/css;base64,QGltcG9ydCAiaHR0cHM6Ly9ldmlsLmludmFsaWQveC5jc3MiOw==   );",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "css @import d\\61ta escaped",
+    "file": "site.css",
+    "source": "@import url(d\\61ta:text/css;base64,QGltcG9ydCAiaHR0cHM6Ly9ldmlsLmludmFsaWQveC5jc3MiOw==);",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "css @import string with charset space",
+    "file": "site.css",
+    "source": "@import \"data:text/css ;charset=utf-8;base64,QGltcG9ydCAiaHR0cHM6Ly9ldmlsLmludmFsaWQveC5jc3MiOw==\";",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "srcdoc -> iframe data html base64",
+    "file": "page.html",
+    "source": "<iframe srcdoc=\"&lt;iframe src=&quot;data:text/html;base64,PGltZyBzcmM9Imh0dHBzOi8vZXZpbC5pbnZhbGlkL3giPg==&quot;&gt;&lt;/iframe&gt;\"></iframe>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "srcdoc -> script data x-javascript",
+    "file": "page.html",
+    "source": "<iframe srcdoc=\"&lt;script src=&quot;data:text/x-javascript;base64,ZmV0Y2goImh0dHBzOi8vZXZpbC5pbnZhbGlkL3giKQ==&quot;&gt;&lt;/script&gt;\"></iframe>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "srcdoc -> svg script href data",
+    "file": "page.html",
+    "source": "<iframe srcdoc=\"&lt;svg&gt;&lt;script href=&quot;data:text/x-javascript;base64,ZmV0Y2goImh0dHBzOi8vZXZpbC5pbnZhbGlkL3giKQ==&quot;&gt;&lt;/script&gt;&lt;/svg&gt;\"></iframe>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "srcdoc -> link stylesheet data",
+    "file": "page.html",
+    "source": "<iframe srcdoc=\"&lt;link rel=stylesheet href=&quot;data:text/css;base64,QGltcG9ydCAiaHR0cHM6Ly9ldmlsLmludmFsaWQveC5jc3MiOw==&quot;&gt;\"></iframe>",
+    "mentionHost": null,
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "srcdoc -> svg style breakout",
+    "file": "page.html",
+    "source": "<iframe srcdoc=\"&lt;svg&gt;&lt;style&gt;&lt;img src=&quot;https://evil.invalid/x.png&quot;&gt;\"></iframe>",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "mention: comment + active img same host",
+    "file": "page.html",
+    "source": "<!-- https://evil.invalid/ --><img src=\"https://evil.invalid/x.png\">",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "mention: comment + active refresh same host",
+    "file": "page.html",
+    "source": "<!-- https://evil.invalid/ --><meta http-equiv=\"refresh\" content=\"0;url=https://evil.invalid/\">",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "mention: JS comment + active fetch",
+    "file": "site.js",
+    "source": "// https://evil.invalid/\nfetch(\"https://evil.invalid/x\");",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "mention: CSS comment + active url()",
+    "file": "site.css",
+    "source": "/* https://evil.invalid/ */ a{background:url(https://evil.invalid/x.png)}",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": true,
+    "reviewExpectation": "reject"
+  },
+  {
+    "name": "mention: inert comment only (control, expect plain reject / mention allow)",
+    "file": "page.html",
+    "source": "<!-- see https://evil.invalid/ -->",
+    "mentionHost": "evil.invalid",
+    "expectedReject": true,
+    "expectedMentionReject": false,
+    "reviewExpectation": "info"
+  }
+]

@@ -1,0 +1,208 @@
+[
+  {
+    "name": "control-resource",
+    "source": "<img src=\"https://nav.invalid/x\">",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "control-comment",
+    "source": "<!-- https://nav.invalid/x -->",
+    "expectedNavigationRejectBeforeParity": false,
+    "reason": "A navigation declaration alone no longer accounts for inert comment text. The explicit inert-mention mode remains allowed.",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": false
+  },
+  {
+    "name": "svg-style",
+    "source": "<svg><style><img src=\"https://nav.invalid/x\"></style></svg>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "math-style",
+    "source": "<math><style><img src=\"https://nav.invalid/x\"></style></math>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "svg-title-integration",
+    "source": "<svg><title><img src=\"https://nav.invalid/x\"></title></svg>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "svg-foreignObject-integration",
+    "source": "<svg><foreignObject><img src=\"https://nav.invalid/x\"></foreignObject></svg>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "math-mtext-integration",
+    "source": "<math><mtext><img src=\"https://nav.invalid/x\"></mtext></math>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "math-annotation-integration",
+    "source": "<math><annotation-xml encoding=\"text/html\"><img src=\"https://nav.invalid/x\"></annotation-xml></math>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "cdata-outside-foreign",
+    "source": "<![CDATA[><img src=\"https://nav.invalid/x\">]]>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "smil-set-href",
+    "source": "<svg><image id=\"p\"/><set href=\"#p\" attributeName=\"href\" to=\"https://nav.invalid/x\"/></svg>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "smil-set-xlink",
+    "source": "<svg><image id=\"p\"/><set xlink:href=\"#p\" attributeName=\"xlink:href\" to=\"https://nav.invalid/x\"/></svg>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "smil-animate-values",
+    "source": "<svg><image id=\"p\"/><animate href=\"#p\" attributeName=\"href\" values=\"https://nav.invalid/a;https://nav.invalid/b\" dur=\"1s\" repeatCount=\"indefinite\"/></svg>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "smil-animate-href",
+    "source": "<svg><image id=\"p\"/><animate href=\"#p\" attributeName=\"href\" from=\"https://nav.invalid/a\" to=\"https://nav.invalid/b\" dur=\"1s\"/></svg>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "data-js-normal",
+    "source": "<script src=\"data:text/javascript,fetch(%22https%3A%2F%2Fnav.invalid%2Fpixel%22)\"></script>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "data-js-leading-space",
+    "source": "<script src=\" data:text/javascript,fetch(%22https%3A%2F%2Fnav.invalid%2Fpixel%22)\"></script>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "data-js-internal-tab",
+    "source": "<script src=\"da&#9;ta:text/javascript,fetch(%22https%3A%2F%2Fnav.invalid%2Fpixel%22)\"></script>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "data-css-leading-space",
+    "source": "<link rel=\"stylesheet\" href=\" data:text/css,%40import%20%22https%3A%2F%2Fnav.invalid%2Fx.css%22%3B\">",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "data-css-mime-space",
+    "source": "<link rel=\"stylesheet\" href=\"data: text/css ,%40import%20%22https%3A%2F%2Fnav.invalid%2Fx.css%22%3B\">",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "data-js-mime-alias",
+    "source": "<script src=\"data:text/ecmascript,fetch(%22https%3A%2F%2Fnav.invalid%2Fpixel%22)\"></script>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "data-js-mime-alias-space",
+    "source": "<script src=\" data:application/x-javascript,fetch(%22https%3A%2F%2Fnav.invalid%2Fpixel%22)\"></script>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "svg-script-image-png-href",
+    "source": "<svg><script href=\"data:image/png,fetch(%22https%3A%2F%2Fnav.invalid%2Fpixel%22)\"></script></svg>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "svg-script-image-png-xlink-href",
+    "source": "<svg><script xlink:href=\"data:image/png,fetch(%22https%3A%2F%2Fnav.invalid%2Fpixel%22)\"></script></svg>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "svg-script-application-octet-stream-href",
+    "source": "<svg><script href=\"data:application/octet-stream,fetch(%22https%3A%2F%2Fnav.invalid%2Fpixel%22)\"></script></svg>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "svg-script-application-octet-stream-xlink-href",
+    "source": "<svg><script xlink:href=\"data:application/octet-stream,fetch(%22https%3A%2F%2Fnav.invalid%2Fpixel%22)\"></script></svg>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "svg-script-audio-mp3-href",
+    "source": "<svg><script href=\"data:audio/mp3,fetch(%22https%3A%2F%2Fnav.invalid%2Fpixel%22)\"></script></svg>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "svg-script-audio-mp3-xlink-href",
+    "source": "<svg><script xlink:href=\"data:audio/mp3,fetch(%22https%3A%2F%2Fnav.invalid%2Fpixel%22)\"></script></svg>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "svg-script-video-mp4-href",
+    "source": "<svg><script href=\"data:video/mp4,fetch(%22https%3A%2F%2Fnav.invalid%2Fpixel%22)\"></script></svg>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "svg-script-video-mp4-xlink-href",
+    "source": "<svg><script xlink:href=\"data:video/mp4,fetch(%22https%3A%2F%2Fnav.invalid%2Fpixel%22)\"></script></svg>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "svg-script-font-woff-href",
+    "source": "<svg><script href=\"data:font/woff,fetch(%22https%3A%2F%2Fnav.invalid%2Fpixel%22)\"></script></svg>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "svg-script-font-woff-xlink-href",
+    "source": "<svg><script xlink:href=\"data:font/woff,fetch(%22https%3A%2F%2Fnav.invalid%2Fpixel%22)\"></script></svg>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "svg-script-text-plain-href",
+    "source": "<svg><script href=\"data:text/plain,fetch(%22https%3A%2F%2Fnav.invalid%2Fpixel%22)\"></script></svg>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "svg-script-text-plain-xlink-href",
+    "source": "<svg><script xlink:href=\"data:text/plain,fetch(%22https%3A%2F%2Fnav.invalid%2Fpixel%22)\"></script></svg>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "svg-script-text-javascript-href",
+    "source": "<svg><script href=\"data:text/javascript,fetch(%22https%3A%2F%2Fnav.invalid%2Fpixel%22)\"></script></svg>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  },
+  {
+    "name": "svg-script-text-javascript-xlink-href",
+    "source": "<svg><script xlink:href=\"data:text/javascript,fetch(%22https%3A%2F%2Fnav.invalid%2Fpixel%22)\"></script></svg>",
+    "expectedNavigationReject": true,
+    "expectedMentionReject": true
+  }
+]

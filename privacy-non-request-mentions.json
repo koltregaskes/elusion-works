@@ -1,0 +1,1919 @@
+{
+  "version": 1,
+  "mentions": [
+    {
+      "kind": "non-request mention",
+      "file": "demos/ashfall/styles.css",
+      "host": "scripts.sil.org",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/ashfall/vendor/three.module.js",
+      "host": "jcgt.org",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/cinematic-dive/vendor/gsap.min.js",
+      "host": "gsap.com",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/hoover-dam/vendor/addons/math/SimplexNoise.js",
+      "host": "web.archive.org",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/hoover-dam/vendor/addons/math/SimplexNoise.js",
+      "host": "staffwww.itn.liu.se",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/hoover-dam/vendor/addons/postprocessing/UnrealBloomPass.js",
+      "host": "docs.unrealengine.com",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/hoover-dam/vendor/addons/shaders/GTAOShader.js",
+      "host": "iryoku.com",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/hoover-dam/vendor/addons/shaders/PoissonDenoiseShader.js",
+      "host": "openaccess.thecvf.com",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/hoover-dam/vendor/addons/shaders/PoissonDenoiseShader.js",
+      "host": "arxiv.org",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/orbit-census/vendor/satellite/propagation/sgp4.js",
+      "host": "0.0.0.3",
+      "reason": "Source line-comment boundary normalised by the independent backstop; not a URL reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/orbit-census/vendor/satellite/transforms.js",
+      "host": "www.celestrak.com",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/planet-teardown/vendor/addons/postprocessing/UnrealBloomPass.js",
+      "host": "docs.unrealengine.com",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/addons/math/ImprovedNoise.js",
+      "host": "cs.nyu.edu",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/addons/math/SimplexNoise.js",
+      "host": "web.archive.org",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/addons/math/SimplexNoise.js",
+      "host": "staffwww.itn.liu.se",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/addons/postprocessing/UnrealBloomPass.js",
+      "host": "docs.unrealengine.com",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/addons/shaders/AfterimageShader.js",
+      "host": "codepen.io",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.module.js",
+      "host": "this.setmode",
+      "reason": "Source line-comment boundary normalised by the independent backstop; not a URL reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.module.js",
+      "host": "drive.google.com",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.module.js",
+      "host": "info.memory.geometries",
+      "reason": "Source line-comment boundary normalised by the independent backstop; not a URL reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.module.js",
+      "host": "jacksondunstan.com",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.module.js",
+      "host": "www.khronos.org",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.module.js",
+      "host": "parameters.mapuv",
+      "reason": "Source line-comment boundary normalised by the independent backstop; not a URL reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.module.js",
+      "host": "parameters.vertextangents",
+      "reason": "Source line-comment boundary normalised by the independent backstop; not a URL reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.module.js",
+      "host": "this.type",
+      "reason": "Source line-comment boundary normalised by the independent backstop; not a URL reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.module.js",
+      "host": "this.allocatetextureunit",
+      "reason": "Source line-comment boundary normalised by the independent backstop; not a URL reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.module.js",
+      "host": "computergraphics.stackexchange.com",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.module.js",
+      "host": "uniforms.envmap.value",
+      "reason": "Source line-comment boundary normalised by the independent backstop; not a URL reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.module.js",
+      "host": "this.info.render.frame",
+      "reason": "Source line-comment boundary normalised by the independent backstop; not a URL reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/addons/postprocessing/UnrealBloomPass.js",
+      "host": "docs.unrealengine.com",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.module.js",
+      "host": "this.setmode",
+      "reason": "Source line-comment boundary normalised by the independent backstop; not a URL reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.module.js",
+      "host": "drive.google.com",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.module.js",
+      "host": "info.memory.geometries",
+      "reason": "Source line-comment boundary normalised by the independent backstop; not a URL reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.module.js",
+      "host": "jacksondunstan.com",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.module.js",
+      "host": "www.khronos.org",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.module.js",
+      "host": "parameters.mapuv",
+      "reason": "Source line-comment boundary normalised by the independent backstop; not a URL reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.module.js",
+      "host": "parameters.vertextangents",
+      "reason": "Source line-comment boundary normalised by the independent backstop; not a URL reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.module.js",
+      "host": "this.type",
+      "reason": "Source line-comment boundary normalised by the independent backstop; not a URL reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.module.js",
+      "host": "this.allocatetextureunit",
+      "reason": "Source line-comment boundary normalised by the independent backstop; not a URL reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.module.js",
+      "host": "computergraphics.stackexchange.com",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.module.js",
+      "host": "uniforms.envmap.value",
+      "reason": "Source line-comment boundary normalised by the independent backstop; not a URL reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.module.js",
+      "host": "this.info.render.frame",
+      "reason": "Source line-comment boundary normalised by the independent backstop; not a URL reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/examples/jsm/postprocessing/UnrealBloomPass.js",
+      "host": "docs.unrealengine.com",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/examples/jsm/shaders/LuminosityHighPassShader.js",
+      "host": "en.wikipedia.org",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/display/DepthOfFieldNode.js",
+      "host": "pixelmischiefblog.wordpress.com",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/display/DepthOfFieldNode.js",
+      "host": "www.adriancourreges.com",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/display/DepthOfFieldNode.js",
+      "host": "www.shadertoy.com",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/display/GaussianBlurNode.js",
+      "host": "lisyarus.github.io",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/display/GTAONode.js",
+      "host": "www.activision.com",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/display/TRAANode.js",
+      "host": "alextardif.com",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/display/TRAANode.js",
+      "host": "www.elopezr.com",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/display/TRAANode.js",
+      "host": "developer.download.nvidia.com",
+      "reason": "Reviewed inert source comment or documentation citation; not a resource reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "en.wikipedia.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "stackoverflow.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "www.gamedev.net",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "www.rorydriscoll.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "www.desmos.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "www.mathworks.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "www.euclideanspace.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "mathworld.wolfram.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "www.russellcottrell.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "www.khronos.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "www.opengl-tutorial.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "www.blackpawn.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "www.fox-toolkit.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "www.terathon.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "www.bobatkins.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "blog.tojicode.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "www.cs.indiana.edu",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "www.cemyuksel.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "ideone.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "www.chiark.greenend.org.uk",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "geomalgorithms.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "blogs.unity3d.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "docs.unrealengine.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "area.autodesk.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "www.marmoset.co}",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "www.marmoset.co",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "media.disneyanimation.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "www.oodesign.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "jsperf.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "-",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "-if",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "regex101.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "serverfault.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "graphics.stanford.edu",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "www.ppsloan.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": ",https",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": ",",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "paulbourke.net",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "registry.khronos.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "en.wikipedia.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "stackoverflow.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "www.gamedev.net",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "www.rorydriscoll.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "www.desmos.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "www.mathworks.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "www.euclideanspace.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "mathworld.wolfram.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "www.russellcottrell.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "www.khronos.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "www.opengl-tutorial.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "www.blackpawn.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "www.fox-toolkit.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "www.terathon.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "www.bobatkins.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "blog.tojicode.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "www.cs.indiana.edu",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "www.cemyuksel.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "ideone.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "www.chiark.greenend.org.uk",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "geomalgorithms.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "blogs.unity3d.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "docs.unrealengine.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "area.autodesk.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "www.marmoset.co}",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "www.marmoset.co",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "media.disneyanimation.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "www.oodesign.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "jsperf.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "-",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "-if",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "regex101.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "serverfault.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "graphics.stanford.edu",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "www.ppsloan.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": ",https",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": ",",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "paulbourke.net",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "registry.khronos.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "stackoverflow.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "en.wikipedia.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "www.gamedev.net",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "www.rorydriscoll.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "www.desmos.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "www.russellcottrell.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "www.khronos.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "www.euclideanspace.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "www.mathworks.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "planning.cs.uiuc.edu",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "mathworld.wolfram.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "www.blackpawn.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "www.fox-toolkit.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "www.terathon.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "www.bobatkins.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "this.setmode",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "drive.google.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "info.memory.geometries",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "jacksondunstan.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "parameters.mapuv",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "parameters.vertextangents",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "this.type",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "this.allocatetextureunit",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "this.cameraautoupdate",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "computergraphics.stackexchange.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "uniforms.envmap.value",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "this.dispose",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "this.info.render.frame",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "discourse.threejs.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "www.cs.indiana.edu",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "www.cemyuksel.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "ideone.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "www.chiark.greenend.org.uk",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "geomalgorithms.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "www.oodesign.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "jsperf.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "-",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "-if",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "regex101.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "serverfault.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "graphics.stanford.edu",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "www.ppsloan.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": ",https",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": ",",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "paulbourke.net",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/loaders/GLTFLoader.js",
+      "host": "www.khronos.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/loaders/GLTFLoader.js",
+      "host": "my-cnd-server.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/objects/SkyMesh.js",
+      "host": "www.researchgate.net",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/objects/SkyMesh.js",
+      "host": "simonwallner.at",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/objects/SkyMesh.js",
+      "host": "blenderartists.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/display/SSRNode.js",
+      "host": "lettier.github.io",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/display/SSRNode.js",
+      "host": "mathworld.wolfram.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/display/SSRNode.js",
+      "host": "en.wikipedia.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/display/SSRNode.js",
+      "host": "paulbourke.net",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "en.wikipedia.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "stackoverflow.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "www.gamedev.net",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "www.rorydriscoll.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "www.desmos.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "mathworld.wolfram.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "www.russellcottrell.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "www.khronos.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "www.opengl-tutorial.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "www.fox-toolkit.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "www.terathon.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "blog.tojicode.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "jcgt.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "www.cs.indiana.edu",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "www.cemyuksel.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "ideone.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "www.chiark.greenend.org.uk",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "geomalgorithms.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "blogs.unity3d.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "docs.unrealengine.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "area.autodesk.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "www.marmoset.co)",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "www.marmoset.co",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "media.disneyanimation.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "www.oodesign.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "jsperf.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "-",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "-if",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "regex101.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "serverfault.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "www.bobatkins.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "graphics.stanford.edu",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "www.ppsloan.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": ",https",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": ",",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "paulbourke.net",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "registry.khronos.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "stackoverflow.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "www.shadertoy.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "iquilezles.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "twitter.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "tulrich.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "outerra.blogspot.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "www.desmos.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "virtualcamera.coordinatesystem",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "www.terathon.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "this.texturenode.value",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "www.thetenthplanet.de",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "google.github.io",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "mmikk.github.io",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "casual-effects.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "www.iryoku.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "blog.demofox.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "blender.stackexchange.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "docs.acescentral.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "depthtexture.type",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "www.cs.utah.edu",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "filmicworlds.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "modelviewer.dev",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "renderer.autoclear",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "seblagarde.files.wordpress.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "jcgt.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "en.wikipedia.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "cdn2.unrealengine.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "graphicrants.blogspot.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "devlog-martinsh.blogspot.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "belcour.github.io",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "blog.selfshadow.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "www.jcgt.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "jcgt.org",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "colinbarrebrisebois.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "data.version",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "data.pipeline",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "list.frameid",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "texturedata.version",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "rendercontext.depthclearvalue",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "shadernode.layout",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "www.w3.org",
+      "reason": "SVG/XML namespace in markup, embedded data image or inert recipe; not a network request."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "this.ispresenting",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "rendercontext.depth",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "this.info.calls",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "rendercontext.camera",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "nodeframe.renderid",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "colortexture.image.width",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "www.shadertoy.com",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "descriptor.topology",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "descriptor.cullmode",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "greggman.github.io",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "rendercontextdata.descriptor",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "renderer.tonemapping",
+      "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/ashfall/styles.css",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/hoover-dam/vendor/addons/environments/RoomEnvironment.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/hoover-dam/vendor/addons/postprocessing/Pass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/hoover-dam/vendor/addons/postprocessing/RenderPass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/hoover-dam/vendor/addons/postprocessing/ShaderPass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/hoover-dam/vendor/addons/shaders/GTAOShader.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/orbit-census/vendor/satellite/index.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/orbit-census/vendor/satellite/io.js",
+      "host": "celestrak.org",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/orbit-census/vendor/satellite/propagation/check-for-decay.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/orbit-census/vendor/satellite/sun.js",
+      "host": "celestrak.org",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/planet-teardown/vendor/addons/postprocessing/Pass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/planet-teardown/vendor/addons/postprocessing/RenderPass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/planet-teardown/vendor/addons/postprocessing/ShaderPass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/addons/postprocessing/Pass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/addons/postprocessing/RenderPass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/addons/postprocessing/ShaderPass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/addons/shaders/SMAAShader.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.core.js",
+      "host": "developer.mozilla.org",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.module.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/void-sovereign/vendor/three/build/three.module.js",
+      "host": "developer.mozilla.org",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/addons/postprocessing/Pass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/addons/postprocessing/RenderPass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/addons/postprocessing/ShaderPass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.core.js",
+      "host": "developer.mozilla.org",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.module.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/windfield/vendor/three/build/three.module.js",
+      "host": "developer.mozilla.org",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/build/three.module.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/examples/jsm/environments/RoomEnvironment.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/examples/jsm/postprocessing/Pass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/examples/jsm/postprocessing/RenderPass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r160/examples/jsm/postprocessing/ShaderPass.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/loaders/GLTFLoader.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/display/BloomNode.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/display/boxBlur.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/display/GodraysNode.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/display/ImportanceSampledEnvironment.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/display/SSRNode.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/utils/SpecularHelpers.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/addons/tsl/utils/TAAUtils.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.core.js",
+      "host": "developer.mozilla.org",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.tsl.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    },
+    {
+      "kind": "non-request mention",
+      "file": "demos/_shared/three-r187/build/three.webgpu.js",
+      "host": "github.com",
+      "reason": "Source-context parsing proves an inert comment or diagnostic citation. Formerly permitted through host-wide disclosure; this exact file/host entry cannot authorise active or unclassified references."
+    }
+  ]
+}
