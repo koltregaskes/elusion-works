@@ -315,12 +315,6 @@
     },
     {
       "kind": "non-request mention",
-      "file": "demos/atmosphere/atm-weather.js",
-      "host": "api.weather.com",
-      "reason": "Commented integration example only; no implemented provider request."
-    },
-    {
-      "kind": "non-request mention",
       "file": "demos/void-sovereign/vendor/three/build/three.core.js",
       "host": "en.wikipedia.org",
       "reason": "Reviewed inert source documentation/citation or a code-comment boundary normalised by the backstop; no structured request reference."
