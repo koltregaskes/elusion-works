@@ -1,36 +1,34 @@
 #!/usr/bin/env node
+import { createAcquirer } from "./acquire.mjs";
 import { catalogueSource } from "../src/source-label.js";
 // Builds data/catalog.json for Orbit Census from CelesTrak.
-// Runs in the Pages deploy (twice a day, matching CelesTrak's own update rhythm) and can be
+// Runs in Pages with a shared GP (2 h) / SATCAT (24 h) acquisition cache; can be
 // run by hand: `node demos/orbit-census/tools/build-catalog.mjs`.
 //
 // Exit codes: 0 written; 2 fetched but too few objects (file left untouched); 1 network error.
-// A failed run never overwrites a good catalogue: the page then falls back to a live fetch.
-import { writeFile, mkdir } from 'node:fs/promises';
+// A failed provider run stops acquisition and leaves the previous catalogue untouched.
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CELESTRAK_GP, CELESTRAK_SATCAT, GROUPS, FIELDS, TYPES, mergeGroups, parseCsv } from '../src/catalog.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const out = resolve(process.argv[2] || resolve(here, '../data/catalog.json'));
-const UA = 'ElusionWorks-OrbitCensus/1.0 (+https://elusionworks.com/demos/orbit-census/)';
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function get(url, kind) {
-  for (let a = 0; a < 3; a++) {
-    try {
-      // CelesTrak serves satcat.csv as application/octet-stream and answers a strict
-      // "Accept: text/csv" with HTTP 406, so CSV requests also accept any type.
-      const res = await fetch(url, { headers: { 'User-Agent': UA, Accept: kind === 'json' ? 'application/json' : 'text/csv, */*;q=0.8' } });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const body = kind === 'json' ? await res.json() : await res.text();
-      return body;
-    } catch (e) {
-      console.warn(`  ${url} attempt ${a + 1}: ${e.message}`);
-      await sleep(2000 * (a + 1));
-    }
-  }
-  return null;
+const cachePath = resolve(process.argv[4] || '.local/celestrak-cache.json');
+let cache;
+try { cache = new Map(JSON.parse(await readFile(cachePath, 'utf8'))); }
+catch { cache = new Map(); }
+const get = createAcquirer({cache});
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const acquisition = {};
+async function csvData(url, ttl) {
+  try {
+    const result = await get(url, ttl);
+    acquisition[url] = {acquired: new Date(result.acquired).toISOString(), lastModified: result.lastModified, etag: result.etag};
+    await mkdir(dirname(cachePath), {recursive:true});
+    await writeFile(cachePath, JSON.stringify([...cache]));
+    return result.body;
+  } catch (error) { console.error('No GP group fetched: provider run stopped: ' + error.message); process.exit(1); }
 }
 
 const byGroup = [];
@@ -38,7 +36,7 @@ const counts = {};
 const orbitalFields = ['MEAN_MOTION', 'ECCENTRICITY', 'INCLINATION', 'RA_OF_ASC_NODE',
   'ARG_OF_PERICENTER', 'MEAN_ANOMALY', 'BSTAR', 'MEAN_MOTION_DOT', 'MEAN_MOTION_DDOT'];
 for (const g of GROUPS) {
-  const recs = await get(`${CELESTRAK_GP}?GROUP=${g.id}&FORMAT=json`, 'json');
+  const recs = parseCsv(await csvData(`${CELESTRAK_GP}?GROUP=${g.id}&FORMAT=csv`, 2 * 3600000));
   // toRow's numeric defaults must not disguise corrupt orbital input as valid zeroes.
   if (Array.isArray(recs) && recs.some(rec => !rec || orbitalFields.some(field =>
     !['number', 'string'].includes(typeof rec[field]) || String(rec[field]).trim() === '' || !Number.isFinite(Number(rec[field]))))) {
@@ -52,7 +50,7 @@ for (const g of GROUPS) {
 }
 
 let satcat = null; let census = null;
-const csv = await get(CELESTRAK_SATCAT, 'text');
+const csv = await csvData(CELESTRAK_SATCAT, 24 * 3600000);
 if (csv) {
   let rows = [];
   try { rows = parseCsv(csv); }
@@ -89,6 +87,7 @@ if (rows.length < 2000) { console.error(`Only ${rows.length} objects: refusing t
 const doc = {
   v: 1,
   generated: new Date().toISOString(),
+  acquisition,
   source: catalogueSource(Boolean(satcat?.size)),
   groups: counts,
   satcat: Boolean(satcat?.size),

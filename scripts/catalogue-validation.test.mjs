@@ -126,10 +126,10 @@ for (const csv of ['NAME\npart"quoted"', 'NAME\n"quoted"text', 'NAME\n"']) test(
 });
 const preload = new URL('./fixtures/catalogue-fetch.mjs', import.meta.url).href;
 function build(scenario) {
-  return spawnSync(process.execPath, ['--import', preload, path.join(root, 'demos/orbit-census/tools/build-catalog.mjs'), catalogue, scenario], { cwd: fixture, encoding: 'utf8' });
+  return spawnSync(process.execPath, ['--import', preload, path.join(root, 'demos/orbit-census/tools/build-catalog.mjs'), catalogue, scenario, path.join(fixture, 'cache-' + scenario.replaceAll(':','-') + '.json')], { cwd: fixture, encoding: 'utf8' });
 }
 for (const [scenario, expectedBuild, expectedGate] of [
-  ['complete', 0, 0], ['partial-gp', 0, 1], ['satcat-failed', 0, 1], ['all-gp-failed', 1, null],
+  ['complete', 0, 0], ['partial-gp', 1, null], ['satcat-failed', 1, null], ['all-gp-failed', 1, null],
   ['invalid-satcat', 0, 1], ['invalid-gp', 0, 1], ['one-missing-epoch', 0, 1], ['header-only', 0, 1],
   ['tiny-census', 0, 1], ['missing-header', 0, 1], ['bad-identifier', 0, 1], ['zero-identifier', 0, 1],
   ['fractional-identifier', 0, 1], ['unsafe-identifier', 0, 1], ['unknown-type', 0, 1],

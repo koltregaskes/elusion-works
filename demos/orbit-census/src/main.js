@@ -1,10 +1,10 @@
 // Orbit Census: every tracked object in Earth orbit, propagated live with SGP4.
 // Data: data/catalog.json, built from CelesTrak by tools/build-catalog.mjs in the deploy.
-// If that file is missing, the page asks CelesTrak directly; if that fails it says so.
+// If the shared catalogue is missing, show an unavailable state without provider queries.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { gstime, sunPos, eciToGeodetic } from '../vendor/satellite/index.js';
-import { CELESTRAK_GP, GROUPS, mergeGroups, TYPES } from './catalog.js';
+import { GROUPS, TYPES } from './catalog.js';
 import { orbitShape, regime, family, FAMILIES, NAV, MEGA, ownerName, siteName, TYPE_COLORS, REGIME_COLORS, OWNER_TOP, OWNER_COLORS, hexToRgb } from './classify.js';
 import { Globe, RE } from './globe.js';
 import { Swarm } from './swarm.js';
@@ -106,14 +106,6 @@ async function loadBundled() {
   const doc = await res.json();
   if (!Array.isArray(doc.rows) || !doc.rows.length) throw new Error('empty catalogue');
   return doc;
-}
-async function loadLive() {
-  const parts = await Promise.all(GROUPS.map(async (g) => {
-    try { const r = await fetch(`${CELESTRAK_GP}?GROUP=${g.id}&FORMAT=json`); if (!r.ok) return null; return { id: g.id, records: await r.json() }; } catch { return null; }
-  }));
-  const ok = parts.filter(Boolean);
-  if (!ok.length) throw new Error('CelesTrak did not answer');
-  return { v: 1, generated: new Date().toISOString(), source: 'CelesTrak GP data, fetched live by your browser', live: true, satcat: false, rows: mergeGroups(ok, null) };
 }
 
 function buildItems(rows) {
@@ -621,8 +613,7 @@ async function start() {
   try { doc = await loadBundled(); S.source = /SYNTHETIC/i.test(doc.source) ? 'synthetic' : 'bundled'; }
   catch (e) {
     console.warn('bundled catalogue:', e.message);
-    boot('Asking CelesTrak directly', 0.35);
-    try { doc = await loadLive(); S.source = 'live'; } catch (e2) { console.warn('live:', e2.message); }
+    boot('Shared catalogue unavailable', 0.35);
   }
   if (!doc) { $('#boot').classList.add('done'); $('#nodata').hidden = false; setSource(); return; }
   S.doc = doc;
