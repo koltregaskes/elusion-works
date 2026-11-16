@@ -128,10 +128,10 @@ for (const csv of ['NAME\npart"quoted"', 'NAME\n"quoted"text', 'NAME\n"']) test(
 });
 const preload = new URL('./fixtures/catalogue-fetch.mjs', import.meta.url).href;
 function build(scenario) {
-  return spawnSync(process.execPath, ['--import', preload, path.join(root, 'demos/orbit-census/tools/build-catalog.mjs'), catalogue, scenario], { cwd: fixture, encoding: 'utf8' });
+  return spawnSync(process.execPath, ['--import', preload, path.join(root, 'demos/orbit-census/tools/build-catalog.mjs'), catalogue, scenario, path.join(fixture, 'cache-' + scenario.replaceAll(':','-') + '.json')], { cwd: fixture, encoding: 'utf8' });
 }
 for (const [scenario, expectedBuild, expectedGate] of [
-  ['complete', 0, 0], ['partial-gp', 0, 1], ['satcat-failed', 0, 1], ['all-gp-failed', 1, null],
+  ['complete', 0, 0], ['partial-gp', 1, null], ['satcat-failed', 1, null], ['all-gp-failed', 1, null],
   ['invalid-satcat', 0, 1], ['invalid-gp', 0, 1], ['one-missing-epoch', 0, 1], ['header-only', 0, 1],
   ['tiny-census', 0, 1], ['missing-header', 0, 1], ['bad-identifier', 0, 1], ['zero-identifier', 0, 1],
   ['fractional-identifier', 0, 1], ['unsafe-identifier', 0, 1], ['unknown-type', 0, 1],
@@ -144,6 +144,12 @@ for (const [scenario, expectedBuild, expectedGate] of [
   fs.writeFileSync(catalogue, 'previous good catalogue');
   const b = build(scenario); assert.equal(b.status, expectedBuild, b.stdout + b.stderr);
   if (expectedGate === null) {
+    if (scenario === 'partial-gp') {
+      const cacheFile=path.join(fixture,'cache-partial-gp.json');
+      const saved=new Map(JSON.parse(fs.readFileSync(cacheFile,'utf8')));
+      assert.ok(saved.get('https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=csv')?.body, 'completed GP response survives the later group failure');
+      assert.ok(saved.get('urn:elusionworks:celestrak:retry-deadline')?.retryUntil>Date.now(), 'provider pause survives the failed builder process');
+    }
     assert.equal(fs.readFileSync(catalogue, 'utf8'), 'previous good catalogue');
     assert.match(b.stdout + b.stderr, /No GP group fetched|non-finite orbital/);
     return;

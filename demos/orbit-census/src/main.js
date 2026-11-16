@@ -1,7 +1,7 @@
 import {inspectCatalogue,catalogueNotice} from './catalogue-status.js';
 // Orbit Census: every tracked object in Earth orbit, propagated live with SGP4.
 // Data: data/catalog.json, built from CelesTrak by tools/build-catalog.mjs in the deploy.
-// If that file is missing, the page asks CelesTrak directly; if that fails it says so.
+// If the shared catalogue is missing, show an unavailable state without provider queries.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { gstime, sunPos, eciToGeodetic } from '../vendor/satellite/index.js';
