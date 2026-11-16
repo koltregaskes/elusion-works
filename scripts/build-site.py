@@ -12,13 +12,14 @@ if OUT.exists():
     archive.parent.mkdir(exist_ok=True)
     OUT.rename(archive)
 OUT.mkdir()
-for name in ['index.html','styles.css','showcase-pages.css','app.js','cursor.js','404.html','robots.txt','llms.txt','security.txt','CNAME','cross-site-nav.js','cabinet.js','editorial-age.js']:
+for name in ['privacy.html','index.html','styles.css','showcase-pages.css','app.js','cursor.js','404.html','robots.txt','llms.txt','security.txt','CNAME','cross-site-nav.js','cabinet.js','editorial-age.js']:
     shutil.copy2(ROOT / name, OUT / name)
 # No demo page loads Markdown. Keep the bundled third-party licence only;
 # working notes stay in source and are never part of the public demo bundle.
 PUBLIC_DEMO_MARKDOWN = {'orbit-census/vendor/satellite/LICENSE.md'}
 def ignore_demo_notes(directory, names):
-    ignored = set(shutil.ignore_patterns('tools','__pycache__','*.pyc','.env','.env.*')(directory, names))
+    ignored = {'demo-card-snippet.html'} if Path(directory).name == 'solar-system' else set()
+    ignored.update(shutil.ignore_patterns('tools','__pycache__','*.pyc','.env','.env.*')(directory, names))
     ignored.update(name for name in names if name.lower().endswith('.md')
                    and (Path(directory) / name).relative_to(ROOT / 'demos').as_posix() not in PUBLIC_DEMO_MARKDOWN)
     return ignored
@@ -89,6 +90,7 @@ for p in sorted(OUT.rglob('*.html')):
     p.write_text(s,encoding='utf-8',newline='\n')
 (OUT/'sitemap.xml').write_text('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'+''.join('<url><loc>'+escape(u)+'</loc></url>\n' for u in urls)+'</urlset>\n',encoding='utf-8',newline='\n')
 subprocess.run(['node',str(ROOT/'scripts/prepare-demo-csp.mjs')],check=True)
+subprocess.run(['node',str(ROOT/'scripts/check-privacy-hosts.mjs'),str(OUT)],check=True)
 subprocess.run([sys.executable,str(ROOT/'scripts/build-rss.py'),'--output',str(OUT/'feed.xml')],check=True)
 subprocess.run([sys.executable,str(ROOT/'scripts/check-launch-seo.py')],check=True)
 subprocess.run([sys.executable,str(ROOT/'scripts/check-contact.py')],check=True)

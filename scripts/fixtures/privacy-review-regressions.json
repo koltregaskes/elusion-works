@@ -1,0 +1,3703 @@
+{
+  "description": "Synthetic source cases retained from all three independent privacy reviews; the backstop intentionally rejects undeclared non-request mentions as well.",
+  "cases": [
+    {
+      "id": "000",
+      "group": "smoke",
+      "file": "page.html",
+      "source": "<img srcset=\"https://surprise.invalid?image=1 1x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "001",
+      "group": "earlier",
+      "file": "styles.css",
+      "source": "@import \"https://surprise.invalid/new.css\";",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "002",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"/a.png\" srcset=\"https://surprise.invalid/a.png 1x, /b.png 2x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "003",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<div style=\"background-image:url(https://surprise.invalid/a.png)\"></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "004",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "fetch(\"https://surprise.invalid/collect\")",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "005",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img alt=\"Scene\" width=\"100\" height=\"100\" srcset=\"https://surprise.invalid?image=1 1x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "006",
+      "group": "earlier",
+      "file": "styles.css",
+      "source": "@import \"https://surprise.invalid?sheet=1\";",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "007",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "fetch(\"https://surprise.invalid?collect=1\")",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "008",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"https://surprise.invalid?image=1\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "009",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 1x, https://surprise.invalid?image=1 2x, /three.png 3x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "010",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 100w, https://surprise.invalid?image=1 200w, /three.png 300w\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "011",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<div style=\"background:url('https://surprise.invalid?image=1')\"></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "012",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import url(\"https://surprise.invalid?image=1\");",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "013",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import 'https://surprise.invalid?image=1';",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "014",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "a{background:url(https://surprise.invalid?image=1)}",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "015",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"https://surprise.invalid?image=1\";",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "016",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `https://surprise.invalid?image=1`;",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "017",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<!-- https://surprise.invalid?image=1 --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "018",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"https://surprise.invalid#frag\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "019",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 1x, https://surprise.invalid#frag 2x, /three.png 3x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "020",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 100w, https://surprise.invalid#frag 200w, /three.png 300w\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "021",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<div style=\"background:url('https://surprise.invalid#frag')\"></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "022",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import url(\"https://surprise.invalid#frag\");",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "023",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import 'https://surprise.invalid#frag';",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "024",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "a{background:url(https://surprise.invalid#frag)}",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "025",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"https://surprise.invalid#frag\";",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "026",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `https://surprise.invalid#frag`;",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "027",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<!-- https://surprise.invalid#frag --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "028",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"//proto.relative\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "029",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 1x, //proto.relative 2x, /three.png 3x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "030",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 100w, //proto.relative 200w, /three.png 300w\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "031",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<div style=\"background:url('//proto.relative')\"></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "032",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import url(\"//proto.relative\");",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "033",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import '//proto.relative';",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "034",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "a{background:url(//proto.relative)}",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "035",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"//proto.relative\";",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "036",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `//proto.relative`;",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "037",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<!-- //proto.relative --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "038",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"HTTPS://UPPER.example\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "039",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 1x, HTTPS://UPPER.example 2x, /three.png 3x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "040",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 100w, HTTPS://UPPER.example 200w, /three.png 300w\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "041",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<div style=\"background:url('HTTPS://UPPER.example')\"></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "042",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import url(\"HTTPS://UPPER.example\");",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "043",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import 'HTTPS://UPPER.example';",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "044",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "a{background:url(HTTPS://UPPER.example)}",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "045",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"HTTPS://UPPER.example\";",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "046",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `HTTPS://UPPER.example`;",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "047",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<!-- HTTPS://UPPER.example --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "048",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"https://user:pass@host.example\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "049",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 1x, https://user:pass@host.example 2x, /three.png 3x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "050",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 100w, https://user:pass@host.example 200w, /three.png 300w\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "051",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<div style=\"background:url('https://user:pass@host.example')\"></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "052",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import url(\"https://user:pass@host.example\");",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "053",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import 'https://user:pass@host.example';",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "054",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "a{background:url(https://user:pass@host.example)}",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "055",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"https://user:pass@host.example\";",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "056",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `https://user:pass@host.example`;",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "057",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<!-- https://user:pass@host.example --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "058",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"https://host.example:8443\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "059",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 1x, https://host.example:8443 2x, /three.png 3x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "060",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 100w, https://host.example:8443 200w, /three.png 300w\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "061",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<div style=\"background:url('https://host.example:8443')\"></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "062",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import url(\"https://host.example:8443\");",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "063",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import 'https://host.example:8443';",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "064",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "a{background:url(https://host.example:8443)}",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "065",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"https://host.example:8443\";",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "066",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `https://host.example:8443`;",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "067",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<!-- https://host.example:8443 --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "068",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"https://bücher.example\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "069",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 1x, https://bücher.example 2x, /three.png 3x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "070",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 100w, https://bücher.example 200w, /three.png 300w\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "071",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<div style=\"background:url('https://bücher.example')\"></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "072",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import url(\"https://bücher.example\");",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "073",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import 'https://bücher.example';",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "074",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "a{background:url(https://bücher.example)}",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "075",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"https://bücher.example\";",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "076",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `https://bücher.example`;",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "077",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<!-- https://bücher.example --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "078",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"https:\\/\\/escaped.example\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "079",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 1x, https:\\/\\/escaped.example 2x, /three.png 3x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "080",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 100w, https:\\/\\/escaped.example 200w, /three.png 300w\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "081",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<div style=\"background:url('https:\\/\\/escaped.example')\"></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "082",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import url(\"https:\\/\\/escaped.example\");",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "083",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import 'https:\\/\\/escaped.example';",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "084",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "a{background:url(https:\\/\\/escaped.example)}",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "085",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"https:\\/\\/escaped.example\";",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "086",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `https:\\/\\/escaped.example`;",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "087",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<!-- https:\\/\\/escaped.example --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "088",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"&#104;ttps://entity.example\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "089",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 1x, &#104;ttps://entity.example 2x, /three.png 3x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "090",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 100w, &#104;ttps://entity.example 200w, /three.png 300w\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "091",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<div style=\"background:url('&#104;ttps://entity.example')\"></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "092",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import url(\"&#104;ttps://entity.example\");",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "093",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import '&#104;ttps://entity.example';",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "094",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "a{background:url(&#104;ttps://entity.example)}",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "095",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"&#104;ttps://entity.example\";",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "096",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `&#104;ttps://entity.example`;",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "097",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<!-- &#104;ttps://entity.example --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "098",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"https:&#47;&#47;entity.example\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "099",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 1x, https:&#47;&#47;entity.example 2x, /three.png 3x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "100",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 100w, https:&#47;&#47;entity.example 200w, /three.png 300w\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "101",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<div style=\"background:url('https:&#47;&#47;entity.example')\"></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "102",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import url(\"https:&#47;&#47;entity.example\");",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "103",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import 'https:&#47;&#47;entity.example';",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "104",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "a{background:url(https:&#47;&#47;entity.example)}",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "105",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"https:&#47;&#47;entity.example\";",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "106",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `https:&#47;&#47;entity.example`;",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "107",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<!-- https:&#47;&#47;entity.example --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "108",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"&#x68;ttps://entity.example\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "109",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 1x, &#x68;ttps://entity.example 2x, /three.png 3x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "110",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 100w, &#x68;ttps://entity.example 200w, /three.png 300w\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "111",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<div style=\"background:url('&#x68;ttps://entity.example')\"></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "112",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import url(\"&#x68;ttps://entity.example\");",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "113",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import '&#x68;ttps://entity.example';",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "114",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "a{background:url(&#x68;ttps://entity.example)}",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "115",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"&#x68;ttps://entity.example\";",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "116",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `&#x68;ttps://entity.example`;",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "117",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<!-- &#x68;ttps://entity.example --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "118",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"https://fonts.gstatic.com\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "119",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 1x, https://fonts.gstatic.com 2x, /three.png 3x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "120",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 100w, https://fonts.gstatic.com 200w, /three.png 300w\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "121",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<div style=\"background:url('https://fonts.gstatic.com')\"></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "122",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import url(\"https://fonts.gstatic.com\");",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "123",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import 'https://fonts.gstatic.com';",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "124",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "a{background:url(https://fonts.gstatic.com)}",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "125",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"https://fonts.gstatic.com\";",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "126",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `https://fonts.gstatic.com`;",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "127",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<!-- https://fonts.gstatic.com --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "128",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"HTTPS://FONTS.GSTATIC.COM:443?font=1\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "129",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 1x, HTTPS://FONTS.GSTATIC.COM:443?font=1 2x, /three.png 3x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "130",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 100w, HTTPS://FONTS.GSTATIC.COM:443?font=1 200w, /three.png 300w\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "131",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<div style=\"background:url('HTTPS://FONTS.GSTATIC.COM:443?font=1')\"></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "132",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import url(\"HTTPS://FONTS.GSTATIC.COM:443?font=1\");",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "133",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import 'HTTPS://FONTS.GSTATIC.COM:443?font=1';",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "134",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "a{background:url(HTTPS://FONTS.GSTATIC.COM:443?font=1)}",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "135",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"HTTPS://FONTS.GSTATIC.COM:443?font=1\";",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "136",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `HTTPS://FONTS.GSTATIC.COM:443?font=1`;",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "137",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<!-- HTTPS://FONTS.GSTATIC.COM:443?font=1 --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "138",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"//fonts.gstatic.com#frag\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "139",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 1x, //fonts.gstatic.com#frag 2x, /three.png 3x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "140",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 100w, //fonts.gstatic.com#frag 200w, /three.png 300w\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "141",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<div style=\"background:url('//fonts.gstatic.com#frag')\"></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "142",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import url(\"//fonts.gstatic.com#frag\");",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "143",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import '//fonts.gstatic.com#frag';",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "144",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "a{background:url(//fonts.gstatic.com#frag)}",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "145",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"//fonts.gstatic.com#frag\";",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "146",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `//fonts.gstatic.com#frag`;",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "147",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<!-- //fonts.gstatic.com#frag --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "148",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"https://user:pass@fonts.gstatic.com:8443/a\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "149",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 1x, https://user:pass@fonts.gstatic.com:8443/a 2x, /three.png 3x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "150",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 100w, https://user:pass@fonts.gstatic.com:8443/a 200w, /three.png 300w\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "151",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<div style=\"background:url('https://user:pass@fonts.gstatic.com:8443/a')\"></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "152",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import url(\"https://user:pass@fonts.gstatic.com:8443/a\");",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "153",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import 'https://user:pass@fonts.gstatic.com:8443/a';",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "154",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "a{background:url(https://user:pass@fonts.gstatic.com:8443/a)}",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "155",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"https://user:pass@fonts.gstatic.com:8443/a\";",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "156",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `https://user:pass@fonts.gstatic.com:8443/a`;",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "157",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<!-- https://user:pass@fonts.gstatic.com:8443/a --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "158",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"https://bücher.example?x=1\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "xn--bcher-kva.example"
+      ]
+    },
+    {
+      "id": "159",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"https://site.invalid/image\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "160",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 1x, https://bücher.example?x=1 2x, /three.png 3x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "xn--bcher-kva.example"
+      ]
+    },
+    {
+      "id": "161",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 1x, https://site.invalid/image 2x, /three.png 3x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "162",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 100w, https://bücher.example?x=1 200w, /three.png 300w\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "xn--bcher-kva.example"
+      ]
+    },
+    {
+      "id": "163",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 100w, https://site.invalid/image 200w, /three.png 300w\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "164",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<div style=\"background:url('https://bücher.example?x=1')\"></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "xn--bcher-kva.example"
+      ]
+    },
+    {
+      "id": "165",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<div style=\"background:url('https://site.invalid/image')\"></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "166",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import url(\"https://bücher.example?x=1\");",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "xn--bcher-kva.example"
+      ]
+    },
+    {
+      "id": "167",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import url(\"https://site.invalid/image\");",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "168",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import 'https://bücher.example?x=1';",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "xn--bcher-kva.example"
+      ]
+    },
+    {
+      "id": "169",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import 'https://site.invalid/image';",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "170",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "a{background:url(https://bücher.example?x=1)}",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "xn--bcher-kva.example"
+      ]
+    },
+    {
+      "id": "171",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "a{background:url(https://site.invalid/image)}",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "172",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"https://bücher.example?x=1\";",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "xn--bcher-kva.example"
+      ]
+    },
+    {
+      "id": "173",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"https://site.invalid/image\";",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "174",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `https://bücher.example?x=1`;",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "xn--bcher-kva.example"
+      ]
+    },
+    {
+      "id": "175",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `https://site.invalid/image`;",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "176",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<!-- https://bücher.example?x=1 --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "xn--bcher-kva.example"
+      ]
+    },
+    {
+      "id": "177",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<!-- https://site.invalid/image --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "178",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"https://host.example:invalid/image\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "179",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 1x, https://host.example:invalid/image 2x, /three.png 3x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "180",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 100w, https://host.example:invalid/image 200w, /three.png 300w\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "181",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<div style=\"background:url('https://host.example:invalid/image')\"></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "182",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import url(\"https://host.example:invalid/image\");",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "183",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import 'https://host.example:invalid/image';",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "184",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "a{background:url(https://host.example:invalid/image)}",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "185",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"https://host.example:invalid/image\";",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "186",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `https://host.example:invalid/image`;",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "187",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<!-- https://host.example:invalid/image --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "188",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"https://[invalid]/image\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "189",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 1x, https://[invalid]/image 2x, /three.png 3x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "190",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 100w, https://[invalid]/image 200w, /three.png 300w\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "191",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<div style=\"background:url('https://[invalid]/image')\"></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "192",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import url(\"https://[invalid]/image\");",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "193",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import 'https://[invalid]/image';",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "194",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "a{background:url(https://[invalid]/image)}",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "195",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"https://[invalid]/image\";",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "196",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `https://[invalid]/image`;",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "197",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<!-- https://[invalid]/image --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "198",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"https://user:pass@/image\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "199",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 1x, https://user:pass@/image 2x, /three.png 3x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "200",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 100w, https://user:pass@/image 200w, /three.png 300w\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "201",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<div style=\"background:url('https://user:pass@/image')\"></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "202",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import url(\"https://user:pass@/image\");",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "203",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import 'https://user:pass@/image';",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "204",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "a{background:url(https://user:pass@/image)}",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "205",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"https://user:pass@/image\";",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "206",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `https://user:pass@/image`;",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "207",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<!-- https://user:pass@/image --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "208",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"https://\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "209",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 1x, https:// 2x, /three.png 3x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "210",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 100w, https:// 200w, /three.png 300w\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "211",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<div style=\"background:url('https://')\"></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "212",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import url(\"https://\");",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "213",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import 'https://';",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "214",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "a{background:url(https://)}",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "215",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"https://\";",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "216",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `https://`;",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "217",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<!-- https:// --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "218",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"https://?x=1\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "219",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 1x, https://?x=1 2x, /three.png 3x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "220",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 100w, https://?x=1 200w, /three.png 300w\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "221",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<div style=\"background:url('https://?x=1')\"></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "222",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import url(\"https://?x=1\");",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "223",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import 'https://?x=1';",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "224",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "a{background:url(https://?x=1)}",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "225",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"https://?x=1\";",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "226",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `https://?x=1`;",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "227",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<!-- https://?x=1 --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "228",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"https://#frag\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "229",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 1x, https://#frag 2x, /three.png 3x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "230",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 100w, https://#frag 200w, /three.png 300w\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "231",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<div style=\"background:url('https://#frag')\"></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "232",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import url(\"https://#frag\");",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "233",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import 'https://#frag';",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "234",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "a{background:url(https://#frag)}",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "235",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"https://#frag\";",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "236",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `https://#frag`;",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "237",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<!-- https://#frag --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "238",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"//?x=1\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "239",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 1x, //?x=1 2x, /three.png 3x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "240",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img srcset=\"/one.png 100w, //?x=1 200w, /three.png 300w\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "241",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<div style=\"background:url('//?x=1')\"></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "242",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import url(\"//?x=1\");",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "243",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import '//?x=1';",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "244",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "a{background:url(//?x=1)}",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "245",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"//?x=1\";",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "246",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `//?x=1`;",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "247",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<!-- //?x=1 --><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "248",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"https://fonts.gstatic.com;@surprise.invalid/image\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "249",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import 'https://fonts.gstatic.com;@surprise.invalid/image';",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "250",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"https://fonts.gstatic.com;@surprise.invalid/image\";",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "251",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `https://fonts.gstatic.com;@surprise.invalid/image`;",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "252",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"https://fonts.gstatic.com,@surprise.invalid/image\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "253",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import 'https://fonts.gstatic.com,@surprise.invalid/image';",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "254",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"https://fonts.gstatic.com,@surprise.invalid/image\";",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "255",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `https://fonts.gstatic.com,@surprise.invalid/image`;",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "256",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"https://fonts.gstatic.com)@surprise.invalid/image\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "257",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import 'https://fonts.gstatic.com)@surprise.invalid/image';",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "258",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"https://fonts.gstatic.com)@surprise.invalid/image\";",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "259",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `https://fonts.gstatic.com)@surprise.invalid/image`;",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "260",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"https://fonts.gstatic.com\t.surprise.invalid/image\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "261",
+      "group": "earlier",
+      "file": "site.css",
+      "source": "@import 'https://fonts.gstatic.com\t.surprise.invalid/image';",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "262",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = \"https://fonts.gstatic.com\t.surprise.invalid/image\";",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "263",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `https://fonts.gstatic.com\t.surprise.invalid/image`;",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "264",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"https://fonts.gstatic.com\n.surprise.invalid/image\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "265",
+      "group": "earlier",
+      "file": "site.js",
+      "source": "const image = `https://fonts.gstatic.com\n.surprise.invalid/image`;",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "266",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"https://fonts.gstatic.com&#9;.surprise.invalid/image\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "267",
+      "group": "earlier",
+      "file": "page.html",
+      "source": "<img src=\"https://fonts.gstatic.com&#10;.surprise.invalid/image\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "268",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img src=\"https://fonts.gstatic.com&#9;.evil.invalid/x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "269",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img src=\"https://fonts.gstatic.com&Tab;.evil.invalid/x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "270",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img src=\"https://fonts.gstatic.com&NewLine;.evil.invalid/x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "271",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img src=\"https&#58;//evil.invalid/x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "272",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img src=\"https:\\\\evil.invalid/x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "273",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img src=\"https://fonts.gstatic.com@evil.invalid\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "274",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img src=\"https://evil.invalid#@fonts.gstatic.com\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "275",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img src=\"https://fonts.gstatic.com.evil.invalid\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "276",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img src=\"https://evil.invalid./x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "277",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img src=\"https://fonts.gstatic.com./x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "278",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img src=\"https://%65vil.invalid/x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "279",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img src=\"https://fonts.gstatic.com&quot;@evil.invalid/x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "280",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img src=\"https://\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "281",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img src=\"//\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "282",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img src=\"https://evil.invalid:bad/x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "283",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img src=\"https:/evil.invalid\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "284",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img src=\"https:/evil.invalid\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "http://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "285",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img src=\"https://%66onts.gstatic.com/x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "286",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img src=\"https://fonts.gstatic.com./x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com."
+      ]
+    },
+    {
+      "id": "287",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img src=\"https://evil.invalid/x\" src=\"https://fonts.gstatic.com/x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "288",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img src=\"https://fonts.gstatic.com/x\" src=\"https://evil.invalid/x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ],
+      "previousExpectation": "pass",
+      "policyChange": "The new backstop rejects an undeclared mention even in a discarded duplicate attribute unless explicitly reviewed and excepted."
+    },
+    {
+      "id": "289",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img srcset=\"https://fonts.gstatic.com,@evil.invalid/x 1x, /local 2x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "290",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img srcset=\"https://evil.invalid/a,b 1x, /local 2x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "291",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img srcset=\"https://fonts.gstatic.com/a,b 1x, /local 2x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "292",
+      "group": "new",
+      "file": "page.html",
+      "source": "<base href=\"https://evil.invalid/nested/\"><img src=\"../x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "293",
+      "group": "new",
+      "file": "page.html",
+      "source": "<base href=\"/nested/\"><img src=\"../x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "294",
+      "group": "new",
+      "file": "page.html",
+      "source": "<meta http-equiv=\"refresh\" content=\"0;url=https://evil.invalid/\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "295",
+      "group": "new",
+      "file": "page.html",
+      "source": "<meta http-equiv=\"Refresh\" content=\"0; URL=&quot;https&#58;//evil.invalid/&quot;\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "296",
+      "group": "new",
+      "file": "page.html",
+      "source": "<link rel=\"preload\" href=\"https://evil.invalid/x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "297",
+      "group": "new",
+      "file": "page.html",
+      "source": "<link rel=\"dns-prefetch\" href=\"https://evil.invalid/x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "298",
+      "group": "new",
+      "file": "page.html",
+      "source": "<link rel=\"preconnect\" href=\"https://evil.invalid/x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "299",
+      "group": "new",
+      "file": "page.html",
+      "source": "<svg><image xlink:href=\"https://evil.invalid/x\"/></svg><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "300",
+      "group": "new",
+      "file": "page.html",
+      "source": "<object data=\"https://evil.invalid/x\"></object><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "301",
+      "group": "new",
+      "file": "page.html",
+      "source": "<iframe srcdoc=\"&lt;img src='https://evil.invalid/x'&gt;\"></iframe><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "302",
+      "group": "new",
+      "file": "site.css",
+      "source": "a{background-image:image-set(\"https://evil.invalid/x\" 1x)}",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "303",
+      "group": "new",
+      "file": "site.css",
+      "source": "a{background-image:image-set(url(\"https://evil.invalid/x\") 1x)}",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "304",
+      "group": "new",
+      "file": "site.css",
+      "source": "a{background-image:-webkit-image-set(\"https://evil.invalid/x\" 1x)}",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "305",
+      "group": "new",
+      "file": "site.css",
+      "source": "@import \"https://evil.invalid/style.css\";",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "306",
+      "group": "new",
+      "file": "site.css",
+      "source": "a{background:url(https://evil.invalid/x)}",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "307",
+      "group": "new",
+      "file": "page.html",
+      "source": "<div style='background:image-set(\"https://evil.invalid/x\" 1x)'></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "308",
+      "group": "new",
+      "file": "page.html",
+      "source": "<style>a{background:image-set(\"https://evil.invalid/x\" 1x)}</style><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "309",
+      "group": "new",
+      "file": "site.js",
+      "source": "fetch(\"https://evil.invalid/x\")",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "310",
+      "group": "new",
+      "file": "site.js",
+      "source": "new URL(\"https://evil.invalid/x\")",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "311",
+      "group": "new",
+      "file": "site.js",
+      "source": "import(\"https://evil.invalid/x.js\")",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "312",
+      "group": "new",
+      "file": "site.js",
+      "source": "fetch(`https://evil.invalid/x`)",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "313",
+      "group": "new",
+      "file": "site.js",
+      "source": "const p = `result: ${fetch(\"https://evil.invalid/x\")}`;",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "314",
+      "group": "new",
+      "file": "page.html",
+      "source": "<meta http-equiv=\"refresh\" content=\"0;url=https://fonts.gstatic.com/\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "315",
+      "group": "new",
+      "file": "page.html",
+      "source": "<meta http-equiv=\"Refresh\" content=\"0; URL=&quot;https&#58;//fonts.gstatic.com/&quot;\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "316",
+      "group": "new",
+      "file": "page.html",
+      "source": "<link rel=\"preload\" href=\"https://fonts.gstatic.com/x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "317",
+      "group": "new",
+      "file": "page.html",
+      "source": "<link rel=\"dns-prefetch\" href=\"https://fonts.gstatic.com/x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "318",
+      "group": "new",
+      "file": "page.html",
+      "source": "<link rel=\"preconnect\" href=\"https://fonts.gstatic.com/x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "319",
+      "group": "new",
+      "file": "page.html",
+      "source": "<svg><image xlink:href=\"https://fonts.gstatic.com/x\"/></svg><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "320",
+      "group": "new",
+      "file": "page.html",
+      "source": "<object data=\"https://fonts.gstatic.com/x\"></object><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "321",
+      "group": "new",
+      "file": "page.html",
+      "source": "<iframe srcdoc=\"&lt;img src='https://fonts.gstatic.com/x'&gt;\"></iframe><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "322",
+      "group": "new",
+      "file": "site.css",
+      "source": "a{background-image:image-set(\"https://fonts.gstatic.com/x\" 1x)}",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "323",
+      "group": "new",
+      "file": "site.css",
+      "source": "a{background-image:image-set(url(\"https://fonts.gstatic.com/x\") 1x)}",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "324",
+      "group": "new",
+      "file": "site.css",
+      "source": "a{background-image:-webkit-image-set(\"https://fonts.gstatic.com/x\" 1x)}",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "325",
+      "group": "new",
+      "file": "site.css",
+      "source": "@import \"https://fonts.gstatic.com/style.css\";",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "326",
+      "group": "new",
+      "file": "site.css",
+      "source": "a{background:url(https://fonts.gstatic.com/x)}",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "327",
+      "group": "new",
+      "file": "page.html",
+      "source": "<div style='background:image-set(\"https://fonts.gstatic.com/x\" 1x)'></div><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "328",
+      "group": "new",
+      "file": "page.html",
+      "source": "<style>a{background:image-set(\"https://fonts.gstatic.com/x\" 1x)}</style><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "329",
+      "group": "new",
+      "file": "site.js",
+      "source": "fetch(\"https://fonts.gstatic.com/x\")",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "330",
+      "group": "new",
+      "file": "site.js",
+      "source": "new URL(\"https://fonts.gstatic.com/x\")",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "331",
+      "group": "new",
+      "file": "site.js",
+      "source": "import(\"https://fonts.gstatic.com/x.js\")",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "332",
+      "group": "new",
+      "file": "site.js",
+      "source": "fetch(`https://fonts.gstatic.com/x`)",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "333",
+      "group": "new",
+      "file": "site.js",
+      "source": "const p = `result: ${fetch(\"https://fonts.gstatic.com/x\")}`;",
+      "expected": "pass",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "334",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img src=\"https://sample-reader:example-only@evil.invalid/x\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    },
+    {
+      "id": "335",
+      "group": "new",
+      "file": "page.html",
+      "source": "<img src=\"https://sample-reader:example-only@\"><footer><a href=\"privacy.html\">Privacy notice</a></footer>",
+      "expected": "fail",
+      "base": "https://site.invalid/",
+      "allowedHosts": [
+        "fonts.gstatic.com"
+      ]
+    }
+  ]
+}
