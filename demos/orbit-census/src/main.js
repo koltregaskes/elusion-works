@@ -1,10 +1,11 @@
+import {inspectCatalogue,catalogueNotice} from './catalogue-status.js';
 // Orbit Census: every tracked object in Earth orbit, propagated live with SGP4.
 // Data: data/catalog.json, built from CelesTrak by tools/build-catalog.mjs in the deploy.
-// If that file is missing, the page asks CelesTrak directly; if that fails it says so.
+// If the shared catalogue is missing, show an unavailable state without provider queries.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { gstime, sunPos, eciToGeodetic } from '../vendor/satellite/index.js';
-import { CELESTRAK_GP, GROUPS, mergeGroups, TYPES } from './catalog.js';
+import { GROUPS, TYPES } from './catalog.js';
 import { orbitShape, regime, family, FAMILIES, NAV, MEGA, ownerName, siteName, TYPE_COLORS, REGIME_COLORS, OWNER_TOP, OWNER_COLORS, hexToRgb } from './classify.js';
 import { Globe, RE } from './globe.js';
 import { Swarm } from './swarm.js';
@@ -80,7 +81,7 @@ const COLOR_MODES = {
 };
 const LENSES = [
   { id: 'all', label: 'Everything', k: 'Lens 1', color: 'type', dist: 38, test: () => true,
-    story: 'Every object with a public element set: working satellites, spent rocket stages and the fragments of break-ups, each one propagated with SGP4 to the sim time above.' },
+    story: 'Objects from the selected CelesTrak groups: working satellites, spent rocket stages and the fragments of break-ups, each one propagated with SGP4 to the sim time above.' },
   { id: 'leo', label: 'Low orbit', k: 'Lens 2 · below 2,000 km', color: 'type', dist: 24, test: (it) => it.regime === 'LEO',
     story: 'Where nearly everything is: imaging, broadband, the crewed stations and most of the debris. One lap takes about 90 to 127 minutes, at around 7.5 km/s.' },
   { id: 'mega', label: 'Megaconstellations', k: 'Lens 3', color: 'family', dist: 26, test: (it) => MEGA.has(it.fam),
@@ -104,16 +105,8 @@ async function loadBundled() {
   const res = await fetch('data/catalog.json', { cache: 'no-cache' });
   if (!res.ok) throw new Error(`catalog ${res.status}`);
   const doc = await res.json();
-  if (!Array.isArray(doc.rows) || !doc.rows.length) throw new Error('empty catalogue');
+  inspectCatalogue(doc);
   return doc;
-}
-async function loadLive() {
-  const parts = await Promise.all(GROUPS.map(async (g) => {
-    try { const r = await fetch(`${CELESTRAK_GP}?GROUP=${g.id}&FORMAT=json`); if (!r.ok) return null; return { id: g.id, records: await r.json() }; } catch { return null; }
-  }));
-  const ok = parts.filter(Boolean);
-  if (!ok.length) throw new Error('CelesTrak did not answer');
-  return { v: 1, generated: new Date().toISOString(), source: 'CelesTrak GP data, fetched live by your browser', live: true, satcat: false, rows: mergeGroups(ok, null) };
 }
 
 function buildItems(rows) {
@@ -269,7 +262,7 @@ function renderCensus() {
     lg.appendChild(li);
   }
   const d = S.doc; const c = d?.census;
-  $('#censusNote').textContent = c ? `The public catalogue lists ${n0(c.total)} objects still in Earth orbit (${n0(c.PAY || 0)} payloads, ${n0(c['R/B'] || 0)} rocket bodies, ${n0(c.DEB || 0)} debris). Shown: the ${n0(S.items.length)} with current public elements.` : 'Shown: every object in the fetched CelesTrak groups. Types read from names (no SATCAT on a live fetch).';
+  $('#censusNote').textContent = c ? `The public catalogue lists ${n0(c.total)} objects still in Earth orbit (${n0(c.PAY || 0)} payloads, ${n0(c['R/B'] || 0)} rocket bodies, ${n0(c.DEB || 0)} debris). Shown: the ${n0(S.items.length)} with public element sets in this snapshot.` : 'Shown: every object in the fetched CelesTrak groups. Types read from names (SATCAT unavailable).';
 }
 function renderLensUi() {
   $$('#lenses button').forEach((b) => b.classList.toggle('on', b.dataset.l === S.lens));
@@ -595,8 +588,9 @@ function frame(now) {
     lastUi = now;
     $('#simClock').textContent = fmtUTC(S.simT);
     const off = S.simT - Date.now();
-    $('#offLbl').textContent = Math.abs(off) < 5000 ? 'Live' : `${off > 0 ? '+' : '−'}${fmtDur(off)}`;
+    $('#offLbl').textContent = Math.abs(off) < 5000 ? 'Now (propagated)' : `${off > 0 ? '+' : '−'}${fmtDur(off)}`;
     liveSel();
+    if (S.doc && now >= nextSourceCheck) { setSource(); nextSourceCheck=now+60000; }
   }
   if (now - lastObs > 1000 && S.visible.length) { lastObs = now; overhead(); }
   if (now - lastChart > 1000 && S.chart === 'alt' && S.swarm?.have) {
@@ -621,8 +615,7 @@ async function start() {
   try { doc = await loadBundled(); S.source = /SYNTHETIC/i.test(doc.source) ? 'synthetic' : 'bundled'; }
   catch (e) {
     console.warn('bundled catalogue:', e.message);
-    boot('Asking CelesTrak directly', 0.35);
-    try { doc = await loadLive(); S.source = 'live'; } catch (e2) { console.warn('live:', e2.message); }
+    boot('Shared catalogue unavailable', 0.35);
   }
   if (!doc) { $('#boot').classList.add('done'); $('#nodata').hidden = false; setSource(); return; }
   S.doc = doc;
@@ -654,16 +647,17 @@ function ready(m) {
   const done = () => { if (S.swarm.have) { $('#boot').classList.add('done'); flyTo(lens().dist, new THREE.Vector3(), null, 2.4); } else setTimeout(done, 50); };
   done();
 }
+let nextSourceCheck=0;
 function setSource() {
   const el = $('#srcLbl'); el.className = 'mono';
   const d = S.doc;
   if (!d) { el.classList.add('bad'); el.innerHTML = '<i></i>No data'; return; }
-  const age = Date.now() - Date.parse(d.generated);
-  if (S.source === 'synthetic') { el.classList.add('bad'); el.innerHTML = '<i></i>Synthetic test data'; $('#footSrc').textContent = 'TEST DATA: synthetic orbits, not real objects'; return; }
-  if (S.source === 'live') { el.classList.add('live'); el.innerHTML = '<i></i>CelesTrak · live'; return; }
-  el.classList.add(age < 18 * 3600000 ? 'live' : 'warn');
-  el.innerHTML = `<i></i>CelesTrak · ${fmtDur(age)} ago`;
-  el.title = `Catalogue built ${fmtUTC(Date.parse(d.generated))} UTC`;
+  const status=inspectCatalogue(d);
+  el.classList.add(status.partial||status.staleAcquisition||status.oldElements||status.futureElements?'warn':'mono');
+  el.textContent=status.partial?'Partial catalogue':status.staleAcquisition?'Stale catalogue':'CelesTrak snapshot';
+  $('#dataNotice').textContent=catalogueNotice(d,status);
+  $('#dataNotice').hidden=false;
+  el.title=$('#dataNotice').textContent;
 }
 $('#retryBtn').addEventListener('click', () => location.reload());
 window.__oc = { S, camera, controls, globe, flyTo, select, setLens };

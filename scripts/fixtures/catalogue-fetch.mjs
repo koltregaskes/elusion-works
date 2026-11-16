@@ -38,8 +38,10 @@ globalThis.fetch = async url => {
   if (s.includes('gp.php')) {
     if (scenario === 'partial-gp' && new URL(s).searchParams.get('GROUP') === 'stations') throw Error('Fixture GP outage');
     if (scenario === 'all-gp-failed') throw Error('Fixture total GP outage');
-    return { ok: true, json: async () => records };
+    const fields = [...new Set(records.flatMap(Object.keys))];
+    const body = fields.join(',')+'\n'+records.map(r=>fields.map(f=>r[f]??'').join(',')).join('\n');
+    return { ok:true, status:200, text:async()=>body };
   }
   if (scenario === 'satcat-failed') throw Error('Fixture SATCAT outage');
-  return { ok: true, text: async () => csv };
+  return { ok: true, status:200, text: async () => csv };
 };

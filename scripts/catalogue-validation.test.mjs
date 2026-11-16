@@ -19,12 +19,15 @@ fs.mkdirSync(path.join(fixture, 'demos/orbit-census/src'), { recursive: true });
 fs.mkdirSync(path.join(fixture, '_site/demos/orbit-census/data'), { recursive: true });
 fs.writeFileSync(path.join(fixture, 'package.json'), '{"type":"module"}');
 fs.copyFileSync('demos/orbit-census/src/catalog.js', path.join(fixture, 'demos/orbit-census/src/catalog.js'));
+fs.copyFileSync('demos/orbit-census/src/freshness-policy.js', path.join(fixture,'demos/orbit-census/src/freshness-policy.js'));
+fs.copyFileSync('demos/orbit-census/src/classify.js', path.join(fixture,'demos/orbit-census/src/classify.js'));
+fs.copyFileSync('demos/orbit-census/src/catalogue-status.js', path.join(fixture,'demos/orbit-census/src/catalogue-status.js'));
 const catalogue = path.join(fixture, '_site/demos/orbit-census/data/catalog.json');
 const row = ['Fixture', 1, '2000-001A', 'PAY', '', '', '', null, 'active',
   '2000-01-01T00:00:00', 15, 0.001, 51.6, 10, 20, 30, 0, 0, 0];
 // Original valid fixtures used a one-object census. Raise only the population and
 // its type counts to the new conservative floor; keep the original 2,000 GP rows.
-const valid = () => ({ v: 1, generated: '2000-01-01T00:00:00Z', fields: FIELDS,
+const valid = () => ({ v: 1, generated: new Date().toISOString(), fields: FIELDS,
   rows: Array.from({ length: 2000 }, (_, i) => { const r = [...row]; r[1] = i + 1; return r; }),
   groups: Object.fromEntries(GROUPS.map(g => [g.id, 1])), satcat: true,
   census: { total: 10000, PAY: 10000, 'R/B': 0, DEB: 0, UNK: 0 },
@@ -91,7 +94,7 @@ test('JSON exponent overflow is rejected as non-finite', () => {
   assert.equal(r.status, 1, r.stderr); assert.match(r.stderr, /non-finite/);
 });
 test('valid orbital boundaries, Z/fractional epoch and signed drag/derivatives pass', () => {
-  const d = valid(); Object.assign(d.rows[0], { 7: 0, 9: '2000-01-01T00:00:00.123456Z', 10: 20, 11: 0, 12: 180,
+  const d = valid(); Object.assign(d.rows[0], { 7: 0, 9: '2000-01-01T00:00:00.123456Z', 10: 17, 11: 0, 12: 180,
     13: 0, 14: 359.999, 15: 0, 16: -0.001, 17: -0.01, 18: -0.001 });
   const r = validate(d); assert.equal(r.status, 0, r.stderr);
 });
@@ -126,10 +129,10 @@ for (const csv of ['NAME\npart"quoted"', 'NAME\n"quoted"text', 'NAME\n"']) test(
 });
 const preload = new URL('./fixtures/catalogue-fetch.mjs', import.meta.url).href;
 function build(scenario) {
-  return spawnSync(process.execPath, ['--import', preload, path.join(root, 'demos/orbit-census/tools/build-catalog.mjs'), catalogue, scenario], { cwd: fixture, encoding: 'utf8' });
+  return spawnSync(process.execPath, ['--import', preload, path.join(root, 'demos/orbit-census/tools/build-catalog.mjs'), catalogue, scenario, path.join(fixture, 'cache-' + scenario.replaceAll(':','-') + '.json')], { cwd: fixture, encoding: 'utf8' });
 }
 for (const [scenario, expectedBuild, expectedGate] of [
-  ['complete', 0, 0], ['partial-gp', 0, 1], ['satcat-failed', 0, 1], ['all-gp-failed', 1, null],
+  ['complete', 0, 0], ['partial-gp', 1, null], ['satcat-failed', 1, null], ['all-gp-failed', 1, null],
   ['invalid-satcat', 0, 1], ['invalid-gp', 0, 1], ['one-missing-epoch', 0, 1], ['header-only', 0, 1],
   ['tiny-census', 0, 1], ['missing-header', 0, 1], ['bad-identifier', 0, 1], ['zero-identifier', 0, 1],
   ['fractional-identifier', 0, 1], ['unsafe-identifier', 0, 1], ['unknown-type', 0, 1],
@@ -142,6 +145,12 @@ for (const [scenario, expectedBuild, expectedGate] of [
   fs.writeFileSync(catalogue, 'previous good catalogue');
   const b = build(scenario); assert.equal(b.status, expectedBuild, b.stdout + b.stderr);
   if (expectedGate === null) {
+    if (scenario === 'partial-gp') {
+      const cacheFile=path.join(fixture,'cache-partial-gp.json');
+      const saved=new Map(JSON.parse(fs.readFileSync(cacheFile,'utf8')));
+      assert.ok(saved.get('https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=csv')?.body, 'completed GP response survives the later group failure');
+      assert.ok(saved.get('urn:elusionworks:celestrak:retry-deadline')?.retryUntil>Date.now(), 'provider pause survives the failed builder process');
+    }
     assert.equal(fs.readFileSync(catalogue, 'utf8'), 'previous good catalogue');
     assert.match(b.stdout + b.stderr, /No GP group fetched|non-finite orbital/);
     return;
