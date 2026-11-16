@@ -4,20 +4,7 @@
 // later — the public surface is `getWeatherDay(now)` returning a 48-entry
 // array.
 //
-// API key handoff: the consuming code expects two values from the user via
-// the Setup page or localStorage:
-//   - atm.wu_station_id   (default: "IEDENB52")
-//   - atm.wu_api_key      (user-provided, kept client-side)
-//   - atm.maps_api_key    (user-provided, kept client-side)
-// All three are PLACEHOLDERS in this build — the data engine returns dummy
-// data and the map view uses a static mockup. Wire-up notes:
-//
-//   const stationId = localStorage.getItem('atm.wu_station_id') || 'IEDENB52';
-//   const apiKey = localStorage.getItem('atm.wu_api_key');
-//   const url = `https://api.weather.com/v2/pws/observations/current?stationId=${stationId}&format=json&units=m&apiKey=${apiKey}`;
-//   // For forecast, use api.weather.com/v3/wx/forecast/hourly/...
-//   // (WU's PWS API may have CORS limits when called from the browser
-//   //  directly — a proxy may be needed in production.)
+// Synthetic series seeded by the local date; no provider connection.
 
 (function () {
   // Seeded RNG so the dummy day is stable across reloads but unique per date.

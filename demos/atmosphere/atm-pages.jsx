@@ -5,8 +5,7 @@
 
 function MapView({ snapshot, hour, accent, location }) {
   // Pretty satellite/terrain-style map mockup with sun-bearing overlay.
-  // Replace this whole inner SVG block with a Google Maps embed when a key
-  // is available — see comment in atm-weather.js for the integration steps.
+  // Fictional map; independent of the saved display label.
 
   const az = AtmData.azimuth(hour);
   const alt = AtmData.altitude(hour);
@@ -23,7 +22,7 @@ function MapView({ snapshot, hour, accent, location }) {
       <div className="section-head">
         <div>
           <div className="section-num">Section 02 · Map</div>
-          <div className="section-title">Where the sun is, where you are.</div>
+          <div className="section-title">An illustrative map and sun bearing.</div>
         </div>
         <div className="section-meta">{location.label} · {location.lat}°N · {location.lon}°E</div>
       </div>
@@ -157,7 +156,7 @@ function MapView({ snapshot, hour, accent, location }) {
 
         {/* Placeholder banner */}
         <div style={{ position: 'absolute', top: 24, right: 24, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(20px)', border: '1px dashed rgba(255,255,255,0.25)', borderRadius: 10, padding: '8px 14px', fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: 1.4, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase' }}>
-          Map preview · Google Maps wires in via API key
+          Illustrative map · no map service connected
         </div>
       </GlassPanel>
     </section>
@@ -178,7 +177,7 @@ function WeatherView({ snapshot, dataset, hour, virtualOffset, accent, station }
             <div className="section-num">Section 02 · Weather</div>
             <div className="section-title">{condLabel}.</div>
           </div>
-          <div className="section-meta">STATION · {station.id} · {snapshot.isHistory ? 'HISTORY' : snapshot.isForecast ? 'FORECAST' : 'OBSERVED'}</div>
+          <div className="section-meta">STATION · {station.id} · {snapshot.isHistory ? 'ILLUSTRATIVE REPLAY' : snapshot.isForecast ? 'ILLUSTRATIVE FUTURE' : 'SIMULATED'}</div>
         </div>
 
         {/* Temp hero */}
@@ -232,10 +231,10 @@ function WeatherView({ snapshot, dataset, hour, virtualOffset, accent, station }
       <section className="page-section">
         <div className="section-head">
           <div>
-            <div className="section-num">Section 03 · Station feed</div>
+            <div className="section-num">Section 03 · Simulated series</div>
             <div className="section-title">All the numbers.</div>
           </div>
-          <div className="section-meta">WU · {station.id}</div>
+          <div className="section-meta">SIMULATED · {station.id}</div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
           <StatCard label="Rain rate" value={snapshot.rain.toFixed(2)} unit="MM/H" sub={snapshot.rain > 0.1 ? 'Active' : 'Dry'} />
@@ -357,8 +356,8 @@ function TimelineChart({ dataset, virtualOffset, accent }) {
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ display: 'block' }}>
         {/* History/forecast split */}
         <rect x={pad} y={20} width={xFor(0) - pad} height={H - 80} fill="rgba(255,255,255,0.03)" />
-        <text x={pad + (xFor(0) - pad) / 2} y={36} textAnchor="middle" fontFamily="'JetBrains Mono', monospace" fontSize="10" letterSpacing="2" fill="rgba(255,255,255,0.45)">HISTORY · STATION FEED</text>
-        <text x={xFor(0) + (W - pad - xFor(0)) / 2} y={36} textAnchor="middle" fontFamily="'JetBrains Mono', monospace" fontSize="10" letterSpacing="2" fill="rgba(255,255,255,0.45)">FORECAST · ECMWF</text>
+        <text x={pad + (xFor(0) - pad) / 2} y={36} textAnchor="middle" fontFamily="'JetBrains Mono', monospace" fontSize="10" letterSpacing="2" fill="rgba(255,255,255,0.45)">ILLUSTRATIVE REPLAY</text>
+        <text x={xFor(0) + (W - pad - xFor(0)) / 2} y={36} textAnchor="middle" fontFamily="'JetBrains Mono', monospace" fontSize="10" letterSpacing="2" fill="rgba(255,255,255,0.45)">ILLUSTRATIVE FUTURE</text>
 
         {/* Cloudiness band */}
         <polyline points={`${pad},${H - 60} ${cloudFill} ${W - pad},${H - 60}`} fill="rgba(255,255,255,0.07)" />
@@ -450,14 +449,11 @@ function DaylightStrip({ hour, accent }) {
 function SetupView({ location, setLocation, station, setStation, accent }) {
   const [postcode, setPostcode] = React.useState(location.postcode || '');
   const [stationId, setStationId] = React.useState(station.id || 'IEDENB52');
-  const [wuKey, setWuKey] = React.useState(station.apiKey || '');
-  const [mapsKey, setMapsKey] = React.useState(localStorage.getItem('atm.maps_api_key') || '');
   const [units, setUnits] = React.useState(localStorage.getItem('atm.units') || 'metric');
 
   const save = () => {
     setLocation({ ...location, postcode, label: postcode || location.label });
-    setStation({ id: stationId, apiKey: wuKey });
-    localStorage.setItem('atm.maps_api_key', mapsKey);
+    setStation({ id: stationId });
     localStorage.setItem('atm.units', units);
   };
 
@@ -466,7 +462,7 @@ function SetupView({ location, setLocation, station, setStation, accent }) {
       <div className="section-head">
         <div>
           <div className="section-num">Section 02 · Setup</div>
-          <div className="section-title">Point Atmosphere at your sky.</div>
+          <div className="section-title">Customise the simulated display.</div>
         </div>
         <div className="section-meta">SAVED LOCALLY · NEVER LEAVES YOUR BROWSER</div>
       </div>
@@ -477,40 +473,27 @@ function SetupView({ location, setLocation, station, setStation, accent }) {
           <div className="display" style={{ fontSize: 24, color: '#fff', marginTop: 6 }}>Postcode or place</div>
           <SetupInput label="Place label" value={postcode} onChange={setPostcode} placeholder="SW1A 1AA" big />
           <div className="mono" style={{ fontSize: 11, color: 'var(--atm-text-faint)', marginTop: 10, letterSpacing: 1.2, lineHeight: 1.5 }}>
-            USED FOR LATITUDE/LONGITUDE LOOKUP · SUN POSITION CALCULATION · GOOGLE MAPS CENTRING
+            DISPLAY LABEL ONLY · NO LOOKUP OR LOCATION-BASED CALCULATION
           </div>
 
-          <div style={{ marginTop: 24 }}>
-            <MonoLabel>Google Maps API key</MonoLabel>
-            <SetupInput label="Google Maps API key" value={mapsKey} onChange={setMapsKey} placeholder="—" type="password" mono />
-            <div className="mono" style={{ fontSize: 10, color: 'var(--atm-text-faint)', marginTop: 8, letterSpacing: 1.2, lineHeight: 1.5 }}>
-              ⓘ PLACEHOLDER · CODE HANDOFF · agents wire this into the embed URL.
-              <br />Until then, the Map page renders a beautiful mockup.
-            </div>
-          </div>
+          <p>Illustrative map only. No map provider is connected.</p>
+          <button type="button" disabled>Map connection unavailable in this demo</button>
         </GlassPanel>
 
         <GlassPanel style={{ padding: 32 }}>
-          <MonoLabel accent>Weather Underground</MonoLabel>
-          <div className="display" style={{ fontSize: 24, color: '#fff', marginTop: 6 }}>Your weather station</div>
+          <MonoLabel accent>Simulated weather</MonoLabel>
+          <div className="display" style={{ fontSize: 24, color: '#fff', marginTop: 6 }}>Demo station label</div>
 
           <div style={{ marginTop: 18 }}>
             <MonoLabel>Station ID</MonoLabel>
             <SetupInput label="Station ID" value={stationId} onChange={setStationId} placeholder="IEDENB52" mono big />
             <div className="mono" style={{ fontSize: 10, color: 'var(--atm-text-faint)', marginTop: 6, letterSpacing: 1.2 }}>
-              DEFAULT · IEDENB52 · Replace with your PWS ID
+              DISPLAY LABEL ONLY · NO STATION CONNECTION
             </div>
           </div>
 
-          <div style={{ marginTop: 22 }}>
-            <MonoLabel>WU API key</MonoLabel>
-            <SetupInput label="Weather Underground API key" value={wuKey} onChange={setWuKey} placeholder="—" type="password" mono />
-            <div className="mono" style={{ fontSize: 10, color: 'var(--atm-text-faint)', marginTop: 8, letterSpacing: 1.2, lineHeight: 1.5 }}>
-              ⓘ PLACEHOLDER · CODE HANDOFF · agents wire this into
-              <br /><code style={{ color: 'var(--atm-text-soft)' }}>api.weather.com/v2/pws/observations/current</code>
-              <br />Until then, dummy hourly data drives the UI so the design is testable.
-            </div>
-          </div>
+          <p>Weather is generated from the local date. No weather provider is connected.</p>
+          <button type="button" disabled>Weather connection unavailable in this demo</button>
         </GlassPanel>
       </div>
 

@@ -2,22 +2,22 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Atmosphere — Local Solar &amp; Weather Analyzer</title>
+<title>Atmosphere — Simulated Solar &amp; Weather Demo</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="description" content="Atmosphere is an Elusion Works demo for a local solar and weather analyzer: sun position, hyperlocal weather panels, map bearing mockup, setup flow, and scrubbed virtual time." />
+<meta name="description" content="Atmosphere is a simulated weather and solar design demo. Weather is generated from your local date; solar curves and the map are illustrative, not observations or forecasts." />
 <meta name="theme-color" content="#0a0e24" />
 <meta name="robots" content="index,follow" />
 <meta name="referrer" content="strict-origin-when-cross-origin" />
 <link rel="canonical" href="https://elusionworks.com/demos/atmosphere/" />
-<meta property="og:title" content="Atmosphere — Local Solar &amp; Weather Analyzer" />
-<meta property="og:description" content="A public Elusion Works demo for a future full weather app, with solar line-of-sight tools, weather station panels, map bearing mockup, and virtual-time playback." />
+<meta property="og:title" content="Atmosphere — Simulated Solar &amp; Weather Demo" />
+<meta property="og:description" content="A simulated weather and solar design demo with illustrative replay, future scenarios and a fictional map. No weather or maps service is connected." />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://elusionworks.com/demos/atmosphere/" />
 <meta property="og:image" content="https://elusionworks.com/demos/atmosphere/thumbnail.png" />
-<meta property="og:image:alt" content="Atmosphere local solar and weather analyzer demo preview." />
+<meta property="og:image:alt" content="Atmosphere simulated weather and solar demo preview." />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="Atmosphere — Local Solar &amp; Weather Analyzer" />
-<meta name="twitter:description" content="A solar and weather analyzer demo that will grow into a full weather app." />
+<meta name="twitter:title" content="Atmosphere — Simulated Solar &amp; Weather Demo" />
+<meta name="twitter:description" content="A simulated weather and solar design demo. No observations or real forecasts." />
 <meta name="twitter:image" content="https://elusionworks.com/demos/atmosphere/thumbnail.png" />
 <link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -292,11 +292,9 @@ function App() {
   }, [location]);
   const [station, setStation] = React.useState(() => ({
     id: localStorage.getItem('atm.wu_station_id') || 'IEDENB52',
-    apiKey: localStorage.getItem('atm.wu_api_key') || '',
   }));
   React.useEffect(() => {
     localStorage.setItem('atm.wu_station_id', station.id);
-    if (station.apiKey) localStorage.setItem('atm.wu_api_key', station.apiKey);
   }, [station]);
 
   React.useEffect(() => {
@@ -342,10 +340,10 @@ function App() {
               <span className="brand-dot" />
               <h1 className="brand-name">Atmosphere</h1>
               <span style={{ color: 'var(--atm-text-faint)', fontSize: 13, marginLeft: 6 }}>
-                {page === 'sun' && '· Local solar line-of-sight'}
-                {page === 'weather' && '· Weather station feed'}
-                {page === 'map' && '· Sun bearing on the map'}
-                {page === 'setup' && '· Connect your station'}
+                {page === 'sun' && '· Illustrative solar curves'}
+                {page === 'weather' && '· Simulated weather'}
+                {page === 'map' && '· Illustrative map'}
+                {page === 'setup' && '· Demo preferences'}
               </span>
             </div>
             <div className="nav-pills">
@@ -356,11 +354,12 @@ function App() {
               ))}
             </div>
             <div className="topbar-right">
-              <span><span className="live-dot" style={{ marginRight: 8 }} />{snapshot.isNow ? 'Live' : snapshot.isHistory ? 'Replay' : 'Forecast'}</span>
+              <span><span className="live-dot" style={{ marginRight: 8 }} />Simulated weather</span>
               <span>{location.lat.toFixed(3)}°N · {location.lon.toFixed(3)}°E</span>
             </div>
           </div>
 
+          <p role="note">Simulated weather. Replay, future scenarios and solar values are illustrative. No live observations or real forecasts. Location labels do not change the synthetic weather or hour-only solar curves.</p>
           {/* ===== SUN PAGE ===== */}
           {page === 'sun' && (
             <>
@@ -384,7 +383,7 @@ function App() {
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
                   <div style={{ textAlign: 'center', marginBottom: -16 }}>
                     <div className="mono" style={{ fontSize: 10, letterSpacing: 3, color: 'var(--atm-text-faint)', textTransform: 'uppercase' }}>SECTION 01 · Solar Dial</div>
-                    <div className="display" style={{ fontSize: 28, marginTop: 8 }}>Where is the sun, right now?</div>
+                    <div className="display" style={{ fontSize: 28, marginTop: 8 }}>Explore an illustrative solar day.</div>
                     <div className="mono" style={{ fontSize: 11, color: 'var(--atm-text-faint)', marginTop: 6, letterSpacing: 1.2 }}>drag the puck → scrub the day</div>
                   </div>
                   <PolarDialLive hour={hour} onChange={setHourFromDial} size={520} accent={t.accent} />
@@ -409,9 +408,9 @@ function App() {
                 <div className="section-head">
                   <div>
                     <div className="section-num">Section 02 · Cloud Intercept</div>
-                    <div className="section-title">Your line-of-sight, layer by layer.</div>
+                    <div className="section-title">Illustrative light, layer by layer.</div>
                   </div>
-                  <div className="section-meta">3 LAYERS · LIVE RAYCAST</div>
+                  <div className="section-meta">3 ILLUSTRATIVE LAYERS</div>
                 </div>
                 <div className="cloud-section">
                   <GlassPanel style={{ padding: 24 }}>
@@ -445,7 +444,7 @@ function App() {
                       placeholder="Drop a photo of your sky"
                     ></image-slot>
                     <div className="mono" style={{ fontSize: 10, color: 'var(--atm-text-faint)', marginTop: 12, lineHeight: 1.4, letterSpacing: 1 }}>
-                      +4.3% CONFIDENCE BOOST<br />FROM LOCAL FEEDBACK
+                      ILLUSTRATIVE FEEDBACK<br />NO MEASURED CONFIDENCE
                     </div>
                   </GlassPanel>
                 </div>
@@ -455,9 +454,9 @@ function App() {
                 <div className="section-head">
                   <div>
                     <div className="section-num">Section 03 · Telemetry</div>
-                    <div className="section-title">Current conditions.</div>
+                    <div className="section-title">Simulated conditions.</div>
                   </div>
-                  <div className="section-meta">UPDATED · LIVE</div>
+                  <div className="section-meta">SIMULATED VALUES</div>
                 </div>
                 <div className="telemetry-grid">
                   <GlassPanel className="tcard">
@@ -477,7 +476,7 @@ function App() {
                       <div className="gauge">
                         {Array.from({ length: 10 }, (_, i) => <div key={i} className={`gauge-tick ${i < uvTicks ? 'on' : ''}`} />)}
                       </div>
-                      <div className="tcard-sub" style={{ marginTop: 10 }}>{uv >= 7 ? 'Apply SPF 30+ · cover skin' : uv >= 3 ? 'SPF recommended' : 'Low risk'}</div>
+                      <div className="tcard-sub" style={{ marginTop: 10 }}>Illustrative UV value; not safety advice</div>
                     </div>
                   </GlassPanel>
                   <GlassPanel className="tcard">
@@ -503,7 +502,7 @@ function App() {
                           <div className="mono" style={{ fontSize: 10, color: 'var(--atm-text-faint)', marginTop: 6, letterSpacing: 1.2 }}>OVERCAST</div>
                         </div>
                       </div>
-                      <div className="tcard-sub" style={{ marginTop: 12 }}>Calibrates the model from your observation.</div>
+                      <div className="tcard-sub" style={{ marginTop: 12 }}>Illustrative controls; no observations are collected.</div>
                     </div>
                   </GlassPanel>
                 </div>
@@ -512,7 +511,7 @@ function App() {
               <section className="page-section">
                 <div className="section-head">
                   <div>
-                    <div className="section-num">Section 04 · 24-Hour Forecast</div>
+                    <div className="section-num">Section 04 · Illustrative future scenario</div>
                     <div className="section-title">The day ahead.</div>
                   </div>
                   <div className="section-meta">USE PLAYBACK BAR TO SCRUB</div>
@@ -542,8 +541,8 @@ function App() {
           <footer className="estate-footer">
             <div>
               <h2>Atmosphere</h2>
-              <p>A local solar and weather analyzer demo inside Elusion Works. The current build uses deterministic stub data; Weather Underground and Google Maps keys are entered locally through Setup.</p>
-              <p className="legal">ATMOSPHERE · v0.5 · DESIGN + STUB DATA</p>
+              <p>Simulated weather generated from the local date. Replay and future scenarios are illustrative. Solar curves use the hour only, independent of location and date. The map is fictional. No weather or maps service is connected; no API credentials are needed.</p>
+              <p className="legal">ATMOSPHERE · v0.5 · SIMULATED DESIGN DEMO</p>
               <p className="legal">© 2026 Elusion Works / Kol Tregaskes</p>
             </div>
             <nav aria-label="Atmosphere footer main pages">
