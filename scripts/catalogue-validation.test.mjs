@@ -142,6 +142,12 @@ for (const [scenario, expectedBuild, expectedGate] of [
   fs.writeFileSync(catalogue, 'previous good catalogue');
   const b = build(scenario); assert.equal(b.status, expectedBuild, b.stdout + b.stderr);
   if (expectedGate === null) {
+    if (scenario === 'partial-gp') {
+      const cacheFile=path.join(fixture,'cache-partial-gp.json');
+      const saved=new Map(JSON.parse(fs.readFileSync(cacheFile,'utf8')));
+      assert.ok(saved.get('https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=csv')?.body, 'completed GP response survives the later group failure');
+      assert.ok(saved.get('urn:elusionworks:celestrak:retry-deadline')?.retryUntil>Date.now(), 'provider pause survives the failed builder process');
+    }
     assert.equal(fs.readFileSync(catalogue, 'utf8'), 'previous good catalogue');
     assert.match(b.stdout + b.stderr, /No GP group fetched|non-finite orbital/);
     return;

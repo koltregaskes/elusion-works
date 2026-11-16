@@ -17,7 +17,7 @@ permissions:
 
 concurrency:
   group: "pages"
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -39,7 +39,7 @@ jobs:
 
       # Retain shared upstream responses across deploys; TTLs are enforced by the builder.
       - name: Restore CelesTrak response cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: .local/celestrak-cache.json
           key: celestrak-csv-v1-${{ github.run_id }}-${{ github.run_attempt }}
@@ -48,6 +48,14 @@ jobs:
       - name: Build Orbit Census catalogue from CelesTrak
         id: orbitcat
         run: node demos/orbit-census/tools/build-catalog.mjs _site/demos/orbit-census/data/catalog.json
+
+      # Retain completed responses and provider pauses even if acquisition or a later gate fails.
+      - name: Save CelesTrak response cache
+        if: ${{ always() && hashFiles('.local/celestrak-cache.json') != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .local/celestrak-cache.json
+          key: celestrak-csv-v1-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Validate Orbit Census catalogue before publication
         id: orbitcheck

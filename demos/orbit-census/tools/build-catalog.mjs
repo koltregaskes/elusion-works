@@ -17,16 +17,18 @@ const out = resolve(process.argv[2] || resolve(here, '../data/catalog.json'));
 const cachePath = resolve(process.argv[4] || '.local/celestrak-cache.json');
 let cache;
 try { cache = new Map(JSON.parse(await readFile(cachePath, 'utf8'))); }
-catch { cache = new Map(); }
-const get = createAcquirer({cache});
+catch (error) { if(error.code !== 'ENOENT') throw error; cache = new Map(); }
+const persist = async () => {
+  await mkdir(dirname(cachePath), {recursive:true});
+  await writeFile(cachePath, JSON.stringify([...cache]));
+};
+const get = createAcquirer({cache, persist});
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const acquisition = {};
 async function csvData(url, ttl) {
   try {
     const result = await get(url, ttl);
     acquisition[url] = {acquired: new Date(result.acquired).toISOString(), lastModified: result.lastModified, etag: result.etag};
-    await mkdir(dirname(cachePath), {recursive:true});
-    await writeFile(cachePath, JSON.stringify([...cache]));
     return result.body;
   } catch (error) { console.error('No GP group fetched: provider run stopped: ' + error.message); process.exit(1); }
 }

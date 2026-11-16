@@ -8,7 +8,7 @@ for(const code of [301,400,401,403,404,406,429,501]) test('stops provider run on
   await assert.rejects(get('https://fixture/a',1));await assert.rejects(get('https://fixture/b',1));assert.equal(calls,1);
 });
 for(const code of [500,502,503,504,'network']) test('bounded quiet retries: '+code,async()=>{
-  let calls=0;const waits=[];const get=createAcquirer({fetcher:async()=>{calls++;if(code==='network')throw Error('offline');return response(code);},sleep:async ms=>waits.push(ms)});
+  let calls=0,clock=1000;const waits=[];const get=createAcquirer({now:()=>clock,fetcher:async()=>{calls++;if(code==='network')throw Error('offline');return response(code);},sleep:async ms=>{waits.push(ms);clock+=ms;}});
   await assert.rejects(get('https://fixture/a',1));assert.equal(calls,3);assert.deepEqual(waits,[QUIET,2*QUIET]);
 });
 test('shared requests and fresh persisted responses never redownload within the run',async()=>{
@@ -18,7 +18,7 @@ test('shared requests and fresh persisted responses never redownload within the 
   await createAcquirer({...opts,now:()=>4000})('https://fixture/a',2000);assert.equal(calls,2);
 });
 test('Retry-After extends quiet interval',async()=>{
-  let calls=0;const waits=[];const get=createAcquirer({fetcher:async()=>++calls===1?{...response(503),headers:new Headers({'Retry-After':'1800'})}:response(),sleep:async ms=>waits.push(ms)});
+  let calls=0,clock=1000;const waits=[];const get=createAcquirer({now:()=>clock,fetcher:async()=>++calls===1?{...response(503),headers:new Headers({'Retry-After':'1800'})}:response(),sleep:async ms=>{waits.push(ms);clock+=ms;}});
   await get('https://fixture/a',1);assert.deepEqual(waits,[1800000]);
 });
 test('browser cannot query provider as an automatic fallback',()=>{
