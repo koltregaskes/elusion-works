@@ -141,7 +141,7 @@ function MapView({ snapshot, hour, accent, location }) {
         {/* Sun stats overlay (bottom-right) */}
         <div style={{ position: 'absolute', right: 24, bottom: 24, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(28px)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: 14, padding: '16px 20px', minWidth: 220 }}>
           <MonoLabel>Sun · right now</MonoLabel>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 10 }}>
+          <div className="atm-responsive-grid" style={{ gap: 14, marginTop: 10 }}>
             <div>
               <div className="mono" style={{ fontSize: 9, color: 'rgba(255,255,255,0.5)', letterSpacing: 1.2 }}>BEARING</div>
               <div className="display num" style={{ fontSize: 26, color: '#fff' }}>{Math.round(az)}°</div>
@@ -471,18 +471,18 @@ function SetupView({ location, setLocation, station, setStation, accent }) {
         <div className="section-meta">SAVED LOCALLY · NEVER LEAVES YOUR BROWSER</div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
+      <div className="atm-responsive-grid">
         <GlassPanel style={{ padding: 32 }}>
           <MonoLabel>Your location</MonoLabel>
           <div className="display" style={{ fontSize: 24, color: '#fff', marginTop: 6 }}>Postcode or place</div>
-          <SetupInput value={postcode} onChange={setPostcode} placeholder="SW1A 1AA" big />
+          <SetupInput label="Place label" value={postcode} onChange={setPostcode} placeholder="SW1A 1AA" big />
           <div className="mono" style={{ fontSize: 11, color: 'var(--atm-text-faint)', marginTop: 10, letterSpacing: 1.2, lineHeight: 1.5 }}>
             USED FOR LATITUDE/LONGITUDE LOOKUP · SUN POSITION CALCULATION · GOOGLE MAPS CENTRING
           </div>
 
           <div style={{ marginTop: 24 }}>
             <MonoLabel>Google Maps API key</MonoLabel>
-            <SetupInput value={mapsKey} onChange={setMapsKey} placeholder="—" type="password" mono />
+            <SetupInput label="Google Maps API key" value={mapsKey} onChange={setMapsKey} placeholder="—" type="password" mono />
             <div className="mono" style={{ fontSize: 10, color: 'var(--atm-text-faint)', marginTop: 8, letterSpacing: 1.2, lineHeight: 1.5 }}>
               ⓘ PLACEHOLDER · CODE HANDOFF · agents wire this into the embed URL.
               <br />Until then, the Map page renders a beautiful mockup.
@@ -496,7 +496,7 @@ function SetupView({ location, setLocation, station, setStation, accent }) {
 
           <div style={{ marginTop: 18 }}>
             <MonoLabel>Station ID</MonoLabel>
-            <SetupInput value={stationId} onChange={setStationId} placeholder="IEDENB52" mono big />
+            <SetupInput label="Station ID" value={stationId} onChange={setStationId} placeholder="IEDENB52" mono big />
             <div className="mono" style={{ fontSize: 10, color: 'var(--atm-text-faint)', marginTop: 6, letterSpacing: 1.2 }}>
               DEFAULT · IEDENB52 · Replace with your PWS ID
             </div>
@@ -504,7 +504,7 @@ function SetupView({ location, setLocation, station, setStation, accent }) {
 
           <div style={{ marginTop: 22 }}>
             <MonoLabel>WU API key</MonoLabel>
-            <SetupInput value={wuKey} onChange={setWuKey} placeholder="—" type="password" mono />
+            <SetupInput label="Weather Underground API key" value={wuKey} onChange={setWuKey} placeholder="—" type="password" mono />
             <div className="mono" style={{ fontSize: 10, color: 'var(--atm-text-faint)', marginTop: 8, letterSpacing: 1.2, lineHeight: 1.5 }}>
               ⓘ PLACEHOLDER · CODE HANDOFF · agents wire this into
               <br /><code style={{ color: 'var(--atm-text-soft)' }}>api.weather.com/v2/pws/observations/current</code>
@@ -514,7 +514,7 @@ function SetupView({ location, setLocation, station, setStation, accent }) {
         </GlassPanel>
       </div>
 
-      <div style={{ marginTop: 18, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
+      <div className="atm-responsive-grid" style={{ marginTop: 18 }}>
         <GlassPanel style={{ padding: 24 }}>
           <MonoLabel>Units</MonoLabel>
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
@@ -539,7 +539,7 @@ function SetupView({ location, setLocation, station, setStation, accent }) {
           <MonoLabel>Save settings</MonoLabel>
           <button onClick={save} style={{
             marginTop: 12, padding: '18px 24px',
-            background: accent, color: '#fff',
+            background: accent, color: '#0a0e24',
             border: 'none', borderRadius: 10,
             fontFamily: 'Geist, system-ui, sans-serif', fontSize: 17, fontWeight: 500,
             cursor: 'pointer', letterSpacing: '-0.01em',
@@ -554,9 +554,13 @@ function SetupView({ location, setLocation, station, setStation, accent }) {
   );
 }
 
-function SetupInput({ value, onChange, placeholder, type = 'text', big, mono }) {
+function SetupInput({ value, onChange, placeholder, label, type = 'text', big, mono }) {
+  const id = React.useId();
   return (
+    <label className="atm-setup-field" htmlFor={id}>
+    <span>{label || placeholder || 'Setting'}</span>
     <input
+      id={id}
       type={type}
       value={value}
       onChange={(e) => onChange(e.target.value)}
@@ -572,9 +576,9 @@ function SetupInput({ value, onChange, placeholder, type = 'text', big, mono }) 
         fontFamily: mono ? "'JetBrains Mono', monospace" : 'Geist, system-ui, sans-serif',
         fontSize: big ? 22 : 16,
         letterSpacing: mono ? 1 : 0,
-        outline: 'none',
       }}
     />
+    </label>
   );
 }
 
