@@ -1,3 +1,7 @@
+// Moon counts: JPL Planetary Satellite Discovery Circumstances,
+// https://ssd.jpl.nasa.gov/sats/discovery.html, accessed 16 November 2026.
+// Jupiter 115; Saturn 293; Uranus 29; Neptune 16. Counts may change.
+// Other figures remain educational approximations, not reverified in this edition.
 /* Solar System Field Lab — shared planet data */
 /* eslint-disable */
 
@@ -105,14 +109,14 @@ const PLANETS = [
     palette: ['#8a6038', '#c89868', '#e8c896', '#5e3a1c'],
     glow: 'rgba(230,180,130,0.35)',
     family:'gas-giant',
-    realAU:5.203, diamKm:139820, periodDays:4333, gravityG:2.528, dayHours:9.93, axialDeg:3.13, moonCount:95,
+    realAU:5.203, diamKm:139820, periodDays:4333, gravityG:2.528, dayHours:9.93, axialDeg:3.13, moonCount:115,
     epithet:'The King',
     blurb:'A gas giant heavier than every other planet combined. Wraps a 350-year-old storm bigger than Earth.',
     facts:[
       ["Mass",         "318 × Earth", "more than all other planets combined"],
       ["Atmosphere",   "75% H₂, 24% He", "no solid surface"],
       ["Day length",   "9.93 hours", "fastest rotation in the system"],
-      ["Moons",        "95 known", "Galilean four are world-sized"],
+      ["Moons",        "115 IAU-recognised", "Galilean four are world-sized"],
     ],
     twocol:{
       left:"Jupiter is so massive — 318 times the Earth — that it doesn't really orbit the sun; the sun and Jupiter both orbit a point just outside the sun's surface. Made almost entirely of hydrogen and helium with no solid surface to stand on, its visible bands are upper-atmosphere cloud decks of ammonia ice, churned into stripes by violent winds running in opposite directions.",
@@ -133,14 +137,14 @@ const PLANETS = [
     palette: ['#a0824a', '#d6b87a', '#eedfa8', '#6e4e22'],
     glow: 'rgba(238,223,168,0.32)',
     family:'gas-giant', rings:true,
-    realAU:9.537, diamKm:116460, periodDays:10759, gravityG:1.065, dayHours:10.7, axialDeg:26.73, moonCount:146,
+    realAU:9.537, diamKm:116460, periodDays:10759, gravityG:1.065, dayHours:10.7, axialDeg:26.73, moonCount:293,
     epithet:'The Ringed One',
     blurb:'Wears the most famous rings in the system — a paper-thin disc of ice and rock.',
     facts:[
       ["Density",      "0.69 g/cm³", "less dense than water"],
       ["Rings",        "Span 282,000 km", "yet only ~10 m thick"],
       ["Atmosphere",   "96% H₂, 3% He", "trace ammonia, methane"],
-      ["Moons",        "146 known", "Titan has its own thick atmosphere"],
+      ["Moons",        "293 IAU-recognised", "Titan has its own thick atmosphere"],
     ],
     twocol:{
       left:"Saturn is the second largest planet, but the least dense — drop it into a vast enough ocean and it would float. Its rings, the system's most famous feature, are extraordinary on close inspection: a disc 282,000 km across but on average only about 10 metres thick. If you scaled Saturn down to a basketball, the rings would be a thousand times thinner than a sheet of paper.",
@@ -161,14 +165,14 @@ const PLANETS = [
     palette: ['#5d8f96', '#8ec6cf', '#bce0e5', '#2a4348'],
     glow: 'rgba(142,198,207,0.34)',
     family:'ice-giant',
-    realAU:19.191, diamKm:50724, periodDays:30687, gravityG:0.886, dayHours:17.24, axialDeg:97.77, moonCount:27,
+    realAU:19.191, diamKm:50724, periodDays:30687, gravityG:0.886, dayHours:17.24, axialDeg:97.77, moonCount:29,
     epithet:'The Sideways One',
     blurb:'An ice giant rolling on its side, with a methane-blue colour and faint rings.',
     facts:[
       ["Axial tilt",   "97.8°", "rolls on its side"],
       ["Composition",  "Ice giant", "water, ammonia, methane mantle"],
       ["Surface temp", "−224 °C", "coldest planetary atmosphere"],
-      ["Moons",        "27 known", "named after Shakespeare characters"],
+      ["Moons",        "29 IAU-recognised", "named after Shakespeare characters"],
     ],
     twocol:{
       left:"Uranus is the system's odd one out. Where every other planet spins more-or-less upright, Uranus has been knocked over: its axis tilts 97.8° from the ecliptic, so it effectively rolls along its orbital path. The likely cause is an enormous impact early in its history that tipped the entire world over.",
@@ -188,14 +192,14 @@ const PLANETS = [
     palette: ['#1f3e7d', '#3e64b0', '#7a9bda', '#0e2046'],
     glow: 'rgba(80,120,210,0.36)',
     family:'ice-giant',
-    realAU:30.069, diamKm:49244, periodDays:60190, gravityG:1.137, dayHours:16.11, axialDeg:28.32, moonCount:14,
+    realAU:30.069, diamKm:49244, periodDays:60190, gravityG:1.137, dayHours:16.11, axialDeg:28.32, moonCount:16,
     epithet:'The Wind Planet',
     blurb:'Wind-haunted ice giant. The farthest you can walk a model of with a packed lunch.',
     facts:[
       ["Discovery",    "1846 · by mathematics", "predicted before it was seen"],
       ["Winds",        "Up to 2,100 km/h", "fastest in the solar system"],
       ["Sunlight",     "0.1% of Earth's", "noon there ≈ deep dusk here"],
-      ["Moons",        "14 known", "Triton orbits backwards"],
+      ["Moons",        "16 IAU-recognised", "Triton orbits backwards"],
     ],
     twocol:{
       left:"Neptune is so far out that sunlight is just 0.1% of what reaches Earth — noon on Neptune would feel like a deep summer dusk back home. Despite the cold and the dim light, it has the most violent weather of any planet: winds in its upper atmosphere reach 2,100 km/h, faster than the speed of sound at sea level. The Voyager 2 flyby in 1989 spotted a Great Dark Spot the size of Earth; it had vanished by the time the Hubble looked five years later.",
