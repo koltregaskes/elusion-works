@@ -19,12 +19,13 @@ fs.mkdirSync(path.join(fixture, 'demos/orbit-census/src'), { recursive: true });
 fs.mkdirSync(path.join(fixture, '_site/demos/orbit-census/data'), { recursive: true });
 fs.writeFileSync(path.join(fixture, 'package.json'), '{"type":"module"}');
 fs.copyFileSync('demos/orbit-census/src/catalog.js', path.join(fixture, 'demos/orbit-census/src/catalog.js'));
+fs.copyFileSync('demos/orbit-census/src/catalogue-status.js', path.join(fixture,'demos/orbit-census/src/catalogue-status.js'));
 const catalogue = path.join(fixture, '_site/demos/orbit-census/data/catalog.json');
 const row = ['Fixture', 1, '2000-001A', 'PAY', '', '', '', null, 'active',
   '2000-01-01T00:00:00', 15, 0.001, 51.6, 10, 20, 30, 0, 0, 0];
 // Original valid fixtures used a one-object census. Raise only the population and
 // its type counts to the new conservative floor; keep the original 2,000 GP rows.
-const valid = () => ({ v: 1, generated: '2000-01-01T00:00:00Z', fields: FIELDS,
+const valid = () => ({ v: 1, generated: new Date().toISOString(), fields: FIELDS,
   rows: Array.from({ length: 2000 }, (_, i) => { const r = [...row]; r[1] = i + 1; return r; }),
   groups: Object.fromEntries(GROUPS.map(g => [g.id, 1])), satcat: true,
   census: { total: 10000, PAY: 10000, 'R/B': 0, DEB: 0, UNK: 0 },

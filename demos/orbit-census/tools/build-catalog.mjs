@@ -16,6 +16,7 @@ const out = resolve(process.argv[2] || resolve(here, '../data/catalog.json'));
 const UA = 'ElusionWorks-OrbitCensus/1.0 (+https://elusionworks.com/demos/orbit-census/)';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+const acquisition = {};
 async function get(url, kind) {
   for (let a = 0; a < 3; a++) {
     try {
@@ -24,6 +25,7 @@ async function get(url, kind) {
       const res = await fetch(url, { headers: { 'User-Agent': UA, Accept: kind === 'json' ? 'application/json' : 'text/csv, */*;q=0.8' } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = kind === 'json' ? await res.json() : await res.text();
+      acquisition[url] = {acquired:new Date().toISOString(),lastModified:res.headers?.get('last-modified')||null,etag:res.headers?.get('etag')||null};
       return body;
     } catch (e) {
       console.warn(`  ${url} attempt ${a + 1}: ${e.message}`);
@@ -88,6 +90,7 @@ if (rows.length < 2000) { console.error(`Only ${rows.length} objects: refusing t
 
 const doc = {
   v: 1,
+  acquisition,
   generated: new Date().toISOString(),
   source: catalogueSource(Boolean(satcat?.size)),
   groups: counts,
