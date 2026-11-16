@@ -131,8 +131,9 @@ function PolarDialLive({ hour, onChange, size = 460, accent = '#ef9c77' }) {
   ];
 
   return (
-    <svg ref={svgRef} viewBox={`0 0 ${size} ${size}`} width={size} height={size}
-         style={{ display: 'block', userSelect: 'none', touchAction: 'none' }}>
+    <div className="atm-dial-control">
+    <svg aria-hidden="true" ref={svgRef} viewBox={`0 0 ${size} ${size}`} width={size} height={size}
+         style={{ display: 'block', maxWidth: '100%', height: 'auto', userSelect: 'none', touchAction: 'none' }}>
       <defs>
         <radialGradient id="sunPuck">
           <stop offset="0%" stopColor="#fff7e0" />
@@ -213,6 +214,12 @@ function PolarDialLive({ hour, onChange, size = 460, accent = '#ef9c77' }) {
         <circle cx={sunX} cy={sunY} r="32" fill="transparent" />
       </g>
     </svg>
+    <label>Solar dial hour: {AtmData.timeStr(hour)}
+      <input className="atm-dial-range" type="range" min="0" max="23.99" step="0.01"
+        value={hour} aria-label="Solar dial hour" aria-valuetext={AtmData.timeStr(hour)}
+        onChange={event => onChange(Number(event.target.value))} />
+    </label>
+    </div>
   );
 }
 
