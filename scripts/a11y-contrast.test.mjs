@@ -1,0 +1,9 @@
+import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';
+const read=p=>fs.readFileSync('demos/'+p,'utf8');
+function luminance(hex){const v=hex.slice(1).match(/../g).map(x=>parseInt(x,16)/255).map(x=>x<=.04045?x/12.92:((x+.055)/1.055)**2.4);return v[0]*.2126+v[1]*.7152+v[2]*.0722;}
+const contrast=(a,b)=>(Math.max(luminance(a),luminance(b))+.05)/(Math.min(luminance(a),luminance(b))+.05);
+for(const accent of ['#ef9c77','#d97757','#e8b04a','#16a34a'])test('Save contrast on '+accent,()=>{assert.ok(contrast('#0a0e24',accent)>=4.5);assert.match(read('atmosphere/atm-pages.jsx'),/background: accent, color: '#0a0e24'/);});
+test('regression detects the original white Save text failure',()=>{assert.ok(contrast('#ffffff','#ef9c77')<4.5);});
+test('native range supplies keyboard operation and an accessible hour value',()=>{const s=read('atmosphere/atm-dial.jsx');assert.match(s,/type="range" min="0" max="23.99" step="0.01"/);assert.match(s,/aria-label="Solar dial hour" aria-valuetext=/);assert.match(s,/onChange\(Number\(event.target.value\)\)/);});
+test('Setup fields have associated persistent labels and focus styling',()=>{const s=read('atmosphere/atm-pages.jsx');assert.match(s,/htmlFor=\{id\}/);assert.match(s,/id=\{id\}/);assert.match(s,/label="Place label"/);assert.doesNotMatch(s,/outline: 'none'/);assert.match(read('atmosphere/index.html'),/input:focus-visible.*outline:3px solid #fff/);});
+test('Setup grids collapse; mounted Atmosphere and Orbit expose landmarks',()=>{const s=read('atmosphere/index.html');assert.match(s,/@media\(max-width:600px\).*atm-responsive-grid.*minmax\(0,1fr\)/);assert.match(s,/<main className="page"/);assert.match(s,/<h1 className="brand-name">Atmosphere/);assert.match(read('orbit-census/index.html'),/<main id="orbit-main"/);});

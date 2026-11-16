@@ -83,6 +83,15 @@
   .gauge-tick.on { background: var(--atm-accent); }
   .tcard.accent { border-color: rgba(194,65,12,0.5); background: rgba(194,65,12,0.08); }
 
+  .atm-responsive-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
+  .atm-responsive-grid > * { min-width:0; }
+  .atm-setup-field { display:block; margin-top:10px; }
+  .atm-setup-field input { box-sizing:border-box; min-width:0; }
+  .atm-setup-field input:focus-visible, .atm-dial-range:focus-visible { outline:3px solid #fff; outline-offset:4px; }
+  .atm-dial-control { display:block; width:100%; max-width:520px; }
+  .atm-dial-range { display:block; width:100%; accent-color:#ef9c77; }
+  .brand-name { margin:0; font:inherit; }
+  @media(max-width:600px) { .atm-responsive-grid { grid-template-columns:minmax(0,1fr); } }
   /* Forecast */
   .forecast { padding: 24px 28px 20px; }
 
@@ -324,12 +333,12 @@ function App() {
     <>
       <SkyBackdrop hour={hour} condition={snapshot.condition} />
       <div className="app-shell">
-        <div className="page">
+        <main className="page" id="main-content">
           {/* Topbar with router */}
           <div className="topbar">
             <div className="brand">
               <span className="brand-dot" />
-              <span className="brand-name">Atmosphere</span>
+              <h1 className="brand-name">Atmosphere</h1>
               <span style={{ color: 'var(--atm-text-faint)', fontSize: 13, marginLeft: 6 }}>
                 {page === 'sun' && '· Illustrative solar curves'}
                 {page === 'weather' && '· Simulated weather'}
@@ -558,7 +567,7 @@ function App() {
               <a href="../../security.txt">Security</a>
             </nav>
           </footer>
-        </div>
+        </main>
       </div>
 
       {/* Floating playback bar (hidden on setup page) */}
