@@ -1,8 +1,12 @@
-// Live solar calculation. Hour ∈ [0, 24) → all telemetry values.
+// Illustrative hour-only solar curves. Hour ∈ [0, 24) → all telemetry values.
 // Not astronomically accurate — calibrated to feel right at typical
 // mid-latitude on a clear day. Tweak constants to taste.
 
 (function () {
+  // Migration only: discard old unused credentials without reading their values.
+  try { localStorage.removeItem('atm.wu_api_key'); localStorage.removeItem('atm.maps_api_key'); }
+  catch { /* Storage may be disabled; this simulation never needs credentials. */ }
+
   // Sun altitude: peaks ~70° at noon, negative when below horizon
   function altitude(hour) {
     return Math.sin(((hour - 6) / 12) * Math.PI) * 70;

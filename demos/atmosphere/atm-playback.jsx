@@ -51,7 +51,7 @@ function PlaybackBar({ virtualOffset, setVirtualOffset, playing, setPlaying, acc
         {/* History/Now/Forecast indicator */}
         <div className="pb-stamp" style={{ borderColor: isNow ? accent : 'rgba(255,255,255,0.18)' }}>
           <span className="pb-stamp-dot" style={{ background: isNow ? accent : isHistory ? '#7ab0d8' : '#e8b04a' }} />
-          <span className="pb-stamp-text">{isNow ? 'NOW' : isHistory ? 'HISTORY' : 'FORECAST'}</span>
+          <span className="pb-stamp-text">{isNow ? 'SIMULATED NOW' : isHistory ? 'ILLUSTRATIVE REPLAY' : 'ILLUSTRATIVE FUTURE'}</span>
           <span className="pb-stamp-offset">{virtualOffset >= 0 ? '+' : ''}{virtualOffset.toFixed(1)}H</span>
         </div>
 
