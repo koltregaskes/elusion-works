@@ -1,10 +1,11 @@
 // SGP4 worker: holds one satrec per object and answers three questions.
 //   prop  -> where is everything at time t (positions + velocities, scene units, one buffer)
 //   track -> one object's orbit, ground track and next pass over an observer
-//   conj  -> the closest pairs right now (instantaneous screening, not a probability)
+//   conj  -> the closest pairs right now (instantaneous distance screen, see screen.js; not a probability)
 // Scene units: 1 = 1000 km. TEME (x, y, z) maps to scene (x, z, -y) so +y is the north pole.
 import { json2satrec, sgp4, gstime, sunPos, eciToGeodetic, geodeticToEcf, ecfToLookAngles, eciToEcf } from '../vendor/satellite/index.js';
 import { rowToOmm } from './catalog.js';
+import { screenPairs } from './screen.js';
 
 const DAY = 86400000;
 const toJd = (ms) => ms / DAY + 2440587.5;
@@ -104,37 +105,6 @@ function track(idx, ms, obs) {
   return { idx, orbit: new Float32Array(orbit), ground: new Float32Array(ground), periodMin, pass };
 }
 
-// Spatial hash over the latest snapshot; pairs closer than LIM km from different launches.
-function conj(pv, ok, lim = 25) {
-  const cell = lim / 1000; const map = new Map(); const n = recs.length;
-  const key = (x, y, z) => `${x},${y},${z}`;
-  for (let i = 0; i < n; i++) {
-    if (!ok[i]) continue;
-    const o = i * 6; const k = key(Math.floor(pv[o] / cell), Math.floor(pv[o + 1] / cell), Math.floor(pv[o + 2] / cell));
-    const a = map.get(k); if (a) a.push(i); else map.set(k, [i]);
-  }
-  const pairs = [];
-  for (let i = 0; i < n; i++) {
-    if (!ok[i]) continue;
-    const o = i * 6; const cx = Math.floor(pv[o] / cell), cy = Math.floor(pv[o + 1] / cell), cz = Math.floor(pv[o + 2] / cell);
-    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
-      const a = map.get(key(cx + dx, cy + dy, cz + dz)); if (!a) continue;
-      for (const j of a) {
-        if (j <= i) continue;
-        if (cospar[i] && cospar[i] === cospar[j]) continue; // same launch: trains, stacks, one cloud
-        const p = j * 6;
-        const d = Math.hypot(pv[o] - pv[p], pv[o + 1] - pv[p + 1], pv[o + 2] - pv[p + 2]) * 1000;
-        if (d >= lim) continue;
-        const vr = Math.hypot(pv[o + 3] - pv[p + 3], pv[o + 4] - pv[p + 4], pv[o + 5] - pv[p + 5]) * 1000;
-        if (vr < 0.01) continue; // under 10 m/s apart: docked or formation flying, not an approach
-        pairs.push([i, j, d, vr]);
-      }
-    }
-  }
-  pairs.sort((a, b) => a[2] - b[2]);
-  return pairs.slice(0, 8);
-}
-
 self.onmessage = (ev) => {
   const m = ev.data;
   if (m.type === 'init') {
@@ -147,9 +117,8 @@ self.onmessage = (ev) => {
     const t0 = performance.now();
     propAll(m.t, pv, ok);
     const cost = performance.now() - t0;
-    let pairs = null;
-    if (m.conj) pairs = conj(pv, ok);
-    self.postMessage({ type: 'snap', t: m.t, seq: m.seq, pv, ok, cost, pairs }, [pv.buffer, ok.buffer]);
+    const screen = m.conj ? screenPairs(pv, ok, cospar) : null;
+    self.postMessage({ type: 'snap', t: m.t, seq: m.seq, pv, ok, cost, pairs: screen?.pairs ?? null, slow: screen?.slow ?? 0 }, [pv.buffer, ok.buffer]);
   } else if (m.type === 'track') {
     const res = track(m.idx, m.t, m.obs);
     if (res) self.postMessage({ type: 'track', ...res, t: m.t, seq: m.seq }, [res.orbit.buffer, res.ground.buffer]);

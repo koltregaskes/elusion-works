@@ -24,7 +24,7 @@
 </head>
 <body>
 <main id="orbit-main" aria-label="Orbit Census">
-  <p id="dataNotice" role="status" hidden style="position:fixed;bottom:64px;left:12px;right:12px;max-width:760px;padding:12px;background:#101a26;color:#ffe1a3;z-index:30;font-size:12px;max-height:25vh;overflow:auto"></p>
+  <p id="dataNotice" role="status" hidden></p>
 <div id="boot" class="boot">
   <b>Orbit Census</b>
   <span id="bootMsg">Loading the catalogue</span>
@@ -110,7 +110,7 @@
   <section class="card" id="cConj">
     <div class="ch"><b>Close approaches now</b><span>07</span></div>
     <ol class="conj mono" id="conj"><li class="dim">Screening…</li></ol>
-    <p class="note mono">Across the whole catalogue: pairs from different launches under 25 km apart at this instant, leaving out docked and formation-flying pairs. A distance screen, not a collision probability.</p>
+    <p class="note mono" id="conjNote">Distance screen, not a collision probability.</p>
   </section>
 </aside>
 

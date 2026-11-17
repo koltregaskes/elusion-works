@@ -23,7 +23,7 @@ export const FAMILIES = [
   { id: 'kuiper', label: 'Kuiper', re: /^KUIPER/, color: '#ffb347' },
   { id: 'qianfan', label: 'Qianfan', re: /^(QIANFAN|G60)/, color: '#ff6b8b' },
   { id: 'guowang', label: 'Guowang', re: /^(GUOWANG|SATNET|HULIANWANG)/, color: '#ff8f5a' },
-  { id: 'o3b', label: 'O3b mPOWER', re: /^O3B/, color: '#8fe0ff' },
+  { id: 'o3b', label: 'O3b', re: /^O3B/, color: '#8fe0ff' }, // both generations: first O3b and mPOWER
   { id: 'rassvet', label: 'Rassvet', re: /^RASSVET/, color: '#ffcf8f' },
   { id: 'iridium', label: 'Iridium', re: /^IRIDIUM(?!.*DEB)/, color: '#7cf0b4' },
   { id: 'globalstar', label: 'Globalstar', re: /^GLOBALSTAR/, color: '#e6e27a' },

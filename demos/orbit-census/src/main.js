@@ -10,6 +10,7 @@ import { orbitShape, regime, family, FAMILIES, NAV, MEGA, ownerName, siteName, T
 import { Globe, RE } from './globe.js';
 import { Swarm } from './swarm.js';
 import * as charts from './charts.js';
+import { SCREEN_KM, MIN_RELATIVE_KMS } from './screen.js';
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -53,7 +54,7 @@ const S = {
   lens: 'all', color: 'type', hidden: new Set(), regimes: new Set(['LEO', 'MEO', 'GEO', 'HEO', 'Beyond GEO']), band: null,
   sel: -1, hov: -1, follow: false, frame: 'eci', rings: true, shadow: true, spin: !matchMedia('(prefers-reduced-motion: reduce)').matches,
   obs: { lat: 51.5074, lon: -0.1278, h: 20, name: 'London' },
-  chart: 'alt', visible: [], track: null, pairs: [],
+  chart: 'alt', visible: [], track: null, pairs: [], slow: 0,
 };
 
 // ---------------------------------------------------------------------------
@@ -152,7 +153,7 @@ function onSnap(m) {
   if (m.seq < resetSeq) { pending = false; return; }
   pending = false; lastSnapCost = m.cost;
   S.swarm.push(tRel(m.t), m.pv, m.ok);
-  if (m.pairs) { S.pairs = m.pairs; renderConj(); }
+  if (m.pairs) { S.pairs = m.pairs; S.slow = m.slow || 0; renderConj(); }
 }
 
 // ---------------------------------------------------------------------------
@@ -314,11 +315,12 @@ function renderPass() {
 }
 function renderConj() {
   const ol = $('#conj');
-  if (!S.pairs.length) { ol.innerHTML = '<li class="dim">No pairs under 25 km right now.</li>'; return; }
+  const slow = S.slow ? `<li class="dim" id="conjSlow">${n0(S.slow)} co-moving ${S.slow === 1 ? 'pair' : 'pairs'} under ${MIN_RELATIVE_KMS * 1000} m/s left out (a speed rule, not docking data)</li>` : '';
+  if (!S.pairs.length) { ol.innerHTML = `<li class="dim" id="conjNone">No pairs meet this screen's criteria right now.</li>${slow}`; return; }
   ol.innerHTML = S.pairs.slice(0, 6).map(([a, b, d, v]) => {
     const A = S.items[a], B = S.items[b];
     return `<li data-a="${a}" data-b="${b}"><b title="${A.name} and ${B.name}">${A.name} · ${B.name}</b><em>${d.toFixed(1)} km</em><span>relative speed ${v.toFixed(2)} km/s · ${n0((A.alt + B.alt) / 2)} km up</span></li>`;
-  }).join('');
+  }).join('') + slow;
   $$('#conj li[data-a]').forEach((li) => li.addEventListener('click', () => select(+li.dataset.a)));
 }
 
@@ -384,8 +386,9 @@ const CITIES = [
 ];
 {
   const sel = $('#obsCity');
-  sel.innerHTML = CITIES.map((c, i) => `<option value="${i}">${c[0]}</option>`).join('');
+  sel.innerHTML = CITIES.map((c, i) => `<option value="${i}">${c[0]}</option>`).join('') + '<option value="here" hidden disabled>Your location</option>';
   sel.addEventListener('change', () => {
+    if (sel.value === 'here') return;
     const c = CITIES[+sel.value]; S.obs = { lat: c[1], lon: c[2], h: 20, name: c[0] };
     globe.setObserver(S.obs.lat, S.obs.lon); $('#locBtn').textContent = 'My location'; overhead(); requestTrack();
   });
@@ -395,6 +398,8 @@ $('#locBtn').addEventListener('click', () => {
   $('#locBtn').textContent = 'Locating…';
   navigator.geolocation.getCurrentPosition((p) => {
     S.obs = { lat: p.coords.latitude, lon: p.coords.longitude, h: p.coords.altitude || 0, name: 'your location' };
+    // show the real observer in the picker, so it never reads London while computing elsewhere
+    const here = $('#obsCity option[value=here]'); here.hidden = false; here.disabled = false; $('#obsCity').value = 'here';
     globe.setObserver(S.obs.lat, S.obs.lon); $('#locBtn').textContent = 'Using yours'; overhead(); requestTrack();
   }, () => { $('#locBtn').textContent = 'Not available'; }, { timeout: 10000, maximumAge: 600000 });
 });
@@ -678,5 +683,6 @@ function setSource() {
   el.title=$('#dataNotice').textContent;
 }
 $('#retryBtn').addEventListener('click', () => location.reload());
+$('#conjNote').textContent = `Distance screen, not a collision probability: pairs under ${SCREEN_KM} km right now, from different launches, moving at least ${MIN_RELATIVE_KMS * 1000} m/s relative to each other.`;
 window.__oc = { S, camera, controls, globe, flyTo, select, setLens };
 start();

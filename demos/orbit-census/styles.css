@@ -180,6 +180,10 @@ input[type=range]::-moz-range-thumb { width: 9px; height: 9px; border-radius: 50
 
 body.clean .topbar, body.clean .col, body.clean .obs, body.clean .story, body.clean .timebar, body.clean .footline { display: none !important; }
 
+/* Data-quality notice: same look as before; on wide screens it sits between the two columns so it
+   never covers a panel's controls (it used to cover the bottom of the left column). */
+#dataNotice { position: fixed; bottom: 64px; left: 12px; right: 12px; max-width: 760px; padding: 12px; background: #101a26; color: #ffe1a3; z-index: 30; font-size: 12px; max-height: 25vh; overflow: auto; }
+@media (min-width: 901px) { #dataNotice { left: 272px; right: 304px; max-width: none; margin-inline: auto; } }
 @media (max-height: 820px) { .story { display: none; } }
 @media (max-width: 1360px) { .meta > div:nth-child(2) { display: none; } .story { display: none; } }
 @media (max-width: 1180px) {
