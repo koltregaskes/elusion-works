@@ -2,7 +2,7 @@
 
 A five-step enquiry form for Elusion Works: what you need, a few words about it, timing and budget, how to reach you, then a page to check your answers before anything goes anywhere. The fourth of the seven gap demos on Kol's Fable 5.2 benchmark list, built with Claude Fable 5.2.
 
-**It is a demonstration. Nothing is sent and nothing is saved.** There is no server behind it. Pressing Send enquiry shows the text that would have been sent, and that is all.
+**It is a demonstration. Nothing is sent, and the page keeps nothing.** It asks for made-up details and offers some. There is no server behind it. Pressing Send enquiry shows the text that would have been sent, and that is all.
 
 **Quality bar it sets:** a form whose rules live in one file that the page cannot disagree with: every question, every answer and every error message is checked in the browser against that file, the focus is followed through every step and every mistake, and Send is proved to send nothing.
 Use it as the reference for forms, sign-ups and anything that asks people questions in order.
@@ -51,9 +51,9 @@ The second and third need the site's development packages (Playwright and axe-co
 - The email check is a shape check. It cannot tell whether an address exists.
 - A link on your own machine (localhost) and a link with a name and password in it are refused on purpose: neither is something to send.
 - Full-width, Arabic and Persian figures in a phone number are read as plain ones. Other scripts' figures are not.
-- Answers are lost if the page is reloaded. Nothing is saved, on purpose. If you leave the page and come back with the browser's Back, the browser itself may put your answers back in the boxes.
+- Answers are lost if the page is reloaded. The page keeps nothing, on purpose. The browser is another matter: if you leave the page and come back with its Back, it may put your answers back in the boxes, and the page says so. No box asks the browser for a stored name, address or number, but a browser may still offer one.
 - Checked only in headless Chromium. Not yet seen in Safari or Firefox or on a real phone, and no screen reader has been heard on it.
 
 ## Status
 
-Unlisted. The page carries `noindex`, and it is not in the gallery or the sitemap. Nothing here is published.
+Unlisted draft. The page carries `noindex`, and it is not in the gallery or the sitemap. Nothing here is published. The site deploys its main branch, so merging this would put the page at /demos/enquiry/, where anyone with the address could open it.

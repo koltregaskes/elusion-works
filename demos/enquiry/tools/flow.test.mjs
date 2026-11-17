@@ -17,6 +17,8 @@ passed('work', { about: 'word '.repeat(300) }); passed('work', { about: 'one two
 for (const link of ['', 'example.com', 'https://example.co.uk/a?b=1#c', 'http://sub.example.org:8080/path', 'EXAMPLE.COM', 'münchen.de', 'https://例え.jp/path', 'xn--mnchen-3ya.de', 'https://example.com/path)', 'example.com.', 'https://en.wikipedia.org/wiki/Brief_(law)']) passed('work', { link }, link);
 for (const link of ['example', 'not a link', 'http://', 'ftp://example.com', 'example..com', '-a.com', 'javascript:alert(1)', 'e.g', 'a.b', 'example.c', 'http://localhost:3000', 'https://user:pw@example.com']) refused('work', { link }, ['link: Enter a web address like example.com, or leave this empty'], link);
 assert.equal(F.tidy({ link: 'https://example.com/path).' }).link, 'https://example.com/path', 'a bracket and a full stop left by pasting are taken off'); assert.equal(F.tidy({ link: 'https://en.wikipedia.org/wiki/Brief_(law)' }).link, 'https://en.wikipedia.org/wiki/Brief_(law)', 'a bracket that belongs to the address stays');
+// The made-up details the page offers are ones the rules accept, by email and by phone.
+passed('you', { ...F.MADE_UP, reply: 'phone' }, 'made-up details, reply by phone'); passed('you', { ...F.MADE_UP, reply: 'email', phone: '' }, 'made-up details, reply by email');
 // Step three: both questions need one of their answers.
 refused('when', { when: '', budget: '' }, ['when: Choose when you need it', 'budget: Choose a budget, or choose "Not sure yet"']); refused('when', { when: 'yesterday' }, ['when: Choose when you need it']); passed('when', { budget: 'unsure' });
 // Step four: a name, an email address that looks like one, and a phone number only if the reply is to be by phone.

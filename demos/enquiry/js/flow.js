@@ -13,6 +13,8 @@ export const WHEN = [['soon', 'As soon as possible'], ['month', 'In the next mon
 export const BUDGET = [['small', 'Under £1,000'], ['mid', '£1,000 to £5,000'], ['large', 'Over £5,000'], ['unsure', 'Not sure yet']];
 export const REPLY = [['email', 'By email'], ['phone', 'By phone']];
 export const LIMITS = { aboutMin: 10, aboutMax: 300, otherMax: 80, nameMax: 80 };
+// The made-up details the page offers at the step that asks who you are. The name is nobody's, the address is at a domain kept for examples, and the number is in a range kept for television and film.
+export const MADE_UP = { name: 'Sam Carter', email: 'sam@example.com', phone: '020 7946 0000' };
 export const blank = () => ({ needs: [], other: '', about: '', link: '', when: '', budget: '', name: '', email: '', reply: 'email', phone: '', agree: false });
 
 // Words and characters are counted as a reader would count them, where the browser can: "don't" is one word, a sentence of Japanese is more than one, and an accented letter or an emoji is one character.

@@ -77,6 +77,20 @@ A second pass by a separate Claude agent (Opus), read-only, given the brief and 
 | 15 | A class that did nothing | Removed | |
 | 16 | Words: lines that implied a reply would come; figures as words in one place and digits in another; "That is 5."; "press Send" | Reworded | by reading |
 
+## Outside review
+
+A second, outside review was posted on the pull request on 17 November 2026: ChatGPT in chat mode at Pro, driven by another Claude session at Kol's request. It covered this demo with the print shop, read the code and pictures, and did not run the page. It scored the pair 7 out of 10 and said HOLD. It found no place the form could send to, no tracking and no storage.
+
+| Finding | What was done | Held by |
+|---|---|---|
+| The form asked for a name, an email address and a phone number as a real one would, and asked the browser to fill in the visitor's own | The page says to use made-up details, before the questions and again at the step that asks who you are. It offers a name, an address at a domain kept for examples and a number in a range kept for film and television, and one button fills them in. No box asks the browser for stored details | rules test; browser check at 1280, on a 320 phone, at large text and with scripts off |
+| "Nothing is saved" overlooked that a browser may put answers back | The page now says it keeps nothing itself, and that the browser may put what you typed back in the boxes if you leave and come back | browser check |
+| The demo's own tests do not run in the repo's CI | Not done here: CI is shared by the whole site, and changing it is outside this demo's folder | |
+| No real phone, Safari or Firefox, screen reader or reference comparison | Still true. Listed under Not verified | |
+| "Unlisted" pages become reachable once merged, because the site deploys its main branch | The README now says so | |
+
+A browser can ignore a page that asks it not to fill a box in, so a visitor's own details may still be offered by the browser. The page cannot stop that; it can only ask for made-up ones.
+
 ## Provenance
 
 - No library, no font, picture or data file.

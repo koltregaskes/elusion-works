@@ -25,6 +25,7 @@
   .about { position:static; } h1 { margin:.875rem 0 1.125rem; font-size:clamp(2rem, 11vw, 5.5rem); overflow-wrap:anywhere; line-height:.9; font-weight:800; letter-spacing:-.045em; text-wrap:balance; }
   .lede { margin:0; max-width:30ch; font-size:1.1875rem; color:var(--soft); }
   .demo { margin:1.5rem 0 0; max-width:34ch; padding:.75rem .875rem; border-radius:.75rem; border:1px solid var(--line); border-left:4px solid var(--accent); font-size:.875rem; color:var(--soft); } .demo strong { color:var(--ink); }
+  .made { margin:0 0 .75rem; padding:.75rem .875rem; border-radius:.75rem; border:1px solid var(--line); border-left:4px solid var(--accent); font-size:.9375rem; color:var(--soft); overflow-wrap:anywhere; } .made strong { color:var(--ink); } .btn.small { min-height:2.75rem; padding:0 1rem; font-size:.9375rem; margin:0 0 1.375rem; }
 
   /* The steps: a list beside the form on a wide screen, each with its answer once it has one; a row of dots above the form on a narrow one. */
   #steps { display:grid; gap:.125rem; max-width:24rem; margin:1.5rem 0 0; padding:0; list-style:none; } #steps li { display:grid; grid-template-columns:2rem minmax(0, 1fr); gap:.75rem; align-items:start; padding:.3125rem 0; }
@@ -63,7 +64,7 @@
   <p class="eyebrow">Elusion Works</p>
   <h1>Start a project</h1>
   <p class="lede">Five short steps. Say what you need, tell us a little about it, and check your answers at the end.</p>
-  <p class="demo"><strong>This is a demonstration.</strong> Nothing you type here is sent or saved. At the end you see what a real form would have sent.</p>
+  <p class="demo"><strong>This is a demonstration.</strong> Nothing you type is sent anywhere, and the page keeps nothing. Use made-up details: step 4 offers some. As with any form, your browser may put what you typed back in the boxes if you leave and come back. At the end you see what a real form would have sent.</p>
   <ol id="steps" class="js" aria-label="Steps of the form"></ol>
 </header>
 
@@ -139,16 +140,18 @@
 
     <section class="step" id="you">
       <h2 tabindex="-1"><span class="n">Step 4 of 5</span>How do we reach you?</h2>
+      <p class="made" id="h-made"><strong>Use made-up details only.</strong> Nothing is sent, so nobody will reply, and there is no reason to give your own. For example: <span id="made-name">Sam Carter</span>, <span id="made-email">sam@example.com</span>, <span id="made-phone">020 7946 0000</span>.</p>
+      <button class="btn small js" id="madeup" type="button">Fill in these made-up details</button>
       <div class="field">
         <label for="name">Your name</label>
         <p class="err" id="e-name" hidden></p>
-        <input id="name" name="name" type="text" autocomplete="name" required class="short">
+        <input id="name" name="name" type="text" autocomplete="off" required class="short" aria-describedby="h-made">
       </div>
       <div class="field">
         <label for="email">Your email address</label>
-        <p class="hint" id="h-email">A real form would use this only to reply to you.</p>
+        <p class="hint" id="h-email">A real form would use this only to reply to you. Here, use a made-up one.</p>
         <p class="err" id="e-email" hidden></p>
-        <input id="email" name="email" type="text" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" required aria-describedby="h-email">
+        <input id="email" name="email" type="text" inputmode="email" autocomplete="off" autocapitalize="none" spellcheck="false" required aria-describedby="h-email">
       </div>
       <fieldset id="f-reply">
         <legend>How would you like a reply?</legend>
@@ -160,7 +163,7 @@
       <div class="field" id="w-phone">
         <label for="phone">Your phone number</label>
         <p class="err" id="e-phone" hidden></p>
-        <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" class="short">
+        <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="off" class="short" aria-describedby="h-made">
       </div>
     </section>
 

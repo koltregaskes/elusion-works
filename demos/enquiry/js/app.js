@@ -1,4 +1,4 @@
-// Start a project: the page. flow.js holds the rules; this file shows one step at a time, says what is wrong with an answer, and shows what would be sent. Nothing is sent, and nothing is saved.
+// Start a project: the page. flow.js holds the rules; this file shows one step at a time, says what is wrong with an answer, and shows what would be sent. Nothing is sent, and the page keeps nothing.
 import * as F from './flow.js';
 
 const $ = id => document.getElementById(id);
@@ -36,6 +36,8 @@ for (const g of form.querySelectorAll('fieldset[id^="f-"]')) { const first = g.q
 /* As answers change: the questions asked, the steps beside the form, and any problem that has been put right goes from the list. Nothing new is added until Continue is pressed. */
 function settle() { asked(); paintSteps(); if (!shownFor.length) return; const still = F.check(F.STEPS[step].id, read()).filter(e => shownFor.includes(e.field)), was = [...$('errors').querySelectorAll('li a')].map(a => a.textContent); if (still.length !== was.length || still.some((e, i) => e.message !== was[i])) { const inList = $('errors').contains(document.activeElement); showErrors(still, false); if (inList) (still.length ? $('errors') : sections[step].querySelector('h2')).focus(); } }
 form.addEventListener('change', settle); form.addEventListener('input', e => { if (e.target.id === 'about') count(true); settle(); });
+/* The made-up details the page offers, put in the boxes by one press: the phone number too, if a reply by phone is asked for. */
+$('madeup').addEventListener('click', () => { $('name').value = F.MADE_UP.name; $('email').value = F.MADE_UP.email; if (!$('w-phone').hidden) $('phone').value = F.MADE_UP.phone; settle(); say('Made-up details are filled in.'); });
 /* Enter on a tick box or a choice is not Continue. */
 form.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches('input[type="checkbox"], input[type="radio"]')) e.preventDefault(); });
 
