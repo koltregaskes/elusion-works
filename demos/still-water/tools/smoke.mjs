@@ -4,11 +4,12 @@ import fs from 'node:fs';
 import assert from 'node:assert/strict';
 const { chromium } = createRequire(import.meta.url)('playwright');
 const axeSrc = fs.readFileSync(process.argv[2], 'utf8'), base = process.argv[3] || 'http://127.0.0.1:8772', url = base + '/demos/still-water/';
+// Page loads get two minutes, not thirty seconds: under software 3D on a busy machine a load can take longer. No check is loosened.
 const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM || undefined, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const problems = [], requests = [], done = [];
 async function open(w, h, opts = {}) {
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: !!opts.touch, isMobile: !!opts.touch, reducedMotion: opts.reduced ? 'reduce' : 'no-preference' });
-  const p = await ctx.newPage(); if (opts.block) await p.route(opts.block, r => r.abort()); if (!opts.quiet) p.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') problems.push(`${w}x${h}: ${m.text()}`); }); p.on('pageerror', e => problems.push(`${w}x${h}: ${e}`)); p.on('request', r => requests.push(r.url())); if (!opts.quiet) p.on('requestfailed', r => problems.push('failed request ' + r.url()));
+  const p = await ctx.newPage(); p.setDefaultTimeout(120000); if (opts.block) await p.route(opts.block, r => r.abort()); if (!opts.quiet) p.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') problems.push(`${w}x${h}: ${m.text()}`); }); p.on('pageerror', e => problems.push(`${w}x${h}: ${e}`)); p.on('request', r => requests.push(r.url())); if (!opts.quiet) p.on('requestfailed', r => problems.push('failed request ' + r.url()));
   await p.goto(url); await p.evaluate(() => window.stillWater.ready); return p;
 }
 const state = p => p.evaluate(() => window.stillWater.state());
@@ -22,12 +23,15 @@ const layout = async (p, label) => { const bad = await p.evaluate(() => { const 
   return out; }); assert.deepEqual(bad, [], `${label}: ${bad.join('; ')}`); };
 // Is the picture on screen more than one flat colour? Reads the drawn frame back.
 const drawn = async p => { const shot = (await p.screenshot({ type: 'png' })).toString('base64'); return p.evaluate(async b64 => { const bmp = await createImageBitmap(await (await fetch('data:image/png;base64,' + b64)).blob()), c = new OffscreenCanvas(160, 100), g = c.getContext('2d'); g.drawImage(bmp, 0, 0, 160, 100); const d = g.getImageData(0, 0, 160, 100).data, seen = new Set(); for (let i = 0; i < d.length; i += 4) seen.add((d[i] >> 3) + ',' + (d[i + 1] >> 3) + ',' + (d[i + 2] >> 3)); return seen.size; }, shot); }; // how many different colours are on the screen
+// Which controls lie over a rectangle of the screen?
+const covered = (p, f) => p.evaluate(f => [...document.querySelectorAll('#plate, #tools button, #map')].filter(el => el.getClientRects().length).filter(el => { const q = el.getBoundingClientRect(); return Math.min(f.right, q.right) - Math.max(f.left, q.left) > 0 && Math.min(f.bottom, q.bottom) - Math.max(f.top, q.top) > 0; }).map(el => el.id || el.textContent.trim()), f);
 const turnTo = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
 
 // ---- 1. The way in ----
 { const p = await open(1280, 800); let s = await state(p);
   assert.equal(s.mode, 'start'); assert.equal(s.loaded, 12, 'all twelve photographs loaded'); assert.equal(s.failed, 0); assert.ok(s.triangles > 20000, `the rooms are drawn (${s.triangles} triangles)`);
   assert.ok(await visible(p, '#start')); assert.ok(!(await visible(p, '#tools')) && !(await visible(p, '#plate')));
+  assert.ok(!(await visible(p, '#fallback')) && !(await p.evaluate(() => document.documentElement.classList.contains('flat'))), 'the plain gallery stays hidden while the rooms work');
   { const colours = await drawn(p); assert.ok(colours > 60, `the view has only ${colours} colours in it`); }
   // The repo's rule: as the page loads, three presses of Tab each land on something you can see.
   { const q = await open(1280, 800); for (const want of ['stage', 'enter', 'enter-tour']) { await q.keyboard.press('Tab'); assert.equal(await q.evaluate(() => document.activeElement.id), want); } await q.context().close(); } await axe(p, 'start'); await layout(p, 'start');
@@ -51,7 +55,8 @@ const turnTo = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
   const heard = new Set(); for (let i = 0; i < 12; i++) { await p.focus('#stage'); await p.keyboard.press('PageDown'); await fast(p, 3); if ((await state(p)).gliding) assert.equal(await p.textContent('#plate-n'), `On the way to plate ${String(i + 1).padStart(2, '0')}`, 'while walking, the panel says where you are going, not where you were'); let n = 0; while ((await state(p)).gliding && n < 60) { await fast(p, 120); n++; } const s2 = await state(p), v = plates[i].view;
     assert.ok(!s2.gliding, `the walk to plate ${i + 1} never ended`); assert.ok(Math.hypot(s2.x - v.x, s2.z - v.z) < 0.01 && turnTo(s2.yaw, v.yaw) < 0.02, `not standing square in front of plate ${i + 1}`); assert.equal(s2.plate, i + 1); assert.ok(s2.clear);
     assert.equal(await p.textContent('#plate-n'), `Plate ${String(i + 1).padStart(2, '0')} of 12`); assert.equal(await p.textContent('#plate-t'), plates[i].alt);
-    assert.equal(s2.said, `Plate ${i + 1} of 12. ${plates[i].alt}`, 'arriving is announced once, with the description'); heard.add(s2.said); }
+    assert.equal(s2.said, `Plate ${i + 1} of 12. ${plates[i].alt}`, 'arriving is announced once, with the description'); heard.add(s2.said);
+    const f = await p.evaluate(i => window.stillWater.corners(i), i); assert.ok(f.ahead && f.left >= 0 && f.top >= 0 && f.right <= 1280 && f.bottom <= 800, `plate ${i + 1} runs off the screen`); assert.deepEqual(await covered(p, f), [], `plate ${i + 1} is partly under the controls`); }
   assert.equal(heard.size, 12);
   await p.keyboard.press('PageUp'); await fast(p, 60 * 30); assert.equal((await state(p)).plate, 11, 'PageUp goes back one');
   // On the way to a plate, touching a walking key hands control back.
@@ -66,7 +71,7 @@ const turnTo = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
   await p.click('#still'); assert.equal(await p.evaluate(() => document.activeElement.id), 'stage'); await p.click('#still');
   await p.focus('#sound'); await p.keyboard.press('t'); assert.equal((await state(p)).touring, false, 'T is not a shortcut while a button has the focus'); await p.keyboard.press('Enter'); assert.equal((await state(p)).soundOn, true); assert.equal(await p.evaluate(() => document.activeElement.id), 'sound'); await p.keyboard.press('Enter'); await p.focus('#stage');
   await axe(p, 'walking'); await layout(p, 'walking');
-  done.push('PageDown reaches all twelve plates in order, square on, with the right words; PageUp goes back; plate 8 is reached by wading');
+  done.push('PageDown reaches all twelve plates in order, square on, with the right words, each photograph wholly on screen and clear of the controls; PageUp goes back; plate 8 is reached by wading');
 
   // ---- 4. The list, and the walk round ----
   await p.evaluate(() => { window.stillWater.goTo(7, true); window.stillWater.fast(2); }); const at8 = await state(p); assert.equal(at8.plate, 8);
@@ -82,12 +87,16 @@ const turnTo = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
   assert.equal(seen.size, 12, `the walk round stopped at ${seen.size} plates`); assert.equal((await state(p)).touring, false, 'the walk round ends at the last plate'); assert.equal(await p.getAttribute('#tour', 'aria-pressed'), 'false');
   await p.click('#tour'); await fast(p, 30); await p.keyboard.press('Escape'); assert.equal((await state(p)).touring, false, 'Escape stops the walk round'); assert.equal((await state(p)).gliding, false, 'and stops you where you are');
   await p.click('#tour'); await fast(p, 30); await p.click('#tour'); assert.ok(!(await state(p)).touring && !(await state(p)).gliding, 'switching the walk round off stops you where you are');
+  // Behind the list the walk round waits: no gliding, no next stop, and the plate marked in the list stays the one you are at. Shut the list and it carries on.
+  { await p.evaluate(() => window.stillWater.place(-18, -17, -Math.PI / 2)); await p.click('#tour'); let n = 0; while ((await state(p)).gliding && n < 60) { await fast(p, 60); n++; } await fast(p, 60); const at1 = await state(p); assert.ok(at1.plate > 0 && at1.plate === at1.target + 1); assert.ok(at1.touring && !at1.gliding);
+    await p.click('#list'); await fast(p, 60 * 20); const held2 = await state(p); assert.ok(Math.hypot(held2.x - at1.x, held2.z - at1.z) < 1e-6 && held2.target === at1.target && held2.touring && !held2.gliding, `the walk round went on behind the list (target ${held2.target}, moved ${Math.hypot(held2.x - at1.x, held2.z - at1.z).toFixed(2)} m)`);
+    assert.equal(await p.getAttribute(`#plates li:nth-child(${at1.plate}) button`, 'aria-current'), 'true'); await p.keyboard.press('Escape'); await fast(p, 60 * 8); const on = await state(p); assert.ok(on.touring && on.target === (at1.target + 1) % 12, `once the list shuts the walk round carries on (target ${on.target})`); await p.click('#tour'); }
   // Started in front of plate 7, the walk round still makes all twelve stops, 8 first and 7 last.
   { await p.evaluate(v => { window.stillWater.place(v.x, v.z, v.yaw); window.stillWater.fast(2); }, plates[6].view); assert.equal((await state(p)).plate, 7); await p.click('#tour'); const order = [];
     for (let i = 0; i < 500 && (await state(p)).touring; i++) { await fast(p, 60); const s4 = await state(p); if (!s4.gliding && s4.plate && order[order.length - 1] !== s4.plate) order.push(s4.plate); }
     assert.deepEqual(order, [8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7], `from plate 7 the walk round went ${order}`); }
   await p.click('#sound'); assert.equal((await state(p)).soundOn, true); assert.equal(await p.getAttribute('#sound', 'aria-pressed'), 'true'); await fast(p, 30); await p.click('#sound'); assert.equal((await state(p)).soundOn, false);
-  done.push('the list of plates opens, is keyboard-safe and takes you there; the walk round visits all twelve and stops; sound toggles');
+  done.push('the list of plates opens, is keyboard-safe and takes you there; the walk round visits all twelve and stops, and waits while the list is open; sound toggles');
   await p.context().close(); }
 
 // ---- 5. Reduced motion: cuts, not glides; water still ----
@@ -103,6 +112,28 @@ const turnTo = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
   const q = await state(p); assert.equal(q.plate, 2); assert.equal(q.words, 'This photograph could not be loaded.'); assert.match(q.said, /could not be loaded/); await p.click('#list'); await p.waitForSelector('#plates li:nth-child(2) .lost'); assert.equal(await p.textContent('#plates li:nth-child(2) small'), 'This photograph could not be loaded.'); assert.match(await p.textContent('#plates li:nth-child(3) small'), /jetty/);
   await p.context().close(); done.push('a photograph that fails to load is said to be missing, in the panel and in the list'); }
 
+// ---- 5c. When the rooms cannot start, the twelve photographs are still there as an ordinary page ----
+{ const { PHOTOS } = await import(new URL('../js/photos.js', import.meta.url));
+  const cases = [
+    ['no WebGL', { init: () => { const g = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (t, ...a) { return /webgl/i.test(t) ? null : g.call(this, t, ...a); }; } }, /could not start 3D graphics/, ['Error: Error creating WebGL context.']],
+    ['the app script blocked', { block: '**/still-water/js/app.js' }, /script that draws the rooms did not load/, []],
+    ['Three.js blocked', { block: '**/three-r160/build/three.module.js' }, /script that draws the rooms did not load/, []],
+    ['scripts off', { noJs: true }, /could not be opened here/, []]];
+  for (const [w, h] of [[1280, 800], [320, 568]]) for (const [name, o, why, errors] of cases) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, javaScriptEnabled: !o.noJs }), p = await ctx.newPage(), seen = []; p.setDefaultTimeout(120000);
+    if (o.init) await p.addInitScript(o.init); if (o.block) await p.route(o.block, r => r.abort()); p.on('pageerror', e => seen.push(String(e))); p.on('request', r => requests.push(r.url()));
+    await p.goto(url, { waitUntil: 'load' }); const label = `${name}, ${w}x${h}`;
+    assert.ok(await p.locator('#fallback').isVisible(), `${label}: the plain gallery is not shown`); assert.match(await p.textContent('#fallback-why'), why, `${label}: the wrong reason is given`);
+    for (const sel of ['#start', '#enter', '#enter-tour', '#stage', '#tools', '#plate']) assert.ok(!(await p.locator(sel).isVisible()), `${label}: ${sel} is still showing`);
+    const caps = await p.locator('#flat figcaption').allTextContents(); assert.deepEqual(caps, PHOTOS.map((q, i) => `Plate ${String(i + 1).padStart(2, '0')} ${q.alt}`), `${label}: the captions are wrong`);
+    const imgs = p.locator('#flat img'); assert.equal(await imgs.count(), 12);
+    for (let i = 0; i < 12; i++) { const im = imgs.nth(i); await im.scrollIntoViewIfNeeded(); assert.ok(await im.isVisible()); assert.equal(await im.getAttribute('src'), PHOTOS[i].file); if (!o.noJs) await p.waitForFunction(i => { const e = document.querySelectorAll('#flat img')[i]; return e.complete && e.naturalWidth > 0; }, i); }
+    const back = p.locator('#fallback a[href="../../"]'); assert.ok(await back.count() >= 1 && await back.first().isVisible(), `${label}: no link back to the site`); assert.equal(await back.first().evaluate(a => a.href), base + '/', `${label}: the link back goes to the wrong place`);
+    assert.deepEqual(seen, errors, `${label}: unexpected page errors`);
+    if (!o.noJs) { assert.ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${label}: the page scrolls sideways`); await axe(p, label); }
+    await ctx.close(); } }
+done.push('with WebGL refused, the app script or Three.js blocked, or scripts off, the twelve photographs, their full captions and a link back to the site show as an ordinary page (1280 and 320 wide), no dead start card; axe clean');
+
 // ---- 6. Phones ----
 for (const [w, h] of [[400, 800], [320, 568], [740, 360]]) { const p = await open(w, h, { touch: true }); await layout(p, `start ${w}x${h}`); await axe(p, `start ${w}x${h}`);
   assert.ok(await p.evaluate(() => { const r = document.getElementById('enter').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }), `${w}x${h}: Walk in is on the screen`);
@@ -116,10 +147,13 @@ for (const [w, h] of [[400, 800], [320, 568], [740, 360]]) { const p = await ope
   const d = await state(p); assert.ok(Math.atan2(Math.sin(d.yaw - c.yaw), Math.cos(d.yaw - c.yaw)) > 0.2, 'dragging left on the right of the screen looks left');
   const was = (await state(p)).plate; await p.tap('#next'); await fast(p, 60 * 30); const e = await state(p); assert.equal(e.plate, was % 12 + 1, 'Next goes to the plate after the one in front of you'); await layout(p, `plate ${w}x${h}`); assert.ok(await p.evaluate(() => { const t = document.getElementById('plate-t'); return getComputedStyle(t).display !== 'none' && t.getBoundingClientRect().height > 8 && t.textContent.length > 20; }), `${w}x${h}: the description is on the screen`);
   // On every screen shape the whole photograph is on the screen when you are stood in front of it, even in the water at plate 8.
-  for (const i of [0, 4, 7]) { await p.evaluate(i => { window.stillWater.goTo(i, true); window.stillWater.fast(2); }, i); const q = await state(p); assert.equal(q.plate, i + 1); }
+  // Checked by projecting the photograph's four corners, not by the plate number alone. Clear of the controls too where that holds (see REVIEW.md, Known limits).
+  for (const i of [0, 4, 7]) { await p.evaluate(i => { window.stillWater.goTo(i, true); window.stillWater.fast(2); }, i); const q = await state(p); assert.equal(q.plate, i + 1);
+    const f = await p.evaluate(i => window.stillWater.corners(i), i); assert.ok(f.ahead && f.left >= 0 && f.top >= 0 && f.right <= w && f.bottom <= h, `${w}x${h}: plate ${i + 1} runs off the screen (${Math.round(f.left)},${Math.round(f.top)} to ${Math.round(f.right)},${Math.round(f.bottom)})`);
+    if (w === 400) assert.deepEqual(await covered(p, f), [], `${w}x${h}: plate ${i + 1} is partly under the controls`); }
   await p.tap('#list'); await axe(p, `list ${w}x${h}`); await layout(p, `list ${w}x${h}`); await p.tap('#all-close');
   await p.context().close(); }
-done.push('phones 400x800, 320x568, 740x360: stick walks, drag looks, Next works, nothing off screen or overlapping');
+done.push('phones 400x800, 320x568, 740x360: stick walks, drag looks, Next works, nothing off screen or overlapping, photographs 1, 5 and 8 wholly on screen (clear of the controls at 400x800)');
 
 await browser.close();
 const outside = requests.filter(u => !u.startsWith(base) && !u.startsWith('blob:') && !u.startsWith('data:'));

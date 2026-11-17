@@ -71,4 +71,28 @@ assert.equal(g.normal.length, nv * 3); assert.equal(g.light.length, nv * 3); ass
 { let lo = Infinity, hi = 0, wetOnes = 0; for (let i = 0; i < nv; i++) { const l = g.light[i * 3 + 1]; lo = Math.min(lo, l); hi = Math.max(hi, l); if (g.wet[i] > 0.99) wetOnes++; assert.ok(g.wet[i] >= 0 && g.wet[i] <= 1); } assert.ok(lo > 0.15 && hi < 2.21 && hi > 1, `light runs from ${lo.toFixed(2)} to ${hi.toFixed(2)}`); assert.ok(wetOnes > 1000); }
 assert.equal(g.water.index.length / 6, w.cells.filter(c => c.pool).length); assert.ok([...g.kind].filter(k => k === KIND.sky).length === w.skylights.length * 4);
 const buildMs = Date.now() - t0;
+
+// The plain gallery in index.html (shown when the rooms cannot start) lists the same twelve photographs, in the same order, with the same words, and links back to the site.
+import fs from 'node:fs';
+import { PHOTOS } from '../js/photos.js';
+const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+{ const flat = html.slice(html.indexOf('<main id="fallback">'), html.indexOf('</main>')); assert.ok(flat.length > 100, 'index.html has no plain gallery');
+  const items = [...flat.matchAll(/<li><figure><img src="([^"]+)" alt="" loading="lazy" width="(\d+)" height="(\d+)"><figcaption><b>Plate (\d\d)<\/b> ([^<]+)<\/figcaption><\/figure><\/li>/g)];
+  assert.equal(items.length, 12, `the plain gallery lists ${items.length} photographs, not 12`);
+  assert.deepEqual(items.map(m => m[4]), ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']);
+  assert.deepEqual(items.map(m => m[1]), PHOTOS.map(p => p.file), 'the plain gallery and photos.js disagree about the files');
+  assert.deepEqual(items.map(m => m[5]), PHOTOS.map(p => p.alt), 'the plain gallery and photos.js disagree about the words');
+  assert.match(items[1][5], /sailing boat/); // plate 2, checked by eye against img/k06.jpg
+  assert.deepEqual(items.filter(m => m[2] === '512' && m[3] === '768').map(m => m[4]), ['05', '07'], 'the two portrait pictures (k19, k09: 512 by 768 pixels) are the only tall ones');
+  assert.ok(/<a href="\.\.\/\.\.\/">[^<]*Elusion Works<\/a>/.test(flat), 'the plain gallery has no link back to the site'); }
+// Every smoothstep in the shaders with number edges has them low then high: the other way round is undefined in GLSL.
+{ const src = fs.readFileSync(new URL('../js/app.js', import.meta.url), 'utf8'), calls = [...src.matchAll(/smoothstep\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,/g)];
+  assert.ok(calls.length >= 1); for (const m of calls) assert.ok(Number(m[1]) < Number(m[2]), `smoothstep(${m[1]}, ${m[2]}, ...) has its edges the wrong way round`); }
+// The words on the page never claim more about the photographs' rights than is known.
+// Any sentence that says "public domain" must deny it; any that says "unrestricted" must put it in someone else's mouth.
+for (const f of ['../index.html', '../README.md', '../REVIEW.md', '../js/photos.js']) for (const said of fs.readFileSync(new URL(f, import.meta.url), 'utf8').split(/[.\n|]/)) {
+  if (/public domain/i.test(said)) assert.match(said, /\b(no|not|nothing|never)\b/i, `${f} calls the photographs public domain: "${said.trim()}"`);
+  if (/unrestricted/i.test(said)) assert.match(said, /\b(says|statement|claim|reports?)\b/i, `${f} states unrestricted use as fact: "${said.trim()}"`); }
+assert.ok(/terms of reuse are not settled/.test(html) && /must be replaced/.test(html), 'the page does not say the photographs are stand-ins to be replaced');
 console.log(`ok  the place: ${open.length} open squares all reachable, 12 photographs each viewable, 160,000 random steps never in a wall, walk round takes ${total.toFixed(0)} s (longest leg ${longest.toFixed(1)} s); rooms: ${nv} corners, ${g.index.length / 3} triangles, lit in ${buildMs} ms`);
+console.log('ok  the plain gallery in index.html lists the same twelve photographs and words as photos.js, with a link back to the site; shader smoothsteps run low to high; the page calls the photographs unsettled stand-ins');

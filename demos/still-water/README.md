@@ -13,7 +13,8 @@ Use it as the reference for walkable 3D spaces and for hanging pictures in them.
 - Pools shelve down from the dry floor, so you wade in. Water slows you and ripples round you.
 - **Next** and **Previous** walk you to each photograph and stand you square in front of it, far enough back to see all of it on your screen.
 - **Walk me round** visits all twelve in order and stops. Touch any control and you are walking yourself again.
-- **All plates** is a plain list with thumbnails and descriptions, for anyone who would sooner choose than walk.
+- **All plates** is a plain list with thumbnails and descriptions, for anyone who would sooner choose than walk. It also repeats how to move and links back to the site.
+- If the 3D rooms cannot start (no WebGL, the script fails to load, or scripts are off), the page shows the twelve photographs and their descriptions as an ordinary web page instead, with a link back to the site.
 - A plan in the corner shows the rooms, the pools, the photographs and you.
 - The panel names a photograph only when it is really on your screen, and says so plainly if a picture failed to load.
 - Sound (off until you ask): the hush of a tiled room, a drip now and then, your steps, the water round your legs.
@@ -32,7 +33,7 @@ To change the rooms, edit the `PLAN` in `world.js`: `#` wall, `.` floor, `~` poo
 
 ## To hang Kol's own photographs
 
-Replace the files in `img/` and the descriptions in `js/photos.js`. Landscape pictures hang 1.5 m wide, portrait ones (marked `portrait: true`) 0.95 m wide. Nothing else needs to change.
+Replace the files in `img/` and the descriptions in `js/photos.js`, and copy the same file names and descriptions into the plain gallery (`<ol id="flat">`) at the foot of `index.html`; `world.test.mjs` fails until the two agree. Landscape pictures hang 1.5 m wide, portrait ones (marked `portrait: true`) 0.95 m wide. Then re-take the pictures in this folder with `tools/shots.mjs`, because the sharing image (`thumbnail.png`) shows two of the stand-ins on the walls.
 
 ## Checks
 
@@ -48,7 +49,15 @@ The first checks the plan, the walking rules and the geometry in Node. The secon
 
 ## The photographs
 
-The twelve photographs are stand-ins: images 1, 2, 6, 7, 9, 11, 13, 16, 19, 21, 22 and 23 of the Kodak Lossless True Color Image Suite, chosen because none shows a person close up. The suite's archive page (r0k.us/graphics/kodak) says the images were released by the Eastman Kodak Company for unrestricted usage; these copies came from a public GitHub mirror whose README repeats that. **Caveat:** that statement is the only licence evidence checked. They are here to show the hanging and are meant to be replaced.
+**These are stand-in test images, their terms of reuse are not settled, and they must be replaced with Kol's own photographs before this page is merged or made public.** The page says the same on its start card, in the list of plates and in the plain gallery.
+
+They are images 1, 2, 6, 7, 9, 11, 13, 16, 19, 21, 22 and 23 of the Kodak Lossless True Color Image Suite, chosen because none shows a person close up. What is known about permission, and no more:
+
+- An archive page for the suite (r0k.us/graphics/kodak) says the images were released by the Eastman Kodak Company for unrestricted usage. These copies came from a public GitHub mirror whose README repeats that. Neither is Kodak's own statement.
+- An outside review (17 November 2026) reports that a Kodak document published alongside the suite speaks instead of a grant to holders of Kodak's sampler disc, and of crediting the photographers with reproductions. That document was not read for this page and is not in the repo.
+- The repo holds no licence, no grant and no photographer credits for any of the twelve.
+
+So nothing here should be read as saying the images are public domain or free to reuse. Which terms apply is a question for Kol, not something the code can settle.
 
 ## Credit
 
@@ -56,4 +65,4 @@ The idea follows a post by Ben Springer showing a walkable "poolrooms" gallery (
 
 ## Status
 
-Not published. The page carries `noindex`, is not in the demo gallery and is not in the sitemap. See `REVIEW.md` for what was checked and what was not.
+Draft, and unlisted. The page carries `noindex`, is not in the demo gallery and is not in the sitemap. Unlisted does not mean private: the site deploys whatever is merged, so merging this would put the page on the live site at its own address (/demos/still-water/), unlisted but reachable by anyone with the link. It must not be merged while the stand-in photographs are on it. See `REVIEW.md` for what was checked and what was not.

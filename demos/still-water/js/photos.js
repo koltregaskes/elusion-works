@@ -1,4 +1,6 @@
-// The photographs on the walls, in the order of the walk round. To hang your own, replace the files in img/ and the words here.
+// The photographs on the walls, in the order of the walk round. To hang your own, replace the files in img/ and the words here,
+// and the same words in the plain gallery at the foot of index.html (world.test.mjs fails until the two agree).
+// These twelve are stand-in Kodak test images whose terms of reuse are not settled: they must be replaced before the page goes public.
 // Each has a plain description for anyone who cannot see it. No titles: the plates carry numbers only.
 export const PHOTOS = [
   { file: 'img/k16.jpg', alt: 'A low island lined with palm trees across still water, with tall white clouds above.' },

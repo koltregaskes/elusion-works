@@ -14,7 +14,7 @@ const HAZE = [0.83, 0.91, 0.91]; // the pale air the far rooms fade into
 
 let renderer;
 try { renderer = new THREE.WebGLRenderer({ canvas: $('stage'), antialias: true, powerPreference: 'high-performance' }); }
-catch (err) { $('fallback').style.display = 'grid'; $('start').hidden = true; throw err; }
+catch (err) { window.stillWaterFlat('This browser could not start 3D graphics (WebGL), so the twelve photographs are shown below as a plain list. To walk the rooms, try a recent Edge, Chrome, Firefox or Safari with hardware acceleration switched on.'); throw err; } // the plain gallery in index.html takes over
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, small ? 1.5 : 2));
 const scene = new THREE.Scene(); scene.background = new THREE.Color().setRGB(HAZE[0], HAZE[1], HAZE[2], THREE.SRGBColorSpace);
 const camera = new THREE.PerspectiveCamera(62, 1, 0.08, 120); camera.rotation.order = 'YXZ';
@@ -41,7 +41,7 @@ const CAUSTIC = /* glsl */`
         else {
           vec3 base = vec3(0.90, 0.93, 0.92); float gloss = 0.0;
           if (vKind < 2.5) { float size = vKind > 1.5 ? 0.125 : (vKind > 0.5 ? 0.5 : 0.25); vec2 t = uv / size + 0.5, cell = abs(fract(t) - 0.5); // pool mosaic, floor slabs, wall tiles
-            float aa = max(fwidth(t.x), fwidth(t.y)), line = smoothstep(0.455 - aa, 0.455 + aa, max(cell.x, cell.y)) * clamp(1.0 - aa * 1.5, 0.0, 1.0); // grout, fading out where tiles are too small to see
+            float aa = max(max(fwidth(t.x), fwidth(t.y)), 1e-4), line = smoothstep(0.455 - aa, 0.455 + aa, max(cell.x, cell.y)) * clamp(1.0 - aa * 1.5, 0.0, 1.0); // grout, fading out where tiles are too small to see
             float v = hash(floor(t));
             vec3 tile = vKind > 1.5 ? mix(vec3(0.40, 0.76, 0.79), vec3(0.56, 0.87, 0.87), v) : mix(vec3(0.90, 0.94, 0.93), vec3(0.97, 0.98, 0.97), v);
             vec3 grout = vKind > 1.5 ? vec3(0.28, 0.58, 0.63) : vec3(0.66, 0.73, 0.73);
@@ -69,7 +69,7 @@ const CAUSTIC = /* glsl */`
         vec2 p = vW.xz; float e = 0.05; vec3 n = normalize(vec3(height(p - vec2(e, 0.0)) - height(p + vec2(e, 0.0)), 2.0 * e, height(p - vec2(0.0, e)) - height(p + vec2(0.0, e))));
         vec3 toEye = cameraPosition - vW; float dist = length(toEye); vec3 V = toEye / dist, R = reflect(-V, n);
         float F = 0.03 + 0.97 * pow(1.0 - max(dot(n, V), 0.0), 5.0), glow = 0.0;
-        for (int i = 0; i < 12; i++) { if (i >= uSkyN) break; float t = (uSky[i].y - vW.y) / max(R.y, 0.05); vec2 hit = vW.xz + R.xz * t; vec2 d = abs(hit - uSky[i].xz); glow += smoothstep(1.25, 0.85, max(d.x, d.y)); } // the skylights, mirrored
+        for (int i = 0; i < 12; i++) { if (i >= uSkyN) break; float t = (uSky[i].y - vW.y) / max(R.y, 0.05); vec2 hit = vW.xz + R.xz * t; vec2 d = abs(hit - uSky[i].xz); glow += 1.0 - smoothstep(0.85, 1.25, max(d.x, d.y)); } // the skylights, mirrored
         vec3 mirror = mix(vec3(0.70, 0.82, 0.82), vec3(1.0, 0.99, 0.95), clamp(glow, 0.0, 1.0)), deep = vec3(0.13, 0.50, 0.55);
         vec3 col = mix(deep, mirror, F); float alpha = mix(0.38, 0.97, F);
         col = mix(col, uHaze, 1.0 - exp(-dist * dist * 0.0009));
@@ -130,6 +130,7 @@ function input() { const k = c => (keys.has(c) ? 1 : 0); return { forward: k('Ke
 function advance(dt) {
   if (!still) uTime.value += dt;
   if (mode !== 'walk') return;
+  if ($('all').open) { audio.move(0, me.wade, dt); return; } // behind the list of plates nothing moves: no walking, no gliding, and the walk round waits
   const inp = input(), hands = inp.forward || inp.strafe || inp.turn || look.id !== null, x0 = me.x, z0 = me.z;
   if (hands && (path || touring)) { path = null; if (touring) setTour(false); } // touch the controls and you are walking yourself again
   if (path) { if (follow(world, me, path, pathYaw, dt)) arrive(); } else walk(world, me, inp, dt);
@@ -206,5 +207,9 @@ window.stillWater = { // for the automated checks
   ready: ready.then(() => true),
   state: () => ({ mode, x: me.x, z: me.z, y: me.y, yaw: me.yaw, pitch: me.pitch, wade: me.wade, plate: shown ? shown.plate : 0, words: document.getElementById('plate-t').textContent, said: document.getElementById('announce').textContent, target, gliding: !!path, touring, stops, still, soundOn, time: uTime.value, loaded: loaded.ok, failed: loaded.failed, clear: clear(world, me.x, me.z), calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, fov: camera.fov }),
   plates: () => hung.map(p => ({ plate: p.plate, x: p.x, z: p.z, w: p.w, h: p.h, alt: p.alt, view: viewPoint(world, world.photos[p.plate - 1], viewDist(p)) })),
+  // Where the corners of a photograph fall on the screen, in CSS pixels, seen from where you stand.
+  corners(i) { const p = hung[i], rx = p.nz, rz = -p.nx, cx = p.x + p.nx * 0.06, cz = p.z + p.nz * 0.06; camera.position.set(me.x, me.y, me.z); camera.rotation.set(me.pitch, me.yaw, 0); camera.updateMatrixWorld();
+    const pts = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => { probe.set(cx + rx * a * p.w / 2, p.y + b * p.h / 2, cz + rz * a * p.w / 2).project(camera); return [(probe.x + 1) / 2 * innerWidth, (1 - probe.y) / 2 * innerHeight, probe.z]; });
+    return { left: Math.min(...pts.map(q => q[0])), right: Math.max(...pts.map(q => q[0])), top: Math.min(...pts.map(q => q[1])), bottom: Math.max(...pts.map(q => q[1])), ahead: pts.every(q => q[2] < 1) }; },
   enter, goTo, place(x, z, yaw, pitch = 0) { stand({ x, z, yaw }); me.pitch = pitch; }, fast(n) { for (let i = 0; i < n; i++) advance(1 / 60); draw(); return n; },
 };
