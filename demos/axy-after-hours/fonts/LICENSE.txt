@@ -1,0 +1,7 @@
+Fonts in this folder are distributed under the SIL Open Font License 1.1 (https://openfontlicense.org).
+
+- Outfit (variable, Latin subset): Copyright 2021 The Outfit Project Authors.
+- Plus Jakarta Sans (variable, Latin subset): Copyright 2020 The Plus Jakarta Sans Project Authors.
+- JetBrains Mono (variable, Latin subset): Copyright 2020 The JetBrains Mono Project Authors.
+
+Files are unmodified copies from the Fontsource packages @fontsource-variable/outfit, @fontsource-variable/plus-jakarta-sans and @fontsource-variable/jetbrains-mono.
