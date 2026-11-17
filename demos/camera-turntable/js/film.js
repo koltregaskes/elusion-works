@@ -16,15 +16,15 @@ export const SOLID = [
 export const PARTS = [
   { id: 'sensor', name: 'Sensor', inside: true, at: [0.9, -0.4, -0.15], view: [-38, 14, 21], says: 'A full-frame sensor, 36 by 24 mm. Everything else in the body exists to put light on this rectangle and read it off again.' },
   { id: 'shutter', name: 'Shutter', inside: true, at: [0.9, 1.5, 0.75], view: [-46, 20, 22], says: 'Two sets of blades just in front of the sensor. They cross the frame in about three thousandths of a second.' },
-  { id: 'stabiliser', name: 'Stabiliser', inside: true, at: [3.0, -1.9, -0.55], view: [-34, 8, 22], says: 'The sensor floats in a frame moved by magnets, which cancels the shake of your hands.' },
-  { id: 'board', name: 'Main board', inside: true, at: [3.9, 1.6, -1.25], view: [-58, 26, 24], says: 'The processor, memory and the chips that turn the sensor’s readings into a picture file.' },
+  { id: 'stabiliser', name: 'Stabiliser', inside: true, at: [3.85, -0.4, -0.4], view: [42, 8, 22], says: 'The sensor floats in a frame moved by magnets, which cancels the shake of your hands.' },
+  { id: 'board', name: 'Main board', inside: true, at: [2.6, -0.6, -1.45], view: [164, 18, 24], says: 'The processor, memory and the chips that turn the sensor’s readings into a picture file.' },
   { id: 'battery', name: 'Battery', inside: true, at: [-5.0, -1.4, 1.2], view: [-64, 10, 24], says: 'It sits inside the grip, which is why the grip is the shape it is.' },
-  { id: 'cards', name: 'Card slot', inside: true, at: [5.6, -0.6, -0.9], view: [-30, 12, 23], says: 'Two cards side by side, so every picture can be written twice.' },
+  { id: 'cards', name: 'Card slot', inside: true, at: [5.6, -0.6, -0.9], view: [58, 14, 23], says: 'Two cards side by side, so every picture can be written twice.' },
   { id: 'finder', name: 'Viewfinder', inside: true, at: [0, 4.4, -0.9], view: [-52, 34, 22], says: 'A small screen and a magnifying lens. What you see through the eyepiece is the picture the sensor is about to take.' },
   { id: 'glass', name: 'Lens elements', inside: true, at: [0.9, -0.4, 5.6], view: [-62, 12, 25], says: 'Seven pieces of glass in five groups. The iris between them sets how much light gets through.' },
   { id: 'dial', name: 'Mode dial', inside: false, at: [3.4, 5.0, 0.1], view: [-18, 48, 20], says: 'Knurled so that it can be turned with a cold thumb.' },
   { id: 'release', name: 'Shutter button', inside: false, at: [-5.1, 4.75, 1.9], view: [24, 42, 20], says: 'On top of the grip, under your first finger.' },
-  { id: 'screen', name: 'Rear screen', inside: false, at: [-0.4, -0.7, -2.4], view: [168, 8, 24], says: 'The same live picture as the viewfinder, for when the camera is away from your eye.' },
+  { id: 'screen', name: 'Rear screen', inside: false, at: [1.0, -0.9, -2.4], view: [172, 8, 24], says: 'The same live picture as the viewfinder, for when the camera is away from your eye.' },
 ];
 
 const rad = d => d * Math.PI / 180, lerp = (a, b, k) => a + (b - a) * k, ease = k => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2); // slow in, slow out
@@ -63,6 +63,6 @@ export const LIMITS = { up: [-8, 72], dist: [15, 70] };
 export function orbit(pose, { round = 0, up = 0, zoom = 1 } = {}) { const next = { ...pose, round: pose.round + round, up: Math.min(LIMITS.up[1], Math.max(LIMITS.up[0], pose.up + up)), dist: Math.min(LIMITS.dist[1], Math.max(LIMITS.dist[0], pose.dist * zoom)) };
   next.round = ((next.round + 180) % 360 + 360) % 360 - 180; return next; }
 // Ease one pose towards another by the share k, going the short way round.
-export function towards(pose, goal, k) { let turn = ((goal.round - pose.round + 180) % 360 + 360) % 360 - 180; return { round: pose.round + turn * k, up: lerp(pose.up, goal.up, k), dist: lerp(pose.dist, goal.dist, k), target: pose.target.map((v, n) => lerp(v, goal.target[n], k)), fov: lerp(pose.fov, goal.fov, k) }; }
+export function towards(pose, goal, k) { let turn = ((goal.round - pose.round + 180) % 360 + 360) % 360 - 180; return { round: ((pose.round + turn * k + 180) % 360 + 360) % 360 - 180, up: lerp(pose.up, goal.up, k), dist: lerp(pose.dist, goal.dist, k), target: pose.target.map((v, n) => lerp(v, goal.target[n], k)), fov: lerp(pose.fov, goal.fov, k) }; }
 export const HOME = P(-27, 9, 44, [0.4, 0.6, 1.5], 30); // the three-quarter view the turntable starts from, and the film ends on
 export const viewOf = part => P(part.view[0], part.view[1], part.view[2] * 1.3, part.at.map(v => v * 0.6), 30); // look a little towards the middle of the camera, so the part is seen in its place

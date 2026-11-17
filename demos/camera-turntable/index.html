@@ -54,9 +54,10 @@
   #labels button::before { content:""; width:8px; height:8px; border-radius:50%; background:var(--accent); flex:none; }
   #labels button[aria-pressed="true"] { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); } #labels button[aria-pressed="true"]::before { background:var(--accent-ink); }
   #fallback { position:fixed; inset:0; display:none; place-items:center; padding:28px; text-align:center; background:var(--bg); z-index:9; } #fallback p { max-width:460px; color:#d7dce0; }
-  footer { position:fixed; left:max(18px,env(safe-area-inset-left)); bottom:max(14px,env(safe-area-inset-bottom)); max-width:30vw; font-size:11px; color:var(--muted); z-index:10; } footer a { color:var(--ink); }
+  .credit { margin:10px 0 0; padding-top:9px; border-top:1px solid var(--line); font-size:11px; line-height:1.45; color:var(--muted); } .credit a, #fallback a { color:var(--ink); }
+  details summary { -webkit-tap-highlight-color:transparent; }
 
-  @media (max-width:900px) { footer { display:none; } .lede { display:none; } #side { top:auto; bottom:calc(max(16px,env(safe-area-inset-bottom)) + var(--modes,52px) + 8px); right:max(10px,env(safe-area-inset-right)); left:max(10px,env(safe-area-inset-left)); width:auto; max-height:36vh; padding:10px 12px; } #says { min-height:0; margin-bottom:6px; font-size:13px; } #side h2 { font-size:17px; margin:6px 0 4px; }
+  @media (max-width:900px) { .lede { display:none; } #side { top:auto; bottom:calc(max(16px,env(safe-area-inset-bottom)) + var(--modes,52px) + 8px); right:max(10px,env(safe-area-inset-right)); left:max(10px,env(safe-area-inset-left)); width:auto; max-height:36vh; padding:10px 12px; } #says { min-height:0; margin-bottom:6px; font-size:13px; } #side h2 { font-size:17px; margin:6px 0 4px; }
     #caption { bottom:auto; top:max(96px,calc(env(safe-area-inset-top) + 96px)); } #modes .btn { min-height:36px; padding:0 11px; font-size:12px; } #list { grid-template-columns:1fr 1fr 1fr; } }
   @media (max-width:480px) { #list { grid-template-columns:1fr 1fr; } h1 { font-size:32px; } }
   @media (max-height:480px) { #side { max-height:40vh; width:min(300px,46vw); left:auto; top:max(10px,env(safe-area-inset-top)); bottom:auto; } .hintline { display:none; } h1 { font-size:28px; margin:6px 0 0; } #caption { top:auto; bottom:calc(max(16px,env(safe-area-inset-bottom)) + var(--modes,52px) + 8px); } #caption b { font-size:22px; } }
@@ -88,6 +89,7 @@
     <summary>Choose a part</summary>
     <ul id="list"></ul>
   </details>
+  <p class="credit">After <a href="https://x.com/xikhar/status/2119966147328299284" rel="noopener">a post by xikhar</a>. An original model: no real camera was copied and no model file is loaded.</p>
 </aside>
 
 <div id="labels" aria-label="Labels on the parts inside" hidden></div>
@@ -97,10 +99,10 @@
   <button class="btn" id="m-film" type="button" aria-pressed="false">Play the film</button>
   <button class="btn" id="m-inside" type="button" aria-pressed="false">Look inside</button>
   <button class="btn" id="finish" type="button" aria-pressed="false" title="Switch the top plate between black and silver">Silver</button>
+  <button class="btn" id="hold" type="button" aria-pressed="false" title="Stop the table turning by itself">Hold still</button>
 </nav>
 
-<footer>After <a href="https://x.com/xikhar/status/2119966147328299284" rel="noopener">a post by xikhar</a>. An original model: no real camera was copied and no model file is loaded.</footer>
-<div id="fallback" role="alert"><p><strong>This page needs WebGL.</strong><br>Your browser or device could not start 3D graphics. Try a recent version of Edge, Chrome, Firefox or Safari with hardware acceleration switched on.</p></div>
+<div id="fallback" role="alert"><p><strong>This page needs WebGL.</strong><br>Your browser or device could not start 3D graphics. Try a recent version of Edge, Chrome, Firefox or Safari with hardware acceleration switched on.<br><br>Elusion One is a camera on a turntable, after <a href="https://x.com/xikhar/status/2119966147328299284" rel="noopener">a post by xikhar</a>.</p></div>
 <script type="module" src="js/app.js"></script>
 </body>
 </html>
