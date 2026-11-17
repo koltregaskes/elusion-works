@@ -28,7 +28,7 @@ No archive images are bundled. The frames are generative tone studies, drawn in 
 ## Credits and rights
 
 - Inspired by Felix Rieseberg's HTML-in-Canvas demos (https://x.com/felixrieseberg/status/2122036839238492493). This is a separate, original piece: none of his concepts, code or assets are used.
-- Fonts: Outfit, Plus Jakarta Sans, JetBrains Mono, SIL Open Font License 1.1 (see `fonts/LICENSE.txt`).
+- Fonts: Outfit, Plus Jakarta Sans, JetBrains Mono, SIL Open Font License 1.1 (each font's full licence text is in `fonts/`).
 - Axy Lusion name, palette and type choices are Kol's own.
 
 ## Files
