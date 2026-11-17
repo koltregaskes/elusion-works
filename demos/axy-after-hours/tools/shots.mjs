@@ -1,6 +1,6 @@
 // Usage: node demos/axy-after-hours/tools/shots.mjs <outDir> [spec ...]
 // spec = name:tier:room:WxH[:action]   tier = canvas (HTML-in-Canvas switched on) or plain; action = feed|feedlong|none
-// Needs a static server at http://127.0.0.1:8765 serving the repo root.
+// Needs a static server serving the repo root: http://127.0.0.1:8765, or set BASE to another address.
 import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
 const { chromium } = createRequire(import.meta.url)('playwright');
@@ -13,7 +13,7 @@ for (const spec of specs) {
   const page = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
   page.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`${name}: [${m.type()}] ${m.text()}`); });
   page.on('pageerror', e => errors.push(`${name}: ${e.message}`));
-  await page.goto('http://127.0.0.1:8765/demos/axy-after-hours/#' + room, { waitUntil: 'load' });
+  await page.goto((process.env.BASE || 'http://127.0.0.1:8765') + '/demos/axy-after-hours/#' + room, { waitUntil: 'load' });
   await page.waitForFunction(() => window.__afterHours && window.__afterHours.framesReady >= 8, null, { timeout: 60000 });
   if (action.startsWith('feed')) { await page.click('#feed'); await page.waitForTimeout(action === 'feedlong' ? 5200 : 2300); }
   else await page.waitForTimeout(900);

@@ -1,19 +1,24 @@
 // End-to-end check in a real browser, in both versions: HTML-in-Canvas switched on, and plain HTML.
-// Needs a static server on http://127.0.0.1:8765 (repo root). Run: node demos/axy-after-hours/tools/smoke.mjs [path-to-axe.min.js]
+// Needs a static server serving the repo root.
+// Run: node demos/axy-after-hours/tools/smoke.mjs <path-to-axe.min.js> [base URL, default http://127.0.0.1:8765]
+// The axe file is required: without it the run stops, so a pass always includes the accessibility check.
 import { createRequire } from 'node:module';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { deflateSync, crc32 } from 'node:zlib';
 const { chromium } = createRequire(import.meta.url)('playwright');
-const URL = 'http://127.0.0.1:8765/demos/axy-after-hours/', axe = process.argv[2] ? readFileSync(process.argv[2], 'utf8') : null;
+if (!process.argv[2]) { console.error('Usage: node smoke.mjs <path-to-axe.min.js> [base URL]. The axe file is required.'); process.exit(2); }
+const URL = (process.argv[3] || 'http://127.0.0.1:8765').replace(/\/$/, '') + '/demos/axy-after-hours/', axe = readFileSync(process.argv[2], 'utf8');
 const base = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'], errors = [];
 const log = (...a) => console.log('ok ', ...a);
-async function open(canvasOn, opts = {}, path = '', init) {
+async function open(canvasOn, opts = {}, path = '', init, before, allow) {
   const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM || undefined, args: canvasOn ? [...base, '--enable-features=CanvasDrawElement'] : base });
   const page = await browser.newPage({ deviceScaleFactor: 1, viewport: { width: 1280, height: 800 }, ...opts });
-  page.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`[${m.type()}] ${m.text()}`); });
+  page.on('console', m => { if ((m.type() === 'error' || m.type() === 'warning') && !(allow && allow.test(m.text()))) errors.push(`[${m.type()}] ${m.text()}`); });
   page.on('pageerror', e => errors.push('[pageerror] ' + e.message));
   page.on('requestfailed', r => errors.push('[requestfailed] ' + r.url()));
   if (init) await page.addInitScript(init);
+  if (before) await before(page);
   await page.goto(URL + path, { waitUntil: 'load' });
   await page.waitForFunction(() => window.__afterHours && window.__afterHours.framesReady >= 8, null, { timeout: 60000 });
   return { browser, page };
@@ -62,7 +67,7 @@ for (const canvasOn of [true, false]) {
   await page.click('#about-open'); assert.equal(await A(page, () => document.getElementById('about').open), true); await page.keyboard.press('Escape');
   void l0; void which;
   log(`${name}: slider, well handle, drag, room links, lamps by keyboard, panel and drag, about dialog`);
-  if (axe) {
+  {
     await page.addScriptTag({ content: axe });
     for (const room of ['lamplight', 'undertow']) {
       await A(page, r => window.__afterHours.setRoom(r), room); await page.waitForTimeout(300);
@@ -104,7 +109,7 @@ for (const canvasOn of [true, false]) {
   log('fallback: a failing canvas call, or ?plain, gives the ordinary HTML page');
 }
 // Short and narrow screens, both versions: the controls, the wall and the credit are always there to use.
-for (const canvasOn of [true, false]) for (const [w, h] of [[740, 360], [320, 480], [390, 664], [360, 640]]) {
+for (const canvasOn of [true, false]) for (const [w, h] of [[740, 360], [320, 480], [390, 664], [360, 640], [640, 400]]) { // 640x400 is a 1280x800 screen at 200% zoom
   const { browser, page } = await open(canvasOn, { viewport: { width: w, height: h }, hasTouch: true, isMobile: true });
   const u = await A(page, () => { const inView = el => { const r = el.getBoundingClientRect(), f = document.querySelector('.foot').getBoundingClientRect(); return r.width > 0 && r.top >= 0 && r.left >= -0.5 && r.right <= innerWidth + 0.5 && r.bottom <= f.top + 0.5; };
     return { controls: ['mass', 'feed', 'restore', 'wellkey'].filter(id => !inView(document.getElementById(id))), cta: [...document.querySelectorAll('.btn')].filter(e => !inView(e)).length, h1: inView(document.querySelector('h1')), pills: [...document.querySelectorAll('.rooms a')].filter(e => !inView(e)).length, sl: document.getElementById('page').scrollLeft }; });
@@ -116,7 +121,7 @@ for (const canvasOn of [true, false]) for (const [w, h] of [[740, 360], [320, 48
   assert.ok(l.wall >= 80 && l.frames >= 2, `Lamplight wall at ${w}x${h}: ${JSON.stringify(l)}`); assert.deepEqual([l.credit, l.about, l.lampsUnderPanel, l.lampsHit], [true, true, 0, 0], `Lamplight at ${w}x${h}: ${JSON.stringify(l)}`);
   await browser.close();
 }
-log('short and narrow screens (740x360, 320x480, 390x664, 360x640), both versions: controls, links, wall, lamps and credit all reachable');
+log('short and narrow screens (740x360, 320x480, 390x664, 360x640, and 640x400 for 200% zoom), both versions: controls, links, wall, lamps and credit all reachable');
 // Keyboard: Tabbing through a fed page never scrolls it; lamps come in order; a failure mid-session keeps focus.
 {
   const { browser, page } = await open(true);
@@ -145,6 +150,138 @@ log('short and narrow screens (740x360, 320x480, 390x664, 360x640), both version
   const b = await open(false, { reducedMotion: 'reduce' }); await b.page.click('#feed'); await A(b.page, () => document.querySelector('.btn.ghost').focus()); await b.page.waitForTimeout(300);
   assert.equal(await A(b.page, () => getComputedStyle(document.querySelector('.btn.ghost')).opacity), '1'); await b.browser.close();
   log('late canvas failure hands the page back; reduced-motion focus brings a piece back');
+}
+// ---- Checks added after the outside review of 17 Nov 2026 ----
+// Pixels of a screenshot, read inside the page, so no image library is needed.
+const pixels = (page, buf) => A(page, async u => { const im = new Image(); im.src = u; await im.decode(); const c = new OffscreenCanvas(im.width, im.height), g = c.getContext('2d'); g.drawImage(im, 0, 0); return [...g.getImageData(0, 0, im.width, im.height).data]; }, 'data:image/png;base64,' + buf.toString('base64'));
+const rectOf = (page, sel) => A(page, s => { const r = document.querySelector(s).getBoundingClientRect(); return { x0: r.left, y0: r.top, x1: r.right, y1: r.bottom }; }, sel);
+async function settle(page, sel) { // until the element is in place (not falling, fully shown) and has not moved for two seconds
+  let last = null;
+  for (let i = 0; i < 40; i++) {
+    const r = JSON.stringify([Object.values(await rectOf(page, sel)).map(v => Math.round(v)), await A(page, s => { const f = document.querySelector(s).closest('.fall'); return f.style.pointerEvents + '|' + f.style.opacity; }, sel)]);
+    if (r === last && r.endsWith('"|"]')) return; last = r; await page.waitForTimeout(2000);
+  }
+  throw new Error(sel + ' never settled');
+}
+// Where is this link actually drawn? Paint it green, then blue, then green again, and keep the pixels that went green, blue,
+// green. The well's glow adds at most about 21 to blue, and anything else that moves between pictures (falling letters with
+// colour fringes) does not come back to the same colour, so only the link's own pixels pass.
+async function drawnBox(page, sel) {
+  const paintAs = async c => { await A(page, ([s, c]) => { let st = document.getElementById('marker'); if (!st) { st = document.createElement('style'); st.id = 'marker'; document.head.appendChild(st); } st.textContent = `${s}{background:${c}!important;color:${c}!important;border-color:${c}!important;text-shadow:none!important;outline:none!important} ${s} img{visibility:hidden!important}`; }, [sel, c]); await page.waitForTimeout(300); return page.screenshot(); };
+  const a = await pixels(page, await paintAs('#00ff00')), b = await pixels(page, await paintAs('#0000ff')), a2 = await pixels(page, await paintAs('#00ff00')), w = page.viewportSize().width;
+  await A(page, () => document.getElementById('marker').remove());
+  let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1, n = 0;
+  for (let i = 0; i < a.length; i += 4) if (a[i + 1] - b[i + 1] > 150 && b[i + 2] - a[i + 2] > 150 && Math.abs(a[i] - a2[i]) + Math.abs(a[i + 1] - a2[i + 1]) + Math.abs(a[i + 2] - a2[i + 2]) < 30) { const x = (i / 4) % w, y = Math.floor(i / 4 / w); n++; x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x + 1); y1 = Math.max(y1, y + 1); }
+  return { n, x0, y0, x1, y1 };
+}
+// HTML-in-Canvas, the well close and at full mass: each link is drawn exactly where its click target is, and a click or tap
+// at the drawn centre opens that link. Expected value: the link's own box from the browser's layout, not anything the shader reports.
+for (const [label, opts, input] of [['mouse 1280x800', {}, 'mouse'], ['touch 400x800', { viewport: { width: 400, height: 800 }, hasTouch: true, isMobile: true }, 'touch']]) {
+  const { browser, page } = await open(true, opts);
+  await until(page, () => window.__afterHours.painted);
+  await A(page, () => { const m = document.getElementById('mass'); m.value = 100; m.dispatchEvent(new Event('input', { bubbles: true })); window.__clicked = []; document.addEventListener('click', e => { const a = e.target.closest('a'); if (a) { e.preventDefault(); window.__clicked.push(a.getAttribute('aria-label') || a.textContent.trim()); } }, true); });
+  const rs = input === 'touch' ? (16 + 58) * 0.62 : 16 + 58; // the hole's radius at full mass, from the well's own rule
+  for (const [sel, name, offsets] of [['.btn:not(.ghost)', 'Enter the gallery', [[2.7, 0], [3.5, -1.2], [1.6, 1.6]]], ['.strip li:nth-child(2) a', 'Frame F0005, 13 Dec 2025. Open the gallery', [[2.2, -1.0], [-2.4, -0.4]]]]) {
+    const home = await rectOf(page, sel);
+    for (const [ox, oy] of offsets) {
+      await A(page, ([x, y]) => { window.__afterHours.restore(); window.__afterHours.setWell(x, y); }, [(home.x0 + home.x1) / 2 + ox * rs, (home.y0 + home.y1) / 2 + oy * rs]);
+      await settle(page, sel); // the lean settles. With software graphics a frame can take a second, so wait on the layout, not the clock
+      const before = await rectOf(page, sel), box = await drawnBox(page, sel), dom = await rectOf(page, sel), well = await A(page, () => ({ x: window.__afterHours.well.x, y: window.__afterHours.well.y, mass: window.__afterHours.well.mass }));
+      const where = `${label}, ${name}, well at (${Math.round(well.x)}, ${Math.round(well.y)}) mass ${well.mass}: drawn ${JSON.stringify(box)}, link box ${JSON.stringify(dom)}`;
+      assert.ok(Math.abs(before.x0 - dom.x0) < 1 && Math.abs(before.y0 - dom.y0) < 1, 'the link was still moving: ' + where);
+      assert.ok(box.n > 0.8 * (dom.x1 - dom.x0) * (dom.y1 - dom.y0), 'link not drawn in full: ' + where);
+      for (const k of ['x0', 'y0', 'x1', 'y1']) assert.ok(Math.abs(box[k] - dom[k]) <= 2, `drawn edge ${k} is away from the click target: ` + where);
+      const cx = (box.x0 + box.x1) / 2, cy = (box.y0 + box.y1) / 2;
+      if (input === 'mouse') await page.mouse.click(cx, cy); else await page.touchscreen.tap(cx, cy);
+      const clicked = await A(page, () => window.__clicked.splice(0));
+      assert.deepEqual(clicked, [name], `${input} at the drawn centre (${cx}, ${cy}) did not open the link: ` + where);
+    }
+  }
+  assert.equal(await A(page, () => window.__afterHours.tier), 'canvas');
+  log(`HTML-in-Canvas, ${label}: with the well close at full mass, two links are drawn within 2 px of their click targets and open at their drawn centres`);
+  await browser.close();
+}
+// Skip link: keeps the room you are in, in both versions. A stray address mark does not switch rooms either.
+for (const canvasOn of [true, false]) {
+  const { browser, page } = await open(canvasOn);
+  await A(page, () => window.__afterHours.setRoom('lamplight'));
+  await page.focus('.skip'); await page.keyboard.press('Enter'); await page.waitForTimeout(200);
+  assert.deepEqual(await A(page, () => [window.__afterHours.room, location.hash, document.activeElement.id]), ['lamplight', '#lamplight', 'room'], 'skip link');
+  await A(page, () => { location.hash = 'room'; }); await page.waitForTimeout(200);
+  assert.deepEqual(await A(page, () => [window.__afterHours.room, location.hash]), ['lamplight', '#lamplight'], 'stray address mark');
+  await A(page, () => { location.hash = 'undertow'; }); await page.waitForTimeout(200);
+  assert.equal(await A(page, () => window.__afterHours.room), 'undertow', 'room address still works');
+  log(`${canvasOn ? 'HTML-in-Canvas' : 'plain HTML'}: the skip link focuses the room and keeps Lamplight; #undertow still switches rooms`);
+  await browser.close();
+}
+// Resize, both versions: 400x800 to 400x640 and back. Every drawing surface matches the window, and the page at 400x640
+// looks the same as one opened at 400x640 from the start (reduced motion, so nothing moves between pictures).
+for (const canvasOn of [true, false]) {
+  const phone = h => ({ viewport: { width: 400, height: h }, hasTouch: true, isMobile: true, reducedMotion: 'reduce' });
+  const fresh = await open(canvasOn, phone(640)), { browser, page } = await open(canvasOn, phone(800));
+  const sizes = p => A(p, () => ['wellfx', 'dark', 'glass'].map(id => document.getElementById(id)).filter(c => c && getComputedStyle(c).display !== 'none').map(c => `${c.id} ${c.width}x${c.height}`));
+  const want = h => canvasOn ? [`glass 400x${h}`] : [`wellfx 400x${h}`, `dark 400x${h}`]; // device scale 1, so one canvas pixel per CSS pixel
+  await page.setViewportSize({ width: 400, height: 640 }); await page.waitForTimeout(400);
+  assert.deepEqual(await sizes(page), want(640), 'after 800 to 640');
+  for (const room of ['undertow', 'lamplight']) {
+    for (const p of [fresh.page, page]) { await A(p, r => { window.__afterHours.setRoom(r); window.__afterHours.setWell(300, 300); }, room); if (canvasOn) await A(p, () => new Promise(r => setTimeout(r, 400))); }
+    await page.waitForTimeout(400);
+    const [a, b] = [await pixels(page, await fresh.page.screenshot()), await pixels(page, await page.screenshot())];
+    let off = 0; for (let i = 0; i < a.length; i += 4) if (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]) > 48) off++;
+    assert.ok(off < 200, `${room} at 400x640 after a resize differs from a fresh 400x640 page in ${off} pixels`);
+  }
+  await page.setViewportSize({ width: 400, height: 800 }); await page.waitForTimeout(400);
+  assert.deepEqual(await sizes(page), want(800), 'after 640 back to 800');
+  log(`${canvasOn ? 'HTML-in-Canvas' : 'plain HTML'}: 400x800 to 400x640 and back resizes every drawing surface; after the change both rooms match a fresh 400x640 page`);
+  await fresh.browser.close(); await browser.close();
+}
+// Reduced motion: with no mass nothing vanishes, and Restore keeps the page whole until the well is changed again.
+{
+  const { browser, page } = await open(false, { reducedMotion: 'reduce' });
+  const cta = '.btn:not(.ghost)', seen = () => A(page, s => getComputedStyle(document.querySelector(s)).opacity, cta), mass = v => A(page, v => { const m = document.getElementById('mass'); m.value = v; m.dispatchEvent(new Event('input', { bubbles: true })); }, v);
+  const c = await rectOf(page, cta); await A(page, ([x, y]) => window.__afterHours.setWell(x, y), [(c.x0 + c.x1) / 2, (c.y0 + c.y1) / 2]); await page.waitForTimeout(200);
+  assert.equal(await seen(), '0', 'well on the link at mass 55: it goes');
+  await mass(0); await page.waitForTimeout(200); assert.equal(await seen(), '1', 'mass 0: nothing is pulled in');
+  await mass(55); await page.waitForTimeout(200); assert.equal(await seen(), '0', 'mass back up: it goes again');
+  await page.click('#restore'); await page.waitForTimeout(200); assert.equal(await seen(), '1', 'Restore brings it back and it stays');
+  await page.focus('#wellkey'); await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(200); assert.equal(await seen(), '0', 'moving the well 24 px pulls it in again');
+  log('reduced motion: nothing vanishes at zero mass, and Restore holds until the well is changed');
+  await browser.close();
+}
+// A graphics error reported after the first paint (without any call throwing) still hands the page back.
+{
+  const { browser, page } = await open(true, {}, '', () => { const P = WebGL2RenderingContext.prototype, real = P.getError; let n = 0; P.getError = function () { return ++n > 1 ? 0x0502 : real.call(this); }; });
+  await until(page, () => window.__afterHours.tier === 'html');
+  assert.equal(await A(page, () => window.__afterHours.painted), true, 'the first paint went through');
+  assert.match(await A(page, () => document.getElementById('tier').textContent), /stopped working/);
+  log('a graphics error flag raised after the first paint hands the page back');
+  await browser.close();
+}
+// Real images: an entry with an image path shows that file; one whose file fails shows a dimmed study marked missing.
+// The image is a tiny picture made here by the test (8 by 10 pixels); nothing is added to the repo.
+{
+  const png = (w, h) => { const chunk = (t, d) => { const l = Buffer.alloc(4), c = Buffer.alloc(4), td = Buffer.concat([Buffer.from(t), d]); l.writeUInt32BE(d.length); c.writeUInt32BE(crc32(td) >>> 0); return Buffer.concat([l, td, c]); };
+    const hd = Buffer.alloc(13); hd.writeUInt32BE(w, 0); hd.writeUInt32BE(h, 4); hd[8] = 8; hd[9] = 2; const raw = Buffer.alloc((w * 3 + 1) * h); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) raw.set([40 + x * 20, 60 + y * 15, 90], y * (w * 3 + 1) + 1 + x * 3);
+    return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', hd), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]); };
+  for (const canvasOn of [true, false]) {
+    const routes = async page => {
+      await page.route('**/demos/axy-after-hours/app.js', async route => { const res = await route.fetch(); let js = await res.text(); const n = js.length;
+        js = js.replace("{ ref: 'F0006', date", "{ ref: 'F0006', image: 'test-frames/ok.png', date").replace("{ ref: 'F0005', date", "{ ref: 'F0005', image: 'test-frames/missing.png', date");
+        assert.ok(js.length === n + "image: 'test-frames/ok.png', ".length + "image: 'test-frames/missing.png', ".length, 'test could not add image paths'); await route.fulfill({ response: res, body: js }); });
+      await page.route('**/test-frames/ok.png', r => r.fulfill({ status: 200, contentType: 'image/png', body: png(8, 10) }));
+      await page.route('**/test-frames/missing.png', r => r.fulfill({ status: 404, contentType: 'text/plain', body: 'not here' }));
+    };
+    const { browser, page } = await open(canvasOn, {}, '', null, routes, /status of 404/);
+    const f = await A(page, () => [...document.querySelectorAll('img')].filter(i => i.closest('a')).map(i => ({ label: i.closest('a').getAttribute('aria-label'), w: i.naturalWidth, h: i.naturalHeight, src: i.src.split('/').pop().slice(0, 7), missing: i.classList.contains('missing'), ref: i.closest('li').querySelector('.ref').textContent })));
+    const ok = f.filter(x => x.label.startsWith('Frame F0006')), bad = f.filter(x => x.label.startsWith('Frame F0005')), rest = f.filter(x => !/F000[56]/.test(x.label));
+    assert.equal(ok.length, 2); assert.equal(bad.length, 2); assert.equal(rest.length, 10);
+    for (const x of ok) assert.deepEqual([x.w, x.h, x.src, x.missing, x.ref], [8, 10, 'ok.png', false, 'F0006'], 'given image shown');
+    for (const x of bad) assert.deepEqual([x.w, x.h, x.missing, x.ref, x.label], [360, 450, true, 'F0005 missing', 'Frame F0005, 13 Dec 2025. Image did not load. Open the gallery'], 'failed image state');
+    for (const x of rest) assert.deepEqual([x.w, x.h, x.missing], [360, 450, false], 'other frames unchanged');
+    assert.equal(await A(page, () => getComputedStyle(document.querySelector('img.missing')).opacity), '0.45');
+    log(`${canvasOn ? 'HTML-in-Canvas' : 'plain HTML'}: a frame given an image shows that file (8x10 test picture); a failed file shows a dimmed study marked missing`);
+    await browser.close();
+  }
 }
 if (errors.length) { console.log('CONSOLE PROBLEMS\n' + [...new Set(errors)].join('\n')); process.exit(1); }
 console.log('ok  zero console errors, warnings or failed requests across all runs');

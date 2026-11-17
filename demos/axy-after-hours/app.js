@@ -8,8 +8,10 @@ const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const smooth = (a, b, x) => { const u = clamp((x - a) / (b - a), 0, 1); return u * u * (3 - 2 * u); };
 const page = $('page'), stage = $('stage');
 
-// ---- Frames: generative tone studies standing in for archive images --------------------
+// ---- Frames: real images where given, otherwise generative tone studies --------------------
 // Refs, dates and tones are the archive's own records. No titles, as on the archive.
+// To show a real picture, give an entry an image path, kept in this folder, e.g. image: 'frames/F0006.jpg'.
+// If that file fails to load, the frame shows its tone study dimmed, marked "missing", and says so to screen readers.
 const FRAMES = [
   { ref: 'F0006', date: '13 Dec 2025', tone: '#1a3540', accent: '#c4851a', comic: true },
   { ref: 'F0005', date: '13 Dec 2025', tone: '#2a0d2e', accent: '#c4851a', comic: true },
@@ -68,10 +70,18 @@ function frameItem(f, cls) {
 FRAMES.slice(0, 6).forEach(f => { const li = frameItem(f, 'frame'); li.classList.add('fall'); $('strip').appendChild(li); });
 FRAMES.forEach(f => $('wall').appendChild(frameItem(f, '')));
 let framesReady = 0;
-(function paintNext(i) { // one study per frame so first paint is never blocked
+const show = (f, u) => { f.imgs.forEach(im => { im.onload = () => { dirty = true; }; im.src = u; }); framesReady++; dirty = true; };
+const generated = f => study(f, small ? 240 : 360, small ? 300 : 450).toBlob(b => show(f, URL.createObjectURL(b)), 'image/jpeg', 0.86);
+function missing(f) { // a useful failed state: the study, dimmed and labelled, rather than a blank or broken frame
+  f.missing = true;
+  for (const im of f.imgs) { im.classList.add('missing'); im.closest('a').setAttribute('aria-label', `Frame ${f.ref}, ${f.date}. Image did not load. Open the gallery`); im.closest('li').querySelector('.ref').textContent = `${f.ref} missing`; }
+  generated(f);
+}
+(function paintNext(i) { // one frame at a time so first paint is never blocked
   if (i >= FRAMES.length) return;
   const f = FRAMES[i];
-  study(f, small ? 240 : 360, small ? 300 : 450).toBlob(b => { const u = URL.createObjectURL(b); f.imgs.forEach(im => { im.src = u; }); framesReady++; dirty = true; }, 'image/jpeg', 0.86);
+  if (f.image) { const probe = new Image(); probe.onload = () => show(f, probe.src); probe.onerror = () => missing(f); probe.src = f.image; }
+  else generated(f);
   requestAnimationFrame(() => paintNext(i + 1));
 })(0);
 
@@ -83,7 +93,7 @@ let framesReady = 0;
 // ---- State ---------------------------------------------------------------------------------------
 let room = 'undertow', dirty = true, tier = 'html', W = innerWidth, H = innerHeight, time = 0, feeding = false, releaseR = 0, dragging = false;
 const well = { x: W * 0.77, y: H * 0.56, tx: W * 0.77, ty: H * 0.56, mass: 0.55, rs: 50 };
-const bodies = [...document.querySelectorAll('#undertow .fall')].map(el => ({ el, hx: 0, hy: 0, x: 0, y: 0, vx: 0, vy: 0, rot: 0, sx: 1, sy: 1, a: 1, mode: 'home', hold: 0, away: 0 }));
+const bodies = [...document.querySelectorAll('#undertow .fall')].map(el => ({ el, link: el.matches('a') ? el : el.querySelector('a'), hx: 0, hy: 0, x: 0, y: 0, vx: 0, vy: 0, rot: 0, sx: 1, sy: 1, a: 1, mode: 'home', hold: 0, away: 0 }));
 const lamps = [{ x: 0.18, y: 0.42, b: 0.85, w: 0.75, on: true }, { x: 0.52, y: 0.36, b: 0.8, w: 0.7, on: true }, { x: 0.82, y: 0.62, b: 0.7, w: 0.3, on: true }];
 let house = 0.12, selected = 0;
 const band = { top: 64, bottom: H - 40 }; // the wall sits between the header and the footer
@@ -152,21 +162,24 @@ function stepUndertow(dt) {
     applyBody(b);
   }
 }
+let restoredAt = null; // reduced motion: Restore keeps the page whole until the well is moved, its mass changed or it is fed again
+const pinned = () => { if (restoredAt && (feeding || restoredAt.x !== well.tx || restoredAt.y !== well.ty || restoredAt.mass !== well.mass)) restoredAt = null; return restoredAt !== null; };
 function still() { // reduced motion: no travelling, things simply go and come back
   well.rs = (16 + 58 * well.mass) * (small ? 0.62 : 1); clampWell(); well.x = well.tx; well.y = well.ty;
   for (const b of bodies) {
     const hd = Math.hypot(well.x - b.hx, well.y - b.hy), focused = b.el === document.activeElement || b.el.contains(document.activeElement);
-    const gone = !focused && (hd < well.rs * 1.15 || (feeding && hd < Math.hypot(W, H) * 0.42));
+    const gone = !focused && !pinned() && well.mass >= 0.03 && (hd < well.rs * 1.15 || (feeding && hd < Math.hypot(W, H) * 0.42)); // no mass, no pull, as with motion
     b.mode = gone ? 'gone' : 'home'; b.a = gone ? 0 : 1; b.x = b.y = b.rot = 0; b.sx = b.sy = 1; applyBody(b);
   }
 }
 function setFeeding(on) { feeding = on; if (on) releaseR = well.rs * 1.5; $('feed').setAttribute('aria-pressed', String(on)); $('feed').textContent = on ? 'Stop feeding' : 'Feed the well'; dirty = true; if (reduced) still(); }
-function restore() { setFeeding(false); for (const b of bodies) if (b.mode !== 'home') { b.mode = 'returning'; } if (reduced) still(); dirty = true; }
+function restore() { setFeeding(false); for (const b of bodies) if (b.mode !== 'home') { b.mode = 'returning'; } if (reduced) { restoredAt = { x: well.tx, y: well.ty, mass: well.mass }; still(); } dirty = true; }
 
+function fitCanvas(c, d) { const w = Math.round(W * d), h = Math.round(H * d); if (c.width !== w || c.height !== h) { c.width = w; c.height = h; } } // both sides, so a change of height alone is not missed
 // Plain-HTML well: a dark disc and amber ring drawn behind the page.
 const wellfx = $('wellfx'), wctx = wellfx.getContext('2d');
 function drawWell2D() {
-  const d = Math.min(devicePixelRatio || 1, 2); if (wellfx.width !== Math.round(W * d)) { wellfx.width = Math.round(W * d); wellfx.height = Math.round(H * d); }
+  const d = Math.min(devicePixelRatio || 1, 2); fitCanvas(wellfx, d);
   wctx.setTransform(d, 0, 0, d, 0, 0); wctx.clearRect(0, 0, W, H);
   if (room !== 'undertow') return;
   const { x, y, rs } = well, g = wctx.createRadialGradient(x, y, rs * 0.8, x, y, rs * 3.4);
@@ -202,6 +215,15 @@ function litRects() { // placards that stay readable in the dark: the wall label
   const f = document.activeElement; if (f && f.closest && f.closest('#lamplight')) add(f.closest('li') || f, 6);
   return out.slice(0, 12);
 }
+function linkRects() { // Undertow: every link that can be clicked right now, padded to cover its focus ring. The shader never bends these
+  if (room !== 'undertow') return [];
+  const pr = page.getBoundingClientRect(), out = [];
+  for (const b of bodies) {
+    if (!b.link || !b.vis || b.mode === 'falling' || b.mode === 'gone') continue;
+    const r = b.link.getBoundingClientRect(); if (r.width) out.push([r.left - pr.left - 6, r.top - pr.top - 6, r.right - pr.left + 6, r.bottom - pr.top + 6]);
+  }
+  return out.slice(0, 12);
+}
 function placeLamps() {
   const pr0 = page.getBoundingClientRect(), panel = document.querySelector('.lamp-panel');
   band.top = document.querySelector('.top').getBoundingClientRect().bottom - pr0.top; band.bottom = document.querySelector('.foot').getBoundingClientRect().top - pr0.top;
@@ -225,7 +247,7 @@ function placeLamps() {
 }
 const dark = $('dark'), dctx = dark.getContext('2d');
 function drawDark() { // plain-HTML lighting: darkness with pools cut out of it
-  const d = Math.min(devicePixelRatio || 1, 2); if (dark.width !== Math.round(W * d)) { dark.width = Math.round(W * d); dark.height = Math.round(H * d); }
+  const d = Math.min(devicePixelRatio || 1, 2); fitCanvas(dark, d);
   dctx.setTransform(d, 0, 0, d, 0, 0); dctx.globalCompositeOperation = 'source-over'; dctx.clearRect(0, 0, W, H);
   if (room !== 'lamplight' || tier === 'canvas') return;
   dctx.fillStyle = `rgba(5,4,3,${clamp(0.97 - house * 1.5, 0.1, 0.97)})`; dctx.fillRect(0, 0, W, H);
@@ -249,7 +271,7 @@ function setRoom(name, fromHash) {
 }
 
 // ---- HTML-in-Canvas: draw the live page through a shader ---------------------------------------------------------
-let gl = null, glass = null, prog = null, U = {}, uploadForm = -1, painted = false;
+let gl = null, glass = null, prog = null, U = {}, uploadForm = -1, painted = false, paints = 0;
 const FRAG = `#version 300 es
 precision highp float;
 uniform sampler2D uTex; uniform vec2 uRes; uniform float uDpr, uTime, uRoom, uMass, uHouse;
@@ -269,7 +291,13 @@ void main(){
     float defl = on*(0.7 + 1.5*uMass)*t*exp(-t/(rs*2.5));              // pulls the page inward, and fades to nothing at the rim so nothing is ever hidden
     float sw = on*(0.35 + 1.1*uMass)*rs*rs/(r*r + rs*rs);              // frame dragging: a twist near the hole
     float cs = cos(sw), sn = sin(sw); mat2 R = mat2(cs, -sn, sn, cs); vec2 bd = R*d, bn = R*n;
-    col = vec3(pageAt(uWell.xy + bd + bn*defl*1.06).r, pageAt(uWell.xy + bd + bn*defl).g, pageAt(uWell.xy + bd + bn*defl*0.94).b);
+    // Links are never bent: inside a link's box the page is drawn exactly where it is, so what you see is what you click.
+    // Outside, a pixel may only borrow from closer than its distance to the nearest link, so no link is ever drawn twice or away from its box.
+    float gap = 1e6;
+    for (int i = 0; i < 12; i++) { if (i >= uLitN) break; vec2 dd = max(uLit[i].xy - p, p - uLit[i].zw); gap = min(gap, max(dd.x, dd.y) <= 0.0 ? 0.0 : length(max(dd, 0.0))); }
+    vec2 base = uWell.xy + bd - p; float reach = length(base) + abs(defl)*1.06;
+    float s = reach > 0.001 ? min(1.0, 0.8*gap/reach) : 1.0;
+    col = vec3(pageAt(p + s*(base + bn*defl*1.06)).r, pageAt(p + s*(base + bn*defl)).g, pageAt(p + s*(base + bn*defl*0.94)).b);
     float ang = atan(d.y, d.x);
     float dq = (r - rs*1.9)/(rs*0.8), rq = (r - rs*1.12)/(rs*0.05);
     float disc = exp(-dq*dq);
@@ -277,6 +305,7 @@ void main(){
     col += vec3(0.86, 0.52, 0.10)*disc*streak*(0.62 + 0.38*cos(ang - 0.6))*(0.22 + 0.6*uMass);
     col += vec3(1.0, 0.87, 0.62)*exp(-rq*rq)*(0.45 + 0.55*uMass);
     col *= smoothstep(rs*0.93, rs*1.06, r);
+    if (gap <= 0.0) col = pageAt(p); // and nothing is drawn over a link, not even the hole
   } else {
     vec2 e = vec2(1.5*uDpr, 0.0); vec3 alb = pageAt(p);
     float gx = lum(pageAt(p - e.xy)) - lum(pageAt(p + e.xy)), gy = lum(pageAt(p - e.yx)) - lum(pageAt(p + e.yx));
@@ -309,14 +338,14 @@ function upload() { // three shapes of the same call, newest first; remember the
 }
 function paint() {
   if (!gl) return;
-  try { upload(); if (!painted && gl.getError() !== gl.NO_ERROR) throw new Error('the texture upload reported an error'); } catch (err) { leaveCanvas('failed'); return; } // any failure, at any time, hands the page back
+  try { upload(); if ((!painted || ++paints % 30 === 0) && gl.getError() !== gl.NO_ERROR) throw new Error('the graphics context reported an error'); } catch (err) { leaveCanvas('failed'); return; } // any failure, at any time, hands the page back. The error flag is read on the first paint and every 30th after, since reading it stalls the graphics pipeline
   const d = glass.width / W;
   gl.viewport(0, 0, glass.width, glass.height);
   gl.uniform2f(U.uRes, glass.width, glass.height); gl.uniform1f(U.uDpr, d); gl.uniform1f(U.uTime, reduced ? 0 : time); gl.uniform1f(U.uRoom, room === 'undertow' ? 0 : 1);
   gl.uniform1f(U.uMass, well.mass); gl.uniform3f(U.uWell, well.x * d, well.y * d, well.rs * d); gl.uniform1f(U.uHouse, house);
   const lp = [], lc = []; for (const l of lamps) { lp.push(l.x * W * d, l.y * H * d, lampRadius(l) * d, l.on ? 0.55 + 1.5 * l.b : 0); lc.push(...lampColour(l)); }
   gl.uniform4fv(U.uLamp, lp); gl.uniform3fv(U.uLampCol, lc); gl.uniform2f(U.uBand, band.top * d, band.bottom * d); gl.uniform2f(U.uLens, lens.top * d, lens.bottom * d);
-  const rects = litRects(), lr = new Float32Array(48); rects.forEach((r, i) => lr.set(r.map(v => v * d), i * 4)); gl.uniform4fv(U.uLit, lr); gl.uniform1i(U.uLitN, rects.length);
+  const rects = room === 'undertow' ? linkRects() : litRects(), lr = new Float32Array(48); rects.forEach((r, i) => lr.set(r.map(v => v * d), i * 4)); gl.uniform4fv(U.uLit, lr); gl.uniform1i(U.uLitN, rects.length);
   gl.drawArrays(gl.TRIANGLES, 0, 3); painted = true;
 }
 function sizeGlass() { if (!glass) return; const d = Math.min(devicePixelRatio || 1, small ? 1.5 : 2); glass.width = Math.round(W * d); glass.height = Math.round(H * d); }
@@ -376,7 +405,9 @@ function frame(now) {
 
 // ---- Wiring -----------------------------------------------------------------------------------------------------------------
 document.querySelectorAll('.rooms a').forEach(a => a.addEventListener('click', e => { e.preventDefault(); setRoom(a.dataset.room); }));
-addEventListener('hashchange', () => setRoom(location.hash.slice(1), true));
+const skipToRoom = () => { $('room').focus({ preventScroll: true }); try { history.replaceState(null, '', '#' + room); } catch (err) { /* the address keeps whatever it had */ } };
+document.querySelector('.skip').addEventListener('click', e => { e.preventDefault(); skipToRoom(); }); // skipping stays in the room you are in
+addEventListener('hashchange', () => { const h = location.hash.slice(1); if (h === 'undertow' || h === 'lamplight') setRoom(h, true); else skipToRoom(); }); // any other address mark keeps the current room
 $('mass').addEventListener('input', e => { well.mass = Number(e.target.value) / 100; dirty = true; });
 $('feed').addEventListener('click', () => setFeeding(!feeding));
 $('restore').addEventListener('click', restore);
