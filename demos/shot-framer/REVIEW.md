@@ -5,7 +5,7 @@ Built 17 November 2026 by Claude Fable 5.2 in a Claude Code cloud session. Revie
 
 ## Verdict
 
-Ready for Kol to try. Not published, not in the gallery or the sitemap.
+Ready for Kol to try. An unlisted draft: not in the gallery or the sitemap. It is not live yet, but merging it would put it on the live site at its own address, reachable by anyone with the link.
 
 **It has never been given a real 360 photograph.** Every picture it has framed was made for the checks or worked out by the page. The arithmetic is checked to the pixel; how a real stitched photograph looks through it, and how it feels to use, are unproved.
 
@@ -22,22 +22,23 @@ Ready for Kol to try. Not published, not in the gallery or the sitemap.
 
 ## Checks run (17 Nov 2026)
 
-Verified by running. All passed on the code as committed.
+Verified by running. All passed on the code as committed, and again after the outside review's fixes (below).
 
 - `node demos/shot-framer/tools/pano.test.mjs`: pass.
   - Directions: compass points, the edges of a frame, 500 round trips between frame, direction and picture. Straight lines stay straight.
   - The lens in millimetres for a frame fitted inside a 36 by 24 mm sensor: 55 degrees tall is 19.4 mm in 16:9, 14.5 mm in 2.39:1, 34.6 mm in 9:16.
-  - The lens is kept across all 36 changes of shape.
+  - The lens is kept across all 36 changes of shape, except where the new shape cannot have it. Checked at every whole degree of the slider: then the new lens is the nearest the shape has. At each end of the slider 14 changes cannot keep the lens, counted by hand; the widest 16:9 lens, 7.09 mm, becomes 12.60 mm in 9:16.
   - 20 drags, at lenses from 30 to 110 degrees, level and tilted: what was taken hold of ends under the pointer to a thousandth of the frame.
   - Drawing: a dot lands in the middle and moves as it should; turning equals sliding; no join where the edges meet; the poles; slices equal the whole.
   - Stripes one pixel wide, seen through a very wide lens in a small frame, come out an even grey.
   - The sample: the same every time, no join, eight things where they should be, the ring all the way round, shadows away from the moon, smooth edges, stars spread evenly.
 - `node demos/shot-framer/tools/smoke.mjs`: pass, in headless Chromium.
-  - The frame on screen matches the arithmetic pixel for pixel in all six shapes.
-  - Dragging with a mouse at an ordinary lens and at 110 degrees tilted keeps hold of what was touched. Changing the shape keeps the lens. Wheel, keys, slider and number keys work and stay within limits. After the keys move the frame, the page says where it looks.
+  - The frame on screen matches the arithmetic pixel for pixel in all six shapes, every pixel of the frame (until the outside review, only the first 1,000 pixels were read).
+  - Dragging with a mouse at an ordinary lens and at 110 degrees tilted keeps hold of what was touched. Changing the shape keeps the lens. Through the shape buttons and number keys at both ends of the lens, where it cannot, the page takes the nearest lens and says so in words. Four buttons, each at least 44 by 44 px, turn and tilt the frame 10 degrees a click, and 10 degrees a tap on three phone sizes. Wheel, keys, slider and number keys work and stay within limits. After the keys move the frame, the page says where it looks.
   - Three exported files are PNGs of the size asked whose pixels are the shot, drawn again by the check from the whole picture.
   - The frame as it stands exports as `frame-01`, `frame-02`. Export all sends each shot once, in order, with every other export button off; the status line changes at most 8 times for three files.
   - A file being drawn while another picture is loaded is made wholly from the picture it started with.
+  - A picture that finishes opening after a later one was chosen, or after Back to the sample, is thrown away. The test holds each picture's opening back and releases it in the wrong order.
   - Your own picture: its middle is straight ahead; shots read ahead, right, behind, left; a wrong shape is warned about; too small a picture and a file that is not a picture are refused in words.
   - Phones 390x800, 320x568 and 740x360, a 320 window, 900x700 and 1920x1080: the frame fits in every shape; a finger keeps hold of what it touched; Go to brings the frame back into sight; the wheel scrolls a narrow page until the picture is selected.
   - axe WCAG 2.2 A and AA at seven sizes, no console errors, no outside requests.
@@ -51,6 +52,8 @@ Verified by running. All passed on the code as committed.
 4. Safari and Firefox. A real screen reader.
 5. The fallback when copying the list is not allowed: headless Chromium always allowed it.
 6. Dropping a file on the page while an export is running, by hand.
+7. The turn and tilt buttons with a real finger, and whether 10 degrees a press is a comfortable step.
+8. The site's automatic checks on a pull request do not run this demo's own two tests (`pano.test.mjs`, `smoke.mjs`); they were run by hand here. Wiring them in means changing the site's shared workflow, which is outside this demo's folder.
 
 ## Known limits
 
@@ -88,6 +91,20 @@ A second pass by a separate Claude agent (Opus), read-only, given the brief and 
 | 19 | Placeholder text said 24 mm where the value was 23 | The start is now a 24 mm lens | browser check |
 | 20 | After Remove the focus went to the first shot | It goes to the shot that took its place | browser check |
 | 21 | A small frame on a sideways phone | Not changed. Listed under known limits | |
+
+## Outside review
+
+ChatGPT in chat mode at Pro, driven by another Claude session at Kol's request, reviewed this demo together with Kitchen Line on 17 November 2026. It read the code and the pictures and did not run the page. Score 6/10 for the pair, verdict HOLD. Each finding below was checked by running the page or the arithmetic before anything was changed; the first four were reproduced on the code as it was.
+
+| Finding | What was done | Held by |
+|---|---|---|
+| Changing the shape at the widest lens silently changes it: 16:9 at 7.09 mm becomes 12.60 mm in 9:16 | True, and at the long end too (171.26 mm in 9:16 becomes 71.66 mm in 2.39:1); 411 of the 3,564 pairs of slider position and shape change cannot keep the lens. The slider's limits are in degrees, the same for every shape, so the lenses differ. The lens range was not cut down, which would have lost the widest 16:9 views. Instead the new shape takes the nearest lens it has and the page says so: "A 9 by 16 frame cannot go as wide as 7 mm, so the lens is now 13 mm, the widest it has." The note under the slider and the README say so too. A pending "Facing ..." line from the keys no longer speaks over it | arithmetic test: every whole degree, every change of shape, hand-worked millimetres at both ends and 14 changes at each end; browser check: shape buttons and number keys at both ends, the words on the page |
+| An older picture finishing after a newer choice replaces it, also after Back to the sample | True: reproduced with a held-back decoder, the first picture replaced the second and replaced the sample. Each choice now gets a number; a picture that finishes opening after a later choice is thrown away | browser check with a decoder the test holds and releases in the wrong order, both cases |
+| Touch users can only look round by dragging; keys are not a single-pointer alternative (WCAG 2.2, 2.5.7) | True. Turn left, Turn right, Tilt up and Tilt down buttons under the frame, at least 44 by 44 px, 10 degrees a press | browser check: click at 1280, tap on three phone sizes, sizes measured; axe |
+| The "pixel for pixel" screen check reads only the first 1,000 pixels | True: `shown()` returned the first 4,000 values. It now returns every pixel of the frame and the check compares them all | browser check, which also checks the count |
+| No real stitched panorama imported, framed, saved and exported on a real desktop and phone | Not done. There is no real phone or real 360 photograph here, and none may be fetched. Still listed under Not verified | |
+| Both demos: the dedicated tests do not run in the site's automatic checks | True. Not done: it means changing the site's shared workflow, which is outside this demo's folder. Needs Kol. Listed under Not verified | |
+| Both demos: unlisted will still mean reachable once deployed | True. README Status and the verdict above now say that merging puts the page live at its own address, unlisted but reachable by anyone with the link | |
 
 ## Provenance
 

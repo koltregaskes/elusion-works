@@ -34,6 +34,8 @@
   #thirds { position:absolute; inset:0; pointer-events:none; background:linear-gradient(to right, transparent calc(33.333% - .5px), rgba(255,255,255,.4) calc(33.333% - .5px), rgba(255,255,255,.4) calc(33.333% + .5px), transparent calc(33.333% + .5px), transparent calc(66.666% - .5px), rgba(255,255,255,.4) calc(66.666% - .5px), rgba(255,255,255,.4) calc(66.666% + .5px), transparent calc(66.666% + .5px)), linear-gradient(to bottom, transparent calc(33.333% - .5px), rgba(255,255,255,.4) calc(33.333% - .5px), rgba(255,255,255,.4) calc(33.333% + .5px), transparent calc(33.333% + .5px), transparent calc(66.666% - .5px), rgba(255,255,255,.4) calc(66.666% - .5px), rgba(255,255,255,.4) calc(66.666% + .5px), transparent calc(66.666% + .5px)); }
   #read { display:flex; flex-wrap:wrap; gap:6px 18px; align-items:baseline; margin:0; font:600 13px/1.4 var(--mono); color:var(--soft); font-variant-numeric:tabular-nums; } #read span b { color:var(--muted); font-weight:500; margin-right:6px; letter-spacing:.08em; text-transform:uppercase; font-size:11px; }
   #hint { margin:6px 0 0; font-size:12.5px; color:var(--muted); }
+  #turns { display:grid; grid-template-columns:repeat(4, max-content); gap:6px; margin:0 0 8px; } .btn.turn { min-height:44px; min-width:44px; padding:0 12px; }
+  @media (max-width:420px) { #turns { grid-template-columns:1fr 1fr; } }
 
   /* The panel: shape, lens, shots. */
   #panel { border-left:1px solid var(--line); background:var(--panel); padding:18px 18px 28px; min-width:0; }
@@ -71,8 +73,9 @@
     </div>
   </div>
   <div>
+    <div class="row" id="turns" role="group" aria-label="Turn and tilt the frame, 10 degrees a press"><button class="btn turn" type="button" data-yaw="-10">Turn left</button><button class="btn turn" type="button" data-yaw="10">Turn right</button><button class="btn turn" type="button" data-pitch="10">Tilt up</button><button class="btn turn" type="button" data-pitch="-10">Tilt down</button></div>
     <p id="read" aria-hidden="true"><span><b>Facing</b><span id="r-head">north, 0°</span></span><span><b>Tilt</b><span id="r-tilt">level</span></span><span><b>Lens</b><span id="r-lens">24 mm</span></span><span><b>Shape</b><span id="r-shape">16:9</span></span></p>
-    <p id="hint">Drag the picture to look round. Scroll over it, or pinch, to change the lens. With the picture selected: arrow keys turn, plus and minus change the lens, S saves a shot.</p>
+    <p id="hint">Drag the picture to look round, or use the turn and tilt buttons. Scroll over it, or pinch, to change the lens. With the picture selected: arrow keys turn, plus and minus change the lens, S saves a shot.</p>
   </div>
 </main>
 
@@ -84,7 +87,7 @@
   <p class="lens" id="lens-words" aria-hidden="true">24 mm, a wide lens</p>
   <input id="fov" type="range" min="12" max="110" step="1" value="46" aria-labelledby="lens-h" aria-describedby="lens-note">
   <div class="ends" aria-hidden="true"><span>long</span><span>wide</span></div>
-  <p class="note" id="lens-note">Millimetres are the lens a full-frame camera would need, with the frame fitted inside its 36 by 24 mm sensor (turned on its side for a tall shape). Changing the shape keeps the lens.</p>
+  <p class="note" id="lens-note">Millimetres are the lens a full-frame camera would need, with the frame fitted inside its 36 by 24 mm sensor (turned on its side for a tall shape). Changing the shape keeps the lens, unless the new shape cannot go that wide or that long; then it takes the nearest lens it has, and says so.</p>
   <div class="row" style="margin-top:10px"><button class="btn small" id="grid" type="button" aria-pressed="true">Thirds</button><button class="btn small" id="home" type="button">Back to the start</button></div>
 
   <h2>Shots</h2>

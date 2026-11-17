@@ -31,6 +31,12 @@ export const sensorHeight = ratio => (ratio >= 1.5 ? 36 / ratio : ratio >= 1 ? 2
 export const lens = (fov, ratio) => sensorHeight(ratio) / 2 / Math.tan(fov * RAD / 2);
 // And back: how tall the view is through a lens of so many millimetres. Changing the shape keeps the lens, as turning or cropping a camera does.
 export const fovFor = (mm, ratio) => 2 * Math.atan(sensorHeight(ratio) / 2 / mm) / RAD;
+// The lenses a shape can have, widest first, in millimetres: the view's limits in degrees are the same for every shape, so the lenses are not.
+export const lensRange = id => { const a = aspectOf(id), r = a.w / a.h; return [lens(LIMITS.fov[1], r), lens(LIMITS.fov[0], r)]; };
+// Changing the shape from one to another: the view keeps its lens if the new shape can have it. If it cannot (the widest 16:9 lens is wider than any 9:16 can be), the view takes the nearest lens the new shape has,
+// and kept is false, so that the page can say so. mm is the lens before, got the lens after.
+export function reshape(view, fromId, toId) { const a = aspectOf(fromId), b = aspectOf(toId), mm = lens(view.fov, a.w / a.h), v = tidy({ ...view, fov: fovFor(mm, b.w / b.h) }), got = lens(v.fov, b.w / b.h);
+  return { view: v, mm, got, kept: Math.abs(got - mm) < 1e-6 * mm }; }
 // Dragging: the view, near this one, that puts the direction d at the place (x, y) of the frame. What you take hold of stays under your finger, at any lens and any tilt.
 export function dragTo(view, d, x, y, ratio) { let v = tidy(view); const miss = w => { const p = inFrame(w, d, ratio); return p ? [p.x - x, p.y - y] : null; };
   for (let i = 0; i < 8; i++) { const e = miss(v); if (!e || Math.hypot(e[0], e[1]) < 1e-5) break; const h = 0.05, a = miss({ ...v, yaw: v.yaw + h }), b = miss({ ...v, pitch: v.pitch + h }); if (!a || !b) break;
