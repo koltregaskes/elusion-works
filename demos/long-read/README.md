@@ -10,14 +10,14 @@ Use it as the reference for articles, essays and anything meant to be read from 
 ## What it does
 
 - **A title card.** A big white headline on charcoal, a standfirst, and a drawing made in the page: seven bells, six ringing, one still.
-- **How long, and how much is left.** The reading time is counted from the words at 230 a minute. A line along the top strip shows how far through you are, and the strip says how many minutes are left.
-- **In this article.** A list of the six parts that marks the one you are in. A link to a part takes the focus there too.
-- **The short read.** One button folds every paragraph to its first sentence: about a minute in place of about four. Pictures, notes and the pull quote step aside. Pressed again, it all comes back, and you stay in the part you were in.
-- **Notes.** A small numbered button in the text. On a wide screen the note sits beside its paragraph. On a narrow one it opens under the paragraph when its number is pressed. With scripts off the notes are at the end, with links there and back.
-- **Text size.** Five steps, from seven eighths to one and a half.
+- **How long, and how much is left.** The reading time is counted from the words at 230 a minute. A line along the top shows how far through you are, and the strip says how many minutes are left. On a phone the strip scrolls away with the page and only the line stays.
+- **In this article.** A list of the six parts that marks the one whose heading has reached the top of the window. A link to a part takes the focus there too.
+- **The short read.** One button folds every paragraph to its first sentence: about a minute in place of about four. Pictures, notes, the pull quote and the box of habits step aside. Pressed again, it all comes back, and you stay in the part you were in.
+- **Notes.** A small numbered button in the text. On a wide screen the note sits beside its paragraph. On a narrow one it opens under the paragraph when its number is pressed, and shuts by Escape, by its Close button or by the number again. With scripts off the notes are at the end, with links there and back.
+- **Text size.** Five steps, from seven eighths to one and a half. The notes, captions and list of parts grow with the words. Sizes and breakpoints are in rem and em, so the browser's own text size is respected too.
 - **Paper.** Dark words on a pale page, for those who prefer it. Night is the default.
 - **Copy link.** Each part's heading has a button that copies its address.
-- **Print.** The whole article whatever was folded, notes at the end, black on white.
+- **Print.** The whole article whatever was folded, notes at the end, black on white, in a column of readable width.
 - Nothing is remembered: nothing is stored.
 
 ## How it is made
@@ -51,6 +51,8 @@ The second and third need the site's development packages (Playwright and axe-co
 - The look is the house style, not a copy of the live Kol's Korner site, which this session could not see.
 - The body is set in whichever book serif the device has (Iowan, Palatino, Georgia). No font is loaded, so it will differ from device to device.
 - The short read is only as good as the first sentences. The page cannot write them.
+- In the short read the last parts can all be on the screen at once. The strip then says Finished, because the page can go no further.
+- The drawing is line art made of a few shapes in the page. It is not illustration.
 - Reading time is an average. Nobody reads at exactly 230 words a minute.
 - Checked only in headless Chromium. Not yet seen in Safari or Firefox, on a real phone or on paper, and no screen reader has been heard on it.
 
