@@ -60,4 +60,4 @@ The second and third need the site's development packages (Playwright and axe-co
 
 ## Status
 
-Unlisted. The page carries `noindex`, and it is not in the gallery or the sitemap. Nothing here is published.
+Unlisted. The page carries `noindex`, and it is not in the gallery or the sitemap. Nothing here is published while this stays a draft. Merging it would put the page on the live site at its own address, unlisted but reachable by anyone with the link, because the site deploys whatever is merged.

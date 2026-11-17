@@ -87,6 +87,21 @@ It confirmed as sound: every light-time, share and closing figure, recomputed; t
 
 Found by my own checks on the way: a comment that swallowed half a line of script (caught by the syntax check); names running off the phone screen; a note riding up over the clock on phones.
 
+## Outside review
+
+A second, outside review was posted on the pull request on 17 November 2026: ChatGPT in chat mode at Pro, driven by another Claude session at Kol's request. It read the code, tests and pictures and did not run the page. It scored the demo 6.5 out of 10 and said hold. It checked the arithmetic independently and found it right.
+
+| Finding | What was done | Held by |
+|---|---|---|
+| Once Voyager 1 is in the picture the line drawn is 173.1 AU long, but its caption said the whole line was 188.2 AU: 8.7% too much. The test repeated the mistake | The caption gives the length of the line as drawn: to the picture's edge until Voyager 1 is in it, then one light-day | browser check, with 173.1 AU written out by hand at the end |
+| The termination shock (94 AU) and the heliopause (122 AU) are distances from the Sun when Voyager 1 crossed them, shown as if the flash met them there today, measured from Earth | The cards say "from the Sun". The table says the boundary rows are yardsticks like the planets, and the page says everything is held still for the picture | by reading |
+| "The nearest star" should be "the nearest star beyond the Sun" | Changed | by reading |
+| NASA's own site confirms the 18 November 2026 date, so the "press reports" caveat can go | Not done. This session cannot reach NASA's site, so the page keeps the caveat and says an outside review reports NASA's page agrees | |
+| The demo's own two tests do not run in the repo's CI | Not done here: CI is shared by the whole site, and changing it is outside this demo's folder | |
+| "Unlisted" pages become reachable once merged, because the site deploys its main branch | The README now says so | |
+| On a phone the flash's arc crosses one planet's name | Not done: it clears as the flash moves on | |
+| Not shown: a real phone, real zoom, load time, a person scrolling it | Still true. Listed under Not verified | |
+
 ## Provenance
 
 - Model: Claude Fable 5.2 (`claude-fable-5-2`), Claude Code cloud session, high effort.

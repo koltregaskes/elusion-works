@@ -72,8 +72,8 @@ function draw() {
     else { const a = -0.66, off = m.id === 'voyager1' && seen ? 18 : 5; ctx.save(); ctx.translate(p[0] + off, p[1] - 10); ctx.rotate(a); text(words, 0, 0, 0.9); ctx.restore(); shown.labels.push({ id: r.id, R: r.R, x0: p[0], y0: p[1] - 10 + Math.sin(a) * w - 6, x1: p[0] + off + Math.cos(a) * w + 6, y1: p[1] }); } }
   // If the mark just crossed has no room for its name on its ring, it is named beside Earth instead, so the picture always says where the flash is.
   shown.caption = null; if (last && !kept.some(k => k.id === last.id)) { const x = portrait ? E[0] + 14 : E[0] + 46, yy = portrait ? E[1] - er - 12 : E[1] + er + 13, full = `${last.ring}  ${J.dur(last.t).toUpperCase()}`, words = x + wide(full) <= geo.edge ? full : last.ring; ctx.fillStyle = GREEN; ctx.textAlign = 'left'; text(words, x, yy, 0.9); shown.caption = { id: last.id, words, x0: x, x1: x + wide(words), y: yy }; }
-  // How long the whole line is, so the scale can be read off.
-  { const far = (J.au(v.span) || J.km(v.span)).toUpperCase(), end = at(L); ctx.font = `600 10px ${MONO}`; ctx.fillStyle = 'rgba(244,245,243,.5)'; ctx.textAlign = 'right'; shown.scale = far;
+  // How long the line as drawn is, so the scale can be read off. Until Voyager 1 is in the picture the line runs to the picture's edge; once it is, the line stops at the spacecraft, one light-day out, and the figure is that.
+  { const drawn = seen ? J.LIGHT_DAY : v.span, far = (J.au(drawn) || J.km(drawn)).toUpperCase(), end = tip; ctx.font = `600 10px ${MONO}`; ctx.fillStyle = 'rgba(244,245,243,.5)'; ctx.textAlign = 'right'; shown.scale = far;
     if (portrait) { const mid = E[1] + L * 0.56; text('WHOLE LINE', E[0] - 12, mid - 6, 1.2); text(far, E[0] - 12, mid + 7, 1.2); } else text(`WHOLE LINE = ${far}`, end[0], end[1] + 30, 1.2); ctx.textAlign = 'left'; }
 }
 // Letter-spaced text, since canvas letter-spacing is not everywhere yet.
