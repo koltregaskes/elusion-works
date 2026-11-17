@@ -116,6 +116,8 @@ Reviewed by ChatGPT in chat mode at Pro, driven by another Claude session at the
 | No personal records or private links in the words or pictures | Agreed; nothing to do | |
 | Not verified by the reviewer: live site, real touch, Safari, Firefox, screen reader, paper, phone speed | Still not verified here either; listed under Not verified | |
 
+One more fault turned up when the author re-ran the checks on this change, and it was not in the outside review. Opening a search result could show two pages at once for a moment: the browser reveals the page a link goes into before the handbook has hidden the one you were on. The browser check caught it in two runs out of five. The page being left is now hidden at the same moment the new one is revealed, and the check looks straight after the result is opened, with no wait. It then passed six runs out of six.
+
 ## Provenance
 
 - No library, no font, no picture or data file.
