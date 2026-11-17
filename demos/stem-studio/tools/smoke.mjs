@@ -81,11 +81,35 @@ const clipsOn = (p, t) => p.clips.filter(c => c.track === t).map(c => [c.start, 
     const res = await A(page, () => window.axe.run(document, { runOnly: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] })); assert.deepEqual(res.violations.map(v => `${v.id}: ${v.nodes[0].target.join(' ')}`), [], 'axe violations'); } log('axe WCAG 2.2 A/AA: 0 violations on both tabs'); }
   await ctx.close();
 }
+{ // Review regressions: files that should not be trusted, the moving playhead, the tempo box, no-op edits, stems as one file.
+  const { ctx, page } = await open(); const outside = []; page.on('request', r => { if (!r.url().startsWith(URL.split('/demos/')[0]) && !/^(blob|data):/.test(r.url())) outside.push(r.url()); });
+  const feed = (name, obj) => A(page, ([n, text]) => { const dt = new DataTransfer(); dt.items.add(new File([text], n, { type: 'application/json' })); const i = document.getElementById('file-project'); i.files = dt.files; i.dispatchEvent(new Event('change')); }, [name, JSON.stringify(obj)]);
+  const base = await proj(page), broken = JSON.parse(JSON.stringify(base)); delete broken.patterns['d-verse'].notes; broken.tracks[1].kind = 'bass);background-image:url(https://evil.example/px'; broken.clips[0].shift = 1e9; broken.name = '<img src=x onerror=alert(1)>';
+  await feed('broken.json', broken); await page.waitForFunction(() => /Project opened/.test(document.getElementById('toast').textContent));
+  let q = await proj(page); assert.ok(!q.patterns['d-verse'] && !q.tracks.some(t => t.id === 'bass') && q.clips.every(c => (c.shift || 0) < 16), 'the file was cleaned on the way in');
+  assert.equal(await page.locator('#song img').count(), 0); assert.equal(await page.textContent('#song'), '<img src=x onerror=alert(1)>');
+  await page.reload(); await page.waitForFunction(() => window.stemStudio); assert.ok(await page.locator('.clip').count() > 5, 'the page still works after reloading a cleaned file'); assert.deepEqual(outside, [], 'a project file made the page call out');
+  await page.click('#more'); await page.click('#reset');
+  await page.click('.clip[data-id="c-keys-0"]'); await page.click('#rewind'); await page.click('#play'); await page.waitForFunction(() => window.stemStudio.state().position > 8.3, null, { timeout: 30000 });
+  await page.click('#clip-split'); q = await proj(page); assert.deepEqual(clipsOn(q, 'keys').slice(0, 2), [[0, 2], [2, 10]], 'split uses the moving playhead, at the bar line behind it'); await page.click('#play');
+  const steps = () => A(page, () => window.stemStudio.state().undo); let n = await steps();
+  await page.fill('#bpm', '500'); await page.keyboard.press('Enter'); assert.equal(await page.inputValue('#bpm'), '180'); assert.equal((await proj(page)).bpm, 180); assert.equal(await steps(), n + 1);
+  await page.fill('#bpm', ''); await page.keyboard.press('Enter'); assert.equal(await page.inputValue('#bpm'), '180'); await page.click('#bpm-up'); assert.equal(await steps(), n + 1, 'an edit that changes nothing is not an undo step');
+  await page.focus('.clip[data-id="c-keys-0"]'); await page.keyboard.press('ArrowLeft'); assert.equal(await steps(), n + 1); assert.equal(await A(page, () => document.activeElement.dataset.id), 'c-keys-0');
+  assert.equal(await A(page, () => window.stemStudio.apply({ ops: [{ op: 'constructor' }] }).ok), false); assert.equal(await steps(), n + 1);
+  assert.equal(await A(page, () => { const e = document.getElementById('pos'); return e.tagName + (e.getAttribute('aria-live') || '') + (e.getAttribute('role') || ''); }), 'SPAN', 'the position readout is not a live region');
+  await page.click('#more'); await page.click('#reset'); const [z] = await Promise.all([page.waitForEvent('download', { timeout: 600000 }), (async () => { await A(page, () => window.stemStudio.apply({ ops: [{ op: 'delete', from: 5, to: 32 }] })); await page.click('#more'); await page.click('#save-stems'); })()]);
+  const zb = readFileSync(await z.path()); assert.equal(z.suggestedFilename(), 'night-bus-home-stems.zip'); assert.equal(zb.readUInt32LE(0), 0x04034b50); assert.equal(zb.readUInt16LE(zb.length - 22 + 10), 2, 'two tracks have clips in the four bars left'); assert.equal(zb.subarray(30, 30 + 24).toString(), 'night-bus-home-drums.wav'); assert.equal(zb.subarray(30 + 24, 30 + 28).toString(), 'RIFF');
+  log('review regressions: untrusted files are cleaned and cannot call out or break a reload; split follows the playhead; tempo box is truthful; no empty undo steps; stems arrive as one zip');
+  await ctx.close();
+}
 for (const [w, h] of [[400, 800], [320, 568], [740, 360]]) { // Phones: nothing overflows sideways, controls are finger-sized, taps and drags work.
   const { ctx, page } = await open({ viewport: { width: w, height: h }, hasTouch: true, isMobile: true });
   const o = await A(page, () => ({ sw: document.documentElement.scrollWidth, w: innerWidth, small: [...document.querySelectorAll('button,select,input:not([type=file]),[role=tab]')].filter(e => e.getClientRects().length).map(e => [e.id || e.textContent.trim().slice(0, 12) || e.getAttribute('aria-label'), Math.round(e.getBoundingClientRect().height), Math.round(e.getBoundingClientRect().width)]).filter(x => x[1] < 24 || x[2] < 24),
     off: [...document.querySelectorAll('.bar button, .bar input, .bar output, .tabs button, .heads button')].filter(e => { const r = e.getBoundingClientRect(); return r.width && (r.right > innerWidth + 0.5 || r.left < -0.5); }).map(e => e.id || e.textContent.trim()) }));
   assert.ok(o.sw <= o.w, `sideways overflow at ${w}x${h}`); assert.deepEqual(o.small, [], `small targets at ${w}x${h}`); assert.deepEqual(o.off, [], `controls off screen at ${w}x${h}`);
+  assert.ok(await A(page, () => { const r = document.getElementById('vol-drums').getBoundingClientRect(); return r.width > 40 && r.height >= 24 && r.right <= innerWidth; }), `no level control at ${w}x${h}`);
+  assert.equal(await A(page, () => getComputedStyle(document.querySelector('.clip:not(.sel)')).touchAction), 'pan-x', 'a swipe on a clip must still scroll the arrangement');
   await page.tap('button[aria-label="Solo Keys"]'); assert.equal((await proj(page)).tracks[2].solo, true); await page.tap('#tab-arr'); await page.tap('.chip:has-text("Cut the intro")'); assert.equal((await proj(page)).bars, 28);
   await ctx.close();
 }

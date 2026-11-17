@@ -68,8 +68,9 @@ export function events(project, fromBeat, toBeat) {
     const pat = project.patterns[clip.pattern]; if (!pat) continue;
     const c0 = clip.start * 4, c1 = (clip.start + clip.len) * 4; if (c1 <= fromBeat || c0 >= toBeat) continue;
     const loop = pat.bars * 4, kind = pat.kind, origin = c0 - (clip.shift || 0) * 4; // a clip cut on its left keeps the pattern in step
-    for (let base = origin; base < c1; base += loop) {
-      if (base >= toBeat || base + loop <= Math.max(fromBeat, c0)) continue;
+    const first = Math.max(fromBeat, c0); // start at the repeat that covers the window, stop at its end: the work is bounded whatever the clip holds
+    for (let base = origin + Math.max(0, Math.floor((first - origin) / loop)) * loop; base < c1 && base < toBeat; base += loop) {
+      if (base + loop <= first) continue;
       for (const note of pat.notes) {
         const beat = base + note.t / 4; if (beat < c0 || beat < fromBeat || beat >= toBeat || beat >= c1) continue;
         out.push({ beat, dur: Math.min(note.d / 4, c1 - beat), track: clip.track, kind, p: note.p, v: note.v });
@@ -80,7 +81,7 @@ export function events(project, fromBeat, toBeat) {
 }
 
 // ---- Edits: each returns a new project and never changes the one it was given ------------------------
-const clampBar = b => Math.max(0, Math.min(MAX_BARS, Math.round(b)));
+const clampBar = b => Math.max(0, Math.min(MAX_BARS - 1, Math.round(b)));
 const fit = p => { p.bars = Math.max(8, Math.min(MAX_BARS, Math.max(p.bars, ...p.clips.map(c => c.start + c.len), 0))); return p; };
 // Make room on a track: trim, split or drop whatever lies in [from, to).
 function carve(p, track, from, to, keepId) {
@@ -98,7 +99,7 @@ export const edit = {
   deleteClip(p0, id) { const p = clone(p0); p.clips = p.clips.filter(c => c.id !== id); return p; },
   duplicateClip(p0, id) { const p = clone(p0), c = p.clips.find(x => x.id === id); if (!c || c.start + 2 * c.len > MAX_BARS) return p0; const d = { ...c, id: newId('c'), start: c.start + c.len }; carve(p, c.track, d.start, d.start + d.len); p.clips.push(d); return fit(p); },
   splitClip(p0, id, bar) { const p = clone(p0), c = p.clips.find(x => x.id === id); if (!c || bar <= c.start || bar >= c.start + c.len) return p0; p.clips.push({ ...c, id: newId('c'), start: bar, len: c.start + c.len - bar, shift: (c.shift || 0) + bar - c.start }); c.len = bar - c.start; return p; },
-  addClip(p0, track, pattern, start, len) { const p = clone(p0), pat = p.patterns[pattern], tr = p.tracks.find(t => t.id === track); if (!pat || !tr || pat.kind !== tr.kind) return p0; start = clampBar(start); len = Math.max(1, Math.min(MAX_BARS - start, Math.round(len))); if (len < 1) return p0; carve(p, track, start, start + len); p.clips.push({ id: newId('c'), track, pattern, start, len }); return fit(p); },
+  addClip(p0, track, pattern, start, len) { const p = clone(p0), pat = p.patterns[pattern], tr = p.tracks.find(t => t.id === track); if (!pat || !tr || pat.kind !== tr.kind || !(Math.round(start) >= 0 && Math.round(start) < MAX_BARS)) return p0; start = clampBar(start); len = Math.min(MAX_BARS - start, Math.round(len)); if (!(len >= 1)) return p0; carve(p, track, start, start + len); p.clips.push({ id: newId('c'), track, pattern, start, len }); return fit(p); },
   // Give a clip its own copy of the pattern, so editing it leaves the others alone.
   makeUnique(p0, id) { const p = clone(p0), c = p.clips.find(x => x.id === id); if (!c || !c.pattern) return p0; const src = p.patterns[c.pattern], pid = newId('p'); p.patterns[pid] = { ...clone(src), id: pid, name: src.name + ' (copy)' }; c.pattern = pid; return p; },
   toggleNote(p0, patternId, t, pitch, d = 1) { const p = clone(p0), pat = p.patterns[patternId]; if (!pat) return p0; const i = pat.notes.findIndex(x => x.p === pitch && t >= x.t && t < x.t + x.d); if (i >= 0) pat.notes.splice(i, 1); else pat.notes.push({ t, d: Math.min(d, pat.bars * STEPS - t), p: pitch, v: 0.8 }); return p; },
@@ -133,21 +134,23 @@ export function applyPlan(p0, plan) {
   if (plan.ops.length > 40) throw new Error('A plan can hold at most 40 moves');
   let p = clone(p0); const said = [];
   for (const op of plan.ops) {
-    if (!op || !(op.op in PLAN_OPS)) throw new Error(`Unknown move "${op && op.op}". Moves: ${Object.keys(PLAN_OPS).join(', ')}`);
+    if (!op || typeof op.op !== 'string' || !Object.hasOwn(PLAN_OPS, op.op)) throw new Error(`Unknown move "${op && op.op}". Moves: ${Object.keys(PLAN_OPS).join(', ')}`);
     if (op.op === 'set_tempo') { const b = Number(op.bpm); if (!(b >= 60 && b <= 180)) throw new Error('Tempo must be between 60 and 180'); p.bpm = Math.round(b); said.push(`Tempo to ${p.bpm} bpm`); }
     else if (op.op === 'clear') { const [a, b] = range(p, op), ts = op.track === 'all' || op.track === undefined ? p.tracks : [trackOrThrow(p, op.track)]; for (const t of ts) carve(p, t.id, a, b); said.push(`Cleared ${ts.length === p.tracks.length ? 'everything' : ts.map(t => t.name).join(', ')} in bars ${a + 1} to ${b}`); }
     else if (op.op === 'copy' || op.op === 'insert') {
       const [a, b] = range(p, op), at = Number(op.at) - 1, len = b - a; if (!Number.isInteger(at) || at < 0 || at + len > MAX_BARS) throw new Error(`"${op.op}" needs "at" as a bar that leaves room for ${len} bars (the song can be ${MAX_BARS} bars long)`);
       const tracks = op.tracks ? op.tracks.map(t => trackOrThrow(p, t).id) : null, copies = slices(p, a, b, tracks);
-      if (op.op === 'insert') { if (Math.max(...p.clips.map(c => c.start + c.len), 0) + len > MAX_BARS) throw new Error('That would make the song longer than ' + MAX_BARS + ' bars'); for (const c of [...p.clips]) if (c.start < at && c.start + c.len > at) { p.clips.push({ ...c, id: newId('c'), start: at, len: c.start + c.len - at, shift: (c.shift || 0) + at - c.start }); c.len = at - c.start; } shiftAfter(p, at, len); }
+      if (op.op === 'insert') { if (Math.max(...p.clips.map(c => c.start + c.len), 0) + len > MAX_BARS) throw new Error('That would make the song longer than ' + MAX_BARS + ' bars'); for (const c of [...p.clips]) if (c.start < at && c.start + c.len > at) { p.clips.push({ ...c, id: newId('c'), start: at, len: c.start + c.len - at, shift: (c.shift || 0) + at - c.start }); c.len = at - c.start; } for (const s of p.sections) if (s.start < at && s.start + s.len > at) s.len += len; shiftAfter(p, at, len); } // a section the new bars land inside grows to hold them
       else for (const t of p.tracks) if (!tracks || tracks.includes(t.id)) carve(p, t.id, at, at + len);
       for (const c of copies) p.clips.push({ ...c, start: c.start + at });
       said.push(`${op.op === 'insert' ? 'Inserted' : 'Copied'} bars ${a + 1} to ${b} at bar ${at + 1}`);
     }
-    else if (op.op === 'delete') { const [a, b] = range(p, op); for (const t of p.tracks) carve(p, t.id, a, b); p.sections = p.sections.filter(s => !(s.start >= a && s.start + s.len <= b)); shiftAfter(p, b, a - b); p.bars = Math.max(8, p.bars - (b - a)); said.push(`Removed bars ${a + 1} to ${b}`); }
-    else if (op.op === 'add_clip') { const t = trackOrThrow(p, op.track), pat = p.patterns[op.pattern]; if (!pat) throw new Error(`No pattern "${op.pattern}". Patterns: ${Object.keys(p.patterns).join(', ')}`); if (pat.kind !== t.kind) throw new Error(`Pattern "${op.pattern}" is for ${pat.kind}, not ${t.kind}`); const at = Number(op.at) - 1, len = Number(op.bars); if (!Number.isInteger(at) || at < 0 || !(len >= 1) || at + len > MAX_BARS) throw new Error('"add_clip" needs "at" (a bar) and "bars" (a length) that fit in the song'); carve(p, t.id, at, at + len); p.clips.push({ id: newId('c'), track: t.id, pattern: op.pattern, start: at, len: Math.round(len) }); said.push(`Added ${pat.name} on ${t.name} at bar ${at + 1} for ${Math.round(len)} bars`); }
+    else if (op.op === 'delete') { const [a, b] = range(p, op); for (const t of p.tracks) carve(p, t.id, a, b);
+      p.sections = p.sections.map(s => { const s0 = s.start, s1 = s.start + s.len; if (s1 <= a || s0 >= b) return s; const n0 = Math.min(s0, a), n1 = s1 > b ? a + (s1 - b) : a; return n1 - n0 >= 1 ? { ...s, start: n0 < a ? n0 : b, len: n1 - n0 } : null; }).filter(Boolean); // a section that crosses the cut keeps only the bars that survive
+      shiftAfter(p, b, a - b); p.bars = Math.max(8, p.bars - (b - a)); said.push(`Removed bars ${a + 1} to ${b}`); }
+    else if (op.op === 'add_clip') { const t = trackOrThrow(p, op.track), pat = Object.hasOwn(p.patterns, String(op.pattern)) ? p.patterns[op.pattern] : null; if (!pat) throw new Error(`No pattern "${op.pattern}". Patterns: ${Object.keys(p.patterns).join(', ')}`); if (pat.kind !== t.kind) throw new Error(`Pattern "${op.pattern}" is for ${pat.kind}, not ${t.kind}`); const at = Number(op.at) - 1, len = Number(op.bars); if (!Number.isInteger(at) || at < 0 || !Number.isInteger(len) || len < 1 || at + len > MAX_BARS) throw new Error('"add_clip" needs "at" (a bar) and "bars" (a whole number of bars) that fit in the song'); carve(p, t.id, at, at + len); p.clips.push({ id: newId('c'), track: t.id, pattern: op.pattern, start: at, len }); said.push(`Added ${pat.name} on ${t.name} at bar ${at + 1} for ${len} bar${len > 1 ? 's' : ''}`); }
     else if (op.op === 'set_level') { const t = trackOrThrow(p, op.track), l = Number(op.level); if (!(l >= 0 && l <= 1)) throw new Error('Level must be between 0 and 1'); t.vol = l; said.push(`${t.name} level to ${Math.round(l * 100)}%`); }
-    else if (op.op === 'mute') { const t = trackOrThrow(p, op.track); t.mute = op.on !== false; said.push(`${t.name} ${t.mute ? 'muted' : 'unmuted'}`); }
+    else if (op.op === 'mute') { const t = trackOrThrow(p, op.track); if (op.on !== undefined && typeof op.on !== 'boolean') throw new Error('"mute" needs "on" as true or false'); t.mute = op.on !== false; said.push(`${t.name} ${t.mute ? 'muted' : 'unmuted'}`); }
     p.clips = p.clips.filter(c => c.len >= 1 && c.start < MAX_BARS);
   }
   p.bars = Math.max(8, Math.min(MAX_BARS, Math.max(...p.clips.map(c => c.start + c.len), 8))); p.sections.sort((x, y) => x.start - y.start);
@@ -156,19 +159,25 @@ export function applyPlan(p0, plan) {
 
 // A handful of plain requests the page understands on its own. Anything else goes to an assistant as a brief.
 export function interpret(text, p) {
-  const t = text.toLowerCase().trim(), ops = [], sec = name => p.sections.find(s => s.name.toLowerCase() === name) || p.sections.find(s => s.name.toLowerCase().includes(name));
+  const t = text.toLowerCase().trim(), ops = []; let rules = 0;
+  if (/\b(don'?t|do not|never|keep|leave|no changes?|unchanged|except)\b/.test(t)) return null; // it cannot weigh a "don't": better to say so than to do the opposite
+  const clauses = t.split(/\band\b|\bthen\b|\balso\b|\bplus\b|\bwith\b|\bbut\b|[,;]/).filter(x => x.trim()).length, sec = name => p.sections.find(s => s.name.toLowerCase() === name) || p.sections.find(s => s.name.toLowerCase().includes(name));
   const where = () => { const m = t.match(/bars? (\d+)\s*(?:to|-|through)\s*(\d+)/); if (m) return { from: Number(m[1]), to: Number(m[2]) }; for (const name of ['last chorus', 'intro', 'verse', 'chorus', 'break']) if (t.includes(name) && sec(name)) return { section: sec(name).name }; return null; };
   const track = () => { for (const tr of p.tracks) if (t.includes(tr.name.toLowerCase())) return tr.id; return null; };
   let m;
+  const n0 = () => ops.length;
+  let before = n0();
   if ((m = t.match(/(\d{2,3})\s*bpm/))) ops.push({ op: 'set_tempo', bpm: Number(m[1]) });
   else if (/\bfaster\b|speed (it )?up/.test(t)) ops.push({ op: 'set_tempo', bpm: Math.min(180, p.bpm + 8) });
   else if (/\bslower\b|slow (it )?down/.test(t)) ops.push({ op: 'set_tempo', bpm: Math.max(60, p.bpm - 8) });
+  if (n0() > before) rules++; before = n0();
   if (/\b(drop|mute|remove|cut|no|lose|take out)\b/.test(t) && track() && where()) ops.push({ op: 'clear', track: track(), ...where() });
   else if (/\b(double|repeat)\b/.test(t) && where()) { const w = where(), s = w.section ? sec(w.section.toLowerCase()) : { start: w.from - 1, len: w.to - w.from + 1 }; ops.push({ op: 'insert', ...w, at: s.start + s.len + 1 }); }
   else if (/\b(cut|remove|skip|delete|lose)\b/.test(t) && where() && !track()) ops.push({ op: 'delete', ...where() });
   else if (/strip|break ?down|bare/.test(t) && where()) { for (const id of ['drums', 'bass']) if (p.tracks.some(x => x.id === id)) ops.push({ op: 'clear', track: id, ...where() }); }
   else if (/\bonly\b/.test(t) && track() && where()) { for (const tr of p.tracks) if (tr.id !== track()) ops.push({ op: 'clear', track: tr.id, ...where() }); }
-  return ops.length ? { ops } : null;
+  if (n0() > before) rules++;
+  return ops.length && rules >= clauses ? { ops } : null; // every part of the request must have been understood
 }
 
 // The brief to paste to an assistant: the song, the moves it may use, and the request.
@@ -177,10 +186,35 @@ export function briefFor(p, request) {
   return `You are rearranging a song in Stem Studio. Reply with JSON only: {"ops":[...]}.\n\nSong: "${p.name}", ${p.bpm} bpm, ${p.bars} bars, 4/4.\nSections: ${p.sections.map(s => `${s.name} bars ${s.start + 1}-${s.start + s.len}`).join('; ')}.\nTracks and clips:\n${lanes}\nPatterns: ${Object.values(p.patterns).map(x => `${x.id} (${x.kind}, ${x.bars} bar${x.bars > 1 ? 's' : ''})`).join(', ')}.\n\nMoves you may use, applied in order:\n${Object.entries(PLAN_OPS).map(([k, v]) => `- ${k}: ${v}`).join('\n')}\nBars are counted from 1. The song can be at most ${MAX_BARS} bars.\n\nRequest: ${request || '(describe the change you want)'}`;
 }
 
-// Tidy anything loaded from a file or storage; throws a plain message if it is not a project.
+// Rebuild anything loaded from a file or storage from known fields only; throws a plain message if it is not a project.
+// Nothing from the file is trusted: unknown kinds, odd ids, missing notes and absurd numbers are dropped or clamped here,
+// so the rest of the studio never meets them.
+const KINDS = ['drums', 'bass', 'keys', 'lead'];
 export function validate(p) {
-  if (!p || p.v !== 1 || !Array.isArray(p.tracks) || !Array.isArray(p.clips) || typeof p.patterns !== 'object') throw new Error('That file is not a Stem Studio project');
-  const q = clone(p); q.bpm = Math.max(60, Math.min(180, Math.round(Number(q.bpm) || 112))); q.sections = Array.isArray(q.sections) ? q.sections : [];
-  const ids = new Set(q.tracks.map(t => t.id)); q.clips = q.clips.filter(c => ids.has(c.track) && Number.isInteger(c.start) && c.len >= 1 && (!c.pattern || q.patterns[c.pattern]));
+  if (!p || p.v !== 1 || !Array.isArray(p.tracks) || !Array.isArray(p.clips) || !p.patterns || typeof p.patterns !== 'object') throw new Error('That file is not a Stem Studio project');
+  const num = (v, lo, hi, d) => { v = Number(v); return Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d; }, int = (v, lo, hi, d) => Math.round(num(v, lo, hi, d));
+  const str = (v, d, max = 40) => (typeof v === 'string' && v.trim() ? v.slice(0, max) : d), okId = v => typeof v === 'string' && /^[A-Za-z0-9][\w-]{0,47}$/.test(v) && !(v in Object.prototype);
+  const q = { v: 1, name: str(p.name, 'Untitled', 60), bpm: int(p.bpm, 60, 180, 112), bars: 8, tracks: [], patterns: {}, sections: [], clips: [] }, seen = new Set();
+  for (const t of p.tracks.slice(0, 16)) { if (!t || !okId(t.id) || seen.has(t.id) || !(KINDS.includes(t.kind) || t.kind === 'audio')) continue; seen.add(t.id); q.tracks.push({ id: t.id, name: str(t.name, t.id), kind: t.kind, vol: num(t.vol, 0, 1, 0.8), pan: num(t.pan, -1, 1, 0), mute: t.mute === true, solo: t.solo === true }); }
+  if (!q.tracks.length) throw new Error('That file is not a Stem Studio project');
+  for (const id of Object.keys(p.patterns).slice(0, 200)) {
+    const pat = p.patterns[id]; if (!okId(id) || !pat || !KINDS.includes(pat.kind) || !Array.isArray(pat.notes)) continue;
+    const bars = int(pat.bars, 1, 16, 1), steps = bars * STEPS, notes = [];
+    for (const x of pat.notes.slice(0, 2000)) { if (!x) continue; const t = Number(x.t), ok = pat.kind === 'drums' ? DRUMS.includes(x.p) : Number.isInteger(x.p) && x.p >= 0 && x.p <= 127; if (!Number.isInteger(t) || t < 0 || t >= steps || !ok) continue; notes.push({ t, d: int(x.d, 1, steps - t, 1), p: x.p, v: num(x.v, 0, 1, 0.8) }); }
+    q.patterns[id] = { id, name: str(pat.name, id), kind: pat.kind, bars, notes };
+  }
+  const ids = new Set();
+  for (const c of p.clips.slice(0, 600)) {
+    if (!c) continue; const t = q.tracks.find(x => x.id === c.track); if (!t || !Number.isInteger(c.start) || c.start < 0 || c.start >= MAX_BARS) continue;
+    const pat = t.kind === 'audio' ? null : (typeof c.pattern === 'string' && Object.hasOwn(q.patterns, c.pattern) ? q.patterns[c.pattern] : undefined); if (pat === undefined || (pat && pat.kind !== t.kind)) continue;
+    const len = int(c.len, 1, MAX_BARS - c.start, 0); if (len < 1) continue;
+    const clip = { id: okId(c.id) && !ids.has(c.id) ? c.id : newId('c'), track: t.id, pattern: pat ? pat.id : null, start: c.start, len }, shift = int(c.shift, 0, MAX_BARS, 0); ids.add(clip.id);
+    if (shift) clip.shift = pat ? shift % pat.bars : shift; if (!clip.shift) delete clip.shift;
+    q.clips.push(clip);
+  }
+  for (const t of q.tracks) { let end = 0; for (const c of q.clips.filter(x => x.track === t.id).sort((a, b) => a.start - b.start)) { if (c.start < end) { const cut = end - c.start; c.len -= cut; c.start = end; if (c.len >= 1 && c.pattern) c.shift = ((c.shift || 0) + cut) % q.patterns[c.pattern].bars || undefined; if (c.shift === undefined) delete c.shift; } end = Math.max(end, c.start + Math.max(0, c.len)); } }
+  q.clips = q.clips.filter(c => c.len >= 1);
+  if (Array.isArray(p.sections)) for (const s of p.sections.slice(0, 32)) { if (!s || !Number.isInteger(s.start) || s.start < 0 || s.start >= MAX_BARS) continue; q.sections.push({ name: str(s.name, 'Section', 24), start: s.start, len: int(s.len, 1, MAX_BARS - s.start, 1) }); }
+  q.bars = int(p.bars, 8, MAX_BARS, 8);
   return fit(q);
 }

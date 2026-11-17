@@ -67,7 +67,9 @@
   .barno { position:absolute; bottom:4px; width:var(--barw); padding-left:4px; font:500 10px/1 var(--mono); color:var(--muted); border-left:1px solid var(--line); height:12px; pointer-events:none; }
   .barno.strong { color:var(--ink); border-color:var(--line2); }
   .lane { position:relative; height:var(--laneh); border-top:1px solid var(--line); background-image:linear-gradient(90deg,var(--line) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px); background-size:calc(var(--barw) * 4) 100%,var(--barw) 100%; }
-  .clip { position:absolute; top:5px; height:calc(var(--laneh) - 11px); padding:3px 14px 0 7px; border-radius:6px; border:1px solid var(--c); background:color-mix(in srgb,var(--c) 24%,#15181b); color:var(--ink); text-align:left; overflow:hidden; touch-action:none; cursor:grab; }
+  .clip { touch-action:pan-x; }
+  .clip.sel { touch-action:none; }
+  .clip { position:absolute; top:5px; height:calc(var(--laneh) - 11px); padding:3px 14px 0 7px; border-radius:6px; border:1px solid var(--c); background:color-mix(in srgb,var(--c) 24%,#15181b); color:var(--ink); text-align:left; overflow:hidden; cursor:grab; }
   .clip.sel { outline:2px solid var(--accent); outline-offset:1px; background:color-mix(in srgb,var(--c) 38%,#15181b); }
   .clip.missing { border-style:dashed; opacity:.7; }
   .cname { position:absolute; left:7px; right:14px; top:4px; font:600 11px/1.2 var(--sans); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none; }
@@ -121,7 +123,8 @@
   @media (max-width:820px) {
     :root { --barw:36px; --headw:96px; --laneh:50px; }
     .bar { padding:8px 12px; gap:8px 10px; } h1 { font-size:18px; } .brand { flex:1 1 100%; display:flex; align-items:baseline; gap:10px; } .eyebrow { flex:none; }
-    .head { grid-template-columns:1fr; grid-template-rows:auto auto; padding:5px 6px; } .head input[type=range] { display:none; } .head .name { font-size:12px; } .head .btns { display:flex; gap:4px; }
+    :root { --laneh:74px; }
+    .head { grid-template-columns:1fr; grid-template-rows:auto auto auto; padding:4px 6px; gap:1px; } .head input[type=range] { height:24px; } .head .name { font-size:12px; } .head .btns { display:flex; gap:4px; }
     #undo, #redo { padding:0 9px; } .tempo span { display:none; } #pos { min-width:58px; font-size:14px; padding:0 6px; } .bar .group { gap:6px; } .bar .btn { padding:0 10px; } .tempo .btn { padding:0; } .tempo input { width:50px; }
     .arr { grid-template-columns:1fr; } .tabpanel { padding:10px 12px 14px; } .editor { --cell:24px; }
   }
@@ -135,7 +138,7 @@
     <button class="btn primary" id="play" type="button" aria-label="Play"><svg viewBox="0 0 24 24" aria-hidden="true"><path id="playicon" d="M7 4.5v15l13-7.5z"/></svg></button>
     <button class="btn" id="rewind" type="button">Start</button>
     <button class="btn" id="loop" type="button" aria-pressed="false">Loop</button>
-    <output id="pos" aria-label="Position, bar and beat">1.1</output>
+    <span id="pos" title="Position: bar and beat">1.1</span>
     <div class="tempo"><span id="tempo-l">Tempo</span>
       <button class="btn" id="bpm-down" type="button" aria-label="Slower by one beat a minute"><svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M3 7h10v2H3z" fill="currentColor"/></svg></button>
       <input id="bpm" type="number" min="60" max="180" step="1" value="112" aria-labelledby="tempo-l" inputmode="numeric">

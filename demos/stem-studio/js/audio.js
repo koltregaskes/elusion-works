@@ -67,16 +67,17 @@ export function makeMixer(ctx, project) {
     if (strips.has(track.id)) return strips.get(track.id);
     const input = ctx.createGain(), gain = ctx.createGain(), pan = ctx.createStereoPanner();
     input.connect(gain).connect(pan).connect(bus);
-    if (track.kind === 'lead') { const d = ctx.createDelay(1.5), fb = ctx.createGain(), wet = ctx.createGain(); d.delayTime.value = 60 / project.bpm * 0.75; fb.gain.value = 0.3; wet.gain.value = 0.24; input.connect(d); d.connect(fb).connect(d); d.connect(wet).connect(gain); }
-    const s = { input, gain, pan }; strips.set(track.id, s); return s;
+    const s = { input, gain, pan };
+    if (track.kind === 'lead') { const d = ctx.createDelay(1.5), fb = ctx.createGain(), wet = ctx.createGain(); d.delayTime.value = 60 / project.bpm * 0.75; fb.gain.value = 0.3; wet.gain.value = 0.24; input.connect(d); d.connect(fb).connect(d); d.connect(wet).connect(gain); s.echo = d; }
+    strips.set(track.id, s); return s;
   }
-  function update(p) { const on = audible(p); for (const t of p.tracks) { const s = strip(t), now = ctx.currentTime; s.gain.gain.setTargetAtTime(on.has(t.id) ? t.vol : 0, now, 0.015); s.pan.pan.setTargetAtTime(t.pan, now, 0.015); } }
+  function update(p) { const on = audible(p); for (const t of p.tracks) { const s = strip(t), now = ctx.currentTime; s.gain.gain.setTargetAtTime(on.has(t.id) ? t.vol : 0, now, 0.015); s.pan.pan.setTargetAtTime(t.pan, now, 0.015); if (s.echo) s.echo.delayTime.setTargetAtTime(60 / p.bpm * 0.75, now, 0.05); } } // the echo follows the tempo, as the export does
   for (const t of project.tracks) { const s = strip(t), on = audible(project); s.gain.gain.value = on.has(t.id) ? t.vol : 0; s.pan.pan.value = t.pan; }
   return { input: id => strips.get(id) && strips.get(id).input, update, master, analyser, strip };
 }
 
 // Schedule everything between two beats. `when(beat)` gives the clock time for a beat.
-export function schedule(ctx, mixer, project, stems, fromBeat, toBeat, when, startingMidClip) {
+export function schedule(ctx, mixer, project, stems, fromBeat, toBeat, when, startingMidClip, onSource) {
   const spb = 60 / project.bpm;
   for (const ev of events(project, fromBeat, toBeat)) { const out = mixer.input(ev.track); if (out) playNote(ctx, out, ev, when(ev.beat), spb); }
   for (const clip of project.clips) { // loaded stems: plain audio, started at the clip (or part-way in when playback starts inside it)
@@ -84,7 +85,7 @@ export function schedule(ctx, mixer, project, stems, fromBeat, toBeat, when, sta
     const c0 = clip.start * 4, c1 = (clip.start + clip.len) * 4, begin = c0 >= fromBeat && c0 < toBeat ? c0 : startingMidClip && c0 < fromBeat && c1 > fromBeat ? fromBeat : null;
     if (begin === null) continue;
     const offset = ((clip.shift || 0) * 4 + (begin - c0)) * spb; if (offset >= buf.duration) continue;
-    const src = ctx.createBufferSource(); src.buffer = buf; src.connect(out); src.start(when(begin), offset, Math.min((c1 - begin) * spb, buf.duration - offset));
+    const src = ctx.createBufferSource(); src.buffer = buf; src.connect(out); src.start(when(begin), offset, Math.min((c1 - begin) * spb, buf.duration - offset)); if (onSource) onSource(clip.id, src);
   }
 }
 
@@ -118,7 +119,7 @@ export const wavFromBuffer = b => encodeWav([b.getChannelData(0), b.numberOfChan
 
 // Live playback: a short look-ahead keeps timing tight while the page stays free to redraw.
 export class Engine {
-  constructor(getProject) { this.get = getProject; this.ctx = null; this.mixer = null; this.playing = false; this.stems = new Map(); this.loop = null; this.onstop = null; }
+  constructor(getProject) { this.get = getProject; this.ctx = null; this.mixer = null; this.playing = false; this.stems = new Map(); this.live = new Map(); this.loop = null; this.onstop = null; }
   ensure() { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); if (this.ctx.state !== 'running') this.ctx.resume(); return this.ctx; }
   play(fromBeat) {
     const ctx = this.ensure(); this.stop(true); this.mixer = makeMixer(ctx, this.get());
@@ -129,10 +130,11 @@ export class Engine {
   position() { if (!this.playing) return null; const spb = 60 / this.get().bpm; return this.b0 + Math.max(0, this.ctx.currentTime - this.t0) / spb; }
   tick() {
     if (!this.playing) return; const p = this.get(), spb = 60 / p.bpm, end = this.loop ? this.loop[1] : p.bars * 4;
+    if (this.when(this.cursor) < this.ctx.currentTime - 0.03) this.cursor = Math.min(end, this.b0 + (this.ctx.currentTime - this.t0) / spb); // after a stall, skip what was missed rather than play it all at once
     let horizon = this.b0 + (this.ctx.currentTime + 0.2 - this.t0) / spb;
     for (let guard = 0; guard < 4 && this.cursor < horizon; guard++) {
       const to = Math.min(horizon, end);
-      if (to > this.cursor) { schedule(this.ctx, this.mixer, p, this.stems, this.cursor, to, b => this.when(b), this.first); this.first = false; this.cursor = to; }
+      if (to > this.cursor) { schedule(this.ctx, this.mixer, p, this.stems, this.cursor, to, b => this.when(b), this.first, (id, src) => { this.live.set(id, src); src.onended = () => { if (this.live.get(id) === src) this.live.delete(id); }; }); this.first = false; this.cursor = to; }
       if (this.cursor >= end) {
         if (!this.loop) { if (this.position() >= end + TAIL / spb) { this.stop(); if (this.onstop) this.onstop(); } return; }
         this.t0 = this.when(end); this.b0 = this.loop[0]; this.cursor = this.loop[0]; this.first = true; horizon = this.b0 + (this.ctx.currentTime + 0.2 - this.t0) / spb; // wrap the loop
@@ -140,7 +142,7 @@ export class Engine {
     }
   }
   retime() { if (!this.playing) return; const b = this.position(); this.t0 = this.ctx.currentTime; this.b0 = b; this.cursor = Math.max(this.cursor, b); } // call before the tempo changes
-  refresh() { if (this.mixer) this.mixer.update(this.get()); }
-  stop(quiet) { if (this.timer) clearInterval(this.timer); this.timer = null; if (this.mixer) { const m = this.mixer.master; m.gain.setTargetAtTime(0, this.ctx.currentTime, 0.012); setTimeout(() => m.disconnect(), 120); } this.mixer = null; this.playing = false; void quiet; }
+  refresh() { if (!this.mixer) return; const p = this.get(); this.mixer.update(p); for (const [id, src] of this.live) if (!p.clips.some(c => c.id === id)) { try { src.stop(); } catch (err) { /* already ended */ } this.live.delete(id); } } // a stem clip that was deleted stops sounding
+  stop(quiet) { if (this.timer) clearInterval(this.timer); this.timer = null; if (this.mixer) { const m = this.mixer.master; m.gain.setTargetAtTime(0, this.ctx.currentTime, 0.012); setTimeout(() => m.disconnect(), 120); } this.mixer = null; this.playing = false; this.live.clear(); void quiet; }
   level() { if (!this.mixer || !this.mixer.analyser) return 0; const a = this.mixer.analyser, d = this.buf || (this.buf = new Float32Array(a.fftSize)); a.getFloatTimeDomainData(d); let s = 0; for (let i = 0; i < d.length; i++) s += d[i] * d[i]; return Math.sqrt(s / d.length); }
 }

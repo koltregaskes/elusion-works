@@ -41,4 +41,19 @@ const brief = briefFor(p, 'make the ending bigger'); assert.ok(brief.includes('"
 // Loading: junk is refused in plain words, a saved project survives a round trip.
 assert.throws(() => validate({ hello: 1 }), /not a Stem Studio project/); assert.deepEqual(validate(JSON.parse(snap)), p);
 assert.equal(rowsFor('drums').length, 6); assert.equal(rowsFor('bass').length, 15); assert.equal(rowsFor('lead')[14].label, 'A4');
+// Review regressions: hostile or broken files, half-understood requests, sections after a cut, the 64-bar limit.
+const bad = JSON.parse(snap); delete bad.patterns['d-verse'].notes; bad.tracks[0].kind = 'drums);background-image:url(https://evil.example/px'; bad.clips[0].shift = 1e9; bad.clips[1].len = 1e9; bad.patterns['__proto__x'] = { kind: 'drums', bars: 1, notes: [] };
+bad.tracks.push({ id: 'x', name: 'X', kind: 'keys', vol: 'loud' }); bad.patterns['k-pad'].notes.push({ t: 'a', d: 1, p: 60 }, { t: 2, d: 1e9, p: 200 }, null);
+const safe = validate(bad); noOverlap(safe);
+assert.ok(safe.tracks.every(t => ['drums', 'bass', 'keys', 'lead', 'audio'].includes(t.kind)) && !safe.tracks.some(t => t.id === 'drums'), 'an unknown kind is dropped with its track');
+assert.ok(Object.values(safe.patterns).every(x => Array.isArray(x.notes) && x.notes.every(n => Number.isInteger(n.t) && n.d >= 1 && n.v >= 0 && n.v <= 1)) && !safe.patterns['d-verse']); assert.equal(safe.tracks.find(t => t.id === 'x').vol, 0.8);
+assert.ok(safe.clips.every(c => c.len <= MAX_BARS && (c.shift || 0) < 16)); let t0 = Date.now(); events(safe, 0, 256); assert.ok(Date.now() - t0 < 200, 'events stays fast on odd data');
+const far = JSON.parse(snap); far.clips[0].shift = 4e6; t0 = Date.now(); events(far, 0, 4); assert.ok(Date.now() - t0 < 50, 'a huge shift does not stall playback');
+for (const text of ["Don't drop the bass in the chorus", 'Keep the drums in the break, no changes', 'Double the chorus with no drums', 'Faster, and add a string section']) assert.equal(interpret(text, p), null, `should not act on: ${text}`);
+assert.deepEqual(interpret('128 bpm and drop the drums in the break', p), { ops: [{ op: 'set_tempo', bpm: 128 }, { op: 'clear', track: 'drums', section: 'Break' }] });
+r = applyPlan(p, { ops: [{ op: 'delete', from: 10, to: 14 }] }); noOverlap(r.project); assert.deepEqual(r.project.sections.map(s => [s.name, s.start, s.len]), [['Intro', 0, 4], ['Verse', 4, 5], ['Chorus', 9, 6], ['Break', 15, 4], ['Last chorus', 19, 8]], 'sections follow a cut');
+for (let i = 1; i < r.project.sections.length; i++) assert.ok(r.project.sections[i - 1].start + r.project.sections[i - 1].len <= r.project.sections[i].start);
+r = applyPlan(p, { ops: [{ op: 'insert', from: 13, to: 14, at: 7 }] }); assert.deepEqual(r.project.sections.find(s => s.name === 'Verse'), { name: 'Verse', start: 4, len: 10 });
+for (const badPlan of [{ ops: [{ op: 'constructor' }] }, { ops: [{ op: 'toString' }] }, { ops: [{ op: 'mute', track: 'lead', on: 'false' }] }, { ops: [{ op: 'add_clip', track: 'keys', pattern: 'k-pad', at: 1, bars: 1.4 }] }, { ops: [{ op: 'add_clip', track: 'keys', pattern: 'constructor', at: 1, bars: 1 }] }]) assert.throws(() => applyPlan(p, badPlan), Error);
+assert.equal(edit.addClip(p, 'drums', 'd-fill', 64, 1), p, 'no clip past the last bar'); q = edit.addClip(edit.deleteClip(p, 'c-drums-24'), 'drums', 'd-fill', 63, 4); assert.deepEqual(q.clips.at(-1).start + q.clips.at(-1).len, 64);
 console.log(`ok  model: ${all.length} notes in the demo song, edits, plans, requests and loading all behave`);

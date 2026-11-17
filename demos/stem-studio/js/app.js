@@ -13,8 +13,17 @@ function stored() { try { const raw = localStorage.getItem(KEY); if (raw) return
 let project = stored() || demoProject(), past = [], future = [], selected = null, cursor = 0, loopOn = false, tab = 'clip';
 const engine = new Engine(() => project), peaks = new Map(), grid = { c: 0, r: 0 };
 const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(project)); } catch (err) { /* the page works without it */ } };
-function commit(next) { if (!next || next === project) return false; past.push(JSON.stringify(project)); if (past.length > 100) past.shift(); future.length = 0; swap(next); return true; }
-function swap(next) { const retime = next.bpm !== project.bpm; if (retime) engine.retime(); project = next; if (selected && !project.clips.some(c => c.id === selected)) selected = null; persist(); engine.refresh(); renderAll(); }
+function commit(next) { // one undo step per real change; an edit that changes nothing is not a step
+  if (!next || next === project) return false; const before = JSON.stringify(project); if (JSON.stringify(next) === before) return false;
+  swap(next); past.push(before); if (past.length > 100) past.shift(); future.length = 0; $('undo').disabled = false; $('redo').disabled = true; return true;
+}
+function swap(next) { // draw first, save second: a project that cannot be drawn is never stored
+  const prev = project, focused = document.activeElement && document.activeElement !== document.body; if (next.bpm !== project.bpm) engine.retime();
+  project = next; if (selected && !project.clips.some(c => c.id === selected)) selected = null;
+  try { renderAll(); } catch (err) { project = prev; renderAll(); throw err; }
+  persist(); engine.refresh();
+  if (focused && (document.activeElement === document.body || !document.activeElement)) $('scroll').focus({ preventScroll: true }); // the thing that had focus is gone: keep the keyboard in the arrangement
+}
 function undo() { if (!past.length) return; future.push(JSON.stringify(project)); swap(JSON.parse(past.pop())); toast('Undone'); }
 function redo() { if (!future.length) return; past.push(JSON.stringify(project)); swap(JSON.parse(future.pop())); toast('Redone'); }
 let toastTimer; function toast(msg) { $('toast').textContent = msg; clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('toast').textContent = ''; }, 3200); }
@@ -22,6 +31,7 @@ const barw = () => parseFloat(getComputedStyle(root).getPropertyValue('--barw'))
 const track = id => project.tracks.find(t => t.id === id);
 const clipOf = id => project.clips.find(c => c.id === id);
 const hasSound = c => !!c.pattern || engine.stems.has(c.track);
+const tint = kind => `--c:var(--${['drums', 'bass', 'keys', 'lead'].includes(kind) ? kind : 'audio'})`; // only ever one of five known colours
 
 // ---- Drawing the arrangement ---------------------------------------------------------------------
 function miniFor(c) { // a small picture of what is inside a clip
@@ -39,7 +49,7 @@ function miniFor(c) { // a small picture of what is inside a clip
 function renderArrange() {
   root.style.setProperty('--bars', project.bars + 2);
   $('song').textContent = project.name; if (document.activeElement !== $('bpm')) $('bpm').value = project.bpm;
-  $('heads').replaceChildren(...project.tracks.map(t => el('div', { class: 'head', style: `--c:var(--${t.kind})` }, [
+  $('heads').replaceChildren(...project.tracks.map(t => el('div', { class: 'head', style: tint(t.kind) }, [
     el('div', { class: 'name', title: t.name }, [el('i'), document.createTextNode(t.name)]),
     el('div', { class: 'btns' }, [
       el('button', { class: 'ms', type: 'button', text: 'M', 'aria-label': `Mute ${t.name}`, 'aria-pressed': String(t.mute), onclick: () => commit(edit.setTrack(project, t.id, { mute: !t.mute })) }), ' ',
@@ -51,7 +61,7 @@ function renderArrange() {
   for (let b = 0; b < project.bars; b++) ruler.append(el('span', { class: 'barno' + (b % 4 === 0 ? ' strong' : ''), text: b % 4 === 0 || bw >= 40 ? String(b + 1) : '', style: `left:${b * bw}px` }));
   const focusId = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.id : null;
   $('lanes').replaceChildren(...project.tracks.map(t => {
-    const lane = el('div', { class: 'lane', 'data-track': t.id, style: `--c:var(--${t.kind})` });
+    const lane = el('div', { class: 'lane', 'data-track': t.id, style: tint(t.kind) });
     for (const c of project.clips.filter(c => c.track === t.id).sort((a, b) => a.start - b.start)) {
       const name = c.pattern ? project.patterns[c.pattern].name : hasSound(c) ? t.name : 'Stem missing: load it again';
       lane.append(el('button', { class: 'clip' + (c.id === selected ? ' sel' : '') + (hasSound(c) ? '' : ' missing'), type: 'button', 'data-id': c.id, style: `left:${c.start * bw + 1}px;width:${c.len * bw - 2}px`,
@@ -118,11 +128,12 @@ function drawLoop() { const lb = $('loopband'); lb.hidden = !loopOn; if (!loopOn
 function play() { engine.loop = loopOn ? loopRange() : null; const from = engine.loop && (cursor < engine.loop[0] || cursor >= engine.loop[1]) ? engine.loop[0] : cursor >= project.bars * 4 ? 0 : cursor; engine.play(from); setPlayUI(true); drawLoop(); }
 function stop() { const at = engine.position(); engine.stop(); if (at !== null) cursor = Math.min(Math.floor(at), project.bars * 4); setPlayUI(false); }
 function setPlayUI(on) { $('play').setAttribute('aria-label', on ? 'Stop' : 'Play'); $('playicon').setAttribute('d', on ? 'M6 5h12v14H6z' : 'M7 4.5v15l13-7.5z'); }
+const playheadBar = () => Math.floor((engine.playing ? engine.position() : cursor) / 4); // where the playhead is now, moving or not, as a bar line
 function setCursor(beat) { cursor = Math.max(0, Math.min(project.bars * 4, beat)); if (engine.playing) play(); tick(); }
 engine.onstop = () => { cursor = 0; setPlayUI(false); };
 function tick() {
   const at = engine.playing ? engine.position() : cursor, bw = barw(), x = at / 4 * bw;
-  $('playhead').style.transform = `translateX(${x}px)`; const bar = Math.floor(at / 4), beat = Math.floor(at % 4); $('pos').textContent = `${bar + 1}.${beat + 1}`;
+  $('playhead').style.transform = `translateX(${x}px)`; const bar = Math.floor(at / 4), beat = Math.floor(at % 4), text = `${bar + 1}.${beat + 1}`; if ($('pos').textContent !== text) $('pos').textContent = text;
   $('meter').style.height = Math.min(100, engine.level() * 320) + '%';
   if (engine.playing) { const sc = $('scroll'); if (x > sc.scrollLeft + sc.clientWidth - 40 || x < sc.scrollLeft) sc.scrollLeft = Math.max(0, x - 60); }
 }
@@ -137,8 +148,10 @@ function endLive() { if (!liveBefore) return; past.push(liveBefore); future.leng
 let drag = null;
 function select(id, openEditor) { selected = id; if (openEditor) setTab('clip'); renderAll(); }
 $('lanes').addEventListener('pointerdown', e => {
-  const b = e.target.closest('.clip'); if (!b || e.button > 0) return; e.preventDefault(); b.focus({ preventScroll: true });
-  const c = clipOf(b.dataset.id); if (selected !== c.id) { selected = c.id; renderAll(); }
+  const b = e.target.closest('.clip'); if (!b || e.button > 0) return;
+  const c = clipOf(b.dataset.id);
+  if (e.pointerType === 'touch' && selected !== c.id) { selected = c.id; renderAll(); return; } // on a phone the first touch selects, so a swipe can still scroll; a selected clip then drags
+  e.preventDefault(); b.focus({ preventScroll: true }); if (selected !== c.id) { selected = c.id; renderAll(); }
   const live = $('lanes').querySelector(`[data-id="${CSS.escape(c.id)}"]`); live.setPointerCapture(e.pointerId);
   drag = { id: c.id, x: e.clientX, start: c.start, len: c.len, resize: !!e.target.closest('.grip'), el: live, by: 0 };
 });
@@ -146,7 +159,8 @@ $('lanes').addEventListener('pointermove', e => {
   if (!drag) return; const bw = barw(), by = Math.round((e.clientX - drag.x) / bw); drag.by = by;
   if (drag.resize) drag.el.style.width = Math.max(1, Math.min(MAX_BARS - drag.start, drag.len + by)) * bw - 2 + 'px'; else drag.el.style.left = Math.max(0, Math.min(MAX_BARS - drag.len, drag.start + by)) * bw + 1 + 'px';
 });
-for (const ev of ['pointerup', 'pointercancel']) $('lanes').addEventListener(ev, () => { if (!drag) return; const d = drag; drag = null; if (d.by) commit(d.resize ? edit.resizeClip(project, d.id, d.len + d.by) : edit.moveClip(project, d.id, d.start + d.by)); });
+$('lanes').addEventListener('pointerup', () => { if (!drag) return; const d = drag; drag = null; if (d.by && !commit(d.resize ? edit.resizeClip(project, d.id, d.len + d.by) : edit.moveClip(project, d.id, d.start + d.by))) renderAll(); });
+$('lanes').addEventListener('pointercancel', () => { if (!drag) return; drag = null; renderAll(); }); // a cancelled gesture puts the clip back
 $('lanes').addEventListener('dblclick', e => {
   const b = e.target.closest('.clip'); if (b) { select(b.dataset.id, true); $('grid').focus(); return; }
   const lane = e.target.closest('.lane'); if (!lane) return; const t = track(lane.dataset.track), pat = Object.values(project.patterns).find(p => p.kind === t.kind); if (!pat) return;
@@ -158,7 +172,7 @@ $('lanes').addEventListener('keydown', e => {
   if (k === 'ArrowLeft' || k === 'ArrowRight') { const by = k === 'ArrowLeft' ? -1 : 1; done(e.shiftKey ? edit.resizeClip(project, c.id, c.len + by) : edit.moveClip(project, c.id, c.start + by)); }
   else if (k === 'Delete' || k === 'Backspace') { e.preventDefault(); const lane = b.parentElement, next = b.nextElementSibling || b.previousElementSibling; selected = null; commit(edit.deleteClip(project, c.id)); const to = next && $('lanes').querySelector(`[data-id="${CSS.escape(next.dataset.id)}"]`); (to || $('scroll')).focus(); void lane; }
   else if (k === 'd' || k === 'D') done(edit.duplicateClip(project, c.id));
-  else if (k === 's' || k === 'S') done(edit.splitClip(project, c.id, Math.round(cursor / 4)));
+  else if (k === 's' || k === 'S') done(edit.splitClip(project, c.id, playheadBar()));
   else if (k === 'Enter') { e.preventDefault(); select(c.id, true); $('grid').focus(); }
   else if (k === ' ') { e.preventDefault(); select(c.id); }
 });
@@ -186,11 +200,27 @@ $('more-list').addEventListener('keydown', e => { if (e.key === 'Escape') { menu
 $('more-list').addEventListener('click', e => { if (e.target.closest('button')) menu(false); });
 
 // ---- Files: export, stems, project ---------------------------------------------------------------------------
+const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function zip(files) { // a plain, uncompressed zip: enough to hand several WAVs over as one file
+  const enc = new TextEncoder(), parts = [], central = []; let offset = 0;
+  for (const f of files) {
+    let crc = 0xFFFFFFFF; for (let i = 0; i < f.data.length; i++) crc = CRC[(crc ^ f.data[i]) & 255] ^ (crc >>> 8); crc = (crc ^ 0xFFFFFFFF) >>> 0;
+    const name = enc.encode(f.name), head = new DataView(new ArrayBuffer(30)), cd = new DataView(new ArrayBuffer(46));
+    head.setUint32(0, 0x04034b50, true); head.setUint16(4, 20, true); head.setUint16(6, 0x0800, true); head.setUint32(14, crc, true); head.setUint32(18, f.data.length, true); head.setUint32(22, f.data.length, true); head.setUint16(26, name.length, true);
+    cd.setUint32(0, 0x02014b50, true); cd.setUint16(4, 20, true); cd.setUint16(6, 20, true); cd.setUint16(8, 0x0800, true); cd.setUint32(16, crc, true); cd.setUint32(20, f.data.length, true); cd.setUint32(24, f.data.length, true); cd.setUint16(28, name.length, true); cd.setUint32(42, offset, true);
+    parts.push(head.buffer, name, f.data); central.push(cd.buffer, name); offset += 30 + name.length + f.data.length;
+  }
+  const size = central.reduce((n, c) => n + c.byteLength, 0), end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true); end.setUint32(12, size, true); end.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, end.buffer], { type: 'application/zip' });
+}
 function download(name, data, type) { const url = URL.createObjectURL(new Blob([data], { type })), a = el('a', { href: url, download: name }); document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000); }
 const slug = () => project.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'song';
 async function busy(btn, label, work) { const old = btn.textContent; btn.disabled = true; btn.setAttribute('aria-busy', 'true'); btn.textContent = label; try { return await work(); } catch (err) { toast('That did not work: ' + err.message); } finally { btn.disabled = false; btn.removeAttribute('aria-busy'); btn.textContent = old; } }
 $('export').addEventListener('click', () => busy($('export'), 'Rendering', async () => { const r = await renderOffline(project, 0, project.bars, engine.stems); download(`${slug()}.wav`, wavFromBuffer(r.buffer), 'audio/wav'); toast(`Exported ${Math.round(r.seconds)} seconds. Peak ${Math.round(r.peak * 100)}% of full scale.`); return r; }));
-$('save-stems').addEventListener('click', () => busy($('export'), 'Rendering stems', async () => { let n = 0; for (const t of project.tracks) { if (!project.clips.some(c => c.track === t.id && hasSound(c))) continue; const r = await renderOffline(project, 0, project.bars, engine.stems, { only: t.id }); download(`${slug()}-${t.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.wav`, wavFromBuffer(r.buffer), 'audio/wav'); n++; await new Promise(res => setTimeout(res, 250)); } toast(`${n} stems downloaded.`); }));
+$('save-stems').addEventListener('click', () => busy($('more'), 'Rendering stems', async () => { // one zip, so the browser asks once
+  const files = []; for (const t of project.tracks) { if (!project.clips.some(c => c.track === t.id && hasSound(c))) continue; const r = await renderOffline(project, 0, project.bars, engine.stems, { only: t.id }); files.push({ name: `${slug()}-${t.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'track'}.wav`, data: new Uint8Array(wavFromBuffer(r.buffer)) }); }
+  download(`${slug()}-stems.zip`, zip(files), 'application/zip'); toast(`${files.length} stems in one zip file.`); return files.length; }));
 async function addStem(name, bytes) {
   const buf = await new OfflineAudioContext(2, 1, SR).decodeAudioData(bytes.slice(0)), id = 'stem-' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
   engine.stems.set(id, buf); const d = buf.getChannelData(0), pk = new Float32Array(400), step = Math.max(1, Math.floor(d.length / 400)); for (let i = 0; i < 400; i++) { let m = 0; for (let j = i * step; j < Math.min(d.length, (i + 1) * step); j += 8) m = Math.max(m, Math.abs(d[j])); pk[i] = m; } peaks.set(id, pk);
@@ -208,14 +238,14 @@ $('reset').addEventListener('click', () => { selected = null; cursor = 0; commit
 $('play').addEventListener('click', () => (engine.playing ? stop() : play()));
 $('rewind').addEventListener('click', () => setCursor(0));
 $('loop').addEventListener('click', () => { loopOn = !loopOn; $('loop').setAttribute('aria-pressed', String(loopOn)); if (engine.playing) play(); else drawLoop(); });
-$('bpm').addEventListener('change', e => { if (!commit(edit.setBpm(project, Number(e.target.value) || project.bpm))) e.target.value = project.bpm; });
+$('bpm').addEventListener('change', e => { commit(edit.setBpm(project, Number(e.target.value) || project.bpm)); e.target.value = project.bpm; }); // the box always shows the tempo the song is really using
 $('bpm-down').addEventListener('click', () => commit(edit.setBpm(project, project.bpm - 1)));
 $('bpm-up').addEventListener('click', () => commit(edit.setBpm(project, project.bpm + 1)));
 $('undo').addEventListener('click', undo); $('redo').addEventListener('click', redo);
 $('add-clip').addEventListener('click', () => { const pat = project.patterns[$('add-pattern').value], t = pat && project.tracks.find(x => x.kind === pat.kind); if (!t) return; const before = project; commit(edit.addClip(project, t.id, pat.id, Number($('add-bar').value) - 1, pat.bars)); if (project !== before) { selected = project.clips[project.clips.length - 1].id; renderAll(); } });
 $('clip-pattern').addEventListener('change', e => { const p = clone(project); p.clips.find(c => c.id === selected).pattern = e.target.value; commit(p); });
 $('clip-dup').addEventListener('click', () => commit(edit.duplicateClip(project, selected)) || toast('No room to duplicate that clip.'));
-$('clip-split').addEventListener('click', () => commit(edit.splitClip(project, selected, Math.round(cursor / 4))) || toast('Put the playhead inside the clip first, on a bar line.'));
+$('clip-split').addEventListener('click', () => commit(edit.splitClip(project, selected, playheadBar())) || toast('Move the playhead inside the clip, past its first bar, then split.'));
 $('clip-unique').addEventListener('click', () => commit(edit.makeUnique(project, selected)));
 $('clip-del').addEventListener('click', () => { const id = selected; selected = null; commit(edit.deleteClip(project, id)); });
 $('ask-go').addEventListener('click', () => ask($('ask').value)); $('ask').addEventListener('keydown', e => { if (e.key === 'Enter') ask($('ask').value); });
