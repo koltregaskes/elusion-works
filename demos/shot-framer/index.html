@@ -42,12 +42,12 @@
   .seg { position:relative; } .seg input { position:absolute; inset:0; opacity:0; margin:0; cursor:pointer; } .seg span { display:grid; place-items:center; gap:1px; min-height:50px; padding:5px 4px; border-radius:10px; border:1px solid var(--line); background:rgba(255,255,255,.05); font-weight:700; font-size:14px; line-height:1.15; text-align:center; } .seg small { display:block; font:500 10.5px/1.2 var(--mono); color:var(--muted); letter-spacing:.06em; }
   .seg input:checked + span { background:var(--ink); color:#111; border-color:var(--ink); } .seg input:checked + span small { color:#3a4044; } .seg input:focus-visible + span { outline:2px solid var(--accent); outline-offset:2px; }
   .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; } .row + .row { margin-top:8px; }
-  label.lens { display:block; } #fov { width:100%; margin:6px 0 2px; accent-color:var(--accent); height:28px; } .ends { display:flex; justify-content:space-between; font:500 11px/1 var(--mono); color:var(--muted); }
+  .lens { margin:0; font-weight:700; } #fov { width:100%; margin:6px 0 2px; accent-color:var(--accent); height:28px; } .ends { display:flex; justify-content:space-between; font:500 11px/1 var(--mono); color:var(--muted); }
   #shots { margin:10px 0 0; padding:0; list-style:none; display:grid; gap:8px; } #shots li { display:grid; gap:10px; align-items:center; padding:8px; border-radius:12px; border:1px solid var(--line); background:rgba(255,255,255,.03); }
   #shots canvas { display:block; width:auto; height:auto; max-width:76px; max-height:76px; justify-self:center; border-radius:6px; background:#0b0c0d; } #shots li { grid-template-columns:76px minmax(0, 1fr); } #shots p { margin:0 0 6px; font-size:12.5px; line-height:1.35; color:var(--soft); } #shots .row { gap:5px; }
   #none { margin:10px 0 0; font-size:13px; color:var(--muted); }
   #text { display:block; width:100%; min-height:86px; margin:8px 0 0; padding:9px 10px; border-radius:10px; border:1px solid var(--line); background:#101214; font:12px/1.5 var(--mono); color:var(--soft); resize:vertical; }
-  .note { margin:8px 0 0; font-size:12.5px; color:var(--muted); } #status { margin:8px 0 0; font-size:13px; color:var(--soft); min-height:1.5em; }
+  .note { margin:8px 0 0; font-size:12.5px; color:var(--muted); } #status { margin:8px 0 0; font-size:13px; color:var(--soft); min-height:1.5em; font-variant-ligatures:none; font-feature-settings:"calt" 0, "liga" 0; overflow-wrap:anywhere; } #progress { margin:2px 0 0; min-height:1.4em; font-variant-numeric:tabular-nums; }
   #drop { margin:8px 0 0; padding:12px; border-radius:12px; border:1px dashed var(--line); font-size:13px; color:var(--muted); } #drop.over { border-color:var(--accent); color:var(--ink); }
   #file { display:block; margin-top:8px; max-width:100%; font-size:13px; } #file::file-selector-button { min-height:36px; margin-right:10px; padding:0 12px; border-radius:9px; border:1px solid var(--line); background:rgba(255,255,255,.06); color:var(--ink); font:700 13px/1 var(--sans); cursor:pointer; }
   footer { margin-top:26px; padding-top:14px; border-top:1px solid var(--line); font-size:12.5px; color:var(--muted); }
@@ -66,13 +66,13 @@
   </header>
   <div id="well">
     <div id="frame">
-      <canvas id="view" tabindex="0" role="img" aria-label="The frame" aria-describedby="hint"></canvas>
+      <canvas id="view" tabindex="0" role="application" aria-label="The frame" aria-describedby="hint"></canvas>
       <div id="thirds" aria-hidden="true"></div>
     </div>
   </div>
   <div>
     <p id="read" aria-hidden="true"><span><b>Facing</b><span id="r-head">north, 0°</span></span><span><b>Tilt</b><span id="r-tilt">level</span></span><span><b>Lens</b><span id="r-lens">24 mm</span></span><span><b>Shape</b><span id="r-shape">16:9</span></span></p>
-    <p id="hint">Drag the picture to look round. Scroll or pinch to change the lens. With the picture selected: arrow keys turn, plus and minus change the lens, S saves a shot.</p>
+    <p id="hint">Drag the picture to look round. Scroll over it, or pinch, to change the lens. With the picture selected: arrow keys turn, plus and minus change the lens, S saves a shot.</p>
   </div>
 </main>
 
@@ -80,11 +80,11 @@
   <h2 id="shape-h">Shape</h2>
   <fieldset class="shapes" aria-labelledby="shape-h" id="shapes"></fieldset>
 
-  <h2>Lens</h2>
-  <label class="lens" for="fov"><span id="lens-words">24 mm, a wide lens</span>
-    <input id="fov" type="range" min="12" max="110" step="1" value="55" aria-describedby="lens-note"></label>
+  <h2 id="lens-h">Lens</h2>
+  <p class="lens" id="lens-words" aria-hidden="true">24 mm, a wide lens</p>
+  <input id="fov" type="range" min="12" max="110" step="1" value="46" aria-labelledby="lens-h" aria-describedby="lens-note">
   <div class="ends" aria-hidden="true"><span>long</span><span>wide</span></div>
-  <p class="note" id="lens-note">Millimetres are what the same view would need on a full-frame camera.</p>
+  <p class="note" id="lens-note">Millimetres are the lens a full-frame camera would need, with the frame fitted inside its 36 by 24 mm sensor (turned on its side for a tall shape). Changing the shape keeps the lens.</p>
   <div class="row" style="margin-top:10px"><button class="btn small" id="grid" type="button" aria-pressed="true">Thirds</button><button class="btn small" id="home" type="button">Back to the start</button></div>
 
   <h2>Shots</h2>
@@ -94,6 +94,7 @@
     <label class="seg"><input type="radio" name="size" value="3840"><span style="min-height:36px; padding:0 12px">4K<small>3840 long</small></span></label>
   </fieldset>
   <p id="status" role="status"></p>
+  <p id="progress" class="note" aria-hidden="true"></p>
   <p id="none">No shots saved yet. Frame something and press Save this shot.</p>
   <ol id="shots" aria-label="Saved shots"></ol>
   <div class="row" style="margin-top:10px"><button class="btn small" id="all" type="button" disabled>Export all</button><button class="btn small" id="copy" type="button" disabled>Copy the list</button></div>
