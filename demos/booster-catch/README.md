@@ -18,12 +18,15 @@ Use it as the reference for 3D scenes with a timeline.
 
 | Item | Value here | Basis |
 |---|---|---|
-| Slows through the speed of sound | T+6:08 | Published flight timeline |
-| Landing burn starts | T+6:30 | Published flight timeline, as flown (pre-flight plan: 6:33) |
-| Engines off and caught | T+6:54 | Published flight timeline, as flown (pre-flight plan: 6:56) |
+| Slows through the speed of sound (model: speed first drops below Mach 1) | T+6:08 | Our reading of the 6:08 entry in the published flight timeline, not checked against the page itself |
+| Landing burn starts (model: first engine lights) | T+6:30 | Published flight timeline, as flown (pre-flight plan: 6:33) |
+| Caught and engines off (model: arms closed, booster stopped on them, every engine off) | T+6:54 | Published flight timeline, as flown (pre-flight plan: 6:56) |
 | 13 engines relight, then 3 | Yes | Press coverage of the flight |
 | Booster 71 m by 9 m, 33 engines, tower 146 m | To scale | Published vehicle figures |
 | Altitude, speed, path, lean, arm timing, site layout, weather, light | Modelled | A plausible fit between the three known times. Not telemetry. |
+| Thermal view colours | Illustrative | Where heat would plausibly be. Not measured temperatures. |
+
+The three times are whole seconds taken from search summaries of the Wikipedia timeline and press coverage, not from the pages themselves, and the sources differ by 2 to 3 seconds. The model meets each within 0.2 seconds; that is agreement with these figures, not historical precision. All figures on the page are an illustration, not flight data.
 
 ## Credits and rights
 
@@ -40,8 +43,12 @@ Use it as the reference for 3D scenes with a timeline.
 - `js/booster.js`: the booster.
 - `js/fx.js`: plumes, smoke, flight path, blueprint labels.
 - `js/app.js`: renderer, cameras, views, controls, sound.
-- `tools/`: checks (not shipped). `flight.test.mjs` needs only Node. `smoke.mjs` and `shots.mjs` need Playwright and a static server on port 8765 serving the repo root.
+- `tools/`: checks (not shipped). `flight.test.mjs` needs only Node: `node demos/booster-catch/tools/flight.test.mjs`. `smoke.mjs` and `shots.mjs` need Playwright and a static server serving the repo root (port 8765 by default). Smoke: `node demos/booster-catch/tools/smoke.mjs <axe.min.js> [base URL]`. Pictures: `BASE=<base URL> node demos/booster-catch/tools/shots.mjs <outDir> name:time:camera:mode[:WxH[:clean]] ...`.
 
 ## Status
 
-Unlisted. The page carries `noindex` and is not in the gallery or the sitemap. To release it: remove the `noindex` line, add the gallery card in `demos/index.html` and the route in `sitemap.xml`. Kol approves publishing.
+Draft, unlisted. The page carries `noindex` and is not in the gallery or the sitemap.
+
+The site deploys whatever is merged. Merging this page puts it on the live site at its own address (`/demos/booster-catch/`): unlisted, but reachable by anyone who has the link.
+
+To release it properly: remove the `noindex` line, add the gallery card in `demos/index.html` and the route in `sitemap.xml`. Kol approves publishing.

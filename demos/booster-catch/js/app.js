@@ -12,6 +12,12 @@ import { makeBooster } from './booster.js';
 import { makePlumes, makeSmoke, makePath, makeCallouts } from './fx.js';
 
 const $ = id => document.getElementById(id);
+// Shown when the replay cannot run: a message and a still frame of the catch (loaded only then).
+function showFallback(message) {
+  const f = $('fallback'); if (message) f.querySelector('p').innerHTML = message;
+  const img = f.querySelector('img'); if (img && !img.getAttribute('src')) img.src = img.dataset.src;
+  f.style.display = 'grid';
+}
 const canvas = $('stage');
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const small = matchMedia('(max-width: 820px), (pointer: coarse)').matches;
@@ -20,7 +26,7 @@ const smooth = (a, b, x) => { const u = clamp((x - a) / (b - a), 0, 1); return u
 
 let renderer;
 try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' }); if (!renderer.capabilities.isWebGL2) throw new Error('WebGL 2 missing'); }
-catch (err) { $('fallback').style.display = 'grid'; throw err; }
+catch (err) { showFallback(); throw err; }
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.86;
 renderer.shadowMap.enabled = !small; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const quality = { dpr: Math.min(devicePixelRatio || 1, small ? 1.5 : 2), bloom: true, tier: small ? 'mid' : 'high' };
@@ -99,7 +105,7 @@ function thermalMat(spec, src, instanced) {
     fragmentShader: `varying vec3 vN; varying vec3 vE; varying vec3 vW; varying float vY; uniform float uBase; uniform float uKind; uniform vec2 uHeat; uniform vec4 uFire; ${SKY_GLSL}
       void main(){
         float t = uBase;
-        if (uKind > 0.5 && uKind < 1.5) t += (0.50*uHeat.x + 0.30*uHeat.y)*exp(-(vY + 33.0)/7.0) + 0.06*smoothstep(-6.0, -33.0, vY);
+        if (uKind > 0.5 && uKind < 1.5) t += (0.50*uHeat.x + 0.30*uHeat.y)*exp(-(vY + 33.0)/7.0) + 0.06*(1.0 - smoothstep(-33.0, -6.0, vY));
         if (uKind > 1.5) t += 0.38*max(uHeat.x, uHeat.y) + 0.10;
         t += uFire.w*1.6*exp(-length(vW - uFire.xyz)/26.0);
         t *= 0.84 + 0.16*abs(dot(normalize(vN), normalize(vE)));
@@ -116,17 +122,25 @@ scene.traverse(o => {
 });
 const glowMeshes = []; scene.traverse(o => { if (o.userData.kind === 'glow') glowMeshes.push(o); });
 
-let mode = 'visual', showPath = false;
+let mode = 'visual';
+const showPath = { solid: false, blueprint: true }; // the blueprint starts with the path on; the button turns it off there too
+const pathKey = m => (m === 'blueprint' ? 'blueprint' : 'solid'); // visual and thermal share one setting
 function setMode(m) {
   mode = m; shared.uMode.value = m === 'visual' ? 0 : m === 'blueprint' ? 1 : 2;
   for (const s of solids) s.o.material = m === 'visual' ? s.visual : m === 'blueprint' ? s.blueprint : s.thermal;
   glowMeshes.forEach(g => { g.visible = m !== 'blueprint'; });
   booster.inside.visible = m === 'blueprint'; callouts.world.visible = callouts.onBooster.visible = m === 'blueprint';
-  path.visible = showPath || m === 'blueprint'; $('path').setAttribute('aria-pressed', String(path.visible));
+  path.visible = showPath[pathKey(m)]; $('path').setAttribute('aria-pressed', String(path.visible));
+  noteThermal(m === 'thermal');
   bloom.strength = m === 'visual' ? 0.32 : m === 'blueprint' ? 0.55 : 0.3; bloom.threshold = m === 'visual' ? 1.7 : 0.55;
   renderer.shadowMap.enabled = !small && m === 'visual';
   document.querySelectorAll('.modes button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
   dirty = true;
+}
+
+function noteThermal(on) { // thermal colours are illustrative: the readout note says so while that view is on
+  for (const e of document.querySelectorAll('.note-thermal')) e.hidden = !on;
+  for (const e of document.querySelectorAll('.note-plain')) e.hidden = on;
 }
 
 // ---- Cameras -----------------------------------------------------------------------
@@ -214,7 +228,11 @@ function resize() {
   cam.aspect = w / h; cam.setViewOffset(w, h, 0, Math.round(h / 2 - (free.top + free.bottom) / 2), w, h); cam.updateProjectionMatrix(); dirty = true;
 }
 addEventListener('resize', resize);
-canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); playing = false; $('fallback').style.display = 'grid'; $('fallback').querySelector('p').innerHTML = '<strong>3D graphics were interrupted.</strong><br>Reload the page to carry on.'; });
+let lost = false;
+canvas.addEventListener('webglcontextlost', e => {
+  e.preventDefault(); lost = true; setPlaying(false); audio.stop(); $('sound').setAttribute('aria-pressed', 'false');
+  showFallback('<strong>3D graphics were interrupted.</strong><br>Reload the page to carry on.');
+});
 
 // ---- The one clock --------------------------------------------------------------------------
 let time = T_START, playing = false, rate = 1, dirty = true, firstFrameMs = null, lastEvent = null, dragging = false;
@@ -297,7 +315,7 @@ function seek(t) { time = clamp(t, T_START, T_END); beatIndex = -1; dirty = true
 
 // ---- Sound: synthesised in the browser, off until asked for ------------------------------------
 const audio = (() => {
-  let ctx = null, on = false, rumble = null, master = null;
+  let ctx = null, on = false, rumble = null, master = null, failed = false;
   function start() {
     ctx = new (window.AudioContext || window.webkitAudioContext)(); master = ctx.createGain(); master.gain.value = 0.7; master.connect(ctx.destination);
     const len = ctx.sampleRate * 2, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0); let last = 0;
@@ -308,8 +326,15 @@ const audio = (() => {
   }
   return {
     get on() { return on; },
-    toggle() { on = !on; if (on && !ctx) start(); if (!on) { this.silence(); ctx.suspend(); } else this.resume(); return on; },
-    resume() { if (on && ctx && ctx.state !== 'running') ctx.resume(); }, // also covers iOS 'interrupted'
+    get failed() { return failed; },
+    get state() { return failed ? 'failed' : ctx ? ctx.state : 'none'; },
+    toggle() {
+      if (failed) return false;
+      if (!on && !ctx) { try { start(); } catch (err) { ctx = null; failed = true; return false; } }
+      on = !on; if (!on) this.stop(); else this.resume(); return on;
+    },
+    stop() { on = false; this.silence(); if (ctx) ctx.suspend().catch(() => {}); },
+    resume() { if (on && ctx && ctx.state !== 'running') ctx.resume().catch(() => {}); }, // also covers iOS 'interrupted'
     silence() { if (rumble) rumble.gain.setTargetAtTime(0, ctx.currentTime, 0.05); },
     frame(s, id) {
       if (!on || !ctx || !playing) return;
@@ -341,6 +366,7 @@ function loop(now) {
     frames++; if (dt > 0.045) slow++; // slower than about 22 frames a second (a steady 30 is fine)
     if (frames >= 90) { if (slow > 45) { if (quality.dpr > 1) { quality.dpr = Math.max(1, quality.dpr - 0.25); resize(); } else if (quality.bloom) quality.bloom = false; quality.tier = 'reduced'; } frames = slow = 0; }
   }
+  if (lost) return; // nothing more to draw until the page is reloaded
   if (playing || dirty) { dirty = false; render(); }
   requestAnimationFrame(loop);
 }
@@ -353,8 +379,12 @@ CAMS.forEach((c, i) => {
 const toggle = (id, fn) => $(id).addEventListener('click', () => $(id).setAttribute('aria-pressed', String(fn())));
 $('director').addEventListener('click', () => setDirector(!director));
 toggle('split', () => { split = !split; dirty = true; return split; });
-toggle('path', () => { showPath = !showPath; path.visible = showPath || mode === 'blueprint'; dirty = true; return showPath; });
-toggle('sound', () => audio.toggle());
+toggle('path', () => { const k = pathKey(mode); showPath[k] = !showPath[k]; path.visible = showPath[k]; dirty = true; return path.visible; });
+toggle('sound', () => {
+  const on = audio.toggle();
+  if (audio.failed) { const b = $('sound'); b.textContent = 'No sound'; b.setAttribute('aria-disabled', 'true'); b.title = 'This browser could not start sound'; }
+  return on;
+});
 if (small) $('split').style.display = 'none';
 document.querySelectorAll('.modes button').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
 el.play.addEventListener('click', () => setPlaying(!playing));
@@ -369,6 +399,7 @@ addEventListener('keydown', e => {
   if (e.ctrlKey || e.metaKey || e.altKey || $('about').open) return;
   const tag = e.target.tagName, k = e.key.toLowerCase();
   if (tag === 'SELECT') return;
+  if (!$('keys-on').checked && e.key.length === 1 && e.key !== ' ') return; // letter and number shortcuts switched off in Sources
   if (tag === 'INPUT') { // the timeline: a second per press (five with Shift or Page keys), not the slider's fine step
     const step = { arrowleft: -1, arrowdown: -1, arrowright: 1, arrowup: 1, pagedown: -5, pageup: 5 }[k];
     if (step) { e.preventDefault(); seek(time + step * (e.shiftKey && Math.abs(step) === 1 ? 5 : 1)); return; }
@@ -395,7 +426,8 @@ requestAnimationFrame(loop);
 // Hooks for the automated checks in tools/
 window.__replay = {
   seek, setCamera, setMode, setDirector, setPlaying,
-  state: () => ({ ...sample(time), cam: camId, mode, director, playing, quality: { ...quality } }),
+  state: () => ({ ...sample(time), cam: camId, mode, director, playing, quality: { ...quality }, pathShown: path.visible, sound: audio.on, audio: audio.state, lost }),
+  labels: () => callouts.all.map(l => ({ text: l.userData.text, fits: l.userData.fits })),
   get firstFrameMs() { return firstFrameMs; },
   renderNow() { dirty = false; render(); },
   get free() { return { ...free }; },

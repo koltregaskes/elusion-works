@@ -2,9 +2,15 @@
 // is a function of one clock value t (seconds after liftoff), so scrubbing,
 // replaying and every camera always agree.
 //
-// Anchored to the published as-flown timeline of Starship Flight 5
-// (13 Oct 2024): transonic T+6:08, landing burn start T+6:30, catch T+6:54.
-// Altitude, speed, path, lean and arm timing are a modelled fit, not telemetry.
+// Anchored to three whole-second times quoted from the as-flown timeline of
+// Starship Flight 5 (13 Oct 2024). Each is defined here as one exact model event:
+//   transonic  T+6:08  speed first drops below Mach 1
+//   burn       T+6:30  ignition: the first landing-burn engine lights
+//   catch      T+6:54  tower contact (arms closed, booster stopped at catch
+//                      height) and engine shutdown (every engine fully off)
+// Sources differ by 2 to 3 s on the last two, so these are illustrative anchors,
+// not precise history. Altitude, speed, path, lean and arm timing are a
+// modelled fit, not telemetry.
 
 export const T_START = 366; // T+6:06
 export const T_END = 420; // T+7:00
@@ -101,7 +107,8 @@ export function engineLevel(i, t) {
   const e = ENGINES[i];
   if (e.ring === 2) return 0;
   const j = ((i * 7) % 10) * 0.03; // small deterministic stagger
-  if (e.ring === 0) return smooth(REF.burn + j, REF.burn + 0.45 + j, t) * (1 - smooth(REF.catch + 0.25 + j, REF.catch + 0.9 + j, t));
+  // The centre three shut down as the booster settles on the arms: all fully off by REF.catch (j is at most 0.27).
+  if (e.ring === 0) return smooth(REF.burn + j, REF.burn + 0.45 + j, t) * (1 - smooth(REF.catch - 0.9 + j, REF.catch - 0.3 + j, t));
   return smooth(REF.burn + 0.2 + j, REF.burn + 0.8 + j, t) * (1 - smooth(THREE_ENGINES_AT - 0.5 + j, THREE_ENGINES_AT + 0.1 + j, t));
 }
 

@@ -108,7 +108,7 @@ export function makeSmoke(maxCount = 1500) {
       void main(){
         vec2 q = vUv - 0.5; float rr = length(q)*2.0; if (rr > 1.0) discard;
         float n = fbm(q*3.2 + vSeed*31.0);
-        float soft = smoothstep(1.0, 0.25, rr + (n - 0.5)*0.75);
+        float soft = 1.0 - smoothstep(0.25, 1.0, rr + (n - 0.5)*0.75); // same curve, edges in the order GLSL defines
         float fade = smoothstep(0.0, 0.10, vAge)*(1.0 - smoothstep(0.45, 1.0, vAge));
         vec3 c; float a;
         if (vKind > 3.5) { // flame
@@ -149,22 +149,28 @@ export function makePath() {
 }
 
 // ---- Blueprint callouts ------------------------------------------------------
-export function makeLabel(text, size = 5) {
-  const tex = canvasTexture(512, 96, (c, w, h) => {
-    c.font = '600 44px ui-monospace, "SF Mono", Menlo, Consolas, monospace'; c.textBaseline = 'middle';
-    c.fillStyle = 'rgba(8,24,52,0.82)'; const tw = Math.min(w - 8, c.measureText(text).width + 36); c.fillRect(0, 12, tw, h - 24);
+const LABEL_FONT = '600 44px ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+export function makeLabel(text, size = 5, anchorRight = false) {
+  // The texture is as wide as the text needs, so long labels are never cut off.
+  const m = document.createElement('canvas').getContext('2d'); m.font = LABEL_FONT;
+  const textW = Math.ceil(m.measureText(text).width), W = Math.max(128, textW + 44), H = 96;
+  const tex = canvasTexture(W, H, (c, w, h) => {
+    c.font = LABEL_FONT; c.textBaseline = 'middle';
+    c.fillStyle = 'rgba(8,24,52,0.82)'; const tw = Math.min(w - 4, textW + 36); c.fillRect(0, 12, tw, h - 24);
     c.strokeStyle = '#8fd0ff'; c.lineWidth = 3; c.strokeRect(1.5, 13.5, tw - 3, h - 27); c.fillStyle = '#d9f0ff'; c.fillText(text, 18, h / 2 + 2);
   });
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, fog: false, toneMapped: false }));
-  sp.center.set(0, 0.5); sp.scale.set(size * 5.33, size, 1); sp.userData.kind = 'overlay'; sp.renderOrder = 20;
+  sp.center.set(anchorRight ? 1 : 0, 0.5); sp.scale.set(size * W / H, size, 1); sp.userData.kind = 'overlay'; sp.renderOrder = 20;
+  sp.userData.text = text; sp.userData.fits = 18 + textW <= W - 4;
   return sp;
 }
 export function makeCallouts(boosterGroup) {
   const world = new THREE.Group(), onBooster = new THREE.Group();
-  const put = (grp, text, x, y, z, size) => { const l = makeLabel(text, size); l.position.set(x, y, z); grp.add(l); };
-  put(world, 'Tower 146 m', 12, SITE.towerHeight + 6, 0, 7); put(world, 'Catch arms, rails at 88 m', 30, SITE.armY + 7, 12, 6); put(world, 'Launch mount', 28, 26, -24, 5);
-  put(onBooster, 'Booster 71 m x 9 m', 7, 69, 0, 6); put(onBooster, 'Grid fins (x4)', 9.5, 63.5, 3, 5); put(onBooster, 'Catch pins (x2)', 6.5, SITE.pinY, 6, 5);
+  const put = (grp, text, x, y, z, size, right) => { const l = makeLabel(text, size, right); l.position.set(x, y, z); grp.add(l); };
+  // Spaced so neighbouring labels do not stack: the arms label reads leftwards from the tower, away from the booster's labels.
+  put(world, 'Tower 146 m', 12, SITE.towerHeight + 6, 0, 7); put(world, 'Catch arms, rails at 88 m', -6, SITE.armY + 4, 8, 6, true); put(world, 'Launch mount', 28, 26, -24, 5);
+  put(onBooster, 'Booster 71 m x 9 m', 6, SITE.boosterHeight + 5, 0, 6); put(onBooster, 'Grid fins (x4)', 9.5, 65, 3, 5); put(onBooster, 'Catch pins (x2)', 6.5, SITE.pinY - 4, 6, 5);
   put(onBooster, 'Methane tank', 6, 46, 0, 5); put(onBooster, 'Liquid oxygen tank', 6, 16, 0, 5); put(onBooster, '33 engines, 13 relight to land', 6, -1, 0, 5);
   boosterGroup.add(onBooster); world.visible = false; onBooster.visible = false;
-  return { world, onBooster };
+  return { world, onBooster, all: [...world.children, ...onBooster.children] };
 }

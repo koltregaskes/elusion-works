@@ -1,14 +1,15 @@
-// End-to-end check in a real browser. Needs a static server on http://127.0.0.1:8765 (repo root).
-// Run: node demos/booster-catch/tools/smoke.mjs [path-to-axe.min.js]
+// End-to-end check in a real browser. Needs a static server serving the repo root (default http://127.0.0.1:8765).
+// Run: node demos/booster-catch/tools/smoke.mjs [path-to-axe.min.js] [base URL]
 import { createRequire } from 'node:module';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 const { chromium } = createRequire(import.meta.url)('playwright');
-const URL = 'http://127.0.0.1:8765/demos/booster-catch/', axePath = process.argv[2];
+const axePath = process.argv[2], URL = (process.argv[3] || 'http://127.0.0.1:8765').replace(/\/$/, '') + '/demos/booster-catch/';
 const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM || undefined, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
 const errors = [];
-async function open(opts) {
+async function open(opts, init) {
   const page = await browser.newPage({ deviceScaleFactor: 1, ...opts });
+  if (init) await page.addInitScript(init);
   page.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`[${m.type()}] ${m.text()}`); });
   page.on('pageerror', e => errors.push('[pageerror] ' + e.message));
   page.on('requestfailed', r => errors.push('[requestfailed] ' + r.url()));
@@ -25,7 +26,9 @@ const log = (...a) => console.log('ok ', ...a);
   const { page, loadMs } = await open({ viewport: { width: 1280, height: 800 } });
   const first = await page.evaluate(() => window.__replay.firstFrameMs);
   const a = await st(page); assert.equal(a.playing, true); assert.equal(a.director, true);
+  // Software graphics on a busy machine can run at one frame a second, so wait for the clock (up to 2 minutes) rather than a fixed 6 s.
   await page.selectOption('#rate', '2'); await page.waitForTimeout(6000);
+  await page.waitForFunction(t0 => window.__replay.state().t > t0 + 1, a.t, { timeout: 120000 }).catch(() => {});
   const b = await st(page); assert.ok(b.t > a.t + 1, 'clock did not advance'); 
   log(`desktop first frame ${first} ms after navigation start (page load to first frame wall time ${loadMs} ms, software GL); clock ${a.t.toFixed(1)} -> ${b.t.toFixed(1)}; camera ${a.cam} -> ${b.cam}`);
   // Scrub: same clock value gives identical state whichever camera or view is showing.
@@ -104,6 +107,97 @@ const log = (...a) => console.log('ok ', ...a);
   const s = await st(page); assert.equal(s.playing, false); assert.equal(s.director, false); assert.ok(s.t > 410);
   await page.waitForTimeout(500); assert.equal((await st(page)).t, s.t);
   log('reduced motion: starts paused on a still frame');
+  await page.close();
+}
+// 4. Fixes from the outside review (17 Nov 2026).
+{
+  const { page } = await open({ viewport: { width: 1280, height: 800 } });
+  await page.evaluate(() => window.__replay.setPlaying(false));
+  // Keyboard focus on the 3D view is visible.
+  await page.keyboard.press('Tab');
+  const ring = await page.evaluate(() => { const e = document.activeElement, cs = getComputedStyle(e); return { id: e.id, style: cs.outlineStyle, width: cs.outlineWidth }; });
+  assert.deepEqual(ring, { id: 'stage', style: 'solid', width: '3px' }, 'canvas focus ring');
+  // Flight path button always says what is on screen, in every view.
+  const pathState = async () => [(await st(page)).pathShown, await page.getAttribute('#path', 'aria-pressed')];
+  await page.evaluate(() => window.__replay.setMode('blueprint')); assert.deepEqual(await pathState(), [true, 'true'], 'blueprint starts with the path on');
+  await page.click('#path'); assert.deepEqual(await pathState(), [false, 'false'], 'blueprint path off');
+  await page.click('#path'); assert.deepEqual(await pathState(), [true, 'true'], 'blueprint path on again');
+  await page.evaluate(() => window.__replay.setMode('visual')); assert.deepEqual(await pathState(), [false, 'false'], 'visual path off');
+  await page.click('#path'); assert.deepEqual(await pathState(), [true, 'true'], 'visual path on');
+  await page.evaluate(() => window.__replay.setMode('thermal')); assert.deepEqual(await pathState(), [true, 'true'], 'thermal shares the visual setting');
+  await page.click('#path'); await page.evaluate(() => window.__replay.setMode('visual'));
+  log('focus ring on the 3D view; flight path button matches the screen in all three views');
+  // Thermal colours are labelled as illustrative while the thermal view is on.
+  assert.equal(await page.locator('.note .note-thermal').isVisible(), false);
+  await page.evaluate(() => window.__replay.setMode('thermal')); assert.equal(await page.locator('.note .note-thermal').isVisible(), true, 'thermal note');
+  await page.evaluate(() => window.__replay.setMode('visual'));
+  // Blueprint labels are never cut off.
+  const labels = await page.evaluate(() => window.__replay.labels());
+  assert.ok(labels.length === 9 && labels.every(l => l.fits), 'labels cut off: ' + JSON.stringify(labels.filter(l => !l.fits)));
+  // The readout says engines off at the moment the page says engines off and caught.
+  await page.evaluate(() => { window.__replay.seek(414); window.__replay.renderNow(); });
+  assert.equal(await page.textContent('#engn'), '0 / 33'); assert.equal(await page.textContent('#phase'), 'Caught');
+  log('thermal colours labelled illustrative; all 9 blueprint labels fit; readout shows 0 / 33 engines at T+6:54');
+  // Single-key shortcuts can be switched off (WCAG 2.1.4); Space still works.
+  await page.click('#about-open'); await page.uncheck('#keys-on'); await page.keyboard.press('Escape');
+  await page.focus('#stage'); const before = await st(page);
+  for (const k of ['b', '3', 'd', 'p', 'm', 'k']) await page.keyboard.press(k);
+  const after = await st(page);
+  assert.deepEqual([after.mode, after.cam, after.director, after.pathShown, after.sound, after.playing], [before.mode, before.cam, before.director, before.pathShown, before.sound, before.playing], 'shortcuts still active');
+  await page.keyboard.press('Space'); assert.equal((await st(page)).playing, !before.playing, 'Space should still work'); await page.keyboard.press('Space');
+  await page.click('#about-open'); await page.check('#keys-on'); await page.keyboard.press('Escape');
+  await page.focus('#stage'); await page.keyboard.press('b'); assert.equal((await st(page)).mode, 'blueprint', 'shortcuts back on'); await page.keyboard.press('n');
+  log('letter and number shortcuts can be switched off in Sources; Space still works');
+  // Losing the graphics context pauses through the normal path and stops the sound.
+  await page.click('#sound'); await page.evaluate(() => window.__replay.setPlaying(true));
+  assert.equal((await st(page)).sound, true);
+  await page.evaluate(() => document.getElementById('stage').getContext('webgl2').getExtension('WEBGL_lose_context').loseContext());
+  await page.waitForFunction(() => window.__replay.state().lost, null, { timeout: 30000 });
+  await page.waitForFunction(() => window.__replay.state().audio !== 'running', null, { timeout: 10000 });
+  const gone = await st(page);
+  assert.deepEqual([gone.playing, gone.sound, await page.getAttribute('#play', 'aria-label'), await page.getAttribute('#sound', 'aria-pressed')], [false, false, 'Play', 'false']);
+  assert.equal(await page.locator('#fallback').isVisible(), true); assert.match(await page.textContent('#fallback'), /interrupted/);
+  log(`graphics context lost: paused, Play label restored, sound off (audio ${gone.audio}), message shown`);
+  await page.close();
+}
+// 5. A browser that cannot start sound: the button says so and nothing throws.
+{
+  const { page } = await open({ viewport: { width: 1280, height: 800 } }, () => { delete window.AudioContext; delete window.webkitAudioContext; });
+  await page.evaluate(() => window.__replay.setPlaying(false));
+  await page.click('#sound'); await page.click('#sound', { force: true }); await page.focus('#stage'); await page.keyboard.press('m');
+  assert.deepEqual([await page.getAttribute('#sound', 'aria-pressed'), await page.getAttribute('#sound', 'aria-disabled'), (await page.textContent('#sound')).trim(), (await st(page)).sound], ['false', 'true', 'No sound', false]);
+  log('no sound available: button reads "No sound", stays off, no errors');
+  await page.close();
+}
+// 6. The replay script cannot load: a message and a still frame instead of a blank page.
+{
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  await page.route('**/three.module.js', r => r.abort());
+  await page.goto(URL, { waitUntil: 'load' });
+  await page.waitForFunction(() => getComputedStyle(document.getElementById('fallback')).display === 'grid', null, { timeout: 30000 });
+  await page.waitForFunction(() => document.querySelector('#fallback img').complete, null, { timeout: 30000 });
+  const img = await page.evaluate(() => { const i = document.querySelector('#fallback img'); return { src: i.getAttribute('src'), w: i.naturalWidth }; });
+  assert.ok(img.src === 'screenshot.jpg' && img.w === 1280, 'fallback still: ' + JSON.stringify(img));
+  log('script blocked: fallback message and still frame shown');
+  await page.close();
+}
+// 7. 1280 by 800 at 200% zoom lays out as 640 by 400: nothing sideways, main controls clickable.
+{
+  const { page } = await open({ viewport: { width: 640, height: 400 }, deviceScaleFactor: 2 });
+  const o = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, w: innerWidth }));
+  assert.ok(o.sw <= o.w, 'horizontal overflow at 640x400');
+  for (const id of ['play', 'restart', 'rate', 'scrub', 'about-open', 'director']) assert.equal(await page.evaluate(i => { const r = document.getElementById(i).getBoundingClientRect(); return r.width > 0 && document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2).closest('button,select,input').id; }, id), id, id + ' is covered at 640x400');
+  assert.equal(await page.locator('.note-short').isVisible(), true, 'modelled label hidden at 640x400');
+  log('640x400 (1280x800 at 200% zoom): no sideways overflow, controls clickable, modelled label visible');
+  await page.close();
+}
+// The modelled label is visible on phones too.
+{
+  const { page } = await open({ viewport: { width: 400, height: 800 }, hasTouch: true, isMobile: true });
+  assert.equal(await page.locator('.note-short').isVisible(), true, 'modelled label hidden on phone');
+  const r = await page.evaluate(() => { const a = document.querySelector('.telemetry').getBoundingClientRect(), b = document.querySelector('.modes').getBoundingClientRect(); return a.top >= b.bottom - 0.5; });
+  assert.ok(r, 'readout overlaps the view buttons on phone');
+  log('phone 400x800: "Modelled, not telemetry" visible and clear of the view buttons');
   await page.close();
 }
 await browser.close();
