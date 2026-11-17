@@ -88,9 +88,18 @@ const lamps = [{ x: 0.18, y: 0.42, b: 0.85, w: 0.75, on: true }, { x: 0.52, y: 0
 let house = 0.12, selected = 0;
 const band = { top: 64, bottom: H - 40 }; // the wall sits between the header and the footer
 
+const lens = { top: 64, bottom: H - 120 }; // where the page may bend: under the header, above the controls
+function fitHero() { // on short screens the hero sheds its extras, in order, until the controls fit
+  const root = document.documentElement, hero = document.querySelector('.hero');
+  for (let i = 1; i <= 4; i++) root.classList.remove('fit-' + i);
+  if (room !== 'undertow') return;
+  for (let i = 1; i <= 4 && hero.scrollHeight > hero.clientHeight + 1; i++) root.classList.add('fit-' + i);
+}
+function clampWell() { well.tx = clamp(well.tx, well.rs, W - well.rs); well.ty = clamp(well.ty, lens.top + well.rs, Math.max(lens.top + well.rs, lens.bottom - well.rs)); }
 function measure() { // home positions, read with transforms cleared
-  W = innerWidth; H = innerHeight;
+  W = innerWidth; H = innerHeight; fitHero();
   const pr = page.getBoundingClientRect();
+  if (room === 'undertow') { lens.top = document.querySelector('.top').getBoundingClientRect().bottom - pr.top; lens.bottom = document.querySelector('.dock').getBoundingClientRect().top - pr.top; clampWell(); }
   for (const b of bodies) b.el.style.transform = '';
   for (const b of bodies) { const r = b.el.getBoundingClientRect(); b.hx = r.left - pr.left + r.width / 2; b.hy = r.top - pr.top + r.height / 2; b.vis = r.width > 0; }
   for (const b of bodies) applyBody(b);
@@ -107,7 +116,7 @@ function applyBody(b) {
 const G = 6.2e7;
 function stepUndertow(dt) {
   well.rs = (16 + 58 * well.mass) * (small ? 0.62 : 1);
-  well.x += (well.tx - well.x) * Math.min(1, dt * 14); well.y += (well.ty - well.y) * Math.min(1, dt * 14);
+  clampWell(); well.x += (well.tx - well.x) * Math.min(1, dt * 14); well.y += (well.ty - well.y) * Math.min(1, dt * 14);
   if (feeding) releaseR = Math.min(Math.hypot(W, H), releaseR + (110 + 190 * well.mass) * dt);
   const rs = well.rs;
   for (const b of bodies) {
@@ -118,7 +127,7 @@ function stepUndertow(dt) {
       const dx = well.x - b.hx, dy = well.y - b.hy, r = Math.max(hd, 1), lean = Math.min(r * 0.42, 1.5 * well.mass * rs * rs / Math.max(r, rs));
       b.x += (dx / r * lean - b.x) * Math.min(1, dt * 9); b.y += (dy / r * lean - b.y) * Math.min(1, dt * 9);
       b.rot += (0 - b.rot) * Math.min(1, dt * 9); b.sx += (1 - b.sx) * Math.min(1, dt * 9); b.sy += (1 - b.sy) * Math.min(1, dt * 9); b.a = Math.min(1, b.a + dt * 3);
-      if (!focused && b.hold <= 0 && (hd < rs * 1.15 || (feeding && hd < releaseR))) { // let go: start a decaying orbit
+      if (!focused && b.hold <= 0 && well.mass >= 0.03 && (hd < rs * 1.15 || (feeding && hd < releaseR))) { // let go: start a decaying orbit
         b.mode = 'falling'; const v = Math.sqrt(G * well.mass / Math.max(r * r, 900)) * 0.11 * Math.sqrt(r); b.vx = -dy / r * v; b.vy = dx / r * v;
       }
     } else if (b.mode === 'falling') {
@@ -130,7 +139,9 @@ function stepUndertow(dt) {
       b.rot += (want - b.rot) * near * Math.min(1, dt * 10);
       const shrink = clamp(r / (rs * 3.2), 0.12, 1); b.sx = stretch * shrink; b.sy = shrink / Math.sqrt(stretch);
       b.a = smooth(rs * 0.85, rs * 1.7, r);
-      if (r < rs * 0.9 || focused) { b.mode = focused ? 'returning' : 'gone'; b.a = focused ? b.a : 0; b.away = 0; }
+      b.stuck = Math.hypot(b.vx, b.vy) < 6 ? (b.stuck || 0) + dt : 0;
+      if (well.mass < 0.03 || b.stuck > 1) { b.mode = 'returning'; b.stuck = 0; } // no pull, no fall: come home rather than hang there
+      else if (r < rs * 0.9 || focused) { b.mode = focused ? 'returning' : 'gone'; b.a = focused ? b.a : 0; b.away = 0; }
     } else if (b.mode === 'gone') {
       b.away = hd > rs * 3 && !feeding ? b.away + dt : 0;
       if (b.away > 1.1 || focused) b.mode = 'returning';
@@ -142,7 +153,7 @@ function stepUndertow(dt) {
   }
 }
 function still() { // reduced motion: no travelling, things simply go and come back
-  well.rs = (16 + 58 * well.mass) * (small ? 0.62 : 1); well.x = well.tx; well.y = well.ty;
+  well.rs = (16 + 58 * well.mass) * (small ? 0.62 : 1); clampWell(); well.x = well.tx; well.y = well.ty;
   for (const b of bodies) {
     const hd = Math.hypot(well.x - b.hx, well.y - b.hy), focused = b.el === document.activeElement || b.el.contains(document.activeElement);
     const gone = !focused && (hd < well.rs * 1.15 || (feeding && hd < Math.hypot(W, H) * 0.42));
@@ -171,7 +182,7 @@ function drawWell2D() {
 const lampColour = l => { const w = l.w; return [0.80 + 0.20 * w, 0.88 - 0.14 * w, 1.0 - 0.58 * w]; };
 const lampRadius = l => (0.16 + 0.2 * l.b) * Math.min(W, H) * (small ? 1.25 : 1);
 const lampsBox = $('lamps'), lampEls = lamps.map((l, i) => {
-  const b = document.createElement('button'); b.type = 'button'; b.className = 'lamp'; lampsBox.insertBefore(b, lampsBox.firstChild);
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'lamp'; lampsBox.insertBefore(b, lampsBox.querySelector('.lamp-panel')); // Lamp 1, 2, 3, then the settings
   let moved = 0, sx = 0, sy = 0;
   b.addEventListener('pointerdown', e => { e.preventDefault(); b.focus(); b.setPointerCapture(e.pointerId); moved = 0; sx = e.clientX; sy = e.clientY; select(i); }); // preventDefault: never start a native drag of the picture underneath
   b.addEventListener('pointermove', e => { if (!b.hasPointerCapture(e.pointerId)) return; moved = Math.max(moved, Math.hypot(e.clientX - sx, e.clientY - sy)); l.x = clamp(e.clientX / W, 0.02, 0.98); l.y = clamp(e.clientY / H, 0.08, 0.95); placeLamps(); });
@@ -184,7 +195,23 @@ const lampsBox = $('lamps'), lampEls = lamps.map((l, i) => {
 { const lab = document.createElement('label'), cb = document.createElement('input'); cb.type = 'checkbox'; cb.id = 'lamp-on'; lab.htmlFor = 'lamp-on'; lab.append(cb, ' On'); $('lamp-bright').closest('label').before(lab);
   cb.addEventListener('change', () => { lamps[selected].on = cb.checked; placeLamps(); }); }
 function select(i) { selected = i; const l = lamps[i]; $('lamp-name').textContent = `Lamp ${i + 1}`; $('lamp-bright').value = Math.round(l.b * 100); $('lamp-warm').value = Math.round(l.w * 100); $('lamp-on').checked = l.on; lampEls.forEach((b, k) => b.classList.toggle('sel', k === i)); }
+function litRects() { // placards that stay readable in the dark: the wall label, the frame references, and whatever has focus
+  if (room !== 'lamplight') return [];
+  const pr = page.getBoundingClientRect(), out = [], add = (el, pad) => { const r = el.getBoundingClientRect(); if (r.width) out.push([r.left - pr.left - pad, r.top - pr.top - pad, r.right - pr.left + pad, r.bottom - pr.top + pad]); };
+  add(document.querySelector('.label'), 0); for (const el of document.querySelectorAll('.wall .ref')) add(el, 0);
+  const f = document.activeElement; if (f && f.closest && f.closest('#lamplight')) add(f.closest('li') || f, 6);
+  return out.slice(0, 12);
+}
 function placeLamps() {
+  const pr0 = page.getBoundingClientRect(), panel = document.querySelector('.lamp-panel');
+  band.top = document.querySelector('.top').getBoundingClientRect().bottom - pr0.top; band.bottom = document.querySelector('.foot').getBoundingClientRect().top - pr0.top;
+  lampsBox.style.setProperty('--panel-bottom', Math.round(H - (pr0.top + band.bottom) + 8) + 'px');
+  const pb = panel.getBoundingClientRect(); if (pb.height) page.style.setProperty('--panel-h', Math.round(pb.height) + 'px');
+  for (const l of lamps) { // a lamp is never under the panel, the header or the footer
+    let y = clamp(l.y * H, band.top + 14, band.bottom - 14); const x = l.x * W;
+    if (pb.height && x > pb.left - 24 && x < pb.right + 24 && y > pb.top - 24) y = Math.max(band.top + 14, pb.top - 26);
+    l.y = y / H;
+  }
   lamps.forEach((l, i) => { const b = lampEls[i]; b.style.left = l.x * W + 'px'; b.style.top = l.y * H + 'px'; b.setAttribute('aria-pressed', String(l.on)); b.setAttribute('aria-label', `Lamp ${i + 1}, ${l.on ? 'on' : 'off'}. Arrow keys move it, Enter switches it on or off`); });
   $('lamp-on').checked = lamps[selected].on;
   const pr = page.getBoundingClientRect(); // frame shadows fall away from the nearest lit lamp
@@ -194,8 +221,7 @@ function placeLamps() {
     const dx = best ? cx - best.x * W : 0, dy = best ? cy - best.y * H : 1, m = Math.hypot(dx, dy) || 1, len = best ? Math.min(26, 6 + bd * 0.05) : 10;
     a.style.setProperty('--sx', (dx / m * len).toFixed(1) + 'px'); a.style.setProperty('--sy', (dy / m * len).toFixed(1) + 'px');
   }
-  band.top = document.querySelector('.top').getBoundingClientRect().bottom - pr.top; band.bottom = document.querySelector('.foot').getBoundingClientRect().top - pr.top;
-  dirty = true;
+  void pr; dirty = true;
 }
 const dark = $('dark'), dctx = dark.getContext('2d');
 function drawDark() { // plain-HTML lighting: darkness with pools cut out of it
@@ -209,6 +235,7 @@ function drawDark() { // plain-HTML lighting: darkness with pools cut out of it
   dctx.globalCompositeOperation = 'source-over';
   for (const l of lamps) if (l.on) { const c = lampColour(l), R = lampRadius(l) * 1.6, g = dctx.createRadialGradient(l.x * W, l.y * H, 0, l.x * W, l.y * H, R); g.addColorStop(0, `rgba(${c[0] * 255 | 0},${c[1] * 255 | 0},${c[2] * 255 | 0},${0.16 * l.b})`); g.addColorStop(1, 'rgba(0,0,0,0)'); dctx.fillStyle = g; dctx.fillRect(0, 0, W, H); }
   dctx.restore(); dctx.clearRect(0, 0, W, band.top); dctx.clearRect(0, band.bottom, W, H - band.bottom);
+  for (const [x0, y0, x1, y1] of litRects()) dctx.clearRect(x0, y0, x1 - x0, y1 - y0);
 }
 
 // ---- Rooms ---------------------------------------------------------------------------------------------------
@@ -217,7 +244,7 @@ function setRoom(name, fromHash) {
   $('undertow').hidden = room !== 'undertow'; $('lamplight').hidden = room !== 'lamplight'; lampsBox.hidden = room !== 'lamplight';
   document.querySelectorAll('.rooms a').forEach(a => { if (a.dataset.room === room) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   if (!fromHash && location.hash.slice(1) !== room) { try { history.replaceState(null, '', '#' + room); } catch (err) { location.hash = room; } }
-  page.scrollTop = 0; $('room').scrollTop = 0; scrollTo(0, 0); // a hash in the address must not scroll the header away
+  page.scrollTop = page.scrollLeft = 0; $('room').scrollTop = $('room').scrollLeft = 0; scrollTo(0, 0); // a hash in the address must not scroll the header away
   measure(); placeLamps(); drawWell2D(); drawDark(); dirty = true;
 }
 
@@ -226,7 +253,7 @@ let gl = null, glass = null, prog = null, U = {}, uploadForm = -1, painted = fal
 const FRAG = `#version 300 es
 precision highp float;
 uniform sampler2D uTex; uniform vec2 uRes; uniform float uDpr, uTime, uRoom, uMass, uHouse;
-uniform vec3 uWell; uniform vec4 uLamp[3]; uniform vec3 uLampCol[3]; uniform vec2 uBand;
+uniform vec3 uWell; uniform vec4 uLamp[3]; uniform vec3 uLampCol[3]; uniform vec2 uBand; uniform vec2 uLens; uniform vec4 uLit[12]; uniform int uLitN;
 out vec4 o;
 float hash(vec2 p){ p = fract(p*vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x*p.y); }
 float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0 - 2.0*f); return mix(mix(hash(i), hash(i + vec2(1,0)), f.x), mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), f.x), f.y); }
@@ -237,15 +264,18 @@ void main(){
   vec2 p = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y); vec3 col;
   if (uRoom < 0.5) {
     vec2 d = p - uWell.xy; float r = length(d), rs = uWell.z; vec2 n = d/max(r, 0.001);
-    float defl = rs*rs*(1.1 + 2.3*uMass)/max(r, rs*0.35);            // light from further out lands here
-    float sw = (0.35 + 1.1*uMass)*rs*rs/(r*r + rs*rs);                // frame dragging: a twist near the hole
+    float on = smoothstep(uLens.x, uLens.x + 28.0*uDpr, p.y)*(1.0 - smoothstep(uLens.y - 28.0*uDpr, uLens.y, p.y)); // the header and the controls never bend
+    float t = max(r - rs, 0.0);
+    float defl = on*(0.7 + 1.5*uMass)*t*exp(-t/(rs*2.5));              // pulls the page inward, and fades to nothing at the rim so nothing is ever hidden
+    float sw = on*(0.35 + 1.1*uMass)*rs*rs/(r*r + rs*rs);              // frame dragging: a twist near the hole
     float cs = cos(sw), sn = sin(sw); mat2 R = mat2(cs, -sn, sn, cs); vec2 bd = R*d, bn = R*n;
     col = vec3(pageAt(uWell.xy + bd + bn*defl*1.06).r, pageAt(uWell.xy + bd + bn*defl).g, pageAt(uWell.xy + bd + bn*defl*0.94).b);
     float ang = atan(d.y, d.x);
-    float disc = exp(-pow((r - rs*1.9)/(rs*0.8), 2.0));
+    float dq = (r - rs*1.9)/(rs*0.8), rq = (r - rs*1.12)/(rs*0.05);
+    float disc = exp(-dq*dq);
     float streak = 0.5 + 0.5*sin(ang*2.0 + uTime*0.9 + 7.0*fbm(vec2(ang*1.6, r/uDpr*0.02 - uTime*0.22)));
     col += vec3(0.86, 0.52, 0.10)*disc*streak*(0.62 + 0.38*cos(ang - 0.6))*(0.22 + 0.6*uMass);
-    col += vec3(1.0, 0.87, 0.62)*exp(-pow((r - rs*1.12)/(rs*0.05), 2.0))*(0.45 + 0.55*uMass);
+    col += vec3(1.0, 0.87, 0.62)*exp(-rq*rq)*(0.45 + 0.55*uMass);
     col *= smoothstep(rs*0.93, rs*1.06, r);
   } else {
     vec2 e = vec2(1.5*uDpr, 0.0); vec3 alb = pageAt(p);
@@ -261,8 +291,9 @@ void main(){
       light += uLampCol[i]*att*(max(dot(N, L), 0.0)*1.5 + pow(max(dot(N, Hh), 0.0), 36.0)*0.45);
     }
     col = 1.0 - exp(-alb*light*1.35);
-    float sign = 1.0 - smoothstep(uBand.x - 1.0, uBand.x + 1.0, p.y) + smoothstep(uBand.y - 1.0, uBand.y + 1.0, p.y); // header and footer stay lit
-    col = mix(col, pageAt(p), clamp(sign, 0.0, 1.0));
+    float keep = 1.0 - smoothstep(uBand.x - 1.0, uBand.x + 1.0, p.y) + smoothstep(uBand.y - 1.0, uBand.y + 1.0, p.y); // header and footer stay lit
+    for (int i = 0; i < 12; i++) { if (i >= uLitN) break; vec2 dd = max(uLit[i].xy - p, p - uLit[i].zw); keep = max(keep, 1.0 - smoothstep(-1.0, 1.0, max(dd.x, dd.y))); } // and so do the placards
+    col = mix(col, pageAt(p), clamp(keep, 0.0, 1.0));
   }
   o = vec4(col, 1.0);
 }`;
@@ -270,7 +301,7 @@ function upload() { // three shapes of the same call, newest first; remember the
   const forms = [
     () => gl.texElementImage2D(gl.TEXTURE_2D, gl.RGBA8, page),
     () => gl.texElementImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, page),
-    () => { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, glass.width, glass.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null); gl.texElementSubImage2D(gl.TEXTURE_2D, 0, 0, 0, page); },
+    () => { const sz = glass.getElementImageDefaultSize ? glass.getElementImageDefaultSize(page) : glass; gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, Math.round(sz.width), Math.round(sz.height), 0, gl.RGBA, gl.UNSIGNED_BYTE, null); gl.texElementSubImage2D(gl.TEXTURE_2D, 0, 0, 0, page); },
   ];
   if (uploadForm >= 0) return forms[uploadForm]();
   let last; for (let i = 0; i < forms.length; i++) { try { forms[i](); uploadForm = i; return; } catch (err) { last = err; } }
@@ -278,13 +309,14 @@ function upload() { // three shapes of the same call, newest first; remember the
 }
 function paint() {
   if (!gl) return;
-  try { upload(); } catch (err) { if (!painted) { leaveCanvas(); } return; }
+  try { upload(); if (!painted && gl.getError() !== gl.NO_ERROR) throw new Error('the texture upload reported an error'); } catch (err) { leaveCanvas('failed'); return; } // any failure, at any time, hands the page back
   const d = glass.width / W;
   gl.viewport(0, 0, glass.width, glass.height);
   gl.uniform2f(U.uRes, glass.width, glass.height); gl.uniform1f(U.uDpr, d); gl.uniform1f(U.uTime, reduced ? 0 : time); gl.uniform1f(U.uRoom, room === 'undertow' ? 0 : 1);
   gl.uniform1f(U.uMass, well.mass); gl.uniform3f(U.uWell, well.x * d, well.y * d, well.rs * d); gl.uniform1f(U.uHouse, house);
   const lp = [], lc = []; for (const l of lamps) { lp.push(l.x * W * d, l.y * H * d, lampRadius(l) * d, l.on ? 0.55 + 1.5 * l.b : 0); lc.push(...lampColour(l)); }
-  gl.uniform4fv(U.uLamp, lp); gl.uniform3fv(U.uLampCol, lc); gl.uniform2f(U.uBand, band.top * d, band.bottom * d);
+  gl.uniform4fv(U.uLamp, lp); gl.uniform3fv(U.uLampCol, lc); gl.uniform2f(U.uBand, band.top * d, band.bottom * d); gl.uniform2f(U.uLens, lens.top * d, lens.bottom * d);
+  const rects = litRects(), lr = new Float32Array(48); rects.forEach((r, i) => lr.set(r.map(v => v * d), i * 4)); gl.uniform4fv(U.uLit, lr); gl.uniform1i(U.uLitN, rects.length);
   gl.drawArrays(gl.TRIANGLES, 0, 3); painted = true;
 }
 function sizeGlass() { if (!glass) return; const d = Math.min(devicePixelRatio || 1, small ? 1.5 : 2); glass.width = Math.round(W * d); glass.height = Math.round(H * d); }
@@ -300,7 +332,7 @@ function enterCanvas() {
   gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FRAG)); gl.linkProgram(prog);
   if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) { gl = null; glass = null; return false; }
   gl.useProgram(prog);
-  for (const n of ['uTex', 'uRes', 'uDpr', 'uTime', 'uRoom', 'uMass', 'uHouse', 'uWell', 'uLamp', 'uLampCol', 'uBand']) U[n] = gl.getUniformLocation(prog, n);
+  for (const n of ['uTex', 'uRes', 'uDpr', 'uTime', 'uRoom', 'uMass', 'uHouse', 'uWell', 'uLamp', 'uLampCol', 'uBand', 'uLens', 'uLit', 'uLitN']) U[n] = gl.getUniformLocation(prog, n);
   gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
   for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
   stage.appendChild(glass); glass.appendChild(page); page.setAttribute('drawable', '');
@@ -308,19 +340,22 @@ function enterCanvas() {
   document.documentElement.classList.add('enhanced'); wellfx.style.display = 'none'; dark.style.display = 'none';
   sizeGlass(); tier = 'canvas';
   try { if (glass.updateElementGeometry) glass.updateElementGeometry(page, { canvasTransform: new DOMMatrix() }); } catch (err) { /* older builds place children themselves */ }
-  glass.addEventListener('webglcontextlost', e => { e.preventDefault(); leaveCanvas(); });
+  glass.addEventListener('webglcontextlost', e => { e.preventDefault(); leaveCanvas('failed'); });
   glass.onpaint = paint; glass.requestPaint();
-  setTimeout(() => { if (tier === 'canvas' && !painted) leaveCanvas(); }, 1500); // nothing drew: give the page back
+  setTimeout(() => { if (tier === 'canvas' && !painted) leaveCanvas('failed'); }, 1500); // nothing drew: give the page back
   return true;
 }
-function leaveCanvas() { // back to ordinary HTML, with the page exactly where it was
+let plainWhy = 'unsupported';
+function leaveCanvas(why) { // back to ordinary HTML, with the page exactly where it was
   if (tier !== 'canvas') return;
+  const focused = document.activeElement; plainWhy = why || 'failed';
   tier = 'html'; glass.onpaint = null; page.removeAttribute('drawable'); stage.appendChild(page); glass.remove(); gl = null; glass = null;
+  if (focused && focused !== document.body && page.contains(focused)) focused.focus({ preventScroll: true }); // moving the page must not drop keyboard focus
   document.documentElement.classList.remove('enhanced'); wellfx.style.display = ''; dark.style.display = '';
   announceTier(); measure(); placeLamps(); dirty = true;
 }
 function announceTier() {
-  $('tier').textContent = tier === 'canvas' ? 'HTML-in-Canvas: on. The page itself is bending.' : 'Plain HTML version: this browser has no HTML-in-Canvas.';
+  $('tier').textContent = tier === 'canvas' ? 'HTML-in-Canvas: on. The page itself is bending.' : plainWhy === 'asked' ? 'Plain HTML version, as asked for in the address.' : plainWhy === 'failed' ? 'Plain HTML version: HTML-in-Canvas stopped working here, so the page carried on without it.' : 'Plain HTML version: this browser has no HTML-in-Canvas.';
 }
 
 // ---- Loop -----------------------------------------------------------------------------------------------------------------
@@ -345,9 +380,11 @@ addEventListener('hashchange', () => setRoom(location.hash.slice(1), true));
 $('mass').addEventListener('input', e => { well.mass = Number(e.target.value) / 100; dirty = true; });
 $('feed').addEventListener('click', () => setFeeding(!feeding));
 $('restore').addEventListener('click', restore);
-$('wellkey').addEventListener('keydown', e => { const s = e.shiftKey ? 96 : 24, k = { ArrowLeft: [-s, 0], ArrowRight: [s, 0], ArrowUp: [0, -s], ArrowDown: [0, s] }[e.key]; if (!k) return; e.preventDefault(); well.tx = clamp(well.tx + k[0], 0, W); well.ty = clamp(well.ty + k[1], 0, H); dirty = true; });
-page.addEventListener('pointerdown', e => { if (room !== 'undertow' || e.button > 0 || e.target.closest('a,button,input,label')) return; e.preventDefault(); dragging = true; page.setPointerCapture(e.pointerId); well.tx = e.clientX; well.ty = e.clientY; dirty = true; });
-page.addEventListener('pointermove', e => { if (!dragging) return; well.tx = clamp(e.clientX, 0, W); well.ty = clamp(e.clientY, 0, H); dirty = true; });
+$('wellkey').addEventListener('keydown', e => { const s = e.shiftKey ? 96 : 24, k = { ArrowLeft: [-s, 0], ArrowRight: [s, 0], ArrowUp: [0, -s], ArrowDown: [0, s] }[e.key]; if (!k) return; e.preventDefault(); well.tx += k[0]; well.ty += k[1]; clampWell(); dirty = true; });
+page.addEventListener('pointerdown', e => { if (room !== 'undertow' || e.button > 0 || e.target.closest('a,button,input,label')) return; e.preventDefault(); dragging = true; page.setPointerCapture(e.pointerId); well.tx = e.clientX; well.ty = e.clientY; clampWell(); dirty = true; });
+page.addEventListener('pointermove', e => { if (!dragging) return; well.tx = e.clientX; well.ty = e.clientY; clampWell(); dirty = true; });
+for (const ev of ['focusin', 'focusout']) document.addEventListener(ev, () => { dirty = true; if (reduced && room === 'undertow') still(); }); // focus changes what is shown: a returning piece, a lit frame
+for (const el of [page, $('room'), document.querySelector('.hero')]) el.addEventListener('scroll', () => { el.scrollTop = 0; el.scrollLeft = 0; }); // focus must never scroll the page out from under the well
 for (const ev of ['pointerup', 'pointercancel']) page.addEventListener(ev, () => { dragging = false; });
 $('lamp-bright').addEventListener('input', e => { lamps[selected].b = Number(e.target.value) / 100; placeLamps(); });
 $('lamp-warm').addEventListener('input', e => { lamps[selected].w = Number(e.target.value) / 100; placeLamps(); });
@@ -360,7 +397,7 @@ document.fonts && document.fonts.ready.then(() => { measure(); placeLamps(); });
 // ---- Go -------------------------------------------------------------------------------------------------------------------------
 if (small) { well.tx = well.x = W * 0.8; well.ty = well.y = H * 0.5; Object.assign(lamps[0], { x: 0.3, y: 0.17 }); Object.assign(lamps[1], { x: 0.72, y: 0.42 }); Object.assign(lamps[2], { x: 0.36, y: 0.62 }); house = 0.15; $('house').value = 15; }
 const forcePlain = new URLSearchParams(location.search).has('plain'); // lets anyone compare the two versions
-if (!forcePlain) enterCanvas();
+if (forcePlain) plainWhy = 'asked'; else enterCanvas();
 announceTier(); select(0);
 setRoom(location.hash.slice(1) || 'undertow', true);
 requestAnimationFrame(frame);
@@ -368,6 +405,6 @@ requestAnimationFrame(frame);
 window.__afterHours = {
   get tier() { return tier; }, get room() { return room; }, get framesReady() { return framesReady; }, get painted() { return painted; }, get uploadForm() { return uploadForm; },
   setRoom, setFeeding, restore, lamps, well,
-  setWell(x, y) { well.tx = well.x = x; well.ty = well.y = y; dirty = true; },
+  setWell(x, y) { well.tx = x; well.ty = y; clampWell(); well.x = well.tx; well.y = well.ty; dirty = true; },
   bodies: () => bodies.filter(b => b.vis).map(b => ({ text: b.el.textContent.trim().slice(0, 12), mode: b.mode, a: +b.a.toFixed(2), x: Math.round(b.x), y: Math.round(b.y) })),
 };

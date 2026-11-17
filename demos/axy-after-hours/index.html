@@ -28,7 +28,7 @@
   #glass { display:block; touch-action:none; }
   #wellfx, #dark { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; }
   #wellfx { z-index:0; } #dark { z-index:4; }
-  #page { position:relative; z-index:1; width:100%; height:100%; display:grid; grid-template-rows:auto 1fr auto; padding-block:0; padding-left:var(--gl); padding-right:var(--gr); touch-action:none; user-select:none; -webkit-user-select:none; overflow:hidden; }
+  #page { position:relative; z-index:1; width:100%; height:100%; display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(0,1fr) auto; padding-block:0; padding-left:var(--gl); padding-right:var(--gr); touch-action:none; user-select:none; -webkit-user-select:none; overflow:hidden; overflow:clip; }
   .enhanced #page { background:var(--black); }
   #page[data-room="lamplight"] { background:#b3a792; color:#2a241c; }
 
@@ -42,12 +42,14 @@
   /* In Lamplight the header and footer stay as lit signage: dark bars, never dimmed with the wall */
   #page[data-room="lamplight"] .top, #page[data-room="lamplight"] .foot { background:var(--black); margin-left:calc(-1*var(--gl)); margin-right:calc(-1*var(--gr)); padding-left:var(--gl); padding-right:var(--gr); color:var(--muted); }
 
-  main { position:relative; min-height:0; overflow:hidden; }
+  main { position:relative; min-height:0; overflow:hidden; overflow:clip; }
   .room[hidden] { display:none !important; }
   .fall { display:inline-block; }
 
   /* Undertow */
-  #undertow { height:100%; display:flex; flex-direction:column; justify-content:center; gap:clamp(8px,1.6vh,18px); padding-bottom:8px; }
+  #undertow { height:100%; display:grid; grid-template-rows:minmax(0,1fr) auto; }
+  .hero { min-height:0; overflow:hidden; overflow:clip; display:flex; flex-direction:column; justify-content:safe center; gap:clamp(6px,1.6vh,18px); padding:6px 0 8px; }
+  .fit-1 .strip { display:none; } .fit-2 .lede { display:none; } .fit-3 .hero .kicker, .fit-3 .sub { display:none; } .fit-4 h1 { font-size:clamp(24px,min(13vh,10vw),84px); white-space:nowrap; } .fit-4 h1 .gap { display:inline-block; width:.32em; height:auto; } .fit-4 .btn { min-height:36px; padding:0 14px; }
   .kicker { margin:0; font:500 11px/1.4 var(--mono); letter-spacing:.24em; text-transform:uppercase; color:var(--amber-light); }
   h1 { margin:0; font:800 clamp(52px,11.5vw,168px)/.92 var(--display); letter-spacing:.1em; text-transform:uppercase; color:var(--cream); text-shadow:0 0 60px var(--glow); white-space:nowrap; }
   h1 .gap { display:inline-block; width:.32em; }
@@ -70,17 +72,19 @@
 
   /* Lamplight */
   #lamplight { height:100%; display:grid; grid-template-columns:minmax(220px,300px) 1fr; gap:clamp(18px,4vw,64px); align-items:center; padding:clamp(10px,2.5vh,28px) 0; }
-  #lamplight .kicker { color:#452c04; }
-  h2 { margin:10px 0 12px; font:800 clamp(30px,3.3vw,44px)/.95 var(--display); letter-spacing:.06em; text-transform:uppercase; color:#1c1710; }
-  .label p { margin:0 0 12px; font-size:15px; line-height:1.6; color:#2a241c; }
-  .label a { color:#1c1710; font-weight:700; }
+  #lamplight .kicker { color:var(--amber-light); }
+  .label { padding:16px 18px; background:#11100e; border:1px solid rgba(245,230,200,.16); }
+  h2 { margin:10px 0 12px; font:800 clamp(28px,3vw,40px)/.95 var(--display); letter-spacing:.06em; text-transform:uppercase; color:var(--cream); }
+  .label p { margin:0 0 12px; font-size:15px; line-height:1.6; color:#d9ccb2; }
+  .label p:last-child { margin-bottom:0; }
+  .label a { color:var(--cream); font-weight:700; }
   .wall { list-style:none; margin:0; padding:0; height:100%; max-height:620px; display:grid; grid-template-columns:repeat(12,1fr); grid-template-rows:repeat(6,1fr); gap:clamp(10px,1.6vw,26px); }
   .wall li { position:relative; display:flex; flex-direction:column; min-height:0; }
   .wall li:nth-child(1){grid-area:1/1/5/4} .wall li:nth-child(2){grid-area:1/4/4/7} .wall li:nth-child(3){grid-area:1/7/5/10} .wall li:nth-child(4){grid-area:1/10/4/13}
   .wall li:nth-child(5){grid-area:5/1/7/4} .wall li:nth-child(6){grid-area:4/4/7/7} .wall li:nth-child(7){grid-area:5/7/7/10} .wall li:nth-child(8){grid-area:4/10/7/13}
   .wall a { flex:1; min-height:0; display:block; padding:clamp(6px,.9vw,14px); background:#efe6d2; border:clamp(5px,.6vw,9px) solid #17130d; box-shadow:var(--sx,0px) var(--sy,10px) 22px rgba(20,14,6,.55); }
   .wall img { width:100%; height:100%; display:block; object-fit:cover; background:linear-gradient(160deg,var(--t,#1a3540),#060606 70%); }
-  .wall .ref { margin-top:7px; color:#3a3226; text-align:center; }
+  .wall .ref { align-self:center; margin-top:6px; padding:3px 7px; background:#11100e; color:#d9ccb2; text-align:center; }
 
   .foot { display:flex; flex-wrap:wrap; gap:4px 18px; align-items:center; padding:9px 0 max(10px,env(safe-area-inset-bottom)); font-size:12px; line-height:1.4; border-top:1px solid var(--line); }
   .foot p { margin:0; } .foot a { color:inherit; display:inline-block; padding:6px 0; } #tier { margin-left:auto; font-family:var(--mono); font-size:11px; letter-spacing:.06em; }
@@ -92,7 +96,7 @@
   .lamp { position:absolute; width:44px; height:44px; margin:-22px 0 0 -22px; border-radius:50%; border:1px solid rgba(255,244,220,.7); background:radial-gradient(circle,#fff6dc 0 16%,rgba(255,214,140,.55) 17% 34%,rgba(255,200,120,0) 70%); pointer-events:auto; cursor:grab; touch-action:none; }
   .lamp[aria-pressed="false"] { background:radial-gradient(circle,#5b554b 0 16%,rgba(120,110,95,.35) 17% 34%,rgba(0,0,0,0) 70%); border-color:rgba(255,244,220,.35); }
   .lamp.sel { box-shadow:0 0 0 3px rgba(212,160,58,.75); }
-  .lamp-panel { position:absolute; left:var(--gl); width:min(300px,calc(100vw - 2*var(--pad))); bottom:calc(max(10px,env(safe-area-inset-bottom)) + 52px); display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; max-width:calc(100vw - 2*var(--pad)); padding:10px 14px; background:rgba(12,11,9,.9); border:1px solid var(--line-strong); border-radius:12px; pointer-events:auto; color:var(--cream); }
+  .lamp-panel { position:absolute; left:var(--gl); width:min(300px,calc(100vw - 2*var(--pad))); bottom:var(--panel-bottom,60px); display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; max-width:calc(100vw - 2*var(--pad)); padding:10px 14px; background:rgba(12,11,9,.9); border:1px solid var(--line-strong); border-radius:12px; pointer-events:auto; color:var(--cream); }
   .lamp-panel label { display:flex; align-items:center; gap:8px; font:500 10px/1 var(--mono); letter-spacing:.16em; text-transform:uppercase; }
   .lamp-panel input[type=range] { width:96px; }
   .lamp-panel strong { font:700 11px/1 var(--mono); letter-spacing:.16em; text-transform:uppercase; color:var(--amber-light); }
@@ -107,14 +111,23 @@
     .top { height:56px; gap:10px; } .site { display:none; } .logo { font-size:14px; letter-spacing:.14em; }
     h1 { white-space:normal; font-size:clamp(50px,17vw,84px); } h1 .gap { display:block; width:0; height:0; }
     .strip li:nth-child(n+5) { display:none; } .hint { display:none; } .dock { padding:10px 0; } .tool { padding:0 12px; }
-    #lamplight { grid-template-columns:1fr; grid-template-rows:auto 1fr; gap:10px; align-items:stretch; padding-bottom:112px; }
+    #lamplight { grid-template-columns:1fr; grid-template-rows:auto minmax(0,1fr); gap:10px; align-items:stretch; padding-bottom:calc(var(--panel-h,104px) + 16px); }
+    .label { padding:10px 12px; }
     h2 { font-size:32px; margin:6px 0; } .label p { font-size:13px; line-height:1.5; margin-bottom:6px; } .label p.more { display:none; }
     .wall { grid-template-columns:repeat(2,1fr); grid-template-rows:repeat(2,1fr); gap:12px; max-height:none; min-height:0; }
     .wall li:nth-child(n) { grid-area:auto; } .wall li:nth-child(n+5) { display:none; }
-    .lamp-panel { left:var(--gl); right:var(--gr); width:auto; bottom:calc(max(10px,env(safe-area-inset-bottom)) + 62px); padding:8px 10px; gap:6px 10px; } .lamp-panel input[type=range] { width:80px; }
+    .lamp-panel { left:var(--gl); right:var(--gr); width:auto; padding:8px 10px; gap:6px 10px; } .lamp-panel input[type=range] { width:80px; }
     .foot { font-size:11px; } #tier { margin-left:0; }
   }
-  @media (max-height:640px) { .lede { display:none; } .strip { display:none; } }
+  @media (max-width:360px) { .top { gap:6px; } .logo { font-size:12px; letter-spacing:.08em; } .rooms { gap:4px; } .rooms a { padding:0 8px; font-size:10px; letter-spacing:.1em; } }
+  @media (max-width:760px) and (max-height:620px) { .label p { display:none; } h2 { margin:4px 0 0; font-size:24px; } .lamp-panel label { font-size:9px; letter-spacing:.1em; gap:6px; } .lamp-panel input[type=range] { width:66px; } }
+  @media (max-width:559px) and (max-height:540px) { .wall { grid-template-rows:minmax(0,1fr); } .wall li:nth-child(n+3) { display:none; } }
+  @media (max-height:520px) { .top { height:48px; } .dock { padding:6px 0; gap:6px 10px; } .tool { min-height:34px; } .hint { display:none; } .foot { padding-top:4px; padding-bottom:4px; } }
+  @media (max-height:520px) and (min-width:560px) {
+    #lamplight { grid-template-columns:minmax(150px,34%) 1fr; grid-template-rows:minmax(0,1fr); padding:8px 0; align-items:start; } .label p { display:none; } h2 { font-size:22px; margin:4px 0 0; } .label { padding:8px 10px; }
+    .wall { grid-template-columns:repeat(4,1fr); grid-template-rows:1fr; gap:10px; height:100%; } .wall li:nth-child(n) { grid-area:auto; display:flex; } .wall li:nth-child(n+5) { display:none; }
+    .lamp-panel { left:var(--gl); right:auto; width:min(34%,300px); padding:6px 8px; gap:4px 8px; } .lamp-panel input[type=range] { width:64px; }
+  }
   @media (prefers-reduced-motion:reduce) { * { transition:none !important; animation:none !important; } }
 </style>
 </head>
@@ -137,6 +150,7 @@
 
     <main id="room" tabindex="-1">
       <section id="undertow" class="room" aria-labelledby="u-title">
+        <div class="hero">
         <p class="kicker"><span class="fall">Archive / after hours / experiment 01</span></p>
         <h1 id="u-title" aria-label="Axy Lusion"></h1>
         <p class="sub"><span class="fall">AI art</span> <span class="fall">/ video</span> <span class="fall">/ music</span></p>
@@ -146,6 +160,7 @@
           <a class="btn ghost fall" href="https://axylusion.com/about.html">About the artist</a>
         </p>
         <ul class="strip" id="strip" aria-label="Recent frames"></ul>
+        </div>
         <div class="dock" role="group" aria-label="Gravity well controls">
           <label for="mass">Mass <input id="mass" type="range" min="0" max="100" value="55"></label>
           <button class="tool" id="feed" type="button" aria-pressed="false">Feed the well</button>

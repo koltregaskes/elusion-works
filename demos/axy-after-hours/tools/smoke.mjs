@@ -103,5 +103,48 @@ for (const canvasOn of [true, false]) {
   const b = await open(true, {}, '?plain'); assert.equal(await A(b.page, () => window.__afterHours.tier), 'html'); await b.browser.close();
   log('fallback: a failing canvas call, or ?plain, gives the ordinary HTML page');
 }
+// Short and narrow screens, both versions: the controls, the wall and the credit are always there to use.
+for (const canvasOn of [true, false]) for (const [w, h] of [[740, 360], [320, 480], [390, 664], [360, 640]]) {
+  const { browser, page } = await open(canvasOn, { viewport: { width: w, height: h }, hasTouch: true, isMobile: true });
+  const u = await A(page, () => { const inView = el => { const r = el.getBoundingClientRect(), f = document.querySelector('.foot').getBoundingClientRect(); return r.width > 0 && r.top >= 0 && r.left >= -0.5 && r.right <= innerWidth + 0.5 && r.bottom <= f.top + 0.5; };
+    return { controls: ['mass', 'feed', 'restore', 'wellkey'].filter(id => !inView(document.getElementById(id))), cta: [...document.querySelectorAll('.btn')].filter(e => !inView(e)).length, h1: inView(document.querySelector('h1')), pills: [...document.querySelectorAll('.rooms a')].filter(e => !inView(e)).length, sl: document.getElementById('page').scrollLeft }; });
+  assert.deepEqual(u, { controls: [], cta: 0, h1: true, pills: 0, sl: 0 }, `Undertow at ${w}x${h}`);
+  await A(page, () => window.__afterHours.setRoom('lamplight')); await page.waitForTimeout(250);
+  const l = await A(page, () => { const hit = el => { const r = el.getBoundingClientRect(), e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return e === el || el.contains(e); }, panel = document.querySelector('.lamp-panel').getBoundingClientRect();
+    return { wall: Math.round(document.getElementById('wall').getBoundingClientRect().height), frames: [...document.querySelectorAll('.wall li')].filter(e => e.getClientRects().length && e.getBoundingClientRect().height > 50).length, credit: hit(document.querySelector('.foot a')), about: hit(document.getElementById('about-open')),
+      lampsUnderPanel: [...document.querySelectorAll('.lamp')].filter(b => { const r = b.getBoundingClientRect(), x = r.left + 22, y = r.top + 22; return x > panel.left && x < panel.right && y > panel.top && y < panel.bottom; }).length, lampsHit: [...document.querySelectorAll('.lamp')].filter(b => !hit(b)).length }; });
+  assert.ok(l.wall >= 80 && l.frames >= 2, `Lamplight wall at ${w}x${h}: ${JSON.stringify(l)}`); assert.deepEqual([l.credit, l.about, l.lampsUnderPanel, l.lampsHit], [true, true, 0, 0], `Lamplight at ${w}x${h}: ${JSON.stringify(l)}`);
+  await browser.close();
+}
+log('short and narrow screens (740x360, 320x480, 390x664, 360x640), both versions: controls, links, wall, lamps and credit all reachable');
+// Keyboard: Tabbing through a fed page never scrolls it; lamps come in order; a failure mid-session keeps focus.
+{
+  const { browser, page } = await open(true);
+  await A(page, () => { window.__afterHours.setWell(900, 600); window.__afterHours.setFeeding(true); }); await until(page, () => window.__afterHours.bodies().filter(b => b.mode === 'gone').length >= 10);
+  for (let i = 0; i < 26; i++) await page.keyboard.press('Tab');
+  assert.deepEqual(await A(page, () => [document.getElementById('room').scrollTop, document.getElementById('page').scrollTop, document.querySelector('.hero').scrollTop, scrollY]), [0, 0, 0, 0], 'focus scrolled the page');
+  await A(page, () => window.__afterHours.restore());
+  // Mass at zero: nothing hangs in mid-air.
+  await A(page, () => window.__afterHours.setFeeding(true)); await until(page, () => window.__afterHours.bodies().some(b => b.mode === 'falling'));
+  await A(page, () => { window.__afterHours.setFeeding(false); const m = document.getElementById('mass'); m.value = 0; m.dispatchEvent(new Event('input', { bubbles: true })); });
+  await until(page, () => window.__afterHours.bodies().every(b => b.mode !== 'falling'));
+  await A(page, () => window.__afterHours.setRoom('lamplight')); await page.focus('#about-open'); await page.keyboard.press('Shift+Tab'); // back from the footer into the lamps
+  const order = await A(page, () => [...document.querySelectorAll('.lamp')].map(b => b.getAttribute('aria-label').slice(0, 6))); assert.deepEqual(order, ['Lamp 1', 'Lamp 2', 'Lamp 3']);
+  await page.focus('.wall a'); await A(page, () => document.getElementById('glass').dispatchEvent(new Event('webglcontextlost', { cancelable: true })));
+  const after = await A(page, () => ({ tier: window.__afterHours.tier, focus: document.activeElement.className + document.activeElement.tagName, status: document.getElementById('tier').textContent }));
+  assert.equal(after.tier, 'html'); assert.equal(after.focus, 'A'); assert.match(after.status, /stopped working/);
+  log('keyboard: no scroll from focus, nothing hangs at zero mass, lamps in order, focus survives a lost graphics context');
+  await browser.close();
+}
+// A failure long after the first paint still hands the page back.
+{
+  const a = await open(true, {}, '', () => { const P = WebGL2RenderingContext.prototype, real = P.texElementImage2D; let n = 0; if (real) P.texElementImage2D = function (...args) { if (++n > 20) throw new Error('simulated late failure'); return real.apply(this, args); }; });
+  await until(a.page, () => window.__afterHours.tier === 'html'); assert.match(await A(a.page, () => document.getElementById('tier').textContent), /stopped working/);
+  await a.browser.close();
+  // Reduced motion: focusing a piece that has gone brings it straight back.
+  const b = await open(false, { reducedMotion: 'reduce' }); await b.page.click('#feed'); await A(b.page, () => document.querySelector('.btn.ghost').focus()); await b.page.waitForTimeout(300);
+  assert.equal(await A(b.page, () => getComputedStyle(document.querySelector('.btn.ghost')).opacity), '1'); await b.browser.close();
+  log('late canvas failure hands the page back; reduced-motion focus brings a piece back');
+}
 if (errors.length) { console.log('CONSOLE PROBLEMS\n' + [...new Set(errors)].join('\n')); process.exit(1); }
 console.log('ok  zero console errors, warnings or failed requests across all runs');
