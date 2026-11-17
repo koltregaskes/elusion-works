@@ -1,0 +1,109 @@
+// Browser checks for Snapshot Circuit. Usage: node smoke.mjs <path-to-axe.min.js> [base-url]
+import { createRequire } from 'node:module';
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const { chromium } = createRequire(import.meta.url)('playwright');
+const axeSrc = fs.readFileSync(process.argv[2], 'utf8'), base = process.argv[3] || 'http://127.0.0.1:8771', url = base + '/demos/snapshot-circuit/';
+const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM || undefined, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const problems = [], requests = [], done = [];
+const S = fn => `(${fn})(window.snapshotCircuit)`;
+async function open(w, h, opts = {}) {
+  const ctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: !!opts.touch, isMobile: !!opts.touch, reducedMotion: opts.reduced ? 'reduce' : 'no-preference', acceptDownloads: false });
+  const p = await ctx.newPage(); p.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') problems.push(`${w}x${h}: ${m.text()}`); }); p.on('pageerror', e => problems.push(`${w}x${h}: ${e}`)); p.on('request', r => requests.push(r.url())); p.on('requestfailed', r => problems.push('failed request ' + r.url()));
+  await p.goto(url); await p.evaluate(() => window.snapshotCircuit.ready); return p;
+}
+const state = p => p.evaluate(() => window.snapshotCircuit.state());
+const axe = async (p, label) => { await p.evaluate(axeSrc); const r = await p.evaluate(() => window.axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] } })); assert.equal(r.violations.length, 0, `${label}: axe: ${r.violations.map(v => `${v.id} (${v.nodes.length}: ${v.nodes[0].target})`).join('; ')}`); };
+// Everything a person can press is on the screen, big enough, and nothing spills sideways.
+const layout = async (p, label) => { const bad = await p.evaluate(() => { const out = [], vw = innerWidth, vh = innerHeight; if (document.documentElement.scrollWidth > vw + 1) out.push(`page is ${document.documentElement.scrollWidth} wide`);
+  for (const el of document.querySelectorAll('button, #map, #found, .stat, #say, #speed')) { if (!el.getClientRects().length || el.id === 'file') continue; const r = el.getBoundingClientRect(), name = el.id || el.className; if (r.left < -1 || r.right > vw + 1) out.push(`${name} off the side (${Math.round(r.left)}..${Math.round(r.right)})`);
+    if (el.tagName === 'BUTTON') { if (r.width < 24 || r.height < 24) out.push(`${name} is ${Math.round(r.width)}x${Math.round(r.height)}`); const card = el.closest('.card'); if (!card && (r.top < -1 || r.bottom > vh + 1)) out.push(`${name} off the screen vertically`); } }
+  return out; }); assert.deepEqual(bad, [], `${label}: ${bad.join('; ')}`); };
+const visible = (p, sel) => p.evaluate(s => { const el = document.querySelector(s); return !!el && el.getClientRects().length > 0; }, sel);
+const said = p => p.evaluate(() => document.getElementById('say').textContent);
+
+// ---- 1. The sample photograph: what was found, and the circuit made from it --------------------
+{ const p = await open(1280, 800); const s = await state(p);
+  assert.equal(s.mode, 'menu'); assert.equal(s.photoKey, 'caps'); assert.equal(s.method, 'colour');
+  const want = [[0.251, 0.375], [0.502, 0.502], [0.666, 0.584], [0.781, 0.635], [0.871, 0.733]]; // the five caps, measured on the photograph
+  assert.equal(s.blobs.length, 5, 'five objects'); for (const [x, y] of want) assert.ok(s.blobs.some(b => Math.abs(b.x - x) < 0.03 && Math.abs(b.y - y) < 0.03), `no object found near ${x}, ${y}`);
+  assert.equal(s.hazards.length, 5); for (const h of s.hazards) assert.ok(s.blobs.some(b => Math.abs(b.x - h.photo[0]) < 1e-6 && Math.abs(b.y - h.photo[1]) < 1e-6), 'a hazard does not stand where its object is in the photograph');
+  assert.ok(s.pickups >= 5 && s.length > 150);
+  assert.equal(await p.locator('#objects li').count(), 5); assert.match(await p.textContent('#credit'), /Kodak/);
+  assert.ok(await visible(p, '#start')); for (const id of ['#status', '#tools', '#speed', '#finish', '#sample']) assert.ok(!(await visible(p, id)), `${id} shows on the start screen`);
+  assert.equal(await p.evaluate(() => document.activeElement.id), 'go', 'Start has the focus');
+  const px = await p.evaluate(() => { const c = document.getElementById('found'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let lit = 0; for (let i = 0; i < d.length; i += 4000) if (d[i] + d[i + 1] + d[i + 2] > 60) lit++; return lit; }); assert.ok(px > 100, 'the photograph is drawn on the start card');
+  await axe(p, 'start'); await layout(p, 'start 1280');
+  done.push('sample photo: five objects found where they are, hazards stand on them');
+
+  // ---- 2. A race by keyboard ---------------------------------------------------------------------
+  await p.keyboard.press('Enter'); let r = await state(p); assert.equal(r.mode, 'race'); assert.equal(r.go, false); assert.ok(await visible(p, '#status') && await visible(p, '#tools') && !(await visible(p, '#start')));
+  await p.keyboard.down('ArrowUp'); await p.evaluate(S(s => s.fast(120))); r = await state(p); assert.equal(r.go, false, 'no moving before the countdown ends'); assert.equal(r.v, 0);
+  await p.evaluate(S(s => s.fast(120))); r = await state(p); assert.ok(r.go && r.v > 10, `the up arrow drives the kart (v ${r.v})`);
+  await p.keyboard.up('ArrowUp'); await axe(p, 'race'); await layout(p, 'race 1280');
+  // Pause really stops the clock.
+  await p.keyboard.press('p'); const t0 = (await state(p)).t; await p.waitForTimeout(400); r = await state(p); assert.ok(r.paused && r.t === t0, 'pause stops the race'); assert.equal(await p.getAttribute('#pause', 'aria-pressed'), 'true'); await p.keyboard.press('p'); assert.equal((await state(p)).paused, false);
+  await p.waitForTimeout(500); assert.ok((await state(p)).t > t0, 'the race runs on real frames');
+  // Head-on into an object: the kart stops at it and the page says so.
+  const hit = await p.evaluate(S(s => { const st = s.state(), hz = st.hazards[1]; s.place(hz.x - hz.r - 12, hz.z, 0, 20); return hz; }));
+  await p.keyboard.down('ArrowUp'); await p.evaluate(S(s => s.fast(50))); await p.keyboard.up('ArrowUp');
+  assert.match(await said(p), /Hit the .+ object/); const k = await p.evaluate(S(s => s.kart())); assert.ok(Math.hypot(k.x - hit.x, k.z - hit.z) >= hit.r + 1.3 - 0.01 && k.v < 12, 'the object is solid');
+  await p.keyboard.press('r'); const k2 = await p.evaluate(S(s => s.kart())); assert.ok(k2.offCentre < 0.01, 'R puts the kart back on the road'); assert.match(await said(p), /Back on the road/);
+  await p.keyboard.press('c'); assert.equal((await state(p)).topView, true); assert.equal(await p.getAttribute('#cam', 'aria-pressed'), 'true'); await p.keyboard.press('c');
+  await p.keyboard.press('m'); assert.equal((await state(p)).soundOn, false); assert.equal(await p.getAttribute('#sound', 'aria-pressed'), 'false');
+  done.push('keyboard: start, countdown, drive, pause, hit an object, back on road, view, sound');
+
+  // ---- 3. The whole race: the autopilot drives three laps ------------------------------------------
+  await p.evaluate(S(s => { s.autopilot(true); s.fast(60 * 240); })); r = await state(p);
+  assert.equal(r.mode, 'done'); assert.ok(await visible(p, '#finish') && !(await visible(p, '#status'))); assert.match(await p.textContent('#finish-h'), /^You finished (1st|2nd|3rd)$/);
+  for (const id of ['#r-time', '#r-lap', '#r-best']) assert.match(await p.textContent(id), /^\d:\d\d\.\d$/, id); assert.equal(await p.evaluate(() => document.activeElement.id), 'again');
+  assert.equal(await p.evaluate(() => Number(localStorage.getItem('snapshot-circuit:best')) > 20), true, 'the record is kept');
+  await axe(p, 'finish'); await layout(p, 'finish 1280');
+  await p.click('#again'); assert.equal((await state(p)).mode, 'race'); await p.evaluate(S(s => s.fast(60 * 240))); assert.equal((await state(p)).mode, 'done', 'a second race also finishes');
+  await p.click('#menu'); assert.equal((await state(p)).mode, 'menu'); assert.ok(await visible(p, '#start'));
+  await p.reload(); await p.evaluate(() => window.snapshotCircuit.ready); assert.equal((await state(p)).soundOn, false, 'the sound choice survives a refresh');
+  done.push('a full three-lap race finishes, twice; result and record shown');
+
+  // ---- 4. Your own photograph -------------------------------------------------------------------
+  const png = Buffer.from((await p.evaluate(() => { const c = document.createElement('canvas'); c.width = 900; c.height = 600; const g = c.getContext('2d'); g.fillStyle = '#8a8f96'; g.fillRect(0, 0, 900, 600);
+    for (const [x, y, r, col] of [[250, 220, 70, '#e02020'], [600, 380, 90, '#2050e0'], [450, 130, 30, '#f0d000']]) { g.fillStyle = col; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); } return c.toDataURL('image/png'); })).split(',')[1], 'base64');
+  const before = requests.length;
+  await p.setInputFiles('#file', { name: 'mine.png', mimeType: 'image/png', buffer: png }); await p.waitForFunction(() => window.snapshotCircuit.state().photoKey === 'own');
+  let o = await state(p); assert.equal(o.mode, 'menu'); for (const [x, y, name] of [[250 / 900, 220 / 600, 'red'], [600 / 900, 380 / 600, 'blue'], [450 / 900, 130 / 600, 'yellow']]) assert.ok(o.blobs.some(b => b.name === name && Math.abs(b.x - x) < 0.03 && Math.abs(b.y - y) < 0.03), `own photo: no ${name} object where it was drawn (${JSON.stringify(o.blobs)})`);
+  assert.match(await p.textContent('#credit'), /stays on this device/); assert.ok(await visible(p, '#sample'));
+  assert.equal(requests.slice(before).filter(u => !u.startsWith('blob:') && !u.startsWith('data:')).length, 0, 'using your own photo sends nothing anywhere');
+  await p.click('#go'); await p.evaluate(S(s => { s.autopilot(true); s.fast(60 * 240); })); o = await state(p); assert.equal(o.mode, 'done', 'a race on your own photo finishes'); assert.equal(await p.textContent('#r-best'), 'Not kept');
+  await p.click('#menu');
+  await p.setInputFiles('#file', { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('not a picture') }); await p.waitForFunction(() => /could not be read/.test(document.getElementById('say').textContent));
+  assert.equal((await state(p)).photoKey, 'own', 'a bad file changes nothing'); assert.ok(await p.evaluate(() => { const say = document.getElementById('say'), r = say.getBoundingClientRect(), z = el => Number(getComputedStyle(el).zIndex) || 0; return r.width > 40 && r.top >= 0 && z(say) > z(document.getElementById('start')); }), 'the message sits over the start card');
+  await p.screenshot({ path: process.env.SHOT_DIR ? process.env.SHOT_DIR + '/smoke-badfile.png' : undefined });
+  await p.click('#sample'); await p.waitForFunction(() => window.snapshotCircuit.state().photoKey === 'caps'); assert.equal((await state(p)).blobs.length, 5); assert.ok(!(await visible(p, '#sample')));
+  // A picture with nothing in it still gives a circuit.
+  await p.evaluate(async () => { const c = document.createElement('canvas'); c.width = 640; c.height = 640; const g = c.getContext('2d'); g.fillStyle = '#777'; g.fillRect(0, 0, 640, 640); await window.snapshotCircuit.usePhoto(c, 'own'); });
+  o = await state(p); assert.ok(o.length > 150 && o.pickups >= 5, 'a blank picture still gives a circuit'); await p.click('#go'); await p.evaluate(S(s => { s.autopilot(true); s.fast(60 * 240); })); assert.equal((await state(p)).mode, 'done');
+  done.push('own photo: objects found, raced to the finish, nothing sent, bad file refused, blank picture handled');
+  await p.context().close(); }
+
+// ---- 5. Reduced motion: the steady view from above ----------------------------------------------
+{ const p = await open(1280, 800, { reduced: true }); assert.equal((await state(p)).topView, true); assert.equal(await p.getAttribute('#cam', 'aria-pressed'), 'true'); await p.context().close(); done.push('reduced motion starts in the view from above'); }
+
+// ---- 6. Phones: touch controls and layout ----------------------------------------------------------
+for (const [w, h] of [[400, 800], [320, 568], [740, 360]]) { const p = await open(w, h, { touch: true });
+  assert.ok(await p.evaluate(() => document.documentElement.classList.contains('touch'))); await layout(p, `start ${w}x${h}`);
+  const go = await p.evaluate(() => { const r = document.getElementById('go').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }); assert.ok(go, `${w}x${h}: Start is on the screen without scrolling`);
+  await axe(p, `start ${w}x${h}`);
+  await p.tap('#go'); assert.equal((await state(p)).mode, 'race'); await p.evaluate(S(s => s.fast(200))); for (const id of ['#pad-left', '#pad-right', '#pad-brake']) assert.ok(await visible(p, id), `${id} missing`);
+  await layout(p, `race ${w}x${h}`); await axe(p, `race ${w}x${h}`);
+  await p.evaluate(S(s => s.fast(90))); const a = await p.evaluate(S(s => s.kart())); assert.ok(a.v > 10, 'on a phone the kart drives itself forward');
+  await p.dispatchEvent('#pad-left', 'pointerdown', { pointerId: 7, isPrimary: true }); assert.ok(await p.evaluate(() => document.getElementById('pad-left').classList.contains('down'))); await p.evaluate(S(s => s.fast(30))); await p.dispatchEvent('#pad-left', 'pointerup', { pointerId: 7 });
+  const b = await p.evaluate(S(s => s.kart())); const turn = Math.atan2(Math.sin(b.h - a.h), Math.cos(b.h - a.h)); assert.ok(turn < -0.3, `the left pad steers left (turned ${turn.toFixed(2)})`); assert.ok(!(await p.evaluate(() => document.getElementById('pad-left').classList.contains('down'))));
+  await p.dispatchEvent('#pad-brake', 'pointerdown', { pointerId: 8 }); await p.evaluate(S(s => s.fast(60))); await p.dispatchEvent('#pad-brake', 'pointerup', { pointerId: 8 }); assert.ok((await p.evaluate(S(s => s.kart()))).v < 3, 'the brake pad brakes');
+  await p.tap('#rescue'); await p.evaluate(S(s => { s.autopilot(true); s.fast(60 * 240); })); assert.equal((await state(p)).mode, 'done'); await layout(p, `finish ${w}x${h}`); await axe(p, `finish ${w}x${h}`);
+  await p.context().close(); }
+done.push('phones 400x800, 320x568, 740x360: start in reach, pads steer and brake, race finishes, nothing off screen');
+
+await browser.close();
+const outside = requests.filter(u => !u.startsWith(base) && !u.startsWith('blob:') && !u.startsWith('data:'));
+assert.deepEqual(outside, [], 'requests left the page: ' + outside.join(', '));
+assert.deepEqual(problems, [], 'console problems:\n' + problems.join('\n'));
+console.log('ok  ' + done.join('\nok  ') + '\nok  axe WCAG 2.2 A and AA clean on start, race and finish at four sizes; no console errors; no request left the page');
