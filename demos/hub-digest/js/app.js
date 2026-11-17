@@ -1,16 +1,20 @@
 // The weekly digest: the preview page. email.js makes and checks the email; this page shows the finished file as a desktop and a phone would, shows its plain text, and runs the checks again, here, on the file as served.
-import { lint, bytes } from './email.js';
+import { lint, bytes, TAGS } from './email.js';
 
 const $ = id => document.getElementById(id);
 const el = (tag, props = {}, ...kids) => { const n = Object.assign(document.createElement(tag), props); n.append(...kids); return n; };
 document.body.classList.replace('js-off', 'js-on');
-const frame = $('mail'), stage = $('stage'), LOOKS = { desktop: 'as a desktop shows it', phone: 'as a phone shows it', text: 'as plain text' };
+const frame = $('mail'), stage = $('stage'), WIDE = { desktop: 600, phone: 375, text: 600 };
 let look = 'desktop', mail = null, results = [];
 
 /* ---- The email in its frame: as tall as its words, at the width chosen ---- */
-function fit() { const doc = frame.contentDocument; if (!doc || !doc.body) return; frame.style.height = '0px'; frame.style.height = `${doc.documentElement.scrollHeight}px`; $('size').textContent = look === 'text' ? `${mail ? mail.text.split('\n').length : 0} lines of plain text.` : `Shown ${frame.clientWidth} px wide, ${LOOKS[look]}.`; }
-frame.addEventListener('load', fit); addEventListener('resize', fit);
-function show(next) { look = next; stage.dataset.look = next; frame.title = `The email, ${LOOKS[next === 'text' ? 'desktop' : next]}`; for (const b of document.querySelectorAll('.seg button')) b.setAttribute('aria-pressed', b.dataset.look === next); fit(); }
+/* What is said under the frame is what is true of it: the width it is really shown at, and that a frame of a phone's width is not a phone. */
+function told() { const w = frame.clientWidth, asked = WIDE[look]; return look === 'text' ? `${mail ? mail.text.split('\n').length : 0} lines of plain text.` : w < asked ? `Shown ${w} px wide: this window is too narrow to show it at ${asked}.` : look === 'phone' ? 'Shown 375 px wide, about the width of a phone. A phone\u2019s own email program adds its margins, and may change the colours.' : 'Shown 600 px wide, the widest the email goes.'; }
+function fit() { const doc = frame.contentDocument; if (!doc || !doc.body) return; frame.style.height = '0px'; frame.style.height = `${doc.documentElement.scrollHeight}px`; $('size').textContent = told(); }
+/* A link pressed in the preview does nothing but say where it would go: the preview stays as it is, and nothing is fetched. */
+function tame() { const doc = frame.contentDocument; if (!doc) return; doc.addEventListener('click', e => { const a = e.target.closest ? e.target.closest('a') : null; if (!a) return; e.preventDefault(); const href = a.getAttribute('href'); $('size').textContent = Object.values(TAGS).includes(href) ? `That link is left for the sending service to fill in: ${href}` : `Links do nothing in this preview. That one goes to ${href}`; }); }
+frame.addEventListener('load', () => { tame(); fit(); }); addEventListener('resize', fit); if (frame.contentDocument && frame.contentDocument.readyState === 'complete') tame();
+function show(next) { look = next; stage.dataset.look = next; frame.title = `The email, ${WIDE[next]} wide`; for (const b of document.querySelectorAll('.seg button')) b.setAttribute('aria-pressed', b.dataset.look === next); fit(); }
 for (const b of document.querySelectorAll('.seg button')) b.addEventListener('click', () => show(b.dataset.look));
 
 /* ---- The checks, run again here on the file as it is served ---- */
@@ -24,7 +28,7 @@ async function check() { try { const [h, t] = await Promise.all(['email.html', '
 /* ---- Copy ---- */
 async function copy(button, what, words) { if (!mail) { $('said').textContent = 'The email file has not been read yet.'; return; } const was = button.textContent;
   try { await navigator.clipboard.writeText(what()); button.textContent = 'Copied'; $('said').textContent = `${words} is copied: ${(bytes(what()) / 1024).toFixed(1)} KB.`; }
-  catch (err) { $('said').textContent = `Copying was not allowed. Open ${words.toLowerCase()} on its own with the link below, and copy it there.`; } setTimeout(() => { button.textContent = was; }, 2000); }
+  catch (err) { $('said').textContent = `Copying was not allowed. Use the link below, "${words === 'The HTML' ? 'The email on its own' : 'The plain text on its own'}", and copy it there.`; } setTimeout(() => { button.textContent = was; }, 2000); }
 $('copy-html').addEventListener('click', e => copy(e.currentTarget, () => mail.html, 'The HTML')); $('copy-text').addEventListener('click', e => copy(e.currentTarget, () => mail.text, 'The plain text'));
 
 show('desktop'); const ready = check();
