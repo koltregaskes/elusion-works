@@ -34,20 +34,20 @@
   .hud { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:.5rem; margin:0 0 .75rem; } .hud div { min-width:0; } .hud dt { font:600 .625rem/1.3 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--muted); } .hud dd { margin:0; font:800 clamp(1.25rem, 5vw, 1.875rem)/1.15 var(--sans); letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
   .pips { letter-spacing:.125em; }
   /* The room: a square, as big as the window allows. */
-  .board { position:relative; width:100%; max-width:min(100%, calc(100vh - 13rem)); min-width:min(100%, 15rem); aspect-ratio:1; margin:0 auto; border-radius:.75rem; overflow:hidden; background:#15181b; outline:1px solid var(--line); } .board:focus { outline:1px solid var(--line); } /* the room takes the focus when a game starts, so that the keys go to the game; it is not a control, so it shows no ring */
-  #room { display:block; width:100%; height:100%; touch-action:none; -webkit-user-select:none; user-select:none; }
-  .cover { position:absolute; inset:0; display:flex; overflow:auto; padding:1rem; background:rgba(13,15,17,.82); text-align:center; } .cover > div { max-width:24rem; margin:auto; } /* in the middle when it fits; if it ever does not, it scrolls inside the room and never spills over what is below */
+  .board { display:grid; width:100%; max-width:min(100%, calc(100vh - 13rem)); min-width:min(100%, 15rem); margin:0 auto; border-radius:.75rem; overflow:hidden; background:#15181b; outline:1px solid var(--line); } .board > * { grid-area:1 / 1; min-width:0; } /* the room and its cover share one place: the room is square, and if a cover's words need more height than that, the place grows to hold them, so nothing is cut off or scrolled inside */ .board:focus { outline:1px solid var(--line); } /* the room takes the focus when a game starts, so that the keys go to the game; it is not a control, so it shows no ring */
+  #room { display:block; width:100%; height:auto; aspect-ratio:1; touch-action:none; -webkit-user-select:none; user-select:none; }
+  .cover { display:flex; padding:1rem; background:rgba(13,15,17,.9); text-align:center; } .cover > div { max-width:24rem; margin:auto; }
   .cover h2 { margin:0 0 .5rem; font-size:clamp(1.75rem, 7vw, 2.75rem); line-height:1; font-weight:800; letter-spacing:-.035em; } .cover h2:focus { outline:none; } .cover p { margin:0 0 1rem; color:var(--soft); }
   .cover dl { display:grid; grid-template-columns:repeat(2, minmax(0, auto)); justify-content:center; gap:.125rem 1rem; margin:0 0 1rem; text-align:left; } .cover dt { color:var(--muted); } .cover dd { margin:0; font-weight:700; font-variant-numeric:tabular-nums; }
   .row { display:flex; flex-wrap:wrap; gap:.625rem; justify-content:center; } .btn { min-height:2.875rem; padding:0 1.125rem; border:2px solid var(--edge); border-radius:.75rem; background:none; color:var(--ink); font-weight:800; cursor:pointer; } .btn.go { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); } .btn[aria-pressed="true"] { background:var(--ink); border-color:var(--ink); color:var(--bg); } .btn:disabled { opacity:.4; cursor:default; }
-  .bar { display:flex; flex-wrap:wrap; align-items:center; gap:.625rem; margin:.875rem auto 0; max-width:min(100%, calc(100vh - 13rem)); min-width:min(100%, 15rem); } .bar .run { margin-left:auto; color:var(--muted); font:600 .8125rem/1.3 var(--mono); }
+  .bar { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; margin:0 0 .625rem; }
   .nojs { display:none; } .js-off .nojs { display:block; } .js-off .js { display:none !important; }
   footer { max-width:76rem; margin:0 auto; padding:0 max(20px, env(safe-area-inset-right)) 2.5rem max(20px, env(safe-area-inset-left)); color:var(--muted); font-size:.8125rem; }
 
   @media (max-width:30em) { .how li { grid-template-columns:minmax(0, 1fr); gap:0; } .cover { padding:.75rem; } .cover h2 { font-size:1.5rem; } .cover p { font-size:.9375rem; margin-bottom:.75rem; } .cover dl { grid-template-columns:repeat(4, minmax(0, auto)); gap:.125rem .5rem; font-size:.8125rem; margin-bottom:.75rem; } }
-  @media (max-width:60em) { .page { grid-template-columns:minmax(0, 38rem); grid-template-areas:"head" "game" "how"; grid-template-rows:auto; gap:1.25rem; } .lede { max-width:none; } h1 { margin-bottom:.625rem; } .board, .bar { max-width:min(100%, calc(100vh - 11rem)); } }
+  @media (max-width:60em) { .page { grid-template-columns:minmax(0, 38rem); grid-template-areas:"head" "game" "how"; grid-template-rows:auto; gap:1.25rem; } .lede { max-width:none; } h1 { margin-bottom:.625rem; } .board { max-width:min(100%, calc(100vh - 11rem)); } }
   /* A phone on its side: the room beside the words, as tall as the window. */
-  @media (max-width:60em) and (max-height:30em) and (orientation:landscape) { .page { grid-template-columns:minmax(0, 1fr) minmax(0, 1.1fr); grid-template-areas:"head game" "how game"; gap:.75rem 1.5rem; padding-top:1rem; } h1 { font-size:2.25rem; } .lede { font-size:1rem; } .board, .bar { max-width:min(100%, calc(100vh - 8.5rem)); min-width:9rem; } .game { position:sticky; top:.5rem; } .hud { margin-bottom:.375rem; } .hud dd { font-size:1.125rem; } .bar { margin-top:.5rem; } .btn { min-height:2.75rem; } .cover { padding:.5rem; } .cover h2 { font-size:1.25rem; margin-bottom:.25rem; } .cover p { font-size:.8125rem; line-height:1.35; margin-bottom:.5rem; } .cover dl { grid-template-columns:repeat(4, minmax(0, auto)); gap:0 .5rem; font-size:.75rem; margin-bottom:.5rem; } .row { gap:.375rem; } }
+  @media (max-width:60em) and (max-height:30em) and (orientation:landscape) { .page { grid-template-columns:minmax(0, 1fr) minmax(0, 1.1fr); grid-template-areas:"head game" "how game"; gap:.75rem 1.5rem; padding-top:1rem; } h1 { font-size:2.25rem; } .lede { font-size:1rem; } .board { max-width:min(100%, calc(100vh - 8.75rem)); min-width:9rem; } .game { position:sticky; top:.5rem; } .hud { margin-bottom:.25rem; } .hud dd { font-size:1.125rem; } .bar { margin-bottom:.375rem; gap:.375rem; } .btn { min-height:2.75rem; padding:0 .75rem; } .cover { padding:.5rem; } .cover h2 { font-size:1.25rem; margin-bottom:.25rem; } .cover p { font-size:.8125rem; line-height:1.35; margin-bottom:.5rem; } .cover dl { grid-template-columns:repeat(4, minmax(0, auto)); gap:0 .5rem; font-size:.75rem; margin-bottom:.5rem; } .row { gap:.375rem; } }
   @media (forced-colors:active) { .btn[aria-pressed="true"] { outline:2px solid Highlight; } #room { forced-color-adjust:none; } }
 </style>
 </head>
@@ -64,23 +64,22 @@
       <div><dt>Score</dt><dd id="h-score">0</dd></div>
       <div><dt>Lives</dt><dd><span class="pips" id="h-pips" aria-hidden="true">●●●</span><span class="sr" id="h-lives">3</span></dd></div>
       <div><dt>Level</dt><dd id="h-level">1</dd></div>
-      <div><dt>Next wall</dt><dd id="h-times">×1</dd></div>
+      <div><dt>Run</dt><dd id="h-times">×1</dd></div>
     </dl>
+    <div class="bar js">
+      <button type="button" class="btn" id="pause" disabled>Pause</button>
+      <button type="button" class="btn" id="slow" aria-pressed="false">Slower</button>
+      <button type="button" class="btn" id="sound" aria-pressed="false">Sound</button>
+    </div>
     <div class="board" id="board" tabindex="-1">
       <canvas id="room" width="800" height="800" role="img" aria-label="The room"></canvas>
       <div class="cover" id="cover"><div>
         <h2 id="c-title" tabindex="-1">Ready?</h2>
-        <p id="c-words">Move to the gap before the wall reaches you. Through with almost no room to spare is a close shave, and makes the next wall worth more.</p>
+        <p id="c-words">Move to the gap before the wall reaches you. Through with almost no room to spare is a close shave, and raises what the next wall is worth. It needs sight and quick hands.</p>
         <p class="nojs">This game needs scripts. With them off there is nothing to play.</p>
         <dl id="c-stats" hidden></dl>
         <div class="row js"><button type="button" class="btn go" id="c-go">Start</button><button type="button" class="btn" id="c-other" hidden>New walls</button></div>
       </div></div>
-    </div>
-    <div class="bar js">
-      <button type="button" class="btn" id="pause" aria-pressed="false" disabled>Pause</button>
-      <button type="button" class="btn" id="slow" aria-pressed="false">Slower</button>
-      <button type="button" class="btn" id="sound" aria-pressed="false">Sound</button>
-      <span class="run" id="run"></span>
     </div>
     <p class="sr" id="live" role="status"></p>
   </main>
@@ -89,17 +88,18 @@
     <h2>How to play</h2>
     <ul>
       <li><span>Move</span><span><kbd>Arrow keys</kbd> or <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd>. On a touch screen, drag anywhere in the room.</span></li>
-      <li><span>Pause</span><span><kbd>P</kbd> or <kbd>Esc</kbd>. The game also pauses by itself when you look away.</span></li>
+      <li><span>Creep</span><span>Hold <kbd>Shift</kbd> to move slowly, for cutting it fine.</span></li>
+      <li><span>Pause</span><span><kbd>P</kbd> or <kbd>Esc</kbd>, or the button. The game also pauses by itself when you look away.</span></li>
       <li><span>Start</span><span><kbd>Space</kbd> or <kbd>Enter</kbd>.</span></li>
     </ul>
     <h2>Scoring</h2>
     <ul>
-      <li><span>A wall</span><span>10 points.</span></li>
-      <li><span>A close shave</span><span>Double, and the next wall is worth one times more, up to five times.</span></li>
-      <li><span>A wide berth</span><span>Lets the run slip by one.</span></li>
-      <li><span>A hit</span><span>Costs one of three lives and ends the run.</span></li>
+      <li><span>A wall</span><span>10 points, times your run.</span></li>
+      <li><span>A close shave</span><span>Through with almost no room to spare, by the edges marked green. Double points, and your run goes up by one, to five at most.</span></li>
+      <li><span>A wide berth</span><span>Your run drops by one.</span></li>
+      <li><span>A hit</span><span>Costs one of three lives and puts your run back to one. The game ends when the lives are gone.</span></li>
     </ul>
-    <p class="demo"><strong>Every wall can be got through.</strong> Each is shown at the edge before it comes in, and its gap is never further away than you can move in the time. Nothing is saved: your best score lasts until you leave the page.</p>
+    <p class="demo"><strong>Every wall can be got through, from wherever you are.</strong> Each is shown at the edge before it comes in, and its gap is never further from where you stand than you can go in that warning. Nothing is saved: your best score lasts until you leave the page.</p>
   </aside>
 </div>
 <footer><p>An original game made for Elusion Works. It needs sight and quick hands: there is no way to play it by screen reader.</p></footer>
