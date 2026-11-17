@@ -65,4 +65,4 @@ The second and third need the site's development packages (Playwright and axe-co
 
 ## Status
 
-Unlisted. The page carries `noindex`, and it is not in the gallery or the sitemap. Nothing here is published.
+Unlisted draft. The page carries `noindex`, and it is not in the gallery or the sitemap. Nothing here is published. The site deploys its main branch, so merging this would put the page at /demos/print-sale/, where anyone with the address could open it. Every view says, under the bar, that it is a demo, that all prices, stock and offers are fictional and that nothing can be bought.

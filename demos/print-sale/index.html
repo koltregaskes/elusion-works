@@ -34,6 +34,9 @@
   main { max-width:74rem; margin:0 auto; padding:clamp(1.5rem, 4vw, 3rem) max(20px, env(safe-area-inset-right)) 4rem max(20px, env(safe-area-inset-left)); }
   h1 { margin:.75rem 0 1rem; font-size:clamp(2rem, 12vw, 6.5rem); overflow-wrap:anywhere; line-height:.9; font-weight:800; letter-spacing:-.045em; text-wrap:balance; }
   .lede { margin:0; max-width:34ch; font-size:1.1875rem; color:var(--soft); }
+  .notice { margin:0; border-bottom:1px solid var(--line); background:var(--card); color:var(--soft); font-size:.9375rem; } .notice span { display:block; max-width:74rem; margin:0 auto; padding:.625rem max(20px, env(safe-area-inset-right)) .625rem max(20px, env(safe-area-inset-left)); border-left:4px solid var(--accent); } .notice strong { color:var(--ink); }
+  .view { scroll-margin-top:100000px; } /* a view opened by its address starts at the top of the page, with the notice in sight: the browser would otherwise put the view itself at the top of the window and scroll the notice away */
+  .fict { margin:.75rem 0 .5rem; font-size:.875rem; color:var(--soft); }
   .demo { margin:1.5rem 0 0; max-width:44ch; padding:.75rem .875rem; border-radius:.75rem; border:1px solid var(--line); border-left:4px solid var(--accent); font-size:.875rem; color:var(--soft); } .demo strong { color:var(--ink); }
   .hero { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 26rem); gap:1.5rem 3rem; align-items:end; margin-bottom:clamp(2rem, 5vw, 3.5rem); } .hero .demo { margin:0; }
   .off { display:inline-block; margin:0 0 0 .25rem; padding:.125rem .5rem; border-radius:.375rem; background:var(--accent); color:var(--accent-ink); font-weight:800; white-space:nowrap; }
@@ -87,9 +90,11 @@
 
   @media (max-width:60em) { .hero { grid-template-columns:minmax(0, 1fr); } .hero .demo { max-width:44ch; } .detail, .bask { grid-template-columns:minmax(0, 1fr); } .facts { grid-template-columns:minmax(0, 1fr); }
     /* One column: the wall stays at the top of the window while you choose a size and a frame, so that you see it change. */
-    .detail { gap:1rem; } .stage { display:contents; } .stage .seg { justify-self:start; margin:0; } .scene { position:sticky; top:var(--top); z-index:2; width:100%; max-width:none; padding:.5rem 0; background:var(--bg); } .scene svg { width:auto; max-width:100%; height:40vh; min-height:9rem; margin:0 auto; } .hangs { margin:0; } }
+    .detail { gap:1rem; } .stage { display:contents; } .stage .seg { justify-self:start; margin:0; } .scene { position:sticky; top:var(--top); z-index:2; width:100%; max-width:none; padding:.5rem 0; background:var(--bg); }
+    /* The wall is pinned over the page, so a control reached by Tab must stop below it, not behind it. The browser is told how much of the window's top is taken: the bar, the wall and a little air. */
+    html:has(#print:not([hidden])) { scroll-padding-top:calc(var(--top) + max(40vh, 9rem) + 1.5rem); } .scene svg { width:auto; max-width:100%; height:40vh; min-height:9rem; margin:0 auto; } .hangs { margin:0; } }
   /* A phone on its side: the wall beside the choices. */
-  @media (max-width:60em) and (max-height:30em) and (orientation:landscape) { .detail { grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); column-gap:1.5rem; } .stage { display:block; position:sticky; top:calc(var(--top) + .5rem); } .scene { position:static; padding:0; } .scene svg { height:calc(100vh - var(--top) - 5.5rem); min-height:8rem; } .stage .seg { margin-bottom:.5rem; } .seg button { min-height:2.75rem; } .hangs { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); } }
+  @media (max-width:60em) and (max-height:30em) and (orientation:landscape) { html:has(#print:not([hidden])) { scroll-padding-top:calc(var(--top) + .5rem); } .detail { grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); column-gap:1.5rem; } .stage { display:block; position:sticky; top:calc(var(--top) + .5rem); } .scene { position:static; padding:0; } .scene svg { height:calc(100vh - var(--top) - 5.5rem); min-height:8rem; } .stage .seg { margin-bottom:.5rem; } .seg button { min-height:2.75rem; } .hangs { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); } }
   @media (max-width:48em) { .grid { grid-template-columns:repeat(2, minmax(0, 1fr)); gap:1.5rem 1rem; } .hung { padding:9% 12%; } }
   @media (max-width:30em) { .tiles.two { grid-template-columns:minmax(0, 1fr); } #lines li { grid-template-columns:3.25rem minmax(0, 1fr); } #lines .amount { grid-column:2; text-align:left; } #lines .ctl { grid-column:1 / -1; } .stepper { grid-template-columns:2.75rem minmax(2rem, auto) 2.75rem; } }
   @media (max-width:21em) { table { table-layout:fixed; } th, td { overflow-wrap:anywhere; } .grid { grid-template-columns:minmax(0, 1fr); } .brand span { display:none; } }
@@ -101,6 +106,7 @@
   <a class="brand" href="#prints">Axy Lusion<span>Print sale</span></a>
   <a class="bag" id="bag" href="#basket"><span>Basket<span class="sr" id="bag-words">: empty</span></span><span class="n none" id="bag-n" aria-hidden="true">0</span></a>
 </div></header>
+<p class="notice" id="notice"><span><strong>Demo only.</strong> All prices, stock and offers are fictional. Nothing can be bought.</span></p>
 
 <main id="main">
   <section id="prints" class="view">
@@ -146,7 +152,8 @@
         <div class="qty-row"><span class="lab" id="q-label">How many</span><div class="stepper" role="group" aria-labelledby="q-label"><button type="button" id="q-less" aria-label="One fewer">&minus;</button><span class="q" id="q-n">1</span><button type="button" id="q-more" aria-label="One more">+</button></div></div>
         <p class="sum" id="p-sum"></p>
         <p class="have" id="p-have" hidden></p>
-        <button class="btn wide" id="add" type="submit">Add to basket</button>
+        <p class="fict" id="p-fict">Demo only: this price, the stock and the sale are fictional.</p>
+        <button class="btn wide" id="add" type="submit" aria-describedby="p-fict">Add to basket</button>
         <p class="said" id="p-said" role="status"></p>
         <ul class="small"><li>In a real shop, rolled prints would be sent in a tube and framed ones in a box, ready to hang.</li><li>Numbered sizes would be signed and numbered on the front. A4 is an open edition.</li><li>This is a mock: nothing here can be bought.</li></ul>
       </form>
@@ -161,7 +168,7 @@
     <p class="undo" id="undo" hidden><span id="undo-words"></span><button type="button" class="link" id="undo-go">Put it back</button></p>
     <div class="bask" id="b-full" hidden>
       <ul id="lines"></ul>
-      <div class="sumbox"><dl id="sums"></dl><p class="note" id="b-post"></p><button type="button" class="btn wide" id="order">Place mock order</button><p class="note">This is a mock: no payment is asked for or taken, and nothing is ordered.</p></div>
+      <div class="sumbox"><dl id="sums"></dl><p class="note" id="b-post"></p><p class="fict" id="b-fict">Demo only: these prices and the sale are fictional.</p><button type="button" class="btn wide" id="order" aria-describedby="b-fict">Place mock order</button><p class="note">This is a mock: no payment is asked for or taken, and nothing is ordered.</p></div>
     </div>
   </section>
 

@@ -79,6 +79,20 @@ A second pass by a separate Claude agent (Opus), read-only, given the brief and 
 | 17 | A print buyer would look for the paper and a line about VAT | The page says a real shop would give both, and that this one has neither | by reading |
 | 18 | The pictures: two were weak (a target with an arbitrary bar; buildings like a wireframe) | Both redrawn: a drop about to land in rings, and a solid town against a dotted sky. They remain stand-ins | by looking; not judged by a person |
 
+## Outside review
+
+A second, outside review was posted on the pull request on 17 November 2026: ChatGPT in chat mode at Pro, driven by another Claude session at Kol's request. It covered this demo with the enquiry form, read the code and pictures, and did not run the page. It scored the pair 7 out of 10 and said HOLD. It found no payment, no tracking and no storage.
+
+| Finding | What was done | Held by |
+|---|---|---|
+| The notice that prices, stock and the sale are made up sat only on the first view. A print opened by its own address showed a sale price and "3 left" with only a small "Stand-in print" label | Every view now carries one notice under the bar: "Demo only. All prices, stock and offers are fictional. Nothing can be bought." A line by Add to basket and by Place mock order says the same, and each button is tied to its line for a screen reader | browser check: the prints, a print by its address, the basket, an empty basket by its address and the end, at 1280, on a 320 phone, at large text and with scripts off. The notice must be under the bar, in the window on arrival, uncovered, and above the button that would buy |
+| The sticky picture on a phone needs a full keyboard check that it never covers a focused control | The suspicion was right. Walking a print by Tab on a phone-sized window, the chosen size, the count buttons and Add to basket could stop behind the pinned wall. The browser is now told how much of the window the bar and the wall take, so a focused control stops below them | browser check: Tab and Shift and Tab through a print at 390x800, 320x568, 390x500 and 740x360. Before the fix a probe found controls behind the wall at the first three sizes |
+| The demo's own tests do not run in the repo's CI | Not done here: CI is shared by the whole site, and changing it is outside this demo's folder | |
+| No real phone, Safari or Firefox, screen reader or reference comparison | Still true. Listed under Not verified | |
+| "Unlisted" pages become reachable once merged, because the site deploys its main branch | The README now says so | |
+
+One fault turned up while writing the check, and it was not in the outside review. At large text, a link straight to the basket opened part way down the page: the browser put the basket itself at the top of the window, and the bar and the notice were scrolled out of sight. A view opened by its address now starts at the top of the page.
+
 ## Provenance
 
 - No library, no font, picture or data file. The six pictures are drawn by `js/art.js`.
