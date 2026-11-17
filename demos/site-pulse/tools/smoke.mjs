@@ -84,6 +84,8 @@ async function agrees(p, range, sites, label) { const v = summarise(data, { rang
 
 for (const [w, h] of [[400, 800], [320, 568], [740, 360]]) { const p = await open(w, h, true); await layout(p, `${w}x${h}`); await axe(p, `${w}x${h}`); await p.tap('#range [data-range="90"]'); await agrees(p, 90, ALL, `${w}x${h}`); await p.tap('#sites [data-site="axy-lusion"]'); assert.equal((await p.evaluate(() => window.sitePulse.state())).sites.length, 7);
   assert.ok(await p.evaluate(() => [...document.querySelectorAll('.scroll')].every(s => s.tabIndex === 0 && s.getAttribute('role') === 'region')), 'tables that scroll sideways can be reached by keyboard'); await layout(p, `${w}x${h} after filtering`); await p.context().close(); }
+// The repo's own rule uses a plain 320-pixel window, not a phone: the page itself must not be wider than that.
+{ const p = await open(320, 720); assert.equal(await p.evaluate(() => document.documentElement.scrollWidth), 320, 'the page is wider than a 320-pixel window'); await layout(p, '320 plain window'); await p.context().close(); }
 done.push('phones 400x800, 320x568, 740x360: nothing off the side, nothing cut off, filters work by touch');
 
 await browser.close(); const outside = requests.filter(u => !u.startsWith(base)); assert.deepEqual(outside, [], 'requests left the page: ' + outside.join(', ')); assert.deepEqual(problems, [], 'console problems:\n' + problems.join('\n'));
