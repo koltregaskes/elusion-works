@@ -10,24 +10,28 @@ assert.ok(Math.abs(J.LIGHT_DAY - 25902068371.2) < 0.01, 'a light-day is 25,902,0
 assert.ok(Math.abs(J.LIGHT_DAY / au - 173.1446) < 0.0001, 'which is 173.14 AU');
 
 // Every mark: its distance, and so its light-time, from the figures a reader can look up.
-const expect = { moon: 384400, sun: au, mars: 1.52 * au, jupiter: 5.2 * au, saturn: 9.5 * au, uranus: 19.2 * au, neptune: 30.1 * au, pluto: 39.5 * au, shock: 94 * au, pause: 122 * au, voyager2: 145 * au, voyager1: c * day };
+const expect = { moon: 384400, sun: au, mars: 1.524 * au, jupiter: 5.2 * au, saturn: 9.54 * au, uranus: 19.2 * au, neptune: 30.1 * au, pluto: 39.5 * au, shock: 94 * au, pause: 122 * au, voyager2: 145 * au, voyager1: c * day };
 assert.deepEqual(J.MARKS.map(m => m.id), Object.keys(expect), 'the marks, in order');
 for (const m of J.MARKS) { assert.ok(Math.abs(m.km - expect[m.id]) < 1e-3, `${m.id} distance`); assert.ok(Math.abs(m.t - expect[m.id] / c) < 1e-9, `${m.id} light-time`); assert.ok(Math.abs(m.au - expect[m.id] / au) < 1e-12); }
 for (let i = 1; i < J.MARKS.length; i++) assert.ok(J.MARKS[i].t > J.MARKS[i - 1].t, 'each mark is further than the last');
 assert.equal(J.byId('voyager1').t, day, 'Voyager 1 is exactly a day away');
 
-// The times as the page words them. Worked by hand from distance / c.
-const words = { moon: '1.3 s', sun: '8 min 19 s', mars: '12 min 38 s', jupiter: '43 min 15 s', saturn: '1 h 19 min', uranus: '2 h 40 min', neptune: '4 h 10 min', pluto: '5 h 29 min', shock: '13 h 2 min', pause: '16 h 55 min', voyager2: '20 h 6 min', voyager1: '24 h' };
-const byHand = s => { if (s < 9.95) return s.toFixed(1) + ' s'; if (s < 59.5) return Math.round(s) + ' s'; if (s < 3599.5) { const w = Math.round(s); return w % 60 ? `${(w - w % 60) / 60} min ${w % 60} s` : `${w / 60} min`; } const m = Math.round(s / 60); return m % 60 ? `${(m - m % 60) / 60} h ${m % 60} min` : `${m / 60} h`; };
+// The times as the page words them: cut short, never rounded up, so a card never reads later than the clock. Worked by hand from distance / c.
+const words = { moon: '1.28 s', sun: '8 min 19 s', mars: '12 min 40 s', jupiter: '43 min 14 s', saturn: '1 h 19 min', uranus: '2 h 39 min', neptune: '4 h 10 min', pluto: '5 h 28 min', shock: '13 h 1 min', pause: '16 h 54 min', voyager2: '20 h 5 min', voyager1: '24 h' };
+const byHand = s => { if (s < 10) return (Math.trunc(s * 100 + 1e-7) / 100).toFixed(2) + ' s'; const w = Math.trunc(s + 1e-9); if (w < 60) return w + ' s'; if (w < 3600) return w % 60 ? `${(w - w % 60) / 60} min ${w % 60} s` : `${w / 60} min`; const m = Math.trunc(w / 60); return m % 60 ? `${(m - m % 60) / 60} h ${m % 60} min` : `${m / 60} h`; };
 for (const m of J.MARKS) { assert.equal(J.dur(m.t), words[m.id], `${m.id} in words`); assert.equal(byHand(expect[m.id] / c), words[m.id], `${m.id} by hand`); }
-assert.equal(J.dur(59.6), '1 min'); assert.equal(J.dur(3599.6), '1 h'); assert.equal(J.dur(0), '0.0 s'); assert.equal(J.dur(45.2), '45 s'); assert.equal(J.dur(119.5), '2 min'); assert.equal(J.dur(3 * 3600 + 59.6 * 60), '4 h');
+assert.equal(J.dur(59.6), '59 s'); assert.equal(J.dur(60), '1 min'); assert.equal(J.dur(3599.6), '59 min 59 s'); assert.equal(J.dur(3600), '1 h'); assert.equal(J.dur(0), '0.00 s'); assert.equal(J.dur(45.9), '45 s'); assert.equal(J.dur(119.5), '1 min 59 s'); assert.equal(J.dur(3 * 3600 + 59.6 * 60), '3 h 59 min'); assert.equal(J.dur(9.999), '9.99 s');
+// A card never reads later than the clock: the time in words, turned back into seconds, is never more than the clock shows.
+for (const m of J.MARKS) { const [h, mi, sec] = J.clock(m.t).split(':').map(Number), shown = h * 3600 + mi * 60 + sec, w = J.dur(m.t), said = (+(/(\d+) h/.exec(w)?.[1] ?? 0)) * 3600 + (+(/(\d+) min/.exec(w)?.[1] ?? 0)) * 60 + (+(/([\d.]+) s/.exec(w)?.[1] ?? 0)); assert.ok(said <= shown + 1e-9, `${m.id}: the card says ${w} but the clock reads ${J.clock(m.t)}`); }
+// The distance of each mark as its source gives it, with no more figures than the source has.
+assert.deepEqual(J.MARKS.map(m => m.inAu), ['0.0026', '1', '1.524', '5.2', '9.54', '19.2', '30.1', '39.5', '94', 'about 122', 'about 145', '173.14']); for (const m of J.MARKS) { const n = parseFloat(m.inAu.replace('about ', '')), digits = (m.inAu.split('.')[1] || '').length; assert.ok(Math.abs(n - m.au) <= 0.5 * 10 ** -digits + 1e-9, `${m.id}: ${m.inAu} AU does not match ${m.au}`); }
 
 // The clock never shows a time that has not happened yet, and reads 24:00:00 on arrival.
 assert.equal(J.clock(0), '00:00:00.00'); assert.equal(J.clock(1.282), '00:00:01.28'); assert.equal(J.clock(9.999), '00:00:09.99'); assert.equal(J.clock(10), '00:00:10'); assert.equal(J.clock(499.9), '00:08:19'); assert.equal(J.clock(3600), '01:00:00'); assert.equal(J.clock(day), '24:00:00'); assert.equal(J.clock(day - 0.4), '23:59:59');
 for (let t = 0; t < 12; t += 0.013) { const [h, m, s] = J.clock(t).split(':').map(Number); assert.ok(h * 3600 + m * 60 + s <= t + 1e-9, `the clock ran ahead at ${t}`); }
 
 // Distances in words.
-assert.equal(J.km(384400), '384,400 km'); assert.equal(J.km(999999.4), '999,999 km'); assert.equal(J.km(4496887), '4.50 million km'); assert.equal(J.km(au), '150 million km'); assert.equal(J.km(5.2 * au), '778 million km'); assert.equal(J.km(30.1 * au), '4.50 billion km'); assert.equal(J.km(c * day), '25.9 billion km'); assert.equal(J.kmExact(c * day), '25,902,068,371 km');
+assert.equal(J.km(384400), '384,400 km'); assert.equal(J.km(999999.4), '999,999 km'); assert.equal(J.km(4496887), '4.50 million km'); assert.equal(J.km(au), '150 million km'); assert.equal(J.km(1.524 * au), '228 million km'); assert.equal(J.km(9.54 * au), '1.43 billion km'); assert.equal(J.km(5.2 * au), '778 million km'); assert.equal(J.km(30.1 * au), '4.50 billion km'); assert.equal(J.km(c * day), '25.9 billion km'); assert.equal(J.kmExact(c * day), '25,902,068,371 km');
 assert.equal(J.au(384400), ''); assert.equal(J.au(au), '1.00 AU'); assert.equal(J.au(30.1 * au), '30.1 AU'); assert.equal(J.au(c * day), '173.1 AU');
 assert.equal(J.share(0), 'under 0.01%'); assert.equal(J.share(day / 2), '50.0%'); assert.equal(J.share(day), '100%'); assert.equal(J.share(864), '1.0%'); assert.equal(J.share(499), '0.58%');
 
@@ -52,6 +56,9 @@ for (let y = 0; y <= J.TRACK; y += 0.0005) { const v = J.view(J.timeAt(y)); asse
 assert.ok(Math.abs(last.at - J.FULL) < 1e-12 && Math.abs(last.span * J.FULL - J.LIGHT_DAY) < 1, 'at the end the line is a light-day long and the flash is at Voyager 1');
 // When the flash crosses a mark, the mark is exactly where the flash is.
 for (const m of J.MARKS) { const v = J.view(m.t); assert.ok(Math.abs(m.km / v.span - v.at) < 1e-12, `${m.id} is not where the flash is when it is crossed`); }
+// The picture holds the flash in one place until Pluto's distance, then pulls back, as the Pluto card says.
+assert.ok(Math.abs(J.view(J.byId('neptune').t).at - J.HOLD) < 1e-12 && Math.abs(J.view(J.byId('pluto').t).at - J.HOLD) < 1e-12 && J.view(J.byId('pluto').t + 600).at < J.HOLD - 0.01);
+assert.deepEqual(J.STOPS, [...J.MARKS.map(m => m.t), 8 * 3600]); assert.equal(J.dur(day - J.byId('neptune').t), '19 h 49 min');
 // Once the view has pulled back it holds still: the same span from hour seven to the end.
 assert.ok(Math.abs(J.view(7 * 3600).span - J.view(day).span) < 1 && Math.abs(J.view(15 * 3600).span - J.view(day).span) < 1);
 assert.equal(J.lastMark(0), null); assert.equal(J.lastMark(2).id, 'moon'); assert.equal(J.nextMark(2).id, 'sun'); assert.equal(J.lastMark(day).id, 'voyager1'); assert.equal(J.nextMark(day), null); assert.equal(J.nextMark(0).id, 'moon');
@@ -59,6 +66,6 @@ assert.equal(J.lastMark(0), null); assert.equal(J.lastMark(2).id, 'moon'); asser
 // The figures quoted in the closing section of the page.
 const launch = Date.UTC(1977, 8, 5), arrive = Date.UTC(2026, 10, 18), years = (arrive - launch) / (365.2425 * 86400e3);
 assert.ok(years > 49.19 && years < 49.21, 'forty-nine years and two months in flight');
-const kms = 3.6 * au / (365.25 * 86400); assert.ok(Math.abs(kms - 17.07) < 0.01, 'Voyager 1 does about 17 km a second'); assert.ok(Math.abs(c / kms - 17565) < 20, 'light is about 17,500 times faster');
+const kms = 3.6 * au / (365.25 * 86400); assert.ok(Math.abs(kms - 17.07) < 0.01, 'Voyager 1 does about 17 km a second'); assert.ok(Math.abs(c / kms - 17565) < 20 && Math.round(c / kms / 100) * 100 === 17600, 'light is about 17,600 times faster');
 assert.ok(Math.abs(J.LIGHT_DAY / au / 3.6 - 48.1) < 0.05, 'about 48 years to the next light-day'); assert.ok(Math.abs(4.2465 * 365.25 - 1551) < 1, 'the nearest star is about 1,550 light-days off');
 console.log(`ok  journey: 12 marks in order, light-times match first principles and the page's wording; ${steps} scroll positions with time never running back or jumping; ${frames} views that only ever pull back; marks meet the flash exactly; the long dark is to scale; closing figures hold`);

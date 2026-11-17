@@ -10,20 +10,21 @@ export const EARTH_R = 6371, MOON_R = 1737.4, SUN_R = 695700; // radii, km
 // The marks the flash crosses, in order. Each is a distance from Earth.
 // kind 'body': something really at that distance from Earth. kind 'orbit': a yardstick, the average distance of that orbit from the Sun
 // (the flash is heading out of the plane of the planets and meets none of them). kind 'edge' and 'craft': where a Voyager was or is.
-const mark = (id, name, label, km, kind) => ({ id, name, label, km, kind, t: km / C, au: km / AU });
+// ring: the name written on the ring in the picture. inAu: the distance as its source gives it, with no more figures than the source has.
+const mark = (id, name, ring, km, kind, inAu) => ({ id, name, ring, km, kind, inAu, t: km / C, au: km / AU });
 export const MARKS = [
-  mark('moon', 'The Moon', 'Moon', 384400, 'body'),
-  mark('sun', 'The Sun’s distance', 'Sun', AU, 'body'),
-  mark('mars', 'Mars’s orbit', 'Mars', 1.52 * AU, 'orbit'),
-  mark('jupiter', 'Jupiter’s orbit', 'Jupiter', 5.2 * AU, 'orbit'),
-  mark('saturn', 'Saturn’s orbit', 'Saturn', 9.5 * AU, 'orbit'),
-  mark('uranus', 'Uranus’s orbit', 'Uranus', 19.2 * AU, 'orbit'),
-  mark('neptune', 'Neptune’s orbit', 'Neptune', 30.1 * AU, 'orbit'),
-  mark('pluto', 'Pluto’s average distance', 'Pluto', 39.5 * AU, 'orbit'),
-  mark('shock', 'The termination shock', 'Termination shock', 94 * AU, 'edge'),
-  mark('pause', 'The heliopause', 'Heliopause', 122 * AU, 'edge'),
-  mark('voyager2', 'Voyager 2’s distance', 'Voyager 2', 145 * AU, 'craft'),
-  mark('voyager1', 'Voyager 1', 'Voyager 1', LIGHT_DAY, 'craft'),
+  mark('moon', 'The Moon', 'MOON', 384400, 'body', '0.0026'),
+  mark('sun', 'The Sun’s distance', '1 AU · SUN', AU, 'body', '1'),
+  mark('mars', 'Mars’s orbit', '1.52 AU · MARS', 1.524 * AU, 'orbit', '1.524'),
+  mark('jupiter', 'Jupiter’s orbit', '5.2 AU · JUPITER', 5.2 * AU, 'orbit', '5.2'),
+  mark('saturn', 'Saturn’s orbit', '9.5 AU · SATURN', 9.54 * AU, 'orbit', '9.54'),
+  mark('uranus', 'Uranus’s orbit', '19.2 AU · URANUS', 19.2 * AU, 'orbit', '19.2'),
+  mark('neptune', 'Neptune’s orbit', '30.1 AU · NEPTUNE', 30.1 * AU, 'orbit', '30.1'),
+  mark('pluto', 'Pluto’s average distance', '39.5 AU · PLUTO', 39.5 * AU, 'orbit', '39.5'),
+  mark('shock', 'The termination shock', 'TERMINATION SHOCK', 94 * AU, 'edge', '94'),
+  mark('pause', 'The heliopause', 'HELIOPAUSE', 122 * AU, 'edge', 'about 122'),
+  mark('voyager2', 'Voyager 2’s distance', 'VOYAGER 2', 145 * AU, 'craft', 'about 145'),
+  mark('voyager1', 'Voyager 1', 'VOYAGER 1', LIGHT_DAY, 'craft', '173.14'),
 ];
 export const byId = id => MARKS.find(m => m.id === id);
 
@@ -53,7 +54,7 @@ export function yAt(t) {
 // ---- The view. The picture is a line from Earth towards Voyager 1; this says how much of space that line shows. ----
 // While the page is squeezed the flash is held at the same place on the line and space shrinks behind it.
 // Then the view pulls back until the whole line is one light-day long, and the flash crawls along it.
-export const HOLD = 0.62, FULL = 0.92, PULL_FROM = T('neptune'), PULL_TO = 7 * 3600, START_SPAN = EARTH_R / 0.06; // at the start Earth is 6% of the line across
+export const HOLD = 0.62, FULL = 0.92, PULL_FROM = T('pluto'), PULL_TO = 7 * 3600, START_SPAN = EARTH_R / 0.06; // at the start Earth is 6% of the line across
 const smooth = k => k * k * (3 - 2 * k);
 export function view(t) {
   const time = Math.min(Math.max(t, 0), DAY), r = time * C; // how far the flash has got, km
@@ -64,11 +65,11 @@ export function view(t) {
 
 // ---- Words and figures ----
 const group = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-// A length of time in words: 1.3 s, 8 min 19 s, 4 h 10 min, 24 h.
+// A length of time in words: 1.28 s, 8 min 19 s, 4 h 10 min, 24 h. Cut short, never rounded up, so it never reads later than the clock does.
 export function dur(t) {
-  if (t < 9.95) return `${t.toFixed(1)} s`; if (t < 59.5) return `${Math.round(t)} s`;
-  if (t < 3599.5) { const s = Math.round(t), m = Math.floor(s / 60); return s % 60 ? `${m} min ${s % 60} s` : `${m} min`; }
-  const mins = Math.round(t / 60), h = Math.floor(mins / 60); return mins % 60 ? `${h} h ${mins % 60} min` : `${h} h`;
+  const x = t + 1e-9; if (x < 10) return `${(Math.floor(x * 100) / 100).toFixed(2)} s`; const s = Math.floor(x); if (s < 60) return `${s} s`;
+  if (s < 3600) return s % 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s / 60} min`;
+  const mins = Math.floor(s / 60), h = Math.floor(mins / 60); return mins % 60 ? `${h} h ${mins % 60} min` : `${h} h`;
 }
 // The clock: 00:00:01.28 for the first ten seconds, then 00:08:19.
 export function clock(t) {
@@ -83,3 +84,5 @@ export const share = t => { const p = t / DAY * 100; return p < 0.01 ? 'under 0.
 // The mark the flash crossed last, and the one it will cross next.
 export const lastMark = t => { let m = null; for (const x of MARKS) if (x.t <= t + 1e-9) m = x; return m; };
 export const nextMark = t => MARKS.find(x => x.t > t + 1e-9) || null;
+// The times a card is written for. A page cannot stop between two pixels, so within a pixel of one of these the flash is taken to be on it.
+export const STOPS = [...MARKS.map(m => m.t), 8 * 3600];
