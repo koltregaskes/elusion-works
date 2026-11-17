@@ -1,7 +1,8 @@
 // Site Pulse: the numbers. Everything here is SAMPLE DATA, made up by rule from a fixed seed, so the page looks the same
 // every time and nothing real is shown. No drawing and no page: this file can be checked in Node.
 export const END = '2026-11-16'; // the last full day in the sample
-export const DAYS = 180; // enough for a 90-day view and the 90 days before it
+export const DAYS = 182; // twenty-six whole weeks: enough for a 13-week view and the 13 weeks before it
+export const RANGES = [[7, '1 week'], [28, '4 weeks'], [91, '13 weeks']]; // whole weeks only, so every weekday is counted equally and each period lines up with the one before
 export const SOURCES = ['Search', 'Direct', 'Social', 'Other sites', 'Newsletter', 'AI assistants'];
 export const DEVICES = ['Desktop', 'Phone', 'Tablet'];
 export const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -60,35 +61,43 @@ export function makeData(seed = 20261117) {
 }
 
 const sum = a => a.reduce((x, y) => x + y, 0);
-const median = a => { const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length ? (s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2)) : 0; };
+// The middle value when each value counts as many times as its weight: here, the page load a typical visit met.
+function weightedMedian(pairs) { const list = pairs.filter(p => p[1] > 0).sort((a, b) => a[0] - b[0]), total = sum(list.map(p => p[1])); let run = 0; for (const [value, weight] of list) { run += weight; if (run * 2 >= total) return value; } return 0; }
 export const change = (now, before) => (before > 0 ? (now - before) / before : now > 0 ? null : 0); // null: nothing to compare with
+const LEVEL = { critical: 0, warning: 1, good: 2 };
+export const SLOW_MS = 2500;
 
 // Everything the page shows, for one choice of time range and sites. The same slice feeds every chart, so the numbers agree.
-export function summarise(data, { range = 30, sites = null } = {}) {
-  if (![7, 30, 90].includes(range)) throw new Error('The range must be 7, 30 or 90 days');
-  const chosen = data.sites.filter(s => !sites || sites.includes(s.id)), to = DAYS - 1, from = to - range + 1, pFrom = from - range, idx = Array.from({ length: range }, (_, k) => from + k), pIdx = idx.map(i => i - range);
+export function summarise(data, { range = 28, sites = null } = {}) {
+  if (!RANGES.some(r => r[0] === range)) throw new Error('The range must be 7, 28 or 91 days');
+  const chosen = data.sites.filter(s => !sites || sites.includes(s.id)), to = DAYS - 1, from = to - range + 1, pFrom = from - range, idx = Array.from({ length: range }, (_, k) => from + k), pIdx = idx.map(i => i - range), weeks = range / 7;
   const tot = (list, ix) => { const visits = sum(list.map(s => sum(ix.map(i => s.visits[i])))), visitors = sum(list.map(s => sum(ix.map(i => s.visitors[i])))), views = sum(list.map(s => sum(ix.map(i => s.views[i]))));
-    const stay = visits ? Math.round(sum(list.map(s => sum(ix.map(i => s.stay[i] * s.visits[i])))) / visits) : 0, load = median(list.flatMap(s => ix.map(i => s.load[i]))), downMin = sum(list.map(s => sum(ix.map(i => s.down[i]))));
-    return { visits, visitors, views, perVisit: visits ? views / visits : 0, stay, load, downMinutes: downMin, uptime: list.length ? 1 - downMin / (list.length * ix.length * 1440) : 1 }; };
+    const stay = visits ? Math.round(sum(list.map(s => sum(ix.map(i => s.stay[i] * s.visits[i])))) / visits) : 0, load = weightedMedian(list.flatMap(s => ix.map(i => [s.load[i], s.visits[i]]))), downMin = sum(list.map(s => sum(ix.map(i => s.down[i]))));
+    return { visits, visitors, views, perVisit: visits ? views / visits : 0, stay, load, downMinutes: downMin, uptime: list.length ? 1 - downMin / (list.length * ix.length * 1440) : null }; };
   const totals = tot(chosen, idx), prev = tot(chosen, pIdx);
-  const delta = { visits: change(totals.visits, prev.visits), visitors: change(totals.visitors, prev.visitors), views: change(totals.views, prev.views), perVisit: change(totals.perVisit, prev.perVisit), stay: change(totals.stay, prev.stay), load: change(totals.load, prev.load), uptime: totals.uptime - prev.uptime };
+  const delta = { visits: change(totals.visits, prev.visits), visitors: change(totals.visitors, prev.visitors), views: change(totals.views, prev.views), perVisit: change(totals.perVisit, prev.perVisit), stay: change(totals.stay, prev.stay), load: change(totals.load, prev.load), uptime: totals.uptime === null ? 0 : totals.uptime - prev.uptime };
   const series = idx.map((i, k) => ({ date: data.days[i], visits: sum(chosen.map(s => s.visits[i])), before: sum(chosen.map(s => s.visits[pIdx[k]])), beforeDate: data.days[pIdx[k]] }));
   const perSite = chosen.map(s => { const one = tot([s], idx), was = tot([s], pIdx), src = SOURCES.map((_, k) => sum(idx.map(i => s.sources[i][k]))), top = src.indexOf(Math.max(...src));
-    const last = [...data.deploys].reverse().find(d => d.site === s.id && d.day <= to), status = one.uptime < 0.999 ? 'outage' : one.load > 2500 ? 'slow' : 'healthy';
-    return { id: s.id, name: s.name, status, visits: one.visits, before: was.visits, delta: change(one.visits, was.visits), spark: idx.map(i => s.visits[i]), topSource: SOURCES[top], topShare: one.visits ? src[top] / one.visits : 0, load: one.load, uptime: one.uptime, downMinutes: one.downMinutes,
-      deploy: last ? { daysAgo: to - last.day, ok: last.ok, date: last.date } : null }; }).sort((a, b) => b.visits - a.visits);
-  const sources = SOURCES.map((name, k) => { const v = sum(chosen.map(s => sum(idx.map(i => s.sources[i][k])))), b = sum(chosen.map(s => sum(pIdx.map(i => s.sources[i][k])))); return { name, visits: v, share: totals.visits ? v / totals.visits : 0, delta: change(v, b) }; }).sort((a, b) => b.visits - a.visits);
-  const devices = DEVICES.map((name, k) => { const v = sum(chosen.map(s => sum(idx.map(i => s.devices[i][k])))); return { name, visits: v, share: totals.visits ? v / totals.visits : 0 }; });
-  const heat = WEEKDAYS.map(() => new Array(24).fill(0)); for (const s of chosen) for (const i of idx) { const dow = (new Date(data.days[i] + 'T00:00:00Z').getUTCDay() + 6) % 7; for (let h = 0; h < 24; h++) heat[dow][h] += s.hours[i][h]; }
+    const last = [...data.deploys].reverse().find(d => d.site === s.id && d.day >= from && d.day <= to), outage = one.downMinutes > 0, slow = one.load > SLOW_MS; // the last deploy inside the period, to agree with the rest of the page
+    return { id: s.id, name: s.name, status: outage ? 'outage' : slow ? 'slow' : 'healthy', outage, slow, visits: one.visits, before: was.visits, delta: change(one.visits, was.visits), spark: idx.map(i => s.visits[i]), topSource: SOURCES[top], topShare: one.visits ? src[top] / one.visits : 0, load: one.load, uptime: one.uptime, downMinutes: one.downMinutes,
+      deploy: last ? { daysAgo: to - last.day, ok: last.ok, date: last.date } : null }; }).sort((a, b) => b.visits - a.visits || a.name.localeCompare(b.name));
+  // Shares are whole percentages that add up to 100, shared out the same way as everything else.
+  const withPct = list => { const pct = share(totals.visits ? 100 : 0, list.map(x => x.visits)); return list.map((x, k) => ({ ...x, pct: pct[k] })); };
+  const sources = withPct(SOURCES.map((name, k) => { const v = sum(chosen.map(s => sum(idx.map(i => s.sources[i][k])))), b = sum(chosen.map(s => sum(pIdx.map(i => s.sources[i][k])))); return { name, visits: v, share: totals.visits ? v / totals.visits : 0, delta: change(v, b) }; }).sort((a, b) => b.visits - a.visits));
+  const devices = withPct(DEVICES.map((name, k) => { const v = sum(chosen.map(s => sum(idx.map(i => s.devices[i][k])))); return { name, visits: v, share: totals.visits ? v / totals.visits : 0 }; }));
+  // The week: average visits in each hour of each weekday. A whole number of weeks means every weekday is counted the same number of times.
+  const heatSum = WEEKDAYS.map(() => new Array(24).fill(0)); for (const s of chosen) for (const i of idx) { const dow = (new Date(data.days[i] + 'T00:00:00Z').getUTCDay() + 6) % 7; for (let h = 0; h < 24; h++) heatSum[dow][h] += s.hours[i][h]; }
+  const heat = heatSum.map(r => r.map(v => v / weeks));
   const pages = chosen.flatMap(s => { const v = sum(idx.map(i => s.views[i])), parts = share(v, s.pages.map(p => p.weight)); return s.pages.map((p, k) => ({ site: s.id, siteName: s.name, path: p.path, title: p.title, views: parts[k] })); }).sort((a, b) => b.views - a.views || a.path.localeCompare(b.path));
   const deploys = data.deploys.filter(d => d.day >= from && d.day <= to && chosen.some(s => s.id === d.site)).sort((a, b) => b.day - a.day || a.site.localeCompare(b.site)).map(d => ({ ...d, siteName: data.sites.find(s => s.id === d.site).name, daysAgo: to - d.day }));
-  const notes = []; // plain sentences about what stands out, worst first
-  for (const s of perSite) if (s.status === 'outage') notes.push({ level: 'critical', site: s.id, text: `${s.name} was down for ${s.downMinutes} minutes in this period.` });
-  for (const s of perSite) if (s.status === 'slow') notes.push({ level: 'warning', site: s.id, text: `${s.name} is slow: a typical page takes ${(s.load / 1000).toFixed(1)} seconds to load.` });
+  const notes = []; // plain sentences about what stands out
+  for (const s of perSite) if (s.outage) notes.push({ level: 'critical', site: s.id, text: `${s.name} was down for ${s.downMinutes} minutes in this period.` });
+  for (const s of perSite) if (s.slow) notes.push({ level: 'warning', site: s.id, text: `${s.name} is slow: a typical visit waits ${(s.load / 1000).toFixed(1)} seconds for a page.` });
   for (const d of deploys.filter(d => !d.ok).slice(0, 3)) notes.push({ level: 'warning', site: d.site, text: `A deploy of ${d.siteName} failed on ${fmt.day(d.date)}.` });
-  for (const s of perSite) if (s.delta !== null && s.delta > 0.25) notes.push({ level: 'good', site: s.id, text: `${s.name} is up ${Math.round(s.delta * 100)}% on the ${range} days before.` });
-  for (const s of perSite) if (s.delta !== null && s.delta < -0.15) notes.push({ level: 'warning', site: s.id, text: `${s.name} is down ${Math.round(-s.delta * 100)}% on the ${range} days before.` });
-  return { range, from: data.days[from], to: data.days[to], beforeFrom: data.days[pFrom], beforeTo: data.days[from - 1], siteCount: chosen.length, totals, prev, delta, series, sites: perSite, sources, devices, heat, pages, deploys, notes };
+  for (const s of perSite) if (s.delta !== null && s.delta < -0.15) notes.push({ level: 'warning', site: s.id, text: `${s.name} is down ${Math.round(-s.delta * 100)}% on the ${weeks === 1 ? 'week' : weeks + ' weeks'} before.` });
+  for (const s of perSite) if (s.delta !== null && s.delta > 0.25) notes.push({ level: 'good', site: s.id, text: `${s.name} is up ${Math.round(s.delta * 100)}% on the ${weeks === 1 ? 'week' : weeks + ' weeks'} before.` });
+  notes.sort((a, b) => LEVEL[a.level] - LEVEL[b.level]); // worst first; within a level, the order above
+  return { range, weeks, from: data.days[from], to: data.days[to], beforeFrom: data.days[pFrom], beforeTo: data.days[from - 1], siteCount: chosen.length, totals, prev, delta, series, sites: perSite, sources, devices, heat, heatSum, pages, deploys, notes };
 }
 
 // Numbers as people read them.

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Site Pulse: one screen for every site</title>
+<title>Site Pulse (sample data): one screen for every site</title>
 <meta name="description" content="A dense, dark dashboard for someone who runs several small websites: visits, sources, speed, uptime and deploys for all of them on one screen. Sample data only.">
 <meta name="theme-color" content="#111315">
 <link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml">
@@ -25,7 +25,9 @@
 
   header { display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 14px; margin-bottom:12px; }
   h1 { margin:0; font-size:22px; line-height:1; font-weight:800; letter-spacing:-.02em; }
-  .tag { padding:3px 8px; border-radius:6px; border:1px solid var(--warning); color:var(--warning); font:700 10px/1.2 var(--mono); letter-spacing:.14em; text-transform:uppercase; }
+  .tag { padding:3px 8px; border-radius:6px; border:1px solid var(--ink); color:var(--ink); font:700 10px/1.2 var(--mono); letter-spacing:.14em; text-transform:uppercase; }
+  .sample { flex:none; padding:1px 5px; border-radius:4px; border:1px solid var(--line); color:var(--muted); font:600 9px/1.3 var(--mono); letter-spacing:.12em; text-transform:uppercase; white-space:nowrap; } /* on every card and tile, so a cropped screenshot still says the figures are made up */
+  .right { display:flex; align-items:center; gap:8px; flex:none; }
   #period { margin:0; color:var(--muted); }
 
   /* One row of filters, above everything they change */
@@ -48,7 +50,7 @@
   /* Headline numbers */
   #kpis { display:grid; grid-template-columns:1.7fr repeat(5,minmax(0,1fr)); gap:10px; grid-column:span 12; }
   .tile { min-width:0; padding:11px 13px; border-radius:12px; background:var(--card); border:1px solid var(--line); }
-  .tile .label { font-size:11px; color:var(--muted); }
+  .tile .label { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:11px; color:var(--muted); }
   .tile .value { margin-top:3px; font-size:22px; line-height:1.1; font-weight:700; letter-spacing:-.01em; white-space:nowrap; }
   .tile.hero .value { font-size:52px; line-height:1; font-weight:800; letter-spacing:-.03em; }
   .tile .foot { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:4px 8px; margin-top:6px; min-height:22px; }
@@ -79,7 +81,9 @@
   tbody th { font-weight:600; }
   .sitebtn { all:unset; cursor:pointer; display:inline-flex; align-items:center; min-height:24px; font-weight:700; text-decoration:underline; text-decoration-color:var(--faint); text-underline-offset:3px; } .sitebtn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
   .status { display:inline-flex; align-items:center; gap:5px; font-size:11px; color:var(--muted); } .status svg { flex:none; }
-  .meter { display:inline-block; width:56px; height:4px; margin-right:8px; border-radius:2px; background:var(--h1); vertical-align:middle; overflow:hidden; } .meter i { display:block; height:100%; border-radius:2px; background:var(--accent); }
+  .meter { display:inline-block; width:56px; height:4px; margin-right:8px; vertical-align:middle; overflow:hidden; } .meter i { display:block; height:100%; }
+  .status.also { margin-left:10px; }
+  .hint { display:none; }
   .muted { color:var(--faint); }
   .wrap { white-space:normal; }
 
@@ -87,9 +91,10 @@
   .bars { margin:0; padding:0; list-style:none; display:grid; gap:9px; }
   .bars li { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 10px; align-items:baseline; border-radius:6px; outline-offset:3px; }
   .bars .name { font-weight:600; } .bars .fig { font-variant-numeric:tabular-nums; } .bars .fig small { margin-left:6px; color:var(--faint); font-size:11px; }
-  .bars .track { grid-column:1 / -1; height:8px; } .bars .track i { display:block; height:100%; min-width:2px; border-radius:0 4px 4px 0; background:var(--series); }
+  .bars .track { grid-column:1 / -1; height:8px; } .bars .track i { display:block; height:100%; border-radius:0 4px 4px 0; background:var(--series); }
   .bars li:hover .track i, .bars li:focus-visible .track i { background:var(--accent); }
-  .bars.meters .track { border-radius:4px; background:var(--h1); } .bars.meters .track i { border-radius:4px; background:var(--accent); }
+  .bars.meters .track { border-radius:0 4px 4px 0; background:#1c3529; } .bars.meters .track i { background:var(--series); } /* a share of the whole: the dark track is the whole, in the same green */
+  .bars.meters li:hover .track i, .bars.meters li:focus-visible .track i { background:var(--accent); }
 
   /* The week grid */
   #heat .cells rect { rx:2px; } #heat .cursor { fill:none; stroke:var(--ink); stroke-width:2; rx:3px; pointer-events:none; }
@@ -102,6 +107,7 @@
   footer { margin-top:16px; font-size:11px; color:var(--faint); } footer a { color:var(--muted); }
 
   @media (max-width:1100px) { #kpis { grid-template-columns:repeat(3,minmax(0,1fr)); } .tile.hero { grid-column:span 3; } .s8, .s7, .s5, .s4, .s3 { grid-column:span 12; } }
+  @media (max-width:700px) { .hint { display:inline; } }
   @media (max-width:560px) { #kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } .tile.hero { grid-column:span 2; } .tile.hero .value { font-size:48px; } main { padding-top:12px; } #filters legend { float:none; width:100%; line-height:1.2; margin:0 0 2px; } }
   @media (prefers-reduced-motion:reduce) { * { transition:none !important; scroll-behavior:auto !important; } }
 </style>
@@ -119,44 +125,45 @@
     <fieldset id="sites" aria-label="Sites to include"><legend aria-hidden="true">Sites</legend></fieldset>
   </div>
   <p class="sr" id="live" role="status"></p>
+  <noscript><p class="card" style="margin:0 0 10px">This page draws its sample figures with JavaScript, which is switched off in your browser, so the cards below are empty.</p></noscript>
 
   <div class="grid">
     <section id="kpis" aria-label="Headline numbers"></section>
 
     <figure class="card s8" id="trend">
-      <div class="head"><div><h2>Visits a day</h2><p class="sub" id="trend-sub"></p></div><button class="astable" type="button" aria-pressed="false" data-for="trend">Show as table</button></div>
+      <div class="head"><div><h2>Visits a day</h2><p class="sub" id="trend-sub"></p></div><span class="right"><span class="sample">Sample data</span><button class="astable" type="button" aria-pressed="false" data-for="trend">Table view</button></span></div>
       <ul class="legend" aria-hidden="true"><li><i style="background:var(--series)"></i>This period</li><li><i style="background:var(--deemph)"></i>The period before</li></ul>
       <div class="view"></div>
     </figure>
     <section class="card s4" id="notes" aria-labelledby="notes-h">
-      <div class="head"><div><h2 id="notes-h">What stands out</h2><p class="sub">Worst first</p></div></div>
+      <div class="head"><div><h2 id="notes-h">What stands out</h2><p class="sub">Worst first</p></div><span class="sample">Sample data</span></div>
       <ul class="list"></ul>
     </section>
 
     <section class="card s12" id="table" aria-labelledby="table-h">
-      <div class="head"><div><h2 id="table-h">Every site</h2><p class="sub">Press a column heading to sort. Press a site&rsquo;s name to see only that site.</p></div></div>
+      <div class="head"><div><h2 id="table-h">Every site</h2><p class="sub">Press a column heading to sort. Press a site&rsquo;s name to see only that site.<span class="hint"> Scroll sideways for more columns.</span></p></div><span class="sample">Sample data</span></div>
       <div class="scroll" tabindex="0" role="region" aria-labelledby="table-h"><table><thead><tr></tr></thead><tbody></tbody></table></div>
     </section>
 
     <figure class="card s4" id="sources">
-      <div class="head"><div><h2>Where visits come from</h2><p class="sub">Share of visits, and change on the period before</p></div></div>
+      <div class="head"><div><h2>Where visits come from</h2><p class="sub">Visits, share, and change on the period before</p></div><span class="sample">Sample data</span></div>
       <ul class="bars"></ul>
     </figure>
     <figure class="card s5" id="heat">
-      <div class="head"><div><h2>When people visit</h2><p class="sub">Visits by day of the week and hour of the day</p></div><button class="astable" type="button" aria-pressed="false" data-for="heat">Show as table</button></div>
+      <div class="head"><div><h2>When people visit</h2><p class="sub">Average visits in each hour, by day of the week. Hours are UTC.</p></div><span class="right"><span class="sample">Sample data</span><button class="astable" type="button" aria-pressed="false" data-for="heat">Table view</button></span></div>
       <div class="view"></div>
     </figure>
     <figure class="card s3" id="devices">
-      <div class="head"><div><h2>What they read on</h2><p class="sub">Share of visits</p></div></div>
+      <div class="head"><div><h2>What they read on</h2><p class="sub">Share of visits</p></div><span class="sample">Sample data</span></div>
       <ul class="bars meters"></ul>
     </figure>
 
     <section class="card s7" id="pages" aria-labelledby="pages-h">
-      <div class="head"><div><h2 id="pages-h">Most read pages</h2><p class="sub">Top ten by page views</p></div></div>
+      <div class="head"><div><h2 id="pages-h">Most read pages</h2><p class="sub">Top ten by page views</p></div><span class="sample">Sample data</span></div>
       <div class="scroll" tabindex="0" role="region" aria-labelledby="pages-h"><table><thead><tr><th scope="col">Page</th><th scope="col">Site</th><th scope="col" class="r">Views</th><th scope="col"><span class="sr">Share of the top page</span></th></tr></thead><tbody></tbody></table></div>
     </section>
     <section class="card s5" id="deploys" aria-labelledby="deploys-h">
-      <div class="head"><div><h2 id="deploys-h">Latest deploys</h2><p class="sub">Newest first</p></div></div>
+      <div class="head"><div><h2 id="deploys-h">Latest deploys</h2><p class="sub">In this period, newest first</p></div><span class="sample">Sample data</span></div>
       <ul class="list"></ul>
     </section>
   </div>
