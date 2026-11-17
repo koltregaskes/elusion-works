@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Elusion One: a camera on a turntable</title>
+<meta name="description" content="A product turntable for a camera that does not exist, built from shapes and light in the browser. Turn it by hand, watch a short film of it, or look inside at the sensor, shutter and glass.">
+<meta name="theme-color" content="#111315">
+<link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml">
+<!-- Unlisted until release is approved: remove the next line, then add the gallery card and sitemap entry. -->
+<meta name="robots" content="noindex">
+<style>
+  :root { --bg:#111315; --panel:rgba(18,20,23,.82); --line:rgba(255,255,255,.16); --ink:#f4f5f3; --muted:#b3babf; --accent:#3fe08a; --accent-ink:#06210f;
+    --sans:"Helvetica Neue","Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif; --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace; color-scheme:dark; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--ink); font:14px/1.45 var(--sans); overflow:hidden; -webkit-text-size-adjust:100%; }
+  [hidden] { display:none !important; }
+  #stage { position:fixed; inset:0; width:100%; height:100%; display:block; touch-action:none; cursor:grab; }
+  #stage.drag { cursor:grabbing; } #stage:focus-visible { outline:2px solid var(--accent); outline-offset:-5px; }
+  button { font:inherit; color:inherit; cursor:pointer; }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+  .glass { background:var(--panel); border:1px solid var(--line); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); }
+  .eyebrow { margin:0; font:600 10px/1 var(--mono); letter-spacing:.2em; text-transform:uppercase; color:var(--accent); }
+  .btn { min-height:38px; padding:0 14px; border-radius:10px; border:1px solid var(--line); background:rgba(255,255,255,.06); font-weight:700; font-size:13px; white-space:nowrap; }
+  .btn[aria-pressed="true"] { background:var(--ink); color:#111; border-color:var(--ink); }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+
+  #title { position:fixed; left:max(18px,env(safe-area-inset-left)); top:max(16px,env(safe-area-inset-top)); max-width:min(420px,calc(100vw - 36px)); pointer-events:none; }
+  h1 { margin:10px 0 6px; font-size:clamp(34px,6vw,60px); line-height:.92; font-weight:800; letter-spacing:-.04em; }
+  .lede { margin:0; max-width:36ch; color:#dfe4e7; }
+  .hintline { margin:8px 0 0; font-size:12px; color:var(--muted); }
+  .near .lede, .near .hintline { display:none; } /* close in on a part and the camera fills the view: the words step aside */
+
+  #modes { position:fixed; left:10px; right:10px; margin-inline:auto; width:fit-content; bottom:max(16px,env(safe-area-inset-bottom)); display:flex; flex-wrap:wrap; justify-content:center; gap:6px; padding:6px; border-radius:14px; max-width:calc(100vw - 20px); }
+  #caption { position:fixed; left:max(18px,env(safe-area-inset-left)); bottom:calc(max(16px,env(safe-area-inset-bottom)) + var(--modes,52px) + 18px); margin:0; pointer-events:none; }
+  #caption b { display:block; font-size:clamp(26px,4.6vw,46px); line-height:1; font-weight:800; letter-spacing:-.03em; }
+  #caption span { display:block; margin-bottom:8px; font:600 10px/1 var(--mono); letter-spacing:.2em; text-transform:uppercase; color:var(--accent); }
+  #progress { position:fixed; left:0; right:0; bottom:0; height:3px; background:rgba(255,255,255,.12); } #progress i { display:block; height:100%; width:0; background:var(--accent); }
+
+  #side { position:fixed; right:max(16px,env(safe-area-inset-right)); top:max(16px,env(safe-area-inset-top)); width:min(310px,calc(100vw - 32px)); max-height:calc(100vh - 110px); overflow:auto; padding:14px 16px; border-radius:16px; }
+  #side h2 { margin:8px 0 6px; font-size:20px; line-height:1.1; font-weight:800; letter-spacing:-.02em; }
+  #says { margin:0 0 12px; color:#dfe4e7; min-height:4.3em; }
+  details summary { cursor:pointer; padding:6px 0; font:600 10px/1.6 var(--mono); letter-spacing:.18em; text-transform:uppercase; color:var(--muted); }
+  #list { margin:0; padding:0; list-style:none; display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  #list li.group { display:block; grid-column:1 / -1; } #list h3 { margin:6px 0 0; font:600 10px/1 var(--mono); letter-spacing:.18em; text-transform:uppercase; color:var(--muted); }
+  #list li { display:contents; }
+  .part { min-height:32px; padding:0 10px; border-radius:8px; border:1px solid var(--line); background:rgba(255,255,255,.05); font-size:12px; font-weight:600; text-align:left; }
+  .part[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+
+  /* Labels pinned to the parts when you look inside */
+  #labels button { position:fixed; left:0; top:0; display:flex; align-items:center; gap:7px; min-height:26px; padding:0 9px 0 7px; border-radius:999px; border:1px solid var(--line); background:rgba(12,14,16,.78); font-size:12px; font-weight:600; white-space:nowrap; will-change:transform; }
+  #labels button.flip { flex-direction:row-reverse; padding:0 7px 0 9px; }
+  #labels button::before { content:""; width:8px; height:8px; border-radius:50%; background:var(--accent); flex:none; }
+  #labels button[aria-pressed="true"] { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); } #labels button[aria-pressed="true"]::before { background:var(--accent-ink); }
+  #fallback { position:fixed; inset:0; display:none; place-items:center; padding:28px; text-align:center; background:var(--bg); z-index:9; } #fallback p { max-width:460px; color:#d7dce0; }
+  footer { position:fixed; left:max(18px,env(safe-area-inset-left)); bottom:max(14px,env(safe-area-inset-bottom)); max-width:30vw; font-size:11px; color:var(--muted); z-index:10; } footer a { color:var(--ink); }
+
+  @media (max-width:900px) { footer { display:none; } .lede { display:none; } #side { top:auto; bottom:calc(max(16px,env(safe-area-inset-bottom)) + var(--modes,52px) + 8px); right:max(10px,env(safe-area-inset-right)); left:max(10px,env(safe-area-inset-left)); width:auto; max-height:36vh; padding:10px 12px; } #says { min-height:0; margin-bottom:6px; font-size:13px; } #side h2 { font-size:17px; margin:6px 0 4px; }
+    #caption { bottom:auto; top:max(96px,calc(env(safe-area-inset-top) + 96px)); } #modes .btn { min-height:36px; padding:0 11px; font-size:12px; } #list { grid-template-columns:1fr 1fr 1fr; } }
+  @media (max-width:480px) { #list { grid-template-columns:1fr 1fr; } h1 { font-size:32px; } }
+  @media (max-height:480px) { #side { max-height:40vh; width:min(300px,46vw); left:auto; top:max(10px,env(safe-area-inset-top)); bottom:auto; } .hintline { display:none; } h1 { font-size:28px; margin:6px 0 0; } #caption { top:auto; bottom:calc(max(16px,env(safe-area-inset-bottom)) + var(--modes,52px) + 8px); } #caption b { font-size:22px; } }
+  @media (prefers-reduced-motion:reduce) { * { transition:none !important; } }
+</style>
+<script type="importmap">
+{ "imports": { "three": "../_shared/three-r160/build/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="stage" tabindex="0" role="img" aria-label="A black camera with a lens, standing on a turntable. Drag or use the arrow keys to turn it."></canvas>
+
+<header id="title">
+  <p class="eyebrow">Product turntable</p>
+  <h1>Elusion One</h1>
+  <p class="lede">A camera that does not exist, built from nothing but shapes and light. Turn it, watch the film, or look inside.</p>
+  <p class="hintline" id="hint">Drag to turn. Scroll or pinch to move closer. Arrow keys work too.</p>
+</header>
+
+<p id="caption" hidden><span id="caption-n"></span><b id="caption-t"></b></p>
+<div id="progress" hidden aria-hidden="true"><i></i></div>
+<p class="sr" id="live" role="status"></p>
+
+<aside class="glass" id="side" aria-label="The parts of the camera">
+  <p class="eyebrow" id="part-kind">The parts</p>
+  <h2 id="part-name">Eleven parts</h2>
+  <p id="says">Choose a part to go and look at it. Eight are inside the body: choosing one of those fades the outside away.</p>
+  <details id="more" open>
+    <summary>Choose a part</summary>
+    <ul id="list"></ul>
+  </details>
+</aside>
+
+<div id="labels" aria-label="Labels on the parts inside" hidden></div>
+
+<nav class="glass" id="modes" aria-label="Views">
+  <button class="btn" id="m-turn" type="button" aria-pressed="true">Turntable</button>
+  <button class="btn" id="m-film" type="button" aria-pressed="false">Play the film</button>
+  <button class="btn" id="m-inside" type="button" aria-pressed="false">Look inside</button>
+  <button class="btn" id="finish" type="button" aria-pressed="false" title="Switch the top plate between black and silver">Silver</button>
+</nav>
+
+<footer>After <a href="https://x.com/xikhar/status/2119966147328299284" rel="noopener">a post by xikhar</a>. An original model: no real camera was copied and no model file is loaded.</footer>
+<div id="fallback" role="alert"><p><strong>This page needs WebGL.</strong><br>Your browser or device could not start 3D graphics. Try a recent version of Edge, Chrome, Firefox or Safari with hardware acceleration switched on.</p></div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
