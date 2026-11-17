@@ -41,18 +41,16 @@ export function step(race, input) {
     kart.stuck = !kart.done && Math.abs(kart.v) < 1.5 ? (kart.stuck || 0) + DT : 0;
     if (kart.stuck > 2 && !kart.player) rescue(race, kart); // a computer driver wedged against something is set back on the road
     // The objects from the photograph are solid.
-    for (const hz of t.hazards) { const dx = kart.x - hz.x, dz = kart.z - hz.z, d = Math.hypot(dx, dz), min = hz.r + KART_R; if (d < min) { const nx = d > 0.001 ? dx / d : 1, nz = d > 0.001 ? dz / d : 0; kart.x = hz.x + nx * min; kart.z = hz.z + nz * min; if (Math.abs(kart.v) > 4) { race.events.push({ type: 'bump', kart: kart.id, hazard: hz.blob, speed: Math.abs(kart.v) }); kart.bump = 0.35; } kart.v *= 0.35; } }
+    for (const hz of t.hazards) { const dx = kart.x - hz.x, dz = kart.z - hz.z, d = Math.hypot(dx, dz), min = hz.r + KART_R; if (d < min) { const nx = d > 0.001 ? dx / d : 1, nz = d > 0.001 ? dz / d : 0; kart.x = hz.x + nx * min; kart.z = hz.z + nz * min;
+        const dir = Math.sign(kart.v) || 1, fx = Math.cos(kart.h) * dir, fz = Math.sin(kart.h) * dir, into = Math.max(0, -(fx * nx + fz * nz)); // how squarely the kart is driving at it: 1 is head on
+        if (kart.bump <= 0 && Math.abs(kart.v) > 4 && into > 0.15) { race.events.push({ type: 'bump', kart: kart.id, hazard: hz.blob, speed: Math.abs(kart.v) }); kart.v *= 1 - 0.65 * into; kart.bump = 0.35; } else kart.v *= 1 - 0.08 * into;
+        const side = fx * -nz + fz * nx >= 0 ? 1 : -1, want = Math.atan2(nx * side * dir, -nz * side * dir), turn = wrap(want - kart.h); kart.h = wrap(kart.h + clamp(turn, -0.09, 0.09) * into); } } // a glancing blow slides round the object; only a square hit stops you
     // So is the edge of the picture.
     const ex = 60 - KART_R, ez = t.H / 2 - KART_R; if (Math.abs(kart.x) > ex || Math.abs(kart.z) > ez) { kart.x = clamp(kart.x, -ex, ex); kart.z = clamp(kart.z, -ez, ez); kart.v *= 0.5; }
     // Progress: checkpoints must be taken in order, so cutting across the picture or reversing earns nothing.
-    kart.i = nearest(t, kart.x, kart.z, kart.i, 24);
+    const was = kart.i; kart.i = nearest(t, kart.x, kart.z, kart.i, 24);
     if (!kart.done) {
-      const target = t.checkpoints[kart.cp % 8], gap = ((kart.i - target + t.n) % t.n);
-      if (gap < 30 && Math.hypot(t.pts[kart.i][0] - kart.x, t.pts[kart.i][1] - kart.z) < t.half + 6) {
-        kart.cp++;
-        if (kart.cp % 8 === 1 && kart.cp > 1) { kart.lap++; kart.laps.push(race.t - kart.lapStart); kart.lapStart = race.t; race.events.push({ type: 'lap', kart: kart.id, lap: kart.lap, time: kart.laps[kart.laps.length - 1] });
-          if (kart.lap >= LAPS) { kart.done = true; kart.time = race.t; race.order.push(kart.id); race.events.push({ type: 'finish', kart: kart.id, place: race.order.length, time: race.t }); } }
-      }
+      passCheckpoint(race, kart, was);
       for (let k = 0; k < t.pickups.length; k++) { const p = t.pickups[k]; if (race.picks[k] <= 0 && Math.hypot(p.x - kart.x, p.z - kart.z) < 2.6) { race.picks[k] = 9; kart.boost = 1.7; race.events.push({ type: 'pickup', kart: kart.id, pickup: k }); } }
     }
   }
@@ -63,11 +61,19 @@ export function step(race, input) {
   return race;
 }
 
-// Put a kart back on the centre of the road where it is, facing the right way. The player can ask for this too.
-export function rescue(race, kart) { const t = race.track; kart.i = nearest(t, kart.x, kart.z, kart.i, t.n); kart.x = t.pts[kart.i][0]; kart.z = t.pts[kart.i][1]; kart.h = heading(t, kart.i); kart.v = 5; kart.stuck = 0; race.events.push({ type: 'rescue', kart: kart.id }); }
+// Progress: checkpoints must be taken in order and crossed going forward (from just before one to at or past it),
+// so cutting across the picture, reversing over one, or driving the whole circuit backwards earns nothing.
+function passCheckpoint(race, kart, was) { const t = race.track, target = t.checkpoints[kart.cp % 8], gap = (kart.i - target + t.n) % t.n, before = (target - was + t.n) % t.n;
+  if (!(gap < 30 && before > 0 && before < 30 && Math.hypot(t.pts[kart.i][0] - kart.x, t.pts[kart.i][1] - kart.z) < t.half + 6)) return;
+  kart.cp++; if (!(kart.cp % 8 === 1 && kart.cp > 1)) return;
+  kart.lap++; kart.laps.push(race.t - kart.lapStart); kart.lapStart = race.t; race.events.push({ type: 'lap', kart: kart.id, lap: kart.lap, time: kart.laps[kart.laps.length - 1] });
+  if (kart.lap >= LAPS) { kart.done = true; kart.time = race.t; race.order.push(kart.id); race.events.push({ type: 'finish', kart: kart.id, place: race.order.length, time: race.t }); } }
 
-// Where everyone stands: laps, then checkpoints, then distance along the road.
+// Put a kart back on the centre of the road where it is, facing the right way. The player can ask for this too.
+export function rescue(race, kart) { const t = race.track, was = kart.i; kart.i = (nearest(t, kart.x, kart.z, kart.i, t.n) + 3) % t.n; kart.x = t.pts[kart.i][0]; kart.z = t.pts[kart.i][1]; kart.h = heading(t, kart.i); kart.v = 5; kart.stuck = 0; race.events.push({ type: 'rescue', kart: kart.id }); if (!kart.done && race.go) passCheckpoint(race, kart, was); } // being set down just past a checkpoint still counts it
+
+// Where everyone stands: checkpoints passed, then how far past the last one (which is negative on the grid, behind the line).
 export function standings(race) {
-  const t = race.track, score = k => k.done ? 1e9 - race.order.indexOf(k.id) : k.cp * t.n + ((k.i - t.checkpoints[(k.cp + 7) % 8] + t.n) % t.n);
+  const t = race.track, score = k => { if (k.done) return 1e9 - race.order.indexOf(k.id); let d = (k.i - t.checkpoints[(k.cp + 7) % 8] + t.n) % t.n; if (d > t.n / 2) d -= t.n; return (k.cp - 1) * (t.n / 8) + d; };
   return [...race.karts].sort((a, b) => score(b) - score(a)).map(k => k.id);
 }

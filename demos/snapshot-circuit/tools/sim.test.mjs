@@ -47,4 +47,30 @@ check({ width: 192, height: 128, blobs: Array.from({ length: 11 }, (_, i) => blo
   sq(40, 40, 22, [230, 40, 40]); sq(120, 70, 18, [40, 60, 220]); sq(84, 20, 9, [240, 220, 30]); sq(0, 100, 20, [20, 160, 60]);
   const an = analyse({ width: w, height: h, data }); assert.equal(an.method, 'colour'); const names = an.blobs.map(b => b.name).sort(); assert.deepEqual(names, ['blue', 'red', 'yellow'], 'finds the three objects inside the frame, not the one on the edge: ' + names);
   const red = an.blobs.find(b => b.name === 'red'); assert.ok(Math.abs(red.x - 51 / w) < 0.01 && Math.abs(red.y - 51 / h) < 0.01); check(an, 'made-up picture'); }
-console.log(`ok  track and race: ${a.t.n} road points, ${a.t.length.toFixed(0)} units a lap, autopilot race of ${LAPS} laps in ${(a.steps * DT).toFixed(1)} s, ${a.events.pickup} pick-ups, ${a.events.bump} bumps; rules and awkward pictures hold`);
+// ---- Many made-up pictures, in every shape the page allows: each gives a road that does not cross itself, that nothing blocks, and that all three karts finish on. ----
+let fuzzRaces = 0, fuzzRescues = 0, flatObjects = 0;
+{ let seed = 7; const rand = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  const crossing = pts => { const n = pts.length, o = (p, q, r) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]); for (let i = 0; i < n; i++) for (let j = i + 2; j < n; j++) { if (i === 0 && j === n - 1) continue; const a = pts[i], b = pts[(i + 1) % n], c = pts[j], d = pts[(j + 1) % n]; if (o(a, b, c) * o(a, b, d) < 0 && o(c, d, a) * o(c, d, b) < 0) return true; } return false; };
+  for (const [w, h] of [[192, 108], [192, 96], [192, 128], [160, 160], [120, 192], [115, 192]]) for (let k = 0; k < 110; k++) {
+    const count = Math.floor(rand() * 11), blobs = []; for (let b = 0; b < count; b++) { const bw = 0.03 + rand() * (rand() < 0.2 ? 0.5 : 0.2), bh = 0.03 + rand() * (rand() < 0.2 ? 0.5 : 0.2), x = bw / 2 + rand() * (1 - bw), y = bh / 2 + rand() * (1 - bh); blobs.push(blob(b, x, y, bw, bh, [Math.floor(rand() * 255), Math.floor(rand() * 255), Math.floor(rand() * 255)], rand() < 0.75 ? 'hazard' : 'pickup')); }
+    const label = `made-up picture ${w}x${h} #${k}`, t = buildTrack({ width: w, height: h, blobs });
+    assert.ok(!crossing(t.pts), `${label}: the road crosses itself`);
+    for (const p of t.pts) assert.ok(Math.abs(p[0]) <= WORLD_W / 2 - HALF && Math.abs(p[1]) <= t.H / 2 - HALF, `${label}: road leaves the picture`);
+    for (let i = 0; i < t.n; i++) { const a = t.pts[i], b = t.pts[(i + 1) % t.n]; assert.ok(Math.hypot(a[0] - b[0], a[1] - b[1]) < 3, `${label}: gap in the road`); }
+    for (const hz of t.hazards) for (const p of t.pts) assert.ok(Math.hypot(p[0] - hz.x, p[1] - hz.z) >= hz.r + KART_R + HALF * 0.5 - 0.01, `${label}: an object blocks the road`);
+    assert.equal(t.hazards.length + t.flat.length, blobs.filter(b => b.role === 'hazard').length); flatObjects += t.flat.length;
+    const race = newRace(t); let steps = 0, rescues = 0; assert.equal(standings(race)[2], 0, `${label}: the player starts at the back but is not shown last`);
+    while (!race.karts.every(q => q.done) && steps < 60 * 300) { step(race, autopilot(race, race.karts[0])); steps++; for (const e of race.events) if (e.type === 'rescue') rescues++; for (const q of race.karts) for (const hz of t.hazards) assert.ok(Math.hypot(q.x - hz.x, q.z - hz.z) >= hz.r + KART_R - 0.05, `${label}: a kart is inside an object`); }
+    assert.ok(race.karts.every(q => q.done), `${label}: not everyone finished (laps ${race.karts.map(q => q.lap)}, rescues ${rescues})`); assert.ok(rescues <= 6, `${label}: ${rescues} rescues in one race`); assert.ok(steps < 60 * 200, `${label}: the race took ${(steps / 60).toFixed(0)} s`);
+    fuzzRaces++; fuzzRescues += rescues; } }
+// Driving the wrong way round the whole circuit, for five minutes, never counts a lap.
+{ const t = a.t, r = newRace(t); r.go = true; const p = r.karts[0]; p.h += Math.PI; let back = 0;
+  for (let i = 0; i < 60 * 300; i++) { const j = (p.i - 9 + t.n) % t.n, want = Math.atan2(t.pts[j][1] - p.z, t.pts[j][0] - p.x), err = Math.atan2(Math.sin(want - p.h), Math.cos(want - p.h)), i0 = p.i; step(r, { steer: Math.max(-1, Math.min(1, err * 2.6)), throttle: p.v < 22 ? 1 : 0, brake: 0 }); back += ((i0 - p.i + t.n) % t.n) < 30 ? (i0 - p.i + t.n) % t.n : 0; }
+  assert.ok(back > t.n * 5, `the wrong-way driver only got ${(back / t.n).toFixed(1)} laps backwards`); assert.equal(p.lap, 0, 'driving the wrong way round counted laps'); assert.equal(p.done, false); }
+// Real pixels through the detector, in awkward shapes: nothing throws, flat pictures claim no objects, one clear object is kept.
+{ const pic = (w, h, paint) => { const data = new Uint8ClampedArray(w * h * 4); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const c = paint(x, y); data.set([c[0], c[1], c[2], c[3] ?? 255], (y * w + x) * 4); } return { width: w, height: h, data }; };
+  for (const [w, h] of [[1024, 512], [1024, 77], [77, 1024], [3, 2], [640, 640], [600, 1000]]) { const flat = analyse(pic(w, h, () => [200, 200, 200])); assert.equal(flat.blobs.length, 0, `a flat ${w}x${h} picture claims ${flat.blobs.length} objects`); assert.equal(flat.method, 'plain');
+    const clear = analyse(pic(w, h, () => [0, 0, 0, 0])); assert.equal(clear.blobs.length, 0, 'an empty see-through picture claims objects');
+    const noisy = analyse(pic(w, h, (x, y) => { const v = ((x * 7919 + y * 104729) % 97) * 2.6; return [v, v, v]; })); for (const b of noisy.blobs) assert.ok(Number.isFinite(b.x + b.y + b.area) && b.name, 'a busy patch has no proper description'); }
+  const one = analyse(pic(900, 600, (x, y) => (Math.hypot(x - 300, y - 250) < 80 ? [220, 30, 30] : [140, 145, 150]))); assert.equal(one.method, 'colour'); assert.equal(one.blobs.length, 1, 'one clear object should be kept, not swapped for patches'); assert.equal(one.blobs[0].name, 'red'); check(one, 'one red ball'); }
+console.log(`ok  track and race: ${a.t.n} road points, ${a.t.length.toFixed(0)} units a lap, autopilot race of ${LAPS} laps in ${(a.steps * DT).toFixed(1)} s, ${a.events.pickup} pick-ups, ${a.events.bump} bumps; rules and awkward pictures hold; ${fuzzRaces} made-up pictures in six shapes all raced to the finish (${fuzzRescues} rescues in all, ${flatObjects} objects left flat for want of room)`);

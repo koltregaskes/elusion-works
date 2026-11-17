@@ -24,7 +24,7 @@ scene.add(new THREE.HemisphereLight(0xffffff, 0x555566, 1.6)); const sun = new T
 const world = new THREE.Group(); scene.add(world);
 
 // ---- State ----------------------------------------------------------------------------------
-let photo = null, analysis = null, track = null, race = null, mode = 'menu', photoKey = SAMPLE.key, topView = reduced, paused = false, auto = false, soundOn = true;
+let photo = null, analysis = null, track = null, race = null, mode = 'menu', photoKey = SAMPLE.key, cropped = '', topView = reduced, paused = false, auto = false, soundOn = true;
 let cutouts = [], tokens = [], kartMeshes = [], mapBase = null, sayTimer = 0;
 const keys = { left: false, right: false, up: false, down: false };
 
@@ -56,7 +56,7 @@ function kartMesh(colour) {
 }
 function buildScene() {
   world.clear(); cutouts = []; tokens = []; kartMeshes = [];
-  const H = track.H, GW = small ? 2048 : 4096, GH = Math.round(GW * H / WORLD_W), u = GW / WORLD_W; // one picture for the ground: the photograph with the road painted on it
+  const H = track.H, most = Math.min(small ? 2048 : 4096, renderer.capabilities.maxTextureSize), GW = Math.floor(Math.min(most, most * WORLD_W / H)), GH = Math.round(GW * H / WORLD_W), u = GW / WORLD_W; // neither side over the limit, whatever the picture's shape // one picture for the ground: the photograph with the road painted on it
   const gc = document.createElement('canvas'); gc.width = GW; gc.height = GH; const g2 = gc.getContext('2d'); g2.imageSmoothingQuality = 'high'; g2.drawImage(photo, 0, 0, GW, GH);
   const path = () => { g2.beginPath(); track.pts.forEach((p, i) => { const x = (p[0] + WORLD_W / 2) * u, y = (p[1] + H / 2) * u; if (i) g2.lineTo(x, y); else g2.moveTo(x, y); }); g2.closePath(); };
   g2.lineJoin = 'round'; g2.lineCap = 'butt';
@@ -89,20 +89,26 @@ function showFound() { // the start card: what was found in the picture
   const items = analysis.blobs.map((b, i) => {
     const haz = track.hazards.some(h => h.blob === b.id), x = b.x0 * c.width, y = b.y0 * c.height, w = (b.x1 - b.x0) * c.width, h = (b.y1 - b.y0) * c.height;
     g.lineWidth = 4; g.strokeStyle = haz ? '#fff' : '#3fe08a'; g.strokeRect(x, y, w, h); g.fillStyle = '#111'; g.fillRect(b.x * c.width - 15, b.y * c.height - 15, 30, 30); g.fillStyle = '#fff'; g.fillText(String(i + 1), b.x * c.width, b.y * c.height + 1);
-    const li = document.createElement('li'), sw = document.createElement('i'), num = document.createElement('b'); sw.style.background = `rgb(${b.colour})`; num.textContent = i + 1; li.append(num, sw, document.createTextNode(`${b.name[0].toUpperCase() + b.name.slice(1)} object: ${haz ? 'a hazard to drive round' : 'a boost to pick up'}`)); return li;
+    const li = document.createElement('li'), sw = document.createElement('i'), num = document.createElement('b'), Name = b.name[0].toUpperCase() + b.name.slice(1), what = analysis.method === 'detail' ? `Busy ${b.name} patch` : `${Name} object`;
+    const fate = haz ? 'stands up as a hazard beside the road' : track.flat.includes(b.id) ? 'left lying flat, with no room to stand it beside the road' : 'a boost to pick up';
+    sw.style.background = `rgb(${b.colour})`; num.textContent = i + 1; li.append(num, sw, document.createTextNode(`${what}: ${fate}`)); return li;
   });
   if (!items.length) { const li = document.createElement('li'); li.textContent = 'Nothing stood out in this picture, so the road runs a plain loop with boosts on it.'; items.push(li); }
   $('objects').replaceChildren(...items);
-  const how = analysis.method === 'detail' ? 'No strong colours stood out, so the busiest patches were used instead. ' : '';
+  const how = (analysis.method === 'detail' ? 'Nothing stood out by colour, so the busiest patches of the picture were used instead. ' : '') + (cropped ? `The picture was very ${cropped}, so only the middle of it is used. ` : '');
   $('credit').textContent = how + (photoKey === SAMPLE.key ? SAMPLE.credit : 'Your photograph. It stays on this device and is not uploaded.');
   $('sample').hidden = photoKey === SAMPLE.key;
 }
 async function usePhoto(source, key) { // source: anything a canvas can draw (an image, a bitmap, another canvas)
   const sw = source.naturalWidth || source.width, sh = source.naturalHeight || source.height; if (!sw || !sh) throw new Error('That picture has no size');
-  const k = Math.min(1, 1024 / Math.max(sw, sh)), c = document.createElement('canvas'); c.width = Math.max(64, Math.round(sw * k)); c.height = Math.max(64, Math.round(sh * k));
-  const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(source, 0, 0, c.width, c.height);
-  const a = analyse(g.getImageData(0, 0, c.width, c.height)), t = buildTrack(a); // both can throw; nothing changes unless both work
-  photo = c; analysis = a; track = t; photoKey = key; buildScene(); showFound(); toMenu();
+  // A circuit needs room in both directions, so a very wide or very tall picture is cut to its middle: no wider than 2 to 1, no taller than 5 to 3.
+  const cw = Math.min(sw, sh * 2), ch = Math.min(sh, sw / 0.6), was = cw < sw ? 'wide' : ch < sh ? 'tall' : '';
+  const k = Math.min(1, 1024 / Math.max(cw, ch)), c = document.createElement('canvas'); c.width = Math.max(64, Math.round(cw * k)); c.height = Math.max(64, Math.round(ch * k));
+  const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(source, (sw - cw) / 2, (sh - ch) / 2, cw, ch, 0, 0, c.width, c.height);
+  const a = analyse(g.getImageData(0, 0, c.width, c.height)), t = buildTrack(a), old = { photo, analysis, track, photoKey, cropped };
+  photo = c; analysis = a; track = t; photoKey = key; cropped = was;
+  try { buildScene(); } catch (err) { ({ photo, analysis, track, photoKey, cropped } = old); if (photo) buildScene(); throw err; } // nothing changes unless every step works
+  showFound(); toMenu();
 }
 
 // ---- Sound: small synthesised noises, started by the Start button ----------------------------------------
@@ -119,8 +125,8 @@ const audio = (() => {
 // ---- Screens ------------------------------------------------------------------------------------------------
 function say(text, ms = 2200) { $('say').textContent = text; clearTimeout(sayTimer); sayTimer = setTimeout(() => { $('say').textContent = ''; }, ms); }
 function hud(show) { for (const id of ['status', 'tools', 'speed']) $(id).hidden = !show; for (const p of document.querySelectorAll('.pads')) p.hidden = !show; }
-function toMenu() { mode = 'menu'; clearTimeout(sayTimer); $('say').textContent = ''; race = newRace(track); paused = false; $('start').hidden = false; $('finish').hidden = true; hud(false); $('count').textContent = ''; audio.engine(0, false); $('go').focus({ preventScroll: true }); }
-function startRace() { audio.start(); race = newRace(track); mode = 'race'; paused = false; lastCount = 4; $('pause').setAttribute('aria-pressed', 'false'); $('start').hidden = true; $('finish').hidden = true; hud(true); $('stage').focus(); }
+function toMenu() { paused = false; $('pause').setAttribute('aria-pressed', 'false'); $('pause').textContent = 'Pause'; mode = 'menu'; clearTimeout(sayTimer); $('say').textContent = ''; race = newRace(track); paused = false; $('start').hidden = false; $('finish').hidden = true; hud(false); $('count').textContent = ''; audio.engine(0, false); $('go').focus({ preventScroll: true }); }
+function startRace() { audio.start(); race = newRace(track); mode = 'race'; paused = false; lastCount = 4; acc = 0; $('pause').setAttribute('aria-pressed', 'false'); $('pause').textContent = 'Pause'; $('start').hidden = true; $('finish').hidden = true; hud(true); $('stage').focus(); }
 function finishRace() {
   mode = 'done'; const me = race.karts[0], place = race.order.indexOf(0), bestLap = Math.min(...me.laps); let best = null;
   if (photoKey === SAMPLE.key) { try { best = Number(localStorage.getItem('snapshot-circuit:best')) || null; if (!best || me.time < best) { best = me.time; localStorage.setItem('snapshot-circuit:best', String(best)); } } catch (err) { best = me.time; } }
@@ -146,7 +152,7 @@ function advance() {
 function draw(dt) {
   const me = race.karts[0];
   race.karts.forEach((k, i) => { const m = kartMeshes[i]; m.position.set(k.x, 0, k.z); m.rotation.y = -k.h; });
-  tokens.forEach((t, i) => { t.visible = t.userData.mark.visible = race.picks[i] <= 0; t.rotation.y += dt * 3; });
+  tokens.forEach((t, i) => { t.visible = t.userData.mark.visible = race.picks[i] <= 0; if (!reduced) t.rotation.y += dt * 3; });
   if (topView || mode === 'menu') { const d = Math.max(track.H * 0.78, (WORLD_W * 0.78) / camera.aspect) / Math.tan(camera.fov * Math.PI / 360); camPos.set(0, d * 0.94, d * 0.32); camLook.set(0, 0, 0); camera.position.copy(camPos); }
   else { const fx = Math.cos(me.h), fz = Math.sin(me.h), want = new THREE.Vector3(me.x - fx * 9.5, 5.4 + me.boost * 0.6, me.z - fz * 9.5), jump = reduced || camPos.distanceTo(want) > 30; // a cut, not a swoop, when the kart is suddenly somewhere else
     camPos.lerp(want, jump ? 1 : 1 - Math.exp(-dt * 9)); camLook.lerp(new THREE.Vector3(me.x + fx * 7, 1, me.z + fz * 7), jump ? 1 : 1 - Math.exp(-dt * 13)); camera.position.copy(camPos); if (me.bump > 0 && !reduced) camera.position.y += Math.sin(me.bump * 60) * 0.12; }
@@ -171,23 +177,23 @@ addEventListener('resize', resize);
 
 // ---- Controls -------------------------------------------------------------------------------------------------------
 const KEYMAP = { ArrowLeft: 'left', a: 'left', ArrowRight: 'right', d: 'right', ArrowUp: 'up', w: 'up', ArrowDown: 'down', s: 'down' };
-function setPaused(on) { if (mode !== 'race') return; paused = on; $('pause').setAttribute('aria-pressed', String(on)); $('pause').textContent = on ? 'Resume' : 'Pause'; if (on) say('Paused', 60000); else $('say').textContent = ''; }
+function setPaused(on) { if (mode !== 'race' || on === paused) return; paused = on; $('pause').setAttribute('aria-pressed', String(on)); $('pause').textContent = on ? 'Resume' : 'Pause'; clearTimeout(sayTimer); $('say').textContent = on ? 'Paused' : ''; if (on) audio.engine(0, false); for (const k in keys) keys[k] = false; }
 function setTop(on) { topView = on; $('cam').setAttribute('aria-pressed', String(on)); }
 function setSound(on) { soundOn = on; $('sound').setAttribute('aria-pressed', String(on)); try { localStorage.setItem('snapshot-circuit:sound', on ? '1' : '0'); } catch (err) { /* fine without */ } }
-function backOnRoad() { if (mode === 'race' && race.go) { rescue(race, race.karts[0]); say('Back on the road', 1000); } }
+function backOnRoad() { if (mode === 'race' && race.go && !paused) { rescue(race, race.karts[0]); say('Back on the road', 1000); } }
 addEventListener('keydown', e => {
-  if (e.ctrlKey || e.metaKey || e.altKey) return; const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, tag = e.target.tagName;
-  if (KEYMAP[k] && mode === 'race') { keys[KEYMAP[k]] = true; e.preventDefault(); return; }
-  if (tag === 'BUTTON' || tag === 'INPUT') return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return; const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, onButton = e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT';
+  if (KEYMAP[k] && mode === 'race') { if (!paused) keys[KEYMAP[k]] = true; e.preventDefault(); return; }
+  if (onButton && (k === 'Enter' || k === ' ')) return; // those two belong to the button that has the focus
   if (k === 'c') setTop(!topView); else if (k === 'm') setSound(!soundOn); else if (k === 'p' || k === 'Escape') setPaused(!paused); else if (k === 'r') backOnRoad(); else if (k === 'Enter' && mode !== 'race') startRace();
 });
 addEventListener('keyup', e => { const k = e.key.length === 1 ? e.key.toLowerCase() : e.key; if (KEYMAP[k]) keys[KEYMAP[k]] = false; });
-addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; if (mode === 'race' && race.go) setPaused(true); }); // look away and the race waits
 for (const [id, key] of [['pad-left', 'left'], ['pad-right', 'right'], ['pad-brake', 'down']]) { const b = $(id), set = on => { keys[key] = on; b.classList.toggle('down', on); };
   b.addEventListener('pointerdown', e => { e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch (err) { /* still works without capture */ } set(true); }); for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(ev, () => set(false));
   b.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); set(true); } }); b.addEventListener('keyup', e => { if (e.key === ' ' || e.key === 'Enter') set(false); }); b.addEventListener('contextmenu', e => e.preventDefault()); }
 $('go').addEventListener('click', startRace); $('again').addEventListener('click', startRace); $('menu').addEventListener('click', toMenu);
-$('cam').addEventListener('click', () => setTop(!topView)); $('sound').addEventListener('click', () => setSound(!soundOn)); $('pause').addEventListener('click', () => setPaused(!paused)); $('rescue').addEventListener('click', backOnRoad);
+$('cam').addEventListener('click', () => setTop(!topView)); $('sound').addEventListener('click', () => setSound(!soundOn)); $('pause').addEventListener('click', () => setPaused(!paused)); $('rescue').addEventListener('click', backOnRoad); $('quit').addEventListener('click', toMenu);
 $('own').addEventListener('click', () => $('file').click());
 $('file').addEventListener('change', async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; let url; try { url = URL.createObjectURL(f); const im = new Image(); im.src = url; await im.decode(); await usePhoto(im, 'own'); say('A new circuit from your photograph', 2600); } catch (err) { say('That file could not be read as a picture.', 3200); } finally { if (url) URL.revokeObjectURL(url); } });
 $('sample').addEventListener('click', loadSample);
@@ -200,7 +206,7 @@ $('sound').setAttribute('aria-pressed', String(soundOn)); setTop(topView); resiz
 window.snapshotCircuit = { // for the automated checks
   ready: loadSample().then(() => { requestAnimationFrame(frame); return true; }),
   state: () => ({ mode, paused, topView, soundOn, photoKey, method: analysis.method, t: race.t, go: race.go, lap: race.karts[0].lap, place: standings(race).indexOf(0) + 1, v: race.karts[0].v, done: race.karts.map(k => k.done), order: [...race.order],
-    blobs: analysis.blobs.map(b => ({ x: b.x, y: b.y, name: b.name, role: b.role })), hazards: track.hazards.map(h => ({ x: h.x, z: h.z, r: h.r, photo: toPhoto(h.x, h.z, track.H) })), pickups: track.pickups.length, length: track.length }),
+    blobs: analysis.blobs.map(b => ({ x: b.x, y: b.y, name: b.name, role: b.role })), hazards: track.hazards.map(h => ({ x: h.x, z: h.z, r: h.r, photo: toPhoto(h.x, h.z, track.H) })), flat: track.flat.length, cropped, size: [photo.width, photo.height], pickups: track.pickups.length, length: track.length }),
   start: startRace, autopilot: on => { auto = on; }, usePhoto,
   fast(n) { let i = 0; for (; i < n && mode === 'race'; i++) advance(); return i; }, // run the race ahead without waiting for frames
   place(x, z, h, v) { const k = race.karts[0]; Object.assign(k, { x, z, h, v }); },

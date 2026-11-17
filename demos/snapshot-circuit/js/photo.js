@@ -99,19 +99,21 @@ export function analyse(source, { maxW = 192, maxBlobs = 11 } = {}) {
   }
   let blobs = found.filter(b => b.area >= n * 0.0018 && (b.x1 - b.x0 + 1) * (b.y1 - b.y0 + 1) < n * 0.4).sort((a, b) => b.area - a.area).slice(0, maxBlobs);
   let method = 'colour';
-  if (blobs.length < 3) { // a picture with no stand-out colours: use its busiest patches instead
+  if (blobs.length === 0) { // nothing stands out by colour: use the picture's busiest patches instead, if it has any
     method = 'detail'; const gx = 8, gy = 6, cells = [];
     for (let cy = 0; cy < gy; cy++) for (let cx = 0; cx < gx; cx++) {
       const x0 = Math.floor(cx * w / gx), x1 = Math.floor((cx + 1) * w / gx) - 1, y0 = Math.floor(cy * h / gy), y1 = Math.floor((cy + 1) * h / gy) - 1; let s = 0, s2 = 0, c = 0, r = 0, g = 0, b = 0;
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const o = (y * w + x) * 4, l = data[o] * 0.3 + data[o + 1] * 0.59 + data[o + 2] * 0.11; s += l; s2 += l * l; c++; r += data[o]; g += data[o + 1]; b += data[o + 2]; }
       cells.push({ cx, cy, x0, x1, y0, y1, v: s2 / c - (s / c) ** 2, r, g, b, c });
     }
-    cells.sort((a, b) => b.v - a.v); const picked = [];
-    for (const c of cells) { if (picked.length >= 7) break; if (c.cx === 0 || c.cy === 0 || c.cx === gx - 1 || c.cy === gy - 1) continue; if (picked.some(p => Math.abs(p.cx - c.cx) <= 1 && Math.abs(p.cy - c.cy) <= 1)) continue; picked.push(c); }
+    cells.sort((a, b) => b.v - a.v); const picked = [], busy = Math.max(60, cells.length ? cells[0].v * 0.25 : 0); // a flat picture has no busy patches at all
+    for (const c of cells) { if (picked.length >= 7 || !(c.v >= busy) || c.c === 0) break; if (c.cx === 0 || c.cy === 0 || c.cx === gx - 1 || c.cy === gy - 1) continue; if (picked.some(p => Math.abs(p.cx - c.cx) <= 1 && Math.abs(p.cy - c.cy) <= 1)) continue; picked.push(c); }
     label.fill(-1);
-    blobs = picked.map((c, id) => { const rad = Math.min(c.x1 - c.x0, c.y1 - c.y0) / 2, mx = (c.x0 + c.x1) / 2, my = (c.y0 + c.y1) / 2; let area = 0;
+    blobs = picked.map((c, id) => { const rad = Math.max(1, Math.min(c.x1 - c.x0, c.y1 - c.y0) / 2), mx = (c.x0 + c.x1) / 2, my = (c.y0 + c.y1) / 2; let area = 0;
       for (let y = c.y0; y <= c.y1; y++) for (let x = c.x0; x <= c.x1; x++) if (Math.hypot(x - mx, y - my) <= rad) { label[y * w + x] = id; area++; }
-      return { id, area, sx: mx * area, sy: my * area, x0: Math.round(mx - rad), x1: Math.round(mx + rad), y0: Math.round(my - rad), y1: Math.round(my + rad), r: c.r / c.c * area, g: c.g / c.c * area, b: c.b / c.c * area }; });
+      if (!area) return null;
+      return { id, area, sx: mx * area, sy: my * area, x0: Math.round(mx - rad), x1: Math.round(mx + rad), y0: Math.round(my - rad), y1: Math.round(my + rad), r: c.r / c.c * area, g: c.g / c.c * area, b: c.b / c.c * area }; }).filter(Boolean);
+    if (!blobs.length) method = 'plain';
   }
   // 4. Describe them. The larger ones are hazards, the rest pick-ups.
   const order = new Map(blobs.map((b, i) => [b.id, i])), out = blobs.map((b, i) => {

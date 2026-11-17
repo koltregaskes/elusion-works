@@ -18,6 +18,8 @@ const axe = async (p, label) => { await p.evaluate(axeSrc); const r = await p.ev
 const layout = async (p, label) => { const bad = await p.evaluate(() => { const out = [], vw = innerWidth, vh = innerHeight; if (document.documentElement.scrollWidth > vw + 1) out.push(`page is ${document.documentElement.scrollWidth} wide`);
   for (const el of document.querySelectorAll('button, #map, #found, .stat, #say, #speed')) { if (!el.getClientRects().length || el.id === 'file') continue; const r = el.getBoundingClientRect(), name = el.id || el.className; if (r.left < -1 || r.right > vw + 1) out.push(`${name} off the side (${Math.round(r.left)}..${Math.round(r.right)})`);
     if (el.tagName === 'BUTTON') { if (r.width < 24 || r.height < 24) out.push(`${name} is ${Math.round(r.width)}x${Math.round(r.height)}`); const card = el.closest('.card'); if (!card && (r.top < -1 || r.bottom > vh + 1)) out.push(`${name} off the screen vertically`); } }
+  const boxes = ['#status', '#tools', '#say', '#speed', '.pads.left', '.pads.right'].map(q => [q, document.querySelector(q)]).filter(([, el]) => el && el.getClientRects().length && el.getBoundingClientRect().width > 0).map(([q, el]) => [q, el.getBoundingClientRect()]);
+  for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) { const [qa, a] = boxes[i], [qb, b] = boxes[j]; if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) out.push(`${qa} overlaps ${qb}`); }
   return out; }); assert.deepEqual(bad, [], `${label}: ${bad.join('; ')}`); };
 const visible = (p, sel) => p.evaluate(s => { const el = document.querySelector(s); return !!el && el.getClientRects().length > 0; }, sel);
 const said = p => p.evaluate(() => document.getElementById('say').textContent);
@@ -27,7 +29,7 @@ const said = p => p.evaluate(() => document.getElementById('say').textContent);
   assert.equal(s.mode, 'menu'); assert.equal(s.photoKey, 'caps'); assert.equal(s.method, 'colour');
   const want = [[0.251, 0.375], [0.502, 0.502], [0.666, 0.584], [0.781, 0.635], [0.871, 0.733]]; // the five caps, measured on the photograph
   assert.equal(s.blobs.length, 5, 'five objects'); for (const [x, y] of want) assert.ok(s.blobs.some(b => Math.abs(b.x - x) < 0.03 && Math.abs(b.y - y) < 0.03), `no object found near ${x}, ${y}`);
-  assert.equal(s.hazards.length, 5); for (const h of s.hazards) assert.ok(s.blobs.some(b => Math.abs(b.x - h.photo[0]) < 1e-6 && Math.abs(b.y - h.photo[1]) < 1e-6), 'a hazard does not stand where its object is in the photograph');
+  assert.equal(s.hazards.length + s.flat, 5); assert.ok(s.hazards.length >= 4, `only ${s.hazards.length} of the five caps stand up`); for (const h of s.hazards) assert.ok(s.blobs.some(b => Math.abs(b.x - h.photo[0]) < 1e-6 && Math.abs(b.y - h.photo[1]) < 1e-6), 'a hazard does not stand where its object is in the photograph');
   assert.ok(s.pickups >= 5 && s.length > 150);
   assert.equal(await p.locator('#objects li').count(), 5); assert.match(await p.textContent('#credit'), /Kodak/);
   assert.ok(await visible(p, '#start')); for (const id of ['#status', '#tools', '#speed', '#finish', '#sample']) assert.ok(!(await visible(p, id)), `${id} shows on the start screen`);
@@ -46,12 +48,17 @@ const said = p => p.evaluate(() => document.getElementById('say').textContent);
   await p.waitForTimeout(500); assert.ok((await state(p)).t > t0, 'the race runs on real frames');
   // Head-on into an object: the kart stops at it and the page says so.
   const hit = await p.evaluate(S(s => { const st = s.state(), hz = st.hazards[1]; s.place(hz.x - hz.r - 12, hz.z, 0, 20); return hz; }));
-  await p.keyboard.down('ArrowUp'); await p.evaluate(S(s => s.fast(50))); await p.keyboard.up('ArrowUp');
-  assert.match(await said(p), /Hit the .+ object/); const k = await p.evaluate(S(s => s.kart())); assert.ok(Math.hypot(k.x - hit.x, k.z - hit.z) >= hit.r + 1.3 - 0.01 && k.v < 12, 'the object is solid');
+  await p.keyboard.down('ArrowUp'); let slowest = 99, closest = 99; for (let i = 0; i < 50; i++) { await p.evaluate(S(s => s.fast(1))); const q = await p.evaluate(S(s => s.kart())); slowest = Math.min(slowest, q.v); closest = Math.min(closest, Math.hypot(q.x - hit.x, q.z - hit.z)); } await p.keyboard.up('ArrowUp');
+  assert.match(await said(p), /Hit the .+ object/); assert.ok(closest >= hit.r + 1.3 - 0.01, 'the object is solid'); assert.ok(slowest < 10, `a square hit takes your speed away (slowest ${slowest.toFixed(1)})`);
   await p.keyboard.press('r'); const k2 = await p.evaluate(S(s => s.kart())); assert.ok(k2.offCentre < 0.01, 'R puts the kart back on the road'); assert.match(await said(p), /Back on the road/);
   await p.keyboard.press('c'); assert.equal((await state(p)).topView, true); assert.equal(await p.getAttribute('#cam', 'aria-pressed'), 'true'); await p.keyboard.press('c');
   await p.keyboard.press('m'); assert.equal((await state(p)).soundOn, false); assert.equal(await p.getAttribute('#sound', 'aria-pressed'), 'false');
-  done.push('keyboard: start, countdown, drive, pause, hit an object, back on road, view, sound');
+  // Shortcuts still work after a button has been clicked with the mouse, and looking away pauses the race.
+  await p.click('#cam'); assert.equal((await state(p)).topView, true); await p.keyboard.press('c'); assert.equal((await state(p)).topView, false, 'C works after clicking a button');
+  await p.click('#pause'); assert.equal((await state(p)).paused, true); assert.equal(await said(p), 'Paused'); await p.keyboard.press('p'); assert.equal((await state(p)).paused, false, 'P works after clicking Pause');
+  await p.evaluate(() => window.dispatchEvent(new Event('blur'))); assert.equal((await state(p)).paused, true, 'looking away pauses the race'); await p.keyboard.press('Escape'); assert.equal((await state(p)).paused, false);
+  await p.click('#quit'); assert.equal((await state(p)).mode, 'menu', 'Leave race goes back to the photograph'); assert.ok(await visible(p, '#start')); await p.click('#go'); await p.evaluate(S(s => s.fast(200)));
+  done.push('keyboard: start, countdown, drive, pause, hit an object, back on road, view, sound; shortcuts after a click; looking away pauses; Leave race');
 
   // ---- 3. The whole race: the autopilot drives three laps ------------------------------------------
   await p.evaluate(S(s => { s.autopilot(true); s.fast(60 * 240); })); r = await state(p);
@@ -80,8 +87,14 @@ const said = p => p.evaluate(() => document.getElementById('say').textContent);
   await p.click('#sample'); await p.waitForFunction(() => window.snapshotCircuit.state().photoKey === 'caps'); assert.equal((await state(p)).blobs.length, 5); assert.ok(!(await visible(p, '#sample')));
   // A picture with nothing in it still gives a circuit.
   await p.evaluate(async () => { const c = document.createElement('canvas'); c.width = 640; c.height = 640; const g = c.getContext('2d'); g.fillStyle = '#777'; g.fillRect(0, 0, 640, 640); await window.snapshotCircuit.usePhoto(c, 'own'); });
-  o = await state(p); assert.ok(o.length > 150 && o.pickups >= 5, 'a blank picture still gives a circuit'); await p.click('#go'); await p.evaluate(S(s => { s.autopilot(true); s.fast(60 * 240); })); assert.equal((await state(p)).mode, 'done');
-  done.push('own photo: objects found, raced to the finish, nothing sent, bad file refused, blank picture handled');
+  o = await state(p); assert.ok(o.length > 150 && o.pickups >= 5, 'a blank picture still gives a circuit'); assert.equal(o.blobs.length, 0, 'a blank picture claims no objects'); assert.match(await p.textContent('#objects'), /Nothing stood out/); await p.click('#go'); await p.evaluate(S(s => { s.autopilot(true); s.fast(60 * 240); })); assert.equal((await state(p)).mode, 'done');
+  // Very wide and very tall pictures: the middle is used, the page says so, nothing is logged, and the race can be finished.
+  for (const [w, h, word] of [[4000, 300, 'wide'], [300, 4000, 'tall'], [2000, 400, 'wide']]) { await p.click('#menu');
+    const buf = Buffer.from((await p.evaluate(([w, h]) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.fillStyle = '#909498'; g.fillRect(0, 0, w, h); for (let i = 0; i < 9; i++) { g.fillStyle = ['#e02020', '#2050e0', '#f0d000'][i % 3]; g.beginPath(); g.arc(w * (0.1 + 0.1 * i), h * (0.2 + 0.07 * i), Math.min(w, h) * 0.12, 0, 7); g.fill(); } return c.toDataURL('image/png'); }, [w, h])).split(',')[1], 'base64');
+    await p.evaluate(() => window.snapshotCircuit.usePhoto(document.createElement('canvas'), 'x').catch(() => {})); await p.setInputFiles('#file', { name: 'shape.png', mimeType: 'image/png', buffer: buf }); await p.waitForFunction(word => window.snapshotCircuit.state().cropped === word, word);
+    o = await state(p); const shape = o.size[0] / o.size[1]; assert.ok(shape <= 2.01 && shape >= 0.59, `${w}x${h} became ${o.size}`); assert.match(await p.textContent('#credit'), new RegExp(`very ${word}`));
+    await p.click('#go'); await p.evaluate(S(s => { s.autopilot(true); s.fast(60 * 300); })); assert.equal((await state(p)).mode, 'done', `the race on a ${w}x${h} picture finishes`); }
+  done.push('own photo: objects found, raced to the finish, nothing sent, bad file refused, blank picture handled; 4000x300, 300x4000 and 2000x400 pictures cut to their middle and raced');
   await p.context().close(); }
 
 // ---- 5. Reduced motion: the steady view from above ----------------------------------------------

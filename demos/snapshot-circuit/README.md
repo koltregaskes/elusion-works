@@ -9,11 +9,11 @@ Use it as the reference for small browser games and for anything that turns a pi
 
 - Looks at a photograph and finds the things in it that stand out from their surroundings (by colour, and by contrast for dark things).
 - Lays the photograph flat as the ground and draws a circuit round the group of things it found. Every photograph gives a different circuit.
-- The things stand up from where they lie in the picture, cut out like stickers. They are solid: drive into one and you stop.
+- The things stand up from where they lie in the picture, cut out like stickers, beside the road. They are solid: hit one square on and you stop; clip one and you slide round it. A thing with no room beside the road is left flat, and the start card says so.
 - Small things become boosts on the road. If the picture has none, boosts are placed in the picture's own colours.
 - Three laps against two computer drivers. Laps only count if you take the checkpoints in order, so short cuts and reversing earn nothing.
 - Two views (behind the kart, and from above), a map made of the photograph itself, pause, and a button that puts you back on the road.
-- **Use your own photo** builds a new circuit from any picture. The picture is read in the page and is never uploaded.
+- **Use your own photo** builds a new circuit from any picture. The picture is read in the page and is never uploaded. Very wide or tall pictures are cut to their middle.
 - Keyboard on a computer; on a phone the kart drives itself forward and you steer and brake with on-screen buttons.
 - Small synthesised sounds (engine, bump, boost, lap), with a mute button.
 

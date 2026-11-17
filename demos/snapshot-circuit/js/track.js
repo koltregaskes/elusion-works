@@ -41,24 +41,40 @@ function homeLoop(hazards, N, mx, mz) {
   return even(loop);
 }
 
+// Does a closed line of points cross itself anywhere?
+function crosses(pts) { const n = pts.length, hit = (a, b, c, d) => { const o = (p, q, r) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]); return o(a, b, c) * o(a, b, d) < 0 && o(c, d, a) * o(c, d, b) < 0; };
+  for (let i = 0; i < n; i++) for (let j = i + 2; j < n; j++) { if (i === 0 && j === n - 1) continue; if (hit(pts[i], pts[(i + 1) % n], pts[j], pts[(j + 1) % n])) return true; } return false; }
+
 // Build the circuit: a loop round the things in the picture, pushed aside wherever one still stands in its way.
+// Three tries, each plainer than the last, so every picture ends with a road that does not cross itself and that nothing blocks:
+// round the group of objects; a rounded rectangle pushed clear of them; a rounded rectangle left alone.
 export function buildTrack(analysis) {
   const H = WORLD_W * analysis.height / analysis.width, mx = WORLD_W / 2 - HALF - 2.5, mz = H / 2 - HALF - 2.5;
-  const hazards = analysis.blobs.filter(b => b.role === 'hazard').map(b => { const [x, z] = toWorld(b.x, b.y, H), w = (b.x1 - b.x0) * WORLD_W, h = (b.y1 - b.y0) * H; return { blob: b.id, x, z, r: clamp(Math.min(w, h) * 0.42, 2.2, 14), w, h, name: b.name, colour: b.colour }; });
-  const N = 36, cps = homeLoop(hazards, N, mx, mz);
-  const home = cps.map(p => [p[0], p[1]]);
-  for (let it = 0; it < 90; it++) {
-    for (let i = 0; i < N; i++) { const p = cps[i]; p[0] += (home[i][0] - p[0]) * 0.05; p[1] += (home[i][1] - p[1]) * 0.05; // a gentle pull back to the wide loop, so smoothing never shrinks the circuit
-      for (const hz of hazards) { let dx = p[0] - hz.x, dz = p[1] - hz.z, d = Math.hypot(dx, dz); const need = hz.r + HALF + 1.6; if (d >= need) continue; if (d < 0.01) { dx = p[0] || 1; dz = p[1]; d = Math.hypot(dx, dz); } p[0] += dx / d * (need - d) * 0.55; p[1] += dz / d * (need - d) * 0.55; }
-      p[0] = clamp(p[0], -mx, mx); p[1] = clamp(p[1], -mz, mz);
+  if (!(mz > HALF + 2)) throw new Error('This picture is too wide or too tall to make a circuit from'); // the page crops pictures before they get here
+  const all = analysis.blobs.filter(b => b.role === 'hazard').map(b => { const [x, z] = toWorld(b.x, b.y, H), w = (b.x1 - b.x0) * WORLD_W, h = (b.y1 - b.y0) * H; return { blob: b.id, x, z, r: clamp(Math.min(w, h) * 0.42, 2.2, 14), w, h, name: b.name, colour: b.colour }; });
+  const N = Math.max(36, Math.round((mx + mz) * 2 / 6.5)); let pts = null, hazards = null; // more guide points for a longer loop
+  for (const plan of ['round', 'pushed', 'plain']) {
+    hazards = all.map(hz => ({ ...hz })); const cps = homeLoop(plan === 'round' ? hazards : [], N, mx, mz), home = cps.map(p => [p[0], p[1]]);
+    if (plan !== 'plain') for (let it = 0; it < 90; it++) {
+      for (let i = 0; i < N; i++) { const p = cps[i]; p[0] += (home[i][0] - p[0]) * 0.05; p[1] += (home[i][1] - p[1]) * 0.05; // a gentle pull back to the wide loop, so smoothing never shrinks the circuit
+        for (const hz of hazards) { let dx = p[0] - hz.x, dz = p[1] - hz.z, d = Math.hypot(dx, dz); const need = hz.r + HALF + 1.6; if (d >= need) continue; if (d < 0.01) { dx = p[0] || 1; dz = p[1]; d = Math.hypot(dx, dz); } p[0] += dx / d * (need - d) * 0.55; p[1] += dz / d * (need - d) * 0.55; }
+        p[0] = clamp(p[0], -mx, mx); p[1] = clamp(p[1], -mz, mz);
+      }
+      if (it < 80) for (let i = 0; i < N; i++) { const a = cps[(i + N - 1) % N], b = cps[i], c = cps[(i + 1) % N]; b[0] = b[0] * 0.7 + (a[0] + c[0]) * 0.15; b[1] = b[1] * 0.7 + (a[1] + c[1]) * 0.15; }
     }
-    if (it < 80) for (let i = 0; i < N; i++) { const a = cps[(i + N - 1) % N], b = cps[i], c = cps[(i + 1) % N]; b[0] = b[0] * 0.7 + (a[0] + c[0]) * 0.15; b[1] = b[1] * 0.7 + (a[1] + c[1]) * 0.15; }
+    pts = smoothLoop(cps, 10).map(p => [clamp(p[0], -mx - 2, mx + 2), clamp(p[1], -mz - 2, mz + 2)]);
+    // Iron out any kink a kart could not steer round: smooth the line a little at a time until no short stretch turns too sharply.
+    const kink = () => { let worst = 0; const m = pts.length; for (let i = 0; i < m; i++) { const a = pts[i], b = pts[(i + 1) % m], c = pts[(i + 4) % m], d = pts[(i + 5) % m], t = Math.atan2(d[1] - c[1], d[0] - c[0]) - Math.atan2(b[1] - a[1], b[0] - a[0]); worst = Math.max(worst, Math.abs(Math.atan2(Math.sin(t), Math.cos(t)))); } return worst; };
+    for (let pass = 0; pass < 240 && kink() > 0.42; pass++) pts = pts.map((p, i) => { const a = pts[(i + pts.length - 1) % pts.length], c = pts[(i + 1) % pts.length]; return [p[0] * 0.5 + (a[0] + c[0]) * 0.25, p[1] * 0.5 + (a[1] + c[1]) * 0.25]; });
+    const sharp = kink() > 0.42;
+    // An object with no room beside the road is left lying flat in the picture: it is not made solid.
+    hazards = hazards.filter(hz => { let near = Infinity; for (const p of pts) near = Math.min(near, Math.hypot(p[0] - hz.x, p[1] - hz.z)); const room = near - HALF - 0.4; hz.clear = near; if (room < 1.6) return false; hz.r = Math.min(hz.r, room); return true; }); // solid things stand beside the road, never in it
+    let tight = false; for (let i = 0; i < pts.length && !tight; i++) for (let j = i + 40; j <= i + pts.length - 40 && !tight; j++) { const q = pts[j % pts.length]; if (Math.hypot(pts[i][0] - q[0], pts[i][1] - q[1]) < HALF * 1.6) tight = true; } // two stretches of road lying on top of each other
+    if (plan === 'plain' || (!crosses(pts) && !tight && !sharp)) break;
   }
-  const pts = smoothLoop(cps, 10), n = pts.length, cum = new Float64Array(n + 1);
+  const n = pts.length, cum = new Float64Array(n + 1);
   for (let i = 0; i < n; i++) { const a = pts[i], b = pts[(i + 1) % n]; cum[i + 1] = cum[i] + Math.hypot(b[0] - a[0], b[1] - a[1]); }
-  // Whatever the picture, the circuit must be drivable: an object that still pokes into the road is made narrower.
-  for (const hz of hazards) { let near = Infinity; for (const p of pts) near = Math.min(near, Math.hypot(p[0] - hz.x, p[1] - hz.z)); const room = near - HALF * 0.55 - KART_R; if (hz.r > room) hz.r = Math.max(1.2, room); hz.clear = near; }
-  const track = { H, pts, cum, length: cum[n], n, hazards, half: HALF };
+  const track = { H, pts, cum, length: cum[n], n, hazards, half: HALF, flat: all.filter(a => !hazards.some(hz => hz.blob === a.blob)).map(a => a.blob) };
   // Start on the calmest stretch away from the objects.
   let best = 0, bestScore = Infinity;
   for (let i = 0; i < n; i += 5) { let bend = 0; for (let k = -12; k <= 12; k += 4) { const a = heading(track, i + k), b = heading(track, i + k + 4); bend += Math.abs(Math.atan2(Math.sin(b - a), Math.cos(b - a))); } let crowd = 0; for (const hz of hazards) crowd += Math.max(0, 22 - Math.hypot(pts[i][0] - hz.x, pts[i][1] - hz.z)); const sc = bend * 30 + crowd; if (sc < bestScore) { bestScore = sc; best = i; } }

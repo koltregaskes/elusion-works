@@ -70,10 +70,11 @@
 
   @media (max-width:760px) {
     .made { grid-template-columns:1fr; order:2; } .card { padding:16px 16px 18px; } #start { display:flex; flex-direction:column; } #start .actions { order:1; margin:0 0 14px; } #start .keys { order:3; } #map { width:112px; } .stat { min-width:62px; padding:6px 9px; } .stat b { font-size:15px; }
-    .toolrow { max-width:124px; } .toolrow .btn { min-height:34px; padding:0 8px; } #say { top:max(226px,calc(env(safe-area-inset-top) + 226px)); font-size:13px; }
+    .toolrow { max-width:124px; } .toolrow .btn { min-height:34px; padding:0 8px; } #say { top:auto; bottom:max(132px,calc(env(safe-area-inset-bottom) + 132px)); font-size:13px; }
     .result { grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
   }
-  @media (max-height:480px) { #say { top:max(14px,calc(env(safe-area-inset-top) + 14px)); } .made { grid-template-columns:150px 1fr; } .lede, .keys, .note { display:none; } .card { padding:12px 16px; } h1 { font-size:26px; } .pad { width:60px; height:60px; } }
+  @media (max-width:420px) { #tools { top:max(64px,calc(env(safe-area-inset-top) + 64px)); } #map { width:96px; } .toolrow { max-width:200px; } }
+  @media (max-height:480px) { #say { top:max(14px,calc(env(safe-area-inset-top) + 14px)); bottom:auto; } .made { grid-template-columns:150px 1fr; } .lede, .keys, .note { display:none; } .card { padding:12px 16px; } h1 { font-size:26px; } .pad { width:60px; height:60px; } }
   @media (prefers-reduced-motion:reduce) { * { transition:none !important; } }
 </style>
 <script type="importmap">
@@ -95,6 +96,7 @@
     <button class="btn" id="sound" type="button" aria-pressed="true" title="Sound on or off (M)">Sound</button>
     <button class="btn" id="pause" type="button" aria-pressed="false" title="Pause (P)">Pause</button>
     <button class="btn" id="rescue" type="button" title="Put me back on the road (R)">Back on road</button>
+    <button class="btn" id="quit" type="button" title="Stop this race and go back to the photograph">Leave race</button>
   </div>
 </div>
 <div class="hud" id="speed" role="img" aria-label="Speed"><i id="speedbar"></i></div>
