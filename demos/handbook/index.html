@@ -15,7 +15,9 @@
   :root[data-theme="light"] { --bg:#f7f8f6; --side:#eff1ee; --card:#ffffff; --line:rgba(20,23,26,.16); --ink:#14171a; --soft:#2c3236; --muted:#566065; --accent:#0b7a46; --accent-ink:#ffffff; --link:#0b7a46; --edge:#6a7479; color-scheme:light; }
   @media (prefers-color-scheme:light) { :root:not([data-theme]) { --bg:#f7f8f6; --side:#eff1ee; --card:#ffffff; --line:rgba(20,23,26,.16); --ink:#14171a; --soft:#2c3236; --muted:#566065; --accent:#0b7a46; --accent-ink:#ffffff; --link:#0b7a46; --edge:#6a7479; color-scheme:light; } }
   * { box-sizing:border-box; }
-  html { background:var(--bg); font-size:100%; -webkit-text-size-adjust:100%; scroll-padding-top:calc(var(--top) + 16px); }
+  html { background:var(--bg); font-size:100%; -webkit-text-size-adjust:100%; }
+  /* What a link goes to stops clear of the bar at the top. This is set on the things gone to, not as padding on the page: padding would also make the browser scroll the page to the top whenever the search box or a button in the bar took the focus. */
+  main, main article, h1, h2, .code, .scroll { scroll-margin-top:calc(var(--top) + 1rem); }
   body { margin:0; background:var(--bg); color:var(--ink); font:1rem/1.6 var(--sans); }
   [hidden]:not([hidden="until-found"]) { display:none !important; } /* pages not shown are hidden "until found": a browser's own Find can look inside them, where it knows how */
   a { color:var(--link); text-underline-offset:3px; } button, input { font:inherit; color:inherit; }

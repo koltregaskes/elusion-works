@@ -95,6 +95,8 @@ A second pass by a separate Claude agent (Opus), read-only, given the brief and 
 
 One thing found while fixing: following a link into a hidden page also sends the browser's "found" event, and the first version of the handler for finding 26 rewrote the address and lost the section. The search check caught it.
 
+One thing found afterwards, by the author, while building the next demo: the page had padding at its top to keep headings clear of the bar, and that padding made the browser scroll the page to the top whenever the search box or a button in the bar took the focus. Control K from half-way down a page threw the reader to its top. The clearance is now set on the headings themselves, and a browser check holds it.
+
 ## Provenance
 
 - No library, no font, no picture or data file.
