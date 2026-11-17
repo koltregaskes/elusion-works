@@ -16,7 +16,7 @@ const SAMPLE = { src: 'img/caps.jpg', key: 'caps', credit: 'Sample photograph: i
 
 let renderer;
 try { renderer = new THREE.WebGLRenderer({ canvas: $('stage'), antialias: true, powerPreference: 'high-performance' }); }
-catch (err) { $('fallback').style.display = 'grid'; throw err; }
+catch (err) { $('fallback').style.display = 'grid'; $('start').hidden = true; throw err; }
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, small ? 1.5 : 2));
 const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0c0e10);
 const camera = new THREE.PerspectiveCamera(58, 1, 0.5, 600);
@@ -25,7 +25,7 @@ const world = new THREE.Group(); scene.add(world);
 
 // ---- State ----------------------------------------------------------------------------------
 let photo = null, analysis = null, track = null, race = null, mode = 'menu', photoKey = SAMPLE.key, cropped = '', topView = reduced, paused = false, auto = false, soundOn = true;
-let cutouts = [], tokens = [], kartMeshes = [], mapBase = null, sayTimer = 0;
+let cutouts = [], tokens = [], kartMeshes = [], mapBase = null, sayTimer = 0, settled = false;
 const keys = { left: false, right: false, up: false, down: false };
 
 // ---- Building the scene from a photograph -----------------------------------------------------------
@@ -125,7 +125,7 @@ const audio = (() => {
 // ---- Screens ------------------------------------------------------------------------------------------------
 function say(text, ms = 2200) { $('say').textContent = text; clearTimeout(sayTimer); sayTimer = setTimeout(() => { $('say').textContent = ''; }, ms); }
 function hud(show) { for (const id of ['status', 'tools', 'speed']) $(id).hidden = !show; for (const p of document.querySelectorAll('.pads')) p.hidden = !show; }
-function toMenu() { paused = false; $('pause').setAttribute('aria-pressed', 'false'); $('pause').textContent = 'Pause'; mode = 'menu'; clearTimeout(sayTimer); $('say').textContent = ''; race = newRace(track); paused = false; $('start').hidden = false; $('finish').hidden = true; hud(false); $('count').textContent = ''; audio.engine(0, false); $('go').focus({ preventScroll: true }); }
+function toMenu() { paused = false; $('pause').setAttribute('aria-pressed', 'false'); $('pause').textContent = 'Pause'; mode = 'menu'; clearTimeout(sayTimer); $('say').textContent = ''; race = newRace(track); paused = false; $('start').hidden = false; $('finish').hidden = true; hud(false); $('count').textContent = ''; audio.engine(0, false); if (settled) $('go').focus({ preventScroll: true }); settled = true; } // no grabbing the focus as the page first loads
 function startRace() { audio.start(); race = newRace(track); mode = 'race'; paused = false; lastCount = 4; acc = 0; $('pause').setAttribute('aria-pressed', 'false'); $('pause').textContent = 'Pause'; $('start').hidden = true; $('finish').hidden = true; hud(true); $('stage').focus(); }
 function finishRace() {
   mode = 'done'; const me = race.karts[0], place = race.order.indexOf(0), bestLap = Math.min(...me.laps); let best = null;

@@ -33,7 +33,8 @@ const said = p => p.evaluate(() => document.getElementById('say').textContent);
   assert.ok(s.pickups >= 5 && s.length > 150);
   assert.equal(await p.locator('#objects li').count(), 5); assert.match(await p.textContent('#credit'), /Kodak/);
   assert.ok(await visible(p, '#start')); for (const id of ['#status', '#tools', '#speed', '#finish', '#sample']) assert.ok(!(await visible(p, id)), `${id} shows on the start screen`);
-  assert.equal(await p.evaluate(() => document.activeElement.id), 'go', 'Start has the focus');
+  // As the page loads it leaves the focus alone, and the first three presses of Tab each land on something you can see (the repo's own rule).
+  { const q = await open(1280, 800); for (const want of ['go', 'own', '']) { await q.keyboard.press('Tab'); const f = await q.evaluate(() => { const n = document.activeElement, r = n.getBoundingClientRect(); return { tag: n.tagName, id: n.id, ok: r.width > 0 && r.height > 0 }; }); assert.ok(f.ok && f.tag !== 'BODY' && f.id === want, `Tab reached ${f.tag} ${f.id}`); } await q.context().close(); }
   const px = await p.evaluate(() => { const c = document.getElementById('found'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let lit = 0; for (let i = 0; i < d.length; i += 4000) if (d[i] + d[i + 1] + d[i + 2] > 60) lit++; return lit; }); assert.ok(px > 100, 'the photograph is drawn on the start card');
   await axe(p, 'start'); await layout(p, 'start 1280');
   done.push('sample photo: five objects found where they are, hazards stand on them');
@@ -67,7 +68,7 @@ const said = p => p.evaluate(() => document.getElementById('say').textContent);
   assert.equal(await p.evaluate(() => Number(localStorage.getItem('snapshot-circuit:best')) > 20), true, 'the record is kept');
   await axe(p, 'finish'); await layout(p, 'finish 1280');
   await p.click('#again'); assert.equal((await state(p)).mode, 'race'); await p.evaluate(S(s => s.fast(60 * 240))); assert.equal((await state(p)).mode, 'done', 'a second race also finishes');
-  await p.click('#menu'); assert.equal((await state(p)).mode, 'menu'); assert.ok(await visible(p, '#start'));
+  await p.click('#menu'); assert.equal((await state(p)).mode, 'menu'); assert.ok(await visible(p, '#start')); assert.equal(await p.evaluate(() => document.activeElement.id), 'go', 'back at the start card, Start has the focus');
   await p.reload(); await p.evaluate(() => window.snapshotCircuit.ready); assert.equal((await state(p)).soundOn, false, 'the sound choice survives a refresh');
   done.push('a full three-lap race finishes, twice; result and record shown');
 
