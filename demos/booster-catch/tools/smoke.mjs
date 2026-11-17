@@ -40,8 +40,9 @@ const log = (...a) => console.log('ok ', ...a);
   for (const [label, t] of [['Mach 1', 368], ['Burn', 390], ['Catch', 414]]) { await page.click(`.mark:text-is("${label}")`); const s = await st(page); assert.ok(Math.abs(s.t - t) < 0.05, label); }
   log('timeline markers jump to T+6:08, T+6:30 and T+6:54');
   // Keyboard: arrows step a second, digits pick cameras, letters switch views.
-  await page.focus('#stage'); await page.keyboard.press('ArrowRight'); assert.ok(Math.abs((await st(page)).t - 414.98) < 0.05);
-  await page.keyboard.press('Shift+ArrowLeft'); assert.ok(Math.abs((await st(page)).t - 409.98) < 0.05);
+  assert.equal((await st(page)).phase, 'Caught'); assert.match(await page.getAttribute('#scrub', 'aria-valuetext'), /T plus 06:54, Caught/);
+  await page.focus('#stage'); await page.keyboard.press('ArrowRight'); assert.ok(Math.abs((await st(page)).t - 415) < 0.05);
+  await page.keyboard.press('Shift+ArrowLeft'); assert.ok(Math.abs((await st(page)).t - 410) < 0.05);
   for (let i = 1; i <= 8; i++) { await page.keyboard.press(String(i)); }
   assert.equal((await st(page)).cam, 'free'); assert.equal((await st(page)).director, false);
   await page.keyboard.press('b'); assert.equal((await st(page)).mode, 'blueprint'); await page.keyboard.press('t'); assert.equal((await st(page)).mode, 'thermal'); await page.keyboard.press('n');
@@ -53,6 +54,7 @@ const log = (...a) => console.log('ok ', ...a);
   log('keyboard: step, eight cameras, views, director, split, path, sound');
   // Range input by keyboard, dialog open and close, replay to the end stops cleanly.
   await page.focus('#scrub'); await page.keyboard.press('Home'); assert.ok((await st(page)).t < 366.1);
+  await page.keyboard.press('ArrowRight'); await page.keyboard.press('PageUp'); assert.ok(Math.abs((await st(page)).t - 372) < 0.05, 'timeline arrows step whole seconds'); await page.keyboard.press('Home');
   assert.match(await page.getAttribute('#scrub', 'aria-valuetext'), /T plus 06:06/);
   await page.click('#about-open'); assert.equal(await page.evaluate(() => document.getElementById('about').open), true);
   await page.keyboard.press('Escape'); assert.equal(await page.evaluate(() => document.getElementById('about').open), false);
@@ -81,6 +83,20 @@ const log = (...a) => console.log('ok ', ...a);
   await page.tap('#play'); const p1 = (await st(page)).playing; await page.tap('#play'); assert.notEqual((await st(page)).playing, p1);
   log('phone 400x800: no sideways overflow, touch targets 32 px or taller, taps work');
   await page.close();
+}
+// 2b. Short phone and short desktop window: the action stays clear of the panels, and split view never covers the transport.
+{
+  const { page } = await open({ viewport: { width: 375, height: 548 }, hasTouch: true, isMobile: true });
+  await page.evaluate(() => { const r = window.__replay; r.setPlaying(false); r.setDirector(false); r.setCamera('tracker'); r.seek(400); r.renderNow(); });
+  const hit = await page.evaluate(() => { const top = document.querySelector('.title').getBoundingClientRect().bottom + 6, bottom = Math.min(...['.telemetry', '.modes', '.dock'].map(q => document.querySelector(q).getBoundingClientRect().top)); const e = document.elementFromPoint(innerWidth / 2, (top + bottom) / 2); return { id: e.id, band: Math.round(bottom - top) }; });
+  assert.equal(hit.id, 'stage', 'the middle of the free band is covered'); assert.ok(hit.band >= 80, 'free band too small: ' + hit.band);
+  const fr = await page.evaluate(() => window.__replay.free); assert.ok(fr.top > 40 && fr.bottom < 400 && fr.bottom - fr.top >= 80, 'picture is not centred in the free band: ' + JSON.stringify(fr));
+  await page.close();
+  const d = await open({ viewport: { width: 1280, height: 450 } });
+  await d.page.evaluate(() => { const r = window.__replay; r.setPlaying(false); document.getElementById('split').click(); r.renderNow(); });
+  for (const id of ['play', 'restart', 'rate', 'director']) assert.equal(await d.page.evaluate(i => { const r = document.getElementById(i).getBoundingClientRect(); return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2).closest('button,select').id; }, id), id, id + ' is covered');
+  log(`short phone 375x548: free band ${hit.band} px is clear; 1280x450 split view leaves the transport clickable`);
+  await d.page.close();
 }
 // 3. Reduced motion: no autoplay, a still frame near the catch, sound off.
 {

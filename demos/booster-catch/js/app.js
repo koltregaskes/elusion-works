@@ -75,7 +75,7 @@ const VERT = `
 const TAIL = `
 #include <tonemapping_fragment>
 #include <colorspace_fragment>`;
-const blueprintMat = new THREE.ShaderMaterial({
+const makeBlueprint = () => new THREE.ShaderMaterial({
   transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
   vertexShader: VERT,
   fragmentShader: `varying vec3 vN; varying vec3 vE; varying vec2 vUv;
@@ -87,13 +87,14 @@ const blueprintMat = new THREE.ShaderMaterial({
       gl_FragColor = vec4(vec3(0.42, 0.76, 1.0)*a, a); ${TAIL}
     }`,
 });
+const blueprintMats = [makeBlueprint(), makeBlueprint()]; // [plain, instanced]: one shader program each, no switching per draw
 const heat = { value: new THREE.Vector2(1, 0) };
 const thermalCache = new Map();
-function thermalMat(spec, side) {
-  const key = spec + '|' + side; if (thermalCache.has(key)) return thermalCache.get(key);
+function thermalMat(spec, src, instanced) {
+  const side = src.side, key = [spec, side, instanced, src.polygonOffset].join('|'); if (thermalCache.has(key)) return thermalCache.get(key);
   const base = typeof spec === 'number' ? spec : spec === 'engine' ? 0.5 : 0.33;
   const m = new THREE.ShaderMaterial({
-    side, fog: false, uniforms: { uBase: { value: base }, uKind: { value: spec === 'body' ? 1 : spec === 'engine' ? 2 : 0 }, uHeat: heat, uFire: shared.uFire, uSun: shared.uSun, uMode: shared.uMode },
+    side, fog: false, polygonOffset: src.polygonOffset, polygonOffsetFactor: src.polygonOffsetFactor, polygonOffsetUnits: src.polygonOffsetUnits, uniforms: { uBase: { value: base }, uKind: { value: spec === 'body' ? 1 : spec === 'engine' ? 2 : 0 }, uHeat: heat, uFire: shared.uFire, uSun: shared.uSun, uMode: shared.uMode },
     vertexShader: VERT,
     fragmentShader: `varying vec3 vN; varying vec3 vE; varying vec3 vW; varying float vY; uniform float uBase; uniform float uKind; uniform vec2 uHeat; uniform vec4 uFire; ${SKY_GLSL}
       void main(){
@@ -110,18 +111,18 @@ function thermalMat(spec, side) {
 const solids = [];
 scene.traverse(o => {
   if (!o.isMesh || o.userData.kind) return;
-  const side = o.material.side;
-  solids.push({ o, visual: o.material, thermal: thermalMat(o.userData.temp ?? 0.25, side) });
+  const inst = o.isInstancedMesh === true;
+  solids.push({ o, visual: o.material, blueprint: blueprintMats[inst ? 1 : 0], thermal: thermalMat(o.userData.temp ?? 0.25, o.material, inst) });
 });
 const glowMeshes = []; scene.traverse(o => { if (o.userData.kind === 'glow') glowMeshes.push(o); });
 
 let mode = 'visual', showPath = false;
 function setMode(m) {
   mode = m; shared.uMode.value = m === 'visual' ? 0 : m === 'blueprint' ? 1 : 2;
-  for (const s of solids) s.o.material = m === 'visual' ? s.visual : m === 'blueprint' ? blueprintMat : s.thermal;
+  for (const s of solids) s.o.material = m === 'visual' ? s.visual : m === 'blueprint' ? s.blueprint : s.thermal;
   glowMeshes.forEach(g => { g.visible = m !== 'blueprint'; });
   booster.inside.visible = m === 'blueprint'; callouts.world.visible = callouts.onBooster.visible = m === 'blueprint';
-  path.visible = showPath || m === 'blueprint';
+  path.visible = showPath || m === 'blueprint'; $('path').setAttribute('aria-pressed', String(path.visible));
   bloom.strength = m === 'visual' ? 0.32 : m === 'blueprint' ? 0.55 : 0.3; bloom.threshold = m === 'visual' ? 1.7 : 0.55;
   renderer.shadowMap.enabled = !small && m === 'visual';
   document.querySelectorAll('.modes button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
@@ -197,15 +198,26 @@ const composer = new EffectComposer(renderer, target);
 composer.addPass(new RenderPass(scene, cam));
 const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.32, 0.55, 1.7); composer.addPass(bloom);
 composer.addPass(new OutputPass());
+// The picture is centred in the part of the screen the panels leave free, so the booster is never behind the controls.
+const free = { top: 0, bottom: 0 };
+function measureFree(w, h) {
+  const rect = sel => { const e = document.querySelector(sel); return e && e.getClientRects().length ? e.getBoundingClientRect() : null; };
+  const narrow = w <= 820, title = rect('.title'), dock = rect('.dock');
+  free.top = narrow && title ? title.bottom + 6 : 0; free.bottom = dock ? dock.top : h;
+  if (narrow) for (const sel of ['.telemetry', '.modes']) { const r = rect(sel); if (r && r.top > h * 0.3) free.bottom = Math.min(free.bottom, r.top); }
+  if (free.bottom - free.top < 80) { free.top = 0; free.bottom = h; }
+}
 function resize() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
   renderer.setPixelRatio(quality.dpr); renderer.setSize(w, h, false); composer.setPixelRatio(quality.dpr); composer.setSize(w, h);
-  cam.aspect = w / h; cam.updateProjectionMatrix(); dirty = true;
+  measureFree(w, h);
+  cam.aspect = w / h; cam.setViewOffset(w, h, 0, Math.round(h / 2 - (free.top + free.bottom) / 2), w, h); cam.updateProjectionMatrix(); dirty = true;
 }
 addEventListener('resize', resize);
+canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); playing = false; $('fallback').style.display = 'grid'; $('fallback').querySelector('p').innerHTML = '<strong>3D graphics were interrupted.</strong><br>Reload the page to carry on.'; });
 
 // ---- The one clock --------------------------------------------------------------------------
-let time = T_START, playing = false, rate = 1, dirty = true, firstFrameMs = null, lastEvent = null;
+let time = T_START, playing = false, rate = 1, dirty = true, firstFrameMs = null, lastEvent = null, dragging = false;
 const vSize = new THREE.Vector2();
 
 function apply(t) {
@@ -225,20 +237,22 @@ function apply(t) {
 function render() {
   apply(time);
   if (director) { const want = directorCam(time); if (want !== camId) setCamera(want, false); }
-  if (camId === 'free') { along(S, 34, mid); cam.position.add(v1.copy(mid).sub(lastTarget)); controls.target.copy(mid); lastTarget.copy(mid); controls.update(); }
+  if (camId === 'free') { along(S, 34, mid); cam.position.add(v1.copy(mid).sub(lastTarget)); controls.target.copy(mid); lastTarget.copy(mid); controls.update(); cam.position.y = Math.max(cam.position.y, 2); cam.lookAt(mid); }
   else poseCamera(camId, cam, S);
   renderer.getSize(vSize);
   if (quality.bloom) composer.render(); else { renderer.setViewport(0, 0, vSize.x, vSize.y); renderer.render(scene, cam); }
   if (split && !small) { // two more cameras, same instant, drawn straight over the frame
-    const others = ['onboard', 'pad', 'tracker'].filter(i => i !== camId).slice(0, 2), w = Math.round(vSize.x * 0.2), h = Math.round(w * 9 / 16);
-    renderer.autoClear = false; renderer.setScissorTest(true);
-    others.forEach((id, k) => {
-      const x = 20, y = vSize.y - 150 - (k + 1) * (h + 12);
+    const others = ['onboard', 'pad', 'tracker'].filter(i => i !== camId).slice(0, 2), tb = document.querySelector('.title').getBoundingClientRect();
+    const room = free.bottom - tb.bottom - 36, h = Math.round(Math.min(vSize.x * 0.2 * 9 / 16, (room - 12) / 2)), w = Math.round(h * 16 / 9), show = h >= 64;
+    renderer.autoClear = false; renderer.setScissorTest(true); renderer.shadowMap.autoUpdate = false; // shadows are already drawn for this instant
+    insetLabels.forEach(l => { l.style.display = 'none'; });
+    if (show) others.forEach((id, k) => {
+      const x = 20, y = Math.round(vSize.y - tb.bottom - 14 - (k + 1) * (h + 12) + 12);
       insetCams[k].aspect = w / h; poseCamera(id, insetCams[k], S);
       renderer.setViewport(x, y, w, h); renderer.setScissor(x, y, w, h); renderer.clear(true, true, false); renderer.render(scene, insetCams[k]);
       insetLabels[k].textContent = CAMS.find(c => c.id === id).name; Object.assign(insetLabels[k].style, { display: 'block', left: x + 'px', bottom: y + 'px', width: w + 'px', height: h + 'px' }); insetLabels[k].dataset.cam = id;
     });
-    renderer.setScissorTest(false); renderer.setViewport(0, 0, vSize.x, vSize.y); renderer.autoClear = true;
+    renderer.setScissorTest(false); renderer.setViewport(0, 0, vSize.x, vSize.y); renderer.autoClear = true; renderer.shadowMap.autoUpdate = true;
   } else insetLabels.forEach(l => { l.style.display = 'none'; });
   hud();
   if (firstFrameMs === null) firstFrameMs = Math.round(performance.now());
@@ -251,7 +265,7 @@ const insetLabels = [0, 1].map(() => { const b = document.createElement('button'
 const marks = EVENTS.map(e => {
   const b = document.createElement('button'); b.type = 'button'; b.className = 'mark' + (e.cited ? ' cited' : ''); b.textContent = e.short;
   b.style.left = ((e.t - T_START) / (T_END - T_START)) * 100 + '%'; b.setAttribute('aria-label', `Jump to ${e.label}, ${fmtClock(e.t, false)}`);
-  b.addEventListener('click', () => seek(e.t - 0.02)); $('marks').appendChild(b); return { e, b };
+  b.addEventListener('click', () => seek(e.t)); $('marks').appendChild(b); return { e, b };
 });
 const nf = new Intl.NumberFormat('en-GB');
 let hudKey = '';
@@ -264,7 +278,7 @@ function hud() {
     el.engn.textContent = `${S.lit} / 33`; el.phase.textContent = S.phase;
     for (let i = 0; i < 13; i++) engDots[i].classList.toggle('on', engineLevel(i, time) > 0.5);
   }
-  if (document.activeElement !== el.scrub || playing) el.scrub.value = time;
+  if (!dragging) el.scrub.value = time;
   el.scrub.style.setProperty('--p', ((time - T_START) / (T_END - T_START)) * 100 + '%');
   el.scrub.setAttribute('aria-valuetext', valueText());
   let ev = null; for (const m of marks) { const passed = time >= m.e.t; m.b.classList.toggle('passed', passed); if (passed) ev = m.e; }
@@ -294,8 +308,8 @@ const audio = (() => {
   }
   return {
     get on() { return on; },
-    toggle() { on = !on; if (on && !ctx) start(); if (!on) this.silence(); else this.resume(); return on; },
-    resume() { if (on && ctx && ctx.state === 'suspended') ctx.resume(); },
+    toggle() { on = !on; if (on && !ctx) start(); if (!on) { this.silence(); ctx.suspend(); } else this.resume(); return on; },
+    resume() { if (on && ctx && ctx.state !== 'running') ctx.resume(); }, // also covers iOS 'interrupted'
     silence() { if (rumble) rumble.gain.setTargetAtTime(0, ctx.currentTime, 0.05); },
     frame(s, id) {
       if (!on || !ctx || !playing) return;
@@ -324,7 +338,7 @@ function loop(now) {
     const b = Math.floor((time - T_START) / (60 / BPM)); if (b !== beatIndex) { beatIndex = b; if (director) audio.beat(b % 4 === 0); }
     audio.frame(S, camId);
     // keep phones inside their frame budget: drop resolution first, then bloom
-    frames++; if (dt > 0.034) slow++;
+    frames++; if (dt > 0.045) slow++; // slower than about 22 frames a second (a steady 30 is fine)
     if (frames >= 90) { if (slow > 45) { if (quality.dpr > 1) { quality.dpr = Math.max(1, quality.dpr - 0.25); resize(); } else if (quality.bloom) quality.bloom = false; quality.tier = 'reduced'; } frames = slow = 0; }
   }
   if (playing || dirty) { dirty = false; render(); }
@@ -347,12 +361,19 @@ el.play.addEventListener('click', () => setPlaying(!playing));
 $('restart').addEventListener('click', () => { seek(T_START); setPlaying(true); });
 $('rate').addEventListener('change', e => { rate = Number(e.target.value); });
 el.scrub.addEventListener('input', () => seek(Number(el.scrub.value)));
+el.scrub.addEventListener('pointerdown', () => { dragging = true; });
+for (const ev of ['pointerup', 'pointercancel', 'blur']) el.scrub.addEventListener(ev, () => { dragging = false; });
 $('about-open').addEventListener('click', () => $('about').showModal());
 $('about-close').addEventListener('click', () => $('about').close());
 addEventListener('keydown', e => {
   if (e.ctrlKey || e.metaKey || e.altKey || $('about').open) return;
   const tag = e.target.tagName, k = e.key.toLowerCase();
-  if (tag === 'SELECT' || (tag === 'INPUT' && ['arrowleft', 'arrowright', 'home', 'end'].includes(k))) return;
+  if (tag === 'SELECT') return;
+  if (tag === 'INPUT') { // the timeline: a second per press (five with Shift or Page keys), not the slider's fine step
+    const step = { arrowleft: -1, arrowdown: -1, arrowright: 1, arrowup: 1, pagedown: -5, pageup: 5 }[k];
+    if (step) { e.preventDefault(); seek(time + step * (e.shiftKey && Math.abs(step) === 1 ? 5 : 1)); return; }
+    if (k === 'home' || k === 'end') { e.preventDefault(); seek(k === 'home' ? T_START : T_END); return; }
+  }
   if (k === ' ' || k === 'k') { if (tag === 'BUTTON' && k === ' ') return; e.preventDefault(); setPlaying(!playing); }
   else if (k === 'arrowleft') seek(time - (e.shiftKey ? 5 : 1));
   else if (k === 'arrowright') seek(time + (e.shiftKey ? 5 : 1));
@@ -377,4 +398,5 @@ window.__replay = {
   state: () => ({ ...sample(time), cam: camId, mode, director, playing, quality: { ...quality } }),
   get firstFrameMs() { return firstFrameMs; },
   renderNow() { dirty = false; render(); },
+  get free() { return { ...free }; },
 };
