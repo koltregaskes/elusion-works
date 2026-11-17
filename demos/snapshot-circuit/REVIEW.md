@@ -54,7 +54,7 @@ Verified by running, in Node and in headless Chromium 153.
 - **The look.** The charcoal haze at the horizon and the soft shadow under each kart were judged only from software-rendered screenshots, not on a real screen.
 - **Sound.** Synthesised and never listened to.
 - **Safari and Firefox.** Only Chromium was run.
-- **The sample photograph's licence** rests on the Kodak archive's own statement of unrestricted use. See the README.
+- **The sample photograph is a stand-in whose terms of reuse are not settled.** The only evidence checked is an archive page's statement, repeated by a mirror, that Kodak released the suite for unrestricted use; neither is Kodak's own statement. The page's credit line now says it is a stand-in to be replaced, not that it is free to use. It must be replaced with Kol's own photograph before the page is merged or made public. See the README.
 - **Kol's Taste Lab rating.**
 
 ## Known limits
@@ -112,6 +112,7 @@ Reviewed by ChatGPT in chat mode at Pro, driven by another Claude session at the
 | "Ready for Kol to play" and being a quality reference overreach | Fair. The verdict above now says draft, and that it is not yet a visual reference | This file |
 | No usable fallback without WebGL | True. Not done: a 2D version is a new build. Listed under Known limits | None |
 | The 660-case sweep uses made-up layouts, not photographs; full races mostly use the autopilot | True, and already said under Checks run and Not verified | This file |
+| (From the outside review of Still Water, which uses the same Kodak suite.) Permission to reuse the photograph is not established, and the page said it was "released by Eastman Kodak for unrestricted use" as fact | True. The credit line, the README and this file now call it a stand-in test image whose terms are not settled, to be replaced with Kol's own photograph before the page is merged or made public. The photograph itself is not replaced: that needs Kol's own picture | Browser check: the credit says so and makes no claim that it is free to use |
 
 ## Provenance
 

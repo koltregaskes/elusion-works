@@ -40,7 +40,9 @@ The first runs the circuit maker and whole races in Node. The second drives the 
 
 ## The sample photograph
 
-`img/caps.jpg` is image 3 ("caps") of the Kodak Lossless True Color Image Suite, scaled to 768 by 512. The suite's archive page (r0k.us/graphics/kodak) says the images were released by the Eastman Kodak Company for unrestricted usage. This copy came from a public GitHub mirror of the suite, whose README repeats that statement. **Caveat:** that statement is the only licence evidence checked. If Kol wants no doubt at all, swap in one of his own photographs: replace the file and the credit line in `js/app.js`.
+`img/caps.jpg` is image 3 ("caps") of the Kodak Lossless True Color Image Suite, scaled to 768 by 512. The suite's archive page (r0k.us/graphics/kodak) says the images were released by the Eastman Kodak Company for unrestricted usage. This copy came from a public GitHub mirror of the suite, whose README repeats that statement. Neither is Kodak's own statement, and that is the only evidence checked. An outside review of another demo that uses the same suite reported that Kodak's own document speaks of a grant to holders of its sampler disc and of crediting the photographers; that document was not read here and is not in this repo.
+
+**So this is a stand-in test image, its terms of reuse are not settled, and it must be replaced with one of Kol's own photographs before this page is merged or made public.** The page's credit line says the same. To replace it: swap the file and the credit line in `js/app.js`, then re-take the pictures in this folder with `tools/shots.mjs`, because they show it.
 
 ## Credit
 
@@ -48,4 +50,4 @@ The idea follows a post by Dan Shipper about a photograph turned into a racing g
 
 ## Status
 
-A draft, and unlisted: the page carries `noindex`, is not in the demo gallery and is not in the sitemap. The site deploys whatever is merged, so merging this would put the page on the live site at its own address, unlisted but reachable by anyone with the link. See `REVIEW.md` for what was checked and what was not, and for the outside review.
+A draft, and unlisted: the page carries `noindex`, is not in the demo gallery and is not in the sitemap. The site deploys whatever is merged, so merging this would put the page on the live site at its own address, unlisted but reachable by anyone with the link. It must not be merged while the stand-in photograph is on it. See `REVIEW.md` for what was checked and what was not, and for the outside review.

@@ -12,7 +12,7 @@ const small = touch || matchMedia('(max-width: 760px)').matches;
 if (touch) document.documentElement.classList.add('touch');
 const fmt = s => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`;
 const ORD = ['1st', '2nd', '3rd', '4th'];
-const SAMPLE = { src: 'img/caps.jpg', key: 'caps', credit: 'Sample photograph: image 3 of the Kodak Lossless True Color Image Suite, released by Eastman Kodak for unrestricted use.' };
+const SAMPLE = { src: 'img/caps.jpg', key: 'caps', credit: 'Sample photograph: image 3 of the Kodak Lossless True Color Image Suite, a stand-in test image. Its terms of reuse are not settled, and it is to be replaced before this page goes public.' };
 
 let renderer;
 try { renderer = new THREE.WebGLRenderer({ canvas: $('stage'), antialias: true, powerPreference: 'high-performance' }); }
