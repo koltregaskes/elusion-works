@@ -100,9 +100,11 @@ function intercept(m, who, lv) { const s = side(who), r = m.rally, b = { ...m.ba
   if (best) { plan.x = best.x; plan.z = best.z + s * 0.25; } else if (chase) { plan.x = chase.x; plan.z = chase.z + s * 0.3; } // nothing comfortable: run at where the ball comes down, never away from it
   return plan; }
 
-// ---- One step of the match. input is what you are doing: { mx, mz } from -1 to 1, swing: 'drive' | 'dink' | 'lob' when pressed, aim from -1 to 1, or auto: true to let the game play your side. ----
+// How hard you are asking to run, as a direction no longer than 1. Two keys held at once ask for 1 across and 1 along, which is 1.41 overall: that is cut back to 1, so running on the diagonal is no faster than running straight or running where a finger points.
+export function stick(mx, mz) { const x = clamp(Number(mx) || 0, -1, 1), z = clamp(Number(mz) || 0, -1, 1), d = Math.hypot(x, z); return d > 1 ? { mx: x / d, mz: z / d } : { mx: x, mz: z }; }
+// ---- One step of the match. input is what you are doing: { mx, mz } from -1 to 1 (a longer direction is cut back to length 1), swing: 'drive' | 'dink' | 'lob' when pressed, aim from -1 to 1, or auto: true to let the game play your side. ----
 export function step(m, dt, input = {}) { m.events = []; if (m.state === 'over') return m; m.t += dt; m.timer -= dt; const youLv = LEVELS[m.youLevel] || null;
-  const act = { p: input.auto || youLv ? think(m, 'p', youLv || LEVELS.club) : { mx: clamp(input.mx || 0, -1, 1), mz: clamp(input.mz || 0, -1, 1), swing: input.swing || null, aim: input.aim || 0 }, r: think(m, 'r', LEVELS[m.level]) };
+  const act = { p: input.auto || youLv ? think(m, 'p', youLv || LEVELS.club) : { ...stick(input.mx, input.mz), swing: input.swing || null, aim: input.aim || 0 }, r: think(m, 'r', LEVELS[m.level]) };
   const auto = { p: input.auto || !!youLv, r: true }, speed = { p: youLv ? youLv.speed : YOU.speed, r: LEVELS[m.level].speed };
   if (m.state === 'dead') { const spots = serveSpots(m.server, m.score); for (const w of ['p', 'r']) { const me = m.who[w], dx = spots[w].x - me.x, dz = spots[w].z - me.z, d = Math.hypot(dx, dz), v = Math.min(6, d / dt); me.vx = d > 1e-6 ? dx / d * v : 0; me.vz = d > 1e-6 ? dz / d * v : 0; me.x += me.vx * dt; me.z += me.vz * dt; }
     if (m.timer <= 0) { for (const w of ['p', 'r']) Object.assign(m.who[w], spots[w], { vx: 0, vz: 0, swing: 0, cool: 0 }); m.state = 'serve'; m.timer = auto[m.server] ? 0.9 : 0; m.rally = { hits: 0, last: null, bounces: 0, serve: false, since: 0, volleys: 0 }; m.call = null; m.ball.held = true; m.events.push({ type: 'ready', server: m.server }); } }

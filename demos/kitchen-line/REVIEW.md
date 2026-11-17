@@ -5,7 +5,7 @@ Built 17 November 2026 by Claude Fable 5.2 in a Claude Code cloud session. Revie
 
 ## Verdict
 
-Ready for Kol to play. Not published, not in the gallery or the sitemap.
+Ready for Kol to play. A draft, unlisted: not in the gallery or the sitemap, and not on the live site yet. Merging it would put it on the live site at its own address, reachable by anyone with the link, because the site deploys whatever is merged.
 
 **Nobody has played it by hand.** The rules, the scoring and the fairness of the timing are checked by staging each case and by playing hundreds of whole matches. Whether it is fun, and whether Easy, Club and Pro feel like three levels to a person, is unproved. Treat the first game as part of the review.
 
@@ -15,32 +15,35 @@ Ready for Kol to play. Not published, not in the gallery or the sitemap.
 
 | Asked for | Result | Evidence |
 |---|---|---|
-| A browser 3D sports mini-game | Pickleball singles on a full-size court in Three.js: you against a rival at three levels, or watch the game play itself | `index.html`, `js/app.js` |
+| A browser 3D sports mini-game | Pickleball singles, simplified rules, on a full-size court in Three.js: you against a rival at three levels, or watch the game play itself | `index.html`, `js/app.js` |
 | After the chongdashu post, original | Own court, players, rules code, lettering and sounds, all made in the page. No model, picture or sound file is loaded. Credit and link on the page | `index.html`, `README.md` |
 | Kol's taste: comic-book, charcoal, white, one green | Three flat tones and a dark outline; charcoal ground; white lettering that pops where things happen; one green, on your cap, your paddle and the wall's rule | `screenshot.jpg` |
-| Own folder, own review, nothing live | `demos/kitchen-line/`, this file, `noindex`, no gallery card, no sitemap entry | `index.html` |
+| Own folder, own review, nothing live | `demos/kitchen-line/`, this file, `noindex`, no gallery card, no sitemap entry. Not live until merged; once merged it is reachable at its address though unlisted | `index.html` |
 
-## Checks run (17 Nov 2026)
+## Checks run (17 Nov 2026, run again after the outside review)
 
-Verified by running. All three passed on the code as committed.
+Verified by running. All passed on the code as committed. Matches and figures from the rules test are unchanged by the movement fix, number for number.
 
 - `node demos/kitchen-line/tools/rules.test.mjs`: pass.
   - The court is to regulation. 48 shots land where they are aimed and clear the net by their margin.
   - Every rule staged and called right: out, lines in, two bounces, net, short, kitchen, the two-bounce rule, the serve, win by two.
+  - Running is the same speed every way: one key, two keys on the diagonal, a finger on the diagonal and out-of-range input all cover 2.070 m in half a second from standing and reach 5.2 m/s (worked out by hand from the rules' own speed and easing).
   - 128 whole matches to 7 between the game's own players: all finished, 2.5 minutes each on average, 2,099 rallies of 5.1 shots on average, longest 29. They ended: ball not reached 56%, out 19%, net 18%, short 5%, serve missed 2%.
   - Points only ever to the server. No player broke a rule it knows. 1.7% of serves missed. Shots: drive 51%, dink 38%, lob 7%, smash 3%.
   - Fair play: 217 presses, from 0.4 s before the bounce of a serve to 0.1 s after it. None was called a volley; 130 struck the ball after its bounce. A swing pressed at arm's length meets the ball within 0.8 m.
   - A ball that clips the tape plays on, a serve included. 4.2% of clean baseline drives go wrong.
   - Three plain players at the controls, 12 matches each against Easy, Club and Pro: won 12, 12, 4; 12, 9, 0; 12, 9, 0. Longest rally 53. The ring on the court was right about all 16,600 balls it was checked on.
 - `node demos/kitchen-line/tools/smoke.mjs`: pass, in headless Chromium with software graphics.
-  - Starts on the card with a game behind it. Space, K, L, a click and all three buttons serve. Arrows, letters and the pointer move you.
+  - Starts on the card with a game behind it. The card says simplified singles rules and How to play lists what is left out. Space, K, L, a click and all three buttons serve. Arrows, letters and the pointer move you.
+  - Running speed through the page: one arrow key, two arrow keys held on the diagonal and a finger pointing on the diagonal all run at 5.19 m/s after 0.75 s.
   - Pointing across the net aims without moving you. Space still serves after a click on Sound.
   - A smash starts above and behind the head and comes down in front; a drive ends in front at chest height; a dink stays low; the legs stride.
-  - A whole game through the controls: scoreboard, serving dot, call and spoken line right after every rally; the result card right.
+  - A whole game played by a script that sends key events (W A S D and Space) to the page, so the page's own key handlers drive it: scoreboard, serving dot, call and spoken line right after every rally; the result card right. The events come from a script, not a person typing.
   - Pause by button, P, Escape and looking away. Watching, the players are White and Coral everywhere. The game behind the start card starts again when it ends.
   - Phones 390x800, 320x568 and 740x360, a 320 window and 1920x1080: the whole court on screen, thumb-sized buttons that cover nothing, the call clear of your rival.
   - Reduced motion, no WebGL, axe WCAG 2.2 A and AA at six sizes, no console errors, no outside requests.
-- The repo's own rules, run locally: no element wider than the page at 320, 390 and 1280; axe clean; the first three Tabs land on visible things; `python3 scripts/build-site.py` passes.
+- The repo's own rules, run locally: no element wider than the page at 320, 390 and 1280; axe clean; `python3 scripts/build-site.py` passes.
+- `tools/shots.mjs` run again; the start card picture (`thumbnail.png`) shows the new wording.
 
 ## Not verified
 
@@ -81,6 +84,22 @@ A second pass by a separate Claude agent (Opus), read-only, given the brief and 
 | 14 | Smaller: a receiver could wind up a swing during the serve; the ring disagreed with the game about the net in 25 of 204 cases; slow motion on a slow machine; lettering stayed put after a resize | Only the server swings at a serve. Ring, game and rival share one net rule (16,600 of 16,600 agree). Several steps a picture on a slow machine. Lettering clears on resize | rules test; browser check; the slow-machine case is not measured |
 
 Not changed, by choice: the first Tab on the start card lands on the court picture, and Tab past the last button leaves the page.
+
+## Outside review
+
+ChatGPT in chat mode at Pro, driven by another Claude session at the owner's request, reviewed this demo together with Shot Framer on 17 November 2026. It read the code and the pictures and did not run the page. Score 6/10, verdict HOLD for both. Only the findings about Kitchen Line, and those that apply to both demos, are dealt with here. Each was checked before anything was changed.
+
+| Finding | What was done | Held by |
+|---|---|---|
+| Keyboard players run diagonally about 41% faster than straight or by touch (2.93 m against 2.07 m in half a second) | True. Reproduced exactly: 2.928 m on two keys, 2.070 m on one key or a finger. Two keys asked for full speed across and full speed along at once. Fixed in `js/rules.js`: the direction you ask for is cut back to length 1 (`stick`) before it becomes speed, so no caller can get it wrong. Now 2.070 m every way, top speed 5.2 m/s. The game's own players and the scripted test players already asked for directions of length 1, so every whole-match figure is unchanged, number for number (128 matches, the level table, 24 of 24 for the plain player) | rules test: six ways of moving, expected values worked out by hand; browser check: one arrow key, two arrow keys and a finger on the diagonal all reach 5.2 m/s through the page |
+| The page claims the "real rules" but leaves some out, said only in the README | True. The start card and the page description now say simplified singles rules, and How to play lists what is left out: doubles, foot faults on the serve, and the fault for being carried into the kitchen by your own volley. README wording changed to match | browser check reads the card and the list |
+| The whole-match browser check injects control values, so it shows less than its "ok" line says | True. It handed movement straight to the rules, bypassing the page's keys. It now sends key events (W A S D and Space) to the page each step, so the page's own key handlers drive the whole game, and its ok line says it is a script sending key events, not a person typing. A separate check holds arrow keys down through Playwright, and sends a touch pointer event, on the diagonal (above) | browser check |
+| Green CI covers less than the pull request suggests: the demo's own suites do not run in CI | True, and not changed: wiring them into CI means editing the site's shared workflow, which is outside this folder. The checks are run by hand and listed under Checks run above | not done: needs the owner |
+| Unlisted will still mean publicly reachable once deployed | True. README Status and the verdict above now say it is a draft, not yet live, and that merging would put it on the live site at its own address, unlisted but reachable by anyone with the link | README, this file |
+| No real-device play, measured smoothness or heard sound | True, and not done: no real phone, graphics card or speakers here, and nobody has played it. Still listed under Not verified | not done |
+| No asset-licensing blocker | Agreed. Nothing loaded but the site's shared Three.js | |
+
+Found while doing this, not in the outside review: on this machine, under heavy load from other work (load average near 30 on 4 processors), two existing browser checks failed on timing. Neither was a fault in the game. The lettering check failed on the committed version of the code and checks too, not only on the changed one. The lettering check waited a fixed 0.15 s for the page to hear of a new window size; the event came as much as 2.5 s late, and the lettering fades by itself after 0.95 s. It now holds off the fading for the check and reads the count the moment the page hears of the new size, so only the resize handler can clear it (shown to fail with that handler removed). The phone check of a finger moving you took 100 steps when the run needs about 70, and the page's own clock adds steps on a loaded machine, so the rally sometimes ended and you were walked back to serve; it now takes 75 steps and first checks the rally is still on. Touch movement is untouched by the speed fix (a finger already asked for a direction of length 1), and the same steps run on their own passed six times in six, three on the committed code and three on the changed code.
 
 ## Provenance
 

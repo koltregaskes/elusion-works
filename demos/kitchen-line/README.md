@@ -1,11 +1,11 @@
 # Kitchen Line
 
-A small 3D pickleball game for the browser. Singles on a full-size court, with the real rules: the two-bounce rule, the kitchen, side-out scoring, win by two. Keyboard, mouse or touch, against a rival at three levels. Demo 11 of Kol's Fable 5.2 benchmark list, built with Claude Fable 5.2.
+A small 3D pickleball game for the browser. Singles on a full-size court, with simplified singles rules: the two-bounce rule, the kitchen, side-out scoring, win by two. Some rules are left out; the list is below and on the page under How to play. Keyboard, mouse or touch, against a rival at three levels. Demo 11 of Kol's Fable 5.2 benchmark list, built with Claude Fable 5.2.
 
 After [a post by chongdashu](https://x.com/chongdashu/status/2120154573356793883) about a pickleball game in Three.js. This is an original game: its own court, players, rules code and sounds, all made in the page. No model, picture or sound file is loaded.
 
 **Quality bar it sets:** a game whose rules are a module that plays whole matches without a browser, so every rule is staged and checked one at a time, hundreds of matches are played to the end as a check, and the controls are proved playable by a plain hand-written player before anybody picks it up.
-Use it as the reference for browser games with real rules.
+Use it as the reference for browser games that keep a sport's rules.
 
 ## Playing
 
@@ -17,7 +17,7 @@ Use it as the reference for browser games with real rules.
 - **Pause:** P or Esc, or the button. The game also pauses when you look away.
 - **Watch a game first** plays one for you.
 
-## The rules it keeps
+## The rules it keeps (simplified singles)
 
 - The court is 20 by 44 feet with a 7 foot kitchen each side of a net 34 inches high at the middle and 36 at the posts.
 - The serve is from behind the baseline, from your right-hand court when your score is even and your left when it is odd, to the court on the diagonal. It must land beyond the kitchen line.
@@ -27,7 +27,7 @@ Use it as the reference for browser games with real rules.
 - A ball that clips the top of the net and goes over is in play, a serve included: there is no let.
 - Only the server scores. Lose the rally on your serve and the serve changes hands. First to 5, 7 or 11, and win by two.
 
-Left out, on purpose: doubles, foot faults on the serve, and the rule that a volley is a fault if it then carries you forward into the kitchen.
+Left out, on purpose: doubles, foot faults on the serve, and the rule that a volley is a fault if it then carries you forward into the kitchen. The page says the same under How to play.
 
 ## How it is made
 
@@ -84,4 +84,4 @@ The second and third need the site's development packages (Playwright and axe-co
 
 ## Status
 
-Unlisted. The page carries `noindex`, and it is not in the gallery or the sitemap. Nothing here is published.
+Unlisted, and a draft. The page carries `noindex`, and it is not in the gallery or the sitemap. It is not on the live site yet. The site deploys whatever is merged, so merging this would put the page on the live site at its own address (`/demos/kitchen-line/`): still unlisted and not indexed, but reachable by anyone who has the link.
