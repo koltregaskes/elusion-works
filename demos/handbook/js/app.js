@@ -6,6 +6,8 @@ const $ = id => document.getElementById(id);
 const el = (tag, props = {}, ...kids) => { const n = Object.assign(document.createElement(tag), props); n.append(...kids); return n; };
 const articles = [...document.querySelectorAll('main article')], say = text => { $('live').textContent = text; };
 document.body.classList.remove('js-off');
+/* The demo notice under the bar is one line, but larger text can make it two: what is gone to stops clear of it either way. */
+const note = $('demo-note'), fit = () => document.documentElement.style.setProperty('--strip', note.offsetHeight + 'px'); fit(); if (window.ResizeObserver) new ResizeObserver(fit).observe(note);
 
 /* ---- The pages, read from the page itself ---- */
 const pages = articles.map(a => ({ id: a.id, title: a.dataset.page, sections: [{ id: a.id, heading: a.dataset.page, text: '', code: '' }] }));
@@ -38,7 +40,7 @@ articles.forEach((a, i) => { const prev = articles[i - 1], next = articles[i + 1
 
 /* ---- What is on this page, and where you are in it ---- */
 let heads = [];
-function mark() { const top = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--top')) + 30; let cur = heads[0]; for (const h of heads) if (h.getBoundingClientRect().top <= top) cur = h; if (heads.length && innerHeight + scrollY >= document.documentElement.scrollHeight - 2) cur = heads[heads.length - 1]; /* at the very foot, the last heading is the one being read */
+function mark() { const top = $('demo-note').getBoundingClientRect().bottom + 30; /* the foot of the bar and the demo notice under it */ let cur = heads[0]; for (const h of heads) if (h.getBoundingClientRect().top <= top) cur = h; if (heads.length && innerHeight + scrollY >= document.documentElement.scrollHeight - 2) cur = heads[heads.length - 1]; /* at the very foot, the last heading is the one being read */
   if (pin && heads.includes(pin)) cur = pin; for (const a of $('toc-list').querySelectorAll('a')) { if (cur && a.getAttribute('href') === '#' + cur.id) a.setAttribute('aria-current', 'true'); else a.removeAttribute('aria-current'); } }
 function contents(article) { heads = [...article.querySelectorAll('h2')]; $('toc').hidden = heads.length === 0; $('toc-list').replaceChildren(...heads.map(h => el('li', {}, el('a', { href: '#' + h.id, textContent: h.textContent.trim() })))); }
 let due = false; addEventListener('scroll', () => { if (performance.now() > pinUntil) pin = null; keepPlace(); if (!due) { due = true; requestAnimationFrame(() => { due = false; mark(); }); } }, { passive: true });

@@ -11,7 +11,7 @@
 <meta name="robots" content="noindex">
 <style>
   :root { --bg:#111315; --side:#15181a; --card:#191c1f; --line:rgba(255,255,255,.14); --ink:#f4f5f3; --soft:#d6dbde; --muted:#a9b1b6; --accent:#3fe08a; --accent-ink:#06210f; --link:#3fe08a; --edge:#7b858b;
-    --sans:"Helvetica Neue","Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif; --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace; --top:58px; color-scheme:dark; }
+    --sans:"Helvetica Neue","Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif; --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace; --bar:58px; --strip:calc(1.875rem + 1px); --top:calc(var(--bar) + var(--strip)); color-scheme:dark; } /* --bar is the bar across the top, --strip the demo notice under it, --top the two together */
   :root[data-theme="light"] { --bg:#f7f8f6; --side:#eff1ee; --card:#ffffff; --line:rgba(20,23,26,.16); --ink:#14171a; --soft:#2c3236; --muted:#566065; --accent:#0b7a46; --accent-ink:#ffffff; --link:#0b7a46; --edge:#6a7479; color-scheme:light; }
   @media (prefers-color-scheme:light) { :root:not([data-theme]) { --bg:#f7f8f6; --side:#eff1ee; --card:#ffffff; --line:rgba(20,23,26,.16); --ink:#14171a; --soft:#2c3236; --muted:#566065; --accent:#0b7a46; --accent-ink:#ffffff; --link:#0b7a46; --edge:#6a7479; color-scheme:light; } }
   * { box-sizing:border-box; }
@@ -26,13 +26,16 @@
   .skip { position:absolute; left:12px; top:-60px; z-index:30; padding:9px 13px; border-radius:8px; background:var(--accent); color:var(--accent-ink); font-weight:700; text-decoration:none; } .skip:focus { top:10px; }
 
   /* The bar across the top: name, search, light or dark. */
-  #bar { position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:12px; height:var(--top); padding:0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)); background:var(--bg); border-bottom:1px solid var(--line); }
+  #bar { position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:12px; height:var(--bar); padding:0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)); background:var(--bg); border-bottom:1px solid var(--line); }
   #bar .name { font-weight:800; letter-spacing:-.02em; font-size:1.0625rem; white-space:nowrap; text-decoration:none; color:var(--ink); } #bar .name span { color:var(--accent); }
   .btn { min-height:38px; padding:0 13px; border-radius:10px; border:1px solid var(--line); background:transparent; font-weight:700; font-size:0.875rem; cursor:pointer; white-space:nowrap; }
   #find { position:relative; flex:1 1 auto; max-width:460px; margin-left:auto; }
   #q { width:100%; min-height:38px; padding:0 12px 0 34px; border-radius:10px; border:1px solid var(--edge); background:var(--card); font-size:0.9375rem; } #q::placeholder { color:var(--muted); opacity:1; }
   #find::before { content:""; position:absolute; left:12px; top:50%; width:11px; height:11px; margin-top:-8px; border:2px solid var(--muted); border-radius:50%; pointer-events:none; } #find::after { content:""; position:absolute; left:23px; top:50%; width:7px; height:2px; margin-top:4px; background:var(--muted); transform:rotate(45deg); pointer-events:none; }
   #results { position:absolute; left:0; right:0; top:calc(100% + 6px); margin:0; padding:6px; list-style:none; max-height:min(70vh, 520px); overflow:auto; border-radius:12px; border:1px solid var(--line); background:var(--card); box-shadow:0 18px 50px rgba(0,0,0,.35); }
+  /* The demo notice: always in view under the bar, on every page and every section link, with scripts on or off. Plain words, in the house colours. */
+  #demo-note { position:sticky; top:var(--bar); z-index:19; margin:0; padding:0.3125rem max(16px, env(safe-area-inset-right)) 0.3125rem max(16px, env(safe-area-inset-left)); font-size:0.8125rem; line-height:1.25rem; color:var(--soft); background:var(--side); border-bottom:1px solid var(--line); } #demo-note strong { color:var(--ink); }
+  @media (max-width:900px) { #demo-note .more { display:none; } }
   #results li { padding:8px 10px; border-radius:8px; cursor:pointer; } #results li[aria-selected="true"] { background:color-mix(in srgb, var(--accent) 16%, transparent); outline:1px solid var(--accent); }
   #results .where { display:block; font-weight:700; font-size:0.9062rem; } #results .where small { font-weight:500; color:var(--muted); font-size:0.7812rem; } #results .bit { display:block; font-size:0.8125rem; color:var(--soft); line-height:1.45; }
   #results .none { cursor:default; color:var(--muted); font-size:0.875rem; }
@@ -66,10 +69,10 @@
     #side { position:fixed; z-index:15; top:var(--top); left:0; bottom:0; width:min(300px, 86vw); height:auto; display:none; } #side.open { display:block; animation:drawer .18s ease-out; box-shadow:18px 0 50px rgba(0,0,0,.35); } .js-off #side { display:block; position:static; width:auto; box-shadow:none; border-right:0; border-bottom:1px solid var(--line); } } /* shut, the drawer is not on the page at all: nothing sits off the side of the screen */
   @keyframes drawer { from { transform:translateX(-100%); } } @media (prefers-reduced-motion:reduce) { #side.open { animation:none; } }
   /* A narrow phone: the search box has a row of its own, so that what is typed can be seen. */
-  @media (max-width:520px) { :root { --top:104px; } #bar { flex-wrap:wrap; align-content:center; row-gap:6px; } #bar .name { margin-right:auto; } #find { order:5; flex:1 0 100%; max-width:none; margin:0; } .js-off { --top:58px; } }
+  @media (max-width:520px) { :root { --bar:104px; } #bar { flex-wrap:wrap; align-content:center; row-gap:6px; } #bar .name { margin-right:auto; } #find { order:5; flex:1 0 100%; max-width:none; margin:0; } .js-off { --bar:58px; --top:calc(var(--bar) + var(--strip)); } }
   @media (max-width:380px) { #bar .name b { display:none; } } /* on the narrowest phones the name is just Rooms OS, so that the three things in the top row stay in one row */
   @media (prefers-reduced-motion:reduce) { * { transition:none !important; scroll-behavior:auto !important; } }
-  @media print { #bar, #side, #toc, .copy, .pager, .skip { display:none !important; } .cols { display:block; } article[hidden] { display:block !important; content-visibility:visible !important; } article { max-width:none; break-before:page; } article:first-of-type { break-before:auto; } h2 { break-after:avoid; } .code, .scroll, .note { break-inside:avoid; } .code pre { padding-top:14px; white-space:pre-wrap; } :root { --bg:#fff !important; --card:#fff !important; --side:#fff !important; --ink:#000 !important; --soft:#111 !important; --muted:#444 !important; --line:#bbb !important; --link:#000 !important; --accent:#000 !important; --edge:#444 !important; } } /* on paper: black on white whichever look is on screen, a heading never left alone at the foot of a sheet */
+  @media print { #bar, #demo-note, #side, #toc, .copy, .pager, .skip { display:none !important; } .cols { display:block; } article[hidden] { display:block !important; content-visibility:visible !important; } article { max-width:none; break-before:page; } article:first-of-type { break-before:auto; } article::before { content:"Demo handbook: fictional sample rules"; display:block; margin-bottom:10px; font:600 0.75rem/1.3 var(--sans); color:#444; } h2 { break-after:avoid; } .code, .scroll, .note { break-inside:avoid; } .code pre { padding-top:14px; white-space:pre-wrap; } :root { --bg:#fff !important; --card:#fff !important; --side:#fff !important; --ink:#000 !important; --soft:#111 !important; --muted:#444 !important; --line:#bbb !important; --link:#000 !important; --accent:#000 !important; --edge:#444 !important; } } /* on paper: black on white whichever look is on screen, a heading never left alone at the foot of a sheet */
   @media (forced-colors:active) { #side a[aria-current="page"] { outline:2px solid Highlight; outline-offset:-2px; } #toc a[aria-current="true"] { border-left-color:Highlight; text-decoration:underline; } mark { forced-color-adjust:none; background:Highlight; color:HighlightText; box-shadow:none; } #find::before { border-color:CanvasText; } #find::after { background:CanvasText; } }
 </style>
 </head>
@@ -86,6 +89,7 @@
   </div>
   <button class="btn" id="theme" type="button" hidden>Light</button>
 </header>
+<p id="demo-note"><strong>Demo handbook: fictional sample rules.</strong><span class="more"> Written to show how a docs page works. It is not anyone’s working rulebook, and nothing in it is an instruction.</span></p>
 
 <div class="cols">
 <nav id="side" aria-label="Pages">

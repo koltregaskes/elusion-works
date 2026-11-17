@@ -2,7 +2,7 @@
 
 A documentation page: nine short pages with a list of them down the side, search, code samples you can copy, a list of what is on each page, and a light and a dark look. The first of the seven gap demos on Kol's Fable 5.2 benchmark list, built with Claude Fable 5.2.
 
-**The words are sample text.** They were written for this demonstration, in the spirit of Rooms OS. They are not anyone's working rulebook and nothing in them is an instruction. The page says so on its first screen.
+**The words are sample text.** They were written for this demonstration, in the spirit of Rooms OS. They are not anyone's working rulebook and nothing in them is an instruction. The page says so in a strip under the bar, "Demo handbook: fictional sample rules", which stays in view on every page and every section link, with scripts on or off, and heads every printed page.
 
 **Quality bar it sets:** a documentation page that is one HTML file of plain words which works with scripts off, where search, the contents list and the code colouring are added on top and each is checked against the words on the page.
 Use it as the reference for docs pages, help centres and anything with a sidebar and search.
@@ -18,7 +18,8 @@ Use it as the reference for docs pages, help centres and anything with a sidebar
 - **A phone.** The list of pages becomes a drawer that opens at the page you are on; the search box has a row of its own; results take the width of the screen.
 - **Back** returns to where you were on a page, not to its top. Text sizes follow the size set in the browser.
 - **Scripts off.** The whole handbook shows as one long page and every link still works. Search and the buttons, which could not work, are not shown.
-- **Print.** The whole handbook, a page to a sheet, black on white, without the furniture.
+- **A demo notice.** "Demo handbook: fictional sample rules" sits in a strip under the bar and stays there as you scroll, so a link straight to any page or section still shows it above the words. On wider screens it adds that the page is not anyone's working rulebook.
+- **Print.** The whole handbook, a page to a sheet, black on white, without the furniture, each page headed "Demo handbook: fictional sample rules".
 
 ## How it is made
 
@@ -40,10 +41,14 @@ node demos/handbook/tools/smoke.mjs node_modules/axe-core/axe.min.js http://127.
 ```
 
 ```bash
+node demos/handbook/tools/notice.mjs http://127.0.0.1:8780
+```
+
+```bash
 node demos/handbook/tools/shots.mjs http://127.0.0.1:8780 demos/handbook
 ```
 
-The second and third need the site's development packages (Playwright and axe-core, from `npm install` at the site's root) and a Chromium that Playwright can find, or `PW_CHROMIUM` set to one. [REVIEW.md](REVIEW.md) lists what each one proves, what an independent review found and what nobody has checked.
+The second, third and fourth need the site's development packages (Playwright and axe-core, from `npm install` at the site's root) and a Chromium that Playwright can find, or `PW_CHROMIUM` set to one. [REVIEW.md](REVIEW.md) lists what each one proves, what an independent review found and what nobody has checked.
 
 ## Honest limits
 
@@ -57,4 +62,6 @@ The second and third need the site's development packages (Playwright and axe-co
 
 ## Status
 
-Unlisted. The page carries `noindex`, and it is not in the gallery or the sitemap. Nothing here is published.
+A draft, and unlisted. The page carries `noindex`, and it is not in the gallery or the sitemap. It is not on the live site yet.
+
+Unlisted does not mean private. The site deploys whatever is merged, so merging this would put the page on the live site at its own address (`/demos/handbook/`). Search engines are asked not to list it, but anyone with the link could open it.

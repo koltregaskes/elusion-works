@@ -24,7 +24,7 @@ Ready for Kol to read. Not published, not in the gallery or the sitemap.
 
 ## Checks run (17 Nov 2026)
 
-Verified by running. All passed on the code as committed.
+Verified by running. All passed on the code as committed, last run after the outside review's fix below.
 
 - `node demos/handbook/tools/search.test.mjs`: pass.
   - Words are folded; a heading outranks text; a page's own name puts that page first.
@@ -42,6 +42,11 @@ Verified by running. All passed on the code as committed.
   - Forced colours: the current page is outlined in the list.
   - Phones 390x800, 320x568 and 740x360: the drawer opens at the page you are on and shuts on a choice, Escape, or Tab past its end; the search box is wide enough to read; code sits below its Copy button.
   - axe WCAG 2.2 A and AA in both looks, with scripts off, with the drawer open, at five sizes. No console errors, no outside requests.
+- `node demos/handbook/tools/notice.mjs`: pass, in headless Chromium.
+  - "Demo handbook: fictional sample rules" is inside the window, not covered, and above the heading gone to: all nine pages and two section links (`#claims-stale`, `#reference-glossary`), at 1280x800 and 390x800, scripts on and scripts off, and again scrolled to the foot of each. 88 views.
+  - With text at 150% on a 320x568 phone the notice takes two lines and a section link still stops below it; nothing is wider than the window.
+  - Printed, the strip is left off and every one of the nine pages is headed with the notice instead.
+  - It failed on the page as it was before the fix (no notice on any view but the top of Start here), and fails again if the strip is made to scroll away.
 - The repo's own rules, run locally: no element wider than the page at 320, 390 and 1280; axe clean; the first three Tabs land on visible things; `python3 scripts/build-site.py` passes.
 
 ## Not verified
@@ -49,8 +54,9 @@ Verified by running. All passed on the code as committed.
 1. **The words.** Nobody has read all nine pages for sense. A reader who knows Rooms OS should.
 2. **A screen reader.** Focus moves to the heading of the page gone to; what NVDA or VoiceOver then says is unheard.
 3. **The browser's Find** opening a hidden page: the event was sent by the check, not by a person pressing Ctrl F.
-4. Safari and Firefox, a real phone, real Windows high contrast, and paper.
+4. Safari and Firefox, a real phone, real Windows high contrast, and paper. Print was checked only as a PDF from headless Chromium.
 5. A real refusal of the clipboard; the check stands in for one.
+6. The notice's wording. Nobody but the model has read "Demo handbook: fictional sample rules" and judged it clear enough.
 
 ## Known limits
 
@@ -96,6 +102,19 @@ A second pass by a separate Claude agent (Opus), read-only, given the brief and 
 One thing found while fixing: following a link into a hidden page also sends the browser's "found" event, and the first version of the handler for finding 26 rewrote the address and lost the section. The search check caught it.
 
 One thing found afterwards, by the author, while building the next demo: the page had padding at its top to keep headings clear of the bar, and that padding made the browser scroll the page to the top whenever the search box or a button in the bar took the focus. Control K from half-way down a page threw the reader to its top. The clearance is now set on the headings themselves, and a browser check holds it.
+
+## Outside review
+
+Reviewed by ChatGPT in chat mode at Pro, driven by another Claude session at the owner's request, on 17 November 2026. It read the code and the pictures and did not run the page. It reviewed this demo together with two others (pull requests 141 and 142) and gave the set 7/10, HOLD for reuse as approved templates; for this demo, "merge after fixes". Only its points about this demo, and those it made about all three, are below.
+
+| Finding | What was done | Held by |
+|---|---|---|
+| The sample warning lives only in the Start here page, so a direct link to any other page or section shows the rules with no warning in view, only the footer | True: run in a browser, the warning was on screen only at the top of Start here; on `#claims-stale` only the footer was. Fixed: a strip, "Demo handbook: fictional sample rules", sits under the bar on every page with scripts on and off, stays there as the page scrolls, and heads every printed page. One green as before; the strip is plain ink on the sidebar grey | `tools/notice.mjs`; `tools/smoke.mjs` (scripts off, a page link stops just below the notice) |
+| The demo's own checks (search, browser) are not run by the site's automatic checks on a pull request | True: no workflow in `.github/workflows` runs anything in `demos/handbook/tools`. Not done: changing the site's workflows is outside this demo's folder. Needs the owner | |
+| No reference comparisons and no real-phone evidence, which the shared quality bar asks for | Real phone: true, nobody has opened it on one. Reference comparisons: could not be checked, the quality bar file is not on this machine. Not done: needs a person with a phone and the bar | |
+| "Unlisted" will not mean private after merging | True: `scripts/build-site.py` copies every demo folder into the public bundle, and a local build put `demos/handbook/index.html` in it. Not a code fix: the README's Status now says so plainly | README |
+| No personal records or private links in the words or pictures | Agreed; nothing to do | |
+| Not verified by the reviewer: live site, real touch, Safari, Firefox, screen reader, paper, phone speed | Still not verified here either; listed under Not verified | |
 
 ## Provenance
 
