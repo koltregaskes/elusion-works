@@ -2,21 +2,29 @@
 // Nothing here touches the page or makes a sound, so all of it can be checked in Node.
 
 // ---- Sentences ----
-// Split a piece of prose into sentences. A full stop ends one unless it belongs to an abbreviation, a single initial, a number (3.5) or a time (06.30),
-// or unless what follows starts with a small letter. Closing quotes and brackets stay with the sentence they close.
-const SHORT = new Set(['mr', 'mrs', 'ms', 'dr', 'prof', 'st', 'vs', 'etc', 'e.g', 'i.e', 'a.m', 'p.m', 'approx', 'inc', 'ltd', 'co']);
+// Split a piece of prose into sentences. A stop ends one unless it plainly does not:
+//   - it is inside a figure or a time (3.5, 06.30), where no space follows it;
+//   - a small letter follows ("e.g. on the train", "done?" and left);
+//   - it belongs to a title or a joining abbreviation, which never end a sentence (Dr., vs., e.g.);
+//   - it belongs to an abbreviation that can end one (a.m., etc.) or to a single letter (J. Smith, plan A.), and what follows does not look like the start of a sentence;
+//   - it numbers an item in a list ("Steps: 1. Open the app.").
+// A figure after a stop starts a new sentence ("The stop is at 70. 3 jobs failed."), except after No., Fig. and the like. Closing quotes and brackets stay with the sentence they close.
+const NEVER = new Set(['mr', 'mrs', 'ms', 'dr', 'prof', 'st', 'vs', 'e.g', 'i.e']), MAYBE = new Set(['a.m', 'p.m', 'etc', 'approx', 'inc', 'ltd', 'co']), COUNTS = new Set(['no', 'nos', 'fig', 'vol', 'p', 'pp', 'ch']);
+const STARTS = new Set(['the', 'then', 'it', 'its', 'this', 'that', 'these', 'those', 'he', 'she', 'we', 'they', 'you', 'i', 'a', 'an', 'in', 'on', 'at', 'but', 'and', 'so', 'if', 'when', 'there', 'here', 'nothing', 'one', 'two', 'three', 'no', 'not', 'what', 'who', 'why', 'how', 'for', 'to', 'after', 'before', 'now', 'today', 'yesterday', 'tomorrow', 'all', 'every', 'some', 'most']);
 export function sentences(text) { const clean = text.replace(/\s+/g, ' ').trim(); if (!clean) return []; const out = []; let from = 0;
   for (let i = 0; i < clean.length; i++) { const c = clean[i]; if (c !== '.' && c !== '!' && c !== '?') continue; let end = i + 1; while (end < clean.length && /[.!?]/.test(clean[end])) end++; while (end < clean.length && /["'”’)\]]/.test(clean[end])) end++;
-    if (end < clean.length && clean[end] !== ' ') { i = end - 1; continue; } // a stop inside a word or a number: 3.5, 06.30, e.g.
-    const rest = clean.slice(end).trimStart(), word = clean.slice(from, i).split(' ').pop().toLowerCase().replace(/^[("'“‘]+/, '');
-    if (rest && (/^[a-z0-9]/.test(rest) || (c === '.' && (SHORT.has(word) || /^[a-z]$/.test(word))))) { i = end - 1; continue; } // the sentence plainly carries on (a small letter or a figure follows: "No. 5", "done?" and left), or the stop belongs to an abbreviation or an initial
-    out.push(clean.slice(from, end).trim()); from = end; i = end - 1; }
+    if (end < clean.length && clean[end] !== ' ') { i = end - 1; continue; } // a stop inside a word or a figure
+    const rest = clean.slice(end).trimStart(), sofar = clean.slice(from, i), word = sofar.split(' ').pop().toLowerCase().replace(/^[("'“‘]+/, ''), next = (rest.match(/^[A-Za-z']+/) || [''])[0], opens = STARTS.has(next.toLowerCase()) && /^[A-Z]/.test(next);
+    const carries = rest && (/^[a-z]/.test(rest) || (c === '.' && (NEVER.has(word) || (/^[0-9]/.test(rest) && COUNTS.has(word)) || ((MAYBE.has(word) || /^[a-z]$/.test(word)) && !opens && !/^[0-9]/.test(rest)) || (/^\d{1,2}$/.test(word) && (sofar.trim() === word || /[:;]\s*\d{1,2}$/.test(sofar))))));
+    if (carries) { i = end - 1; continue; } out.push(clean.slice(from, end).trim()); from = end; i = end - 1; }
   const tail = clean.slice(from).trim(); if (tail) out.push(tail); return out; }
 
 // ---- Timing ----
-// How long a sentence takes to say: 165 words a minute at normal speed, plus a breath after it. A figure such as 34 or £4.10 counts as the words it is said in.
+// How long a sentence takes to say: 165 words a minute at normal speed, plus a breath after it.
 export const WPM = 165, BREATH = 0.3, RATES = [1, 1.25, 1.5, 0.85];
-export const wordCount = text => (text.match(/[A-Za-z0-9£%'’]+(?:[.,:][0-9]+)*/g) || []).reduce((n, w) => n + (/[0-9]/.test(w) ? Math.max(1, Math.ceil(w.replace(/[^0-9]/g, '').length / 2) + (/[£%]/.test(w) ? 1 : 0)) : 1), 0);
+// A figure counts as the words it is said in: two digits to a word, "point" for a decimal point, "pounds" or "per cent" for its sign. So 34 is one word, 212 two, 1.8 three ("one point eight"), £4.10 three ("four pounds ten"), 06:30 two.
+const figure = w => { const money = /£/.test(w), parts = w.replace(/[^0-9.,:]/g, '').split(/[.,:]/).filter(Boolean); return Math.max(1, parts.reduce((n, d) => n + Math.ceil(d.length / 2), 0) + (money || /%/.test(w) ? 1 : 0) + (!money && /\d\.\d/.test(w) ? 1 : 0)); };
+export const wordCount = text => (text.match(/[A-Za-z0-9£%'’]+(?:[.,:][0-9]+)*/g) || []).reduce((n, w) => n + (/[0-9]/.test(w) ? figure(w) : 1), 0);
 export const seconds = (text, rate = 1) => (wordCount(text) * 60 / WPM + BREATH) / rate;
 export const clock = s => { const t = Math.max(0, Math.round(s)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
 export const minutes = s => { const m = Math.max(1, Math.round(s / 60)); return `${m} ${m === 1 ? 'minute' : 'minutes'}`; };

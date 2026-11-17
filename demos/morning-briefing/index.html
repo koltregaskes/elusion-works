@@ -10,7 +10,7 @@
 <!-- Unlisted until release is approved: remove the next line, then add the gallery card and sitemap entry. -->
 <meta name="robots" content="noindex">
 <style>
-  :root { --bg:#111315; --phone:#15181a; --card:#1b1f22; --line:rgba(255,255,255,.15); --ink:#f4f5f3; --soft:#d9dee1; --muted:#aab2b7; --accent:#3fe08a; --accent-ink:#06210f; --warn:#f0b23a;
+  :root { --bg:#111315; --phone:#15181a; --card:#1b1f22; --line:rgba(255,255,255,.15); --ink:#f4f5f3; --soft:#d9dee1; --muted:#aab2b7; --accent:#3fe08a; --accent-ink:#06210f;
     --sans:"Helvetica Neue","Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif; --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace; color-scheme:dark; }
   * { box-sizing:border-box; }
   html { background:var(--bg); -webkit-text-size-adjust:100%; }
@@ -35,19 +35,20 @@
   #segs { display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:4px; margin-top:12px; } #segs i { display:block; height:3px; border-radius:2px; background:rgba(255,255,255,.2); overflow:hidden; } #segs i b { display:block; height:100%; width:0; background:var(--accent); } #segs i.past b { width:100%; }
 
   /* The deck: one card on top, the next showing its edge beneath it. */
-  #deck { position:relative; margin:6px 16px 0; touch-action:pan-y; }
-  .card { position:absolute; inset:0; display:flex; flex-direction:column; padding:22px 22px 18px; border-radius:24px; border:1px solid var(--line); background:var(--card); overflow:auto; overscroll-behavior:contain; transform-origin:50% 120%; will-change:transform; }
-  .card[data-at="away"] { visibility:hidden; } .card[data-at="under"]:not([style*="transform"]) > * { visibility:hidden; } /* the card beneath shows its edge, not its words, until it is being uncovered */ .card[data-at="under"] { transform:scale(.94) translateY(10px); filter:brightness(.6); } .card[data-at="top"] { z-index:2; cursor:grab; } .card:focus-visible { outline-offset:-3px; border-radius:24px; } .card.held { cursor:grabbing; } .card.glide { transition:transform .22s cubic-bezier(.2,.8,.2,1), filter .22s; }
-  .card .num { position:absolute; right:18px; top:12px; font:800 62px/1 var(--sans); letter-spacing:-.06em; color:transparent; -webkit-text-stroke:1px rgba(255,255,255,.2); pointer-events:none; user-select:none; }
+  #deck { position:relative; margin:6px 16px 0; touch-action:pan-y pinch-zoom; }
+  #deck.more::after { content:"More below"; position:absolute; left:1px; right:1px; bottom:13px; z-index:4; height:58px; display:grid; place-items:end center; padding-bottom:7px; border-radius:0 0 23px 23px; background:linear-gradient(transparent, var(--card) 72%); font:600 10px/1 var(--mono); letter-spacing:.16em; text-transform:uppercase; color:var(--soft); pointer-events:none; } /* a tall card on a small screen scrolls: while there is more of it, the foot of the card says so */
+  .card { position:absolute; inset:0 0 12px; touch-action:pan-y pinch-zoom; /* set on the card itself: a card scrolls, and a browser asks the thing that scrolls, not the deck round it, which way a finger may go. Without this a sideways swipe is taken by the browser and never turns the card */ display:flex; flex-direction:column; padding:22px 22px 18px; border-radius:24px; border:1px solid var(--line); background:var(--card); overflow:auto; overscroll-behavior:contain; transform-origin:50% 120%; will-change:transform; }
+  .card[data-at="away"] { visibility:hidden; } .card[data-at="under"]:not([style*="transform"]) > * { visibility:hidden; } /* the card beneath shows its edge, not its words, until it is being uncovered */ .card[data-at="under"] { transform-origin:50% 100%; transform:scale(.94) translateY(10px); filter:brightness(.6); } /* grown from its foot, so that its edge shows just below the card on top and no lower */ .card[data-at="top"] { z-index:2; cursor:grab; } .card:focus-visible { outline-offset:-3px; border-radius:24px; } .card.held { cursor:grabbing; } .card.glide { transition:transform .22s cubic-bezier(.2,.8,.2,1), filter .22s; }
+  .card .num { position:absolute; right:18px; top:12px; margin:0; font:800 62px/1 var(--sans); letter-spacing:-.06em; color:transparent; -webkit-text-stroke:1px rgba(255,255,255,.2); pointer-events:none; user-select:none; }
   .kicker { margin:0; font:600 11px/1.3 var(--mono); letter-spacing:.2em; text-transform:uppercase; color:var(--accent); }
   .card h2 { margin:10px 0 12px; max-width:11ch; font-size:36px; line-height:.96; font-weight:800; letter-spacing:-.045em; text-wrap:balance; }
-  .card p, .card li { margin:0 0 10px; font-size:16.5px; line-height:1.48; color:var(--soft); } .card ul { margin:2px 0 6px; padding-left:20px; } .card li { margin-bottom:7px; } .card li::marker { color:var(--accent); }
+  .card p, .card li { margin:0 0 10px; font-size:16.5px; line-height:1.48; color:var(--soft); } .card ul { margin:2px 0 6px; padding-left:20px; } .card ul.rows, .card ul.lanes, .card ul.todo { margin:0; padding:0; } .card li { margin-bottom:7px; } .card li::marker { color:var(--accent); }
   .s { border-radius:5px; box-decoration-break:clone; -webkit-box-decoration-break:clone; transition:background-color .15s, color .15s; } .reading p .s.done, .reading li .s.done { color:var(--muted); } /* what has been read goes quiet; headings keep their colour */ .reading .kicker .s.done, .reading .kicker .s.now { color:var(--accent); } .reading .s.now { background:rgba(63,224,138,.2); color:var(--ink); box-shadow:0 0 0 3px rgba(63,224,138,.2); }
   .fig { margin-top:auto; padding-top:10px; }
-  .tiles { display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin:0; } .tiles div { padding:9px 4px 8px; border-radius:12px; border:1px solid var(--line); text-align:center; } .tiles dd { margin:0; font:800 24px/1 var(--sans); letter-spacing:-.03em; font-variant-numeric:tabular-nums; } .tiles dt { margin-top:5px; font:600 10px/1.2 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--muted); } .tiles .odd dd { color:var(--warn); }
-  .rows { margin:0; padding:0; list-style:none; display:grid; gap:6px; } .rows li { display:grid; grid-template-columns:8.6em minmax(0, 1fr) 4.2em; gap:8px; align-items:center; margin:0; font-size:13px; line-height:1.2; color:var(--soft); } .rows .bar { height:6px; border-radius:3px; background:rgba(255,255,255,.12); overflow:hidden; } .rows .bar b { display:block; height:100%; background:var(--ink); border-radius:3px; } .rows li.slow .bar b { background:var(--warn); } .rows .ms { text-align:right; font:600 12px/1 var(--mono); font-variant-numeric:tabular-nums; }
-  .lanes { margin:0; padding:0; list-style:none; display:grid; gap:6px; } .lanes li { display:flex; justify-content:space-between; align-items:center; gap:10px; margin:0; padding:8px 10px; border-radius:12px; border:1px solid var(--line); font-size:14px; line-height:1.2; color:var(--soft); } .chip { flex:none; padding:2px 8px; border-radius:999px; border:1px solid var(--line); font:600 10.5px/1.6 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--soft); } .chip.ok { border-color:var(--accent); color:var(--accent); } .chip.stuck { border-color:var(--warn); color:var(--warn); }
-  .meter { position:relative; height:14px; margin:20px 0 6px; border-radius:7px; background:rgba(255,255,255,.12); } .meter b { display:block; height:100%; border-radius:7px; background:var(--accent); } .meter i { position:absolute; top:-6px; bottom:-6px; width:2px; background:var(--ink); } .meter i::after { content:attr(data-label); position:absolute; left:50%; bottom:calc(100% + 2px); transform:translateX(-50%); font:600 10px/1 var(--mono); letter-spacing:.08em; color:var(--soft); white-space:nowrap; font-style:normal; } .scale { display:flex; justify-content:space-between; margin:0; font:600 11px/1.2 var(--mono); color:var(--muted); }
+  .tiles { display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin:0; } .tiles div { display:flex; flex-direction:column-reverse; padding:9px 4px 8px; border-radius:12px; border:1px solid var(--line); text-align:center; } .tiles dd { margin:0; font:800 24px/1 var(--sans); letter-spacing:-.03em; font-variant-numeric:tabular-nums; } .tiles dt { margin-top:5px; font:600 10px/1.2 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--muted); } .tiles .odd { border-style:dashed; border-color:var(--ink); }
+  .rows { margin:0; padding:0; list-style:none; display:grid; gap:6px; } .rows li { display:grid; grid-template-columns:8.6em minmax(0, 1fr) 4.2em; gap:8px; align-items:center; margin:0; font-size:13px; line-height:1.2; color:var(--soft); } .rows .bar { height:6px; border-radius:3px; background:rgba(255,255,255,.12); overflow:hidden; } .rows .bar b { display:block; height:100%; background:var(--muted); border-radius:3px; } .rows li.slow .bar b { background:var(--ink); } .rows li.slow { color:var(--ink); font-weight:700; } .rows .ms { text-align:right; font:600 12px/1 var(--mono); font-variant-numeric:tabular-nums; }
+  .lanes { margin:0; padding:0; list-style:none; display:grid; gap:5px; } .lanes li { display:flex; justify-content:space-between; align-items:center; gap:10px; margin:0; padding:6px 10px; border-radius:12px; border:1px solid var(--line); font-size:14px; line-height:1.2; color:var(--soft); } .chip { flex:none; padding:2px 8px; border-radius:999px; border:1px solid var(--line); font:600 10.5px/1.6 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--soft); } .chip.ok { border-color:var(--accent); color:var(--accent); } .chip.stuck { border-color:var(--ink); background:var(--ink); color:#111; }
+  .meter { position:relative; height:14px; margin:20px 0 6px; border-radius:7px; background:rgba(255,255,255,.12); } .meter b { display:block; height:100%; border-radius:7px; background:var(--accent); } .meter i { position:absolute; top:-6px; bottom:-6px; width:2px; background:var(--ink); } .meter i::after { content:attr(data-label); position:absolute; left:50%; bottom:calc(100% + 2px); transform:translateX(-50%); font:600 10px/1 var(--mono); letter-spacing:.08em; color:var(--soft); white-space:nowrap; font-style:normal; } .scale { position:relative; display:flex; justify-content:space-between; margin:0; font:600 11px/1.2 var(--mono); color:var(--muted); } .scale .at { position:absolute; left:62%; transform:translateX(-100%); padding-right:4px; color:var(--ink); }
   .todo { margin:0; padding:0; list-style:none; display:grid; gap:8px; } .todo li { margin:0; } .todo label { display:grid; grid-template-columns:28px minmax(0, 1fr); gap:10px; align-items:start; padding:11px 12px; border-radius:14px; border:1px solid var(--line); font-size:15.5px; line-height:1.35; color:var(--soft); cursor:pointer; } .todo input { width:24px; height:24px; margin:0; accent-color:var(--accent); } .todo label:has(input:checked) { border-color:var(--accent); } .todo label:has(input:checked) .words { color:var(--muted); text-decoration:line-through; }
   .btn { min-height:44px; padding:0 16px; border-radius:12px; border:1px solid var(--line); background:rgba(255,255,255,.06); font-weight:700; font-size:14.5px; cursor:pointer; } .btn.go { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); } .btn:disabled { opacity:.4; cursor:default; }
 
@@ -58,20 +59,23 @@
   #player { padding:12px 18px max(16px, env(safe-area-inset-bottom)); border-top:1px solid var(--line); background:#101214; }
   .ctl { display:grid; grid-template-columns:1fr auto auto auto 1fr; gap:10px; align-items:center; } .ctl .side { display:flex; } .ctl .side:last-child { justify-content:flex-end; }
   .rnd { display:grid; place-items:center; width:46px; height:46px; padding:0; border-radius:50%; border:1px solid var(--line); background:rgba(255,255,255,.06); cursor:pointer; } .rnd svg { width:20px; height:20px; fill:currentColor; }
-  #play { width:60px; height:60px; background:var(--accent); border-color:var(--accent); color:var(--accent-ink); } #play svg { width:26px; height:26px; } #play .pause, #play[aria-pressed="true"] .tri { display:none; } #play[aria-pressed="true"] .pause { display:block; }
+  #play { width:60px; height:60px; background:var(--accent); border-color:var(--accent); color:var(--accent-ink); } #play svg { width:26px; height:26px; } #play .pause, #play[data-on="true"] .tri { display:none; } #play[data-on="true"] .pause { display:block; }
   .pill { min-height:38px; min-width:54px; padding:0 11px; border-radius:999px; border:1px solid var(--line); background:rgba(255,255,255,.06); font:700 13px/1 var(--sans); cursor:pointer; font-variant-numeric:tabular-nums; } .pill[aria-pressed="true"] { background:var(--ink); border-color:var(--ink); color:#111; }
   #scrub { display:block; width:100%; height:26px; margin:8px 0 0; accent-color:var(--accent); } .times { display:flex; justify-content:space-between; margin:0; font:600 11.5px/1.2 var(--mono); color:var(--muted); font-variant-numeric:tabular-nums; }
   #now { margin:6px 0 0; min-height:1.4em; font-size:12.5px; line-height:1.4; color:var(--muted); }
 
   /* With scripts off: the cards one after another, and no controls that could not work. */
-  .js-off #phone { height:auto; display:block; } .js-off #deck { margin-bottom:16px; } .js-off .card { position:relative; inset:auto; margin-bottom:12px; overflow:visible; } .js-off .nav, .js-off #player, .js-off #segs, .js-off .keys, .js-off .card .js { display:none; }
+  .js-off #phone { height:auto; display:block; } .js-off #deck { margin-bottom:16px; } .js-off .card { position:relative; inset:auto; margin-bottom:12px; overflow:visible; } .js-off .page { align-content:start; } .js-off .about { align-self:start; } .js-off .nav, .js-off #player, .js-off #segs, .js-off .keys, .js-off .card .js { display:none; }
 
-  @media (max-width:900px) { .page { display:block; max-width:none; min-height:0; padding:0; } .about { padding:10px 16px 8px; display:flex; align-items:baseline; gap:10px; } .about .eyebrow, .about .lede, .about .keys { display:none; } h1 { margin:0; font-size:19px; line-height:1.2; letter-spacing:-.02em; } .about::after { content:"Sample"; margin-left:auto; padding:1px 8px; border-radius:999px; border:1px solid var(--line); font:600 10.5px/1.7 var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--soft); }
-    #phone { width:auto; height:calc(100vh - 44px); height:calc(100svh - 44px); min-height:430px; border-radius:0; border:0; border-top:1px solid var(--line); box-shadow:none; } .when .tag { display:none; } .top { padding:14px 18px 8px; } #deck { margin:4px 12px 0; } .foot { padding:8px 18px 30px; } }
+  /* A narrow window, or a short one (a phone on its side, however wide): the phone is the page. */
+  @media (max-width:900px), (max-height:560px) { .page { display:block; max-width:none; min-height:0; padding:0; } .about { padding:10px 16px 8px; display:flex; align-items:baseline; gap:10px; } .about .eyebrow, .about .lede, .about .keys { display:none; } h1 { margin:0; font-size:19px; line-height:1.2; letter-spacing:-.02em; } .about::after { content:"Sample"; margin-left:auto; padding:1px 8px; border-radius:999px; border:1px solid var(--line); font:600 10.5px/1.7 var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--soft); }
+    #phone { width:auto; max-width:560px; margin:0 auto; height:min(calc(100vh - 44px), 900px); height:min(calc(100svh - 44px), 900px); min-height:430px; border-radius:0; border:0; border-top:1px solid var(--line); box-shadow:none; } .when .tag { display:none; } .top { padding:14px 18px 8px; } #deck { margin:4px 12px 0; } .foot { padding:8px 18px 30px; max-width:560px; margin:0 auto; } }
+  @media (min-width:561px) and (max-width:900px) and (min-height:561px) { #phone { border-left:1px solid var(--line); border-right:1px solid var(--line); } }
   @media (max-width:360px) { .card { padding:18px 18px 14px; } .card h2 { font-size:31px; } .card p, .card li { font-size:15.5px; } .ctl { gap:6px; } .rnd { width:44px; height:44px; } #play { width:56px; height:56px; } .pill { min-width:48px; padding:0 8px; } .tiles dd { font-size:21px; } .card .num { font-size:50px; } }
   @media (max-height:560px) { .card h2 { font-size:28px; margin:6px 0 8px; } .card .num { display:none; } #player { padding-top:8px; } #now { display:none; } .top { padding-top:10px; } .when b { font-size:24px; } #play { width:50px; height:50px; } .rnd { width:44px; height:44px; } }
-  /* A phone on its side: the cards on the left, the player beside them, so that both are in sight. */
-  @media (max-height:560px) and (min-width:600px) and (max-width:900px) { #phone { min-height:0; grid-template-columns:minmax(0, 1fr) 280px; grid-template-rows:auto minmax(0, 1fr) auto; } .top { grid-column:1 / -1; } #deck { grid-column:1; grid-row:2; } .nav { grid-column:1; grid-row:3; } #player { grid-column:2; grid-row:2 / 4; display:flex; flex-direction:column; justify-content:center; border-top:0; border-left:1px solid var(--line); padding:8px 14px; } .card h2 { max-width:none; } .ctl { gap:6px; } .pill { min-width:46px; padding:0 8px; } }
+  /* A phone on its side: the cards on the left, the player beside them, so that both are in sight. Chosen by height, so that it holds for the widest phones too. */
+  @media (max-height:560px) and (min-width:540px) { #phone { max-width:none; min-height:0; grid-template-columns:minmax(0, 1fr) clamp(280px, 38vw, 330px); grid-template-rows:auto minmax(0, 1fr) auto; } .top { grid-column:1 / -1; } #deck { grid-column:1; grid-row:2; } .nav { grid-column:1; grid-row:3; } #player { grid-column:2; grid-row:2 / 4; display:flex; flex-direction:column; justify-content:center; border-top:0; border-left:1px solid var(--line); padding:8px 12px; } .card h2 { max-width:none; } .ctl { gap:5px; } .pill { min-width:44px; padding:0 7px; } .foot { max-width:none; } }
+  @media (max-height:560px) and (max-width:539px) { #phone { min-height:0; height:auto; } #deck { height:max(190px, calc(100svh - 250px)); } }
   @media (prefers-reduced-motion:reduce) { .card.glide, .s { transition:none; } }
 </style>
 </head>
@@ -83,8 +87,8 @@
   <p class="lede">The day's briefing on a phone screen. Seven cards. Swipe through them, or press play and have them read to you while the words keep your place.</p>
   <ul class="keys" aria-label="Keys">
     <li><kbd>←</kbd><kbd>→</kbd> the card before, the card after</li>
-    <li><kbd>Space</kbd> play or pause</li>
-    <li><kbd>,</kbd><kbd>.</kbd> back a sentence, on a sentence</li>
+    <li><kbd>Space</kbd> play or pause, when no button has the focus</li>
+    <li><kbd>,</kbd><kbd>.</kbd> back a sentence, on a sentence, with the briefing selected</li>
   </ul>
 </header>
 
@@ -95,24 +99,24 @@
   </div>
 
   <section id="deck" aria-label="Briefing cards">
-    <article class="card" id="c-short" data-title="The short version">
+    <div class="card" id="c-short" data-title="The short version" role="group" aria-label="1 of 7: The short version">
       <p class="num" aria-hidden="true">01</p>
       <p class="kicker" data-say>Good morning</p>
       <h2 data-say>The short version</h2>
       <p data-say>Nothing broke overnight. One job ran and came back with nothing, which is not the same as failing. Three things need you today, and they will take about a quarter of an hour.</p>
       <p data-say>This briefing is a sample. Every figure in it is made up.</p>
-    </article>
+    </div>
 
-    <article class="card" id="c-night" data-title="Overnight">
+    <div class="card" id="c-night" data-title="Overnight" role="group" aria-label="2 of 7: Overnight">
       <p class="num" aria-hidden="true">02</p>
       <p class="kicker" data-say>Overnight</p>
       <h2 data-say>Nothing broke</h2>
       <p data-say>Thirty-four scheduled jobs ran. Thirty-three did their work. One, the news gather, ran and came back with no stories.</p>
-      <p data-say>It is marked silent, not failed. Silence is how a job dies without anyone noticing, so it is first on today's list.</p>
-      <div class="fig"><dl class="tiles" aria-label="Jobs overnight"><div><dd>34</dd><dt>Ran</dt></div><div><dd>33</dd><dt>Worked</dt></div><div class="odd"><dd>1</dd><dt>Silent</dt></div><div><dd>0</dd><dt>Failed</dt></div></dl></div>
-    </article>
+      <p data-say>It is marked silent, not failed. Silence is how a job dies without anyone noticing, so the news lane is finding out why this morning.</p>
+      <div class="fig"><dl class="tiles" aria-label="Jobs overnight"><div><dt>Ran</dt><dd>34</dd></div><div><dt>Worked</dt><dd>33</dd></div><div class="odd"><dt>Silent</dt><dd>1</dd></div><div><dt>Failed</dt><dd>0</dd></div></dl></div>
+    </div>
 
-    <article class="card" id="c-sites" data-title="Sites">
+    <div class="card" id="c-sites" data-title="Sites" role="group" aria-label="3 of 7: Sites">
       <p class="num" aria-hidden="true">03</p>
       <p class="kicker" data-say>Sites</p>
       <h2 data-say>All seven are up</h2>
@@ -124,33 +128,33 @@
         <li><span>Gallery</span><span class="bar"><b style="width:50%"></b></span><span class="ms">0.9 s</span></li>
         <li><span>Newsletter</span><span class="bar"><b style="width:56%"></b></span><span class="ms">1.0 s</span></li>
         <li><span>Music</span><span class="bar"><b style="width:61%"></b></span><span class="ms">1.1 s</span></li>
-        <li class="slow"><span>Journal</span><span class="bar"><b style="width:100%"></b></span><span class="ms">1.8 s, slowest</span></li>
+        <li class="slow"><span>Journal, slowest</span><span class="bar"><b style="width:100%"></b></span><span class="ms">1.8 s</span></li>
       </ul></div>
-    </article>
+    </div>
 
-    <article class="card" id="c-lanes" data-title="Lanes">
+    <div class="card" id="c-lanes" data-title="Lanes" role="group" aria-label="4 of 7: Lanes">
       <p class="num" aria-hidden="true">04</p>
       <p class="kicker" data-say>Lanes</p>
-      <h2 data-say>Two done, one stuck</h2>
-      <p data-say>The website checks lane finished and handed over. The music lane finished three sketches. The social lane is stuck, waiting for a yes it cannot give itself.</p>
+      <h2 data-say>Four lanes, one stuck</h2>
+      <p data-say>Website checks finished and handed over. Music finished three sketches. News is working on last night's empty gather. Social is stuck, waiting for a yes it cannot give itself.</p>
       <div class="fig"><ul class="lanes" aria-label="Lanes">
         <li><span>Website checks</span><span class="chip ok">Done</span></li>
         <li><span>Music sketches</span><span class="chip ok">Done</span></li>
         <li><span>Social posts</span><span class="chip stuck">Stuck</span></li>
         <li><span>News gather</span><span class="chip">Working</span></li>
       </ul></div>
-    </article>
+    </div>
 
-    <article class="card" id="c-costs" data-title="Costs">
+    <div class="card" id="c-costs" data-title="Costs" role="group" aria-label="5 of 7: Costs">
       <p class="num" aria-hidden="true">05</p>
       <p class="kicker" data-say>Costs</p>
-      <h2 data-say>Under the line, just</h2>
-      <p data-say>Yesterday cost £4.10 against a daily line of £5. The week's allowance stands at 62 per cent used, and work stops at 70.</p>
-      <p data-say>At this rate the stop comes on Thursday afternoon.</p>
-      <div class="fig"><div class="meter" role="img" aria-label="The week's allowance: 62 per cent used. Work stops at 70 per cent."><b style="width:62%"></b><i style="left:70%" data-label="STOP 70"></i></div><p class="scale" aria-hidden="true"><span>0</span><span>62% used</span><span>100</span></p></div>
-    </article>
+      <h2 data-say>Under the line</h2>
+      <p data-say>Yesterday cost £4.10 against a daily line of £5. The week's allowance is 62 per cent used, and work stops at 70.</p>
+      <p data-say>That leaves eight points. A heavy day uses about that many, so choose today's work with care.</p>
+      <div class="fig"><div class="meter" role="img" aria-label="The week's allowance: 62 per cent used. Work stops at 70 per cent."><b style="width:62%"></b><i style="left:70%" data-label="STOP 70"></i></div><p class="scale" aria-hidden="true"><span>0</span><span class="at">62% used</span><span>100</span></p></div>
+    </div>
 
-    <article class="card" id="c-today" data-title="Today">
+    <div class="card" id="c-today" data-title="Today" role="group" aria-label="6 of 7: Today">
       <p class="num" aria-hidden="true">06</p>
       <p class="kicker" data-say>Today</p>
       <h2 data-say>Three things for you</h2>
@@ -160,15 +164,15 @@
         <li><label><input type="checkbox"><span class="words" data-say>Read one draft article and mark it up. Ten minutes.</span></label></li>
       </ul>
       <p class="js" style="margin-top:10px; font-size:13px; color:var(--muted)">Ticks are not kept: nothing is stored.</p>
-    </article>
+    </div>
 
-    <article class="card" id="c-end" data-title="That is all">
+    <div class="card" id="c-end" data-title="That is all" role="group" aria-label="7 of 7: That is all">
       <p class="num" aria-hidden="true">07</p>
       <p class="kicker" data-say>That is all</p>
       <h2 data-say>Go and have breakfast</h2>
       <p data-say>Nothing else needs you before nine. The next briefing is at half past six tomorrow.</p>
       <div class="fig js"><button class="btn" id="again" type="button">Back to the first card</button></div>
-    </article>
+    </div>
   </section>
 
   <div class="nav">
@@ -181,7 +185,7 @@
     <div class="ctl">
       <div class="side"><button class="pill" id="rate" type="button" aria-label="Speed 1×: normal. Press to change.">1×</button></div>
       <button class="rnd" id="sback" type="button" aria-label="Back a sentence"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h2.4v14H6zM20 5v14L9.5 12z"/></svg></button>
-      <button class="rnd" id="play" type="button" aria-pressed="false" aria-label="Read the briefing aloud"><svg class="tri" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"/></svg><svg class="pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4.5h4.2v15H6zM13.8 4.5H18v15h-4.2z"/></svg></button>
+      <button class="rnd" id="play" type="button" data-on="false" aria-label="Read the briefing aloud"><svg class="tri" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"/></svg><svg class="pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4.5h4.2v15H6zM13.8 4.5H18v15h-4.2z"/></svg></button>
       <button class="rnd" id="son" type="button" aria-label="On a sentence"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.6 5H18v14h-2.4zM4 5v14l10.5-7z"/></svg></button>
       <div class="side"><button class="pill" id="voice" type="button" aria-pressed="true">Voice</button></div>
     </div>
