@@ -216,7 +216,7 @@ function setRoom(name, fromHash) {
   room = name === 'lamplight' ? 'lamplight' : 'undertow'; page.dataset.room = room;
   $('undertow').hidden = room !== 'undertow'; $('lamplight').hidden = room !== 'lamplight'; lampsBox.hidden = room !== 'lamplight';
   document.querySelectorAll('.rooms a').forEach(a => { if (a.dataset.room === room) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
-  if (!fromHash && location.hash.slice(1) !== room) history.replaceState(null, '', '#' + room);
+  if (!fromHash && location.hash.slice(1) !== room) { try { history.replaceState(null, '', '#' + room); } catch (err) { location.hash = room; } }
   page.scrollTop = 0; $('room').scrollTop = 0; scrollTo(0, 0); // a hash in the address must not scroll the header away
   measure(); placeLamps(); drawWell2D(); drawDark(); dirty = true;
 }
