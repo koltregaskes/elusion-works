@@ -8,7 +8,7 @@ const svg = (tag, attrs = {}, ...kids) => { const n = document.createElementNS(N
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 
 const data = makeData(), ALL = data.sites.map(s => s.id);
-const state = { range: 28, sites: new Set(ALL), sort: { key: 'visits', dir: 'descending' }, tables: { trend: false, heat: false } };
+const state = { range: 28, sites: new Set(ALL), sort: { key: 'visits', dir: 'descending' }, tables: { trend: false, heat: false }, allNotes: false };
 let view = null;
 
 // ---- Small shared pieces ----
@@ -20,9 +20,20 @@ function delta(x, { upIsGood = true, words = '', unit = null } = {}) { const fla
 function sparkline(values, w = 96, h = 24) { const max = Math.max(1, ...values), min = Math.min(...values), span = Math.max(1, max - min), pt = (v, i) => [3 + i / Math.max(1, values.length - 1) * (w - 10), h - 5 - (v - min) / span * (h - 10)], pts = values.map(pt), last = pts[pts.length - 1];
   return svg('svg', { class: 'spark', width: w, height: h, viewBox: `0 0 ${w} ${h}`, 'aria-hidden': 'true' }, svg('polyline', { points: pts.map(p => p.map(n => n.toFixed(1)).join(',')).join(' '), fill: 'none', stroke: 'var(--series)', 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }), svg('circle', { cx: last[0].toFixed(1), cy: last[1].toFixed(1), r: 4, fill: 'var(--series)', stroke: 'var(--card)', 'stroke-width': 2 })); }
 const sample = () => el('span', { class: 'sample', text: 'Sample' });
-const tip = $('tip');
-function showTip(x, y, ...nodes) { tip.replaceChildren(...nodes); tip.hidden = false; const r = tip.getBoundingClientRect(); tip.style.left = clamp(x + 14, 6, innerWidth - r.width - 6) + 'px'; tip.style.top = clamp(y + 14 + r.height > innerHeight ? y - r.height - 10 : y + 14, 6, innerHeight - r.height - 6) + 'px'; }
-const hideTip = () => { tip.hidden = true; };
+// Whatever is showing a reading now (a chart's crosshair and readout, or the tip of a bar), and how to put it away.
+// Escape puts every reading away, wherever the focus is; so does pressing or tapping anywhere else on the page.
+const active = new Map();
+const holding = (owner, reset) => active.set(owner, reset);
+function letGo(owner) { const reset = active.get(owner); if (reset) { active.delete(owner); reset(); } }
+const letGoAll = (inside = null) => { for (const o of [...active.keys()]) if (!inside || inside.contains(o)) letGo(o); };
+addEventListener('keydown', e => { if (e.key === 'Escape') letGoAll(); });
+addEventListener('pointerdown', e => { for (const o of [...active.keys()]) if (!o.contains(e.target) && !tip.contains(e.target)) letGo(o); }, true);
+// The tip of a bar sits against the bar it describes, overlapping its lower edge, so the pointer can move straight onto it and it stays.
+const tip = $('tip'); let tipFor = null;
+function showTip(owner, ...nodes) { if (tipFor && tipFor !== owner) letGo(tipFor); tip.replaceChildren(...nodes); tip.hidden = false; tipFor = owner; holding(owner, () => { tip.hidden = true; tipFor = null; }); placeTip(); }
+function placeTip() { if (!tipFor) return; const a = tipFor.getBoundingClientRect(); if (!tipFor.isConnected || a.bottom < 0 || a.top > innerHeight) { letGo(tipFor); return; } // kept with its bar when the page scrolls (focusing a bar off the screen scrolls the page)
+  const r = tip.getBoundingClientRect(), below = a.bottom - 2, above = a.top + 2 - r.height; tip.style.left = clamp(a.left + 24, 6, innerWidth - r.width - 6) + 'px'; tip.style.top = (below + r.height <= innerHeight - 6 || above < 6 ? below : above) + 'px'; }
+tip.addEventListener('pointerleave', e => { if (tipFor && e.pointerType !== 'touch' && !(e.relatedTarget && tipFor.contains(e.relatedTarget))) letGo(tipFor); });
 const row = (colour, value, label) => el('div', { class: 'row' }, colour ? el('i', { style: `background:${colour}` }) : null, el('b', { text: value }), label);
 const say = text => { $('live').textContent = text; };
 function niceMax(v) { if (v <= 0) return 4; const p = Math.pow(10, Math.floor(Math.log10(v))); for (const m of [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) if (m * p >= v) return m * p; return 10 * p; }
@@ -48,9 +59,10 @@ function renderKpis() { const t = view.totals, d = view.delta, none = view.siteC
 
 // ---- Visits a day: this period over the one before ----
 let trendAt = -1;
+const HINT = { trend: 'Point at a day, or tap it, to read it here. On the chart, the arrow keys read each day.', heat: 'Point at a square, or tap it, to read it here. On the grid, the arrow keys read each hour.' };
 function renderTrend() { const host = $('trend').querySelector('.view'), s = view.series, n = s.length, had = host.contains(document.activeElement) && document.activeElement.classList.contains('plot'); $('trend-sub').textContent = `${fmt.day(view.from)} to ${fmt.day(view.to)}, over ${fmt.day(view.beforeFrom)} to ${fmt.day(view.beforeTo)}`;
   if (state.tables.trend) { const t = el('table', {}, el('thead', {}, el('tr', {}, el('th', { scope: 'col', text: 'Day' }), el('th', { scope: 'col', class: 'r', text: 'Visits' }), el('th', { scope: 'col', text: 'Day in the period before' }), el('th', { scope: 'col', class: 'r', text: 'Visits then' }))), el('tbody', {}, ...s.map(d => el('tr', {}, el('th', { scope: 'row', text: fmt.day(d.date) }), el('td', { class: 'r', text: fmt.int(d.visits) }), el('td', { text: fmt.day(d.beforeDate) }), el('td', { class: 'r', text: fmt.int(d.before) })))));
-    host.replaceChildren(el('div', { class: 'scroll', tabIndex: 0, role: 'region', 'aria-label': 'Visits a day, as a table', style: 'max-height:270px;overflow-y:auto' }, t)); return; }
+    letGoAll(host); host.replaceChildren(el('div', { class: 'scroll', tabIndex: 0, role: 'region', 'aria-label': 'Visits a day, as a table', style: 'max-height:270px;overflow-y:auto' }, t)); return; }
   const W = Math.max(280, host.clientWidth || 720), H = 250, L = 42, R = W < 480 ? 14 : 74, T = 10, B = 22, pw = W - L - R, ph = H - T - B, top = niceMax(Math.max(...s.map(d => Math.max(d.visits, d.before)))), X = i => L + (n === 1 ? pw / 2 : i / (n - 1) * pw), Y = v => T + ph - v / top * ph;
   const path = key => s.map((d, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(d[key]).toFixed(1)}`).join(''), g = svg('svg', { viewBox: `0 0 ${W} ${H}`, role: 'presentation' });
   for (let k = 0; k <= 4; k++) { const v = top * k / 4; g.append(svg('line', { class: 'gridline', x1: L, x2: W - R, y1: Y(v), y2: Y(v) }), Object.assign(svg('text', { class: 'tick', x: L - 6, y: Y(v) + 3, 'text-anchor': 'end' }), { textContent: top >= 10000 ? fmt.compact(v) : fmt.int(v) })); }
@@ -60,16 +72,25 @@ function renderTrend() { const host = $('trend').querySelector('.view'), s = vie
   if (R > 20) { const yn = Y(s[n - 1].visits), yb = Y(s[n - 1].before), label = (y, text) => g.append(Object.assign(svg('text', { class: 'tick', x: X(n - 1) + 9, y: y + 3, style: 'fill:var(--muted)' }), { textContent: text })); label(yn, 'This period'); if (Math.abs(yn - yb) >= 13) label(yb, 'Before'); } // name the lines at their ends when there is room; the legend is always there
   const cross = svg('g', { visibility: 'hidden' }, svg('line', { y1: T, y2: T + ph, stroke: 'var(--faint)', 'stroke-width': 1 }), svg('circle', { r: 4, fill: 'var(--deemph)', stroke: 'var(--card)', 'stroke-width': 2 }), svg('circle', { r: 4, fill: 'var(--series)', stroke: 'var(--card)', 'stroke-width': 2 })); g.append(cross);
   const plot = el('div', { class: 'plot', tabIndex: 0, role: 'group', 'aria-label': `Visits a day for ${n} days, as a line. Use the left and right arrow keys to read each day, or switch to the table view.` }, g);
-  const point = (i, px, py) => { trendAt = i; const d = s[i]; cross.setAttribute('visibility', 'visible'); cross.children[0].setAttribute('x1', X(i)); cross.children[0].setAttribute('x2', X(i)); cross.children[1].setAttribute('cx', X(i)); cross.children[1].setAttribute('cy', Y(d.before)); cross.children[2].setAttribute('cx', X(i)); cross.children[2].setAttribute('cy', Y(d.visits));
-    const box = g.getBoundingClientRect(), k = box.width / W; showTip(px ?? box.left + X(i) * k, py ?? box.top + Y(d.visits) * k, el('div', { class: 'when', text: fmt.day(d.date) }), row('var(--series)', fmt.int(d.visits), 'visits'), row('var(--deemph)', fmt.int(d.before), `on ${fmt.day(d.beforeDate)}`)); };
-  const leave = () => { cross.setAttribute('visibility', 'hidden'); hideTip(); };
-  plot.addEventListener('pointermove', e => { const box = g.getBoundingClientRect(), x = (e.clientX - box.left) / box.width * W; point(clamp(Math.round((x - L) / pw * (n - 1)), 0, n - 1), e.clientX, e.clientY); }); plot.addEventListener('pointerleave', leave); plot.addEventListener('blur', leave);
-  plot.addEventListener('keydown', e => { const by = { ArrowLeft: -1, ArrowRight: 1, Home: -n, End: n }[e.key]; if (e.key === 'Escape') { leave(); return; } if (!by) return; e.preventDefault(); const i = clamp((trendAt < 0 || trendAt >= n ? n - 1 - Math.sign(by) : trendAt) + by, 0, n - 1); point(i); say(`${fmt.day(s[i].date)}: ${fmt.int(s[i].visits)} visits. ${fmt.int(s[i].before)} on ${fmt.day(s[i].beforeDate)}.`); });
-  host.replaceChildren(plot); trendAt = -1; if (had) plot.focus({ preventScroll: true }); } // a redraw (the window changed size) must not take the keyboard away
+  // The figures for the day under the pointer, the finger or the keys are written in a line under the chart, not in a box over it, so nothing is covered and nothing has to be chased.
+  const readout = el('p', { class: 'readout', text: HINT.trend }), words = i => `${fmt.day(s[i].date)}: ${fmt.int(s[i].visits)} visits. ${fmt.int(s[i].before)} on ${fmt.day(s[i].beforeDate)}.`;
+  const point = i => { trendAt = i; const d = s[i]; cross.setAttribute('visibility', 'visible'); cross.children[0].setAttribute('x1', X(i)); cross.children[0].setAttribute('x2', X(i)); cross.children[1].setAttribute('cx', X(i)); cross.children[1].setAttribute('cy', Y(d.before)); cross.children[2].setAttribute('cx', X(i)); cross.children[2].setAttribute('cy', Y(d.visits));
+    readout.textContent = words(i); holding(plot, () => { cross.setAttribute('visibility', 'hidden'); readout.textContent = HINT.trend; }); };
+  const at = e => { const box = g.getBoundingClientRect(), x = (e.clientX - box.left) / box.width * W; return clamp(Math.round((x - L) / pw * (n - 1)), 0, n - 1); };
+  plot.addEventListener('pointermove', e => { if (e.pointerType !== 'touch') point(at(e)); }); // a finger moving over the chart is scrolling the page, so it is left alone
+  plot.addEventListener('click', e => { const i = at(e); point(i); say(words(i)); }); // a tap (or a click) reads that day and keeps it until Escape or a tap elsewhere
+  plot.addEventListener('pointerleave', e => { if (e.pointerType !== 'touch') letGo(plot); }); plot.addEventListener('blur', () => letGo(plot));
+  plot.addEventListener('keydown', e => { const by = { ArrowLeft: -1, ArrowRight: 1, Home: -n, End: n }[e.key]; if (!by) return; e.preventDefault(); const i = clamp((trendAt < 0 || trendAt >= n ? n - 1 - Math.sign(by) : trendAt) + by, 0, n - 1); point(i); say(words(i)); });
+  letGoAll(host); host.replaceChildren(plot, readout); trendAt = -1; if (had) plot.focus({ preventScroll: true }); } // a redraw (the window changed size) must not take the keyboard away
 
 // ---- What stands out, and the deploys ----
-function renderNotes() { const list = $('notes').querySelector('.list'); list.replaceChildren(...(view.notes.length ? view.notes.slice(0, 7).map(n => el('li', {}, icon(n.level), el('span', { class: 'wrap' }, el('span', { class: 'sr', text: { good: 'Good news: ', warning: 'Warning: ', critical: 'Problem: ' }[n.level] }), n.text))) : [el('li', {}, icon('good'), el('span', { text: view.siteCount ? 'Nothing stands out. Every chosen site is healthy and steady.' : 'No sites are chosen.' }))])); }
+function renderNotes() { const list = $('notes').querySelector('.list'), all = view.notes.length, shown = state.allNotes ? all : Math.min(7, all); // the first seven, worst first; the rest are counted and one press away, never dropped silently
+  $('notes-sub').textContent = all > 7 ? `Worst first. ${shown === all ? `All ${all}` : `${shown} of ${all}`} shown.` : 'Worst first';
+  const more = all > 7 ? el('li', { class: 'more' }, el('span'), el('button', { class: 'astable', type: 'button', id: 'all-notes', 'aria-expanded': String(shown === all), text: `All ${all} notes` })) : null;
+  if (more) more.querySelector('button').addEventListener('click', () => { state.allNotes = !state.allNotes; renderNotes(); $('all-notes').focus(); });
+  list.replaceChildren(...(view.notes.length ? view.notes.slice(0, shown).map(n => el('li', {}, icon(n.level), el('span', { class: 'wrap' }, el('span', { class: 'sr', text: { good: 'Good news: ', warning: 'Warning: ', critical: 'Problem: ' }[n.level] }), n.text))) : [el('li', {}, icon('good'), el('span', { text: view.siteCount ? 'Nothing stands out. Every chosen site is healthy and steady.' : 'No sites are chosen.' }))]), ...(more ? [more] : [])); }
 function renderDeploys() { const list = $('deploys').querySelector('.list'), ago = d => (d === 0 ? 'on the last day' : d === 1 ? '1 day before' : `${d} days before`);
+  $('deploys-sub').textContent = view.deploys.length > 8 ? `The latest 8 of ${view.deploys.length} in this period, newest first` : 'In this period, newest first';
   list.replaceChildren(...(view.deploys.length ? view.deploys.slice(0, 8).map(d => el('li', {}, icon(d.ok ? 'good' : 'warning'), el('span', { class: 'sr', text: d.ok ? 'Fine: ' : 'Warning: ' }), el('span', { class: 'wrap' }, el('strong', { text: d.siteName }), d.ok ? ` deployed in ${fmt.secs(d.seconds)}` : ` failed after ${fmt.secs(d.seconds)}`), el('span', { class: 'when', text: `${fmt.day(d.date)}, ${ago(d.daysAgo)}` }))) : [el('li', {}, icon('good'), el('span', { text: 'No deploys in this period.' }))])); }
 
 // ---- Every site: the table ----
@@ -90,7 +111,8 @@ function renderTable() { const head = $('table').querySelector('thead tr'), body
 // ---- Ranked bars: sources, and what people read on ----
 function bars(host, items, figure, describe) { const top = Math.max(1, ...items.map(i => i.visits)), meters = host.classList.contains('meters');
   host.replaceChildren(...items.map(i => { const li = el('li', { tabIndex: 0 }, el('span', { class: 'name', text: i.name }), el('span', { class: 'fig' }, ...figure(i)), el('span', { class: 'track', 'aria-hidden': 'true' }, i.visits > 0 ? el('i', { style: `width:${(meters ? i.share : i.visits / top) * 100}%` }) : null));
-    const show = (x, y) => showTip(x, y, el('div', { class: 'when', text: i.name }), ...describe(i)); li.addEventListener('pointermove', e => show(e.clientX, e.clientY)); li.addEventListener('pointerleave', hideTip); li.addEventListener('focus', () => { const r = li.getBoundingClientRect(); show(r.left + 40, r.bottom - 6); }); li.addEventListener('blur', hideTip); return li; })); }
+    const show = () => showTip(li, el('div', { class: 'when', text: i.name }), ...describe(i)); li.addEventListener('pointerenter', e => { if (e.pointerType !== 'touch') show(); }); li.addEventListener('click', show); li.addEventListener('focus', show);
+    li.addEventListener('pointerleave', e => { if (e.pointerType !== 'touch' && !(e.relatedTarget && tip.contains(e.relatedTarget))) letGo(li); }); li.addEventListener('blur', () => letGo(li)); return li; })); }
 function renderSources() { bars($('sources').querySelector('.bars'), view.sources, i => [fmt.int(i.visits), el('small', {}, `${i.pct}% `, delta(i.delta))], i => [row('var(--series)', fmt.int(i.visits), 'visits'), row(null, fmt.pct(i.share, 1), 'of all visits'), row(null, fmt.delta(i.delta), beforeWords())]); }
 function renderDevices() { bars($('devices').querySelector('.bars'), view.devices, i => [`${i.pct}%`, el('small', { text: fmt.int(i.visits) })], i => [row('var(--series)', fmt.pct(i.share, 1), 'of all visits'), row(null, fmt.int(i.visits), 'visits')]); }
 
@@ -100,32 +122,35 @@ const hourSpan = h => `${String(h).padStart(2, '0')}:00 to ${String((h + 1) % 24
 function renderHeat() { const host = $('heat').querySelector('.view'), m = view.heat, flat = m.flat(), top = Math.max(...flat), low = Math.min(...flat), had = host.contains(document.activeElement) && document.activeElement.classList.contains('plot');
   const step = v => (v <= 0 ? 0 : top <= low ? 3 : clamp(1 + Math.floor((v - low) / (top - low) * 5 - 1e-9), 1, 5)); // five shades spread between the quietest hour and the busiest; an hour with no visits at all gets the empty shade
   const avg = v => fmt.int(Math.round(v));
-  if (state.tables.heat) { host.replaceChildren(el('div', { class: 'scroll', tabIndex: 0, role: 'region', 'aria-label': 'Average visits by day and hour, as a table', style: 'max-height:270px;overflow-y:auto' }, el('table', {}, el('thead', {}, el('tr', {}, el('th', { scope: 'col', text: 'Hour (UTC)' }), ...WEEKDAYS.map(d => el('th', { scope: 'col', class: 'r', text: d })))), el('tbody', {}, ...Array.from({ length: 24 }, (_, h) => el('tr', {}, el('th', { scope: 'row', text: hourSpan(h) }), ...m.map(r => el('td', { class: 'r', text: avg(r[h]) })))))))); return; }
+  if (state.tables.heat) { letGoAll(host); host.replaceChildren(el('div', { class: 'scroll', tabIndex: 0, role: 'region', 'aria-label': 'Average visits by day and hour, as a table', style: 'max-height:270px;overflow-y:auto' }, el('table', {}, el('thead', {}, el('tr', {}, el('th', { scope: 'col', text: 'Hour (UTC)' }), ...WEEKDAYS.map(d => el('th', { scope: 'col', class: 'r', text: d })))), el('tbody', {}, ...Array.from({ length: 24 }, (_, h) => el('tr', {}, el('th', { scope: 'row', text: hourSpan(h) }), ...m.map(r => el('td', { class: 'r', text: avg(r[h]) })))))))); return; }
   const W = Math.max(280, host.clientWidth || 560), L = 34, T = 16, cw = (W - L) / 24, ch = Math.max(16, Math.min(26, cw)), H = T + ch * 7, g = svg('svg', { viewBox: `0 0 ${W} ${H}`, role: 'presentation' }), cells = svg('g', { class: 'cells' }), cursor = svg('rect', { class: 'cursor', width: cw, height: ch, visibility: 'hidden' });
   for (let h = 0; h < 24; h += 3) g.append(Object.assign(svg('text', { class: 'tick', x: L + h * cw + 1, y: 10 }), { textContent: String(h).padStart(2, '0') }));
   m.forEach((r, d) => { g.append(Object.assign(svg('text', { class: 'tick', x: 0, y: T + d * ch + ch / 2 + 3 }), { textContent: WEEKDAYS[d] })); r.forEach((v, h) => cells.append(svg('rect', { x: L + h * cw + 1, y: T + d * ch + 1, width: cw - 2, height: ch - 2, fill: `var(--h${step(v)})`, 'data-d': d, 'data-h': h }))); }); g.append(cells, cursor);
   const plot = el('div', { class: 'plot', tabIndex: 0, role: 'group', 'aria-label': 'Average visits by day of the week and hour of the day, as a grid of shaded squares. Use the arrow keys to read each square, or switch to the table view.' }, g);
-  const point = (d, h, px, py) => { heatAt = [d, h]; cursor.setAttribute('visibility', 'visible'); cursor.setAttribute('x', L + h * cw); cursor.setAttribute('y', T + d * ch); const box = g.getBoundingClientRect(), k = box.width / W; showTip(px ?? box.left + (L + (h + 1) * cw) * k, py ?? box.top + (T + d * ch) * k, el('div', { class: 'when', text: `${WEEKDAYS[d]}, ${hourSpan(h)}` }), row(`var(--h${Math.max(1, step(m[d][h]))})`, avg(m[d][h]), view.weeks === 1 ? 'visits' : 'visits on average')); };
-  const leave = () => { cursor.setAttribute('visibility', 'hidden'); hideTip(); };
-  cells.addEventListener('pointermove', e => { const t = e.target; if (t.dataset.d !== undefined) point(Number(t.dataset.d), Number(t.dataset.h), e.clientX, e.clientY); }); plot.addEventListener('pointerleave', leave); plot.addEventListener('blur', leave);
-  plot.addEventListener('keydown', e => { const by = { ArrowLeft: [0, -1], ArrowRight: [0, 1], ArrowUp: [-1, 0], ArrowDown: [1, 0] }[e.key]; if (e.key === 'Escape') { leave(); return; } if (!by) return; e.preventDefault(); const [d, h] = heatAt ? [clamp(heatAt[0] + by[0], 0, 6), clamp(heatAt[1] + by[1], 0, 23)] : [0, 0]; point(d, h); say(`${WEEKDAYS[d]}, ${hourSpan(h)}: ${avg(m[d][h])} visits${view.weeks === 1 ? '' : ' on average'}.`); }); // the first press reads Monday at midnight
+  const readout = el('p', { class: 'readout', text: HINT.heat }), words = (d, h) => `${WEEKDAYS[d]}, ${hourSpan(h)}: ${avg(m[d][h])} visits${view.weeks === 1 ? '' : ' on average'}.`;
+  const point = (d, h) => { heatAt = [d, h]; cursor.setAttribute('visibility', 'visible'); cursor.setAttribute('x', L + h * cw); cursor.setAttribute('y', T + d * ch); readout.textContent = words(d, h); holding(plot, () => { cursor.setAttribute('visibility', 'hidden'); readout.textContent = HINT.heat; }); };
+  const square = e => (e.target.dataset && e.target.dataset.d !== undefined ? [Number(e.target.dataset.d), Number(e.target.dataset.h)] : null);
+  cells.addEventListener('pointermove', e => { const q = square(e); if (q && e.pointerType !== 'touch') point(...q); }); cells.addEventListener('click', e => { const q = square(e); if (q) { point(...q); say(words(...q)); } });
+  plot.addEventListener('pointerleave', e => { if (e.pointerType !== 'touch') letGo(plot); }); plot.addEventListener('blur', () => letGo(plot));
+  plot.addEventListener('keydown', e => { const by = { ArrowLeft: [0, -1], ArrowRight: [0, 1], ArrowUp: [-1, 0], ArrowDown: [1, 0] }[e.key]; if (!by) return; e.preventDefault(); const [d, h] = heatAt ? [clamp(heatAt[0] + by[0], 0, 6), clamp(heatAt[1] + by[1], 0, 23)] : [0, 0]; point(d, h); say(words(d, h)); }); // the first press reads Monday at midnight
   const scale = top > 0 ? el('div', { class: 'scale', 'aria-hidden': 'true' }, 'Fewer', ...[1, 2, 3, 4, 5].map(k => el('i', { style: `background:var(--h${k})` })), 'More', el('span', { text: ` (from ${avg(low)} to ${avg(top)} visits in the hour${view.weeks === 1 ? '' : ', on average'})` })) : null;
-  host.replaceChildren(...[plot, scale].filter(Boolean)); heatAt = null; if (had) plot.focus({ preventScroll: true }); }
+  letGoAll(host); host.replaceChildren(...[plot, readout, scale].filter(Boolean)); heatAt = null; if (had) plot.focus({ preventScroll: true }); }
 
 // ---- Most read pages ----
 function renderPages() { const body = $('pages').querySelector('tbody'), rows = view.pages.slice(0, 10), top = Math.max(1, rows.length ? rows[0].views : 1);
   body.replaceChildren(...(rows.length ? rows.map(p => el('tr', {}, el('th', { scope: 'row' }, p.title, el('span', { class: 'muted', text: ' ' + p.path })), el('td', { text: p.siteName }), el('td', { class: 'r', text: fmt.int(p.views) }), el('td', { style: 'width:28%' }, el('span', { class: 'meter', 'aria-hidden': 'true', style: 'width:100%;margin:0;background:transparent' }, el('i', { style: `width:${p.views / top * 100}%;background:var(--series);border-radius:0 2px 2px 0` }))))) : [el('tr', {}, el('td', { colSpan: 4 }, el('p', { class: 'empty', text: 'No sites are chosen.' })))])); }
 
 // ---- Putting it together ----
-function render() { view = summarise(data, { range: state.range, sites: [...state.sites] }); hideTip();
+function render() { view = summarise(data, { range: state.range, sites: [...state.sites] }); letGoAll();
   for (const b of $('range').querySelectorAll('button')) { const on = Number(b.dataset.range) === state.range; b.setAttribute('aria-checked', String(on)); b.tabIndex = on ? 0 : -1; }
   for (const b of $('sites').querySelectorAll('[data-site]')) b.setAttribute('aria-pressed', String(state.sites.has(b.dataset.site))); $('all-sites').setAttribute('aria-pressed', String(state.sites.size === ALL.length));
   const which = view.siteCount === ALL.length ? 'all eight sites' : view.siteCount === 1 ? view.sites[0].name : view.siteCount === 0 ? 'no sites' : `${view.siteCount} sites`;
-  $('period').textContent = `${fmt.day(view.from)} to ${fmt.day(view.to)} 2026, ${which}, compared with the ${view.weeks === 1 ? 'week' : view.weeks + ' weeks'} before.`;
+  const y0 = view.from.slice(0, 4), y1 = view.to.slice(0, 4); // the year comes from the dates, not from the code
+  $('period').textContent = `${fmt.day(view.from)}${y0 === y1 ? '' : ' ' + y0} to ${fmt.day(view.to)} ${y1}, ${which}, compared with the ${view.weeks === 1 ? 'week' : view.weeks + ' weeks'} before.`;
   renderKpis(); renderTrend(); renderNotes(); renderTable(); renderSources(); renderHeat(); renderDevices(); renderPages(); renderDeploys();
   say(`${fmt.int(view.totals.visits)} visits in the last ${span()} across ${which}.`); }
-for (const b of document.querySelectorAll('.astable')) b.addEventListener('click', () => { const k = b.dataset.for; state.tables[k] = !state.tables[k]; b.setAttribute('aria-pressed', String(state.tables[k])); hideTip(); if (k === 'trend') renderTrend(); else renderHeat(); });
+for (const b of document.querySelectorAll('.astable')) b.addEventListener('click', () => { const k = b.dataset.for; state.tables[k] = !state.tables[k]; b.setAttribute('aria-pressed', String(state.tables[k])); if (k === 'trend') renderTrend(); else renderHeat(); });
 let wide = 0; new ResizeObserver(() => { const w = $('trend').clientWidth + $('heat').clientWidth; if (w !== wide && view) { wide = w; renderTrend(); renderHeat(); } }).observe(document.querySelector('.grid')); // the two drawn charts fit their cards
-addEventListener('scroll', hideTip, { passive: true });
+addEventListener('scroll', placeTip, { passive: true }); addEventListener('resize', placeTip);
 buildFilters(); render();
 window.sitePulse = { state: () => ({ range: state.range, sites: [...state.sites], sort: { ...state.sort }, tables: { ...state.tables } }), view: () => view, set(o) { if (o.range !== undefined) { if (!RANGES.some(r => r[0] === o.range)) throw new Error('The range must be 7, 28 or 91 days'); state.range = o.range; } if (o.sites) state.sites = new Set(o.sites.filter(id => ALL.includes(id))); render(); } }; // for the automated checks

@@ -65,10 +65,11 @@
   .gridline { stroke:var(--grid); stroke-width:1; }
   .legend { display:flex; flex-wrap:wrap; gap:4px 14px; margin:0 0 6px; padding:0; list-style:none; font-size:11px; color:var(--muted); }
   .legend i { display:inline-block; width:14px; height:2px; margin-right:6px; vertical-align:middle; border-radius:1px; }
-  #tip { position:fixed; z-index:20; pointer-events:none; min-width:120px; max-width:240px; padding:7px 9px; border-radius:8px; background:#0b0d0e; border:1px solid rgba(255,255,255,.2); box-shadow:0 8px 24px rgba(0,0,0,.5); font-size:11px; color:var(--muted); }
+  #tip { position:fixed; z-index:20; min-width:120px; max-width:240px; padding:7px 9px; border-radius:8px; background:#0b0d0e; border:1px solid rgba(255,255,255,.2); box-shadow:0 8px 24px rgba(0,0,0,.5); font-size:11px; color:var(--muted); }
   #tip b { display:block; color:var(--ink); font-size:13px; font-weight:700; font-variant-numeric:tabular-nums; }
   #tip .row { display:flex; align-items:baseline; gap:6px; margin-top:3px; } #tip .row i { flex:none; width:10px; height:2px; border-radius:1px; transform:translateY(-3px); } #tip .row b { display:inline; margin-right:2px; }
   #tip .when { margin-bottom:2px; color:var(--ink); font-weight:600; }
+  .readout { margin:6px 0 0; min-height:1.4em; font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; } /* the reading for the day or hour being pointed at, tapped or reached by the keys */
 
   /* Tables */
   .scroll { position:relative; overflow-x:auto; } /* positioned, so hidden labels inside a wide table are clipped with it and cannot widen the page */
@@ -102,11 +103,11 @@
 
   /* Notes and deploys */
   .list { margin:0; padding:0; list-style:none; } .list li { display:grid; grid-template-columns:18px minmax(0,1fr) auto; gap:8px; align-items:start; padding:7px 0; border-top:1px solid var(--line); } .list li:first-child { border-top:0; padding-top:2px; }
-  .list svg { margin-top:1px; } .list .when { color:var(--faint); font-size:11px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .list li.more { display:block; padding-bottom:0; } .list svg { margin-top:1px; } .list .when { color:var(--faint); font-size:11px; white-space:nowrap; font-variant-numeric:tabular-nums; }
   .empty { margin:0; padding:18px 0; color:var(--faint); text-align:center; }
   footer { margin-top:16px; font-size:11px; color:var(--faint); } footer a { color:var(--muted); }
 
-  @media (max-width:1100px) { #kpis { grid-template-columns:repeat(3,minmax(0,1fr)); } .tile.hero { grid-column:span 3; } .s8, .s7, .s5, .s4, .s3 { grid-column:span 12; } }
+  @media (max-width:1100px) { #kpis { grid-template-columns:repeat(3,minmax(0,1fr)); } .tile.hero { grid-column:span 3; } .s8, .s7, .s5, .s4, .s3 { grid-column:span 12; } #notes { order:-1; } } /* once the cards stack, what stands out comes first, so a phone opens on the worst news */
   @media (max-width:700px) { .hint { display:inline; } }
   @media (max-width:560px) { #kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } .tile.hero { grid-column:span 2; } .tile.hero .value { font-size:48px; } main { padding-top:12px; } #filters legend { float:none; width:100%; line-height:1.2; margin:0 0 2px; } }
   @media (prefers-reduced-motion:reduce) { * { transition:none !important; scroll-behavior:auto !important; } }
@@ -136,7 +137,7 @@
       <div class="view"></div>
     </figure>
     <section class="card s4" id="notes" aria-labelledby="notes-h">
-      <div class="head"><div><h2 id="notes-h">What stands out</h2><p class="sub">Worst first</p></div><span class="sample">Sample data</span></div>
+      <div class="head"><div><h2 id="notes-h">What stands out</h2><p class="sub" id="notes-sub">Worst first</p></div><span class="sample">Sample data</span></div>
       <ul class="list"></ul>
     </section>
 
@@ -163,7 +164,7 @@
       <div class="scroll" tabindex="0" role="region" aria-labelledby="pages-h"><table><thead><tr><th scope="col">Page</th><th scope="col">Site</th><th scope="col" class="r">Views</th><th scope="col"><span class="sr">Share of the top page</span></th></tr></thead><tbody></tbody></table></div>
     </section>
     <section class="card s5" id="deploys" aria-labelledby="deploys-h">
-      <div class="head"><div><h2 id="deploys-h">Latest deploys</h2><p class="sub">In this period, newest first</p></div><span class="sample">Sample data</span></div>
+      <div class="head"><div><h2 id="deploys-h">Latest deploys</h2><p class="sub" id="deploys-sub">In this period, newest first</p></div><span class="sample">Sample data</span></div>
       <ul class="list"></ul>
     </section>
   </div>

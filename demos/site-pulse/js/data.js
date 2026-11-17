@@ -1,7 +1,7 @@
 // Site Pulse: the numbers. Everything here is SAMPLE DATA, made up by rule from a fixed seed, so the page looks the same
 // every time and nothing real is shown. No drawing and no page: this file can be checked in Node.
 export const END = '2026-11-16'; // the last full day in the sample
-export const DAYS = 182; // twenty-six whole weeks: enough for a 13-week view and the 13 weeks before it
+export const DAYS = 182; // twenty-six whole weeks: enough for a 13-week view and the 13 weeks before it. summarise() works from the length it is given, not from this.
 export const RANGES = [[7, '1 week'], [28, '4 weeks'], [91, '13 weeks']]; // whole weeks only, so every weekday is counted equally and each period lines up with the one before
 export const SOURCES = ['Search', 'Direct', 'Social', 'Other sites', 'Newsletter', 'AI assistants'];
 export const DEVICES = ['Desktop', 'Phone', 'Tablet'];
@@ -70,7 +70,8 @@ export const SLOW_MS = 2500;
 // Everything the page shows, for one choice of time range and sites. The same slice feeds every chart, so the numbers agree.
 export function summarise(data, { range = 28, sites = null } = {}) {
   if (!RANGES.some(r => r[0] === range)) throw new Error('The range must be 7, 28 or 91 days');
-  const chosen = data.sites.filter(s => !sites || sites.includes(s.id)), to = DAYS - 1, from = to - range + 1, pFrom = from - range, idx = Array.from({ length: range }, (_, k) => from + k), pIdx = idx.map(i => i - range), weeks = range / 7;
+  if (range * 2 > data.days.length) throw new Error(`The data holds ${data.days.length} days, too few for ${range} days and the ${range} before them`);
+  const chosen = data.sites.filter(s => !sites || sites.includes(s.id)), to = data.days.length - 1, from = to - range + 1, pFrom = from - range, idx = Array.from({ length: range }, (_, k) => from + k), pIdx = idx.map(i => i - range), weeks = range / 7;
   const tot = (list, ix) => { const visits = sum(list.map(s => sum(ix.map(i => s.visits[i])))), visitors = sum(list.map(s => sum(ix.map(i => s.visitors[i])))), views = sum(list.map(s => sum(ix.map(i => s.views[i]))));
     const stay = visits ? Math.round(sum(list.map(s => sum(ix.map(i => s.stay[i] * s.visits[i])))) / visits) : 0, load = weightedMedian(list.flatMap(s => ix.map(i => [s.load[i], s.visits[i]]))), downMin = sum(list.map(s => sum(ix.map(i => s.down[i]))));
     return { visits, visitors, views, perVisit: visits ? views / visits : 0, stay, load, downMinutes: downMin, uptime: list.length ? 1 - downMin / (list.length * ix.length * 1440) : null }; };
@@ -93,7 +94,7 @@ export function summarise(data, { range = 28, sites = null } = {}) {
   const notes = []; // plain sentences about what stands out
   for (const s of perSite) if (s.outage) notes.push({ level: 'critical', site: s.id, text: `${s.name} was down for ${s.downMinutes} minutes in this period.` });
   for (const s of perSite) if (s.slow) notes.push({ level: 'warning', site: s.id, text: `${s.name} is slow: a typical visit waits ${(s.load / 1000).toFixed(1)} seconds for a page.` });
-  for (const d of deploys.filter(d => !d.ok).slice(0, 3)) notes.push({ level: 'warning', site: d.site, text: `A deploy of ${d.siteName} failed on ${fmt.day(d.date)}.` });
+  for (const s of perSite) { const failed = deploys.filter(d => d.site === s.id && !d.ok); if (failed.length) notes.push({ level: 'warning', site: s.id, text: failed.length === 1 ? `A deploy of ${s.name} failed on ${fmt.day(failed[0].date)}.` : `${failed.length} deploys of ${s.name} failed in this period, the last on ${fmt.day(failed[0].date)}.` }); } // one note per site, so every failed deploy is counted and none is left out
   for (const s of perSite) if (s.delta !== null && s.delta < -0.15) notes.push({ level: 'warning', site: s.id, text: `${s.name} is down ${Math.round(-s.delta * 100)}% on the ${weeks === 1 ? 'week' : weeks + ' weeks'} before.` });
   for (const s of perSite) if (s.delta !== null && s.delta > 0.25) notes.push({ level: 'good', site: s.id, text: `${s.name} is up ${Math.round(s.delta * 100)}% on the ${weeks === 1 ? 'week' : weeks + ' weeks'} before.` });
   notes.sort((a, b) => LEVEL[a.level] - LEVEL[b.level]); // worst first; within a level, the order above

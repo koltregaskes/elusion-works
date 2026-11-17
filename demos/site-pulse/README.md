@@ -11,8 +11,8 @@ Use it as the reference for dashboards and charts.
 
 - **One row of filters** above everything they change: 1, 4 or 13 weeks, and which sites to include. Whole weeks only, so every weekday is counted equally and each period lines up, day for day, with the one before.
 - **Headline numbers**: visits (the one big figure), daily visitors summed, pages per visit, time on site, typical page load, uptime, each with its change on the period before.
-- **Visits a day**: this period as a line over the period before, with a crosshair that reads both.
-- **What stands out**: plain sentences, worst first (an outage, a slow site, a failed deploy, a site well up).
+- **Visits a day**: this period as a line over the period before, with a crosshair that reads both. The figures for the day being read are written in a line under the chart.
+- **What stands out**: plain sentences, worst first (an outage, a slow site, failed deploys, a site well up). The first seven show; if there are more, the card says how many and one press shows them all. Failed deploys are one note per site with their count, so none is left out. On a phone or any narrow window this card comes first, above the headline numbers.
 - **Every site**: a sortable table with state, visits, change, a small trend line, top source, load, uptime and the last deploy. Press a site's name to see only that site.
 - **Where visits come from**, **when people visit** (a week of hours), **what they read on**, **most read pages**, **latest deploys**.
 
@@ -32,7 +32,7 @@ The charting rules used here are simple and are checked rather than judged by ey
 - The form follows the job: a big figure for the one number that matters, tiles for the rest, a line for change over time, ranked bars for sources, a grid for the week, a table when there are eight of something.
 - One hue carries the data (green, darker for marks, brighter for emphasis). Grey is the period before. Red and amber mean trouble and nothing else, always with an icon and a word.
 - No second axis, no pie, no rainbow. Text is never coloured to match a line.
-- Both drawn charts have a table view, and both can be read with the arrow keys; the figure under the cursor is spoken.
+- Both drawn charts have a table view, and both can be read with the arrow keys, the pointer or a tap. The reading goes in a line under the chart, not in a box over it, so nothing is covered; readings made by the keys or a tap are also spoken. Escape, or a press or tap anywhere else, puts a reading away. The bars for sources and devices show a small box with their figures; it sits against its bar, stays while the pointer is on it, and Escape puts it away.
 - The greens were checked with a palette validator on the card colour. The green used for lines, bars and meters passes its checks for a dark surface. The five shades of the week grid pass as an ordered ramp: one hue, each step visibly lighter than the last, the darkest still clear of the background. A brighter green is kept for the bar under the pointer and for good news in text; it is not used for marks at rest.
 
 ## How it is put together
@@ -42,7 +42,7 @@ The charting rules used here are simple and are checked rather than judged by ey
 | `js/data.js` | Makes 182 days of sample numbers for eight sites from a seed, and adds them up for any range and choice of sites. No drawing, no page. |
 | `js/app.js` | Draws everything in plain SVG and HTML, and listens to the filters. No chart library. |
 
-To point it at real numbers, replace `makeData()` with something that returns the same shape (per site, per day: visits, visitors, page views, time on site, load, minutes down, and the splits by source, device and hour). `summarise()` and the page need no change.
+No real data source is connected, and none should be for this demo. For the record, the contract the code supports: `summarise()` takes data of the same shape `makeData()` returns (a list of days one after another, ending on the last full day; per site, per day: visits, visitors, page views, time on site, load, minutes down, and the splits by source, device and hour; and a list of deploys). It works from the number of days it is given, which must be at least twice the longest range offered (26 weeks for the 13-week view), and the page takes the year from the dates. That much is tested with the sample cut short. It has not been tried with any real numbers, and real sources would need more (time zones, missing days, sites added part way through), which this code does not handle.
 
 ## Checks
 
@@ -54,7 +54,9 @@ node demos/site-pulse/tools/data.test.mjs
 PW_CHROMIUM=/opt/pw-browsers/chromium node demos/site-pulse/tools/smoke.mjs node_modules/axe-core/axe.min.js http://127.0.0.1:8774
 ```
 
-The first checks that every view of the numbers agrees with every other, and then works the main figures out again from the raw daily arrays with separate code (totals, the period before, uptime, typical load, the week grid, each site's state and last deploy). The second reads every figure off the page for twelve combinations of range and sites and compares it with `summarise()` (serve the repo root first). Between them: the first shows the sums are right, the second shows the page prints them.
+The first checks that every view of the numbers agrees with every other, and then works the main figures out again from the raw daily arrays with separate code (totals, the period before, uptime, typical load, the week grid, each site's state and last deploy, and that every failed deploy is counted in the notes). The second reads every figure off the page for twelve combinations of range and sites and compares it with `summarise()`, and works the controls, the charts and the tips by keyboard, mouse and (simulated) touch (serve the repo root first). Between them: the first shows the sums are right, the second shows the page prints them.
+
+The site's automatic checks on GitHub do not run either of these; they are run by hand.
 
 ## Credit
 
@@ -62,4 +64,8 @@ The idea follows a post by Adam Holter about a personal dashboard for all his si
 
 ## Status
 
-Not published. The page carries `noindex`, is not in the demo gallery and is not in the sitemap. See `REVIEW.md` for what was checked and what was not.
+**Unlisted draft.** The page carries `noindex`, is not in the demo gallery and is not in the sitemap, and should stay that way until Kol decides otherwise.
+
+Merging this branch would put the page on the live site at its own address (`/demos/site-pulse/`), because the site deploys whatever is merged. It would be unlisted, but anyone with the link could open it. Listing it in the gallery is a separate, later step; see `REVIEW.md`.
+
+See `REVIEW.md` for what was checked and what was not.
