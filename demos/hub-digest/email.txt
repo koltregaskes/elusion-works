@@ -1,0 +1,88 @@
+AI RESOURCE HUB: THE WEEKLY DIGEST
+Issue 12, 17 November 2026, 1 minute read
+Read this online: {{view_online_url}}
+
+This is a sample issue. The resources and figures in it are made up to
+show the template, and every link leads to the Hub’s front page.
+
+----------------------------------------
+THIS WEEK
+
+ASK IT HOW IT KNOWS
+
+The most useful habit we picked up this month costs nothing. After a
+model gives you an answer, ask it which parts it worked out and which
+parts it is recalling. The answer is not always right, but it tells you
+where to look first.
+
+Three of this week’s resources are built on the same idea: show the
+working, then check it. The fourth is a set of test questions for the
+day you want to check it yourself.
+
+----------------------------------------
+NEW ON THE HUB
+
+Lanternfile (Tool)
+Turns a folder of PDFs into a notebook you can question, and runs on
+your own machine so nothing leaves it.
+Good for: Anyone with a pile of reports and no time.
+https://theairesourcehub.com/#lanternfile
+
+Evals without the jargon (Guide)
+A forty-minute read on testing a model against your own questions, with
+a spreadsheet you can copy.
+Good for: Teams about to choose between two models.
+https://theairesourcehub.com/#evals-without-the-jargon
+
+Kittiwake 2 Small (Model)
+A small open model that is quick on a laptop and honest about what it
+does not know.
+Good for: Drafts, summaries and anything private.
+https://theairesourcehub.com/#kittiwake-2-small
+
+Hard Questions, Plain Answers (Dataset)
+Twelve hundred questions with checked answers and the working shown, for
+seeing whether a model reasons or guesses.
+Good for: People who build things on top of models.
+https://theairesourcehub.com/#hard-questions
+
+----------------------------------------
+IN NUMBERS
+
+214 resources on the Hub
+4 added this week
+31 checked and still working
+
+----------------------------------------
+WORTH YOUR TIME
+
+Why a confident answer is not a correct one
+The Hub blog, 6 minutes
+https://theairesourcehub.com/#confident-is-not-correct
+
+A field guide to model names
+The Hub blog, 4 minutes
+https://theairesourcehub.com/#model-names
+
+What we took off the Hub this month, and why
+The Hub blog, 3 minutes
+https://theairesourcehub.com/#taken-off
+
+----------------------------------------
+A PROMPT TO TRY
+
+Answer my question. Then list each claim you made, and mark it as worked
+out, recalled or guessed. For anything recalled or guessed, tell me how
+I could check it.
+
+Paste it in after your own question, in any chat model.
+
+----------------------------------------
+See everything new on the Hub:
+https://theairesourcehub.com/#new
+
+----------------------------------------
+You are getting this because you asked for the weekly digest from AI
+Resource Hub.
+Stop these emails: {{unsubscribe_url}}
+AI Resource Hub, {{postal_address}}
