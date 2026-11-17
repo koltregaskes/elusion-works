@@ -14,6 +14,9 @@ export const light = hex => { const n = parseInt(hex.slice(1), 16); return 0.212
 export const contrast = (a, b) => { const x = light(a), y = light(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
 export const ratio = (a, b) => (Math.floor(contrast(a, b) * 10) / 10).toFixed(1); // cut short, so a printed 4.5 is never really 4.46
 
+// A role is given as a colour, or as { seed, stops } where some shades are set by hand. Either way it starts from one seed colour.
+export const seedOf = role => (typeof role === 'string' ? role : role.seed);
+
 // One mode's colours, by the job each does in the specimen.
 // Surfaces and ink are the look's own anchors. Fills and the ink on them are what makeColors worked out.
 // For coloured words the apps choose their own shade of each role; the specimen takes the first worked-out shade that reads at 4.5 to 1 on the page.
@@ -21,7 +24,7 @@ export function colours(mode) {
   const a = DEFINITION[mode].gray.anchors, t = theme.inputs[mode], page = a['surface-0'];
   const out = { page, card: a['surface-1'], panel: a['surface-2'], menu: a['surface-3'] ?? a['surface-2'], ink: a['text-primary'], ink2: a['text-secondary'] ?? a['text-primary'], ink3: a['text-muted'] ?? a['text-secondary'] ?? a['text-primary'] };
   const order = mode === 'dark' ? [250, 300, 200, 100, 50] : [600, 700, 800, 850];
-  for (const [id] of ROLES) { out[id + 'Seed'] = (DEFINITION[mode].roles ?? DEFINITION.roles)[id]; out[id + 'Fill'] = t[`role-${id}-fill`]; out[id + 'On'] = t[`role-${id}-on`];
+  for (const [id] of ROLES) { out[id + 'Seed'] = seedOf((DEFINITION[mode].roles ?? DEFINITION.roles)[id]); out[id + 'Fill'] = t[`role-${id}-fill`]; out[id + 'On'] = t[`role-${id}-on`];
     const shade = order.map(n => t[`role-${id}-${n}`]).find(c => c && contrast(c, page) >= 4.5 && contrast(c, out.card) >= 4.5 && contrast(c, out.panel) >= 4.5); if (!shade) throw new Error(`no shade of ${id} reads on the ${mode} page`); out[id + 'Text'] = shade; }
   return out;
 }

@@ -13,7 +13,7 @@ Use it as the reference for how to build and check a Claude app theme, and for a
 
 - `mod/`: the theme itself, a small mod for Claude Code.
   - `.claude-plugin/plugin.json`, `hooks/hooks.json`: what the mod is and where its code is.
-  - `hooks/house.js`: the look as data. Eighteen colours (seven for the night half, six for the day half, five roles) and the scene, an SVG of about 2,100 characters.
+  - `hooks/house.js`: the look as data. Eighteen colours (seven for the night half, six for the day half, five roles), eleven more set by hand so that words read everywhere (two hover shades and the git state colours), and the scene, an SVG of about 2,100 characters.
   - `hooks/register.tsx`: sets the look when a session starts, and draws the scene where an app asks for it.
   - `hooks/register.test.tsx`: the mod's own tests.
   - `hooks/make-colors.js`, `make-colors.d.ts`: the colour maker from Claude Code's mod toolkit, copied unchanged as the toolkit says to. It turns the eighteen colours into about a hundred for each half of the day.
@@ -25,6 +25,7 @@ Use it as the reference for how to build and check a Claude app theme, and for a
 - **Night** is the house style: page `#111315`, ink `#f4f5f3`, and three more surfaces a little lighter each, so cards read as the same material as the page. The toolkit asks for the night surfaces to stay close together, and they do.
 - **Day** is the same idea in a drawing office: cool blueprint paper (`#f0f4f6`), near-black ink, and two lighter surfaces for cards and panels.
 - **One green.** `#3fe08a` is given as the accent. The apps keep its hue and choose their own lightness for each job, so buttons come out a deeper green (`#009057`) with black ink on them, not the bright house green. Forcing the exact green onto buttons was tried and left out: a white switch knob then reads at only 1.7 to 1 against it. The bright green survives in links and in keywords in code.
+- **Words read everywhere, not only where the colour maker looks hard.** The colour maker lowers its bar to the design system's own figure wherever that figure is under 4.5 to 1, so the toolkit's own git state colours passed it by day at as little as 2.48 to 1 on their tint, and white words on the danger and pro buttons at under 4 to 1 on hover. The theme now sets those by hand: darker git colours by day, lighter removed and closed by night, and a hover shade for danger and pro buttons a little darker than the button. `tools/palette.test.mjs` holds every pair of words in the colour maker's own table, the git colours and the ink on every button, at rest and on hover, to the full 4.5 to 1.
 - **Meaning is kept.** Danger is a red, success a lime, warning an amber, pro a violet. Success is a lime, not a second green, so that keywords and strings in code are told apart: every pair of the five is at least 30 degrees of hue apart, measured on the shades the theme yields.
 - **The scene.** Squared paper across the whole ground, and a small floor plan of six rooms pinned to the top right-hand corner. The rooms light up green one after another, nine seconds each, 54 seconds a round, never brighter than 22%. The plan keeps to that corner at every window shape, a phone held upright included, so it is never behind the middle of the page or the message box. Its grey and green are chosen to show on charcoal and on paper alike, so the scene does not have to be told which half of the day it is. With the animation taken out, which the apps do for anyone who asks for less motion, one room rests lit.
 
@@ -78,11 +79,13 @@ The first two need Claude Code. The last two need the site's development package
 - **The scene is drawn on nothing.** It paints dots, walls and lamps, and no ground of its own, so whatever the apps put under a scene shows through. The toolkit does not say what that is.
 - **The plan is pinned with nested drawings**, which is the way the toolkit gives for keeping a subject in view on every screen. It means the outermost drawing has no fixed sheet of its own. The engine accepts it and a browser draws it as intended; the apps are untested.
 - **Early access.** Themes for the apps are new and the way they are written may change between releases. `make-colors.js` is a copy and falls behind when the toolkit moves on: copy it again and re-run the checks.
-- **The day half has 25 notes** from the colour maker, each a near miss (the widest falls 0.12 short) against a bar the design system's own colours only just clear. None stops the apps painting the theme. An earlier, whiter day half had 12, but its cards could not be told from its page. The night half has none.
+- **The day half has 12 notes** from the colour maker, each a near miss (the widest falls 0.12 short) against a bar the design system's own colours only just clear. All 12 are about lines and fills (the strongest borders, the warning fill, the switch track on hover), not words. None stops the apps painting the theme. The night half has none. Held to the full 3 to 1 that lines and controls should have, borders, rings, slider and switch tracks fall short in both halves, as the design system's own do; that is left as it is.
 - **The preview's coloured words are a best guess.** The apps choose their own shade of each role for words. The preview takes the first shade the theme holds that reads at 4.5 to 1, and says so.
 - The validator notes that the mod has no licence file and no icon. Both matter only if it is submitted to the plugin directory, and the licence is the owner's choice.
 - Permission prompts keep the apps' own look. That is the apps' rule.
 
 ## Status
 
-Unlisted. The page carries `noindex`, and it is not in the gallery or the sitemap. The mod is not installed anywhere and not offered through any marketplace. Nothing here is published.
+**An unlisted draft.** The page carries `noindex`, and it is not in the gallery or the sitemap, so search engines are asked not to list it and the site does not link to it. It is not private. The site deploys whatever is merged, so merging this would put the page on the live site at its own address, unlisted but reachable by anyone who has the link, and the mod's files in `mod/` (its code and its colours) would be served beside it the same way. The mod is not installed anywhere and not offered through any marketplace.
+
+The site's automatic checks on a pull request do not run this demo's own tests (`palette.test.mjs`, `smoke.mjs`, or Claude Code's validator and test runner). They are run by hand, as listed under Checks.

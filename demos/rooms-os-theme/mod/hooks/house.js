@@ -4,9 +4,12 @@
 // The colours. makeColors (in make-colors.js) turns these few into the whole theme.
 // Night is the house style: charcoal ground, white ink, one green. Day is the same idea in a drawing office: cool blueprint paper, near-black ink.
 // Success is a lime, well round the wheel from the accent, so that keywords and strings in code are told apart.
+// Words must read at 4.5 to 1 everywhere, even where the design system's own colours fall short of that. So three things are set by hand:
+// - danger and pro: the shade a button turns on hover (stop 400) is a little darker than the button, not lighter, so the white words on it still read;
+// - the git state colours (added, removed and so on): darker by day and, for removed and closed, lighter by night, so they read on every surface and on their own tint.
 export const DEFINITION = {
   label: 'Rooms OS',
-  roles: { accent: '#3fe08a', danger: '#ff6b5e', success: '#b0ce3b', warning: '#f0b23a', pro: '#a58cff' },
+  roles: { accent: '#3fe08a', danger: { seed: '#ff6b5e', stops: { 400: '#cb2100' } }, success: '#b0ce3b', warning: '#f0b23a', pro: { seed: '#a58cff', stops: { 400: '#7140f0' } } },
   dark: {
     gray: {
       anchors: {
@@ -19,6 +22,7 @@ export const DEFINITION = {
         'text-muted': '#a9b1b6',
       },
     },
+    git: { removed: '#ff7893', closed: '#ff7c75' },
   },
   light: {
     gray: {
@@ -31,6 +35,7 @@ export const DEFINITION = {
         'text-muted': '#586166',
       },
     },
+    git: { added: '#146828', removed: '#a91a45', modified: '#6a5916', merged: '#654c9a', closed: '#a82620', conflicting: '#8d4613', draft: '#5b5b5b' },
   },
 };
 
