@@ -4,23 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Rooms OS handbook</title>
-<meta name="description" content="A sample handbook for Rooms OS, a way of running a team of AI agents: rooms and lanes, the hub, claims, evidence, approvals, handovers and safety. With search, code samples you can copy, and a light and a dark page.">
+<meta name="description" content="A sample handbook for Rooms OS, a way of running a team of AI agents: rooms and lanes, the hub, claims, evidence, approvals, handovers and safety. With search, code samples you can copy, and a light and a dark look.">
 <meta name="theme-color" content="#111315">
 <link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml">
 <!-- Unlisted until release is approved: remove the next line, then add the gallery card and sitemap entry. -->
 <meta name="robots" content="noindex">
 <style>
-  :root { --bg:#111315; --side:#15181a; --card:#191c1f; --line:rgba(255,255,255,.14); --ink:#f4f5f3; --soft:#d6dbde; --muted:#a9b1b6; --accent:#3fe08a; --accent-ink:#06210f; --link:#6fe9a8; --mark:#f3d36b; --mark-ink:#1b1608;
-    --c-comment:#8d979d; --c-string:#b9d86a; --c-number:#c5b3ff; --c-keyword:#6fe9a8; --c-name:#ffb199;
+  :root { --bg:#111315; --side:#15181a; --card:#191c1f; --line:rgba(255,255,255,.14); --ink:#f4f5f3; --soft:#d6dbde; --muted:#a9b1b6; --accent:#3fe08a; --accent-ink:#06210f; --link:#3fe08a; --edge:#7b858b;
     --sans:"Helvetica Neue","Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif; --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace; --top:58px; color-scheme:dark; }
-  :root[data-theme="light"] { --bg:#f7f8f6; --side:#eff1ee; --card:#ffffff; --line:rgba(20,23,26,.16); --ink:#14171a; --soft:#2c3236; --muted:#566065; --accent:#0b7a46; --accent-ink:#ffffff; --link:#0b6b3e; --mark:#ffe08a; --mark-ink:#14171a;
-    --c-comment:#5f696e; --c-string:#4b6a00; --c-number:#5a35b8; --c-keyword:#0b6b3e; --c-name:#a43d22; color-scheme:light; }
-  @media (prefers-color-scheme:light) { :root:not([data-theme]) { --bg:#f7f8f6; --side:#eff1ee; --card:#ffffff; --line:rgba(20,23,26,.16); --ink:#14171a; --soft:#2c3236; --muted:#566065; --accent:#0b7a46; --accent-ink:#ffffff; --link:#0b6b3e; --mark:#ffe08a; --mark-ink:#14171a;
-    --c-comment:#5f696e; --c-string:#4b6a00; --c-number:#5a35b8; --c-keyword:#0b6b3e; --c-name:#a43d22; color-scheme:light; } }
+  :root[data-theme="light"] { --bg:#f7f8f6; --side:#eff1ee; --card:#ffffff; --line:rgba(20,23,26,.16); --ink:#14171a; --soft:#2c3236; --muted:#566065; --accent:#0b7a46; --accent-ink:#ffffff; --link:#0b7a46; --edge:#6a7479; color-scheme:light; }
+  @media (prefers-color-scheme:light) { :root:not([data-theme]) { --bg:#f7f8f6; --side:#eff1ee; --card:#ffffff; --line:rgba(20,23,26,.16); --ink:#14171a; --soft:#2c3236; --muted:#566065; --accent:#0b7a46; --accent-ink:#ffffff; --link:#0b7a46; --edge:#6a7479; color-scheme:light; } }
   * { box-sizing:border-box; }
-  html { background:var(--bg); -webkit-text-size-adjust:100%; scroll-padding-top:calc(var(--top) + 16px); }
-  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.6 var(--sans); }
-  [hidden] { display:none !important; }
+  html { background:var(--bg); font-size:100%; -webkit-text-size-adjust:100%; scroll-padding-top:calc(var(--top) + 16px); }
+  body { margin:0; background:var(--bg); color:var(--ink); font:1rem/1.6 var(--sans); }
+  [hidden]:not([hidden="until-found"]) { display:none !important; } /* pages not shown are hidden "until found": a browser's own Find can look inside them, where it knows how */
   a { color:var(--link); text-underline-offset:3px; } button, input { font:inherit; color:inherit; }
   :focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:6px; }
   .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
@@ -28,47 +25,50 @@
 
   /* The bar across the top: name, search, light or dark. */
   #bar { position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:12px; height:var(--top); padding:0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)); background:var(--bg); border-bottom:1px solid var(--line); }
-  #bar .name { font-weight:800; letter-spacing:-.02em; font-size:17px; white-space:nowrap; text-decoration:none; color:var(--ink); } #bar .name span { color:var(--accent); }
-  .btn { min-height:38px; padding:0 13px; border-radius:10px; border:1px solid var(--line); background:transparent; font-weight:700; font-size:14px; cursor:pointer; white-space:nowrap; }
+  #bar .name { font-weight:800; letter-spacing:-.02em; font-size:1.0625rem; white-space:nowrap; text-decoration:none; color:var(--ink); } #bar .name span { color:var(--accent); }
+  .btn { min-height:38px; padding:0 13px; border-radius:10px; border:1px solid var(--line); background:transparent; font-weight:700; font-size:0.875rem; cursor:pointer; white-space:nowrap; }
   #find { position:relative; flex:1 1 auto; max-width:460px; margin-left:auto; }
-  #q { width:100%; min-height:38px; padding:0 12px 0 34px; border-radius:10px; border:1px solid var(--line); background:var(--card); font-size:15px; } #q::placeholder { color:var(--muted); opacity:1; }
+  #q { width:100%; min-height:38px; padding:0 12px 0 34px; border-radius:10px; border:1px solid var(--edge); background:var(--card); font-size:0.9375rem; } #q::placeholder { color:var(--muted); opacity:1; }
   #find::before { content:""; position:absolute; left:12px; top:50%; width:11px; height:11px; margin-top:-8px; border:2px solid var(--muted); border-radius:50%; pointer-events:none; } #find::after { content:""; position:absolute; left:23px; top:50%; width:7px; height:2px; margin-top:4px; background:var(--muted); transform:rotate(45deg); pointer-events:none; }
   #results { position:absolute; left:0; right:0; top:calc(100% + 6px); margin:0; padding:6px; list-style:none; max-height:min(70vh, 520px); overflow:auto; border-radius:12px; border:1px solid var(--line); background:var(--card); box-shadow:0 18px 50px rgba(0,0,0,.35); }
   #results li { padding:8px 10px; border-radius:8px; cursor:pointer; } #results li[aria-selected="true"] { background:color-mix(in srgb, var(--accent) 16%, transparent); outline:1px solid var(--accent); }
-  #results .where { display:block; font-weight:700; font-size:14.5px; } #results .where small { font-weight:500; color:var(--muted); font-size:12.5px; } #results .bit { display:block; font-size:13px; color:var(--soft); line-height:1.45; }
-  #results .none { cursor:default; color:var(--muted); font-size:14px; }
-  mark { background:var(--mark); color:var(--mark-ink); border-radius:3px; padding:0 2px; }
+  #results .where { display:block; font-weight:700; font-size:0.9062rem; } #results .where small { font-weight:500; color:var(--muted); font-size:0.7812rem; } #results .bit { display:block; font-size:0.8125rem; color:var(--soft); line-height:1.45; }
+  #results .none { cursor:default; color:var(--muted); font-size:0.875rem; }
+  mark { background:color-mix(in srgb, var(--accent) 30%, transparent); color:var(--ink); border-radius:3px; padding:0 2px; box-shadow:0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent); } /* found words are marked in the one green, not a second colour */
 
   /* Three columns: the pages, the page, what is on it. */
   .cols { display:grid; grid-template-columns:260px minmax(0, 1fr) 220px; max-width:1320px; margin:0 auto; }
   #side { position:sticky; top:var(--top); align-self:start; height:calc(100vh - var(--top)); overflow:auto; padding:22px 14px 30px 18px; border-right:1px solid var(--line); background:var(--side); }
-  #side p { margin:0 0 8px 8px; font:600 11px/1.2 var(--mono); letter-spacing:.18em; text-transform:uppercase; color:var(--muted); }
-  #side ol { margin:0; padding:0; list-style:none; } #side a { display:block; padding:7px 9px; border-radius:8px; color:var(--soft); text-decoration:none; font-size:15px; } #side a:hover { color:var(--ink); background:color-mix(in srgb, var(--ink) 7%, transparent); }
+  #side p { margin:0 0 8px 8px; font:600 0.6875rem/1.2 var(--mono); letter-spacing:.18em; text-transform:uppercase; color:var(--muted); }
+  #side ol { margin:0; padding:0; list-style:none; } #side a { display:block; padding:7px 9px; border-radius:8px; color:var(--soft); text-decoration:none; font-size:0.9375rem; } #side a:hover { color:var(--ink); background:color-mix(in srgb, var(--ink) 7%, transparent); }
   #side a[aria-current="page"] { color:var(--ink); font-weight:700; background:color-mix(in srgb, var(--accent) 15%, transparent); box-shadow:inset 3px 0 0 var(--accent); }
   main { min-width:0; padding:34px clamp(18px, 4vw, 56px) 70px; }
   article { max-width:70ch; } .js-off article + article { margin-top:70px; padding-top:40px; border-top:1px solid var(--line); } /* with scripts off the pages follow one another, with a rule between them */
-  .eyebrow { margin:0; font:600 11px/1.2 var(--mono); letter-spacing:.2em; text-transform:uppercase; color:var(--accent); }
-  h1 { margin:10px 0 14px; font-size:clamp(38px, 6vw, 62px); line-height:.95; font-weight:800; letter-spacing:-.045em; } h1:focus { outline:none; }
-  h2 { margin:44px 0 10px; font-size:26px; line-height:1.15; font-weight:800; letter-spacing:-.025em; } h2 a { color:inherit; text-decoration:none; } h2 a:hover::after { content:" #"; color:var(--muted); }
-  .lede { font-size:19px; color:var(--soft); } p, li { color:var(--soft); } article ul, article ol { padding-left:22px; } article li { margin-bottom:6px; } strong { color:var(--ink); }
+  .eyebrow { margin:0; font:600 0.6875rem/1.2 var(--mono); letter-spacing:.2em; text-transform:uppercase; color:var(--accent); }
+  h1 { margin:10px 0 14px; font-size:clamp(2.375rem, 6vw, 3.875rem); line-height:.95; font-weight:800; letter-spacing:-.045em; } h1:focus { outline:none; }
+  h2 { margin:44px 0 10px; font-size:1.625rem; line-height:1.15; font-weight:800; letter-spacing:-.025em; } h2 a { color:inherit; text-decoration:none; } h2 a:hover::after { content:" #"; color:var(--muted); }
+  .lede { font-size:1.1875rem; color:var(--soft); } p, li { color:var(--soft); } article ul, article ol { padding-left:22px; } article li { margin-bottom:6px; } strong { color:var(--ink); }
   .note { margin:18px 0; padding:12px 14px; border-radius:12px; border:1px solid var(--line); border-left:4px solid var(--accent); background:var(--card); } .note p { margin:0; }
   code { font:0.9em var(--mono); padding:1px 5px; border-radius:5px; background:color-mix(in srgb, var(--ink) 9%, transparent); color:var(--ink); }
-  .code { position:relative; margin:16px 0; border-radius:12px; border:1px solid var(--line); background:var(--card); } .code pre { margin:0; padding:14px 16px; overflow-x:auto; font:13.5px/1.6 var(--mono); color:var(--ink); tab-size:2; } .code pre code { padding:0; background:none; font:inherit; }
-  .code .lang { position:absolute; right:74px; top:9px; font:600 10.5px/1 var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--muted); } .code .copy { position:absolute; right:8px; top:6px; min-height:28px; padding:0 10px; border-radius:8px; border:1px solid var(--line); background:var(--bg); font:700 12px/1 var(--sans); cursor:pointer; }
-  .t-comment { color:var(--c-comment); font-style:italic; } .t-string { color:var(--c-string); } .t-number { color:var(--c-number); } .t-keyword { color:var(--c-keyword); font-weight:600; } .t-name { color:var(--c-name); }
-  .scroll { overflow-x:auto; border:1px solid var(--line); border-radius:12px; margin:16px 0; } table { width:100%; border-collapse:collapse; font-size:15px; } th, td { padding:9px 13px; text-align:left; border-top:1px solid var(--line); vertical-align:top; } thead th { border-top:0; font:600 11px/1.3 var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--muted); } tbody th { color:var(--ink); white-space:nowrap; }
-  .pager { display:flex; justify-content:space-between; gap:12px; margin-top:50px; padding-top:18px; border-top:1px solid var(--line); } .pager a { display:block; padding:10px 14px; border-radius:12px; border:1px solid var(--line); text-decoration:none; color:var(--ink); font-weight:700; max-width:48%; } .pager small { display:block; font:600 10.5px/1.4 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--muted); } .pager .next { margin-left:auto; text-align:right; }
-  #toc { position:sticky; top:var(--top); align-self:start; max-height:calc(100vh - var(--top)); overflow:auto; padding:34px 18px 30px 6px; } #toc p { margin:0 0 8px; font:600 11px/1.2 var(--mono); letter-spacing:.18em; text-transform:uppercase; color:var(--muted); } #toc ol { margin:0; padding:0; list-style:none; border-left:1px solid var(--line); } #toc a { display:block; padding:5px 0 5px 12px; margin-left:-1px; border-left:2px solid transparent; color:var(--muted); text-decoration:none; font-size:14px; line-height:1.35; } #toc a:hover { color:var(--ink); } #toc a[aria-current="true"] { color:var(--ink); border-left-color:var(--accent); }
-  footer { max-width:70ch; margin-top:60px; padding-top:18px; border-top:1px solid var(--line); font-size:14px; color:var(--muted); }
-  #menu { display:none; } .js-off #find { display:none; }
+  .code { position:relative; margin:16px 0; border-radius:12px; border:1px solid var(--line); background:var(--card); } .code pre { margin:0; padding:40px 16px 14px; overflow-x:auto; font:0.8438rem/1.6 var(--mono); color:var(--soft); tab-size:2; } .code pre code { padding:0; background:none; font:inherit; }
+  .code .lang { position:absolute; right:74px; top:9px; font:600 0.6562rem/1 var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--muted); } .code .copy { position:absolute; right:8px; top:6px; min-height:28px; padding:0 10px; border-radius:8px; border:1px solid var(--line); background:var(--bg); font:700 0.75rem/1 var(--sans); cursor:pointer; }
+  /* Code is coloured in the house colours only: comments quiet and sloped, strings in the one green, keywords and names in bold ink. */ .t-comment { color:var(--muted); font-style:italic; } .t-string { color:var(--link); } .t-number { color:var(--ink); } .t-keyword { color:var(--ink); font-weight:800; } .t-name { color:var(--ink); font-weight:600; }
+  .scroll { overflow-x:auto; border:1px solid var(--line); border-radius:12px; margin:16px 0; } table { width:100%; border-collapse:collapse; font-size:0.9375rem; } th, td { padding:9px 13px; text-align:left; border-top:1px solid var(--line); vertical-align:top; } thead th { border-top:0; font:600 0.6875rem/1.3 var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--muted); } tbody th { color:var(--ink); white-space:nowrap; }
+  .pager { display:flex; justify-content:space-between; gap:12px; margin-top:50px; padding-top:18px; border-top:1px solid var(--line); } .pager a { display:block; padding:10px 14px; border-radius:12px; border:1px solid var(--line); text-decoration:none; color:var(--ink); font-weight:700; max-width:48%; } .pager small { display:block; font:600 0.6562rem/1.4 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--muted); } .pager .next { margin-left:auto; text-align:right; }
+  #toc { position:sticky; top:var(--top); align-self:start; max-height:calc(100vh - var(--top)); overflow:auto; padding:34px 18px 30px 6px; } #toc p { margin:0 0 8px; font:600 0.6875rem/1.2 var(--mono); letter-spacing:.18em; text-transform:uppercase; color:var(--muted); } #toc ol { margin:0; padding:0; list-style:none; border-left:1px solid var(--line); } #toc a { display:block; padding:5px 0 5px 12px; margin-left:-1px; border-left:2px solid transparent; color:var(--muted); text-decoration:none; font-size:0.875rem; line-height:1.35; } #toc a:hover { color:var(--ink); } #toc a[aria-current="true"] { color:var(--ink); border-left-color:var(--accent); }
+  footer { max-width:70ch; margin-top:60px; padding-top:18px; border-top:1px solid var(--line); font-size:0.875rem; color:var(--muted); }
+  #menu { display:none; } .js-off #find, .js-off #menu { display:none !important; } .js-off .code pre { padding-top:14px; } /* with scripts off there is no Copy button, so no row is kept for it; and no button that could not work is shown */
 
   @media (max-width:1100px) { .cols { grid-template-columns:240px minmax(0, 1fr); } #toc { display:none; } }
-  @media (max-width:760px) { .cols { grid-template-columns:minmax(0, 1fr); } #results { position:fixed; left:10px; right:10px; top:calc(var(--top) + 4px); max-height:calc(100vh - var(--top) - 20px); max-height:calc(100dvh - var(--top) - 20px); } /* on a phone the search box is narrow: the results take the width of the screen under the bar */ #menu { display:inline-block; } #bar .name { font-size:15px; } #bar { gap:8px; } #theme { padding:0 10px; }
+  @media (max-width:760px) { .cols { grid-template-columns:minmax(0, 1fr); } #results { position:fixed; left:10px; right:10px; top:calc(var(--top) + 4px); max-height:calc(100vh - var(--top) - 20px); max-height:calc(100dvh - var(--top) - 20px); } /* on a phone the search box is narrow: the results take the width of the screen under the bar */ #menu { display:inline-block; } #bar .name { font-size:0.9375rem; } #bar { gap:8px; } #theme { padding:0 10px; }
     #side { position:fixed; z-index:15; top:var(--top); left:0; bottom:0; width:min(300px, 86vw); height:auto; display:none; } #side.open { display:block; animation:drawer .18s ease-out; box-shadow:18px 0 50px rgba(0,0,0,.35); } .js-off #side { display:block; position:static; width:auto; box-shadow:none; border-right:0; border-bottom:1px solid var(--line); } } /* shut, the drawer is not on the page at all: nothing sits off the side of the screen */
   @keyframes drawer { from { transform:translateX(-100%); } } @media (prefers-reduced-motion:reduce) { #side.open { animation:none; } }
-  @media (max-width:420px) { #bar .name b { display:none; } }
+  /* A narrow phone: the search box has a row of its own, so that what is typed can be seen. */
+  @media (max-width:520px) { :root { --top:104px; } #bar { flex-wrap:wrap; align-content:center; row-gap:6px; } #bar .name { margin-right:auto; } #find { order:5; flex:1 0 100%; max-width:none; margin:0; } .js-off { --top:58px; } }
+  @media (max-width:380px) { #bar .name b { display:none; } } /* on the narrowest phones the name is just Rooms OS, so that the three things in the top row stay in one row */
   @media (prefers-reduced-motion:reduce) { * { transition:none !important; scroll-behavior:auto !important; } }
-  @media print { #bar, #side, #toc, .copy, .pager, .skip { display:none !important; } .cols { display:block; } article[hidden] { display:block !important; } article { max-width:none; break-before:page; } article:first-of-type { break-before:auto; } :root { --bg:#fff; --card:#fff; --ink:#000; --soft:#111; --muted:#444; --line:#bbb; --link:#000; --accent:#000; --c-comment:#444; --c-string:#000; --c-number:#000; --c-keyword:#000; --c-name:#000; } }
+  @media print { #bar, #side, #toc, .copy, .pager, .skip { display:none !important; } .cols { display:block; } article[hidden] { display:block !important; content-visibility:visible !important; } article { max-width:none; break-before:page; } article:first-of-type { break-before:auto; } h2 { break-after:avoid; } .code, .scroll, .note { break-inside:avoid; } .code pre { padding-top:14px; white-space:pre-wrap; } :root { --bg:#fff !important; --card:#fff !important; --side:#fff !important; --ink:#000 !important; --soft:#111 !important; --muted:#444 !important; --line:#bbb !important; --link:#000 !important; --accent:#000 !important; --edge:#444 !important; } } /* on paper: black on white whichever look is on screen, a heading never left alone at the foot of a sheet */
+  @media (forced-colors:active) { #side a[aria-current="page"] { outline:2px solid Highlight; outline-offset:-2px; } #toc a[aria-current="true"] { border-left-color:Highlight; text-decoration:underline; } mark { forced-color-adjust:none; background:Highlight; color:HighlightText; box-shadow:none; } #find::before { border-color:CanvasText; } #find::after { background:CanvasText; } }
 </style>
 </head>
 <body class="js-off">
@@ -79,7 +79,7 @@
   <div id="find" role="search">
     <label class="sr" for="q">Search the handbook</label>
     <input id="q" type="search" placeholder="Search the handbook" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-controls="results" aria-autocomplete="list" aria-describedby="q-help" disabled>
-    <span class="sr" id="q-help">Type to search. Up and down arrows move through the results, Enter opens one, Escape clears.</span>
+    <span class="sr" id="q-help">Type to search. Up and down arrows move through the results, Enter opens one, Escape clears. Control K comes here from anywhere.</span>
     <ul id="results" role="listbox" aria-label="Search results" hidden></ul>
   </div>
   <button class="btn" id="theme" type="button" hidden>Light</button>
@@ -106,7 +106,7 @@
   <p class="eyebrow">Rooms OS handbook</p>
   <h1 tabindex="-1">Start here</h1>
   <p class="lede">Rooms OS is a way of running a small team of AI agents so that the work gets finished, can be checked, and can be picked up by someone else tomorrow.</p>
-  <div class="note"><p><strong>This is sample text.</strong> It was written for this demonstration of a handbook page. It is in the spirit of Rooms OS, but it is not the estate’s working rulebook, and nothing here should be taken as an instruction.</p></div>
+  <div class="note"><p><strong>This is sample text.</strong> It was written for this demonstration of a handbook page. It is in the spirit of Rooms OS, but it is not anyone’s working rulebook, and nothing here should be taken as an instruction.</p></div>
   <h2 id="start-idea"><a href="#start-idea">The idea in one paragraph</a></h2>
   <p>Each agent works in a <strong>room</strong>: one conversation with one job. The job is its <strong>lane</strong>. Everything another agent or the owner will need later is written on the <strong>hub</strong>, a shared list of issues. Before starting, an agent <strong>claims</strong> the work so that two agents never do the same thing. When a room is full or the job is done, it writes a <strong>handover</strong> and stops.</p>
   <h2 id="start-words"><a href="#start-words">Five words to know</a></h2>
@@ -149,7 +149,7 @@
     <li>Finish what is in flight, or say exactly where it stopped.</li>
     <li>Write the handover.</li>
     <li>Start the new room and give it the handover.</li>
-    <li>Confirm the new room is running.</li>
+    <li>Wait until the new room says it has the handover.</li>
     <li>Only then close the old one.</li>
   </ol>
   <h2 id="rooms-others"><a href="#rooms-others">Other people’s rooms</a></h2>
@@ -159,7 +159,7 @@
 <article id="hub" data-page="The hub">
   <p class="eyebrow">Rooms OS handbook</p>
   <h1 tabindex="-1">The hub</h1>
-  <p class="lede">The hub is the team’s memory of work. It is a list of issues, one for each piece of work, and it is the only place a handoff counts.</p>
+  <p class="lede">The hub is the team’s memory of work. It is a list of issues, one for each piece of work, and it is the only place a handover counts.</p>
   <h2 id="hub-what"><a href="#hub-what">What goes on the hub</a></h2>
   <ul>
     <li>What was asked for, and by whom.</li>
@@ -176,7 +176,7 @@
   </ul>
   <h2 id="hub-write"><a href="#hub-write">Write for a stranger</a></h2>
   <p>An issue is good when an agent who has never seen the conversation could act on it. Say the goal, the limits, what may be done without asking, what counts as done, and when to stop.</p>
-  <div class="code"><pre tabindex="0" role="region" aria-label="Code sample, yaml"><code data-lang="yaml">goal: Check that every page of the site still loads
+  <div class="code" data-what="an issue written for a stranger"><pre tabindex="0" role="region" aria-label="Code sample, yaml: an issue written for a stranger"><code data-lang="yaml">goal: Check that every page of the site still loads
 limits:
   - read only
   - no changes to the live site
@@ -195,12 +195,12 @@ stop_if: more than 5 pages fail  # something larger is wrong; say so and stop</c
   <p>Not after. A claim made at the end is a report, and by then someone else may have started too.</p>
   <h2 id="claims-format"><a href="#claims-format">What a claim looks like</a></h2>
   <p>A claim is a comment on the issue. It says what is being taken, by which room, and when. It is signed.</p>
-  <div class="code"><pre tabindex="0" role="region" aria-label="Code sample, bash"><code data-lang="bash"># post a claim on issue 42
+  <div class="code" data-what="posting a claim"><pre tabindex="0" role="region" aria-label="Code sample, bash: posting a claim"><code data-lang="bash"># post a claim on issue 42
 gh issue comment 42 --body "CLAIM: the page checks.
 Room: WEBSITE CHECKS. Started 14:05.
 Signed: the agent in that room."</code></pre></div>
   <h2 id="claims-release"><a href="#claims-release">Releasing a claim</a></h2>
-  <p>When the work is done, or the room has to stop, the claim is released in the same place, with the state of the work: done, part done, or not started. A claim that is never released blocks everyone behind it.</p>
+  <p>When the work is done, or the room has to stop, the claim is released in the same place, with the state of the work: done, part done, blocked, or not started. A claim that is never released blocks everyone behind it.</p>
   <h2 id="claims-stale"><a href="#claims-stale">Stale claims</a></h2>
   <p>A claim with no word after it for a working day is stale. Nobody takes it over quietly. The agent who notices says so on the issue and asks the owner.</p>
 </article>
@@ -208,7 +208,7 @@ Signed: the agent in that room."</code></pre></div>
 <article id="evidence" data-page="Evidence">
   <p class="eyebrow">Rooms OS handbook</p>
   <h1 tabindex="-1">Evidence</h1>
-  <p class="lede">A report is only as good as what stands behind it. Every claim of fact carries one of four words.</p>
+  <p class="lede">A report is only as good as what stands behind it. Every statement of fact carries one of four words.</p>
   <h2 id="evidence-words"><a href="#evidence-words">The four words</a></h2>
   <div class="scroll" tabindex="0" role="region" aria-label="The four words for evidence">
   <table>
@@ -217,13 +217,13 @@ Signed: the agent in that room."</code></pre></div>
       <tr><th scope="row">Verified</th><td>Looked at, directly, just now.</td><td>The page was opened and the heading read.</td></tr>
       <tr><th scope="row">Inferred</th><td>Follows from something verified.</td><td>The page loads, so the server is up.</td></tr>
       <tr><th scope="row">Unverified</th><td>Believed, not checked.</td><td>The nightly job probably ran.</td></tr>
-      <tr><th scope="row">Blocked</th><td>Could not be checked, and why.</td><td>No access to the logs.</td></tr>
+      <tr><th scope="row">Cannot check</th><td>Could not be checked, and why.</td><td>No access to the logs.</td></tr>
     </tbody>
   </table>
   </div>
   <h2 id="evidence-zero"><a href="#evidence-zero">Exit code 0 is not proof</a></h2>
   <p>A command that finishes without an error has only proved that it finished. Look at the thing it was meant to make: the number of rows, the file, the page as a reader sees it.</p>
-  <div class="code"><pre tabindex="0" role="region" aria-label="Code sample, js"><code data-lang="js">// after the export "succeeds", look at what it wrote
+  <div class="code" data-what="checking what an export wrote"><pre tabindex="0" role="region" aria-label="Code sample, js: checking what an export wrote"><code data-lang="js">// after the export "succeeds", look at what it wrote
 const rows = await readRows('export.csv');
 if (rows.length === 0) throw new Error('ran, and wrote nothing');
 console.log(`verified: ${rows.length} rows`);</code></pre></div>
@@ -241,7 +241,7 @@ console.log(`verified: ${rows.length} rows`);</code></pre></div>
   <p class="lede">Some things are the owner’s to decide. An agent that is unsure whether something needs a yes should assume that it does.</p>
   <h2 id="approvals-what"><a href="#approvals-what">What needs a yes</a></h2>
   <ul>
-    <li>Deleting or overwriting anything.</li>
+    <li>Overwriting anything, or moving it to the archive.</li>
     <li>Signing in to anything, or changing who can.</li>
     <li>Spending money.</li>
     <li>Publishing, deploying, or anything else the public can see.</li>
@@ -261,7 +261,8 @@ console.log(`verified: ${rows.length} rows`);</code></pre></div>
   <h1 tabindex="-1">Handovers</h1>
   <p class="lede">A handover is written for an agent who knows nothing. If the new room has to ask the old one a question, the handover was not finished.</p>
   <h2 id="handovers-parts"><a href="#handovers-parts">What it holds</a></h2>
-  <div class="code"><pre tabindex="0" role="region" aria-label="Code sample, yaml"><code data-lang="yaml">lane: WEBSITE CHECKS
+  <p>The lane, the state of the work, what is done, what is not, what was not checked, what to do next, and what not to touch.</p>
+  <div class="code" data-what="a handover"><pre tabindex="0" role="region" aria-label="Code sample, yaml: a handover"><code data-lang="yaml">lane: WEBSITE CHECKS
 issue: 42
 state: part done
 done:
@@ -299,12 +300,12 @@ written: "14:40"</code></pre></div>
   <p class="lede">Things to copy, and words to look up.</p>
   <h2 id="reference-commands"><a href="#reference-commands">Commands</a></h2>
   <p>Read an issue and everything said on it:</p>
-  <div class="code"><pre tabindex="0" role="region" aria-label="Code sample, bash"><code data-lang="bash">gh issue view 42 --comments</code></pre></div>
+  <div class="code" data-what="reading an issue"><pre tabindex="0" role="region" aria-label="Code sample, bash: reading an issue"><code data-lang="bash">gh issue view 42 --comments</code></pre></div>
   <p>Post a result, from a file, so that nothing is lost to quoting:</p>
-  <div class="code"><pre tabindex="0" role="region" aria-label="Code sample, bash"><code data-lang="bash">date -u "+%H:%M"            # read the clock first
+  <div class="code" data-what="posting a result from a file"><pre tabindex="0" role="region" aria-label="Code sample, bash: posting a result from a file"><code data-lang="bash">date -u "+%H:%M"            # read the clock first
 gh issue comment 42 --body-file result.md</code></pre></div>
   <p>A lane, as the registry holds it:</p>
-  <div class="code"><pre tabindex="0" role="region" aria-label="Code sample, json"><code data-lang="json">{
+  <div class="code" data-what="a lane in the registry"><pre tabindex="0" role="region" aria-label="Code sample, json: a lane in the registry"><code data-lang="json">{
   "lane": "WEBSITE CHECKS",
   "issue": 42,
   "runs": "on request",
@@ -319,6 +320,7 @@ gh issue comment 42 --body-file result.md</code></pre></div>
       <tr><th scope="row">Done</th><td>Finished and checked, with the checks listed.</td></tr>
       <tr><th scope="row">Part done</th><td>Some of it is finished; the rest is listed.</td></tr>
       <tr><th scope="row">Blocked</th><td>Cannot go on, with the smallest thing that would unblock it.</td></tr>
+      <tr><th scope="row">Not started</th><td>Released without any of it done.</td></tr>
       <tr><th scope="row">Handed over</th><td>Another room has said it has it.</td></tr>
     </tbody>
   </table>
@@ -332,7 +334,7 @@ gh issue comment 42 --body-file result.md</code></pre></div>
   </ul>
 </article>
 
-<footer>A sample handbook, written for this demonstration. Nothing is loaded from anywhere else and nothing is stored: the search, the code colouring and the light and dark pages all happen in the page.</footer>
+<footer>A sample handbook, written for this demonstration. Nothing is loaded from anywhere else and nothing is stored: the search, the code colouring and the light and dark looks all happen in the page.</footer>
 </main>
 
 <nav id="toc" aria-label="On this page" hidden><p>On this page</p><ol id="toc-list"></ol></nav>
