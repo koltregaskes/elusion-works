@@ -5,7 +5,7 @@ export const PHOTOS = [
   { file: 'img/k06.jpg', alt: 'A small wooden sailing boat at anchor on calm turquoise water, a low shoreline behind it.' },
   { file: 'img/k11.jpg', alt: 'A weathered boat moored beside a rusting, broken jetty on green water.' },
   { file: 'img/k21.jpg', alt: 'A white lighthouse and red-roofed houses on a rocky shore, waves breaking below.' },
-  { file: 'img/k19.jpg', alt: 'A white lighthouse behind a white picket fence, under a grey, clouded sky.', portrait: true },
+  { file: 'img/k19.jpg', alt: 'A white lighthouse behind a white picket fence, under a blue sky with white cloud.', portrait: true },
   { file: 'img/k13.jpg', alt: 'A stony mountain stream running through green forest, with snow on the peaks beyond.' },
   { file: 'img/k09.jpg', alt: 'Racing dinghies under striped spinnaker sails on grey water.', portrait: true },
   { file: 'img/k22.jpg', alt: 'A red barn reflected in a pond, among trees in spring leaf.' },

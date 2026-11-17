@@ -18,7 +18,7 @@ export function buildRooms(world) {
   const h = CELL / 2, rows = hgt => Math.max(1, Math.round(hgt / 0.5));
   for (const c of world.cells) { if (!c.open && !c.pillar) continue; const room = [c.x, c.z], x0 = c.x - h, z0 = c.z - h;
     // Floor: level, or shelving down into a pool.
-    if (c.pool) panel([x0, 0, z0], [CELL, 0, 0], [0, 0, CELL], [0, 1, 0], KIND.pool, 4, 4, room, (x, z) => floorAt(world, Math.min(Math.max(x, x0 + 1e-4), x0 + CELL - 1e-4), Math.min(Math.max(z, z0 + 1e-4), z0 + CELL - 1e-4)));
+    if (c.pool) panel([x0, 0, z0], [CELL, 0, 0], [0, 0, CELL], [0, 1, 0], KIND.pool, 8, 8, room, (x, z) => floorAt(world, Math.min(Math.max(x, x0 + 1e-4), x0 + CELL - 1e-4), Math.min(Math.max(z, z0 + 1e-4), z0 + CELL - 1e-4)));
     else panel([x0, 0, z0], [CELL, 0, 0], [0, 0, CELL], [0, 1, 0], KIND.floor, 4, 4, room);
     // Ceiling, or a skylight: a short shaft up to a bright pane.
     if (c.sky) { const top = c.ceil + 0.7; panel([x0, top, z0], [CELL, 0, 0], [0, 0, CELL], [0, -1, 0], KIND.sky, 1, 1, room);

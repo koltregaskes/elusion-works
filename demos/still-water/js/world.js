@@ -68,6 +68,7 @@ export function makeWorld() {
 
 // Is a body of this radius clear of every wall and pillar here?
 export function clear(world, x, z, rad = RADIUS) {
+  if (!Number.isFinite(x) || !Number.isFinite(z)) return false; // nowhere is not somewhere you can stand
   const r0 = Math.floor((z - rad) / CELL + world.rows / 2), r1 = Math.floor((z + rad) / CELL + world.rows / 2), c0 = Math.floor((x - rad) / CELL + world.cols / 2), c1 = Math.floor((x + rad) / CELL + world.cols / 2);
   for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { const cell = world.cell(r, c);
     if (!cell) return false;
@@ -89,9 +90,9 @@ function settle(me, floor, dt) { const dy = floor + EYE - me.y; me.y += Math.sig
 export function newWalker(world) { const s = world.start; return { x: s.x, z: s.z, y: EYE, yaw: -Math.PI / 2, pitch: 0, wade: 0, moved: 0 }; } // facing east down the lobby
 // One step of walking. input: forward and strafe from -1 to 1, turn in radians a second. Walls stop you; you slide along them.
 export function walk(world, me, input, dt) {
-  dt = Math.min(Math.max(dt, 0), 0.1);
-  me.yaw += (input.turn || 0) * dt; me.yaw = Math.atan2(Math.sin(me.yaw), Math.cos(me.yaw));
-  let f = Math.max(-1, Math.min(1, input.forward || 0)), s = Math.max(-1, Math.min(1, input.strafe || 0)); const len = Math.hypot(f, s); if (len > 1) { f /= len; s /= len; }
+  dt = Number.isFinite(dt) ? Math.min(Math.max(dt, 0), 0.1) : 0;
+  me.yaw += (Number.isFinite(input.turn) ? input.turn : 0) * dt; me.yaw = Math.atan2(Math.sin(me.yaw), Math.cos(me.yaw));
+  let f = Math.max(-1, Math.min(1, Number.isFinite(input.forward) ? input.forward : 0)), s = Math.max(-1, Math.min(1, Number.isFinite(input.strafe) ? input.strafe : 0)); const len = Math.hypot(f, s); if (len > 1) { f /= len; s /= len; }
   const speed = (2.7 - 1.2 * me.wade) * dt, fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw); // yaw 0 looks north, up the plan
   const dx = (fx * f - fz * s) * speed, dz = (fz * f + fx * s) * speed, x0 = me.x, z0 = me.z;
   const n = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.1)); // small moves, so nothing thin is ever stepped through
@@ -120,7 +121,7 @@ export function route(world, ax, az, bx, bz) {
 // Follow a route: move `me` along it at walking pace and turn to face the way you are going, then the photograph at the end.
 // Returns true when you have arrived.
 export function follow(world, me, path, endYaw, dt, pace = 3.2) {
-  dt = Math.min(Math.max(dt, 0), 0.1); let left = pace * (1 - 0.35 * me.wade) * dt, look = null;
+  dt = Number.isFinite(dt) ? Math.min(Math.max(dt, 0), 0.1) : 0; let left = pace * (1 - 0.35 * me.wade) * dt, look = null;
   while (left > 0 && path.length) { const [tx, tz] = path[0], d = Math.hypot(tx - me.x, tz - me.z); if (d <= left) { me.x = tx; me.z = tz; left -= d; path.shift(); } else { look = Math.atan2(-(tx - me.x), -(tz - me.z)); me.x += (tx - me.x) / d * left; me.z += (tz - me.z) / d * left; left = 0; } }
   let remain = 0, px = me.x, pz = me.z; for (const [tx, tz] of path) { remain += Math.hypot(tx - px, tz - pz); px = tx; pz = tz; }
   const want = remain < 2.2 || look === null ? endYaw : look, turn = Math.atan2(Math.sin(want - me.yaw), Math.cos(want - me.yaw)), most = 2.6 * dt;

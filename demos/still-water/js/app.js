@@ -87,32 +87,43 @@ const CAUSTIC = /* glsl */`
 
 // ---- The photographs: a dark frame, a white mount, the picture, and a numbered plate ----
 const loaded = { ok: 0, failed: 0 };
-const hung = world.photos.map((p, i) => { const info = PHOTOS[i], w = info.portrait ? 0.95 : 1.5, h = info.portrait ? 1.425 : 1.0; return { ...p, ...info, w, h }; });
-const ready = Promise.all(hung.map(async p => {
+const hung = world.photos.map((p, i) => { const info = PHOTOS[i], w = info.portrait ? 0.95 : 1.5, h = info.portrait ? 1.425 : 1.0; return { ...p, ...info, w, h, lost: false }; });
+// The frames go up at once; each picture is put in as it arrives, so the rooms never wait on the network.
+const ready = Promise.all(hung.map(p => {
   const group = new THREE.Group(); group.position.set(p.x + p.nx * 0.03, p.y, p.z + p.nz * 0.03); group.rotation.y = Math.atan2(p.nx, p.nz);
   const plane = (w, h, mat, z, x = 0, y = 0) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat); m.position.set(x, y, z); group.add(m); return m; };
-  const frame = new THREE.Mesh(new THREE.BoxGeometry(p.w + 0.2, p.h + 0.2, 0.05), new THREE.MeshBasicMaterial({ color: 0x1a1d20 })); group.add(frame);
+  group.add(new THREE.Mesh(new THREE.BoxGeometry(p.w + 0.2, p.h + 0.2, 0.05), new THREE.MeshBasicMaterial({ color: 0x1a1d20 })));
   plane(p.w + 0.12, p.h + 0.12, new THREE.MeshBasicMaterial({ color: 0xeef1f0 }), 0.027);
-  let tex; try { tex = await new THREE.TextureLoader().loadAsync(p.file); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = renderer.capabilities.getMaxAnisotropy(); loaded.ok++; } catch (err) { loaded.failed++; }
-  plane(p.w, p.h, new THREE.MeshBasicMaterial(tex ? { map: tex, color: 0xf2f2f2 } : { color: 0x8a9296 }), 0.03);
+  const picture = plane(p.w, p.h, new THREE.MeshBasicMaterial({ color: 0x8a9296 }), 0.03);
   const c = document.createElement('canvas'); c.width = 160; c.height = 64; const g = c.getContext('2d'); g.fillStyle = '#1a1d20'; g.fillRect(0, 0, 160, 64); g.fillStyle = '#f4f5f3'; g.font = '700 38px ui-monospace, Menlo, Consolas, monospace'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(two(p.plate), 80, 34);
   const label = new THREE.CanvasTexture(c); label.colorSpace = THREE.SRGBColorSpace; plane(0.2, 0.08, new THREE.MeshBasicMaterial({ map: label }), 0.005, p.w / 2 + 0.0, -p.h / 2 - 0.2);
   scene.add(group);
+  return new THREE.TextureLoader().loadAsync(p.file).then(tex => { tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = renderer.capabilities.getMaxAnisotropy(); picture.material = new THREE.MeshBasicMaterial({ map: tex, color: 0xf2f2f2 }); loaded.ok++; },
+    () => { p.lost = true; loaded.failed++; if (shown && shown.plate === p.plate) { const again = shown; shown = null; showPlate(again); } }); // a picture that will not load is said to be missing, not described
 }));
 
 // ---- State ----
-let mode = 'start', path = null, pathYaw = 0, target = -1, shown = null, touring = false, pause = 0, still = reduced, soundOn = false, stir = 0, walked = 0, bob = 0, last = null;
+let mode = 'start', path = null, pathYaw = 0, target = -1, shown = null, touring = false, pause = 0, stops = 0, still = reduced, soundOn = false, stir = 0, walked = 0, bob = 0, last = null;
 const keys = new Set(), stick = { id: null, x: 0, y: 0, ox: 0, oy: 0 }, look = { id: null, x: 0, y: 0 };
 
-function viewDist(p) { const v = Math.tan(camera.fov * Math.PI / 360), hgt = (p.h / 2) / v, wid = (p.w / 2) / (v * camera.aspect); return Math.max(hgt, wid) * 2.3 + 0.2; } // far enough back to see all of it
-function showPlate(p) { if (p === shown) return; shown = p; $('plate-n').textContent = p ? `Plate ${two(p.plate)} of ${hung.length}` : 'Still Water'; $('plate-t').textContent = p ? hung[p.plate - 1].alt : 'Walk up to a photograph, or press Next.'; }
+const words = p => (hung[p.plate - 1].lost ? 'This photograph could not be loaded.' : hung[p.plate - 1].alt);
+// Far enough back to see all of it, whatever the shape of the screen and however low you stand in the water.
+function viewDist(p) { const v = Math.tan(camera.fov * Math.PI / 360), fit = Math.max((p.h / 2) / v, (p.w / 2) / (v * camera.aspect)) * 2.3 + 0.2, spot = viewPoint(world, world.photos[p.plate - 1], fit), eye = floorAt(world, spot.x, spot.z) + EYE;
+  return Math.max(fit, (p.h / 2 + 0.16 + Math.abs(eye - p.y)) / v * 1.2); }
+// Is the photograph really on the screen? Looking at the floor, or with it off to one side, does not count.
+const probe = new THREE.Vector3();
+function inView(p) { camera.position.set(me.x, me.y, me.z); camera.rotation.set(me.pitch, me.yaw, 0); camera.updateMatrixWorld(); probe.set(p.x, p.y, p.z).project(camera); return probe.z < 1 && Math.abs(probe.x) < 0.8 && Math.abs(probe.y) < 0.8; }
+function showPlate(p) { if (p === shown) return; shown = p; $('plate-n').textContent = p ? `Plate ${two(p.plate)} of ${hung.length}` : 'Still Water'; $('plate-t').textContent = p ? words(p) : 'Walk up to a photograph, or press Next.';
+  if (p && !path) $('announce').textContent = `Plate ${p.plate} of ${hung.length}. ${words(p)}`; } // said once, on arriving, and never for the empty wall between
 function veil() { if (reduced) return; const v = $('veil'); v.classList.add('on'); setTimeout(() => v.classList.remove('on'), 260); }
 function stand(v) { me.x = v.x; me.z = v.z; me.yaw = v.yaw; me.pitch = 0; me.y = floorAt(world, v.x, v.z) + EYE; path = null; }
 // Go and stand in front of a plate: a walk there, or a cut if motion is to be kept down.
 function goTo(i, cut = reduced) { i = ((i % hung.length) + hung.length) % hung.length; const p = hung[i], v = viewPoint(world, world.photos[i], viewDist(p)); target = i;
-  const r = cut ? null : route(world, me.x, me.z, v.x, v.z); if (!r) { veil(); stand(v); } else { path = r.slice(1); pathYaw = v.yaw; } }
-function step(by) { const from = shown ? shown.plate - 1 : target; goTo(from < 0 ? (by > 0 ? 0 : hung.length - 1) : from + by); }
-function setTour(on) { touring = on; $('tour').setAttribute('aria-pressed', String(on)); if (on) { pause = 0; if (!path) goTo(shown ? shown.plate % hung.length : 0); } }
+  const r = cut ? null : route(world, me.x, me.z, v.x, v.z); if (!r) { veil(); stand(v); arrive(); } else { path = r.slice(1); pathYaw = v.yaw; shown = null; $('plate-n').textContent = `On the way to plate ${two(i + 1)}`; $('plate-t').textContent = '\u00a0'; } }
+function arrive() { path = null; pause = 6; if (touring) stops--; const p = world.photos[target]; shown = null; showPlate(p); } // every arrival, walked or cut, waits its six seconds on the walk round
+function step(by) { if (touring) setTour(false); const from = shown ? shown.plate - 1 : target; goTo(from < 0 ? (by > 0 ? 0 : hung.length - 1) : from + by); }
+// The walk round: twelve stops in order, starting with the plate after the one in front of you, then it ends. Switching it off stops you where you are.
+function setTour(on) { touring = on; $('tour').setAttribute('aria-pressed', String(on)); if (on) { stops = hung.length; goTo(shown ? shown.plate : path ? target : target + 1); } else path = null; }
 function enter(tour) { mode = 'walk'; $('start').hidden = true; $('tools').hidden = false; $('plate').hidden = false; me.yaw = -Math.PI / 2; $('stage').focus({ preventScroll: true }); if (tour) setTour(true); }
 
 function input() { const k = c => (keys.has(c) ? 1 : 0); return { forward: k('KeyW') + k('ArrowUp') - k('KeyS') - k('ArrowDown') - stick.y, strafe: k('KeyD') - k('KeyA') + stick.x, turn: (k('ArrowLeft') + k('KeyQ') - k('ArrowRight') - k('KeyE')) * 1.9 }; }
@@ -121,11 +132,11 @@ function advance(dt) {
   if (mode !== 'walk') return;
   const inp = input(), hands = inp.forward || inp.strafe || inp.turn || look.id !== null, x0 = me.x, z0 = me.z;
   if (hands && (path || touring)) { path = null; if (touring) setTour(false); } // touch the controls and you are walking yourself again
-  if (path) { if (follow(world, me, path, pathYaw, dt)) { path = null; pause = 6; } } else walk(world, me, inp, dt);
-  if (touring && !path) { pause -= dt; if (pause <= 0) { if (target >= hung.length - 1) setTour(false); else goTo(target + 1); } }
+  if (path) { if (follow(world, me, path, pathYaw, dt)) arrive(); } else walk(world, me, inp, dt);
+  if (touring && !path) { pause -= dt; if (pause <= 0) { if (stops <= 0) setTour(false); else goTo(target + 1); } }
   const moved = Math.hypot(me.x - x0, me.z - z0); walked += moved; stir += ((me.wade > 0.15 && moved > 0.002 ? 1 : 0) - stir) * Math.min(1, dt * 2);
   bob += ((moved > 0.002 && !reduced ? 1 : 0) - bob) * Math.min(1, dt * 6);
-  showPlate(facing(world, me)); audio.move(moved, me.wade, dt);
+  if (!path) { const p = facing(world, me); showPlate(p && inView(p) ? p : null); } audio.move(moved, me.wade, dt); // the panel changes when you have arrived, not as walls slide past
 }
 function draw() {
   camera.position.set(me.x, me.y + Math.sin(walked * 4.6) * 0.022 * bob, me.z); camera.rotation.set(me.pitch, me.yaw + (mode === 'start' && !reduced ? Math.sin(performance.now() / 5200) * 0.1 : 0), 0);
@@ -157,14 +168,16 @@ const audio = (() => { let ctx = null, out = null, hush = null, slosh = null, si
       since += wade < 0.1 ? moved : 0; if (since > 0.72) { since = 0; const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'triangle'; o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(70, t + 0.07); g.gain.setValueAtTime(0.07, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1); o.connect(g).connect(out); o.start(t); o.stop(t + 0.12); } } }; })();
 
 // ---- Controls ----
+const stage = $('stage');
 const MOVE = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
-addEventListener('keydown', e => { if (e.ctrlKey || e.metaKey || e.altKey || $('all').open) return; const onButton = e.target.tagName === 'BUTTON';
+addEventListener('keydown', e => { if (e.ctrlKey || e.metaKey || e.altKey || $('all').open) return; const onButton = e.target.tagName === 'BUTTON', here = document.activeElement === stage || document.activeElement === document.body;
   if (mode === 'start') { if (e.code === 'Enter' && !onButton) enter(false); return; }
+  if (e.code === 'Escape' && (touring || path)) { setTour(false); return; }
+  if (!here) return; // letter keys are only shortcuts while the view has the focus, so they never fight a screen reader or a button
   if (MOVE.has(e.code)) { keys.add(e.code); if (e.code.startsWith('Arrow')) e.preventDefault(); return; }
   if (e.code === 'PageDown' || e.code === 'KeyN') { e.preventDefault(); step(1); } else if (e.code === 'PageUp' || e.code === 'KeyP') { e.preventDefault(); step(-1); }
-  else if (e.code === 'KeyT') setTour(!touring); else if (e.code === 'KeyM') audio.set(!soundOn); else if (e.code === 'KeyL') openList(); else if (e.code === 'Escape' && (touring || path)) { path = null; setTour(false); } });
+  else if (e.code === 'KeyT') setTour(!touring); else if (e.code === 'KeyM') audio.set(!soundOn); else if (e.code === 'KeyL') openList(); });
 addEventListener('keyup', e => keys.delete(e.code)); addEventListener('blur', () => { keys.clear(); stick.id = look.id = null; stick.x = stick.y = 0; $('stick').hidden = true; });
-const stage = $('stage');
 stage.addEventListener('pointerdown', e => { if (mode !== 'walk') return; e.preventDefault(); try { stage.setPointerCapture(e.pointerId); } catch (err) { /* works without */ }
   if (e.pointerType === 'touch' && e.clientX < innerWidth * 0.45 && stick.id === null) { stick.id = e.pointerId; stick.ox = e.clientX; stick.oy = e.clientY; stick.x = stick.y = 0; const s = $('stick'); s.style.left = e.clientX + 'px'; s.style.top = e.clientY + 'px'; s.firstElementChild.style.transform = ''; s.hidden = false; }
   else if (look.id === null) { look.id = e.pointerId; look.x = e.clientX; look.y = e.clientY; stage.classList.add('drag'); } });
@@ -174,20 +187,24 @@ stage.addEventListener('pointermove', e => {
 for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) stage.addEventListener(ev, e => { if (e.pointerId === stick.id) { stick.id = null; stick.x = stick.y = 0; $('stick').hidden = true; } if (e.pointerId === look.id) { look.id = null; stage.classList.remove('drag'); } });
 stage.addEventListener('contextmenu', e => e.preventDefault());
 $('enter').addEventListener('click', () => enter(false)); $('enter-tour').addEventListener('click', () => enter(true));
-$('next').addEventListener('click', () => step(1)); $('prev').addEventListener('click', () => step(-1)); $('tour').addEventListener('click', () => setTour(!touring)); $('sound').addEventListener('click', () => audio.set(!soundOn));
-$('still').addEventListener('click', () => { still = !still; $('still').setAttribute('aria-pressed', String(still)); });
+const press = (id, fn) => $(id).addEventListener('click', e => { fn(); if (e.detail > 0) stage.focus({ preventScroll: true }); }); // a mouse or finger press hands the keyboard back to the view; a key press leaves the focus on the button
+press('next', () => step(1)); press('prev', () => step(-1)); press('tour', () => setTour(!touring)); press('sound', () => audio.set(!soundOn));
+press('still', () => { still = !still; $('still').setAttribute('aria-pressed', String(still)); });
 // Every plate as a list, for anyone who would sooner choose than walk.
-function openList() { for (const b of $('plates').querySelectorAll('button')) b.setAttribute('aria-current', String(!!shown && Number(b.dataset.i) === shown.plate - 1)); $('all').showModal(); }
-$('plates').append(...hung.map((p, i) => { const li = document.createElement('li'), b = document.createElement('button'), im = document.createElement('img'), s = document.createElement('span'); b.type = 'button'; b.dataset.i = i; im.src = p.file; im.alt = p.alt; im.loading = 'lazy'; im.width = 150; im.height = 104; s.textContent = `Plate ${two(p.plate)}`; b.append(im, s); b.addEventListener('click', () => { $('all').close(); if (touring) setTour(false); goTo(i); $('next').focus({ preventScroll: true }); }); li.append(b); return li; }));
-$('list').addEventListener('click', openList); $('all-close').addEventListener('click', () => $('all').close());
+function openList() { keys.clear(); for (const b of $('plates').querySelectorAll('button')) b.setAttribute('aria-current', String(!!shown && Number(b.dataset.i) === shown.plate - 1)); $('all').showModal(); }
+$('plates').append(...hung.map((p, i) => { const li = document.createElement('li'), b = document.createElement('button'), im = document.createElement('img'), s = document.createElement('span'), d = document.createElement('small'); b.type = 'button'; b.dataset.i = i; im.src = p.file; im.alt = ''; im.loading = 'lazy'; im.width = 150; im.height = 104; s.textContent = `Plate ${two(p.plate)}`; d.textContent = p.alt;
+  im.addEventListener('error', () => { const lost = document.createElement('div'); lost.className = 'lost'; lost.textContent = 'Could not be loaded'; im.replaceWith(lost); d.textContent = 'This photograph could not be loaded.'; });
+  b.append(im, s, d); b.addEventListener('click', e => { byPointer = false; $('all').close(); if (touring) setTour(false); goTo(i); (e.detail > 0 ? stage : $('next')).focus({ preventScroll: true }); }); li.append(b); return li; }));
+let byPointer = false; // a list opened with the mouse hands the keyboard back to the view when it shuts
+$('list').addEventListener('click', e => { openList(); byPointer = e.detail > 0; }); $('all-close').addEventListener('click', () => $('all').close()); $('all').addEventListener('close', () => { if (byPointer) stage.focus({ preventScroll: true }); byPointer = false; });
 document.addEventListener('visibilitychange', () => { if (document.hidden) { keys.clear(); last = null; } audio.hush(document.hidden); }); // a hidden tab makes no sound
 
 // ---- Go ----
 if (coarse) { document.documentElement.classList.add('touch'); $('touch-note').hidden = false; }
-$('still').setAttribute('aria-pressed', String(still)); resize();
+$('still').setAttribute('aria-pressed', String(still)); resize(); requestAnimationFrame(frame);
 window.stillWater = { // for the automated checks
-  ready: ready.then(() => { requestAnimationFrame(frame); return true; }),
-  state: () => ({ mode, x: me.x, z: me.z, y: me.y, yaw: me.yaw, pitch: me.pitch, wade: me.wade, plate: shown ? shown.plate : 0, target, gliding: !!path, touring, still, soundOn, time: uTime.value, loaded: loaded.ok, failed: loaded.failed, clear: clear(world, me.x, me.z), calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, fov: camera.fov }),
+  ready: ready.then(() => true),
+  state: () => ({ mode, x: me.x, z: me.z, y: me.y, yaw: me.yaw, pitch: me.pitch, wade: me.wade, plate: shown ? shown.plate : 0, words: document.getElementById('plate-t').textContent, said: document.getElementById('announce').textContent, target, gliding: !!path, touring, stops, still, soundOn, time: uTime.value, loaded: loaded.ok, failed: loaded.failed, clear: clear(world, me.x, me.z), calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, fov: camera.fov }),
   plates: () => hung.map(p => ({ plate: p.plate, x: p.x, z: p.z, w: p.w, h: p.h, alt: p.alt, view: viewPoint(world, world.photos[p.plate - 1], viewDist(p)) })),
-  enter, goTo, place(x, z, yaw) { stand({ x, z, yaw }); }, fast(n) { for (let i = 0; i < n; i++) advance(1 / 60); draw(); return n; },
+  enter, goTo, place(x, z, yaw, pitch = 0) { stand({ x, z, yaw }); me.pitch = pitch; }, fast(n) { for (let i = 0; i < n; i++) advance(1 / 60); draw(); return n; },
 };

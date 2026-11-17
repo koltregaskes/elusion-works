@@ -17,6 +17,8 @@
   [hidden] { display:none !important; }
   #stage { position:fixed; inset:0; width:100%; height:100%; display:block; touch-action:none; cursor:grab; }
   #stage.drag { cursor:grabbing; }
+  #stage:focus-visible { outline-offset:-5px; }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
   button { font:inherit; color:inherit; cursor:pointer; }
   :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
   .btn { min-height:40px; padding:0 14px; border-radius:10px; border:1px solid var(--line); background:var(--panel); font-weight:700; font-size:13px; white-space:nowrap; }
@@ -58,7 +60,9 @@
   #plates { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
   #plates button { display:block; width:100%; padding:0; border-radius:10px; border:1px solid var(--line); background:#0c0e10; overflow:hidden; text-align:left; }
   #plates img { display:block; width:100%; height:104px; object-fit:cover; }
-  #plates span { display:block; padding:7px 9px 8px; font:600 10px/1.2 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
+  #plates span { display:block; padding:7px 9px 0; font:600 10px/1.2 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
+  #plates small { display:block; padding:4px 9px 9px; font-size:12px; line-height:1.3; color:#d7dce0; white-space:normal; }
+  #plates .lost { display:grid; place-items:center; height:104px; padding:8px; font-size:12px; text-align:center; color:var(--muted); background:#22262a; }
   #plates button[aria-current="true"] { border-color:var(--accent); } #plates button[aria-current="true"] span { color:var(--accent); }
   #fallback { position:fixed; inset:0; display:none; place-items:center; padding:28px; text-align:center; background:var(--bg); z-index:9; } #fallback p { max-width:460px; color:#d7dce0; }
 
@@ -67,7 +71,7 @@
     #plate { padding:10px 12px; } #plate-t { font-size:13px; min-height:0; margin:6px 0 8px; } .card { padding:18px 18px 20px; } .lede { font-size:14px; }
     .keys { display:none; }
   }
-  @media (max-height:480px) { .card { padding:14px 18px; } h1 { font-size:32px; margin:6px 0; } .lede { margin-bottom:10px; font-size:13px; } .card .note { display:none; } #plate { width:min(360px,56vw); } #plate-t { display:none; } #plate-n { margin-bottom:8px; } #map { width:92px; } }
+  @media (max-height:480px) { .card { padding:14px 18px; } h1 { font-size:32px; margin:6px 0; } .lede { margin-bottom:10px; font-size:13px; } .card .note { display:none; } #plate { width:min(360px,56vw); } #plate-t { min-height:0; margin:5px 0 7px; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } #map { width:92px; } }
   @media (prefers-reduced-motion:reduce) { * { transition:none !important; } }
 </style>
 <script type="importmap">
@@ -78,6 +82,7 @@
 <canvas id="stage" tabindex="0" role="img" aria-label="A view inside the pool rooms. Use the arrow keys to walk and turn, or the buttons to go from photograph to photograph."></canvas>
 
 <div class="hud" id="veil" aria-hidden="true"></div>
+<p class="sr" id="announce" role="status"></p>
 <div class="hud" id="stick" aria-hidden="true" hidden><i></i></div>
 
 <div class="hud" id="tools" hidden>
@@ -91,10 +96,8 @@
 </div>
 
 <section class="hud glass" id="plate" aria-label="The photograph in front of you" hidden>
-  <div role="status" aria-atomic="true">
-    <p id="plate-n">Still Water</p>
-    <p id="plate-t">Walk up to a photograph, or press Next.</p>
-  </div>
+  <p id="plate-n">Still Water</p>
+  <p id="plate-t">Walk up to a photograph, or press Next.</p>
   <div class="steps">
     <button class="btn" id="prev" type="button" title="Go to the photograph before (PageUp)">Previous</button>
     <button class="btn" id="next" type="button" title="Go to the next photograph (PageDown)">Next</button>
@@ -109,7 +112,7 @@
     <button class="btn primary" id="enter" type="button">Walk in</button>
     <button class="btn" id="enter-tour" type="button">Walk me round</button>
   </div>
-  <p class="note keys"><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> or <kbd>↑</kbd> <kbd>↓</kbd> walk · <kbd>←</kbd> <kbd>→</kbd> turn · drag to look · <kbd>PageDown</kbd> next photograph · <kbd>PageUp</kbd> the one before · <kbd>T</kbd> walk me round · <kbd>M</kbd> sound</p>
+  <p class="note keys"><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> or <kbd>↑</kbd> <kbd>↓</kbd> walk · <kbd>←</kbd> <kbd>→</kbd> or <kbd>Q</kbd> <kbd>E</kbd> turn · drag to look · <kbd>PageDown</kbd> or <kbd>N</kbd> next photograph · <kbd>PageUp</kbd> or <kbd>P</kbd> the one before · <kbd>T</kbd> walk me round · <kbd>L</kbd> all plates · <kbd>M</kbd> sound. The keys work while the view has the focus: click it, or press Tab until it is outlined.</p>
   <p class="note" id="touch-note" hidden>Drag on the left of the screen to walk. Drag on the right to look round.</p>
   <p class="note">The photographs are stand-ins from the Kodak test set, hung here to show the rooms working. After <a href="https://x.com/Ben__Springer/status/2119915615351693483" rel="noopener">a post by Ben Springer</a>. This is an original build: the rooms, the water and the light were written for this page.</p>
 </section>

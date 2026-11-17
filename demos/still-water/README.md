@@ -2,19 +2,20 @@
 
 A walkable gallery in a set of empty, tiled pool rooms. Demo 5 of Kol's Fable 5.2 benchmark list, built with Claude Fable 5.2.
 
-**Quality bar it sets:** a first-person 3D place that anyone can get round: by walking, by pressing Next, by letting it walk you, or by choosing from a list, with the walking rules proved in Node before anything is drawn.
+**Quality bar it sets:** a first-person 3D place that anyone can get round: by walking, by pressing Next, by letting it walk you, or by choosing from a list, with the walking rules tested in Node before anything is drawn.
 Use it as the reference for walkable 3D spaces and for hanging pictures in them.
 
 ## What it does
 
 - Six rooms on one plan: a lobby, a long west gallery, a pool hall with pillars and skylights, two side rooms, and a flooded passage to a last room where one photograph hangs across the water.
 - Twelve photographs in frames, each with a numbered plate and a lamp. No titles.
-- Walk with the keyboard and drag to look. On a phone, the left of the screen is a stick to walk with and the right looks round.
+- Walk with the keyboard and drag to look. Letter keys are shortcuts only while the view has the focus. On a phone, the left of the screen is a stick to walk with and the right looks round.
 - Pools shelve down from the dry floor, so you wade in. Water slows you and ripples round you.
 - **Next** and **Previous** walk you to each photograph and stand you square in front of it, far enough back to see all of it on your screen.
 - **Walk me round** visits all twelve in order and stops. Touch any control and you are walking yourself again.
 - **All plates** is a plain list with thumbnails and descriptions, for anyone who would sooner choose than walk.
 - A plan in the corner shows the rooms, the pools, the photographs and you.
+- The panel names a photograph only when it is really on your screen, and says so plainly if a picture failed to load.
 - Sound (off until you ask): the hush of a tiled room, a drip now and then, your steps, the water round your legs.
 - With reduced motion set, Next cuts instead of gliding and the water is still. **Still the water** does the same on request.
 

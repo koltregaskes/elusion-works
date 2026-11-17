@@ -46,7 +46,11 @@ let longest = 0, total = 0;
     const steps = path.slice(1); let t = 0, done = false; while (!done && t < 120) { const y0 = me.y; done = follow(w, me, steps, v.yaw, 1 / 60); t += 1 / 60; assert.ok(clear(w, me.x, me.z, RADIUS - 1e-6), `the walk to plate ${p.plate} passed through a wall`); assert.ok(Math.abs(me.y - y0) < 0.2); }
     assert.ok(done, `the walk to plate ${p.plate} never arrived`); assert.ok(Math.hypot(me.x - v.x, me.z - v.z) < 1e-6); assert.equal(facing(w, me), p); longest = Math.max(longest, t); total += t; } }
 assert.equal(route(w, 0, 0, 1000, 1000), null);
-{ const pl = w.pillars[0], path = route(w, pl.x + 0.9, pl.z, w.start.x, w.start.z); assert.ok(path, 'no route when starting beside a pillar'); }
+// Starting right beside a pillar, at any angle, there is a route, and following it never passes through the pillar or a wall.
+for (const pl of w.pillars) for (let k = 0; k < 24; k++) { const ang = k / 24 * Math.PI * 2, me = { ...newWalker(w), x: pl.x + Math.cos(ang) * 0.83, z: pl.z + Math.sin(ang) * 0.83 }; assert.ok(clear(w, me.x, me.z)); const v = viewPoint(w, w.photos[k % 12]), path = route(w, me.x, me.z, v.x, v.z); assert.ok(path, 'no route when starting beside a pillar');
+  const steps = path.slice(1); let done = false, t = 0; while (!done && t < 120) { done = follow(w, me, steps, v.yaw, 1 / 60); t += 1 / 60; assert.ok(clear(w, me.x, me.z, RADIUS - 0.02), `a walk from beside a pillar passed through something at ${me.x.toFixed(2)}, ${me.z.toFixed(2)}`); } assert.ok(done); }
+// Nonsense times and places are refused, not spread.
+{ const me = newWalker(w); walk(w, me, { forward: 1 }, NaN); follow(w, me, [[me.x + 1, me.z]], 0, NaN); assert.ok(Number.isFinite(me.x + me.z + me.y + me.yaw), 'a NaN time step poisoned the walker'); assert.equal(clear(w, NaN, NaN), false); assert.equal(clear(w, Infinity, 0), false); }
 // A step with a silly time gap is cut down to a tenth of a second.
 { const me = newWalker(w); walk(w, me, { forward: 1 }, 1e9); assert.ok(me.moved <= 0.28); walk(w, me, { forward: 1 }, -5); assert.equal(me.moved, 0); walk(w, me, { forward: NaN, strafe: undefined }, 1 / 60); assert.ok(Number.isFinite(me.x)); }
 // The rooms as geometry: every number finite, every triangle facing into a room, light in range, water over every pool.
@@ -54,9 +58,16 @@ import { buildRooms, KIND } from '../js/build.js';
 const t0 = Date.now(), g = buildRooms(w), nv = g.position.length / 3;
 for (const arr of [g.position, g.normal, g.light, g.kind, g.wet, g.water.position]) for (const v of arr) assert.ok(Number.isFinite(v));
 assert.equal(g.normal.length, nv * 3); assert.equal(g.light.length, nv * 3); assert.equal(g.kind.length, nv); assert.equal(g.wet.length, nv); assert.ok(Math.max(...g.index) < nv);
-{ let wrong = 0; for (let i = 0; i < g.index.length; i += 3) { const [a, b, c] = [g.index[i], g.index[i + 1], g.index[i + 2]], P = k => [g.position[k * 3], g.position[k * 3 + 1], g.position[k * 3 + 2]], pa = P(a), pb = P(b), pc = P(c);
-    const u = [pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]], v = [pc[0] - pa[0], pc[1] - pa[1], pc[2] - pa[2]], n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-    if (n[0] * g.normal[a * 3] + n[1] * g.normal[a * 3 + 1] + n[2] * g.normal[a * 3 + 2] <= 0) wrong++; } assert.equal(wrong, 0, `${wrong} triangles face the wrong way`); }
+{ let wrong = 0, buried = 0; const inRoom = (x, z) => { const c = w.cellAt(x, z); return !!c && (c.open || (c.pillar && Math.hypot(x - c.x, z - c.z) > 0.5)); }; // every triangle is wound to match its normal, and its normal points into a room, not into the wall behind it
+  for (let i = 0; i < g.index.length; i += 3) { const [a, b, c] = [g.index[i], g.index[i + 1], g.index[i + 2]], P = k => [g.position[k * 3], g.position[k * 3 + 1], g.position[k * 3 + 2]], pa = P(a), pb = P(b), pc = P(c);
+    const u = [pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]], v = [pc[0] - pa[0], pc[1] - pa[1], pc[2] - pa[2]], n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]], nn = [g.normal[a * 3], g.normal[a * 3 + 1], g.normal[a * 3 + 2]];
+    if (n[0] * nn[0] + n[1] * nn[1] + n[2] * nn[2] <= 0) wrong++;
+    const cx = (pa[0] + pb[0] + pc[0]) / 3 + nn[0] * 0.08, cz = (pa[2] + pb[2] + pc[2]) / 3 + nn[2] * 0.08; const cell = w.cellAt(cx, cz); if (Math.abs(nn[1]) > 0.5 ? !(cell && (cell.open || cell.pillar)) : !inRoom(cx, cz)) buried++; } // floors and ceilings run on under a pillar; walls must face open air
+  assert.equal(wrong, 0, `${wrong} triangles face the wrong way`); assert.equal(buried, 0, `${buried} triangles face into solid wall`); }
+// The drawn pool floor agrees with the floor you walk on, to within 4 cm, everywhere.
+{ let worst = 0; for (let i = 0; i < nv; i++) if (g.kind[i] === KIND.pool) { const x = g.position[i * 3], z = g.position[i * 3 + 2], c = w.cellAt(x + 1e-3, z + 1e-3) || w.cellAt(x - 1e-3, z - 1e-3); if (c && c.pool) worst = Math.max(worst, Math.abs(g.position[i * 3 + 1] - floorAt(w, Math.min(Math.max(x, c.x - 0.9999), c.x + 0.9999), Math.min(Math.max(z, c.z - 0.9999), c.z + 0.9999)))); }
+  let mid = 0; for (const c of w.cells) if (c.pool) for (let a = 0; a < 8; a++) for (let b = 0; b < 8; b++) { const x0 = c.x - 1 + a * 0.25, z0 = c.z - 1 + b * 0.25, f = (x, z) => floorAt(w, Math.min(Math.max(x, c.x - 0.9999), c.x + 0.9999), Math.min(Math.max(z, c.z - 0.9999), c.z + 0.9999)), drawn = (f(x0, z0) + f(x0 + 0.25, z0) + f(x0, z0 + 0.25) + f(x0 + 0.25, z0 + 0.25)) / 4; mid = Math.max(mid, Math.abs(drawn - f(x0 + 0.125, z0 + 0.125))); }
+  assert.ok(worst < 1e-3, `pool floor corners are off by ${worst.toFixed(3)} m`); assert.ok(mid < 0.04, `between corners the drawn pool floor is off by ${mid.toFixed(3)} m`); }
 { let lo = Infinity, hi = 0, wetOnes = 0; for (let i = 0; i < nv; i++) { const l = g.light[i * 3 + 1]; lo = Math.min(lo, l); hi = Math.max(hi, l); if (g.wet[i] > 0.99) wetOnes++; assert.ok(g.wet[i] >= 0 && g.wet[i] <= 1); } assert.ok(lo > 0.15 && hi < 2.21 && hi > 1, `light runs from ${lo.toFixed(2)} to ${hi.toFixed(2)}`); assert.ok(wetOnes > 1000); }
 assert.equal(g.water.index.length / 6, w.cells.filter(c => c.pool).length); assert.ok([...g.kind].filter(k => k === KIND.sky).length === w.skylights.length * 4);
 const buildMs = Date.now() - t0;
