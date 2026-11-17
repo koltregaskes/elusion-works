@@ -23,19 +23,21 @@ Ready for Kol to try on a phone. Not published, not in the gallery or the sitema
 
 ## Checks run (17 Nov 2026)
 
-Verified by running. All passed on the code as committed.
+Verified by running. All passed on the code as committed, and again after the outside review below.
 
 - `node demos/morning-briefing/tools/reader.test.mjs`: pass.
   - Sentences split at real stops only, and lose nothing: abbreviations, initials, figures, times, quotes, list numbers, and a figure that starts a sentence.
   - Figures count as the words they are said in. Lines follow one another.
   - The player advances, carries over, holds for a voice, ends once, seeks within bounds and changes speed.
   - A long drag, a flick, a twitch and a drag taken back each come out as they should.
+  - Only a voice the device calls its own (`localService` exactly true), in English, is chosen, British English first; with none, the reason is told apart: no voices, remote voices only, or no English one.
 - `node demos/morning-briefing/tools/smoke.mjs`: pass, in headless Chromium.
   - Scripts off: seven cards one after another, saying it is a sample, with no control that could not work.
   - The page reads exactly the 42 sentences the arithmetic makes of its words, with the same lengths.
   - Buttons and arrow keys turn the cards and stop at the ends, where the focus passes to the other button. A long drag turns a card, tipping it by the angle the arithmetic gives. A press on a tick box ticks it; a drag across one turns the card and does not tick.
   - Looking through the cards marks nothing as read until Play has been pressed.
   - The player, in silence with the clock moved by hand: the sentence being read is marked; the card turns by itself; pause holds; speed changes the pace and the length; back, on, the slider and the keys work; a sentence chosen while a card is turning is kept; the end stops, says so, and starts again.
+  - Stand-in voice lists, local only, remote only, mixed, none, foreign only and late loading, with the voice each sentence was given recorded: words go only to a voice the device calls its own, never to a remote one or the default; with none the page says why and reads in silence by the clock; a voice of its own that loads late takes over from the next sentence; one that goes away is not replaced by what is left.
   - With a stand-in voice: each sentence goes to the device in British English at the speed chosen; the reading waits for the voice. Voices that never start, never finish, finish at once or fail are each caught, said, read in silence and can be tried again.
   - Eleven window sizes, from 320x568 to 1920x1080, with four phones on their side: Play and the card in sight on every card, nothing overlapping. A real touch swipe turns the card both ways on six of them. A tall card says there is more below.
   - Reduced motion; axe WCAG 2.2 A and AA; no console errors; no outside requests.
@@ -48,6 +50,7 @@ Verified by running. All passed on the code as committed.
 3. **A screen reader.** The speech of the briefing and the speech of a screen reader may talk over each other; that has not been heard.
 4. Safari and Firefox. A locked screen on iOS.
 5. A drag in hand at the moment the reading reaches the next card: handled in the code, not covered by a check.
+6. **Which voices real devices call their own.** The page trusts the browser's `localService` flag; it cannot check it. Which voices iOS, Android and desktop browsers mark as local has not been looked at on any real device. If a phone marks all its voices as remote, this page stays silent there; that is the intended trade, but how often it happens is unknown.
 
 ## Known limits
 
@@ -91,6 +94,19 @@ A second pass by a separate Claude agent (Opus), read-only, given the brief and 
 | 26 | The Space hint did not say that a focused button takes the key | It says so | |
 | 27 | The card beneath showed behind the Back and Next buttons | It stays inside the deck | browser check |
 | 28 | With no voice, Play stalled two and a half seconds | See 4. The wait is now four seconds, for slow voices, and is then said | browser check |
+
+## Outside review
+
+Reviewed by ChatGPT in chat mode at Pro, driven by another Claude session at the owner's request, 17 November 2026, as one review of three demos (pull requests 140, 141 and 142). It read the code and pictures and did not run the page. Its score for the three together was 7/10, HOLD; for this demo (pull request 141) its verdict was hold. Only the findings about this demo and those it applied to all three are dealt with here. Each was checked by running it or by reading the code at the line named.
+
+| Finding | What was done | Held by |
+|---|---|---|
+| Voice selection takes any English voice, falls back to the browser's default, never checks `localService`, while the page promised nothing is sent anywhere. True: a run with stand-in voices gave the words to a remote voice when only remote voices were offered, to the remote British voice ahead of a local American one when both were, and to the browser's default when none were | `pickVoice` in `js/reader.js` chooses only a voice whose `localService` is exactly true, English, British first. The page asks for the list again before every sentence and when the browser says it has changed, always sets the chosen voice, and otherwise reads in silence by the clock and says why. The promise now says what is true: read aloud only by a voice the device says is its own, otherwise in silence; the page cannot check the device's word | reader test (local, remote, unsaid, mixed, none, foreign); browser check with stand-in lists: remote only, remote and unsaid, none, foreign only, mixed, late loading, and a voice that goes away. The new browser checks fail on the old code |
+| (All three) The demo's own suites are not run by the site's CI | True: `.github/workflows/seo.yml` runs the site's shared checks, not `tools/reader.test.mjs` or `tools/smoke.mjs`. Not done: the workflows are outside this demo's folder, which is all this work may change. A decision for the owner | |
+| (All three) Acceptance evidence is incomplete: no reference comparisons, no real phone, no real voice heard | True. Not done: none of it can be done on this machine, which has no phone, no speakers and no voices | "Not verified" above |
+| (All three) "Unlisted" will not mean private after merging | True: `scripts/build-site.py` copies the whole `demos` folder into the bundle that is deployed, and a run of it put this page in `_site/demos/morning-briefing/`. `noindex` only keeps it out of search. README's Status now says so plainly | by reading and a build run |
+| No identifiable personal records; the briefing labels its invented content | Agreed. Nothing to do | |
+| Not verified by the reviewer: live deployment, real touch, Safari and Firefox, screen readers, actual speech, print, phone performance | Still not verified here either; see "Not verified" above. No real voice has been heard: the voice checks use stand-ins | |
 
 ## Provenance
 

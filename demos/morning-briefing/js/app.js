@@ -57,11 +57,18 @@ $('again').addEventListener('click', () => { R.seek(state, list, 0); if (state.p
    Voices go wrong in several ways: some never start, some never say they have finished, some say so at once. Each is caught, and the briefing is then read along in silence. The reader can switch the voice on again. */
 const synth = window.briefingSynth || ('speechSynthesis' in window ? window.speechSynthesis : null), Utter = window.briefingUtterance || window.SpeechSynthesisUtterance, none = !synth || !Utter;
 let voiceOn = !none, speaking = false, started = false, token = 0, manual = false, current = null, spokeAt = 0, held = 0, tooSoon = 0, stuck = 0;
-const voiced = () => voiceOn && !none;
+/* Only a voice the browser says is the device's own is ever given the words (see pickVoice in reader.js). The list is asked for again before every sentence, and again whenever the browser says it has changed: voices often arrive a moment after the page. */
+const voices = () => { if (none) return []; try { return [...(synth.getVoices() || [])]; } catch (err) { return []; } };
+let found = R.pickVoice(voices());
+const able = () => !none && !!found.voice, voiced = () => voiceOn && able();
+const why = () => R.NO_VOICE[found.why] || R.NO_VOICE.none;
+function heard() { const had = able(); found = R.pickVoice(voices()); if (able() && !had && voiceOn && state.playing) say('A voice of the device\'s own is ready. It reads from the next sentence.'); if (!able() && had) { hush(); if (state.playing) say(`${why()[0]} The briefing is read along in silence.`); } paint(); }
+if (!none) try { if (synth.addEventListener) synth.addEventListener('voiceschanged', heard); else if ('onvoiceschanged' in synth) synth.onvoiceschanged = heard; } catch (err) { /* the list is still asked for before every sentence */ }
 function hush() { token++; speaking = false; started = false; current = null; held = 0; if (synth) try { synth.cancel(); } catch (err) { /* nothing to stop */ } }
 function fail(why) { voiceOn = false; tooSoon = 0; stuck = 0; hush(); say(`${why} The briefing is read along in silence. Press Voice to try again.`); paint(); }
-function speak() { hush(); if (!voiced() || !state.playing) return; state.t = 0; const mine = token, line = list[state.i], u = new Utter(line.text); current = u; /* kept hold of: a browser may forget a voice nobody is holding, and then it never says it has finished */ u.lang = 'en-GB'; u.rate = state.rate;
-  try { const v = synth.getVoices().filter(x => /^en/i.test(x.lang)).sort((a, b) => (/GB/i.test(b.lang) ? 1 : 0) - (/GB/i.test(a.lang) ? 1 : 0))[0]; if (v) u.voice = v; } catch (err) { /* the default voice will do */ }
+function speak() { hush(); if (!voiced() || !state.playing) return;
+  const pick = R.pickVoice(voices()); if (!pick.voice) { found = pick; say(`${why()[0]} The briefing is read along in silence.`); paint(); return; } /* the device's own voice has gone since the list was last seen: nothing is given to whatever is left, and the clock carries the reading */
+  found = pick; state.t = 0; const mine = token, line = list[state.i], u = new Utter(line.text); current = u; /* kept hold of: a browser may forget a voice nobody is holding, and then it never says it has finished */ u.voice = pick.voice; u.lang = pick.voice.lang || 'en-GB'; u.rate = state.rate; /* always a chosen voice: never the browser's default, which may not be the device's own */
   u.onstart = () => { if (mine === token) { started = true; spokeAt = performance.now(); } };
   u.onend = () => { if (mine !== token) return; const took = (performance.now() - spokeAt) / 1000, est = line.dur / state.rate; speaking = false; current = null;
     if (!started || took < Math.min(0.25, est * 0.2)) { if (++tooSoon >= 2) fail('The voice here ends each sentence the moment it starts.'); return; } /* too quick to have been said: the clock carries this sentence, and a second such ending switches the voice off */
@@ -77,7 +84,7 @@ function step(dt) { if (!state.playing) return; const was = state.i, waiting = v
   if (waiting) { held += dt; if (held > 3 * list[state.i].dur / state.rate + 2) { speaking = false; if (++stuck >= 2) { fail('The voice stopped saying when it had finished.'); return; } happened(R.finish(state, list)); return; } } /* a voice that never says it has finished is not waited for for ever */
   const seen = R.advance(state, list, dt, waiting); if (seen.length) happened(seen); else if (state.i !== was) paint(); else progress(); }
 let last = null; function frame(now) { const dt = last === null ? 0 : Math.min(0.25, (now - last) / 1000); last = now; if (!manual) step(dt); requestAnimationFrame(frame); } requestAnimationFrame(frame);
-function toggle() { if (state.ended) { R.seek(state, list, 0); shown(0, true, true); } begun = true; state.playing = !state.playing; if (state.playing) { speak(); say(voiced() ? '' : 'Reading along in silence.'); } else { hush(); say('Paused.'); } paint(); }
+function toggle() { if (state.ended) { R.seek(state, list, 0); shown(0, true, true); } begun = true; state.playing = !state.playing; if (state.playing) { speak(); say(voiced() ? '' : !able() ? `${why()[0]} The briefing is read along in silence.` : 'Reading along in silence.'); } else { hush(); say('Paused.'); } paint(); }
 const fmt = r => `${r}×`;
 /* Switch a button off or on. One that is switched off while it holds the focus passes the focus on, so that the keys are never left on nothing. */
 const off = (b, is, next) => { if (is && document.activeElement === b) next.focus({ preventScroll: true }); b.disabled = is; };
@@ -88,9 +95,9 @@ function paint() { const l = list[state.i], engaged = begun && !state.ended, tit
   $('play').dataset.on = String(state.playing); $('play').setAttribute('aria-label', state.playing ? 'Pause' : state.ended ? 'Read the briefing again from the start' : begun ? 'Carry on reading' : 'Read the briefing aloud');
   off($('sback'), state.i === 0 && state.t <= 1.5, $('play')); off($('son'), state.i === list.length - 1, $('play'));
   $('rate').textContent = fmt(state.rate); $('rate').setAttribute('aria-label', `Speed ${fmt(state.rate)}: ${R.sayRate(state.rate).toLowerCase()}. Press to change.`);
-  $('voice').textContent = none ? 'No voice' : 'Voice'; $('voice').disabled = none; $('voice').setAttribute('aria-pressed', String(voiced()));
+  $('voice').textContent = able() ? 'Voice' : 'No voice'; off($('voice'), !able(), $('play')); $('voice').setAttribute('aria-pressed', String(voiced()));
   $('scrub').max = String(list.length - 1); $('scrub').value = String(state.i); $('scrub').setAttribute('aria-valuetext', `Card ${l.card + 1} of ${count}, ${title}: sentence ${l.n} of ${l.of}`);
-  $('now').textContent = state.playing ? `${voiced() ? 'Reading aloud' : 'Reading along in silence'}: ${title}` : state.ended ? 'The end.' : begun ? `Paused at ${title}, sentence ${l.n} of ${l.of}.` : index === 0 ? `About ${R.minutes(R.total(list) / state.rate)} to hear.` : 'Play starts from this card.';
+  $('now').textContent = state.playing ? `${voiced() ? 'Reading aloud' : 'Reading along in silence'}: ${title}` : state.ended ? 'The end.' : begun ? `Paused at ${title}, sentence ${l.n} of ${l.of}.` : !able() ? `${why()[1]}, so it is read in silence.` : index === 0 ? `About ${R.minutes(R.total(list) / state.rate)} to hear.` : 'Play starts from this card.';
   deck.classList.toggle('reading', engaged); for (const x of list) { x.el.classList.toggle('now', engaged && x === l); x.el.classList.toggle('done', engaged && x.card === l.card && x.n < l.n); }
   if (engaged && l.card === index && !moving) { const card = cards[index], a = l.el.getBoundingClientRect(), b = card.getBoundingClientRect(); if (a.bottom > b.bottom - 12) card.scrollTop += a.bottom - b.bottom + 24; else if (a.top < b.top + 12) card.scrollTop -= b.top - a.top + 24; cue(); } /* keep the sentence being read in sight on a tall card */
   progress(); }
@@ -98,7 +105,7 @@ const moved = () => { follow(); if (state.playing) speak(); paint(); };
 $('play').addEventListener('click', toggle);
 $('sback').addEventListener('click', () => { R.back(state, list); moved(); }); $('son').addEventListener('click', () => { R.on(state, list); moved(); });
 $('rate').addEventListener('click', () => { state.rate = R.nextRate(state.rate); if (state.playing) speak(); paint(); say(`${R.sayRate(state.rate)}.`); });
-$('voice').addEventListener('click', () => { if (none) return; voiceOn = !voiceOn; if (state.playing) { if (voiceOn) speak(); else hush(); } paint(); say(voiceOn ? 'Voice on.' : 'Voice off: reading along in silence.'); });
+$('voice').addEventListener('click', () => { if (!able()) return; voiceOn = !voiceOn; if (state.playing) { if (voiceOn) speak(); else hush(); } paint(); say(voiceOn ? 'Voice on.' : 'Voice off: reading along in silence.'); });
 $('scrub').addEventListener('input', e => { R.seek(state, list, +e.target.value); moved(); });
 /* Keys. The arrows and Space work anywhere on the page. The comma and the full stop, being ordinary characters, work only while the briefing itself has the focus, so that they cannot get in the way of someone who types or speaks to their device. */
 addEventListener('keydown', e => { if (e.ctrlKey || e.metaKey || e.altKey) return; const t = e.target, field = t.matches && t.matches('input, button, a, summary'), inside = $('phone').contains(t);
@@ -109,7 +116,7 @@ addEventListener('pagehide', hush);
 /* ---- Go ---- */
 shown(0, true);
 window.briefing = { /* for the checks in tools/ */
-  state: () => ({ index, i: state.i, t: state.t, playing: state.playing, rate: state.rate, ended: state.ended, voice: voiced(), speaking, started, none, begun, moving, count, lines: list.length, total: R.total(list) }),
+  state: () => ({ index, i: state.i, t: state.t, playing: state.playing, rate: state.rate, ended: state.ended, voice: voiced(), speaking, started, none, able: able(), why: found.why, begun, moving, count, lines: list.length, total: R.total(list) }),
   lines: () => list.map(l => ({ text: l.text, card: l.card, n: l.n, of: l.of, dur: l.dur, start: l.start })),
   manual(on) { manual = on; }, tick(dt) { step(dt); }, /* take the clock out of the page's hands, and move it by hand */
 };

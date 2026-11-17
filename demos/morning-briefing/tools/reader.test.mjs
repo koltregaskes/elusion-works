@@ -46,10 +46,22 @@ assert.deepEqual([0, 1, 2, 3].map(c => R.firstOf(list, c)), [0, -1, 3, -1]);
 // Speeds go round: normal, a little faster, faster, slower, and back.
 { let r = 1; const seen = []; for (let i = 0; i < 5; i++) { seen.push(r); r = R.nextRate(r); } assert.deepEqual(seen, [1, 1.25, 1.5, 0.85, 1]); assert.deepEqual(R.RATES.map(R.sayRate), ['Normal speed', 'A little faster', 'Faster', 'Slower']); }
 
+// ---- The voice ----
+// Only a voice the browser calls the device's own (localService exactly true) may be given the words; English only, British English first.
+{ const gbOwn = { name: 'GB own', lang: 'en-GB', localService: true }, usOwn = { name: 'US own', lang: 'en-US', localService: true }, gbCloud = { name: 'GB cloud', lang: 'en-GB', localService: false }, gbUnsaid = { name: 'GB unsaid', lang: 'en-GB' }, gbString = { name: 'GB string', lang: 'en-GB', localService: 'true' }, frOwn = { name: 'FR own', lang: 'fr-FR', localService: true }, enOwn = { name: 'EN own', lang: 'en', localService: true }, enoOwn = { name: 'Not English', lang: 'eno', localService: true };
+  const name = vs => { const p = R.pickVoice(vs); return [p.voice && p.voice.name, p.why]; };
+  assert.deepEqual(name([usOwn, gbOwn]), ['GB own', 'ok'], 'British English first among the device\'s own');
+  assert.deepEqual(name([usOwn]), ['US own', 'ok']); assert.deepEqual(name([enOwn]), ['EN own', 'ok']);
+  assert.deepEqual(name([gbCloud]), [null, 'remote'], 'a remote voice was chosen'); assert.deepEqual(name([gbCloud, gbUnsaid, gbString]), [null, 'remote'], 'a voice that does not plainly say it is the device\'s own was chosen');
+  assert.deepEqual(name([gbCloud, usOwn, gbUnsaid]), ['US own', 'ok'], 'with remote and own voices mixed, a remote one was chosen over the device\'s own');
+  assert.deepEqual(name([]), [null, 'none']); assert.deepEqual(name(undefined), [null, 'none']); assert.deepEqual(name(null), [null, 'none']);
+  assert.deepEqual(name([frOwn, gbCloud]), [null, 'foreign']); assert.deepEqual(name([enoOwn]), [null, 'foreign'], '"eno" is not English');
+  for (const k of ['none', 'remote', 'foreign']) assert.ok(R.NO_VOICE[k][0].length > 20 && R.NO_VOICE[k][1].length > 10); }
+
 // ---- Swiping ----
 // A long drag turns the card; a short slow one does not; a quick flick does; a flick back the other way at the end cancels.
 assert.equal(R.settle(-140, 0, 360), 1); assert.equal(R.settle(140, 0, 360), -1); assert.equal(R.settle(-60, -0.1, 360), 0); assert.equal(R.settle(-60, -0.8, 360), 1); assert.equal(R.settle(60, 0.8, 360), -1); assert.equal(R.settle(-10, -2, 360), 0, 'a twitch turned the card'); assert.equal(R.settle(-200, 0.6, 360), 0, 'a drag taken back still turned the card'); assert.equal(R.settle(0, 0, 360), 0);
 assert.deepEqual([R.turn(0, -1, 7), R.turn(0, 1, 7), R.turn(6, 1, 7), R.turn(3, 0, 7)], [0, 1, 6, 3]);
 // A dragged card follows the finger and tips; at either end it resists.
 { const mid = R.pose(-90, 360, 2, 7); assert.equal(mid.x, -90); assert.ok(mid.tilt < 0 && mid.tilt > -7 && mid.under > 0 && mid.under <= 1); assert.equal(R.pose(90, 360, 0, 7).x, 22.5); assert.equal(R.pose(-90, 360, 6, 7).x, -22.5); assert.deepEqual(R.pose(0, 360, 3, 7), { x: 0, tilt: 0, under: 0 }); assert.equal(R.pose(-9999, 360, 2, 7).tilt, -7); }
-console.log('ok  reader: sentences split at real stops only and lose nothing; figures and times count as the words they are said in; lines follow one another; the player advances, carries over, holds for a voice, ends once, seeks within bounds and changes speed; a drag, a flick and a twitch each come out as they should');
+console.log('ok  reader: sentences split at real stops only and lose nothing; figures and times count as the words they are said in; lines follow one another; the player advances, carries over, holds for a voice, ends once, seeks within bounds and changes speed; only a voice the device calls its own, in English, is chosen, and with none the reason is told apart (none, remote only, no English); a drag, a flick and a twitch each come out as they should');

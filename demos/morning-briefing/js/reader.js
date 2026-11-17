@@ -56,6 +56,22 @@ export const position = (state, list) => ({ at: list.length ? (list[state.i].sta
 export const nextRate = rate => RATES[(RATES.indexOf(rate) + 1) % RATES.length];
 export const sayRate = rate => (rate === 1 ? 'Normal speed' : rate < 1 ? 'Slower' : rate === 1.25 ? 'A little faster' : 'Faster');
 
+// ---- The voice ----
+// Which of the device's voices may be given the words. Only one the browser says is the device's own (localService === true): a voice that is not
+// may send the words to a service elsewhere to be spoken. Of those, English only, British English first. Returns { voice, why }: voice is null when
+// none may be used, and why says which case it is: 'ok', 'none' (no voices at all, or not loaded yet), 'remote' (voices, but none the device's own),
+// 'foreign' (the device's own voices, but none English). The browser's word on localService is all a page can go on.
+export function pickVoice(voices) { const all = Array.isArray(voices) ? voices.filter(Boolean) : []; if (!all.length) return { voice: null, why: 'none' };
+  const own = all.filter(v => v.localService === true); if (!own.length) return { voice: null, why: 'remote' };
+  const english = own.filter(v => /^en([-_]|$)/i.test(String(v.lang || ''))); if (!english.length) return { voice: null, why: 'foreign' };
+  return { voice: english.find(v => /^en[-_]GB$/i.test(String(v.lang))) || english[0], why: 'ok' }; }
+// Why there is no voice, said in full (for the announcement) and in short (for the line under the player).
+export const NO_VOICE = {
+  none: ['This device has not offered a voice of its own, or its voices are still loading.', 'No voice of the device\'s own yet'],
+  remote: ['The only voices here may send the words to a service elsewhere to be spoken, so none of them is used.', 'No voice that keeps the words on the device'],
+  foreign: ['None of this device\'s own voices speaks English.', 'No English voice of the device\'s own'],
+};
+
 // ---- Swiping ----
 // What a finger's drag across a card of this width comes to: -1 go back, 1 go on, 0 stay. dx is how far it moved (left is negative), vx how fast at the end, in pixels a millisecond.
 // A long drag or a quick flick turns the card; a short slow one, or a flick back the other way at the end, does not.
