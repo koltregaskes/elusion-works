@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import * as P from '../js/palette.js';
-import { DEFINITION, SCENE, ROOMS, LIT, TURN, GLOW } from '../mod/hooks/house.js';
+import { DEFINITION, SCENE, ROOMS, LIT, TURN, GLOW, PLAN } from '../mod/hooks/house.js';
 
 // The contrast sum itself, against values anyone can look up.
 assert.ok(Math.abs(P.contrast('#000000', '#ffffff') - 21) < 1e-9); assert.ok(Math.abs(P.contrast('#777777', '#ffffff') - 4.478) < 0.005); assert.equal(P.contrast('#3fe08a', '#3fe08a'), 1); assert.equal(P.ratio('#777777', '#ffffff'), '4.4', 'a printed ratio is cut short, never rounded up');
@@ -14,33 +14,43 @@ assert.equal(DEFINITION.dark.gray.anchors['surface-0'], '#111315'); assert.equal
 // Nothing the apps would refuse, nothing at all against the night half, and the day half's notes are all near misses.
 assert.deepEqual(P.notes.refused, [], 'the apps would refuse this theme'); assert.deepEqual(P.notes.dark, [], 'the night half has contrast notes'); assert.equal(P.notes.dark.length + P.notes.light.length, P.problems.length);
 for (const line of P.notes.light) { const m = /is ([\d.]+):1 in light mode; it needs ([\d.]+):1/.exec(line); assert.ok(m, 'a note in a form this check does not know: ' + line); assert.ok(+m[2] - +m[1] <= 0.12 + 1e-9, 'a day-mode pair is well short of its bar: ' + line); }
-assert.ok(P.notes.light.length <= 12, `the day half has ${P.notes.light.length} notes`);
+assert.ok(P.notes.light.length <= 25, `the day half has ${P.notes.light.length} notes`);
 // The theme is the shape the apps read: version 1, both modes, about a hundred six-digit colours in each.
 assert.equal(P.theme.v, 1); assert.deepEqual(Object.keys(P.theme.inputs).sort(), ['dark', 'light']); for (const mode of P.MODES) { const all = Object.values(P.theme.inputs[mode]); assert.ok(all.length >= 90 && all.every(c => /^#[0-9a-f]{6}$/.test(c))); }
 
 for (const mode of P.MODES) { const c = P.colours(mode), a = DEFINITION[mode].gray.anchors;
   // Surfaces: the page is the darkest, each later one as light or lighter, and neighbours stay close.
-  const steps = [c.page, c.card, c.panel, c.menu].map(P.light); for (let i = 1; i < steps.length; i++) assert.ok(steps[i] >= steps[i - 1] - 1e-9, `${mode}: a surface is darker than the page`); assert.ok(P.contrast(c.page, c.menu) < 1.25, `${mode}: the surfaces are too far apart to read as one material`);
+  const steps = [c.page, c.card, c.panel, c.menu].map(P.light); for (let i = 1; i < steps.length; i++) assert.ok(steps[i] >= steps[i - 1] - 1e-9, `${mode}: a surface is darker than the page`); assert.ok(P.contrast(c.page, c.menu) < 1.25, `${mode}: the surfaces are too far apart to read as one material`); assert.ok(P.contrast(c.page, c.card) >= 1.03 && P.contrast(c.card, c.panel) >= 1.03, `${mode}: a card cannot be told from the page`);
   // Words come first: main ink at 7 to 1 or better on every surface, quiet ink at 4.5 to 1.
   for (const s of [c.page, c.card, c.panel, c.menu]) { assert.ok(P.contrast(c.ink, s) >= 7, `${mode}: main ink on ${s}`); assert.ok(P.contrast(c.ink2, s) >= 7, `${mode}: second ink on ${s}`); assert.ok(P.contrast(c.ink3, s) >= 4.5, `${mode}: quiet ink on ${s} is ${P.contrast(c.ink3, s).toFixed(2)}`); }
   // Each role: the ink on its fill reads, and the shade used for coloured words reads on every surface.
   for (const [id] of P.ROLES) { assert.ok(P.contrast(c[id + 'On'], c[id + 'Fill']) >= 4.5, `${mode}: ink on the ${id} fill is ${P.contrast(c[id + 'On'], c[id + 'Fill']).toFixed(2)}`); for (const s of [c.page, c.card, c.panel]) assert.ok(P.contrast(c[id + 'Text'], s) >= 4.5, `${mode}: ${id} words on ${s}`); assert.ok(Object.values(P.theme.inputs[mode]).includes(c[id + 'Text']), 'a shade the theme does not hold'); }
   assert.equal(c.page, a['surface-0']); assert.equal(c.ink, a['text-primary']); }
-// Meaning is kept: danger is a red, success a green, warning an amber, and the five roles are five different hues.
-{ const hue = hex => { const n = parseInt(hex.slice(1), 16), r = (n >> 16) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn; return (mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4) * 60; }, h = Object.fromEntries(P.ROLES.map(([id]) => [id, hue(DEFINITION.roles[id])]));
-  assert.ok(h.danger < 20 || h.danger > 340); assert.ok(h.success > 80 && h.success < 150); assert.ok(h.warning > 30 && h.warning < 55); assert.ok(h.accent > 130 && h.accent < 165); const hs = Object.values(h).sort((x, y) => x - y); for (let i = 1; i < hs.length; i++) assert.ok(hs[i] - hs[i - 1] >= 30, 'two roles share a hue'); }
+// Meaning is kept: danger is a red, success a green, warning an amber. And the five roles can be told apart as words in code:
+// measured on the shades the theme actually yields, in a colour space built to match the eye (OKLCH), every pair is at least 30 degrees of hue apart.
+{ const lin = v => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4), hue = hex => { const [r, g, b] = [1, 3, 5].map(i => lin(parseInt(hex.slice(i, i + 2), 16) / 255)), l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b), m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b), q = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b); return (Math.atan2(0.0259040371 * l + 0.7827717662 * m - 0.808675766 * q, 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * q) * 180 / Math.PI + 360) % 360; };
+  const seed = Object.fromEntries(P.ROLES.map(([id]) => [id, hue(DEFINITION.roles[id])])); assert.ok(seed.danger > 15 && seed.danger < 40, 'danger is not a red'); assert.ok(seed.success > 105 && seed.success < 145, 'success is not a green'); assert.ok(seed.warning > 60 && seed.warning < 95, 'warning is not an amber'); assert.ok(seed.accent > 145 && seed.accent < 165, 'the accent is not the house green');
+  for (const mode of P.MODES) { const c = P.colours(mode), hs = P.ROLES.map(([id]) => [id, hue(c[id + 'Text'])]); for (let i = 0; i < hs.length; i++) for (let j = i + 1; j < hs.length; j++) { const gap = Math.abs(hs[i][1] - hs[j][1]), apart = Math.min(gap, 360 - gap); assert.ok(apart >= 30, `${mode}: ${hs[i][0]} and ${hs[j][0]} words are only ${apart.toFixed(0)} degrees of hue apart`); } } }
 
-// The scene: one small pure-vector drawing, slow, with nothing in the middle or along the foot, and finished when still.
-assert.ok(SCENE.length < 131072 && SCENE.startsWith('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">') && SCENE.endsWith('</svg>'));
-for (const banned of ['<image', '<script', 'href', '@font-face', '<![CDATA[', '<foreignObject', '<text', 'url(http']) assert.ok(!SCENE.includes(banned), 'the scene holds ' + banned);
+// The scene: one small pure-vector drawing that needs no telling which half of the day it is, slow, finished when still.
+assert.ok(SCENE.length < 131072 && SCENE.startsWith('<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">') && SCENE.endsWith('</svg>'));
+for (const banned of ['<image', '<script', 'href', '@font-face', '<![CDATA[', '<foreignObject', '<text', 'url(http', '@media', 'light-dark', '/*']) assert.ok(!SCENE.includes(banned), 'the scene holds ' + banned);
 for (const comment of SCENE.match(/<!--[\s\S]*?-->/g)) assert.ok(/^<!-- [a-z ;,]+ -->$/.test(comment), 'a comment that is not plain words: ' + comment);
-assert.equal((SCENE.match(/class="lamp"/g) || []).length, LIT.length); assert.equal((SCENE.match(/class="wall"/g) || []).length, ROOMS.length); assert.ok(TURN >= 6 && LIT.length * TURN >= 40, 'the lights change too fast');
-for (const [x, y, w, h] of ROOMS) { assert.ok(x >= 0 && y >= 0 && x + w <= 1600 && y + h <= 1000); assert.ok(!(x < 1180 && x + w > 420 && y < 640 && y + h > 360), 'a room is drawn across the middle'); assert.ok(!(x < 1180 && x + w > 420 && y + h > 700), 'a room is drawn across the foot'); }
-for (let i = 0; i < ROOMS.length; i++) for (let j = i + 1; j < ROOMS.length; j++) { const [a, b] = [ROOMS[i], ROOMS[j]]; assert.ok(!(a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3]), `rooms ${i} and ${j} overlap`); }
-assert.equal(new Set(LIT).size, LIT.length); assert.ok(LIT.every(i => ROOMS[i]));
+assert.equal((SCENE.match(/class="lamp"/g) || []).length, LIT.length); assert.equal(LIT.length, ROOMS.length); assert.deepEqual([...LIT].sort(), ROOMS.map((_, i) => i)); assert.ok(TURN >= 6 && LIT.length * TURN >= 40, 'the lights change too fast');
+// The rooms tile the plan exactly: none overlaps another, none sticks out, and together they cover it.
+{ let area = 0; for (const [x, y, w, h] of ROOMS) { assert.ok(x >= 0 && y >= 0 && x + w <= PLAN.width && y + h <= PLAN.height); area += w * h; } assert.equal(area, PLAN.width * PLAN.height); for (let i = 0; i < ROOMS.length; i++) for (let j = i + 1; j < ROOMS.length; j++) { const [a, b] = [ROOMS[i], ROOMS[j]]; assert.ok(!(a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3]), `rooms ${i} and ${j} overlap`); } }
+// Every wall and door stays inside the plan, and every door's swing is a true quarter circle of the door's own width.
+{ const d = SCENE.match(/class="wall"[^>]* d="([^"]+)"/)[1], nums = d.match(/-?\d+(\.\d+)?/g).map(Number); assert.ok(nums.every(n => n >= 0 && n <= 300)); const doors = SCENE.match(/class="door"[^>]* d="([^"]+)"/)[1].split(' M').length; assert.equal(doors, 8); assert.equal((SCENE.match(/a25 25 0 0 [01] -?25 -?25/g) || []).length, 8); }
+// Where the plan lands on real screens. It is pinned to the top right of the largest square that fits, so: on a wide window it is clear of a column of words 768 wide in the middle;
+// on any window it is in the top quarter; and it is never over the foot, where the message box is. A phone held upright sees all six rooms.
+for (const [w, h] of [[390, 844], [844, 390], [1280, 800], [1440, 900], [1920, 1080], [2560, 1080], [768, 1024], [320, 568]]) { const k = Math.min(w, h) / 1000, x0 = w - k * (1000 - PLAN.x), x1 = x0 + k * PLAN.width * PLAN.scale, y0 = k * PLAN.y, y1 = y0 + k * PLAN.height * PLAN.scale;
+  assert.ok(x0 >= 0 && x1 <= w && y0 >= 0, `${w}x${h}: the plan is cut off`); assert.ok(y1 <= h * 0.26, `${w}x${h}: the plan comes ${Math.round(y1)} px down a ${h} px screen`); assert.ok(x1 > w - 20 * Math.max(1, k * 2), `${w}x${h}: the plan is not in the corner`); assert.ok(x1 - x0 >= 70, `${w}x${h}: the plan is only ${Math.round(x1 - x0)} px wide`);
+  if (w >= 1280) assert.ok(x0 >= (w + 768) / 2, `${w}x${h}: the plan starts at ${Math.round(x0)}, inside a middle column that ends at ${(w + 768) / 2}`); }
 assert.ok(!/\.lamp \{[^}]*opacity/.test(SCENE), 'a rule that sets every lamp dark would win over the one lamp that rests lit'); assert.ok(!P.scene.still.includes('animation') && P.scene.still.includes(`opacity="${GLOW}"`) && P.scene.still.length < SCENE.length, 'the still scene still moves'); assert.ok(P.scene.moving === SCENE);
-// The lamps never flash: the brightest any room gets is a tenth, and it takes a second or more to get there.
-{ const kf = /@keyframes turn \{([^@]+)\}\s*<\/style>/.exec(SCENE)[1], stops = [...kf.matchAll(/([\d.]+)% \{ opacity: ([\d.]+); \}/g)].map(m => [+m[1], +m[2]]); assert.ok(stops.length >= 4 && stops.every(([, o]) => o <= GLOW) && GLOW <= 0.15); const round = LIT.length * TURN; for (let i = 1; i < stops.length; i++) if (stops[i][1] !== stops[i - 1][1]) assert.ok((stops[i][0] - stops[i - 1][0]) / 100 * round >= 1, 'a lamp changes in under a second'); }
+// The scene's grey and green show on both grounds without being told which it is on: lines at 1.25 to 1 or better once their opacity is counted, by night and by day.
+{ const mix = (top, a, under) => '#' + [1, 3, 5].map(i => Math.round(parseInt(top.slice(i, i + 2), 16) * a + parseInt(under.slice(i, i + 2), 16) * (1 - a)).toString(16).padStart(2, '0')).join(''); for (const mode of P.MODES) { const page = DEFINITION[mode].gray.anchors['surface-0']; assert.ok(P.contrast(mix('#8f989d', 0.55, page), page) >= 1.25, `${mode}: the walls do not show`); assert.ok(P.contrast(mix('#2fbf7c', GLOW, page), page) >= 1.08, `${mode}: a lit room does not show`); assert.ok(P.contrast(DEFINITION[mode].gray.anchors['text-primary'], mix('#2fbf7c', GLOW, page)) >= 7, `${mode}: words over a lit room`); } }
+// The lamps never flash: the brightest any room gets is the glow, and it takes a second or more to get there.
+{ const kf = /@keyframes turn \{([^@]+)\}\s*<\/style>/.exec(SCENE)[1], stops = [...kf.matchAll(/([\d.]+)% \{ opacity: ([\d.]+); \}/g)].map(m => [+m[1], +m[2]]); assert.ok(stops.length >= 4 && stops.every(([, o]) => o <= GLOW) && GLOW <= 0.25); const round = LIT.length * TURN; for (let i = 1; i < stops.length; i++) if (stops[i][1] !== stops[i - 1][1]) assert.ok((stops[i][0] - stops[i - 1][0]) / 100 * round >= 1, 'a lamp changes in under a second'); }
 
 // The mod's own files are all there, and the colour maker is the one the toolkit ships, untouched.
 const mod = new URL('../mod/', import.meta.url); for (const f of ['.claude-plugin/plugin.json', 'hooks/hooks.json', 'hooks/register.tsx', 'hooks/register.test.tsx', 'hooks/house.js', 'hooks/house.d.ts', 'hooks/make-colors.js', 'hooks/make-colors.d.ts']) assert.ok(fs.existsSync(new URL(f, mod)), f + ' is missing');

@@ -2,10 +2,11 @@
 // Plain JavaScript with no imports, so the mod, its tests and the preview page all read the same file.
 
 // The colours. makeColors (in make-colors.js) turns these few into the whole theme.
-// Dark is the house style: charcoal ground, white ink, one green. Light is the same idea by daylight: drawing-office paper.
+// Night is the house style: charcoal ground, white ink, one green. Day is the same idea in a drawing office: cool blueprint paper, near-black ink.
+// Success is a lime, well round the wheel from the accent, so that keywords and strings in code are told apart.
 export const DEFINITION = {
   label: 'Rooms OS',
-  roles: { accent: '#3fe08a', danger: '#ff6b5e', success: '#86c95a', warning: '#f0b23a', pro: '#a58cff' },
+  roles: { accent: '#3fe08a', danger: '#ff6b5e', success: '#b0ce3b', warning: '#f0b23a', pro: '#a58cff' },
   dark: {
     gray: {
       anchors: {
@@ -22,9 +23,9 @@ export const DEFINITION = {
   light: {
     gray: {
       anchors: {
-        'surface-0': '#f7f8f6',
-        'surface-1': '#fbfcfa',
-        'surface-2': '#fefefd',
+        'surface-0': '#f0f4f6',
+        'surface-1': '#f6f8fa',
+        'surface-2': '#fcfdfe',
         'text-primary': '#14171a',
         'text-secondary': '#3c4347',
         'text-muted': '#586166',
@@ -33,40 +34,40 @@ export const DEFINITION = {
   },
 };
 
-// The scene: a floor plan, drawn faintly across the whole ground, whose outer rooms light up one after another.
-// The middle is left open, because that is where the words are, and so is the foot, where the message box is.
-// Each room is [x, y, width, height] on a 1600 by 1000 sheet; the second list is the rooms that take a turn to light.
-export const ROOMS = [
-  [40, 40, 420, 300], [460, 40, 360, 220], [820, 40, 340, 220], [1160, 40, 400, 260],
-  [40, 340, 300, 320], [1260, 300, 300, 360],
-  [40, 660, 380, 300], [1200, 660, 360, 300],
-];
-export const LIT = [0, 3, 5, 7, 6, 4]; // round the edge, clockwise from the top left
+// The scene: squared paper across the whole ground, and a small floor plan pinned to the top right-hand corner whose rooms light up one after another.
+// The plan keeps to that corner at every window shape, a phone held upright included, so it is never behind the middle of the page or the message box.
+// Its colours are a mid grey and a green that show on charcoal and on paper alike, so the scene does not need to be told which half of the day it is.
+// PLAN: where the plan sits in a square of 1000 pinned to the top right, and how much it is scaled. Each room is [x, y, width, height] in the plan's own units.
+export const PLAN = { x: 745, y: 16, scale: 0.8, width: 300, height: 210 };
+export const ROOMS = [[0, 0, 110, 90], [110, 0, 90, 90], [200, 0, 100, 120], [200, 120, 100, 90], [80, 90, 120, 120], [0, 90, 80, 120]]; // clockwise from the top left
+export const LIT = [0, 1, 2, 3, 4, 5]; // every room takes a turn, in that order
 export const TURN = 9; // seconds each room has before the next begins
-export const GLOW = 0.13; // how strongly a lit room shows: faint enough to read words over
-const doors = [[460, 250, 46, 0], [820, 200, 46, 1], [1160, 210, 46, 0], [340, 520, 46, 1], [1260, 480, 46, 0], [420, 760, 46, 1], [1200, 760, 46, 0]];
+export const GLOW = 0.22; // how strongly a lit room shows
+// Walls, drawn once each and broken where there is a door. Then the doors: a leaf standing open and the quarter circle it swings through.
+const walls = 'M0 0H300V210H150M125 210H0V0 M110 0V30M110 55V90 M200 0V60M200 85V150M200 175V210 M0 90H30M55 90H130M155 90H200 M80 90V140M80 165V210 M200 120H235M260 120H300';
+const doors = 'M110 30h25a25 25 0 0 1 -25 25 M200 60h-25a25 25 0 0 0 25 25 M200 150h25a25 25 0 0 1 -25 25 M30 90v25a25 25 0 0 0 25 -25 M130 90v-25a25 25 0 0 1 25 25 M80 140h25a25 25 0 0 1 -25 25 M235 120v25a25 25 0 0 0 25 -25 M125 210v-25a25 25 0 0 1 25 25';
 
 export const SCENE = [
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">',
+  '<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">',
   '<style>',
-  '.wall { fill: none; stroke: #14171a; stroke-opacity: .09; stroke-width: 2; }',
-  '.door { fill: none; stroke: #14171a; stroke-opacity: .07; stroke-width: 1.2; }',
-  '.dot { fill: #14171a; fill-opacity: .07; }',
+  '.wall { fill: none; stroke: #8f989d; stroke-opacity: .55; stroke-width: 1.3; }',
+  '.door { fill: none; stroke: #8f989d; stroke-opacity: .38; stroke-width: 1; }',
+  '.dot { fill: #8f989d; fill-opacity: .24; }',
   // A lamp's resting brightness is on the lamp itself, not in this rule, so that with the animation taken out the first room stays lit.
-  '.lamp { fill: #00a060; animation: turn ' + LIT.length * TURN + 's linear infinite; }',
-  '@media (prefers-color-scheme: dark) { .wall, .door { stroke: #f4f5f3; } .wall { stroke-opacity: .08; } .door { stroke-opacity: .06; } .dot { fill: #f4f5f3; fill-opacity: .06; } .lamp { fill: #3fe08a; } }',
+  '.lamp { fill: #2fbf7c; animation: turn ' + LIT.length * TURN + 's linear infinite; }',
   `@keyframes turn { 0% { opacity: 0; } 5% { opacity: ${GLOW}; } 14% { opacity: ${GLOW}; } 22% { opacity: 0; } 100% { opacity: 0; } }`,
   '</style>',
   '<defs><pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><circle class="dot" cx="20" cy="20" r="1"/></pattern></defs>',
-  '<!-- squared paper -->',
-  '<rect width="1600" height="1000" fill="url(#grid)"/>',
-  '<!-- the rooms that light in turn; the first rests lit when nothing may move -->',
+  '<!-- squared paper, cropped to fit -->',
+  '<svg viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice" width="100%" height="100%"><rect width="1600" height="1000" fill="url(#grid)"/></svg>',
+  '<!-- the floor plan, pinned to the top right corner -->',
+  '<svg viewBox="0 0 1000 1000" preserveAspectRatio="xMaxYMin meet" width="100%" height="100%">',
+  `<g transform="translate(${PLAN.x} ${PLAN.y}) scale(${PLAN.scale})">`,
   ...LIT.map((room, turn) => { const [x, y, w, h] = ROOMS[room]; return `<rect class="lamp" x="${x}" y="${y}" width="${w}" height="${h}" opacity="${turn === 0 ? GLOW : 0}" style="animation-delay: ${turn * TURN}s"/>`; }),
-  '<!-- walls -->',
-  ...ROOMS.map(([x, y, w, h]) => `<rect class="wall" x="${x}" y="${y}" width="${w}" height="${h}"/>`),
-  '<!-- doors, each a quarter turn -->',
-  ...doors.map(([x, y, r, flip]) => `<path class="door" d="M${x} ${y} v${-r} a${r} ${r} 0 0 ${flip ? 0 : 1} ${flip ? -r : r} ${r} z"/>`),
+  `<path class="wall" vector-effect="non-scaling-stroke" d="${walls}"/>`,
+  `<path class="door" vector-effect="non-scaling-stroke" d="${doors}"/>`,
+  '</g></svg>',
   '</svg>',
 ].join('');
 
-export const SCENE_ALT = 'A faint floor plan on squared paper. The rooms round its edge light up green one after another.';
+export const SCENE_ALT = 'Squared paper, with a small floor plan of six rooms in the top right-hand corner. The rooms light up green one after another.';

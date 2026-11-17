@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { DEFINITION, GLOW, LIT, ROOMS, SCENE, SCENE_ALT, TURN } from './house.js'
+import { DEFINITION, GLOW, LIT, PLAN, ROOMS, SCENE, SCENE_ALT, TURN } from './house.js'
 
 const BACKDROP = {
   plugin: 'rooms-os-theme',
@@ -77,26 +77,27 @@ test('the floor plan is drawn on the apps, and left to the engine elsewhere', as
 
 test('the drawing is small, pure vector, and finished when nothing may move', () => {
   expect(SCENE.length).toBeLessThan(131072)
-  expect(SCENE.startsWith('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">')).toBe(true)
-  for (const banned of ['<image', '<script', 'href', '@font-face', 'url(http', '<![CDATA[', '<foreignObject']) {
+  expect(SCENE.startsWith('<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">')).toBe(true)
+  for (const banned of ['<image', '<script', 'href', '@font-face', 'url(http', '<![CDATA[', '<foreignObject', '<text', '@media']) {
     expect(SCENE.includes(banned)).toBe(false)
   }
   expect(SCENE_ALT.length).toBeGreaterThan(20)
-  // One lamp for each room that takes a turn; exactly one rests lit, so the plan looks finished with its animation taken out.
+  // One lamp for each room; exactly one rests lit, so the plan looks finished with its animation taken out.
   const lamps = SCENE.match(/<rect class="lamp"[^>]*>/g) ?? []
 
   expect(lamps.length).toBe(LIT.length)
+  expect(LIT.length).toBe(ROOMS.length)
   expect(lamps.filter(lamp => lamp.includes(`opacity="${GLOW}"`)).length).toBe(1)
-  expect(GLOW).toBeLessThanOrEqual(0.15)
+  expect(GLOW).toBeLessThanOrEqual(0.25)
   // Slow: each room has several seconds, and the whole round takes most of a minute.
   expect(TURN).toBeGreaterThanOrEqual(6)
   expect(SCENE.includes(`animation: turn ${LIT.length * TURN}s linear infinite`)).toBe(true)
-  // Nothing is drawn in the middle of the sheet, where the words are, or along the foot, where the message box is.
+  // The plan is pinned to the top right-hand corner of a square of 1000, and every room is inside the plan.
+  expect(SCENE.includes('preserveAspectRatio="xMaxYMin meet"')).toBe(true)
+  expect(PLAN.x + PLAN.width * PLAN.scale).toBeLessThanOrEqual(1000)
+  expect(PLAN.x).toBeGreaterThanOrEqual(700)
+  expect(PLAN.y + PLAN.height * PLAN.scale).toBeLessThanOrEqual(250)
   for (const [x, y, w, h] of ROOMS) {
-    const overMiddle = x < 1180 && x + w > 420 && y < 640 && y + h > 360
-    const overFoot = x < 1180 && x + w > 420 && y + h > 700
-
-    expect(overMiddle).toBe(false)
-    expect(overFoot).toBe(false)
+    expect(x >= 0 && y >= 0 && x + w <= PLAN.width && y + h <= PLAN.height).toBe(true)
   }
 })

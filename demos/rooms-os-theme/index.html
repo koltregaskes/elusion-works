@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Rooms OS house theme: a look for the Claude apps</title>
-<meta name="description" content="A theme for the Claude desktop and mobile apps in the Rooms OS house style: charcoal, white ink, one green, and a faint floor plan whose rooms light up in turn. This page shows it from the same files the theme ships.">
+<meta name="description" content="A theme for the Claude desktop and mobile apps in the Rooms OS house style: charcoal, white ink, one green, and a small floor plan in the corner whose rooms light up in turn. This page shows it from the same files the theme ships.">
 <meta name="theme-color" content="#111315">
 <link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml">
 <!-- Unlisted until release is approved: remove the next line, then add the gallery card and sitemap entry. -->
@@ -35,7 +35,7 @@
   .spec aside { padding:14px 12px; background:color-mix(in srgb, var(--t-card) 88%, transparent); border-right:1px solid color-mix(in srgb, var(--t-ink) 12%, transparent); }
   .spec .tag { margin:4px 6px 10px; font:600 10px/1.2 var(--mono); letter-spacing:.16em; text-transform:uppercase; color:var(--t-ink3); }
   .spec .room { display:flex; justify-content:space-between; gap:8px; padding:7px 9px; border-radius:8px; color:var(--t-ink2); } .spec .room.on { background:var(--t-panel); color:var(--t-ink); } .spec .room b { font-weight:600; } .spec .room small { color:var(--t-ink3); font-size:12px; }
-  .spec main { display:flex; flex-direction:column; gap:14px; padding:22px clamp(14px, 4vw, 44px) 16px; min-width:0; }
+  .spec main { display:flex; flex-direction:column; gap:14px; padding:112px clamp(14px, 4vw, 44px) 16px; min-width:0; } /* the top is left clear, so the plan in the corner can be seen */
   .spec .you { align-self:flex-end; max-width:78%; padding:9px 13px; border-radius:14px 14px 4px 14px; background:var(--t-panel); border:1px solid color-mix(in srgb, var(--t-ink) 10%, transparent); }
   .spec .say { margin:0; max-width:60ch; color:var(--t-ink); } .spec .say a { color:var(--t-accentText); } .spec .quiet { margin:0; font-size:12.5px; color:var(--t-ink3); }
   .spec pre { margin:0; padding:12px 14px; border-radius:10px; background:var(--t-card); border:1px solid color-mix(in srgb, var(--t-ink) 12%, transparent); font:12.5px/1.6 var(--mono); color:var(--t-ink); overflow-x:auto; white-space:pre; }
@@ -57,23 +57,24 @@
   pre.cmd { margin:12px 0; padding:14px 16px; border-radius:12px; border:1px solid var(--line); background:#15181a; font:13px/1.6 var(--mono); color:var(--ink); overflow-x:auto; }
   code { font:0.92em var(--mono); color:var(--ink); }
   footer { margin:90px 0 0; padding:26px 0 60px; border-top:1px solid var(--line); font-size:14px; color:var(--muted); }
-  @media (max-width:720px) { header { padding-top:40px; } .spec { grid-template-columns:minmax(0, 1fr); min-height:0; } .spec aside { display:none; } .spec .you { max-width:92%; } h2 { margin-top:64px; } }
+  @media (max-width:720px) { header { padding-top:40px; } .spec { grid-template-columns:minmax(0, 1fr); min-height:0; } .spec main { padding-top:86px; } .spec aside { display:none; } .spec .you { max-width:92%; } h2 { margin-top:64px; } }
   @media (prefers-reduced-motion:reduce) { * { transition:none !important; } }
 </style>
+<noscript><style>.bar, #spec, #spec-note, .scroll, #said { display:none; }</style></noscript>
 </head>
 <body>
 <div class="wrap">
 <header>
   <p class="eyebrow">A look for the Claude apps</p>
   <h1>Rooms OS<br>house theme</h1>
-  <p class="lede">Charcoal, white ink and one green, with a faint floor plan behind the conversation whose rooms light up in turn. It is a small mod for Claude Code: load it, and a session drawn in the Claude desktop or mobile app takes on the look of the house.</p>
+  <p class="lede">Charcoal, white ink and one green, on squared paper, with a small floor plan in the corner whose rooms light up in turn. It is a small mod for Claude Code: load it, and a session drawn in the Claude desktop or mobile app takes on the look of the house.</p>
 </header>
 
 <main>
 <section aria-labelledby="spec-h">
   <h2 id="spec-h">What it looks like</h2>
   <p>This is a specimen, not a screenshot. The page paints a made-up window with the theme’s own colours and scene, read from the same two files the mod ships. The real apps lay themselves out their own way.</p>
-  <noscript><p><strong>Scripts are off</strong>, so the specimen below has no colours and the table is empty: both are worked out in the page from the theme’s files. The words on this page still hold.</p></noscript>
+  <noscript><p><strong>Scripts are off</strong>, so the specimen and the table of colours are not shown: both are worked out in the page from the theme’s files. The words on this page still hold, and the colours themselves are listed in the theme’s <code>house.js</code>.</p></noscript>
   <div class="bar">
     <button class="btn" id="m-dark" type="button" aria-pressed="true">Night</button>
     <button class="btn" id="m-light" type="button" aria-pressed="false">Day</button>
@@ -103,7 +104,7 @@
       <div class="box"><span>Reply to the front office</span><span class="do">Send</span></div>
     </main>
   </div>
-  <p class="small" id="spec-note">The specimen is described by the table below. The floor plan is the theme’s scene: squared paper, eight rooms round the edge, six of which light up green one after another, one round every 54 seconds. The middle is left clear for words.</p>
+  <p class="small" id="spec-note">The specimen is described by the table below. Behind it is the theme’s scene: squared paper, and a small floor plan of six rooms pinned to the top right-hand corner. The rooms light up green one after another, one round every 54 seconds. The plan keeps to that corner on every screen, a phone held upright included, so it is never behind the middle of the page or the message box.</p>
 </section>
 
 <section aria-labelledby="col-h">
@@ -116,6 +117,7 @@
       <tbody id="rows"></tbody>
     </table>
   </div>
+  <p class="small">For coloured words the apps choose their own shade of each role. This page cannot know which, so it uses the first shade the theme holds that reads at 4.5 to 1 on the page: the “as words” rows are this page’s choice, not the apps’.</p>
   <p id="said"></p>
   <details id="notes" hidden><summary>The colour maker’s notes on the day half</summary><ul id="notes-list"></ul></details>
   <p class="small">The green you give is a starting point. The apps keep its hue and choose their own lightness for each job, so buttons come out a deeper green than #3fe08a. Forcing the exact green onto buttons was tried and left out: a white switch knob then reads at only 1.7 to 1 against it.</p>
@@ -126,7 +128,13 @@
   <p>The mod is the folder <code>demos/rooms-os-theme/mod</code> in the Elusion Works repository. Themes are drawn by the Claude desktop and mobile apps; a terminal draws none, and the mod says so in the status line instead.</p>
   <p>For a session started from a terminal, load the folder with a flag. It lasts for that session only, and nothing is installed:</p>
   <pre class="cmd" tabindex="0">claude --plugin-dir demos/rooms-os-theme/mod</pre>
-  <p>For sessions the desktop app starts there is no flag to give. Claude Code reads the same folders from a setting instead: the folder’s full path, under <code>CLAUDE_CODE_PLUGIN_DIRS</code> in the <code>env</code> block of <code>~/.claude/settings.json</code>. Take the line out again and the look is gone.</p>
+  <p>Run that from the top folder of the repository. How a session started in a terminal is then opened in an app is not something the toolkit’s notes settle, so the surer route is the next one.</p>
+  <p>For sessions the desktop app starts there is no flag to give. Claude Code reads the same folders from a setting instead: the folder’s full path, under <code>CLAUDE_CODE_PLUGIN_DIRS</code> in the <code>env</code> block of <code>~/.claude/settings.json</code>. Three things to know before doing that:</p>
+  <ul class="list">
+    <li>The setting is a list of folders. If it already holds one, add this one to it, separated the way your system separates paths, and do not replace what is there.</li>
+    <li>It loads the mod into every Claude Code session that reads that file, in a terminal as well as in the app.</li>
+    <li>It is read when a session starts. Taking the line out again removes the look from new sessions, not from one already running.</li>
+  </ul>
   <ul class="list">
     <li><strong>Not yet seen in the apps.</strong> The mod passes Claude Code’s own validator, its type check and its tests, which draw the scene through the engine on the desktop and mobile surfaces. Nobody has yet looked at it painted in a real app, in either half of the day.</li>
     <li><strong>Early access.</strong> Themes for the apps are new and the way they are written may change between releases. The colour maker is copied from the toolkit unchanged and will need copying again when the toolkit moves on.</li>

@@ -2,7 +2,9 @@ import type { makeColors } from './make-colors.js'
 
 /** The few colours the whole theme is made from. */
 export const DEFINITION: Parameters<typeof makeColors>[0]
-/** The floor plan's rooms, each [x, y, width, height] on a 1600 by 1000 sheet. */
+/** Where the plan sits in a square of 1000 pinned to the top right-hand corner, its scale, and its own size. */
+export const PLAN: { x: number; y: number; scale: number; width: number; height: number }
+/** The floor plan's rooms, each [x, y, width, height] in the plan's own units. */
 export const ROOMS: [number, number, number, number][]
 /** Which rooms take a turn to light, in order. */
 export const LIT: number[]

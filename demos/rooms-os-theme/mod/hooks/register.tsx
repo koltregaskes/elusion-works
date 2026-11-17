@@ -32,7 +32,7 @@ export const register: Register = on => {
       return next(e)
     }
     // Another mod's scene, even one with the same name, is not ours to draw.
-    if (e.props.scene !== 'floor-plan' || e.props.plugin !== 'rooms-os-theme') {
+    if (e.props.scene !== 'floor-plan' || e.props.plugin !== $.plugin.name) {
       return next(e)
     }
 

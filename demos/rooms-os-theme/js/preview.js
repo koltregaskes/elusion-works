@@ -22,8 +22,8 @@ function table() { const C = Object.fromEntries(MODES.map(m => [m, colours(m)]))
   $('rows').replaceChildren(...rows); }
 
 // What the apps' own colour maker said about the theme.
-function said() { const d = notes.dark.length, l = notes.light.length, plural = n => (n === 1 ? 'note' : 'notes');
-  $('said').textContent = notes.refused.length ? `The colour maker says the apps would refuse this theme: ${notes.refused[0]}` : `The apps’ colour maker checks every pairing against the design system’s own bar. It finds nothing that would stop the apps painting this theme. Night half: ${d === 0 ? 'no notes' : `${d} ${plural(d)}`}. Day half: ${l === 0 ? 'no notes' : `${l} ${plural(l)}, each a near miss of a few hundredths against a bar the design system’s own colours only just clear`}.`;
+function said() { const d = notes.dark.length, l = notes.light.length, plural = n => (n === 1 ? 'note' : 'notes'), worst = Math.max(0, ...notes.light.map(t => { const m = /is ([\d.]+):1 in light mode; it needs ([\d.]+):1/.exec(t); return m ? +m[2] - +m[1] : 0; }));
+  $('said').textContent = notes.refused.length ? `The colour maker says the apps would refuse this theme: ${notes.refused[0]}` : `The apps’ colour maker checks every pairing against the design system’s own bar. It finds nothing that would stop the apps painting this theme. Night half: ${d === 0 ? 'no notes' : `${d} ${plural(d)}`}. Day half: ${l === 0 ? 'no notes' : `${l} ${plural(l)}, each a near miss (the widest falls ${worst.toFixed(2)} short) against a bar the design system’s own colours only just clear`}.`;
   if (l) { $('notes').hidden = false; $('notes-list').replaceChildren(...notes.light.map(t => el('li', { textContent: t }))); } }
 
 $('m-dark').addEventListener('click', () => { mode = 'dark'; paint(); }); $('m-light').addEventListener('click', () => { mode = 'light'; paint(); });
