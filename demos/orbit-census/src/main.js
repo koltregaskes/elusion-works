@@ -226,7 +226,7 @@ function isVisible(it) {
   if (S.hidden.has(mode.of(it))) return false;
   return true;
 }
-const SIZE = { PAY: 1, 'R/B': 1.2, DEB: 0.78, UNK: 0.8 };
+const SIZE = { PAY: 1, 'R/B': 1.2, DEB: 0.95, UNK: 0.8 };
 function applyFilter() {
   if (!S.swarm) return;
   const mode = COLOR_MODES[S.color]; const cats = mode.cats(); const cmap = new Map(cats.map((c) => [c.id, hexToRgb(c.color)]));
@@ -290,7 +290,9 @@ function renderFacts() {
   const it = S.items[S.sel]; if (!it) return;
   const age = (S.simT - it.epoch);
   const yrs = it.launch ? ((Date.now() - Date.parse(it.launch)) / (365.25 * DAY)) : null;
-  const rcs = it.rcs == null ? '—' : `${it.rcs < 0.1 ? it.rcs.toFixed(3) : it.rcs.toFixed(2)} m² · ${it.rcs < 0.1 ? 'small' : it.rcs < 1 ? 'medium' : 'large'}`;
+  // SATCAT leaves RCS blank for most objects now; only say so when this object was matched in SATCAT
+  const satcatMatched = !!S.doc?.satcat && !!it.launch;
+  const rcs = it.rcs == null ? (satcatMatched ? 'not in SATCAT' : 'unavailable') : `${it.rcs < 0.1 ? it.rcs.toFixed(3) : it.rcs.toFixed(2)} m² · ${it.rcs < 0.1 ? 'small' : it.rcs < 1 ? 'medium' : 'large'}`;
   const grp = GROUPS.find((g) => g.id === it.group)?.label || it.group;
   const rows = [
     ['NORAD id', it.norad], ['COSPAR id', it.cospar || '—'], ['Owner', ownerName(it.owner)],
@@ -373,13 +375,28 @@ function overhead() {
   ol.innerHTML = list.slice(0, 5).map(([it, el, d]) => `<li data-i="${it.i}"><b>${it.name}</b><span>${Math.round(el)}° · ${n0(d)} km</span></li>`).join('') || '<li><span>Nothing in the shown set is up</span></li>';
   $$('#overList li[data-i]').forEach((li) => li.addEventListener('click', () => select(+li.dataset.i)));
 }
+const CITIES = [
+  ['London', 51.5074, -0.1278], ['Edinburgh', 55.9533, -3.1883], ['Dublin', 53.3498, -6.2603], ['Paris', 48.8566, 2.3522],
+  ['Berlin', 52.52, 13.405], ['New York', 40.7128, -74.006], ['Los Angeles', 34.0522, -118.2437], ['Cape Canaveral', 28.3922, -80.6077],
+  ['São Paulo', -23.5505, -46.6333], ['Cape Town', -33.9249, 18.4241], ['Nairobi', -1.2921, 36.8219], ['Mumbai', 19.076, 72.8777],
+  ['Singapore', 1.3521, 103.8198], ['Beijing', 39.9042, 116.4074], ['Tokyo', 35.6762, 139.6503], ['Sydney', -33.8688, 151.2093],
+  ['Auckland', -36.8485, 174.7633], ['Reykjavík', 64.1466, -21.9426],
+];
+{
+  const sel = $('#obsCity');
+  sel.innerHTML = CITIES.map((c, i) => `<option value="${i}">${c[0]}</option>`).join('');
+  sel.addEventListener('change', () => {
+    const c = CITIES[+sel.value]; S.obs = { lat: c[1], lon: c[2], h: 20, name: c[0] };
+    globe.setObserver(S.obs.lat, S.obs.lon); $('#locBtn').textContent = 'My location'; overhead(); requestTrack();
+  });
+}
 $('#locBtn').addEventListener('click', () => {
   if (!navigator.geolocation) return;
   $('#locBtn').textContent = 'Locating…';
   navigator.geolocation.getCurrentPosition((p) => {
     S.obs = { lat: p.coords.latitude, lon: p.coords.longitude, h: p.coords.altitude || 0, name: 'your location' };
-    globe.setObserver(S.obs.lat, S.obs.lon); $('#locBtn').textContent = 'Using your location'; overhead(); requestTrack();
-  }, () => { $('#locBtn').textContent = 'Location unavailable'; }, { timeout: 10000, maximumAge: 600000 });
+    globe.setObserver(S.obs.lat, S.obs.lon); $('#locBtn').textContent = 'Using yours'; overhead(); requestTrack();
+  }, () => { $('#locBtn').textContent = 'Not available'; }, { timeout: 10000, maximumAge: 600000 });
 });
 
 // ---------------------------------------------------------------------------
@@ -521,7 +538,8 @@ search.addEventListener('input', () => {
 });
 search.addEventListener('keydown', (e) => { if (e.key === 'Enter') { const li = results.querySelector('li[data-i]'); if (li) li.click(); } });
 addEventListener('keydown', (e) => {
-  if (e.target.tagName === 'INPUT') return;
+  // leave typing and native control keys alone (search box, city picker, focused buttons)
+  if (e.target.closest?.('input, select, textarea, [contenteditable]') || (e.key === ' ' && e.target.closest?.('button'))) return;
   if (e.key === ' ') { e.preventDefault(); $('#play').click(); }
   else if (e.key === 'Escape') select(-1);
   else if (e.key.toLowerCase() === 'f') setFollow(!S.follow);
@@ -544,7 +562,7 @@ function syncUrl() {
   if (S.warp !== 1) u.set('warp', S.warp);
   if (S.frame !== 'eci') u.set('frame', S.frame);
   for (const k of ['clean', 'q']) if (q.has(k)) u.set(k, q.get(k));
-  const s = u.toString(); history.replaceState(null, '', s ? `?${s}` : location.pathname);
+  const s = u.toString(); try { history.replaceState(null, '', s ? `?${s}` : location.pathname); } catch { /* sandboxed frame */ }
 }
 
 // ---------------------------------------------------------------------------

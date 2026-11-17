@@ -73,6 +73,12 @@
     <input id="search" class="mono" type="search" placeholder="Name or NORAD id · ISS, 25544" autocomplete="off" spellcheck="false" />
     <ol class="results" id="results"></ol>
   </section>
+    <section class="card obs" id="cObs">
+    <div class="ch"><b>Over you</b><span>08</span></div>
+    <div class="obsrow"><strong id="obsCount">0</strong><span class="mono">above 10° from <em id="obsName">London</em></span></div>
+    <ol class="mono over" id="overList"></ol>
+    <div class="obsctl"><label class="mono" for="obsCity">From</label><select id="obsCity" class="mono"></select><button class="mono" id="locBtn">My location</button></div>
+  </section>
 </aside>
 
 <aside class="col right" id="colRight">
@@ -104,16 +110,10 @@
   <section class="card" id="cConj">
     <div class="ch"><b>Close approaches now</b><span>07</span></div>
     <ol class="conj mono" id="conj"><li class="dim">Screening…</li></ol>
-    <p class="note mono">Across the whole catalogue: pairs from different launches under 25 km apart at this instant. A distance screen, not a collision probability.</p>
+    <p class="note mono">Across the whole catalogue: pairs from different launches under 25 km apart at this instant, leaving out docked and formation-flying pairs. A distance screen, not a collision probability.</p>
   </section>
 </aside>
 
-<section class="card obs" id="cObs">
-  <div class="ch"><b>Over you</b><span>08</span></div>
-  <div class="obsrow"><strong id="obsCount">0</strong><span class="mono">above 10° from <em id="obsName">London</em></span></div>
-  <ol class="mono over" id="overList"></ol>
-  <button class="mono" id="locBtn">Use my location</button>
-</section>
 
 <section class="story" id="story" aria-live="polite">
   <span class="mono" id="storyK">Lens</span>

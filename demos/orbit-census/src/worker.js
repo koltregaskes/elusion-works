@@ -124,7 +124,10 @@ function conj(pv, ok, lim = 25) {
         if (cospar[i] && cospar[i] === cospar[j]) continue; // same launch: trains, stacks, one cloud
         const p = j * 6;
         const d = Math.hypot(pv[o] - pv[p], pv[o + 1] - pv[p + 1], pv[o + 2] - pv[p + 2]) * 1000;
-        if (d < lim) pairs.push([i, j, d, Math.hypot(pv[o + 3] - pv[p + 3], pv[o + 4] - pv[p + 4], pv[o + 5] - pv[p + 5]) * 1000]);
+        if (d >= lim) continue;
+        const vr = Math.hypot(pv[o + 3] - pv[p + 3], pv[o + 4] - pv[p + 4], pv[o + 5] - pv[p + 5]) * 1000;
+        if (vr < 0.01) continue; // under 10 m/s apart: docked or formation flying, not an approach
+        pairs.push([i, j, d, vr]);
       }
     }
   }
