@@ -29,7 +29,8 @@ vec3 skyColor(vec3 d){
 }
 vec3 hazed(vec3 col, vec3 wpos){
   vec3 v = wpos - cameraPosition; float dist = length(v);
-  return mix(col, skyColor(normalize(vec3(v.x, dist*0.015, v.z))), 1.0 - exp(-dist*0.000042));
+  float k = max(cameraPosition.y, 1.0)/1500.0, thin = (1.0 - exp(-k))/k; // haze hugs the ground: far less of it looking down from altitude
+  return mix(col, skyColor(normalize(vec3(v.x, dist*0.015, v.z))), 1.0 - exp(-dist*0.000042*thin));
 }
 vec3 ironbow(float t){
   t = clamp(t, 0.0, 1.0);

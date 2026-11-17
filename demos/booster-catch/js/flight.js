@@ -183,7 +183,7 @@ export function fmtClock(t, tenths = true) {
 // The three cited events fall exactly on beats 4, 48 and 96.
 export const BPM = 120;
 export const CUTS = [
-  [366, 'shore'], [368, 'tracker'], [374, 'onboard'], [380, 'drone'], [386, 'tracker'], [389, 'onboard'],
+  [366, 'drone'], [368, 'tracker'], [372, 'onboard'], [378, 'drone'], [384, 'tracker'], [388, 'onboard'],
   [390, 'tracker'], [392, 'pad'], [395.5, 'drone'], [399, 'onboard'], [402, 'tower'], [405, 'pad'],
   [408, 'arm'], [410.5, 'onboard'], [412, 'tower'], [413, 'pad'], [415, 'drone'], [417.5, 'shore'],
 ];

@@ -122,7 +122,7 @@ function setMode(m) {
   glowMeshes.forEach(g => { g.visible = m !== 'blueprint'; });
   booster.inside.visible = m === 'blueprint'; callouts.world.visible = callouts.onBooster.visible = m === 'blueprint';
   path.visible = showPath || m === 'blueprint';
-  bloom.strength = m === 'visual' ? 0.42 : m === 'blueprint' ? 0.55 : 0.3; bloom.threshold = m === 'visual' ? 1.7 : 0.55;
+  bloom.strength = m === 'visual' ? 0.32 : m === 'blueprint' ? 0.55 : 0.3; bloom.threshold = m === 'visual' ? 1.7 : 0.55;
   renderer.shadowMap.enabled = !small && m === 'visual';
   document.querySelectorAll('.modes button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
   dirty = true;
@@ -153,7 +153,7 @@ function poseCamera(id, c, s) {
     mid.x += wob(t, 1) * d * c.fov * 0.00006; mid.y += wob(t, 4) * d * c.fov * 0.00006;
   } else if (id === 'shore') {
     c.position.set(470, 2.4, 470); const d = c.position.distanceTo(mid);
-    mid.lerp(v1.set(16, 74, 0), siteMix * 1.1); c.fov = fitFov(d, 0.17 + 0.08 * smooth(396, 412, t), 3, 30); near = 20; shake = 0.5;
+    mid.lerp(v1.set(16, 74, 0), siteMix * 1.1); c.fov = fitFov(d, 0.17 + 0.08 * smooth(396, 412, t), 1.3, 30); near = 20; shake = 0.5;
   } else if (id === 'pad') {
     c.position.set(118, 3.2, 96); const d = c.position.distanceTo(mid);
     mid.lerp(v1.set(24, 70, 0), siteMix * 0.8); c.fov = fitFov(d, 0.2, 4, 52); near = 2; shake = 1;
@@ -195,7 +195,7 @@ function setDirector(on) { director = on; $('director').setAttribute('aria-press
 const target = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: small ? 0 : 4 });
 const composer = new EffectComposer(renderer, target);
 composer.addPass(new RenderPass(scene, cam));
-const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.42, 0.7, 0.92); composer.addPass(bloom);
+const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.32, 0.55, 1.7); composer.addPass(bloom);
 composer.addPass(new OutputPass());
 function resize() {
   const w = canvas.clientWidth, h = canvas.clientHeight;

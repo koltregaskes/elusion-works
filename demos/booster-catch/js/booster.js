@@ -93,7 +93,7 @@ export function makeBooster(mats) {
   function update(s) {
     for (let i = 0; i < 13; i++) {
       const l = engineLevel(i, s.t), rest = s.heat * 0.5 + s.fire * 0.25;
-      coreColor.setRGB(0.02 + 5.5 * l + 0.9 * rest, 0.02 + 4.2 * l + 0.28 * rest, 0.02 + 5.0 * l + 0.05 * rest); cores.setColorAt(i, coreColor);
+      coreColor.setRGB(0.02 + 2.6 * l + 0.9 * rest, 0.02 + 2.1 * l + 0.28 * rest, 0.02 + 2.5 * l + 0.05 * rest); cores.setColorAt(i, coreColor);
     }
     for (let i = 13; i < 33; i++) { coreColor.setRGB(0.02 + 0.7 * s.heat, 0.02 + 0.2 * s.heat, 0.02); cores.setColorAt(i, coreColor); }
     cores.instanceColor.needsUpdate = true;

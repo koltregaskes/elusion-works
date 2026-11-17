@@ -42,7 +42,7 @@ export function makePlumes() {
         float along = exp(-vV*mix(2.6, 2.0, vK))*(1.0 - smoothstep(0.82, 1.0, vV));
         vec3 hot = vec3(0.86, 0.90, 1.0), mid = vec3(0.74, 0.46, 1.0), cool = vec3(1.0, 0.44, 0.16);
         vec3 c = mix(mix(hot, mid, smoothstep(0.0, 0.3, vV)), cool, smoothstep(0.2, 0.95, vV));
-        float a = body*along*diamonds*vL*mix(2.4, 0.42, vK);
+        float a = body*along*diamonds*vL*mix(1.7, 0.30, vK);
         if (uMode > 1.5) c = vec3(1.0, 0.92, 0.7);
         if (uMode > 0.5 && uMode < 1.5) { c = vec3(0.45, 0.8, 1.0); a *= 0.35; }
         gl_FragColor = vec4(c*a, a); ${OUT}
@@ -120,7 +120,7 @@ export function makeSmoke(maxCount = 1500) {
         vec3 lit = vec3(0.44,0.47,0.56)*0.75 + vec3(1.0,0.62,0.36)*0.55*(0.4 + 0.6*n);
         if (vKind < 0.5) { c = vec3(0.62,0.56,0.50)*lit; a = 0.17; }
         else if (vKind < 1.5) { c = vec3(0.80,0.80,0.84)*lit; a = 0.10; }
-        else if (vKind < 2.5) { c = vec3(0.95,0.96,1.0)*lit*1.15; a = 0.36; }
+        else if (vKind < 2.5) { c = vec3(0.95,0.96,1.0)*lit*1.1; a = 0.20; }
         else { c = vec3(0.16,0.15,0.15)*lit; a = 0.40; }
         c += vec3(1.0,0.55,0.25)*uFire.w*2600.0/(fd*fd + 500.0)*(0.5 + 0.5*n);
         a *= soft*fade;
