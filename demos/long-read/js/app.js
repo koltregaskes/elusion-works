@@ -9,9 +9,14 @@ let spoke = false; const say = text => { spoke = !spoke; $('live').textContent =
 document.body.classList.replace('js-off', 'js-on');
 
 /* ---- The short read: each paragraph's first sentence is marked off from the rest ---- */
-/* The sentence is cut where it ends. A link or emphasis inside it goes with it whole; anything after it goes with the rest. */
-function fold(p) { const first = R.firstSentence(p.textContent), lead = el('span', { className: 'lead' }), rest = el('span', { className: 'rest' }); let room = first.length + (p.textContent.match(/^\s*/) || [''])[0].length; /* paragraphs are written on one line with single spaces, so the sentence's length is its length in the page */
-  for (const n of [...p.childNodes]) { const len = n.textContent.length; if (room <= 0) rest.append(n); else if (n.nodeType === 3 && len > room) { const tail = n.splitText(room); room = 0; lead.append(n); rest.append(tail); } else { room -= len; lead.append(n); } }
+/* The sentence is cut exactly where it ends, however the paragraph is spaced and whatever it runs through. Emphasis or a link that the sentence ends inside is cut in two, so that only the sentence's own words stay; a note's number or any other control is never cut, and goes with the side it starts on. No word is added, lost or moved. */
+const CUTS = new Set(['EM', 'STRONG', 'I', 'B', 'SPAN', 'A', 'CODE', 'Q', 'CITE', 'MARK', 'SMALL', 'U', 'S', 'ABBR']);
+function cut(node, room) { /* gives the part that belongs to the sentence, the part that does not (if the node had to be cut), and how many characters the sentence took */
+  if (node.nodeType === 3) { if (node.data.length <= room) return [node, null, node.data.length]; const tail = node.splitText(room); return [node, tail, room]; }
+  const len = node.textContent.length; if (len <= room || node.nodeType !== 1 || !CUTS.has(node.tagName)) return [node, null, len];
+  const part = node.cloneNode(false); part.removeAttribute('id'); let left = room; for (const kid of [...node.childNodes]) { if (left <= 0) break; const [mine, , used] = cut(kid, left); left -= used; part.append(mine); } return [part, node, room]; /* what is left of each child stays inside the node, in its place */ }
+function fold(p) { const lead = el('span', { className: 'lead' }), rest = el('span', { className: 'rest' }); let room = R.sentenceEnd(p.textContent);
+  for (const n of [...p.childNodes]) { if (room <= 0) { rest.append(n); continue; } const [mine, over, used] = cut(n, room); room -= used; lead.append(mine); if (over) rest.append(over); }
   p.append(lead, rest); return { lead, rest }; }
 const paras = [...body.querySelectorAll('section > p')], heads = [...body.querySelectorAll('h2')];
 for (const p of paras) fold(p);
@@ -29,10 +34,11 @@ const clear = () => (narrow.matches ? 12 : mast.getBoundingClientRect().height);
 
 /* ---- Notes: beside the paragraph on a wide screen, opened under it on a narrow one ---- */
 const wide = matchMedia('(min-width: 69em)'), notes = [];
-for (const ref of body.querySelectorAll('.ref')) { const k = ref.textContent.trim(), src = $('n' + k).cloneNode(true); src.querySelector('a[href^="#r"]')?.remove(); const p = ref.closest('p'), wrap = el('div', { className: 'has-note' }), shut = el('button', { className: 'shut', type: 'button' }), note = el('aside', { className: 'note', id: 'note-' + k, tabIndex: -1 }, el('b', { textContent: `Note ${k}` }), el('span', { textContent: src.textContent.trim() }), ' ', shut); note.setAttribute('role', 'note');
+for (const ref of body.querySelectorAll('.ref')) { const k = ref.textContent.trim(), src = $('n' + k).cloneNode(true); src.querySelector('a[href^="#r"]')?.remove(); const p = ref.closest('p'), wrap = el('div', { className: 'has-note' }), shut = el('button', { className: 'shut', type: 'button' }), words = el('span', {}, ...src.childNodes), note = el('aside', { className: 'note', id: 'note-' + k, tabIndex: -1 }, el('b', { textContent: `Note ${k}` }), words, ' ', shut); note.setAttribute('role', 'note'); /* the note's own words go in as they are, links and all, less the space round them */ for (const [end, trim] of [['firstChild', 'trimStart'], ['lastChild', 'trimEnd']]) if (words[end] && words[end].nodeType === 3) words[end].data = words[end].data[trim]();
   p.replaceWith(wrap); wrap.append(p, note); ref.setAttribute('aria-controls', note.id); ref.setAttribute('href', '#' + note.id); const n = { k, ref, note, shut, open: false }; notes.push(n);
-  const back = () => { if (!wide.matches) { n.open = false; lay(); } ref.focus({ preventScroll: wide.matches }); };
-  ref.addEventListener('click', e => { e.preventDefault(); if (!wide.matches) { n.open = !n.open; lay(); } if (wide.matches || n.open) note.focus({ preventScroll: !wide.matches }); });
+  const seen = node => { const r = node.getBoundingClientRect(); if (r.top < 0 || r.bottom > innerHeight) node.scrollIntoView({ block: 'nearest' }); }; /* brought into sight only if it is not already, and by no more than it takes */
+  const back = () => { if (!wide.matches) { n.open = false; lay(); } ref.focus({ preventScroll: true }); seen(ref); };
+  ref.addEventListener('click', e => { e.preventDefault(); if (!wide.matches) { n.open = !n.open; lay(); } if (wide.matches || n.open) { note.focus({ preventScroll: true }); seen(note); } else seen(ref); }); /* a note opened near the foot of the screen is brought into sight with its Close button; closing it leaves you at the place you were reading */
   shut.addEventListener('click', back); note.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); back(); } }); ref.addEventListener('keydown', e => { if (e.key === 'Escape' && n.open && !wide.matches) { e.preventDefault(); back(); } else if (e.key === ' ') { e.preventDefault(); ref.click(); } }); }
 /* Wide: every note is out, the number is a plain link to it, and notes close together are moved down so that none lies over another. Narrow: a note is shut until its number is pressed, and the number says which. */
 function lay() { let floor = -Infinity; for (const n of notes) { const open = wide.matches || n.open; if (!open && n.note.contains(document.activeElement)) n.ref.focus({ preventScroll: true }); n.note.hidden = !open; n.shut.textContent = wide.matches ? 'Back to the text' : 'Close note';

@@ -24,4 +24,6 @@ for (const [text, first] of [['A failure makes a noise. Something stops.', 'A fa
 assert.deepEqual([R.step(1, 1), R.step(1, -1), R.step(1.5, 1), R.step(0.875, -1), R.step(1.25, 1), R.step(7, 1)], [1.125, 0.875, 1.5, 0.875, 1.5, 1]);
 // Notes are numbered in the order the text first points to them.
 assert.deepEqual(R.number(['dog', 'code', 'dog', 'handle']), { dog: 1, code: 2, handle: 3 }); assert.deepEqual(R.number([]), {});
+// Where the first sentence ends in the page's own text, however it is spaced: runs of spaces, line breaks and space at the start are all counted as written, so nothing is cut short.
+for (const [raw, lead] of [['Alpha   beta. Gamma.', 'Alpha   beta.'], ['  Alpha beta. Gamma.', '  Alpha beta.'], ['Alpha\n   beta.\nGamma delta.', 'Alpha\n   beta.'], ['One sentence only', 'One sentence only'], ['Dr.  Watson   said no. Then he left.', 'Dr.  Watson   said no.'], ['"Stop!"   she said. He did.', '"Stop!"   she said.'], ['', '']]) { assert.equal(raw.slice(0, R.sentenceEnd(raw)), lead, JSON.stringify(raw)); assert.equal(raw.slice(0, R.sentenceEnd(raw)).replace(/\s+/g, ' ').trim(), R.firstSentence(raw)); }
 console.log('ok  read: words and minutes; the share read rises from nothing to all and never falls; minutes left count down; the part being read; ten first sentences; text sizes; note numbers');

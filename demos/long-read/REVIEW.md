@@ -84,6 +84,20 @@ A second pass by a separate Claude agent (Opus), read-only, given the brief and 
 
 One thing found by the author while writing the checks: the page had padding at its top to keep headings clear of the strip, and that padding made the browser scroll the page whenever a button in the strip took the focus. The clearance is now set on the headings. The same fault was in the handbook demo and was fixed there too.
 
+## Outside review
+
+A second, outside review was posted on the pull requests on 17 November 2026: ChatGPT in chat mode at Pro, driven by another Claude session at Kol's request. It covered this demo with the handbook and the briefing, read the code and pictures, and did not run the page. It scored the three 7 out of 10 as a set and said of this one: merge after fixes.
+
+| Finding | What was done | Held by |
+|---|---|---|
+| The short read could cut ordinary text short. The first sentence was measured on text with its spaces tidied, then cut out of the page's own text, so "Alpha   beta. Gamma." became "Alpha   bet". The sample hid it, because it is written with single spaces | The cut is made where the sentence ends in the page's own text, however it is spaced | rules test, seven spacings; browser check |
+| A sentence that ends inside emphasis or a link was not cut there | The emphasis or link is cut in two at the sentence's end. A note's number or any other control is never cut. Every character stays in its place | browser check, four cases |
+| On a phone a note opened near the foot of the screen could open out of sight | An opened note is brought into sight with its Close button; closing it leaves you at its number | browser check on all three notes |
+| A link written in a note was turned to plain text | A note's words go in as they are | browser check |
+| The demo's own tests do not run in the repo's CI | Not done here: CI is shared by the whole site, and changing it is outside this demo's folder | |
+| No reference comparison, real phone, screen reader or print on paper | Still true. Listed under Not verified | |
+| "Unlisted" pages become reachable once merged, because the site deploys its main branch | The README now says so | |
+
 ## Provenance
 
 - No library, no font, picture or data file. Both drawings are shapes in the page.

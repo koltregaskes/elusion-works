@@ -24,6 +24,9 @@ const SHORT = new Set(['mr', 'mrs', 'ms', 'dr', 'st', 'vs', 'etc', 'e.g', 'i.e']
 export function firstSentence(text) { const t = text.replace(/\s+/g, ' ').trim(); for (let i = 0; i < t.length; i++) { if (!'.!?'.includes(t[i])) continue; let end = i + 1; while (end < t.length && /[.!?"'”’)\]]/.test(t[end])) end++; if (end < t.length && t[end] !== ' ') continue;
     const rest = t.slice(end).trimStart(), word = t.slice(0, i).split(' ').pop().toLowerCase().replace(/^[("'“‘]+/, ''); if (rest && (/^[a-z0-9]/.test(rest) || (t[i] === '.' && (SHORT.has(word) || /^[a-z]$/.test(word))))) continue; return t.slice(0, end); } return t; }
 
+// Where the first sentence ends in the text as it is written in the page, counted in its own characters. firstSentence() works on text with its runs of spaces and line breaks made single; the page's text need not be so tidy, so the place is found by walking the page's text and counting each run of space once.
+export function sentenceEnd(raw) { const first = firstSentence(raw); let i = 0, n = 0, inSpace = false; while (i < raw.length && /\s/.test(raw[i])) i++; for (; i < raw.length && n < first.length; i++) { if (/\s/.test(raw[i])) { if (!inSpace) n++; inSpace = true; } else { n++; inSpace = false; } } return i; }
+
 // Text sizes the reader can choose: steps of an eighth, from seven eighths to one and a half.
 export const SIZES = [0.875, 1, 1.125, 1.25, 1.5];
 export const step = (size, by) => { const i = SIZES.indexOf(size); return i < 0 ? 1 : SIZES[Math.min(SIZES.length - 1, Math.max(0, i + by))]; }; // a size that is not one of the steps goes back to the ordinary one
