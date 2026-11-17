@@ -37,7 +37,7 @@ const log = (...a) => console.log('ok ', ...a);
   }
   assert.equal(new Set(snaps).size, 1, 'state differs between cameras'); log('five cameras and three views agree on the state at T+6:41.25');
   // Cited event times through the UI markers.
-  for (const [label, t] of [['Mach 1', 368], ['Burn', 390], ['Catch', 414]]) { await page.click(`.mark:text-is("${label}")`); const s = await st(page); assert.ok(Math.abs(s.t - t) < 0.05, label); }
+  for (const [label, t] of [['Mach 1', 368], ['Burn', 390], ['Catch', 414]]) { await page.click(`.mark:has-text("${label}")`); const s = await st(page); assert.ok(Math.abs(s.t - t) < 0.05, label); }
   log('timeline markers jump to T+6:08, T+6:30 and T+6:54');
   // Keyboard: arrows step a second, digits pick cameras, letters switch views.
   assert.equal((await st(page)).phase, 'Caught'); assert.match(await page.getAttribute('#scrub', 'aria-valuetext'), /T plus 06:54, Caught/);
@@ -66,9 +66,9 @@ const log = (...a) => console.log('ok ', ...a);
     await page.keyboard.press('Space'); await page.addScriptTag({ content: readFileSync(axePath, 'utf8') });
     for (const openDialog of [false, true]) {
       if (openDialog) await page.click('#about-open');
-      const res = await page.evaluate(() => window.axe.run(document, { runOnly: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] }));
+      const res = await page.evaluate(() => window.axe.run(document, { runOnly: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] }));
       const v = res.violations.map(x => `${x.id} (${x.nodes.length}): ${x.nodes[0].target.join(' ')}`);
-      assert.deepEqual(v, [], 'axe violations'); log(`axe WCAG 2.1 A/AA: 0 violations${openDialog ? ' with the sources dialog open' : ''} (${res.passes.length} rules passed)`);
+      assert.deepEqual(v, [], 'axe violations'); log(`axe WCAG 2.2 A/AA: 0 violations${openDialog ? ' with the sources dialog open' : ''} (${res.passes.length} rules passed)`);
     }
   }
   await page.close();

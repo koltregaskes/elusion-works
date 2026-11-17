@@ -263,8 +263,8 @@ const el = { clock: $('clock'), phase: $('phase'), alt: $('alt'), spd: $('spd'),
 const engDots = ENGINES.map(e => { const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle'); c.setAttribute('cx', (Math.cos(e.a) * e.r).toFixed(2)); c.setAttribute('cy', (Math.sin(e.a) * e.r).toFixed(2)); c.setAttribute('r', e.ring === 2 ? 0.5 : 0.58); $('engmap').appendChild(c); return c; });
 const insetLabels = [0, 1].map(() => { const b = document.createElement('button'); b.type = 'button'; b.style.cssText = 'position:fixed;display:none;padding:6px 8px;border:1px solid rgba(255,255,255,.35);border-radius:8px;background:none;color:#fff;font:600 10px ui-monospace,Menlo,Consolas,monospace;letter-spacing:.12em;text-transform:uppercase;text-align:left;display:none;align-items:flex-start;text-shadow:0 1px 4px #000'; b.addEventListener('click', () => setCamera(b.dataset.cam)); document.body.appendChild(b); return b; });
 const marks = EVENTS.map(e => {
-  const b = document.createElement('button'); b.type = 'button'; b.className = 'mark' + (e.cited ? ' cited' : ''); b.textContent = e.short;
-  b.style.left = ((e.t - T_START) / (T_END - T_START)) * 100 + '%'; b.setAttribute('aria-label', `Jump to ${e.label}, ${fmtClock(e.t, false)}`);
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'mark' + (e.cited ? ' cited' : ''); b.textContent = e.short; b.title = `${e.label}, ${fmtClock(e.t, false)}`;
+  b.style.left = ((e.t - T_START) / (T_END - T_START)) * 100 + '%'; { const more = document.createElement('span'); more.className = 'sr'; more.textContent = `: jump to ${e.label.toLowerCase()}, ${fmtClock(e.t, false).replace('T+', 'T plus ')}`; b.appendChild(more); } // visible text stays inside the accessible name
   b.addEventListener('click', () => seek(e.t)); $('marks').appendChild(b); return { e, b };
 });
 const nf = new Intl.NumberFormat('en-GB');

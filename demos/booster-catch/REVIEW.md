@@ -35,7 +35,7 @@ Verified by running, in headless Chromium 153 with software graphics:
   - Short phone 375 by 548 and short window 1280 by 450: the action stays clear of the panels and the transport stays clickable.
   - The repo's own overflow rule and axe with WCAG 2.2 AA at 320, 390 and 1280 px: clean.
   - Reduced motion: no autoplay, starts on a still frame, no camera shake.
-  - axe-core 4.10.2, WCAG 2.1 A and AA: 0 violations, with and without the dialog open.
+  - axe-core 4.14.0 (the version the repo's checks use), WCAG 2.2 A and AA: 0 violations, with and without the dialog open.
 - `python3 scripts/build-site.py`: pass with the demo present (49 indexable routes, unchanged, because the page is `noindex`). The generated security policy needs no new script origin.
 - First frame: about 3.2 s after navigation start under software graphics.
 
@@ -82,4 +82,4 @@ Findings and what was done:
 | A note naming the owner shipped in a public HTML comment | Low | Fixed. |
 | Thermal and blueprint drop the grid-fin lattice cut-outs and the pad's soft edge | Cosmetic | Left as is. The pad keeps its depth offset so it cannot flicker. |
 
-Also caught by running the repo's own page check locally (WCAG 2.2 target size, 320 px overflow): the timeline marker buttons were under 24 px and the readout overflowed at 320 px. Both fixed before the pull request's checks ran.
+Also caught by running the repo's own page check locally (WCAG 2.2 target size, 320 px overflow): the timeline marker buttons were under 24 px and the readout overflowed at 320 px. Both fixed. The pull request's first two runs then failed one rule my older local checker had missed (visible text must be part of a button's accessible name, on the timeline markers); fixed, and the local check now uses the repo's checker version.
