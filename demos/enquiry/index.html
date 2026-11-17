@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Start a project: an enquiry form in five steps</title>
+<meta name="description" content="A demonstration of a form in five short steps: what you need, about the work, timing and budget, how to reach you, and a page to check your answers. Nothing is sent.">
+<meta name="theme-color" content="#111315">
+<link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml">
+<!-- Unlisted until release is approved: remove the next line, then add the gallery card and sitemap entry. -->
+<meta name="robots" content="noindex">
+<style>
+  :root { --bg:#111315; --card:#191c1f; --field:#0f1113; --line:rgba(255,255,255,.16); --edge:#7f898f; --ink:#f4f5f3; --soft:#d9dee1; --muted:#a9b1b6; --accent:#3fe08a; --accent-ink:#06210f; --bad:#ff9d94;
+    --sans:"Helvetica Neue","Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif; --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace; color-scheme:dark; }
+  * { box-sizing:border-box; }
+  html { background:var(--bg); font-size:100%; -webkit-text-size-adjust:100%; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:1rem/1.5 var(--sans); }
+  [hidden] { display:none !important; }
+  a { color:var(--accent); text-underline-offset:3px; } button, input, textarea { font:inherit; color:inherit; }
+  :focus-visible { outline:3px solid var(--accent); outline-offset:2px; border-radius:.5rem; }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+  .eyebrow { margin:0; font:600 .6875rem/1.3 var(--mono); letter-spacing:.2em; text-transform:uppercase; color:var(--accent); }
+
+  .page { display:grid; grid-template-columns:minmax(0, 26rem) minmax(0, 36rem); gap:2rem 4rem; justify-content:center; align-items:start; max-width:76rem; margin:0 auto; padding:clamp(1.5rem, 5vw, 4rem) max(20px, env(safe-area-inset-right)) 4rem max(20px, env(safe-area-inset-left)); }
+  .about { position:sticky; top:2rem; } h1 { margin:.875rem 0 1.125rem; font-size:clamp(2.75rem, 7vw, 5.5rem); line-height:.9; font-weight:800; letter-spacing:-.045em; text-wrap:balance; }
+  .lede { margin:0; max-width:30ch; font-size:1.1875rem; color:var(--soft); } .about ol { margin:1.5rem 0 0; padding:0; list-style:none; counter-reset:n; display:grid; gap:.625rem; max-width:32ch; font-size:.9375rem; color:var(--soft); } .about ol li { counter-increment:n; display:grid; grid-template-columns:1.75rem 1fr; } .about ol li::before { content:counter(n); font:700 .75rem/1.6rem var(--mono); color:var(--accent); }
+  .demo { margin:1.5rem 0 0; max-width:34ch; padding:.75rem .875rem; border-radius:.75rem; border:1px solid var(--line); border-left:4px solid var(--accent); font-size:.875rem; color:var(--soft); } .demo strong { color:var(--ink); }
+
+  /* The steps along the top of the form. */
+  #steps { display:grid; grid-template-columns:repeat(5, 1fr); gap:.375rem; margin:0 0 1.25rem; padding:0; list-style:none; } #steps li { padding-top:.5rem; border-top:3px solid var(--line); font:600 .6875rem/1.3 var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--muted); } #steps li b { display:block; font-weight:600; } #steps li.done { border-top-color:var(--ink); color:var(--soft); } #steps li[aria-current="step"] { border-top-color:var(--accent); color:var(--ink); }
+  .card { padding:clamp(1.125rem, 3vw, 1.75rem); border-radius:1.25rem; border:1px solid var(--line); background:var(--card); }
+  .step h2, #sent h2 { margin:0 0 1.125rem; font-size:clamp(1.625rem, 4vw, 2.125rem); line-height:1.05; font-weight:800; letter-spacing:-.035em; text-wrap:balance; } .step h2:focus, #sent h2:focus { outline:none; } .step h2 .n { display:block; margin-bottom:.5rem; font:600 .6875rem/1 var(--mono); letter-spacing:.2em; text-transform:uppercase; color:var(--accent); }
+  fieldset { margin:0 0 1.375rem; padding:0; border:0; min-width:0; } legend, .field > label { display:block; padding:0; margin:0 0 .25rem; font-weight:700; font-size:1.0625rem; } .hint { margin:0 0 .5rem; font-size:.9375rem; color:var(--muted); }
+  .field { margin:0 0 1.375rem; } .field input, .field textarea { display:block; width:100%; min-height:2.875rem; padding:.5rem .75rem; border-radius:.625rem; border:2px solid var(--edge); background:var(--field); font-size:1.0625rem; } .field textarea { min-height:9rem; resize:vertical; line-height:1.45; } .field input.short { max-width:18rem; }
+  .field input[aria-invalid="true"], .field textarea[aria-invalid="true"] { border-color:var(--bad); } fieldset.bad, .field.bad { padding-left:.875rem; border-left:4px solid var(--bad); }
+  .err { margin:0 0 .5rem; font-weight:700; font-size:.9375rem; color:var(--bad); } #count { margin:.375rem 0 0; font:600 .8125rem/1.3 var(--mono); color:var(--muted); }
+  .tiles { display:grid; gap:.5rem; } .tile { position:relative; display:grid; grid-template-columns:1.5rem minmax(0, 1fr); gap:.75rem; align-items:center; min-height:3.25rem; padding:.625rem .875rem; border-radius:.75rem; border:2px solid var(--line); cursor:pointer; font-size:1.0625rem; } .tile input { width:1.5rem; height:1.5rem; margin:0; accent-color:var(--accent); } .tile:has(input:checked) { border-color:var(--accent); background:rgba(63,224,138,.08); } .tile:has(input:focus-visible) { outline:3px solid var(--accent); outline-offset:2px; } .tile input:focus-visible { outline:none; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:.5rem; }
+  .nav { display:flex; gap:.625rem; align-items:center; margin-top:.5rem; } .btn { min-height:3rem; padding:0 1.25rem; border-radius:.75rem; border:2px solid var(--edge); background:transparent; font-weight:800; font-size:1.0625rem; cursor:pointer; } .btn.go { margin-left:auto; background:var(--accent); border-color:var(--accent); color:var(--accent-ink); } .btn.quiet { min-height:2.25rem; padding:0 .75rem; font-size:.875rem; font-weight:700; }
+  /* The list of what is wrong, at the top of a step. */
+  #errors { margin:0 0 1.25rem; padding:.875rem 1rem; border-radius:.75rem; border:3px solid var(--bad); } #errors:focus { outline:3px solid var(--accent); outline-offset:3px; } #errors h2 { margin:0 0 .375rem; font-size:1.125rem; } #errors ul { margin:0; padding-left:1.125rem; } #errors a { color:var(--bad); font-weight:700; }
+  /* The answers, on the last step. */
+  #answers { margin:0 0 1.25rem; } #answers .part { display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:0 1rem; padding:.875rem 0; border-top:1px solid var(--line); } #answers .part:last-child { border-bottom:1px solid var(--line); } #answers dl { margin:0; display:grid; gap:.5rem; min-width:0; } #answers dt { font:600 .6875rem/1.3 var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--muted); } #answers dd { margin:.125rem 0 0; color:var(--soft); overflow-wrap:anywhere; white-space:pre-line; } #answers a { font-weight:700; font-size:.9375rem; white-space:nowrap; display:inline-flex; align-items:center; min-height:2.75rem; align-self:start; justify-self:start; margin-top:-.625rem; }
+  #letter { margin:0 0 1rem; padding:.875rem 1rem; border-radius:.75rem; border:1px solid var(--line); background:var(--field); font:.875rem/1.6 var(--mono); color:var(--soft); white-space:pre-wrap; overflow-wrap:anywhere; } #sent p { color:var(--soft); }
+  .foot { grid-column:2; font-size:.8125rem; color:var(--muted); } .foot p { margin:0 0 .375rem; }
+  .js-off .js, .js-on .nojs { display:none !important; } .js-off .step + .step { margin-top:2rem; padding-top:1.5rem; border-top:1px solid var(--line); } .nojs { margin:0 0 1.25rem; padding:.75rem .875rem; border-radius:.75rem; border:1px solid var(--line); color:var(--soft); font-size:.9375rem; }
+
+  @media (max-width:60em) { .page { grid-template-columns:minmax(0, 38rem); gap:1.5rem; } .about { position:static; } .about ol { display:none; } .foot { grid-column:1; } .lede, .demo { max-width:none; } }
+  @media (max-width:30em) { .two { grid-template-columns:1fr; } #steps li b { display:none; } #steps li { font-size:.625rem; } #answers .part { grid-template-columns:minmax(0, 1fr); gap:.5rem; } }
+  @media (prefers-reduced-motion:reduce) { * { scroll-behavior:auto !important; transition:none !important; } }
+  @media (forced-colors:active) { .tile:has(input:checked) { border-color:Highlight; } #steps li[aria-current="step"] { border-top-color:Highlight; } .field input[aria-invalid="true"], .field textarea[aria-invalid="true"], #errors { border-style:dashed; } }
+</style>
+</head>
+<body class="js-off">
+<div class="page">
+<header class="about">
+  <p class="eyebrow">Elusion Works</p>
+  <h1>Start a project</h1>
+  <p class="lede">Five short steps. Say what you need, tell us a little about it, and check your answers before anything goes anywhere.</p>
+  <ol aria-label="What happens">
+    <li>You answer four sets of questions. Most are one tap.</li>
+    <li>You check your answers and change any of them.</li>
+    <li>You see exactly what would be sent.</li>
+  </ol>
+  <p class="demo"><strong>This is a demonstration.</strong> Nothing you type here is sent or stored. It stays in this page and is gone when you leave it.</p>
+</header>
+
+<main>
+  <ol id="steps" class="js" aria-label="Steps of the form"></ol>
+  <div class="card">
+  <p class="nojs">With scripts off, this page shows every question at once and cannot check your answers or show what would be sent. Nothing is sent either way.</p>
+  <form id="enquiry" novalidate>
+    <div id="errors" role="alert" tabindex="-1" hidden><h2>There is a problem</h2><ul></ul></div>
+
+    <section class="step" id="need">
+      <h2 tabindex="-1"><span class="n">Step 1 of 5</span>What do you need?</h2>
+      <fieldset id="f-needs" aria-describedby="h-needs">
+        <legend>What kind of work is it?</legend>
+        <p class="hint" id="h-needs">Choose all that apply.</p>
+        <p class="err" id="e-needs" hidden></p>
+        <div class="tiles">
+          <label class="tile"><input type="checkbox" name="needs" value="site"><span>A website or a page</span></label>
+          <label class="tile"><input type="checkbox" name="needs" value="demo"><span>A demo or a prototype</span></label>
+          <label class="tile"><input type="checkbox" name="needs" value="auto"><span>An automation or a data pipeline</span></label>
+          <label class="tile"><input type="checkbox" name="needs" value="review"><span>A second pair of eyes on something you have</span></label>
+          <label class="tile"><input type="checkbox" name="needs" value="other" aria-controls="w-other"><span>Something else</span></label>
+        </div>
+      </fieldset>
+      <div class="field js-only" id="w-other">
+        <label for="other">What is the something else?</label>
+        <p class="hint" id="h-other">A few words will do.</p>
+        <p class="err" id="e-other" hidden></p>
+        <input id="other" name="other" type="text" autocomplete="off" aria-describedby="h-other">
+      </div>
+    </section>
+
+    <section class="step" id="work">
+      <h2 tabindex="-1"><span class="n">Step 2 of 5</span>Tell us about it</h2>
+      <div class="field">
+        <label for="about">What is the work?</label>
+        <p class="hint" id="h-about">What it is for, who will use it, and anything that already exists. Ten words is enough to start; three hundred is the most.</p>
+        <p class="err" id="e-about" hidden></p>
+        <textarea id="about" name="about" rows="6" aria-describedby="h-about count"></textarea>
+        <p id="count">Aim for 10 words or more.</p>
+      </div>
+      <div class="field">
+        <label for="link">A link, if there is one</label>
+        <p class="hint" id="h-link">A brief, a sketch or the site as it is now. You can leave this empty.</p>
+        <p class="err" id="e-link" hidden></p>
+        <input id="link" name="link" type="text" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="h-link">
+      </div>
+    </section>
+
+    <section class="step" id="when">
+      <h2 tabindex="-1"><span class="n">Step 3 of 5</span>Timing and budget</h2>
+      <fieldset id="f-when">
+        <legend>When do you need it?</legend>
+        <p class="err" id="e-when" hidden></p>
+        <div class="tiles two">
+          <label class="tile"><input type="radio" name="when" value="soon"><span>As soon as possible</span></label>
+          <label class="tile"><input type="radio" name="when" value="month"><span>In the next month or two</span></label>
+          <label class="tile"><input type="radio" name="when" value="later"><span>Later this year</span></label>
+          <label class="tile"><input type="radio" name="when" value="open"><span>There is no date</span></label>
+        </div>
+      </fieldset>
+      <fieldset id="f-budget" aria-describedby="h-budget">
+        <legend>What is the budget?</legend>
+        <p class="hint" id="h-budget">A rough idea helps to shape the answer. Not sure yet is a fine answer.</p>
+        <p class="err" id="e-budget" hidden></p>
+        <div class="tiles two">
+          <label class="tile"><input type="radio" name="budget" value="small"><span>Under £1,000</span></label>
+          <label class="tile"><input type="radio" name="budget" value="mid"><span>£1,000 to £5,000</span></label>
+          <label class="tile"><input type="radio" name="budget" value="large"><span>Over £5,000</span></label>
+          <label class="tile"><input type="radio" name="budget" value="unsure"><span>Not sure yet</span></label>
+        </div>
+      </fieldset>
+    </section>
+
+    <section class="step" id="you">
+      <h2 tabindex="-1"><span class="n">Step 4 of 5</span>How do we reach you?</h2>
+      <div class="field">
+        <label for="name">Your name</label>
+        <p class="err" id="e-name" hidden></p>
+        <input id="name" name="name" type="text" autocomplete="name" class="short">
+      </div>
+      <div class="field">
+        <label for="email">Your email address</label>
+        <p class="hint" id="h-email">Used only to reply to this enquiry.</p>
+        <p class="err" id="e-email" hidden></p>
+        <input id="email" name="email" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" aria-describedby="h-email">
+      </div>
+      <fieldset id="f-reply">
+        <legend>How would you like the reply?</legend>
+        <div class="tiles two">
+          <label class="tile"><input type="radio" name="reply" value="email" checked><span>By email</span></label>
+          <label class="tile"><input type="radio" name="reply" value="phone" aria-controls="w-phone"><span>By phone</span></label>
+        </div>
+      </fieldset>
+      <div class="field js-only" id="w-phone">
+        <label for="phone">Your phone number</label>
+        <p class="err" id="e-phone" hidden></p>
+        <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" class="short">
+      </div>
+    </section>
+
+    <section class="step js" id="check">
+      <h2 tabindex="-1"><span class="n">Step 5 of 5</span>Check your answers</h2>
+      <div id="answers"></div>
+      <fieldset id="f-agree">
+        <legend class="sr">Before you send</legend>
+        <p class="err" id="e-agree" hidden></p>
+        <label class="tile"><input type="checkbox" name="agree" id="agree"><span>I understand that this is a demonstration and nothing is sent</span></label>
+      </fieldset>
+    </section>
+
+    <div class="nav js">
+      <button class="btn" id="back" type="button">Back</button>
+      <button class="btn go" id="next" type="submit">Continue</button>
+    </div>
+  </form>
+
+  <section id="sent" hidden>
+    <p class="eyebrow">Done</p>
+    <h2 tabindex="-1">Nothing was sent</h2>
+    <p>This is a demonstration, so your enquiry has gone nowhere. Had it been sent, this is exactly what it would have said.</p>
+    <pre id="letter" tabindex="0" role="region" aria-label="The enquiry as it would be sent"></pre>
+    <div class="nav">
+      <button class="btn" id="copy" type="button">Copy the text</button>
+      <button class="btn go" id="again" type="button">Start again</button>
+    </div>
+  </section>
+  </div>
+</main>
+
+<footer class="foot">
+  <p>A demonstration of a form in steps, made for Elusion Works. No request leaves this page when you press Send.</p>
+</footer>
+</div>
+<p class="sr" id="live" role="status"></p>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
