@@ -12,7 +12,8 @@ const SVGNS = 'http://www.w3.org/2000/svg';
 function stored() { try { const raw = localStorage.getItem(KEY); if (raw) return validate(JSON.parse(raw)); } catch (err) { /* storage can be off or stale: start from the demo */ } return null; }
 let project = stored() || demoProject(), past = [], future = [], selected = null, cursor = 0, loopOn = false, tab = 'clip';
 const engine = new Engine(() => project), peaks = new Map(), grid = { c: 0, r: 0 };
-const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(project)); } catch (err) { /* the page works without it */ } };
+let warnedStore = false; // the page works without storage, but says so once rather than losing work quietly
+const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(project)); } catch (err) { if (!warnedStore) { warnedStore = true; toast('This browser is not keeping your changes between visits. Use More, then Save project file, to keep them.'); } } };
 function commit(next) { // one undo step per real change; an edit that changes nothing is not a step
   if (!next || next === project) return false; const before = JSON.stringify(project); if (JSON.stringify(next) === before) return false;
   swap(next); past.push(before); if (past.length > 100) past.shift(); future.length = 0; $('undo').disabled = false; $('redo').disabled = true; return true;
@@ -81,7 +82,8 @@ function renderClipPanel() {
   const t = track(c.track), pat = c.pattern && project.patterns[c.pattern];
   $('clip-title').textContent = `${pat ? pat.name : t.name} · ${t.name}, bars ${c.start + 1} to ${c.start + c.len}`;
   $('clip-pattern').hidden = $('note-len').hidden = $('clip-unique').hidden = $('editor').hidden = !pat; $('note-len').hidden = !pat || pat.kind === 'drums';
-  if (!pat) { $('clip-note').textContent = hasSound(c) ? 'This is a loaded stem. It plays as recorded, at its own speed.' : 'This stem’s audio is not loaded. Use More, then Load stems, and choose the file again.'; return; }
+  $('clip-relink').hidden = !!pat || hasSound(c);
+  if (!pat) { $('clip-note').textContent = hasSound(c) ? 'This is a loaded stem. It plays as recorded, at its own speed.' : 'This stem’s audio is not loaded. Press Load its audio and choose the same file: it goes back on this track, with your edits kept.'; return; }
   $('clip-pattern').replaceChildren(...Object.values(project.patterns).filter(p => p.kind === pat.kind).map(p => el('option', { value: p.id, text: p.name }))); $('clip-pattern').value = pat.id;
   const users = project.clips.filter(x => x.pattern === pat.id).length;
   $('clip-note').replaceChildren(...(users > 1 ? [el('b', { text: `Used by ${users} clips.` }), ' Editing these notes changes all of them. Make unique gives this clip its own copy.'] : ['Only this clip uses these notes.']));
@@ -108,7 +110,8 @@ function toggleAt(col, row, quiet) {
   $('grid-say').textContent = `${r.label}, bar ${Math.floor(col / STEPS) + 1} step ${col % STEPS + 1}, ${had ? 'removed' : 'added'}`;
   if (!had && !quiet) audition({ kind: pat.kind, p: r.p, v: 0.8, dur: len / 4, track: c.track });
 }
-function audition(ev) { const ctx = engine.ensure(), mixer = engine.mixer || (engine.preview || (engine.preview = makePreview(ctx))); const out = mixer.input(ev.track) || mixer.input(project.tracks[0].id); if (out) playNote(ctx, out, ev, ctx.currentTime + 0.01, 60 / project.bpm); }
+function audition(ev) { try { auditionNow(ev); } catch (err) { /* no sound support: the edit still happened */ } }
+function auditionNow(ev) { const ctx = engine.ensure(), mixer = engine.mixer || (engine.preview || (engine.preview = makePreview(ctx))); const out = mixer.input(ev.track) || mixer.input(project.tracks[0].id); if (out) playNote(ctx, out, ev, ctx.currentTime + 0.01, 60 / project.bpm); }
 function makePreview(ctx) { const g = ctx.createGain(); g.gain.value = 0.5; g.connect(ctx.destination); return { input: () => g }; }
 
 // ---- The arranger ---------------------------------------------------------------------------------
@@ -125,7 +128,7 @@ function ask(text) {
 // ---- Transport -----------------------------------------------------------------------------------------
 function loopRange() { const c = selected && clipOf(selected); if (c) return [c.start * 4, (c.start + c.len) * 4]; const bar = Math.floor(cursor / 4), s = project.sections.find(x => bar >= x.start && bar < x.start + x.len); return s ? [s.start * 4, (s.start + s.len) * 4] : [0, project.bars * 4]; }
 function drawLoop() { const lb = $('loopband'); lb.hidden = !loopOn; if (!loopOn) return; const [a, b] = engine.loop || loopRange(), bw = barw(); lb.style.left = a / 4 * bw + 'px'; lb.style.width = (b - a) / 4 * bw + 'px'; }
-function play() { engine.loop = loopOn ? loopRange() : null; const from = engine.loop && (cursor < engine.loop[0] || cursor >= engine.loop[1]) ? engine.loop[0] : cursor >= project.bars * 4 ? 0 : cursor; engine.play(from); setPlayUI(true); drawLoop(); }
+function play() { engine.loop = loopOn ? loopRange() : null; const from = engine.loop && (cursor < engine.loop[0] || cursor >= engine.loop[1]) ? engine.loop[0] : cursor >= project.bars * 4 ? 0 : cursor; try { engine.play(from); } catch (err) { engine.stop(); toast('This browser cannot play sound here. Editing, saving and plans still work.'); return; } setPlayUI(true); drawLoop(); }
 function stop() { const at = engine.position(); engine.stop(); if (at !== null) cursor = Math.min(Math.floor(at), project.bars * 4); setPlayUI(false); }
 function setPlayUI(on) { $('play').setAttribute('aria-label', on ? 'Stop' : 'Play'); $('playicon').setAttribute('d', on ? 'M6 5h12v14H6z' : 'M7 4.5v15l13-7.5z'); }
 const playheadBar = () => Math.floor((engine.playing ? engine.position() : cursor) / 4); // where the playhead is now, moving or not, as a bar line
@@ -215,20 +218,29 @@ function zip(files) { // a plain, uncompressed zip: enough to hand several WAVs 
   return new Blob([...parts, ...central, end.buffer], { type: 'application/zip' });
 }
 function download(name, data, type) { const url = URL.createObjectURL(new Blob([data], { type })), a = el('a', { href: url, download: name }); document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000); }
-const slug = () => project.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'song';
+const slug = (p = project) => p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'song';
 async function busy(btn, label, work) { const old = btn.textContent; btn.disabled = true; btn.setAttribute('aria-busy', 'true'); btn.textContent = label; try { return await work(); } catch (err) { toast('That did not work: ' + err.message); } finally { btn.disabled = false; btn.removeAttribute('aria-busy'); btn.textContent = old; } }
-$('export').addEventListener('click', () => busy($('export'), 'Rendering', async () => { const r = await renderOffline(project, 0, project.bars, engine.stems); download(`${slug()}.wav`, wavFromBuffer(r.buffer), 'audio/wav'); toast(`Exported ${Math.round(r.seconds)} seconds. Peak ${Math.round(r.peak * 100)}% of full scale.`); return r; }));
+$('export').addEventListener('click', () => busy($('export'), 'Rendering', async () => { const p = project, name = slug(p), r = await renderOffline(p, 0, p.bars, new Map(engine.stems)); download(`${name}.wav`, wavFromBuffer(r.buffer), 'audio/wav'); toast(`Exported ${Math.round(r.seconds)} seconds. Peak ${Math.round(r.peak * 100)}% of full scale.`); return r; }));
 $('save-stems').addEventListener('click', () => busy($('more'), 'Rendering stems', async () => { // one zip, so the browser asks once
-  const files = []; for (const t of project.tracks) { if (!project.clips.some(c => c.track === t.id && hasSound(c))) continue; const r = await renderOffline(project, 0, project.bars, engine.stems, { only: t.id }); files.push({ name: `${slug()}-${t.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'track'}.wav`, data: new Uint8Array(wavFromBuffer(r.buffer)) }); }
-  download(`${slug()}-stems.zip`, zip(files), 'application/zip'); toast(`${files.length} stems in one zip file.`); return files.length; }));
-async function addStem(name, bytes) {
-  const buf = await new OfflineAudioContext(2, 1, SR).decodeAudioData(bytes.slice(0)), id = 'stem-' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
+  const p = project, stems = new Map(engine.stems), name = slug(p), files = []; // one snapshot: an edit made while it renders cannot mix two versions in one zip
+  for (const t of p.tracks) { if (!p.clips.some(c => c.track === t.id && (c.pattern || stems.has(c.track)))) continue; const r = await renderOffline(p, 0, p.bars, stems, { only: t.id }); files.push({ name: `${name}-${t.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'track'}.wav`, data: new Uint8Array(wavFromBuffer(r.buffer)) }); }
+  download(`${name}-stems.zip`, zip(files), 'application/zip'); toast(`${files.length} stems in one zip file.`); return files.length; }));
+// Audio goes back onto a track whose audio is missing (the one asked for, or one with the same name as the file);
+// otherwise it becomes a new track from bar 1. Relinking changes no clips, levels or undo history: the edits stay as they were.
+const missingStem = t => t && t.kind === 'audio' && !engine.stems.has(t.id);
+async function addStem(name, bytes, target) {
+  const buf = await new OfflineAudioContext(2, 1, SR).decodeAudioData(bytes.slice(0)), label = name.replace(/\.[a-z0-9]+$/i, '').slice(0, 28) || 'Stem';
+  const back = missingStem(track(target)) ? track(target) : project.tracks.find(t => missingStem(t) && t.name === label), id = back ? back.id : 'stem-' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
   engine.stems.set(id, buf); const d = buf.getChannelData(0), pk = new Float32Array(400), step = Math.max(1, Math.floor(d.length / 400)); for (let i = 0; i < 400; i++) { let m = 0; for (let j = i * step; j < Math.min(d.length, (i + 1) * step); j += 8) m = Math.max(m, Math.abs(d[j])); pk[i] = m; } peaks.set(id, pk);
-  const p = clone(edit.addTrack(project, { id, name: name.replace(/\.[a-z0-9]+$/i, '').slice(0, 28) || 'Stem', kind: 'audio' })), len = Math.max(1, Math.min(MAX_BARS, Math.ceil(buf.duration / (240 / p.bpm))));
-  p.clips.push({ id: 'c-' + id, track: id, pattern: null, start: 0, len }); p.bars = Math.max(p.bars, len); commit(p); return { id, seconds: buf.duration, bars: len };
+  if (back) { renderAll(); engine.refresh(); return { id, seconds: buf.duration, bars: null, relinked: true }; }
+  const p = clone(edit.addTrack(project, { id, name: label, kind: 'audio' })), len = Math.max(1, Math.min(MAX_BARS, Math.ceil(buf.duration / (240 / p.bpm))));
+  p.clips.push({ id: 'c-' + id, track: id, pattern: null, start: 0, len }); p.bars = Math.max(p.bars, len); commit(p); return { id, seconds: buf.duration, bars: len, relinked: false };
 }
-$('load-stems').addEventListener('click', () => $('file-stems').click());
-$('file-stems').addEventListener('change', async e => { let ok = 0; for (const f of e.target.files) { try { await addStem(f.name, await f.arrayBuffer()); ok++; } catch (err) { toast(`Could not read ${f.name} as audio.`); } } e.target.value = ''; if (ok) toast(`${ok} stem${ok > 1 ? 's' : ''} loaded as new track${ok > 1 ? 's' : ''}.`); });
+let relinkTo = null;
+$('load-stems').addEventListener('click', () => { relinkTo = null; $('file-stems').click(); });
+$('clip-relink').addEventListener('click', () => { const c = clipOf(selected); relinkTo = c ? c.track : null; $('file-stems').click(); });
+$('file-stems').addEventListener('change', async e => { let added = 0, back = 0, target = relinkTo; relinkTo = null; for (const f of e.target.files) { try { const r = await addStem(f.name, await f.arrayBuffer(), target); target = null; if (r.relinked) back++; else added++; } catch (err) { toast(`Could not read ${f.name} as audio.`); } } e.target.value = '';
+  if (added || back) toast([back ? `${back} stem${back > 1 ? 's' : ''} back on ${back > 1 ? 'their' : 'its'} own track${back > 1 ? 's' : ''}, edits kept` : '', added ? `${added} stem${added > 1 ? 's' : ''} loaded as new track${added > 1 ? 's' : ''}` : ''].filter(Boolean).join('. ') + '.'); });
 $('save-project').addEventListener('click', () => download(`${slug()}.stemstudio.json`, JSON.stringify(project, null, 1), 'application/json'));
 $('open-project').addEventListener('click', () => $('file-project').click());
 $('file-project').addEventListener('change', async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; try { commit(validate(JSON.parse(await f.text()))); toast('Project opened.'); } catch (err) { toast(err.message.includes('Stem Studio') ? err.message : 'That file could not be read as a project.'); } });
@@ -266,7 +278,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && eng
 // ---- For scripts and assistants -----------------------------------------------------------------------------------
 window.stemStudio = {
   project: () => clone(project), brief: request => briefFor(project, request || ''), apply: plan => runPlan(plan, 'Plan applied by script'), ask, undo, redo,
-  loadStem: (name, bytes) => addStem(name, bytes), render: async (fromBar = 0, toBar = project.bars, only = null) => { const r = await renderOffline(project, fromBar, toBar, engine.stems, { only }); return { seconds: r.seconds, samples: r.buffer.length, peak: r.peak, rawPeak: r.rawPeak, wav: wavFromBuffer(r.buffer) }; },
+  loadStem: (name, bytes, track) => addStem(name, bytes, track), render: async (fromBar = 0, toBar = project.bars, only = null) => { const r = await renderOffline(project, fromBar, toBar, engine.stems, { only }); return { seconds: r.seconds, samples: r.buffer.length, peak: r.peak, rawPeak: r.rawPeak, wav: wavFromBuffer(r.buffer) }; },
   state: () => ({ playing: engine.playing, position: engine.playing ? engine.position() : cursor, selected, loopOn, undo: past.length, redo: future.length, tab, stems: [...engine.stems.keys()] }),
 };
 renderAll();

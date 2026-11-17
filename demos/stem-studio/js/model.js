@@ -62,18 +62,21 @@ export function demoProject() {
 // Used by live playback and by the offline export, so the file you download is what you heard.
 export function audible(project) { const solo = project.tracks.some(t => t.solo); return new Set(project.tracks.filter(t => !t.mute && (!solo || t.solo)).map(t => t.id)); }
 export function events(project, fromBeat, toBeat) {
-  const out = [], on = audible(project);
+  const out = [], on = audible(project), at = new Map(project.clips.map(c => [c.track + '|' + c.start, c]));
   for (const clip of project.clips) {
     if (!on.has(clip.track) || !clip.pattern) continue;
     const pat = project.patterns[clip.pattern]; if (!pat) continue;
     const c0 = clip.start * 4, c1 = (clip.start + clip.len) * 4; if (c1 <= fromBeat || c0 >= toBeat) continue;
+    // A note may ring on past the clip's end when the next clip carries straight on with the same notes in step (a split),
+    // so splitting never shortens a held note. Anything else ends at the clip's end.
+    let hold = c1; for (let cur = clip, next, guard = 0; guard < 600 && (next = at.get(clip.track + '|' + (cur.start + cur.len))) && next.pattern === clip.pattern && (((cur.shift || 0) + cur.len - (next.shift || 0)) % pat.bars + pat.bars) % pat.bars === 0; guard++) { hold = (next.start + next.len) * 4; cur = next; }
     const loop = pat.bars * 4, kind = pat.kind, origin = c0 - (clip.shift || 0) * 4; // a clip cut on its left keeps the pattern in step
     const first = Math.max(fromBeat, c0); // start at the repeat that covers the window, stop at its end: the work is bounded whatever the clip holds
     for (let base = origin + Math.max(0, Math.floor((first - origin) / loop)) * loop; base < c1 && base < toBeat; base += loop) {
       if (base + loop <= first) continue;
       for (const note of pat.notes) {
         const beat = base + note.t / 4; if (beat < c0 || beat < fromBeat || beat >= toBeat || beat >= c1) continue;
-        out.push({ beat, dur: Math.min(note.d / 4, c1 - beat), track: clip.track, kind, p: note.p, v: note.v });
+        out.push({ beat, dur: Math.min(note.d / 4, hold - beat), track: clip.track, kind, p: note.p, v: note.v });
       }
     }
   }
@@ -140,7 +143,7 @@ export function applyPlan(p0, plan) {
     else if (op.op === 'copy' || op.op === 'insert') {
       const [a, b] = range(p, op), at = Number(op.at) - 1, len = b - a; if (!Number.isInteger(at) || at < 0 || at + len > MAX_BARS) throw new Error(`"${op.op}" needs "at" as a bar that leaves room for ${len} bars (the song can be ${MAX_BARS} bars long)`);
       const tracks = op.tracks ? op.tracks.map(t => trackOrThrow(p, t).id) : null, copies = slices(p, a, b, tracks);
-      if (op.op === 'insert') { if (Math.max(...p.clips.map(c => c.start + c.len), 0) + len > MAX_BARS) throw new Error('That would make the song longer than ' + MAX_BARS + ' bars'); for (const c of [...p.clips]) if (c.start < at && c.start + c.len > at) { p.clips.push({ ...c, id: newId('c'), start: at, len: c.start + c.len - at, shift: (c.shift || 0) + at - c.start }); c.len = at - c.start; } for (const s of p.sections) if (s.start < at && s.start + s.len > at) s.len += len; shiftAfter(p, at, len); } // a section the new bars land inside grows to hold them
+      if (op.op === 'insert') { if (Math.max(...p.clips.map(c => c.start + c.len), 0) + len > MAX_BARS) throw new Error('That would make the song longer than ' + MAX_BARS + ' bars'); if (at < p.bars) p.bars = Math.min(MAX_BARS, p.bars + len); for (const c of [...p.clips]) if (c.start < at && c.start + c.len > at) { p.clips.push({ ...c, id: newId('c'), start: at, len: c.start + c.len - at, shift: (c.shift || 0) + at - c.start }); c.len = at - c.start; } for (const s of p.sections) if (s.start < at && s.start + s.len > at) s.len += len; shiftAfter(p, at, len); } // a section the new bars land inside grows to hold them
       else for (const t of p.tracks) if (!tracks || tracks.includes(t.id)) carve(p, t.id, at, at + len);
       for (const c of copies) p.clips.push({ ...c, start: c.start + at });
       said.push(`${op.op === 'insert' ? 'Inserted' : 'Copied'} bars ${a + 1} to ${b} at bar ${at + 1}`);
@@ -153,7 +156,7 @@ export function applyPlan(p0, plan) {
     else if (op.op === 'mute') { const t = trackOrThrow(p, op.track); if (op.on !== undefined && typeof op.on !== 'boolean') throw new Error('"mute" needs "on" as true or false'); t.mute = op.on !== false; said.push(`${t.name} ${t.mute ? 'muted' : 'unmuted'}`); }
     p.clips = p.clips.filter(c => c.len >= 1 && c.start < MAX_BARS);
   }
-  p.bars = Math.max(8, Math.min(MAX_BARS, Math.max(...p.clips.map(c => c.start + c.len), 8))); p.sections.sort((x, y) => x.start - y.start);
+  p.bars = Math.max(8, Math.min(MAX_BARS, Math.max(p.bars, ...p.clips.map(c => c.start + c.len)))); p.sections.sort // grows to fit; only a delete makes the song shorter (Clear leaves empty bars)((x, y) => x.start - y.start);
   return { project: p, said };
 }
 

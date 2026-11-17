@@ -47,10 +47,10 @@
   .menu-list button { min-height:38px; padding:0 10px; text-align:left; border:0; border-radius:8px; background:none; font-size:13px; }
   .menu-list button:hover, .menu-list button:focus-visible { background:var(--raise); }
 
-  main { display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(0,1fr); min-height:0; min-width:0; }
+  main { display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(0,max-content) minmax(190px,1fr); min-height:0; min-width:0; }
 
   /* Arrangement */
-  .arrange { display:grid; grid-template-columns:var(--headw) minmax(0,1fr); border-bottom:1px solid var(--line); }
+  .arrange { display:grid; grid-template-columns:var(--headw) minmax(0,1fr); align-items:start; border-bottom:1px solid var(--line); overflow-y:auto; overscroll-behavior-y:contain; } /* many tracks: the lanes scroll up and down, names and lanes together */
   .heads { border-right:1px solid var(--line); background:var(--panel); padding-top:44px; }
   .head { height:var(--laneh); padding:6px 10px; border-top:1px solid var(--line); display:grid; grid-template-columns:1fr auto auto; grid-template-rows:auto auto; align-items:center; gap:2px 6px; }
   .head .name { font-weight:700; font-size:13px; display:flex; align-items:center; gap:7px; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -128,6 +128,13 @@
     #undo, #redo { padding:0 9px; } .tempo span { display:none; } #pos { min-width:58px; font-size:14px; padding:0 6px; } .bar .group { gap:6px; } .bar .btn { padding:0 10px; } .tempo .btn { padding:0; } .tempo input { width:50px; }
     .arr { grid-template-columns:1fr; } .tabpanel { padding:10px 12px 14px; } .editor { --cell:24px; }
   }
+  /* Short screens (a phone on its side, a small laptop at 200% zoom, a phone in portrait): the whole page scrolls instead, so nothing is cut off. */
+  @media (max-height:600px) {
+    html,body { height:auto; min-height:100%; overflow-x:hidden; overflow-y:auto; }
+    body, main { grid-template-rows:auto auto; }
+    .arrange { overflow-y:visible; }
+    .tabpanel { overflow:visible; }
+  }
   @media (prefers-reduced-motion:reduce) { * { transition:none !important; scroll-behavior:auto !important; } }
 </style>
 </head>
@@ -199,6 +206,7 @@
           <button class="btn" id="clip-dup" type="button">Duplicate</button>
           <button class="btn" id="clip-split" type="button">Split at playhead</button>
           <button class="btn" id="clip-unique" type="button">Make unique</button>
+          <button class="btn" id="clip-relink" type="button" hidden>Load its audio</button>
           <button class="btn" id="clip-del" type="button">Delete</button>
         </div>
         <p class="note" id="clip-note"></p>
@@ -250,7 +258,7 @@
       <li><kbd>Ctrl</kbd> or <kbd>Cmd</kbd> + <kbd>Z</kbd> undo · with <kbd>Shift</kbd> redo</li>
     </ul>
     <h3>Stems</h3>
-    <p>Load stems adds each audio file as its own track from bar 1. Loaded audio plays at its own speed and is not saved in the project file, so load it again after reopening. Download a stem per track renders each synth track on its own.</p>
+    <p>Load stems adds each audio file as its own track from bar 1. Loaded audio plays at its own speed and is not saved in the project file. After reopening, its clips show as missing: select one and press Load its audio, or load a file with the same name, and the sound goes back onto that track with your edits kept. Download a stem per track renders each track on its own.</p>
     <h3>Credit</h3>
     <p>Idea after Alex's AI-native music workstation. This is a separate, original build: its own song, sounds and interface, and no provider calls. An Elusion Works study, built with Claude Fable 5.2.</p>
   </div>

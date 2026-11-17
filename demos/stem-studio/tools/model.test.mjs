@@ -56,4 +56,14 @@ for (let i = 1; i < r.project.sections.length; i++) assert.ok(r.project.sections
 r = applyPlan(p, { ops: [{ op: 'insert', from: 13, to: 14, at: 7 }] }); assert.deepEqual(r.project.sections.find(s => s.name === 'Verse'), { name: 'Verse', start: 4, len: 10 });
 for (const badPlan of [{ ops: [{ op: 'constructor' }] }, { ops: [{ op: 'toString' }] }, { ops: [{ op: 'mute', track: 'lead', on: 'false' }] }, { ops: [{ op: 'add_clip', track: 'keys', pattern: 'k-pad', at: 1, bars: 1.4 }] }, { ops: [{ op: 'add_clip', track: 'keys', pattern: 'constructor', at: 1, bars: 1 }] }]) assert.throws(() => applyPlan(p, badPlan), Error);
 assert.equal(edit.addClip(p, 'drums', 'd-fill', 64, 1), p, 'no clip past the last bar'); q = edit.addClip(edit.deleteClip(p, 'c-drums-24'), 'drums', 'd-fill', 63, 4); assert.deepEqual(q.clips.at(-1).start + q.clips.at(-1).len, 64);
+// Outside review (17 Nov): a split must not shorten a note that is held across the split point, and Clear must not shorten the song.
+{ const held = edit.toggleNote(p, 'k-pad', 8, 72, 16), split = edit.splitClip(held, 'c-keys-0', 1), pick = x => events(x, 0, 48).filter(e => e.track === 'keys' && e.p === 72).map(e => [e.beat, e.dur]);
+  assert.deepEqual(pick(held), [[2, 4], [18, 4], [34, 4]], 'a whole-bar note from step 9 of bar 1 lasts 4 beats, every 4 bars'); // worked by hand: step 8 is beat 2, 16 steps are 4 beats
+  assert.deepEqual(pick(split), [[2, 4], [18, 4], [34, 4]], 'splitting at bar 2 leaves the held note whole');
+  const all = x => events(x, 0, 128).map(e => JSON.stringify(e)).sort(); assert.deepEqual(all(split), all(held), 'a split clip sounds exactly the same, lengths included');
+  const apart = edit.moveClip(split, split.clips.at(-1).id, 2); assert.deepEqual(pick(apart)[0], [2, 2], 'once the right part moves away, the left clip ends the note at its own end (beat 4)');
+  const cleared = applyPlan(p, { ops: [{ op: 'clear', track: 'all', from: 25, to: 32 }] }).project; assert.equal(cleared.bars, 32, 'clearing bars 25 to 32 leaves a 32-bar song');
+  assert.deepEqual(cleared.sections.at(-1), { name: 'Last chorus', start: 24, len: 8 }); assert.equal(applyPlan(p, { ops: [{ op: 'delete', from: 25, to: 32 }] }).project.bars, 24, 'delete still shortens');
+  assert.equal(applyPlan(p, { ops: [{ op: 'insert', from: 1, to: 4, at: 33 }] }).project.bars, 36, 'insert after the end grows by its length');
+  assert.equal(applyPlan(cleared, { ops: [{ op: 'insert', section: 'Intro', at: 1 }] }).project.bars, 36, 'inserting 4 bars into a 32-bar song with an empty ending makes 36 bars'); }
 console.log(`ok  model: ${all.length} notes in the demo song, edits, plans, requests and loading all behave`);

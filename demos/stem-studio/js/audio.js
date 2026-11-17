@@ -77,15 +77,21 @@ export function makeMixer(ctx, project) {
 }
 
 // Schedule everything between two beats. `when(beat)` gives the clock time for a beat.
-export function schedule(ctx, mixer, project, stems, fromBeat, toBeat, when, startingMidClip, onSource) {
+// `until` is the beat where loaded audio must stop: the loop end while looping, the end of the range in an export.
+export const FADE = 0.005; // seconds: loaded audio cut part-way fades in and out this fast, so a cut does not click
+export function schedule(ctx, mixer, project, stems, fromBeat, toBeat, when, startingMidClip, onSource, until = Infinity) {
   const spb = 60 / project.bpm;
   for (const ev of events(project, fromBeat, toBeat)) { const out = mixer.input(ev.track); if (out) playNote(ctx, out, ev, when(ev.beat), spb); }
   for (const clip of project.clips) { // loaded stems: plain audio, started at the clip (or part-way in when playback starts inside it)
     if (clip.pattern) continue; const buf = stems.get(clip.track), out = mixer.input(clip.track); if (!buf || !out) continue;
     const c0 = clip.start * 4, c1 = (clip.start + clip.len) * 4, begin = c0 >= fromBeat && c0 < toBeat ? c0 : startingMidClip && c0 < fromBeat && c1 > fromBeat ? fromBeat : null;
-    if (begin === null) continue;
+    const stopBeat = Math.min(c1, until); if (begin === null || begin >= stopBeat) continue;
     const offset = ((clip.shift || 0) * 4 + (begin - c0)) * spb; if (offset >= buf.duration) continue;
-    const src = ctx.createBufferSource(); src.buffer = buf; src.connect(out); src.start(when(begin), offset, Math.min((c1 - begin) * spb, buf.duration - offset)); if (onSource) onSource(clip.id, src);
+    const dur = Math.min((stopBeat - begin) * spb, buf.duration - offset), t0 = when(begin), t1 = t0 + dur, f = Math.min(FADE, dur / 2);
+    const src = ctx.createBufferSource(), g = ctx.createGain(); src.buffer = buf; src.connect(g).connect(out);
+    if (offset > 0) { g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(1, t0 + f); } // starts inside the recording
+    if (offset + dur < buf.duration - 1e-6) { g.gain.setValueAtTime(1, t1 - f); g.gain.linearRampToValueAtTime(0, t1); } // stops before the recording ends
+    src.start(t0, offset, dur); if (onSource) onSource(clip.id, src, stopBeat);
   }
 }
 
@@ -96,7 +102,7 @@ export async function renderOffline(project, fromBar, toBar, stems = new Map(), 
   const p = only ? { ...project, tracks: project.tracks.map(t => ({ ...t, solo: t.id === only, mute: false })) } : project;
   const spb = 60 / p.bpm, length = Math.round(((toBar - fromBar) * 4 * spb + tail) * SR);
   const ctx = new OfflineAudioContext(2, length, SR), mixer = makeMixer(ctx, p), from = fromBar * 4;
-  schedule(ctx, mixer, p, stems, from, toBar * 4, beat => (beat - from) * spb, true);
+  schedule(ctx, mixer, p, stems, from, toBar * 4, beat => (beat - from) * spb, true, null, toBar * 4);
   const buffer = await ctx.startRendering(), rawPeak = peakOf(buffer);
   let gain = 1; if (rawPeak > 0.98) { gain = 0.98 / rawPeak; for (let c = 0; c < 2; c++) { const d = buffer.getChannelData(c); for (let i = 0; i < d.length; i++) d[i] *= gain; } } // never clip: leave a little headroom
   return { buffer, rawPeak, peak: rawPeak * gain, gain, seconds: length / SR };
@@ -134,7 +140,7 @@ export class Engine {
     let horizon = this.b0 + (this.ctx.currentTime + 0.2 - this.t0) / spb;
     for (let guard = 0; guard < 4 && this.cursor < horizon; guard++) {
       const to = Math.min(horizon, end);
-      if (to > this.cursor) { schedule(this.ctx, this.mixer, p, this.stems, this.cursor, to, b => this.when(b), this.first, (id, src) => { this.live.set(id, src); src.onended = () => { if (this.live.get(id) === src) this.live.delete(id); }; }); this.first = false; this.cursor = to; }
+      if (to > this.cursor) { schedule(this.ctx, this.mixer, p, this.stems, this.cursor, to, b => this.when(b), this.first, (id, src, until) => { this.live.set(id, { src, until }); src.onended = () => { if (this.live.get(id) && this.live.get(id).src === src) this.live.delete(id); }; }, end); this.first = false; this.cursor = to; } // loaded audio stops at the loop end, so a wrap never stacks copies
       if (this.cursor >= end) {
         if (!this.loop) { if (this.position() >= end + TAIL / spb) { this.stop(); if (this.onstop) this.onstop(); } return; }
         this.t0 = this.when(end); this.b0 = this.loop[0]; this.cursor = this.loop[0]; this.first = true; horizon = this.b0 + (this.ctx.currentTime + 0.2 - this.t0) / spb; // wrap the loop
@@ -142,7 +148,7 @@ export class Engine {
     }
   }
   retime() { if (!this.playing) return; const b = this.position(); this.t0 = this.ctx.currentTime; this.b0 = b; this.cursor = Math.max(this.cursor, b); } // call before the tempo changes
-  refresh() { if (!this.mixer) return; const p = this.get(); this.mixer.update(p); for (const [id, src] of this.live) if (!p.clips.some(c => c.id === id)) { try { src.stop(); } catch (err) { /* already ended */ } this.live.delete(id); } } // a stem clip that was deleted stops sounding
+  refresh() { if (!this.mixer) return; const p = this.get(); this.mixer.update(p); for (const [id, { src, until }] of this.live) { if (!p.clips.some(c => c.id === id)) { try { src.stop(); } catch (err) { /* already ended */ } this.live.delete(id); } else if (this.playing) { try { src.stop(Math.max(this.ctx.currentTime, this.when(until))); } catch (err) { /* already ended */ } } } } // a stem clip that was deleted stops sounding; after a tempo change the loop end moves, and so does its stop
   stop(quiet) { if (this.timer) clearInterval(this.timer); this.timer = null; if (this.mixer) { const m = this.mixer.master; m.gain.setTargetAtTime(0, this.ctx.currentTime, 0.012); setTimeout(() => m.disconnect(), 120); } this.mixer = null; this.playing = false; this.live.clear(); void quiet; }
   level() { if (!this.mixer || !this.mixer.analyser) return 0; const a = this.mixer.analyser, d = this.buf || (this.buf = new Float32Array(a.fftSize)); a.getFloatTimeDomainData(d); let s = 0; for (let i = 0; i < d.length; i++) s += d[i] * d[i]; return Math.sqrt(s / d.length); }
 }

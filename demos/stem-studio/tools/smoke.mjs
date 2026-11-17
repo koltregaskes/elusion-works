@@ -1,10 +1,11 @@
 // End-to-end check in a real browser. Needs a static server serving the repo root; set BASE (default http://127.0.0.1:8765).
-// Run: node demos/stem-studio/tools/smoke.mjs [path-to-axe.min.js]
+// Run: node demos/stem-studio/tools/smoke.mjs <path-to-axe.min.js>   (axe is required: the accessibility check is part of the pass)
 import { createRequire } from 'node:module';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 const { chromium } = createRequire(import.meta.url)('playwright');
 const URL = (process.env.BASE || 'http://127.0.0.1:8765') + '/demos/stem-studio/', axe = process.argv[2] ? readFileSync(process.argv[2], 'utf8') : null, errors = [];
+if (!axe) { console.log('FAIL give the path to axe.min.js as the first argument'); process.exit(1); }
 const log = (...a) => console.log('ok ', ...a);
 const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM || undefined, args: ['--autoplay-policy=no-user-gesture-required'] });
 async function open(opts = {}) {
@@ -15,6 +16,7 @@ async function open(opts = {}) {
   return { ctx, page };
 }
 const A = (page, fn, arg) => page.evaluate(fn, arg);
+const CSS_ESC = s => s.replace(/[^\w-]/g, c => '\\' + c);
 const proj = page => A(page, () => window.stemStudio.project());
 const clipsOn = (p, t) => p.clips.filter(c => c.track === t).map(c => [c.start, c.len]).sort((a, b) => a[0] - b[0]);
 
@@ -103,6 +105,102 @@ const clipsOn = (p, t) => p.clips.filter(c => c.track === t).map(c => [c.start, 
   log('review regressions: untrusted files are cleaned and cannot call out or break a reload; split follows the playhead; tempo box is truthful; no empty undo steps; stems arrive as one zip');
   await ctx.close();
 }
+// ---- Outside review, 17 Nov 2026 -------------------------------------------------------------------------------
+// A plain sine WAV built in the page, so these checks do not depend on the studio's own renderer.
+const SINE = () => { window.__sine = (secs, hz = 220) => { const sr = 44100, n = Math.round(secs * sr), b = new DataView(new ArrayBuffer(44 + n * 2)), s = (o, t) => { for (let i = 0; i < t.length; i++) b.setUint8(o + i, t.charCodeAt(i)); };
+  s(0, 'RIFF'); b.setUint32(4, 36 + n * 2, true); s(8, 'WAVE'); s(12, 'fmt '); b.setUint32(16, 16, true); b.setUint16(20, 1, true); b.setUint16(22, 1, true); b.setUint32(24, sr, true); b.setUint32(28, sr * 2, true); b.setUint16(32, 2, true); b.setUint16(34, 16, true); s(36, 'data'); b.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) b.setInt16(44 + i * 2, Math.round(Math.sin(i * 2 * Math.PI * hz / sr) * 12000), true); return b.buffer; }; };
+{ // 1. A saved stem comes back onto its own edited track after a refresh, not as a new track at bar 1.
+  const { ctx, page } = await open(); await A(page, SINE);
+  const made = await A(page, async () => window.stemStudio.loadStem('Guitar.wav', window.__sine(20)));
+  await A(page, id => window.stemStudio.apply({ ops: [{ op: 'set_level', track: id, level: 0.4 }] }), made.id);
+  await page.focus(`.clip[data-id="c-${made.id}"]`); await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowRight'); // move it to bar 3
+  await page.click('#rewind'); await page.click('.ruler', { position: { x: 44 * 6 + 10, y: 36 } }); await page.focus(`.clip[data-id="c-${made.id}"]`); await page.keyboard.press('s'); // split at bar 7
+  const edited = await proj(page); assert.deepEqual(clipsOn(edited, made.id), [[2, 4], [6, 6]], 'moved to bar 3 and split at bar 7 (20 s is 10 bars at 112 bpm)');
+  const energy = async () => A(page, async () => { const r = await window.stemStudio.render(2, 12, window.stemStudio.project().tracks.at(-1).id), d = new Int16Array(r.wav, 44); let s = 0; for (let i = 0; i < d.length; i += 2) s += d[i] * d[i]; return Math.sqrt(s / (d.length / 2)) / 32768; });
+  const heard = await energy(); assert.ok(heard > 0.02, 'the stem is heard before the refresh');
+  await page.reload(); await page.waitForFunction(() => window.stemStudio); await A(page, SINE);
+  assert.deepEqual(await proj(page), edited, 'the edited song survives the refresh'); assert.equal(await page.locator('.clip.missing').count(), 2); assert.ok(await energy() < 1e-4, 'with no audio the stem is silent');
+  const back = await A(page, async () => window.stemStudio.loadStem('Guitar.wav', window.__sine(20)));
+  assert.deepEqual(back, { id: made.id, seconds: 20, bars: null, relinked: true }, 'the same file goes back onto its own track');
+  assert.deepEqual(await proj(page), edited, 'track count, clip positions, offsets and level are unchanged'); assert.equal(await page.locator('.clip.missing').count(), 0);
+  const again = await energy(); assert.ok(Math.abs(again - heard) < heard * 0.01, `the rendered sound is back (${again.toFixed(4)} against ${heard.toFixed(4)} before)`);
+  await page.reload(); await page.waitForFunction(() => window.stemStudio); await A(page, SINE); // and by hand: a file with another name, through the clip panel
+  await page.click(`.clip[data-id="c-${made.id}"]`); assert.equal(await page.isVisible('#clip-relink'), true);
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('#clip-relink')]);
+  await chooser.setFiles({ name: 'guitar take 2.wav', mimeType: 'audio/wav', buffer: Buffer.from(await A(page, () => [...new Uint8Array(window.__sine(20))])) });
+  await page.waitForFunction(() => /back on its own track/.test(document.getElementById('toast').textContent)); assert.deepEqual(await proj(page), edited); assert.equal(await page.isVisible('#clip-relink'), false);
+  const [other] = await Promise.all([page.waitForEvent('filechooser'), (async () => { await page.click('#more'); await page.click('#load-stems'); })()]); // a new name still makes a new track
+  await other.setFiles({ name: 'Bongos.wav', mimeType: 'audio/wav', buffer: Buffer.from(await A(page, () => [...new Uint8Array(window.__sine(2))])) });
+  await page.waitForFunction(() => /loaded as new track/.test(document.getElementById('toast').textContent)); assert.equal((await proj(page)).tracks.length, edited.tracks.length + 1);
+  log('stems: after a refresh the same file, or Load its audio on a missing clip, puts the sound back on the edited track; nothing else changes');
+  await ctx.close();
+}
+{ // 2. Looping a short section inside a long stem: each pass stops at the loop end, with a short fade, and copies never stack.
+  const { ctx, page } = await open();
+  await page.addInitScript(() => { window.__src = []; window.__ramps = []; const st = AudioBufferSourceNode.prototype.start, sp = AudioBufferSourceNode.prototype.stop, lr = AudioParam.prototype.linearRampToValueAtTime;
+    AudioBufferSourceNode.prototype.start = function (when = 0, offset = 0, duration) { if (this.buffer && this.buffer.duration > 5) window.__src.push({ when, offset, duration, stops: [], node: this }); return st.call(this, when, offset, duration); };
+    AudioBufferSourceNode.prototype.stop = function (when = 0) { const r = window.__src.find(x => x.node === this); if (r) r.stops.push(when); return sp.call(this, when); };
+    AudioParam.prototype.linearRampToValueAtTime = function (v, t) { if (v === 0) window.__ramps.push(t); return lr.call(this, v, t); }; });
+  await page.reload(); await page.waitForFunction(() => window.stemStudio); await A(page, SINE);
+  await A(page, async () => { await window.stemStudio.loadStem('Long take.wav', window.__sine(30)); window.stemStudio.apply({ ops: [{ op: 'set_tempo', bpm: 180 }] }); });
+  await page.click('.clip[data-id="c-drums-11"]'); await page.click('#loop'); await page.click('#play'); // the loop is that one-bar clip, bar 12, inside the 30 s stem
+  await page.waitForFunction(() => window.__src.length >= 5, null, { timeout: 30000 }); await page.click('#play');
+  const recs = await A(page, () => window.__src.map(x => ({ when: x.when, offset: x.offset, duration: x.duration, stops: x.stops }))), ramps = await A(page, () => window.__ramps);
+  const bar = 4 * 60 / 180, offset = 11 * bar; // worked by hand: one bar at 180 bpm is 1.3333 s; bar 12 starts 11 bars, 14.667 s, into the stem
+  for (const [i, r] of recs.entries()) {
+    assert.ok(Math.abs(r.offset - offset) < 1e-6, `pass ${i + 1} starts ${r.offset} s into the stem`); assert.ok(Math.abs(r.duration - bar) < 1e-6, `pass ${i + 1} lasts ${r.duration} s, the loop is ${bar.toFixed(4)} s`);
+    if (i) assert.ok(recs[i - 1].when + recs[i - 1].duration <= r.when + 1e-6, `pass ${i} still sounds when pass ${i + 1} starts`);
+    assert.ok(ramps.some(t => Math.abs(t - (r.when + r.duration)) < 1e-6), `pass ${i + 1} fades out at the loop end`);
+  }
+  log(`loop: ${recs.length} passes of a 30 s stem over a one-bar loop, each ${bar.toFixed(3)} s from ${offset.toFixed(3)} s in, no two sounding at once, each fading out at the wrap`);
+  await ctx.close();
+}
+{ // 3. Stem downloads come from one version of the song, even if it is edited while they render; no sound support is handled.
+  const { ctx, page } = await open(); await A(page, () => window.stemStudio.apply({ ops: [{ op: 'delete', from: 5, to: 32 }] }));
+  const [z] = await Promise.all([page.waitForEvent('download', { timeout: 600000 }), (async () => { await page.click('#more'); await page.click('#save-stems'); await A(page, () => window.stemStudio.apply({ ops: [{ op: 'set_tempo', bpm: 180 }] })); })()]);
+  const zb = readFileSync(await z.path()), sizes = []; for (let o = 0; zb.readUInt32LE(o) === 0x04034b50;) { const size = zb.readUInt32LE(o + 18), nameLen = zb.readUInt16LE(o + 26); sizes.push(zb.readUInt32LE(o + 30 + nameLen + 40)); o += 30 + nameLen + size; }
+  const want = Math.round((8 * 4 * 60 / 112 + 2) * 44100) * 4; // worked by hand: 8 bars at 112 bpm plus the 2 s tail, 16-bit stereo
+  assert.deepEqual(sizes, [want, want], 'both stems are the 112 bpm version, though the tempo changed to 180 while they rendered'); assert.equal((await proj(page)).bpm, 180);
+  await ctx.close();
+  const off = await browser.newContext(); const p2 = await off.newPage(); const errs = []; p2.on('pageerror', e => errs.push(e.message));
+  await p2.addInitScript(() => { delete window.AudioContext; delete window.webkitAudioContext; Storage.prototype.setItem = () => { throw new Error('full'); }; });
+  await p2.goto(URL); await p2.waitForFunction(() => window.stemStudio); await p2.click('#play');
+  assert.match(await p2.textContent('#toast'), /cannot play sound here/); assert.equal(await p2.getAttribute('#play', 'aria-label'), 'Play');
+  await p2.click('#bpm-up'); assert.match(await p2.textContent('#toast'), /not keeping your changes/); assert.deepEqual(errs, []);
+  await off.close();
+  log('stem zip renders one snapshot of the song; with no Web Audio, Play says so; when storage fails, the page says so once');
+}
+{ // 4. Real autoplay rules: no override flag. A click on Play must still start sound.
+  const strict = await chromium.launch({ executablePath: process.env.PW_CHROMIUM || undefined }), c2 = await strict.newContext(), p3 = await c2.newPage();
+  await p3.goto(URL); await p3.waitForFunction(() => window.stemStudio); await p3.click('#play');
+  await p3.waitForFunction(() => window.stemStudio.state().position > 1, null, { timeout: 20000 }); await p3.click('#play'); await strict.close();
+  log('without the autoplay override, a click on Play starts the clock');
+}
+// 5. Every track's controls, the last lane and the editor can be reached by scrolling (wheel), on short screens and with twelve tracks.
+async function reach(page, sel, x) {
+  for (let i = 0; i < 80; i++) {
+    const s = await A(page, ([sel, x]) => { const e = document.querySelector(sel), r = e.getBoundingClientRect(), cx = x === undefined ? r.left + r.width / 2 : x, cy = r.top + r.height / 2;
+      const shown = r.top >= -0.5 && r.bottom <= innerHeight + 0.5, hit = shown && document.elementFromPoint(cx, cy);
+      if (shown && hit && (e === hit || e.contains(hit))) return { ok: true };
+      let a = e.parentElement; while (a && !(/(auto|scroll)/.test(getComputedStyle(a).overflowY) && a.scrollHeight > a.clientHeight)) a = a.parentElement;
+      const box = a && a !== document.body && a !== document.documentElement ? a.getBoundingClientRect() : { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
+      return { ok: false, x: Math.max(1, Math.min(innerWidth - 1, (Math.max(box.left, 0) + Math.min(box.right, innerWidth)) / 2)), y: Math.max(1, Math.min(innerHeight - 1, (Math.max(box.top, 0) + Math.min(box.bottom, innerHeight)) / 2)), dir: r.top < Math.max(box.top, 0) ? -1 : 1 }; }, [sel, x]); // up when the target sits above what its scroll area shows
+    if (s.ok) return true; await page.mouse.move(s.x, s.y); await page.mouse.wheel(0, 120 * s.dir); await page.waitForTimeout(40);
+  }
+  return false;
+}
+for (const [w, h] of [[320, 568], [740, 360], [640, 400], [400, 800], [1280, 800]]) for (const n of [4, 12]) { // 640 by 400 is a 1280 by 800 screen at 200% zoom
+  const { ctx, page } = await open({ viewport: { width: w, height: h } }); await A(page, SINE);
+  if (n > 4) await A(page, async n => { for (let i = 4; i < n; i++) await window.stemStudio.loadStem(`Take ${i - 3}.wav`, window.__sine(1)); }, n);
+  const ids = (await proj(page)).tracks.map(t => t.id), lost = [], headw = await A(page, () => document.querySelector('.heads').getBoundingClientRect().right);
+  for (const id of ids) if (!(await reach(page, `#vol-${CSS_ESC(id)}`))) lost.push('level ' + id);
+  for (const sel of ['.lane:last-child', '.lane:first-child']) if (!(await reach(page, sel, headw + 12))) lost.push(sel);
+  for (const sel of ['#tab-clip', '#add-clip', '#play', '#more']) if (!(await reach(page, sel))) lost.push(sel);
+  await page.click('#tab-arr'); for (const sel of ['#ask', '#plan-go']) if (!(await reach(page, sel))) lost.push(sel);
+  assert.deepEqual(lost, [], `out of reach at ${w}x${h} with ${n} tracks`); await ctx.close();
+}
+log('reach: at 320x568, 740x360, 640x400 (200% zoom), 400x800 and 1280x800, with 4 and 12 tracks, every level slider, the first and last lanes, the editor and the arranger are reached by scrolling');
 for (const [w, h] of [[400, 800], [320, 568], [740, 360]]) { // Phones: nothing overflows sideways, controls are finger-sized, taps and drags work.
   const { ctx, page } = await open({ viewport: { width: w, height: h }, hasTouch: true, isMobile: true });
   const o = await A(page, () => ({ sw: document.documentElement.scrollWidth, w: innerWidth, small: [...document.querySelectorAll('button,select,input:not([type=file]),[role=tab]')].filter(e => e.getClientRects().length).map(e => [e.id || e.textContent.trim().slice(0, 12) || e.getAttribute('aria-label'), Math.round(e.getBoundingClientRect().height), Math.round(e.getBoundingClientRect().width)]).filter(x => x[1] < 24 || x[2] < 24),
