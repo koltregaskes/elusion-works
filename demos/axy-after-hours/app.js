@@ -56,9 +56,10 @@ function study(f, w, h) {
   for (let i = 0; i < w * h * 0.004; i++) { g.fillStyle = r() < 0.5 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.10)'; g.fillRect(r() * w, r() * h, 1, 1); }
   return c;
 }
+const GALLERY = document.querySelector('.site a').href; // the archive address lives once, in the page's own navigation
 function frameItem(f, cls) {
   const li = document.createElement('li'), a = document.createElement('a'), img = document.createElement('img'), ref = document.createElement('span');
-  a.href = 'https://axylusion.com/gallery.html'; a.setAttribute('aria-label', `Frame ${f.ref}, ${f.date}. Open the gallery`);
+  a.href = GALLERY; a.setAttribute('aria-label', `Frame ${f.ref}, ${f.date}. Open the gallery`);
   img.alt = ''; img.className = cls; img.draggable = false; a.draggable = false; img.style.setProperty('--t', f.tone); img.decoding = 'async'; img.width = 360; img.height = 450;
   ref.className = 'ref'; ref.textContent = f.ref; ref.setAttribute('aria-hidden', 'true');
   a.appendChild(img); li.append(a, ref); f.imgs = (f.imgs || []).concat(img);
