@@ -1,0 +1,90 @@
+// Checks the game's rules, physics and scoring without a browser. Usage: node rules.test.mjs
+import assert from 'node:assert/strict';
+import * as R from '../js/rules.js';
+const { COURT, BALL_R } = R, DT = 1 / 60;
+
+// The court is a real one: 20 by 44 feet, a 7 foot kitchen, a net 34 inches at the middle and 36 at the posts.
+const ft = 0.3048; assert.ok(Math.abs(COURT.halfW * 2 - 20 * ft) < 0.001 && Math.abs(COURT.halfL * 2 - 44 * ft) < 0.001 && Math.abs(COURT.kitchen - 7 * ft) < 0.001); assert.ok(Math.abs(R.netHeight(0) - 34 * 0.0254) < 0.001 && Math.abs(R.netHeight(COURT.halfW) - 36 * 0.0254) < 0.001 && R.netHeight(-9) === R.netHeight(COURT.halfW));
+
+// A staged rally: put the ball and the players where a rule is tested, then let the game run.
+function stage({ ball, rally = {}, p = {}, r = {}, server = 'p', score = { p: 0, r: 0 }, toWin = 11 }) { const m = R.createMatch({ seed: 5, toWin }); m.state = 'live'; m.server = server; m.score = { ...score }; Object.assign(m.ball, { held: false, vx: 0, vy: 0, vz: 0 }, ball); Object.assign(m.rally, { hits: 4, last: 'r', bounces: 0, serve: false, since: 1, volleys: 0 }, rally); Object.assign(m.who.p, { x: 0, z: 5, vx: 0, vz: 0 }, p); Object.assign(m.who.r, { x: 0, z: -5, vx: 0, vz: 0 }, r); return m; }
+function run(m, input = {}, max = 600) { const seen = []; for (let i = 0; i < max; i++) { R.step(m, DT, i === 0 ? input : { mx: input.mx, mz: input.mz, aim: input.aim }); seen.push(...m.events); if (m.state !== 'live') break; } return seen; }
+const still = { mx: 0, mz: 0 }, faultOf = seen => seen.find(e => e.type === 'fault');
+
+// Where the players stand for a serve: the server's right-hand court on an even score, the left on an odd one, the receiver on the diagonal.
+for (const [server, mine, x] of [['p', 0, 1.5], ['p', 3, -1.5], ['r', 0, -1.5], ['r', 5, 1.5]]) { const spots = R.serveSpots(server, { p: mine, r: mine }), other = server === 'p' ? 'r' : 'p'; assert.equal(spots[server].x, x, `${server} serving at ${mine}`); assert.equal(spots[other].x, -x); assert.ok(Math.abs(spots[server].z) > COURT.halfL && Math.abs(spots[other].z) > COURT.halfL && spots[server].z * spots[other].z < 0); }
+
+// A shot lands where it is aimed and clears the net by its margin, from anywhere, for every kind of shot.
+{ let n = 0; for (const shot of [{ depth: 5, wide: 2.3, clear: 0.26, pace: 15 }, { depth: 1.25, wide: 2.2, clear: 0.2, pace: 6 }, { depth: 5.6, wide: 2, clear: 2.6, pace: 9 }, { depth: 4.3, wide: 2.3, clear: 0.12, pace: 19 }]) for (const from of [{ x: 0, y: 0.8, z: 7 }, { x: -2.5, y: 0.3, z: 2.3 }, { x: 2.8, y: 2.2, z: 1 }, { x: 1, y: 1, z: 6.6 }]) for (const tx of [-2.3, 0, 2.3]) { const to = { x: tx, z: -shot.depth }, v = R.launch(from, to, shot), b = { ...from, ...v }; let cleared = null;
+    for (let i = 0; i < 2000; i++) { const z0 = b.z, y0 = b.y, x0 = b.x; b.vy -= R.G / 1000; b.x += b.vx / 1000; b.y += b.vy / 1000; b.z += b.vz / 1000; if (z0 > 0 && b.z <= 0) cleared = y0 - BALL_R - R.netHeight(x0); if (b.y <= BALL_R) break; }
+    assert.ok(Math.hypot(b.x - to.x, b.z - to.z) < 0.05, `a shot aimed at ${to.x}, ${to.z} landed at ${b.x.toFixed(2)}, ${b.z.toFixed(2)}`); assert.ok(cleared !== null && cleared >= shot.clear - 0.03, `a shot cleared the net by only ${cleared}`); n++; } assert.equal(n, 48); }
+
+// ---- The rules, one at a time ----
+// Out: beyond the baseline. The hitter is at fault. Your rival was serving, so it is a side-out and no point.
+{ const m = stage({ ball: { x: 0, y: 1, z: 6.9, vy: -1 }, rally: { last: 'r' }, server: 'r', p: { x: 3, z: 3 } }), f = faultOf(run(m, still)); assert.deepEqual([f.by, f.why], ['r', 'out']); assert.deepEqual(m.score, { p: 0, r: 0 }); assert.equal(m.server, 'p'); assert.equal(m.state, 'dead'); }
+// The same ball when you were serving: your point, and you keep the serve.
+{ const m = stage({ ball: { x: 0, y: 1, z: 6.9, vy: -1 }, rally: { last: 'r' }, server: 'p', p: { x: 3, z: 3 } }), seen = run(m, still); assert.deepEqual(m.score, { p: 1, r: 0 }); assert.equal(m.server, 'p'); assert.ok(seen.some(e => e.type === 'point' && e.to === 'p')); }
+// Lines are in: a ball on the baseline or the sideline is good, a ball just past it is out.
+for (const [x, z, good] of [[0, COURT.halfL, true], [0, COURT.halfL + 0.06, false], [COURT.halfW, 3, true], [COURT.halfW + 0.06, 3, false], [-COURT.halfW, 0.5, true]]) { const m = stage({ ball: { x, y: 0.5, z, vy: -1 }, rally: { last: 'r' }, p: { x: -4, z: 8 } }), b = run(m, still, 40).find(e => e.type === 'bounce'); assert.equal(b.good, good, `a ball at ${x}, ${z}`); }
+// Two bounces: whoever should have played it is at fault.
+{ const m = stage({ ball: { x: 0, y: 1, z: 3, vy: 0 }, rally: { last: 'r' }, server: 'r', p: { x: 4, z: 8 } }), seen = run(m, still), f = faultOf(seen); assert.deepEqual([f.by, f.why], ['p', 'double']); assert.equal(seen.filter(e => e.type === 'bounce').length, 2); assert.deepEqual(m.score, { p: 0, r: 1 }); }
+// Into the net.
+{ const m = stage({ ball: { x: 0.5, y: 0.6, z: 1, vz: -8, vy: 0.5 }, rally: { last: 'p' }, server: 'p' }), seen = run(m, still), f = faultOf(seen); assert.deepEqual([f.by, f.why], ['p', 'net']); assert.equal(m.server, 'r'); assert.ok(seen.some(e => e.type === 'net')); assert.ok(m.ball.z > 0, 'the ball went through the net'); }
+// Just over the net is fine: a ball that clears the tape by a ball's width plays on.
+{ const m = stage({ ball: { x: 0, y: R.netHeight(0) + BALL_R * 2 + 0.25, z: 0.3, vz: -6, vy: 0.2 }, rally: { last: 'p' }, r: { x: 4, z: -8 } }), seen = run(m, still, 30); assert.ok(!seen.some(e => e.type === 'net') && m.ball.z < 0); }
+// A shot that bounces on the hitter's own side did not cross.
+{ const m = stage({ ball: { x: 0, y: 0.6, z: 2, vz: -1, vy: 0 }, rally: { last: 'p' }, server: 'r' }), f = faultOf(run(m, still)); assert.deepEqual([f.by, f.why], ['p', 'short']); assert.deepEqual(m.score, { p: 0, r: 1 }); }
+// A volley from the kitchen, and from the kitchen line, is a fault. The same volley from a step behind the line is good.
+for (const [z, why] of [[1.5, 'kitchen'], [COURT.kitchen, 'kitchen'], [COURT.kitchen + 0.2, null]]) { const m = stage({ ball: { x: 0.3, y: 1.1, z: z - 0.3, vz: 0.5, vy: 0 }, rally: { last: 'r', hits: 5 }, p: { x: 0, z } }), seen = run(m, { ...still, swing: 'drive' }, 20), f = faultOf(seen); if (why) assert.deepEqual([f?.by, f?.why], ['p', why], `a volley from ${z} m`); else { assert.ok(!f && seen.some(e => e.type === 'hit' && e.by === 'p'), 'a lawful volley was refused'); } }
+// In the kitchen you may play a ball that has bounced.
+{ const m = stage({ ball: { x: 0.3, y: 0.7, z: 1.2, vz: 0.3, vy: 1 }, rally: { last: 'r', hits: 5, bounces: 1 }, p: { x: 0, z: 1.5 } }), seen = run(m, { ...still, swing: 'dink' }, 20); assert.ok(!faultOf(seen) && seen.some(e => e.type === 'hit' && e.shot === 'dink')); }
+// The two-bounce rule: the serve must bounce before it is returned, and the return must bounce before the server plays it. After that, volleys are allowed.
+for (const [hits, last, who, lawful] of [[1, 'r', 'p', false], [2, 'r', 'p', false], [3, 'r', 'p', true]]) { const m = stage({ ball: { x: 0.2, y: 1.1, z: 5.2, vz: 0.5 }, rally: { last, hits, serve: hits === 1, half: 1 }, p: { x: 0, z: 5.5 } }), seen = run(m, { ...still, swing: 'drive' }, 20), f = faultOf(seen); if (lawful) assert.ok(!f && seen.some(e => e.type === 'hit')); else assert.deepEqual([f?.by, f?.why], [who, 'twobounce'], `a volley as shot ${hits + 1}`); }
+// A serve must land beyond the kitchen line and in the court on the diagonal. On the kitchen line is a fault; on the centre line is good.
+for (const [x, z, good] of [[-1.5, -4.5, true], [1.5, -4.5, false], [-1.5, -1.5, false], [-1.5, -COURT.kitchen, false], [-1.5, -COURT.kitchen - 0.1, true], [0, -4.5, true], [-1.5, -COURT.halfL - 0.1, false]]) { const m = stage({ ball: { x, y: 0.5, z, vy: -1 }, rally: { last: 'p', hits: 1, serve: true, half: -1 }, r: { x: 4, z: -9 } }), seen = run(m, still, 40), f = faultOf(seen); assert.equal(seen.find(e => e.type === 'bounce').good, good, `a serve landing at ${x}, ${z}`); if (!good) { assert.deepEqual([f.by, f.why === 'out' ? 'serve' : f.why], ['p', 'serve']); assert.equal(m.server, 'r'); assert.deepEqual(m.score, { p: 0, r: 0 }); } }
+// You cannot play the ball twice running, or reach over the net for it.
+{ const m = stage({ ball: { x: 0, y: 1, z: 4.8, vz: -0.2 }, rally: { last: 'p', hits: 5, bounces: 1 }, p: { x: 0, z: 5 } }), seen = run(m, { ...still, swing: 'drive' }, 20); assert.ok(!seen.some(e => e.type === 'hit')); }
+{ const m = stage({ ball: { x: 0, y: 1, z: -0.3, vz: 0 }, rally: { last: 'r', hits: 5, bounces: 1 }, p: { x: 0, z: 0.5 } }); assert.equal(R.reach(m, 'p'), -1); }
+// A swing at nothing is a miss, not a fault.
+{ const m = stage({ ball: { x: 3, y: 3, z: -3, vz: -1 }, rally: { last: 'p' } }), seen = run(m, { ...still, swing: 'lob' }, 30); assert.ok(seen.some(e => e.type === 'miss' && e.by === 'p') && !seen.some(e => e.type === 'hit')); }
+// A drive at a ball above the shoulder is a smash; the other shots are what was asked for.
+for (const [y, asked, got] of [[1.9, 'drive', 'smash'], [1.0, 'drive', 'drive'], [1.9, 'lob', 'lob'], [0.6, 'dink', 'dink']]) { const m = stage({ ball: { x: 0.2, y, z: 4, vz: 0.3 }, rally: { last: 'r', hits: 5, bounces: 1 }, p: { x: 0, z: 4.2 } }), hit = run(m, { ...still, swing: asked, aim: 0.5 }, 10).find(e => e.type === 'hit'); assert.equal(hit?.shot, got, `${asked} at ${y} m`); }
+// Aiming: a shot aimed right goes right of one aimed left.
+{ const land = aim => { const m = stage({ ball: { x: 0, y: 0.9, z: 5, vz: 0.2 }, rally: { last: 'r', hits: 5, bounces: 1 }, p: { x: 0, z: 5.2 } }); R.step(m, DT, { swing: 'drive', aim }); return R.landing(m); }; let left = 0, right = 0; for (let i = 0; i < 1; i++) { left += land(-1).x; right += land(1).x; } assert.ok(right - left > 3, `aim made only ${(right - left).toFixed(2)} m of difference`); }
+// Win by two: 11 to 10 is not enough, 12 to 10 is.
+{ const m = stage({ ball: { x: 0, y: 1, z: 6.9, vy: -1 }, rally: { last: 'r' }, server: 'p', score: { p: 10, r: 10 }, p: { x: 3, z: 3 } }); run(m, still); assert.equal(m.state, 'dead'); assert.equal(m.winner, null); assert.deepEqual(m.score, { p: 11, r: 10 });
+  const n = stage({ ball: { x: 0, y: 1, z: 6.9, vy: -1 }, rally: { last: 'r' }, server: 'p', score: { p: 11, r: 10 }, p: { x: 3, z: 3 } }), seen = run(n, still); assert.equal(n.state, 'over'); assert.equal(n.winner, 'p'); assert.ok(seen.some(e => e.type === 'over')); R.step(n, DT, {}); assert.deepEqual(n.events, [], 'a finished match goes on happening'); }
+// The score is called with the server's first.
+{ const m = R.createMatch({}); m.score = { p: 3, r: 7 }; m.server = 'r'; assert.equal(R.sayScore(m), '7 to 3'); m.server = 'p'; assert.equal(R.sayScore(m), '3 to 7'); }
+
+// ---- You, at the controls ----
+// A match waits for you to serve, and your serve goes in.
+{ const m = R.createMatch({ seed: 2 }); for (let i = 0; i < 200; i++) R.step(m, DT, {}); assert.equal(m.state, 'serve'); assert.equal(m.server, 'p'); assert.ok(m.ball.held); for (let i = 0; i < 300; i++) R.step(m, DT, { mx: 1, mz: -1 }); assert.equal(m.state, 'serve', 'the match did not wait for the serve'); assert.equal(m.who.p.x, 1.5, 'the server wandered off before serving');
+  let good = 0; for (let seed = 1; seed <= 40; seed++) { const k = R.createMatch({ seed }); for (let i = 0; i < 120; i++) R.step(k, DT, {}); R.step(k, DT, { swing: 'drive', aim: 0 }); assert.equal(k.state, 'live'); assert.equal(k.rally.hits, 1); const land = R.landing(k); if (land && land.good) good++; } assert.ok(good >= 36, `only ${good} of 40 plain serves went in`); }
+// If you never move, you lose, by letting the ball bounce twice or serving and standing still.
+{ const m = R.createMatch({ seed: 9, toWin: 5, level: 'easy' }); const why = {}; for (let i = 0; i < 60 * 600 && m.state !== 'over'; i++) { R.step(m, DT, m.state === 'serve' && m.server === 'p' ? { swing: 'drive' } : {}); for (const e of m.events) if (e.type === 'fault' && e.by === 'p') why[e.why] = (why[e.why] || 0) + 1; } assert.equal(m.winner, 'r'); assert.ok(why.double >= 3, JSON.stringify(why)); }
+
+// A plain way of playing through the controls, with no help from the game's own brain: run to a little behind where the ball will land, let it bounce, drive it away from the rival, leave the ones going out.
+// If this beats an easy rival most of the time, the controls are enough to play with: you can get to the ball, and the reach is generous enough to hit it.
+{ const plain = m => { const me = m.who.p, b = m.ball, r = m.rally; if (m.state === 'serve') return m.server === 'p' ? { swing: 'drive', aim: 0 } : {}; if (m.state !== 'live') return {}; let tx = 0, tz = 5.6, swing = null;
+    if (r.last === 'r') { if (r.bounces === 0 && m.mark && !m.mark.net) { if (!m.mark.good) return { mx: 0, mz: 0 }; const v = Math.hypot(b.vx, b.vz) || 1; tx = m.mark.x + b.vx / v * 1.0; tz = m.mark.z + b.vz / v * 1.0; } else if (r.bounces > 0) { tx = b.x + b.vx * 0.12; tz = b.z + b.vz * 0.12; if (R.reach(m, 'p') > 0.2) swing = 'drive'; } }
+    const dx = tx - me.x, dz = tz - me.z, d = Math.hypot(dx, dz); return { mx: d > 0.1 ? dx / d : 0, mz: d > 0.1 ? dz / d : 0, swing, aim: m.who.r.x > 0 ? -0.8 : 0.8 }; };
+  let won = 0, hits = 0, rallies = 0; for (let seed = 1; seed <= 24; seed++) { const m = R.createMatch({ seed: seed * 17, toWin: 5, level: 'easy' }); for (let i = 0; i < 60 * 900 && m.state !== 'over'; i++) { R.step(m, DT, plain(m)); for (const e of m.events) { if (e.type === 'hit' && e.by === 'p') hits++; if (e.type === 'fault') rallies++; } } assert.equal(m.state, 'over', 'a hand-played match never ended'); if (m.winner === 'p') won++; }
+  assert.ok(won >= 15, `a plain player at the controls beat the easy rival only ${won} times in 24`); assert.ok(hits / rallies > 1, `a plain player made only ${(hits / rallies).toFixed(2)} returns a rally`); globalThis.plainWon = won; }
+
+// ---- Whole matches, both sides playing themselves ----
+// The same seed gives the same match; another seed gives another.
+{ const a = R.playOut({ seed: 77, youLevel: 'club' }), b = R.playOut({ seed: 77, youLevel: 'club' }), c = R.playOut({ seed: 78, youLevel: 'club' }); assert.deepEqual(a.log, b.log); assert.notDeepEqual(a.log.slice(0, 60), c.log.slice(0, 60)); }
+const pairs = [['easy', 'easy'], ['club', 'club'], ['pro', 'pro'], ['pro', 'easy'], ['easy', 'pro'], ['club', 'pro'], ['pro', 'club'], ['club', 'easy']], tally = { matches: 0, rallies: 0, hits: 0, why: {}, longest: 0, secs: 0 }, wins = {};
+for (const [you, rival] of pairs) for (let seed = 1; seed <= 16; seed++) { const { m, log } = R.playOut({ seed: seed * 31 + you.length, level: rival, youLevel: you, toWin: 7 }, 60 * 60 * 60), key = `${you} v ${rival}`; tally.matches++; tally.secs += m.t;
+  assert.equal(m.state, 'over', `${key}, seed ${seed}: an hour and no winner`); const top = Math.max(m.score.p, m.score.r), low = Math.min(m.score.p, m.score.r); assert.ok(top >= 7 && top - low >= 2 && (top === 7 || top - low === 2), `${key}: finished at ${m.score.p} to ${m.score.r}`); assert.equal(m.winner, m.score.p > m.score.r ? 'p' : 'r'); wins[key] = (wins[key] || 0) + (m.winner === 'p');
+  let server = 'p', score = { p: 0, r: 0 }, hits = 0, open = false; for (const e of log) { for (const v of Object.values(e)) if (typeof v === 'number') assert.ok(Number.isFinite(v), `${key}: a number went wrong in ${e.type}`);
+    if (e.type === 'serve') { assert.ok(!open, `${key}: a serve in the middle of a rally`); open = true; hits = 1; assert.equal(e.by, server); const spot = R.serveSpots(server, score)[server]; assert.ok(Math.abs(e.x - (spot.x - (server === 'p' ? 0.35 : -0.35))) < 1e-9 && Math.abs(e.z - spot.z) < 1e-9, `${key}: served from the wrong place at ${score.p} to ${score.r}`); }
+    if (e.type === 'hit') { assert.ok(open); hits++; }
+    if (e.type === 'fault') { assert.ok(open, `${key}: two faults in one rally`); open = false; tally.rallies++; tally.hits += hits; tally.longest = Math.max(tally.longest, hits); tally.why[e.why] = (tally.why[e.why] || 0) + 1; assert.ok(!['kitchen', 'twobounce'].includes(e.why), `${key}: a player broke the ${e.why} rule against its own judgement`); if (e.by === server) server = server === 'p' ? 'r' : 'p'; else score[server]++; assert.deepEqual(e.score, score, `${key}: the score moved wrongly after a ${e.why}`); assert.equal(e.server, server); }
+    if (e.type === 'point') assert.equal(e.to, e.server, `${key}: a point went to the receiver`); } }
+// Skill tells: the better player wins nearly always, and evenly matched players share the wins.
+for (const [k, lo, hi] of [['pro v easy', 15, 16], ['easy v pro', 0, 1], ['pro v club', 13, 16], ['club v pro', 0, 3], ['club v easy', 14, 16], ['club v club', 3, 13], ['easy v easy', 3, 13], ['pro v pro', 3, 13]]) assert.ok(wins[k] >= lo && wins[k] <= hi, `${k}: you won ${wins[k]} of 16`);
+// Rallies look like the game: a few shots each, ended by a mix of balls not reached, balls out and balls in the net.
+const mean = tally.hits / tally.rallies, share = k => (tally.why[k] || 0) / tally.rallies; assert.ok(mean > 3 && mean < 9, `rallies average ${mean.toFixed(1)} shots`); assert.ok(share('net') > 0.08 && share('out') > 0.08 && share('double') > 0.3 && share('double') < 0.75, JSON.stringify(tally.why)); assert.ok(tally.longest < 150);
+console.log(`ok  rules: court to regulation; ${48} shots land where aimed and clear the net; every rule staged and called right (out, lines in, two bounces, net, short, kitchen, two-bounce rule, serve, win by two); ${tally.matches} whole matches to 7, all finished (${(tally.secs / tally.matches / 60).toFixed(1)} min each on average), ${tally.rallies} rallies of ${mean.toFixed(1)} shots on average (longest ${tally.longest}): ${Object.entries(tally.why).map(([k, v]) => `${k} ${Math.round(v / tally.rallies * 100)}%`).join(', ')}; points only ever to the server; no player broke a rule it knows; a plain player at the controls beat the easy rival ${globalThis.plainWon} times in 24`);

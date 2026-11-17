@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Kitchen Line: pickleball in the browser</title>
+<meta name="description" content="A small 3D pickleball game. Singles, real rules: the two-bounce rule, the kitchen, side-out scoring. Keyboard, mouse or touch, against three levels of rival.">
+<meta name="theme-color" content="#111315">
+<link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml">
+<!-- Unlisted until release is approved: remove the next line, then add the gallery card and sitemap entry. -->
+<meta name="robots" content="noindex">
+<style>
+  :root { --bg:#111315; --panel:rgba(18,20,23,.9); --line:rgba(255,255,255,.18); --ink:#f4f5f3; --soft:#dfe4e7; --muted:#b3babf; --accent:#3fe08a; --accent-ink:#06210f; --rival:#ff7a6d;
+    --sans:"Helvetica Neue","Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif; --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace; color-scheme:dark; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--ink); font:15px/1.5 var(--sans); overflow:hidden; -webkit-text-size-adjust:100%; overscroll-behavior:none; }
+  [hidden] { display:none !important; }
+  button { font:inherit; color:inherit; cursor:pointer; } a { color:var(--ink); }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:6px; }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+  #court { position:fixed; inset:0; width:100%; height:100%; display:block; touch-action:none; }
+  #court:focus-visible { outline-offset:-5px; }
+  .eyebrow { margin:0; font:600 11px/1.2 var(--mono); letter-spacing:.2em; text-transform:uppercase; color:var(--accent); }
+  .btn { min-height:42px; padding:0 16px; border-radius:11px; border:1px solid var(--line); background:rgba(255,255,255,.07); font-weight:700; font-size:14px; white-space:nowrap; }
+  .btn.go { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  .btn[aria-pressed="true"], .seg input:checked + span { background:var(--ink); color:#111; border-color:var(--ink); }
+
+  /* The scoreboard */
+  #board { position:fixed; left:50%; top:max(12px, env(safe-area-inset-top)); transform:translateX(-50%); display:flex; align-items:stretch; gap:0; border-radius:14px; overflow:hidden; background:var(--panel); border:1px solid var(--line); font-variant-numeric:tabular-nums; pointer-events:none; }
+  #board div { display:flex; align-items:center; gap:10px; padding:7px 14px; } #board div + div { border-left:1px solid var(--line); }
+  #board .name { font:600 11px/1 var(--mono); letter-spacing:.16em; text-transform:uppercase; color:var(--muted); } #board b { font-size:26px; line-height:1; font-weight:800; min-width:1.1em; text-align:center; }
+  #board .dot { width:9px; height:9px; border-radius:50%; background:transparent; border:1.5px solid var(--muted); } #board .serving .dot { background:var(--accent); border-color:var(--accent); } #board .serving .name { color:var(--ink); }
+  #call { position:fixed; left:50%; top:max(74px, calc(env(safe-area-inset-top) + 74px)); transform:translateX(-50%); margin:0; padding:7px 14px; border-radius:999px; background:var(--panel); border:1px solid var(--line); font-weight:700; font-size:14px; text-align:center; max-width:calc(100vw - 24px); pointer-events:none; }
+  #tools { position:fixed; right:max(12px, env(safe-area-inset-right)); top:max(12px, env(safe-area-inset-top)); display:flex; gap:6px; } #tools .btn { min-height:40px; padding:0 12px; background:var(--panel); } #tools .btn[aria-pressed="true"] { background:var(--ink); }
+  #hint { position:fixed; left:max(14px, env(safe-area-inset-left)); bottom:max(12px, env(safe-area-inset-bottom)); margin:0; max-width:min(46vw, 420px); font-size:12.5px; color:var(--muted); pointer-events:none; }
+  #shots { position:fixed; right:max(12px, env(safe-area-inset-right)); bottom:max(12px, env(safe-area-inset-bottom)); display:flex; gap:8px; } #shots .btn { min-height:54px; min-width:74px; padding:0 14px; background:var(--panel); font-size:15px; display:grid; place-items:center; line-height:1.1; } #shots .btn small { display:block; font:600 10px/1.2 var(--mono); letter-spacing:.1em; color:var(--muted); } #shots .btn.go { background:var(--accent); } #shots .btn.go small { color:var(--accent-ink); }
+
+  /* Words that pop where things happen: comic-book lettering */
+  #pops { position:fixed; inset:0; pointer-events:none; overflow:hidden; }
+  .pop { position:absolute; left:0; top:0; font:900 italic 30px/1 var(--sans); letter-spacing:-.02em; color:var(--ink); text-shadow:-2px -2px 0 #111, 2px -2px 0 #111, -2px 2px 0 #111, 2px 2px 0 #111, 4px 5px 0 rgba(0,0,0,.45); white-space:nowrap; animation:pop .7s cubic-bezier(.2,1.4,.4,1) forwards; }
+  .pop.big { font-size:46px; color:var(--accent); } .pop.bad { color:var(--rival); font-size:38px; } .pop.soft { font-size:20px; color:var(--soft); }
+  @keyframes pop { 0% { opacity:0; scale:.3; } 18% { opacity:1; scale:1.15; } 70% { opacity:1; scale:1; } 100% { opacity:0; scale:1; translate:0 -22px; } }
+
+  /* The cards over the court: start, pause, result */
+  .card { position:fixed; left:50%; top:50%; transform:translate(-50%, -50%); width:min(560px, calc(100vw - 24px)); max-height:calc(100vh - 24px); overflow:auto; padding:24px 26px 22px; border-radius:20px; background:var(--panel); border:1px solid var(--line); -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px); }
+  h1 { margin:12px 0 10px; font-size:clamp(42px, 9vw, 76px); line-height:.9; font-weight:800; letter-spacing:-.05em; } h2 { margin:10px 0 8px; font-size:clamp(30px, 6vw, 46px); line-height:.95; font-weight:800; letter-spacing:-.04em; }
+  .card p { margin:0 0 12px; color:var(--soft); } .card ul { margin:0 0 14px; padding-left:19px; color:var(--soft); } .card li { margin-bottom:4px; } .card kbd { font:600 12px/1 var(--mono); padding:2px 6px; border-radius:5px; border:1px solid var(--line); background:rgba(255,255,255,.06); white-space:nowrap; }
+  fieldset { margin:0 0 12px; padding:0; border:0; display:flex; flex-wrap:wrap; align-items:center; gap:6px; } legend { float:left; margin-right:8px; padding:0; font:600 11px/42px var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
+  .seg { position:relative; } .seg input { position:absolute; inset:0; opacity:0; margin:0; cursor:pointer; } .seg span { display:grid; place-items:center; min-height:38px; padding:0 13px; border-radius:10px; border:1px solid var(--line); background:rgba(255,255,255,.06); font-weight:700; font-size:13.5px; } .seg input:focus-visible + span { outline:2px solid var(--accent); outline-offset:2px; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:4px; } .small { font-size:12.5px; color:var(--muted); }
+  details { margin:0 0 12px; } summary { cursor:pointer; padding:6px 0; font-weight:700; }
+  #fallback { position:fixed; inset:0; display:none; place-items:center; padding:28px; text-align:center; background:var(--bg); z-index:9; } #fallback p { max-width:460px; color:var(--soft); }
+
+  @media (max-width:760px), (max-height:520px) { #hint { display:none; } #tools .btn { padding:0 10px; font-size:13px; } #board b { font-size:22px; } #board div { padding:6px 10px; gap:7px; } .card { padding:18px 18px 16px; } }
+  @media (max-width:480px) { #board { left:10px; transform:none; } #board .name { font-size:10px; letter-spacing:.1em; } #call { top:max(66px, calc(env(safe-area-inset-top) + 66px)); font-size:13px; } #shots .btn { min-width:64px; padding:0 8px; } }
+  @media (max-width:360px) { #board div { padding:6px 7px; gap:5px; } #board b { font-size:20px; min-width:1em; } #board .dot { width:7px; height:7px; } #tools { gap:4px; right:max(8px, env(safe-area-inset-right)); } #tools .btn { padding:0 8px; font-size:12px; } #board { left:8px; } }
+  @media (max-height:520px) { h1 { font-size:36px; margin:6px 0; } .card ul { columns:2; column-gap:26px; font-size:13px; } .card p { font-size:13.5px; margin-bottom:8px; } #shots .btn { min-height:46px; } }
+  @media (prefers-reduced-motion:reduce) { .pop { animation:fade .9s linear forwards; } @keyframes fade { 0%, 75% { opacity:1; } 100% { opacity:0; } } }
+</style>
+<script type="importmap">
+{ "imports": { "three": "../_shared/three-r160/build/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="court" tabindex="0" role="img" aria-label="A pickleball court seen from behind your player. Your rival is across the net."></canvas>
+
+<div id="board" hidden aria-hidden="true">
+  <div id="b-you"><span class="dot"></span><span class="name">You</span><b id="s-you">0</b></div>
+  <div id="b-rival"><b id="s-rival">0</b><span class="name">Rival</span><span class="dot"></span></div>
+</div>
+<p id="call" hidden aria-hidden="true"></p>
+<div id="tools" hidden>
+  <button class="btn" id="pause" type="button">Pause</button>
+  <button class="btn" id="sound" type="button" aria-pressed="true">Sound</button>
+</div>
+<p id="hint" hidden></p>
+<div id="shots" hidden>
+  <button class="btn" id="b-dink" type="button">Dink<small>K</small></button>
+  <button class="btn" id="b-lob" type="button">Lob<small>L</small></button>
+  <button class="btn go" id="b-drive" type="button">Drive<small>Space</small></button>
+</div>
+<div id="pops" aria-hidden="true"></div>
+<p class="sr" id="live" role="status"></p>
+
+<section class="card" id="start" aria-labelledby="start-h">
+  <p class="eyebrow">Pickleball, singles</p>
+  <h1 id="start-h">Kitchen Line</h1>
+  <p>A quick game on a full-size court, with the real rules. Get to the ball, pick your shot, and stay out of the kitchen when you volley.</p>
+  <details id="how">
+    <summary>How to play</summary>
+    <ul>
+      <li><strong>Move:</strong> arrow keys or <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd>, or point with the mouse, or drag a finger. Your player runs to where you point.</li>
+      <li><strong>Hit:</strong> <kbd>Space</kbd> or a click to drive, <kbd>K</kbd> to dink it softly over the net, <kbd>L</kbd> to lob. The buttons do the same. Swing when the ball is within reach.</li>
+      <li><strong>Aim:</strong> the way you are moving, or where the mouse or your finger is, left or right.</li>
+      <li><strong>Serve:</strong> any shot key. It must land in the far court on the diagonal.</li>
+      <li><strong>Two bounces:</strong> the serve must bounce before it is returned, and the return must bounce too. After that you may volley.</li>
+      <li><strong>The kitchen:</strong> the lighter strip by the net. Never volley while standing in it.</li>
+      <li><strong>Scoring:</strong> only the server scores. Lose the rally on your serve and the serve changes hands. Win by two.</li>
+      <li><strong>Pause:</strong> <kbd>P</kbd> or <kbd>Esc</kbd>. The game also pauses when you look away.</li>
+    </ul>
+  </details>
+  <fieldset><legend>Rival</legend>
+    <label class="seg"><input type="radio" name="level" value="easy"><span>Easy</span></label>
+    <label class="seg"><input type="radio" name="level" value="club" checked><span>Club</span></label>
+    <label class="seg"><input type="radio" name="level" value="pro"><span>Pro</span></label>
+  </fieldset>
+  <fieldset><legend>Game to</legend>
+    <label class="seg"><input type="radio" name="to" value="5"><span>5</span></label>
+    <label class="seg"><input type="radio" name="to" value="7" checked><span>7</span></label>
+    <label class="seg"><input type="radio" name="to" value="11"><span>11</span></label>
+  </fieldset>
+  <div class="row"><button class="btn go" id="play" type="button">Play</button><button class="btn" id="watch" type="button">Watch a game first</button></div>
+  <p class="small" style="margin:14px 0 0">After <a href="https://x.com/chongdashu/status/2120154573356793883" rel="noopener">a post by chongdashu</a>. An original game: its own court, players, rules code and sounds, all made in the page.</p>
+</section>
+
+<section class="card" id="paused" hidden aria-labelledby="paused-h">
+  <p class="eyebrow">Paused</p>
+  <h2 id="paused-h">Take a breath</h2>
+  <p id="paused-score"></p>
+  <div class="row"><button class="btn go" id="resume" type="button">Carry on</button><button class="btn" id="quit" type="button">Back to the start</button></div>
+</section>
+
+<section class="card" id="over" hidden aria-labelledby="over-h">
+  <p class="eyebrow" id="over-eyebrow">Game</p>
+  <h2 id="over-h"></h2>
+  <p id="over-line"></p>
+  <div class="row"><button class="btn go" id="again" type="button">Play again</button><button class="btn" id="menu" type="button">Back to the start</button></div>
+</section>
+
+<div id="fallback" role="alert"><p><strong>This game needs WebGL.</strong><br>Your browser or device could not start 3D graphics. Try a recent version of Edge, Chrome, Firefox or Safari with hardware acceleration switched on.<br><br>Kitchen Line is a small pickleball game, after <a href="https://x.com/chongdashu/status/2120154573356793883" rel="noopener">a post by chongdashu</a>.</p></div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
