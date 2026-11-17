@@ -51,7 +51,7 @@ const said = p => p.evaluate(() => document.getElementById('say').textContent);
   const hit = await p.evaluate(S(s => { const st = s.state(), hz = st.hazards[1]; s.place(hz.x - hz.r - 12, hz.z, 0, 20); return hz; }));
   await p.keyboard.down('ArrowUp'); let slowest = 99, closest = 99; for (let i = 0; i < 50; i++) { await p.evaluate(S(s => s.fast(1))); const q = await p.evaluate(S(s => s.kart())); slowest = Math.min(slowest, q.v); closest = Math.min(closest, Math.hypot(q.x - hit.x, q.z - hit.z)); } await p.keyboard.up('ArrowUp');
   assert.match(await said(p), /Hit the .+ object/); assert.ok(closest >= hit.r + 1.3 - 0.01, 'the object is solid'); assert.ok(slowest < 10, `a square hit takes your speed away (slowest ${slowest.toFixed(1)})`);
-  await p.keyboard.press('r'); const k2 = await p.evaluate(S(s => s.kart())); assert.ok(k2.offCentre < 0.01, 'R puts the kart back on the road'); assert.match(await said(p), /Back on the road/);
+  await p.keyboard.press('r'); await p.evaluate(S(s => s.fast(1))); const k2 = await p.evaluate(S(s => s.kart())); // R is carried out by the next step of the race assert.ok(k2.offCentre < 0.01, 'R puts the kart back on the road'); assert.match(await said(p), /Back on the road/);
   await p.keyboard.press('c'); assert.equal((await state(p)).topView, true); assert.equal(await p.getAttribute('#cam', 'aria-pressed'), 'true'); await p.keyboard.press('c');
   await p.keyboard.press('m'); assert.equal((await state(p)).soundOn, false); assert.equal(await p.getAttribute('#sound', 'aria-pressed'), 'false');
   // Shortcuts still work after a button has been clicked with the mouse, and looking away pauses the race.
@@ -67,10 +67,18 @@ const said = p => p.evaluate(() => document.getElementById('say').textContent);
   for (const id of ['#r-time', '#r-lap', '#r-best']) assert.match(await p.textContent(id), /^\d:\d\d\.\d$/, id); assert.equal(await p.evaluate(() => document.activeElement.id), 'again');
   assert.equal(await p.evaluate(() => Number(localStorage.getItem('snapshot-circuit:best')) > 20), true, 'the record is kept');
   await axe(p, 'finish'); await layout(p, 'finish 1280');
-  await p.click('#again'); assert.equal((await state(p)).mode, 'race'); await p.evaluate(S(s => s.fast(60 * 240))); assert.equal((await state(p)).mode, 'done', 'a second race also finishes');
+  // Race again, pressing R every second and a half: the race still finishes, and the result card opens exactly once.
+  await p.evaluate(() => { window.__shown = 0; new MutationObserver(() => { if (!document.getElementById('finish').hidden) window.__shown++; }).observe(document.getElementById('finish'), { attributes: true, attributeFilter: ['hidden'] }); });
+  await p.click('#again'); assert.equal((await state(p)).mode, 'race'); await p.evaluate(S(s => s.fast(200)));
+  for (let i = 0; i < 400 && (await state(p)).mode === 'race'; i++) { await p.keyboard.press('r'); await p.evaluate(S(s => s.fast(90))); }
+  assert.equal((await state(p)).mode, 'done', 'a second race, with R pressed all the way round, also finishes'); assert.equal(await p.evaluate(() => window.__shown), 1, 'the result card opened more or less than once');
+  // Holding R (400 presses, no accelerator) earns no lap and opens no result card.
+  await p.click('#again'); await p.evaluate(S(s => { s.autopilot(false); s.fast(200); })); for (let i = 0; i < 400; i++) { await p.keyboard.press('r'); await p.evaluate(S(s => s.fast(1))); }
+  r = await state(p); assert.ok(r.mode === 'race' && r.lap === 0 && !r.done[0], `holding R earned progress: lap ${r.lap}, mode ${r.mode}`); assert.match(await said(p), /Back on the road/);
+  await p.evaluate(S(s => { s.autopilot(true); s.fast(60 * 240); })); assert.equal((await state(p)).mode, 'done'); assert.equal(await p.evaluate(() => window.__shown), 2);
   await p.click('#menu'); assert.equal((await state(p)).mode, 'menu'); assert.ok(await visible(p, '#start')); assert.equal(await p.evaluate(() => document.activeElement.id), 'go', 'back at the start card, Start has the focus');
   await p.reload(); await p.evaluate(() => window.snapshotCircuit.ready); assert.equal((await state(p)).soundOn, false, 'the sound choice survives a refresh');
-  done.push('a full three-lap race finishes, twice; result and record shown');
+  done.push('a full three-lap race finishes, three times, once with R pressed all the way round; the result card opens once a race; holding R earns no lap');
 
   // ---- 4. Your own photograph -------------------------------------------------------------------
   const png = Buffer.from((await p.evaluate(() => { const c = document.createElement('canvas'); c.width = 900; c.height = 600; const g = c.getContext('2d'); g.fillStyle = '#8a8f96'; g.fillRect(0, 0, 900, 600);
@@ -97,6 +105,30 @@ const said = p => p.evaluate(() => document.getElementById('say').textContent);
     await p.click('#go'); await p.evaluate(S(s => { s.autopilot(true); s.fast(60 * 300); })); assert.equal((await state(p)).mode, 'done', `the race on a ${w}x${h} picture finishes`); }
   done.push('own photo: objects found, raced to the finish, nothing sent, bad file refused, blank picture handled; 4000x300, 300x4000 and 2000x400 pictures cut to their middle and raced');
   await p.context().close(); }
+
+// ---- 4b. Loading: Start waits for a circuit; a sample that fails to load says so and offers another go or your own photo; photo swaps free the graphics memory ----
+{ const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } }), p = await ctx.newPage(), errors = []; p.on('pageerror', e => errors.push(String(e)));
+  let release; const held = new Promise(r => { release = r; }); await p.route(/caps\.jpg$/, async r => { await held; await r.continue(); });
+  await p.goto(url, { waitUntil: 'domcontentloaded' }); await p.waitForFunction(() => window.snapshotCircuit); await p.waitForTimeout(300);
+  assert.equal(await p.evaluate(() => document.getElementById('go').disabled), true, 'Start can be pressed before there is a circuit'); assert.match(await p.textContent('#credit'), /Reading the sample/);
+  await p.click('#go', { force: true }); await p.keyboard.press('Enter'); assert.ok(await visible(p, '#start') && !(await visible(p, '#status')), 'an early Start began a race');
+  release(); assert.equal(await p.evaluate(() => window.snapshotCircuit.ready), true); assert.equal(await p.evaluate(() => document.getElementById('go').disabled), false, 'Start stays off once the circuit is ready');
+  await p.click('#go'); await p.evaluate(S(s => s.fast(300))); assert.ok((await state(p)).go); await ctx.close(); assert.deepEqual(errors, [], 'errors while the sample was slow: ' + errors.join('; ')); }
+{ const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } }), p = await ctx.newPage(), errors = []; p.on('pageerror', e => errors.push(String(e)));
+  let fail = true; await p.route(/caps\.jpg$/, r => (fail ? r.abort() : r.continue()));
+  await p.goto(url); assert.equal(await p.evaluate(() => window.snapshotCircuit.ready), false);
+  assert.match(await p.textContent('#credit'), /could not be loaded\. Try again, or use your own photo/); assert.ok(await visible(p, '#sample')); assert.equal(await p.textContent('#sample'), 'Try the sample again');
+  assert.equal(await p.evaluate(() => document.getElementById('go').disabled), true); await p.keyboard.press('Enter'); assert.ok(await visible(p, '#start'), 'Enter started a race with no circuit');
+  fail = false; await p.click('#sample'); await p.waitForFunction(() => !document.getElementById('go').disabled); const s = await state(p); assert.equal(s.photoKey, 'caps'); assert.equal(s.blobs.length, 5); assert.ok(!(await visible(p, '#sample')));
+  await p.click('#go'); await p.evaluate(S(s => { s.autopilot(true); s.fast(60 * 240); })); assert.equal((await state(p)).mode, 'done', 'after a failed sample, a retry gives a race that finishes');
+  await ctx.close(); assert.deepEqual(errors, [], 'errors after the sample failed: ' + errors.join('; ')); }
+{ const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } }), p = await ctx.newPage(), errors = []; p.on('pageerror', e => errors.push(String(e)));
+  await p.goto(url); await p.evaluate(() => window.snapshotCircuit.ready);
+  const swap = k => p.evaluate(async k => { const c = document.createElement('canvas'); c.width = 900; c.height = 600; const g = c.getContext('2d'); g.fillStyle = '#888'; g.fillRect(0, 0, 900, 600); g.fillStyle = ['#e02020', '#2050e0'][k % 2]; g.beginPath(); g.arc(300 + k * 10, 250, 80, 0, 7); g.fill();
+    await window.snapshotCircuit.usePhoto(c, 'own'); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); return window.snapshotCircuit.gpu(); }, k);
+  const first = await swap(0); let last = first; for (let k = 1; k <= 20; k++) last = await swap(k);
+  assert.deepEqual(last, first, `after 20 more photo swaps the graphics memory grew from ${JSON.stringify(first)} to ${JSON.stringify(last)}`); await ctx.close(); assert.deepEqual(errors, []); }
+done.push('loading: Start is off until there is a circuit; a failed sample says so and can be tried again; 20 photo swaps leave the graphics memory where it was');
 
 // ---- 5. Reduced motion: the steady view from above ----------------------------------------------
 { const p = await open(1280, 800, { reduced: true }); assert.equal((await state(p)).topView, true); assert.equal(await p.getAttribute('#cam', 'aria-pressed'), 'true'); await p.context().close(); done.push('reduced motion starts in the view from above'); }

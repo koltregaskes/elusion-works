@@ -48,4 +48,4 @@ The idea follows a post by Dan Shipper about a photograph turned into a racing g
 
 ## Status
 
-Not published. The page carries `noindex`, is not in the demo gallery and is not in the sitemap. See `REVIEW.md` for what was checked and what was not.
+A draft, and unlisted: the page carries `noindex`, is not in the demo gallery and is not in the sitemap. The site deploys whatever is merged, so merging this would put the page on the live site at its own address, unlisted but reachable by anyone with the link. See `REVIEW.md` for what was checked and what was not, and for the outside review.

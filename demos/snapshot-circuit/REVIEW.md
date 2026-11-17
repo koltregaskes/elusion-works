@@ -5,7 +5,7 @@ Built 17 November 2026 by Claude Fable 5.2 in a Claude Code cloud session. Revie
 
 ## Verdict
 
-Ready for Kol to play. Not published, not in the gallery, not in the sitemap.
+A draft for Kol to try. Unlisted (not in the gallery, not in the sitemap, marked `noindex`). An outside review found real faults in getting back on the road and in loading the photograph; those are fixed and tested (see Outside review). It is not yet a visual reference: the karts are simple block models and nobody has played it.
 
 **Quality bar it sets:** a game whose level comes from the player's own picture, with rules that are proved by running hundreds of races without a screen, and a page that says truthfully what it found in the photograph.
 
@@ -30,11 +30,14 @@ Verified by running, in Node and in headless Chromium 153.
   - The sample circuit and a full three-lap race, run twice with identical results.
   - 660 made-up pictures in six shapes (16:9, 2:1, 3:2, square, 5:8, 3:5): every road is closed, inside the picture, free of kinks and crossings, with nothing solid in it; all three karts finish every race; no kart is ever inside an object; 0 rescues needed.
   - Rules: no moving before the start; a parked kart earns no lap; five minutes of driving the whole circuit backwards earns no lap; a head-on hit stops the kart at the object.
+  - Back on the road (R): held for a minute (four ways, with and without the accelerator) it passes no checkpoint and earns no lap; pressed just before each of the 24 checkpoints of a race it counts nothing itself, and the race still gives exactly three lap events and one finish event that the page can see; pressed after the finish it finishes nothing again.
+  - A kart that has finished brakes to a stop, never reverses, and never drives off again.
   - The detector on real pixels in awkward shapes: nothing throws; flat and empty pictures claim no objects; one clear object is kept.
 - `node demos/snapshot-circuit/tools/smoke.mjs <axe.min.js>`: pass.
   - The sample: five objects found where they are; the start card lists them.
   - Keyboard: start, countdown, drive, pause, hit an object, back on road, view, sound; shortcuts after a mouse click; looking away pauses; Leave race.
-  - A whole race to the result card, twice; the record is kept.
+  - A whole race to the result card; the record is kept. A second race with R pressed every second and a half all the way round still finishes, and the result card opens exactly once. 400 presses of R with no accelerator earn no lap and open no result card.
+  - Loading: while the sample photograph is still arriving, Start is switched off and pressing it or Enter does nothing (no errors); when the sample cannot be loaded the card says so, offers "Try the sample again" and your own photo, and a retry gives a race that finishes; 21 photo swaps in a row leave the graphics memory count (textures and geometries) exactly where it was after the first.
   - Own photo: objects found where drawn; raced to the finish; no request made; a text file refused in plain words; a blank picture gives a plain loop and says so; 4000 by 300, 300 by 4000 and 2000 by 400 pictures are cut to their middle, the page says so, and each is raced to the finish.
   - Reduced motion starts in the steady view from above.
   - Phones at 400 by 800, 320 by 568 and 740 by 360: Start in reach without scrolling, pads steer and brake, the kart drives itself forward, a race finishes, nothing off screen and nothing overlapping.
@@ -48,6 +51,7 @@ Verified by running, in Node and in headless Chromium 153.
 - **How it feels to drive.** Every race in the tests is driven by the autopilot or by scripted keys. Nobody has played it. Handling, difficulty and whether the rivals are fun to race need Kol.
 - **Real photographs.** One real photograph (the sample) and drawn test pictures were used. No phone photos, no HEIC files, nothing with faces or clutter. The detector is simple colour grouping: on a busy real photo it may pick odd things. The page shows what it picked before you race.
 - **Frame rate.** Only software rendering in a container was run. Real GPUs and phones are unmeasured.
+- **The look.** The charcoal haze at the horizon and the soft shadow under each kart were judged only from software-rendered screenshots, not on a real screen.
 - **Sound.** Synthesised and never listened to.
 - **Safari and Firefox.** Only Chromium was run.
 - **The sample photograph's licence** rests on the Kodak archive's own statement of unrestricted use. See the README.
@@ -59,6 +63,9 @@ Verified by running, in Node and in headless Chromium 153.
 - Very wide or tall pictures are cut to their middle (no wider than 2 to 1, no taller than 5 to 3).
 - Objects are found by colour and contrast, not by recognising what they are, so they are named by colour ("Yellow object").
 - The record time is kept for the sample photograph only.
+- Back on the road puts you on the centre of the road at the point the race already has you, standing still. It never moves you further round.
+- Single-letter shortcuts (C, M, P, R and W A S D) cannot be switched off or changed. See Outside review.
+- Without WebGL the page shows a notice only; there is no 2D version.
 
 ## Independent review
 
@@ -84,6 +91,27 @@ The reviewer also showed that several of my checks proved less than their messag
 It confirmed as sound: the five caps and their positions; collisions, including at the picture's edge; pick-ups never inside objects; rocking over the start line or spinning on a checkpoint earns nothing; tiny, huge, transparent and one-giant-object pictures; refusal of non-images; an SVG with a script in it runs nothing and fetches nothing; file names are not injected into the page.
 
 Found by my own checks on the way: the road folding over itself at tight bends when drawn as a ribbon (now painted onto the ground picture); a comment that swallowed a closing brace; the Start button below the fold on phones.
+
+## Outside review
+
+Reviewed by ChatGPT in chat mode at Pro, driven by another Claude session at the owner's request, 17 November 2026. It read the code and the pictures and did not run the page. Score 6/10, verdict HOLD. Each finding was then checked here by running it (Node scripts, and headless Chromium with software rendering) before anything was changed.
+
+| Finding | What was done | Held by |
+|---|---|---|
+| Back on the road (R) worked outside the race step, so a lap or finish it caused was wiped by the next step | True. Pressing R just before the final line finished the race in the rules but the page never saw the finish: no result card, the race stuck. Fixed: R is now a control the race step carries out, and everything it causes reaches the page | `sim.test.mjs` (R before all 24 checkpoints: three laps, one finish, all seen); `smoke.mjs` (race with R pressed all the way round finishes) |
+| Repeated or held R earned checkpoints and laps | True. Holding R with no accelerator completed all three laps in under a minute; in the browser, 400 presses gave lap 3, a finished kart and no result card. Fixed: R sets you down where the race already has you, standing still, and never moves you further round | `sim.test.mjs` (a minute of R, four ways: no checkpoint, no lap); `smoke.mjs` (400 presses: no lap) |
+| Results may appear more than once | Not seen. The result card could fail to appear at all (above), but no path opened it twice. A check now requires exactly one opening per race | `smoke.mjs` (card opens once per race) |
+| Finished rivals reverse | True: a finished kart kept braking and reversed at up to 7 units a second. Fixed: a finished kart stops and stays stopped. It can still be nudged by a kart that is racing, as before | `sim.test.mjs` |
+| Start can be pressed before a track exists | True: pressing Start or Enter while the sample was loading threw an error. Fixed: Start is switched off until there is a circuit, and the card says the sample is being read | `smoke.mjs` (sample held back on purpose) |
+| A failed sample-photo load is not handled | True: an error, a blank card, and no frames drawn even after choosing your own photo. Fixed: the card says the sample could not be loaded and offers to try again or use your own photo; the drawing loop runs either way | `smoke.mjs` (sample blocked, then retried and raced) |
+| Photo swaps leave textures, materials and geometries on the graphics card | True by reading and by count: on the old page, 20 swaps took live WebGL textures from 1 to 21 and buffers from 216 to 4,536. Fixed: everything the old photograph used is released before the new one is built | `smoke.mjs` (21 swaps, memory count unchanged) |
+| Single-letter shortcuts cannot be turned off, changed or limited to focus (WCAG 2.1.4) | True. Not done: it needs a decision from Kol (a switch for letter keys, or arrows, Escape and buttons only). Arrow keys and Escape already cover steering and pause | None |
+| The race canvas has no `tabindex`, so focusing it does nothing | True, though harmless in practice (focus fell to the page, where the keys still work). Fixed with `tabindex="-1"` | `smoke.mjs` Tab-order check still passes |
+| Racing view looks like a basic prototype: primitive karts, flat lighting, empty black horizon | True. Two small changes only: the black sky is now a charcoal haze that the table fades into, and each kart has a soft shadow under it. Karts, lighting, wheel and steering animation, and a tabletop setting were not redesigned; that needs Kol's direction and a real screen | Screenshots before and after, looked at; not a test |
+| Visual slice on real hardware, 20-second clip, reference set, frame timing, listening to the sound | Not done: no real device, no person to watch or listen here | None |
+| "Ready for Kol to play" and being a quality reference overreach | Fair. The verdict above now says draft, and that it is not yet a visual reference | This file |
+| No usable fallback without WebGL | True. Not done: a 2D version is a new build. Listed under Known limits | None |
+| The 660-case sweep uses made-up layouts, not photographs; full races mostly use the autopilot | True, and already said under Checks run and Not verified | This file |
 
 ## Provenance
 

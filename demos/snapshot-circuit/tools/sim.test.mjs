@@ -67,10 +67,35 @@ let fuzzRaces = 0, fuzzRescues = 0, flatObjects = 0;
 { const t = a.t, r = newRace(t); r.go = true; const p = r.karts[0]; p.h += Math.PI; let back = 0;
   for (let i = 0; i < 60 * 300; i++) { const j = (p.i - 9 + t.n) % t.n, want = Math.atan2(t.pts[j][1] - p.z, t.pts[j][0] - p.x), err = Math.atan2(Math.sin(want - p.h), Math.cos(want - p.h)), i0 = p.i; step(r, { steer: Math.max(-1, Math.min(1, err * 2.6)), throttle: p.v < 22 ? 1 : 0, brake: 0 }); back += ((i0 - p.i + t.n) % t.n) < 30 ? (i0 - p.i + t.n) % t.n : 0; }
   assert.ok(back > t.n * 5, `the wrong-way driver only got ${(back / t.n).toFixed(1)} laps backwards`); assert.equal(p.lap, 0, 'driving the wrong way round counted laps'); assert.equal(p.done, false); }
+// Back on the road (R). Expected values are worked out by hand, not read from the code: a kart that is only ever set
+// back where it already is cannot reach a checkpoint, and a three-lap race has exactly three laps and one finish.
+{ const t = a.t, grid = r => { const x = newRace(r); while (!x.go) step(x, null); return x; };
+  // Holding R for a minute, with and without the accelerator: no checkpoint, no lap.
+  for (const [every, throttle] of [[1, 0], [1, 1], [2, 0], [2, 1]]) { const r = grid(t), p = r.karts[0];
+    for (let i = 0; i < 60 * 60; i++) step(r, { steer: 0, throttle, brake: 0, rescue: i % every === 0 });
+    assert.equal(p.cp, 1, `holding R (every ${every} steps, throttle ${throttle}) passed ${p.cp - 1} checkpoints`); assert.equal(p.lap, 0, 'holding R earned a lap'); assert.equal(p.done, false); }
+  // R just before every checkpoint of every lap: the press itself counts nothing, the checkpoint still counts once when driven over,
+  // and every lap and the finish arrive in the step's own events, so the page sees them (once each).
+  const r = grid(t), p = r.karts[0], seen = { lap: 0, finish: 0, rescue: 0 }; let presses = 0, armed = -1;
+  for (let i = 0; i < 60 * 400 && !p.done; i++) { const target = t.checkpoints[p.cp % 8], gap = (target - p.i + t.n) % t.n, press = gap > 0 && gap <= 3 && armed !== p.cp;
+    const cp0 = p.cp, lap0 = p.lap; if (press) { armed = p.cp; presses++; }
+    step(r, { ...autopilot(r, p), rescue: press }); for (const e of r.events) if (e.kart === 0 && e.type in seen) seen[e.type]++;
+    if (press) { assert.equal(p.cp, cp0, 'pressing R passed a checkpoint'); assert.equal(p.lap, lap0, 'pressing R counted a lap'); } }
+  assert.equal(presses, 8 * LAPS, `R was pressed before ${presses} checkpoints, not all ${8 * LAPS}`); assert.equal(seen.rescue, 8 * LAPS);
+  assert.equal(seen.lap, 3, 'laps seen in the events'); assert.equal(seen.finish, 1, 'the finish is seen exactly once'); assert.ok(p.done && r.finished && r.order.includes(0));
+  for (let i = 0; i < 120; i++) step(r, { steer: 0, throttle: 1, brake: 0, rescue: true }); assert.equal(seen.finish + r.events.filter(e => e.type === 'finish' && e.kart === 0).length, 1, 'R after the finish finishes again');
+  assert.equal(p.lap, 3); }
+// A kart that has finished brakes to a stop and stays stopped: its speed never goes below nothing (it never reverses),
+// and once it is at rest it never drives again. (A kart still racing can still nudge it, as before.)
+{ const r = newRace(a.t); let reversed = 0, restarted = 0; const rest = new Set();
+  const look = () => { for (const k of r.karts) { if (!k.done) continue; if (k.v < 0) reversed++; if (rest.has(k.id) && k.v !== 0) restarted++; if (k.v === 0) rest.add(k.id); } };
+  while (!r.karts.every(k => k.done) && r.t < 400) { step(r, autopilot(r, r.karts[0])); look(); }
+  for (let i = 0; i < 60 * 10; i++) { step(r, autopilot(r, r.karts[0])); look(); }
+  assert.equal(reversed, 0, 'a finished kart reversed'); assert.equal(restarted, 0, 'a finished kart moved off again after stopping'); assert.equal(rest.size, 3, 'every finished kart came to a stop'); }
 // Real pixels through the detector, in awkward shapes: nothing throws, flat pictures claim no objects, one clear object is kept.
 { const pic = (w, h, paint) => { const data = new Uint8ClampedArray(w * h * 4); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const c = paint(x, y); data.set([c[0], c[1], c[2], c[3] ?? 255], (y * w + x) * 4); } return { width: w, height: h, data }; };
   for (const [w, h] of [[1024, 512], [1024, 77], [77, 1024], [3, 2], [640, 640], [600, 1000]]) { const flat = analyse(pic(w, h, () => [200, 200, 200])); assert.equal(flat.blobs.length, 0, `a flat ${w}x${h} picture claims ${flat.blobs.length} objects`); assert.equal(flat.method, 'plain');
     const clear = analyse(pic(w, h, () => [0, 0, 0, 0])); assert.equal(clear.blobs.length, 0, 'an empty see-through picture claims objects');
     const noisy = analyse(pic(w, h, (x, y) => { const v = ((x * 7919 + y * 104729) % 97) * 2.6; return [v, v, v]; })); for (const b of noisy.blobs) assert.ok(Number.isFinite(b.x + b.y + b.area) && b.name, 'a busy patch has no proper description'); }
   const one = analyse(pic(900, 600, (x, y) => (Math.hypot(x - 300, y - 250) < 80 ? [220, 30, 30] : [140, 145, 150]))); assert.equal(one.method, 'colour'); assert.equal(one.blobs.length, 1, 'one clear object should be kept, not swapped for patches'); assert.equal(one.blobs[0].name, 'red'); check(one, 'one red ball'); }
-console.log(`ok  track and race: ${a.t.n} road points, ${a.t.length.toFixed(0)} units a lap, autopilot race of ${LAPS} laps in ${(a.steps * DT).toFixed(1)} s, ${a.events.pickup} pick-ups, ${a.events.bump} bumps; rules and awkward pictures hold; ${fuzzRaces} made-up pictures in six shapes all raced to the finish (${fuzzRescues} rescues in all, ${flatObjects} objects left flat for want of room)`);
+console.log(`ok  track and race: ${a.t.n} road points, ${a.t.length.toFixed(0)} units a lap, autopilot race of ${LAPS} laps in ${(a.steps * DT).toFixed(1)} s, ${a.events.pickup} pick-ups, ${a.events.bump} bumps; rules and awkward pictures hold; back on the road earns nothing and loses no lap or finish; finished karts stop and stay stopped; ${fuzzRaces} made-up pictures in six shapes all raced to the finish (${fuzzRescues} rescues in all, ${flatObjects} objects left flat for want of room)`);

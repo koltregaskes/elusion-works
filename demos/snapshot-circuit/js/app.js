@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { analyse } from './photo.js';
 import { buildTrack, heading, normal, toPhoto, WORLD_W, HALF, LAPS } from './track.js';
-import { newRace, step, standings, autopilot, rescue, DT } from './game.js';
+import { newRace, step, standings, autopilot, DT } from './game.js';
 
 const $ = id => document.getElementById(id);
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -18,14 +18,14 @@ let renderer;
 try { renderer = new THREE.WebGLRenderer({ canvas: $('stage'), antialias: true, powerPreference: 'high-performance' }); }
 catch (err) { $('fallback').style.display = 'grid'; $('start').hidden = true; throw err; }
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, small ? 1.5 : 2));
-const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0c0e10);
+const HAZE = 0x1c1f23, scene = new THREE.Scene(); scene.background = new THREE.Color(HAZE); scene.fog = new THREE.Fog(HAZE, 70, 230); // the table fades into a soft charcoal haze, not a hard edge against black
 const camera = new THREE.PerspectiveCamera(58, 1, 0.5, 600);
 scene.add(new THREE.HemisphereLight(0xffffff, 0x555566, 1.6)); const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(30, 60, 20); scene.add(sun);
 const world = new THREE.Group(); scene.add(world);
 
 // ---- State ----------------------------------------------------------------------------------
 let photo = null, analysis = null, track = null, race = null, mode = 'menu', photoKey = SAMPLE.key, cropped = '', topView = reduced, paused = false, auto = false, soundOn = true;
-let cutouts = [], tokens = [], kartMeshes = [], mapBase = null, sayTimer = 0, settled = false;
+let cutouts = [], tokens = [], kartMeshes = [], mapBase = null, sayTimer = 0, settled = false, wantBack = false;
 const keys = { left: false, right: false, up: false, down: false };
 
 // ---- Building the scene from a photograph -----------------------------------------------------------
@@ -54,8 +54,12 @@ function kartMesh(colour) {
   for (const [x, z] of [[0.9, 0.85], [0.9, -0.85], [-0.9, 0.85], [-0.9, -0.85]]) { const w = add(new THREE.CylinderGeometry(0.42, 0.42, 0.36, 14), dark, x, 0.42, z); w.rotation.x = Math.PI / 2; }
   return g;
 }
+function emptyWorld() { // hand back to the graphics card everything the last photograph used, then clear the scene
+  const gone = new Set(); world.traverse(o => { if (o.geometry) gone.add(o.geometry); for (const m of [].concat(o.material || [])) { gone.add(m); if (m.map) gone.add(m.map); } });
+  for (const x of gone) x.dispose(); world.clear();
+}
 function buildScene() {
-  world.clear(); cutouts = []; tokens = []; kartMeshes = [];
+  emptyWorld(); cutouts = []; tokens = []; kartMeshes = [];
   const H = track.H, most = Math.min(small ? 2048 : 4096, renderer.capabilities.maxTextureSize), GW = Math.floor(Math.min(most, most * WORLD_W / H)), GH = Math.round(GW * H / WORLD_W), u = GW / WORLD_W; // neither side over the limit, whatever the picture's shape // one picture for the ground: the photograph with the road painted on it
   const gc = document.createElement('canvas'); gc.width = GW; gc.height = GH; const g2 = gc.getContext('2d'); g2.imageSmoothingQuality = 'high'; g2.drawImage(photo, 0, 0, GW, GH);
   const path = () => { g2.beginPath(); track.pts.forEach((p, i) => { const x = (p[0] + WORLD_W / 2) * u, y = (p[1] + H / 2) * u; if (i) g2.lineTo(x, y); else g2.moveTo(x, y); }); g2.closePath(); };
@@ -67,7 +71,7 @@ function buildScene() {
   { const p = track.pts[track.start], a = heading(track, track.start), sq = HALF * 2 / 8; g2.save(); g2.translate((p[0] + WORLD_W / 2) * u, (p[1] + H / 2) * u); g2.rotate(a); // the start line
     for (let r = 0; r < 2; r++) for (let c = 0; c < 8; c++) { g2.fillStyle = (r + c) % 2 ? '#111' : '#fff'; g2.fillRect((r - 1) * sq * u, (c - 4) * sq * u, sq * u + 0.5, sq * u + 0.5); } g2.restore(); }
   const tex = new THREE.CanvasTexture(gc); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  const table = new THREE.Mesh(new THREE.PlaneGeometry(WORLD_W + 60, H + 60), new THREE.MeshBasicMaterial({ color: 0x17191c })); table.rotation.x = -Math.PI / 2; table.position.y = -0.05; world.add(table);
+  const table = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), new THREE.MeshBasicMaterial({ color: 0x17191c })); table.rotation.x = -Math.PI / 2; table.position.y = -0.05; world.add(table);
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(WORLD_W, H), new THREE.MeshBasicMaterial({ map: tex })); ground.rotation.x = -Math.PI / 2; world.add(ground);
   const flat = o => new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, ...o });
   for (const hz of track.hazards) { // each object stands up from where it lies in the picture
@@ -78,7 +82,9 @@ function buildScene() {
   for (const p of track.pickups) { const col = new THREE.Color(p.colour[0] / 255, p.colour[1] / 255, p.colour[2] / 255).lerp(new THREE.Color(1, 1, 1), 0.25), t = new THREE.Group();
     const disc = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.05, 0.22, 24), new THREE.MeshBasicMaterial({ color: col })); disc.rotation.x = Math.PI / 2; const rim = new THREE.Mesh(new THREE.TorusGeometry(1.15, 0.12, 8, 28), new THREE.MeshBasicMaterial({ color: 0xffffff })); t.add(disc, rim); t.position.set(p.x, 1.5, p.z); world.add(t); tokens.push(t);
     const mark = new THREE.Mesh(new THREE.RingGeometry(1.0, 1.5, 28), flat({ color: col, opacity: 0.9 })); mark.rotation.x = -Math.PI / 2; mark.position.set(p.x, 0.09, p.z); mark.renderOrder = 4; world.add(mark); t.userData.mark = mark; } // a ring on the road, so a boost shows from above too
-  for (const colour of [0x3fe08a, 0xffb347, 0x6aa9ff]) { const k = kartMesh(colour); world.add(k); kartMeshes.push(k); }
+  { const sc = document.createElement('canvas'); sc.width = sc.height = 64; const sg = sc.getContext('2d'), grad = sg.createRadialGradient(32, 32, 4, 32, 32, 32); grad.addColorStop(0, 'rgba(0,0,0,.6)'); grad.addColorStop(1, 'rgba(0,0,0,0)'); sg.fillStyle = grad; sg.fillRect(0, 0, 64, 64);
+    const soft = new THREE.CanvasTexture(sc); // a soft contact shadow under each kart, so it sits on the ground instead of floating over it
+    for (const colour of [0x3fe08a, 0xffb347, 0x6aa9ff]) { const k = kartMesh(colour), sh = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 2.4), flat({ map: soft })); sh.rotation.x = -Math.PI / 2; sh.position.y = 0.1; sh.renderOrder = 5; k.add(sh); world.add(k); kartMeshes.push(k); } }
   // The map: the photograph itself, with the road drawn on it.
   mapBase = document.createElement('canvas'); mapBase.width = 336; mapBase.height = Math.round(336 * H / WORLD_W); const g = mapBase.getContext('2d'); g.drawImage(photo, 0, 0, mapBase.width, mapBase.height); g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(0, 0, mapBase.width, mapBase.height);
   g.lineJoin = 'round'; g.strokeStyle = 'rgba(255,255,255,.95)'; g.lineWidth = 5; g.beginPath(); track.pts.forEach((p, i) => { const [u, v] = toPhoto(p[0], p[1], H); if (i) g.lineTo(u * mapBase.width, v * mapBase.height); else g.moveTo(u * mapBase.width, v * mapBase.height); }); g.closePath(); g.stroke();
@@ -97,7 +103,7 @@ function showFound() { // the start card: what was found in the picture
   $('objects').replaceChildren(...items);
   const how = (analysis.method === 'detail' ? 'Nothing stood out by colour, so the busiest patches of the picture were used instead. ' : '') + (cropped ? `The picture was very ${cropped}, so only the middle of it is used. ` : '');
   $('credit').textContent = how + (photoKey === SAMPLE.key ? SAMPLE.credit : 'Your photograph. It stays on this device and is not uploaded.');
-  $('sample').hidden = photoKey === SAMPLE.key;
+  $('sample').hidden = photoKey === SAMPLE.key; $('sample').textContent = 'Back to the sample photo'; $('go').disabled = false;
 }
 async function usePhoto(source, key) { // source: anything a canvas can draw (an image, a bitmap, another canvas)
   const sw = source.naturalWidth || source.width, sh = source.naturalHeight || source.height; if (!sw || !sh) throw new Error('That picture has no size');
@@ -126,7 +132,7 @@ const audio = (() => {
 function say(text, ms = 2200) { $('say').textContent = text; clearTimeout(sayTimer); sayTimer = setTimeout(() => { $('say').textContent = ''; }, ms); }
 function hud(show) { for (const id of ['status', 'tools', 'speed']) $(id).hidden = !show; for (const p of document.querySelectorAll('.pads')) p.hidden = !show; }
 function toMenu() { paused = false; $('pause').setAttribute('aria-pressed', 'false'); $('pause').textContent = 'Pause'; mode = 'menu'; clearTimeout(sayTimer); $('say').textContent = ''; race = newRace(track); paused = false; $('start').hidden = false; $('finish').hidden = true; hud(false); $('count').textContent = ''; audio.engine(0, false); if (settled) $('go').focus({ preventScroll: true }); settled = true; } // no grabbing the focus as the page first loads
-function startRace() { audio.start(); race = newRace(track); mode = 'race'; paused = false; lastCount = 4; acc = 0; $('pause').setAttribute('aria-pressed', 'false'); $('pause').textContent = 'Pause'; $('start').hidden = true; $('finish').hidden = true; hud(true); $('stage').focus(); }
+function startRace() { if (!track) return; wantBack = false; audio.start(); race = newRace(track); mode = 'race'; paused = false; lastCount = 4; acc = 0; $('pause').setAttribute('aria-pressed', 'false'); $('pause').textContent = 'Pause'; $('start').hidden = true; $('finish').hidden = true; hud(true); $('stage').focus(); }
 function finishRace() {
   mode = 'done'; const me = race.karts[0], place = race.order.indexOf(0), bestLap = Math.min(...me.laps); let best = null;
   if (photoKey === SAMPLE.key) { try { best = Number(localStorage.getItem('snapshot-circuit:best')) || null; if (!best || me.time < best) { best = me.time; localStorage.setItem('snapshot-circuit:best', String(best)); } } catch (err) { best = me.time; } }
@@ -136,7 +142,7 @@ function finishRace() {
 
 // ---- The frame loop: fixed steps for the race, one draw a frame ------------------------------------------------
 let last = null, acc = 0, lastCount = 4, camPos = new THREE.Vector3(0, 60, 60), camLook = new THREE.Vector3();
-function input() { if (auto) return autopilot(race, race.karts[0]); const steer = (keys.right ? 1 : 0) - (keys.left ? 1 : 0); return { steer, throttle: keys.up || (touch && !keys.down) ? 1 : 0, brake: keys.down ? 1 : 0 }; }
+function input() { const rescue = wantBack; wantBack = false; if (auto) return { ...autopilot(race, race.karts[0]), rescue }; const steer = (keys.right ? 1 : 0) - (keys.left ? 1 : 0); return { steer, throttle: keys.up || (touch && !keys.down) ? 1 : 0, brake: keys.down ? 1 : 0, rescue }; }
 function advance() {
   step(race, input());
   for (const e of race.events) {
@@ -144,6 +150,7 @@ function advance() {
     else if (e.kart !== 0) continue;
     else if (e.type === 'bump') { const hz = track.hazards.find(h => h.blob === e.hazard); say(`Hit the ${hz ? hz.name : ''} object`, 1400); audio.bump(); }
     else if (e.type === 'pickup') { say('Boost', 1000); audio.pick(); }
+    else if (e.type === 'rescue') say('Back on the road', 1000);
     else if (e.type === 'lap' && e.lap < LAPS) { say(`Lap ${e.lap} in ${fmt(e.time)}`); audio.lap(); }
     else if (e.type === 'finish') { audio.lap(); finishRace(); }
   }
@@ -156,7 +163,7 @@ function draw(dt) {
   if (topView || mode === 'menu') { const d = Math.max(track.H * 0.78, (WORLD_W * 0.78) / camera.aspect) / Math.tan(camera.fov * Math.PI / 360); camPos.set(0, d * 0.94, d * 0.32); camLook.set(0, 0, 0); camera.position.copy(camPos); }
   else { const fx = Math.cos(me.h), fz = Math.sin(me.h), want = new THREE.Vector3(me.x - fx * 9.5, 5.4 + me.boost * 0.6, me.z - fz * 9.5), jump = reduced || camPos.distanceTo(want) > 30; // a cut, not a swoop, when the kart is suddenly somewhere else
     camPos.lerp(want, jump ? 1 : 1 - Math.exp(-dt * 9)); camLook.lerp(new THREE.Vector3(me.x + fx * 7, 1, me.z + fz * 7), jump ? 1 : 1 - Math.exp(-dt * 13)); camera.position.copy(camPos); if (me.bump > 0 && !reduced) camera.position.y += Math.sin(me.bump * 60) * 0.12; }
-  camera.lookAt(camLook);
+  camera.lookAt(camLook); scene.fog.near = topView || mode === 'menu' ? 1e4 : 70; scene.fog.far = scene.fog.near + 160; // no haze over the picture seen from above
   for (const c of cutouts) { c.visible = !(topView || mode === 'menu'); const dx = camera.position.x - c.position.x, dz = camera.position.z - c.position.z; c.rotation.y = Math.atan2(dx, dz); c.material.opacity = Math.min(1, Math.max(0.28, (Math.hypot(dx, dz) - 7) / 9)); } // an object right beside the camera thins out, so it never hides the road
   renderer.render(scene, camera);
   if (mode === 'menu') return;
@@ -177,10 +184,10 @@ addEventListener('resize', resize);
 
 // ---- Controls -------------------------------------------------------------------------------------------------------
 const KEYMAP = { ArrowLeft: 'left', a: 'left', ArrowRight: 'right', d: 'right', ArrowUp: 'up', w: 'up', ArrowDown: 'down', s: 'down' };
-function setPaused(on) { if (mode !== 'race' || on === paused) return; paused = on; $('pause').setAttribute('aria-pressed', String(on)); $('pause').textContent = on ? 'Resume' : 'Pause'; clearTimeout(sayTimer); $('say').textContent = on ? 'Paused' : ''; if (on) audio.engine(0, false); for (const k in keys) keys[k] = false; }
+function setPaused(on) { if (mode !== 'race' || on === paused) return; paused = on; $('pause').setAttribute('aria-pressed', String(on)); $('pause').textContent = on ? 'Resume' : 'Pause'; clearTimeout(sayTimer); $('say').textContent = on ? 'Paused' : ''; if (on) audio.engine(0, false); for (const k in keys) keys[k] = false; wantBack = false; }
 function setTop(on) { topView = on; $('cam').setAttribute('aria-pressed', String(on)); }
 function setSound(on) { soundOn = on; $('sound').setAttribute('aria-pressed', String(on)); try { localStorage.setItem('snapshot-circuit:sound', on ? '1' : '0'); } catch (err) { /* fine without */ } }
-function backOnRoad() { if (mode === 'race' && race.go && !paused) { rescue(race, race.karts[0]); say('Back on the road', 1000); } }
+function backOnRoad() { if (mode === 'race' && race.go && !paused) wantBack = true; } // done by the next step of the race, like any other control
 addEventListener('keydown', e => {
   if (e.ctrlKey || e.metaKey || e.altKey) return; const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, onButton = e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT';
   if (KEYMAP[k] && mode === 'race') { if (!paused) keys[KEYMAP[k]] = true; e.preventDefault(); return; }
@@ -196,18 +203,21 @@ $('go').addEventListener('click', startRace); $('again').addEventListener('click
 $('cam').addEventListener('click', () => setTop(!topView)); $('sound').addEventListener('click', () => setSound(!soundOn)); $('pause').addEventListener('click', () => setPaused(!paused)); $('rescue').addEventListener('click', backOnRoad); $('quit').addEventListener('click', toMenu);
 $('own').addEventListener('click', () => $('file').click());
 $('file').addEventListener('change', async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; let url; try { url = URL.createObjectURL(f); const im = new Image(); im.src = url; await im.decode(); await usePhoto(im, 'own'); say('A new circuit from your photograph', 2600); } catch (err) { say('That file could not be read as a picture.', 3200); } finally { if (url) URL.revokeObjectURL(url); } });
-$('sample').addEventListener('click', loadSample);
+$('sample').addEventListener('click', () => loadSample().then(ok => { if (!ok && track) say('The sample photograph could not be loaded.', 3200); }));
 document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'race' && race.go) setPaused(true); });
-async function loadSample() { const im = new Image(); im.src = SAMPLE.src; await im.decode(); await usePhoto(im, SAMPLE.key); }
+async function loadSample() { // true when the sample is in place; if it cannot be read, say so and offer another go or your own photo
+  try { const im = new Image(); im.src = SAMPLE.src; await im.decode(); await usePhoto(im, SAMPLE.key); return true; }
+  catch (err) { if (!track) { $('credit').textContent = 'The sample photograph could not be loaded. Try again, or use your own photo.'; $('sample').textContent = 'Try the sample again'; $('sample').hidden = false; } return false; }
+}
 
 // ---- Go ---------------------------------------------------------------------------------------------------------------
 try { soundOn = localStorage.getItem('snapshot-circuit:sound') !== '0'; } catch (err) { /* default on */ }
 $('sound').setAttribute('aria-pressed', String(soundOn)); setTop(topView); resize(); hud(false);
 window.snapshotCircuit = { // for the automated checks
-  ready: loadSample().then(() => { requestAnimationFrame(frame); return true; }),
+  ready: (requestAnimationFrame(frame), loadSample()),
   state: () => ({ mode, paused, topView, soundOn, photoKey, method: analysis.method, t: race.t, go: race.go, lap: race.karts[0].lap, place: standings(race).indexOf(0) + 1, v: race.karts[0].v, done: race.karts.map(k => k.done), order: [...race.order],
     blobs: analysis.blobs.map(b => ({ x: b.x, y: b.y, name: b.name, role: b.role })), hazards: track.hazards.map(h => ({ x: h.x, z: h.z, r: h.r, photo: toPhoto(h.x, h.z, track.H) })), flat: track.flat.length, cropped, size: [photo.width, photo.height], pickups: track.pickups.length, length: track.length }),
-  start: startRace, autopilot: on => { auto = on; }, usePhoto,
+  start: startRace, autopilot: on => { auto = on; }, usePhoto, gpu: () => ({ ...renderer.info.memory }),
   fast(n) { let i = 0; for (; i < n && mode === 'race'; i++) advance(); return i; }, // run the race ahead without waiting for frames
   place(x, z, h, v) { const k = race.karts[0]; Object.assign(k, { x, z, h, v }); },
   kart() { const k = race.karts[0], c = track.pts[k.i]; return { x: k.x, z: k.z, h: k.h, v: k.v, offCentre: Math.hypot(c[0] - k.x, c[1] - k.z) }; },

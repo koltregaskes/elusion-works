@@ -17,6 +17,8 @@
   #stage { position:fixed; inset:0; width:100%; height:100%; display:block; touch-action:none; }
   button,input { font:inherit; color:inherit; } button { cursor:pointer; }
   :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  #stage:focus { outline:none; } /* the race itself takes the focus during a race; it is not in the Tab order */
+  .btn:disabled { opacity:.5; cursor:default; }
   .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
   .btn { min-height:40px; padding:0 14px; border-radius:10px; border:1px solid var(--line); background:rgba(255,255,255,.07); font-weight:700; font-size:13px; white-space:nowrap; }
   .btn.primary { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
@@ -82,7 +84,7 @@
 </script>
 </head>
 <body>
-<canvas id="stage" aria-label="The race, seen from behind your kart" role="img"></canvas>
+<canvas id="stage" tabindex="-1" aria-label="The race, seen from behind your kart" role="img"></canvas>
 
 <div class="hud" id="status" aria-label="Race status" hidden>
   <div class="stat"><span>Lap</span><b id="lap">1/3</b></div>
@@ -114,11 +116,11 @@
     <div>
       <h3 id="found-h">Found in the photograph</h3>
       <ul id="objects" aria-labelledby="found-h"></ul>
-      <p class="note" id="credit"></p>
+      <p class="note" id="credit">Reading the sample photograph.</p>
     </div>
   </div>
   <div class="actions">
-    <button class="btn primary" id="go" type="button">Start race</button>
+    <button class="btn primary" id="go" type="button" disabled>Start race</button>
     <button class="btn" id="own" type="button">Use your own photo</button>
     <button class="btn" id="sample" type="button" hidden>Back to the sample photo</button>
   </div>

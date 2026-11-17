@@ -24,17 +24,20 @@ export function autopilot(race, kart) {
   return { steer: clamp(err * 2.6, -1, 1), throttle: kart.v < safe ? 1 : 0, brake: kart.v > safe + 4 ? 1 : 0 };
 }
 
-// Advance the race by one sixtieth of a second. `input` drives the player: { steer -1..1, throttle 0..1, brake 0..1 }.
+// Advance the race by one sixtieth of a second. `input` drives the player: { steer -1..1, throttle 0..1, brake 0..1, rescue }.
+// `rescue: true` is the player asking to be put back on the road. It is handled here, inside the step, so anything it
+// causes reaches race.events like everything else, and it never moves the kart further round the circuit.
 export function step(race, input) {
   const t = race.track; race.events.length = 0;
   if (!race.go) { race.countdown -= DT; if (race.countdown <= 0) { race.go = true; race.events.push({ type: 'go' }); } return race; }
   race.t += DT; // the race runs on after the player finishes, so the others cross the line too
   for (let k = 0; k < race.picks.length; k++) if (race.picks[k] > 0) race.picks[k] -= DT;
   for (const kart of race.karts) {
+    if (kart.player && input && input.rescue && !kart.done) { backOnRoad(race, kart); continue; } // this step is spent being put back
     const inp = kart.done ? { steer: 0, throttle: 0, brake: 0.6 } : kart.player && input ? input : autopilot(race, kart);
     const off = offRoad(t, kart.x, kart.z, kart.i), top = (off ? 15 : 33) * (kart.player ? 1 : kart.skill) + (kart.boost > 0 ? 12 : 0);
     kart.v += (inp.throttle * (kart.boost > 0 ? 34 : 21) - inp.brake * 42) * DT; kart.v -= kart.v * (off ? 1.5 : 0.42) * DT;
-    if (kart.v > top) kart.v += (top - kart.v) * Math.min(1, 5 * DT); kart.v = clamp(kart.v, -7, 60);
+    if (kart.v > top) kart.v += (top - kart.v) * Math.min(1, 5 * DT); kart.v = clamp(kart.v, kart.done ? 0 : -7, 60); // a kart that has finished brakes to a stop; it never reverses
     kart.h = wrap(kart.h + inp.steer * 2.5 * clamp(Math.abs(kart.v) / 11, 0.2, 1) * Math.sign(kart.v || 1) * DT);
     kart.x += Math.cos(kart.h) * kart.v * DT; kart.z += Math.sin(kart.h) * kart.v * DT;
     kart.boost = Math.max(0, kart.boost - DT); kart.bump = Math.max(0, kart.bump - DT);
@@ -69,7 +72,11 @@ function passCheckpoint(race, kart, was) { const t = race.track, target = t.chec
   kart.lap++; kart.laps.push(race.t - kart.lapStart); kart.lapStart = race.t; race.events.push({ type: 'lap', kart: kart.id, lap: kart.lap, time: kart.laps[kart.laps.length - 1] });
   if (kart.lap >= LAPS) { kart.done = true; kart.time = race.t; race.order.push(kart.id); race.events.push({ type: 'finish', kart: kart.id, place: race.order.length, time: race.t }); } }
 
-// Put a kart back on the centre of the road where it is, facing the right way. The player can ask for this too.
+// The player's "back on the road": set down on the centre of the road at the point the race already has them at,
+// facing the right way and standing still. It never moves them further round, so pressing or holding it earns nothing.
+function backOnRoad(race, kart) { const t = race.track; kart.x = t.pts[kart.i][0]; kart.z = t.pts[kart.i][1]; kart.h = heading(t, kart.i); kart.v = 0; kart.stuck = 0; race.events.push({ type: 'rescue', kart: kart.id }); }
+
+// A computer driver wedged against something: put back on the centre of the road a little further on, facing the right way.
 export function rescue(race, kart) { const t = race.track, was = kart.i; kart.i = (nearest(t, kart.x, kart.z, kart.i, t.n) + 3) % t.n; kart.x = t.pts[kart.i][0]; kart.z = t.pts[kart.i][1]; kart.h = heading(t, kart.i); kart.v = 5; kart.stuck = 0; race.events.push({ type: 'rescue', kart: kart.id }); if (!kart.done && race.go) passCheckpoint(race, kart, was); } // being set down just past a checkpoint still counts it
 
 // Where everyone stands: checkpoints passed, then how far past the last one (which is negative on the grid, behind the line).
