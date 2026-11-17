@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 const here = new URL('..', import.meta.url).pathname, read = f => fs.readFileSync(here + f, 'utf8'), film = here + 'efficiency-catch.mp4';
-const plain = s => s.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/g, ' ').replace(/<[^>]+>/g, ' ').replace(/&rsquo;/g, '’').replace(/&ldquo;/g, '“').replace(/&rdquo;/g, '”').replace(/&times;/g, '×').replace(/&ndash;/g, '–').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+const plain = s => s.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/g, ' ').replace(/<[^>]+>/g, ' ').replace(/&rsquo;/g, '’').replace(/&ldquo;/g, '“').replace(/&rdquo;/g, '”').replace(/&times;/g, '×').replace(/&ndash;/g, '\u2013').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
 const SCENES = [[1, 0, 7.2], [2, 7.2, 7.2], [3, 14.4, 12], [4, 26.4, 12], [5, 38.4, 12], [6, 50.4, 21.6], [7, 72, 21.6]], LENGTH = 93.6; // scene, start, length: every start is a multiple of the 2.4 s bar
 const scene = n => read(`tools/film/compositions/s${n}.html`), bare = s => s.toLowerCase().replace(/[“”.?!]/g, '').replace(/\s+/g, ' ').trim(), sentences = text => text.split(/(?<=[.?!”])\s+/).map(p => p.replace(/^\d\.\s*/, '').trim()).filter(Boolean);
 
@@ -32,6 +32,14 @@ lines.forEach((l, i) => { assert.ok(shown[i].same); assert.equal(shown[i].at, l.
   assert.ok(i === 0 || l.at > lines[i - 1].at, 'transcript lines are out of order'); const [, from, len] = SCENES[l.scene - 1]; assert.ok(l.at >= from && l.at < from + len, `line "${l.text}" is timed outside scene ${l.scene}`);
   assert.ok(entrances(l.scene).has(l.at), `nothing is told to appear at ${l.at} s in scene ${l.scene}, where the transcript puts "${l.text.slice(0, 40)}"`);
   const on = bare(plain(scene(l.scene))); for (const part of sentences(l.text)) assert.ok(on.includes(bare(part)), `"${part}" is in the transcript but not on screen in scene ${l.scene}`); });
+// Tighter: each line's words must belong to elements that are told to appear inside that line's own slot (from its time to the next line's time),
+// not just somewhere in the scene. A small lead of 0.2 s is allowed, because a scene's eyebrow arrives a tenth of a second before its heading.
+const textOf = (src, id) => { const open = new RegExp(`<(\\w+)\\b[^>]*\\bid="${id}"[^>]*>`).exec(src); if (!open) return ''; const tag = open[1], re = new RegExp(`<(/?)${tag}\\b[^>]*>`, 'g'); re.lastIndex = open.index + open[0].length; let depth = 1, m;
+  while ((m = re.exec(src))) { depth += m[1] ? -1 : 1; if (!depth) return plain(src.slice(open.index + open[0].length, m.index)); } return ''; };
+const timedText = n => { const src = scene(n), out = []; for (const m of src.matchAll(/\b(?:up|slam|pop)\("#([\w-]+)",\s*([\d.]+)/g)) out.push([Number(m[2]), textOf(src, m[1])]); for (const m of src.matchAll(/\bfromTo\("#([\w-]+)", \{[^{}]*\}, \{[^{}]*\}, ([\d.]+)\)/g)) out.push([Number(m[2]), textOf(src, m[1])]);
+  const cards = /\[([\d., ]+)\]\.forEach\(\(t, i\) => \{ const r = "#r"/.exec(src), lead = /\}, t \+ ([\d.]+)\);/.exec(src); if (cards) cards[1].split(',').map(Number).forEach((t, i) => out.push([Math.round((t + Number(lead[1])) * 1000) / 1000, textOf(src, 'r' + (i + 1))])); return out; };
+lines.forEach((l, i) => { const until = i + 1 < lines.length ? lines[i + 1].at : LENGTH, slot = timedText(l.scene).filter(([t]) => t >= l.at - 0.2 && t < until).sort((a, b) => a[0] - b[0]).map(([, text]) => bare(text)).join(' '); // in the order they appear: a heading can be split over several timed parts
+  for (const part of sentences(l.text)) assert.ok(slot.includes(bare(part)), `"${part}" (transcript ${l.at} s) is not told to appear between ${l.at} s and ${until} s`); });
 const said = lines.map(l => bare(l.text)).join(' | ');
 for (const [n] of SCENES) { const html = scene(n), at = html.indexOf('<div id="root"'), body = html.slice(html.indexOf('>', at) + 1, html.indexOf('<script>', at));
   for (const m of body.matchAll(/<(h1|h2|h3|div|p)\b([^>]*)>((?:(?!<(?:div|p|h\d|svg|section)\b)[\s\S])*?)<\/\1>/g)) { /* only elements that hold words directly, not boxes of other elements */

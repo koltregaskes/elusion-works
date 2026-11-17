@@ -10,10 +10,21 @@ const axeSrc = fs.readFileSync(process.argv[2], 'utf8'), { server, url: base } =
 const lines = JSON.parse(fs.readFileSync(new URL('./transcript.json', import.meta.url), 'utf8'));
 const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM || undefined, args: ['--autoplay-policy=no-user-gesture-required'] });
 const problems = [], requests = [], done = [];
-async function open(w, h, touch = false) { const ctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: touch, isMobile: touch }); const p = await ctx.newPage();
+async function open(w, h, touch = false, extra = {}) { const ctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: touch, isMobile: touch, ...extra }); const p = await ctx.newPage();
   p.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') problems.push(`${w}x${h}: ${m.text()}`); }); p.on('pageerror', e => problems.push(`${w}x${h}: ${e}`)); p.on('request', r => requests.push(r.url())); await p.goto(url); return p; }
 const film = (p, fn) => p.evaluate(`(${fn})(document.getElementById('film'))`);
 const axe = async (p, label) => { await p.evaluate(axeSrc); const r = await p.evaluate(() => window.axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] } })); assert.equal(r.violations.length, 0, `${label}: axe: ${r.violations.map(v => `${v.id} (${v.nodes.length}: ${v.nodes[0].target})`).join('; ')}`); };
+// Is the film's box on screen? All of it, or, if the screen is shorter than the film, its top (8 px below the top edge, the page's scroll margin).
+const filmShown = p => p.evaluate(() => { const r = document.querySelector('.film').getBoundingClientRect(), h = innerHeight; return r.height > h ? Math.abs(r.top - 8) < 3 : r.top >= -1 && r.bottom <= h + 1; });
+// Record whether the film was on screen at the moment it started playing.
+const watchStart = p => p.evaluate(() => { window.__shownAtStart = []; window.__whereAtStart = ''; document.getElementById('film').addEventListener('play', () => { const r = document.querySelector('.film').getBoundingClientRect(), h = innerHeight; window.__shownAtStart.push(r.height > h ? Math.abs(r.top - 8) < 3 : r.top >= -1 && r.bottom <= h + 1); window.__whereAtStart = window.__whereAtStart || `top ${Math.round(r.top)}, bottom ${Math.round(r.bottom)}, window ${h}`; }); });
+const pressLate = async (p, n, how, label) => { await watchStart(p); const sel = `#lines li:nth-child(${n}) .t`; await p.evaluate(() => scrollTo(0, document.documentElement.scrollHeight)); assert.ok(!(await filmShown(p)), `${label}: the film should start off screen for this test`);
+  if (how === 'key') { await p.focus(sel); await p.keyboard.press('Enter'); } else if (how === 'tap') await p.tap(sel); else await p.click(sel);
+  await p.waitForFunction(at => { const v = document.getElementById('film'); return !v.paused && v.currentTime >= at; }, lines[n - 1].at, { timeout: 15000 });
+  await p.waitForFunction(() => window.__shownAtStart.length > 0);
+  assert.ok(await filmShown(p), `${label}: after pressing ${lines[n - 1].at} s the film is not on screen: ` + await p.evaluate(() => { const r = document.querySelector('.film').getBoundingClientRect(); return `top ${Math.round(r.top)}, bottom ${Math.round(r.bottom)}, window ${innerHeight}`; })); assert.deepEqual(await p.evaluate(() => window.__shownAtStart.slice(0, 1)), [true], `${label}: the film started playing before it was on screen: ` + await p.evaluate(() => window.__whereAtStart));
+  if (how === 'key') assert.equal(await p.evaluate(() => document.activeElement.closest('li') && document.activeElement.closest('li').querySelector(':scope > span').textContent), lines[n - 1].text, `${label}: focus left the pressed time`);
+  await film(p, v => v.pause()); };
 const layout = async (p, label) => { const bad = await p.evaluate(() => { const out = [], vw = innerWidth; if (document.documentElement.scrollWidth > vw + 1) out.push(`page is ${document.documentElement.scrollWidth} wide`);
   for (const el of document.querySelectorAll('button, a, video, h1, #lines li')) { const r = el.getBoundingClientRect(); if (!r.width) continue; if (r.left < -1 || r.right > vw + 1) out.push(`${el.tagName} "${el.textContent.trim().slice(0, 20)}" off the side`); if (el.tagName === 'BUTTON' && (r.width < 24 || r.height < 24)) out.push(`button ${el.textContent} is ${Math.round(r.width)}x${Math.round(r.height)}`); } return out; }); assert.deepEqual(bad, [], `${label}: ${bad.join('; ')}`); };
 
@@ -38,7 +49,7 @@ const layout = async (p, label) => { const bad = await p.evaluate(() => { const 
   assert.equal(await p.textContent('#lines li.now > span'), fifth.text, 'the line on screen is marked in the transcript'); assert.equal(await p.locator('#lines li.now').count(), 1); assert.equal(await p.textContent('#lines li[aria-current="true"] > span'), fifth.text, 'and marked for screen readers, not by colour alone');
   await film(p, v => v.pause());
   // By keyboard too.
-  await p.focus('#lines li:nth-child(11) .t'); await p.keyboard.press('Enter'); await p.waitForFunction(at => document.getElementById('film').currentTime >= at, lines[10].at); assert.equal(await p.textContent('#lines li.now > span'), lines[10].text, 'the marked line follows a press at once'); await film(p, v => v.pause());
+  await p.focus('#lines li:nth-child(11) .t'); await p.keyboard.press('Enter'); await p.waitForFunction(at => { const v = document.getElementById('film'); return !v.paused && v.currentTime >= at; }, lines[10].at); /* wait for play itself: the film first scrolls into view */ assert.equal(await p.textContent('#lines li.now > span'), lines[10].text, 'the marked line follows a press at once'); await film(p, v => v.pause());
   // The browser really decodes the picture: at "You're the coal." there is a lot of green type on a dark ground.
   const green = await p.evaluate(() => new Promise(resolve => { const v = document.getElementById('film'); v.addEventListener('seeked', () => requestAnimationFrame(() => { const c = document.createElement('canvas'); c.width = 192; c.height = 108; const g = c.getContext('2d'); g.drawImage(v, 0, 0, 192, 108); const d = g.getImageData(0, 0, 192, 108).data; let green = 0, dark = 0; for (let i = 0; i < d.length; i += 4) { if (d[i + 1] > 170 && d[i] < 130) green++; if (d[i] + d[i + 1] + d[i + 2] < 90) dark++; } resolve({ green, dark }); }), { once: true }); v.currentTime = 37; }));
   assert.ok(green.green > 400 && green.dark > 12000, `at 37 s the frame has ${green.green} green and ${green.dark} dark pixels of 20,736`);
@@ -50,12 +61,38 @@ const layout = async (p, label) => { const bad = await p.evaluate(() => { const 
   await seek(0); assert.equal(await marked(), null, 'nothing is marked at the very start'); await seek(0.72); assert.equal(await marked(), lines[0].text); await seek(3.4); assert.equal(await marked(), lines[0].text); await seek(3.62); assert.equal(await marked(), lines[1].text);
   await seek(60.1); assert.equal(await marked(), lines[15].text); await seek(60.3); assert.equal(await marked(), lines[16].text); await seek(93.5); assert.equal(await marked(), lines[22].text, 'the last line is marked at the end');
   done.push('pressing a time (mouse or keyboard) plays from that line and marks it; the mark is right at the start, between lines and at the end; frames decode and differ scene to scene');
+  // A late line, pressed from the bottom of the page: the film comes into view before it plays, and keyboard focus stays on the pressed time.
+  await pressLate(p, 20, 'key', '1280 keyboard'); await pressLate(p, 23, 'mouse', '1280 mouse');
+  // Links home and sharing details, against values written out by hand.
+  assert.equal(await p.getAttribute('nav.crumbs a:nth-of-type(1)', 'href'), '../../'); assert.equal(await p.getAttribute('nav.crumbs a:nth-of-type(2)', 'href'), '../');
+  assert.equal(await p.getAttribute('meta[property="og:image"]', 'content'), 'https://elusionworks.com/demos/efficiency-catch/poster.jpg'); assert.equal(await p.getAttribute('meta[property="og:url"]', 'content'), 'https://elusionworks.com/demos/efficiency-catch/');
+  assert.equal(await p.getAttribute('meta[name="robots"]', 'content'), 'noindex', 'the page stays unlisted'); assert.equal(await p.locator('.phone-note').isVisible(), false, 'the phone note is not shown on a wide screen');
+  assert.equal(await p.textContent('#oops'), '', 'no problem message when nothing went wrong');
+  done.push('a late time pressed from the bottom of the page (keyboard and mouse) brings the film into view before it plays; focus stays on the pressed time; links home and sharing details are there; still noindex');
   await p.context().close(); }
 
 for (const [w, h] of [[400, 800], [320, 568], [740, 360]]) { const p = await open(w, h, true); await p.waitForFunction(() => document.getElementById('film').readyState >= 1); await layout(p, `${w}x${h}`); await axe(p, `${w}x${h}`);
   const box = await p.evaluate(() => { const r = document.querySelector('.film').getBoundingClientRect(); return { w: r.width, ratio: r.width / r.height }; }); assert.ok(Math.abs(box.ratio - 16 / 9) < 0.02 && box.w <= w, `the film box is ${box.w} wide at ${box.ratio.toFixed(2)}`);
-  await p.tap('#lines li:nth-child(3) .t'); await p.waitForFunction(at => document.getElementById('film').currentTime >= at, lines[2].at); await film(p, v => v.pause()); await p.context().close(); }
-done.push('phones 400x800, 320x568, 740x360: nothing off the side, the film keeps its shape, the transcript works by touch');
+  await p.tap('#lines li:nth-child(3) .t'); await p.waitForFunction(at => { const v = document.getElementById('film'); return !v.paused && v.currentTime >= at; }, lines[2].at); await film(p, v => v.pause());
+  assert.ok(await p.locator('.phone-note').isVisible(), `${w}x${h}: the note about small text is shown`); await pressLate(p, 22, 'tap', `${w}x${h} touch`); await p.context().close(); }
+done.push('phones 400x800, 320x568, 740x360: nothing off the side, the film keeps its shape, the transcript works by touch, a late time brings the film into view before it plays, the small-text note shows');
+
+// Less motion asked for: the film still comes into view first, by a jump rather than a glide.
+{ const p = await open(390, 800, true, { reducedMotion: 'reduce' }); await p.waitForFunction(() => document.getElementById('film').readyState >= 1);
+  const behaviours = await p.evaluate(() => { const seen = [], real = Element.prototype.scrollIntoView; Element.prototype.scrollIntoView = function (o) { seen.push(o && o.behavior); return real.call(this, o); }; window.__seen = seen; return true; });
+  assert.ok(behaviours); await pressLate(p, 21, 'tap', '390 reduced motion'); assert.deepEqual(await p.evaluate(() => window.__seen), ['auto'], 'with less motion asked for, the page jumps rather than glides'); await p.context().close(); }
+done.push('with reduced motion, a late time brings the film into view by a jump, before it plays');
+
+// When the browser refuses to play, the visitor is told, can try again, and the transcript stays.
+{ const p = await open(1280, 800); await p.evaluate(() => { const real = HTMLMediaElement.prototype.play; window.__refuse = true; HTMLMediaElement.prototype.play = function () { return window.__refuse ? Promise.reject(new DOMException('refused for the test', 'NotAllowedError')) : real.call(this); }; });
+  await p.waitForFunction(() => document.getElementById('film').readyState >= 1); await p.click('#lines li:nth-child(3) .t'); await p.waitForFunction(() => document.getElementById('oops').textContent.includes('did not start'));
+  assert.ok(await p.locator('#oops').isVisible()); assert.equal(await p.getAttribute('#oops', 'role'), 'status'); assert.equal(await p.locator('#lines li').count(), lines.length, 'the transcript is still there');
+  await p.evaluate(() => { window.__refuse = false; }); await p.click('#oops button'); await p.waitForFunction(at => { const v = document.getElementById('film'); return !v.paused && v.currentTime >= at; }, lines[2].at);
+  assert.equal(await p.textContent('#oops'), '', 'the message clears once the film plays'); await film(p, v => v.pause()); await p.context().close(); }
+// When the film file cannot be fetched at all, the visitor is told that too.
+{ const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } }), p = await ctx.newPage(); await p.route('**/efficiency-catch.mp4', r => r.abort()); await p.goto(url);
+  await p.waitForFunction(() => document.getElementById('oops').textContent.includes('could not be loaded'), null, { timeout: 15000 }); assert.equal(await p.locator('#oops button').count(), 1); await ctx.close(); }
+done.push('if the browser refuses to play, a message with a Try again button appears and clears once it plays; if the film cannot be fetched, the page says so');
 
 await browser.close(); server.close();
 const outside = requests.filter(u => !u.startsWith(base) && !u.startsWith('blob:') && !u.startsWith('data:'));

@@ -57,7 +57,7 @@ node demos/efficiency-catch/tools/check.mjs
 PW_CHROMIUM=/opt/pw-browsers/chromium node demos/efficiency-catch/tools/smoke.mjs node_modules/axe-core/axe.min.js
 ```
 
-The first reads the film file (format, length, loudness, frames), checks the transcript against the page and the scenes both ways, checks each line's time against the moment its words are told to appear, measures the six accents in the sound, and checks every sentence against the essay. The second drives the page in a browser on its own small server (`tools/serve.mjs`), because jumping about in a video needs a server that answers partial requests; GitHub Pages does.
+The first reads the film file (format, length, loudness, frames), checks the transcript against the page and the scenes both ways, checks each line's time against the moment its words are told to appear and that its words appear before the next line's time, measures the six accents in the sound, and checks every sentence against the essay. The second drives the page in a browser (pressing times, bringing the film on screen before it plays, the message when the film will not play or load, phones and reduced motion, axe) on its own small server (`tools/serve.mjs`), because jumping about in a video needs a server that answers partial requests; GitHub Pages does.
 
 ## What is borrowed
 
@@ -72,4 +72,4 @@ The idea follows a post by Matt Shumer about turning an essay into an explainer 
 
 ## Status
 
-Not published. The page carries `noindex`, is not in the demo gallery and is not in the sitemap. See `REVIEW.md` for what was checked and what was not.
+Draft, unlisted. The page carries `noindex`, is not in the demo gallery and is not in the sitemap. The site deploys whatever is merged, so merging this would put the page on the live site at its own address (/demos/efficiency-catch/): unlisted, but reachable by anyone with the link. See `REVIEW.md` for what was checked and what was not, including an outside review.
