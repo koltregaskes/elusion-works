@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Booster Catch: a 3D replay of a real rocket landing</title>
+<meta name="description" content="Scrub through the last 54 seconds of the first Super Heavy tower catch, rebuilt in 3D with eight cameras, blueprint and thermal views and a director's cut.">
+<meta name="theme-color" content="#101214">
+<link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml">
+<!-- Unlisted until Kol approves release: remove this line, then add the gallery card and sitemap entry. -->
+<meta name="robots" content="noindex">
+<style>
+  :root { --bg:#0d0f11; --panel:rgba(17,19,22,.82); --line:rgba(255,255,255,.12); --ink:#f5f6f4; --muted:#a2a8ad; --accent:#3fe08a; --accent-ink:#06210f;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace; --sans: "Helvetica Neue", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--ink); font-family:var(--sans); overflow:hidden; -webkit-text-size-adjust:100%; }
+  #stage { position:fixed; inset:0; width:100%; height:100%; display:block; touch-action:none; outline:none; }
+  body::before { content:""; position:fixed; left:0; top:0; width:min(100vw,760px); height:230px; background:radial-gradient(ellipse at 0 0, rgba(8,10,12,.62), rgba(8,10,12,0) 70%); pointer-events:none; }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+  button,input,select { font:inherit; color:inherit; }
+  button { cursor:pointer; }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+  .title { position:fixed; top:max(18px,env(safe-area-inset-top)); left:max(20px,env(safe-area-inset-left)); max-width:min(46vw,520px); pointer-events:none; text-shadow:0 1px 18px rgba(0,0,0,.55); }
+  .eyebrow { font:600 11px/1 var(--mono); letter-spacing:.2em; text-transform:uppercase; color:var(--accent); }
+  h1 { margin:8px 0 6px; font-size:clamp(30px,5.4vw,64px); line-height:.94; font-weight:800; letter-spacing:-.035em; }
+  .sub { margin:0; font-size:14px; color:#dfe3e5; }
+
+  .telemetry { position:fixed; top:max(18px,env(safe-area-inset-top)); right:max(20px,env(safe-area-inset-right)); width:250px; padding:14px 16px 12px; background:var(--panel); border:1px solid var(--line); border-radius:14px; backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); }
+  .clock { font:600 30px/1 var(--mono); letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+  .phase { margin-top:6px; font-size:12px; color:var(--accent); font-weight:600; min-height:15px; }
+  .stats { display:grid; grid-template-columns:1fr 1fr; gap:10px 12px; margin:12px 0 10px; }
+  .stat dt { font:600 10px/1 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
+  .stat dd { margin:5px 0 0; font:600 19px/1 var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .stat dd small { font-size:11px; color:var(--muted); font-weight:500; margin-left:3px; }
+  .engrow { display:flex; align-items:center; gap:12px; padding-top:10px; border-top:1px solid var(--line); }
+  #engmap { width:64px; height:64px; flex:none; }
+  #engmap circle { fill:#2a2e33; stroke:#454b52; stroke-width:.6; transition:fill .12s; }
+  #engmap circle.on { fill:var(--accent); stroke:#bff5d6; }
+  .engtxt { font-size:12px; color:var(--muted); line-height:1.35; }
+  .engtxt b { display:block; color:var(--ink); font:600 19px/1.1 var(--mono); }
+  .note { margin:10px 0 0; font-size:11px; line-height:1.35; color:var(--muted); }
+
+  .modes { position:fixed; right:max(20px,env(safe-area-inset-right)); top:calc(max(18px,env(safe-area-inset-top)) + 302px); width:250px; display:flex; padding:4px; background:var(--panel); border:1px solid var(--line); border-radius:12px; backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); }
+  .modes button { flex:1; min-height:36px; border:0; border-radius:8px; background:none; font-size:13px; font-weight:600; color:var(--muted); }
+  .modes button[aria-pressed="true"] { background:var(--ink); color:#111; }
+
+  .caption { position:fixed; left:50%; bottom:calc(max(14px,env(safe-area-inset-bottom)) + 150px); transform:translateX(-50%); width:min(92vw,640px); text-align:center; font-size:clamp(15px,1.5vw,18px); line-height:1.35; font-weight:600; text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 22px rgba(0,0,0,.75); pointer-events:none; text-wrap:balance; }
+
+  .dock { position:fixed; left:max(14px,env(safe-area-inset-left)); right:max(14px,env(safe-area-inset-right)); bottom:max(14px,env(safe-area-inset-bottom)); padding:10px 14px 12px; background:var(--panel); border:1px solid var(--line); border-radius:16px; backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); }
+  .row { display:flex; align-items:center; gap:8px; }
+  .cams { overflow-x:auto; scrollbar-width:none; padding:2px 2px 10px; margin:0 -2px; }
+  .cams::-webkit-scrollbar { display:none; }
+  .chip { flex:none; min-height:36px; padding:0 13px; border-radius:999px; border:1px solid var(--line); background:rgba(255,255,255,.04); font-size:13px; font-weight:600; color:#d9dde0; white-space:nowrap; }
+  .chip kbd { font:500 10px var(--mono); color:var(--muted); margin-right:6px; }
+  .chip[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  .chip[aria-pressed="true"] kbd { color:rgba(6,33,15,.7); }
+  .chip.toggle[aria-pressed="true"] { background:var(--ink); border-color:var(--ink); color:#111; }
+  .sep { flex:none; width:1px; height:22px; background:var(--line); margin:0 4px; }
+  .transport { gap:12px; }
+  .icon { flex:none; width:44px; height:44px; border-radius:50%; border:1px solid var(--line); background:rgba(255,255,255,.06); display:grid; place-items:center; }
+  .icon svg { width:18px; height:18px; fill:currentColor; }
+  #play { background:var(--ink); color:#111; border-color:var(--ink); }
+  #rate { flex:none; height:36px; padding:0 8px; border-radius:10px; border:1px solid var(--line); background:#1b1e22; font:600 13px var(--mono); }
+  .scrub { position:relative; flex:1; min-width:0; height:60px; }
+  .scrub input { position:absolute; left:0; right:0; top:0; width:100%; height:36px; margin:0; background:none; -webkit-appearance:none; appearance:none; }
+  .scrub input::-webkit-slider-runnable-track { height:6px; border-radius:3px; background:linear-gradient(90deg,var(--accent) var(--p,0%),rgba(255,255,255,.18) var(--p,0%)); }
+  .scrub input::-moz-range-track { height:6px; border-radius:3px; background:rgba(255,255,255,.18); }
+  .scrub input::-moz-range-progress { height:6px; border-radius:3px; background:var(--accent); }
+  .scrub input::-webkit-slider-thumb { -webkit-appearance:none; width:18px; height:18px; margin-top:-6px; border-radius:50%; background:#fff; border:0; box-shadow:0 0 0 4px rgba(63,224,138,.3); }
+  .scrub input::-moz-range-thumb { width:18px; height:18px; border-radius:50%; background:#fff; border:0; box-shadow:0 0 0 4px rgba(63,224,138,.3); }
+  .marks { position:absolute; left:9px; right:9px; top:31px; height:28px; pointer-events:none; } .mark { pointer-events:auto; }
+  .mark { position:absolute; transform:translateX(-50%); padding:8px 4px 0; border:0; background:none; font:600 10px/1 var(--mono); letter-spacing:.06em; text-transform:uppercase; color:var(--muted); white-space:nowrap; }
+  .mark::before { content:""; position:absolute; left:50%; top:0; width:1px; height:6px; background:currentColor; }
+  .mark.cited { color:#e9ecee; }
+  .mark.passed { color:var(--accent); }
+  .ends { flex:none; font:500 11px var(--mono); color:var(--muted); align-self:flex-start; padding-top:11px; }
+  #about-open { flex:none; align-self:flex-start; }
+
+  dialog { width:min(92vw,620px); max-height:86vh; padding:0; border:1px solid var(--line); border-radius:16px; background:#14171a; color:var(--ink); }
+  dialog::backdrop { background:rgba(0,0,0,.6); }
+  .about { padding:22px 24px 24px; overflow:auto; max-height:86vh; font-size:14px; line-height:1.55; }
+  .about h2 { margin:0 0 4px; font-size:24px; letter-spacing:-.02em; }
+  .about h3 { margin:18px 0 6px; font:600 11px var(--mono); letter-spacing:.16em; text-transform:uppercase; color:var(--accent); }
+  .about p, .about ul { margin:0 0 8px; color:#d6dadd; } .about ul { padding-left:18px; } .about a { color:#fff; }
+  .about table { width:100%; border-collapse:collapse; font-size:13px; } .about th, .about td { text-align:left; padding:5px 8px 5px 0; border-bottom:1px solid var(--line); vertical-align:top; } .about th { color:var(--muted); font-weight:600; }
+  .about kbd { font:600 12px var(--mono); padding:1px 6px; border:1px solid var(--line); border-radius:5px; background:#1d2125; }
+  .about .close { float:right; min-height:36px; padding:0 14px; border-radius:999px; border:1px solid var(--line); background:none; font-weight:600; }
+  #fallback { position:fixed; inset:0; display:none; place-items:center; padding:28px; text-align:center; background:var(--bg); z-index:9; }
+  #fallback p { max-width:460px; line-height:1.5; color:#d6dadd; }
+
+  @media (max-width:820px) {
+    .title { max-width:calc(100vw - 32px); left:16px; } .sub { font-size:12px; } h1 { font-size:34px; margin:6px 0 4px; }
+    .telemetry { top:auto; right:14px; left:14px; width:auto; bottom:calc(max(14px,env(safe-area-inset-bottom)) + 222px); padding:10px 12px; display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:4px 12px; }
+    .clock { font-size:20px; } .phase { margin:0; font-size:11px; grid-column:1; } .stats { grid-column:2; grid-row:1 / span 2; margin:0; gap:4px 10px; }
+    .stat dd { font-size:14px; margin-top:3px; } .stat dt { font-size:9px; }
+    .engrow { grid-column:3; grid-row:1 / span 2; border:0; padding:0; } #engmap { width:44px; height:44px; } .engtxt { display:none; } .note { display:none; }
+    .modes { top:auto; right:14px; left:auto; width:236px; bottom:calc(max(14px,env(safe-area-inset-bottom)) + 296px); }
+    .caption { bottom:auto; top:calc(max(18px,env(safe-area-inset-top)) + 104px); font-size:14px; }
+    .dock { padding:8px 10px 10px; } .transport { gap:8px; flex-wrap:wrap; } .scrub { order:-1; flex:1 0 100%; height:56px; } #about-open { margin-left:auto; align-self:center; } .ends { display:none; } .mark { font-size:9px; letter-spacing:0; }
+    .mark:not(.cited) { visibility:hidden; }
+  }
+  @media (max-height:500px) {
+    .sub, .note, .engtxt, .caption, .ends { display:none; } h1 { font-size:24px; margin:4px 0 0; }
+    .telemetry { top:10px; bottom:auto; left:auto; right:12px; width:auto; padding:8px 12px; display:flex; align-items:center; gap:14px; }
+    .phase { display:none; } .stats { margin:0; display:flex; gap:14px; } .engrow { border:0; padding:0; } #engmap { width:36px; height:36px; }
+    .modes { top:62px; bottom:auto; right:12px; left:auto; width:230px; } .modes button { min-height:30px; }
+    .transport { flex-wrap:nowrap; } .scrub { order:0; flex:1 1 0; }
+    .dock { padding:6px 10px 8px; } .cams { padding-bottom:6px; } .chip { min-height:32px; } .icon { width:38px; height:38px; } .scrub { height:54px; }
+  }
+  @media (max-height:520px) and (min-width:821px) { .modes { top:auto; bottom:calc(max(14px,env(safe-area-inset-bottom)) + 150px); } .note { display:none; } }
+  @media (prefers-reduced-motion:reduce) { * { transition:none !important; } }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "../_shared/three-r160/build/three.module.js",
+  "three/addons/": "../_shared/three-r160/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="stage" tabindex="0" role="img" aria-label="3D replay of a rocket booster descending and being caught by a launch tower. Use the timeline and camera buttons below to control it."></canvas>
+
+<header class="title">
+  <div class="eyebrow">Real-event replay</div>
+  <h1>Booster catch</h1>
+  <p class="sub">Starship Flight 5 · 13 October 2024 · Starbase, Texas</p>
+</header>
+
+<section class="telemetry" aria-label="Flight readout (modelled)">
+  <div class="clock" id="clock" aria-hidden="true">T+06:06.0</div>
+  <div class="phase" id="phase">Supersonic fall</div>
+  <dl class="stats">
+    <div class="stat"><dt>Altitude</dt><dd id="alt">8.27<small>km</small></dd></div>
+    <div class="stat"><dt>Speed</dt><dd id="spd">1,127<small>km/h</small></dd></div>
+  </dl>
+  <div class="engrow">
+    <svg id="engmap" viewBox="-5 -5 10 10" role="img" aria-label="Engine map"></svg>
+    <div class="engtxt"><b id="engn">0 / 33</b>engines lit</div>
+  </div>
+  <p class="note">Event times follow the published flight timeline. Altitude, speed and path are a modelled fit, not telemetry.</p>
+</section>
+
+<div class="modes" role="group" aria-label="View">
+  <button type="button" data-mode="visual" aria-pressed="true">Visual</button>
+  <button type="button" data-mode="blueprint" aria-pressed="false">Blueprint</button>
+  <button type="button" data-mode="thermal" aria-pressed="false">Thermal</button>
+</div>
+
+<p class="caption" id="caption" aria-live="polite"></p>
+
+<section class="dock" aria-label="Replay controls">
+  <div class="row cams" role="group" aria-label="Camera">
+    <button class="chip toggle" id="director" type="button" aria-pressed="true" title="Cuts between cameras on a 120 bpm beat (D)">Director's cut</button>
+    <span class="sep" aria-hidden="true"></span>
+    <span id="camchips" class="row"></span>
+    <span class="sep" aria-hidden="true"></span>
+    <button class="chip toggle" id="split" type="button" aria-pressed="false" title="Show two more cameras at the same instant (V)">Split view</button>
+    <button class="chip toggle" id="path" type="button" aria-pressed="false" title="Show the flight path (P)">Flight path</button>
+    <button class="chip toggle" id="sound" type="button" aria-pressed="false" title="Engine rumble and a beat (M)">Sound</button>
+  </div>
+  <div class="row transport">
+    <button class="icon" id="play" type="button" aria-label="Play"><svg viewBox="0 0 24 24" aria-hidden="true"><path id="playicon" d="M7 4.5v15l13-7.5z"/></svg></button>
+    <button class="icon" id="restart" type="button" aria-label="Replay from the start"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5V1.5L7 6l5 4.5V7a5.5 5.5 0 1 1-5.5 5.5h-2A7.5 7.5 0 1 0 12 5z"/></svg></button>
+    <label class="sr" for="rate">Playback speed</label>
+    <select id="rate"><option value="0.25">0.25x</option><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option></select>
+    <span class="ends" aria-hidden="true">T+06:06</span>
+    <div class="scrub">
+      <label class="sr" for="scrub">Timeline</label>
+      <input id="scrub" type="range" min="366" max="420" step="0.05" value="366">
+      <div class="marks" id="marks"></div>
+    </div>
+    <span class="ends" aria-hidden="true">T+07:00</span>
+    <button class="chip" id="about-open" type="button">Sources</button>
+  </div>
+</section>
+
+<dialog id="about" aria-labelledby="about-h">
+  <div class="about">
+    <button class="close" type="button" id="about-close">Close</button>
+    <h2 id="about-h">About this replay</h2>
+    <p>An original 3D reconstruction of the last 54 seconds of the first Super Heavy tower catch: Starship Flight 5, Booster 12, launched from Starbase, Texas at 7:25 am local time on 13 October 2024. Every model, texture and effect here is procedural and made for this page. No SpaceX footage, models or logos are used.</p>
+    <h3>What matches the record</h3>
+    <table>
+      <tr><th>Event</th><th>Here</th><th>Source</th></tr>
+      <tr><td>Slows through the speed of sound</td><td>T+6:08</td><td>Published flight timeline</td></tr>
+      <tr><td>Landing burn starts</td><td>T+6:30</td><td>Published flight timeline, as flown. SpaceX's pre-flight plan said 6:33.</td></tr>
+      <tr><td>Engines off, caught by the tower</td><td>T+6:54</td><td>Published flight timeline, as flown. SpaceX's pre-flight plan said 6:56.</td></tr>
+      <tr><td>Thirteen engines relight, then three</td><td>Yes</td><td>Press coverage of the flight</td></tr>
+      <tr><td>Booster 71 m tall, 9 m wide, 33 engines; tower 146 m</td><td>To scale</td><td>Published vehicle figures</td></tr>
+    </table>
+    <h3>What is modelled, not measured</h3>
+    <p>Altitude, speed, the exact path and lean, when the engines drop from thirteen to three, how fast the arms close, the layout of the site, the weather and the light. These are a plausible fit between the three known times. Treat the readout as an illustration.</p>
+    <h3>Sources and credit</h3>
+    <ul>
+      <li>Flight and vehicle: SpaceX, mission page "Starship's fifth flight test".</li>
+      <li>Timeline: Wikipedia article "Starship flight test 5" (CC BY-SA), flight timeline table.</li>
+      <li>Idea: Ethan Mollick's <a href="https://x.com/emollick/status/2122036763468214711" rel="noopener">booster catch replay</a>. This is a separate build of a different flight.</li>
+      <li>Rendering: the three.js library, release 160, MIT licence.</li>
+    </ul>
+    <h3>Keys</h3>
+    <p><kbd>Space</kbd> play or pause · <kbd>←</kbd> <kbd>→</kbd> one second (with <kbd>Shift</kbd>, five) · <kbd>1</kbd> to <kbd>8</kbd> cameras · <kbd>D</kbd> director's cut · <kbd>B</kbd> <kbd>T</kbd> <kbd>N</kbd> blueprint, thermal, visual · <kbd>V</kbd> split view · <kbd>P</kbd> flight path · <kbd>M</kbd> sound · <kbd>R</kbd> replay</p>
+    <p>An Elusion Works study, built with Claude Fable 5.2.</p>
+  </div>
+</dialog>
+
+<div id="fallback" role="alert"><p><strong>This replay needs WebGL 2.</strong><br>Your browser or device could not start 3D graphics. Try a recent version of Edge, Chrome, Firefox or Safari with hardware acceleration switched on.</p></div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
