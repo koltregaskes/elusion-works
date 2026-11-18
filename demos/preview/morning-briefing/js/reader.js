@@ -1,0 +1,82 @@
+// Morning Briefing: the arithmetic of reading a briefing aloud and of swiping between its cards.
+// Nothing here touches the page or makes a sound, so all of it can be checked in Node.
+
+// ---- Sentences ----
+// Split a piece of prose into sentences. A stop ends one unless it plainly does not:
+//   - it is inside a figure or a time (3.5, 06.30), where no space follows it;
+//   - a small letter follows ("e.g. on the train", "done?" and left);
+//   - it belongs to a title or a joining abbreviation, which never end a sentence (Dr., vs., e.g.);
+//   - it belongs to an abbreviation that can end one (a.m., etc.) or to a single letter (J. Smith, plan A.), and what follows does not look like the start of a sentence;
+//   - it numbers an item in a list ("Steps: 1. Open the app.").
+// A figure after a stop starts a new sentence ("The stop is at 70. 3 jobs failed."), except after No., Fig. and the like. Closing quotes and brackets stay with the sentence they close.
+const NEVER = new Set(['mr', 'mrs', 'ms', 'dr', 'prof', 'st', 'vs', 'e.g', 'i.e']), MAYBE = new Set(['a.m', 'p.m', 'etc', 'approx', 'inc', 'ltd', 'co']), COUNTS = new Set(['no', 'nos', 'fig', 'vol', 'p', 'pp', 'ch']);
+const STARTS = new Set(['the', 'then', 'it', 'its', 'this', 'that', 'these', 'those', 'he', 'she', 'we', 'they', 'you', 'i', 'a', 'an', 'in', 'on', 'at', 'but', 'and', 'so', 'if', 'when', 'there', 'here', 'nothing', 'one', 'two', 'three', 'no', 'not', 'what', 'who', 'why', 'how', 'for', 'to', 'after', 'before', 'now', 'today', 'yesterday', 'tomorrow', 'all', 'every', 'some', 'most']);
+export function sentences(text) { const clean = text.replace(/\s+/g, ' ').trim(); if (!clean) return []; const out = []; let from = 0;
+  for (let i = 0; i < clean.length; i++) { const c = clean[i]; if (c !== '.' && c !== '!' && c !== '?') continue; let end = i + 1; while (end < clean.length && /[.!?]/.test(clean[end])) end++; while (end < clean.length && /["'”’)\]]/.test(clean[end])) end++;
+    if (end < clean.length && clean[end] !== ' ') { i = end - 1; continue; } // a stop inside a word or a figure
+    const rest = clean.slice(end).trimStart(), sofar = clean.slice(from, i), word = sofar.split(' ').pop().toLowerCase().replace(/^[("'“‘]+/, ''), next = (rest.match(/^[A-Za-z']+/) || [''])[0], opens = STARTS.has(next.toLowerCase()) && /^[A-Z]/.test(next);
+    const carries = rest && (/^[a-z]/.test(rest) || (c === '.' && (NEVER.has(word) || (/^[0-9]/.test(rest) && COUNTS.has(word)) || ((MAYBE.has(word) || /^[a-z]$/.test(word)) && !opens && !/^[0-9]/.test(rest)) || (/^\d{1,2}$/.test(word) && (sofar.trim() === word || /[:;]\s*\d{1,2}$/.test(sofar))))));
+    if (carries) { i = end - 1; continue; } out.push(clean.slice(from, end).trim()); from = end; i = end - 1; }
+  const tail = clean.slice(from).trim(); if (tail) out.push(tail); return out; }
+
+// ---- Timing ----
+// How long a sentence takes to say: 165 words a minute at normal speed, plus a breath after it.
+export const WPM = 165, BREATH = 0.3, RATES = [1, 1.25, 1.5, 0.85];
+// A figure counts as the words it is said in: two digits to a word, "point" for a decimal point, "pounds" or "per cent" for its sign. So 34 is one word, 212 two, 1.8 three ("one point eight"), £4.10 three ("four pounds ten"), 06:30 two.
+const figure = w => { const money = /£/.test(w), parts = w.replace(/[^0-9.,:]/g, '').split(/[.,:]/).filter(Boolean); return Math.max(1, parts.reduce((n, d) => n + Math.ceil(d.length / 2), 0) + (money || /%/.test(w) ? 1 : 0) + (!money && /\d\.\d/.test(w) ? 1 : 0)); };
+export const wordCount = text => (text.match(/[A-Za-z0-9£%'’]+(?:[.,:][0-9]+)*/g) || []).reduce((n, w) => n + (/[0-9]/.test(w) ? figure(w) : 1), 0);
+export const seconds = (text, rate = 1) => (wordCount(text) * 60 / WPM + BREATH) / rate;
+export const clock = s => { const t = Math.max(0, Math.round(s)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
+export const minutes = s => { const m = Math.max(1, Math.round(s / 60)); return `${m} ${m === 1 ? 'minute' : 'minutes'}`; };
+
+// ---- The briefing as a list of lines ----
+// cards: [{ id, title, blocks: [text, ...] }]. Each block is split into sentences; each sentence is a line: { text, card, block, n (its place in the card), of (how many in the card), dur (seconds at normal speed), start }.
+export function lines(cards) { const out = []; let start = 0; cards.forEach((card, c) => { const mine = []; card.blocks.forEach((block, b) => { for (const text of sentences(block)) mine.push({ text, card: c, block: b }); });
+    mine.forEach((l, k) => { l.n = k + 1; l.of = mine.length; l.dur = seconds(l.text); l.start = start; start += l.dur; out.push(l); }); }); return out; }
+export const total = list => (list.length ? list[list.length - 1].start + list[list.length - 1].dur : 0);
+export const firstOf = (list, card) => list.findIndex(l => l.card === card); // the first line of a card, or -1 if the card says nothing
+
+// ---- The player ----
+// state: { i: which line, t: seconds into it (at normal speed), playing, rate, ended }. Time given to advance() is real time; a faster rate uses it up faster.
+export const createPlayer = () => ({ i: 0, t: 0, playing: false, rate: 1, ended: false });
+// Move on by dt seconds of real time. hold: do not leave the present line (a voice is still saying it). Returns what happened: 'line' when a new line begins, 'card' when it is on a new card, 'end' when the last line is done.
+export function advance(state, list, dt, hold = false) { const seen = []; if (!state.playing || state.ended || !list.length) return seen; state.t += dt * state.rate;
+  while (state.t >= list[state.i].dur) { if (hold) { state.t = list[state.i].dur * 0.999; break; } const over = state.t - list[state.i].dur; if (state.i === list.length - 1) { state.t = list[state.i].dur; state.playing = false; state.ended = true; seen.push('end'); break; }
+    const was = list[state.i].card; state.i++; state.t = over; seen.push('line'); if (list[state.i].card !== was) seen.push('card'); }
+  return seen; }
+// The voice has finished the present line: go on to the next at once, however long the estimate was.
+export function finish(state, list) { if (!list.length) return []; state.t = list[state.i].dur; return advance(state, list, 0); }
+// Go to a line. Clamped to the briefing; clears "ended".
+export function seek(state, list, i) { state.i = Math.min(list.length - 1, Math.max(0, Math.round(i))); state.t = 0; state.ended = false; return state; }
+// A sentence back: to the start of this one if it is more than a second and a half in, otherwise to the one before. A sentence on: the next one.
+export function back(state, list) { return seek(state, list, state.t > 1.5 ? state.i : state.i - 1); }
+export function on(state, list) { return state.i >= list.length - 1 ? state : seek(state, list, state.i + 1); }
+// Where the player is, in seconds at the present speed, and how long the whole briefing is at that speed.
+export const position = (state, list) => ({ at: list.length ? (list[state.i].start + Math.min(state.t, list[state.i].dur)) / state.rate : 0, of: total(list) / state.rate });
+export const nextRate = rate => RATES[(RATES.indexOf(rate) + 1) % RATES.length];
+export const sayRate = rate => (rate === 1 ? 'Normal speed' : rate < 1 ? 'Slower' : rate === 1.25 ? 'A little faster' : 'Faster');
+
+// ---- The voice ----
+// Which of the device's voices may be given the words. Only one the browser says is the device's own (localService === true): a voice that is not
+// may send the words to a service elsewhere to be spoken. Of those, English only, British English first. Returns { voice, why }: voice is null when
+// none may be used, and why says which case it is: 'ok', 'none' (no voices at all, or not loaded yet), 'remote' (voices, but none the device's own),
+// 'foreign' (the device's own voices, but none English). The browser's word on localService is all a page can go on.
+export function pickVoice(voices) { const all = Array.isArray(voices) ? voices.filter(Boolean) : []; if (!all.length) return { voice: null, why: 'none' };
+  const own = all.filter(v => v.localService === true); if (!own.length) return { voice: null, why: 'remote' };
+  const english = own.filter(v => /^en([-_]|$)/i.test(String(v.lang || ''))); if (!english.length) return { voice: null, why: 'foreign' };
+  return { voice: english.find(v => /^en[-_]GB$/i.test(String(v.lang))) || english[0], why: 'ok' }; }
+// Why there is no voice, said in full (for the announcement) and in short (for the line under the player).
+export const NO_VOICE = {
+  none: ['This device has not offered a voice of its own, or its voices are still loading.', 'No voice of the device\'s own yet'],
+  remote: ['The only voices here may send the words to a service elsewhere to be spoken, so none of them is used.', 'No voice that keeps the words on the device'],
+  foreign: ['None of this device\'s own voices speaks English.', 'No English voice of the device\'s own'],
+};
+
+// ---- Swiping ----
+// What a finger's drag across a card of this width comes to: -1 go back, 1 go on, 0 stay. dx is how far it moved (left is negative), vx how fast at the end, in pixels a millisecond.
+// A long drag or a quick flick turns the card; a short slow one, or a flick back the other way at the end, does not.
+export function settle(dx, vx, width) { const far = Math.abs(dx) > width * 0.28, flick = Math.abs(vx) > 0.45 && Math.abs(dx) > 24 && Math.sign(vx) === Math.sign(dx), undone = Math.abs(vx) > 0.25 && Math.sign(vx) !== Math.sign(dx); if (undone || !(far || flick)) return 0; return dx < 0 ? 1 : -1; }
+// Which card that leads to. At either end the deck stays where it is.
+export const turn = (index, by, count) => Math.min(count - 1, Math.max(0, index + by));
+// How a card being dragged sits: moved with the finger, tipped a little, with a pull that weakens when there is nowhere to go.
+export function pose(dx, width, index, count) { const blocked = (dx > 0 && index === 0) || (dx < 0 && index === count - 1), x = blocked ? dx * 0.25 : dx, k = Math.max(-1, Math.min(1, x / width)); return { x, tilt: k * 7, under: Math.min(1, Math.abs(k) * 1.6) }; }

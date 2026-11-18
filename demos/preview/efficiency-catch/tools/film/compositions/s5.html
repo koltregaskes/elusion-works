@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="UTF-8" />
+    <title>5. The treadmill</title>
+    <script src="../assets/vendor/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "Outfit"; src: url("../assets/fonts/outfit-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; font-display: block; }
+      @font-face { font-family: "JetBrains Mono"; src: url("../assets/fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2"); font-weight: 100 800; font-display: block; }
+      :root { --ground: #111315; --panel: #1a1d20; --ink: #f4f5f3; --muted: #9aa2a8; --green: #3fe08a; --green-ink: #06210f; --display: "Outfit", sans-serif; --mono: "JetBrains Mono", monospace; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      .clip { position: absolute; inset: 0; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; padding: 120px 140px 150px; background: var(--ground); color: var(--ink); font-family: var(--display); }
+      .eyebrow { font: 600 30px/1 var(--mono); letter-spacing: 0.22em; text-transform: uppercase; color: var(--green); }
+      .big { font-weight: 800; letter-spacing: -0.035em; line-height: 0.95; }
+      .green { color: var(--green); }
+      .muted { color: var(--muted); }
+      .abs { position: absolute; }
+      /* comic-book dots, used sparingly */
+      .dots { position: absolute; background-image: radial-gradient(circle at 50% 50%, var(--green) 0 34%, transparent 36%); background-size: 26px 26px; opacity: 0.16; }
+      /* 5 the treadmill */
+      #root h2 { font-size: 104px; margin-top: 34px; }
+      #mail { left: 140px; top: 440px; width: 800px; height: 420px; transform: scale(1.12); transform-origin: 0 0; }
+      .env { position: absolute; width: 108px; height: 76px; border: 6px solid var(--ink); border-radius: 10px; }
+      .env::before { content: ""; position: absolute; left: 12px; right: 12px; top: 6px; height: 38px; border: 6px solid var(--ink); border-top: 0; border-radius: 0 0 40px 40px; }
+      .env.g { border-color: var(--green); } .env.g::before { border-color: var(--green); }
+      #root .col { left: 1100px; right: 120px; }
+      #s5a { top: 450px; font-size: 68px; font-weight: 700; letter-spacing: -0.025em; line-height: 1.06; }
+      #s5b { top: 640px; font-size: 68px; font-weight: 700; letter-spacing: -0.025em; line-height: 1.06; }
+      #meters { left: 1100px; right: 120px; top: 450px; }
+      .meter { position: relative; height: 150px; }
+      .meter span { position: absolute; left: 0; top: 0; font: 600 28px/1 var(--mono); letter-spacing: 0.2em; color: var(--muted); }
+      .meter em { position: absolute; right: 0; top: -14px; font: 800 56px/1 var(--display); font-style: normal; }
+      .meter .track { position: absolute; left: 0; right: 0; top: 52px; height: 44px; border-radius: 10px; background: #2a2f34; overflow: hidden; }
+      .meter .fill { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; transform-origin: 0 50%; }
+      #s5c { left: 140px; right: 140px; top: 820px; font-size: 84px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="s5" data-width="1920" data-height="1080" data-duration="12">
+
+        <p class="eyebrow" id="s5e">The burnout treadmill</p>
+        <h2 class="big" id="s5h">2x faster at writing emails?</h2>
+        <div id="mail" class="abs"></div>
+        <div id="s5a" class="abs col">You don&rsquo;t write half as many.</div>
+        <div id="s5b" class="abs col">You write <span class="green">twice as many.</span></div>
+        <div id="meters" class="abs">
+          <div class="meter" id="m1"><span>Your output</span><em class="green" id="m1v">2&times;</em><div class="track"><div class="fill" id="m1f" style="background:#3fe08a"></div></div></div>
+          <div class="meter" id="m2" style="margin-top:40px"><span>Your capacity</span><em id="m2v">1&times;</em><div class="track"><div class="fill" id="m2f" style="background:#f4f5f3;width:50%"></div></div></div>
+        </div>
+        <div id="s5c" class="abs big">Your output doubled. <span class="green">Your capacity didn&rsquo;t.</span></div>
+      <script>
+        (function () {
+          // This scene runs from 38.4 s of the film. Times below are film times; at() turns them into this scene's own clock.
+          const T0 = 38.4, at = t => Math.round((t - T0) * 1000) / 1000, tl = gsap.timeline({ paused: true });
+          const fromTo = (sel, a, b, t) => tl.fromTo(sel, a, b, at(t)), to = (sel, v, t) => tl.to(sel, v, at(t));
+          const up = (sel, t, y = 46, d = 0.5) => fromTo(sel, { opacity: 0, y }, { opacity: 1, y: 0, duration: d, ease: "power3.out" }, t);
+          const slam = (sel, t, from = 1.7) => fromTo(sel, { opacity: 0, scale: from }, { opacity: 1, scale: 1, duration: 0.3, ease: "back.out(2)" }, t);
+          const pop = (sel, t) => fromTo(sel, { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, duration: 0.34, ease: "back.out(2.4)" }, t);
+          const off = (sel, t, d = 0.3) => to(sel, { opacity: 0, duration: d, ease: "power2.in" }, t);
+            const mail = document.getElementById("mail");
+            for (let i = 0; i < 12; i++) { const e = document.createElement("div"), col = i % 6, row = Math.floor(i / 6); e.className = "env" + (row ? " g" : ""); e.id = "e" + i; e.style.left = col * 132 + "px"; e.style.top = 40 + row * 130 + "px"; mail.appendChild(e); }
+          up("#s5e", 38.4, 20); up("#s5h", 38.5);
+          for (let i = 0; i < 6; i++) pop("#e" + i, 39.8 + i * 0.09);
+          up("#s5a", 40.9);
+          for (let i = 6; i < 12; i++) pop("#e" + i, 42.6 + (i - 6) * 0.09);
+          up("#s5b", 42.9);
+     
+          off("#s5a", 44.9); off("#s5b", 44.9);
+          up("#meters", 45.3);
+          fromTo("#m1f", { scaleX: 0.5 }, { scaleX: 1, duration: 1.1, ease: "power2.inOut" }, 45.8);
+          fromTo("#m1v", { opacity: 0, scale: 1.5 }, { opacity: 1, scale: 1, duration: 0.3, ease: "back.out(2)" }, 46.8);
+          fromTo("#m2v", { opacity: 0 }, { opacity: 1, duration: 0.3 }, 46.0);
+          up("#s5c", 47.4);
+          tl.set({}, {}, 12); // the scene's clock runs to its last frame
+          window.__timelines = window.__timelines || {};
+          window.__timelines["s5"] = tl;
+        })();
+      </script>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="UTF-8" />
+    <title>2. The promise</title>
+    <script src="../assets/vendor/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "Outfit"; src: url("../assets/fonts/outfit-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; font-display: block; }
+      @font-face { font-family: "JetBrains Mono"; src: url("../assets/fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2"); font-weight: 100 800; font-display: block; }
+      :root { --ground: #111315; --panel: #1a1d20; --ink: #f4f5f3; --muted: #9aa2a8; --green: #3fe08a; --green-ink: #06210f; --display: "Outfit", sans-serif; --mono: "JetBrains Mono", monospace; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      .clip { position: absolute; inset: 0; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; padding: 120px 140px 150px; background: var(--ground); color: var(--ink); font-family: var(--display); }
+      .eyebrow { font: 600 30px/1 var(--mono); letter-spacing: 0.22em; text-transform: uppercase; color: var(--green); }
+      .big { font-weight: 800; letter-spacing: -0.035em; line-height: 0.95; }
+      .green { color: var(--green); }
+      .muted { color: var(--muted); }
+      .abs { position: absolute; }
+      /* comic-book dots, used sparingly */
+      .dots { position: absolute; background-image: radial-gradient(circle at 50% 50%, var(--green) 0 34%, transparent 36%); background-size: 26px 26px; opacity: 0.16; }
+      /* 2 the promise */
+      #root h2 { font-size: 64px; font-weight: 600; letter-spacing: -0.02em; margin-top: 30px; max-width: 1300px; }
+      .bubble { position: absolute; padding: 34px 52px; border-radius: 44px; background: var(--ink); color: #111315; font-size: 84px; font-weight: 800; letter-spacing: -0.03em; white-space: nowrap; }
+      .bubble::after { content: ""; position: absolute; left: 70px; bottom: -34px; border: 20px solid transparent; border-top-color: var(--ink); border-left-color: var(--ink); }
+      #b1 { left: 140px; top: 330px; } #b2 { left: 560px; top: 520px; } #b3 { left: 300px; top: 710px; }
+      #actually { left: 140px; right: 140px; top: 400px; font-size: 150px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="s2" data-width="1920" data-height="1080" data-duration="7.2">
+
+        <p class="eyebrow" id="s2e">The promise</p>
+        <h2 id="s2h">Every new AI tool promises the same thing.</h2>
+        <div class="bubble" id="b1">Work smarter.</div>
+        <div class="bubble" id="b2">Save time.</div>
+        <div class="bubble" id="b3">Focus on what matters.</div>
+        <div id="actually" class="abs big">Here&rsquo;s what <span class="green">actually</span> happens.</div>
+      <script>
+        (function () {
+          // This scene runs from 7.2 s of the film. Times below are film times; at() turns them into this scene's own clock.
+          const T0 = 7.2, at = t => Math.round((t - T0) * 1000) / 1000, tl = gsap.timeline({ paused: true });
+          const fromTo = (sel, a, b, t) => tl.fromTo(sel, a, b, at(t)), to = (sel, v, t) => tl.to(sel, v, at(t));
+          const up = (sel, t, y = 46, d = 0.5) => fromTo(sel, { opacity: 0, y }, { opacity: 1, y: 0, duration: d, ease: "power3.out" }, t);
+          const slam = (sel, t, from = 1.7) => fromTo(sel, { opacity: 0, scale: from }, { opacity: 1, scale: 1, duration: 0.3, ease: "back.out(2)" }, t);
+          const pop = (sel, t) => fromTo(sel, { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, duration: 0.34, ease: "back.out(2.4)" }, t);
+          const off = (sel, t, d = 0.3) => to(sel, { opacity: 0, duration: d, ease: "power2.in" }, t);
+          up("#s2e", 7.2, 20); up("#s2h", 7.3);
+          pop("#b1", 8.4); pop("#b2", 9.2); pop("#b3", 10.0);
+     
+          to(["#b1", "#b2", "#b3", "#s2h"], { opacity: 0, y: -30, duration: 0.35, ease: "power2.in", stagger: 0.05 }, 11.5);
+          slam("#actually", 12.0, 1.25);
+          tl.set({}, {}, 7.2); // the scene's clock runs to its last frame
+          window.__timelines = window.__timelines || {};
+          window.__timelines["s2"] = tl;
+        })();
+      </script>
+    </div>
+  </body>
+</html>
