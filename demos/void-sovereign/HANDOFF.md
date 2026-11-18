@@ -59,7 +59,7 @@ The site's CSP is `script-src 'self'`, so it must be served over HTTP — openin
 `index.html` from the filesystem will not work.
 
 ```bash
-node "C:/Users/KOLTRE~1/AppData/Local/Temp/claude/W--Websites-sites-elusion-works/028c42ed-ad10-42e9-b13f-325ee69dee45/scratchpad/serve.mjs"
+node "<session scratchpad>/serve.mjs"
 ```
 
 Serves the repo root at `http://127.0.0.1:8899/`. The game is at

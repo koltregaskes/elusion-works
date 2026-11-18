@@ -2,8 +2,8 @@
 
 **Status:** DRAFT — awaiting Kol's sign-off. Not yet committed.
 **Last updated:** 2026-05-16
-**Estate-wide policy:** `W:\Websites\AGENT-READINESS-ESTATE.md`
-**Repo:** `W:\Websites\sites\elusion-works`
+**Estate-wide policy:** the private estate-wide readiness policy (kept off GitHub)
+**Repo:** this repository (`koltregaskes/elusion-works`)
 **Domain:** elusionworks.com (per memory; CNAME not present at repo root — Kol to confirm)
 **Stack:** Static HTML + vanilla CSS/JS with `@property` animated custom properties
 **Existing description:** *"Elusion Works is a showcase for websites, tools, experiments, and future interactive ideas by Kol Tregaskes."*

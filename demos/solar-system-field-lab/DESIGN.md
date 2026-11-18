@@ -31,7 +31,7 @@ components:
 ---
 
 ## Overview
-The most technical demo: a live **Three.js** orbit lab with distance modes, fullscreen flyby, per-planet pages, scale tools, and a classroom quiz. Origin: Claude Design bundle (extracted at `W:\Websites\claude-designs\extracted\solar-system-field-lab\`). Tokens derived from its CSS.
+The most technical demo: a live **Three.js** orbit lab with distance modes, fullscreen flyby, per-planet pages, scale tools, and a classroom quiz. Origin: Claude Design bundle (extracted to a private local design archive). Tokens derived from its CSS.
 
 ## Colors
 **Dual theme.** Dark mode: near-black navy base (`#050811`) with warm amber accent (`#f3a14a`) and near-white ink. Light mode: cool paper (`#eef1f7`) with a deeper burnt-orange accent (`#d97a3e`) and near-black ink. Ink scales to four tiers per mode.
