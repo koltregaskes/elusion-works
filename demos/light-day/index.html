@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>One light-day: a flash of light from Earth to Voyager 1</title>
+<meta name="description" content="Scroll to send a flash of light from Earth to Voyager 1, one light-day away. It is as far out as the Moon in 1.28 seconds and as far out as Neptune in four hours. Then come twenty hours of almost nothing.">
+<meta name="theme-color" content="#111315">
+<link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml">
+<!-- Unlisted until release is approved: remove the next line, then add the gallery card and sitemap entry. -->
+<meta name="robots" content="noindex">
+<style>
+  :root { --bg:#111315; --panel:rgba(20,23,26,.93); --line:rgba(255,255,255,.16); --ink:#f4f5f3; --soft:#dfe4e7; --muted:#b3babf; --accent:#3fe08a; --accent-ink:#06210f;
+    --sans:"Helvetica Neue","Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif; --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;
+    --u:1vh; --drop:calc(30 * var(--u)); --card:400px; color-scheme:dark; }
+  @supports (height:1svh) { :root { --u:1svh; } }
+  * { box-sizing:border-box; }
+  html { background:var(--bg); -webkit-text-size-adjust:100%; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 var(--sans); overflow-x:hidden; }
+  [hidden] { display:none !important; }
+  a { color:var(--ink); } :focus-visible { outline:2px solid var(--accent); outline-offset:3px; border-radius:4px; }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+  .skip { position:absolute; left:12px; top:-60px; z-index:20; padding:10px 14px; border-radius:8px; background:var(--accent); color:var(--accent-ink); font-weight:700; text-decoration:none; } .skip:focus { top:12px; }
+  .eyebrow, .when { margin:0; font:600 11px/1.2 var(--mono); letter-spacing:.2em; text-transform:uppercase; color:var(--accent); }
+  .btn { min-height:40px; padding:0 16px; border-radius:10px; border:1px solid var(--accent); background:var(--accent); color:var(--accent-ink); font:700 14px/1 var(--sans); cursor:pointer; }
+  .btn.quiet { background:transparent; color:var(--ink); border-color:var(--line); }
+
+  /* The journey: a tall track, a picture that stays put, and cards that scroll past it. */
+  #track { position:relative; height:calc(19.36 * 100 * var(--u)); }
+  #stage { position:sticky; top:0; height:calc(100 * var(--u)); overflow:hidden; z-index:0; }
+  #sky { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  .card { position:absolute; z-index:1; top:calc(var(--y) * 100 * var(--u) + var(--drop)); right:5vw; width:min(var(--card), 90vw); padding:18px 20px 20px; border-radius:16px; background:var(--panel); border:1px solid var(--line); scroll-margin-top:var(--drop); }
+  .card h2 { margin:0 0 8px; font-size:26px; line-height:1.08; font-weight:800; letter-spacing:-.025em; } .card h2 .when { display:block; margin-bottom:9px; letter-spacing:.16em; }
+  .card p { margin:0 0 10px; color:var(--soft); font-size:15px; } .card p:last-child { margin-bottom:0; }
+  .card .aside { font-size:13px; color:var(--muted); }
+  .hero { top:calc(6 * var(--u)); left:max(5vw, env(safe-area-inset-left)); right:auto; width:min(620px, 90vw); padding:0; background:none; border:0; scroll-margin-top:0; }
+  .hero h1 { margin:14px 0 26px; font-size:clamp(54px, 10.5vw, 128px); line-height:.88; font-weight:800; letter-spacing:-.05em; }
+  .hero .lede { max-width:34em; font-size:17px; color:var(--soft); }
+  .hero .go { margin:18px 0 10px; font:600 12px/1.3 var(--mono); letter-spacing:.16em; text-transform:uppercase; color:var(--accent); }
+  .jump { display:flex; flex-wrap:wrap; gap:6px; margin:0; padding:0; list-style:none; } .jump a { display:inline-flex; align-items:center; min-height:30px; padding:0 11px; border-radius:999px; border:1px solid var(--line); font-size:13px; text-decoration:none; color:var(--soft); background:rgba(17,19,21,.6); } .jump a:hover { border-color:var(--accent); color:var(--ink); }
+  .hour { position:absolute; z-index:1; top:calc(var(--y) * 100 * var(--u) + var(--drop)); right:calc(5vw + min(var(--card), 90vw) - 190px); width:190px; margin:0; padding:8px 12px; border-radius:10px; background:var(--panel); border:1px solid var(--line); font:600 11px/1.2 var(--mono); letter-spacing:.2em; text-transform:uppercase; color:var(--muted); }
+
+  /* The clock, and the day drawn to scale. Both are a second telling of what the cards say, so they are hidden from screen readers. */
+  #hud { position:absolute; left:max(18px, env(safe-area-inset-left)); top:max(16px, env(safe-area-inset-top)); padding:12px 16px 12px; border-radius:14px; background:rgba(17,19,21,.78); -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); }
+  #hud, #daybar { transition:opacity .2s; }
+  #clock { margin:8px 0 6px; font:700 clamp(34px, 4.6vw, 54px)/1 var(--mono); letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+  #hud .line { margin:0; font:500 13px/1.5 var(--mono); color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap; } #hud .line b { color:var(--ink); font-weight:600; }
+  #daybar { position:absolute; left:calc(var(--bar-l, 28px) - 12px); width:calc(var(--bar-w, 50vw) + 24px); bottom:max(16px, env(safe-area-inset-bottom)); padding:10px 12px 11px; border-radius:12px; background:rgba(17,19,21,.78); -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); font:600 10px/1 var(--mono); letter-spacing:.18em; text-transform:uppercase; color:var(--muted); }
+  #daybar .rail { position:relative; height:10px; margin:9px 0 7px; border-radius:2px; background:rgba(255,255,255,.1); } #day-fill { position:absolute; left:0; top:0; bottom:0; width:0; background:var(--accent); border-radius:2px; }
+  #day-ticks i { position:absolute; top:-4px; bottom:-4px; width:1px; background:rgba(255,255,255,.55); } #day-ticks i.end { background:var(--accent); width:2px; }
+  #daybar .ends { display:block; position:relative; height:10px; letter-spacing:.06em; } #daybar .ends span { position:absolute; top:0; transform:translateX(-50%); white-space:nowrap; } #daybar .ends span:first-child { transform:none; } #daybar .ends span:last-child { transform:translateX(-100%); }
+  #chip { position:fixed; z-index:5; left:10px; right:10px; width:fit-content; margin-inline:auto; bottom:max(96px, calc(env(safe-area-inset-bottom) + 96px)); display:flex; align-items:center; gap:12px; margin:0; padding:8px 8px 8px 16px; border-radius:14px; background:var(--panel); border:1px solid var(--accent); font-size:14px; max-width:calc(100vw - 20px); } #chip .btn { min-height:34px; }
+
+  /* After the flash arrives */
+  .after { position:relative; z-index:2; background:var(--bg); padding:calc(12 * var(--u)) max(5vw, env(safe-area-inset-right)) 80px max(5vw, env(safe-area-inset-left)); border-top:1px solid var(--line); }
+  .after > * { max-width:980px; margin-left:auto; margin-right:auto; }
+  .after h2 { margin:0 auto 22px; font-size:clamp(34px, 5.4vw, 64px); line-height:.95; font-weight:800; letter-spacing:-.04em; }
+  .after h2:not(:first-child) { margin-top:84px; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(270px, 1fr)); gap:1px; padding:0; list-style:none; background:var(--line); border:1px solid var(--line); border-radius:16px; overflow:hidden; }
+  .stats li { padding:20px 20px 22px; background:var(--bg); min-width:0; } .stats b { display:block; margin-bottom:8px; font-size:clamp(30px, 4vw, 44px); line-height:1; font-weight:800; letter-spacing:-.035em; } .stats li:first-child b { color:var(--accent); } .stats span { color:var(--soft); font-size:15px; }
+  .scroll { overflow-x:auto; border:1px solid var(--line); border-radius:16px; }
+  table { width:100%; border-collapse:collapse; font-size:15px; font-variant-numeric:tabular-nums; } caption { text-align:left; padding:14px 16px; color:var(--muted); font-size:14px; }
+  th, td { padding:11px 16px; text-align:right; border-top:1px solid var(--line); white-space:nowrap; } th:first-child, td:first-child { text-align:left; white-space:normal; } thead th { font:600 11px/1.3 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--muted); } tbody th { font-weight:600; } tbody tr:last-child th, tbody tr:last-child td { color:var(--accent); }
+  .notes { padding-left:20px; color:var(--soft); } .notes li { margin-bottom:10px; max-width:70ch; }
+  .credit { margin-top:56px; color:var(--muted); font-size:14px; }
+
+  @media (max-height:700px) and (orientation:landscape) {
+    .hero { width:90vw; display:grid; grid-template-columns:max-content minmax(0, 34em); column-gap:36px; align-items:start; } .hero h1 { font-size:min(clamp(46px, 9vw, 110px), 19vh); margin:10px 0 0; } .hero .lede { margin:4px 0 0; font-size:15px; } .hero .go { margin:12px 0 8px; }
+  }
+  @media (max-width:1100px) and (orientation:portrait) {
+    :root { --drop:calc(58 * var(--u)); --card:90vw; }
+    .card { left:5vw; right:5vw; width:auto; max-width:560px; margin-inline:auto; padding:14px 16px 16px; } .card h2 { font-size:22px; } .card p { font-size:14px; }
+    .hero { top:calc(58 * var(--u)); left:5vw; right:5vw; width:auto; padding:16px 16px 18px; background:var(--panel); border:1px solid var(--line); border-radius:16px; } .hero h1 { margin:12px 0 14px; font-size:clamp(36px, 11.5vw, 72px); } .hero h1 br { display:none; } .hero .lede { font-size:14px; } .hero .go { margin:12px 0 8px; font-size:11px; } .jump { gap:5px; } .jump a { min-height:28px; padding:0 10px; } .hour { right:auto; left:5vw; }
+    #chip { bottom:max(14px, env(safe-area-inset-bottom)); }
+    #hud { left:8px; right:8px; top:max(6px, env(safe-area-inset-top)); padding:6px 8px; } #hud .eyebrow { font-size:10px; } #clock { margin:5px 0 3px; font-size:28px; } #hud .line { font-size:11px; line-height:1.45; }
+    #daybar { left:8px; width:calc(100vw - 16px); bottom:auto; top:var(--bar-top, 96px); padding:7px 8px 8px; }
+  }
+  @media (max-height:520px) and (orientation:landscape) {
+    :root { --drop:calc(16 * var(--u)); --card:300px; }
+    .card { padding:12px 14px 14px; } .card h2 { font-size:19px; margin-bottom:5px; } .card p { font-size:13px; margin-bottom:6px; } .card .aside { font-size:12px; }
+    .hero { top:calc(5 * var(--u)); column-gap:28px; } .hero h1 { font-size:46px; margin:8px 0 0; } .hero .lede { font-size:13px; margin:0; } .hero .go { margin:8px 0 6px; font-size:11px; } .jump a { min-height:26px; font-size:12px; }
+    #clock { font-size:28px; margin:5px 0 3px; } #hud .line { font-size:11px; line-height:1.4; } #hud { top:6px; left:max(10px, env(safe-area-inset-left)); padding:6px 10px; } #daybar { bottom:6px; padding:6px 12px 7px; } #chip { bottom:70px; }
+  }
+  @media (prefers-reduced-motion:reduce) { * { transition:none !important; scroll-behavior:auto !important; } #real { display:none; } }
+</style>
+<noscript><style>
+  /* With scripts off there is no picture: the cards become an ordinary page to read. */
+  #stage, .hero .go, #go { display:none; } #track { height:auto; padding:6vh 5vw 8vh; } .card, .card.hero { position:static; width:auto; max-width:640px; margin:0 auto 22px; } .card.hero { margin-bottom:40px; }
+</style></noscript>
+</head>
+<body>
+<a class="skip" href="#voyager1">Skip to the arrival</a>
+<main>
+<div id="track">
+  <div id="stage">
+    <canvas id="sky" aria-hidden="true"></canvas>
+    <div id="hud" aria-hidden="true" hidden>
+      <p class="eyebrow">Time since the flash</p>
+      <p id="clock">00:00:00.00</p>
+      <p class="line"><b id="dist-km">0 km</b> <span id="dist-au"></span></p>
+      <p class="line">Voyager 1 in <b id="togo">24 h</b></p>
+    </div>
+    <div id="daybar" aria-hidden="true" hidden>
+      <span>The day, to scale</span>
+      <div class="rail"><i id="day-fill"></i><div id="day-ticks"></div></div>
+      <span class="ends"><span style="left:0">0 h</span><span style="left:25%">6</span><span style="left:50%">12</span><span style="left:75%">18</span><span style="left:100%">24 h</span></span>
+    </div>
+  </div>
+
+  <header class="card hero" style="--y:0">
+    <div class="hero-a">
+    <p class="eyebrow">18 November 2026</p>
+    <h1>One <br>light-day</h1>
+    </div>
+    <div class="hero-b">
+    <p class="lede">On 18 November 2026, by NASA’s reckoning, Voyager 1 is one light-day from Earth: 25.9 billion kilometres, and the first thing people have made to get that far. Scroll, and a flash of light sets off after it.</p>
+    <p class="go">Scroll down to send the flash</p>
+    <noscript><p class="lede">Scripts are off, so there is no picture and no clock. The cards below still tell the whole journey, and the table at the end has every figure.</p></noscript>
+    <nav aria-label="Jump to a part of the journey">
+      <ul class="jump">
+        <li><a href="#moon">The Moon</a></li>
+        <li><a href="#sun">The Sun</a></li>
+        <li><a href="#neptune">Neptune</a></li>
+        <li><a href="#dark">The long dark</a></li>
+        <li><a href="#voyager1">Voyager 1</a></li>
+        <li><a href="#after">The figures</a></li>
+      </ul>
+    </nav>
+    </div>
+  </header>
+
+  <section class="card" id="go" style="--y:0.9">
+    <h2><span class="when">Go</span> The flash leaves Earth</h2>
+    <p>Light covers 299,792 kilometres every second. The green ring is how far the flash has got, in every direction at once. The straight line is the part of it aimed at Voyager 1.</p>
+    <p>The picture is a diagram, not a map. Every ring is a distance from Earth, nothing is drawn in its true direction, and everything is held still while the flash travels.</p>
+    <p><button class="btn" id="real" type="button" hidden>Watch it from the start, at its real speed</button></p>
+  </section>
+
+  <section class="card" id="moon" data-mark="moon" style="--y:1.8">
+    <h2><span class="when">1.28 s</span> The Moon</h2>
+    <p>The flash is as far away as the Moon: 384,400 kilometres.</p>
+    <p>Radio travels at the same speed, so for the Apollo crews every word from Houston arrived this late.</p>
+  </section>
+
+  <section class="card" id="sun" data-mark="sun" style="--y:3.2">
+    <h2><span class="when">8 min 19 s</span> As far as the Sun</h2>
+    <p>Sunlight makes this trip the other way all day long. The Sun you see is the Sun as it was eight minutes ago.</p>
+    <p>Astronomers call this distance one astronomical unit, or AU: about 150 million kilometres. The rest of the journey is measured in it.</p>
+    <p class="aside">The page is squeezed here: about a screen of scrolling for each mark, however long light takes between them. After six hours it is to scale.</p>
+  </section>
+
+  <section class="card" id="mars" data-mark="mars" style="--y:4.3">
+    <h2><span class="when">12 min 40 s</span> As far out as Mars</h2>
+    <p>A yardstick, not a meeting. The flash is climbing out of the flat plane the planets move in, so it passes none of them.</p>
+    <p>From here each ring is named for a planet whose orbit lies that far from the Sun. Mars: about one and a half times as far out as Earth.</p>
+  </section>
+
+  <section class="card" id="jupiter" data-mark="jupiter" style="--y:5.4">
+    <h2><span class="when">43 min 14 s</span> As far out as Jupiter</h2>
+    <p>Voyager 1 needed eighteen months to get this far. It flew past Jupiter in March 1979 and found volcanoes erupting on its moon Io.</p>
+  </section>
+
+  <section class="card" id="saturn" data-mark="saturn" style="--y:6.5">
+    <h2><span class="when">1 h 19 min</span> As far out as Saturn</h2>
+    <p>Voyager 1 passed Saturn in November 1980, swung close to its moon Titan, and was thrown up and out of the plane of the planets.</p>
+    <p>It has not been near anything since.</p>
+  </section>
+
+  <section class="card" id="uranus" data-mark="uranus" style="--y:7.6">
+    <h2><span class="when">2 h 39 min</span> As far out as Uranus</h2>
+    <p>Twice as far out as Saturn. Only one spacecraft has ever visited Uranus: Voyager 2, in January 1986.</p>
+  </section>
+
+  <section class="card" id="neptune" data-mark="neptune" style="--y:8.7">
+    <h2><span class="when">4 h 10 min</span> As far out as Neptune</h2>
+    <p>The last planet. Voyager 2 came by in August 1989, twelve years after it set out. Light does it in an afternoon.</p>
+    <p>The flash is now further out than any planet, and the day is about one sixth gone.</p>
+  </section>
+
+  <section class="card" id="pluto" data-mark="pluto" style="--y:9.9">
+    <h2><span class="when">5 h 28 min</span> Pluto’s distance</h2>
+    <p>Pluto’s average distance from the Sun, in the middle of the Kuiper belt: a wide ring of ice and rock left over from when the planets formed.</p>
+    <p>Now the picture pulls back. Everything so far fits in the first quarter of the day.</p>
+  </section>
+
+  <section class="card" id="dark" style="--y:11.34">
+    <h2><span class="when">8 h</span> The long dark</h2>
+    <p>From here the page is to scale. Every hour of light-time is the same length of scrolling, and there is nothing to put in most of them.</p>
+    <p>That is the point.</p>
+  </section>
+
+  <section class="card" id="shock" data-mark="shock" style="--y:13.4524">
+    <h2><span class="when">13 h 1 min</span> The termination shock</h2>
+    <p>The Sun blows a thin wind of charged particles in every direction at more than a million kilometres an hour. Here it slows suddenly, as it starts to feel the gas between the stars pushing back.</p>
+    <p>Voyager 1 crossed this line in December 2004, when it was 94 AU from the Sun.</p>
+  </section>
+
+  <section class="card" id="pause" data-mark="pause" style="--y:15.0825">
+    <h2><span class="when">16 h 54 min</span> The edge of the Sun’s bubble</h2>
+    <p>The heliopause: where the Sun’s wind stops and the space between the stars begins. Voyager 1 crossed it on 25 August 2012, about 122 AU from the Sun. Nothing made by people had left the bubble before.</p>
+    <p class="aside">It is not the edge of the solar system. The Sun’s gravity holds comets far beyond here.</p>
+  </section>
+
+  <section class="card" id="voyager2" data-mark="voyager2" style="--y:16.4215">
+    <h2><span class="when">20 h 5 min</span> As far as Voyager 2</h2>
+    <p>Voyager 2 is about this far from Earth, roughly 145 AU, but off in another direction: it is heading south of the planets while Voyager 1 heads north.</p>
+    <p>It should reach its own light-day in the middle of the 2030s.</p>
+  </section>
+
+  <section class="card" id="voyager1" data-mark="voyager1" style="--y:18.06">
+    <h2><span class="when">24 h</span> Voyager 1</h2>
+    <p>One light-day: 25,902,068,371 kilometres. The flash has caught a machine the size of a small car that left Earth on 5 September 1977.</p>
+    <p>Light took a day. Voyager 1 took forty-nine years.</p>
+  </section>
+</div>
+
+<section class="after" id="after" aria-labelledby="after-h">
+  <h2 id="after-h">What a day buys</h2>
+  <ul class="stats">
+    <li><b>49 years</b><span>How long Voyager 1 took to cover what the flash did in a day.</span></li>
+    <li><b>2 days</b><span>To ask Voyager 1 a question and hear the answer: a day out, a day back.</span></li>
+    <li><b>17,600 times</b><span>Roughly how much faster the flash is than the spacecraft, which does about 17 kilometres a second.</span></li>
+    <li><b>48 years</b><span>Until Voyager 1 is two light-days out, at the speed it is going now.</span></li>
+    <li><b>20 hours</b><span>Near enough. The stretch of the day with almost nothing in it: everything further out than Neptune, 19 hours 49 minutes.</span></li>
+    <li><b>1,550 days</b><span>How long the same flash would need to reach the nearest star beyond the Sun, Proxima Centauri. That is four and a quarter years.</span></li>
+  </ul>
+
+  <h2 id="table-h">The whole day as a table</h2>
+  <div class="scroll" tabindex="0" role="region" aria-labelledby="table-h">
+    <table>
+      <caption>Each mark the flash crosses, laid out along the line from Earth. Planet rows and the two boundary rows are yardsticks, not places the flash meets today: a planet’s row is the average distance of its orbit from the Sun, and a boundary’s row is how far from the Sun Voyager 1 was when it crossed, in 2004 and 2012. Rows marked “about” are estimates, and their times and shares follow from them.</caption>
+      <thead><tr><th scope="col">Mark</th><th scope="col">Distance</th><th scope="col">In AU</th><th scope="col">Light-time</th><th scope="col">Share of the day</th></tr></thead>
+      <tbody id="rows">
+        <tr><th scope="row">The Moon</th><td>384,400 km</td><td>0.0026</td><td>1.28 s</td><td>under 0.01%</td></tr>
+        <tr><th scope="row">The Sun’s distance</th><td>150 million km</td><td>1</td><td>8 min 19 s</td><td>0.58%</td></tr>
+        <tr><th scope="row">Mars’s orbit</th><td>228 million km</td><td>1.524</td><td>12 min 40 s</td><td>0.88%</td></tr>
+        <tr><th scope="row">Jupiter’s orbit</th><td>778 million km</td><td>5.2</td><td>43 min 14 s</td><td>3.0%</td></tr>
+        <tr><th scope="row">Saturn’s orbit</th><td>1.43 billion km</td><td>9.54</td><td>1 h 19 min</td><td>5.5%</td></tr>
+        <tr><th scope="row">Uranus’s orbit</th><td>2.87 billion km</td><td>19.2</td><td>2 h 39 min</td><td>11.1%</td></tr>
+        <tr><th scope="row">Neptune’s orbit</th><td>4.50 billion km</td><td>30.1</td><td>4 h 10 min</td><td>17.4%</td></tr>
+        <tr><th scope="row">Pluto’s average distance</th><td>5.91 billion km</td><td>39.5</td><td>5 h 28 min</td><td>22.8%</td></tr>
+        <tr><th scope="row">The termination shock</th><td>14.1 billion km</td><td>94</td><td>13 h 1 min</td><td>54.3%</td></tr>
+        <tr><th scope="row">The heliopause</th><td>about 18.3 billion km</td><td>about 122</td><td>16 h 54 min</td><td>70.5%</td></tr>
+        <tr><th scope="row">Voyager 2’s distance</th><td>about 21.7 billion km</td><td>about 145</td><td>20 h 5 min</td><td>83.7%</td></tr>
+        <tr><th scope="row">Voyager 1</th><td>25.9 billion km</td><td>173.14</td><td>24 h</td><td>100%</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>How the figures were worked out</h2>
+  <ul class="notes">
+    <li>The speed of light, 299,792.458 kilometres a second, and the astronomical unit, 149,597,870.7 kilometres, are exact by definition. Every light-time on this page is a distance divided by that speed.</li>
+    <li>The Moon’s distance is its average, 384,400 kilometres. The planets’ distances are their average distances from the Sun (1.524, 5.2, 9.54, 19.2, 30.1 and 39.5 AU), used as yardsticks. The flash is heading about 35 degrees north of the plane of the planets, towards where Voyager 1 is, and does not pass them.</li>
+    <li>The picture is a diagram. Distances along the line are true to its scale at that moment, and the length of the line as drawn is written beside it: at the end, one light-day. Directions are not true: the Moon and the Sun are drawn at the right distance but not in the right part of the sky.</li>
+    <li>For the first six hours of light-time the page is squeezed: each stretch between two marks gets about a screen. After six hours every hour is the same length of scrolling. The bar marked “The day, to scale” is true throughout.</li>
+    <li>Times on the cards are cut short, not rounded up, so a card never reads later than the clock beside it.</li>
+    <li>The date, 18 November 2026, is the one NASA’s Voyager team gave for the light-day, as reported in the press. An outside review of this page says NASA’s own website gives the same date; the session that built the page could not open that site to check. Voyager 1’s distance from Earth also rises and falls a little each year as Earth goes round the Sun.</li>
+    <li>The crossings of the termination shock (December 2004, 94 AU) and the heliopause (25 August 2012, about 122 AU) are NASA’s figures for Voyager 1, measured from the Sun at the time it crossed. They are laid along the line as yardsticks, like the planets. Voyager 2’s distance, about 145 AU, is an estimate for November 2026 and is the least certain number here.</li>
+    <li>Voyager 1 is leaving at about 3.6 AU a year, which is where the 17 kilometres a second, the 17,600 times and the 48 years come from.</li>
+  </ul>
+  <p class="credit">After <a href="https://x.com/NASASolarSystem/status/2121282705736515837" rel="noopener">a post by NASA Solar System</a>. An original page, not made by or with NASA. Nothing is loaded from anywhere else and nothing is stored.</p>
+</section>
+</main>
+
+<p id="chip" hidden><span id="chip-text">Real speed.</span> <button class="btn" id="stop" type="button">Stop</button></p>
+<p class="sr" id="live" role="status"></p>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
