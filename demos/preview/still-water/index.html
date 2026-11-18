@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Still Water: a walkable gallery in empty pool rooms</title>
+<meta name="description" content="Twelve photographs hang in a set of quiet, tiled pool rooms. Walk through them in your browser, wade across the water, or let the page walk you round.">
+<meta name="theme-color" content="#111315">
+<meta property="og:title" content="Still Water: a walkable gallery in empty pool rooms">
+<meta property="og:description" content="Twelve photographs hang in a set of quiet, tiled pool rooms. Walk through them in your browser, wade across the water, or let the page walk you round.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://elusionworks.com/demos/still-water/thumbnail.png">
+<meta property="og:image:alt" content="A pool hall with white tiled walls, a pillar standing in pale blue water and two framed photographs on the far walls.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="../../../assets/favicon.svg" type="image/svg+xml">
+<!-- Unlisted until release is approved: remove the next line, then add the gallery card and sitemap entry. -->
+<meta name="robots" content="noindex,nofollow">
+<style>
+  :root { --bg:#111315; --panel:rgba(18,20,23,.86); --line:rgba(255,255,255,.16); --ink:#f4f5f3; --muted:#b3babf; --accent:#3fe08a; --accent-ink:#06210f;
+    --sans:"Helvetica Neue","Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif; --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace; color-scheme:dark; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--ink); font:14px/1.45 var(--sans); overflow:hidden; -webkit-text-size-adjust:100%; }
+  [hidden] { display:none !important; }
+  #stage { position:fixed; inset:0; width:100%; height:100%; display:block; touch-action:none; cursor:grab; }
+  #stage.drag { cursor:grabbing; }
+  #stage:focus-visible { outline-offset:-5px; }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+  button { font:inherit; color:inherit; cursor:pointer; }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .btn { min-height:40px; padding:0 14px; border-radius:10px; border:1px solid var(--line); background:var(--panel); font-weight:700; font-size:13px; white-space:nowrap; }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  .btn[aria-pressed="true"] { background:var(--ink); color:#111; border-color:var(--ink); }
+  .btn:disabled { opacity:.45; cursor:default; }
+  .eyebrow { font:600 10px/1 var(--mono); letter-spacing:.2em; text-transform:uppercase; color:var(--accent); }
+  .glass { background:var(--panel); border:1px solid var(--line); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); }
+
+  /* Over the view */
+  .hud { position:fixed; pointer-events:none; }
+  .hud > * { pointer-events:auto; }
+  #tools { top:max(12px,env(safe-area-inset-top)); right:max(14px,env(safe-area-inset-right)); display:flex; flex-direction:column; align-items:flex-end; gap:8px; }
+  #map { display:block; width:168px; height:auto; border-radius:10px; border:1px solid var(--line); background:#0c0e10; }
+  .toolrow { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; max-width:236px; }
+  .toolrow .btn { min-height:36px; padding:0 10px; font-size:12px; }
+  #plate { left:max(14px,env(safe-area-inset-left)); bottom:max(14px,env(safe-area-inset-bottom)); width:min(430px,calc(100vw - 28px)); padding:12px 14px; border-radius:14px; }
+  #plate-n { margin:0; font:600 10px/1 var(--mono); letter-spacing:.18em; text-transform:uppercase; color:var(--accent); }
+  #plate-t { margin:7px 0 10px; font-size:14px; min-height:2.9em; }
+  .steps { display:flex; gap:6px; flex-wrap:wrap; }
+  .steps .btn { min-height:36px; padding:0 12px; font-size:12px; background:rgba(255,255,255,.07); }
+  #stick { width:112px; height:112px; margin:-56px 0 0 -56px; border-radius:50%; border:1px solid rgba(255,255,255,.5); background:rgba(0,0,0,.25); }
+  #stick i { position:absolute; left:50%; top:50%; width:44px; height:44px; margin:-22px 0 0 -22px; border-radius:50%; background:rgba(255,255,255,.8); }
+  #veil { inset:0; background:#dfeeee; opacity:0; transition:opacity .25s; }
+  #veil.on { opacity:1; }
+
+  /* Cards */
+  .card { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); width:min(94vw,600px); max-height:min(92vh,640px); overflow:auto; padding:24px 26px; border-radius:18px; box-shadow:0 30px 80px rgba(0,0,0,.45); }
+  h1 { margin:10px 0 8px; font-size:clamp(38px,8vw,64px); line-height:.92; font-weight:800; letter-spacing:-.04em; }
+  h2 { margin:0 0 12px; font-size:22px; line-height:1.1; font-weight:800; letter-spacing:-.02em; }
+  .lede { margin:0 0 16px; font-size:15px; color:#e3e7e9; max-width:52ch; }
+  .actions { display:flex; flex-wrap:wrap; gap:10px; }
+  .note { margin:14px 0 0; font-size:12px; color:var(--muted); }
+  .note a { color:var(--ink); text-decoration:underline; text-underline-offset:2px; }
+  .keys kbd { font:600 11px var(--mono); padding:1px 6px; border-radius:5px; border:1px solid var(--line); background:rgba(255,255,255,.06); color:var(--ink); }
+  dialog { color:var(--ink); border:1px solid var(--line); border-radius:18px; padding:20px 22px; width:min(94vw,760px); max-height:min(90vh,680px); background:#15181b; }
+  dialog::backdrop { background:rgba(8,10,12,.6); }
+  dialog h3 { margin:20px 0 0; font-size:15px; } dialog .note b { color:var(--ink); }
+  .dialog-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; } .dialog-head h2 { margin:0; }
+  #plates { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
+  #plates button { display:block; width:100%; padding:0; border-radius:10px; border:1px solid var(--line); background:#0c0e10; overflow:hidden; text-align:left; }
+  #plates img { display:block; width:100%; height:104px; object-fit:cover; }
+  #plates span { display:block; padding:7px 9px 0; font:600 10px/1.2 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
+  #plates small { display:block; padding:4px 9px 9px; font-size:12px; line-height:1.3; color:#d7dce0; white-space:normal; }
+  #plates .lost { display:grid; place-items:center; height:104px; padding:8px; font-size:12px; text-align:center; color:var(--muted); background:#22262a; }
+  #plates button[aria-current="true"] { border-color:var(--accent); } #plates button[aria-current="true"] span { color:var(--accent); }
+  /* The plain gallery, for when the rooms cannot start */
+  #fallback { display:none; max-width:960px; margin:0 auto; padding:28px max(16px,env(safe-area-inset-left)) 40px; }
+  .flat, .flat body { height:auto; overflow:auto; }
+  .flat #fallback { display:block; }
+  .flat #stage, .flat .hud, .flat #start, .flat #all { display:none !important; }
+  #fallback a { color:var(--ink); text-decoration:underline; text-underline-offset:2px; }
+  #fallback .eyebrow a { color:var(--accent); text-decoration:none; } #fallback .eyebrow a:hover { text-decoration:underline; }
+  #flat { list-style:none; margin:22px 0 0; padding:0; display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr)); gap:22px; }
+  #flat figure { margin:0; }
+  #flat img { display:block; max-width:100%; height:auto; max-height:70vh; background:#22262a; border:1px solid var(--line); }
+  #flat figcaption { margin-top:8px; font-size:14px; color:#d7dce0; } #flat figcaption b { display:block; margin-bottom:2px; font:600 10px/1.4 var(--mono); letter-spacing:.18em; text-transform:uppercase; color:var(--accent); }
+
+  @media (max-width:760px) {
+    #map { width:104px; } .toolrow { max-width:150px; } .toolrow .btn { min-height:34px; padding:0 9px; }
+    #plate { padding:10px 12px; } #plate-t { font-size:13px; min-height:0; margin:6px 0 8px; } .card { padding:18px 18px 20px; } .lede { font-size:14px; }
+    .keys { display:none; }
+  }
+  @media (max-height:480px) { .card { padding:14px 18px; } h1 { font-size:32px; margin:6px 0; } .lede { margin-bottom:10px; font-size:13px; } .card .note { display:none; } #plate { width:min(360px,56vw); } #plate-t { min-height:0; margin:5px 0 7px; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } #map { width:92px; } }
+  @media (prefers-reduced-motion:reduce) { * { transition:none !important; } }
+</style>
+<!-- With scripts off the rooms cannot open: show the plain gallery. After the main styles so that it wins. -->
+<noscript><style>html, body { height:auto; overflow:auto; } #fallback { display:block; } #stage, .hud, #start, #all { display:none !important; }</style></noscript>
+<script type="importmap">
+{ "imports": { "three": "../../_shared/three-r160/build/three.module.js" } }
+</script>
+</head>
+<body>
+<p class="ew-preview-banner" role="note" style="position:fixed;left:8px;bottom:8px;z-index:2147483647;pointer-events:none;box-sizing:border-box;max-width:calc(100vw - 16px);margin:0;padding:4px 10px;border-radius:6px;background:#111318;color:#fff;border:1px solid #fff;font:600 12px/1.4 system-ui,-apple-system,Segoe UI,sans-serif;letter-spacing:0;text-align:left;white-space:normal">Preview for review: not launched</p>
+<canvas id="stage" tabindex="0" role="img" aria-label="A view inside the pool rooms. Use the arrow keys to walk and turn, or the buttons to go from photograph to photograph."></canvas>
+
+<div class="hud" id="veil" aria-hidden="true"></div>
+<p class="sr" id="announce" role="status"></p>
+<div class="hud" id="stick" aria-hidden="true" hidden><i></i></div>
+
+<div class="hud" id="tools" hidden>
+  <canvas id="map" width="336" height="288" role="img" aria-label="Plan of the rooms, showing the pools, the photographs and where you are"></canvas>
+  <div class="toolrow">
+    <button class="btn" id="list" type="button" aria-haspopup="dialog">All plates</button>
+    <button class="btn" id="tour" type="button" aria-pressed="false" title="Walk from photograph to photograph without touching anything (T)">Walk me round</button>
+    <button class="btn" id="sound" type="button" aria-pressed="false" title="The sound of the rooms, on or off (M)">Sound</button>
+    <button class="btn" id="still" type="button" aria-pressed="false" title="Stop the water moving">Still the water</button>
+  </div>
+</div>
+
+<section class="hud glass" id="plate" aria-label="The photograph in front of you" hidden>
+  <p id="plate-n">Still Water</p>
+  <p id="plate-t">Walk up to a photograph, or press Next.</p>
+  <div class="steps">
+    <button class="btn" id="prev" type="button" title="Go to the photograph before (PageUp)">Previous</button>
+    <button class="btn" id="next" type="button" title="Go to the next photograph (PageDown)">Next</button>
+  </div>
+</section>
+
+<section class="card glass" id="start" aria-labelledby="start-h">
+  <div class="eyebrow">A walkable gallery</div>
+  <h1 id="start-h">Still Water</h1>
+  <p class="lede">Twelve photographs hang in a set of empty, tiled pool rooms. Nobody else is here. Walk through, wade across the water, and stop where you like, or let the page walk you round.</p>
+  <div class="actions">
+    <button class="btn primary" id="enter" type="button">Walk in</button>
+    <button class="btn" id="enter-tour" type="button">Walk me round</button>
+  </div>
+  <p class="note keys"><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> or <kbd>↑</kbd> <kbd>↓</kbd> walk · <kbd>←</kbd> <kbd>→</kbd> or <kbd>Q</kbd> <kbd>E</kbd> turn · drag to look · <kbd>PageDown</kbd> or <kbd>N</kbd> next photograph · <kbd>PageUp</kbd> or <kbd>P</kbd> the one before · <kbd>T</kbd> walk me round · <kbd>L</kbd> all plates · <kbd>M</kbd> sound. The keys work while the view has the focus: click it, or press Tab until it is outlined.</p>
+  <p class="note" id="touch-note" hidden>Drag on the left of the screen to walk. Drag on the right to look round.</p>
+  <p class="note">The photographs are stand-in test images from the Kodak set, hung here to show the rooms working. Their terms of reuse are not settled, and they must be replaced with the owner's own photographs before this page goes public. After <a href="https://x.com/Ben__Springer/status/2119915615351693483" rel="noopener">a post by Ben Springer</a>. This is an original build: the rooms, the water and the light were written for this page.</p>
+  <p class="note"><a href="../../../">Back to Elusion Works</a></p>
+</section>
+
+<dialog id="all" aria-labelledby="all-h">
+  <div class="dialog-head"><h2 id="all-h">All twelve plates</h2><button class="btn" id="all-close" type="button">Close</button></div>
+  <ul id="plates"></ul>
+  <h3>How to move</h3>
+  <p class="note">With the view in focus: <b>W A S D</b> or the up and down arrows walk; the left and right arrows or <b>Q</b> and <b>E</b> turn; <b>PageDown</b> or <b>N</b> goes to the next photograph and <b>PageUp</b> or <b>P</b> to the one before; <b>T</b> walks you round; <b>L</b> opens this list; <b>M</b> is sound; <b>Escape</b> stops a walk. With a mouse, drag to look. On a phone, drag on the left of the screen to walk and on the right to look round. Next, Previous and Walk me round do the same without keys.</p>
+  <p class="note">The photographs are stand-in test images whose terms of reuse are not settled. <a href="../../../">Back to Elusion Works</a></p>
+</dialog>
+
+<!-- The plain gallery: shown instead of the rooms when 3D graphics cannot start, the script does not load, or scripts are off.
+     The words must match js/photos.js; world.test.mjs checks that they do. -->
+<main id="fallback">
+  <p class="eyebrow"><a href="../../../">Elusion Works</a></p>
+  <h1 id="flat-h">Still Water</h1>
+  <p class="lede" id="fallback-why" role="status">The 3D rooms could not be opened here, so the twelve photographs are shown below as a plain list.</p>
+  <p class="note">Each photograph hangs in the rooms with a numbered plate and no title. These are stand-in test images from the Kodak set; their terms of reuse are not settled, and they must be replaced with the owner's own photographs before this page goes public.</p>
+  <ol id="flat">
+    <li><figure><img src="img/k16.jpg" alt="" loading="lazy" width="768" height="512"><figcaption><b>Plate 01</b> A low island lined with palm trees across still water, with tall white clouds above.</figcaption></figure></li>
+    <li><figure><img src="img/k06.jpg" alt="" loading="lazy" width="768" height="512"><figcaption><b>Plate 02</b> A small wooden sailing boat at anchor on calm turquoise water, a low shoreline behind it.</figcaption></figure></li>
+    <li><figure><img src="img/k11.jpg" alt="" loading="lazy" width="768" height="512"><figcaption><b>Plate 03</b> A weathered boat moored beside a rusting, broken jetty on green water.</figcaption></figure></li>
+    <li><figure><img src="img/k21.jpg" alt="" loading="lazy" width="768" height="512"><figcaption><b>Plate 04</b> A white lighthouse and red-roofed houses on a rocky shore, waves breaking below.</figcaption></figure></li>
+    <li><figure><img src="img/k19.jpg" alt="" loading="lazy" width="512" height="768"><figcaption><b>Plate 05</b> A white lighthouse behind a white picket fence, under a blue sky with white cloud.</figcaption></figure></li>
+    <li><figure><img src="img/k13.jpg" alt="" loading="lazy" width="768" height="512"><figcaption><b>Plate 06</b> A stony mountain stream running through green forest, with snow on the peaks beyond.</figcaption></figure></li>
+    <li><figure><img src="img/k09.jpg" alt="" loading="lazy" width="512" height="768"><figcaption><b>Plate 07</b> Racing dinghies under striped spinnaker sails on grey water.</figcaption></figure></li>
+    <li><figure><img src="img/k22.jpg" alt="" loading="lazy" width="768" height="512"><figcaption><b>Plate 08</b> A red barn reflected in a pond, among trees in spring leaf.</figcaption></figure></li>
+    <li><figure><img src="img/k23.jpg" alt="" loading="lazy" width="768" height="512"><figcaption><b>Plate 09</b> Two macaws side by side, one blue and yellow, one red, against green leaves.</figcaption></figure></li>
+    <li><figure><img src="img/k07.jpg" alt="" loading="lazy" width="768" height="512"><figcaption><b>Plate 10</b> An arched, shuttered window in a pale wall, with pink and red hibiscus flowers in front.</figcaption></figure></li>
+    <li><figure><img src="img/k02.jpg" alt="" loading="lazy" width="768" height="512"><figcaption><b>Plate 11</b> A close view of a red painted door with an iron bolt and a round white knob.</figcaption></figure></li>
+    <li><figure><img src="img/k01.jpg" alt="" loading="lazy" width="768" height="512"><figcaption><b>Plate 12</b> The front of a stone building with red shutters and a red door.</figcaption></figure></li>
+  </ol>
+  <p class="note"><a href="../../../">Back to Elusion Works</a></p>
+</main>
+<script>
+// If the rooms never start (the script failed to load, or stopped part way), show the plain gallery instead of a dead start card.
+(function () {
+  function flat(why) { var d = document.documentElement; if (window.stillWater || d.classList.contains('flat')) return; d.classList.add('flat'); if (why) document.getElementById('fallback-why').textContent = why; }
+  window.stillWaterFlat = flat;
+  addEventListener('load', function () { flat('The script that draws the rooms did not load, so the twelve photographs are shown below as a plain list.'); });
+})();
+</script>
+<script type="module" src="js/app.js" onerror="stillWaterFlat('The script that draws the rooms did not load, so the twelve photographs are shown below as a plain list.')"></script>
+</body>
+</html>
