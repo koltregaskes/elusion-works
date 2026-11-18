@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Hall of Forever</title>
+<!--
+ART DIRECTION
+1. Concept: a museum website for things that last forever, being eaten alive by a black hole. The joke lands in one second.
+2. Victim page: International Klein Blue ground, bone-cream type, a hairline cream grid, acid lime only for tiny catalogue labels.
+3. Type: Archivo at full width and 900 weight, enormous and tight; Newsreader for body and italic captions; IBM Plex Mono for numbers.
+4. The hole: Yves Klein's two materials, blue pigment and gold leaf. A gold, Doppler-beamed accretion disc, white-hot on the approaching side, copper on the far side.
+5. Physics read: ray-traced Schwarzschild lensing with the page as the backdrop, a photon ring, the far side of the disc arched over the shadow.
+6. Hero moment: first frame, the hole sits inside "FOREVER", the word wrapped into an Einstein ring, letters already peeling off in strips and spiralling in.
+7. Tearing: the page rips along ragged, burning gold edges and shows black space with stars behind it.
+8. Spaghettification: torn pieces stretch along their fall, heat from cream to gold to white, and vanish at the horizon.
+9. Reform: the hole gives everything back; pieces fly home along the spiral and the seams cool from gold to blue.
+10. Must not be: Felix's off-white page with an orange disc, a dark sci-fi dashboard, purple neon, glass panels, or any explanation on screen.
+-->
+<style>
+  @font-face { font-family: "Archivo"; src: url(fonts/archivo.woff2) format("woff2"); font-weight: 100 900; font-stretch: 62% 125%; font-display: block; }
+  @font-face { font-family: "Newsreader"; src: url(fonts/newsreader.woff2) format("woff2"); font-weight: 300 700; font-style: normal; font-display: block; }
+  @font-face { font-family: "Newsreader"; src: url(fonts/newsreader-italic.woff2) format("woff2"); font-weight: 300 700; font-style: italic; font-display: block; }
+  @font-face { font-family: "Plex Mono"; src: url(fonts/plexmono-400.woff2) format("woff2"); font-weight: 400; font-display: block; }
+  @font-face { font-family: "Plex Mono"; src: url(fonts/plexmono-500.woff2) format("woff2"); font-weight: 500; font-display: block; }
+
+  :root {
+    --ikb: #0d2bb8;
+    --ikb-deep: #071c86;
+    --cream: #f4eedf;
+    --cream-dim: rgba(244, 238, 223, .62);
+    --rule: rgba(244, 238, 223, .34);
+    --lime: #d8ff3c;
+    --gold: #ffcf73;
+  }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #020308; }
+  body { -webkit-font-smoothing: antialiased; }
+
+  #stage { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none; cursor: default; }
+  #stage.grab { cursor: grab; }
+  #stage.grabbing { cursor: grabbing; }
+
+  /* ---------- The victim: a real web page ---------- */
+  #page {
+    box-sizing: border-box; width: 100vw; background: var(--ikb); color: var(--cream);
+    font-family: "Newsreader", Georgia, serif; font-size: max(15px, 1.12vw); line-height: 1.45;
+    padding: 0 3.2vw 4vw;
+  }
+  #page a { color: inherit; text-decoration: none; }
+  #page ::selection { background: var(--lime); color: var(--ikb-deep); }
+  .mono { font-family: "Plex Mono", ui-monospace, monospace; font-size: max(10px, .72vw); letter-spacing: .14em; text-transform: uppercase; }
+  .wide { font-family: "Archivo", sans-serif; font-stretch: 125%; }
+
+  .nav { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 1.5vw 0 1.2vw; border-bottom: 1px solid var(--rule); }
+  .nav .mark { font-family: "Archivo"; font-stretch: 125%; font-weight: 850; font-size: max(13px, 1.05vw); letter-spacing: .02em; }
+  .nav .mark sup { font-family: "Plex Mono"; font-weight: 400; font-size: .55em; letter-spacing: .1em; margin-left: .5em; color: var(--lime); vertical-align: .6em; }
+  .nav ul { display: flex; gap: 2.4vw; margin: 0; padding: 0; list-style: none; }
+  .nav .right { justify-self: end; display: flex; gap: 1.2vw; align-items: center; }
+  .pill { border: 1px solid var(--lime); color: var(--lime); border-radius: 99px; padding: .45em 1em .4em; }
+
+  .hero { position: relative; padding: 2.6vw 0 2vw; border-bottom: 1px solid var(--rule); }
+  .hero .kicker { display: flex; justify-content: space-between; color: var(--cream-dim); }
+  .hero .kicker b { color: var(--lime); font-weight: 500; }
+  .h1a { font-family: "Archivo"; font-stretch: 100%; font-weight: 300; font-size: 8.6vw; line-height: .9; letter-spacing: -.035em; margin: 1.6vw 0 0; }
+  .h1b { font-family: "Archivo"; font-stretch: 125%; font-weight: 900; font-size: 14.9vw; line-height: .8; letter-spacing: -.05em; margin: 0 0 0 -.06em; white-space: nowrap; }
+  .hero-foot { display: grid; grid-template-columns: 1.15fr 1fr 1fr; gap: 3vw; margin-top: 2.4vw; align-items: end; }
+  .lede { font-style: italic; font-size: 2.05vw; line-height: 1.12; font-weight: 350; max-width: 26ch; }
+  .plate { border-top: 1px solid var(--cream); padding-top: .8vw; }
+  .plate dl { display: grid; grid-template-columns: auto 1fr; gap: .35vw 1.4vw; margin: .6vw 0 0; }
+  .plate dt { color: var(--cream-dim); }
+  .plate dd { margin: 0; }
+  .cta { display: inline-flex; align-items: center; gap: .9vw; background: var(--cream); color: var(--ikb) !important; padding: 1vw 1.4vw; font-family: "Archivo"; font-stretch: 112%; font-weight: 750; font-size: 1.15vw; letter-spacing: .01em; }
+  .cta i { font-style: normal; font-family: "Plex Mono"; font-size: .8em; }
+
+  .band { margin: 0 -3.2vw; background: var(--lime); color: var(--ikb-deep); padding: .9vw 0; white-space: nowrap; overflow: hidden; font-family: "Archivo"; font-stretch: 125%; font-weight: 900; font-size: 2.1vw; letter-spacing: -.01em; }
+  .band span { margin-right: 2.4vw; }
+  .band span:nth-child(even) { font-family: "Newsreader"; font-style: italic; font-weight: 400; font-stretch: 100%; }
+
+  .sect-head { display: flex; justify-content: space-between; align-items: baseline; padding: 3vw 0 1.2vw; border-bottom: 1px solid var(--rule); }
+  .sect-head h2 { font-family: "Archivo"; font-stretch: 125%; font-weight: 850; font-size: 4.2vw; letter-spacing: -.04em; line-height: .9; margin: 0; }
+  .sect-head p { margin: 0; max-width: 34ch; color: var(--cream-dim); font-style: italic; font-size: 1.25vw; }
+
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); border-left: 1px solid var(--rule); }
+  .card { border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); padding: 1.4vw 1.4vw 1.6vw; display: flex; flex-direction: column; gap: 1vw; }
+  .card .top { display: flex; justify-content: space-between; color: var(--cream-dim); }
+  .card .top b { color: var(--lime); font-weight: 500; }
+  .card .art { aspect-ratio: 4 / 3; background: var(--ikb-deep); position: relative; overflow: hidden; }
+  .card .art svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .card h3 { font-family: "Archivo"; font-stretch: 118%; font-weight: 780; font-size: 2vw; line-height: .95; letter-spacing: -.03em; margin: .2vw 0 0; }
+  .card p { margin: 0; color: var(--cream-dim); font-size: 1.05vw; }
+  .card .meta { display: flex; justify-content: space-between; border-top: 1px solid var(--rule); padding-top: .7vw; }
+  .pi { position: absolute; inset: 0; padding: 1.1vw; font-family: "Plex Mono"; font-size: .92vw; line-height: 1.18; letter-spacing: .06em; color: var(--cream); word-break: break-all; opacity: .9; }
+  .pi b { font-family: "Archivo"; font-stretch: 125%; font-weight: 900; font-size: 5.4vw; line-height: .8; float: left; margin: 0 .6vw 0 0; color: var(--lime); letter-spacing: -.04em; }
+  .tweet { position: absolute; left: 8%; right: 8%; top: 16%; background: var(--cream); color: var(--ikb-deep); padding: 1.1vw 1.2vw; font-size: 1.35vw; line-height: 1.2; }
+  .tweet small { display: block; font-family: "Plex Mono"; font-size: .7vw; letter-spacing: .1em; margin-bottom: .5vw; color: var(--ikb); }
+  .tweet:after { content: ""; position: absolute; left: 12%; bottom: -1.1vw; border: .6vw solid transparent; border-top: .6vw solid var(--cream); border-left: .6vw solid var(--cream); }
+  .mini { position: absolute; left: 7%; right: 7%; top: 10%; bottom: 10%; border: 1px solid var(--cream); }
+  .mini .bar { height: 1.3vw; border-bottom: 1px solid var(--cream); display: flex; gap: .3vw; align-items: center; padding: 0 .5vw; }
+  .mini .bar i { width: .45vw; height: .45vw; border-radius: 50%; border: 1px solid var(--cream); }
+  .mini .t1 { font-family: "Archivo"; font-weight: 300; font-size: 1.6vw; margin: .9vw .8vw 0; line-height: .9; letter-spacing: -.03em; }
+  .mini .t2 { font-family: "Archivo"; font-stretch: 125%; font-weight: 900; font-size: 2.9vw; margin: 0 .6vw; line-height: .85; letter-spacing: -.05em; }
+
+  .quote { padding: 4.2vw 0 3.6vw; border-bottom: 1px solid var(--rule); display: grid; grid-template-columns: 1fr 5fr; gap: 2vw; }
+  .quote blockquote { margin: 0; font-style: italic; font-weight: 330; font-size: 5.1vw; line-height: .98; letter-spacing: -.02em; }
+  .quote blockquote em { font-style: normal; font-family: "Archivo"; font-stretch: 125%; font-weight: 900; letter-spacing: -.05em; font-size: .9em; }
+  .quote cite { display: block; margin-top: 1.6vw; font-style: normal; color: var(--cream-dim); }
+
+  .visit { display: grid; grid-template-columns: 1fr 2fr; gap: 3vw; padding: 3vw 0; border-bottom: 1px solid var(--rule); }
+  .visit h2 { font-family: "Archivo"; font-stretch: 125%; font-weight: 850; font-size: 4.2vw; line-height: .9; letter-spacing: -.04em; margin: 0; }
+  .visit table { width: 100%; border-collapse: collapse; font-size: 1.35vw; }
+  .visit td { border-top: 1px solid var(--rule); padding: .9vw 0; vertical-align: top; }
+  .visit td:first-child { width: 34%; color: var(--cream-dim); }
+  .visit tr:last-child td { border-bottom: 1px solid var(--rule); }
+
+  .foot { padding-top: 2.4vw; }
+  .foot .big { font-family: "Archivo"; font-stretch: 125%; font-weight: 900; font-size: 13.4vw; line-height: .78; letter-spacing: -.055em; margin: 0 0 0 -.05em; color: transparent; -webkit-text-stroke: 1.4px var(--cream); white-space: nowrap; }
+  .foot .row { display: flex; justify-content: space-between; margin-top: 2vw; color: var(--cream-dim); }
+
+  /* ---------- Demo chrome: kept to a whisper ---------- */
+  #hud { position: fixed; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 18px 22px; pointer-events: none; font-family: "Plex Mono", monospace; font-size: 11.5px; letter-spacing: .14em; text-transform: uppercase; color: #eef3ff; }
+  #hud .hints, #hud .right { display: flex; align-items: center; background: rgba(4, 8, 30, .62); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, .12); border-radius: 99px; padding: 9px 8px 9px 18px; }
+  #hud .hints { padding-right: 18px; transition: opacity 1.6s, transform 1.6s; }
+  #hud .hints span { white-space: nowrap; }
+  #hud .hints span + span:before { content: ""; display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: var(--lime); margin: 0 14px; vertical-align: 2px; }
+  #hud.quiet .hints { opacity: 0; transform: translateY(8px); }
+  #hud .right { gap: 8px; }
+  #hud button { pointer-events: auto; font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit; background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .18); border-radius: 99px; padding: 6px 13px 5px; cursor: pointer; }
+  #hud button:hover, #hud button:focus-visible { background: rgba(216, 255, 60, .18); border-color: var(--lime); outline: none; }
+  #hud button[aria-pressed="true"] { color: var(--lime); border-color: rgba(216, 255, 60, .6); }
+  #remain { margin-right: 8px; color: rgba(238, 243, 255, .7); }
+  #remain b { color: var(--lime); font-weight: 500; }
+  #note { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); font: 11px/1.4 "Plex Mono", monospace; letter-spacing: .1em; color: var(--lime); background: rgba(2, 3, 8, .72); padding: 7px 14px; border-radius: 99px; pointer-events: none; text-align: center; max-width: calc(100vw - 48px); }
+  @media (max-width: 900px) {
+    #hud { flex-direction: column; align-items: flex-start; gap: 8px; font-size: 10px; padding: 12px 16px; }
+    #hud .hints span:nth-child(n+3) { display: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="stage" content="drawable" aria-label="A black hole eating the Hall of Forever web page">
+  <article id="page" drawable>
+    <header class="nav">
+      <div class="mark">HALL OF FOREVER<sup>EST. ALWAYS</sup></div>
+      <ul class="mono"><li><a href="#collection">Collection</a></li><li><a href="#visit">Visit</a></li><li><a href="#members">Members</a></li><li><a href="#shop">Shop</a></li></ul>
+      <div class="right mono"><span>EN</span><span class="pill">Open now · and always</span></div>
+    </header>
+
+    <section class="hero">
+      <div class="kicker mono"><span><b>Room 01</b> · Permanent collection</span><span>No closing time</span><span>Admission free · Exit not required</span></div>
+      <h1 class="h1a">Built to last</h1>
+      <div class="h1b">FOREVER.</div>
+      <div class="hero-foot">
+        <p class="lede">Ten thousand years of things that simply refuse to go away. Nothing in this building has ever been lost.</p>
+        <div class="plate mono">Now showing
+          <dl><dt>Opens</dt><dd>The beginning</dd><dt>Closes</dt><dd>Never</dd><dt>Floor</dt><dd>All of them</dd></dl>
+        </div>
+        <div><a class="cta" href="#visit">Plan an eternal visit <i>→</i></a></div>
+      </div>
+    </section>
+
+    <div class="band"><span>NOTHING HERE HAS EVER BEEN LOST</span><span>and nothing ever will be</span><span>PERMANENT COLLECTION</span><span>open every day, forever</span><span>NOTHING HERE HAS EVER BEEN LOST</span></div>
+
+    <div class="sect-head" id="collection"><h2>The Permanent<br>Collection</h2><p>Six objects, chosen by our curators for one quality above all others: they are not going anywhere.</p></div>
+    <div class="grid">
+      <article class="card">
+        <div class="top mono"><b>No. 001</b><span>Hall A</span></div>
+        <div class="art"><svg viewBox="0 0 400 300" aria-hidden="true">
+          <defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0 5.5H6" stroke="#f4eedf" stroke-width="1.1"/></pattern>
+          <pattern id="hatch2" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(-38)"><path d="M0 4.5H5" stroke="#f4eedf" stroke-width=".9"/></pattern></defs>
+          <circle cx="292" cy="78" r="34" fill="none" stroke="#d8ff3c" stroke-width="1.2" stroke-dasharray="2 4"/>
+          <circle cx="292" cy="78" r="22" fill="#d8ff3c"/>
+          <polygon points="60,250 190,72 320,250" fill="url(#hatch)"/>
+          <polygon points="190,72 320,250 248,250" fill="url(#hatch2)"/>
+          <polygon points="60,250 190,72 320,250" fill="none" stroke="#f4eedf" stroke-width="1.6"/>
+          <line x1="190" y1="72" x2="248" y2="250" stroke="#f4eedf" stroke-width="1.2"/>
+          <path d="M10 250H390" stroke="#f4eedf" stroke-width="1.4"/>
+          <path d="M30 262H370M60 272H340M100 281H300" stroke="#f4eedf" stroke-width=".8" opacity=".6"/>
+        </svg></div>
+        <h3>The Great Pyramid of Giza</h3>
+        <p>Limestone and granite, c. 2560 BC. Has outlasted every civilisation that has tried to explain it.</p>
+        <div class="meta mono"><span>Status</span><span>Still here</span></div>
+      </article>
+      <article class="card">
+        <div class="top mono"><b>No. 002</b><span>Hall A</span></div>
+        <div class="art"><svg id="galaxy" viewBox="0 0 400 300" aria-hidden="true"></svg></div>
+        <h3>Light from Andromeda</h3>
+        <p>Photons, on loan. Left their galaxy 2.5 million years ago and are only now arriving at the museum.</p>
+        <div class="meta mono"><span>In transit</span><span>2,500,000 yrs</span></div>
+      </article>
+      <article class="card">
+        <div class="top mono"><b>No. 003</b><span>Vault</span></div>
+        <div class="art"><svg viewBox="0 0 400 300" aria-hidden="true">
+          <g fill="none" stroke="#f4eedf" stroke-width="1.4" stroke-linejoin="round">
+            <polygon points="130,96 270,96 318,140 200,262 82,140"/>
+            <path d="M82 140H318M130 96L160 140L200 96L240 140L270 96M160 140L200 262L240 140M82 140L200 262M318 140L200 262"/>
+            <path d="M160 140L200 96L240 140" stroke="#d8ff3c"/>
+          </g>
+          <g stroke="#f4eedf" stroke-width="1" opacity=".75"><path d="M200 40V70M200 274V292M44 140H66M334 140H356M96 60l16 16M304 60l-16 16"/></g>
+        </svg></div>
+        <h3>A Diamond</h3>
+        <p>Pure carbon, 58 facets. Forever, according to the advertising, which we have chosen to believe.</p>
+        <div class="meta mono"><span>Weight</span><span>3.08 ct</span></div>
+      </article>
+      <article class="card">
+        <div class="top mono"><b>No. 004</b><span>Hall B</span></div>
+        <div class="art"><div class="pi"><b>π</b>3.1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679821480865132823066470938446095505822317253594081284811174502841027019385211055596446229489549303819644288109756659334461284756482337867831652712019091456485669234603486104543266482133936072602491412737245870066063155881748815209209628292540917153643678925903600113305305488204665213841469519415116094330572703657595919530921861173819326117931051185480744623799627495673518857527248912279381830119491298336733624406566430860213949463952247371907021798609437027705392171762931767523846748184676694051320005681271452635608277857713427577896091736371787214684409012249534301465495853710507922796892589235420199561121290219608640344181598136297747713099605187072113499999983729780499510597317328160963185950244594553469083026425223082533446850352619311881710100031378387528865875332083814206171776691473035982534904287554687311595628638823537875937519577818577805321712268066130019278766111959092164201989</div></div>
+        <h3>The Number π</h3>
+        <p>Infinite, ongoing. The exhibit is extended by one digit every night after the building closes, which it never does.</p>
+        <div class="meta mono"><span>Digits on view</span><span>1,000 of ∞</span></div>
+      </article>
+      <article class="card">
+        <div class="top mono"><b>No. 005</b><span>Hall C</span></div>
+        <div class="art"><div class="tweet"><small>POSTED 03:12 · 14 MAR 2009</small>is anyone else awake?? also does this website save everything forever or</div>
+          <svg viewBox="0 0 400 300" aria-hidden="true"><g stroke="#f4eedf" stroke-width="1" opacity=".55"><path d="M36 236H364M36 250H300M36 264H330"/></g></svg></div>
+        <h3>Your First Post</h3>
+        <p>Text, 2009. Donated anonymously. You cannot delete it. We have checked, and so has everyone you went to school with.</p>
+        <div class="meta mono"><span>Retention</span><span>Indefinite</span></div>
+      </article>
+      <article class="card">
+        <div class="top mono"><b>No. 006</b><span>You are here</span></div>
+        <div class="art"><div class="mini"><div class="bar"><i></i><i></i><i></i></div><div class="t1">Built to last</div><div class="t2">FOREVER.</div></div></div>
+        <h3>This Web Page</h3>
+        <p>HTML and CSS, 2026. Hand-set, fully accessible, and engineered by our trustees to remain exactly as you see it.</p>
+        <div class="meta mono"><span>Condition</span><span>Perfect</span></div>
+      </article>
+    </div>
+
+    <section class="quote" id="members">
+      <div class="mono" style="color:var(--lime)">From the Director</div>
+      <div><blockquote>“Nothing here has ever been lost. Nothing here <em>ever</em> will be.”</blockquote><cite class="mono">Dr. A. Perpetua · Director, Hall of Forever · Year 1 to present</cite></div>
+    </section>
+
+    <section class="visit" id="visit">
+      <h2>Visiting<br>information</h2>
+      <table>
+        <tr><td class="mono">Opening hours</td><td>Always. Including bank holidays, the end of history and the one after that.</td></tr>
+        <tr><td class="mono">Last admission</td><td>There isn't one.</td></tr>
+        <tr><td class="mono">Closing time</td><td>The heat death of the universe, est. 10<sup>100</sup> years. Please allow time for the cloakroom.</td></tr>
+        <tr><td class="mono">Café</td><td>Serving eternity, all day. Decaf available.</td></tr>
+        <tr id="shop"><td class="mono">Gift shop</td><td>Everything must stay.</td></tr>
+      </table>
+    </section>
+
+    <footer class="foot">
+      <div class="big">FOREVER</div>
+      <div class="row mono"><span>© Hall of Forever · All rights reserved in perpetuity</span><span>Nothing on this page can be removed</span></div>
+    </footer>
+  </article>
+</canvas>
+
+<div id="hud">
+  <div class="hints"><span>Drag the hole</span><span>Scroll to feed it</span><span>Double-click to rescue</span><span>R to reform</span></div>
+  <div class="right"><span id="remain">Forever left <b>100.0%</b></span><button id="snd" type="button" aria-pressed="false">Sound off</button><button id="reform" type="button">Reform</button></div>
+</div>
+<div id="note" hidden></div>
+<script src="main.js"></script>
+</body>
+</html>
