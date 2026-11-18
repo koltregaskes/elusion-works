@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Axy Lusion After Hours: a homepage you can bend</title>
+<meta name="description" content="An experimental Axy Lusion homepage. Real text and buttons bend and fall into a gravity well, and a gallery wall is lit by lamps you move. Built on HTML-in-Canvas with a plain HTML fallback.">
+<meta name="theme-color" content="#060606">
+<link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml">
+<!-- Unlisted until release is approved: remove the next line, then add the gallery card and sitemap entry. -->
+<meta name="robots" content="noindex">
+<link rel="preload" href="fonts/outfit-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+  @font-face { font-family:"Outfit"; src:url("fonts/outfit-latin-wght-normal.woff2") format("woff2"); font-weight:100 900; font-display:swap; }
+  @font-face { font-family:"Plus Jakarta Sans"; src:url("fonts/plus-jakarta-sans-latin-wght-normal.woff2") format("woff2"); font-weight:200 800; font-display:swap; }
+  @font-face { font-family:"JetBrains Mono"; src:url("fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2"); font-weight:100 800; font-display:swap; }
+  :root { --black:#060606; --panel:#11100e; --line:rgba(245,230,200,.14); --line-strong:rgba(245,230,200,.3); --cream:#f5e6c8; --white:#fffaf0; --muted:#a89d89; --amber:#c4851a; --amber-light:#d4a03a; --glow:rgba(196,133,26,.4);
+    --display:"Outfit","Century Gothic","Avenir Next",system-ui,sans-serif; --body:"Plus Jakarta Sans","Segoe UI",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace; --pad:clamp(16px,3.4vw,48px); --gl:max(var(--pad),env(safe-area-inset-left,0px)); --gr:max(var(--pad),env(safe-area-inset-right,0px)); color-scheme:dark; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--black); color:var(--muted); font-family:var(--body); overflow:hidden; -webkit-text-size-adjust:100%; }
+  a { color:inherit; } button,input { font:inherit; color:inherit; }
+  :focus-visible { outline:2px solid var(--amber-light); outline-offset:3px; }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+  .skip { position:fixed; left:12px; top:-60px; z-index:30; padding:10px 14px; background:var(--cream); color:var(--black); font-weight:700; border-radius:6px; }
+  .skip:focus { top:12px; }
+
+  #stage, #glass { position:fixed; inset:0; width:100%; height:100%; }
+  #glass { display:block; touch-action:none; }
+  #wellfx, #dark { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; }
+  #wellfx { z-index:0; } #dark { z-index:4; }
+  #page { position:relative; z-index:1; width:100%; height:100%; display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(0,1fr) auto; padding-block:0; padding-left:var(--gl); padding-right:var(--gr); touch-action:none; user-select:none; -webkit-user-select:none; overflow:hidden; overflow:clip; }
+  .enhanced #page { background:var(--black); }
+  #page[data-room="lamplight"] { background:#b3a792; color:#2a241c; }
+
+  .top { display:flex; align-items:center; gap:clamp(12px,3vw,36px); height:64px; border-bottom:1px solid var(--line); }
+  .logo { display:inline-flex; align-items:center; min-height:36px; font:800 17px/1 var(--display); letter-spacing:.2em; text-transform:uppercase; text-decoration:none; color:var(--cream); white-space:nowrap; }
+  .rooms { display:flex; gap:6px; margin-right:auto; }
+  .rooms a, .site a { display:inline-flex; align-items:center; min-height:36px; padding:0 12px; font:500 11px/1 var(--mono); letter-spacing:.2em; text-transform:uppercase; text-decoration:none; border-radius:999px; border:1px solid transparent; }
+  .rooms a[aria-current="page"] { color:var(--black); background:var(--amber-light); }
+  .rooms a:not([aria-current]) { border-color:var(--line-strong); color:var(--cream); }
+  .site { display:flex; gap:2px; } .site a { color:var(--muted); }
+  /* In Lamplight the header and footer stay as lit signage: dark bars, never dimmed with the wall */
+  #page[data-room="lamplight"] .top, #page[data-room="lamplight"] .foot { background:var(--black); margin-left:calc(-1*var(--gl)); margin-right:calc(-1*var(--gr)); padding-left:var(--gl); padding-right:var(--gr); color:var(--muted); }
+
+  main { position:relative; min-height:0; overflow:hidden; overflow:clip; }
+  .room[hidden] { display:none !important; }
+  .fall { display:inline-block; }
+
+  /* Undertow */
+  #undertow { height:100%; display:grid; grid-template-rows:minmax(0,1fr) auto; }
+  .hero { min-height:0; overflow:hidden; overflow:clip; display:flex; flex-direction:column; justify-content:safe center; gap:clamp(6px,1.6vh,18px); padding:6px 0 8px; }
+  .fit-1 .strip { display:none; } .fit-2 .lede { display:none; } .fit-3 .hero .kicker, .fit-3 .sub { display:none; } .fit-4 h1 { font-size:clamp(24px,min(13vh,10vw),84px); white-space:nowrap; } .fit-4 h1 .gap { display:inline-block; width:.32em; height:auto; } .fit-4 .btn { min-height:36px; padding:0 14px; }
+  .kicker { margin:0; font:500 11px/1.4 var(--mono); letter-spacing:.24em; text-transform:uppercase; color:var(--amber-light); }
+  h1 { margin:0; font:800 clamp(52px,11.5vw,168px)/.92 var(--display); letter-spacing:.1em; text-transform:uppercase; color:var(--cream); text-shadow:0 0 60px var(--glow); white-space:nowrap; }
+  h1 .gap { display:inline-block; width:.32em; }
+  .sub { margin:0; font:300 clamp(15px,1.9vw,24px)/1.2 var(--display); letter-spacing:.34em; text-transform:uppercase; color:var(--white); }
+  .lede { margin:0; max-width:34em; font-size:clamp(15px,1.25vw,18px); line-height:1.6; color:var(--muted); }
+  .lede .fall { margin-right:.28em; }
+  .cta { display:flex; flex-wrap:wrap; gap:12px; margin:4px 0 0; }
+  .btn { display:inline-flex; align-items:center; min-height:46px; padding:0 22px; font:700 12px/1 var(--display); letter-spacing:.18em; text-transform:uppercase; text-decoration:none; border-radius:2px; background:var(--amber); color:var(--black); border:1px solid var(--amber); }
+  .btn.ghost { background:none; color:var(--cream); border-color:var(--line-strong); }
+  .strip { list-style:none; display:flex; gap:clamp(8px,1.2vw,16px); margin:clamp(4px,1.4vh,16px) 0 0; padding:0; }
+  .strip a { display:block; text-decoration:none; }
+  .frame { display:block; width:clamp(64px,8.4vw,118px); height:auto; aspect-ratio:4/5; object-fit:cover; background:linear-gradient(160deg,var(--t,#1a3540),#060606 70%); border:1px solid var(--line-strong); }
+  .ref { display:block; margin-top:6px; font:500 10px/1 var(--mono); letter-spacing:.16em; color:var(--muted); }
+  .dock { display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px; padding:12px 0 14px; border-top:1px solid var(--line); }
+  .dock label { display:flex; align-items:center; gap:10px; font:500 11px/1 var(--mono); letter-spacing:.18em; text-transform:uppercase; color:var(--cream); }
+  input[type=range] { width:clamp(110px,14vw,180px); height:32px; accent-color:var(--amber-light); background:none; }
+  .tool { min-height:40px; padding:0 16px; font:500 11px/1 var(--mono); letter-spacing:.16em; text-transform:uppercase; background:none; color:var(--cream); border:1px solid var(--line-strong); border-radius:999px; cursor:pointer; }
+  .tool[aria-pressed="true"] { background:var(--cream); color:var(--black); border-color:var(--cream); }
+  .hint { margin:0 0 0 auto; font-size:13px; color:var(--muted); }
+
+  /* Lamplight */
+  #lamplight { height:100%; display:grid; grid-template-columns:minmax(220px,300px) 1fr; gap:clamp(18px,4vw,64px); align-items:center; padding:clamp(10px,2.5vh,28px) 0; }
+  #lamplight .kicker { color:var(--amber-light); }
+  .label { padding:16px 18px; background:#11100e; border:1px solid rgba(245,230,200,.16); }
+  h2 { margin:10px 0 12px; font:800 clamp(28px,3vw,40px)/.95 var(--display); letter-spacing:.06em; text-transform:uppercase; color:var(--cream); }
+  .label p { margin:0 0 12px; font-size:15px; line-height:1.6; color:#d9ccb2; }
+  .label p:last-child { margin-bottom:0; }
+  .label a { color:var(--cream); font-weight:700; }
+  .wall { list-style:none; margin:0; padding:0; height:100%; max-height:620px; display:grid; grid-template-columns:repeat(12,1fr); grid-template-rows:repeat(6,1fr); gap:clamp(10px,1.6vw,26px); }
+  .wall li { position:relative; display:flex; flex-direction:column; min-height:0; }
+  .wall li:nth-child(1){grid-area:1/1/5/4} .wall li:nth-child(2){grid-area:1/4/4/7} .wall li:nth-child(3){grid-area:1/7/5/10} .wall li:nth-child(4){grid-area:1/10/4/13}
+  .wall li:nth-child(5){grid-area:5/1/7/4} .wall li:nth-child(6){grid-area:4/4/7/7} .wall li:nth-child(7){grid-area:5/7/7/10} .wall li:nth-child(8){grid-area:4/10/7/13}
+  .wall a { flex:1; min-height:0; display:block; padding:clamp(6px,.9vw,14px); background:#efe6d2; border:clamp(5px,.6vw,9px) solid #17130d; box-shadow:var(--sx,0px) var(--sy,10px) 22px rgba(20,14,6,.55); }
+  img.missing { opacity:.45; }
+  .wall img { width:100%; height:100%; display:block; object-fit:cover; background:linear-gradient(160deg,var(--t,#1a3540),#060606 70%); }
+  .wall .ref { align-self:center; margin-top:6px; padding:3px 7px; background:#11100e; color:#d9ccb2; text-align:center; }
+
+  .foot { display:flex; flex-wrap:wrap; gap:4px 18px; align-items:center; padding:9px 0 max(10px,env(safe-area-inset-bottom)); font-size:12px; line-height:1.4; border-top:1px solid var(--line); }
+  .foot p { margin:0; } .foot a { color:inherit; display:inline-block; padding:6px 0; } #tier { margin-left:auto; font-family:var(--mono); font-size:11px; letter-spacing:.06em; }
+  .linkish { background:none; border:0; padding:6px 0; min-height:28px; text-decoration:underline; cursor:pointer; color:inherit; font-size:12px; }
+
+  /* Lamps: real buttons above the wall */
+  #lamps { position:fixed; inset:0; z-index:6; pointer-events:none; }
+  #lamps[hidden] { display:none; }
+  .lamp { position:absolute; width:44px; height:44px; margin:-22px 0 0 -22px; border-radius:50%; border:1px solid rgba(255,244,220,.7); background:radial-gradient(circle,#fff6dc 0 16%,rgba(255,214,140,.55) 17% 34%,rgba(255,200,120,0) 70%); pointer-events:auto; cursor:grab; touch-action:none; }
+  .lamp[aria-pressed="false"] { background:radial-gradient(circle,#5b554b 0 16%,rgba(120,110,95,.35) 17% 34%,rgba(0,0,0,0) 70%); border-color:rgba(255,244,220,.35); }
+  .lamp.sel { box-shadow:0 0 0 3px rgba(212,160,58,.75); }
+  .lamp-panel { position:absolute; left:var(--gl); width:min(300px,calc(100vw - 2*var(--pad))); bottom:var(--panel-bottom,60px); display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; max-width:calc(100vw - 2*var(--pad)); padding:10px 14px; background:rgba(12,11,9,.9); border:1px solid var(--line-strong); border-radius:12px; pointer-events:auto; color:var(--cream); }
+  .lamp-panel label { display:flex; align-items:center; gap:8px; font:500 10px/1 var(--mono); letter-spacing:.16em; text-transform:uppercase; }
+  .lamp-panel input[type=range] { width:96px; }
+  .lamp-panel strong { font:700 11px/1 var(--mono); letter-spacing:.16em; text-transform:uppercase; color:var(--amber-light); }
+
+  dialog { width:min(92vw,600px); max-height:86vh; padding:0; border:1px solid var(--line-strong); border-radius:14px; background:#11100e; color:var(--cream); }
+  dialog::backdrop { background:rgba(0,0,0,.66); }
+  .about { padding:22px 24px; overflow:auto; max-height:86vh; font-size:14px; line-height:1.6; color:#d9ccb2; }
+  .about h2 { margin:0 0 8px; font-size:24px; color:var(--cream); } .about h3 { margin:16px 0 4px; font:500 11px var(--mono); letter-spacing:.2em; text-transform:uppercase; color:var(--amber-light); }
+  .about p { margin:0 0 8px; } .about .tool { float:right; }
+
+  @media (max-width:760px) {
+    .top { height:56px; gap:10px; } .site { display:none; } .logo { font-size:14px; letter-spacing:.14em; }
+    h1 { white-space:normal; font-size:clamp(50px,17vw,84px); } h1 .gap { display:block; width:0; height:0; }
+    .strip li:nth-child(n+5) { display:none; } .hint { display:none; } .dock { padding:10px 0; } .tool { padding:0 12px; }
+    #lamplight { grid-template-columns:1fr; grid-template-rows:auto minmax(0,1fr); gap:10px; align-items:stretch; padding-bottom:calc(var(--panel-h,104px) + 16px); }
+    .label { padding:10px 12px; }
+    h2 { font-size:32px; margin:6px 0; } .label p { font-size:13px; line-height:1.5; margin-bottom:6px; } .label p.more { display:none; }
+    .wall { grid-template-columns:repeat(2,1fr); grid-template-rows:repeat(2,1fr); gap:12px; max-height:none; min-height:0; }
+    .wall li:nth-child(n) { grid-area:auto; } .wall li:nth-child(n+5) { display:none; }
+    .lamp-panel { left:var(--gl); right:var(--gr); width:auto; padding:8px 10px; gap:6px 10px; } .lamp-panel input[type=range] { width:80px; }
+    .foot { font-size:11px; } #tier { margin-left:0; }
+  }
+  @media (max-width:360px) { .top { gap:6px; } .logo { font-size:12px; letter-spacing:.08em; } .rooms { gap:4px; } .rooms a { padding:0 8px; font-size:10px; letter-spacing:.1em; } }
+  @media (max-width:760px) and (max-height:620px) { .label p { display:none; } h2 { margin:4px 0 0; font-size:24px; } .lamp-panel label { font-size:9px; letter-spacing:.1em; gap:6px; } .lamp-panel input[type=range] { width:66px; } }
+  @media (max-width:559px) and (max-height:540px) { .wall { grid-template-rows:minmax(0,1fr); } .wall li:nth-child(n+3) { display:none; } }
+  @media (max-height:520px) { .top { height:48px; } .dock { padding:6px 0; gap:6px 10px; } .tool { min-height:34px; } .hint { display:none; } .foot { padding-top:4px; padding-bottom:4px; } }
+  @media (max-height:520px) and (min-width:560px) {
+    #lamplight { grid-template-columns:minmax(150px,34%) 1fr; grid-template-rows:minmax(0,1fr); padding:8px 0; align-items:start; } .label p { display:none; } h2 { font-size:22px; margin:4px 0 0; } .label { padding:8px 10px; }
+    .wall { grid-template-columns:repeat(4,1fr); grid-template-rows:1fr; gap:10px; height:100%; } .wall li:nth-child(n) { grid-area:auto; display:flex; } .wall li:nth-child(n+5) { display:none; }
+    .lamp-panel { left:var(--gl); right:auto; width:min(34%,300px); padding:6px 8px; gap:4px 8px; } .lamp-panel input[type=range] { width:64px; }
+  }
+  @media (prefers-reduced-motion:reduce) { * { transition:none !important; animation:none !important; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#room">Skip to content</a>
+<canvas id="wellfx" aria-hidden="true"></canvas>
+<div id="stage">
+  <div id="page" data-room="undertow">
+    <header class="top">
+      <a class="logo" href="https://axylusion.com/">Axy Lusion</a>
+      <nav class="rooms" aria-label="Rooms">
+        <a href="#undertow" data-room="undertow" aria-current="page">Undertow</a>
+        <a href="#lamplight" data-room="lamplight">Lamplight</a>
+      </nav>
+      <nav class="site" aria-label="Axy Lusion">
+        <a href="https://axylusion.com/gallery.html">Gallery</a>
+        <a href="https://axylusion.com/about.html">About</a>
+      </nav>
+    </header>
+
+    <main id="room" tabindex="-1">
+      <section id="undertow" class="room" aria-labelledby="u-title">
+        <div class="hero">
+        <p class="kicker"><span class="fall">Archive / after hours / experiment 01</span></p>
+        <h1 id="u-title" aria-label="Axy Lusion"></h1>
+        <p class="sub"><span class="fall">AI art</span> <span class="fall">/ video</span> <span class="fall">/ music</span></p>
+        <p class="lede" id="lede">Every frame here is a collaboration between human direction and machine capability. Tonight the homepage has a hole in it. Drag the dark, turn up its mass, and watch the page lean in.</p>
+        <p class="cta">
+          <a class="btn fall" href="https://axylusion.com/gallery.html">Enter the gallery</a>
+          <a class="btn ghost fall" href="https://axylusion.com/about.html">About the artist</a>
+        </p>
+        <ul class="strip" id="strip" aria-label="Recent frames"></ul>
+        </div>
+        <div class="dock" role="group" aria-label="Gravity well controls">
+          <label for="mass">Mass <input id="mass" type="range" min="0" max="100" value="55"></label>
+          <button class="tool" id="feed" type="button" aria-pressed="false">Feed the well</button>
+          <button class="tool" id="restore" type="button">Restore the page</button>
+          <button class="tool" id="wellkey" type="button" aria-describedby="wellhelp">Move the well</button>
+          <p class="hint" id="wellhelp">Drag the dark anywhere. With "Move the well" focused, use the arrow keys. Tab pulls things back out.</p>
+        </div>
+      </section>
+
+      <section id="lamplight" class="room" aria-labelledby="l-title" hidden>
+        <div class="label">
+          <p class="kicker">Gallery / after hours</p>
+          <h2 id="l-title">Lamplight</h2>
+          <p>The lights are off and the frames are still on the wall. Three lamps are yours to move. Drag one, or focus it and use the arrow keys.</p>
+          <p class="more">Frames carry a date and a queue reference, never a title. <a href="https://axylusion.com/gallery.html">See the full archive</a>.</p>
+        </div>
+        <ul class="wall" id="wall" aria-label="Frames on the wall"></ul>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <p>After Felix Rieseberg's <a href="https://x.com/felixrieseberg/status/2122036839238492493" rel="noopener">HTML-in-Canvas demos</a>.</p>
+      <p><button class="linkish" id="about-open" type="button">About this page</button></p>
+      <p id="tier" role="status"></p>
+    </footer>
+  </div>
+</div>
+<canvas id="dark" aria-hidden="true"></canvas>
+
+<div id="lamps" hidden>
+  <div class="lamp-panel" role="group" aria-label="Lamp settings">
+    <strong id="lamp-name">Lamp 1</strong>
+    <label for="lamp-bright">Brightness <input id="lamp-bright" type="range" min="10" max="100" value="80"></label>
+    <label for="lamp-warm">Warmth <input id="lamp-warm" type="range" min="0" max="100" value="70"></label>
+    <label for="house">House lights <input id="house" type="range" min="4" max="60" value="12"></label>
+  </div>
+</div>
+
+<dialog id="about" aria-labelledby="about-h">
+  <div class="about">
+    <button class="tool" type="button" id="about-close">Close</button>
+    <h2 id="about-h">About this page</h2>
+    <p>An experimental homepage for Axy Lusion, Kol Tregaskes's AI art, video and music archive. Everything you see is real HTML: the headline is a heading, the buttons are links, the slider is a slider. Where the browser supports HTML-in-Canvas, the live page is drawn into a canvas and passed through a shader, so the text itself bends around the well and the gallery wall catches the lamplight.</p>
+    <h3>Two rooms</h3>
+    <p><strong>Undertow.</strong> A gravity well sits in the page. Drag it, raise its mass, or feed it and the page falls in piece by piece. Focus anything with Tab and it climbs back out.</p>
+    <p><strong>Lamplight.</strong> The gallery after closing. Move three lamps over a wall of frames. Each lamp has brightness and warmth, and the house lights can come up.</p>
+    <h3>Without HTML-in-Canvas</h3>
+    <p>You get the same page as ordinary HTML. Things still fall and the lamps still light the wall, but the text does not bend. The status line at the bottom says which version you have.</p>
+    <h3>The frames</h3>
+    <p>The frames shown here are generative tone studies, drawn in your browser from the colour record of real frames in the Axy Lusion archive. They stand in for the archive images, which are not bundled with this experiment. As on the archive itself, frames carry a queue reference and no title.</p>
+    <h3>Credit</h3>
+    <p>Inspired by Felix Rieseberg's HTML-in-Canvas demos, which set the bar. This is a separate, original piece. Type: Outfit, Plus Jakarta Sans and JetBrains Mono, under the SIL Open Font License. An Elusion Works study, built with Claude Fable 5.2.</p>
+  </div>
+</dialog>
+<script type="module" src="app.js"></script>
+</body>
+</html>
