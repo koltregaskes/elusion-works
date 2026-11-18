@@ -75,15 +75,28 @@ jobs:
             fi
           done
 
-      - name: Verify no absolute Windows paths leaked into shipped files
-        # The deploy workflow already does this on _site/. We mirror it on the source tree
-        # so a PR can be caught before the build step.
+      - name: Verify no absolute Windows paths leaked into tracked text files
+        # The deploy workflow already does this on _site/. We mirror it on the source tree,
+        # docs included, so a PR can be caught before the build step.
+        # Any drive letter with one or more slashes of either kind (so JS/JSON-escaped
+        # paths match too), then at least two name characters, so a JS regex such as
+        # /I:\s+/ is not mistaken for a path. Only file names are printed, not the match.
+        # grep exit 0 = hit, 1 = clean, 2 or more = scan error (fails too).
         run: |
-          if grep -R -E --include='*.html' --include='*.js' --include='*.jsx' --include='*.txt' --include='*.xml' \
-               'W:\\|C:\\|review_path|repo_path|review_dir' \
+          rc=0
+          grep -R -l -E \
+               --include='*.html' --include='*.js' --include='*.jsx' --include='*.mjs' \
+               --include='*.txt' --include='*.xml' --include='*.md' --include='*.json' \
+               --include='*.css' --include='*.svg' --include='*.py' --include='*.webmanifest' \
+               '\b[A-Z]:[\\/]+[A-Za-z0-9_][A-Za-z0-9_. -]|review_path|repo_path|review_dir' \
                --exclude-dir='node_modules' --exclude-dir='.git' \
-               . ; then
-            echo "::error::Found absolute Windows path or review-path marker in shipped files"
+               . > /tmp/leaked-paths.txt || rc=$?
+          if [ "$rc" -eq 0 ]; then
+            echo "::error::Found an absolute Windows path or review-path marker in:"
+            cat /tmp/leaked-paths.txt
+            exit 1
+          elif [ "$rc" -ne 1 ]; then
+            echo "::error::Path scan failed (grep exit $rc)"
             exit 1
           fi
           echo "No leaked workstation paths found."
