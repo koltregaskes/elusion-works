@@ -17,8 +17,8 @@ Use it as the reference for small games and anything that moves in real time.
 - **A wall counts only once its back has gone by you.** Touching its front and running on ahead scores nothing.
 - **It gets harder every eight walls:** faster walls, narrower gaps, shorter warnings. It is at its hardest from level 11.
 - **Pause** with P or Escape, or the button above the room. The game also pauses by itself when you look away.
-- **Slower** runs the game at six tenths of its speed, for anyone who wants it; a slower game does not count towards your best. **Sound** is off until you turn it on.
-- **Same walls again** replays the walls you just had. **New walls** gives you others.
+- **Slower** runs the game at six tenths of its speed, for anyone who wants it; a game slowed for any part of it is marked as such at the end and does not count towards your best, whatever the button says when it ends. **Sound** is off until you turn it on.
+- **Try again** starts from the same seed, and **New walls** from another. The same seed is not the same walls: each gap is placed within reach of where you are standing, and the walls come faster as you pass more of them, so a game only repeats if you move exactly as before.
 - With less movement asked for in your system settings there is no trail behind you, no shake on a hit and no drifting words. The walls still move: that is the game.
 - Nothing is saved. Your best score lasts until you leave the page.
 
