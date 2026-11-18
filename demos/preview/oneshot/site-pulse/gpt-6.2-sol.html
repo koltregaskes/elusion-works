@@ -1,0 +1,741 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Rooms OS Now — Private analytics</title>
+<style>
+:root{color-scheme:dark;--bg:#121412;--panel:#1a1e19;--line:#363e34;--ink:#f1f5ec;--muted:#b0bdac;--accent:#d5fa83;--warn:#ffd195;--bad:#ffb0a4}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,sans-serif}
+main{max-width:1280px;margin:auto;padding:clamp(20px,4vw,56px)}h1,h2,h3,p{margin:0}h1{font-size:clamp(2.8rem,8vw,6.1rem);line-height:.95;letter-spacing:-.085em;margin:.22em 0}
+h2{font-size:1.3rem;letter-spacing:-.035em}h3{font-size:1rem}.eyebrow,.mono,summary,th{font-family:ui-monospace,monospace}.eyebrow{color:var(--accent);font-size:.78rem;letter-spacing:.16em;text-transform:uppercase}
+header{border-bottom:1px solid var(--line);padding-bottom:28px;margin-bottom:24px}header p:last-child{max-width:65ch;color:var(--muted)}
+.grid{display:grid;gap:12px}.sources{grid-template-columns:repeat(4,minmax(0,1fr));margin:12px 0 24px}.card,.panel,details{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;min-width:0}
+.card p,.small{color:var(--muted);font-size:.85rem}.card p{margin-top:7px;overflow-wrap:anywhere}.card h3{margin-bottom:8px}.pill{display:inline-block;font: .74rem ui-monospace,monospace;border:1px solid currentColor;border-radius:20px;padding:4px 8px}.good{color:var(--accent)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+.panels{grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);align-items:start}.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}.toolbar label{display:grid;gap:3px;font-size:.8rem;color:var(--muted);min-width:0}
+select,button{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:6px 9px;max-width:100%}button,summary{cursor:pointer}a{color:var(--accent)}:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.headrow{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.big{font:clamp(1.6rem,5vw,3rem)/1 ui-monospace,monospace;color:var(--accent);margin:15px 0 8px}
+svg{display:block;width:100%;height:auto;margin:12px 0}svg text{fill:var(--muted);font:12px ui-monospace,monospace}.axis{stroke:var(--line)}.point{fill:var(--accent)}
+.scroll{overflow:auto}table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top;font-size:.83rem}td:first-child{min-width:125px;overflow-wrap:anywhere}.num{text-align:right;white-space:nowrap}th{color:var(--muted);font-weight:400}.bar{display:block;height:3px;background:var(--accent);margin-left:auto;margin-top:5px}
+details{margin-top:18px}details h3{margin:16px 0 6px}details p{margin:8px 0}pre{overflow:auto;padding:12px;background:var(--bg);border-radius:8px;font-size:.82rem}code{overflow-wrap:anywhere}.notice{min-height:1.5em;margin:5px 0 10px;color:var(--muted)}[hidden]{display:none!important}
+@media(max-width:920px){.sources{grid-template-columns:repeat(2,minmax(0,1fr))}.panels{grid-template-columns:1fr}}
+@media(max-width:450px){.sources{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <p class="eyebrow">Rooms OS / Private measurement</p>
+  <h1>Rooms OS Now</h1>
+  <p>Account trends and post comparisons from the original sources. A missing count stays missing; an old observation keeps its date.</p>
+</header>
+
+<section aria-labelledby="coverage-title">
+  <div class="headrow"><h2 id="coverage-title">01 / Source coverage</h2><button id="refresh" type="button">Refresh dashboard</button></div>
+  <p id="status" class="notice" role="status">No data loaded.</p>
+  <div id="coverage" class="grid sources"></div>
+</section>
+
+<div class="grid panels">
+<section class="panel" aria-labelledby="trend-title">
+  <h2 id="trend-title">02 / Account trend</h2>
+  <div class="toolbar">
+    <label>Source<select id="trend-source"></select></label>
+    <label>Account<select id="account"></select></label>
+    <label>Metric<select id="trend-metric"></select></label>
+  </div>
+  <div id="trend"></div>
+</section>
+
+<section class="panel" aria-labelledby="posts-title">
+  <h2 id="posts-title">03 / Post comparison</h2>
+  <div class="toolbar">
+    <label>Source<select id="post-source"></select></label>
+    <label>Measurement window<select id="window"></select></label>
+    <label>Metric<select id="post-metric"></select></label>
+  </div>
+  <p id="post-note" class="small"></p>
+  <div id="posts" class="scroll"></div>
+</section>
+</div>
+
+<details id="setup">
+<summary>Setup &amp; readback</summary>
+<h3>Run the private service</h3>
+<p>The browser never calls source APIs or connects to Neon. This file also contains the Node service. Save it as <code>rooms.html</code> and run these commands in its directory with Node.js 20+:</p>
+<pre>npm install --no-save pg
+
+rooms() {
+  node -e 'const h=require("node:fs").readFileSync("rooms.html","utf8");
+  new Function("require","argv",h.split(`&lt;script id="rooms-node" type="text/plain"&gt;`)[1].split(`&lt;/script&gt;`)[0])(require,process.argv.slice(1))' "$@"
+}
+
+rooms test
+rooms init
+rooms sync all
+rooms serve</pre>
+<p>Set these environment variables through your private service or secret manager before running the relevant commands. Do not put secrets into this file, a browser, or checked-in shell scripts.</p>
+<pre>DATABASE_URL             Neon writer connection URL (init / sync)
+ROOMS_READ_DATABASE_URL  Optional separate Neon reader URL (serve)
+ROOMS_PASSWORD           Required for serve; at least 20 characters
+ROOMS_PORT               Optional; defaults to 8787
+ROOMS_BLUESKY_ACTOR      Bluesky handle or DID
+ROOMS_MASTODON_ORIGIN    HTTPS origin of your Mastodon instance
+ROOMS_MASTODON_ID        Numeric account ID on that instance
+ROOMS_MASTODON_TOKEN     Optional bearer token if the instance requires it
+ROOMS_TYPEFULLY_KEY      Typefully v2 API key
+ROOMS_TYPEFULLY_SET      Social set ID to verify and read
+ROOMS_X_DIR              Directory of normalized monthly X archive files
+ROOMS_X_ACCOUNT_ID       Stable X account ID used in those files</pre>
+<p><code>rooms init</code> creates the single <code>rooms_now</code> schema. If using a distinct reader role, grant it <code>USAGE</code> on that schema and <code>SELECT</code> on its two tables; do not grant it write access. The service binds to <code>127.0.0.1</code> and uses HTTP Basic authentication (user <code>rooms</code>). Put it behind a private HTTPS reverse proxy that forwards Authorization. Do not expose the loopback HTTP service directly. Schedule <code>rooms sync all</code> out of band; dashboard refresh only rereads Neon.</p>
+
+<h3>Normalize the existing X archive</h3>
+<p>The original archive format was not supplied. Map it to one UTF-8 JSON file per reporting month, named <code>YYYY-MM.json</code>. This is a format example, not dashboard data:</p>
+<pre>{
+  "month": "2025-08",
+  "accountId": "123",
+  "accounts": [
+    {"observedAt":"2025-08-31T23:50:00Z","name":"Rooms",
+     "metrics":{"followers":128,"following":null}}
+  ],
+  "posts": [
+    {"id":"456","observedAt":"2025-09-01T09:00:00Z",
+     "publishedAt":"2025-08-12T16:00:00Z","basis":"month",
+     "metrics":{"impressions":820,"likes":null}}
+  ]
+}</pre>
+<p>Account metrics are point-in-time totals: <code>followers</code>, <code>following</code>, <code>posts</code>. Post metrics: <code>likes</code>, <code>replies</code>, <code>reposts</code>, <code>quotes</code>, <code>impressions</code>. Use <code>basis: "month"</code> only for counts measured over that reporting month; use <code>basis: "snapshot"</code> for reported cumulative counts. If a post has both, supply two records. Preserve real observation timestamps and string IDs. Omit unknown counts or use <code>null</code>; do not insert zero or invent dates. If the export does not establish a metric’s window, omit the metric until it can be mapped. The archive is never marked complete based on filenames alone.</p>
+
+<h3>What qualifies as a live readback?</h3>
+<p><code>rooms test</code> checks fixture behavior without credentials. <code>rooms sync all</code> calls the configured sources and ingests the local X archive. For each source it commits one run, opens an independent Neon connection, and checks the stored run metadata and normalized rows against the input, including row count and SHA-256. Only then does it save a receipt and make the run eligible for analytics. A receipt on a failed collection proves that the failure was recorded, not that source access worked.</p>
+<p>For acceptance, run <code>rooms sync all</code> with your real credentials and archive. Check all four receipts, confirm neither official feed returned a collection error, and open the authenticated dashboard to confirm the matching receipts. Typefully must find the configured social set and read its drafts endpoint; it may legitimately return zero published records in the page. A command exit of 0 means collection completed at the documented scope and readback matched, not that coverage was exhaustive. Inspect the source notes for missing archive months and compare an archived metric with its original export. Without this run, live acceptance remains unverified.</p>
+
+<h3>Measurement rules</h3>
+<p>Bluesky uses the official public AppView for account totals and the first author-feed page. Mastodon uses the configured instance’s official account and status APIs; reported counts may differ from other instances. Only public, original posts are included; Bluesky replies are excluded, while public Mastodon replies may appear. Typefully contributes published metadata only from the first drafts page; this integration does not read any engagement counters from Typefully. Nothing is joined across networks or matched by post text.</p>
+<p>Account trends show up to 48 real observations per account, with no interpolation. Post rankings use the latest observation per post and window, from at most 120 recently observed posts per source/window and the 24 latest available X monthly windows. The table shows up to 30 of those candidates. Snapshot ranks are raw totals with different observation dates and post ages, not comparable rates. A source can be recent while some retained posts are old. Live source freshness is flagged after 48 hours; X is flagged when the last populated archive month predates the last closed UTC month.</p>
+</details>
+</main>
+
+<script>
+"use strict";
+const SOURCES = {bluesky:"Bluesky · official",mastodon:"Mastodon · official",x:"X · monthly archive",typefully:"Typefully · publishing"};
+const ACCOUNT = {followers:"Followers",following:"Following",posts:"Posts total"};
+const POST = {likes:"Likes",replies:"Replies",reposts:"Reposts / boosts",quotes:"Quotes",impressions:"Impressions"};
+const $ = id => document.getElementById(id);
+const utc = t => t ? t.replace("T"," ").slice(0,16) + " UTC" : "—";
+const nf = new Intl.NumberFormat();
+const fmt = v => Number.isSafeInteger(v) ? nf.format(v) : "—";
+let current = {runs:[],samples:[]};
+
+function node(tag,text,cls) {
+  const n = document.createElement(tag);
+  if (text != null) n.textContent = text;
+  if (cls) n.className = cls;
+  return n;
+}
+function options(select,items,preferred) {
+  const old = select.value || preferred;
+  select.replaceChildren(...items.map(([value,label]) => {
+    const n = node("option",label); n.value = value; return n;
+  }));
+  if (items.some(([value]) => value === old)) select.value = old;
+  select.disabled = !items.length;
+}
+function closedMonth() {
+  const d = new Date();
+  return new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),0)).toISOString().slice(0,7);
+}
+function oldSource(source,through) {
+  return through && (source === "x" ? through < closedMonth() : Date.now()-Date.parse(through)>48*3600000);
+}
+function coverage() {
+  $("coverage").replaceChildren(...Object.entries(SOURCES).map(([source,label]) => {
+    const run = current.runs.find(x=>x.source===source);
+    const attempt = run?.attempt, usable = run?.usable;
+    const c = node("article",null,"card");
+    c.append(node("h3",label));
+    let state = "Not collected", tone = "warn";
+    if (attempt && !attempt.verifiedAt) state = "Readback pending";
+    else if (attempt?.status === "failed") { state = "Collection failed"; tone = "bad"; }
+    else if (usable?.status === "partial") state = "Partial coverage";
+    else if (usable) { state = "Collected"; tone = "good"; }
+    c.append(node("span",state,"pill "+tone));
+    if (attempt) {
+      c.append(node("p",attempt.note));
+      c.append(node("p","Attempt: "+utc(attempt.finished)));
+      if (attempt.verifiedAt) {
+        const p = node("p",`Readback: ${attempt.count} rows · ${attempt.digest.slice(0,12)}…`,"mono");
+        p.title = `Run ${attempt.id} · ${attempt.digest} · ${utc(attempt.verifiedAt)}`;
+        c.append(p);
+      }
+    }
+    if (usable) {
+      const t = oldSource(source,usable.through);
+      c.append(node("p",(t?"Stale · ":"")+"Latest usable coverage: "+(source==="x"?usable.through:utc(usable.through)),t?"warn":"small"));
+      if (usable.id!==attempt?.id) c.append(node("p","Showing retained data; the latest attempt did not replace it."));
+    } else c.append(node("p","No verified source data yet."));
+    return c;
+  }));
+}
+function svg(tag,attrs,text) {
+  const n=document.createElementNS("http://www.w3.org/2000/svg",tag);
+  for (const [k,v] of Object.entries(attrs)) n.setAttribute(k,v);
+  if (text!=null) n.textContent=text;
+  return n;
+}
+function trend() {
+  const source=$("trend-source").value;
+  const rows=current.samples.filter(d=>d.source===source && d.kind==="account");
+  const names=new Map();
+  for (const r of rows) if (!names.has(r.entity)) names.set(r.entity,r.body.name || r.entity);
+  options($("account"),[...names].map(([id,name])=>[id,name+(name!==id?` · ${id}`:"")]));
+  const metric=$("trend-metric").value;
+  const data=rows.filter(r=>r.entity===$("account").value).sort((a,b)=>a.at.localeCompare(b.at));
+  const set=data.filter(d=>Number.isSafeInteger(d.body.metrics[metric]));
+  const host=$("trend");
+  host.replaceChildren();
+  if (!data.length) {
+    host.append(node("p",source==="typefully"?"This integration does not collect Typefully account counters.":"No verified account observations for this source.","small"));
+    return;
+  }
+  const latest=data.at(-1);
+  const value=latest.body.metrics[metric];
+  host.append(node("p",fmt(value),"big"),node("p",`Latest observation · ${utc(latest.at)}${value==null?" · metric missing":""}`,"small"));
+  if (!set.length) {
+    host.append(node("p",`Metric missing in all ${data.length} observations.`,"small"));
+    return;
+  }
+  const g=svg("svg",{viewBox:"0 0 520 190",role:"img","aria-label":`${ACCOUNT[metric]}: ${set.length} observed values; ${data.length-set.length} missing.`});
+  const vals=set.map(d=>d.body.metrics[metric]);
+  const low=Math.min(...vals), high=Math.max(...vals);
+  const start=Date.parse(data[0].at), end=Date.parse(latest.at);
+  const x=d=>start===end?300:104+(Date.parse(d.at)-start)*398/(end-start);
+  const y=v=>low===high?86:150-(v-low)*126/(high-low);
+  for (const level of new Set([low,high])) g.append(
+    svg("line",{x1:104,x2:502,y1:y(level),y2:y(level),class:"axis"}),
+    svg("text",{x:96,y:y(level)+4,"text-anchor":"end"},nf.format(level)));
+  for (const d of set) {
+    const v=d.body.metrics[metric];
+    const point=svg("circle",{cx:x(d),cy:y(v),r:4,class:"point"});
+    point.append(svg("title",{},`${utc(d.at)} · ${fmt(v)}`));
+    g.append(point);
+  }
+  g.append(svg("text",{x:104,y:178},data[0].at.slice(0,10)));
+  if (data[0].at.slice(0,10)!==latest.at.slice(0,10))
+    g.append(svg("text",{x:502,y:178,"text-anchor":"end"},latest.at.slice(0,10)));
+  host.append(g,node("p",`${set.length} measured · ${data.length-set.length} missing · UTC observation dates`,"small"));
+}
+function posts() {
+  const source=$("post-source").value;
+  const data=current.samples.filter(r=>r.source===source && r.kind==="post");
+  const windows=[...new Set(data.map(r=>r.window))].sort().reverse();
+  options($("window"),(windows.length?windows:[""]).map(w=>[w,w?`${w} UTC month`:source==="typefully"?"Publishing metadata":"Point-in-time totals"]));
+  const metrics=source==="typefully"?[["","No counters"]]:
+    Object.entries(POST).filter(([k])=>k!=="impressions" || source==="x");
+  options($("post-metric"),metrics);
+  $("post-metric").disabled=source==="typefully";
+  const window=$("window").value, metric=$("post-metric").value;
+  const rows=data.filter(r=>r.window===window);
+  const value=r=>r.body.metrics[metric]??null;
+  rows.sort((a,b)=>(value(b)??-1)-(value(a)??-1) || b.at.localeCompare(a.at) || a.entity.localeCompare(b.entity));
+  const known=rows.filter(r=>value(r)!=null).length;
+  $("post-note").textContent=source==="typefully"?
+    "Published records only. Engagement metrics are not supplied by this integration.":
+    `${known} measured / ${rows.length} candidates · ${window?"This reporting month only.":"Raw totals; snapshots and post ages can differ."}`;
+  const host=$("posts");
+  host.replaceChildren();
+  if (!rows.length) { host.append(node("p","No verified posts in this source and window.","small")); return; }
+  const table=node("table"), thead=node("thead"), hr=node("tr"), tbody=node("tbody");
+  for (const label of ["Post", "Published (UTC)", "Observed (UTC)", POST[metric]||"Engagement"]) {
+    const th=node("th",label); th.scope="col"; hr.append(th);
+  }
+  thead.append(hr); table.append(thead,tbody);
+  const max=value(rows[0])||0;
+  for (const r of rows.slice(0,30)) {
+    const tr=node("tr"), title=node("td"), v=value(r);
+    const link=r.body.url;
+    if (link && /^https:\/\//i.test(link)) {
+      const a=node("a",r.body.name||r.entity); a.href=link; a.rel="noreferrer"; title.append(a);
+    } else title.textContent=r.body.name||r.entity;
+    const count=node("td",fmt(v),"num");
+    if (v>0 && max>0) {
+      const b=node("span",null,"bar"); b.style.width=`${100*v/max}%`; b.setAttribute("aria-hidden","true"); count.append(b);
+    }
+    tr.append(title,node("td",utc(r.body.publishedAt)),node("td",utc(r.at)),count); tbody.append(tr);
+  }
+  host.append(table,node("p",`Showing ${Math.min(30,rows.length)} of ${rows.length}. — means not supplied.`,"small"));
+}
+async function load() {
+  if (location.protocol==="file:") {
+    $("status").textContent="Local preview only. Start the private service to read verified observations.";
+    $("setup").open=true;
+    return;
+  }
+  const button=$("refresh");
+  button.disabled=true; $("status").textContent="Reading the private store…";
+  try {
+    const res=await fetch("/api/dashboard",{credentials:"same-origin",cache:"no-store"});
+    if (!res.ok) throw Error("read failed");
+    current=await res.json();
+    coverage(); trend(); posts();
+    $("status").textContent=`Store read: ${utc(current.readAt)}. Refresh does not collect from sources.`;
+  } catch {
+    $("status").textContent="Private store read failed. Any observations still on screen are from the previous successful read.";
+  } finally { button.disabled=false; }
+}
+options($("trend-source"),Object.entries(SOURCES));
+options($("post-source"),Object.entries(SOURCES));
+options($("trend-metric"),Object.entries(ACCOUNT));
+for (const id of ["trend-source","account","trend-metric"]) $(id).addEventListener("change",trend);
+for (const id of ["post-source","window","post-metric"]) $(id).addEventListener("change",()=>{
+  if (id==="post-source") $("window").replaceChildren();
+  posts();
+});
+$("refresh").addEventListener("click",load);
+coverage(); trend(); posts(); load();
+</script>
+
+<script id="rooms-node" type="text/plain">
+"use strict";
+const fs=require("node:fs");
+const path=require("node:path");
+const http=require("node:http");
+const crypto=require("node:crypto");
+const assert=require("node:assert/strict");
+const env=process.env;
+const SOURCES=["bluesky","mastodon","x","typefully"];
+const KEYS={account:["followers","following","posts"],post:["likes","replies","reposts","quotes","impressions"]};
+class InputError extends Error {}
+const check=(condition,message)=>{if(!condition) throw new InputError(message);};
+const required=(key)=>{
+  check(typeof env[key]==="string" && env[key].trim().length>0,`Set ${key}.`);
+  return env[key].trim();
+};
+const sha=value=>crypto.createHash("sha256").update(value).digest("hex");
+const iso=value=>{
+  if(typeof value!=="string" || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/i.test(value)) return null;
+  const t=Date.parse(value); return Number.isFinite(t)?new Date(t).toISOString():null;
+};
+const short=(value,n=150)=>typeof value==="string"?value.replace(/\s+/g," ").trim().slice(0,n):"";
+const secureUrl=value=>{
+  try {const u=new URL(value);return u.protocol==="https:"&&!u.username&&!u.password?u.href:null;}
+  catch{return null;}
+};
+const metrics=(kind,obj)=>Object.fromEntries(KEYS[kind].map(k=>[k,Number.isSafeInteger(obj[k])&&obj[k]>=0?obj[k]:null]));
+const sample=(kind,entity,at,counts,fields={},window="")=>({
+  kind,entity,at,window,body:{...fields,metrics:metrics(kind,counts)}
+});
+const result=(status,through,note,rows)=>({status,through,note,rows});
+const reason=e=>e instanceof InputError?e.message:"Unexpected collection error; check configuration and source response.";
+const endpoint=(base,pathname,query={})=>{
+  const u=new URL(pathname,base);
+  for(const [key,value] of Object.entries(query)) u.searchParams.set(key,value);
+  return u.href;
+};
+const object=obj=>obj!==null&&typeof obj==="object"&&!Array.isArray(obj);
+const list=(payload,key,label)=>{
+  const values=key?payload?.[key]:payload;
+  check(Array.isArray(values),`${label} response did not contain the expected list.`);
+  return values;
+};
+async function get(url,token) {
+  let response;
+  try{
+    response=await fetch(url,{
+      redirect:"error",signal:AbortSignal.timeout(20000),
+      headers:{accept:"application/json",...(token?{authorization:`Bearer ${token}`}:{})}
+    });
+  }catch{throw new InputError("Source request failed, timed out, or redirected.");}
+  check(response.ok,`Source returned HTTP ${response.status}.`);
+  try{return await response.json();}
+  catch{throw new InputError("Source did not return valid JSON.");}
+}
+async function bluesky(actor,at,read=get) {
+  const rpc=(method,q)=>endpoint("https://public.api.bsky.app",`/xrpc/app.bsky.actor.${method}`,q);
+  const p=await read(rpc("getProfile",{actor}));
+  check(typeof p?.did==="string"&&/^did:[A-Za-z0-9:._%-]+$/.test(p.did),"Bluesky profile DID missing.");
+  const rows=[sample("account",p.did,at,{followers:p.followersCount,following:p.followsCount,posts:p.postsCount},{name:short(p.handle)||p.did})];
+  try{
+    const f=await read(endpoint("https://public.api.bsky.app","/xrpc/app.bsky.feed.getAuthorFeed",{actor:p.did,filter:"posts_no_replies",limit:"50"}));
+    let skipped=0;
+    const posts=new Map();
+    for(const item of list(f,"feed","Bluesky feed")){
+      const post=item?.post, record=post?.record;
+      if(!post||typeof post.author?.did!=="string"){skipped++;continue;}
+      if(post.author.did!==p.did||item.reason||record?.reply)continue;
+      const prefix=`at://${p.did}/app.bsky.feed.post/`;
+      const key=typeof post.uri==="string"&&post.uri.startsWith(prefix)?post.uri.slice(prefix.length):"";
+      if(!/^[A-Za-z0-9._~-]+$/.test(key)||!object(record)){skipped++;continue;}
+      const url=`https://bsky.app/profile/${encodeURIComponent(p.did)}/post/${encodeURIComponent(key)}`;
+      posts.set(post.uri,sample("post",post.uri,at,{
+        likes:post.likeCount,replies:post.replyCount,reposts:post.repostCount,quotes:post.quoteCount
+      },{name:short(record.text,88)||key,url,publishedAt:iso(record.createdAt)}));
+    }
+    return result(f.cursor||skipped?"partial":"ok",at,
+      `Official AppView · first feed page, original non-replies only; ${posts.size} posts${f.cursor?", more pages available":""}${skipped?`, ${skipped} unrecognized entries skipped`:""}.`,
+      [...rows,...posts.values()]);
+  }catch(e){
+    return result("partial",at,"Account collected; posts not refreshed. "+reason(e),rows);
+  }
+}
+async function mastodon(origin,id,at,read=get,token) {
+  const safe=secureUrl(origin);
+  check(safe&&new URL(safe).href===new URL(safe).origin+"/","Mastodon origin must be a bare HTTPS origin.");
+  check(/^\d+$/.test(id),"Mastodon account ID must be a string of digits.");
+  const base=new URL(safe).origin, accountPath=`/api/v1/accounts/${id}`;
+  const p=await read(endpoint(base,accountPath),token);
+  check(p?.id===id,"Mastodon account ID did not match the response.");
+  const rows=[sample("account",`${base}#${id}`,at,{followers:p.followers_count,following:p.following_count,posts:p.statuses_count},{name:short(p.acct)||id})];
+  try{
+    const f=await read(endpoint(base,`${accountPath}/statuses`,{limit:"40",exclude_reblogs:"true"}),token);
+    const posts=new Map();
+    let skipped=0;
+    for(const post of list(f,null,"Mastodon statuses")){
+      if(!post||typeof post.visibility!=="string"){skipped++;continue;}
+      if(post.visibility!=="public"||post.reblog)continue;
+      if(typeof post.id!=="string"||!/^\d+$/.test(post.id)||post.account?.id!==id){skipped++;continue;}
+      const entity=`${base}#${post.id}`;
+      posts.set(entity,sample("post",entity,at,{
+        likes:post.favourites_count,replies:post.replies_count,reposts:post.reblogs_count
+      },{name:short(post.spoiler_text,88)||`Status ${post.id}`,url:secureUrl(post.url),publishedAt:iso(post.created_at)}));
+    }
+    return result("partial",at,
+      `Official instance API · first statuses page; ${posts.size} public original posts. Counts are as reported by this instance.${skipped?` ${skipped} unrecognized entries skipped.`:""}`,
+      [...rows,...posts.values()]);
+  }catch(e){
+    return result("partial",at,"Account collected; posts not refreshed. "+reason(e),rows);
+  }
+}
+async function typefully(key,set,at,read=get) {
+  check(/^\d+$/.test(set),"Typefully social set ID must be a string of digits.");
+  const base="https://api.typefully.com";
+  const sets=await read(endpoint(base,"/v2/social-sets"),key);
+  check(list(sets,"results","Typefully social sets").some(item=>String(item?.id)===set),
+    "Configured Typefully set was not visible on the returned social sets page.");
+  const drafts=await read(endpoint(base,`/v2/social-sets/${set}/drafts`),key);
+  const rows=new Map();
+  let skipped=0;
+  for(const d of list(drafts,"results","Typefully drafts")){
+    if(!d||typeof d.status!=="string"){skipped++;continue;}
+    if(d.status!=="published")continue;
+    const id=typeof d.id==="string"||Number.isSafeInteger(d.id)?String(d.id):"";
+    if(!/^\d+$/.test(id)){skipped++;continue;}
+    const entity=`${set}:${id}`;
+    rows.set(entity,sample("post",entity,at,{},{name:`Published item ${id}`,publishedAt:iso(d.published_at)}));
+  }
+  return result("partial",at,
+    `Social set access verified · first drafts page read; ${rows.size} published items, no engagement counters collected.${skipped?` ${skipped} unrecognized entries skipped.`:""}`,
+    [...rows.values()]);
+}
+
+const MONTH=/^\d{4}-(0[1-9]|1[0-2])$/;
+function archive(input,account,now) {
+  check(/^\d+$/.test(account),"Set a stable string X account ID.");
+  const seen=new Set(), months=[];
+  const rows=[];
+  for(const {filename,doc} of input){
+    const m=filename.slice(0,7);
+    check(MONTH.test(m)&&m<=now.slice(0,7)&&object(doc)&&doc.month===m&&doc.accountId===account,
+      `X archive month or account mismatch in ${filename}.`);
+    check(Array.isArray(doc.accounts)&&Array.isArray(doc.posts),`X archive lists missing in ${filename}.`);
+    if(doc.accounts.length||doc.posts.length)months.push(m);
+    for(const [kind,entries] of [["account",doc.accounts],["post",doc.posts]]){
+      for(const entry of entries){
+        check(object(entry)&&object(entry.metrics),`Invalid X observation in ${filename}.`);
+        const at=iso(entry.observedAt);
+        check(at&&Date.parse(at)<=Date.parse(now)+300000,`Invalid X observation timestamp in ${filename}.`);
+        if(kind==="post"){
+          check(typeof entry.id==="string"&&/^\d+$/.test(entry.id),`X post IDs must be digit strings in ${filename}.`);
+          check(entry.basis==="snapshot"||entry.basis==="month",`X post measurement basis required in ${filename}.`);
+          check(entry.publishedAt==null||iso(entry.publishedAt),`Invalid X publication timestamp in ${filename}.`);
+        }
+        for(const [k,v] of Object.entries(entry.metrics)){
+          check(KEYS[kind].includes(k)&&(v===null||(Number.isSafeInteger(v)&&v>=0)),
+            `Unknown X metric or invalid count in ${filename}.`);
+        }
+        const entity=kind==="account"?account:entry.id;
+        const window=kind==="post"&&entry.basis==="month"?m:"";
+        const key=JSON.stringify([kind,entity,at,window]);
+        check(!seen.has(key),`Duplicate X observation in ${filename}.`);
+        seen.add(key);
+        const fields=kind==="account"?{name:short(entry.name)||account}:{
+          name:short(entry.text,88)||`Post ${entity}`,publishedAt:iso(entry.publishedAt),url:`https://x.com/i/web/status/${entity}`
+        };
+        rows.push(sample(kind,entity,at,entry.metrics,fields,window));
+      }
+    }
+  }
+  check(rows.length>0,"X archive contains no observations.");
+  months.sort();
+  const index=m=>Number(m.slice(0,4))*12+Number(m.slice(5));
+  const last=months.at(-1);
+  const gaps=index(last)-index(months[0])+1-months.length;
+  return result("partial",last,
+    `${months.length} populated archive months (${months[0]} to ${last}); ${gaps} missing within that span. Outside-span coverage and completeness are unknown.`,
+    rows);
+}
+function readArchive(dir,account,at) {
+  const files=fs.readdirSync(dir,{withFileTypes:true}).filter(d=>d.isFile()&&/^\d{4}-\d\d\.json$/.test(d.name));
+  check(files.length>0,"No YYYY-MM.json files found in the X archive directory.");
+  return archive(files.map(d=>{
+    let doc;
+    try{doc=JSON.parse(fs.readFileSync(path.join(dir,d.name),"utf8"));}
+    catch{throw new InputError(`Could not read normalized X archive file ${d.name}.`);}
+    return {filename:d.name,doc};
+  }),account,at);
+}
+
+const schema=`
+CREATE SCHEMA IF NOT EXISTS rooms_now;
+CREATE TABLE IF NOT EXISTS rooms_now.run (
+  id uuid PRIMARY KEY,
+  source text NOT NULL CHECK (source IN ('bluesky','mastodon','x','typefully')),
+  started timestamptz NOT NULL,
+  finished timestamptz NOT NULL,
+  status text NOT NULL CHECK (status IN ('ok','partial','failed')),
+  through text,
+  note text NOT NULL,
+  n integer NOT NULL CHECK (n>=0),
+  verified_at timestamptz,
+  digest text,
+  CHECK ((verified_at IS NULL)=(digest IS NULL))
+);
+CREATE INDEX IF NOT EXISTS rooms_run_source_finished ON rooms_now.run(source,finished DESC);
+CREATE TABLE IF NOT EXISTS rooms_now.sample (
+  run_id uuid NOT NULL REFERENCES rooms_now.run(id) ON DELETE CASCADE,
+  kind text NOT NULL CHECK (kind IN ('account','post')),
+  entity text NOT NULL,
+  at timestamptz NOT NULL,
+  window_key text NOT NULL,
+  body jsonb NOT NULL,
+  PRIMARY KEY(run_id,kind,entity,at,window_key)
+);`;
+const pgConfig=url=>{
+  let parsed;
+  try{parsed=new URL(url);}catch{throw new InputError("Invalid Neon connection URL.");}
+  check(["postgresql:","postgres:"].includes(parsed.protocol),"Use a PostgreSQL connection URL.");
+  for(const k of [...parsed.searchParams.keys()]) if(k.startsWith("ssl")) parsed.searchParams.delete(k);
+  return {connectionString:parsed.href,ssl:{rejectUnauthorized:true},enableChannelBinding:true,
+    connectionTimeoutMillis:10000,statement_timeout:30000};
+};
+async function withClient(url,fn){
+  const {Client}=require("pg");
+  const c=new Client(pgConfig(url));
+  try{await c.connect();return await fn(c);}
+  finally{await c.end();}
+}
+const canonical=value=>Array.isArray(value)?`[${value.map(canonical).join(",")}]`:
+  object(value)?`{${Object.keys(value).sort().map(k=>JSON.stringify(k)+":"+canonical(value[k])).join(",")}}`:
+  JSON.stringify(value);
+function fingerprint(meta,rows){
+  const normalized=rows.map(r=>canonical(r)).sort();
+  return sha(canonical(meta)+"\n"+normalized.join("\n"));
+}
+async function persist(url,source,started,outcome){
+  const id=crypto.randomUUID(),finished=new Date().toISOString();
+  const {status,through,note,rows}=outcome;
+  const meta={id,source,started,finished,status,through,note,n:rows.length};
+  const expected=fingerprint(meta,rows);
+  await withClient(url,async c=>{
+    await c.query("BEGIN");
+    try{
+      await c.query(`INSERT INTO rooms_now.run(id,source,started,finished,status,through,note,n)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,[id,source,started,finished,status,through,note,rows.length]);
+      for(let i=0;i<rows.length;i+=500){
+        await c.query(`INSERT INTO rooms_now.sample(run_id,kind,entity,at,window_key,body)
+          SELECT $1,t.kind,t.entity,t.at,t."window",t.body FROM
+          jsonb_to_recordset($2::jsonb) AS t(kind text,entity text,at timestamptz,"window" text,body jsonb)`,
+          [id,JSON.stringify(rows.slice(i,i+500))]);
+      }
+      await c.query("COMMIT");
+    }catch(e){await c.query("ROLLBACK").catch(()=>{});throw e;}
+  });
+  return withClient(url,async c=>{
+    await c.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    try{
+      const run=(await c.query(`SELECT id,source,started,finished,status,through,note,n
+        FROM rooms_now.run WHERE id=$1 FOR UPDATE`,[id])).rows[0];
+      check(run,"Neon readback could not find the committed run.");
+      run.started=run.started.toISOString(); run.finished=run.finished.toISOString();
+      const fetched=(await c.query(`SELECT kind,entity,at,window_key AS "window",body
+        FROM rooms_now.sample WHERE run_id=$1`,[id])).rows;
+      for(const row of fetched) row.at=row.at.toISOString();
+      const digest=fingerprint(run,fetched);
+      check(fetched.length===rows.length&&digest===expected,"Neon readback did not match the committed source payload.");
+      const receipt=(await c.query(`UPDATE rooms_now.run SET verified_at=clock_timestamp(),digest=$2
+        WHERE id=$1 RETURNING verified_at`,[id,digest])).rows[0];
+      await c.query("COMMIT");
+      return {source,status,id,count:fetched.length,sha256:digest,verifiedAt:receipt.verified_at,note};
+    }catch(e){await c.query("ROLLBACK").catch(()=>{});throw e;}
+  });
+}
+async function sync(which){
+  const url=required("DATABASE_URL");
+  let bad=false;
+  for(const source of which){
+    const started=new Date().toISOString();
+    let out;
+    try{
+      if(source==="bluesky")out=await bluesky(required("ROOMS_BLUESKY_ACTOR"),started);
+      if(source==="mastodon")out=await mastodon(required("ROOMS_MASTODON_ORIGIN"),required("ROOMS_MASTODON_ID"),started,get,env.ROOMS_MASTODON_TOKEN?.trim());
+      if(source==="x")out=readArchive(required("ROOMS_X_DIR"),required("ROOMS_X_ACCOUNT_ID"),started);
+      if(source==="typefully")out=await typefully(required("ROOMS_TYPEFULLY_KEY"),required("ROOMS_TYPEFULLY_SET"),started);
+    }catch(e){out=result("failed",null,reason(e),[]);}
+    if(out.status==="failed"||out.note.includes("posts not refreshed")||out.note.includes("unrecognized entries skipped"))bad=true;
+    try{console.log(JSON.stringify(await persist(url,source,started,out)));}
+    catch(e){
+      bad=true;
+      console.error(`${source}: ${e instanceof InputError?e.message:"Neon write or independent readback failed. Check initialization, grants and connectivity."}`);
+    }
+  }
+  if(bad)process.exitCode=1;
+}
+
+const dashboardSql=`
+WITH attempts AS (
+  SELECT DISTINCT ON(source) * FROM rooms_now.run ORDER BY source,finished DESC,id DESC
+), usable AS (
+  SELECT DISTINCT ON(source) * FROM rooms_now.run
+  WHERE verified_at IS NOT NULL AND status<>'failed' ORDER BY source,finished DESC,id DESC
+), coverage AS (
+  SELECT jsonb_build_object('source',a.source,
+    'attempt',jsonb_build_object('id',a.id,'status',a.status,'note',a.note,'finished',a.finished,
+      'verifiedAt',a.verified_at,'digest',a.digest,'count',a.n),
+    'usable',CASE WHEN u.id IS NOT NULL THEN jsonb_build_object('id',u.id,'status',u.status,'through',u.through) END) AS doc
+  FROM attempts a LEFT JOIN usable u USING(source)
+), observations AS (
+  SELECT DISTINCT ON(r.source,s.kind,s.entity,s.window_key,s.at)
+    r.source,s.kind,s.entity,s.window_key,s.at,s.body
+  FROM rooms_now.sample s JOIN rooms_now.run r ON r.id=s.run_id
+  WHERE r.verified_at IS NOT NULL AND r.status<>'failed'
+  ORDER BY r.source,s.kind,s.entity,s.window_key,s.at,r.finished DESC,r.id DESC
+), account AS (
+  SELECT *,row_number() OVER(PARTITION BY source,entity ORDER BY at DESC) AS position
+  FROM observations WHERE kind='account'
+), latest_post AS (
+  SELECT DISTINCT ON(source,entity,window_key) *
+  FROM observations WHERE kind='post' ORDER BY source,entity,window_key,at DESC
+), post AS (
+  SELECT *,row_number() OVER(PARTITION BY source,window_key ORDER BY at DESC,entity) AS position,
+    dense_rank() OVER(PARTITION BY source ORDER BY window_key DESC) AS period
+  FROM latest_post
+), displayed AS (
+  SELECT source,kind,entity,window_key,at,body FROM account WHERE position<=48
+  UNION ALL
+  SELECT source,kind,entity,window_key,at,body FROM post WHERE position<=120 AND (period<=24 OR window_key='')
+)
+SELECT COALESCE((SELECT jsonb_agg(doc) FROM coverage),'[]'::jsonb) AS runs,
+  COALESCE((SELECT jsonb_agg(jsonb_build_object('source',source,'kind',kind,'entity',entity,
+    'window',window_key,'at',at,'body',body) ORDER BY at DESC,entity) FROM displayed),'[]'::jsonb) AS samples`;
+function serve(){
+  const pw=required("ROOMS_PASSWORD");
+  check(pw.length>=20,"ROOMS_PASSWORD must be at least 20 characters.");
+  const url=env.ROOMS_READ_DATABASE_URL||required("DATABASE_URL");
+  const port=Number(env.ROOMS_PORT||8787);
+  check(Number.isInteger(port)&&port>=1&&port<=65535,"Invalid ROOMS_PORT.");
+  const expected=crypto.createHash("sha256").update(`Basic ${Buffer.from("rooms:"+pw).toString("base64")}`).digest();
+  const html=fs.readFileSync("rooms.html","utf8");
+  const {Pool}=require("pg");
+  const pool=new Pool({...pgConfig(url),max:4});
+  pool.on("error",()=>console.error("Idle Neon connection closed."));
+  const app=http.createServer(async(req,res)=>{
+    res.setHeader("Cache-Control","private, no-store");
+    res.setHeader("X-Content-Type-Options","nosniff");
+    res.setHeader("Referrer-Policy","no-referrer");
+    res.setHeader("X-Robots-Tag","noindex, nofollow");
+    res.setHeader("Content-Security-Policy","default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+    function reply(code,body,type="text/plain; charset=utf-8"){
+      res.writeHead(code,{"Content-Type":type});res.end(body);
+    }
+    const actual=crypto.createHash("sha256").update(req.headers.authorization||"").digest();
+    if(!crypto.timingSafeEqual(expected,actual)){
+      res.setHeader("WWW-Authenticate",'Basic realm="Rooms OS Now", charset="UTF-8"');
+      return reply(401,"Authentication required.");
+    }
+    if(req.method!=="GET"){res.setHeader("Allow","GET");return reply(405,"Read-only service.");}
+    if(req.url==="/"||req.url==="/rooms.html")return reply(200,html,"text/html; charset=utf-8");
+    if(req.url!=="/api/dashboard")return reply(404,"Not found.");
+    try{
+      const row=(await pool.query(dashboardSql)).rows[0];
+      return reply(200,JSON.stringify({...row,readAt:new Date().toISOString()}),"application/json; charset=utf-8");
+    }catch{
+      console.error("Dashboard Neon read failed.");
+      return reply(503,"Private store unavailable.");
+    }
+  });
+  app.listen(port,"127.0.0.1",()=>console.log(`Rooms is listening on 127.0.0.1:${port}; use your private HTTPS proxy.`));
+}
+
+async function test(){
+  const at="2025-09-02T12:00:00.000Z";
+  const did="did:plc:rooms";
+  const b=await bluesky("rooms.test",at,async u=>{
+    if(u.includes("getProfile"))return {did,followersCount:0};
+    assert.match(u,/posts_no_replies/);
+    const original={uri:`at://${did}/app.bsky.feed.post/abc`,author:{did},record:{text:"Test"},likeCount:0};
+    return {cursor:"next",feed:[{post:original},{post:{...original,author:{did:"did:plc:other"}}},
+      {post:original,reason:{}}]};
+  });
+  assert.equal(b.status,"partial");
+  assert.equal(b.rows.length,2);
+  assert.equal(b.rows[0].body.metrics.followers,0);
+  assert.equal(b.rows[0].body.metrics.following,null);
+  assert.equal(b.rows[1].body.metrics.likes,0);
+  assert.equal(b.rows[1].body.metrics.impressions,null);
+  const failedFeed=await bluesky(did,at,async u=>{
+    if(u.includes("getProfile"))return {did};
+    throw new InputError("Source returned HTTP 503.");
+  });
+  assert.equal(failedFeed.rows.length,1);
+  assert.match(failedFeed.note,/posts not refreshed/);
+  const m=await mastodon("https://social.test","12",at,async u=>u.includes("/statuses")?[
+    {id:"13",account:{id:"12"},visibility:"public",favourites_count:4,url:"javascript:alert(1)"},
+    {id:"14",account:{id:"12"},visibility:"private"}
+  ]:{id:"12",followers_count:5});
+  assert.equal(m.rows.length,2);
+  assert.equal(m.rows[1].body.url,null);
+  assert.equal(m.rows[1].body.metrics.likes,4);
+  const t=await typefully("test-key","7",at,async (u,key)=>{
+    assert.equal(key,"test-key");
+    return {results:u.endsWith("/drafts")?[
+      {id:100,status:"published",published_at:"2025-09-01T12:30:00Z",likes:9},
+      {id:101,status:"draft",text:"must not reach the store"}
+    ]:[{id:7}]};
+  });
+  assert.equal(t.rows.length,1);
+  assert.equal(t.rows[0].body.metrics.likes,null);
+  assert.ok(!JSON.stringify(t).includes("must not reach"));
+  await assert.rejects(typefully("test-key","7",at,async()=>({results:[{id:8}]})),/not visible/);
+  const doc={month:"2025-08",accountId:"44",accounts:[],posts:[
+    {id:"600",observedAt:at,basis:"month",metrics:{impressions:100}},
+    {id:"600",observedAt:at,basis:"snapshot",metrics:{likes:2}}
+  ]};
+  const x=archive([{filename:"2025-08.json",doc}],"44",at);
+  assert.deepEqual(x.rows.map(r=>r.window),["2025-08",""]);
+  assert.throws(()=>archive([{filename:"2025-08.json",doc}],"45",at),/mismatch/);
+  assert.throws(()=>archive([{filename:"2025-08.json",doc:{...doc,posts:[doc.posts[0],doc.posts[0]]}}],"44",at),/Duplicate/);
+  assert.throws(()=>archive([{filename:"2025-08.json",doc:{...doc,posts:[{...doc.posts[0],metrics:{likes:"0"}}]}}],"44",at),/invalid count/);
+  assert.equal(fingerprint({n:2},x.rows),fingerprint({n:2},[...x.rows].reverse()));
+  assert.notEqual(fingerprint({n:2},x.rows),fingerprint({n:2},[...x.rows.slice(0,1),{...x.rows[1],at:"changed"}]));
+  console.log("Passed: official source mapping, partial reads, Typefully set/access guards, archive windows, missing vs zero, receipt hashing. No live services contacted.");
+}
+async function main(){
+  const [command,target="all"]=argv;
+  if(command==="test")return test();
+  if(command==="init")return withClient(required("DATABASE_URL"),async c=>{await c.query(schema);console.log("Neon schema rooms_now is ready.");});
+  if(command==="sync"){
+    check(target==="all"||SOURCES.includes(target),"Use sync all, bluesky, mastodon, x, or typefully.");
+    return sync(target==="all"?SOURCES:[target]);
+  }
+  if(command==="serve")return serve();
+  throw new InputError("Commands: test, init, sync [all|bluesky|mastodon|x|typefully], serve.");
+}
+main().catch(e=>{
+  if(argv[0]==="test") console.error(e);
+  else console.error(e instanceof InputError?e.message:"Command failed. Check dependencies, configuration and Neon connectivity.");
+  process.exitCode=1;
+});
+</script>
+</body>
+</html>

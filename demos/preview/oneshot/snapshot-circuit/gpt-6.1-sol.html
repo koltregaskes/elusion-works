@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta name="robots" content="noindex,nofollow">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#17201d">
+<title>Scale / Shift — The Quiet Circuit</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg:#151c19;
+    --panel:#1d2621;
+    --line:#354037;
+    --muted:#a3aea5;
+    --cream:#f2f0e5;
+    --orange:#ff9b54;
+    --green:#b3caa6;
+  }
+  * { box-sizing:border-box }
+  body {
+    margin:0;
+    background:radial-gradient(ellipse at 80% 0%,#293329 0,transparent 52%),var(--bg);
+    color:var(--cream);
+    font-family:Arial,Helvetica,sans-serif;
+    font-size:14px;
+    line-height:1.5;
+  }
+  button,a { -webkit-tap-highlight-color:transparent }
+  button { font:inherit; cursor:pointer }
+  button:focus-visible,a:focus-visible {
+    outline:3px solid var(--orange);
+    outline-offset:4px;
+  }
+  button { color:inherit }
+  button:disabled { opacity:.4; cursor:default }
+  .shell { max-width:1480px; margin:auto; padding:0 36px }
+  header {
+    height:94px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    border-bottom:1px solid var(--line);
+    gap:24px;
+  }
+  .brand {
+    display:flex;
+    align-items:center;
+    gap:12px;
+    font-size:17px;
+    font-weight:800;
+    letter-spacing:-.8px;
+    white-space:nowrap;
+  }
+  .brand-mark {
+    width:31px;height:31px;
+    border:6px solid var(--orange);
+    border-radius:12px 3px 12px 3px;
+    transform:rotate(-12deg);
+    position:relative;
+  }
+  .brand-mark:after {
+    content:"";
+    position:absolute; width:11px; height:5px;
+    background:var(--bg); right:-7px; top:7px;
+  }
+  nav { display:flex; gap:30px; align-self:stretch }
+  .nav-button {
+    border:0; background:none; color:var(--muted);
+    padding:0 2px; position:relative; font-size:13px;
+  }
+  .nav-button span { margin-right:9px; opacity:.6; font-size:10px }
+  .nav-button.active { color:var(--cream) }
+  .nav-button.active:after {
+    content:""; position:absolute; left:0; right:0; bottom:-1px;
+    height:2px; background:var(--orange);
+  }
+  .edition {
+    font:10px/1.4 monospace; letter-spacing:1.5px; color:var(--muted);
+    display:flex; gap:9px; align-items:center;
+  }
+  .dot { width:6px; height:6px; border-radius:50%; background:var(--green); display:inline-block }
+  .intro {
+    display:flex; justify-content:space-between; gap:30px;
+    align-items:flex-end; padding:33px 0 27px;
+  }
+  .eyebrow { font:10px/1.5 monospace; letter-spacing:2.2px; text-transform:uppercase; color:var(--orange) }
+  h1 { font-size:clamp(32px,3.6vw,51px); line-height:1.1; font-weight:500; letter-spacing:-2.3px; margin:9px 0 0 }
+  h1 i { font-family:Georgia,serif; font-weight:400; color:#b9c7b3 }
+  .intro p { color:var(--muted); font-size:13px; margin:0 0 3px; max-width:270px }
+  .workspace { display:grid; grid-template-columns:minmax(0,1fr) 268px; gap:22px; align-items:start }
+  .game-card { border:1px solid #435044; border-radius:13px; overflow:hidden; background:#202822; box-shadow:0 18px 55px #0002 }
+  .game-toolbar {
+    min-height:47px; display:flex; align-items:center;
+    justify-content:space-between; padding:0 16px; gap:10px;
+  }
+  .live-label { font:9px monospace; letter-spacing:1.5px; color:#c3cbbc; display:flex; align-items:center; gap:8px }
+  .live-label .dot { width:5px; height:5px; background:var(--orange) }
+  .toolbar-actions { display:flex; gap:7px }
+  .icon-button {
+    display:inline-flex; justify-content:center; align-items:center;
+    background:transparent; border:1px solid #445044; border-radius:5px;
+    height:29px; min-width:31px; padding:0 8px; font-size:15px;
+  }
+  .icon-button:hover { background:#354035 }
+  .survey-button { font:10px monospace; gap:7px; color:#c8d1c3 }
+  .survey-button[aria-pressed="true"] { border-color:var(--orange); color:var(--orange) }
+  .stage { position:relative; aspect-ratio:3/2; overflow:hidden; background:#c9c5b3 }
+  #game { display:block; width:100%; height:100%; touch-action:none }
+  .hud {
+    position:absolute; left:18px; right:18px; top:16px;
+    display:flex; justify-content:space-between; gap:10px;
+    pointer-events:none;
+  }
+  .hud-box {
+    background:#18221eea; border:1px solid #ffffff1b; border-radius:7px;
+    padding:9px 13px; box-shadow:0 3px 12px #0001;
+  }
+  .hud-label { color:#a6b09f; font:8px monospace; letter-spacing:1.6px }
+  .hud-value { font-size:20px; line-height:1.25; margin-top:2px; font-variant-numeric:tabular-nums; letter-spacing:-.7px }
+  .hud-value small { font-size:11px; color:#a6b09f }
+  .timer-box { text-align:right }
+  .timer-box .hud-value { font-family:monospace; font-size:20px; letter-spacing:-1px }
+  .speed {
+    position:absolute; bottom:14px; left:18px;
+    color:#f9f3df; background:#19231ee8; padding:5px 10px;
+    border-radius:5px; pointer-events:none;
+    font:10px monospace; display:flex; align-items:baseline; gap:5px;
+  }
+  #speedValue { font-size:21px; min-width:29px; text-align:right }
+  .next-gate {
+    position:absolute; right:18px; bottom:14px; padding:8px 10px;
+    font:9px monospace; letter-spacing:1px;
+    color:#f9f3df; background:#19231ee8; border-radius:5px; pointer-events:none;
+  }
+  #toast {
+    position:absolute; top:100px; left:50%; transform:translateX(-50%) translateY(-5px);
+    background:#18221ef2; color:#ffc18f; border:1px solid #b0885e;
+    padding:9px 16px; border-radius:5px; font:11px monospace;
+    opacity:0; transition:opacity .15s,transform .15s;
+    pointer-events:none; white-space:nowrap; z-index:2;
+  }
+  #toast.visible { opacity:1; transform:translateX(-50%) translateY(0) }
+  .overlay {
+    position:absolute; inset:0; z-index:3;
+    display:flex; align-items:center; justify-content:center;
+    background:#13201963; backdrop-filter:blur(3px);
+  }
+  .overlay[hidden] { display:none }
+  .start-card {
+    max-width:370px; width:calc(100% - 36px);
+    text-align:center; padding:28px 26px 24px;
+    border:1px solid #ffffff2b; border-radius:11px;
+    background:#1b251ff5; box-shadow:0 16px 45px #0003;
+  }
+  .start-card .eyebrow { font-size:9px }
+  .start-card h2 {
+    font-family:Georgia,serif; font-weight:400; font-size:36px;
+    letter-spacing:-1.2px; line-height:1.08; margin:13px 0 12px;
+  }
+  .start-card p { color:#b5bfb0; font-size:12px; max-width:280px; margin:0 auto 20px }
+  .primary {
+    display:flex; align-items:center; justify-content:space-between; gap:25px;
+    border:0; background:var(--orange); color:#20271d; width:100%;
+    border-radius:5px; padding:13px 17px; font-weight:700; font-size:13px;
+  }
+  .primary:hover { background:#ffb77c }
+  .primary span:last-child { font-size:20px; line-height:1 }
+  .start-meta { margin-top:14px; font:9px monospace; color:#909f8b; letter-spacing:1px }
+  .game-bottom {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 16px; gap:10px; font:9px monospace; color:#9ca995; letter-spacing:1px;
+  }
+  .game-bottom strong { color:#d1d8c9; font-weight:400 }
+  .touch-controls {
+    display:none; justify-content:space-between; align-items:center; gap:12px;
+    padding:12px; background:#202a22; border-top:1px solid #415040;
+  }
+  .touch-group { display:flex; gap:8px }
+  .touch-key {
+    touch-action:none; user-select:none; -webkit-user-select:none;
+    border:1px solid #53604d; background:#303d30; border-radius:8px;
+    height:55px; min-width:60px; font-size:24px; padding:0 15px;
+  }
+  .touch-key.pressed { background:#607252; border-color:#bbcca8 }
+  .touch-key.gas { background:var(--orange); border-color:var(--orange); color:#263023 }
+  .touch-key.gas.pressed { background:#ffca9e }
+  .touch-key.brake { font:10px monospace; line-height:1.25 }
+  .touch-hint { color:#98a58f; font:8px monospace; text-align:center; letter-spacing:1px }
+  .sidebar { display:flex; flex-direction:column; gap:18px }
+  .session {
+    border:1px solid var(--line); border-radius:10px;
+    padding:20px; background:#20292290;
+  }
+  .section-label { font:9px monospace; letter-spacing:1.7px; color:#a4b19a; text-transform:uppercase }
+  .session h2 { font-size:20px; line-height:1.2; font-weight:400; letter-spacing:-.6px; margin:11px 0 0 }
+  .session h2 i { color:#bacbad; font-family:Georgia,serif }
+  .mini-map { width:100%; height:132px; display:block; margin:6px 0 10px; overflow:visible }
+  .stat-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 0; border-top:1px solid #364233 }
+  .stat-row span:first-child { font-size:11px; color:#a5b19b }
+  .stat-row span:last-child { font:13px monospace; color:#e0e5d8; font-variant-numeric:tabular-nums }
+  .stat-row.best span:last-child { color:var(--orange) }
+  .gate-progress { display:flex; gap:5px; margin-top:7px }
+  .gate-progress i { height:3px; flex:1; background:#3a4836; border-radius:1px }
+  .gate-progress i.done { background:var(--orange) }
+  .gate-progress i.current { background:#a3b78e }
+  .notes { padding:0 4px }
+  .keys { display:flex; align-items:center; justify-content:space-between; margin:14px 0 0; color:#c5cebd; font-size:11px }
+  kbd { display:inline-flex; justify-content:center; align-items:center; font:10px monospace; min-width:22px; height:23px; padding:0 5px; border:1px solid #53604b; border-bottom-width:3px; border-radius:4px; color:#d5dfcb; background:#263023 }
+  .key-group { display:flex; gap:3px }
+  .notes p { color:#99a78e; font-size:11px; line-height:1.7; margin:18px 0 }
+  .reference-link {
+    width:100%; display:flex; justify-content:space-between; gap:12px;
+    background:#283325; border:1px solid #46553d; color:#d8e0cf;
+    border-radius:6px; padding:13px; text-align:left; font-size:11px;
+  }
+  .reference-link:hover { background:#34412f }
+  footer { display:flex; justify-content:space-between; gap:25px; padding:24px 0 30px; color:#87967d; font-size:10px }
+  .credit-link { background:none; border:0; padding:0; font:9px monospace; letter-spacing:.6px; color:#a5b498; text-align:right }
+  dialog {
+    color:var(--cream); background:#202921; border:1px solid #57644d;
+    border-radius:14px; width:min(1040px,94vw); max-height:90dvh;
+    padding:28px; box-shadow:0 30px 100px #0008;
+  }
+  dialog::backdrop { background:#0b120edb; backdrop-filter:blur(7px) }
+  .dialog-top { display:flex; justify-content:space-between; align-items:flex-start; gap:20px }
+  dialog h2 { font:32px/1.15 Georgia,serif; margin:9px 0 12px; letter-spacing:-.7px }
+  .dialog-intro { color:#b0bda5; font-size:12px; max-width:700px; margin:0 0 21px }
+  .reference-grid { display:grid; grid-template-columns:1.25fr 1fr; gap:24px; align-items:start }
+  .reference-media { position:relative; background:#bebaab; border-radius:7px; overflow:hidden; aspect-ratio:3/2 }
+  .reference-media img,.reference-media svg { width:100%; height:100%; display:block; position:absolute; inset:0 }
+  .image-caption { display:flex; justify-content:space-between; color:#a7b59b; font:9px monospace; letter-spacing:.6px; margin-top:10px; gap:10px }
+  table { width:100%; border-collapse:collapse; font-size:11px; margin-top:7px }
+  th { color:#9dac91; font-weight:400; text-align:left; font:9px monospace; letter-spacing:.5px; padding:0 4px 10px 0 }
+  td { border-top:1px solid #3b4833; padding:11px 4px 11px 0; vertical-align:middle }
+  td:first-child { color:#e8ecdf }
+  td:nth-child(n+2) { font:10px monospace; color:#bfcdb2 }
+  .number { color:var(--orange); font:9px monospace; margin-right:6px }
+  .survey-note { color:#9fab95; font-size:10px; line-height:1.6; margin-top:12px }
+  .rights {
+    margin-top:24px; padding-top:20px; border-top:1px solid #45513b;
+    display:grid; grid-template-columns:1fr 1fr; gap:24px;
+  }
+  .rights p { color:#acbaa0; font-size:11px; margin:8px 0; line-height:1.7 }
+  .download { display:inline-block; color:var(--orange); text-decoration:none; font-size:11px; margin-top:5px }
+  .download:hover { text-decoration:underline }
+  .sr-only { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0 }
+  @media (min-width:1500px) { .shell { padding:0 48px } }
+  @media (pointer:coarse) { .touch-controls { display:flex } .desktop-only { display:none } }
+  @media (max-width:1050px) {
+    .shell { padding:0 22px }
+    .workspace { grid-template-columns:minmax(0,1fr) 226px; gap:16px }
+    .session { padding:16px }
+    .edition { display:none }
+    .start-card { padding:21px; max-width:320px }
+    .start-card h2 { font-size:30px }
+    .hud { top:12px; left:12px; right:12px }
+  }
+  @media (max-width:800px) {
+    header { height:74px }
+    .workspace { grid-template-columns:1fr }
+    .sidebar { display:grid; grid-template-columns:1fr 1fr; gap:22px }
+    .intro { padding:26px 0 24px }
+    .intro p { max-width:215px; font-size:11px }
+    .session .mini-map { height:114px }
+    .notes { padding-top:6px }
+    .reference-grid { grid-template-columns:1fr }
+    .rights { grid-template-columns:1fr; gap:12px }
+  }
+  @media (max-width:550px) {
+    .shell { padding:0 13px }
+    .brand { font-size:15px; gap:10px }
+    .brand-mark { width:27px; height:27px; border-width:5px }
+    nav { gap:18px }
+    .nav-button { font-size:11px }
+    .nav-button span { display:none }
+    .intro { gap:15px }
+    .intro p { display:none }
+    h1 { font-size:37px; letter-spacing:-1.8px }
+    .eyebrow { font-size:9px }
+    .game-toolbar { padding:0 10px; min-height:43px }
+    .live-label { font-size:8px; letter-spacing:1px }
+    .survey-button { font-size:9px }
+    .hud { top:8px; left:8px; right:8px }
+    .hud-box { padding:5px 8px; border-radius:5px }
+    .hud-label { font-size:7px }
+    .hud-value,.timer-box .hud-value { font-size:16px }
+    .speed { bottom:7px; left:8px; padding:2px 6px; font-size:8px }
+    #speedValue { font-size:16px; min-width:23px }
+    .next-gate { bottom:7px; right:8px; font-size:8px; padding:6px }
+    .start-card { padding:15px 20px; max-width:282px }
+    .start-card .eyebrow { font-size:8px }
+    .start-card h2 { font-size:26px; margin:7px 0 }
+    .start-card p { font-size:10px; margin-bottom:12px }
+    .primary { padding:10px 14px; font-size:12px }
+    .start-meta { font-size:8px; margin-top:9px }
+    #toast { top:66px; padding:6px 10px; font-size:10px }
+    .game-bottom { font-size:8px; padding:12px 10px; letter-spacing:.5px }
+    .touch-controls { display:flex }
+    .touch-key { min-width:52px; height:53px; padding:0 12px }
+    .touch-hint { font-size:7px }
+    .sidebar { grid-template-columns:1fr 1fr; gap:14px }
+    .session { padding:14px }
+    .session h2 { font-size:18px }
+    .section-label { font-size:8px; letter-spacing:1.2px }
+    .stat-row { padding:9px 0; gap:5px }
+    .stat-row span:first-child { font-size:9px }
+    .stat-row span:last-child { font-size:10px }
+    .keys { font-size:10px; margin-top:12px; gap:6px }
+    kbd { min-width:18px; height:21px; padding:0 3px; font-size:9px }
+    .notes p { font-size:10px; margin:13px 0 }
+    .reference-link { padding:10px; font-size:10px }
+    footer { flex-direction:column; gap:9px; padding:20px 0 }
+    .credit-link { text-align:left; font-size:8px }
+    dialog { padding:20px; width:95vw }
+    dialog h2 { font-size:27px }
+    .image-caption { font-size:8px }
+  }
+  @media (prefers-reduced-motion:reduce) { * { transition:none!important } }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span>SCALE / SHIFT</div>
+    <nav aria-label="Main navigation">
+      <button class="nav-button active" id="raceTab"><span>01</span>The circuit</button>
+      <button class="nav-button" data-reference><span>02</span>The reference ↗</button>
+    </nav>
+    <div class="edition"><span class="dot"></span>SMALL WORLDS. GOOD LAPS.</div>
+  </header>
+
+  <main>
+    <section class="intro" aria-labelledby="title">
+      <div>
+        <div class="eyebrow">A still life, in motion / No. 001</div>
+        <h1>The quiet <i>circuit.</i></h1>
+      </div>
+      <p>A coffee break with a racing line.<br>Three laps around an entirely invented room.</p>
+    </section>
+
+    <div class="workspace">
+      <section class="game-card" aria-label="Tabletop racing game">
+        <div class="game-toolbar">
+          <div class="live-label"><span class="dot"></span>STUDIO 04 · TABLETOP TIME TRIAL</div>
+          <div class="toolbar-actions">
+            <button class="icon-button survey-button" id="surveyButton" aria-pressed="false" title="Show the five reference landmarks">⊕ <span>Survey</span></button>
+            <button class="icon-button" id="restartButton" aria-label="Restart race" title="Restart (R)">↻</button>
+            <button class="icon-button" id="pauseButton" aria-label="Pause race" title="Pause (P or Escape)" disabled>Ⅱ</button>
+          </div>
+        </div>
+
+        <div class="stage">
+          <canvas id="game" width="1200" height="800" tabindex="0" aria-label="Top-down tabletop racing circuit. Use arrow keys or W A S D to drive. Follow amber gates clockwise. R restarts.">
+            This game requires a browser with JavaScript and canvas support.
+          </canvas>
+
+          <div class="hud" aria-hidden="true">
+            <div class="hud-box">
+              <div class="hud-label">LAP / THREE</div>
+              <div class="hud-value"><span id="lapValue">01</span> <small>/ 03</small></div>
+            </div>
+            <div class="hud-box timer-box">
+              <div class="hud-label">SESSION TIME</div>
+              <div class="hud-value" id="timerValue">00:00.000</div>
+            </div>
+          </div>
+
+          <div class="speed" aria-hidden="true"><span id="speedValue">0</span> KM/H <span style="color:#a8b69d">·</span> <span id="surfaceValue">TAPE</span></div>
+          <div class="next-gate" id="gateValue">NEXT GATE 01 / 04 →</div>
+          <div id="toast" role="status"></div>
+
+          <div class="overlay" id="overlay">
+            <div class="start-card">
+              <div class="eyebrow" id="overlayEyebrow">One tiny room. One proper race.</div>
+              <h2 id="overlayTitle">Find your line.</h2>
+              <p id="overlayDescription">Steer around the still life. Cross the four gates in order, then do it all again. Three laps to make your mark.</p>
+              <button class="primary" id="startButton"><span id="startLabel">Let’s race</span><span aria-hidden="true">↗</span></button>
+              <div class="start-meta" id="overlayMeta">ARROWS / WASD · OR TOUCH CONTROLS</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="touch-controls" aria-label="Touch driving controls">
+          <div class="touch-group">
+            <button class="touch-key" data-control="left" aria-label="Steer left">←</button>
+            <button class="touch-key" data-control="right" aria-label="Steer right">→</button>
+          </div>
+          <div class="touch-hint">HOLD TO DRIVE<br>+ STEER</div>
+          <div class="touch-group">
+            <button class="touch-key brake" data-control="down" aria-label="Brake or reverse">BRAKE<br>REV</button>
+            <button class="touch-key gas" data-control="up" aria-label="Accelerate">↑</button>
+          </div>
+        </div>
+
+        <div class="game-bottom">
+          <strong>01 / THE STILL-LIFE LOOP</strong>
+          <span>3 LAPS · CLOCKWISE ↻</span>
+        </div>
+      </section>
+
+      <aside class="sidebar">
+        <section class="session" aria-labelledby="sessionTitle">
+          <div class="section-label">Your session / 01</div>
+          <h2 id="sessionTitle">A little room.<br><i>A lot of possibility.</i></h2>
+          <svg class="mini-map" viewBox="80 60 1040 680" aria-label="Live circuit map">
+            <path id="miniOutline" fill="none" stroke="#40503a" stroke-width="75" stroke-linecap="round" stroke-linejoin="round"/>
+            <path id="miniLine" fill="none" stroke="#a4b492" stroke-width="6" stroke-dasharray="12 18"/>
+            <g id="miniGates"></g>
+            <circle id="miniCar" cx="650" cy="650" r="20" fill="#ff9b54" stroke="#202921" stroke-width="7"/>
+          </svg>
+          <div class="stat-row best"><span>Personal best</span><span id="bestValue">--:--.---</span></div>
+          <div class="stat-row"><span>Last lap</span><span id="lastValue">--:--.---</span></div>
+          <div class="stat-row"><span>Next checkpoint</span><span id="checkpointValue">01 / 04</span></div>
+          <div class="gate-progress" id="gateProgress" aria-label="Checkpoint progress"><i class="current"></i><i></i><i></i><i></i></div>
+        </section>
+
+        <section class="notes" aria-label="Driving instructions">
+          <div class="section-label">Driver’s notes</div>
+          <div class="keys"><span>Drive</span><div class="key-group"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></div></div>
+          <div class="keys"><span>Or use</span><div class="key-group"><kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd></div></div>
+          <div class="keys"><span>Restart / pause</span><div class="key-group"><kbd>R</kbd><kbd>P</kbd></div></div>
+          <p>Amber is your next gate. Follow the loop clockwise. Ease off for corners; the tabletop is slower, and the ceramics always win.</p>
+          <button class="reference-link" data-reference><span>Behind the circuit<br><small style="color:#9eae91">5 landmarks. 1 original still life.</small></span><span>↗</span></button>
+        </section>
+      </aside>
+    </div>
+  </main>
+
+  <footer>
+    <span>No photographs. No borrowed rooms. Just five familiar things.</span>
+    <button class="credit-link" data-reference>CONCEPT NOD: SHIPPER’S EXAMPLE · SOURCE & RIGHTS ↗</button>
+  </footer>
+</div>
+
+<dialog id="referenceDialog" aria-labelledby="referenceTitle">
+  <div class="dialog-top">
+    <div>
+      <div class="eyebrow">The source / Original vector still life</div>
+      <h2 id="referenceTitle">A room that never existed.</h2>
+    </div>
+    <button class="icon-button" id="closeReference" aria-label="Close reference">✕</button>
+  </div>
+  <p class="dialog-intro">Before there was a circuit, there was this still life. The level adds a taped racing line but preserves all five object anchors, sizes and rotations in the same 1200 × 800 coordinate space.</p>
+
+  <div class="reference-grid">
+    <div>
+      <div class="reference-media">
+        <img id="sourceImage" alt="Original overhead vector still life: a coffee mug, a notebook stack, a succulent, a fruit bowl and a tape roll on a light wooden table in an invented studio.">
+        <svg viewBox="0 0 1200 800" aria-hidden="true" id="sourceAnnotations"></svg>
+      </div>
+      <div class="image-caption"><span>STUDIO 04 — BEFORE THE RACE</span><span>1200 × 800 PX</span></div>
+      <a class="download" id="downloadSource" download="studio-04-original-reference.svg">Download original reference SVG ↓</a>
+    </div>
+    <div>
+      <div class="section-label">Landmark retention survey</div>
+      <table>
+        <thead><tr><th>LANDMARK</th><th>ANCHOR X, Y</th><th>SIZE / ANGLE</th></tr></thead>
+        <tbody>
+          <tr><td><span class="number">01</span>Coffee mug</td><td>380, 300</td><td>Ø88 / −12°</td></tr>
+          <tr><td><span class="number">02</span>Notebook stack</td><td>590, 440</td><td>190×128 / −9°</td></tr>
+          <tr><td><span class="number">03</span>Succulent pot</td><td>815, 330</td><td>Ø92 / 0°</td></tr>
+          <tr><td><span class="number">04</span>Fruit bowl</td><td>825, 535</td><td>Ø108 / 0°</td></tr>
+          <tr><td><span class="number">05</span>Tape roll</td><td>355, 505</td><td>Ø84 / 18°</td></tr>
+        </tbody>
+      </table>
+      <p class="survey-note">Measurements are source-image pixels. Anchors are object centers; circular sizes refer to the mug body, pot, bowl and tape. The notebook measurement is the top cover. Level transform: 1:1, no object repositioning. Use “Survey” in the game to compare.</p>
+    </div>
+  </div>
+
+  <div class="rights">
+    <section>
+      <div class="section-label">Image rights / Recorded provenance</div>
+      <p><strong>Studio 04 — Original Still Life.</strong> Original procedural SVG artwork created specifically for this demo, embedded in this file. No external image, real room, private family photograph or third-party visual asset was used.</p>
+      <p><strong>License: CC0 1.0 Universal.</strong> To the extent rights subsist, the original reference artwork is dedicated to the public domain. The downloaded SVG includes this rights record. All game graphics are also original procedural assets.</p>
+    </section>
+    <section>
+      <div class="section-label">Acknowledgment / Design intent</div>
+      <p>Concept credit: <strong>Shipper's example</strong> of translating a still-life reference into a racing level. This is an independent implementation with an invented room and original artwork; no Shipper assets are reproduced.</p>
+      <p>The source is intentionally a vector still life, not a photograph. Its five measured landmarks become solid objects in the playable level. Driving off the tape slows you down; checkpoints must be crossed forward and in order.</p>
+    </section>
+  </div>
+</dialog>
+
+<div class="sr-only" aria-live="polite" id="announcement"></div>
+<noscript><p style="padding:20px;color:white">Enable JavaScript to play this self-contained racing game.</p></noscript>
+
+<script type="application/json" id="asset-rights">
+{
+  "title": "Studio 04 — Original Still Life",
+  "source": "Original procedural SVG embedded in this HTML; no external image inputs",
+  "creator": "Created specifically for this demo",
+  "license": "CC0-1.0",
+  "licenseURL": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "dedication": "To the extent rights subsist, the original reference artwork is dedicated to the public domain.",
+  "dimensions": [1200, 800],
+  "room": "Entirely invented",
+  "privateFamilyPhotographs": false,
+  "thirdPartyVisualAssets": false,
+  "conceptCredit": "Shipper's example",
+  "landmarks": [
+    {"id":1,"name":"Coffee mug","x":380,"y":300,"bodyDiameter":88,"rotation":-12},
+    {"id":2,"name":"Notebook stack","x":590,"y":440,"coverWidth":190,"coverHeight":128,"rotation":-9},
+    {"id":3,"name":"Succulent pot","x":815,"y":330,"potDiameter":92,"rotation":0},
+    {"id":4,"name":"Fruit bowl","x":825,"y":535,"diameter":108,"rotation":0},
+    {"id":5,"name":"Tape roll","x":355,"y":505,"diameter":84,"rotation":18}
+  ],
+  "levelTransform": "Identity: all five source anchors, sizes and rotations retained"
+}
+</script>
+
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const W = 1200, H = 800, TOTAL_LAPS = 3;
+  const canvas = $("game"), ctx = canvas.getContext("2d");
+  const rights = JSON.parse($("asset-rights").textContent);
+
+  // Both the still-life source and the playable scene use these exact assets.
+  const defs = `
+    <defs>
+      <linearGradient id="wood" x2=".25" y2="1">
+        <stop stop-color="#dfd3b5"/><stop offset="1" stop-color="#c9b897"/>
+      </linearGradient>
+      <radialGradient id="coffee"><stop stop-color="#7b4b2b"/><stop offset=".8" stop-color="#59301e"/><stop offset="1" stop-color="#a77a45"/></radialGradient>
+      <radialGradient id="pot"><stop stop-color="#cf9c85"/><stop offset="1" stop-color="#ab7668"/></radialGradient>
+      <pattern id="grain" width="260" height="110" patternUnits="userSpaceOnUse">
+        <path d="M0 16Q65 10 130 18T260 16M0 48Q80 40 160 48T260 48M0 89Q50 96 120 88T260 89" fill="none" stroke="#9d8058" stroke-opacity=".1" stroke-width="1.4"/>
+        <path d="M0 52H260M0 100H260" stroke="#fff4d5" stroke-opacity=".13"/>
+      </pattern>
+      <filter id="shadow" x="-70%" y="-70%" width="260%" height="260%">
+        <feDropShadow dx="7" dy="10" stdDeviation="7" flood-color="#483d2d" flood-opacity=".25"/>
+      </filter>
+      <filter id="smallShadow" x="-50%" y="-50%" width="220%" height="230%">
+        <feDropShadow dx="3" dy="5" stdDeviation="3" flood-color="#413a25" flood-opacity=".23"/>
+      </filter>
+    </defs>`;
+
+  const room = `
+    <rect width="1200" height="800" fill="#9ca89a"/>
+    <path d="M0 100H1200M0 380H1200M0 660H1200M170 0V100M840 100V380M420 380V660M1000 660V800" fill="none" stroke="#788b7d" stroke-width="2" opacity=".6"/>
+    <rect x="80" y="79" width="1055" height="667" rx="29" fill="#334c3c" opacity=".28"/>
+    <rect x="66" y="58" width="1068" height="680" rx="29" fill="#a18f6d"/>
+    <rect x="66" y="58" width="1068" height="669" rx="29" fill="url(#wood)" stroke="#eee0be" stroke-width="3"/>
+    <rect x="68" y="60" width="1064" height="665" rx="28" fill="url(#grain)"/>
+    <path d="M897 60H1131V370L650 60Z" fill="#fff1bd" opacity=".19"/>
+    <path d="M1018 60L1133 190V232L977 60ZM870 60L1133 358V391L835 60Z" fill="#786b43" opacity=".07"/>
+    <text x="104" y="701" font-family="monospace" font-size="10" fill="#756b50" opacity=".55" letter-spacing="3">STUDIO 04</text>`;
+
+  let leaves = "";
+  for (let i=0;i<9;i++) {
+    const a=i*40;
+    leaves += `<ellipse cx="0" cy="-28" rx="15" ry="35" transform="rotate(${a})" fill="${i%2 ? "#69816a" : "#81977a"}" stroke="#526d59" stroke-width="1.5"/>
+      <path d="M0 -7V-53" transform="rotate(${a})" stroke="#b1c0a0" stroke-width="1.2" opacity=".55"/>`;
+  }
+
+  const props = `
+    <g filter="url(#shadow)" transform="translate(380 300) rotate(-12)">
+      <ellipse cx="48" cy="0" rx="20" ry="25" fill="#e7b394"/>
+      <ellipse cx="48" cy="0" rx="10" ry="15" fill="#c6b38d"/>
+      <circle r="44" fill="#d99471"/>
+      <circle cy="-2" r="38" fill="#f1c3a0"/>
+      <circle cy="-2" r="32" fill="url(#coffee)"/>
+      <path d="M-19 -15Q-2 -27 17 -14" fill="none" stroke="#e9bf7e" stroke-width="2" opacity=".75"/>
+      <path d="M-15 11Q0 20 15 9" fill="none" stroke="#c59256" stroke-width="1.5" opacity=".65"/>
+      <path d="M-37 0Q-36 28 -13 35" fill="none" stroke="#f8d3b1" stroke-width="3" opacity=".7"/>
+    </g>
+    <g filter="url(#shadow)" transform="translate(590 440) rotate(-9)">
+      <rect x="-103" y="-68" width="201" height="143" rx="5" transform="rotate(6)" fill="#bd765e"/>
+      <rect x="-95" y="-59" width="192" height="128" rx="4" fill="#ece0b9"/>
+      <path d="M-87 61H94M-87 65H94" stroke="#bdb48e" stroke-width="1"/>
+      <rect x="-95" y="-64" width="190" height="128" rx="4" fill="#526d6a"/>
+      <rect x="-95" y="-64" width="15" height="128" fill="#3c5958"/>
+      <path d="M61 -64V64" stroke="#b1b99b" stroke-width="5" opacity=".7"/>
+      <rect x="-52" y="-27" width="76" height="49" rx="1" fill="#d0d2b8"/>
+      <text x="-14" y="-7" text-anchor="middle" font-family="monospace" font-size="11" letter-spacing="2" fill="#47615c">FIELD</text>
+      <text x="-14" y="9" text-anchor="middle" font-family="monospace" font-size="11" letter-spacing="2" fill="#47615c">NOTES</text>
+      <path d="M-88 -57V55M-76 -58H53" stroke="#81938a" opacity=".45" fill="none"/>
+    </g>
+    <g filter="url(#shadow)" transform="translate(815 330)">
+      <circle cy="7" r="46" fill="#986b5d"/>
+      <circle r="46" fill="url(#pot)"/>
+      <circle cy="-2" r="37" fill="#685b43"/>
+      <g>${leaves}</g>
+      <g transform="scale(.62) rotate(22)">${leaves}</g>
+      <circle cy="-1" r="10" fill="#a9b598"/>
+      <path d="M-32 26Q-11 43 14 34" fill="none" stroke="#e1b49a" stroke-width="2" opacity=".6"/>
+    </g>
+    <g filter="url(#shadow)" transform="translate(825 535)">
+      <circle cy="3" r="54" fill="#7b8d8a"/>
+      <circle r="54" fill="#a9bab2"/>
+      <circle cy="-2" r="46" fill="#d7ded0"/>
+      <circle cy="-2" r="39" fill="#91a59a"/>
+      <g filter="url(#smallShadow)">
+        <circle cx="-15" cy="-12" r="21" fill="#d99048"/>
+        <circle cx="20" cy="-6" r="20" fill="#e9a14c"/>
+        <circle cx="-2" cy="20" r="23" fill="#edb35d"/>
+      </g>
+      <path d="M-20 -25Q-7 -29 -4 -16M12 -18Q26 -22 30 -11M-13 8Q0 0 9 9" fill="none" stroke="#f4ca7f" stroke-width="2" opacity=".65"/>
+      <path d="M-14 -31l4 7m32 -3l-1 5m-22 9l2 8" stroke="#6d7446" stroke-width="3"/>
+      <path d="M-43 8Q-37 37 -8 44" stroke="#eef0dc" stroke-width="3" fill="none" opacity=".8"/>
+    </g>
+    <g filter="url(#shadow)" transform="translate(355 505) rotate(18)">
+      <path d="M17 27L59 28L59 46L9 41Z" fill="#c86e56"/>
+      <circle cy="3" r="42" fill="#b66450"/>
+      <circle r="42" fill="#d7896f"/>
+      <circle r="24" fill="#ece0b9"/>
+      <circle r="17" fill="#a18c68"/>
+      <circle cy="3" r="14" fill="#c5b38e"/>
+      <circle r="35" fill="none" stroke="#ecac8d" stroke-width="2" opacity=".6"/>
+      <path d="M-31 8Q-27 28 -9 32" stroke="#eeb397" stroke-width="3" fill="none"/>
+    </g>`;
+
+  function makeSVG(content, metadata=false) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
+      <title>Studio 04 — Original Still Life</title>
+      <desc>Original vector artwork of five objects on a table in an invented room. No photographs or external assets.</desc>
+      ${metadata ? `<metadata>${JSON.stringify(rights).replace(/&/g,"&amp;").replace(/</g,"&lt;")}</metadata>` : ""}
+      ${defs}${content}</svg>`;
+  }
+  const sourceSVG = makeSVG(room+props,true);
+  const svgURI = s => "data:image/svg+xml;charset=utf-8,"+encodeURIComponent(s);
+  const backgroundImage = new Image(), objectImage = new Image();
+  backgroundImage.src=svgURI(makeSVG(room));
+  objectImage.src=svgURI(makeSVG(props));
+  $("sourceImage").src=svgURI(sourceSVG);
+  $("downloadSource").href=URL.createObjectURL(new Blob([sourceSVG],{type:"image/svg+xml;charset=utf-8"}));
+
+  const landmarks = rights.landmarks;
+  $("sourceAnnotations").innerHTML=landmarks.map(p=>`
+    <g transform="translate(${p.x} ${p.y})">
+      <path d="M-15 0H15M0 -15V15" stroke="#fffbe8" stroke-width="3"/>
+      <circle cx="-34" cy="-44" r="17" fill="#1c2923" stroke="#ffc080" stroke-width="2"/>
+      <text x="-34" y="-38" text-anchor="middle" fill="#ffc080" font-family="monospace" font-size="16">${p.id}</text>
+    </g>`).join("");
+
+  // Clockwise Catmull-Rom circuit; all coordinates are source-image pixels.
+  const controls=[
+    [600,165],[820,172],[955,240],[1005,385],[990,530],[865,638],
+    [625,650],[395,640],[235,565],[190,420],[215,275],[350,190]
+  ];
+  const track=[];
+  for(let i=0;i<controls.length;i++){
+    const p0=controls[(i-1+controls.length)%controls.length],p1=controls[i];
+    const p2=controls[(i+1)%controls.length],p3=controls[(i+2)%controls.length];
+    for(let j=0;j<36;j++){
+      const t=j/36,t2=t*t,t3=t2*t;
+      const f=k=>.5*((2*p1[k])+(-p0[k]+p2[k])*t+(2*p0[k]-5*p1[k]+4*p2[k]-p3[k])*t2+(-p0[k]+3*p1[k]-3*p2[k]+p3[k])*t3);
+      track.push({x:f(0),y:f(1)});
+    }
+  }
+  const trackPath=new Path2D();
+  trackPath.moveTo(track[0].x,track[0].y);
+  track.forEach(p=>trackPath.lineTo(p.x,p.y));
+  trackPath.closePath();
+  const svgTrack="M"+track.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`).join("L")+"Z";
+  $("miniOutline").setAttribute("d",svgTrack);
+  $("miniLine").setAttribute("d",svgTrack);
+
+  function nearest(x,y){
+    let best=Infinity,index=0;
+    for(let i=0;i<track.length;i++){
+      const p=track[i],d=(x-p.x)**2+(y-p.y)**2;
+      if(d<best){best=d;index=i;}
+    }
+    return {distance:Math.sqrt(best),index};
+  }
+  function gateAt(x,y,name){
+    const i=nearest(x,y).index,p=track[i];
+    const a=track[(i-2+track.length)%track.length],b=track[(i+2)%track.length];
+    const l=Math.hypot(b.x-a.x,b.y-a.y);
+    return {x:p.x,y:p.y,tx:(b.x-a.x)/l,ty:(b.y-a.y)/l,name};
+  }
+  const gates=[
+    gateAt(190,420,"01"),gateAt(600,165,"02"),
+    gateAt(1005,385,"03"),gateAt(625,650,"FINISH")
+  ];
+  $("miniGates").innerHTML=gates.map((g,i)=>`<circle id="miniGate${i}" cx="${g.x}" cy="${g.y}" r="15" fill="#687c59" stroke="#202921" stroke-width="5"/>`).join("");
+
+  let mode="ready",lap=1,checkpoint=0,elapsed=0,lapStart=0,lastLap=null;
+  let best=null,newBest=false,survey=false,onRoad=true;
+  try{
+    const saved=Number(localStorage.getItem("scale-shift-studio04-best-v1"));
+    if(Number.isFinite(saved)&&saved>0) best=saved;
+  }catch(e){}
+  const car={x:650,y:650,angle:Math.PI,speed:0};
+  let skidMarks=[],impactCooldown=0,toastTimer=0,uiClock=0;
+  const keys=new Set();
+  const pointers={up:new Set(),down:new Set(),left:new Set(),right:new Set()};
+  const keyMap={ArrowUp:"up",w:"up",W:"up",ArrowDown:"down",s:"down",S:"down",ArrowLeft:"left",a:"left",A:"left",ArrowRight:"right",d:"right",D:"right"};
+  const active=a=>[...keys].some(k=>keyMap[k]===a)||pointers[a].size>0;
+
+  function formatTime(t){
+    if(t===null || !Number.isFinite(t)) return "--:--.---";
+    const ms=Math.floor(Math.max(0,t)*1000);
+    return String(Math.floor(ms/60000)).padStart(2,"0")+":"+
+      String(Math.floor(ms/1000)%60).padStart(2,"0")+"."+
+      String(ms%1000).padStart(3,"0");
+  }
+  function announce(text){$("announcement").textContent=text;}
+  function toast(text,duration=1.8){
+    $("toast").textContent=text;
+    $("toast").classList.add("visible");
+    toastTimer=duration;
+    announce(text);
+  }
+  function clearInput(){
+    keys.clear();
+    Object.values(pointers).forEach(s=>s.clear());
+    document.querySelectorAll(".touch-key").forEach(b=>b.classList.remove("pressed"));
+  }
+  function updateOverlay(){
+    $("overlay").hidden=mode==="running";
+    $("pauseButton").disabled=mode==="ready"||mode==="finished";
+    $("pauseButton").textContent=mode==="paused"?"▶":"Ⅱ";
+    $("pauseButton").setAttribute("aria-label",mode==="paused"?"Resume race":"Pause race");
+    if(mode==="paused"){
+      $("overlayEyebrow").textContent="A moment in the pits";
+      $("overlayTitle").textContent="Take a breather.";
+      $("overlayDescription").textContent="Your time is paused. The coffee can wait — your racing line is right where you left it.";
+      $("startLabel").textContent="Back to the circuit";
+      $("overlayMeta").textContent="P / ESC TO RESUME · R TO RESTART";
+    }else if(mode==="finished"){
+      $("overlayEyebrow").textContent=newBest?"A new personal best":"Three laps. Nicely done.";
+      $("overlayTitle").textContent="Room conquered.";
+      $("overlayDescription").textContent=`Finished in ${formatTime(elapsed)}. ${newBest?"That’s your quickest trip around the table.":"There’s always a little time hiding in the next corner."}`;
+      $("startLabel").textContent="One more run";
+      $("overlayMeta").textContent="3 / 3 LAPS COMPLETE · ALL GATES VERIFIED";
+    }else if(mode==="ready"){
+      $("overlayEyebrow").textContent="One tiny room. One proper race.";
+      $("overlayTitle").textContent="Find your line.";
+      $("overlayDescription").textContent="Steer around the still life. Cross the four gates in order, then do it all again. Three laps to make your mark.";
+      $("startLabel").textContent="Let’s race";
+      $("overlayMeta").textContent="ARROWS / WASD · OR TOUCH CONTROLS";
+    }
+    updateUI();
+  }
+  function resetRace(){
+    lap=1;checkpoint=0;elapsed=0;lapStart=0;lastLap=null;newBest=false;
+    car.x=650;car.y=650;car.angle=Math.PI;car.speed=0;
+    skidMarks=[];impactCooldown=0;onRoad=true;
+    clearInput();
+  }
+  function startRace(){
+    resetRace();mode="running";updateOverlay();toast("GO!  Follow the amber gates →",2.4);
+  }
+  function pauseRace(){
+    if(mode!=="running")return;
+    mode="paused";clearInput();updateOverlay();announce("Race paused.");
+  }
+  function resumeRace(){
+    if(mode!=="paused")return;
+    mode="running";clearInput();updateOverlay();announce("Race resumed.");
+  }
+  function togglePause(){
+    if(mode==="running")pauseRace();
+    else if(mode==="paused")resumeRace();
+  }
+  function finishRace(){
+    mode="finished";car.speed=0;clearInput();
+    newBest=best===null||elapsed<best;
+    if(newBest){
+      best=elapsed;
+      try{localStorage.setItem("scale-shift-studio04-best-v1",String(best));}catch(e){}
+    }
+    updateOverlay();
+    announce(`Finished three laps in ${formatTime(elapsed)}.${newBest?" New personal best.":""}`);
+  }
+
+  $("startButton").addEventListener("click",()=>mode==="paused"?resumeRace():startRace());
+  $("restartButton").addEventListener("click",startRace);
+  $("pauseButton").addEventListener("click",togglePause);
+  $("raceTab").addEventListener("click",()=>canvas.focus({preventScroll:true}));
+  $("surveyButton").addEventListener("click",()=>{
+    survey=!survey;
+    $("surveyButton").setAttribute("aria-pressed",String(survey));
+  });
+
+  const dialog=$("referenceDialog");
+  document.querySelectorAll("[data-reference]").forEach(b=>b.addEventListener("click",()=>{
+    pauseRace();clearInput();dialog.showModal();
+  }));
+  $("closeReference").addEventListener("click",()=>dialog.close());
+  dialog.addEventListener("click",e=>{
+    if(e.target===dialog){
+      const r=dialog.getBoundingClientRect();
+      if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();
+    }
+  });
+
+  document.addEventListener("keydown",e=>{
+    if(dialog.open)return;
+    if(e.target instanceof HTMLElement && e.target.closest("button,a") && (e.code==="Space"||e.code==="Enter"))return;
+    if(keyMap[e.key]){
+      e.preventDefault();
+      if(mode==="ready")startRace();
+      keys.add(e.key);
+    }
+    if(e.repeat)return;
+    if(e.key==="r"||e.key==="R"){e.preventDefault();startRace();}
+    if(e.key==="p"||e.key==="P"||e.key==="Escape"){e.preventDefault();togglePause();}
+    if(e.code==="Space"||e.key==="Enter"){
+      e.preventDefault();
+      if(mode==="ready"||mode==="finished")startRace();else togglePause();
+    }
+  });
+  document.addEventListener("keyup",e=>keys.delete(e.key));
+  window.addEventListener("blur",()=>{clearInput();pauseRace();});
+  document.addEventListener("visibilitychange",()=>{
+    if(document.hidden){clearInput();pauseRace();}
+  });
+
+  document.querySelectorAll("[data-control]").forEach(button=>{
+    const action=button.dataset.control;
+    button.addEventListener("pointerdown",e=>{
+      e.preventDefault();
+      if(mode==="ready")startRace();
+      if(mode!=="running")return;
+      button.setPointerCapture(e.pointerId);
+      pointers[action].add(e.pointerId);
+      button.classList.add("pressed");
+    });
+    const release=e=>{
+      pointers[action].delete(e.pointerId);
+      button.classList.toggle("pressed",pointers[action].size>0);
+    };
+    button.addEventListener("pointerup",release);
+    button.addEventListener("pointercancel",release);
+    button.addEventListener("lostpointercapture",release);
+    button.addEventListener("contextmenu",e=>e.preventDefault());
+  });
+
+  function collisionResponse(nx,ny){
+    const into=(Math.cos(car.angle)*nx+Math.sin(car.angle)*ny)*car.speed;
+    if(into<0){
+      const impact=Math.abs(car.speed);
+      car.speed*=-.23;
+      if(impact>65&&impactCooldown<=0){
+        toast("Easy — the ceramics win.",1.3);
+        impactCooldown=1.8;
+      }
+    }
+  }
+  function collideCircle(x,y,r){
+    const dx=car.x-x,dy=car.y-y,d=Math.hypot(dx,dy),min=r+13;
+    if(d<min){
+      const nx=d>.001?dx/d:1,ny=d>.001?dy/d:0;
+      car.x=x+nx*min;car.y=y+ny*min;
+      collisionResponse(nx,ny);
+    }
+  }
+  function collideNotebook(){
+    const angle=-9*Math.PI/180,c=Math.cos(angle),s=Math.sin(angle);
+    const dx=car.x-590,dy=car.y-440;
+    let x=dx*c+dy*s,y=-dx*s+dy*c;
+    const hx=102,hy=73;
+    const qx=Math.max(-hx,Math.min(hx,x)),qy=Math.max(-hy,Math.min(hy,y));
+    let nx=x-qx,ny=y-qy,d=Math.hypot(nx,ny),push=0;
+    if(d<13){
+      if(d>.001){nx/=d;ny/=d;push=13-d;}
+      else{
+        if(hx-Math.abs(x)<hy-Math.abs(y)){
+          nx=x<0?-1:1;ny=0;push=hx-Math.abs(x)+13;
+        }else{nx=0;ny=y<0?-1:1;push=hy-Math.abs(y)+13;}
+      }
+      const wx=nx*c-ny*s,wy=nx*s+ny*c;
+      car.x+=wx*push;car.y+=wy*push;
+      collisionResponse(wx,wy);
+    }
+  }
+
+  function physics(dt){
+    if(mode!=="running")return;
+    elapsed+=dt;
+    impactCooldown=Math.max(0,impactCooldown-dt);
+    const oldX=car.x,oldY=car.y;
+    onRoad=nearest(car.x,car.y).distance<57;
+    const up=active("up"),down=active("down");
+    const steer=(active("right")?1:0)-(active("left")?1:0);
+    if(up)car.speed+=265*dt;
+    if(down)car.speed-=(car.speed>12?510:150)*dt;
+    if(!up&&!down)car.speed*=Math.exp(-(onRoad?.72:2.2)*dt);
+    if(!onRoad)car.speed*=Math.exp(-1.5*dt);
+    const max=onRoad?315:115;
+    car.speed=Math.max(-92,Math.min(max,car.speed));
+    if(Math.abs(car.speed)<.35)car.speed=0;
+    const turnFactor=Math.min(1,Math.abs(car.speed)/42)*(.63+.37*Math.min(1,Math.abs(car.speed)/155));
+    car.angle+=steer*2.6*turnFactor*Math.sign(car.speed)*dt;
+    car.x+=Math.cos(car.angle)*car.speed*dt;
+    car.y+=Math.sin(car.angle)*car.speed*dt;
+
+    // Solid table rim and original still-life obstacles.
+    if(car.x<96){car.x=96;collisionResponse(1,0);}
+    if(car.x>1104){car.x=1104;collisionResponse(-1,0);}
+    if(car.y<88){car.y=88;collisionResponse(0,1);}
+    if(car.y>706){car.y=706;collisionResponse(0,-1);}
+    collideCircle(380,300,44);
+    collideCircle(427,290,18);
+    collideNotebook();
+    collideCircle(815,330,51);
+    collideCircle(825,535,54);
+    collideCircle(355,505,42);
+
+    // A gate only counts when crossed forward, within its road-width span.
+    const g=gates[checkpoint];
+    const before=(oldX-g.x)*g.tx+(oldY-g.y)*g.ty;
+    const after=(car.x-g.x)*g.tx+(car.y-g.y)*g.ty;
+    const lateral=Math.abs((car.x-g.x)*(-g.ty)+(car.y-g.y)*g.tx);
+    if(before<0&&after>=0&&lateral<66&&car.speed>10){
+      if(checkpoint===3){
+        lastLap=elapsed-lapStart;
+        if(lap===TOTAL_LAPS){finishRace();return;}
+        lap++;lapStart=elapsed;checkpoint=0;
+        toast(`LAP ${String(lap).padStart(2,"0")} / 03  ·  ${formatTime(lastLap)}`,2);
+      }else{
+        checkpoint++;
+        toast(`GATE ${checkpoint} / 4  ✓`,1.0);
+      }
+      updateUI();
+    }
+    if(steer&&Math.abs(car.speed)>205&&onRoad&&Math.random()<dt*36){
+      skidMarks.push({x:car.x,y:car.y,a:car.angle,life:7});
+      if(skidMarks.length>180)skidMarks.shift();
+    }
+  }
+
+  function updateUI(){
+    $("lapValue").textContent=String(lap).padStart(2,"0");
+    $("timerValue").textContent=formatTime(elapsed);
+    $("speedValue").textContent=String(Math.round(Math.abs(car.speed)*.29));
+    $("surfaceValue").textContent=onRoad?"TAPE":"WOOD";
+    $("lastValue").textContent=formatTime(lastLap);
+    $("bestValue").textContent=formatTime(best);
+    $("checkpointValue").textContent=mode==="finished"?"COMPLETE":`${String(checkpoint+1).padStart(2,"0")} / 04`;
+    $("gateValue").textContent=mode==="finished"?"FINISH · ALL GATES VERIFIED":`NEXT GATE ${String(checkpoint+1).padStart(2,"0")} / 04 →`;
+    [...$("gateProgress").children].forEach((el,i)=>{
+      el.className=mode==="finished"||i<checkpoint?"done":i===checkpoint?"current":"";
+    });
+    for(let i=0;i<4;i++){
+      $(`miniGate${i}`).setAttribute("fill",mode==="finished"||i<checkpoint?"#d4dbbc":i===checkpoint?"#ff9b54":"#687c59");
+    }
+  }
+
+  function roundedRect(x,y,w,h,r){
+    ctx.beginPath();ctx.roundRect(x,y,w,h,r);
+  }
+  function drawGate(g,index){
+    ctx.save();
+    ctx.translate(g.x,g.y);
+    ctx.rotate(Math.atan2(g.ty,g.tx));
+    const isTarget=index===checkpoint&&mode!=="finished";
+    if(index===3){
+      for(let row=0;row<10;row++){
+        for(let col=0;col<2;col++){
+          ctx.fillStyle=(row+col)%2?"#dedaca":"#343d36";
+          ctx.fillRect(-9+col*9,-55+row*11,9,11);
+        }
+      }
+      ctx.strokeStyle="#e9e3c9";ctx.lineWidth=1;
+      ctx.strokeRect(-9,-55,18,110);
+    }else{
+      ctx.strokeStyle=isTarget?"#ffc17c":"#d2d7bf55";
+      ctx.lineWidth=isTarget?4:2;
+      ctx.setLineDash([7,6]);
+      ctx.beginPath();ctx.moveTo(0,-54);ctx.lineTo(0,54);ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    if(isTarget){
+      ctx.fillStyle="#ffa661";
+      ctx.shadowColor="#ffb45d";ctx.shadowBlur=13;
+      [-1,1].forEach(side=>{
+        ctx.beginPath();
+        ctx.moveTo(-8,side*69);ctx.lineTo(8,side*69);ctx.lineTo(0,side*57);ctx.closePath();ctx.fill();
+      });
+      ctx.shadowBlur=0;
+      ctx.fillStyle="#28372a";roundedRect(-19,-99,38,22,4);ctx.fill();
+      ctx.fillStyle="#ffc28b";ctx.font="bold 12px monospace";ctx.textAlign="center";ctx.fillText(String(index+1).padStart(2,"0"),0,-84);
+    }
+    ctx.restore();
+  }
+
+  function drawCar(){
+    ctx.save();ctx.translate(car.x,car.y);ctx.rotate(car.angle);
+    ctx.shadowColor="#18221970";ctx.shadowBlur=9;ctx.shadowOffsetX=3;ctx.shadowOffsetY=5;
+    ctx.fillStyle="#121d19";roundedRect(-21,-13,43,26,7);ctx.fill();
+    ctx.shadowBlur=0;ctx.shadowOffsetX=0;ctx.shadowOffsetY=0;
+    // Tires.
+    ctx.fillStyle="#1d2622";
+    ctx.fillRect(-16,-17,11,6);ctx.fillRect(-16,11,11,6);
+    const steer=((active("right")?1:0)-(active("left")?1:0))*.3;
+    [-14,14].forEach(y=>{
+      ctx.save();ctx.translate(12,y);ctx.rotate(steer);
+      ctx.fillRect(-5,-3,11,6);ctx.restore();
+    });
+    ctx.fillStyle="#f49a4b";roundedRect(-23,-12,46,24,6);ctx.fill();
+    ctx.fillStyle="#ffc780";roundedRect(9,-10,10,20,3);ctx.fill();
+    ctx.fillStyle="#d77635";ctx.fillRect(-20,-10,7,20);
+    ctx.fillStyle="#324941";roundedRect(-10,-9,19,18,4);ctx.fill();
+    ctx.fillStyle="#91a69a";ctx.beginPath();ctx.moveTo(3,-8);ctx.lineTo(9,-6);ctx.lineTo(9,6);ctx.lineTo(3,8);ctx.closePath();ctx.fill();
+    ctx.fillStyle="#f5ead1";ctx.fillRect(-21,-2.5,40,5);
+    ctx.fillStyle="#25382d";ctx.font="bold 9px Arial";ctx.textAlign="center";
+    ctx.save();ctx.rotate(Math.PI/2);ctx.fillText("17",0,5);ctx.restore();
+    ctx.fillStyle="#fff2b5";ctx.fillRect(19,-9,4,5);ctx.fillRect(19,4,4,5);
+    ctx.fillStyle="#9a3e2d";ctx.fillRect(-23,-9,3,5);ctx.fillRect(-23,4,3,5);
+    ctx.fillStyle="#243b2c";roundedRect(-25,-15,5,30,2);ctx.fill();
+    ctx.restore();
+  }
+
+  function drawSurvey(){
+    landmarks.forEach(p=>{
+      ctx.save();ctx.translate(p.x,p.y);
+      ctx.strokeStyle="#fff5cf";ctx.lineWidth=2;
+      ctx.setLineDash([4,4]);ctx.beginPath();ctx.arc(0,0,p.id===2?109:66,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+      ctx.beginPath();ctx.moveTo(-10,0);ctx.lineTo(10,0);ctx.moveTo(0,-10);ctx.lineTo(0,10);ctx.stroke();
+      ctx.fillStyle="#17271feb";roundedRect(-72,-98,144,31,4);ctx.fill();
+      ctx.fillStyle="#ffc38b";ctx.textAlign="center";ctx.font="12px monospace";
+      ctx.fillText(`0${p.id} · ${p.x}, ${p.y}`,0,-78);ctx.restore();
+    });
+  }
+
+  function render(){
+    const scale=Math.min(canvas.width/W,canvas.height/H);
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.fillStyle="#a4af9d";ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.setTransform(scale,0,0,scale,(canvas.width-W*scale)/2,(canvas.height-H*scale)/2);
+    if(backgroundImage.complete&&backgroundImage.naturalWidth)ctx.drawImage(backgroundImage,0,0);
+    else{ctx.fillStyle="#d6c7a6";ctx.fillRect(0,0,W,H);}
+    // A low, paper-tape circuit laid over the source still life.
+    ctx.save();ctx.lineJoin="round";ctx.lineCap="round";
+    ctx.strokeStyle="#5a503324";ctx.lineWidth=131;
+    ctx.shadowColor="#675b3833";ctx.shadowBlur=9;ctx.shadowOffsetY=3;
+    ctx.stroke(trackPath);ctx.shadowBlur=0;ctx.shadowOffsetY=0;
+    ctx.strokeStyle="#e2dbc0";ctx.lineWidth=125;ctx.stroke(trackPath);
+    ctx.strokeStyle="#a16e55";ctx.lineWidth=122;ctx.setLineDash([15,15]);ctx.stroke(trackPath);
+    ctx.setLineDash([]);ctx.strokeStyle="#505b52";ctx.lineWidth=111;ctx.stroke(trackPath);
+    ctx.strokeStyle="#596258";ctx.lineWidth=100;ctx.stroke(trackPath);
+    ctx.strokeStyle="#c5c8ae65";ctx.lineWidth=2;ctx.setLineDash([13,23]);ctx.stroke(trackPath);ctx.setLineDash([]);
+    // Clockwise direction marks.
+    for(let i=24;i<track.length;i+=62){
+      const p=track[i],n=track[(i+2)%track.length];
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(Math.atan2(n.y-p.y,n.x-p.x));
+      ctx.strokeStyle="#ece2b532";ctx.lineWidth=3;
+      ctx.beginPath();ctx.moveTo(-8,-8);ctx.lineTo(1,0);ctx.lineTo(-8,8);ctx.stroke();
+      ctx.restore();
+    }
+    skidMarks.forEach(m=>{
+      ctx.save();ctx.translate(m.x,m.y);ctx.rotate(m.a);
+      ctx.strokeStyle=`rgba(18,28,21,${Math.min(.17,m.life*.04)})`;ctx.lineWidth=2.5;
+      ctx.beginPath();ctx.moveTo(-14,-13);ctx.lineTo(1,-13);ctx.moveTo(-14,13);ctx.lineTo(1,13);ctx.stroke();ctx.restore();
+    });
+    gates.forEach(drawGate);
+    ctx.restore();
+    if(objectImage.complete&&objectImage.naturalWidth)ctx.drawImage(objectImage,0,0);
+    if(survey)drawSurvey();
+    drawCar();
+    $("miniCar").setAttribute("cx",car.x.toFixed(1));
+    $("miniCar").setAttribute("cy",car.y.toFixed(1));
+  }
+
+  function resize(){
+    const rect=canvas.getBoundingClientRect(),dpr=Math.min(window.devicePixelRatio||1,2);
+    canvas.width=Math.max(1,Math.round(rect.width*dpr));
+    canvas.height=Math.max(1,Math.round(rect.height*dpr));
+  }
+  new ResizeObserver(resize).observe(canvas);
+  window.addEventListener("resize",resize);
+  resize();updateOverlay();
+  let previous=performance.now();
+  function frame(now){
+    const dt=Math.min(.04,Math.max(0,(now-previous)/1000));previous=now;
+    if(mode==="running"){
+      const steps=Math.max(1,Math.ceil(dt/.01));
+      for(let i=0;i<steps;i++)physics(dt/steps);
+      skidMarks.forEach(m=>m.life-=dt);
+      skidMarks=skidMarks.filter(m=>m.life>0);
+    }
+    if(toastTimer>0){
+      toastTimer-=dt;
+      if(toastTimer<=0)$("toast").classList.remove("visible");
+    }
+    uiClock+=dt;
+    if(uiClock>.06){updateUI();uiClock=0;}
+    render();requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

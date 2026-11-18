@@ -1,0 +1,1310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta name="robots" content="noindex,nofollow">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Rooms OS — Now</title>
+<style>
+:root{
+  --bg:#f5f5f0;--paper:#fff;--ink:#222d28;--muted:#778078;
+  --line:#e6e8e0;--green:#315c47;--green-soft:#edf3ec;--lime:#d6e5a5;
+  --blue:#648bb5;--purple:#9985b6;--orange:#bd805c;--red:#a44c44;
+  --sidebar:#202e28;--radius:15px;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+button,input,select{font:inherit}
+button,a,input,select{outline-offset:4px}
+button{cursor:pointer}
+button:disabled{cursor:wait;opacity:.55}
+button{color:inherit}
+a{color:var(--green)}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--green)}
+.sidebar{position:fixed;inset:0 auto 0 0;width:216px;background:var(--sidebar);color:#d5dfd7;display:flex;flex-direction:column;padding:31px 20px 20px;z-index:20}
+.brand{display:flex;align-items:center;gap:12px;font-size:20px;letter-spacing:-.7px;color:white;font-weight:650;padding-left:8px}
+.logo{display:grid;grid-template-columns:repeat(2,8px);gap:3px;transform:rotate(-7deg)}
+.logo i{display:block;width:8px;height:12px;background:var(--lime);border-radius:2px}
+.logo i:nth-child(2),.logo i:nth-child(3){opacity:.6}
+.workspace{margin:33px 0 25px;padding:12px;border:1px solid #435047;border-radius:9px;display:flex;gap:10px;align-items:center}
+.workspace-icon{width:31px;height:31px;border-radius:8px;display:grid;place-items:center;background:#3b4c3e;color:var(--lime);font:italic 23px Georgia,serif}
+.workspace strong{font-size:12px;color:#eef2ea;display:block}
+.workspace small{font-size:10px;color:#9dae9f}
+.nav-label{font-size:9px;letter-spacing:1.8px;color:#85988a;padding:0 12px;margin:9px 0}
+.nav{display:flex;flex-direction:column;gap:5px}
+.nav button{border:0;background:none;color:#b1c0b5;text-align:left;padding:11px 12px;border-radius:7px;display:flex;align-items:center;gap:12px;font-size:12px}
+.nav button:hover{background:#2b3b31;color:white}
+.nav button.active{background:#d9e6b3;color:#25372a;font-weight:650}
+.nav svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.6}
+.nav-count{margin-left:auto;font-size:9px;padding:1px 5px;border-radius:4px;background:#ffffff15}
+.sidebar-bottom{margin-top:auto}
+.private-note{border:1px solid #405044;border-radius:10px;padding:13px;font-size:11px;color:#aabbad}
+.private-note strong{display:block;color:#dce8d6;font-size:11px;margin-bottom:6px}
+.private-note p{margin:0;line-height:1.7}
+.profile{margin-top:21px;display:flex;gap:10px;align-items:center;padding:0 4px}
+.avatar{width:31px;height:31px;display:grid;place-items:center;border-radius:50%;background:#56674b;color:#f1f5de;font-size:11px}
+.profile strong{display:block;font-size:11px;color:#e4eae0}
+.profile small{font-size:10px;color:#99aa9d}
+main{margin-left:216px;min-height:100vh}
+.topbar{height:73px;padding:0 38px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;background:#fafbf6}
+.breadcrumb{font-size:11px;color:var(--muted);display:flex;gap:12px;align-items:center}
+.breadcrumb strong{color:var(--ink);font-weight:500}
+.top-actions{display:flex;align-items:center;gap:18px;font-size:10px;color:var(--muted)}
+.lock{display:inline-flex;align-items:center;gap:6px}
+.lock svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.5}
+.top-avatar{width:28px;height:28px;border-radius:50%;background:#e5e9dc;color:#53614c;display:grid;place-items:center;font-size:10px}
+.content{max-width:1550px;margin:auto;padding:32px 38px 27px}
+.page-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:23px}
+.eyebrow{font-size:9px;letter-spacing:2px;font-weight:650;color:var(--green);text-transform:uppercase;margin-bottom:9px}
+h1{font:400 37px/1.15 Georgia,"Times New Roman",serif;letter-spacing:-1.3px;margin:0 0 9px}
+.subtitle{font-size:12px;color:var(--muted);margin:0}
+.heading-actions{display:flex;gap:9px;flex-wrap:wrap;justify-content:flex-end}
+.btn{border:1px solid #dce1d6;background:white;padding:9px 13px;border-radius:7px;font-size:11px;display:inline-flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap;transition:background .15s}
+.btn:hover{background:#f0f3eb}
+.btn.primary{background:var(--green);border-color:var(--green);color:white}
+.btn.primary:hover{background:#254c39}
+.btn svg{height:14px;width:14px;fill:none;stroke:currentColor;stroke-width:1.7}
+select.btn{appearance:auto;padding-right:8px}
+.preview-bar{display:flex;align-items:center;gap:10px;background:#f1eddd;border:1px solid #e6dfc6;border-radius:9px;padding:10px 13px;margin-bottom:22px;font-size:11px;color:#716342}
+.preview-bar.live{background:#eaf2e8;border-color:#d6e5d1;color:#345c3c}
+.preview-bar .dot{flex:none;width:6px;height:6px;background:#b38b3e;border-radius:50%}
+.preview-bar.live .dot{background:#447c45}
+.preview-bar strong{font-weight:650}
+.preview-bar button{margin-left:auto;border:0;background:none;color:inherit;font-size:10px;font-weight:650;text-decoration:underline;white-space:nowrap}
+.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:15px;margin-bottom:22px}
+.metric{padding:19px 20px 16px;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);position:relative;overflow:hidden}
+.metric-title{font-size:10px;color:#6f796f;display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}
+.metric-title .tiny-icon{color:#9aa596;font-size:14px}
+.metric-value{font-size:30px;letter-spacing:-1px;line-height:1.25;font-weight:550;font-variant-numeric:tabular-nums}
+.metric-bottom{font-size:9px;color:#8a9188;margin-top:9px;display:flex;gap:6px;align-items:center;min-height:18px}
+.tag{font-size:9px;border-radius:4px;padding:2px 5px;display:inline-flex;align-items:center;gap:4px;line-height:1.5;background:#eff3ec;color:#54784d;white-space:nowrap}
+.tag.amber{background:#f8f0e0;color:#95743a}
+.tag.gray{background:#f0f1ed;color:#777f74}
+.tag.red{background:#faece8;color:#a7604b}
+.dashboard-grid{display:grid;grid-template-columns:minmax(0,1fr) 292px;gap:20px;align-items:start}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:15px;padding:21px 22px 0}
+h2{font-size:14px;font-weight:600;letter-spacing:-.2px;margin:0}
+.card-sub{font-size:10px;color:var(--muted);margin:4px 0 0}
+.chart-head-right{display:flex;align-items:center;gap:6px;font-size:9px;color:var(--muted)}
+.small-dot{width:5px;height:5px;border-radius:50%;display:inline-block;background:var(--green)}
+.chart-wrap{padding:13px 13px 0;position:relative}
+.chart-wrap svg{display:block;width:100%;height:auto;min-height:210px}
+.chart-foot{border-top:1px solid #f0f1eb;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 22px;font-size:9px;color:var(--muted)}
+.legend{display:flex;gap:15px;flex-wrap:wrap}
+.legend span{display:flex;gap:5px;align-items:center}
+.legend i{display:inline-block;width:7px;height:7px;border-radius:50%}
+.chart-note{padding:0 22px 13px;font-size:9px;color:#8c9389;min-height:27px}
+.side-stack{display:flex;flex-direction:column;gap:18px}
+.source-card .card-head{padding:20px 19px 14px}
+.source-list{padding:0 18px}
+.source-row{display:flex;gap:9px;align-items:center;padding:14px 0;border-top:1px solid #f0f1eb}
+.source-row:first-child{border-top:0;padding-top:6px}
+.platform-icon{width:29px;height:29px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:none}
+.platform-icon.bluesky{color:#4785bd;background:#edf4fc}
+.platform-icon.mastodon{color:#8673b5;background:#f2eef9}
+.platform-icon.x{color:#40453e;background:#f0f1ed}
+.platform-icon.typefully{color:#668550;background:#edf3e7}
+.source-text{min-width:0;flex:1}
+.source-text strong{display:block;font-size:11px;font-weight:550}
+.source-text small{display:block;font-size:9px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:145px}
+.source-state{text-align:right}
+.source-state strong{font-size:9px;display:block;font-weight:500}
+.source-state small{font-size:8px;color:var(--muted)}
+.source-bottom{padding:12px 18px;background:#fafbf7;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;font-size:9px;color:#7d8777}
+.text-btn{border:0;background:none;color:var(--green);padding:0;font-size:10px;font-weight:600}
+.insight-card{padding:20px;background:#eaf0df;border:1px solid #dfe7ce;border-radius:var(--radius)}
+.insight-kicker{color:#5c704b;font-size:9px;font-weight:650;letter-spacing:1px;display:flex;align-items:center;gap:7px}
+.insight-card h3{font:400 21px/1.25 Georgia,serif;margin:12px 0 9px;letter-spacing:-.3px}
+.insight-card p{font-size:10px;line-height:1.8;color:#718061;margin:0}
+.posts-card{margin-top:20px}
+.posts-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 22px 14px;flex-wrap:wrap}
+.filters{display:flex;gap:4px;flex-wrap:wrap}
+.filter{background:none;border:1px solid transparent;padding:5px 9px;border-radius:6px;color:#8a9285;font-size:10px}
+.filter.active{background:#edf2e7;color:#3b5c32;border-color:#e1e9d7;font-weight:600}
+.search{border:1px solid var(--line);border-radius:6px;padding:7px 9px;font-size:10px;width:160px;background:#fdfefb}
+.table-wrap{overflow:auto}
+table{width:100%;border-collapse:collapse;text-align:left}
+th{font-size:8px;text-transform:uppercase;letter-spacing:.7px;color:#889080;background:#fbfcf8;font-weight:500;padding:10px 12px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:14px 12px;border-bottom:1px solid #f0f1eb;font-size:10px;vertical-align:middle}
+th:first-child,td:first-child{padding-left:22px;width:30px}
+th:last-child,td:last-child{padding-right:22px}
+td.number{text-align:right;font-variant-numeric:tabular-nums;color:#52614f}
+th.number{text-align:right}
+.post-cell{max-width:285px;min-width:195px}
+.post-title{font-size:11px;font-weight:500;color:#364231;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px;text-decoration:none}
+.post-title:hover{text-decoration:underline}
+.post-meta{font-size:8px;color:#91998b;margin-top:4px;display:flex;gap:7px;align-items:center}
+.platform-label{display:flex;align-items:center;gap:6px;font-size:9px;white-space:nowrap}
+.platform-label i{width:5px;height:5px;border-radius:50%}
+.null{color:#b7bcaf}
+.table-footer{padding:12px 22px;display:flex;justify-content:space-between;gap:10px;color:#8b9485;font-size:9px;align-items:center}
+.table-footer button{font-size:9px}
+input[type=checkbox]{accent-color:var(--green);cursor:pointer;width:12px;height:12px}
+.coverage-card{margin-top:20px}
+.coverage-body{padding:16px 22px 19px}
+.coverage-matrix{display:grid;grid-template-columns:85px repeat(5,1fr);gap:7px;align-items:center;font-size:9px}
+.coverage-matrix .col-head{color:#8b9482;text-align:center;font-size:8px}
+.coverage-matrix .row-name{font-size:9px;color:#66705e}
+.coverage-cell{text-align:center;padding:8px 2px;border-radius:5px;background:#edf3e7;color:#647b54;font-size:9px}
+.coverage-cell.missing{background:#f2f3ef;color:#a8afa0}
+.coverage-cell.partial{background:#f6efdf;color:#aa8b52}
+.coverage-note{margin:13px 0 0;font-size:9px;color:#8c9585;line-height:1.8}
+.receipt-card{padding:17px 19px}
+.receipt-label{font-size:9px;color:#8c9587;letter-spacing:.6px}
+.receipt-card h3{font-size:12px;font-weight:550;margin:8px 0 7px}
+.receipt-card p{font-size:9px;color:#8c9587;line-height:1.8;margin:0}
+.receipt-card .btn{margin-top:13px;width:100%;font-size:10px}
+.footer{margin-top:24px;display:flex;justify-content:space-between;gap:15px;font-size:9px;color:#939b8c}
+.footer strong{font-weight:500;color:#728169}
+.selection-bar{position:fixed;bottom:25px;left:calc(50% + 108px);transform:translateX(-50%);background:#263d2f;color:white;padding:11px 16px;border-radius:12px;display:flex;align-items:center;gap:22px;box-shadow:0 8px 30px #20332630;z-index:40;font-size:11px}
+.selection-bar[hidden]{display:none}
+.selection-bar .btn{padding:6px 11px;font-size:10px;background:#d9e6b3;border:0;color:#263d2f}
+.selection-bar .clear{border:0;background:none;color:#cfdbc9;font-size:17px;padding:0 3px}
+dialog{border:1px solid #dfe5d6;border-radius:17px;padding:0;max-width:760px;width:calc(100% - 32px);box-shadow:0 24px 100px #1b2e2630;color:var(--ink)}
+dialog::backdrop{background:#1d2e2860;backdrop-filter:blur(3px)}
+.modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:23px 25px 18px;border-bottom:1px solid var(--line)}
+.modal-head h2{font:26px Georgia,serif}
+.modal-head p{font-size:11px;color:var(--muted);margin:6px 0 0}
+.close-modal{border:0;background:#f1f3ec;border-radius:50%;width:28px;height:28px;font-size:18px}
+.modal-tabs{padding:12px 25px 0;display:flex;gap:6px}
+.modal-tab{border:0;background:none;padding:8px 12px;border-radius:6px;font-size:11px;color:var(--muted)}
+.modal-tab.active{background:var(--green-soft);color:var(--green)}
+.modal-body{padding:21px 25px 26px;max-height:66vh;overflow:auto}
+.modal-body p,.modal-body li{font-size:12px;line-height:1.8}
+.modal-body h3{font-size:13px;margin:0 0 9px}
+.modal-body h3:not(:first-child){margin-top:23px}
+.modal-body ul,.modal-body ol{padding-left:20px}
+.callout{padding:13px 15px;border-radius:9px;background:#f4f1e5;color:#7d704f;font-size:11px;line-height:1.8;margin:15px 0}
+.callout.success{background:#edf4e8;color:#547047}
+.endpoint{padding:12px;border:1px solid var(--line);border-radius:7px;background:#fafbf7;font:11px ui-monospace,SFMono-Regular,Consolas,monospace;word-break:break-all;margin:13px 0}
+code{font:11px ui-monospace,SFMono-Regular,Consolas,monospace;background:#f1f3ed;padding:2px 4px;border-radius:3px}
+pre{font:10px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;background:#f5f7f0;border:1px solid var(--line);border-radius:8px;padding:13px;white-space:pre-wrap;word-break:break-word;max-height:290px;overflow:auto}
+.modal-actions{display:flex;gap:9px;flex-wrap:wrap;margin:16px 0}
+.status-line{font-size:11px;color:var(--muted);white-space:pre-wrap;line-height:1.8}
+.test-line{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:11px}
+.pass{color:#54824b}.fail{color:var(--red)}
+.compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+.compare-post{border:1px solid var(--line);border-radius:10px;padding:15px}
+.compare-post p{font-size:12px;min-height:70px}
+.compare-metric{display:flex;justify-content:space-between;border-top:1px solid var(--line);padding:9px 0;font-size:11px}
+.empty{text-align:center;padding:45px 20px;color:var(--muted);font-size:12px}
+.toast{position:fixed;bottom:25px;right:25px;max-width:380px;padding:12px 17px;background:#283b2e;color:#eef4e9;border-radius:9px;font-size:11px;box-shadow:0 4px 20px #20332625;z-index:100}
+[hidden]{display:none!important}
+@media(min-width:1500px){.dashboard-grid{grid-template-columns:minmax(0,1fr) 320px}.chart-wrap svg{min-height:260px}}
+@media(max-width:1160px){
+  .sidebar{width:184px;padding-left:14px;padding-right:14px}main{margin-left:184px}
+  .topbar{padding:0 25px}.content{padding:28px 25px}.dashboard-grid{grid-template-columns:minmax(0,1fr) 255px;gap:15px}
+  .metric{padding:16px}.metric-value{font-size:26px}.selection-bar{left:calc(50% + 92px)}
+  .metric-bottom{font-size:8px}.card-head{padding-left:17px;padding-right:17px}
+}
+@media(max-width:980px){
+  .dashboard-grid{grid-template-columns:1fr}.side-stack{display:grid;grid-template-columns:1fr 1fr}
+  .receipt-card{grid-column:1 / -1}.source-text small{max-width:none}
+  .metrics{gap:10px}.metric{padding:14px}.metric-value{font-size:24px}
+  .page-heading{align-items:flex-start}h1{font-size:31px}.heading-actions{max-width:235px}
+  .chart-wrap svg{max-height:310px}
+}
+@media(max-width:720px){
+  .sidebar{position:relative;width:auto;inset:auto;padding:15px 19px;display:block}
+  .brand{font-size:18px;padding:0}.logo{grid-template-columns:repeat(2,6px)}.logo i{width:6px;height:8px}
+  .workspace,.sidebar-bottom,.nav-label{display:none}.nav{flex-direction:row;margin-top:14px;gap:4px;overflow:auto}
+  .nav button{padding:7px 10px;white-space:nowrap;font-size:10px;gap:6px}.nav svg{width:13px;height:13px}
+  main{margin-left:0}.topbar{height:48px;padding:0 20px}.top-actions{gap:10px}.topbar .updated-label{display:none}
+  .content{padding:25px 18px}.page-heading{display:block;margin-bottom:19px}
+  .heading-actions{max-width:none;justify-content:flex-start;margin-top:17px}.metrics{grid-template-columns:1fr 1fr;gap:11px}
+  h1{font-size:34px}.metric-value{font-size:28px}.metric-bottom{font-size:9px}
+  .preview-bar{align-items:flex-start;font-size:10px}.preview-bar .dot{margin-top:5px}.preview-bar button{font-size:9px}
+  .side-stack{grid-template-columns:1fr 1fr;gap:12px}.insight-card{padding:17px}.insight-card h3{font-size:20px}
+  .selection-bar{left:50%;bottom:14px;min-width:280px;justify-content:space-between}
+  .footer{font-size:8px}.chart-foot{padding:12px 16px;flex-wrap:wrap}
+}
+@media(max-width:440px){.side-stack{display:flex}.compare-grid{grid-template-columns:1fr}.coverage-matrix{grid-template-columns:63px repeat(5,1fr);gap:4px}.coverage-matrix .col-head{font-size:7px}.modal-body{padding:18px}.modal-head{padding:20px}.modal-tabs{padding-left:12px}.modal-tab{padding:7px 10px}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+@media print{.sidebar,.topbar,.heading-actions,.selection-bar,.filters,.search,.source-bottom button,.footer button{display:none!important}main{margin:0}.content{padding:0}.dashboard-grid{display:block}.side-stack{display:block}.card,.metric{break-inside:avoid}.preview-bar{display:flex!important}body{background:white}}
+</style>
+</head>
+<body>
+<aside class="sidebar" aria-label="Workspace navigation">
+  <div class="brand"><span class="logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span>rooms<span style="font-weight:350;opacity:.7">OS</span></div>
+  <div class="workspace"><span class="workspace-icon">r</span><div><strong>Rooms studio</strong><small>Private workspace · 01</small></div><span style="margin-left:auto;color:#8ba08c">⌄</span></div>
+  <div class="nav-label">WORKSPACE</div>
+  <nav class="nav">
+    <button class="active" data-nav="overview"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Overview</button>
+    <button data-nav="posts"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>Post library<span class="nav-count" id="navPostCount">—</span></button>
+    <button data-nav="sources"><svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="3"/><circle cx="18" cy="5" r="3"/><circle cx="18" cy="19" r="3"/><path d="m9 10 6-4M9 14l6 4"/></svg>Sources</button>
+    <button data-nav="coverage"><svg viewBox="0 0 24 24"><path d="m12 3 8 4v5c0 5-8 9-8 9s-8-4-8-9V7z"/><path d="m8 12 3 3 5-6"/></svg>Data health</button>
+    <button data-nav="setup"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="currentColor"/><circle cx="15" cy="17" r="3" fill="currentColor"/></svg>Workspace setup</button>
+  </nav>
+  <div class="sidebar-bottom">
+    <div class="private-note"><strong>↳ Your data stays yours.</strong><p>No trackers. No browser API keys.<br>One private Neon schema.</p></div>
+    <div class="profile"><div class="avatar">R</div><div><strong>Rooms studio</strong><small>Owner workspace</small></div><span style="margin-left:auto;font-size:14px">⌄</span></div>
+  </div>
+</aside>
+<main>
+  <header class="topbar">
+    <div class="breadcrumb">Workspace <span style="color:#bbc2b5">/</span> <strong>Now</strong></div>
+    <div class="top-actions"><span class="updated-label" id="topUpdated">Preview workspace</span><span class="lock"><svg viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="2"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/></svg>Private by design</span><span class="top-avatar">R</span></div>
+  </header>
+  <div class="content" id="overview">
+    <div class="page-heading">
+      <div><div class="eyebrow">A little perspective, every day</div><h1>Your work. A clearer picture.</h1><p class="subtitle">The Rooms OS social snapshot. Different sources, one honest view.</p></div>
+      <div class="heading-actions">
+        <select class="btn" id="range" aria-label="Reporting period"><option value="30">Last 30 days</option><option value="90" selected>Last 90 days</option><option value="365">Last 365 days</option></select>
+        <button class="btn" id="exportBtn"><svg viewBox="0 0 20 20"><path d="M10 2v10m-4-4 4 4 4-4M3 13v4h14v-4"/></svg>Export</button>
+        <button class="btn primary" id="connectBtn"><svg viewBox="0 0 20 20"><path d="M16 6a7 7 0 1 0 1 7M16 2v5h-5"/></svg>Connect data</button>
+      </div>
+    </div>
+
+    <div class="preview-bar" id="modeBanner" role="status">
+      <span class="dot"></span><span id="bannerText"><strong>Illustrative preview.</strong> No accounts connected. These numbers are not your analytics.</span>
+      <button id="bannerAction">Set up private sync ↗</button>
+    </div>
+
+    <section class="metrics" aria-label="Reporting summary">
+      <div class="metric"><div class="metric-title">Tracked followers <span class="tiny-icon">↗</span></div><div class="metric-value" id="followersValue">—</div><div class="metric-bottom" id="followersNote"></div></div>
+      <div class="metric"><div class="metric-title">Public interactions <span class="tiny-icon">♡</span></div><div class="metric-value" id="interactionsValue">—</div><div class="metric-bottom" id="interactionsNote"></div></div>
+      <div class="metric"><div class="metric-title">Posts in this view <span class="tiny-icon">▤</span></div><div class="metric-value" id="postsValue">—</div><div class="metric-bottom" id="postsNote"></div></div>
+      <div class="metric"><div class="metric-title">Verified source access <span class="tiny-icon">⛨</span></div><div class="metric-value" id="sourcesValue">0 <span style="font-size:17px;color:#a3ab9b">/ 4</span></div><div class="metric-bottom" id="sourcesNote"></div></div>
+    </section>
+
+    <div class="dashboard-grid">
+      <div>
+        <section class="card" aria-labelledby="trendsTitle">
+          <div class="card-head"><div><h2 id="trendsTitle">Account momentum</h2><p class="card-sub">Observed follower counters, by source. Not a deduplicated audience.</p></div><div class="chart-head-right"><span class="small-dot"></span><span id="chartRangeLabel">90-day view</span></div></div>
+          <div class="chart-wrap" id="chart"></div>
+          <div class="chart-foot"><div class="legend"><span><i style="background:var(--blue)"></i>Bluesky</span><span><i style="background:var(--purple)"></i>Mastodon</span><span><i style="background:var(--orange)"></i>X archive · no follower series</span></div><span>Counter snapshots, not estimates</span></div>
+          <div class="chart-note" id="chartNote">—</div>
+        </section>
+
+        <section class="card posts-card" id="posts" aria-labelledby="postsTitle">
+          <div class="card-head"><div><h2 id="postsTitle">What’s finding its people</h2><p class="card-sub">Compare the posts, not incompatible reach estimates.</p></div><select id="sort" class="btn" aria-label="Sort posts" style="padding:5px 7px;font-size:9px"><option value="interactions">Most interactions</option><option value="recent">Most recent</option></select></div>
+          <div class="posts-toolbar">
+            <div class="filters" role="group" aria-label="Filter by source">
+              <button class="filter active" data-source="all">All sources</button>
+              <button class="filter" data-source="bluesky">Bluesky</button>
+              <button class="filter" data-source="mastodon">Mastodon</button>
+              <button class="filter" data-source="x">X archive</button>
+            </div>
+            <input class="search" id="search" type="search" placeholder="Search your posts…" aria-label="Search posts">
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th aria-label="Select"></th><th>Post</th><th>Source</th><th class="number">Likes</th><th class="number">Replies</th><th class="number">Reposts</th><th class="number">Views</th></tr></thead>
+              <tbody id="postRows"></tbody>
+            </table>
+          </div>
+          <div class="table-footer"><span id="postSummary">—</span><button class="text-btn" id="showMoreBtn">Show more ↓</button></div>
+        </section>
+
+        <section class="card coverage-card" id="coverage" aria-labelledby="coverageTitle">
+          <div class="card-head"><div><h2 id="coverageTitle">The edges of the picture</h2><p class="card-sub">What this dataset actually contains. A dash is never a zero.</p></div><span class="tag amber">Coverage matters</span></div>
+          <div class="coverage-body"><div class="coverage-matrix" id="coverageMatrix"></div><p class="coverage-note" id="coverageNote"></p></div>
+        </section>
+      </div>
+
+      <aside class="side-stack" aria-label="Source health and notes">
+        <section class="card source-card" id="sources">
+          <div class="card-head"><div><h2>Source health</h2><p class="card-sub">Provenance before performance.</p></div><span style="color:#a5ae9b;font-size:15px">⌘</span></div>
+          <div class="source-list" id="sourceList"></div>
+          <div class="source-bottom"><span id="sourceHealthSummary">No live connections</span><button class="text-btn" id="manageSources">Manage ↗</button></div>
+        </section>
+        <section class="insight-card">
+          <div class="insight-kicker"><span>✳</span> A NOTE ON THE NUMBERS</div>
+          <h3>A smaller number.<br>A more honest story.</h3>
+          <p>Public likes, replies and reposts are observable. Impressions and clicks usually aren’t. We leave them empty instead of pretending.</p>
+        </section>
+        <section class="card receipt-card">
+          <div class="receipt-label">SOURCE → STORE → READBACK</div>
+          <h3 id="receiptHeading">The private pipeline is not verified.</h3>
+          <p id="receiptText">Preview data lives only in this tab. No source access, database write or Neon readback has happened.</p>
+          <button class="btn" id="receiptBtn">Verify the pipeline <span>↗</span></button>
+        </section>
+      </aside>
+    </div>
+    <footer class="footer"><span>Rooms OS / Now <span style="margin:0 7px;color:#c1c8b9">·</span> A quieter kind of analytics.</span><span id="footerStatus">Illustrative dataset · not production evidence</span></footer>
+  </div>
+</main>
+
+<div class="selection-bar" id="selectionBar" hidden><span id="selectionLabel">0 posts selected</span><button class="btn" id="compareBtn">Compare posts →</button><button class="clear" id="clearSelection" aria-label="Clear selection">×</button></div>
+
+<dialog id="setupDialog" aria-labelledby="setupTitle">
+  <div class="modal-head"><div><h2 id="setupTitle">Your private data room.</h2><p>Official counters. Explicit gaps. One Neon schema.</p></div><button class="close-modal" data-close aria-label="Close setup">×</button></div>
+  <div class="modal-tabs" role="tablist" aria-label="Setup sections">
+    <button class="modal-tab active" role="tab" aria-selected="true" data-tab="connect">Connection</button>
+    <button class="modal-tab" role="tab" aria-selected="false" data-tab="deploy">Deploy</button>
+    <button class="modal-tab" role="tab" aria-selected="false" data-tab="schema">Schema</button>
+    <button class="modal-tab" role="tab" aria-selected="false" data-tab="tests">Tests</button>
+  </div>
+  <div class="modal-body">
+    <section data-panel="connect" role="tabpanel">
+      <h3>No credentials in your browser.</h3>
+      <p>The included Node server handles authentication, official source calls and Neon writes. This page talks only to its own origin. Opening the HTML directly gives you the offline preview.</p>
+      <div class="endpoint" id="endpointLabel"></div>
+      <div class="callout">A successful verification requires fresh source records, a committed Neon transaction, and a separate database query returning the same run ID and nonce with an exact row-count match. This is a server receipt, not an independent audit.</div>
+      <div class="modal-actions"><button class="btn primary" id="syncBtn">Fetch → store → read back</button><button class="btn" id="refreshBtn">Read stored snapshot</button><button class="btn" id="demoBtn">Return to preview</button></div>
+      <div id="connectionStatus" class="status-line" aria-live="polite">Not connected. No private access has been tested.</div>
+      <h3>Access isn’t coverage.</h3>
+      <ul>
+        <li><strong>Bluesky:</strong> official public AppView profile and up to 100 recent authored, non-reply posts.</li>
+        <li><strong>Mastodon:</strong> the configured instance’s official API; profile and up to 40 recent original statuses.</li>
+        <li><strong>X:</strong> your server-local archive, not an X API connection. Counts retain the archive file’s timestamp.</li>
+        <li><strong>Typefully:</strong> a successful, explicitly configured official API request verifies access only. No analytics scope or metrics are assumed.</li>
+      </ul>
+      <p>Follower history begins when you start collecting. The server does not backfill invented daily counters. Re-run sync to append observations; there is no background scheduler.</p>
+    </section>
+    <section data-panel="deploy" role="tabpanel" hidden>
+      <h3>One file to preview. A private server to go live.</h3>
+      <ol>
+        <li>Save this HTML as <code>rooms-os.html</code> in a new folder.</li>
+        <li>Download the server and schema below. Run the SQL once in your Neon SQL editor.</li>
+        <li>Install Node 20+ and the PostgreSQL client: <code>npm install pg</code>.</li>
+        <li>Set environment variables in your server process. Never paste secrets into this page.</li>
+        <li>Run <code>node rooms-server.mjs</code>, open <code>http://127.0.0.1:8787</code>, and authenticate.</li>
+        <li>Use Connection → “Fetch → store → read back.” Review every source result, including failures.</li>
+      </ol>
+      <div class="modal-actions"><button class="btn primary" id="downloadServer">Download server.mjs</button><button class="btn" id="downloadSchema">Download schema.sql</button></div>
+      <pre>export DATABASE_URL='postgresql://...neon.tech/...?...'
+export ROOMS_USER='owner'
+export ROOMS_PASSWORD='use-a-long-unique-password'
+
+# Configure only the sources you own or are permitted to read:
+export BSKY_ACTOR='your-handle.bsky.social'
+export MASTODON_ORIGIN='https://your-instance.example'
+export MASTODON_ACCOUNT_ID='your-numeric-account-id'
+# Optional for a private Mastodon account:
+export MASTODON_TOKEN='...'
+
+export X_ARCHIVE_PATH='/absolute/path/to/tweets.js'
+export X_HANDLE='your-handle'
+
+# Copy a permitted read-only endpoint from current Typefully docs.
+# It must be on https://api.typefully.com.
+export TYPEFULLY_VERIFY_URL='https://api.typefully.com/...'
+export TYPEFULLY_KEY='...'
+# Defaults: Authorization: Bearer &lt;key&gt;
+# Change these only to match Typefully's documented auth format:
+export TYPEFULLY_AUTH_HEADER='Authorization'
+export TYPEFULLY_AUTH_PREFIX='Bearer '
+
+node rooms-server.mjs</pre>
+      <div class="callout">The server binds to loopback only. Do not expose it over plain HTTP. For remote use, put it behind a private HTTPS reverse proxy/VPN with access control. HTTP Basic authentication is transport-safe only over HTTPS or a trusted loopback connection.</div>
+      <p>X import accepts standard <code>tweets.js</code>, its raw JSON array, or normalized JSON records with <code>id</code>, <code>publishedAt</code>, <code>text</code> and optional numeric <code>metrics</code>. Missing metrics stay null. Up to 10,000 records are imported per run. Do not upload private archives to third-party tools.</p>
+      <p>Use a dedicated Neon database role with access only to the <code>rooms</code> schema. This application stores post text and counters; apply your own retention and backup policy. No browser cache or localStorage is used for private data.</p>
+    </section>
+    <section data-panel="schema" role="tabpanel" hidden>
+      <h3>One schema. Append-only metric observations.</h3>
+      <p>Source records are committed together with a run marker. A later request counts the stored observations independently. Account counters and post metrics retain their own observation times.</p>
+      <pre id="schemaPreview"></pre>
+      <button class="btn" id="downloadSchema2">Download schema.sql</button>
+    </section>
+    <section data-panel="tests" role="tabpanel" hidden>
+      <h3>Check the rules, not just the pixels.</h3>
+      <p>These are local executable checks. Passing them does <strong>not</strong> verify credentials, a source connection or a Neon deployment. The separate pipeline verification is an integration test against your private server.</p>
+      <button class="btn primary" id="runTests">Run local tests</button>
+      <div id="testResults" style="margin-top:15px" aria-live="polite"></div>
+    </section>
+  </div>
+</dialog>
+
+<dialog id="compareDialog" aria-labelledby="compareTitle">
+  <div class="modal-head"><div><h2 id="compareTitle">Two posts. Full context.</h2><p>Raw counters, not an apples-to-apples reach ranking.</p></div><button class="close-modal" data-close aria-label="Close comparison">×</button></div>
+  <div class="modal-body"><div class="compare-grid" id="compareContent"></div><div class="callout">Different publishing dates, collection times and available metrics affect comparisons. Public interactions are likes + replies + reposts where supplied. No engagement rate is calculated without a valid reach denominator.</div></div>
+</dialog>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<!-- This SQL is downloadable directly from the self-contained document. -->
+<script type="text/plain" id="sql-source">
+CREATE SCHEMA IF NOT EXISTS rooms;
+REVOKE ALL ON SCHEMA rooms FROM PUBLIC;
+
+CREATE TABLE IF NOT EXISTS rooms.runs (
+  id uuid PRIMARY KEY,
+  nonce uuid UNIQUE NOT NULL,
+  started_at timestamptz NOT NULL,
+  finished_at timestamptz NOT NULL DEFAULT now(),
+  source_rows integer NOT NULL CHECK (source_rows >= 0),
+  source_results jsonb NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS rooms.accounts (
+  id text PRIMARY KEY,
+  platform text NOT NULL
+    CHECK (platform IN ('bluesky','mastodon','x','typefully')),
+  handle text NOT NULL,
+  coverage text NOT NULL,
+  updated_at timestamptz NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS rooms.account_observations (
+  run_id uuid NOT NULL REFERENCES rooms.runs(id),
+  account_id text NOT NULL REFERENCES rooms.accounts(id),
+  observed_at timestamptz NOT NULL,
+  followers bigint NOT NULL CHECK (followers >= 0),
+  PRIMARY KEY (run_id, account_id)
+);
+
+CREATE TABLE IF NOT EXISTS rooms.posts (
+  id text PRIMARY KEY,
+  account_id text NOT NULL REFERENCES rooms.accounts(id),
+  platform text NOT NULL,
+  published_at timestamptz NOT NULL,
+  text text NOT NULL,
+  url text,
+  coverage text NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS rooms.post_observations (
+  run_id uuid NOT NULL REFERENCES rooms.runs(id),
+  post_id text NOT NULL REFERENCES rooms.posts(id),
+  observed_at timestamptz NOT NULL,
+  likes bigint CHECK (likes >= 0),
+  replies bigint CHECK (replies >= 0),
+  reposts bigint CHECK (reposts >= 0),
+  views bigint CHECK (views >= 0),
+  clicks bigint CHECK (clicks >= 0),
+  PRIMARY KEY (run_id, post_id)
+);
+
+CREATE INDEX IF NOT EXISTS account_observations_latest
+  ON rooms.account_observations(account_id, observed_at DESC);
+CREATE INDEX IF NOT EXISTS post_observations_latest
+  ON rooms.post_observations(post_id, observed_at DESC);
+CREATE INDEX IF NOT EXISTS posts_published_at
+  ON rooms.posts(published_at DESC);
+
+REVOKE ALL ON ALL TABLES IN SCHEMA rooms FROM PUBLIC;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA rooms FROM PUBLIC;
+ALTER DEFAULT PRIVILEGES IN SCHEMA rooms
+  REVOKE ALL ON TABLES FROM PUBLIC;
+
+-- Run this migration as the dedicated application role, or explicitly grant
+-- that role USAGE on rooms and SELECT/INSERT/UPDATE on these tables.
+-- Do not give this role to a browser, public REST service, or public client.
+-- RLS is not used: this is a single private workspace behind server auth.
+</script>
+
+<!-- Downloadable companion server. Requires Node 20+ and npm install pg. -->
+<script type="text/plain" id="server-source">
+import http from 'node:http';
+import { readFile, stat } from 'node:fs/promises';
+import { randomUUID, createHash, timingSafeEqual } from 'node:crypto';
+import pg from 'pg';
+
+const E = process.env;
+if (!E.DATABASE_URL || !E.ROOMS_USER || !E.ROOMS_PASSWORD ||
+    E.ROOMS_PASSWORD.length < 16) {
+  throw new Error('Set DATABASE_URL, ROOMS_USER and ROOMS_PASSWORD (16+ characters).');
+}
+const pool = new pg.Pool({
+  connectionString: E.DATABASE_URL,
+  max: 3,
+  statement_timeout: 30000,
+  connectionTimeoutMillis: 15000
+});
+const port = Number(E.PORT || 8787);
+const names = ['bluesky', 'mastodon', 'x', 'typefully'];
+const count = v => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isSafeInteger(n) && n >= 0 ? n : null;
+};
+const date = v => {
+  const d = new Date(v);
+  return Number.isFinite(+d) ? d.toISOString() : null;
+};
+function safeURL(v) {
+  try {
+    const u = new URL(v);
+    return u.protocol === 'https:' ? u.href : null;
+  } catch { return null; }
+}
+function publicOrigin(v) {
+  const u = new URL(v);
+  if (u.protocol !== 'https:' || u.username || u.password ||
+      u.pathname !== '/' || u.search || u.hash) {
+    throw new Error('Use a bare HTTPS Mastodon origin');
+  }
+  return u.origin;
+}
+async function getJSON(url, headers = {}) {
+  const r = await fetch(url, {
+    headers: { Accept: 'application/json', ...headers },
+    redirect: 'error',
+    signal: AbortSignal.timeout(20000)
+  });
+  if (!r.ok) throw new Error('Upstream HTTP ' + r.status);
+  return r.json();
+}
+function account(id, platform, handle, coverage, followers = null, at = new Date().toISOString()) {
+  return { id, platform, handle, coverage, followers: count(followers), observedAt: at };
+}
+function post(id, a, publishedAt, text, url, metrics, coverage, at) {
+  const published = date(publishedAt);
+  if (!published) return null;
+  const normalized = {};
+  for (const k of ['likes','replies','reposts','views','clicks'])
+    normalized[k] = count(metrics?.[k]);
+  return {
+    id, accountId: a.id, platform: a.platform, publishedAt: published,
+    text: String(text || '').slice(0, 20000), url: safeURL(url),
+    metrics: normalized, coverage, metricsAsOf: date(at)
+  };
+}
+async function collectBluesky() {
+  if (!E.BSKY_ACTOR) return null;
+  const base = 'https://public.api.bsky.app/xrpc/';
+  const profile = await getJSON(base + 'app.bsky.actor.getProfile?actor=' + encodeURIComponent(E.BSKY_ACTOR));
+  const feed = await getJSON(base + 'app.bsky.feed.getAuthorFeed?actor=' +
+    encodeURIComponent(profile.did) + '&limit=100&filter=posts_no_replies');
+  const at = new Date().toISOString();
+  const a = account('bluesky:' + profile.did, 'bluesky', '@' + profile.handle,
+    'Official public AppView; current profile and newest ≤100 feed items; replies/reposts excluded.',
+    profile.followersCount, at);
+  const posts = (feed.feed || []).filter(f =>
+    f.post?.author?.did === profile.did && !f.post?.record?.reply
+  ).map(f => {
+    const p = f.post;
+    const key = p.uri.split('/').pop();
+    return post('bluesky:' + p.uri, a, p.record.createdAt, p.record.text,
+      'https://bsky.app/profile/' + encodeURIComponent(profile.did) + '/post/' + key,
+      { likes: p.likeCount, replies: p.replyCount, reposts: p.repostCount },
+      a.coverage, at);
+  }).filter(Boolean);
+  return { accounts: [a], posts, status: 'partial', detail: a.coverage, verifiedAt: at };
+}
+async function collectMastodon() {
+  if (!E.MASTODON_ORIGIN || !E.MASTODON_ACCOUNT_ID) return null;
+  const origin = publicOrigin(E.MASTODON_ORIGIN);
+  const id = encodeURIComponent(E.MASTODON_ACCOUNT_ID);
+  const headers = E.MASTODON_TOKEN ? { Authorization: 'Bearer ' + E.MASTODON_TOKEN } : {};
+  const profile = await getJSON(origin + '/api/v1/accounts/' + id, headers);
+  const statuses = await getJSON(origin + '/api/v1/accounts/' + id +
+    '/statuses?limit=40&exclude_reblogs=true', headers);
+  if (!Array.isArray(statuses)) throw new Error('Unexpected Mastodon response');
+  const at = new Date().toISOString();
+  const a = account('mastodon:' + origin + ':' + profile.id, 'mastodon',
+    '@' + profile.acct, 'Official instance API; current profile and newest ≤40 original statuses.',
+    profile.followers_count, at);
+  const posts = statuses.filter(s => !s.reblog).map(s =>
+    post('mastodon:' + origin + ':' + s.id, a, s.created_at,
+      String(s.content || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(),
+      s.url, { likes: s.favourites_count, replies: s.replies_count, reposts: s.reblogs_count },
+      a.coverage, at)
+  ).filter(Boolean);
+  return { accounts: [a], posts, status: 'partial', detail: a.coverage, verifiedAt: at };
+}
+async function collectX() {
+  if (!E.X_ARCHIVE_PATH) return null;
+  const info = await stat(E.X_ARCHIVE_PATH);
+  if (info.size > 100 * 1024 * 1024) throw new Error('Archive exceeds 100 MB safety limit');
+  let text = await readFile(E.X_ARCHIVE_PATH, 'utf8');
+  const match = text.match(/^\s*window\.YTD\.tweets\.part\d+\s*=\s*/);
+  if (match) text = text.slice(match[0].length);
+  text = text.trim().replace(/;\s*$/, '');
+  const data = JSON.parse(text);
+  const rows = Array.isArray(data) ? data : data.posts;
+  if (!Array.isArray(rows)) throw new Error('Expected X archive array or {posts:[]}');
+  const asOf = info.mtime.toISOString();
+  const a = account('x:' + (E.X_HANDLE || 'archive'), 'x', '@' + (E.X_HANDLE || 'archive'),
+    'Local archive; counts as of file modification time, not live X access. File time is a proxy, not certified export time.',
+    null, asOf);
+  const unique = new Map();
+  for (const row of rows.slice(0, 10000)) {
+    const p = row.tweet || row;
+    const externalId = p.id_str || p.id;
+    if (!externalId) continue;
+    const metrics = p.metrics || {
+      likes: p.favorite_count, reposts: p.retweet_count,
+      replies: p.reply_count, views: p.view_count, clicks: p.click_count
+    };
+    const item = post('x:' + externalId, a, p.created_at || p.publishedAt,
+      p.full_text || p.text, 'https://x.com/i/status/' + encodeURIComponent(externalId),
+      metrics, a.coverage, asOf);
+    if (item) unique.set(item.id, item);
+  }
+  return { accounts: [a], posts: [...unique.values()], status: 'partial',
+    detail: a.coverage + ' Loaded ' + unique.size + ' of ' + rows.length + ' archive entries.',
+    verifiedAt: new Date().toISOString() };
+}
+async function collectTypefully() {
+  if (!E.TYPEFULLY_VERIFY_URL || !E.TYPEFULLY_KEY) return null;
+  const u = new URL(E.TYPEFULLY_VERIFY_URL);
+  if (u.protocol !== 'https:' || u.hostname !== 'api.typefully.com' ||
+      u.username || u.password || u.hash) {
+    throw new Error('Typefully verification must use https://api.typefully.com');
+  }
+  const header = E.TYPEFULLY_AUTH_HEADER || 'Authorization';
+  if (!/^[a-zA-Z0-9-]+$/.test(header)) throw new Error('Invalid auth header');
+  const prefix = E.TYPEFULLY_AUTH_PREFIX === undefined ? 'Bearer ' : E.TYPEFULLY_AUTH_PREFIX;
+  const result = await getJSON(u.href, { [header]: prefix + E.TYPEFULLY_KEY });
+  if (!result || typeof result !== 'object') throw new Error('Expected authenticated JSON response');
+  return { accounts: [], posts: [], status: 'access',
+    detail: 'Configured official endpoint returned authenticated JSON. Access verified; no analytics scope or metrics inferred.',
+    verifiedAt: new Date().toISOString() };
+}
+async function collect() {
+  const outcomes = [], accounts = [], posts = [];
+  const collectors = [collectBluesky, collectMastodon, collectX, collectTypefully];
+  for (let i = 0; i < collectors.length; i++) {
+    try {
+      const r = await collectors[i]();
+      if (!r) {
+        outcomes.push({ source: names[i], status: 'unconfigured', records: 0,
+          detail: 'Source is not configured on this server.', verifiedAt: null });
+        continue;
+      }
+      accounts.push(...r.accounts);
+      posts.push(...r.posts);
+      const records = r.accounts.filter(a => a.followers !== null).length + r.posts.length;
+      outcomes.push({ source: names[i], status: r.status, records,
+        detail: r.detail, verifiedAt: r.verifiedAt });
+    } catch (e) {
+      // Do not send secrets or upstream response bodies to the browser.
+      const message = /^Upstream HTTP \d+$/.test(e.message) ? e.message :
+        'Source fetch or parsing failed. Check server configuration and official API documentation.';
+      outcomes.push({ source: names[i], status: 'error', records: 0,
+        detail: message, verifiedAt: null });
+    }
+  }
+  return { outcomes, accounts, posts };
+}
+async function sync(nonce) {
+  const started = new Date().toISOString();
+  const data = await collect();
+  const runId = randomUUID();
+  const sourceRows = data.accounts.filter(a => a.followers !== null).length + data.posts.length;
+  const db = await pool.connect();
+  try {
+    await db.query('BEGIN');
+    await db.query(
+      'INSERT INTO rooms.runs(id,nonce,started_at,source_rows,source_results) VALUES($1,$2,$3,$4,$5)',
+      [runId, nonce, started, sourceRows, JSON.stringify(data.outcomes)]);
+    for (const a of data.accounts) {
+      await db.query(
+        'INSERT INTO rooms.accounts(id,platform,handle,coverage,updated_at) VALUES($1,$2,$3,$4,$5) ' +
+        'ON CONFLICT(id) DO UPDATE SET handle=EXCLUDED.handle,coverage=EXCLUDED.coverage,updated_at=EXCLUDED.updated_at',
+        [a.id, a.platform, a.handle, a.coverage, a.observedAt]);
+      if (a.followers !== null) await db.query(
+        'INSERT INTO rooms.account_observations(run_id,account_id,observed_at,followers) VALUES($1,$2,$3,$4)',
+        [runId, a.id, a.observedAt, a.followers]);
+    }
+    for (const p of data.posts) {
+      await db.query(
+        'INSERT INTO rooms.posts(id,account_id,platform,published_at,text,url,coverage) VALUES($1,$2,$3,$4,$5,$6,$7) ' +
+        'ON CONFLICT(id) DO UPDATE SET text=EXCLUDED.text,url=EXCLUDED.url,coverage=EXCLUDED.coverage',
+        [p.id,p.accountId,p.platform,p.publishedAt,p.text,p.url,p.coverage]);
+      await db.query(
+        'INSERT INTO rooms.post_observations(run_id,post_id,observed_at,likes,replies,reposts,views,clicks) ' +
+        'VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
+        [runId,p.id,p.metricsAsOf,p.metrics.likes,p.metrics.replies,p.metrics.reposts,p.metrics.views,p.metrics.clicks]);
+    }
+    await db.query('COMMIT');
+  } catch (e) {
+    await db.query('ROLLBACK');
+    throw e;
+  } finally { db.release(); }
+  return { runId, nonce, sourceRows, sourceProof: data.outcomes };
+}
+async function snapshot() {
+  const accounts = (await pool.query(
+    'SELECT a.*,o.followers,o.observed_at FROM rooms.accounts a ' +
+    'LEFT JOIN LATERAL (SELECT followers,observed_at FROM rooms.account_observations ' +
+    'WHERE account_id=a.id ORDER BY observed_at DESC LIMIT 1) o ON true ORDER BY a.platform'
+  )).rows.map(a => ({
+    id:a.id, platform:a.platform, handle:a.handle, coverage:a.coverage,
+    followers:count(a.followers), lastSyncedAt:date(a.updated_at),
+    observedAt:date(a.observed_at)
+  }));
+  const observations = (await pool.query(
+    "SELECT account_id,observed_at,followers FROM rooms.account_observations " +
+    "WHERE observed_at >= now()-interval '366 days' ORDER BY observed_at"
+  )).rows.map(o => ({ accountId:o.account_id, observedAt:date(o.observed_at), followers:count(o.followers) }));
+  const posts = (await pool.query(
+    "SELECT p.*,o.observed_at,o.likes,o.replies,o.reposts,o.views,o.clicks FROM rooms.posts p " +
+    "JOIN LATERAL (SELECT * FROM rooms.post_observations WHERE post_id=p.id " +
+    "ORDER BY observed_at DESC,run_id DESC LIMIT 1) o ON true " +
+    "WHERE p.published_at >= now()-interval '366 days' ORDER BY p.published_at DESC LIMIT 1000"
+  )).rows.map(p => ({
+    id:p.id, accountId:p.account_id, platform:p.platform, publishedAt:date(p.published_at),
+    text:p.text, url:p.url, coverage:p.coverage, metricsAsOf:date(p.observed_at),
+    metrics:{ likes:count(p.likes), replies:count(p.replies), reposts:count(p.reposts),
+      views:count(p.views), clicks:count(p.clicks) }
+  }));
+  const latest = (await pool.query(
+    'SELECT id,finished_at,source_results FROM rooms.runs ORDER BY finished_at DESC LIMIT 1'
+  )).rows[0];
+  return { mode:'live', generatedAt:new Date().toISOString(), accounts, observations, posts,
+    sourceResults:latest?.source_results || [],
+    scope:'Stored observations from the last 366 days; newest 1,000 stored posts. Recent-source fetches are not full-history ingestion.' };
+}
+async function readback(runId) {
+  // Separate request and query after COMMIT: this is not an echo of the input.
+  const q = await pool.query(
+    'SELECT r.id,r.nonce,r.source_rows,r.source_results,clock_timestamp() AS read_at,' +
+    '(SELECT count(*) FROM rooms.account_observations WHERE run_id=r.id) +' +
+    '(SELECT count(*) FROM rooms.post_observations WHERE run_id=r.id) AS stored_rows ' +
+    'FROM rooms.runs r WHERE r.id=$1', [runId]);
+  if (!q.rows.length) return null;
+  const r = q.rows[0];
+  return {
+    receipt:{ backend:'neon', runId:r.id, storedNonce:r.nonce,
+      sourceRows:Number(r.source_rows), storedRows:Number(r.stored_rows),
+      readAt:date(r.read_at), sourceProof:r.source_results },
+    snapshot:await snapshot()
+  };
+}
+function authorized(req) {
+  const expected = 'Basic ' + Buffer.from(E.ROOMS_USER + ':' + E.ROOMS_PASSWORD).toString('base64');
+  const hash = s => createHash('sha256').update(s).digest();
+  return timingSafeEqual(hash(req.headers.authorization || ''), hash(expected));
+}
+function send(res, status, value) {
+  res.writeHead(status, { 'Content-Type':'application/json; charset=utf-8' });
+  res.end(JSON.stringify(value));
+}
+async function body(req) {
+  let b = '';
+  for await (const chunk of req) {
+    b += chunk;
+    if (b.length > 4096) throw new Error('Request too large');
+  }
+  return JSON.parse(b || '{}');
+}
+function validWrite(req) {
+  const origin = req.headers.origin;
+  const expected = new URL(E.ROOMS_ORIGIN || ('http://127.0.0.1:' + port)).origin;
+  return origin === expected &&
+    req.headers['x-rooms-request'] === '1' &&
+    !['cross-site'].includes(req.headers['sec-fetch-site']);
+}
+let syncing = false;
+const server = http.createServer(async (req,res) => {
+  res.setHeader('Cache-Control','no-store');
+  res.setHeader('X-Content-Type-Options','nosniff');
+  res.setHeader('Referrer-Policy','no-referrer');
+  res.setHeader('X-Frame-Options','DENY');
+  res.setHeader('Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
+    "img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
+  if (!authorized(req)) {
+    res.setHeader('WWW-Authenticate','Basic realm="Rooms OS", charset="UTF-8"');
+    return send(res,401,{error:'Private workspace authentication required.'});
+  }
+  const url = new URL(req.url,'http://127.0.0.1');
+  try {
+    if (req.method === 'GET' && url.pathname === '/') {
+      res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});
+      return res.end(await readFile(new URL('./rooms-os.html',import.meta.url)));
+    }
+    if (req.method === 'GET' && url.pathname === '/api/snapshot') {
+      return send(res,200,await snapshot());
+    }
+    if (req.method === 'POST' && url.pathname === '/api/sync') {
+      if (!validWrite(req)) return send(res,403,{error:'Same-origin request required.'});
+      if (syncing) return send(res,409,{error:'A sync is already running.'});
+      const input = await body(req);
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.nonce || ''))
+        return send(res,400,{error:'A UUID nonce is required.'});
+      syncing = true;
+      try { return send(res,200,await sync(input.nonce)); }
+      finally { syncing = false; }
+    }
+    if (req.method === 'GET' && url.pathname === '/api/readback') {
+      const id = url.searchParams.get('runId') || '';
+      if (!/^[0-9a-f-]{36}$/i.test(id)) return send(res,400,{error:'Invalid run ID.'});
+      const result = await readback(id);
+      return send(res,result ? 200 : 404,result || {error:'Run not found.'});
+    }
+    return send(res,404,{error:'Not found.'});
+  } catch (e) {
+    console.error('Rooms request failed:', e.code || e.name);
+    if (!res.headersSent) send(res,500,{
+      error:'Private server operation failed. Check database permissions, migration, source configuration and server logs.'
+    });
+    else res.end();
+  }
+});
+server.listen(port,'127.0.0.1',() => {
+  console.log('Rooms OS: http://127.0.0.1:' + port);
+  console.log('Local-only listener. Never expose Basic authentication over public HTTP.');
+});
+process.on('SIGTERM',() => server.close(async () => { await pool.end(); process.exit(0); }));
+</script>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const DAY = 86400000;
+const PLATFORMS = {
+  bluesky:{name:'Bluesky',icon:'B',color:'#648bb5'},
+  mastodon:{name:'Mastodon',icon:'m',color:'#9985b6'},
+  x:{name:'X archive',icon:'𝕏',color:'#bd805c'},
+  typefully:{name:'Typefully',icon:'t',color:'#7c9662'}
+};
+const METRICS = ['likes','replies','reposts','views','clicks'];
+const state = {
+  data:null, mode:'demo', range:90, source:'all', search:'', sort:'interactions',
+  limit:6, selected:new Set(), receipt:null, busy:false
+};
+const nf = new Intl.NumberFormat('en-US');
+const shortDate = v => new Date(v).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+const fullDate = v => new Date(v).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'});
+const number = v => v === null || v === undefined ? '—' : nf.format(v);
+const esc = v => String(v ?? '').replace(/[&<>"']/g,c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const isCount = n => n === null || (Number.isSafeInteger(n) && n >= 0);
+const isStale = (date,now=Date.now()) => !date || now-new Date(date).getTime() > 36*3600000;
+function relative(v) {
+  if (!v) return 'Not synced';
+  const h = Math.max(0,Math.floor((Date.now()-new Date(v))/3600000));
+  return h < 1 ? 'Just now' : h < 24 ? h+'h ago' : Math.floor(h/24)+'d ago';
+}
+function interactionInfo(metrics={}) {
+  const values = ['likes','replies','reposts'].map(k => metrics[k] ?? null);
+  const known = values.filter(v => v !== null);
+  return {value:known.length ? known.reduce((a,b)=>a+b,0) : null, partial:known.length < 3};
+}
+function followerTotal(accounts) {
+  const known = accounts.filter(a => a.platform !== 'typefully' && a.followers !== null);
+  return {value:known.length ? known.reduce((s,a)=>s+a.followers,0) : null, count:known.length};
+}
+function csvCell(v) {
+  let s = v === null || v === undefined ? '' : String(v);
+  if (/^[\s]*[=+\-@]/.test(s) || /^[\t\r]/.test(s)) s = "'" + s;
+  return '"' + s.replace(/"/g,'""') + '"';
+}
+function filterPosts(posts, options) {
+  const cutoff = options.now-options.range*DAY;
+  return posts.filter(p =>
+    new Date(p.publishedAt).getTime() >= cutoff &&
+    new Date(p.publishedAt).getTime() <= options.now &&
+    (options.source==='all' || p.platform===options.source) &&
+    p.text.toLowerCase().includes(options.search.toLowerCase())
+  );
+}
+function visiblePosts() {
+  const rows = filterPosts(state.data.posts,{
+    now:Date.now(),range:state.range,source:state.source,search:state.search
+  });
+  return rows.sort(state.sort === 'recent' ?
+    (a,b)=>new Date(b.publishedAt)-new Date(a.publishedAt) :
+    (a,b)=>(interactionInfo(b.metrics).value ?? -1)-(interactionInfo(a.metrics).value ?? -1)
+  );
+}
+function validateSnapshot(d) {
+  if (!d || d.mode !== 'live' || !Array.isArray(d.accounts) ||
+      !Array.isArray(d.posts) || !Array.isArray(d.observations) ||
+      !Array.isArray(d.sourceResults)) throw Error('Invalid live snapshot shape.');
+  const accountIds = new Set();
+  for (const a of d.accounts) {
+    if (!PLATFORMS[a.platform] || typeof a.id !== 'string' || accountIds.has(a.id) ||
+        typeof a.handle !== 'string' || !isCount(a.followers)) throw Error('Invalid account counter.');
+    accountIds.add(a.id);
+  }
+  const ids = new Set();
+  for (const p of d.posts) {
+    if (!PLATFORMS[p.platform] || !accountIds.has(p.accountId) ||
+        typeof p.id !== 'string' || ids.has(p.id) ||
+        typeof p.text !== 'string' || !Number.isFinite(Date.parse(p.publishedAt)) ||
+        !Number.isFinite(Date.parse(p.metricsAsOf)) ||
+        !p.metrics || METRICS.some(k=>!isCount(p.metrics[k] ?? null)))
+      throw Error('Invalid post or metric.');
+    ids.add(p.id);
+  }
+  for (const o of d.observations)
+    if (!accountIds.has(o.accountId) || !Number.isFinite(Date.parse(o.observedAt)) ||
+        !isCount(o.followers)) throw Error('Invalid follower observation.');
+  for (const r of d.sourceResults)
+    if (!PLATFORMS[r.source] || typeof r.status !== 'string' || !Number.isInteger(r.records) || r.records<0)
+      throw Error('Invalid source receipt.');
+  return d;
+}
+function checkReceipt(write,read,nonce) {
+  const r = read?.receipt;
+  if (!r || r.backend !== 'neon' || r.runId !== write.runId ||
+      r.storedNonce !== nonce || write.nonce !== nonce ||
+      !Number.isInteger(r.storedRows) || r.storedRows <= 0 ||
+      !Number.isInteger(write.sourceRows) || write.sourceRows !== r.storedRows ||
+      r.sourceRows !== r.storedRows || !Number.isFinite(Date.parse(r.readAt)) ||
+      !Array.isArray(r.sourceProof) ||
+      !r.sourceProof.some(p => p.records>0 && ['ok','partial'].includes(p.status)) ||
+      r.sourceProof.reduce((n,p)=>n+p.records,0) !== r.storedRows)
+    throw Error('Readback did not prove a non-empty, matching committed run.');
+  return r;
+}
+function demoData() {
+  const now = Date.now(), iso = days => new Date(now-days*DAY).toISOString();
+  const accounts = [
+    {id:'b',platform:'bluesky',handle:'@rooms.studio',followers:18426,lastSyncedAt:iso(.02),coverage:'Illustrative official-counter shape.'},
+    {id:'m',platform:'mastodon',handle:'@rooms@design.social',followers:6254,lastSyncedAt:iso(.04),coverage:'Illustrative official-counter shape.'},
+    {id:'x',platform:'x',handle:'@rooms_studio',followers:null,lastSyncedAt:iso(18),coverage:'Illustrative monthly archive; no follower history.'}
+  ];
+  const observations=[];
+  for (let i=0;i<=30;i++) {
+    const day=90-i*3;
+    const bend=Math.round(90*Math.sin(i*.45));
+    observations.push({accountId:'b',observedAt:iso(day),followers:Math.round(15100+(18426-15100)*i/30+bend*(1-i/30))});
+    observations.push({accountId:'m',observedAt:iso(day),followers:Math.round(5420+(6254-5420)*i/30+25*Math.sin(i*.6)*(1-i/30))});
+  }
+  const rows=[
+    ['b','bluesky',3,'Good tools should make more room for the work. Not more work for the tools.',842,63,126,null],
+    ['m','mastodon',5,'A small update from the studio: Rooms is becoming a calmer place to make things.',386,41,89,null],
+    ['b','bluesky',8,'What if your workspace felt less like a dashboard, and more like a good desk?',623,52,112,null],
+    ['x','x',24,'Less switching. More making. A first look at what we’ve been quietly building.',451,null,74,null],
+    ['b','bluesky',14,'The best part of building in public isn’t the launch. It’s the conversations along the way.',418,36,61,null],
+    ['m','mastodon',19,'Notes on a quieter internet. A few things we are keeping, and a few we are letting go.',241,28,62,null],
+    ['x','x',37,'Our monthly studio notes are here. Small improvements, a few sketches, and what comes next.',267,null,39,null],
+    ['b','bluesky',43,'A little more breathing room. Introducing our new focus view.',362,24,48,null],
+    ['m','mastodon',58,'Open formats, slower software, better defaults. That’s the direction.',174,18,37,null],
+    ['b','bluesky',76,'Hello, Bluesky. We’re Rooms — a small studio making space for good work.',298,47,82,null]
+  ];
+  const posts=rows.map((r,i)=>({
+    id:'demo-'+i,accountId:r[0],platform:r[1],publishedAt:iso(r[2]),text:r[3],url:null,
+    metrics:{likes:r[4],replies:r[5],reposts:r[6],views:r[7],clicks:null},
+    metricsAsOf:r[1]==='x'?iso(18):iso(.03),
+    coverage:r[1]==='x'?'Illustrative monthly archive; partial counters.':'Illustrative recent public counters.'
+  }));
+  return {mode:'demo',generatedAt:new Date().toISOString(),accounts,observations,posts,sourceResults:[],scope:'Illustrative preview only.'};
+}
+function toast(msg) {
+  $('#toast').textContent=msg;$('#toast').hidden=false;
+  clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('#toast').hidden=true,4500);
+}
+function download(name,content,type='text/plain') {
+  const blob = new Blob([content],{type}), url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=name;a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function sourceResult(key) { return state.data.sourceResults.find(s=>s.source===key); }
+function safeLink(url) {
+  try { const u=new URL(url);return u.protocol==='https:' ? u.href : null; }
+  catch { return null; }
+}
+function renderMetrics() {
+  const accounts=state.data.accounts.filter(a=>state.source==='all'||a.platform===state.source);
+  const followers=followerTotal(accounts), posts=visiblePosts();
+  const cutoff=Date.now()-state.range*DAY;
+  let change=0,comparable=0;
+  for(const a of accounts.filter(a=>a.platform!=='typefully')) {
+    const obs=state.data.observations.filter(o=>o.accountId===a.id&&
+      new Date(o.observedAt)>=cutoff&&o.followers!==null).sort((a,b)=>new Date(a.observedAt)-new Date(b.observedAt));
+    if(obs.length>1){change+=obs.at(-1).followers-obs[0].followers;comparable++;}
+  }
+  $('#followersValue').textContent=number(followers.value);
+  $('#followersNote').innerHTML=comparable ?
+    `<span class="tag">${change>=0?'+':''}${number(change)}</span><span>between observed points · ${comparable} account${comparable===1?'':'s'}</span>` :
+    '<span class="tag gray">No baseline</span><span>History starts with collection</span>';
+  const interactions=posts.map(p=>interactionInfo(p.metrics)).filter(p=>p.value!==null);
+  $('#interactionsValue').textContent=number(interactions.length?interactions.reduce((s,p)=>s+p.value,0):null);
+  $('#interactionsNote').innerHTML='<span class="tag gray">Known counters only</span><span>No reach denominator</span>';
+  $('#postsValue').textContent=number(posts.length);
+  $('#postsNote').innerHTML=`<span class="tag gray">${state.range}-day window</span><span>Loaded posts, not full history</span>`;
+  const verified=state.mode==='live'?state.data.sourceResults.filter(r=>['ok','partial','access'].includes(r.status)).length:0;
+  $('#sourcesValue').innerHTML=`${verified} <span style="font-size:17px;color:#a3ab9b">/ 4</span>`;
+  $('#sourcesNote').innerHTML=state.mode==='demo'?
+    '<span class="tag amber">Preview only</span><span>No access verified</span>':
+    '<span class="tag gray">Per latest run</span><span>Access ≠ complete coverage</span>';
+}
+function splitSegments(points,maxGap=10*DAY) {
+  const segments=[];let current=[];
+  for(const p of points) {
+    if(p.value===null){if(current.length)segments.push(current);current=[];continue;}
+    if(current.length&&p.time-current.at(-1).time>maxGap){segments.push(current);current=[];}
+    current.push(p);
+  }
+  if(current.length)segments.push(current);
+  return segments;
+}
+function renderChart() {
+  const now=Date.now(),start=now-state.range*DAY;
+  const accounts=state.data.accounts.filter(a=>a.platform!=='typefully'&&(state.source==='all'||a.platform===state.source));
+  const series=accounts.map(a=>({
+    a,points:state.data.observations.filter(o=>o.accountId===a.id&&new Date(o.observedAt).getTime()>=start)
+      .map(o=>({time:new Date(o.observedAt).getTime(),value:o.followers})).sort((a,b)=>a.time-b.time)
+  })).filter(s=>s.points.some(p=>p.value!==null));
+  const W=760,H=245,L=51,R=24,T=22,B=35,pw=W-L-R,ph=H-T-B;
+  const max=Math.max(10,...series.flatMap(s=>s.points.map(p=>p.value||0)));
+  const top=Math.ceil(max/Math.pow(10,Math.floor(Math.log10(max))))*Math.pow(10,Math.floor(Math.log10(max)));
+  const x=t=>L+(t-start)/(now-start)*pw,y=v=>T+ph-v/top*ph;
+  let svg=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-labelledby="chartSvgTitle chartSvgDesc">
+    <title id="chartSvgTitle">Observed followers over the last ${state.range} days</title>
+    <desc id="chartSvgDesc">Separate source-labelled follower counters. Lines connect recorded points only; gaps over ten days are left open. X archive has no follower series.</desc>`;
+  for(let i=0;i<=4;i++){
+    const v=top*i/4, yy=y(v);
+    svg+=`<line x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}" stroke="#edf0e7" stroke-dasharray="${i?'3 5':'0'}"/>
+    <text x="${L-13}" y="${yy+3}" text-anchor="end" fill="#a0a896" font-size="9">${v>=1000?(v/1000).toFixed(v%1000?1:0)+'k':v}</text>`;
+  }
+  for(let i=0;i<=5;i++){
+    const t=start+(now-start)*i/5;
+    svg+=`<text x="${x(t)}" y="${H-10}" text-anchor="${i===0?'start':i===5?'end':'middle'}" fill="#a0a896" font-size="9">${esc(shortDate(t))}</text>`;
+  }
+  for(const s of series) {
+    const color=PLATFORMS[s.a.platform].color;
+    for(const segment of splitSegments(s.points)) {
+      if(segment.length>1){
+        const path=segment.map((p,i)=>`${i?'L':'M'}${x(p.time).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
+        svg+=`<path d="${path}" stroke="${color}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" fill="none"/>`;
+      }
+      for(const p of segment) svg+=`<circle cx="${x(p.time)}" cy="${y(p.value)}" r="${segment.length===1?4:2.4}" fill="${color}" stroke="white" stroke-width="1" tabindex="0" role="img" aria-label="${esc(s.a.handle+' · '+shortDate(p.time)+' · '+number(p.value)+' followers')}"><title>${esc(PLATFORMS[s.a.platform].name+' / '+s.a.handle+' · '+fullDate(p.time)+' · '+number(p.value)+' followers')}</title></circle>`;
+    }
+  }
+  if(!series.length) svg+=`<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="#8b9582" font-size="13">No follower observations in this view</text>`;
+  svg+='</svg>';
+  $('#chart').innerHTML=svg;
+  $('#chartRangeLabel').textContent=state.range+'-day view';
+  $('#chartNote').textContent=state.mode==='demo'?
+    'Illustrative snapshots. No real collection has happened. Hover or focus a point to inspect its counter.':
+    'History begins at collection. Gaps >10 days are not joined; one observation is a dot, not a trend. Hover or focus points for timestamps.';
+}
+function renderPosts() {
+  const posts=visiblePosts(),shown=posts.slice(0,state.limit);
+  $('#postRows').innerHTML=shown.length?shown.map(p=>{
+    const platform=PLATFORMS[p.platform],link=safeLink(p.url);
+    return `<tr>
+      <td><input type="checkbox" aria-label="Compare ${esc(p.text.slice(0,55))}" data-post-id="${esc(p.id)}" ${state.selected.has(p.id)?'checked':''}></td>
+      <td class="post-cell">${link?`<a class="post-title" href="${esc(link)}" target="_blank" rel="noopener noreferrer">${esc(p.text)}</a>`:`<span class="post-title" title="${esc(p.text)}">${esc(p.text)}</span>`}
+      <div class="post-meta"><span>${esc(shortDate(p.publishedAt))}</span><span>·</span><span title="${esc(fullDate(p.metricsAsOf))}">Counters ${esc(relative(p.metricsAsOf))}</span>${isStale(p.metricsAsOf)?'<span class="tag amber" style="padding:0 4px;font-size:7px">stale</span>':''}</div></td>
+      <td><span class="platform-label"><i style="background:${platform.color}"></i>${platform.name}</span></td>
+      ${['likes','replies','reposts','views'].map(k=>`<td class="number ${p.metrics[k]==null?'null':''}" title="${p.metrics[k]==null?'Not supplied by this source':'Observed counter'}">${number(p.metrics[k])}</td>`).join('')}
+    </tr>`;
+  }).join(''):'<tr><td colspan="7"><div class="empty">No posts match this view. Try another source, date range or search.</div></td></tr>';
+  $('#postSummary').textContent=`Showing ${shown.length} of ${posts.length} loaded posts · — means not supplied`;
+  $('#showMoreBtn').hidden=shown.length>=posts.length;
+  $('#navPostCount').textContent=state.data.posts.length;
+  $('#selectionBar').hidden=!state.selected.size;
+  $('#selectionLabel').textContent=state.selected.size+' of 2 posts selected';
+  $('#compareBtn').disabled=state.selected.size!==2;
+}
+function renderSources() {
+  $('#sourceList').innerHTML=Object.entries(PLATFORMS).map(([key,p])=>{
+    const r=sourceResult(key),a=state.data.accounts.find(a=>a.platform===key);
+    let label='Not connected',color='#969d8d',detail='No source access verified',time='Awaiting setup';
+    if(state.mode==='demo'){label='Preview';detail=a?.handle||'Access example only';time='Not connected';}
+    else if(r){
+      const labels={partial:'Partial',ok:'Fetched',access:'Access only',error:'Error',unconfigured:'Not set up'};
+      label=labels[r.status]||r.status;
+      color=r.status==='error'?'#aa6650':r.status==='access'?'#688553':r.status==='partial'?'#a8884a':'#77876d';
+      detail=a?.handle||r.detail;time=r.verifiedAt?relative(r.verifiedAt):'No successful fetch';
+      if(a&&isStale(a.lastSyncedAt)){label='Stale / partial';color='#ad8c4e';}
+    }
+    return `<div class="source-row" title="${esc(r?.detail||detail)}"><span class="platform-icon ${key}">${p.icon}</span><div class="source-text"><strong>${p.name}</strong><small>${esc(detail)}</small></div><div class="source-state"><strong style="color:${color}">${esc(label)}</strong><small>${esc(time)}</small></div></div>`;
+  }).join('');
+  $('#sourceHealthSummary').textContent=state.mode==='demo'?'No live connections':'Latest run · hover for scope';
+}
+function renderCoverage() {
+  let html='<span></span>'+['Followers','Likes','Replies','Reposts','Views'].map(v=>`<span class="col-head">${v}</span>`).join('');
+  for(const [key,p] of Object.entries(PLATFORMS)){
+    const accounts=state.data.accounts.filter(a=>a.platform===key),posts=state.data.posts.filter(p=>p.platform===key);
+    html+=`<span class="row-name">${p.name}</span>`;
+    for(const metric of ['followers','likes','replies','reposts','views']){
+      const items=metric==='followers'?accounts:posts;
+      const known=items.filter(o=>(metric==='followers'?o.followers:o.metrics[metric])!=null).length;
+      const kind=!known?'missing':known<items.length?'partial':'';
+      html+=`<span class="coverage-cell ${kind}" title="${known} of ${items.length} loaded ${metric==='followers'?'accounts':'posts'} supply this metric">${!known?'—':known<items.length?'Some':'Present'}</span>`;
+    }
+  }
+  $('#coverageMatrix').innerHTML=html;
+  $('#coverageNote').textContent=(state.mode==='demo'?'Illustrative availability only. ':'')+
+    '“Present” means available in loaded records, not full historical coverage. X archive counters may be old; archive file time is only a proxy for capture time. Typefully access alone supplies no analytics. Missing clicks and impressions are not inferred.';
+}
+function renderReceipt() {
+  const r=state.receipt;
+  $('#receiptHeading').textContent=r?'A committed run, read back.':state.mode==='live'?'Stored data loaded; pipeline not verified here.':'The private pipeline is not verified.';
+  $('#receiptText').textContent=r?
+    `${number(r.storedRows)} observation rows matched run ${r.runId.slice(0,8)}… on ${fullDate(r.readAt)}. Individual source failures and partial scopes still apply.`:
+    state.mode==='live'?'The snapshot was read from the private API. This session has not verified a fresh source-to-store run.':
+    'Preview data lives only in this tab. No source access, database write or Neon readback has happened.';
+  $('#receiptBtn').textContent=r?'Inspect / run again ↗':'Verify the pipeline ↗';
+  $('#footerStatus').textContent=r?'Neon readback verified · '+shortDate(r.readAt):
+    state.mode==='live'?'Stored live snapshot · fresh pipeline not verified':'Illustrative dataset · not production evidence';
+}
+function render() {
+  renderMetrics();renderChart();renderPosts();renderSources();renderCoverage();renderReceipt();
+  $('#modeBanner').classList.toggle('live',state.mode==='live');
+  $('#bannerText').innerHTML=state.mode==='demo'?
+    '<strong>Illustrative preview.</strong> No accounts connected. These numbers are not your analytics.':
+    `<strong>Private stored data.</strong> ${esc(state.data.scope||'Partial source coverage applies.')} ${state.receipt?'Readback verified for this run.':'Fresh source-to-store verification pending.'}`;
+  $('#bannerAction').textContent=state.mode==='demo'?'Set up private sync ↗':'Inspect pipeline ↗';
+  $('#connectBtn').innerHTML=state.mode==='demo'?'↻ Connect data':'↻ Sync data';
+  $('#topUpdated').textContent=state.mode==='demo'?'Preview workspace':'Loaded '+relative(state.data.generatedAt);
+}
+function openSetup(tab='connect') {
+  $$('.modal-tab').forEach(b=>{
+    const active=b.dataset.tab===tab;b.classList.toggle('active',active);b.setAttribute('aria-selected',active);
+  });
+  $$('[data-panel]').forEach(p=>p.hidden=p.dataset.panel!==tab);
+  if(!$('#setupDialog').open)$('#setupDialog').showModal();
+}
+function setBusy(v) {
+  state.busy=v;$('#syncBtn').disabled=v;$('#refreshBtn').disabled=v;$('#demoBtn').disabled=v;
+}
+function requireServer() {
+  if(!['http:','https:'].includes(location.protocol))
+    throw Error('Open this page through the included private server first. A file:// preview cannot connect to Neon.');
+}
+async function api(path,options={}) {
+  const response=await fetch('/api'+path,{
+    credentials:'same-origin',cache:'no-store',redirect:'error',
+    headers:{'Content-Type':'application/json','X-Rooms-Request':'1'},
+    signal:AbortSignal.timeout(240000),...options
+  });
+  const data=await response.json().catch(()=>null);
+  if(!response.ok)throw Error(data?.error||'Private API returned HTTP '+response.status+'.');
+  if(!data)throw Error('The private API did not return JSON.');
+  return data;
+}
+function proofText(rows=[]) {
+  return rows.map(r=>`${PLATFORMS[r.source]?.name||r.source}: ${r.status} · ${r.records} observation rows\n${r.detail}`).join('\n\n');
+}
+async function syncLive() {
+  if(state.busy)return;
+  setBusy(true);
+  const out=$('#connectionStatus');
+  try{
+    requireServer();
+    if(!crypto.randomUUID)throw Error('Use localhost or HTTPS for secure run nonces.');
+    const nonce=crypto.randomUUID();
+    out.textContent='1 / 3 · Fetching configured official sources and local archive…';
+    const write=await api('/sync',{method:'POST',body:JSON.stringify({nonce})});
+    out.textContent='2 / 3 · Write acknowledged. Independently querying the committed run…';
+    const read=await api('/readback?runId='+encodeURIComponent(write.runId));
+    const receipt=checkReceipt(write,read,nonce);
+    const snapshot=validateSnapshot(read.snapshot);
+    state.data=snapshot;state.mode='live';state.receipt=receipt;
+    state.selected.clear();state.limit=6;render();
+    out.textContent=`3 / 3 · VERIFIED READBACK\nRun: ${receipt.runId}\nStored nonce: ${receipt.storedNonce}\nRows: ${receipt.storedRows}\nDatabase read: ${fullDate(receipt.readAt)}\n\n${proofText(receipt.sourceProof)}`;
+    toast('Committed Neon observations were read back and matched.');
+  }catch(e){
+    out.textContent='NOT VERIFIED · '+e.message+'\nThe current dashboard has not been replaced. A failed or interrupted request may still have committed server-side; inspect before retrying.';
+    toast('Pipeline verification did not pass.');
+  }finally{setBusy(false);}
+}
+async function refreshLive() {
+  if(state.busy)return;
+  setBusy(true);
+  try{
+    requireServer();
+    const snapshot=validateSnapshot(await api('/snapshot'));
+    state.data=snapshot;state.mode='live';state.receipt=null;state.selected.clear();render();
+    $('#connectionStatus').textContent='Stored snapshot loaded. No fresh source fetch or source-to-store readback was verified by this action.\n\n'+proofText(snapshot.sourceResults);
+    toast('Loaded private stored data. Coverage remains partial.');
+  }catch(e){$('#connectionStatus').textContent='READ FAILED · '+e.message;}
+  finally{setBusy(false);}
+}
+function openCompare() {
+  const posts=[...state.selected].map(id=>state.data.posts.find(p=>p.id===id)).filter(Boolean);
+  if(posts.length!==2)return;
+  $('#compareContent').innerHTML=posts.map(p=>{
+    const info=interactionInfo(p.metrics);
+    return `<article class="compare-post"><span class="tag">${esc(PLATFORMS[p.platform].name)}</span><p>${esc(p.text)}</p><div class="card-sub">Published ${esc(fullDate(p.publishedAt))}<br>Counters ${esc(fullDate(p.metricsAsOf))}</div>
+    ${METRICS.map(k=>`<div class="compare-metric"><span>${k[0].toUpperCase()+k.slice(1)}</span><strong>${number(p.metrics[k])}</strong></div>`).join('')}
+    <div class="compare-metric"><span>Known public interactions${info.partial?' *':''}</span><strong>${number(info.value)}</strong></div><div class="card-sub">${esc(p.coverage||'Partial source coverage.')}${info.partial?' * Missing counters excluded.':''}</div></article>`;
+  }).join('');
+  $('#compareDialog').showModal();
+}
+function runTests() {
+  const tests=[],test=(name,fn)=>{try{fn();tests.push({name,ok:true});}catch(e){tests.push({name,ok:false,error:e.message});}};
+  const assert=(v,m='Assertion failed')=>{if(!v)throw Error(m);};
+  const throws=fn=>{let threw=false;try{fn();}catch{threw=true;}assert(threw,'Expected rejection');};
+  test('Missing counters remain distinct from zero',()=>{assert(number(null)==='—');assert(number(0)==='0');});
+  test('All-missing interactions do not become zero',()=>assert(interactionInfo({}).value===null));
+  test('Partial interactions are labelled, without inventing replies',()=>{
+    const r=interactionInfo({likes:10,replies:null,reposts:2});assert(r.value===12&&r.partial);
+  });
+  test('Zero is a valid observed metric',()=>assert(interactionInfo({likes:0,replies:0,reposts:0}).value===0));
+  test('Typefully never duplicates follower totals',()=>{
+    assert(followerTotal([{platform:'bluesky',followers:8},{platform:'typefully',followers:8},{platform:'x',followers:null}]).value===8);
+  });
+  test('Negative source counters are rejected',()=>{
+    const d={mode:'live',accounts:[{id:'a',platform:'bluesky',handle:'a',followers:-1}],posts:[],observations:[],sourceResults:[]};
+    throws(()=>validateSnapshot(d));
+  });
+  test('Temporal gaps are not drawn as continuous history',()=>{
+    assert(splitSegments([{time:0,value:1},{time:DAY,value:2},{time:30*DAY,value:3}]).length===2);
+  });
+  test('Explicit null observations break chart paths',()=>{
+    assert(splitSegments([{time:0,value:1},{time:DAY,value:null},{time:2*DAY,value:3}]).length===2);
+  });
+  const write={runId:'r',nonce:'n',sourceRows:2};
+  const valid=()=>({receipt:{backend:'neon',runId:'r',storedNonce:'n',sourceRows:2,storedRows:2,
+    readAt:new Date().toISOString(),sourceProof:[{status:'partial',records:2}]}});
+  test('Matching non-empty committed readback is accepted',()=>assert(checkReceipt(write,valid(),'n').storedRows===2));
+  test('Mismatched nonce and row count are rejected',()=>{
+    const a=valid();a.receipt.storedNonce='wrong';throws(()=>checkReceipt(write,a,'n'));
+    const b=valid();b.receipt.storedRows=1;throws(()=>checkReceipt(write,b,'n'));
+  });
+  test('Empty writes cannot pass pipeline verification',()=>{
+    const r=valid();r.receipt.storedRows=0;throws(()=>checkReceipt({...write,sourceRows:0},r,'n'));
+  });
+  test('CSV export neutralizes spreadsheet formulas',()=>assert(csvCell('=IMPORTXML("x")').startsWith('"\'=')));
+  test('Source, date and search filters all apply',()=>{
+    const p=[{platform:'x',publishedAt:new Date().toISOString(),text:'Studio notes'},
+      {platform:'bluesky',publishedAt:new Date().toISOString(),text:'Studio notes'}];
+    assert(filterPosts(p,{now:Date.now(),range:30,source:'x',search:'notes'}).length===1);
+  });
+  test('Old archive metrics are marked stale',()=>assert(isStale(new Date(Date.now()-3*DAY).toISOString())));
+  test('Private schema revokes public access and keeps nullable metrics',()=>{
+    const sql=$('#sql-source').textContent;
+    assert(sql.includes('REVOKE ALL ON SCHEMA rooms FROM PUBLIC'));
+    assert(sql.includes('views bigint CHECK'));
+  });
+  $('#testResults').innerHTML=`<div class="callout ${tests.every(t=>t.ok)?'success':''}">${tests.filter(t=>t.ok).length} / ${tests.length} local checks passed. Live integration is a separate check.</div>`+
+    tests.map(t=>`<div class="test-line"><strong class="${t.ok?'pass':'fail'}">${t.ok?'✓':'×'}</strong><span>${esc(t.name)}${t.error?' — '+esc(t.error):''}</span></div>`).join('');
+}
+$('#range').addEventListener('change',e=>{state.range=+e.target.value;state.limit=6;render();});
+$('#sort').addEventListener('change',e=>{state.sort=e.target.value;renderPosts();});
+$('#search').addEventListener('input',e=>{state.search=e.target.value;state.limit=6;renderMetrics();renderPosts();});
+$$('[data-source]').forEach(b=>b.addEventListener('click',()=>{
+  state.source=b.dataset.source;state.limit=6;
+  $$('[data-source]').forEach(x=>x.classList.toggle('active',x===b));render();
+}));
+$('#showMoreBtn').addEventListener('click',()=>{state.limit+=10;renderPosts();});
+$('#postRows').addEventListener('change',e=>{
+  const id=e.target.dataset.postId;if(!id)return;
+  if(e.target.checked){
+    if(state.selected.size>=2){e.target.checked=false;toast('Choose two posts at a time.');return;}
+    state.selected.add(id);
+  }else state.selected.delete(id);
+  renderPosts();
+});
+$('#clearSelection').addEventListener('click',()=>{state.selected.clear();renderPosts();});
+$('#compareBtn').addEventListener('click',openCompare);
+$('#exportBtn').addEventListener('click',()=>{
+  const header=['mode','source','post_id','published_at','text',...METRICS,'metrics_as_of','coverage'];
+  const rows=visiblePosts().map(p=>[state.mode,PLATFORMS[p.platform].name,p.id,p.publishedAt,p.text,
+    ...METRICS.map(k=>p.metrics[k]),p.metricsAsOf,p.coverage]);
+  download('rooms-'+state.mode+'-'+new Date().toISOString().slice(0,10)+'.csv',
+    [header,...rows].map(row=>row.map(csvCell).join(',')).join('\r\n'),'text/csv;charset=utf-8');
+  toast('Exported this view. Missing metrics are blank; source labels are included.');
+});
+['connectBtn','bannerAction','manageSources','receiptBtn'].forEach(id=>$('#'+id).addEventListener('click',()=>openSetup()));
+$$('[data-nav]').forEach(b=>b.addEventListener('click',()=>{
+  if(b.dataset.nav==='setup'){openSetup('deploy');return;}
+  $$('[data-nav]').forEach(x=>x.classList.toggle('active',x===b));
+  $('#'+b.dataset.nav).scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});
+}));
+$$('[data-tab]').forEach(b=>b.addEventListener('click',()=>openSetup(b.dataset.tab)));
+$$('[data-close]').forEach(b=>b.addEventListener('click',()=>b.closest('dialog').close()));
+$$('dialog').forEach(d=>d.addEventListener('click',e=>{
+  if(e.target===d){const r=d.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)d.close();}
+}));
+$('#syncBtn').addEventListener('click',syncLive);
+$('#refreshBtn').addEventListener('click',refreshLive);
+$('#demoBtn').addEventListener('click',()=>{
+  if(state.mode==='live'&&!confirm('Remove private data from this tab and return to the labelled preview? Stored Neon records are not deleted.'))return;
+  state.data=demoData();state.mode='demo';state.receipt=null;state.selected.clear();render();
+  $('#connectionStatus').textContent='Returned to offline preview. Stored Neon records were not changed.';
+});
+$('#runTests').addEventListener('click',runTests);
+const getSQL=()=>$('#sql-source').textContent.trim()+'\n';
+['downloadSchema','downloadSchema2'].forEach(id=>$('#'+id).addEventListener('click',()=>download('schema.sql',getSQL())));
+$('#downloadServer').addEventListener('click',()=>download('rooms-server.mjs',$('#server-source').textContent.trim()+'\n','text/javascript'));
+$('#schemaPreview').textContent=getSQL();
+$('#endpointLabel').textContent=['http:','https:'].includes(location.protocol)?location.origin+'/api':'Offline file preview · start the private server to connect';
+state.data=demoData();
+render();
+</script>
+</body>
+</html>

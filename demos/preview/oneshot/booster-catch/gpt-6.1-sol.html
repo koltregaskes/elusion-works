@@ -1,0 +1,1112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta name="robots" content="noindex,nofollow">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Catch / 05 — An original Three.js reconstruction</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap');
+
+:root{
+  color-scheme:dark;
+  --bg:#10191d;
+  --panel:rgba(17,27,32,.84);
+  --line:rgba(219,230,231,.16);
+  --text:#edf1ed;
+  --muted:#a7b6bb;
+  --accent:#f5bf79;
+  --green:#b9d7bc;
+  --mono:ui-monospace,SFMono-Regular,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{width:100%;height:100%;margin:0;overflow:hidden}
+body{background:var(--bg);color:var(--text);font-family:"DM Sans",system-ui,sans-serif;font-size:13px}
+button,input,select{font:inherit}
+button,a,input,select{-webkit-tap-highlight-color:transparent}
+button{color:inherit;cursor:pointer}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:5px}
+button{border:0}
+a{color:var(--accent);text-underline-offset:3px}
+#view{position:absolute;inset:0}
+#view canvas{display:block;width:100%;height:100%;touch-action:none}
+.vignette{position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(8,17,23,.6),transparent 30%,transparent 56%,rgba(8,17,23,.77)),radial-gradient(ellipse at center,transparent 42%,rgba(7,14,19,.23))}
+header{
+  position:absolute;left:32px;right:32px;top:23px;display:flex;
+  align-items:center;justify-content:space-between;gap:20px
+}
+.brand{display:flex;align-items:center;gap:16px}
+.emblem{width:33px;height:38px;position:relative;border-left:2px solid var(--accent);border-right:2px solid var(--accent);transform:skewY(-13deg)}
+.emblem:before,.emblem:after{content:"";position:absolute;height:2px;background:var(--accent);width:24px;top:18px}
+.emblem:before{left:-2px;transform:rotate(-28deg)}
+.emblem:after{right:-2px;transform:rotate(28deg)}
+.brand-name{font-family:"Barlow Condensed",Impact,sans-serif;letter-spacing:3px;font-weight:600;font-size:27px;line-height:1}
+.brand-name span{color:var(--accent)}
+.eyebrow{font-size:9px;letter-spacing:2px;font-weight:700;color:var(--muted);line-height:1.7;text-transform:uppercase}
+.brand-sub{font-size:8px;letter-spacing:1.6px;margin-top:6px;color:#c0ccce}
+.header-right{display:flex;align-items:center;gap:17px}
+.status-pill{display:flex;align-items:center;gap:8px;font:9px var(--mono);letter-spacing:1px;border:1px solid var(--line);border-radius:30px;padding:9px 13px;background:rgba(12,25,31,.3)}
+.status-pill i{width:5px;height:5px;border-radius:50%;background:var(--green)}
+.outline-button{border:1px solid var(--line);border-radius:4px;background:rgba(13,25,31,.45);padding:10px 14px;font-size:10px}
+.outline-button:hover{background:rgba(50,66,73,.65);border-color:#89999d}
+.scene-title{position:absolute;top:117px;left:34px;pointer-events:none}
+.scene-title h1{font:500 clamp(37px,4.7vw,70px)/.93 "Barlow Condensed",Impact,sans-serif;letter-spacing:-.6px;margin:12px 0 14px;text-transform:uppercase;text-shadow:0 2px 25px #20343a66}
+.scene-title h1 span{display:block;color:var(--accent)}
+.scene-title p{font-size:11px;line-height:1.8;color:#c1cecf;max-width:240px;margin:0}
+.tiny-rule{width:26px;height:2px;background:var(--accent);margin-bottom:12px}
+.camera-panel{position:absolute;left:34px;top:361px;width:201px}
+.section-label{font:9px var(--mono);letter-spacing:1.8px;color:#c6d0d0;margin-bottom:10px;display:flex;align-items:center;gap:9px}
+.section-label:before{content:"";width:5px;height:5px;background:var(--accent)}
+.camera-button{width:100%;display:flex;align-items:center;gap:12px;text-align:left;background:rgba(12,25,31,.47);border:1px solid var(--line);border-bottom:0;padding:12px 13px;backdrop-filter:blur(12px)}
+.camera-button:first-of-type{border-radius:4px 4px 0 0}
+.camera-button:last-of-type{border-bottom:1px solid var(--line);border-radius:0 0 4px 4px}
+.camera-button .num{font:10px var(--mono);color:#8ca0a8}
+.camera-button strong{display:block;font-size:11px;font-weight:500}
+.camera-button small{display:block;font-size:9px;color:#9fafb4;margin-top:4px}
+.camera-button .camera-indicator{margin-left:auto;width:5px;height:5px;background:transparent;border:1px solid #83959d;border-radius:50%}
+.camera-button[aria-pressed=true]{background:rgba(244,190,119,.12);border-left:2px solid var(--accent);padding-left:12px}
+.camera-button[aria-pressed=true] .num{color:var(--accent)}
+.camera-button[aria-pressed=true] .camera-indicator{background:var(--accent);border-color:var(--accent)}
+.camera-button:hover{background:rgba(244,190,119,.12)}
+.camera-hint{font-size:9px;color:#a5b7bd;line-height:1.7;margin-top:10px}
+.reference-card{position:absolute;right:34px;top:129px;width:242px;background:var(--panel);border:1px solid var(--line);border-radius:5px;backdrop-filter:blur(16px);overflow:hidden}
+.card-head{padding:16px 16px 13px;border-bottom:1px solid var(--line)}
+.card-head .section-label{font-size:8px;margin-bottom:7px}
+.card-head p{font-size:10px;color:#aabcc2;margin:0;line-height:1.6}
+.event{padding:14px 15px;width:100%;display:flex;gap:10px;align-items:center;text-align:left;background:transparent;border-bottom:1px solid var(--line)}
+.event:hover{background:#ffffff09}
+.event-dot{width:7px;height:7px;flex-shrink:0;border:1px solid #778d96;border-radius:50%;position:relative}
+.event.done .event-dot{border-color:var(--accent);background:var(--accent)}
+.event.current{background:#f5bf7909}
+.event-content{flex:1}
+.event-name{font-size:10px;display:block;margin-bottom:4px}
+.event-note{font-size:8px;color:var(--muted);letter-spacing:.3px}
+.event time{font:10px var(--mono);color:var(--accent)}
+.card-foot{display:flex;align-items:center;justify-content:space-between;padding:12px 15px;font-size:8px;color:#adbdc2}
+.text-button{background:none;color:var(--accent);padding:0;font-size:9px;text-decoration:underline;text-underline-offset:3px}
+.view-tag{position:absolute;left:50%;top:101px;transform:translateX(-50%);display:flex;gap:11px;align-items:center;white-space:nowrap;font:8px var(--mono);letter-spacing:1.5px;color:#dce6e3}
+.view-tag:before{content:"";width:5px;height:5px;border:1px solid var(--accent)}
+.measurement{position:absolute;right:35px;bottom:211px;text-align:right;pointer-events:none}
+.measurement .reading{font:400 42px/1.1 "Barlow Condensed",Impact,sans-serif;letter-spacing:1px;margin:7px 0}
+.measurement .reading span{font:11px var(--mono);color:#c9d6d5;margin-left:5px}
+.measurement .eyebrow{font-size:8px}
+.measurement .small{font:8px var(--mono);color:#b4c4c8}
+.location{position:absolute;left:35px;bottom:209px;pointer-events:none}
+.location .coordinate{font:9px var(--mono);letter-spacing:1.1px;margin-top:7px;color:#b7c8cc}
+.location .cross{font-size:20px;font-weight:400;color:var(--accent);margin-bottom:8px}
+.transport{position:absolute;left:25px;right:25px;bottom:23px;background:rgba(15,26,32,.91);backdrop-filter:blur(20px);border:1px solid rgba(221,230,229,.2);border-radius:7px;padding:18px 21px 12px}
+.transport-top{display:flex;align-items:center;gap:16px}
+.play-button{height:37px;width:39px;border-radius:3px;display:grid;place-items:center;color:#14242c;background:var(--accent);flex-shrink:0}
+.play-button:hover{background:#ffd39b}
+.play-button svg{width:15px;height:15px;fill:currentColor}
+.replay{background:transparent;display:flex;align-items:center;gap:6px;color:#c7d4d5;font-size:9px;letter-spacing:.5px;padding:8px 0}
+.replay svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.5}
+.clock{font:23px var(--mono);letter-spacing:-1px;min-width:104px}
+.clock small{display:block;font:8px var(--mono);color:var(--muted);letter-spacing:1px;margin-top:5px}
+.transport-divider{height:28px;width:1px;background:var(--line)}
+.chapter{flex:1}
+.chapter strong{font-size:11px;font-weight:500;display:block;margin-top:4px}
+.chapter .eyebrow{font-size:8px}
+.met{font:13px var(--mono);text-align:right}
+.met small{display:block;font:8px var(--mono);letter-spacing:1px;color:var(--muted);margin-bottom:6px}
+.speed-control{display:flex;align-items:center;gap:8px;font-size:9px;color:var(--muted);padding-left:15px;border-left:1px solid var(--line)}
+select{background:transparent;color:var(--text);border:1px solid var(--line);border-radius:3px;padding:6px 4px;font:10px var(--mono)}
+select option{background:#14272f}
+.timeline-wrap{position:relative;margin:14px 0 0;height:28px}
+input[type=range]{--progress:85%;appearance:none;-webkit-appearance:none;width:100%;height:3px;margin:11px 0;background:linear-gradient(to right,var(--accent) 0%,var(--accent) var(--progress),#596a704d var(--progress),#596a704d 100%);cursor:ew-resize;position:relative;z-index:3;vertical-align:top}
+input[type=range]::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:10px;height:14px;border-radius:1px;background:#ffdeb0;box-shadow:0 0 0 4px #f5bf7912}
+input[type=range]::-moz-range-thumb{width:10px;height:14px;border:0;border-radius:1px;background:#ffdeb0}
+.timeline-marker{position:absolute;top:6px;width:1px;height:13px;background:var(--accent);opacity:.75;pointer-events:none;z-index:2}
+.timeline-labels{display:flex;justify-content:space-between;font:8px var(--mono);color:#97abb3}
+.timeline-labels span:last-child{color:var(--accent)}
+.transport-foot{margin-top:13px;padding-top:10px;border-top:1px solid #dbe6e612;display:flex;justify-content:space-between;gap:10px;font-size:8px;color:#90a6af}
+.transport-foot button{font-size:8px}
+.shortcuts{font:8px var(--mono);letter-spacing:.4px;color:#879da6}
+#completion{position:absolute;left:50%;top:48%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;opacity:0;transition:opacity .2s}
+#completion.visible{opacity:1;pointer-events:auto}
+#completion .complete-line{font:600 68px/.95 "Barlow Condensed",Impact,sans-serif;letter-spacing:3px;color:#fff2dc;text-shadow:0 2px 30px #15262e}
+#completion p{font-size:10px;letter-spacing:2px;text-shadow:0 2px 10px #000}
+#completion button{background:var(--accent);color:#14242c;padding:11px 19px;border-radius:3px;font-size:10px;margin-top:5px}
+#loading{position:absolute;inset:0;background:#14232b;z-index:20;display:grid;place-content:center;text-align:center;padding:30px}
+#loading h2{font:500 40px "Barlow Condensed",Impact,sans-serif;margin:0 0 10px;letter-spacing:3px}
+#loading p{color:#a7bac2;font-size:11px;max-width:390px;line-height:1.8}
+dialog{width:min(750px,calc(100vw - 30px));max-height:86dvh;border:1px solid #64798366;border-radius:9px;background:#14232b;color:var(--text);padding:0;box-shadow:0 30px 150px #0009}
+dialog::backdrop{background:#061019b8;backdrop-filter:blur(8px)}
+.dialog-head{padding:24px 27px 19px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:flex-start;gap:15px;position:sticky;top:0;background:#14232bf5;z-index:2}
+.dialog-head h2{font:500 32px "Barlow Condensed",Impact,sans-serif;letter-spacing:.5px;margin:4px 0 0}
+.close-button{background:transparent;border:1px solid var(--line);border-radius:3px;font-size:20px;width:29px;height:29px;line-height:1}
+.dialog-body{padding:0 27px 26px}
+.dialog-body section{padding-top:22px}
+.dialog-body h3{font-size:12px;font-weight:600;margin:0 0 9px}
+.dialog-body p,.dialog-body li{font-size:11px;line-height:1.9;color:#b4c5cb}
+.dialog-body ul{padding-left:17px}
+.notice{border-left:2px solid var(--accent);background:#f5bf7909;padding:11px 14px;margin-top:18px;font-size:11px;line-height:1.8;color:#e0d2bd}
+.source-link{display:block;border:1px solid var(--line);border-radius:4px;padding:12px 14px;text-decoration:none;font-size:11px;margin-top:11px;line-height:1.8}
+.source-link span{display:block;font-size:9px;color:var(--muted)}
+.timing-grid{display:grid;grid-template-columns:1fr 125px 100px;align-items:center;gap:10px;font-size:11px;margin-top:10px}
+.timing-grid label{line-height:1.5}
+.timing-grid label small{display:block;color:#8da5b0;font-size:9px}
+.timing-grid input{width:100%;color:var(--accent);border:1px solid var(--line);background:#0d1a21;border-radius:3px;padding:8px;font:11px var(--mono)}
+.timing-grid .uncertainty{font:9px var(--mono);color:#afbdc0}
+.button-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:15px;align-items:center}
+.button-row button{padding:9px 12px;border-radius:3px;font-size:10px;background:var(--accent);color:#15272e}
+.button-row button.secondary{border:1px solid var(--line);background:transparent;color:var(--text)}
+#timingFeedback{min-height:18px;font-size:10px;color:var(--green)}
+.rights-grid{display:grid;grid-template-columns:112px 1fr;border-top:1px solid var(--line);margin-top:12px}
+.rights-grid>div{padding:11px 0;border-bottom:1px solid var(--line);font-size:10px;line-height:1.8;color:#adc2ca}
+.rights-grid>div:nth-child(odd){color:#e2e8e6}
+.fine{font-size:9px!important;color:#829ca8!important}
+@media(min-width:1600px){.scene-title{top:150px}.camera-panel{top:410px}.reference-card{top:155px}}
+@media(max-height:760px) and (min-width:801px){
+  .scene-title{top:103px}.scene-title h1{font-size:47px}.scene-title p{display:none}
+  .camera-panel{top:254px}.camera-button{padding-top:10px;padding-bottom:10px}
+  .reference-card{top:111px}.event{padding:11px 14px}
+  .measurement{bottom:202px}.location{bottom:202px}
+}
+@media(max-width:1000px){
+  header{left:23px;right:23px}.scene-title{left:25px}.camera-panel{left:25px;width:181px}
+  .reference-card{right:25px;width:215px}.status-pill{display:none}
+  .view-tag{top:89px}.shortcuts{display:none}.measurement{right:25px}
+}
+@media(max-width:800px){
+  header{top:18px;left:18px;right:18px}.brand-name{font-size:23px}.brand-sub{font-size:7px}.emblem{width:27px;height:31px}.emblem:before,.emblem:after{width:20px;top:14px}
+  .header-right{gap:0}.outline-button{font-size:9px;padding:9px}
+  .scene-title{left:20px;top:102px}.scene-title h1{font-size:44px;margin-top:9px}.scene-title p{display:none}.scene-title .eyebrow{font-size:8px}
+  .reference-card{display:none}
+  .camera-panel{left:20px;right:20px;top:auto;bottom:216px;width:auto;display:flex;gap:5px;max-width:380px}
+  .camera-panel .section-label,.camera-hint{display:none}
+  .camera-button{border:1px solid var(--line)!important;border-radius:3px!important;padding:9px 10px!important;gap:7px}
+  .camera-button[aria-pressed=true]{border-color:var(--accent)!important}
+  .camera-button small,.camera-indicator{display:none!important}.camera-button strong{font-size:9px}.camera-button .num{font-size:8px}
+  .view-tag{top:80px;font-size:7px}
+  .measurement{bottom:272px;right:20px}.measurement .reading{font-size:32px}
+  .measurement .eyebrow{font-size:7px}.measurement .small{font-size:7px}
+  .location{display:none}
+  .transport{left:12px;right:12px;bottom:12px;padding:13px 13px 10px}
+  .transport-top{gap:10px}.clock{font-size:20px;min-width:89px}
+  .replay{font-size:0;gap:0}.replay svg{width:19px;height:19px}
+  .transport-divider{display:none}.chapter{display:none}
+  .met{margin-left:auto;font-size:11px}.speed-control{gap:0;padding-left:10px}.speed-control label{display:none}
+  .transport-foot{font-size:7px;line-height:1.7;margin-top:10px}
+  .transport-foot>span{max-width:60%}.transport-foot button{font-size:7px}
+  .timeline-labels{font-size:7px}
+  #completion .complete-line{font-size:49px}
+}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div id="view" aria-label="Interactive 3D reconstruction of a booster catch"></div>
+<div class="vignette"></div>
+
+<header>
+  <div class="brand">
+    <div class="emblem" aria-hidden="true"></div>
+    <div>
+      <div class="brand-name">CATCH <span>/ 05</span></div>
+      <div class="brand-sub">A PROCEDURAL FLIGHT STUDY</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="status-pill"><i></i> ORIGINAL MESHES · NO FOOTAGE</div>
+    <button class="outline-button" id="aboutButton">Reference &amp; rights ↗</button>
+  </div>
+</header>
+
+<div class="scene-title">
+  <div class="tiny-rule"></div>
+  <div class="eyebrow">Starship Flight 5 · 13 October 2024</div>
+  <h1>The return.<span>The catch.</span></h1>
+  <p>Forty seconds of descent.<br>One shared scene. Three perspectives.</p>
+</div>
+
+<div class="view-tag" id="viewTag">CAM 01 / GROUND WIDE</div>
+
+<nav class="camera-panel" aria-label="Camera selection">
+  <div class="section-label">SELECT PERSPECTIVE</div>
+  <button class="camera-button" data-camera="wide" aria-pressed="true">
+    <span class="num">01</span>
+    <span><strong>Ground wide</strong><small>The full approach</small></span>
+    <i class="camera-indicator"></i>
+  </button>
+  <button class="camera-button" data-camera="onboard" aria-pressed="false">
+    <span class="num">02</span>
+    <span><strong>Booster-mounted</strong><small>Looking toward the tower</small></span>
+    <i class="camera-indicator"></i>
+  </button>
+  <button class="camera-button" data-camera="close" aria-pressed="false">
+    <span class="num">03</span>
+    <span><strong>Catch detail</strong><small>Arms &amp; capture points</small></span>
+    <i class="camera-indicator"></i>
+  </button>
+  <div class="camera-hint">Drag wide view to orbit · scroll to zoom<br>Double-click to restore framing</div>
+</nav>
+
+<aside class="reference-card" aria-label="Approximate reference event times">
+  <div class="card-head">
+    <div class="section-label">REFERENCE ANCHORS ≈</div>
+    <p>Mission elapsed time · visual estimates<br>Not frame-verified · nominal ±2 seconds</p>
+  </div>
+  <button class="event" data-event="0">
+    <i class="event-dot"></i>
+    <span class="event-content"><span class="event-name">Landing ignition</span><span class="event-note">Engine plume appears</span></span>
+    <time id="cueTime0">≈ 06:33</time>
+  </button>
+  <button class="event" data-event="1">
+    <i class="event-dot"></i>
+    <span class="event-content"><span class="event-name">Tower-crown crossing</span><span class="event-note">Illustrative alignment cue</span></span>
+    <time id="cueTime1">≈ 06:49</time>
+  </button>
+  <button class="event" data-event="2">
+    <i class="event-dot"></i>
+    <span class="event-content"><span class="event-name">Capture / shutdown</span><span class="event-note">Final supported position</span></span>
+    <time id="cueTime2">≈ 06:56</time>
+  </button>
+  <div class="card-foot">
+    <span>REFERENCE: SPACEX</span>
+    <button class="text-button" id="calibrateButton">Review timings ↗</button>
+  </div>
+</aside>
+
+<div class="location">
+  <div class="cross">＋</div>
+  <div class="eyebrow">Starbase · Texas</div>
+  <div class="coordinate">GULF COAST / ORIGINAL ENVIRONMENT</div>
+</div>
+
+<div class="measurement">
+  <div class="eyebrow">Model height to catch</div>
+  <div class="reading" id="heightReading">27<span>m</span></div>
+  <div class="small">ILLUSTRATIVE · NOT TELEMETRY</div>
+</div>
+
+<div id="completion" aria-live="polite">
+  <div class="eyebrow">Flight 5 · Super Heavy</div>
+  <div class="complete-line">CAPTURED.</div>
+  <p>THE FINAL FORTY SECONDS</p>
+  <button id="endReplay">↺ Replay the approach</button>
+</div>
+
+<section class="transport" aria-label="Playback and timeline">
+  <div class="transport-top">
+    <button class="play-button" id="playButton" aria-label="Play from current time" title="Play / pause · Space">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5L17 10 5 17.5z"/></svg>
+    </button>
+    <button class="replay" id="replayButton" title="Replay all 40 seconds · R">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 7a6.5 6.5 0 1 1-.4 5M4 2v5h5"/></svg>
+      REPLAY 40s
+    </button>
+    <div class="transport-divider"></div>
+    <div class="clock" id="remaining">−06.0<small>TO CAPTURE / SECONDS</small></div>
+    <div class="chapter">
+      <div class="eyebrow" id="chapterNumber">PHASE 03 / 04</div>
+      <strong id="chapterName">Final alignment</strong>
+    </div>
+    <div class="met"><small>MISSION ELAPSED ≈</small><span id="metClock">T+ 06:50.0</span></div>
+    <div class="speed-control">
+      <label for="speed">SPEED</label>
+      <select id="speed" aria-label="Playback speed">
+        <option value=".25">¼×</option>
+        <option value=".5">½×</option>
+        <option value="1" selected>1×</option>
+        <option value="2">2×</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="timeline-wrap">
+    <div class="timeline-marker" id="marker0"></div>
+    <div class="timeline-marker" id="marker1"></div>
+    <div class="timeline-marker" id="marker2"></div>
+    <input id="scrubber" type="range" min="0" max="40" step=".01" value="34" aria-label="Seconds into the final forty-second approach">
+  </div>
+  <div class="timeline-labels"><span>T−40</span><span>−30</span><span>−20</span><span>−10</span><span>CAPTURE</span></div>
+  <div class="transport-foot">
+    <span>Original reconstruction · Mission &amp; reference footage: SpaceX</span>
+    <span class="shortcuts">SPACE play/pause &nbsp; ← → scrub &nbsp; 1 / 2 / 3 cameras &nbsp; R replay</span>
+    <button class="text-button" id="footAbout">Approximate motion · media rights ↗</button>
+  </div>
+</section>
+
+<div id="loading" role="status">
+  <h2>CATCH / 05</h2>
+  <p id="loadingText">Constructing the tower, vehicle and coastline.<br>No footage, textures or model files are being loaded.</p>
+</div>
+
+<dialog id="aboutDialog">
+  <div class="dialog-head">
+    <div><div class="eyebrow">Documentation / timing / permissions</div><h2>Behind the reconstruction</h2></div>
+    <button class="close-button" id="closeDialog" aria-label="Close documentation">×</button>
+  </div>
+  <div class="dialog-body">
+    <section>
+      <h3>The documented event</h3>
+      <p>
+        An original interpretation of Super Heavy’s return and first tower catch during
+        <strong>SpaceX Starship Flight 5, 13 October 2024</strong>.
+        Mission operator and reference-footage owner: <strong>SpaceX</strong>.
+        This is an independent study, not an official simulator or SpaceX product.
+      </p>
+      <a class="source-link" href="https://www.spacex.com/launches/mission/?missionId=starship-flight-5" target="_blank" rel="noopener noreferrer">
+        SpaceX — Starship’s fifth flight test ↗
+        <span>Official mission page / webcast reference. Opens externally; no reference media is loaded here.</span>
+      </a>
+      <div class="notice">
+        <strong>Timing honesty:</strong> the initial anchors are approximate mission-elapsed
+        visual targets, nominally ±2 seconds, and have not been frame-verified in this file.
+        They are <em>not video-player timestamps</em>. The scene hits these targets exactly;
+        this does not establish frame-accurate agreement with the webcast.
+        Verify or calibrate them before using this as an audited reconstruction.
+      </div>
+    </section>
+
+    <section id="timingSection">
+      <h3>Three-event timing sheet</h3>
+      <p>
+        Enter mission-elapsed times as <code>MM:SS.s</code>.
+        All three views, the vehicle, arms, plume and event markers retime together.
+        The timeline always ends at capture and spans the preceding 40 seconds.
+        “Tower-crown crossing” means the model booster’s upper rim reaches the tower’s height;
+        it is an editorial cue, not an official telemetry event.
+      </p>
+      <form id="timingForm">
+        <div class="timing-grid">
+          <label for="anchor0">Landing ignition<small>Approximate webcast target</small></label>
+          <input id="anchor0" value="06:33.0" required pattern="[0-9]{1,3}:[0-5][0-9](\.[0-9]+)?" aria-label="Landing ignition mission elapsed time">
+          <span class="uncertainty">≈ / ±2 s*</span>
+
+          <label for="anchor1">Tower-crown crossing<small>Approximate visual alignment</small></label>
+          <input id="anchor1" value="06:49.0" required pattern="[0-9]{1,3}:[0-5][0-9](\.[0-9]+)?" aria-label="Tower crown crossing mission elapsed time">
+          <span class="uncertainty">≈ / ±2 s*</span>
+
+          <label for="anchor2">Capture / shutdown<small>Approximate supported pose</small></label>
+          <input id="anchor2" value="06:56.0" required pattern="[0-9]{1,3}:[0-5][0-9](\.[0-9]+)?" aria-label="Capture mission elapsed time">
+          <span class="uncertainty">≈ / ±2 s*</span>
+        </div>
+        <div class="button-row">
+          <button type="submit">Apply timing anchors</button>
+          <button type="button" class="secondary" id="resetAnchors">Restore estimates</button>
+          <button type="button" class="secondary" id="downloadSheet">Export cue sheet ↓</button>
+        </div>
+      </form>
+      <p id="timingFeedback" role="status"></p>
+      <p class="fine">*Nominal editorial uncertainty, not a measured confidence interval. Custom entries remain labelled approximate. Calibration changes are stored locally when browser storage is available.</p>
+    </section>
+
+    <section>
+      <h3>One scene, not three separate animations</h3>
+      <p>
+        A single deterministic clock drives the whole reconstruction. Scrubbing evaluates the
+        scene directly rather than advancing a physics simulation. Wide, booster-mounted and
+        catch-detail cameras therefore show the same vehicle and mechanism state.
+        The onboard view is attached to the vehicle’s model transform.
+      </p>
+      <p>
+        The roughly 71 m × 9 m booster and 146 m tower establish scale.
+        The descent curve, capture elevation, lug geometry, arm movement, engine transitions,
+        landscaping, atmosphere and camera positions are illustrative rather than engineering
+        measurements. No telemetry or official CAD is used. The initial paused view is a
+        six-seconds-to-capture preview; Replay starts the complete approach.
+      </p>
+    </section>
+
+    <section>
+      <h3>Rights are separate from attribution</h3>
+      <div class="rights-grid">
+        <div>Scene assets</div><div>All meshes, materials, effects and environment are original procedural work generated by this HTML. No imported models, logos, photographs, video frames or audio.</div>
+        <div>Reference media</div><div>SpaceX mission/webcast reference; rights remain with the owner. The external reference is cited, not reproduced. <strong>No separate SpaceX media license or reference-rights clearance has been obtained or supplied.</strong></div>
+        <div>Before reuse</div><div>If your intended use requires separately cleared reference rights, obtain permission or another appropriate license from the relevant owner. Do not interpret this credit, external link or reconstruction as clearance. Adding footage, stills or audio requires its own rights review.</div>
+        <div>Software</div><div>Three.js r160, MIT licensed, loaded from jsDelivr. The rest of the scene is contained in this file. Internet access is required for the library and optional fonts; system font fallbacks are provided.</div>
+      </div>
+      <p class="fine">No affiliation with or endorsement by SpaceX. This is an artistic/factual study, not operational guidance, an engineering simulation, or a claim of independently verified timing.</p>
+    </section>
+  </div>
+</dialog>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"
+  onerror="document.getElementById('loadingText').textContent='Three.js could not load. Connect to the internet and reload this file. No reference footage is required.'"></script>
+<script>
+(() => {
+"use strict";
+if (!window.THREE) return;
+
+const $ = id => document.getElementById(id);
+const TAU = Math.PI * 2;
+const clamp = (x,a,b) => Math.max(a,Math.min(b,x));
+const lerp = (a,b,t) => a+(b-a)*t;
+const smooth = (a,b,x) => { const u=clamp((x-a)/(b-a),0,1); return u*u*(3-2*u); };
+const V = (x=0,y=0,z=0) => new THREE.Vector3(x,y,z);
+const SOURCE = "https://www.spacex.com/launches/mission/?missionId=starship-flight-5";
+const DEFAULT_ANCHORS = [393,409,416];
+let anchors = DEFAULT_ANCHORS.slice();
+try {
+  const saved = JSON.parse(localStorage.getItem("catch05-anchors-v1"));
+  if (Array.isArray(saved) && validAnchors(saved)) anchors=saved;
+} catch (_) {}
+
+function validAnchors(a) {
+  return a.length===3 && a.every(Number.isFinite) && a[2]>40 &&
+    a[0]>a[2]-39.5 && a[1]>a[0]+.5 && a[2]>a[1]+.5;
+}
+function metFormat(sec,decimals=1) {
+  const m=Math.floor(sec/60);
+  const s=(sec-m*60).toFixed(decimals).padStart(decimals ? 4+decimals-1 : 2,"0");
+  return String(m).padStart(2,"0")+":"+s;
+}
+function parseMET(text) {
+  const match=text.trim().match(/^(\d{1,3}):([0-5]\d(?:\.\d+)?)$/);
+  return match ? Number(match[1])*60+Number(match[2]) : NaN;
+}
+function offsets(){const start=anchors[2]-40;return [anchors[0]-start,anchors[1]-start,40];}
+
+/* One authoring clock. User timing changes remap this clock for every object. */
+function canonicalTime(t) {
+  const o=offsets(), real=[0,o[0],o[1],40], authored=[0,17,33,40];
+  for(let i=0;i<3;i++){
+    if(t<=real[i+1]) return lerp(authored[i],authored[i+1],clamp((t-real[i])/(real[i+1]-real[i]),0,1));
+  }
+  return 40;
+}
+
+const state = {
+  time:34, playing:false, speed:1, camera:"wide",
+  yaw:0, pitch:0, zoom:1, dragging:false
+};
+
+const renderer = new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:"high-performance"});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.8));
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.15;
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+$("view").appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background=new THREE.Color("#a0b6bd");
+scene.fog=new THREE.FogExp2("#b4c6c8",.000105);
+
+const camera=new THREE.PerspectiveCamera(43,1,.15,50000);
+const hemi=new THREE.HemisphereLight("#dcecf1","#7e7461",2.5);
+scene.add(hemi);
+const sun=new THREE.DirectionalLight("#fff0cf",4.2);
+sun.position.set(-180,310,170);
+sun.castShadow=true;
+sun.shadow.mapSize.set(2048,2048);
+Object.assign(sun.shadow.camera,{left:-165,right:165,top:200,bottom:-140,near:1,far:800});
+sun.shadow.bias=-.00025;
+sun.shadow.normalBias=.45;
+sun.target.position.set(0,65,0);
+scene.add(sun,sun.target);
+const rim=new THREE.DirectionalLight("#a9cee3",2.2);
+rim.position.set(140,100,-180);scene.add(rim);
+
+/* Procedural reflection environment. No environment image is loaded. */
+const envScene=new THREE.Scene();
+envScene.background=new THREE.Color("#a7bcc4");
+const envPanel=(x,y,z,sx,sy,sz,color)=>{
+  const p=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz),new THREE.MeshBasicMaterial({color}));
+  p.position.set(x,y,z);envScene.add(p);
+};
+envPanel(-8,6,0,2,12,14,"#fdf8e9");
+envPanel(7,4,0,2,10,14,"#e3f1fc");
+envPanel(0,-5,0,30,1,30,"#766e5c");
+envPanel(0,10,-4,18,1,12,"#f5fbff");
+const pmrem=new THREE.PMREMGenerator(renderer);
+const envTarget=pmrem.fromScene(envScene,.08,.1,100);
+scene.environment=envTarget.texture;
+pmrem.dispose();
+envScene.traverse(o=>{if(o.isMesh){o.geometry.dispose();o.material.dispose();}});
+
+/* All geometry below is authored here. */
+const cubeGeo=new THREE.BoxGeometry(1,1,1);
+const cylGeo=new THREE.CylinderGeometry(1,1,1,24);
+const sphereGeo=new THREE.IcosahedronGeometry(1,2);
+const beamY=V(0,1,0);
+const mat=(color,roughness=.6,metalness=0)=>new THREE.MeshStandardMaterial({color,roughness,metalness});
+const M={
+  steel:mat("#a8b2b2",.34,.72),
+  bright:mat("#d7ddda",.4,.52),
+  darkSteel:mat("#536269",.54,.65),
+  frame:mat("#737e7d",.63,.58),
+  charcoal:mat("#263338",.7,.4),
+  black:mat("#172126",.84,.15),
+  concrete:mat("#a6a79c",.98,.02),
+  lightConcrete:mat("#c2c0ad",.97,0),
+  sand:mat("#a9a68b",1,0),
+  grass:mat("#778578",1,0),
+  water:mat("#748f94",.27,.22),
+  road:mat("#747e77",.98,.02),
+  white:mat("#d6d9cf",.62,.16),
+  orange:mat("#b78353",.65,.3),
+  yellow:mat("#d3b465",.68,.22),
+  soot:mat("#4c5352",.83,.24)
+};
+function box(parent,x,y,z,sx,sy,sz,material,shadow=true){
+  const mesh=new THREE.Mesh(cubeGeo,material);
+  mesh.position.set(x,y,z);mesh.scale.set(sx,sy,sz);
+  mesh.castShadow=shadow;mesh.receiveShadow=shadow;
+  parent.add(mesh);return mesh;
+}
+function cylinder(parent,x,y,z,r,h,material,shadow=true){
+  const mesh=new THREE.Mesh(cylGeo,material);
+  mesh.position.set(x,y,z);mesh.scale.set(r,h,r);
+  mesh.castShadow=shadow;mesh.receiveShadow=shadow;parent.add(mesh);return mesh;
+}
+function beam(parent,a,b,width,material,depth=width){
+  const mesh=new THREE.Mesh(cubeGeo,material);
+  const d=b.clone().sub(a);
+  mesh.position.copy(a).add(b).multiplyScalar(.5);
+  mesh.scale.set(width,d.length(),depth);
+  mesh.quaternion.setFromUnitVectors(beamY,d.normalize());
+  mesh.castShadow=true;mesh.receiveShadow=true;parent.add(mesh);
+  return mesh;
+}
+function ball(parent,x,y,z,sx,sy,sz,material){
+  const mesh=new THREE.Mesh(sphereGeo,material);
+  mesh.position.set(x,y,z);mesh.scale.set(sx,sy,sz);parent.add(mesh);return mesh;
+}
+let seed=92851;
+function rand(){seed=(Math.imul(1664525,seed)+1013904223)>>>0;return seed/4294967296;}
+
+/* Sky uses a generated shader, not a photograph. */
+const sky=new THREE.Mesh(
+  new THREE.SphereGeometry(22000,24,16),
+  new THREE.ShaderMaterial({
+    side:THREE.BackSide,depthWrite:false,
+    uniforms:{top:{value:new THREE.Color("#52798e")},bottom:{value:new THREE.Color("#d1d8cb")}},
+    vertexShader:`varying vec3 vDirection;void main(){vDirection=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+    fragmentShader:`uniform vec3 top;uniform vec3 bottom;varying vec3 vDirection;
+      void main(){float h=normalize(vDirection).y;
+      vec3 col=mix(bottom,top,smoothstep(-.08,.76,h));
+      col+=.025*sin(h*38.)*(1.-smoothstep(.02,.4,h));
+      gl_FragColor=vec4(col,1.);}`
+  })
+);
+sky.renderOrder=-20;scene.add(sky);
+
+box(scene,0,-2,0,26000,3,26000,M.sand,false);
+box(scene,0,-.2,-4400,24000,.4,4200,M.water,false);
+box(scene,-160,.03,-75,920,.13,470,M.grass,false);
+box(scene,45,.15,20,265,.24,230,M.lightConcrete);
+box(scene,-110,.23,80,34,.3,980,M.road,false);
+box(scene,300,.18,-120,950,.3,25,M.road,false);
+box(scene,-5,.4,0,110,.8,100,M.concrete);
+for(let i=0;i<12;i++)box(scene,-110,.43,410-i*75,1,.03,10,M.lightConcrete,false);
+
+/* A sparse, original coastal site layout. */
+const shrubCount=220, shrubMesh=new THREE.InstancedMesh(sphereGeo,M.grass,shrubCount);
+const dummy=new THREE.Object3D();
+for(let i=0;i<shrubCount;i++){
+  let x=(rand()-.5)*1900,z=(rand()-.5)*1800;
+  if(Math.abs(x)<150&&Math.abs(z)<200)x+=x<0?-220:220;
+  dummy.position.set(x,-.2,z);
+  const s=4+rand()*19;dummy.scale.set(s,.5+rand()*1.3,s*(.5+rand()));
+  dummy.rotation.y=rand()*TAU;dummy.updateMatrix();shrubMesh.setMatrixAt(i,dummy.matrix);
+}
+scene.add(shrubMesh);
+for(let i=0;i<5;i++){
+  const x=-135+(i%3)*28,z=65+Math.floor(i/3)*35;
+  cylinder(scene,x,17,z,9,33,M.white);
+  ball(scene,x,33.3,z,9,3.5,9,M.white);
+  cylinder(scene,x,2,z,10,3,M.concrete);
+  box(scene,x,17,z+9.1,1,31,.4,M.darkSteel);
+}
+for(let i=0;i<4;i++){
+  const x=-230+i*48;
+  box(scene,x,8,-230,39,16,65,i%2?M.white:M.frame);
+  box(scene,x,16.6,-230,41,1.3,67,M.bright);
+  box(scene,x,6,-196.9,20,11,.3,M.darkSteel);
+}
+for(let i=0;i<9;i++){
+  const z=-120+i*23;
+  cylinder(scene,100,6,z,.18,12,M.darkSteel,false);
+  box(scene,100,12,z,4,.3,1.8,M.white,false);
+}
+
+/* Launch mount in the background, not used by the catch mechanism. */
+const mount=new THREE.Group();mount.position.set(85,0,-83);scene.add(mount);
+cylinder(mount,0,3,0,14,5,M.concrete);
+for(let i=0;i<6;i++){
+  const a=i*TAU/6;
+  beam(mount,V(Math.cos(a)*13,2,Math.sin(a)*13),V(Math.cos(a)*8,18,Math.sin(a)*8),2.5,M.frame);
+}
+const mountRing=new THREE.Mesh(new THREE.TorusGeometry(9,2,8,32),M.darkSteel);
+mountRing.rotation.x=Math.PI/2;mountRing.position.y=19;mount.add(mountRing);
+
+/* Tower: four columns, cross-bracing, floors, service spine and carriage. */
+const tower=new THREE.Group();tower.position.x=-24;scene.add(tower);
+box(tower,0,2,0,26,4,26,M.concrete);
+for(const x of [-9,9])for(const z of [-9,9]){
+  box(tower,x,74,z,1.25,144,1.25,M.frame);
+}
+for(let level=0;level<=10;level++){
+  const y=5+level*13.7;
+  for(const z of [-9,9])box(tower,0,y,z,19,1.05,.95,M.darkSteel);
+  for(const x of [-9,9])box(tower,x,y,0,.95,1.05,19,M.darkSteel);
+  if(level<10){
+    const y2=y+13.7;
+    for(const z of [-9,9]){
+      beam(tower,V(-9,y,z),V(9,y2,z),.56,M.frame);
+      beam(tower,V(9,y,z),V(-9,y2,z),.56,M.frame);
+    }
+    for(const x of [-9,9]){
+      beam(tower,V(x,y,-9),V(x,y2,9),.56,M.frame);
+      beam(tower,V(x,y,9),V(x,y2,-9),.56,M.frame);
+    }
+  }
+}
+box(tower,-6,75,0,3.6,139,5.5,M.charcoal);
+box(tower,9.8,73,-4.5,.65,140,.75,M.bright);
+box(tower,9.8,73,4.5,.65,140,.75,M.bright);
+for(let y=12;y<143;y+=13.7){
+  box(tower,-7,y,0,5,.4,7,M.frame);
+  box(tower,-7,y+1.4,-3.7,5,.12,.12,M.yellow);
+  box(tower,-7,y+1.4,3.7,5,.12,.12,M.yellow);
+}
+box(tower,0,145,0,22,2,22,M.frame);
+box(tower,-2,148,-4,10,4,8,M.white);
+box(tower,7,149,0,2,6,2,M.orange);
+beam(tower,V(7,150,0),V(19,153,-2),.65,M.darkSteel);
+cylinder(tower,-9,149,9,.12,7,M.darkSteel);
+ball(tower,-9,152.5,9,.3,.3,.3,new THREE.MeshBasicMaterial({color:"#efb27c"}));
+
+const carriage=new THREE.Group();carriage.position.set(-14,102,0);scene.add(carriage);
+box(carriage,-1,0,0,3.1,12,23,M.charcoal);
+for(const z of [-10,10]){
+  box(carriage,.8,0,z,2.5,13,3,M.frame);
+  cylinder(carriage,.8,5,z,1.3,1,M.bright);
+  box(carriage,2,-4,z,5,1.5,3.2,M.orange);
+}
+const arms=[];
+for(const sign of [-1,1]){
+  const arm=new THREE.Group();arm.position.set(-14,102,sign*11);scene.add(arm);
+  box(arm,22,0,0,44,.7,1.2,M.bright);
+  box(arm,22,-2.6,0,44,.7,1.05,M.frame);
+  for(let j=0;j<9;j++){
+    const x=j*4.9;
+    beam(arm,V(x,-2.6,0),V(x+4.9,0,0),.26,M.darkSteel);
+    beam(arm,V(x,0,0),V(x+4.9,-2.6,0),.23,M.frame);
+  }
+  box(arm,31,.48,0,8,.22,1.4,M.darkSteel);
+  box(arm,43,.2,0,2.1,1.3,1.7,M.orange);
+  beam(arm,V(1,8,0),V(29,.2,0),.12,M.darkSteel);
+  beam(arm,V(1,8,0),V(1,.2,0),.45,M.frame);
+  arms.push({group:arm,sign});
+}
+
+/* Vehicle. Local y=0 is the engine skirt; top rim is y=71. */
+const booster=new THREE.Group();scene.add(booster);
+const body=new THREE.Mesh(new THREE.CylinderGeometry(4.5,4.5,69.8,64,1,true),M.steel);
+body.position.y=35.4;body.castShadow=true;body.receiveShadow=true;booster.add(body);
+cylinder(booster,0,1,0,4.47,2,M.soot);
+cylinder(booster,0,70.2,0,4.48,.8,M.darkSteel);
+cylinder(booster,0,70.9,0,4.5,.24,M.bright);
+cylinder(booster,0,70.65,0,4.26,.12,M.black);
+const ringGeo=new THREE.TorusGeometry(4.51,.035,4,64);
+for(let y=3;y<70;y+=3.45){
+  const r=new THREE.Mesh(ringGeo,y<12?M.darkSteel:M.bright);
+  r.rotation.x=Math.PI/2;r.position.y=y;booster.add(r);
+}
+for(let i=0;i<10;i++){
+  const a=i*TAU/10;
+  box(booster,Math.cos(a)*4.502,34,Math.sin(a)*4.502,.035,65,.035,M.darkSteel,false);
+}
+for(let i=0;i<4;i++){
+  const a=i*TAU/4+.4;
+  const conduit=box(booster,Math.cos(a)*4.53,30,Math.sin(a)*4.53,.23,52,.23,M.darkSteel);
+  conduit.rotation.y=-a;
+}
+for(let i=0;i<8;i++){
+  const a=i*TAU/8;
+  const patch=box(booster,Math.cos(a)*4.48,7,Math.sin(a)*4.48,.1,9,1.1,M.soot);
+  patch.rotation.y=-a;
+}
+for(const sign of [-1,1]){
+  box(booster,0,66,sign*4.95,1.8,.9,2.1,M.darkSteel);
+  box(booster,0,66.25,sign*4.4,2,2,.6,M.bright);
+}
+
+const fins=[];
+for(let i=0;i<4;i++){
+  const root=new THREE.Group();root.rotation.y=i*Math.PI/2+.04;root.position.y=64.5;
+  booster.add(root);
+  const fin=new THREE.Group();fin.position.x=4.32;root.add(fin);
+  box(fin,2.3,0,-1.85,4.8,.27,.22,M.darkSteel);
+  box(fin,2.3,0,1.85,4.8,.27,.22,M.darkSteel);
+  box(fin,0,0,0,.25,.4,3.8,M.darkSteel);
+  box(fin,4.65,0,0,.25,.3,3.8,M.darkSteel);
+  for(let j=1;j<7;j++)box(fin,j*.66,0,0,.11,.28,3.7,M.frame);
+  for(let j=1;j<6;j++)box(fin,2.3,0,-1.85+j*.62,4.6,.28,.11,M.frame);
+  fins.push(fin);
+}
+
+/* 33 original engine bells; 13 are used for the illustrated landing burn. */
+const bellGeo=new THREE.CylinderGeometry(.23,.47,1.3,12,1,true);
+const landingEngines=[];
+function addEngine(x,z,landing,central){
+  const bell=new THREE.Mesh(bellGeo,M.black);bell.position.set(x,-.16,z);booster.add(bell);
+  cylinder(booster,x,.55,z,.23,.6,M.darkSteel,false);
+  if(landing)landingEngines.push({x,z,central});
+}
+for(let i=0;i<20;i++){const a=i*TAU/20;addEngine(3.52*Math.cos(a),3.52*Math.sin(a),false,false);}
+for(let i=0;i<10;i++){const a=i*TAU/10;addEngine(2.3*Math.cos(a),2.3*Math.sin(a),true,false);}
+for(let i=0;i<3;i++){const a=i*TAU/3;addEngine(.9*Math.cos(a),.9*Math.sin(a),true,true);}
+
+const flameUniforms={uTime:{value:0}};
+const flameMaterial=new THREE.ShaderMaterial({
+  uniforms:flameUniforms,transparent:true,depthWrite:false,
+  blending:THREE.AdditiveBlending,side:THREE.DoubleSide,
+  vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+  fragmentShader:`uniform float uTime;varying vec2 vUv;
+    void main(){
+      float p=vUv.y;
+      float n=.78+.22*sin(p*85.-uTime*48.+vUv.x*31.);
+      vec3 c=mix(vec3(1.,.23,.025),vec3(1.,.85,.48),smoothstep(.05,.75,p));
+      c=mix(c,vec3(.35,.61,1.),smoothstep(.86,1.,p));
+      float alpha=smoothstep(0.,.22,p)*n*.63;
+      gl_FragColor=vec4(c*2.3,alpha);
+    }`
+});
+const flameGeo=new THREE.CylinderGeometry(.52,.015,1,12,8,true);
+const coreMat=new THREE.MeshBasicMaterial({color:"#fff0cf",transparent:true,opacity:.85,blending:THREE.AdditiveBlending,depthWrite:false});
+const flames=[];
+for(const e of landingEngines){
+  const g=new THREE.Group();g.position.set(e.x,-.85,e.z);booster.add(g);
+  const outer=new THREE.Mesh(flameGeo,flameMaterial);g.add(outer);
+  const core=new THREE.Mesh(flameGeo,coreMat);g.add(core);
+  flames.push({group:g,outer,core,central:e.central});
+}
+const engineLight=new THREE.PointLight("#ffd49d",0,105,1.5);booster.add(engineLight);
+
+/* Deterministic dust: the same timestamp always produces the same cloud. */
+const dustCount=155;
+const dustMat=new THREE.MeshStandardMaterial({
+  color:"#b7b5a1",roughness:1,transparent:true,opacity:.16,depthWrite:false
+});
+const dust=new THREE.InstancedMesh(sphereGeo,dustMat,dustCount);
+dust.frustumCulled=false;scene.add(dust);
+const dustSeeds=Array.from({length:dustCount},()=>({
+  angle:rand()*TAU,rate:.7+rand()*.7,delay:rand()*5,
+  size:1.4+rand()*2.6,lift:rand(),off:rand()*TAU
+}));
+
+/* Hermite keyframes retain smooth, authored velocity when scrubbing. */
+const YKEYS=[
+  [0,4200,-250],[8,2400,-185],[17,950,-140],[23,350,-65],
+  [29,130,-20],[33,75,-9],[36,49,-6],[39,37.65,-1.3],[40,36.9,0]
+];
+const XKEYS=[
+  [0,180,-5],[8,135,-6],[17,84,-5],[23,50,-5],
+  [29,26,-2.6],[33,18.8,-.9],[36,17.1,-.12],[40,17,0]
+];
+const ZKEYS=[
+  [0,95,-2],[8,70,-4],[17,32,-4],[23,13,-2],
+  [29,4,-1],[33,.7,-.3],[36,0,0],[40,0,0]
+];
+function sample(keys,t){
+  if(t<=keys[0][0])return keys[0][1];
+  for(let i=0;i<keys.length-1;i++){
+    const a=keys[i],b=keys[i+1];
+    if(t<=b[0]){
+      const dt=b[0]-a[0],u=(t-a[0])/dt,u2=u*u,u3=u2*u;
+      return (2*u3-3*u2+1)*a[1]+(u3-2*u2+u)*dt*a[2]
+        +(-2*u3+3*u2)*b[1]+(u3-u2)*dt*b[2];
+    }
+  }
+  return keys[keys.length-1][1];
+}
+
+const tempA=V(),tempB=V(),lookTarget=V(),camPosition=V();
+const camLabels={
+  wide:"CAM 01 / GROUND WIDE",
+  onboard:"CAM 02 / BOOSTER-MOUNTED",
+  close:"CAM 03 / CATCH DETAIL"
+};
+
+function updateWorld(ct){
+  const y=sample(YKEYS,ct);
+  booster.position.set(sample(XKEYS,ct),y,sample(ZKEYS,ct));
+  const attitude=1-smooth(17,36,ct);
+  booster.rotation.set(
+    (.038*Math.sin(ct*.12)+.018)*attitude,
+    -.09*(1-smooth(20,36,ct)),
+    (.07*Math.cos(ct*.1)-.018)*attitude
+  );
+  booster.updateMatrixWorld(true);
+
+  const closing=smooth(28.5,39.85,ct);
+  for(const a of arms){
+    const endZ=a.sign*lerp(18,3,closing);
+    const dz=endZ-a.sign*11;
+    a.group.rotation.y=-Math.atan2(dz,44);
+    a.group.scale.x=Math.hypot(44,dz)/44;
+    a.group.position.y=102-.05*smooth(39.7,40,ct);
+  }
+  carriage.position.y=102-.05*smooth(39.7,40,ct);
+  for(let i=0;i<fins.length;i++)fins[i].rotation.z=(.05*Math.sin(ct*.7+i))*attitude;
+
+  const burn=smooth(17,17.38,ct)*(1-smooth(39.72,40,ct));
+  flameUniforms.uTime.value=ct;
+  for(let i=0;i<flames.length;i++){
+    const f=flames[i];
+    const enginePower=burn*(f.central?1:1-smooth(25.5,27,ct));
+    f.group.visible=enginePower>.005;
+    const flicker=1+.07*Math.sin(ct*57+i*2.83)+.025*Math.sin(ct*111+i);
+    const length=(f.central?30:22)*enginePower*flicker;
+    const width=Math.max(.03,Math.sqrt(enginePower));
+    f.outer.scale.set(width,length,width);
+    f.outer.position.y=-length*.5;
+    f.core.scale.set(.58*width,length*.69,.58*width);
+    f.core.position.y=-length*.345;
+  }
+  engineLight.intensity=burn*150;
+
+  const dustTime=ct-28;
+  for(let i=0;i<dustCount;i++){
+    const p=dustSeeds[i],elapsed=dustTime-p.delay;
+    if(elapsed<=0){dummy.position.set(0,-100,0);dummy.scale.setScalar(.001);}
+    else{
+      const age=(elapsed*p.rate)%7;
+      const envelope=smooth(0,.6,age)*(1-smooth(5.5,7,age));
+      const radius=4+age*(5+p.lift*3);
+      const a=p.angle+age*.045;
+      dummy.position.set(17+Math.cos(a)*radius,2+age*(1+p.lift*1.7),Math.sin(a)*radius*.9);
+      const s=p.size*(.8+age*.9)*envelope;
+      dummy.scale.set(s*1.4,s*.7,s);
+      dummy.rotation.set(age*.1,p.off,0);
+    }
+    dummy.updateMatrix();dust.setMatrixAt(i,dummy.matrix);
+  }
+  dust.instanceMatrix.needsUpdate=true;
+
+  updateCamera(ct,y);
+  return y;
+}
+
+function updateCamera(ct,boosterY){
+  const aspect=camera.aspect;
+  if(state.camera==="wide"){
+    camera.fov=43;
+    camera.up.set(0,1,0);
+    const visibleHeight=Math.max(193,boosterY+90);
+    lookTarget.set((booster.position.x-24)*.5,Math.max(83,(boosterY+91)*.5),booster.position.z*.4);
+    const fit=Math.max(1,1.12/aspect);
+    const distance=visibleHeight/(2*Math.tan(THREE.MathUtils.degToRad(camera.fov/2)))*1.1*fit*state.zoom;
+    const theta=.68+state.yaw,phi=clamp(.24+state.pitch,-.04,1.05);
+    camPosition.set(Math.sin(theta)*Math.cos(phi),Math.sin(phi),Math.cos(theta)*Math.cos(phi));
+    camera.position.copy(lookTarget).addScaledVector(camPosition,distance);
+    camera.lookAt(lookTarget);
+  }else if(state.camera==="close"){
+    camera.fov=40;camera.up.set(0,1,0);
+    const mobileScale=aspect<1?1.4:1;
+    lookTarget.set(8,104,0);
+    camera.position.set(8+97*mobileScale,104+25*mobileScale,126*mobileScale);
+    camera.lookAt(lookTarget);
+  }else{
+    camera.fov=79;
+    tempA.set(-4.95,65.6,.55);booster.localToWorld(tempA);
+    tempB.set(-24,4,-8);booster.localToWorld(tempB);
+    camera.position.copy(tempA);
+    camera.up.set(0,0,-1).applyQuaternion(booster.quaternion);
+    camera.lookAt(tempB);
+  }
+  camera.updateProjectionMatrix();
+}
+
+function resize(){
+  const w=innerWidth,h=innerHeight;
+  renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();
+}
+addEventListener("resize",resize);resize();
+
+function setCamera(name){
+  state.camera=name;
+  document.querySelectorAll("[data-camera]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.camera===name)));
+  $("viewTag").textContent=camLabels[name];
+  renderer.domElement.style.cursor=name==="wide"?"grab":"default";
+}
+document.querySelectorAll("[data-camera]").forEach(b=>b.addEventListener("click",()=>setCamera(b.dataset.camera)));
+setCamera("wide");
+
+const playSVG='<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5L17 10 5 17.5z"/></svg>';
+const pauseSVG='<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h4v14H4zm8 0h4v14h-4z"/></svg>';
+function setPlaying(playing){
+  state.playing=playing;
+  $("playButton").innerHTML=playing?pauseSVG:playSVG;
+  $("playButton").setAttribute("aria-label",playing?"Pause playback":"Play from current time");
+}
+function togglePlay(){
+  if(state.time>=40)state.time=0;
+  setPlaying(!state.playing);
+}
+function replay(){state.time=0;setPlaying(true);}
+function seek(t){state.time=clamp(t,0,40);setPlaying(false);}
+$("playButton").addEventListener("click",togglePlay);
+$("replayButton").addEventListener("click",replay);
+$("endReplay").addEventListener("click",replay);
+$("speed").addEventListener("change",e=>state.speed=Number(e.target.value));
+$("scrubber").addEventListener("input",e=>seek(Number(e.target.value)));
+document.querySelectorAll("[data-event]").forEach(b=>b.addEventListener("click",()=>seek(offsets()[Number(b.dataset.event)])));
+
+let pointer=null;
+renderer.domElement.addEventListener("pointerdown",e=>{
+  if(state.camera!=="wide")return;
+  pointer={id:e.pointerId,x:e.clientX,y:e.clientY};
+  renderer.domElement.setPointerCapture(e.pointerId);
+  renderer.domElement.style.cursor="grabbing";
+});
+renderer.domElement.addEventListener("pointermove",e=>{
+  if(!pointer||e.pointerId!==pointer.id)return;
+  state.yaw-=(e.clientX-pointer.x)*.005;
+  state.pitch=clamp(state.pitch+(e.clientY-pointer.y)*.003,-.23,.7);
+  pointer.x=e.clientX;pointer.y=e.clientY;
+});
+function releasePointer(){pointer=null;renderer.domElement.style.cursor=state.camera==="wide"?"grab":"default";}
+renderer.domElement.addEventListener("pointerup",releasePointer);
+renderer.domElement.addEventListener("pointercancel",releasePointer);
+renderer.domElement.addEventListener("wheel",e=>{
+  if(state.camera!=="wide")return;
+  e.preventDefault();state.zoom=clamp(state.zoom*Math.exp(e.deltaY*.0007),.52,2.7);
+},{passive:false});
+renderer.domElement.addEventListener("dblclick",()=>{
+  state.yaw=0;state.pitch=0;state.zoom=1;
+});
+
+addEventListener("keydown",e=>{
+  if($("aboutDialog").open||/INPUT|TEXTAREA|SELECT/.test(e.target.tagName))return;
+  if(e.code==="Space"&&e.target.tagName!=="BUTTON"){
+    e.preventDefault();if(!e.repeat)togglePlay();
+  }
+  if(e.code==="ArrowLeft"){e.preventDefault();seek(state.time-(e.shiftKey?1:.25));}
+  if(e.code==="ArrowRight"){e.preventDefault();seek(state.time+(e.shiftKey?1:.25));}
+  if(e.key.toLowerCase()==="r")replay();
+  if(e.key==="1")setCamera("wide");
+  if(e.key==="2")setCamera("onboard");
+  if(e.key==="3")setCamera("close");
+});
+document.addEventListener("visibilitychange",()=>{if(document.hidden)setPlaying(false);});
+
+/* Documentation, independently editable reference anchors, cue-sheet export. */
+const dialog=$("aboutDialog");
+function openAbout(timings=false){
+  setPlaying(false);dialog.showModal();
+  if(timings)setTimeout(()=>$("timingSection").scrollIntoView({block:"start"}),0);
+}
+$("aboutButton").addEventListener("click",()=>openAbout());
+$("footAbout").addEventListener("click",()=>openAbout());
+$("calibrateButton").addEventListener("click",()=>openAbout(true));
+$("closeDialog").addEventListener("click",()=>dialog.close());
+dialog.addEventListener("click",e=>{
+  const r=dialog.getBoundingClientRect();
+  if(e.target===dialog&&(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom))dialog.close();
+});
+
+function refreshAnchors(){
+  const o=offsets();
+  anchors.forEach((a,i)=>{
+    $("anchor"+i).value=metFormat(a,1);
+    $("cueTime"+i).textContent="≈ "+metFormat(a,1);
+    $("marker"+i).style.left=Math.min(99.9,o[i]/40*100)+"%";
+  });
+}
+function persistAnchors(){
+  try{localStorage.setItem("catch05-anchors-v1",JSON.stringify(anchors));}catch(_){}
+}
+$("timingForm").addEventListener("submit",e=>{
+  e.preventDefault();
+  const a=[0,1,2].map(i=>parseMET($("anchor"+i).value));
+  if(!validAnchors(a)){
+    $("timingFeedback").textContent="Use increasing MM:SS.s values, all within the final 40 seconds, separated by more than 0.5 s.";
+    return;
+  }
+  anchors=a;persistAnchors();refreshAnchors();
+  $("timingFeedback").textContent="Applied to the shared scene clock. Custom timings remain approximate and are not independently verified.";
+});
+$("resetAnchors").addEventListener("click",()=>{
+  anchors=DEFAULT_ANCHORS.slice();persistAnchors();refreshAnchors();
+  $("timingFeedback").textContent="Restored the three initial approximate reference targets.";
+});
+$("downloadSheet").addEventListener("click",()=>{
+  const names=["Landing ignition","Tower-crown crossing (editorial cue)","Capture / shutdown"];
+  const o=offsets();
+  const sheet={
+    title:"Catch / 05 — reference cue sheet",
+    mission:"SpaceX Starship Flight 5",
+    date:"2024-10-13",
+    reference_owner:"SpaceX",
+    reference_url:SOURCE,
+    time_basis:"Mission elapsed seconds, not video-player time",
+    reference_verification:"Approximate targets; not independently frame-verified",
+    nominal_editorial_uncertainty_seconds:2,
+    reconstruction_duration_seconds:40,
+    reconstruction_start_met:anchors[2]-40,
+    events:anchors.map((a,i)=>({
+      event:names[i],reference_met:metFormat(a,2),reference_met_seconds:a,
+      reconstruction_seconds:o[i],model_hits_authored_anchor:true,
+      independently_verified:false
+    })),
+    rights:{
+      scene:"Original procedural meshes, materials and effects; no third-party media embedded",
+      reference:"External SpaceX reference only; no separate reference-media license supplied",
+      software:"Three.js r160, MIT"
+    },
+    approximations:["Trajectory","Attitude","Capture elevation","Mechanism geometry and motion","Engine transition","Environment","Camera poses"]
+  };
+  const url=URL.createObjectURL(new Blob([JSON.stringify(sheet,null,2)],{type:"application/json"}));
+  const a=document.createElement("a");a.href=url;a.download="catch-05-cue-sheet.json";a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+});
+refreshAnchors();
+
+let lastPhase=-1;
+function updateHUD(ct,y){
+  const t=state.time;
+  $("scrubber").value=t;
+  $("scrubber").style.setProperty("--progress",(t/40*100)+"%");
+  $("scrubber").setAttribute("aria-valuetext",`${t.toFixed(1)} seconds into approach; ${(40-t).toFixed(1)} seconds to capture`);
+  $("remaining").innerHTML=(t>=39.999?"00.0":"−"+(40-t).toFixed(1).padStart(4,"0"))+'<small>TO CAPTURE / SECONDS</small>';
+  $("metClock").textContent="T+ "+metFormat(anchors[2]-40+t,1);
+  $("heightReading").innerHTML=Math.max(0,Math.round(y-36.9)).toLocaleString()+"<span>m</span>";
+
+  let phase=ct<17?0:ct<33?1:ct<39.7?2:3;
+  if(phase!==lastPhase){
+    const labels=["Unpowered return","Landing burn","Final alignment","Capture & shutdown"];
+    $("chapterName").textContent=labels[phase];
+    $("chapterNumber").textContent=`PHASE ${String(phase+1).padStart(2,"0")} / 04`;
+    lastPhase=phase;
+  }
+  const o=offsets();
+  document.querySelectorAll("[data-event]").forEach((b,i)=>{
+    b.classList.toggle("done",t>=o[i]-.015);
+    b.classList.toggle("current",i===0?t>=o[0]&&t<o[1]:i===1?t>=o[1]&&t<40:t>=40);
+  });
+  $("completion").classList.toggle("visible",t>=39.999);
+}
+
+let last=performance.now(),first=true;
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt=Math.min((now-last)/1000,.08);last=now;
+  if(state.playing){
+    state.time=Math.min(40,state.time+dt*state.speed);
+    if(state.time>=40)setPlaying(false);
+  }
+  const ct=canonicalTime(state.time);
+  const y=updateWorld(ct);
+  updateHUD(ct,y);
+  renderer.render(scene,camera);
+  if(first){$("loading").style.display="none";first=false;}
+}
+requestAnimationFrame(frame);
+
+renderer.domElement.addEventListener("webglcontextlost",e=>{
+  e.preventDefault();setPlaying(false);
+  $("loading").style.display="grid";
+  $("loadingText").textContent="The graphics context was interrupted. Reload to rebuild this procedural scene.";
+});
+})();
+</script>
+</body>
+</html>

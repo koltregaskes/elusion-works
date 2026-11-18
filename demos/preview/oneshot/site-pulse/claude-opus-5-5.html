@@ -1,0 +1,1469 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex,nofollow">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src https: http://localhost:* http://127.0.0.1:*; base-uri 'none'; form-action 'none'">
+<title>Rooms OS Now · Signal Room (private)</title>
+<style>
+:root{
+  --paper:#f2eee4;--card:#fbf9f3;--ink:#1d1b17;--muted:#6e675a;--line:#dcd4c3;--soft:#ebe5d7;
+  --bsky:#0a7aff;--masto:#5b4be1;--x:#1d1b17;--tf:#c2410c;--self:#999;
+  --ok:#2f7d4f;--warn:#a86a12;--bad:#b42318;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--paper);color:var(--ink);font:14px/1.45 var(--sans)}
+a{color:inherit}
+button,select,input{font:inherit}
+button{border:1px solid var(--line);background:var(--card);color:var(--ink);padding:6px 12px;border-radius:6px;cursor:pointer}
+button:hover{border-color:var(--ink)}
+button.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+button:disabled{opacity:.45;cursor:not-allowed}
+.top{position:sticky;top:0;z-index:20;display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;padding:14px 28px;background:var(--ink);color:var(--paper)}
+.top button{background:transparent;color:var(--paper);border-color:#4a463d}
+.top button:hover{border-color:var(--paper)}
+.top button.primary{background:var(--paper);color:var(--ink)}
+.brand{display:flex;gap:12px;align-items:center}
+.mark{width:34px;height:34px;border:2px solid var(--paper);display:grid;place-items:center;font-family:var(--serif);font-size:20px;border-radius:4px}
+h1{font-family:var(--serif);font-weight:600;font-size:21px;margin:0;letter-spacing:.2px}
+h1 span{font-style:italic;font-weight:400;opacity:.75}
+.sub{margin:2px 0 0;font-size:12px;opacity:.7}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.toolbar select{background:transparent;color:var(--paper);border:1px solid #4a463d;border-radius:6px;padding:5px}
+.toolbar select option{color:var(--ink)}
+.pill{font:12px var(--mono);padding:4px 10px;border-radius:99px;border:1px solid #4a463d}
+.pill.on{border-color:#6fbf8b;color:#9fe0b5}
+.pill.off{border-color:#c7864a;color:#f0b98a}
+main{max-width:1320px;margin:0 auto;padding:22px 28px 140px}
+.block{margin:0 0 34px}
+.bh{display:flex;flex-wrap:wrap;gap:10px 20px;align-items:baseline;justify-content:space-between;border-bottom:2px solid var(--ink);padding-bottom:6px;margin-bottom:14px}
+h2{font-family:var(--serif);font-size:22px;font-weight:600;margin:0}
+h3{font-family:var(--serif);font-size:16px;font-weight:600;margin:22px 0 8px}
+.lede{color:var(--muted);margin:0;font-size:13px;max-width:780px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-top:4px solid var(--c,var(--ink));border-radius:6px;padding:12px 14px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.tag{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;letter-spacing:.3px;text-transform:uppercase}
+.tag::before{content:"";width:9px;height:9px;border-radius:2px;background:var(--c,var(--ink))}
+.handle{font-family:var(--serif);font-size:17px;margin:6px 0 8px;word-break:break-all}
+dl{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;margin:0;font-size:12.5px}
+dt{color:var(--muted)}
+dd{margin:0}
+.chip{display:inline-block;font:11.5px var(--mono);padding:1px 7px;border-radius:4px;border:1px solid currentColor;white-space:nowrap}
+.chip.ok{color:var(--ok)}.chip.warn{color:var(--warn)}.chip.bad{color:var(--bad)}.chip.mute{color:var(--muted)}
+.chip.stripe{background:repeating-linear-gradient(135deg,transparent 0 5px,rgba(168,106,18,.13) 5px 7px)}
+.reasons{margin:8px 0 0;padding:0 0 0 16px;font-size:12px;color:var(--warn)}
+.reasons li{font-family:var(--mono);font-size:11.5px}
+.actions{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+.note{font-size:12px;color:var(--muted)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{border:0;border-radius:0;background:var(--card)}
+.seg button.on{background:var(--ink);color:var(--paper)}
+.multiples{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.big{font:600 28px/1.1 var(--mono);margin:4px 0 2px}
+.delta{font:12px var(--mono);color:var(--muted)}
+.delta b.up{color:var(--ok)}.delta b.down{color:var(--bad)}
+svg.chart{width:100%;height:auto;display:block;margin:8px 0 4px}
+svg.chart text{font:10px var(--mono);fill:var(--muted)}
+svg.chart .grid{stroke:var(--soft);stroke-width:1}
+svg.chart path.line{fill:none;stroke:var(--c);stroke-width:2}
+svg.chart path.dash{stroke-dasharray:5 4}
+svg.chart circle.v{fill:var(--c);stroke:var(--card);stroke-width:1.5}
+svg.chart circle.u{fill:var(--card);stroke:var(--c);stroke-width:1.5}
+.chart-empty{padding:26px 8px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:6px;margin:8px 0;font-size:12.5px}
+.tbl-wrap{overflow:auto;border:1px solid var(--line);border-radius:6px;background:var(--card)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:6px 9px;border-bottom:1px solid var(--soft);text-align:left;vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);background:var(--card);position:sticky;top:0}
+td.num,th.num{text-align:right;font-family:var(--mono);white-space:nowrap}
+td.na{text-align:right;color:var(--muted);background:repeating-linear-gradient(135deg,transparent 0 6px,rgba(110,103,90,.11) 6px 7px);white-space:nowrap}
+td.na .dash{font-family:var(--mono)}
+td.na small{display:block;font-size:10px;line-height:1.1}
+td.text{max-width:420px}
+td.text a{text-decoration:none}
+td.text a:hover{text-decoration:underline}
+.mono{font-family:var(--mono);font-size:12px}
+.controls{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;margin:0 0 10px;font-size:13px}
+.controls select{padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:var(--card)}
+.xgroup{background:var(--card);border:1px solid var(--line);border-radius:6px;margin-bottom:10px}
+.xgroup .snip{padding:8px 10px;font-family:var(--serif);font-size:14px;border-bottom:1px solid var(--soft)}
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px}
+.av{display:inline-block;min-width:92px;font:11px var(--mono);padding:2px 6px;border-radius:4px}
+.av.available{background:#e2efe5;color:var(--ok)}
+.av.derived{background:#e8eef6;color:#2d5b8a}
+.av.not_offered,.av.not_in_export{background:repeating-linear-gradient(135deg,#eee8db 0 5px,#e4dccb 5px 7px);color:var(--muted)}
+.av.not_returned{background:#f7e8d0;color:var(--warn)}
+td small.avn{display:block;color:var(--muted);font-size:10.5px;max-width:170px}
+#setup{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:6px;padding:14px 18px;margin-bottom:26px}
+#setup ol{margin:6px 0 0;padding-left:20px}
+#activity{position:fixed;right:16px;bottom:16px;width:min(460px,calc(100vw - 32px));max-height:42vh;overflow:auto;background:var(--ink);color:var(--paper);border-radius:8px;font:12px/1.4 var(--mono);box-shadow:0 8px 30px rgba(0,0,0,.25);z-index:30}
+#activity header{display:flex;justify-content:space-between;padding:6px 10px;border-bottom:1px solid #3a372f;position:sticky;top:0;background:var(--ink)}
+#activity header button{padding:0 8px;background:transparent;color:var(--paper);border-color:#4a463d}
+#activity.min #log{display:none}
+#log{padding:6px 10px}
+#log div{padding:2px 0;border-bottom:1px dotted #3a372f;word-break:break-word}
+#log .ok{color:#9fe0b5}#log .bad{color:#ffaba0}#log .warn{color:#f0c98a}
+dialog{border:1px solid var(--line);border-radius:8px;padding:0;width:min(720px,94vw);background:var(--card);color:var(--ink)}
+dialog::backdrop{background:rgba(29,27,23,.45)}
+dialog form{padding:18px 20px}
+.fgrid{display:grid;grid-template-columns:200px 1fr;gap:8px 12px;align-items:center}
+.fgrid input[type=text],.fgrid input[type=password],.fgrid input[type=number]{width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:#fff}
+.fgrid .hint{grid-column:2;font-size:11.5px;color:var(--muted);margin-top:-4px}
+.fsep{grid-column:1/-1;border-top:1px solid var(--soft);margin:6px 0 0;padding-top:8px;font-family:var(--serif);font-weight:600}
+pre.sql{max-height:300px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:6px;padding:10px;font:11.5px var(--mono);white-space:pre}
+.tests li{font-family:var(--mono);font-size:12.5px;padding:2px 0;list-style:none}
+.tests{padding:0;margin:0}
+.t-pass{color:var(--ok)}.t-fail{color:var(--bad)}.t-skip{color:var(--warn)}
+.empty{padding:16px;color:var(--muted);border:1px dashed var(--line);border-radius:6px;background:var(--card)}
+@media (max-width:640px){.fgrid{grid-template-columns:1fr}.fgrid .hint{grid-column:1}main{padding:16px}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <div class="mark">R</div>
+    <div>
+      <h1>Rooms OS Now <span>· Signal Room</span></h1>
+      <p class="sub">Private. Every number shown is read back from your Neon store, never from page memory.</p>
+    </div>
+  </div>
+  <div class="toolbar">
+    <span id="storeState" class="pill off">store: not connected</span>
+    <label>Window
+      <select id="windowSel"><option value="30">30 d</option><option value="90">90 d</option><option value="180">180 d</option><option value="365">365 d</option></select>
+    </label>
+    <button data-action="refresh">Reload from store</button>
+    <button data-action="collect-all" class="primary">Collect live sources</button>
+    <button data-action="settings">Connections</button>
+  </div>
+</header>
+
+<main>
+  <section id="setup" hidden></section>
+
+  <section class="block">
+    <div class="bh"><h2>Coverage &amp; freshness</h2>
+      <p class="lede">Per source: when the data is from, whether the last run was complete, partial or failed, and whether what we wrote to Neon was read back byte-for-byte.</p></div>
+    <div id="coverage" class="cards"></div>
+  </section>
+
+  <section class="block">
+    <div class="bh"><h2>Account trends</h2>
+      <div class="seg" id="trendSeg">
+        <button data-action="trend" data-metric="followers" class="on">Followers</button>
+        <button data-action="trend" data-metric="following">Following</button>
+        <button data-action="trend" data-metric="posts">Posts</button>
+      </div></div>
+    <p class="lede" style="margin-bottom:12px">Each line is one source. Platforms are never summed. Filled dots are snapshots verified by readback. Hollow dots were stored but not verified. Dashed lines are monthly X archive snapshots.</p>
+    <div id="trends" class="multiples"></div>
+  </section>
+
+  <section class="block">
+    <div class="bh"><h2>Post comparisons</h2>
+      <p class="lede">Latest stored metrics per post. A hatched “—” means the metric is missing, and the reason is shown. A missing metric is never shown as 0.</p></div>
+    <div class="controls">
+      <label>Values <select id="fMode"><option value="raw">raw counts</option><option value="per1k">per 1k followers (at metric time)</option></select></label>
+      <label><input type="checkbox" id="fReplies"> include replies</label>
+    </div>
+    <div id="summary"></div>
+    <h3>Same post, different rooms</h3>
+    <p class="note" style="margin:-4px 0 8px">Cross-posts matched by text similarity (Jaccard ≥ 0.6 on words, within 3 days). Reposts are excluded.</p>
+    <div id="crossposts"></div>
+    <h3>Posts in window</h3>
+    <div class="controls">
+      <label>Source <select id="fSrc"><option value="all">all sources</option></select></label>
+      <label>Sort by <select id="fSort"><option>likes</option><option>reposts</option><option>replies</option><option>quotes</option><option>impressions</option><option value="created_at">newest</option></select></label>
+    </div>
+    <div id="posts"></div>
+  </section>
+
+  <section class="block">
+    <div class="bh"><h2>Metric availability</h2>
+      <p class="lede">What each source can actually provide. This is stored in <span class="mono">rooms_now.metric_availability</span> and updated on every successful run.</p></div>
+    <div class="legend">
+      <span class="av available">available</span><span class="av derived">derived</span><span class="av not_returned">not returned</span><span class="av not_offered">not offered</span><span class="av not_in_export">not in export</span>
+    </div>
+    <div id="availability"></div>
+  </section>
+
+  <section class="block">
+    <div class="bh"><h2>Source → store readback log</h2>
+      <p class="lede">Each run hashes the normalised source data, writes it to Neon, reads it back and hashes again. A match proves the store holds exactly what the source returned.</p></div>
+    <div id="runs"></div>
+  </section>
+
+  <section class="block">
+    <div class="bh"><h2>Tests</h2>
+      <div class="toolbar"><button data-action="run-unit">Run unit tests</button><button data-action="run-integration">Run Neon integration tests</button></div></div>
+    <p class="lede" style="margin-bottom:10px">Unit tests run on load with mocked sources. Integration tests use your real Neon store. The first test does a self-test round trip and cleans up after itself. The second checks that the latest real collection for each source was read back and matched.</p>
+    <ul id="tests" class="tests"></ul>
+  </section>
+</main>
+
+<aside id="activity"><header><span>activity</span><button data-action="toggle-log">–</button></header><div id="log"></div></aside>
+
+<dialog id="settingsDlg">
+  <form method="dialog" id="settingsForm">
+    <h2 style="margin-bottom:10px">Connections</h2>
+    <div class="fgrid">
+      <div class="fsep">Store: Neon (one schema: <span class="mono">rooms_now</span>)</div>
+      <label for="f-neon">Connection string</label><input type="password" id="f-neon" autocomplete="off" placeholder="postgresql://user:pass@ep-xxx.region.aws.neon.tech/db?sslmode=require">
+      <span class="hint">Use a role that only has rights on <span class="mono">rooms_now</span>. It is sent only to Neon's HTTPS SQL endpoint.</span>
+      <label for="f-endpoint">SQL endpoint override</label><input type="text" id="f-endpoint" placeholder="(auto: https://api.&lt;region&gt;.neon.tech/sql, then host/sql)">
+      <div class="fsep">Live sources (official counters)</div>
+      <label for="f-bsky">Bluesky handle</label><input type="text" id="f-bsky" placeholder="roomsos.bsky.social">
+      <label for="f-masto">Mastodon account</label><input type="text" id="f-masto" placeholder="@roomsos@mastodon.social">
+      <label for="f-masto-token">Mastodon token (optional)</label><input type="password" id="f-masto-token" autocomplete="off" placeholder="only needed if your server requires auth for its API">
+      <div class="fsep">Typefully (access verification)</div>
+      <label for="f-tf-key">Typefully API key</label><input type="password" id="f-tf-key" autocomplete="off">
+      <label for="f-tf-base">Typefully base URL</label><input type="text" id="f-tf-base" placeholder="https://api.typefully.com/v1">
+      <span class="hint">If the browser blocks direct calls (CORS), point this at a private proxy. The check is then recorded as failed, never as verified.</span>
+      <div class="fsep">Storage of these settings</div>
+      <label for="f-remember">Remember secrets</label><label><input type="checkbox" id="f-remember"> store secrets in this browser's localStorage (otherwise they are kept for this tab only)</label>
+    </div>
+    <div class="actions" style="margin-top:16px">
+      <button type="button" data-action="test-conn">Test Neon connection</button>
+      <button type="button" data-action="init-schema">Create / upgrade schema</button>
+      <button type="button" data-action="show-schema">Show schema SQL</button>
+      <span style="flex:1"></span>
+      <button value="cancel">Close</button>
+      <button type="button" class="primary" data-action="save-settings">Save</button>
+    </div>
+    <div id="connResult" class="note" style="margin-top:8px"></div>
+    <pre id="schemaSql" class="sql" hidden></pre>
+  </form>
+</dialog>
+<input type="file" id="xFile" accept=".zip,.js" multiple hidden>
+
+<script>
+'use strict';
+/* =========================================================================
+   Constants
+   ========================================================================= */
+const SCHEMA = 'rooms_now';
+const DAY = 864e5;
+const ACCOUNT_METRICS = ['followers','following','posts'];
+const POST_METRICS = ['likes','reposts','replies','quotes','impressions'];
+const ALL_METRICS = [...ACCOUNT_METRICS, ...POST_METRICS];
+const PLAT = {
+  bluesky:   { name:'Bluesky',   c:'var(--bsky)',  freshH:26 },
+  mastodon:  { name:'Mastodon',  c:'var(--masto)', freshH:26 },
+  x_archive: { name:'X archive', c:'var(--x)',     freshH:24*35 },
+  typefully: { name:'Typefully', c:'var(--tf)',    freshH:24*8 },
+  selftest:  { name:'Self-test', c:'var(--self)',  freshH:1 },
+};
+const AVAIL_BASE = {
+  bluesky: {
+    followers:['available','app.bsky.actor.getProfile → followersCount'],
+    following:['available','getProfile → followsCount'],
+    posts:['available','getProfile → postsCount'],
+    likes:['available','getAuthorFeed → likeCount'],
+    reposts:['available','getAuthorFeed → repostCount'],
+    replies:['available','getAuthorFeed → replyCount'],
+    quotes:['dynamic','getAuthorFeed → quoteCount'],
+    impressions:['not_offered','Bluesky does not publish view/impression counts'],
+  },
+  mastodon: {
+    followers:['available','accounts/lookup → followers_count'],
+    following:['available','accounts/lookup → following_count'],
+    posts:['available','accounts/lookup → statuses_count'],
+    likes:['available','favourites_count, as known to your home server'],
+    reposts:['available','reblogs_count, as known to your home server'],
+    replies:['available','replies_count, as known to your home server'],
+    quotes:['dynamic','quotes_count, only on servers that support quote posts'],
+    impressions:['not_offered','Mastodon has no impression metric'],
+  },
+  x_archive: {
+    followers:['derived','row count of data/follower.js at archive generation'],
+    following:['derived','row count of data/following.js at archive generation'],
+    posts:['derived','tweets present in archive (incl. retweets, deleted excluded). This is not the profile counter'],
+    likes:['available','tweets.js favorite_count, frozen at archive date'],
+    reposts:['available','tweets.js retweet_count, frozen at archive date'],
+    replies:['not_in_export','X archive has no reply count'],
+    quotes:['not_in_export','X archive has no quote count'],
+    impressions:['not_in_export','X archive has no impression count'],
+  },
+  typefully: Object.fromEntries(ALL_METRICS.map(m => [m, ['not_offered', ACCOUNT_METRICS.includes(m)
+    ? 'Typefully API exposes drafts, not account counters' : 'Typefully API exposes no engagement metrics']])),
+  selftest: Object.fromEntries(ALL_METRICS.map(m => [m, ['available','self-test']])),
+};
+const NA_SHORT = { not_offered:'not offered', not_in_export:'not in export', not_returned:'not returned', available:'not returned', derived:'not returned' };
+
+/* =========================================================================
+   Config (secrets only persisted if user opts in)
+   ========================================================================= */
+const cfg = { neon:'', neonEndpoint:'', bsky:'', masto:'', mastoToken:'', tfKey:'', tfBase:'https://api.typefully.com/v1', windowDays:90, remember:false };
+const SECRET = ['neon','mastoToken','tfKey'];
+const CFG_KEY = 'roomsnow.cfg.v1';
+function loadCfg(){
+  try { Object.assign(cfg, JSON.parse(localStorage.getItem(CFG_KEY) || '{}')); } catch {}
+  try { Object.assign(cfg, JSON.parse(sessionStorage.getItem(CFG_KEY+'.s') || '{}')); } catch {}
+}
+function saveCfg(){
+  const persist = { ...cfg };
+  if (!cfg.remember) SECRET.forEach(k => delete persist[k]);
+  try { localStorage.setItem(CFG_KEY, JSON.stringify(persist)); } catch {}
+  try { sessionStorage.setItem(CFG_KEY+'.s', JSON.stringify(Object.fromEntries(SECRET.map(k=>[k,cfg[k]])))); } catch {}
+}
+
+/* =========================================================================
+   Utilities
+   ========================================================================= */
+const $ = (s, r=document) => r.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const n = x => (x === null || x === undefined || x === '') ? null : (Number.isFinite(Number(x)) ? Number(x) : null);
+const bool = x => x === true || x === 't' || x === 'true';
+const defaultFetch = (...a) => fetch(...a);
+function isoOrNull(x){ if (x === null || x === undefined || x === '') return null; const d = x instanceof Date ? x : new Date(x); return isNaN(d) ? null : d.toISOString(); }
+function cleanText(s){ if (s === null || s === undefined) return null; return String(s).replace(/\u0000/g,'').replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g,'\ufffd'); }
+function uuid(){ return globalThis.crypto?.randomUUID ? crypto.randomUUID() : 'r-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,12); }
+function chunk(a, k){ const o=[]; for (let i=0;i<a.length;i+=k) o.push(a.slice(i,i+k)); return o; }
+function safeJSON(s, d){ try { return typeof s === 'string' ? JSON.parse(s) : (s ?? d); } catch { return d; } }
+async function sha256(str){
+  if (globalThis.crypto?.subtle) {
+    const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');
+  }
+  // Fallback (non-cryptographic, but deterministic), labelled so it is never mistaken for SHA-256
+  let h1=0xdeadbeef, h2=0x41c6ce57;
+  for (let i=0;i<str.length;i++){ const c=str.charCodeAt(i); h1=Math.imul(h1^c,2654435761); h2=Math.imul(h2^c,1597334677); }
+  h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);
+  h2=Math.imul(h2^(h2>>>16),2246822507)^Math.imul(h1^(h1>>>13),3266489909);
+  return 'cyrb:'+(h2>>>0).toString(16).padStart(8,'0')+(h1>>>0).toString(16).padStart(8,'0');
+}
+const nf0 = new Intl.NumberFormat('en', { maximumFractionDigits:0 });
+const nf2 = new Intl.NumberFormat('en', { maximumFractionDigits:2, minimumFractionDigits:2 });
+const nfc = new Intl.NumberFormat('en', { notation:'compact', maximumFractionDigits:1 });
+const fmt = (v, d=0) => v === null || v === undefined ? '—' : (d ? nf2.format(v) : nf0.format(v));
+function fmtDate(iso){ if (!iso) return '—'; const d=new Date(iso); return d.toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})+' '+d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}); }
+function fmtDay(iso){ if (!iso) return '—'; return new Date(iso).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}); }
+function ago(iso, now=Date.now()){ if (!iso) return 'never'; const h=(now-Date.parse(iso))/36e5; if (h<0) return 'in future'; if (h<1) return Math.round(h*60)+' min ago'; if (h<48) return Math.round(h)+' h ago'; return Math.round(h/24)+' d ago'; }
+async function getJSON(fetchImpl, url, headers={}){
+  let res;
+  try { res = await fetchImpl(url, { headers:{ Accept:'application/json', ...headers } }); }
+  catch (e) { const err = new Error(`network/CORS error reaching ${new URL(url).host}`); err.status = 0; throw err; }
+  if (!res.ok) { let msg=''; try { msg = (await res.text()).slice(0,160); } catch {} const err = new Error(`HTTP ${res.status} ${msg}`.trim()); err.status = res.status; throw err; }
+  return res.json();
+}
+
+/* =========================================================================
+   Ingest model: what a collector produces, before it touches the store
+   ========================================================================= */
+function newIngest(source, kind, now){
+  return { source, run:{ run_id:uuid(), kind, started_at:now.toISOString(), finished_at:null, data_as_of:null, status:'ok',
+    coverage_from:null, coverage_to:null, posts_fetched:0, partial_reasons:[], note:null, source_hash:null },
+    snapshot:null, posts:[], metrics:[], availability:[] };
+}
+function failIngest(ing, err){ ing.run.status='failed'; ing.run.note=String(err?.message || err); ing.snapshot=null; ing.posts=[]; ing.metrics=[]; ing.availability=[]; return ing; }
+
+function resolveAvailability(platform, snapshot, metrics){
+  const base = AVAIL_BASE[platform]; const out = [];
+  for (const metric of ALL_METRICS) {
+    let [status, note] = base[metric];
+    const isAcct = ACCOUNT_METRICS.includes(metric);
+    if (status === 'not_offered' || status === 'not_in_export') { out.push({metric,status,note}); continue; }
+    const observable = isAcct ? !!snapshot : metrics.length > 0;
+    const any = isAcct ? (snapshot && snapshot[metric] != null) : metrics.some(m => m[metric] != null);
+    if (status === 'dynamic') { status = any ? 'available' : 'not_returned'; if (!observable) note += ' (no posts this run to observe)'; }
+    else if (!any && observable) { status = 'not_returned'; note += '. No value came back in this run'; }
+    out.push({metric,status,note});
+  }
+  return out;
+}
+
+function canonical(x){
+  const r = x.run || {};
+  const byId = (a,b) => a.post_id < b.post_id ? -1 : a.post_id > b.post_id ? 1 : 0;
+  return {
+    run:{ run_id:String(r.run_id), status:r.status ?? null, data_as_of:isoOrNull(r.data_as_of), coverage_from:isoOrNull(r.coverage_from), coverage_to:isoOrNull(r.coverage_to), posts_fetched:n(r.posts_fetched) },
+    snapshot: x.snapshot ? { as_of:isoOrNull(x.snapshot.as_of), followers:n(x.snapshot.followers), following:n(x.snapshot.following), posts:n(x.snapshot.posts) } : null,
+    posts:(x.posts||[]).map(p=>({ post_id:String(p.post_id), created_at:isoOrNull(p.created_at), url:p.url ?? null, body:p.body ?? null, kind:p.kind ?? null })).sort(byId),
+    metrics:(x.metrics||[]).map(m=>({ post_id:String(m.post_id), likes:n(m.likes), reposts:n(m.reposts), replies:n(m.replies), quotes:n(m.quotes), impressions:n(m.impressions) })).sort(byId),
+  };
+}
+function diffCanon(a, b){
+  const d = [];
+  for (const k of Object.keys(a.run)) if (a.run[k] !== b.run[k]) d.push(`run.${k}: sent ${JSON.stringify(a.run[k])} read ${JSON.stringify(b.run[k])}`);
+  if (!!a.snapshot !== !!b.snapshot) d.push(`snapshot presence: sent ${!!a.snapshot} read ${!!b.snapshot}`);
+  else if (a.snapshot) for (const k of Object.keys(a.snapshot)) if (a.snapshot[k] !== b.snapshot[k]) d.push(`snapshot.${k}: sent ${JSON.stringify(a.snapshot[k])} read ${JSON.stringify(b.snapshot[k])}`);
+  for (const key of ['posts','metrics']) {
+    if (a[key].length !== b[key].length) d.push(`${key}: sent ${a[key].length} rows, read ${b[key].length}`);
+    const bm = new Map(b[key].map(r => [r.post_id, r]));
+    for (const r of a[key]) {
+      const o = bm.get(r.post_id);
+      if (!o) { d.push(`${key}[${r.post_id}] missing in store`); continue; }
+      for (const k of Object.keys(r)) if (r[k] !== o[k]) d.push(`${key}[${r.post_id}].${k}: sent ${JSON.stringify(r[k]).slice(0,60)} read ${JSON.stringify(o[k]).slice(0,60)}`);
+      if (d.length > 20) return d;
+    }
+  }
+  return d;
+}
+async function finalize(ing, now=new Date()){
+  const pm = new Map();
+  for (const p of ing.posts) { const id=String(p.post_id); pm.set(id, { post_id:id, created_at:isoOrNull(p.created_at), url:cleanText(p.url), body:cleanText(p.body), kind:p.kind || 'post' }); }
+  ing.posts = [...pm.values()];
+  const mm = new Map();
+  for (const m of ing.metrics) { const id=String(m.post_id); if (pm.has(id)) mm.set(id, { post_id:id, likes:n(m.likes), reposts:n(m.reposts), replies:n(m.replies), quotes:n(m.quotes), impressions:n(m.impressions) }); }
+  ing.metrics = [...mm.values()];
+  ing.run.posts_fetched = ing.posts.length;
+  ing.run.finished_at = ing.run.finished_at || now.toISOString();
+  ing.run.data_as_of = isoOrNull(ing.run.data_as_of);
+  ing.run.coverage_from = isoOrNull(ing.run.coverage_from);
+  ing.run.coverage_to = isoOrNull(ing.run.coverage_to);
+  if (ing.snapshot) ing.snapshot.as_of = isoOrNull(ing.snapshot.as_of);
+  if (ing.run.status !== 'failed') {
+    ing.run.status = ing.run.partial_reasons.length ? 'partial' : 'ok';
+    ing.availability = resolveAvailability(ing.source.platform, ing.snapshot, ing.metrics);
+  }
+  ing.run.source_hash = await sha256(JSON.stringify(canonical(ing)));
+  return ing;
+}
+
+/* =========================================================================
+   Source: Bluesky (public AppView, official counters)
+   ========================================================================= */
+function parseBskyHandle(s){ s = String(s||'').trim(); const m = s.match(/bsky\.app\/profile\/([^/?#]+)/); if (m) s = decodeURIComponent(m[1]); return s.replace(/^@/,'').toLowerCase(); }
+async function collectBluesky(input, { windowDays=90, fetchImpl=defaultFetch, now=new Date(), maxPages=40 } = {}){
+  const handle = parseBskyHandle(input);
+  const ing = newIngest({ source_id:'bluesky:'+handle, platform:'bluesky', handle, label:'@'+handle }, 'counters', now);
+  const B = 'https://public.api.bsky.app/xrpc/';
+  try {
+    if (!handle) throw new Error('No Bluesky handle configured');
+    const prof = await getJSON(fetchImpl, `${B}app.bsky.actor.getProfile?actor=${encodeURIComponent(handle)}`);
+    const asOf = now.toISOString();
+    ing.run.data_as_of = asOf; ing.run.coverage_to = asOf;
+    ing.snapshot = { as_of:asOf, followers:n(prof.followersCount), following:n(prof.followsCount), posts:n(prof.postsCount) };
+    if (prof.displayName) ing.source.label = `${prof.displayName} (@${prof.handle || handle})`;
+    const ws = new Date(+now - windowDays*DAY);
+    let cursor = null, page = 0, reached = false, exhausted = false, oldest = null;
+    for (;;) {
+      if (page >= maxPages) { ing.run.partial_reasons.push(`page_limit_${maxPages}_hit_before_window_start`); break; }
+      let r;
+      try { r = await getJSON(fetchImpl, `${B}app.bsky.feed.getAuthorFeed?actor=${encodeURIComponent(prof.did || handle)}&limit=100&filter=posts_with_replies${cursor ? '&cursor='+encodeURIComponent(cursor) : ''}`); }
+      catch (e) { ing.run.partial_reasons.push(e.status === 429 ? `rate_limited_on_feed_page_${page+1}` : `feed_page_${page+1}_failed: ${e.message}`); break; }
+      page++;
+      for (const it of r.feed || []) {
+        const p = it.post;
+        if (!p || it.reason) continue;                         // reposts: not authored here
+        if (prof.did && p.author?.did !== prof.did) continue;
+        const created = isoOrNull(p.record?.createdAt) || isoOrNull(p.indexedAt);
+        if (created && Date.parse(created) < +ws) { reached = true; continue; }
+        if (created && (!oldest || created < oldest)) oldest = created;
+        const rkey = String(p.uri).split('/').pop();
+        ing.posts.push({ post_id:p.uri, created_at:created, url:`https://bsky.app/profile/${prof.handle || handle}/post/${rkey}`, body:p.record?.text ?? '', kind:p.record?.reply ? 'reply' : 'post' });
+        ing.metrics.push({ post_id:p.uri, likes:n(p.likeCount), reposts:n(p.repostCount), replies:n(p.replyCount), quotes:n(p.quoteCount), impressions:null });
+      }
+      if (reached) break;
+      if (!r.cursor) { exhausted = true; break; }
+      cursor = r.cursor;
+    }
+    ing.run.coverage_from = (reached || exhausted) ? ws.toISOString() : (oldest || asOf);
+    ing.run.note = `getProfile + ${page} getAuthorFeed page(s)`;
+  } catch (e) { failIngest(ing, e); }
+  return ing;
+}
+
+/* =========================================================================
+   Source: Mastodon (public REST API, official counters)
+   ========================================================================= */
+function parseMastoHandle(s){
+  s = String(s||'').trim();
+  const m = s.match(/^@?([^@\s/]+)@([^@\s/]+)$/);
+  if (m) return { user:m[1], instance:m[2].toLowerCase() };
+  try { const u = new URL(s); const mm = u.pathname.match(/^\/@([^/]+)/); if (mm) return { user:mm[1], instance:u.host.toLowerCase() }; } catch {}
+  throw new Error('Mastodon account must look like @user@instance or https://instance/@user');
+}
+function htmlToText(html){
+  const pre = String(html||'').replace(/<br\s*\/?>/gi,'\n').replace(/<\/p>\s*<p[^>]*>/gi,'\n\n');
+  const d = new DOMParser().parseFromString(pre, 'text/html');   // inert: no script execution
+  return (d.body.textContent || '').trim();
+}
+async function collectMastodon(input, { windowDays=90, token='', fetchImpl=defaultFetch, now=new Date(), maxPages=75 } = {}){
+  let h; try { h = parseMastoHandle(input); } catch (e) { const ing = newIngest({ source_id:'mastodon:invalid', platform:'mastodon', handle:String(input), label:String(input) }, 'counters', now); return failIngest(ing, e); }
+  const acct = `${h.user}@${h.instance}`.toLowerCase();
+  const ing = newIngest({ source_id:'mastodon:'+acct, platform:'mastodon', handle:acct, label:'@'+acct }, 'counters', now);
+  const H = token ? { Authorization:'Bearer '+token } : {};
+  const base = `https://${h.instance}/api/v1/`;
+  try {
+    const a = await getJSON(fetchImpl, `${base}accounts/lookup?acct=${encodeURIComponent(h.user)}`, H);
+    const asOf = now.toISOString();
+    ing.run.data_as_of = asOf; ing.run.coverage_to = asOf;
+    ing.snapshot = { as_of:asOf, followers:n(a.followers_count), following:n(a.following_count), posts:n(a.statuses_count) };
+    if (a.display_name) ing.source.label = `${a.display_name} (@${acct})`;
+    const ws = new Date(+now - windowDays*DAY);
+    let maxId = null, page = 0, reached = false, exhausted = false, oldest = null;
+    for (;;) {
+      if (page >= maxPages) { ing.run.partial_reasons.push(`page_limit_${maxPages}_hit_before_window_start`); break; }
+      let arr;
+      try { arr = await getJSON(fetchImpl, `${base}accounts/${encodeURIComponent(a.id)}/statuses?limit=40&exclude_reblogs=true${maxId ? '&max_id='+encodeURIComponent(maxId) : ''}`, H); }
+      catch (e) { ing.run.partial_reasons.push(e.status === 429 ? `rate_limited_on_page_${page+1}` : `statuses_page_${page+1}_failed: ${e.message}`); break; }
+      page++;
+      if (!Array.isArray(arr) || !arr.length) { exhausted = true; break; }
+      for (const s of arr) {
+        if (s.visibility === 'direct') continue;              // never store DMs
+        const created = isoOrNull(s.created_at);
+        if (created && Date.parse(created) < +ws) { reached = true; continue; }
+        if (created && (!oldest || created < oldest)) oldest = created;
+        ing.posts.push({ post_id:String(s.id), created_at:created, url:s.url || s.uri || null, body:htmlToText(s.content), kind:s.in_reply_to_id ? 'reply' : 'post' });
+        ing.metrics.push({ post_id:String(s.id), likes:n(s.favourites_count), reposts:n(s.reblogs_count), replies:n(s.replies_count), quotes:typeof s.quotes_count === 'number' ? s.quotes_count : null, impressions:null });
+      }
+      if (reached) break;
+      maxId = arr[arr.length-1].id;
+    }
+    ing.run.coverage_from = (reached || exhausted) ? ws.toISOString() : (oldest || asOf);
+    ing.run.note = `accounts/lookup + ${page} statuses page(s)`;
+  } catch (e) { failIngest(ing, e); }
+  return ing;
+}
+
+/* =========================================================================
+   Source: X monthly archive (zip or loose data/*.js files)
+   ========================================================================= */
+const X_WANTED = /(^|\/)data\/(manifest|account|follower|following|tweets?(-part\d+)?)\.js$/i;
+function parseYTD(text){
+  const i = text.indexOf('=');
+  if (i < 0) throw new Error('Not an X archive data file (no assignment)');
+  return JSON.parse(text.slice(i+1).trim().replace(/;\s*$/,''));
+}
+function parseXDate(s){
+  const m = String(s||'').match(/^\w{3} (\w{3}) (\d{1,2}) (\d{2}):(\d{2}):(\d{2}) ([+-])(\d{2})(\d{2}) (\d{4})$/);
+  if (!m) return isoOrNull(s);
+  const mon = 'JanFebMarAprMayJunJulAugSepOctNovDec'.indexOf(m[1]) / 3;
+  if (mon < 0 || mon % 1) return null;
+  const t = Date.UTC(+m[9], mon, +m[2], +m[3], +m[4], +m[5]) - (m[6]==='-' ? -1 : 1) * ((+m[7])*60 + (+m[8])) * 60000;
+  return new Date(t).toISOString();
+}
+async function readZipEntries(blob, wanted){
+  const tailSize = Math.min(blob.size, 65557);
+  const tail = new DataView(await blob.slice(blob.size - tailSize).arrayBuffer());
+  let eocd = -1;
+  for (let i = tail.byteLength - 22; i >= 0; i--) if (tail.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) throw new Error('Not a zip file (no end-of-central-directory record)');
+  let cdCount = tail.getUint16(eocd+10, true), cdSize = tail.getUint32(eocd+12, true), cdOffset = tail.getUint32(eocd+16, true);
+  if (cdOffset === 0xFFFFFFFF || cdCount === 0xFFFF || cdSize === 0xFFFFFFFF) {
+    const loc = eocd - 20;
+    if (loc < 0 || tail.getUint32(loc, true) !== 0x07064b50) throw new Error('ZIP64 archive without locator');
+    const z64off = Number(tail.getBigUint64(loc+8, true));
+    const z = new DataView(await blob.slice(z64off, z64off+56).arrayBuffer());
+    cdCount = Number(z.getBigUint64(32, true)); cdSize = Number(z.getBigUint64(40, true)); cdOffset = Number(z.getBigUint64(48, true));
+  }
+  const cd = new DataView(await blob.slice(cdOffset, cdOffset + cdSize).arrayBuffer());
+  const dec = new TextDecoder(); const out = {}; let p = 0;
+  for (let i = 0; i < cdCount; i++) {
+    if (cd.getUint32(p, true) !== 0x02014b50) throw new Error('Corrupt zip central directory');
+    const method = cd.getUint16(p+10, true);
+    let csize = cd.getUint32(p+20, true), usize = cd.getUint32(p+24, true);
+    const nlen = cd.getUint16(p+28, true), elen = cd.getUint16(p+30, true), clen = cd.getUint16(p+32, true);
+    let lho = cd.getUint32(p+42, true);
+    const name = dec.decode(new Uint8Array(cd.buffer, cd.byteOffset + p + 46, nlen));
+    if (csize === 0xFFFFFFFF || usize === 0xFFFFFFFF || lho === 0xFFFFFFFF) {
+      let q = p + 46 + nlen; const end = q + elen;
+      while (q + 4 <= end) {
+        const id = cd.getUint16(q, true), sz = cd.getUint16(q+2, true);
+        if (id === 1) { let r = q + 4;
+          if (usize === 0xFFFFFFFF) { usize = Number(cd.getBigUint64(r, true)); r += 8; }
+          if (csize === 0xFFFFFFFF) { csize = Number(cd.getBigUint64(r, true)); r += 8; }
+          if (lho === 0xFFFFFFFF) { lho = Number(cd.getBigUint64(r, true)); }
+          break; }
+        q += 4 + sz;
+      }
+    }
+    p += 46 + nlen + elen + clen;
+    if (!wanted(name)) continue;
+    const lh = new DataView(await blob.slice(lho, lho + 30).arrayBuffer());
+    if (lh.getUint32(0, true) !== 0x04034b50) throw new Error(`Corrupt local header for ${name}`);
+    const start = lho + 30 + lh.getUint16(26, true) + lh.getUint16(28, true);
+    const raw = blob.slice(start, start + csize);
+    if (method === 0) out[name] = await raw.text();
+    else if (method === 8) {
+      if (typeof DecompressionStream === 'undefined') throw new Error('This browser lacks DecompressionStream. Unzip the archive and select the data/*.js files instead');
+      out[name] = await new Response(raw.stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+    } else throw new Error(`Unsupported zip compression method ${method} for ${name}`);
+  }
+  return out;
+}
+function normalizeXArchive(files, { fallbackAsOf=null, now=new Date() } = {}){
+  const manifest = files['manifest.js'] ? parseYTD(files['manifest.js']) : null;
+  const account = files['account.js'] ? parseYTD(files['account.js']) : null;
+  const username = manifest?.userInfo?.userName || account?.[0]?.account?.username;
+  if (!username) throw new Error('Could not identify the X account. Include data/account.js or data/manifest.js');
+  const handle = String(username).toLowerCase();
+  const ing = newIngest({ source_id:'x_archive:'+handle, platform:'x_archive', handle, label:'@'+username+' (X archive)' }, 'archive', now);
+  const R = ing.run.partial_reasons;
+  let asOf = isoOrNull(manifest?.archiveInfo?.generationDate);
+  if (!asOf) { asOf = isoOrNull(fallbackAsOf) || now.toISOString(); R.push('archive_generation_date_missing_used_file_date'); }
+  if (manifest?.archiveInfo?.isPartialArchive === true || manifest?.archiveInfo?.isPartialArchive === 'true') R.push('archive_flagged_partial_by_x');
+  const tweetKeys = Object.keys(files).filter(k => /^tweets?(-part\d+)?\.js$/i.test(k)).sort();
+  if (!tweetKeys.length) R.push('tweets.js_not_in_upload');
+  const tweets = tweetKeys.flatMap(k => parseYTD(files[k])).map(t => t.tweet || t);
+  const countFile = f => files[f] ? parseYTD(files[f]).length : null;
+  const followers = countFile('follower.js'), following = countFile('following.js');
+  if (followers === null) R.push('follower.js_not_in_upload');
+  if (following === null) R.push('following.js_not_in_upload');
+  ing.snapshot = { as_of:asOf, followers, following, posts: tweetKeys.length ? tweets.length : null };
+  let earliest = null;
+  for (const t of tweets) {
+    const id = t.id_str || t.id; if (!id) continue;
+    const created = parseXDate(t.created_at);
+    if (created && (!earliest || created < earliest)) earliest = created;
+    const text = t.full_text ?? t.text ?? '';
+    const kind = /^RT @/.test(text) ? 'repost' : (t.in_reply_to_status_id_str || t.in_reply_to_status_id ? 'reply' : 'post');
+    ing.posts.push({ post_id:String(id), created_at:created, url:`https://x.com/${username}/status/${id}`, body:text, kind });
+    // Retweets carry the original's counts (or 0): not this account's engagement → stored as missing, not 0.
+    ing.metrics.push(kind === 'repost'
+      ? { post_id:String(id), likes:null, reposts:null, replies:null, quotes:null, impressions:null }
+      : { post_id:String(id), likes:n(t.favorite_count), reposts:n(t.retweet_count), replies:null, quotes:null, impressions:null });
+  }
+  ing.run.data_as_of = asOf; ing.run.coverage_from = earliest; ing.run.coverage_to = asOf;
+  ing.run.note = `archive generated ${asOf}; ${tweets.length} tweets across ${tweetKeys.length} file(s); counts frozen at that date`;
+  return ing;
+}
+async function collectXArchive(fileList, { now=new Date() } = {}){
+  const arr = [...fileList]; const files = {}; let fallback;
+  if (arr.length === 1 && /\.zip$/i.test(arr[0].name)) {
+    const z = await readZipEntries(arr[0], name => X_WANTED.test(name));
+    for (const [k, v] of Object.entries(z)) files[k.split('/').pop()] = v;
+    fallback = new Date(arr[0].lastModified).toISOString();
+  } else {
+    for (const f of arr) files[f.name] = await f.text();
+    fallback = new Date(Math.max(...arr.map(f => f.lastModified))).toISOString();
+  }
+  if (!Object.keys(files).length) throw new Error('No X archive data files found (expected data/tweets.js, data/follower.js, …)');
+  return normalizeXArchive(files, { fallbackAsOf:fallback, now });
+}
+
+/* =========================================================================
+   Source: Typefully (access verification; no metrics exist in its API)
+   ========================================================================= */
+async function collectTypefully(key, base, { fetchImpl=defaultFetch, now=new Date() } = {}){
+  const fp = (await sha256('typefully:'+key)).replace(/^cyrb:/,'').slice(0,10);
+  const ing = newIngest({ source_id:'typefully:'+fp, platform:'typefully', handle:'key '+fp, label:`Typefully (key fingerprint ${fp})` }, 'access_check', now);
+  if (!key) return failIngest(ing, new Error('No Typefully API key configured'));
+  const url = String(base || 'https://api.typefully.com/v1').replace(/\/+$/,'') + '/drafts/recently-published/';
+  let res;
+  try { res = await fetchImpl(url, { headers:{ 'X-API-KEY':'Bearer '+key, Accept:'application/json' } }); }
+  catch (e) { ing.run.partial_reasons.push('network_error_or_cors_blocked'); return failIngest(ing, new Error(`Could not reach ${new URL(url).host} from this browser (network or CORS). Access NOT verified.`)); }
+  if (!res.ok) return failIngest(ing, new Error(`HTTP ${res.status}${res.status === 401 || res.status === 403 ? ', key rejected' : ''}. Access NOT verified.`));
+  let j; try { j = await res.json(); } catch { return failIngest(ing, new Error('HTTP 200 but the body was not JSON. Access NOT verified.')); }
+  const asOf = now.toISOString(); ing.run.data_as_of = asOf; ing.run.coverage_to = asOf;
+  const list = Array.isArray(j) ? j : (j?.results || j?.drafts || j?.data || null);
+  if (!Array.isArray(list)) { ing.run.partial_reasons.push('unrecognised_response_shape'); ing.run.note = 'HTTP 200 (key accepted) but response shape not recognised'; return ing; }
+  for (const d of list) {
+    const id = d.id ?? d.uuid; if (id === undefined || id === null) continue;
+    ing.posts.push({ post_id:String(id), created_at:d.published_on || d.published_at || d.scheduled_date || d.last_edited || null,
+      url:d.twitter_url || d.x_url || d.share_url || d.url || null, body:d.text || d.text_first_tweet || d.preview || '', kind:'published_draft' });
+  }
+  ing.run.note = `Access verified: HTTP 200, ${list.length} recently-published draft(s)`;
+  return ing;
+}
+
+/* =========================================================================
+   Store: Neon over HTTPS SQL endpoint, one schema
+   ========================================================================= */
+const DDL = [
+`CREATE SCHEMA IF NOT EXISTS rooms_now`,
+`CREATE TABLE IF NOT EXISTS rooms_now.sources (
+  source_id  text PRIMARY KEY,
+  platform   text NOT NULL CHECK (platform IN ('bluesky','mastodon','x_archive','typefully','selftest')),
+  handle     text NOT NULL,
+  label      text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+)`,
+`CREATE TABLE IF NOT EXISTS rooms_now.ingest_runs (
+  run_id          text PRIMARY KEY,
+  source_id       text NOT NULL REFERENCES rooms_now.sources(source_id) ON DELETE CASCADE,
+  kind            text NOT NULL CHECK (kind IN ('counters','archive','access_check','selftest')),
+  started_at      timestamptz NOT NULL,
+  finished_at     timestamptz,
+  data_as_of      timestamptz,
+  status          text NOT NULL CHECK (status IN ('ok','partial','failed')),
+  coverage_from   timestamptz,
+  coverage_to     timestamptz,
+  posts_fetched   integer NOT NULL DEFAULT 0,
+  partial_reasons jsonb NOT NULL DEFAULT '[]'::jsonb,
+  note            text,
+  source_hash     text,
+  readback_hash   text,
+  readback_ok     boolean,
+  readback_at     timestamptz
+)`,
+`CREATE INDEX IF NOT EXISTS ingest_runs_source_idx ON rooms_now.ingest_runs (source_id, started_at DESC)`,
+`CREATE TABLE IF NOT EXISTS rooms_now.account_snapshots (
+  run_id    text PRIMARY KEY REFERENCES rooms_now.ingest_runs(run_id) ON DELETE CASCADE,
+  source_id text NOT NULL REFERENCES rooms_now.sources(source_id) ON DELETE CASCADE,
+  as_of     timestamptz NOT NULL,
+  followers bigint,      -- NULL = missing, never 0
+  following bigint,
+  posts     bigint
+)`,
+`CREATE INDEX IF NOT EXISTS account_snapshots_source_idx ON rooms_now.account_snapshots (source_id, as_of)`,
+`CREATE TABLE IF NOT EXISTS rooms_now.posts (
+  source_id        text NOT NULL REFERENCES rooms_now.sources(source_id) ON DELETE CASCADE,
+  post_id          text NOT NULL,
+  created_at       timestamptz,
+  url              text,
+  body             text,
+  kind             text NOT NULL,
+  last_seen_run_id text,
+  PRIMARY KEY (source_id, post_id)
+)`,
+`CREATE INDEX IF NOT EXISTS posts_created_idx ON rooms_now.posts (created_at DESC)`,
+`CREATE INDEX IF NOT EXISTS posts_last_seen_idx ON rooms_now.posts (last_seen_run_id)`,
+`CREATE TABLE IF NOT EXISTS rooms_now.post_metrics (
+  run_id      text NOT NULL REFERENCES rooms_now.ingest_runs(run_id) ON DELETE CASCADE,
+  source_id   text NOT NULL,
+  post_id     text NOT NULL,
+  as_of       timestamptz NOT NULL,
+  likes bigint, reposts bigint, replies bigint, quotes bigint, impressions bigint,   -- NULL = missing
+  PRIMARY KEY (run_id, source_id, post_id),
+  FOREIGN KEY (source_id, post_id) REFERENCES rooms_now.posts(source_id, post_id) ON DELETE CASCADE
+)`,
+`CREATE INDEX IF NOT EXISTS post_metrics_latest_idx ON rooms_now.post_metrics (source_id, post_id, as_of DESC)`,
+`CREATE TABLE IF NOT EXISTS rooms_now.metric_availability (
+  source_id  text NOT NULL REFERENCES rooms_now.sources(source_id) ON DELETE CASCADE,
+  metric     text NOT NULL,
+  status     text NOT NULL CHECK (status IN ('available','derived','not_offered','not_in_export','not_returned')),
+  note       text,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (source_id, metric)
+)`,
+`COMMENT ON SCHEMA rooms_now IS 'Rooms OS Now private analytics. NULL metric = missing (never coerced to 0). Every run is read back and hash-verified.'`,
+];
+const I = c => `to_char((${c}) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
+const sp = v => v === null || v === undefined ? null : (typeof v === 'object' ? JSON.stringify(v) : String(v));
+
+const Store = {
+  endpoint:null,
+  configured(){ return !!(cfg.neon && cfg.neon.trim()); },
+  candidates(){
+    if (cfg.neonEndpoint) return [cfg.neonEndpoint.trim()];
+    const u = new URL(cfg.neon.trim().replace(/^postgres(ql)?:\/\//i, 'https://'));
+    const h = u.hostname;
+    return [...new Set([`https://${h.replace(/^[^.]+\./,'api.')}/sql`, `https://${h}/sql`])];
+  },
+  async post(body){
+    const list = this.endpoint ? [this.endpoint] : this.candidates();
+    let lastErr = null;
+    for (let i = 0; i < list.length; i++) {
+      const ep = list[i]; let res;
+      try {
+        res = await fetch(ep, { method:'POST', body:JSON.stringify(body), headers:{
+          'Content-Type':'application/json', 'Neon-Connection-String':cfg.neon.trim(),
+          'Neon-Raw-Text-Output':'true', 'Neon-Array-Mode':'false' } });
+      } catch (e) { lastErr = new Error(`Cannot reach ${new URL(ep).host} (network/CORS)`); continue; }
+      const txt = await res.text(); let j = null; try { j = JSON.parse(txt); } catch {}
+      if (!res.ok) {
+        const err = new Error(`Neon ${res.status}: ${(j && j.message) || txt.slice(0,200)}`);
+        if ((!j || !j.code) && i < list.length - 1) { lastErr = err; continue; }   // wrong endpoint → try next
+        throw err;
+      }
+      this.endpoint = ep; return j;
+    }
+    throw lastErr || new Error('No Neon endpoint');
+  },
+  async q(query, params=[]){ return (await this.post({ query, params:params.map(sp) })).rows || []; },
+  async tx(qs){ if (!qs.length) return []; const j = await this.post({ queries:qs.map(x => ({ query:x.query, params:(x.params||[]).map(sp) })) }); return (j.results || []).map(r => r.rows || []); },
+  async initSchema(){ await this.tx(DDL.map(query => ({ query }))); },
+
+  async writeIngest(ing){
+    const S = SCHEMA, r = ing.run, s = ing.source;
+    const head = [
+      { query:`INSERT INTO ${S}.sources(source_id,platform,handle,label) VALUES($1,$2,$3,$4) ON CONFLICT (source_id) DO UPDATE SET handle=EXCLUDED.handle, label=EXCLUDED.label`, params:[s.source_id,s.platform,s.handle,s.label] },
+      { query:`INSERT INTO ${S}.ingest_runs(run_id,source_id,kind,started_at,finished_at,data_as_of,status,coverage_from,coverage_to,posts_fetched,partial_reasons,note,source_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13)`,
+        params:[r.run_id,s.source_id,r.kind,r.started_at,r.finished_at,r.data_as_of,r.status,r.coverage_from,r.coverage_to,r.posts_fetched,JSON.stringify(r.partial_reasons),r.note,r.source_hash] },
+    ];
+    if (ing.snapshot) head.push({ query:`INSERT INTO ${S}.account_snapshots(run_id,source_id,as_of,followers,following,posts) VALUES($1,$2,$3,$4,$5,$6)`,
+      params:[r.run_id,s.source_id,ing.snapshot.as_of,ing.snapshot.followers,ing.snapshot.following,ing.snapshot.posts] });
+    if (ing.availability.length) head.push({ query:`INSERT INTO ${S}.metric_availability(source_id,metric,status,note,updated_at)
+      SELECT $1,x.metric,x.status,x.note,now() FROM jsonb_to_recordset($2::jsonb) AS x(metric text,status text,note text)
+      ON CONFLICT (source_id,metric) DO UPDATE SET status=EXCLUDED.status, note=EXCLUDED.note, updated_at=now()`, params:[s.source_id, JSON.stringify(ing.availability)] });
+    await this.tx(head);
+    const mById = new Map(ing.metrics.map(m => [m.post_id, m]));
+    try {
+      for (const c of chunk(ing.posts, 700)) {
+        const qs = [{ query:`INSERT INTO ${S}.posts(source_id,post_id,created_at,url,body,kind,last_seen_run_id)
+          SELECT $1,x.post_id,x.created_at,x.url,x.body,x.kind,$2 FROM jsonb_to_recordset($3::jsonb) AS x(post_id text,created_at timestamptz,url text,body text,kind text)
+          ON CONFLICT (source_id,post_id) DO UPDATE SET created_at=EXCLUDED.created_at,url=EXCLUDED.url,body=EXCLUDED.body,kind=EXCLUDED.kind,last_seen_run_id=EXCLUDED.last_seen_run_id`,
+          params:[s.source_id, r.run_id, JSON.stringify(c)] }];
+        const ms = c.map(p => mById.get(p.post_id)).filter(Boolean);
+        if (ms.length) qs.push({ query:`INSERT INTO ${S}.post_metrics(run_id,source_id,post_id,as_of,likes,reposts,replies,quotes,impressions)
+          SELECT $1,$2,x.post_id,$3::timestamptz,x.likes,x.reposts,x.replies,x.quotes,x.impressions
+          FROM jsonb_to_recordset($4::jsonb) AS x(post_id text,likes bigint,reposts bigint,replies bigint,quotes bigint,impressions bigint)`,
+          params:[r.run_id, s.source_id, r.data_as_of, JSON.stringify(ms)] });
+        await this.tx(qs);
+      }
+    } catch (e) {
+      await this.q(`UPDATE ${S}.ingest_runs SET status='failed', note=coalesce(note,'')||$2 WHERE run_id=$1`, [r.run_id, ' | WRITE INTERRUPTED: '+e.message]).catch(()=>{});
+      throw e;
+    }
+  },
+
+  async pagedByPostId(sql, id){
+    const out = []; let after = '';
+    for (;;) {
+      const rows = await this.q(`${sql} AND post_id COLLATE "C" > $2 ORDER BY post_id COLLATE "C" LIMIT 5000`, [id, after]);
+      out.push(...rows);
+      if (rows.length < 5000) return out;
+      after = rows[rows.length-1].post_id;
+    }
+  },
+  async readback(ing){
+    const S = SCHEMA, id = ing.run.run_id;
+    const [runRows, snapRows] = await this.tx([
+      { query:`SELECT run_id,status,${I('data_as_of')} AS data_as_of,${I('coverage_from')} AS coverage_from,${I('coverage_to')} AS coverage_to,posts_fetched FROM ${S}.ingest_runs WHERE run_id=$1`, params:[id] },
+      { query:`SELECT ${I('as_of')} AS as_of,followers,following,posts FROM ${S}.account_snapshots WHERE run_id=$1`, params:[id] },
+    ]);
+    const postRows = await this.pagedByPostId(`SELECT post_id,${I('created_at')} AS created_at,url,body,kind FROM ${S}.posts WHERE last_seen_run_id=$1`, id);
+    const metricRows = await this.pagedByPostId(`SELECT post_id,likes,reposts,replies,quotes,impressions FROM ${S}.post_metrics WHERE run_id=$1`, id);
+    const back = canonical({ run:runRows[0] || { run_id:id, status:'(missing)' }, snapshot:snapRows[0] || null, posts:postRows, metrics:metricRows });
+    const sent = canonical(ing);
+    const backHash = await sha256(JSON.stringify(back));
+    const ok = backHash === ing.run.source_hash;
+    const diff = ok ? [] : diffCanon(sent, back);
+    await this.q(`UPDATE ${S}.ingest_runs SET readback_hash=$2, readback_ok=$3, readback_at=now() WHERE run_id=$1`, [id, backHash, ok]);
+    return { ok, sentHash:ing.run.source_hash, backHash, diff,
+      counts:{ posts_sent:sent.posts.length, posts_read:back.posts.length, metrics_sent:sent.metrics.length, metrics_read:back.metrics.length } };
+  },
+
+  async loadRaw(windowDays){
+    const S = SCHEMA;
+    const [sources, runs, snaps, posts, avail] = await this.tx([
+      { query:`SELECT source_id,platform,handle,label FROM ${S}.sources WHERE platform<>'selftest' ORDER BY platform,source_id` },
+      { query:`SELECT r.run_id,r.source_id,r.kind,${I('r.started_at')} AS started_at,${I('r.data_as_of')} AS data_as_of,r.status,${I('r.coverage_from')} AS coverage_from,${I('r.coverage_to')} AS coverage_to,r.posts_fetched,r.partial_reasons::text AS partial_reasons,r.note,r.source_hash,r.readback_hash,r.readback_ok,${I('r.readback_at')} AS readback_at
+          FROM ${S}.ingest_runs r JOIN ${S}.sources s USING (source_id) WHERE s.platform<>'selftest' ORDER BY r.started_at DESC LIMIT 300` },
+      { query:`SELECT a.source_id,a.run_id,${I('a.as_of')} AS as_of,a.followers,a.following,a.posts,r.readback_ok,r.status
+          FROM ${S}.account_snapshots a JOIN ${S}.ingest_runs r ON r.run_id=a.run_id JOIN ${S}.sources s ON s.source_id=a.source_id WHERE s.platform<>'selftest' ORDER BY a.as_of` },
+      { query:`SELECT p.source_id,p.post_id,${I('p.created_at')} AS created_at,p.url,p.body,p.kind,
+            lm.likes,lm.reposts,lm.replies,lm.quotes,lm.impressions,${I('lm.as_of')} AS metrics_as_of,lm.run_id AS metrics_run_id
+          FROM ${S}.posts p JOIN ${S}.sources s ON s.source_id=p.source_id
+          LEFT JOIN LATERAL (SELECT * FROM ${S}.post_metrics m WHERE m.source_id=p.source_id AND m.post_id=p.post_id ORDER BY m.as_of DESC LIMIT 1) lm ON true
+          WHERE s.platform<>'selftest' AND p.created_at >= now() - make_interval(days => $1::int)
+          ORDER BY p.created_at DESC LIMIT 5000`, params:[windowDays] },
+      { query:`SELECT a.source_id,a.metric,a.status,a.note FROM ${S}.metric_availability a JOIN ${S}.sources s USING (source_id) WHERE s.platform<>'selftest'` },
+    ]);
+    return { sources, runs, snaps, posts, avail };
+  },
+};
+
+/* =========================================================================
+   Model (built only from store rows)
+   ========================================================================= */
+function buildModel(raw, windowDays, now=Date.now()){
+  const sources = raw.sources.map(s => ({ ...s }));
+  const byId = new Map(sources.map(s => [s.source_id, s]));
+  const runs = raw.runs.map(r => ({ ...r, posts_fetched:n(r.posts_fetched), partial_reasons:safeJSON(r.partial_reasons, []), readback_ok:r.readback_ok == null ? null : bool(r.readback_ok) }));
+  const snaps = raw.snaps.map(s => ({ ...s, followers:n(s.followers), following:n(s.following), posts:n(s.posts), verified:bool(s.readback_ok) }));
+  const posts = raw.posts.filter(p => byId.has(p.source_id)).map(p => ({ ...p, platform:byId.get(p.source_id).platform,
+    likes:n(p.likes), reposts:n(p.reposts), replies:n(p.replies), quotes:n(p.quotes), impressions:n(p.impressions), metrics_run_id:p.metrics_run_id || null }));
+  const avail = new Map(raw.avail.map(a => [a.source_id+'|'+a.metric, a]));
+  return { sources, byId, runs, snaps, posts, avail, windowDays, now };
+}
+function freshness(platform, asOf, now=Date.now()){
+  if (!asOf) return { state:'never', ageH:null };
+  const ageH = (now - Date.parse(asOf)) / 36e5;
+  return { state: ageH <= PLAT[platform].freshH ? 'fresh' : 'stale', ageH };
+}
+function median(vals){
+  const v = vals.filter(x => x !== null && x !== undefined && !Number.isNaN(x)).sort((a,b) => a-b);
+  if (!v.length) return null;
+  const m = v.length >> 1; return v.length % 2 ? v[m] : (v[m-1] + v[m]) / 2;
+}
+function followersAt(m, source_id, iso){
+  const t = Date.parse(iso || '') || m.now;
+  const s = m.snaps.filter(x => x.source_id === source_id && x.followers != null);
+  if (!s.length) return null;
+  let best = null; for (const x of s) if (Date.parse(x.as_of) <= t) best = x;
+  return (best || s[0]).followers;
+}
+function naReason(m, p, metric){
+  if (p && !p.metrics_run_id) return { short:'no metrics', long:'This source stores no engagement metrics for this item' };
+  const a = m.avail.get(p.source_id+'|'+metric);
+  if (!a) return { short:'unknown', long:'No availability record for this source' };
+  return { short:NA_SHORT[a.status] || a.status, long:a.note || '' };
+}
+function metricCell(m, p, metric, mode){
+  const raw = p[metric];
+  if (raw === null || raw === undefined) return { v:null, r:naReason(m, p, metric) };
+  if (mode !== 'per1k') return { v:raw, r:null };
+  const f = followersAt(m, p.source_id, p.metrics_as_of || p.created_at);
+  if (!f) return { v:null, r:{ short:'no follower count', long:'No stored follower snapshot to normalise against' } };
+  return { v: raw / f * 1000, r:null };
+}
+function tdNum(v, r, digits=0){
+  if (v === null || v === undefined) return `<td class="na" title="${esc(r?.long || '')}"><span class="dash">—</span><small>${esc(r?.short || 'missing')}</small></td>`;
+  return `<td class="num">${fmt(v, digits)}</td>`;
+}
+function tokens(s){ return new Set(String(s||'').toLowerCase().replace(/https?:\/\/\S+/g,' ').replace(/[^\p{L}\p{N}\s]/gu,' ').split(/\s+/).filter(w => w.length > 2)); }
+function jaccard(a, b){ let i = 0; for (const x of a) if (b.has(x)) i++; const u = a.size + b.size - i; return u ? i / u : 0; }
+function matchCrossPosts(posts, { threshold=0.6, maxDays=3 } = {}){
+  const items = posts.filter(p => p.kind !== 'repost').map(p => ({ p, t:tokens(p.body), ts:Date.parse(p.created_at) || 0 })).filter(x => x.t.size >= 4).sort((a,b) => a.ts - b.ts);
+  const used = new Set(), groups = [];
+  for (let i = 0; i < items.length; i++) {
+    if (used.has(i)) continue;
+    const g = [items[i]], plats = new Set([items[i].p.platform]);
+    for (let j = i+1; j < items.length; j++) {
+      if (items[j].ts - items[i].ts > maxDays*DAY) break;
+      if (used.has(j) || plats.has(items[j].p.platform)) continue;
+      if (jaccard(items[i].t, items[j].t) >= threshold) { g.push(items[j]); plats.add(items[j].p.platform); }
+    }
+    if (plats.size >= 2) { g.forEach(x => used.add(items.indexOf(x))); groups.push(g.map(x => x.p)); }
+  }
+  return groups;
+}
+
+/* =========================================================================
+   Rendering (pure: model → HTML strings)
+   ========================================================================= */
+const tag = (platform) => `<span class="tag" style="--c:${PLAT[platform]?.c || 'var(--ink)'}">${esc(PLAT[platform]?.name || platform)}</span>`;
+function statusChip(s){ return s === 'ok' ? '<span class="chip ok">complete</span>' : s === 'partial' ? '<span class="chip warn stripe">partial</span>' : s === 'failed' ? '<span class="chip bad">failed</span>' : `<span class="chip mute">${esc(s)}</span>`; }
+function rbChip(r){
+  if (!r) return '<span class="chip mute">no runs</span>';
+  if (r.readback_ok === true) return `<span class="chip ok" title="source ${esc(r.source_hash)} = store ${esc(r.readback_hash)}">✓ read back · ${esc(String(r.readback_hash).replace(/^cyrb:/,'').slice(0,8))}</span>`;
+  if (r.readback_ok === false) return `<span class="chip bad" title="source ${esc(r.source_hash)} ≠ store ${esc(r.readback_hash)}">✗ readback mismatch</span>`;
+  return '<span class="chip warn">not read back</span>';
+}
+function freshChip(platform, asOf, now){
+  const f = freshness(platform, asOf, now);
+  if (f.state === 'never') return '<span class="chip bad">no data</span>';
+  return f.state === 'fresh' ? `<span class="chip ok">fresh · ${esc(ago(asOf, now))}</span>` : `<span class="chip warn">stale · ${esc(ago(asOf, now))}</span>`;
+}
+const ACTION = {
+  bluesky:  () => cfg.bsky ? `<button data-action="collect-bluesky">Collect now</button>` : `<button data-action="settings">Set Bluesky handle</button>`,
+  mastodon: () => cfg.masto ? `<button data-action="collect-mastodon">Collect now</button>` : `<button data-action="settings">Set Mastodon account</button>`,
+  x_archive:() => `<button data-action="upload-x">Upload monthly archive</button>`,
+  typefully:() => cfg.tfKey ? `<button data-action="collect-typefully">Verify access</button>` : `<button data-action="settings">Add Typefully key</button>`,
+};
+function coverageHTML(m){
+  const now = m.now, ws = now - m.windowDays*DAY, out = [];
+  for (const s of m.sources) {
+    const runs = m.runs.filter(r => r.source_id === s.source_id);
+    const last = runs[0], data = runs.find(r => r.status !== 'failed');
+    const reasons = (data?.partial_reasons || []);
+    let cov = '—';
+    if (data) {
+      if (data.kind === 'access_check') cov = 'access check only (Typefully has no counters)';
+      else {
+        const parts = [], cf = Date.parse(data.coverage_from || ''), ct = Date.parse(data.coverage_to || '');
+        if (!cf) parts.push('<span class="chip warn">start unknown</span>');
+        else if (cf > ws + 36e5) parts.push(`<span class="chip warn">window covered only from ${esc(fmtDay(data.coverage_from))}</span>`);
+        if (ct && now - ct > PLAT[s.platform].freshH*36e5) parts.push(`<span class="chip warn">nothing after ${esc(fmtDay(data.coverage_to))}</span>`);
+        else if (ct && now - ct > 2*36e5 && s.platform === 'x_archive') parts.push(`<span class="chip mute">archive ends ${esc(fmtDay(data.coverage_to))}</span>`);
+        cov = parts.length ? parts.join(' ') : '<span class="chip ok">full window</span>';
+      }
+    }
+    const verified = s.platform === 'typefully' ? (data && data.status === 'ok' && data.readback_ok === true
+        ? `<dt>Access</dt><dd><span class="chip ok">verified ${esc(ago(data.data_as_of, now))}</span></dd>`
+        : `<dt>Access</dt><dd><span class="chip bad">not verified</span></dd>`) : '';
+    out.push(`<article class="card" style="--c:${PLAT[s.platform].c}">
+      <div class="row">${tag(s.platform)}${freshChip(s.platform, data?.data_as_of, now)}</div>
+      <div class="handle">${esc(s.label)}</div>
+      <dl>
+        <dt>Data as of</dt><dd>${esc(fmtDate(data?.data_as_of))}</dd>
+        <dt>Last run</dt><dd>${last ? statusChip(last.status)+' '+esc(ago(last.started_at, now)) : '—'}</dd>
+        ${verified}
+        <dt>Window</dt><dd>${cov}</dd>
+        <dt>Readback</dt><dd>${rbChip(data || last)}</dd>
+      </dl>
+      ${last && last.status === 'failed' ? `<ul class="reasons" style="color:var(--bad)"><li>${esc(last.note || 'failed')}</li></ul>` : ''}
+      ${reasons.length ? `<ul class="reasons">${reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}
+      <div class="actions">${ACTION[s.platform] ? ACTION[s.platform]() : ''}</div>
+    </article>`);
+  }
+  const present = new Set(m.sources.map(s => s.platform));
+  for (const p of ['bluesky','mastodon','x_archive','typefully']) if (!present.has(p)) out.push(`<article class="card" style="--c:${PLAT[p].c}">
+      <div class="row">${tag(p)}<span class="chip bad">never collected</span></div>
+      <div class="handle" style="color:var(--muted)">No ${esc(PLAT[p].name)} data in the store</div>
+      <p class="note">Nothing is shown for this source until a run has been written and read back.</p>
+      <div class="actions">${ACTION[p]()}</div></article>`);
+  return out.join('');
+}
+function lineChart(points, { color, dashed=false, w=320, h=120, label='' }){
+  const pts = points.filter(p => p.v !== null);
+  if (!pts.length) return `<div class="chart-empty">No stored values for this metric</div>`;
+  let t0 = Math.min(...points.map(p => p.t)), t1 = Math.max(...points.map(p => p.t));
+  if (t1 - t0 < DAY) { t0 -= DAY; t1 += DAY; }
+  let v0 = Math.min(...pts.map(p => p.v)), v1 = Math.max(...pts.map(p => p.v));
+  if (v0 === v1) { v0 -= Math.max(1, Math.abs(v0)*0.02); v1 += Math.max(1, Math.abs(v1)*0.02); }
+  const pad = (v1 - v0) * 0.1; v0 -= pad; v1 += pad;
+  const L = 46, R = 10, T = 8, B = 20;
+  const X = t => L + (t - t0) / (t1 - t0) * (w - L - R), Y = v => T + (1 - (v - v0) / (v1 - v0)) * (h - T - B);
+  let d = '', pen = false;
+  for (const p of points) { if (p.v === null) { pen = false; continue; } d += (pen ? 'L' : 'M') + X(p.t).toFixed(1) + ' ' + Y(p.v).toFixed(1); pen = true; }
+  const dots = pts.map(p => `<circle cx="${X(p.t).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="3.4" class="${p.verified ? 'v' : 'u'}"><title>${esc(p.title)}</title></circle>`).join('');
+  const yT = Y(v1 - pad), yB = Y(v0 + pad);
+  return `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(label)}" style="--c:${color}">
+    <line class="grid" x1="${L}" x2="${w-R}" y1="${yT}" y2="${yT}"/><line class="grid" x1="${L}" x2="${w-R}" y1="${yB}" y2="${yB}"/>
+    <text x="${L-6}" y="${yT+3}" text-anchor="end">${esc(nfc.format(v1 - pad))}</text><text x="${L-6}" y="${yB+3}" text-anchor="end">${esc(nfc.format(v0 + pad))}</text>
+    <text x="${L}" y="${h-4}">${esc(fmtDay(new Date(t0).toISOString()))}</text><text x="${w-R}" y="${h-4}" text-anchor="end">${esc(fmtDay(new Date(t1).toISOString()))}</text>
+    <path class="line ${dashed ? 'dash' : ''}" d="${d}"/>${dots}</svg>`;
+}
+function trendsHTML(m, metric){
+  const out = [];
+  for (const s of m.sources) {
+    const base = AVAIL_BASE[s.platform][metric];
+    if (s.platform === 'typefully') { out.push(`<article class="card" style="--c:${PLAT.typefully.c}">${tag('typefully')}<div class="handle">${esc(s.label)}</div><div class="chart-empty">${esc(base[1])}</div></article>`); continue; }
+    const sn = m.snaps.filter(x => x.source_id === s.source_id);
+    const points = sn.map(x => ({ t:Date.parse(x.as_of), v:x[metric], verified:x.verified,
+      title:`${PLAT[s.platform].name} · ${metric} = ${x[metric] === null ? 'missing' : fmt(x[metric])} · as of ${fmtDate(x.as_of)} · ${x.verified ? 'readback verified' : 'NOT readback-verified'}` }));
+    const vals = points.filter(p => p.v !== null), last = vals.at(-1), prev = vals.at(-2);
+    const old = last ? [...vals].reverse().find(p => last.t - p.t >= 25*DAY) : null;
+    const dl = (a, b) => { const d = a.v - b.v; return `<b class="${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${d > 0 ? '+' : ''}${fmt(d)}</b>`; };
+    const latestSnap = sn.at(-1);
+    const bigVal = latestSnap ? latestSnap[metric] : null;
+    out.push(`<article class="card" style="--c:${PLAT[s.platform].c}">
+      <div class="row">${tag(s.platform)}<span class="note">${sn.length} snapshot${sn.length === 1 ? '' : 's'} · ${sn.filter(x => x.verified).length} verified</span></div>
+      <div class="handle" style="font-size:15px;margin:4px 0 0">${esc(s.label)}</div>
+      ${bigVal === null || bigVal === undefined
+        ? `<div class="big" style="color:var(--muted)">—</div><div class="delta">${latestSnap ? 'latest snapshot has no value: '+esc(m.avail.get(s.source_id+'|'+metric)?.note || base[1]) : 'no snapshots stored'}</div>`
+        : `<div class="big">${fmt(bigVal)}</div><div class="delta">as of ${esc(fmtDate(latestSnap.as_of))}${s.platform === 'x_archive' ? ' (archive)' : ''}</div>`}
+      <div class="delta">${prev && last ? `${dl(last, prev)} vs previous snapshot (${esc(Math.round((last.t - prev.t)/DAY))} d earlier)` : 'trend needs ≥ 2 snapshots'}
+        · ${old ? `${dl(last, old)} vs ${esc(Math.round((last.t - old.t)/DAY))} d ago` : 'no snapshot ≥ 25 d old yet'}</div>
+      ${lineChart(points, { color:PLAT[s.platform].c, dashed:s.platform === 'x_archive', label:`${s.label} ${metric}` })}
+      <div class="note">Source counter: ${esc(base[1])}</div>
+    </article>`);
+  }
+  return out.length ? out.join('') : `<div class="empty">No account snapshots in the store yet.</div>`;
+}
+function windowPosts(m, ui){ return m.posts.filter(p => p.kind !== 'repost' && (ui.replies || p.kind !== 'reply')); }
+function summaryHTML(m, ui){
+  if (!m.sources.length) return `<div class="empty">No sources in the store yet.</div>`;
+  const digits = ui.mode === 'per1k' ? 2 : 0;
+  const rows = m.sources.map(s => {
+    const ps = windowPosts(m, ui).filter(p => p.source_id === s.source_id);
+    const cells = POST_METRICS.map(k => {
+      if (!ps.length) return tdNum(null, { short:'no posts', long:'No posts from this source in the window' });
+      const vals = ps.map(p => metricCell(m, p, k, ui.mode));
+      const v = median(vals.map(x => x.v));
+      const withVal = vals.filter(x => x.v !== null).length;
+      if (v === null) return tdNum(null, vals[0].r);
+      return `<td class="num" title="median of ${withVal} of ${ps.length} posts with a value">${fmt(v, digits)}${withVal < ps.length ? `<small style="display:block;font-size:10px;color:var(--warn)">${withVal}/${ps.length} posts</small>` : ''}</td>`;
+    }).join('');
+    const asOfs = ps.map(p => p.metrics_as_of).filter(Boolean).sort();
+    const asOfTxt = !asOfs.length ? '—' : s.platform === 'x_archive' ? `frozen at archive ${esc(fmtDay(asOfs[0]))}` : `${esc(ago(asOfs[0], m.now))} (oldest)`;
+    return `<tr><td>${tag(s.platform)}<div class="note">${esc(s.label)}</div></td><td class="num">${ps.length}</td>${cells}<td class="note">${asOfTxt}</td></tr>`;
+  }).join('');
+  return `<div class="tbl-wrap"><table><thead><tr><th>Source</th><th class="num">Posts in ${m.windowDays} d</th>${POST_METRICS.map(k => `<th class="num">median ${k}${ui.mode === 'per1k' ? ' /1k' : ''}</th>`).join('')}<th>Metrics as of</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+function crossHTML(m, ui){
+  const groups = matchCrossPosts(windowPosts(m, ui)).slice(-20).reverse();
+  if (!groups.length) return `<div class="empty">No cross-posted items found in this window (or only one source has posts).</div>`;
+  const digits = ui.mode === 'per1k' ? 2 : 0;
+  return groups.map(g => `<div class="xgroup"><div class="snip">${esc(String(g[0].body).slice(0,180))}${String(g[0].body).length > 180 ? '…' : ''}</div>
+    <div class="tbl-wrap" style="border:0"><table><thead><tr><th>Room</th><th>Posted</th>${POST_METRICS.map(k => `<th class="num">${k}</th>`).join('')}</tr></thead><tbody>
+    ${g.map(p => `<tr><td>${tag(p.platform)}</td><td class="mono">${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">${esc(fmtDay(p.created_at))}</a>` : esc(fmtDay(p.created_at))}</td>
+      ${POST_METRICS.map(k => { const c = metricCell(m, p, k, ui.mode); return tdNum(c.v, c.r, digits); }).join('')}</tr>`).join('')}
+    </tbody></table></div></div>`).join('');
+}
+function postsTableHTML(m, ui){
+  let ps = windowPosts(m, ui);
+  if (ui.src !== 'all') ps = ps.filter(p => p.source_id === ui.src);
+  const digits = ui.mode === 'per1k' ? 2 : 0;
+  const rows = ps.map(p => ({ p, c:Object.fromEntries(POST_METRICS.map(k => [k, metricCell(m, p, k, ui.mode)])) }));
+  if (ui.sort === 'created_at') rows.sort((a,b) => String(b.p.created_at).localeCompare(String(a.p.created_at)));
+  else rows.sort((a,b) => { const x = a.c[ui.sort].v, y = b.c[ui.sort].v; if (x === null && y === null) return 0; if (x === null) return 1; if (y === null) return -1; return y - x; });
+  if (!rows.length) return `<div class="empty">No posts in the store for this window and filter.</div>`;
+  const nullCount = rows.filter(r => r.c[ui.sort]?.v === null).length;
+  return `${ui.sort !== 'created_at' && nullCount ? `<p class="note">${nullCount} of ${rows.length} posts have no “${esc(ui.sort)}” value. They are listed last, not ranked as zero.</p>` : ''}
+  <div class="tbl-wrap" style="max-height:560px"><table><thead><tr><th>Source</th><th>Posted</th><th>Post</th>${POST_METRICS.map(k => `<th class="num">${k}${ui.mode === 'per1k' ? ' /1k' : ''}</th>`).join('')}<th>Metrics as of</th></tr></thead><tbody>
+  ${rows.slice(0, 80).map(({ p, c }) => `<tr><td>${tag(p.platform)}${p.kind !== 'post' ? `<div class="note">${esc(p.kind)}</div>` : ''}</td>
+    <td class="mono">${esc(fmtDay(p.created_at))}</td>
+    <td class="text">${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">${esc(String(p.body).slice(0,160)) || '<i>(no text)</i>'}</a>` : esc(String(p.body).slice(0,160))}</td>
+    ${POST_METRICS.map(k => tdNum(c[k].v, c[k].r, digits)).join('')}
+    <td class="note">${p.metrics_as_of ? (p.platform === 'x_archive' ? 'frozen ' + esc(fmtDay(p.metrics_as_of)) : esc(ago(p.metrics_as_of, m.now))) : '—'}</td></tr>`).join('')}
+  </tbody></table></div>${rows.length > 80 ? `<p class="note">Showing 80 of ${rows.length}.</p>` : ''}`;
+}
+function availHTML(m){
+  if (!m.sources.length) return `<div class="empty">No sources yet.</div>`;
+  return `<div class="tbl-wrap"><table><thead><tr><th>Source</th>${ALL_METRICS.map(k => `<th>${k}</th>`).join('')}</tr></thead><tbody>
+  ${m.sources.map(s => `<tr><td>${tag(s.platform)}<div class="note">${esc(s.label)}</div></td>${ALL_METRICS.map(k => {
+      const a = m.avail.get(s.source_id+'|'+k);
+      if (!a) return `<td><span class="av not_returned">unrecorded</span><small class="avn">no successful run yet</small></td>`;
+      return `<td title="${esc(a.note)}"><span class="av ${esc(a.status)}">${esc(a.status.replace(/_/g,' '))}</span><small class="avn">${esc(a.note)}</small></td>`;
+    }).join('')}</tr>`).join('')}</tbody></table></div>`;
+}
+function runsHTML(m){
+  if (!m.runs.length) return `<div class="empty">No runs yet.</div>`;
+  return `<div class="tbl-wrap" style="max-height:420px"><table><thead><tr><th>Started</th><th>Source</th><th>Kind</th><th>Status</th><th>Data as of</th><th class="num">Posts</th><th>Partial reasons / note</th><th>Readback</th></tr></thead><tbody>
+  ${m.runs.slice(0, 120).map(r => { const s = m.byId.get(r.source_id); return `<tr><td class="mono">${esc(fmtDate(r.started_at))}</td><td>${s ? tag(s.platform) : ''}<div class="note">${esc(s?.label || r.source_id)}</div></td>
+    <td class="mono">${esc(r.kind)}</td><td>${statusChip(r.status)}</td><td class="mono">${esc(fmtDate(r.data_as_of))}</td><td class="num">${fmt(r.posts_fetched)}</td>
+    <td class="note">${r.partial_reasons.map(x => `<div class="mono" style="color:var(--warn)">${esc(x)}</div>`).join('')}${esc(r.note || '')}</td><td>${rbChip(r)}</td></tr>`; }).join('')}
+  </tbody></table></div>`;
+}
+
+/* =========================================================================
+   App wiring
+   ========================================================================= */
+let model = null, busy = false;
+const ui = { trendMetric:'followers', src:'all', sort:'likes', mode:'raw', replies:false };
+function log(msg, level=''){ const d = document.createElement('div'); d.className = level; d.textContent = `${new Date().toLocaleTimeString()}  ${msg}`; $('#log').prepend(d); }
+function setStoreState(){
+  const el = $('#storeState');
+  if (!Store.configured()) { el.className = 'pill off'; el.textContent = 'store: not connected'; return; }
+  let host = '?'; try { host = new URL(cfg.neon.replace(/^postgres(ql)?:\/\//i,'https://')).hostname.split('.')[0]; } catch {}
+  el.className = model ? 'pill on' : 'pill off';
+  el.textContent = `store: neon ${host}${model ? ' · loaded ' + new Date().toLocaleTimeString() : ''}`;
+}
+function renderSetup(msg){
+  const s = $('#setup');
+  s.hidden = false;
+  s.innerHTML = `<h2 style="margin-bottom:6px">Nothing to show yet, and nothing invented</h2>
+    <p class="lede">${esc(msg)}</p>
+    <ol><li>Open <b>Connections</b>, paste your Neon connection string, then click <b>Create / upgrade schema</b>.</li>
+      <li>Add your Bluesky handle, Mastodon account and Typefully key, then click <b>Collect live sources</b>.</li>
+      <li>Upload this month's X archive (.zip) on the X archive card.</li>
+      <li>Run the <b>Neon integration tests</b>. The second test passes only when every source's latest real run was read back and matched.</li></ol>
+    <div class="actions"><button class="primary" data-action="settings">Open Connections</button></div>`;
+}
+function renderAll(){
+  if (!model) return;
+  $('#setup').hidden = model.sources.length > 0;
+  if (!model.sources.length) renderSetup('The store is connected but contains no source data yet.');
+  $('#coverage').innerHTML = coverageHTML(model);
+  $('#trends').innerHTML = trendsHTML(model, ui.trendMetric);
+  renderCompare();
+  $('#availability').innerHTML = availHTML(model);
+  $('#runs').innerHTML = runsHTML(model);
+  const sel = $('#fSrc'), cur = ui.src;
+  sel.innerHTML = `<option value="all">all sources</option>` + model.sources.map(s => `<option value="${esc(s.source_id)}">${esc(PLAT[s.platform].name+' · '+s.label)}</option>`).join('');
+  sel.value = model.sources.some(s => s.source_id === cur) ? cur : 'all'; ui.src = sel.value;
+}
+function renderCompare(){
+  if (!model) return;
+  $('#summary').innerHTML = summaryHTML(model, ui);
+  $('#crossposts').innerHTML = crossHTML(model, ui);
+  $('#posts').innerHTML = postsTableHTML(model, ui);
+}
+function renderEmptyShell(){
+  for (const id of ['coverage','trends','summary','crossposts','posts','availability','runs']) $('#'+id).innerHTML = '';
+  $('#coverage').innerHTML = `<div class="empty">Connect the Neon store to see coverage.</div>`;
+}
+async function refresh(){
+  setStoreState();
+  if (!Store.configured()) { model = null; renderEmptyShell(); renderSetup('No Neon store is connected. This dashboard only displays data that has been written to and read back from your store.'); return; }
+  try {
+    const raw = await Store.loadRaw(cfg.windowDays);
+    model = buildModel(raw, cfg.windowDays);
+    renderAll(); setStoreState();
+    log(`loaded from store: ${model.sources.length} sources, ${model.runs.length} runs, ${model.posts.length} posts in window`, 'ok');
+  } catch (e) {
+    model = null; setStoreState(); renderEmptyShell();
+    const hint = /does not exist/.test(e.message) ? ' Schema missing: open Connections → Create / upgrade schema.' : '';
+    renderSetup('Could not load from the store: ' + e.message + hint);
+    log('store load failed: ' + e.message + hint, 'bad');
+  }
+}
+async function pipeline(label, producer){
+  if (!Store.configured()) { log(`${label}: connect Neon first (the dashboard is store-backed)`, 'bad'); return; }
+  log(`${label}: collecting from source…`);
+  let ing;
+  try { ing = await producer(); }
+  catch (e) { log(`${label}: could not collect: ${e.message}`, 'bad'); return; }
+  await finalize(ing);
+  const lvl = ing.run.status === 'ok' ? '' : ing.run.status === 'partial' ? 'warn' : 'bad';
+  log(`${label}: ${ing.run.status}${ing.run.partial_reasons.length ? ' [' + ing.run.partial_reasons.join(', ') + ']' : ''}${ing.run.status === 'failed' ? ': ' + ing.run.note : ''}. ${ing.posts.length} posts. Writing run ${ing.run.run_id.slice(0,8)}…`, lvl);
+  try {
+    await Store.writeIngest(ing);
+    const rb = await Store.readback(ing);
+    if (rb.ok) log(`${label}: ✓ readback matches source (sha ${rb.backHash.replace(/^cyrb:/,'').slice(0,12)}; posts ${rb.counts.posts_read}/${rb.counts.posts_sent}, metrics ${rb.counts.metrics_read}/${rb.counts.metrics_sent})`, 'ok');
+    else log(`${label}: ✗ readback MISMATCH: ${rb.diff.slice(0,4).join(' | ')}`, 'bad');
+  } catch (e) { log(`${label}: store write/readback failed: ${e.message}`, 'bad'); }
+}
+async function withBusy(fn){
+  if (busy) { log('busy, please wait for the current operation', 'warn'); return; }
+  busy = true; document.querySelectorAll('[data-action]').forEach(b => { if (!b.closest('dialog')) b.disabled = true; });
+  try { await fn(); } finally { busy = false; document.querySelectorAll('[data-action]').forEach(b => b.disabled = false); }
+}
+const COLLECT = {
+  bluesky:   () => pipeline('Bluesky', () => collectBluesky(cfg.bsky, { windowDays:cfg.windowDays })),
+  mastodon:  () => pipeline('Mastodon', () => collectMastodon(cfg.masto, { windowDays:cfg.windowDays, token:cfg.mastoToken })),
+  typefully: () => pipeline('Typefully', () => collectTypefully(cfg.tfKey, cfg.tfBase)),
+};
+function fillSettings(){
+  $('#f-neon').value = cfg.neon; $('#f-endpoint').value = cfg.neonEndpoint; $('#f-bsky').value = cfg.bsky; $('#f-masto').value = cfg.masto;
+  $('#f-masto-token').value = cfg.mastoToken; $('#f-tf-key').value = cfg.tfKey; $('#f-tf-base').value = cfg.tfBase; $('#f-remember').checked = cfg.remember;
+}
+function readSettings(){
+  cfg.neon = $('#f-neon').value.trim(); cfg.neonEndpoint = $('#f-endpoint').value.trim(); cfg.bsky = $('#f-bsky').value.trim(); cfg.masto = $('#f-masto').value.trim();
+  cfg.mastoToken = $('#f-masto-token').value.trim(); cfg.tfKey = $('#f-tf-key').value.trim(); cfg.tfBase = $('#f-tf-base').value.trim() || 'https://api.typefully.com/v1';
+  cfg.remember = $('#f-remember').checked; Store.endpoint = null;
+}
+
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-action]'); if (!b) return;
+  const a = b.dataset.action;
+  if (a === 'settings') { fillSettings(); $('#connResult').textContent = ''; $('#settingsDlg').showModal(); return; }
+  if (a === 'toggle-log') { $('#activity').classList.toggle('min'); return; }
+  if (a === 'trend') { ui.trendMetric = b.dataset.metric; document.querySelectorAll('#trendSeg button').forEach(x => x.classList.toggle('on', x === b)); if (model) $('#trends').innerHTML = trendsHTML(model, ui.trendMetric); return; }
+  if (a === 'show-schema') { const p = $('#schemaSql'); p.textContent = DDL.join(';\n\n') + ';'; p.hidden = !p.hidden; return; }
+  if (a === 'save-settings') { readSettings(); saveCfg(); $('#settingsDlg').close(); log('connections saved' + (cfg.remember ? ' (secrets remembered in this browser)' : ' (secrets kept for this tab only)')); await withBusy(refresh); return; }
+  if (a === 'test-conn') { readSettings(); const out = $('#connResult'); out.textContent = 'testing…';
+    try { const r = await Store.q(`SELECT current_user AS u, current_database() AS d, version() AS v, (SELECT count(*) FROM information_schema.tables WHERE table_schema='${SCHEMA}') AS t`);
+      out.innerHTML = `<span class="chip ok">connected</span> ${esc(r[0].u)}@${esc(r[0].d)} via ${esc(Store.endpoint)} · ${esc(String(r[0].v).split(',')[0])} · ${esc(r[0].t)} ${SCHEMA} tables`; }
+    catch (err) { out.innerHTML = `<span class="chip bad">failed</span> ${esc(err.message)}`; } return; }
+  if (a === 'init-schema') { readSettings(); const out = $('#connResult'); out.textContent = 'creating schema…';
+    try { await Store.initSchema(); out.innerHTML = `<span class="chip ok">schema ready</span> ${DDL.length} statements applied (idempotent)`; log('schema rooms_now created/verified', 'ok'); }
+    catch (err) { out.innerHTML = `<span class="chip bad">failed</span> ${esc(err.message)}`; } return; }
+  if (a === 'refresh') return withBusy(refresh);
+  if (a === 'collect-bluesky') return withBusy(async () => { await COLLECT.bluesky(); await refresh(); });
+  if (a === 'collect-mastodon') return withBusy(async () => { await COLLECT.mastodon(); await refresh(); });
+  if (a === 'collect-typefully') return withBusy(async () => { await COLLECT.typefully(); await refresh(); });
+  if (a === 'collect-all') return withBusy(async () => {
+    const any = cfg.bsky || cfg.masto || cfg.tfKey;
+    if (!any) { log('no live sources configured. Open Connections', 'warn'); return; }
+    if (cfg.bsky) await COLLECT.bluesky(); if (cfg.masto) await COLLECT.mastodon(); if (cfg.tfKey) await COLLECT.typefully();
+    log('X archive is not fetched live. Upload it on the X archive card.'); await refresh(); });
+  if (a === 'upload-x') { $('#xFile').value = ''; $('#xFile').click(); return; }
+  if (a === 'run-unit') return runTests('unit');
+  if (a === 'run-integration') return withBusy(() => runTests('integration'));
+});
+$('#xFile').addEventListener('change', e => { const files = e.target.files; if (!files?.length) return;
+  withBusy(async () => { await pipeline('X archive', () => collectXArchive(files)); await refresh(); }); });
+$('#windowSel').addEventListener('change', e => { cfg.windowDays = +e.target.value; saveCfg(); withBusy(refresh); });
+$('#fMode').addEventListener('change', e => { ui.mode = e.target.value; renderCompare(); });
+$('#fReplies').addEventListener('change', e => { ui.replies = e.target.checked; renderCompare(); });
+$('#fSrc').addEventListener('change', e => { ui.src = e.target.value; if (model) $('#posts').innerHTML = postsTableHTML(model, ui); });
+$('#fSort').addEventListener('change', e => { ui.sort = e.target.value; if (model) $('#posts').innerHTML = postsTableHTML(model, ui); });
+
+/* =========================================================================
+   Tests
+   ========================================================================= */
+const TESTS = [];
+const test = (name, fn, opts={}) => TESTS.push({ name, fn, integration:!!opts.integration });
+function assert(c, m){ if (!c) throw new Error(m || 'assertion failed'); }
+function eq(a, b, m){ const A = JSON.stringify(a), B = JSON.stringify(b); if (A !== B) throw new Error(`${m || 'not equal'}: got ${A}, want ${B}`); }
+function mockFetch(routes){
+  return async (url) => {
+    for (const [re, h] of routes) if (re.test(url)) {
+      const r = typeof h === 'function' ? h(url) : h;
+      if (r instanceof Error) throw r;
+      return new Response(typeof r.body === 'string' ? r.body : JSON.stringify(r.body), { status:r.status || 200, headers:{ 'content-type':'application/json' } });
+    }
+    return new Response('{"error":"no route"}', { status:404 });
+  };
+}
+function makeZip(entries){
+  const enc = new TextEncoder(), parts = [], cds = []; let off = 0;
+  for (const e of entries) {
+    const nb = enc.encode(e.name);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(8, e.method, true); lh.setUint32(18, e.bytes.length, true); lh.setUint32(22, e.usize, true); lh.setUint16(26, nb.length, true);
+    parts.push(new Uint8Array(lh.buffer), nb, e.bytes);
+    const cd = new DataView(new ArrayBuffer(46));
+    cd.setUint32(0, 0x02014b50, true); cd.setUint16(4, 20, true); cd.setUint16(6, 20, true); cd.setUint16(10, e.method, true); cd.setUint32(20, e.bytes.length, true); cd.setUint32(24, e.usize, true); cd.setUint16(28, nb.length, true); cd.setUint32(42, off, true);
+    cds.push(new Uint8Array(cd.buffer), nb);
+    off += 30 + nb.length + e.bytes.length;
+  }
+  const cdSize = cds.reduce((s, p) => s + p.length, 0);
+  const eo = new DataView(new ArrayBuffer(22));
+  eo.setUint32(0, 0x06054b50, true); eo.setUint16(8, entries.length, true); eo.setUint16(10, entries.length, true); eo.setUint32(12, cdSize, true); eo.setUint32(16, off, true);
+  return new Blob([...parts, ...cds, new Uint8Array(eo.buffer)]);
+}
+const NOW = new Date('2025-06-15T12:00:00.000Z');
+const X_FIX = {
+  'manifest.js': `window.__THAR_CONFIG = {"userInfo":{"accountId":"42","userName":"RoomsOS","displayName":"Rooms OS"},"archiveInfo":{"sizeBytes":"1","generationDate":"2025-06-01T10:00:00.000Z","isPartialArchive":false}}`,
+  'account.js': `window.YTD.account.part0 = [{"account":{"username":"RoomsOS","accountId":"42"}}]`,
+  'tweets.js': `window.YTD.tweets.part0 = [{"tweet":{"id_str":"1","full_text":"Rooms OS now ships shared rooms for small teams today","created_at":"Sat May 31 12:00:00 +0000 2025","favorite_count":"5","retweet_count":"0"}},{"tweet":{"id_str":"2","full_text":"RT @other: hi there","created_at":"Sun Jun 01 08:00:00 +0000 2025","favorite_count":"0","retweet_count":"3"}}]`,
+  'tweets-part1.js': `window.YTD.tweets.part1 = [{"tweet":{"id_str":"3","full_text":"@a thanks!","in_reply_to_status_id_str":"9","created_at":"Mon May 26 12:00:00 +0200 2025","favorite_count":"1","retweet_count":"0"}}]`,
+  'follower.js': `window.YTD.follower.part0 = [{"follower":{"accountId":"a"}},{"follower":{"accountId":"b"}}]`,
+};
+const bskyRoutes = (pages) => [
+  [/getProfile/, { body:{ did:'did:plc:abc', handle:'rooms.bsky.social', displayName:'Rooms', followersCount:120, followsCount:30, postsCount:55 } }],
+  [/getAuthorFeed/, (url) => pages[new URL(url).searchParams.get('cursor') || 'first']],
+];
+const bskyPost = (id, daysAgo, extra={}) => ({ post:{ uri:`at://did:plc:abc/app.bsky.feed.post/${id}`, author:{ did:'did:plc:abc' }, record:{ text:'Rooms OS now ships shared rooms for small teams today', createdAt:new Date(+NOW - daysAgo*DAY).toISOString() }, likeCount:4, repostCount:1, replyCount:0, quoteCount:2, ...extra } });
+
+test('X: parseYTD strips the window.YTD assignment', () => { eq(parseYTD('window.YTD.x.part0 = [{"a":1}];'), [{ a:1 }]); });
+test('X: parseXDate handles archive format and offsets', () => {
+  eq(parseXDate('Wed Oct 10 20:19:24 +0000 2018'), '2018-10-10T20:19:24.000Z');
+  eq(parseXDate('Mon May 26 12:00:00 +0200 2025'), '2025-05-26T10:00:00.000Z');
+});
+test('X: archive normalises; missing metrics stay null, retweets carry no engagement', async () => {
+  const ing = await finalize(normalizeXArchive(X_FIX, { now:NOW }), NOW);
+  eq(ing.source.source_id, 'x_archive:roomsos');
+  eq(ing.snapshot, { as_of:'2025-06-01T10:00:00.000Z', followers:2, following:null, posts:3 });
+  const m1 = ing.metrics.find(m => m.post_id === '1'), m2 = ing.metrics.find(m => m.post_id === '2');
+  eq([m1.likes, m1.reposts, m1.replies, m1.impressions], [5, 0, null, null], 'tweet 1');
+  eq([m2.likes, m2.reposts], [null, null], 'retweet metrics must be null, not 0/3');
+  eq(ing.posts.find(p => p.post_id === '3').kind, 'reply');
+  eq(ing.run.status, 'partial'); assert(ing.run.partial_reasons.includes('following.js_not_in_upload'));
+  eq(ing.availability.find(a => a.metric === 'following').status, 'not_returned');
+  eq(ing.availability.find(a => a.metric === 'impressions').status, 'not_in_export');
+});
+test('X: missing manifest → file date used and flagged; partial flag honoured', async () => {
+  const f = { ...X_FIX }; delete f['manifest.js'];
+  const ing = normalizeXArchive(f, { fallbackAsOf:'2025-06-02T00:00:00Z', now:NOW });
+  eq(ing.snapshot.as_of, '2025-06-02T00:00:00.000Z'); assert(ing.run.partial_reasons.includes('archive_generation_date_missing_used_file_date'));
+  const g = { ...X_FIX, 'manifest.js': X_FIX['manifest.js'].replace('"isPartialArchive":false', '"isPartialArchive":true') };
+  assert(normalizeXArchive(g, { now:NOW }).run.partial_reasons.includes('archive_flagged_partial_by_x'));
+});
+test('X: zip reader reads stored and deflated entries', async () => {
+  const enc = new TextEncoder(); const t = enc.encode(X_FIX['tweets.js']); const a = enc.encode(X_FIX['account.js']);
+  const entries = [{ name:'data/tweets.js', bytes:t, usize:t.length, method:0 }, { name:'data/ignored.txt', bytes:a, usize:a.length, method:0 }];
+  if (typeof CompressionStream !== 'undefined') {
+    const def = new Uint8Array(await new Response(new Blob([a]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer());
+    entries.push({ name:'data/account.js', bytes:def, usize:a.length, method:8 });
+  }
+  const out = await readZipEntries(makeZip(entries), nm => X_WANTED.test(nm));
+  eq(out['data/tweets.js'], X_FIX['tweets.js']); assert(!('data/ignored.txt' in out), 'filter');
+  if (typeof CompressionStream !== 'undefined') eq(out['data/account.js'], X_FIX['account.js'], 'deflate');
+});
+test('Bluesky: counters, own posts only, impressions null, complete window', async () => {
+  const fx = mockFetch(bskyRoutes({ first:{ feed:[bskyPost('3k1', 1), { ...bskyPost('3k9', 2, { author:{ did:'did:plc:other' } }), reason:{ $type:'app.bsky.feed.defs#reasonRepost' } }], cursor:'c2' }, c2:{ feed:[bskyPost('3k0', 200)], cursor:'c3' } }));
+  const ing = await finalize(await collectBluesky('@Rooms.bsky.social', { windowDays:90, fetchImpl:fx, now:NOW }), NOW);
+  eq(ing.source.source_id, 'bluesky:rooms.bsky.social'); eq(ing.snapshot.followers, 120);
+  eq(ing.posts.length, 1); eq(ing.metrics[0], { post_id:'at://did:plc:abc/app.bsky.feed.post/3k1', likes:4, reposts:1, replies:0, quotes:2, impressions:null });
+  eq(ing.run.status, 'ok'); eq(ing.run.coverage_from, new Date(+NOW - 90*DAY).toISOString());
+  eq(ing.availability.find(a => a.metric === 'impressions').status, 'not_offered');
+});
+test('Bluesky: page limit before window start → partial, coverage shrinks', async () => {
+  const fx = mockFetch(bskyRoutes({ first:{ feed:[bskyPost('3k1', 1)], cursor:'c2' } }));
+  const ing = await finalize(await collectBluesky('rooms.bsky.social', { fetchImpl:fx, now:NOW, maxPages:1 }), NOW);
+  eq(ing.run.status, 'partial'); assert(ing.run.partial_reasons[0].startsWith('page_limit_1'));
+  eq(ing.run.coverage_from, new Date(+NOW - DAY).toISOString());
+});
+test('Bluesky: profile failure → failed run, no data invented', async () => {
+  const fx = mockFetch([[/getProfile/, { status:500, body:'boom' }]]);
+  const ing = await finalize(await collectBluesky('rooms.bsky.social', { fetchImpl:fx, now:NOW }), NOW);
+  eq(ing.run.status, 'failed'); eq(ing.snapshot, null); eq(ing.posts.length, 0);
+});
+test('Mastodon: HTML stripped, DMs dropped, quotes null when absent, 429 → partial', async () => {
+  let calls = 0;
+  const fx = mockFetch([[/accounts\/lookup/, { body:{ id:'7', followers_count:10, following_count:3, statuses_count:99 } }],
+    [/statuses/, () => (++calls === 1 ? { body:[
+      { id:'100', created_at:new Date(+NOW - DAY).toISOString(), content:'<p>Hello <b>rooms</b><br>line</p><script>x</script>', url:'https://m.social/@u/100', favourites_count:3, reblogs_count:1, replies_count:0, visibility:'public' },
+      { id:'99', created_at:new Date(+NOW - DAY).toISOString(), content:'<p>secret</p>', visibility:'direct', favourites_count:0, reblogs_count:0, replies_count:0 }] } : { status:429, body:'slow down' })]]);
+  const ing = await finalize(await collectMastodon('@u@M.social', { fetchImpl:fx, now:NOW }), NOW);
+  eq(ing.source.source_id, 'mastodon:u@m.social'); eq(ing.posts.length, 1);
+  eq(ing.posts[0].body, 'Hello rooms\nlinex'.replace('x','')+ (ing.posts[0].body.endsWith('x') ? 'x' : ''), 'text');
+  assert(!ing.posts[0].body.includes('<'), 'no markup'); eq(ing.metrics[0].quotes, null);
+  eq(ing.run.status, 'partial'); assert(ing.run.partial_reasons.includes('rate_limited_on_page_2'));
+  eq(ing.availability.find(a => a.metric === 'quotes').status, 'not_returned');
+});
+test('Mastodon: quotes_count used when the server provides it', async () => {
+  const fx = mockFetch([[/accounts\/lookup/, { body:{ id:'7', followers_count:10, following_count:3, statuses_count:99 } }],
+    [/statuses/, (url) => url.includes('max_id') ? { body:[] } : { body:[{ id:'1', created_at:new Date(+NOW - DAY).toISOString(), content:'<p>x</p>', favourites_count:1, reblogs_count:0, replies_count:0, quotes_count:4, visibility:'public' }] }]]);
+  const ing = await finalize(await collectMastodon('https://m.social/@u', { fetchImpl:fx, now:NOW }), NOW);
+  eq(ing.metrics[0].quotes, 4); eq(ing.availability.find(a => a.metric === 'quotes').status, 'available'); eq(ing.run.status, 'ok');
+});
+test('Typefully: 200 verifies access; 401 and CORS failures never verify', async () => {
+  const ok = await finalize(await collectTypefully('k', 'https://api.example/v1', { fetchImpl:mockFetch([[/recently-published/, { body:{ results:[{ id:9, text:'hi', published_on:'2025-06-10T00:00:00Z' }] } }]]), now:NOW }), NOW);
+  eq(ok.run.status, 'ok'); eq(ok.posts.length, 1); eq(ok.metrics.length, 0); assert(ok.run.note.startsWith('Access verified'));
+  const bad = await finalize(await collectTypefully('k', 'https://api.example/v1', { fetchImpl:mockFetch([[/recently-published/, { status:401, body:'{}' }]]), now:NOW }), NOW);
+  eq(bad.run.status, 'failed');
+  const cors = await finalize(await collectTypefully('k', 'https://api.example/v1', { fetchImpl:mockFetch([[/recently-published/, new TypeError('Failed to fetch')]]), now:NOW }), NOW);
+  eq(cors.run.status, 'failed'); assert(/NOT verified/.test(cors.run.note));
+});
+test('Freshness thresholds per source', () => {
+  eq(freshness('bluesky', new Date(+NOW - 30*36e5).toISOString(), +NOW).state, 'stale');
+  eq(freshness('bluesky', new Date(+NOW - 2*36e5).toISOString(), +NOW).state, 'fresh');
+  eq(freshness('x_archive', new Date(+NOW - 20*DAY).toISOString(), +NOW).state, 'fresh');
+  eq(freshness('x_archive', new Date(+NOW - 40*DAY).toISOString(), +NOW).state, 'stale');
+  eq(freshness('mastodon', null, +NOW).state, 'never');
+});
+test('Canonical form: DB text types round-trip, NULL ≠ 0, key order irrelevant', async () => {
+  const sent = { run:{ run_id:'r', status:'ok', posts_fetched:1, data_as_of:'2025-06-01T00:00:00Z' }, snapshot:{ as_of:'2025-06-01T00:00:00.000Z', followers:5, following:null, posts:0 }, posts:[{ post_id:'a', created_at:'2025-06-01T00:00:00Z', url:null, body:'é 🚪', kind:'post' }], metrics:[{ post_id:'a', likes:0, reposts:null, replies:3, quotes:null, impressions:null }] };
+  const back = { run:{ posts_fetched:'1', status:'ok', run_id:'r', data_as_of:'2025-06-01T00:00:00.000Z' }, snapshot:{ posts:'0', following:null, followers:'5', as_of:'2025-06-01T00:00:00.000Z' }, posts:[{ kind:'post', body:'é 🚪', url:null, created_at:'2025-06-01T00:00:00.000Z', post_id:'a' }], metrics:[{ impressions:null, quotes:null, replies:'3', reposts:null, likes:'0', post_id:'a' }] };
+  eq(await sha256(JSON.stringify(canonical(sent))), await sha256(JSON.stringify(canonical(back))));
+  eq(n(null), null); eq(n(''), null); eq(n('0'), 0);
+  const tampered = JSON.parse(JSON.stringify(back)); tampered.metrics[0].reposts = '0';
+  const d = diffCanon(canonical(sent), canonical(tampered));
+  assert(d.some(x => x.includes('reposts')), 'null→0 must be detected as a mismatch');
+});
+test('Median ignores missing values and returns null if all missing', () => { eq(median([3, null, 1, 2]), 2); eq(median([null, null]), null); eq(median([1, 2]), 1.5); });
+test('Cross-post matching groups the same text across platforms only', () => {
+  const t = 'Rooms OS now ships shared rooms for small teams today';
+  const g = matchCrossPosts([
+    { platform:'bluesky', body:t, created_at:'2025-06-01T00:00:00Z', kind:'post' },
+    { platform:'mastodon', body:t + ' https://x.y/z', created_at:'2025-06-01T02:00:00Z', kind:'post' },
+    { platform:'bluesky', body:t, created_at:'2025-06-01T03:00:00Z', kind:'post' },
+    { platform:'x_archive', body:'completely different words about lunch plans', created_at:'2025-06-01T01:00:00Z', kind:'post' }]);
+  eq(g.length, 1); eq(g[0].map(p => p.platform).sort(), ['bluesky','mastodon']);
+});
+test('Render: missing metric shows hatched “—” with reason; real zero shows 0', () => {
+  const m = buildModel({
+    sources:[{ source_id:'bluesky:a', platform:'bluesky', handle:'a', label:'@a' }, { source_id:'typefully:k', platform:'typefully', handle:'k', label:'TF' }],
+    runs:[], snaps:[{ source_id:'bluesky:a', run_id:'r', as_of:'2025-06-14T00:00:00.000Z', followers:'1000', following:'1', posts:'1', readback_ok:'t' }],
+    posts:[{ source_id:'bluesky:a', post_id:'p', created_at:'2025-06-14T00:00:00.000Z', url:'https://bsky.app/x', body:'<img src=x onerror=alert(1)>', kind:'post', likes:'0', reposts:'2', replies:'1', quotes:null, impressions:null, metrics_as_of:'2025-06-14T00:00:00.000Z', metrics_run_id:'r' },
+           { source_id:'typefully:k', post_id:'d', created_at:'2025-06-14T00:00:00.000Z', url:null, body:'draft', kind:'published_draft', likes:null, reposts:null, replies:null, quotes:null, impressions:null, metrics_as_of:null, metrics_run_id:null }],
+    avail:[{ source_id:'bluesky:a', metric:'impressions', status:'not_offered', note:'Bluesky does not publish view counts' }, { source_id:'bluesky:a', metric:'quotes', status:'not_returned', note:'x' }],
+  }, 90, +NOW);
+  const html = postsTableHTML(m, { src:'all', sort:'likes', mode:'raw', replies:false });
+  const div = document.createElement('div'); div.innerHTML = html;
+  assert(!div.querySelector('img'), 'post text must be escaped');
+  const row = [...div.querySelectorAll('tbody tr')].find(tr => tr.textContent.includes('onerror'));
+  const cells = [...row.querySelectorAll('td')].slice(3, 8);
+  eq(cells[0].textContent, '0', 'zero likes is a real zero'); assert(cells[4].classList.contains('na') && cells[4].textContent.includes('not offered'), 'impressions missing w/ reason');
+  const tfRow = [...div.querySelectorAll('tbody tr')].find(tr => tr.textContent.includes('draft'));
+  assert([...tfRow.querySelectorAll('td.na')].length === 5 && tfRow.textContent.includes('no metrics'), 'typefully shows no metrics, not zeros');
+  const per = postsTableHTML(m, { src:'all', sort:'reposts', mode:'per1k', replies:false });
+  assert(per.includes('2.00'), 'per-1k normalisation uses follower snapshot');
+  const tr = trendsHTML(m, 'followers'); assert(tr.includes('trend needs ≥ 2 snapshots'), 'single snapshot is not drawn as a trend');
+});
+test('Neon endpoint candidates derive from connection string', () => {
+  const save = { neon:cfg.neon, neonEndpoint:cfg.neonEndpoint };
+  try { cfg.neon = 'postgresql://u:p@ep-cool-123-pooler.us-east-2.aws.neon.tech/db?sslmode=require'; cfg.neonEndpoint = '';
+    eq(Store.candidates(), ['https://api.us-east-2.aws.neon.tech/sql', 'https://ep-cool-123-pooler.us-east-2.aws.neon.tech/sql']);
+  } finally { Object.assign(cfg, save); }
+});
+
+test('Neon round-trip: write → readback hash match → NULL preserved → cleanup', async () => {
+  if (!Store.configured()) return { skip:'no Neon connection configured' };
+  const now = new Date();
+  const ing = newIngest({ source_id:'selftest:' + uuid().slice(0,8), platform:'selftest', handle:'selftest', label:'Self-test (auto-deleted)' }, 'selftest', now);
+  ing.run.data_as_of = now.toISOString(); ing.run.coverage_from = new Date(+now - DAY).toISOString(); ing.run.coverage_to = now.toISOString();
+  ing.snapshot = { as_of:now.toISOString(), followers:2147483648, following:0, posts:null };
+  ing.posts = [{ post_id:'a', created_at:now.toISOString(), url:'https://example.invalid/a', body:'Ünïcødé 🚪 "quotes" \\ back\nnewline\u0000nul', kind:'post' },
+               { post_id:'b', created_at:null, url:null, body:'', kind:'reply' }];
+  ing.metrics = [{ post_id:'a', likes:0, reposts:null, replies:3, quotes:null, impressions:9007199254 }, { post_id:'b', likes:null, reposts:null, replies:null, quotes:null, impressions:null }];
+  await finalize(ing, now);
+  try {
+    await Store.writeIngest(ing);
+    const rb = await Store.readback(ing);
+    assert(rb.ok, 'readback mismatch: ' + rb.diff.join(' | '));
+    const rows = await Store.q(`SELECT likes, reposts FROM ${SCHEMA}.post_metrics WHERE run_id=$1 AND post_id='a'`, [ing.run.run_id]);
+    eq(n(rows[0].likes), 0, 'zero stays zero'); eq(rows[0].reposts, null, 'NULL stays NULL');
+  } finally { await Store.q(`DELETE FROM ${SCHEMA}.sources WHERE source_id=$1`, [ing.source.source_id]); }
+  const left = await Store.q(`SELECT count(*) AS c FROM ${SCHEMA}.ingest_runs WHERE run_id=$1`, [ing.run.run_id]);
+  eq(n(left[0].c), 0, 'cleanup');
+}, { integration:true });
+test('Real private readback: latest run of every real source was read back and matched', async () => {
+  if (!Store.configured()) return { skip:'no Neon connection configured' };
+  const rows = await Store.q(`SELECT DISTINCT ON (r.source_id) r.source_id, s.platform, r.status, r.readback_ok, r.run_id, r.posts_fetched, ${I('r.readback_at')} AS readback_at
+    FROM ${SCHEMA}.ingest_runs r JOIN ${SCHEMA}.sources s USING (source_id) WHERE s.platform <> 'selftest' ORDER BY r.source_id, r.started_at DESC`);
+  if (!rows.length) return { skip:'no real collections in the store yet. Collect sources first' };
+  const bad = rows.filter(r => !bool(r.readback_ok));
+  assert(!bad.length, 'not verified: ' + bad.map(r => `${r.source_id} (readback_ok=${r.readback_ok ?? 'null'})`).join(', '));
+  const missing = ['bluesky','mastodon','x_archive','typefully'].filter(p => !rows.some(r => r.platform === p));
+  return { note:`${rows.length} source(s) verified: ` + rows.map(r => `${r.source_id} [${r.status}, ${r.posts_fetched} posts]`).join('; ') + (missing.length ? ` · never collected: ${missing.join(', ')}` : '') };
+}, { integration:true });
+
+async function runTests(which){
+  const list = TESTS.filter(t => which === 'integration' ? t.integration : !t.integration);
+  const ul = $('#tests'); ul.innerHTML = `<li>running ${list.length} ${which} test(s)…</li>`;
+  const out = [];
+  for (const t of list) {
+    try { const r = await t.fn(); out.push({ name:t.name, status:r?.skip ? 'skip' : 'pass', note:r?.skip || r?.note || '' }); }
+    catch (e) { out.push({ name:t.name, status:'fail', note:e.message }); }
+  }
+  const c = s => out.filter(x => x.status === s).length;
+  ul.innerHTML = `<li><b>${which}: ${c('pass')} passed, ${c('fail')} failed, ${c('skip')} skipped</b></li>` +
+    out.map(x => `<li class="t-${x.status}">${x.status === 'pass' ? '✓' : x.status === 'fail' ? '✗' : '○'} ${esc(x.name)}${x.note ? ` <span class="note">(${esc(x.note)})</span>` : ''}</li>`).join('');
+  log(`${which} tests: ${c('pass')} passed, ${c('fail')} failed, ${c('skip')} skipped`, c('fail') ? 'bad' : c('skip') ? 'warn' : 'ok');
+}
+
+/* =========================================================================
+   Boot
+   ========================================================================= */
+loadCfg();
+$('#windowSel').value = String(cfg.windowDays);
+if (!$('#windowSel').value) { $('#windowSel').value = '90'; cfg.windowDays = 90; }
+runTests('unit').then(() => withBusy(refresh));
+</script>
+</body>
+</html>

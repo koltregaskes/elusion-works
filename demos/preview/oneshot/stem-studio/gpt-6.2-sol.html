@@ -1,0 +1,728 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta name="robots" content="noindex,nofollow">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tessera — Local Sequencer</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #101216; --panel: #181b21; --line: #30343e;
+    --text: #f2efe8; --muted: #a9afbd; --accent: #dcf583;
+    --cell: #20242c; --beat: #272c35;
+    font: 15px/1.45 system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); }
+  main { width: min(1190px, 100%); margin: auto; padding: 28px clamp(12px, 3vw, 36px) 40px; }
+  h1, h2, p { margin: 0; }
+  h1 { font-size: clamp(2rem, 5vw, 3.3rem); letter-spacing: -.075em; line-height: 1; }
+  h2 { font-size: 1.05rem; }
+  header, .row, .section-head { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; }
+  header, .section-head { justify-content: space-between; }
+  header { margin-bottom: 22px; }
+  .eyebrow, .tag, .mono, .bar, .step { font-family: ui-monospace, monospace; }
+  .eyebrow { color: var(--accent); letter-spacing: .17em; font-size: .71rem; margin-bottom: 7px; }
+  .tag { color: var(--muted); font-size: .75rem; border: 1px solid var(--line); padding: 5px 9px; border-radius: 20px; }
+  .muted, .hint { color: var(--muted); font-size: .83rem; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; margin-bottom: 12px; padding: 14px; }
+  .toolbar { display: flex; gap: 12px 18px; flex-wrap: wrap; justify-content: space-between; }
+  button, input, select {
+    font: inherit; color: inherit; background: #242832;
+    border: 1px solid #3a404d; border-radius: 7px; padding: 6px 9px;
+  }
+  button { cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--muted); }
+  button:disabled { cursor: default; opacity: .42; }
+  :focus-visible { outline: 2px solid white; outline-offset: 2px; z-index: 2; }
+  .primary { background: var(--accent); color: #171d0c; border-color: var(--accent); font-weight: 750; }
+  input[type=number] { width: 66px; }
+  input[type=checkbox] { accent-color: var(--accent); vertical-align: middle; }
+  #clipName { width: 142px; }
+  label { color: var(--muted); font-size: .83rem; }
+  label input, label select { color: var(--text); }
+  #clock { color: var(--accent); font-size: .85rem; min-width: 89px; }
+  .section-head { margin-bottom: 11px; }
+  .scroller { overflow-x: auto; padding: 3px; margin: -3px; }
+  .arrangement { display: grid; grid-template-columns: 138px repeat(8, minmax(68px, 1fr)); gap: 4px; min-width: 725px; }
+  .bar, .step { text-align: center; color: var(--muted); font-size: .75rem; padding: 3px; border-radius: 4px; }
+  .running { background: var(--accent); color: #171d0c; font-weight: 800; }
+  .selected-bar:not(.running) { color: var(--text); background: #30343e; }
+  .track-label {
+    display: flex; align-items: center; justify-content: space-between; gap: 4px;
+    border-left: 3px solid var(--track); padding: 4px 5px 4px 8px; background: #21252e;
+    border-radius: 5px; font-size: .85rem;
+  }
+  .track-label button { font-size: .72rem; padding: 3px 5px; }
+  .track-label button[aria-pressed=true] { background: #454c5a; color: #fff; }
+  .slot {
+    min-width: 0; min-height: 49px; text-align: left; padding: 5px 7px;
+    border-radius: 5px; border: 1px solid #373c48;
+    border-top: 3px solid var(--track); background: #252932;
+  }
+  .slot span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .79rem; }
+  .slot small { display: block; color: var(--muted); font: .65rem ui-monospace, monospace; }
+  .slot.empty { border: 1px dashed #3a404c; color: var(--muted); background: #15181d; text-align: center; }
+  .slot[aria-pressed=true] { box-shadow: inset 0 0 0 2px var(--track); color: white; }
+  .slot.quiet:not([aria-pressed=true]) { opacity: .55; }
+  .clip-tools { margin-bottom: 10px; }
+  .roll {
+    display: grid; grid-template-columns: 61px repeat(16, minmax(23px, 1fr));
+    gap: 2px; min-width: 480px;
+  }
+  .pitch { font: .72rem ui-monospace, monospace; color: var(--muted); align-self: center; padding-left: 4px; }
+  .cell {
+    min-height: 24px; padding: 0; border: 1px solid transparent; border-radius: 3px;
+    background: var(--cell);
+  }
+  .cell.beat { background: var(--beat); }
+  .cell.has-note { background: var(--track); opacity: .62; }
+  .cell.head-note { opacity: .83; border-left: 4px solid #151820; }
+  .cell.chosen { opacity: 1; border-color: #fff; }
+  .empty-roll { color: var(--muted); padding: 18px 8px; background: #15181d; border-radius: 7px; }
+  .inspector { margin-top: 11px; min-height: 38px; }
+  .inspector[hidden] { display: none; }
+  .hint { margin-top: 9px; }
+  footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; }
+  #status { color: var(--muted); font-size: .84rem; flex: 1 1 260px; overflow-wrap: anywhere; }
+  #status.error { color: #ffadab; }
+  @media (max-width: 520px) { main { padding-top: 19px; } .panel { padding: 10px; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div><p class="eyebrow">LOCAL AUDIO WORKBENCH</p><h1>Tessera</h1></div>
+    <span class="tag">4 TRACKS / 8 BARS / SYNTH ONLY</span>
+  </header>
+
+  <section class="panel toolbar" aria-label="Transport and project">
+    <div class="row">
+      <button id="play" class="primary" type="button">Play</button>
+      <button id="stop" type="button" disabled>Stop</button>
+      <span id="clock" class="mono">00.00 / 16.00</span>
+      <label>BPM <input id="tempo" type="number" min="40" max="240" step="1"></label>
+      <label><input id="loop" type="checkbox"> Loop</label>
+    </div>
+    <div class="row">
+      <button id="undo" type="button" title="Ctrl/Cmd+Z">Undo</button>
+      <button id="redo" type="button" title="Ctrl/Cmd+Shift+Z">Redo</button>
+      <button id="save" type="button" title="Save to this browser">Save</button>
+      <button id="load" type="button" title="Reload the browser save">Reload</button>
+      <button id="download" type="button" title="Download a portable project file">Save JSON</button>
+      <button id="open" type="button">Open JSON</button>
+      <input id="file" type="file" accept=".json,application/json" hidden>
+      <button id="wav" class="primary" type="button">Export WAV</button>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="arr-title">
+    <div class="section-head">
+      <h2 id="arr-title">Arrangement</h2><span class="muted">4/4 · One bar per slot</span>
+    </div>
+    <div class="scroller"><div id="arrangement" class="arrangement"></div></div>
+  </section>
+
+  <section class="panel" aria-labelledby="editorTitle">
+    <div class="section-head"><h2 id="editorTitle">Clip editor</h2><span class="muted">16 steps per bar</span></div>
+    <div class="row clip-tools">
+      <button id="create" type="button">New clip</button>
+      <label>Name <input id="clipName" type="text" maxlength="18"></label>
+      <button id="copy" type="button" title="Duplicate into the next empty slot on this track, wrapping at bar 8">Duplicate →</button>
+      <button id="remove" type="button">Delete clip</button>
+    </div>
+    <div class="scroller"><div id="roll"></div></div>
+    <div id="inspector" class="row inspector" hidden>
+      <span class="muted">Selected note</span>
+      <label>Pitch <select id="notePitch"></select></label>
+      <label>Step <input id="noteStep" type="number" min="1" max="16"></label>
+      <label>Length <input id="noteLength" type="number" min="1" max="16" title="Length in steps"></label>
+      <label>Velocity <input id="noteVelocity" type="number" min="1" max="100"></label>
+      <button id="deleteNote" type="button">Delete note</button>
+    </div>
+    <p class="hint">Click an empty cell to add a note. Click a note to edit it below. In the grid, use arrows to move, Enter to add or select, and Delete to remove.</p>
+  </section>
+
+  <footer>
+    <p id="status" role="status" aria-live="polite">Ready. Your audio stays in this browser.</p>
+    <div class="row">
+      <button id="fixture" type="button">Load fixture</button>
+      <button id="verify" type="button">Verify fixture</button>
+    </div>
+  </footer>
+</main>
+
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const SR = 48000, BARS = 8, STEPS = 16, CEILING = 0.92;
+  const STORAGE = "tessera-sequencer-v1";
+  const range = (length, f) => Array.from({length}, (_, i) => f(i));
+  const tracks = [
+    {name:"Kick",   color:"#ffa878", pitches:[36],     len:3, pan:0},
+    {name:"Perc",   color:"#eac86c", pitches:[42,38],  len:1, pan:.18},
+    {name:"Bass",   color:"#95ddbd", pitches:range(13,i=>48-i), len:2, pan:-.08},
+    {name:"Glass",  color:"#b9adff", pitches:range(13,i=>81-i), len:2, pan:.24}
+  ];
+  const clone = x => JSON.parse(JSON.stringify(x));
+  const key = n => `${n.p}:${n.s}`;
+  const nameOf = (t,p) => t === 0 ? "Kick" : t === 1 ? (p === 42 ? "Hat" : "Snare") :
+    ["C","C♯","D","D♯","E","F","F♯","G","G♯","A","A♯","B"][p%12] + (Math.floor(p/12)-1);
+  const note = (p,s,n,v) => ({p,s,n,v});
+  const clip = (name,notes=[]) => ({name,notes});
+  function fixture() {
+    const roots = [45,45,41,41,48,48,43,43];
+    const bassNames = ["A pedal","A pedal","F pedal","F pedal","C pedal","C pedal","G pedal","G pedal"];
+    const phrases = [
+      [[72,2,2],[76,6,2],[79,10,3],[76,14,2]],
+      [[72,2,2],[76,6,2],[81,12,3]],
+      [[72,2,3],[77,8,2],[76,12,2]],
+      null,
+      [[76,2,2],[79,6,2],[81,10,3],[79,14,2]],
+      [[76,2,2],[72,6,2],[74,12,3]],
+      [[71,2,2],[74,6,2],[79,10,3]],
+      [[74,0,2],[71,4,2],[69,8,6]]
+    ];
+    return {version:1,bpm:120,tracks:[
+      {mute:false,clips:range(BARS,b=>clip(b%2 ? "Return" : "Anchor",
+        (b%2 ? [0,6,8,11] : [0,6,8,14]).map((s,i)=>note(36,s,b%2 && s===6 ? 2 : Math.min(3,16-s),i===0 ? 96 : 82))))},
+      {mute:false,clips:range(BARS,b=>clip(b===7 ? "Break" : "Offbeat",[
+        ...[2,6,10,14].slice(0,b===7 ? 2 : 4).map((s,i)=>note(42,s,1,59-i*4)),
+        note(38,4,2,80), note(38,12,2,85),
+        ...(b%2===1 && b!==7 ? [note(42,15,1,38)] : [])
+      ]))},
+      {mute:false,clips:roots.map((p,b)=>clip(bassNames[b],[
+        note(p,0,3,88),note(p,4,2,68),note(p,7,1,63),
+        note(p,8,3,82),note(p>43 ? p-5 : p+7,12,2,68),note(p,14,2,74)
+      ]))},
+      {mute:false,clips:phrases.map((a,b)=>a && clip(["Prism","Answer","Drift","","Prism II","Fold","Lift","Resolve"][b],
+        a.map(([p,s,n],i)=>note(p,s,n,76-i*5))))}
+    ]};
+  }
+
+  function overlaps(a,b) { return a.p===b.p && a.s<b.s+b.n && b.s<a.s+a.n; }
+  function validate(raw) {
+    const int = (x,min,max) => Number.isInteger(x) && x>=min && x<=max;
+    const fail = () => { throw new Error("Invalid Tessera project file."); };
+    if (!raw || raw.version!==1 || !int(raw.bpm,40,240) ||
+        !Array.isArray(raw.tracks) || raw.tracks.length!==4) fail();
+    return {version:1,bpm:raw.bpm,tracks:raw.tracks.map((tr,t)=>{
+      if (!tr || typeof tr.mute!=="boolean" || !Array.isArray(tr.clips) || tr.clips.length!==BARS) fail();
+      return {mute:tr.mute,clips:tr.clips.map(c=>{
+        if (c===null) return null;
+        if (!c || typeof c.name!=="string" || c.name.length>18 ||
+            !Array.isArray(c.notes) || c.notes.length>tracks[t].pitches.length*STEPS) fail();
+        const notes = [];
+        for (const n of c.notes) {
+          if (!n || !tracks[t].pitches.includes(n.p) || !int(n.s,0,15) ||
+              !int(n.n,1,16-n.s) || !int(n.v,1,100) ||
+              notes.some(other=>overlaps(other,n))) fail();
+          notes.push(note(n.p,n.s,n.n,n.v));
+        }
+        return clip(c.name.trim() || "Untitled", notes);
+      })};
+    })};
+  }
+
+  let project = fixture();
+  let tSel=3, bSel=0, nSel=null, focusPitch=tracks[3].pitches[0], focusStep=0;
+  const past=[], future=[];
+  function announce(text, error=false) {
+    $("status").textContent=text;
+    $("status").classList.toggle("error",error);
+  }
+  try {
+    const saved=localStorage.getItem(STORAGE);
+    if (saved!==null) {
+      project=validate(JSON.parse(saved));
+      announce("Opened the project saved in this browser.");
+    }
+  } catch { announce("Browser save unavailable or invalid. Opened the built-in fixture.",true); }
+
+  const current = () => project.tracks[tSel].clips[bSel];
+  const selected = () => current()?.notes.find(n=>key(n)===nSel);
+  function edit(fn, message) {
+    stop();
+    past.push(clone(project));
+    if (past.length>60) past.shift();
+    future.length=0;
+    fn();
+    draw();
+    announce(message);
+  }
+  function history(from,to,message) {
+    if (!from.length) return;
+    stop();
+    to.push(project);
+    project=from.pop();
+    nSel=null;
+    draw();
+    announce(message);
+  }
+  function replace(next,message) {
+    edit(()=>{ project=next; nSel=null; }, message);
+  }
+
+  function el(tag,cls,text) {
+    const e=document.createElement(tag);
+    if (cls) e.className=cls;
+    if (text!==undefined) e.textContent=text;
+    if (tag==="button") e.type="button";
+    return e;
+  }
+  function drawArrangement() {
+    const a=$("arrangement"), f=document.createDocumentFragment();
+    f.append(el("span","pitch","TRACK / BAR"));
+    for (let b=0;b<BARS;b++) {
+      const label=el("span","bar"+(b===bSel?" selected-bar":""),String(b+1).padStart(2,"0"));
+      label.id=`bar-${b}`;
+      f.append(label);
+    }
+    tracks.forEach((tr,t)=>{
+      const state=project.tracks[t];
+      const label=el("div","track-label");
+      label.style.setProperty("--track",tr.color);
+      const mute=el("button","", "Mute");
+      mute.id=`mute-${t}`;
+      mute.setAttribute("aria-label",`Mute ${tr.name}`);
+      mute.setAttribute("aria-pressed",state.mute);
+      mute.onclick=()=>{
+        edit(()=>{ state.mute=!state.mute; },`${tr.name} ${state.mute ? "unmuted" : "muted"}.`);
+        $(mute.id).focus({preventScroll:true});
+      };
+      label.append(el("span","",tr.name),mute);
+      f.append(label);
+      state.clips.forEach((c,b)=>{
+        const slot=el("button","slot"+(c?"":" empty")+(state.mute?" quiet":""));
+        slot.id=`slot-${t}-${b}`;
+        slot.style.setProperty("--track",tr.color);
+        slot.setAttribute("aria-label",`${tr.name}, bar ${b+1}: ${c ? c.name : "empty"}`);
+        slot.setAttribute("aria-pressed",t===tSel && b===bSel);
+        if (c) slot.append(el("span","",c.name),el("small","",`${c.notes.length} notes`));
+        else slot.textContent="+";
+        slot.onclick=()=>{
+          if (t!==tSel) focusPitch=tr.pitches[0];
+          tSel=t; bSel=b; nSel=null;
+          draw();
+          $(slot.id).focus({preventScroll:true});
+        };
+        f.append(slot);
+      });
+    });
+    a.replaceChildren(f);
+  }
+
+  function setCellFocus(p,s) {
+    const roll=$("roll");
+    roll.querySelector('[tabindex="0"]')?.setAttribute("tabindex","-1");
+    focusPitch=p; focusStep=s;
+    const cell=$(`cell-${p}-${s}`);
+    if (cell) { cell.tabIndex=0; cell.focus({preventScroll:true}); }
+  }
+  function noteAt(c,p,s) { return c.notes.find(n=>n.p===p && s>=n.s && s<n.s+n.n); }
+  function drawRoll() {
+    const tr=tracks[tSel], c=current(), roll=$("roll");
+    $("editorTitle").textContent=`${tr.name} / Bar ${bSel+1}`;
+    $("create").disabled=!!c;
+    $("clipName").disabled=!c;
+    $("clipName").value=c?.name || "";
+    $("remove").disabled=!c;
+    $("copy").disabled=!c || !project.tracks[tSel].clips.includes(null);
+    roll.style.setProperty("--track",tr.color);
+    roll.className=c ? "roll" : "";
+    if (!c) {
+      roll.replaceChildren(el("p","empty-roll","This slot is empty. Choose New clip to start writing."));
+      drawInspector();
+      return;
+    }
+    if (!tr.pitches.includes(focusPitch)) focusPitch=tr.pitches[0];
+    const f=document.createDocumentFragment();
+    f.append(el("span","pitch","STEP"));
+    for (let s=0;s<STEPS;s++) {
+      const label=el("span","step",String(s+1)); label.id=`step-${s}`;
+      f.append(label);
+    }
+    tr.pitches.forEach((p,row)=>{
+      const pitchName=nameOf(tSel,p);
+      f.append(el("span","pitch",pitchName));
+      for (let s=0;s<STEPS;s++) {
+        const n=noteAt(c,p,s);
+        const cell=el("button","cell"+(s%4===0?" beat":"")+(n?" has-note":"")+
+          (n?.s===s?" head-note":"")+(n && key(n)===nSel?" chosen":""));
+        cell.id=`cell-${p}-${s}`;
+        cell.tabIndex=p===focusPitch && s===focusStep ? 0 : -1;
+        cell.setAttribute("aria-label",`${pitchName}, step ${s+1}${n ? `, note from step ${n.s+1}, length ${n.n}, velocity ${n.v}` : ", empty"}`);
+        cell.setAttribute("aria-pressed",!!n && key(n)===nSel);
+        cell.onclick=()=>{
+          focusPitch=p; focusStep=s;
+          if (n) {
+            nSel=key(n);
+            draw();
+          } else {
+            let length=Math.min(tr.len,STEPS-s);
+            while (length>1 && c.notes.some(other=>overlaps(other,note(p,s,length,80)))) length--;
+            const added=note(p,s,length,80);
+            edit(()=>{ c.notes.push(added); nSel=key(added); },`${pitchName} added at step ${s+1}.`);
+          }
+          setCellFocus(p,s);
+        };
+        cell.onkeydown=e=>{
+          let r=row, next=s;
+          if (e.key==="ArrowUp") r=Math.max(0,row-1);
+          else if (e.key==="ArrowDown") r=Math.min(tr.pitches.length-1,row+1);
+          else if (e.key==="ArrowLeft") next=Math.max(0,s-1);
+          else if (e.key==="ArrowRight") next=Math.min(STEPS-1,s+1);
+          else if (e.key==="Delete" || e.key==="Backspace") {
+            e.preventDefault();
+            if (n) { eraseNote(n); setCellFocus(p,s); }
+            return;
+          } else return;
+          e.preventDefault();
+          setCellFocus(tr.pitches[r],next);
+        };
+        f.append(cell);
+      }
+    });
+    roll.replaceChildren(f);
+    drawInspector();
+  }
+  function drawInspector() {
+    const n=selected();
+    $("inspector").hidden=!n;
+    if (!n) return;
+    $("notePitch").replaceChildren(...tracks[tSel].pitches.map(p=>{
+      const o=el("option","",nameOf(tSel,p)); o.value=p; return o;
+    }));
+    $("notePitch").value=n.p;
+    $("noteStep").value=n.s+1;
+    $("noteLength").max=STEPS-n.s;
+    $("noteLength").value=n.n;
+    $("noteVelocity").value=n.v;
+  }
+  function eraseNote(n) {
+    const c=current();
+    if (!c || !n) return;
+    edit(()=>{ c.notes=c.notes.filter(x=>x!==n); nSel=null; }, "Note deleted.");
+  }
+  function draw() {
+    $("tempo").value=project.bpm;
+    $("undo").disabled=!past.length;
+    $("redo").disabled=!future.length;
+    drawArrangement();
+    drawRoll();
+    paintPosition();
+  }
+  $("create").onclick=()=>{
+    if (current()) return;
+    edit(()=>{ project.tracks[tSel].clips[bSel]=clip("Untitled"); nSel=null; }, "Created a one-bar clip.");
+    setCellFocus(focusPitch,focusStep);
+  };
+  $("remove").onclick=()=>{
+    if (!current()) return;
+    edit(()=>{ project.tracks[tSel].clips[bSel]=null; nSel=null; }, "Clip deleted.");
+    $(`slot-${tSel}-${bSel}`).focus({preventScroll:true});
+  };
+  $("copy").onclick=()=>{
+    const list=project.tracks[tSel].clips, c=current();
+    if (!c) return;
+    for (let i=1;i<BARS;i++) {
+      const b=(bSel+i)%BARS;
+      if (list[b]!==null) continue;
+      edit(()=>{ list[b]=clone(c); bSel=b; nSel=null; },`Clip duplicated to bar ${b+1}.`);
+      $(`slot-${tSel}-${bSel}`).focus({preventScroll:true});
+      return;
+    }
+  };
+  $("clipName").onchange=()=>{
+    const c=current();
+    const name=$("clipName").value.trim().slice(0,18) || "Untitled";
+    if (c && name!==c.name) edit(()=>{ c.name=name; }, "Clip renamed.");
+    else $("clipName").value=c?.name || "";
+  };
+  const clamp=(x,min,max)=>Math.min(max,Math.max(min,x));
+  function field(id, fallback, min,max) {
+    const x=$(id).valueAsNumber;
+    return Number.isFinite(x) ? clamp(Math.round(x),min,max) : fallback;
+  }
+  function applyNote() {
+    const c=current(), n=selected();
+    if (!n) return;
+    const s=field("noteStep",n.s+1,1,16)-1;
+    const replacement=note(Number($("notePitch").value),s,
+      field("noteLength",n.n,1,16-s),field("noteVelocity",n.v,1,100));
+    if (c.notes.some(other=>other!==n && overlaps(replacement,other))) {
+      drawInspector();
+      announce("That would overlap another note on the same pitch.",true);
+      return;
+    }
+    if (["p","s","n","v"].every(k=>n[k]===replacement[k])) { drawInspector(); return; }
+    edit(()=>{
+      Object.assign(n,replacement);
+      nSel=key(n); focusPitch=n.p; focusStep=n.s;
+    }, "Note updated.");
+  }
+  for (const id of ["notePitch","noteStep","noteLength","noteVelocity"]) $(id).onchange=applyNote;
+  $("deleteNote").onclick=()=>{ eraseNote(selected()); setCellFocus(focusPitch,focusStep); };
+  $("tempo").onchange=()=>{
+    const bpm=field("tempo",project.bpm,40,240);
+    if (bpm!==project.bpm) edit(()=>{ project.bpm=bpm; },`Tempo set to ${bpm} BPM.`);
+    else $("tempo").value=bpm;
+  };
+  $("undo").onclick=()=>history(past,future,"Undone.");
+  $("redo").onclick=()=>history(future,past,"Redone.");
+  $("fixture").onclick=()=>replace(fixture(),"Loaded the eight-bar fixture at 120 BPM. Undo restores your edit.");
+  document.addEventListener("keydown",e=>{
+    if (e.target instanceof HTMLElement && e.target.closest("input, select, textarea, [contenteditable]")) return;
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase()==="z") {
+      e.preventDefault();
+      if (e.shiftKey) $("redo").click(); else $("undo").click();
+    }
+    if (e.code==="Space" && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey &&
+        !(e.target instanceof HTMLElement && e.target.closest("button, a"))) {
+      e.preventDefault();
+      if (source || pending) stop(); else play();
+    }
+  });
+
+  $("save").onclick=()=>{
+    try {
+      localStorage.setItem(STORAGE,JSON.stringify(project));
+      announce("Saved in this browser. Save JSON makes a portable backup.");
+    } catch { announce("Browser storage is unavailable here. Use Save JSON instead.",true); }
+  };
+  $("load").onclick=()=>{
+    try {
+      const saved=localStorage.getItem(STORAGE);
+      if (saved===null) { announce("No browser save yet. Use Save first, or Open JSON.",true); return; }
+      replace(validate(JSON.parse(saved)),"Reloaded the browser save.");
+    } catch { announce("Could not reload the browser save. The current project is unchanged.",true); }
+  };
+  function download(blob,name) {
+    const url=URL.createObjectURL(blob), a=el("a");
+    a.href=url; a.download=name;
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),30000);
+  }
+  $("download").onclick=()=>{
+    download(new Blob([JSON.stringify(project,null,2)],{type:"application/json"}),"tessera-project.json");
+    announce("Project JSON downloaded.");
+  };
+  $("open").onclick=()=>$("file").click();
+  $("file").onchange=async ()=>{
+    const input=$("file"), f=input.files[0];
+    input.value="";
+    if (!f) return;
+    try {
+      if (f.size>1_000_000) throw new Error("Project file is too large.");
+      replace(validate(JSON.parse(await f.text())),`Opened ${f.name}.`);
+    } catch (error) {
+      announce(`Could not open project: ${error.message}`,true);
+    }
+  };
+
+  // All timing is derived from absolute step positions. Playback and export
+  // use the same deterministic stereo mix; there are no sample assets.
+  const stepSeconds = bpm => 60/bpm/4;
+  const framesAt = (bpm,s) => Math.round(s*stepSeconds(bpm)*SR);
+  const TAU=2*Math.PI;
+  function synth(l,r,start,end,t,b,n) {
+    const total=(end-start)/SR;
+    const dur=Math.min(total,t===0?.29:t===1?(n.p===42?.075:.20):total);
+    const count=Math.min(end-start,Math.round(dur*SR));
+    const freq=440*Math.pow(2,(n.p-69)/12), w=TAU*freq;
+    const velocity=n.v/100, pan=tracks[t].pan;
+    const left=Math.cos((pan+1)*Math.PI/4)*velocity;
+    const right=Math.sin((pan+1)*Math.PI/4)*velocity;
+    const release=Math.min(t<2?.018:.032,dur*.35);
+    const attack=Math.min(t<2?.003:.012,dur*.25);
+    let rand=(0x7f4a7c15 ^ Math.imul(b+1,0x9e3779b1) ^ (t<<24) ^ (n.p<<12) ^ n.s)>>>0;
+    let prev=0;
+    for (let i=0;i<count;i++) {
+      const x=i/SR;
+      const gate=Math.min(1,x/attack,(count-1-i)/(SR*release));
+      let y;
+      if (t===0) {
+        const phase=TAU*(47*x+90*.023*(1-Math.exp(-x/.023)));
+        y=.47*Math.sin(phase)*Math.exp(-x*10);
+      } else if (t===1) {
+        rand=(Math.imul(rand,1664525)+1013904223)>>>0;
+        const noise=rand/2147483648-1, bright=(noise-prev)*.5;
+        prev=noise;
+        y=n.p===42 ? .22*bright*Math.exp(-x*48) :
+          (.26*(.7*noise+.3*bright)+.095*Math.sin(TAU*173*x)*Math.exp(-x*24))*Math.exp(-x*16);
+      } else if (t===2) {
+        y=.27*(.76*Math.sin(w*x)+.18*Math.sin(2*w*x)+.06*Math.sin(3*w*x))*Math.exp(-x*1.9);
+      } else {
+        y=.21*(.69*Math.sin(w*x+.38*Math.sin(2*w*x)*Math.exp(-x*13))+
+          .22*Math.sin(2.002*w*x)*Math.exp(-x*5)+.09*Math.sin(3*w*x)*Math.exp(-x*8))*Math.exp(-x*2.7);
+      }
+      l[start+i]+=y*gate*left;
+      r[start+i]+=y*gate*right;
+    }
+  }
+  function render(song) {
+    const frames=framesAt(song.bpm,BARS*STEPS);
+    const l=new Float32Array(frames), r=new Float32Array(frames);
+    song.tracks.forEach((tr,t)=>{
+      if (tr.mute) return;
+      tr.clips.forEach((c,b)=>{
+        if (!c) return;
+        for (const n of c.notes) {
+          const s=b*STEPS+n.s;
+          synth(l,r,framesAt(song.bpm,s),framesAt(song.bpm,s+n.n),t,b,n);
+        }
+      });
+    });
+    let rawPeak=0;
+    for (let i=0;i<frames;i++) rawPeak=Math.max(rawPeak,Math.abs(l[i]),Math.abs(r[i]));
+    if (!Number.isFinite(rawPeak)) throw new Error("Non-finite audio in render.");
+    const gain=rawPeak>CEILING ? CEILING/rawPeak : 1;
+    if (gain<1) for (let i=0;i<frames;i++) { l[i]*=gain; r[i]*=gain; }
+    return {l,r,frames,rawPeak,gain};
+  }
+  function wav(mix) {
+    const bytes=mix.frames*4;
+    const buffer=new ArrayBuffer(44+bytes), d=new DataView(buffer);
+    const str=(offset,s)=>{ for (let i=0;i<s.length;i++) d.setUint8(offset+i,s.charCodeAt(i)); };
+    str(0,"RIFF"); d.setUint32(4,36+bytes,true); str(8,"WAVE");
+    str(12,"fmt "); d.setUint32(16,16,true); d.setUint16(20,1,true);
+    d.setUint16(22,2,true); d.setUint32(24,SR,true); d.setUint32(28,SR*4,true);
+    d.setUint16(32,4,true); d.setUint16(34,16,true);
+    str(36,"data"); d.setUint32(40,bytes,true);
+    const pcm=x=>Math.round(clamp(x,-1,1)*(x<0 ? 32768 : 32767));
+    for (let i=0,o=44;i<mix.frames;i++,o+=4) {
+      d.setInt16(o,pcm(mix.l[i]),true);
+      d.setInt16(o+2,pcm(mix.r[i]),true);
+    }
+    return buffer;
+  }
+  $("wav").onclick=()=>{
+    try {
+      const m=render(project);
+      download(new Blob([wav(m)],{type:"audio/wav"}),"tessera-mix.wav");
+      announce(`WAV exported: ${(m.frames/SR).toFixed(3)} s · 48 kHz · 16-bit stereo${m.gain<1 ? ` · peak reduced by ${(-20*Math.log10(m.gain)).toFixed(1)} dB` : ""}.`);
+    } catch (error) { announce(`Export failed: ${error.message}`,true); }
+  };
+
+  $("verify").onclick=()=>{
+    try {
+      const song=validate(fixture()), m=render(song), d=new DataView(wav(m));
+      const text=(o,n)=>range(n,i=>String.fromCharCode(d.getUint8(o+i))).join("");
+      const expected=768000; // 8 bars × 4 beats × 0.5 seconds × 48,000 Hz
+      if (text(0,4)!=="RIFF" || text(8,4)!=="WAVE" || text(12,4)!=="fmt " ||
+          text(36,4)!=="data" || d.getUint32(4,true)!==d.byteLength-8 ||
+          d.getUint32(16,true)!==16 || d.getUint16(20,true)!==1 ||
+          d.getUint16(22,true)!==2 || d.getUint32(24,true)!==48000 ||
+          d.getUint32(28,true)!==192000 || d.getUint16(32,true)!==4 ||
+          d.getUint16(34,true)!==16 || d.getUint32(40,true)!==expected*4 ||
+          d.byteLength!==44+expected*4 || m.frames!==expected) {
+        throw new Error("Unexpected WAV format or duration.");
+      }
+      let peak=0, clipCount=0;
+      for (let o=44;o<d.byteLength;o+=2) {
+        const sample=d.getInt16(o,true);
+        if (sample===-32768 || sample===32767) clipCount++;
+        peak=Math.max(peak,Math.abs(sample));
+      }
+      if (!peak || clipCount || m.rawPeak>=1 || m.gain!==1) {
+        throw new Error("Fixture is silent, clipped, or needed peak reduction.");
+      }
+      announce(`PASS · 16.000 s · 768,000 stereo frames · ${ (20*Math.log10(peak/32768)).toFixed(1) } dBFS peak · 0 clipped samples · no peak reduction.`);
+    } catch (error) { announce(`Fixture check failed: ${error.message}`,true); }
+  };
+
+  let audio=null, source=null, started=0, duration=0, generation=0, pending=false, raf=0;
+  let lastBar=-1,lastStep=-1;
+  function paintPosition() {
+    let pos=0, bar=-1, step=-1;
+    const length=source ? duration : framesAt(project.bpm,BARS*STEPS)/SR;
+    if (source) {
+      const elapsed=Math.max(0,audio.currentTime-started);
+      pos=source.loop ? elapsed%length : Math.min(elapsed,length);
+      const absolute=Math.min(BARS*STEPS-1,Math.floor(pos/stepSeconds(project.bpm)));
+      bar=Math.floor(absolute/STEPS);
+      if (bar===bSel) step=absolute%STEPS;
+    }
+    $(`bar-${lastBar}`)?.classList.remove("running");
+    $(`step-${lastStep}`)?.classList.remove("running");
+    $(`bar-${bar}`)?.classList.add("running");
+    $(`step-${step}`)?.classList.add("running");
+    lastBar=bar; lastStep=step;
+    $("clock").textContent=`${pos.toFixed(2).padStart(5,"0")} / ${length.toFixed(2)}`;
+  }
+  function transportButtons() {
+    $("play").disabled=!!source || pending;
+    $("play").textContent=pending ? "Starting…" : source ? "Playing" : "Play";
+    $("stop").disabled=!source && !pending;
+  }
+  function stop() {
+    generation++;
+    pending=false;
+    cancelAnimationFrame(raf);
+    if (source) {
+      const old=source;
+      source=null;
+      old.onended=null;
+      try { old.stop(); } catch {}
+      old.disconnect();
+    }
+    transportButtons();
+    paintPosition();
+  }
+  async function play() {
+    if (source || pending) return;
+    const ticket=++generation;
+    pending=true;
+    transportButtons();
+    try {
+      const Audio=window.AudioContext || window.webkitAudioContext;
+      if (!Audio) throw new Error("Web Audio is unavailable in this browser.");
+      audio ||= new Audio();
+      await audio.resume();
+      if (ticket!==generation) return;
+      const m=render(project);
+      duration=m.frames/SR;
+      const buffer=audio.createBuffer(2,m.frames,SR);
+      buffer.getChannelData(0).set(m.l);
+      buffer.getChannelData(1).set(m.r);
+      const node=audio.createBufferSource();
+      source=node;
+      node.buffer=buffer;
+      node.loop=$("loop").checked;
+      node.connect(audio.destination);
+      node.onended=()=>{
+        if (source!==node) return;
+        stop();
+        announce("Playback finished.");
+      };
+      started=audio.currentTime+.02;
+      node.start(started);
+      pending=false;
+      transportButtons();
+      const tick=()=>{
+        if (source!==node) return;
+        paintPosition();
+        raf=requestAnimationFrame(tick);
+      };
+      tick();
+      announce("Playing the arrangement.");
+    } catch (error) {
+      if (ticket!==generation) return;
+      stop();
+      announce(`Playback failed: ${error.message}`,true);
+    }
+  }
+  $("play").onclick=play;
+  $("stop").onclick=()=>{ stop(); announce("Playback stopped."); };
+  $("loop").onchange=()=>{
+    // Restart on the next Play so switching loop mode never jumps the playhead.
+    if (source || pending) { stop(); announce("Loop setting changed. Press Play to restart."); }
+  };
+
+  draw();
+})();
+</script>
+</body>
+</html>

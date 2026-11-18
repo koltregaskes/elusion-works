@@ -1,0 +1,1011 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https: http://localhost:* http://127.0.0.1:*; img-src data:; base-uri 'none'; form-action 'none'">
+<title>Rooms OS Now — private analytics</title>
+<style>
+:root{
+  --paper:#efe9dc; --card:#f8f4ea; --ink:#17140f; --mute:#6b6457; --line:#17140f;
+  --bsky:#2f6fed; --masto:#6b4fd8; --x:#17140f; --tf:#d9822b;
+  --ok:#2f7d4f; --warn:#b7791f; --bad:#b3261e;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --serif:"Iowan Old Style","Palatino Linotype",Georgia,serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.45 var(--serif)}
+header.top{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:2px solid var(--ink);background:var(--card)}
+h1{font-size:26px;margin:0;letter-spacing:-.02em}
+h1 small{font:12px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--mute);display:block}
+h2{font-size:20px;margin:0 0 4px}
+.sub{color:var(--mute);margin:0 0 14px;font-size:13px;max-width:78ch}
+main{padding:20px 24px 60px;max-width:1280px;margin:0 auto}
+section{margin-bottom:34px}
+.chips{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.chip{font:11px var(--mono);border:1.5px solid var(--ink);padding:2px 7px;border-radius:99px;background:#fff8}
+button{font:600 13px var(--mono);background:var(--ink);color:var(--paper);border:0;padding:7px 12px;cursor:pointer;border-radius:3px}
+button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--ink)}
+button:disabled{opacity:.4;cursor:not-allowed}
+select,input[type=text],input[type=password],input[type=date],input[type=file]{font:13px var(--mono);padding:6px;border:1.5px solid var(--ink);background:#fff;border-radius:3px;max-width:100%}
+.grid{display:grid;gap:14px}
+.g4{grid-template-columns:repeat(auto-fit,minmax(255px,1fr))}
+.g2{grid-template-columns:repeat(auto-fit,minmax(380px,1fr))}
+.card{background:var(--card);border:1.5px solid var(--ink);box-shadow:4px 4px 0 var(--ink);padding:14px}
+.tag{display:inline-flex;gap:6px;align-items:center;font:600 12px var(--mono)}
+.tag i{width:11px;height:11px;display:inline-block;border:1.5px solid var(--ink)}
+.kind{font:11px var(--mono);color:var(--mute)}
+.badge{font:700 10.5px var(--mono);text-transform:uppercase;letter-spacing:.05em;padding:2px 6px;border:1.5px solid;border-radius:2px;display:inline-block;margin:2px 3px 2px 0}
+.b-fresh{color:var(--ok)} .b-stale{color:var(--warn)} .b-failed{color:var(--bad)} .b-empty{color:var(--mute)}
+.b-partial{color:var(--warn);background:repeating-linear-gradient(45deg,transparent 0 4px,#b7791f22 4px 8px)}
+.b-unverified{color:var(--bad);border-style:dashed}
+ul.why{margin:6px 0 0;padding-left:18px;font-size:12.5px;color:#3b362c}
+.mono{font-family:var(--mono)} .mute{color:var(--mute)} .small{font-size:12px}
+.banner{background:repeating-linear-gradient(45deg,#d9822b33 0 10px,transparent 10px 20px);border:1.5px solid var(--tf);padding:8px 12px;margin-bottom:16px;font:12px var(--mono)}
+.err{border:1.5px solid var(--bad);color:var(--bad);padding:8px 12px;margin-bottom:12px;font:12px var(--mono);white-space:pre-wrap}
+.controls{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-bottom:12px;font:12px var(--mono)}
+.controls label{display:inline-flex;gap:5px;align-items:center}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{border-bottom:1px solid #17140f33;padding:5px 8px;text-align:left;vertical-align:top}
+th{font:600 11px var(--mono);text-transform:uppercase;letter-spacing:.05em}
+td.n{text-align:right;font-family:var(--mono)}
+.row{display:grid;grid-template-columns:150px 1fr 70px;gap:10px;align-items:center;padding:5px 0;border-bottom:1px dotted #17140f33}
+.row .meta{font-size:12px}
+.row .snip{font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar{height:14px;border:1.5px solid var(--ink);position:relative;margin-top:3px;background:#fff6}
+.bar b{position:absolute;inset:0 auto 0 0;display:block}
+.bar.none{border-style:dashed;background:repeating-linear-gradient(45deg,transparent 0 4px,#17140f22 4px 8px)}
+.bar.none span{position:absolute;left:6px;top:-2px;font:10px var(--mono);color:var(--mute)}
+svg text{font-family:var(--mono);font-size:10px;fill:var(--mute)}
+pre.log{background:#17140f;color:#e8dfc9;padding:10px;font:12px/1.4 var(--mono);max-height:240px;overflow:auto;white-space:pre-wrap;margin:10px 0 0}
+.t-ok{color:var(--ok)} .t-bad{color:var(--bad)}
+dialog{border:2px solid var(--ink);background:var(--card);padding:18px;max-width:560px;width:92vw}
+dialog label{display:block;font:12px var(--mono);margin:9px 0 3px}
+dialog input[type=text],dialog input[type=password]{width:100%}
+.empty{padding:30px;border:2px dashed var(--ink);text-align:center}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1><small>Rooms OS · private</small>Now — analytics</h1>
+  <div class="chips">
+    <span class="chip" id="modeChip">not connected</span>
+    <span class="chip">noindex · credentials stay in this browser</span>
+    <button class="ghost" data-action="settings">Settings</button>
+    <button class="ghost" data-action="fixture">Fixture preview</button>
+    <button data-action="refresh">Refresh from store</button>
+  </div>
+</header>
+<main>
+  <div id="notice"></div>
+  <section id="sec-coverage"></section>
+  <section id="sec-trends"></section>
+  <section id="sec-compare"></section>
+  <section id="sec-matrix"></section>
+  <section id="sec-store"></section>
+</main>
+
+<dialog id="dlg">
+  <form method="dialog" id="cfgForm">
+    <h2>Settings</h2>
+    <p class="sub">Kept in this browser tab (sessionStorage) unless you tick “remember”. Use a Neon role limited to the <span class="mono">rooms_os_now</span> schema.</p>
+    <label>Neon connection string</label><input type="password" name="neon" placeholder="postgresql://role:pw@ep-xxx-pooler.region.aws.neon.tech/db?sslmode=require" autocomplete="off">
+    <label>Bluesky handle</label><input type="text" name="bsky" placeholder="you.bsky.social">
+    <label>Mastodon instance</label><input type="text" name="mInstance" placeholder="mastodon.social">
+    <label>Mastodon account (without @)</label><input type="text" name="mAcct" placeholder="you">
+    <label>X handle (label for the archive)</label><input type="text" name="xHandle" placeholder="you">
+    <label>Typefully API key</label><input type="password" name="tfKey" autocomplete="off">
+    <label>Typefully base URL (change only to use your own CORS proxy)</label><input type="text" name="tfBase" placeholder="https://api.typefully.com">
+    <label>Typefully social set id (optional; blank = all)</label><input type="text" name="tfSet">
+    <label><input type="checkbox" name="remember"> remember on this device (localStorage)</label>
+    <p style="margin-top:14px"><button value="save" data-action="saveCfg">Save</button> <button class="ghost" value="cancel">Cancel</button></p>
+  </form>
+</dialog>
+
+<script>
+"use strict";
+/* ============================================================
+   0. Utilities
+   ============================================================ */
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const numOrNull = v => { if (v === null || v === undefined || v === '') return null; const n = Number(v); return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : null; };
+const iso = x => new Date(x).toISOString();
+const monthKey = ms => new Date(ms).toISOString().slice(0, 7);
+const fmtNum = n => n == null ? '—' : Number(n).toLocaleString('en-US');
+const fmtDate = ms => ms == null ? '—' : new Date(ms).toISOString().slice(0, 10);
+const fmtAge = ms => { const m = ms / 60000; if (m < 60) return Math.round(m) + 'm'; const h = m / 60; if (h < 48) return Math.round(h) + 'h'; return Math.round(h / 24) + 'd'; };
+const median = a => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+function cyrb53(str, seed = 0) {
+  let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
+  for (let i = 0, ch; i < str.length; i++) { ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16).padStart(14, '0');
+}
+
+/* ============================================================
+   1. Source definitions (what each source can honestly provide)
+   provides: yes = documented/expected, maybe = depends on export, no = not available
+   ============================================================ */
+const SOURCES = {
+  bluesky:   { key:'bluesky',   label:'Bluesky',   kind:'official counter',  color:'#2f6fed', cadenceH:24,  staleAfterH:48,       gapH:72,
+               provides:{followers:'yes',likes:'yes',reposts:'yes',replies:'yes',quotes:'yes',bookmarks:'no',impressions:'no'} },
+  mastodon:  { key:'mastodon',  label:'Mastodon',  kind:'official counter',  color:'#6b4fd8', cadenceH:24,  staleAfterH:48,       gapH:72,
+               provides:{followers:'yes',likes:'yes',reposts:'yes',replies:'yes',quotes:'no',bookmarks:'no',impressions:'no'} },
+  x_archive: { key:'x_archive', label:'X archive', kind:'monthly archive',   color:'#17140f', cadenceH:720, staleAfterH:24 * 45, gapH:null,
+               provides:{followers:'no',likes:'yes',reposts:'yes',replies:'maybe',quotes:'maybe',bookmarks:'maybe',impressions:'maybe'} },
+  typefully: { key:'typefully', label:'Typefully', kind:'scheduler API',     color:'#d9822b', cadenceH:168, staleAfterH:24 * 8,  gapH:null,
+               provides:{followers:'no',likes:'no',reposts:'no',replies:'no',quotes:'no',bookmarks:'no',impressions:'no'} },
+};
+const METRICS = ['likes','reposts','replies','quotes','bookmarks','impressions'];
+
+/* ============================================================
+   2. Schema (one Neon schema)
+   ============================================================ */
+const FMT = `'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'`;
+const SCHEMA = [
+`create schema if not exists rooms_os_now`,
+`revoke all on schema rooms_os_now from public`,
+`create table if not exists rooms_os_now.schema_meta (k text primary key, v text not null)`,
+`insert into rooms_os_now.schema_meta (k,v) values ('version','1') on conflict (k) do nothing`,
+`create table if not exists rooms_os_now.source (
+  source_key text primary key, label text not null,
+  kind text not null check (kind in ('official_counter','archive','scheduler_api')),
+  cadence_hours int not null)`,
+`insert into rooms_os_now.source (source_key,label,kind,cadence_hours) values
+  ('bluesky','Bluesky','official_counter',24),('mastodon','Mastodon','official_counter',24),
+  ('x_archive','X archive','archive',720),('typefully','Typefully','scheduler_api',168)
+  on conflict (source_key) do update set label=excluded.label, kind=excluded.kind, cadence_hours=excluded.cadence_hours`,
+`create table if not exists rooms_os_now.ingest_run (
+  run_id uuid primary key, source_key text not null references rooms_os_now.source(source_key),
+  started_at timestamptz not null default now(), finished_at timestamptz,
+  status text not null check (status in ('running','ok','partial','failed')),
+  rows_read int not null default 0, rows_written int not null default 0,
+  coverage_from timestamptz, coverage_to timestamptz, note text,
+  readback_ok boolean, readback_hash text)`,
+`create table if not exists rooms_os_now.account_snapshot (
+  source_key text not null references rooms_os_now.source(source_key), account text not null,
+  captured_at timestamptz not null, period text not null check (period in ('instant','month')),
+  followers bigint, following bigint, posts_count bigint,
+  run_id uuid references rooms_os_now.ingest_run(run_id), raw jsonb,
+  primary key (source_key, account, captured_at))`,
+`create table if not exists rooms_os_now.post (
+  source_key text not null references rooms_os_now.source(source_key), external_id text not null,
+  account text, url text, body text, posted_at timestamptz, status text, link_key text,
+  last_run_id uuid references rooms_os_now.ingest_run(run_id), raw jsonb,
+  first_seen timestamptz not null default now(),
+  primary key (source_key, external_id))`,
+`create table if not exists rooms_os_now.post_metric (
+  source_key text not null, external_id text not null, captured_at timestamptz not null,
+  likes bigint, reposts bigint, replies bigint, quotes bigint, bookmarks bigint, impressions bigint,
+  run_id uuid references rooms_os_now.ingest_run(run_id),
+  primary key (source_key, external_id, captured_at),
+  foreign key (source_key, external_id) references rooms_os_now.post(source_key, external_id))`,
+`create index if not exists post_posted_idx on rooms_os_now.post (posted_at desc)`,
+`create index if not exists post_link_idx on rooms_os_now.post (link_key) where link_key is not null`,
+`create index if not exists snap_time_idx on rooms_os_now.account_snapshot (source_key, captured_at)`,
+`create index if not exists run_source_idx on rooms_os_now.ingest_run (source_key, started_at desc)`,
+];
+
+/* ============================================================
+   3. Neon HTTP client + SQL builders
+   ============================================================ */
+function neonHost(conn) { return new URL(conn.replace(/^postgres(ql)?:/, 'https:')).hostname; }
+function neonClient(conn, fetchImpl) {
+  const f = fetchImpl || ((...a) => fetch(...a));
+  const host = neonHost(conn);
+  async function post(body) {
+    let r;
+    try {
+      r = await f(`https://${host}/sql`, { method:'POST', headers:{ 'Content-Type':'application/json', 'Neon-Connection-String': conn }, body: JSON.stringify(body) });
+    } catch (e) { throw new Error(`Neon unreachable (${e.message})`); }
+    const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch {}
+    if (!r.ok) throw new Error(`Neon HTTP ${r.status}: ${(j && j.message) || t.slice(0, 240)}`);
+    return j;
+  }
+  return {
+    host,
+    async query(query, params = []) { const j = await post({ query, params }); return j.rows || []; },
+    async batch(queries) { const j = await post({ queries }); return (j.results || []).map(r => r.rows || []); },
+  };
+}
+function dedupe(rows, keyCols) { const m = new Map(); for (const r of rows) m.set(keyCols.map(k => r[k]).join('\u0001'), r); return [...m.values()]; }
+function buildUpsert(table, cols, rows, conflict, update, chunk = 400) {
+  const out = [];
+  for (let i = 0; i < rows.length; i += chunk) {
+    const part = rows.slice(i, i + chunk), params = [];
+    const tuples = part.map(r => '(' + cols.map(c => { params.push(r[c.name] === undefined ? null : r[c.name]); return `$${params.length}${c.cast ? '::' + c.cast : ''}`; }).join(',') + ')');
+    const upd = update.length ? 'do update set ' + update.map(u => `${u}=excluded.${u}`).join(',') : 'do nothing';
+    out.push({ query: `insert into ${table} (${cols.map(c => c.name).join(',')}) values ${tuples.join(',')} on conflict (${conflict.join(',')}) ${upd}`, params });
+  }
+  return out;
+}
+const COLS = {
+  account: [{name:'source_key'},{name:'account'},{name:'captured_at',cast:'timestamptz'},{name:'period'},{name:'followers',cast:'bigint'},{name:'following',cast:'bigint'},{name:'posts_count',cast:'bigint'},{name:'run_id',cast:'uuid'},{name:'raw',cast:'jsonb'}],
+  post: [{name:'source_key'},{name:'external_id'},{name:'account'},{name:'url'},{name:'body'},{name:'posted_at',cast:'timestamptz'},{name:'status'},{name:'link_key'},{name:'last_run_id',cast:'uuid'},{name:'raw',cast:'jsonb'}],
+  metric: [{name:'source_key'},{name:'external_id'},{name:'captured_at',cast:'timestamptz'},{name:'likes',cast:'bigint'},{name:'reposts',cast:'bigint'},{name:'replies',cast:'bigint'},{name:'quotes',cast:'bigint'},{name:'bookmarks',cast:'bigint'},{name:'impressions',cast:'bigint'},{name:'run_id',cast:'uuid'}],
+};
+
+/* ============================================================
+   4. Normalisers / parsers
+   ============================================================ */
+function normBlueskyProfile(p) { return { followers:numOrNull(p.followersCount), following:numOrNull(p.followsCount), posts_count:numOrNull(p.postsCount) }; }
+function normMastodonAccount(a) { return { followers:numOrNull(a.followers_count), following:numOrNull(a.following_count), posts_count:numOrNull(a.statuses_count) }; }
+function normBlueskyPost(item, handle) {
+  if (!item || !item.post) return null;
+  if (item.reason) return null;                       // reposts of other people's posts
+  const p = item.post, rec = p.record || {};
+  const rkey = String(p.uri || '').split('/').pop();
+  const when = Date.parse(rec.createdAt || p.indexedAt || '');
+  if (!rkey || !Number.isFinite(when)) return null;
+  return {
+    post: { external_id: p.uri, url: `https://bsky.app/profile/${p.author?.handle || handle}/post/${rkey}`, body: rec.text || '', posted_at: iso(when), status: 'published', link_key: null },
+    metric: { likes:numOrNull(p.likeCount), reposts:numOrNull(p.repostCount), replies:numOrNull(p.replyCount), quotes:numOrNull(p.quoteCount), bookmarks:numOrNull(p.bookmarkCount), impressions:null },
+  };
+}
+function htmlToText(html) {
+  const s = String(html || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>\s*<p>/gi, '\n\n');
+  return new DOMParser().parseFromString(s, 'text/html').body.textContent || '';
+}
+function normMastodonStatus(s) {
+  const when = Date.parse(s.created_at || '');
+  if (!s.id || !Number.isFinite(when)) return null;
+  return {
+    post: { external_id: String(s.id), url: s.url || s.uri || null, body: htmlToText(s.content), posted_at: iso(when), status: 'published', link_key: null },
+    metric: { likes:numOrNull(s.favourites_count), reposts:numOrNull(s.reblogs_count), replies:numOrNull(s.replies_count), quotes:null, bookmarks:null, impressions:null },
+  };
+}
+function normTypefullyDraft(d) {
+  if (!d || d.id == null) return null;
+  const url = d.x_published_url || d.published_url || d.url || null;
+  const when = Date.parse(d.published_at || d.scheduled_date || d.scheduled_at || d.updated_at || d.created_at || '');
+  const text = d.preview || d.text || d.platforms?.x?.posts?.[0]?.text || d.posts?.[0]?.text || '';
+  const m = url && /status\/(\d+)/.exec(url);
+  return { external_id: String(d.id), url, body: text, posted_at: Number.isFinite(when) ? iso(when) : null, status: d.status || null, link_key: m ? m[1] : null };
+}
+function parseTweetDate(s) {
+  if (s == null || s === '') return null;
+  const m = /^[A-Za-z]{3} ([A-Za-z]{3}) (\d{1,2}) (\d\d):(\d\d):(\d\d) ([+-])(\d\d)(\d\d) (\d{4})$/.exec(String(s).trim());
+  if (m) {
+    const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(m[1]);
+    if (mon < 0) return null;
+    const off = (m[6] === '-' ? -1 : 1) * (Number(m[7]) * 60 + Number(m[8]));
+    return iso(Date.UTC(+m[9], mon, +m[2], +m[3], +m[4], +m[5]) - off * 60000);
+  }
+  const t = Date.parse(s); return Number.isFinite(t) ? iso(t) : null;
+}
+function parseCSV(text) {
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; }
+    else if (c === '"') q = true;
+    else if (c === ',') { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(cell); cell = ''; if (row.some(x => x !== '')) rows.push(row); row = []; }
+    else cell += c;
+  }
+  row.push(cell); if (row.some(x => x !== '')) rows.push(row);
+  if (!rows.length) return [];
+  const head = rows[0].map(h => h.trim());
+  return rows.slice(1).map(r => Object.fromEntries(head.map((h, i) => [h, r[i] ?? ''])));
+}
+const ALIASES = {
+  id:['id_str','id','tweet_id','post_id'], date:['created_at','date','posted_at','timestamp','time'],
+  text:['full_text','text','body','content'],
+  likes:['favorite_count','like_count','likes','favorites'], reposts:['retweet_count','repost_count','retweets','reposts'],
+  replies:['reply_count','replies'], quotes:['quote_count','quotes'], bookmarks:['bookmark_count','bookmarks'],
+  impressions:['impression_count','impressions','views','view_count'], replyTo:['in_reply_to_status_id_str','in_reply_to_status_id','in_reply_to_tweet_id','reply_to'],
+};
+const pick = (row, names) => { for (const n of names) if (row[n] !== undefined && row[n] !== null && row[n] !== '') return row[n]; return null; };
+function parseXArchive(text) {
+  let t = String(text).trim(), rows;
+  if (/^window\.YTD\./.test(t)) rows = JSON.parse(t.slice(t.indexOf('=') + 1));
+  else if (t[0] === '[' || t[0] === '{') { const j = JSON.parse(t); rows = Array.isArray(j) ? j : (j.tweets || j.posts || j.data || []); }
+  else rows = parseCSV(t);
+  const out = { posts: [], metrics: [], total: rows.length, retweets: 0, replies: 0, skipped: 0 };
+  for (let r of rows) {
+    if (r && r.tweet) r = r.tweet;
+    const id = pick(r, ALIASES.id), when = parseTweetDate(pick(r, ALIASES.date)), body = pick(r, ALIASES.text) || '';
+    if (id == null || !when) { out.skipped++; continue; }
+    if (/^RT @/.test(body)) { out.retweets++; continue; }
+    if (pick(r, ALIASES.replyTo)) { out.replies++; continue; }
+    out.posts.push({ external_id: String(id), url: `https://x.com/i/status/${id}`, body, posted_at: when, status: 'published', link_key: String(id) });
+    const m = { likes:numOrNull(pick(r, ALIASES.likes)), reposts:numOrNull(pick(r, ALIASES.reposts)), replies:numOrNull(pick(r, ALIASES.replies)),
+                quotes:numOrNull(pick(r, ALIASES.quotes)), bookmarks:numOrNull(pick(r, ALIASES.bookmarks)), impressions:numOrNull(pick(r, ALIASES.impressions)) };
+    out.metrics.push({ external_id: String(id), ...m });
+  }
+  return out;
+}
+function monthlyCounts(posts) {
+  const m = new Map();
+  for (const p of posts) { const k = monthKey(Date.parse(p.posted_at)); m.set(k, (m.get(k) || 0) + 1); }
+  return [...m.entries()].sort().map(([key, count]) => ({ key, count }));
+}
+function monthGaps(keys) {
+  const ks = [...new Set(keys)].sort(); if (ks.length < 2) return [];
+  const have = new Set(ks), gaps = [];
+  let [y, m] = ks[0].split('-').map(Number); const [ey, em] = ks[ks.length - 1].split('-').map(Number);
+  while (y < ey || (y === ey && m <= em)) { const k = `${y}-${String(m).padStart(2, '0')}`; if (!have.has(k)) gaps.push(k); m++; if (m > 12) { m = 1; y++; } }
+  return gaps;
+}
+
+/* ============================================================
+   5. Ingest pipeline (dependency-injected so it is testable)
+   ============================================================ */
+async function getJson(f, url, opts) {
+  let r;
+  try { r = await f(url, opts); }
+  catch (e) { throw new Error(`${new URL(url).host}: request blocked or offline (${e.message}) — may be CORS`); }
+  if (!r.ok) throw new Error(`${new URL(url).host} HTTP ${r.status}`);
+  return r.json();
+}
+const MAX_PAGES = 5;
+
+async function runIngest(deps, sourceKey, producer) {
+  const { store, now, uuid } = deps;
+  const runId = uuid();
+  await store.query(`insert into rooms_os_now.ingest_run (run_id,source_key,started_at,status) values ($1::uuid,$2,$3::timestamptz,'running')`, [runId, sourceKey, iso(now())]);
+  let out;
+  try { out = await producer(runId); }
+  catch (e) {
+    await store.query(`update rooms_os_now.ingest_run set status='failed', finished_at=now(), note=$2 where run_id=$1::uuid`, [runId, String(e.message).slice(0, 500)]);
+    return { ok: false, runId, error: e.message };
+  }
+  const accounts = dedupe(out.accounts.map(a => ({ ...a, source_key: sourceKey, run_id: runId })), ['source_key','account','captured_at']);
+  const posts = dedupe(out.posts.map(p => ({ ...p, source_key: sourceKey, last_run_id: runId })), ['source_key','external_id']);
+  const metrics = dedupe(out.metrics.map(m => ({ ...m, source_key: sourceKey, run_id: runId })), ['source_key','external_id','captured_at']);
+  const written = accounts.length + posts.length + metrics.length;
+  const stmts = [
+    ...buildUpsert('rooms_os_now.account_snapshot', COLS.account, accounts, ['source_key','account','captured_at'], ['period','followers','following','posts_count','run_id','raw']),
+    ...buildUpsert('rooms_os_now.post', COLS.post, posts, ['source_key','external_id'], ['account','url','body','posted_at','status','link_key','last_run_id','raw']),
+    ...buildUpsert('rooms_os_now.post_metric', COLS.metric, metrics, ['source_key','external_id','captured_at'], ['likes','reposts','replies','quotes','bookmarks','impressions','run_id']),
+    { query: `update rooms_os_now.ingest_run set status=$2, finished_at=now(), rows_read=$3, rows_written=$4, coverage_from=$5::timestamptz, coverage_to=$6::timestamptz, note=$7 where run_id=$1::uuid`,
+      params: [runId, out.status, out.rowsRead, written, out.coverageFrom, out.coverageTo, out.note || null] },
+  ];
+  try { await store.batch(stmts); }
+  catch (e) {
+    try { await store.query(`update rooms_os_now.ingest_run set status='failed', finished_at=now(), note=$2 where run_id=$1::uuid`, [runId, ('write failed: ' + e.message).slice(0, 500)]); } catch {}
+    return { ok: false, runId, error: 'write failed: ' + e.message };
+  }
+  const rb = await readback(store, runId, { accounts, posts, metrics });
+  await store.query(`update rooms_os_now.ingest_run set readback_ok=$2, readback_hash=$3 where run_id=$1::uuid`, [runId, rb.ok, rb.hash]);
+  return { ok: true, runId, status: out.status, note: out.note, written, readback: rb };
+}
+
+const dg = v => v == null ? '' : String(numOrNull(v) ?? v);
+const digestAccounts = rows => cyrb53(rows.map(r => [r.source_key, r.account, iso(r.captured_at), dg(r.followers), dg(r.following), dg(r.posts_count)].join('|')).sort().join('\n'));
+const digestPosts = rows => cyrb53(rows.map(r => [r.source_key, r.external_id, r.posted_at ? iso(r.posted_at) : '', r.status ?? '', r.link_key ?? ''].join('|')).sort().join('\n'));
+const digestMetrics = rows => cyrb53(rows.map(r => [r.source_key, r.external_id, iso(r.captured_at), ...METRICS.map(k => dg(r[k]))].join('|')).sort().join('\n'));
+
+async function readback(store, runId, expected) {
+  const A = await store.query(`select source_key, account, to_char(captured_at at time zone 'utc', ${FMT}) as captured_at, followers, following, posts_count from rooms_os_now.account_snapshot where run_id=$1::uuid`, [runId]);
+  const P = await store.query(`select source_key, external_id, to_char(posted_at at time zone 'utc', ${FMT}) as posted_at, status, link_key from rooms_os_now.post where last_run_id=$1::uuid`, [runId]);
+  const M = await store.query(`select source_key, external_id, to_char(captured_at at time zone 'utc', ${FMT}) as captured_at, likes, reposts, replies, quotes, bookmarks, impressions from rooms_os_now.post_metric where run_id=$1::uuid`, [runId]);
+  const parts = {
+    accounts: { written: expected.accounts.length, read: A.length, match: digestAccounts(expected.accounts) === digestAccounts(A) },
+    posts:    { written: expected.posts.length,    read: P.length, match: digestPosts(expected.posts) === digestPosts(P) },
+    metrics:  { written: expected.metrics.length,  read: M.length, match: digestMetrics(expected.metrics) === digestMetrics(M) },
+  };
+  for (const p of Object.values(parts)) p.match = p.match && p.written === p.read;
+  const ok = Object.values(parts).every(p => p.match);
+  return { ok, parts, hash: digestAccounts(A) + '.' + digestPosts(P) + '.' + digestMetrics(M) };
+}
+
+async function ingestBluesky(deps, handle) {
+  return runIngest(deps, 'bluesky', async () => {
+    const f = deps.fetch, base = 'https://public.api.bsky.app/xrpc/', cap = iso(deps.now());
+    const prof = await getJson(f, `${base}app.bsky.actor.getProfile?actor=${encodeURIComponent(handle)}`);
+    const account = prof.handle || handle;
+    const accounts = [{ account, captured_at: cap, period: 'instant', ...normBlueskyProfile(prof), raw: JSON.stringify({ did: prof.did }) }];
+    const posts = [], metrics = [], notes = []; let cursor, pages = 0, status = 'ok', rowsRead = 1;
+    try {
+      for (;;) {
+        const j = await getJson(f, `${base}app.bsky.feed.getAuthorFeed?actor=${encodeURIComponent(handle)}&limit=100&filter=posts_no_replies${cursor ? '&cursor=' + encodeURIComponent(cursor) : ''}`);
+        pages++;
+        for (const item of j.feed || []) { rowsRead++; const n = normBlueskyPost(item, account); if (!n) continue; posts.push({ account, raw: null, ...n.post }); metrics.push({ external_id: n.post.external_id, captured_at: cap, ...n.metric }); }
+        cursor = j.cursor;
+        if (!cursor) break;
+        if (pages >= MAX_PAGES) { status = 'partial'; notes.push(`stopped after ${pages} pages (${posts.length} posts); older posts not fetched`); break; }
+      }
+    } catch (e) { status = 'partial'; notes.push(`feed failed after ${pages} page(s): ${e.message}`); }
+    const oldest = posts.length ? Math.min(...posts.map(p => Date.parse(p.posted_at))) : Date.parse(cap);
+    return { accounts, posts, metrics, status, note: notes.join('; ') || null, rowsRead, coverageFrom: iso(oldest), coverageTo: cap };
+  });
+}
+async function ingestMastodon(deps, instance, acct) {
+  return runIngest(deps, 'mastodon', async () => {
+    const f = deps.fetch, host = String(instance).replace(/^https?:\/\//, '').replace(/\/.*$/, ''), cap = iso(deps.now());
+    const a = await getJson(f, `https://${host}/api/v1/accounts/lookup?acct=${encodeURIComponent(String(acct).replace(/^@/, ''))}`);
+    const account = `${a.acct || acct}@${host}`;
+    const accounts = [{ account, captured_at: cap, period: 'instant', ...normMastodonAccount(a), raw: JSON.stringify({ id: a.id }) }];
+    const posts = [], metrics = [], notes = []; let maxId, pages = 0, status = 'ok', rowsRead = 1;
+    try {
+      for (;;) {
+        const list = await getJson(f, `https://${host}/api/v1/accounts/${a.id}/statuses?limit=40&exclude_replies=true&exclude_reblogs=true${maxId ? '&max_id=' + maxId : ''}`);
+        pages++;
+        for (const s of list) { rowsRead++; const n = normMastodonStatus(s); if (!n) continue; posts.push({ account, raw: null, ...n.post }); metrics.push({ external_id: n.post.external_id, captured_at: cap, ...n.metric }); }
+        if (!list.length || list.length < 40) break;
+        maxId = list[list.length - 1].id;
+        if (pages >= MAX_PAGES) { status = 'partial'; notes.push(`stopped after ${pages} pages (${posts.length} posts); older posts not fetched`); break; }
+      }
+    } catch (e) { status = 'partial'; notes.push(`statuses failed after ${pages} page(s): ${e.message}`); }
+    const oldest = posts.length ? Math.min(...posts.map(p => Date.parse(p.posted_at))) : Date.parse(cap);
+    return { accounts, posts, metrics, status, note: notes.join('; ') || null, rowsRead, coverageFrom: iso(oldest), coverageTo: cap };
+  });
+}
+function tfHeaders(key) { return { Authorization: `Bearer ${key}`, Accept: 'application/json' }; }
+async function tfGet(f, base, path, key) {
+  let r;
+  try { r = await f(base.replace(/\/$/, '') + path, { headers: tfHeaders(key) }); }
+  catch (e) { throw new Error(`Typefully request blocked or offline (${e.message}) — browsers may block this via CORS; set a proxy base URL in Settings`); }
+  if (r.status === 401 || r.status === 403) throw new Error(`Typefully rejected the key (HTTP ${r.status})`);
+  if (!r.ok) throw new Error(`Typefully HTTP ${r.status} on ${path}`);
+  return r.json();
+}
+async function verifyTypefully(deps, cfg) {
+  const base = cfg.tfBase || 'https://api.typefully.com';
+  const me = await tfGet(deps.fetch, base, '/v2/me', cfg.tfKey);
+  const sets = await tfGet(deps.fetch, base, '/v2/social-sets', cfg.tfKey);
+  return { me, socialSets: Array.isArray(sets) ? sets : (sets.results || []) };
+}
+async function ingestTypefully(deps, cfg) {
+  return runIngest(deps, 'typefully', async () => {
+    const base = cfg.tfBase || 'https://api.typefully.com', cap = iso(deps.now());
+    const v = await verifyTypefully(deps, cfg);
+    const sets = cfg.tfSet ? v.socialSets.filter(s => String(s.id) === String(cfg.tfSet)) : v.socialSets;
+    if (!sets.length) throw new Error('No matching Typefully social set');
+    const posts = [], notes = []; let status = 'ok', rowsRead = 0;
+    for (const s of sets) {
+      let path = `/v2/social-sets/${s.id}/drafts?limit=50`, pages = 0;
+      try {
+        while (path && pages < 3) {
+          const j = await tfGet(deps.fetch, base, path, cfg.tfKey); pages++;
+          for (const d of (Array.isArray(j) ? j : j.results || [])) { rowsRead++; const n = normTypefullyDraft(d); if (n) posts.push({ account: String(s.username || s.id), raw: JSON.stringify(d).slice(0, 20000), ...n }); }
+          const next = Array.isArray(j) ? null : j.next; path = next ? (/^https?:/.test(next) ? new URL(next).pathname + new URL(next).search : next) : null;
+        }
+        if (path) { status = 'partial'; notes.push(`social set ${s.id}: stopped after 3 pages`); }
+      } catch (e) { status = 'partial'; notes.push(`social set ${s.id}: ${e.message}`); }
+    }
+    const times = posts.map(p => Date.parse(p.posted_at)).filter(Number.isFinite);
+    notes.push('Typefully exposes no engagement metrics here; metrics stay empty');
+    return { accounts: [], posts, metrics: [], status, note: notes.join('; '), rowsRead, coverageFrom: times.length ? iso(Math.min(...times)) : cap, coverageTo: cap };
+  });
+}
+async function ingestXArchive(deps, parsed, handle, exportedAt) {
+  return runIngest(deps, 'x_archive', async () => {
+    const account = handle || 'x';
+    const posts = parsed.posts.map(p => ({ account, raw: null, ...p }));
+    const metrics = parsed.metrics.filter(m => METRICS.some(k => m[k] != null)).map(m => ({ ...m, captured_at: exportedAt }));
+    const accounts = monthlyCounts(parsed.posts).map(m => ({ account, captured_at: m.key + '-01T00:00:00.000Z', period: 'month', followers: null, following: null, posts_count: m.count, raw: null }));
+    const notes = [`original posts only: excluded ${parsed.retweets} retweets and ${parsed.replies} replies`];
+    if (parsed.skipped) notes.push(`${parsed.skipped} rows skipped (no id or unreadable date)`);
+    const times = parsed.posts.map(p => Date.parse(p.posted_at));
+    if (!times.length) throw new Error('Archive contained no usable original posts');
+    return { accounts, posts, metrics, status: parsed.skipped ? 'partial' : 'ok', note: notes.join('; '), rowsRead: parsed.total,
+             coverageFrom: iso(Math.min(...times)), coverageTo: exportedAt };
+  });
+}
+
+/* ============================================================
+   6. Dashboard model (pure)
+   ============================================================ */
+function assessSource(def, rows, now) {
+  const runs = rows.runs.filter(r => r.source_key === def.key).sort((a, b) => b.started - a.started);
+  const out = { def, flags: [], reasons: [], latest: runs[0] || null, lastOk: null, coverageFrom: null, coverageTo: null };
+  if (!runs.length) { out.flags.push('empty'); out.reasons.push('Never ingested into the store'); return out; }
+  const latest = runs[0];
+  out.lastOk = runs.find(r => r.status === 'ok' || r.status === 'partial') || null;
+  if (latest.status === 'failed') { out.flags.push('failed'); out.reasons.push(`Latest run failed: ${latest.note || 'no detail'}`); }
+  if (latest.status === 'running' && now - latest.started > 3600e3) { out.flags.push('failed'); out.reasons.push('A run started ' + fmtAge(now - latest.started) + ' ago never finished'); }
+  if (!out.lastOk) { if (!out.flags.includes('failed')) out.flags.push('empty'); out.reasons.push('No successful run yet'); return out; }
+  const ok = out.lastOk;
+  out.coverageFrom = ok.coverage_from; out.coverageTo = ok.coverage_to;
+  const ref = def.key === 'x_archive' ? ok.coverage_to : ok.finished;
+  const age = now - ref;
+  if (age > def.staleAfterH * 3600e3) { out.flags.push('stale'); out.reasons.push(`Newest good data is ${fmtAge(age)} old (stale after ${fmtAge(def.staleAfterH * 3600e3)})`); }
+  if (ok.status === 'partial') { out.flags.push('partial'); out.reasons.push('Partial: ' + (ok.note || 'no detail')); }
+  const snaps = rows.snapshots.filter(s => s.source_key === def.key);
+  if (def.gapH) {
+    const ts = snaps.filter(s => s.period === 'instant').map(s => s.captured_at).sort((a, b) => a - b);
+    let gaps = 0, worst = 0;
+    for (let i = 1; i < ts.length; i++) { const d = ts[i] - ts[i - 1]; if (d > def.gapH * 3600e3) { gaps++; worst = Math.max(worst, d); } }
+    if (gaps) { if (!out.flags.includes('partial')) out.flags.push('partial'); out.reasons.push(`${gaps} gap(s) in snapshot history, longest ${fmtAge(worst)}`); }
+  }
+  if (def.key === 'x_archive') {
+    const g = monthGaps(snaps.filter(s => s.period === 'month').map(s => monthKey(s.captured_at)));
+    if (g.length) { if (!out.flags.includes('partial')) out.flags.push('partial'); out.reasons.push(`No archived original posts in ${g.join(', ')} (real silence or missing export)`); }
+  }
+  if (ok.readback_ok === false) { out.flags.push('unverified'); out.reasons.push('Store readback did not match what was written'); }
+  else if (ok.readback_ok == null) out.reasons.push('No readback receipt recorded for the last good run');
+  return out;
+}
+function metricValue(p, metric) {
+  if (metric === 'core') { const a = [p.likes, p.reposts, p.replies]; return a.every(v => v != null) ? a[0] + a[1] + a[2] : null; }
+  return p[metric] ?? null;
+}
+function missingReason(p, metric) {
+  const def = SOURCES[p.source_key];
+  const need = metric === 'core' ? ['likes','reposts','replies'] : [metric];
+  const miss = need.filter(k => p[k] == null);
+  return miss.map(k => { const s = def.provides[k]; return `${k}: ` + (s === 'no' ? `not provided by ${def.label}` : s === 'maybe' ? 'not in this export' : 'expected but absent'); }).join('; ');
+}
+function comparePosts(posts, { metric, sinceMs, sources }) {
+  return posts.filter(p => sources.includes(p.source_key) && (sinceMs == null || (p.posted_at != null && p.posted_at >= sinceMs)))
+    .map(p => ({ ...p, value: metricValue(p, metric) }))
+    .sort((a, b) => (a.value == null) - (b.value == null) || (b.value ?? 0) - (a.value ?? 0) || (b.posted_at ?? 0) - (a.posted_at ?? 0));
+}
+function summarize(rows) {
+  const by = {};
+  for (const r of rows) { const s = by[r.source_key] ??= { source_key: r.source_key, n: 0, vals: [] }; s.n++; if (r.value != null) s.vals.push(r.value); }
+  return Object.values(by).map(s => ({ source_key: s.source_key, n: s.n, withValue: s.vals.length, missing: s.n - s.vals.length, median: median(s.vals), max: s.vals.length ? Math.max(...s.vals) : null }));
+}
+function metricMatrix(posts) {
+  const m = {};
+  for (const k of Object.keys(SOURCES)) {
+    const ps = posts.filter(p => p.source_key === k); m[k] = { N: ps.length };
+    for (const f of METRICS) m[k][f] = ps.filter(p => p[f] != null).length;
+  }
+  return m;
+}
+function splitSegments(pts, gapMs) {
+  const segs = []; let cur = [];
+  for (const p of pts) { if (cur.length && p.t - cur[cur.length - 1].t > gapMs) { segs.push(cur); cur = []; } cur.push(p); }
+  if (cur.length) segs.push(cur); return segs;
+}
+function series(snapshots, source, field, sinceMs) {
+  return snapshots.filter(s => s.source_key === source && s.period === 'instant' && s[field] != null && (sinceMs == null || s.captured_at >= sinceMs))
+    .map(s => ({ t: s.captured_at, v: s[field] })).sort((a, b) => a.t - b.t);
+}
+
+/* ============================================================
+   7. Charts (SVG strings)
+   ============================================================ */
+let svgId = 0;
+function hatchDefs(id, color) { return `<defs><pattern id="${id}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="3" height="6" fill="${color}" opacity=".25"/></pattern></defs>`; }
+function lineChartSvg(pts, o) {
+  const W = 520, H = 170, pl = 52, pr = 10, pt = 10, pb = 22, id = 'h' + (++svgId);
+  if (!pts.length) return `<div class="mute small">No points in this window.</div>`;
+  const t0 = pts[0].t; let t1 = Math.max(o.now, pts[pts.length - 1].t); if (t1 === t0) t1 = t0 + 1;
+  let lo = Math.min(...pts.map(p => p.v)), hi = Math.max(...pts.map(p => p.v)); if (lo === hi) { lo -= 1; hi += 1; }
+  const x = t => pl + (t - t0) / (t1 - t0) * (W - pl - pr), y = v => pt + (1 - (v - lo) / (hi - lo)) * (H - pt - pb);
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(o.label)}">${hatchDefs(id, o.color)}`;
+  for (const v of [lo, (lo + hi) / 2, hi]) s += `<line x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}" stroke="#17140f" stroke-opacity=".15"/><text x="${pl - 5}" y="${y(v) + 3}" text-anchor="end">${fmtNum(Math.round(v))}</text>`;
+  const last = pts[pts.length - 1];
+  if (o.now - last.t > o.staleMs) s += `<rect x="${x(last.t)}" y="${pt}" width="${Math.max(0, x(o.now) - x(last.t))}" height="${H - pt - pb}" fill="url(#${id})"/><text x="${x(o.now) - 4}" y="${pt + 10}" text-anchor="end">no data since ${fmtDate(last.t)}</text>`;
+  const segs = splitSegments(pts, o.gapMs);
+  segs.forEach((seg, i) => {
+    if (i) { const a = segs[i - 1][segs[i - 1].length - 1], b = seg[0]; s += `<line x1="${x(a.t)}" y1="${y(a.v)}" x2="${x(b.t)}" y2="${y(b.v)}" stroke="${o.color}" stroke-dasharray="3 4" stroke-opacity=".6"/>`; }
+    if (seg.length > 1) s += `<polyline fill="none" stroke="${o.color}" stroke-width="2" points="${seg.map(p => `${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ')}"/>`;
+  });
+  if (pts.length <= 80) for (const p of pts) s += `<circle cx="${x(p.t)}" cy="${y(p.v)}" r="2.6" fill="${o.color}"/>`;
+  s += `<text x="${pl}" y="${H - 6}">${fmtDate(t0)}</text><text x="${W - pr}" y="${H - 6}" text-anchor="end">${fmtDate(t1)}</text></svg>`;
+  return s;
+}
+function monthBarsSvg(months, gaps, color) {
+  const W = 520, H = 150, pl = 40, pb = 22, pt = 10, id = 'h' + (++svgId);
+  const all = []; if (months.length) { let [y, m] = months[0].key.split('-').map(Number); const [ey, em] = months[months.length - 1].key.split('-').map(Number); while (y < ey || (y === ey && m <= em)) { all.push(`${y}-${String(m).padStart(2, '0')}`); m++; if (m > 12) { m = 1; y++; } } }
+  if (!all.length) return `<div class="mute small">No monthly data.</div>`;
+  const cnt = Object.fromEntries(months.map(m => [m.key, m.count])), max = Math.max(...months.map(m => m.count), 1), bw = (W - pl - 8) / all.length;
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Original posts per month in the X archive">${hatchDefs(id, color)}<text x="${pl - 5}" y="${pt + 8}" text-anchor="end">${max}</text><text x="${pl - 5}" y="${H - pb}" text-anchor="end">0</text>`;
+  all.forEach((k, i) => {
+    const x = pl + i * bw, c = cnt[k];
+    if (c == null) s += `<rect x="${x + 1}" y="${pt}" width="${Math.max(1, bw - 2)}" height="${H - pt - pb}" fill="url(#${id})" stroke="${color}" stroke-dasharray="2 2"><title>${k}: no archived posts (gap)</title></rect>`;
+    else { const h = c / max * (H - pt - pb); s += `<rect x="${x + 1}" y="${H - pb - h}" width="${Math.max(1, bw - 2)}" height="${h}" fill="${color}"><title>${k}: ${c} original posts</title></rect>`; }
+  });
+  return s + `<text x="${pl}" y="${H - 6}">${all[0]}</text><text x="${W - 8}" y="${H - 6}" text-anchor="end">${all[all.length - 1]}</text></svg>`;
+}
+
+/* ============================================================
+   8. Fixture rows (clearly labelled sample data; same model)
+   ============================================================ */
+function makeFixture(now) {
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const D = 86400e3, runs = [], snapshots = [], posts = [];
+  const run = (source_key, status, ageMs, extra = {}) => runs.push({ source_key, status, started: now - ageMs - 5000, finished: now - ageMs, coverage_from: now - 120 * D, coverage_to: now - ageMs, note: null, readback_ok: true, ...extra });
+  run('bluesky', 'partial', 3 * 3600e3, { note: 'stopped after 5 pages (500 posts); older posts not fetched' });
+  run('mastodon', 'ok', 6 * D);
+  run('x_archive', 'ok', 20 * D, { coverage_to: now - 20 * D, readback_ok: true });
+  run('typefully', 'ok', 2 * D, { note: 'Typefully exposes no engagement metrics here; metrics stay empty', readback_ok: null });
+  let b = 1200, m = 640;
+  for (let d = 90; d >= 0; d--) {
+    if (!(d > 40 && d < 47)) { b += Math.round(rnd() * 9 - 1); snapshots.push({ source_key: 'bluesky', account: 'fixture.bsky.social', period: 'instant', captured_at: now - d * D - 3 * 3600e3, followers: b, following: 310, posts_count: 800 + (90 - d) }); }
+    if (d >= 6) { m += Math.round(rnd() * 5 - 1); snapshots.push({ source_key: 'mastodon', account: 'fixture@example.social', period: 'instant', captured_at: now - d * D, followers: m, following: 200, posts_count: 400 + (90 - d) }); }
+  }
+  for (let i = 14; i >= 1; i--) { if (i === 7) continue; const t = new Date(now - 20 * D); t.setUTCDate(1); t.setUTCMonth(t.getUTCMonth() - i); snapshots.push({ source_key: 'x_archive', account: 'fixture', period: 'month', captured_at: t.getTime(), followers: null, following: null, posts_count: Math.round(10 + rnd() * 40) }); }
+  const mk = (source_key, n, f) => { for (let i = 0; i < n; i++) { const at = now - Math.round(rnd() * 100 * D); posts.push({ source_key, external_id: source_key + i, account: 'fixture', url: null, body: `${SOURCES[source_key].label} sample post #${i + 1} — ${['shipping notes','a small experiment','link roundup','thread on rooms','weekly review'][i % 5]}`, posted_at: at, status: 'published', link_key: null, ...f(i) }); } };
+  mk('bluesky', 22, () => ({ likes: Math.round(rnd() * 90), reposts: Math.round(rnd() * 25), replies: Math.round(rnd() * 12), quotes: Math.round(rnd() * 5), bookmarks: null, impressions: null }));
+  mk('mastodon', 18, () => ({ likes: Math.round(rnd() * 40), reposts: Math.round(rnd() * 15), replies: Math.round(rnd() * 8), quotes: null, bookmarks: null, impressions: null }));
+  mk('x_archive', 24, i => ({ likes: Math.round(rnd() * 160), reposts: Math.round(rnd() * 30), replies: i % 4 === 0 ? null : Math.round(rnd() * 10), quotes: null, bookmarks: null, impressions: null }));
+  mk('typefully', 8, i => ({ status: ['published','scheduled','draft'][i % 3], likes: null, reposts: null, replies: null, quotes: null, bookmarks: null, impressions: null }));
+  return { runs, snapshots, posts };
+}
+
+/* ============================================================
+   9. Store loading
+   ============================================================ */
+const toMs = s => s == null ? null : Date.parse(s);
+async function loadRows(store) {
+  const runs = await store.query(`select run_id, source_key, status, rows_read, rows_written, note, readback_ok, readback_hash,
+    to_char(started_at at time zone 'utc', ${FMT}) started, to_char(finished_at at time zone 'utc', ${FMT}) finished,
+    to_char(coverage_from at time zone 'utc', ${FMT}) cf, to_char(coverage_to at time zone 'utc', ${FMT}) ct
+    from rooms_os_now.ingest_run order by started_at desc limit 300`);
+  const snaps = await store.query(`select source_key, account, period, followers, following, posts_count, to_char(captured_at at time zone 'utc', ${FMT}) t
+    from rooms_os_now.account_snapshot order by captured_at limit 20000`);
+  const posts = await store.query(`select * from (select distinct on (p.source_key, p.external_id) p.source_key, p.external_id, p.account, p.url, p.body, p.status, p.link_key,
+    to_char(p.posted_at at time zone 'utc', ${FMT}) posted_at, m.likes, m.reposts, m.replies, m.quotes, m.bookmarks, m.impressions,
+    to_char(m.captured_at at time zone 'utc', ${FMT}) metric_at
+    from rooms_os_now.post p left join rooms_os_now.post_metric m on m.source_key=p.source_key and m.external_id=p.external_id
+    order by p.source_key, p.external_id, m.captured_at desc nulls last) q order by posted_at desc nulls last limit 5000`);
+  return {
+    runs: runs.map(r => ({ ...r, started: toMs(r.started), finished: toMs(r.finished), coverage_from: toMs(r.cf), coverage_to: toMs(r.ct), rows_read: numOrNull(r.rows_read), rows_written: numOrNull(r.rows_written) })),
+    snapshots: snaps.map(s => ({ source_key: s.source_key, account: s.account, period: s.period, captured_at: toMs(s.t), followers: numOrNull(s.followers), following: numOrNull(s.following), posts_count: numOrNull(s.posts_count) })),
+    posts: posts.map(p => ({ ...p, posted_at: toMs(p.posted_at), ...Object.fromEntries(METRICS.map(k => [k, numOrNull(p[k])])) })),
+  };
+}
+
+/* ============================================================
+   10. Settings persistence (no secrets in localStorage unless asked)
+   ============================================================ */
+const CFG_KEY = 'rooms_os_now_cfg';
+function saveCfg(cfg, st) {
+  const s = JSON.stringify(cfg);
+  if (cfg.remember) { st.local.setItem(CFG_KEY, s); st.session.removeItem(CFG_KEY); }
+  else { st.session.setItem(CFG_KEY, s); st.local.removeItem(CFG_KEY); }
+}
+function loadCfg(st) { try { return JSON.parse(st.local.getItem(CFG_KEY) || st.session.getItem(CFG_KEY) || '{}'); } catch { return {}; } }
+
+/* ============================================================
+   11. Tests
+   ============================================================ */
+function makeFakeStore() {
+  const tables = {}, updates = []; const fake = { tables, updates, tamper: null };
+  const handle = (q, params) => {
+    const m = /^insert into ([\w.]+) \(([^)]*)\) values/.exec(q.trim());
+    if (m && m[1].endsWith('ingest_run')) { (tables[m[1]] ??= []).push({ run_id: params[0], source_key: params[1] }); return []; }
+    if (m) { const cols = m[2].split(',').map(s => s.trim()); (tables[m[1]] ??= []); for (let i = 0; i < params.length; i += cols.length) { const row = {}; cols.forEach((c, j) => row[c] = params[i + j]); tables[m[1]].push(row); } return []; }
+    if (/^\s*update/.test(q)) { updates.push({ q, params }); return []; }
+    const t = /from rooms_os_now\.(account_snapshot|post_metric|post) where (run_id|last_run_id)=/.exec(q);
+    if (t) { const col = t[2]; let rows = (tables['rooms_os_now.' + t[1]] || []).filter(r => r[col] === params[0]).map(r => ({ ...r })); if (fake.tamper && fake.tamper.table === t[1]) rows = fake.tamper.fn(rows); return rows; }
+    return [];
+  };
+  fake.query = async (q, p = []) => handle(q, p);
+  fake.batch = async qs => qs.map(x => handle(x.query, x.params));
+  return fake;
+}
+const jsonRes = (obj, status = 200) => ({ ok: status < 400, status, json: async () => obj, text: async () => JSON.stringify(obj) });
+function testDeps(fetchFn, store) { let n = 0; return { fetch: fetchFn, store, now: () => Date.parse('2025-01-10T12:00:00Z'), uuid: () => `00000000-0000-4000-8000-${String(++n).padStart(12, '0')}` }; }
+const bskyFeedItem = (i, extra = {}) => ({ post: { uri: `at://did:plc:x/app.bsky.feed.post/3k${i}`, author: { handle: 'me.bsky.social' }, record: { text: 'hi ' + i, createdAt: `2025-01-0${(i % 9) + 1}T10:00:00.000Z` }, likeCount: 5 + i, repostCount: 2, replyCount: 1, quoteCount: 0 }, ...extra });
+
+const TESTS = [];
+const test = (name, fn) => TESTS.push({ name, fn });
+const eq = (a, b, msg) => { const x = JSON.stringify(a), y = JSON.stringify(b); if (x !== y) throw new Error(`${msg || 'not equal'}: got ${x}, want ${y}`); };
+const truthy = (v, msg) => { if (!v) throw new Error(msg || 'expected truthy'); };
+
+test('numOrNull treats blanks/negatives/NaN as missing, not zero', () => { eq([numOrNull(null), numOrNull(''), numOrNull('x'), numOrNull(-1), numOrNull('7'), numOrNull(0)], [null, null, null, null, 7, 0]); });
+test('parseTweetDate handles archive format and offsets', () => {
+  eq(parseTweetDate('Tue Mar 05 12:00:00 +0000 2024'), '2024-03-05T12:00:00.000Z');
+  eq(parseTweetDate('Tue Mar 05 12:00:00 +0100 2024'), '2024-03-05T11:00:00.000Z');
+  eq(parseTweetDate('garbage'), null);
+});
+test('parseCSV handles quoted commas, quotes and newlines', () => { eq(parseCSV('a,b\n"x,1","he said ""hi""\nthere"\n'), [{ a: 'x,1', b: 'he said "hi"\nthere' }]); });
+test('parseXArchive (tweets.js): excludes RT/replies, counts skipped, keeps missing metrics null', () => {
+  const js = 'window.YTD.tweets.part0 = ' + JSON.stringify([
+    { tweet: { id_str: '1', full_text: 'hello', created_at: 'Tue Mar 05 12:00:00 +0000 2024', favorite_count: '3', retweet_count: '1' } },
+    { tweet: { id_str: '2', full_text: 'RT @a: x', created_at: 'Tue Mar 05 12:00:00 +0000 2024' } },
+    { tweet: { id_str: '3', full_text: '@a yo', in_reply_to_status_id_str: '9', created_at: 'Tue Mar 05 12:00:00 +0000 2024' } },
+    { tweet: { id_str: '4', full_text: 'bad date', created_at: 'nope' } }]);
+  const r = parseXArchive(js);
+  eq([r.posts.length, r.retweets, r.replies, r.skipped, r.total], [1, 1, 1, 1, 4]);
+  eq([r.metrics[0].likes, r.metrics[0].reposts, r.metrics[0].replies, r.metrics[0].impressions], [3, 1, null, null]);
+});
+test('parseXArchive (CSV) maps aliases', () => {
+  const r = parseXArchive('tweet_id,date,text,like_count,impressions\n10,2024-02-01T00:00:00Z,"a, b",4,900\n');
+  eq([r.posts[0].external_id, r.metrics[0].likes, r.metrics[0].impressions], ['10', 4, 900]);
+});
+test('monthlyCounts + monthGaps detect missing months', () => {
+  const c = monthlyCounts([{ posted_at: '2024-01-05T00:00:00Z' }, { posted_at: '2024-01-06T00:00:00Z' }, { posted_at: '2024-04-01T00:00:00Z' }]);
+  eq(c, [{ key: '2024-01', count: 2 }, { key: '2024-04', count: 1 }]);
+  eq(monthGaps(c.map(x => x.key)), ['2024-02', '2024-03']);
+  eq(monthGaps(['2023-12', '2024-01']), []);
+});
+test('normBlueskyPost skips reposts and keeps quotes', () => {
+  eq(normBlueskyPost(bskyFeedItem(1, { reason: { $type: 'x' } }), 'h'), null);
+  const n = normBlueskyPost(bskyFeedItem(2), 'h'); eq([n.metric.likes, n.metric.quotes, n.metric.impressions], [7, 0, null]);
+  truthy(n.post.url.startsWith('https://bsky.app/profile/me.bsky.social/post/3k2'));
+});
+test('normMastodonStatus strips HTML; quotes are null (not provided)', () => {
+  const n = normMastodonStatus({ id: '5', created_at: '2025-01-01T00:00:00Z', content: '<p>Hello <b>world</b></p>', favourites_count: 2, reblogs_count: 1, replies_count: 0 });
+  eq([n.post.body, n.metric.quotes, n.metric.likes], ['Hello world', null, 2]);
+});
+test('normTypefullyDraft extracts X status id as link_key', () => {
+  eq(normTypefullyDraft({ id: 77, status: 'published', x_published_url: 'https://x.com/a/status/1234567', published_at: '2025-01-01T00:00:00Z' }).link_key, '1234567');
+  eq(normTypefullyDraft({ id: 78, status: 'draft' }).posted_at, null);
+});
+test('buildUpsert: placeholders match params, chunking, conflict clause', () => {
+  const rows = Array.from({ length: 5 }, (_, i) => ({ source_key: 's', external_id: 'e' + i, captured_at: '2025-01-01T00:00:00.000Z', likes: i }));
+  const st = buildUpsert('t', [{ name: 'source_key' }, { name: 'external_id' }, { name: 'captured_at', cast: 'timestamptz' }, { name: 'likes', cast: 'bigint' }], rows, ['source_key', 'external_id'], ['likes'], 2);
+  eq(st.length, 3);
+  for (const s of st) { const ph = [...s.query.matchAll(/\$(\d+)/g)].map(m => +m[1]); eq(Math.max(...ph), s.params.length); }
+  truthy(/on conflict \(source_key,external_id\) do update set likes=excluded\.likes/.test(st[0].query));
+  truthy(buildUpsert('t', [{ name: 'a' }], [{ a: 1 }], ['a'], [])[0].query.endsWith('do nothing'));
+});
+test('dedupe keeps the last duplicate (avoids ON CONFLICT double-hit)', () => { eq(dedupe([{ k: 1, v: 'a' }, { k: 1, v: 'b' }, { k: 2, v: 'c' }], ['k']), [{ k: 1, v: 'b' }, { k: 2, v: 'c' }]); });
+test('SCHEMA is idempotent DDL and covers the one schema', () => {
+  truthy(SCHEMA.every(s => /if not exists|on conflict|revoke/.test(s)), 'non-idempotent statement');
+  const all = SCHEMA.join('\n'); for (const t of ['source', 'ingest_run', 'account_snapshot', 'post', 'post_metric']) truthy(all.includes(`rooms_os_now.${t} `) || all.includes(`rooms_os_now.${t}(`), t);
+  truthy(!/create (table|index)[^;]*\b(?!rooms_os_now)public\./.test(all));
+});
+const T = Date.parse('2025-01-10T12:00:00Z'), H = 3600e3, DAY = 24 * H;
+const R = (source_key, status, ageMs, x = {}) => ({ source_key, status, started: T - ageMs - 1000, finished: T - ageMs, coverage_from: T - 90 * DAY, coverage_to: T - ageMs, note: null, readback_ok: true, ...x });
+test('assessSource: fresh counter has no flags', () => { eq(assessSource(SOURCES.bluesky, { runs: [R('bluesky', 'ok', H)], snapshots: [] }, T).flags, []); });
+test('assessSource: stale after window', () => { eq(assessSource(SOURCES.bluesky, { runs: [R('bluesky', 'ok', 5 * DAY)], snapshots: [] }, T).flags, ['stale']); });
+test('assessSource: partial run is surfaced with reason', () => { const a = assessSource(SOURCES.mastodon, { runs: [R('mastodon', 'partial', H, { note: 'cap hit' })], snapshots: [] }, T); eq(a.flags, ['partial']); truthy(a.reasons[0].includes('cap hit')); });
+test('assessSource: failed latest run + older good run → failed and stale, data not hidden', () => {
+  const a = assessSource(SOURCES.bluesky, { runs: [R('bluesky', 'failed', H, { note: 'HTTP 500' }), R('bluesky', 'ok', 4 * DAY)], snapshots: [] }, T);
+  eq(a.flags, ['failed', 'stale']); truthy(a.lastOk);
+});
+test('assessSource: never ingested is empty', () => { eq(assessSource(SOURCES.typefully, { runs: [], snapshots: [] }, T).flags, ['empty']); });
+test('assessSource: snapshot gap makes counter partial', () => {
+  const sn = [0, 1, 6].map(d => ({ source_key: 'bluesky', period: 'instant', captured_at: T - (7 - d) * DAY }));
+  const a = assessSource(SOURCES.bluesky, { runs: [R('bluesky', 'ok', H)], snapshots: sn }, T); eq(a.flags, ['partial']); truthy(/gap/.test(a.reasons[0]));
+});
+test('assessSource: X archive month gap → partial naming the month; old export → stale', () => {
+  const sn = ['2024-01', '2024-03'].map(k => ({ source_key: 'x_archive', period: 'month', captured_at: Date.parse(k + '-01T00:00:00Z') }));
+  const a = assessSource(SOURCES.x_archive, { runs: [R('x_archive', 'ok', 10 * DAY)], snapshots: sn }, T); eq(a.flags, ['partial']); truthy(a.reasons.join().includes('2024-02'));
+  eq(assessSource(SOURCES.x_archive, { runs: [R('x_archive', 'ok', 60 * DAY)], snapshots: [] }, T).flags, ['stale']);
+});
+test('assessSource: readback mismatch flags unverified', () => { eq(assessSource(SOURCES.bluesky, { runs: [R('bluesky', 'ok', H, { readback_ok: false })], snapshots: [] }, T).flags, ['unverified']); });
+test('metricValue: core requires all components (no silent zero-fill)', () => {
+  eq(metricValue({ likes: 1, reposts: 2, replies: 3 }, 'core'), 6); eq(metricValue({ likes: 1, reposts: 2, replies: null }, 'core'), null); eq(metricValue({ impressions: 0 }, 'impressions'), 0);
+});
+test('comparePosts filters, sorts, puts missing last, explains why', () => {
+  const ps = [{ source_key: 'x_archive', posted_at: T, likes: 1, reposts: 1, replies: null }, { source_key: 'bluesky', posted_at: T, likes: 5, reposts: 0, replies: 0 }, { source_key: 'mastodon', posted_at: T - 200 * DAY, likes: 99, reposts: 0, replies: 0 }];
+  const r = comparePosts(ps, { metric: 'core', sinceMs: T - 90 * DAY, sources: ['x_archive', 'bluesky', 'mastodon'] });
+  eq(r.map(x => x.source_key), ['bluesky', 'x_archive']); eq(r[1].value, null); truthy(missingReason(r[1], 'core').includes('not in this export'));
+  eq(missingReason({ source_key: 'mastodon', quotes: null }, 'quotes'), 'quotes: not provided by Mastodon');
+});
+test('summarize reports medians and missing counts', () => { eq(summarize([{ source_key: 'a', value: 1 }, { source_key: 'a', value: 5 }, { source_key: 'a', value: null }])[0], { source_key: 'a', n: 3, withValue: 2, missing: 1, median: 3, max: 5 }); });
+test('metricMatrix counts non-null per metric', () => { const m = metricMatrix([{ source_key: 'bluesky', likes: 1, reposts: null }, { source_key: 'bluesky', likes: 0, reposts: null }]); eq([m.bluesky.N, m.bluesky.likes, m.bluesky.reposts, m.x_archive.N], [2, 2, 0, 0]); });
+test('splitSegments breaks lines at gaps (no interpolation across them)', () => { eq(splitSegments([{ t: 0 }, { t: 1 }, { t: 10 }, { t: 11 }], 3).map(s => s.length), [2, 2]); });
+test('neonHost / neonClient send private connection string header to /sql', async () => {
+  eq(neonHost('postgresql://u:p@ep-x-pooler.us-east-2.aws.neon.tech/db?sslmode=require'), 'ep-x-pooler.us-east-2.aws.neon.tech');
+  let seen; const c = neonClient('postgresql://u:p@h.neon.tech/db', async (u, o) => { seen = { u, o }; return { ok: true, status: 200, text: async () => '{"rows":[{"a":1}]}' }; });
+  eq(await c.query('select 1', []), [{ a: 1 }]); eq(seen.u, 'https://h.neon.tech/sql'); eq(seen.o.headers['Neon-Connection-String'], 'postgresql://u:p@h.neon.tech/db');
+  const bad = neonClient('postgresql://u:p@h.neon.tech/db', async () => ({ ok: false, status: 401, text: async () => '{"message":"nope"}' }));
+  let msg = ''; try { await bad.query('x'); } catch (e) { msg = e.message; } truthy(msg.includes('401') && msg.includes('nope'));
+});
+test('settings: secrets are not persisted to localStorage unless "remember"', () => {
+  const mk = () => { const d = {}; return { setItem: (k, v) => d[k] = v, getItem: k => d[k] ?? null, removeItem: k => delete d[k], d }; };
+  let st = { local: mk(), session: mk() }; saveCfg({ neon: 'secret', remember: false }, st); eq(Object.keys(st.local.d), []); eq(loadCfg(st).neon, 'secret');
+  st = { local: mk(), session: mk() }; saveCfg({ neon: 'secret', remember: true }, st); eq(Object.keys(st.session.d), []);
+});
+const bskyFetch = (opts = {}) => async url => {
+  if (url.includes('getProfile')) return opts.profileStatus ? jsonRes({}, opts.profileStatus) : jsonRes({ handle: 'me.bsky.social', followersCount: 10, followsCount: 5, postsCount: 20 });
+  if (url.includes('getAuthorFeed')) return jsonRes({ feed: [bskyFeedItem(1), bskyFeedItem(2), bskyFeedItem(3, { reason: {} })], cursor: opts.cursor });
+  return jsonRes({}, 404);
+};
+test('pipeline: Bluesky source → store → readback matches', async () => {
+  const st = makeFakeStore(), r = await ingestBluesky(testDeps(bskyFetch(), st), 'me.bsky.social');
+  truthy(r.ok, r.error); eq(r.status, 'ok'); eq([r.readback.parts.accounts.written, r.readback.parts.posts.written, r.readback.parts.metrics.written], [1, 2, 2]); truthy(r.readback.ok);
+  eq(st.updates.at(-1).params[1], true);
+});
+test('pipeline: readback detects a tampered stored value', async () => {
+  const st = makeFakeStore(); st.tamper = { table: 'post_metric', fn: rows => { rows[0].likes = 9999; return rows; } };
+  const r = await ingestBluesky(testDeps(bskyFetch(), st), 'me.bsky.social');
+  eq(r.readback.ok, false); eq(r.readback.parts.metrics.match, false); eq(st.updates.at(-1).params[1], false);
+});
+test('pipeline: readback detects missing rows in the store', async () => {
+  const st = makeFakeStore(); st.tamper = { table: 'post', fn: rows => rows.slice(1) };
+  const r = await ingestBluesky(testDeps(bskyFetch(), st), 'me.bsky.social'); eq(r.readback.parts.posts.match, false);
+});
+test('pipeline: page cap reached → run recorded as partial with a reason', async () => {
+  const st = makeFakeStore(), r = await ingestBluesky(testDeps(bskyFetch({ cursor: 'more' }), st), 'me.bsky.social');
+  eq(r.status, 'partial'); truthy(/stopped after 5 pages/.test(r.note));
+});
+test('pipeline: profile failure → failed run recorded, nothing written', async () => {
+  const st = makeFakeStore(), r = await ingestBluesky(testDeps(bskyFetch({ profileStatus: 500 }), st), 'me.bsky.social');
+  eq(r.ok, false); eq(st.tables['rooms_os_now.account_snapshot'], undefined); truthy(st.updates[0].q.includes("'failed'"));
+});
+test('pipeline: network/CORS failure is reported as such', async () => {
+  const st = makeFakeStore(), r = await ingestBluesky(testDeps(async () => { throw new TypeError('Failed to fetch'); }, st), 'x'); truthy(r.error.includes('CORS'));
+});
+test('pipeline: X archive writes monthly counts; metrics-free posts get no metric rows', async () => {
+  const parsed = parseXArchive(JSON.stringify([{ id: '1', created_at: '2024-01-03T00:00:00Z', text: 'a', like_count: 2 }, { id: '2', created_at: '2024-03-03T00:00:00Z', text: 'b' }]));
+  const st = makeFakeStore(), r = await ingestXArchive(testDeps(null, st), parsed, 'me', '2025-01-01T00:00:00.000Z');
+  truthy(r.ok, r.error); eq([r.readback.parts.accounts.written, r.readback.parts.posts.written, r.readback.parts.metrics.written], [2, 2, 1]); truthy(r.readback.ok);
+});
+test('pipeline: Typefully 401 gives a clear key error and a failed run', async () => {
+  const st = makeFakeStore(), r = await ingestTypefully(testDeps(async () => jsonRes({}, 401), st), { tfKey: 'bad' });
+  eq(r.ok, false); truthy(r.error.includes('rejected the key'));
+});
+test('pipeline: Typefully ingest stores posts with NO metric rows (nothing invented)', async () => {
+  const f = async url => url.endsWith('/v2/me') ? jsonRes({ id: 1 }) : url.endsWith('/v2/social-sets') ? jsonRes({ results: [{ id: 5, username: 'me' }] }) : jsonRes({ results: [{ id: 'd1', status: 'published', x_published_url: 'https://x.com/me/status/42', published_at: '2025-01-02T00:00:00Z', preview: 'hello' }], next: null });
+  const st = makeFakeStore(), r = await ingestTypefully(testDeps(f, st), { tfKey: 'k' });
+  truthy(r.ok, r.error); eq([r.readback.parts.posts.written, r.readback.parts.metrics.written], [1, 0]); truthy(r.readback.ok);
+});
+
+async function runTests() {
+  const res = [];
+  for (const t of TESTS) { try { await t.fn(); res.push({ name: t.name, ok: true }); } catch (e) { res.push({ name: t.name, ok: false, err: e.message }); } }
+  return res;
+}
+
+/* ============================================================
+   12. UI
+   ============================================================ */
+const S = { mode: 'none', rows: null, cfg: {}, store: null, filters: { metric: 'core', days: 90, trendDays: 180, sources: { bluesky: true, mastodon: true, x_archive: true, typefully: false } }, receipts: [], err: null, tests: null, busy: false, log: [] };
+const $ = id => document.getElementById(id);
+const stor = { local: window.localStorage, session: window.sessionStorage };
+const now = () => Date.now();
+const tagHtml = k => `<span class="tag"><i style="background:${SOURCES[k].color}"></i>${esc(SOURCES[k].label)}</span> <span class="kind">${esc(SOURCES[k].kind)}</span>`;
+const badge = f => `<span class="badge b-${f}">${f}</span>`;
+function logLine(s, cls = '') { S.log.push(`${new Date().toISOString().slice(11, 19)} ${s}`); const el = $('log'); if (el) { el.textContent = S.log.slice(-60).join('\n'); el.scrollTop = 1e9; } }
+const deps = () => ({ fetch: (...a) => fetch(...a), store: S.store, now, uuid: () => crypto.randomUUID() });
+
+function assessAll() { return Object.fromEntries(Object.values(SOURCES).map(d => [d.key, assessSource(d, S.rows, now())])); }
+
+function renderAll() {
+  const chip = $('modeChip');
+  chip.textContent = S.mode === 'live' ? `live store · ${S.store ? S.store.host.split('.')[0] : ''}` : S.mode === 'fixture' ? 'FIXTURE — sample data' : 'not connected';
+  $('notice').innerHTML = (S.mode === 'fixture' ? `<div class="banner">FIXTURE DATA — generated in this page to show the layout and the stale / partial / missing states. Nothing here comes from your accounts or your store.</div>` : '') + (S.err ? `<div class="err">${esc(S.err)}</div>` : '');
+  if (!S.rows) {
+    $('sec-coverage').innerHTML = `<div class="empty"><h2>Nothing loaded</h2><p class="sub" style="margin:8px auto">Open Settings, add your Neon connection string, create the schema, ingest each source, then refresh. Or preview the layout with fixture data.</p><button data-action="settings">Open settings</button> <button class="ghost" data-action="fixture">Fixture preview</button></div>` + storeSection(true);
+    ['sec-trends', 'sec-compare', 'sec-matrix'].forEach(i => $(i).innerHTML = ''); $('sec-store').innerHTML = ''; return;
+  }
+  renderCoverage(); renderTrends(); renderCompare(); renderMatrix(); renderStore();
+}
+function storeSection() { return ''; }
+
+function renderCoverage() {
+  const A = assessAll(), live = S.mode === 'live';
+  const card = k => {
+    const a = A[k], d = SOURCES[k], flags = a.flags.length ? a.flags.map(badge).join('') : badge('fresh');
+    const win = a.coverageFrom ? `${fmtDate(a.coverageFrom)} → ${fmtDate(a.coverageTo)}` : '—';
+    const last = a.lastOk ? `${fmtAge(now() - a.lastOk.finished)} ago` : 'never';
+    let act = '';
+    if (k === 'x_archive') act = `<div class="small" style="margin-top:8px"><input type="file" id="xfile" accept=".js,.json,.csv,.txt"><br>archive exported on <input type="date" id="xdate"><br><button style="margin-top:6px" data-action="ingest-x" ${live ? '' : 'disabled'}>Import archive</button></div>`;
+    else if (k === 'typefully') act = `<div style="margin-top:8px"><button class="ghost" data-action="verify-tf" ${live ? '' : 'disabled'}>Verify access</button> <button data-action="ingest-typefully" ${live ? '' : 'disabled'}>Ingest</button></div>`;
+    else act = `<div style="margin-top:8px"><button data-action="ingest-${k}" ${live ? '' : 'disabled'}>Ingest now</button></div>`;
+    return `<div class="card">${tagHtml(k)}<div style="margin:8px 0">${flags}</div>
+      <div class="small mono">last good: ${last}<br>coverage: ${win}<br>rows: ${a.lastOk ? fmtNum(a.lastOk.rows_written) : '—'} written · readback ${a.lastOk ? (a.lastOk.readback_ok === true ? '<span class="t-ok">✓ match</span>' : a.lastOk.readback_ok === false ? '<span class="t-bad">✗ mismatch</span>' : 'not recorded') : '—'}</div>
+      ${a.reasons.length ? `<ul class="why">${a.reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}${act}</div>`;
+  };
+  $('sec-coverage').innerHTML = `<h2>Source coverage</h2><p class="sub">Every number below carries its source. “Stale” = newest good data is older than that source's window. “Partial” = the last run hit a cap/error, history has gaps, or archive months are empty. Neither hides the data that does exist.</p>
+    <div class="grid g4">${Object.keys(SOURCES).map(card).join('')}</div><pre class="log" id="log">${esc(S.log.slice(-60).join('\n'))}</pre>`;
+  const xd = $('xdate'); if (xd) xd.value = new Date(now() - 86400e3).toISOString().slice(0, 10);
+}
+
+function renderTrends() {
+  const A = assessAll(), f = S.filters, since = f.trendDays ? now() - f.trendDays * 86400e3 : null;
+  const sel = `<select data-filter="trendDays">${[[90, '90 days'], [180, '180 days'], [365, '1 year'], [0, 'all']].map(([v, l]) => `<option value="${v}" ${f.trendDays === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+  const counter = k => {
+    const d = SOURCES[k], pts = series(S.rows.snapshots, k, 'followers', since), a = A[k];
+    const latest = [...S.rows.snapshots.filter(s => s.source_key === k && s.period === 'instant')].sort((x, y) => y.captured_at - x.captured_at)[0];
+    let body;
+    if (!latest) body = `<div class="mute small">No snapshots stored for ${esc(d.label)}.</div>`;
+    else if (!pts.length) body = `<div class="mute small">${esc(d.label)} snapshots exist but contain no follower count — shown as missing, not zero.</div>`;
+    else {
+      const delta = pts.length > 1 ? pts[pts.length - 1].v - pts[0].v : null;
+      body = lineChartSvg(pts, { color: d.color, now: now(), gapMs: d.gapH * 3600e3, staleMs: d.staleAfterH * 3600e3, label: `${d.label} followers` }) +
+        `<div class="small mono">followers <b>${fmtNum(pts[pts.length - 1].v)}</b> · change in window ${delta == null ? 'n/a (1 snapshot)' : (delta >= 0 ? '+' : '') + fmtNum(delta)} · ${pts.length} snapshots · following ${fmtNum(latest.following)} · posts ${fmtNum(latest.posts_count)}</div>
+         <div class="small mute">y-axis starts at the window minimum, not zero. Dashed connector = gap &gt; ${d.gapH}h, not interpolated data.</div>`;
+    }
+    return `<div class="card">${tagHtml(k)} ${(a.flags.length ? a.flags : ['fresh']).map(badge).join('')}${body}</div>`;
+  };
+  const xs = S.rows.snapshots.filter(s => s.source_key === 'x_archive' && s.period === 'month');
+  const months = xs.map(s => ({ key: monthKey(s.captured_at), count: s.posts_count })).filter(m => m.count != null).sort((a, b) => a.key.localeCompare(b.key));
+  const xcard = `<div class="card">${tagHtml('x_archive')} ${(A.x_archive.flags.length ? A.x_archive.flags : ['fresh']).map(badge).join('')}
+    ${months.length ? monthBarsSvg(months, monthGaps(months.map(m => m.key)), SOURCES.x_archive.color) : '<div class="mute small">No archive months stored.</div>'}
+    <div class="small mono">Original posts per month (retweets and replies excluded). <b>Follower history: not in the archive</b> — no X follower trend is shown rather than inventing one. Hatched = month with no archived posts.</div></div>`;
+  const tf = `<div class="card">${tagHtml('typefully')}<div class="small mute" style="margin-top:8px">Typefully supplies drafts / schedule / publish state, not account counters or engagement. No trend is drawn.</div></div>`;
+  $('sec-trends').innerHTML = `<h2>Account trends</h2><p class="sub">Window ${sel} — one chart per source; counters from different platforms are never summed.</p><div class="grid g2">${counter('bluesky')}${counter('mastodon')}${xcard}${tf}</div>`;
+}
+
+function renderCompare() {
+  const f = S.filters, srcs = Object.keys(f.sources).filter(k => f.sources[k]);
+  const since = f.days ? now() - f.days * 86400e3 : null;
+  const rows = comparePosts(S.rows.posts, { metric: f.metric, sinceMs: since, sources: srcs });
+  const sum = summarize(rows), withV = rows.filter(r => r.value != null), noV = rows.filter(r => r.value == null);
+  const top = withV.slice(0, 20), maxV = Math.max(1, ...top.map(r => r.value));
+  const tfSet = new Set(S.rows.posts.filter(p => p.source_key === 'typefully' && p.link_key).map(p => p.link_key));
+  const metricNames = { core: 'core interactions (likes+reposts+replies)', likes: 'likes / favourites', reposts: 'reposts / boosts', replies: 'replies', quotes: 'quotes', bookmarks: 'bookmarks', impressions: 'impressions' };
+  const bar = r => `<div class="row"><div class="meta">${tagHtml(r.source_key).split('</span>')[0]}</span><br><span class="mono mute">${fmtDate(r.posted_at)}</span>${r.source_key === 'x_archive' && tfSet.has(r.link_key) ? ' <span class="badge b-fresh">via typefully</span>' : ''}</div>
+    <div><div class="snip">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noreferrer noopener" style="color:inherit">${esc(r.body || '(no text)')}</a>` : esc(r.body || '(no text)')}</div>
+    ${r.value != null ? `<div class="bar"><b style="width:${(r.value / maxV * 100).toFixed(1)}%;background:${SOURCES[r.source_key].color}"></b></div>` : `<div class="bar none"><span>no data — ${esc(missingReason(r, f.metric))}</span></div>`}</div>
+    <div class="mono" style="text-align:right">${r.value != null ? fmtNum(r.value) : '—'}</div></div>`;
+  $('sec-compare').innerHTML = `<h2>Post comparison</h2><p class="sub">Ranked by <b>${esc(metricNames[f.metric])}</b>. Core interactions is computed only when all three parts exist for that post, so a post with a missing part is “no data”, never silently counted low. Platforms' like/boost semantics differ; compare within a source first.</p>
+    <div class="controls"><label>metric <select data-filter="metric">${Object.entries(metricNames).map(([k, v]) => `<option value="${k}" ${f.metric === k ? 'selected' : ''}>${k}</option>`).join('')}</select></label>
+    <label>posted <select data-filter="days">${[[30, 'last 30 days'], [90, 'last 90 days'], [365, 'last year'], [0, 'all time']].map(([v, l]) => `<option value="${v}" ${f.days === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    ${Object.keys(SOURCES).map(k => `<label><input type="checkbox" data-src="${k}" ${f.sources[k] ? 'checked' : ''}>${esc(SOURCES[k].label)}</label>`).join('')}</div>
+    <div class="card"><table><thead><tr><th>Source</th><th class="n">Posts</th><th class="n">With metric</th><th class="n">Missing</th><th class="n">Median</th><th class="n">Max</th></tr></thead><tbody>
+    ${sum.map(s => `<tr><td>${tagHtml(s.source_key)}</td><td class="n">${s.n}</td><td class="n">${s.withValue}</td><td class="n">${s.missing ? `<b>${s.missing}</b>` : 0}</td><td class="n">${s.median == null ? '—' : fmtNum(s.median)}</td><td class="n">${fmtNum(s.max)}</td></tr>`).join('') || '<tr><td colspan="6" class="mute">No posts match.</td></tr>'}</tbody></table></div>
+    <div class="card" style="margin-top:14px"><b class="mono small">Top ${top.length} on a common scale (0 → ${fmtNum(maxV)})</b>${top.map(bar).join('') || '<p class="mute">No post has this metric in the window.</p>'}
+    ${noV.length ? `<p class="small mono" style="margin-top:12px"><b>${noV.length}</b> post(s) in the window have no value for this metric (first ${Math.min(6, noV.length)} shown):</p>${noV.slice(0, 6).map(bar).join('')}` : ''}</div>`;
+}
+
+function renderMatrix() {
+  const m = metricMatrix(S.rows.posts);
+  const cell = (k, f) => {
+    const N = m[k].N, n = m[k][f], p = SOURCES[k].provides[f];
+    if (!N) return '<td class="mute">no posts</td>';
+    if (n === N) return `<td class="t-ok">${n}/${N}</td>`;
+    if (n > 0) return `<td><b>${n}/${N}</b> <span class="mute">partial</span></td>`;
+    return p === 'yes' ? `<td class="t-bad"><b>0/${N}</b> missing (expected)</td>` : `<td class="mute">${p === 'maybe' ? '0/' + N + ' not in this export' : 'not provided'}</td>`;
+  };
+  $('sec-matrix').innerHTML = `<h2>Metric coverage</h2><p class="sub">Observed from stored data: posts that have each metric / posts stored. This is the honest ceiling on what any comparison above can say.</p>
+    <div class="card"><table><thead><tr><th>Metric</th>${Object.keys(SOURCES).map(k => `<th>${esc(SOURCES[k].label)}</th>`).join('')}</tr></thead><tbody>${METRICS.map(f => `<tr><td class="mono">${f}</td>${Object.keys(SOURCES).map(k => cell(k, f)).join('')}</tr>`).join('')}</tbody></table></div>`;
+}
+
+function renderStore() {
+  const rec = [...S.rows.runs].sort((a, b) => b.started - a.started).slice(0, 12);
+  const t = S.tests;
+  $('sec-store').innerHTML = `<h2>Store &amp; readback</h2><p class="sub">Every ingest writes in one transaction, then reads the rows back by run id and compares counts and content digests with what it sent. The verdict is stored on the run.</p>
+    <div class="controls"><button class="ghost" data-action="schema" ${S.mode === 'live' ? '' : 'disabled'}>Create / verify schema</button><button class="ghost" data-action="tests">Run tests (${TESTS.length})</button></div>
+    <div class="card"><table><thead><tr><th>Started (UTC)</th><th>Source</th><th>Status</th><th class="n">Read</th><th class="n">Written</th><th>Readback</th><th>Note</th></tr></thead><tbody>
+    ${rec.map(r => `<tr><td class="mono">${r.started ? new Date(r.started).toISOString().slice(0, 16).replace('T', ' ') : '—'}</td><td>${tagHtml(r.source_key).split('</span>')[0]}</span></td><td>${badge(r.status === 'ok' ? 'fresh' : r.status === 'partial' ? 'partial' : r.status === 'failed' ? 'failed' : 'empty').replace(/>[^<]*</, `>${esc(r.status)}<`)}</td><td class="n">${fmtNum(r.rows_read)}</td><td class="n">${fmtNum(r.rows_written)}</td>
+    <td class="mono">${r.readback_ok === true ? `<span class="t-ok">✓</span> ${esc((r.readback_hash || '').slice(0, 10))}` : r.readback_ok === false ? '<span class="t-bad">✗ mismatch</span>' : '—'}</td><td class="small">${esc((r.note || '').slice(0, 140))}</td></tr>`).join('') || '<tr><td colspan="7" class="mute">No runs yet.</td></tr>'}</tbody></table></div>
+    ${t ? `<div class="card" style="margin-top:14px"><b class="mono">${t.filter(x => x.ok).length}/${t.length} tests passed</b><ul class="why">${t.map(x => `<li class="${x.ok ? 't-ok' : 't-bad'}">${x.ok ? '✓' : '✗'} ${esc(x.name)}${x.ok ? '' : ' — ' + esc(x.err)}</li>`).join('')}</ul></div>` : ''}`;
+}
+
+/* ---- actions ---- */
+function requireStore() { if (!S.store) throw new Error('Add a Neon connection string in Settings first'); }
+async function refresh() {
+  S.err = null;
+  try { requireStore(); S.rows = await loadRows(S.store); S.mode = 'live'; }
+  catch (e) { S.err = /does not exist|relation/.test(e.message) ? e.message + '\n→ Run “Create / verify schema” first.' : e.message; if (S.mode !== 'live') S.rows = null; }
+  renderAll();
+}
+async function guarded(label, fn) {
+  if (S.busy) return; S.busy = true; S.err = null; logLine(label + ' …');
+  try { await fn(); } catch (e) { S.err = e.message; logLine('ERROR ' + e.message); }
+  S.busy = false; if (S.store) { try { S.rows = await loadRows(S.store); S.mode = 'live'; } catch (e) { S.err = S.err || e.message; } } renderAll();
+}
+function reportIngest(name, r) {
+  if (!r.ok) { logLine(`${name}: FAILED — ${r.error}`); S.err = `${name}: ${r.error}`; return; }
+  const p = r.readback.parts;
+  logLine(`${name}: ${r.status}, wrote ${r.written} rows. Readback ${r.readback.ok ? 'MATCH' : 'MISMATCH'} — accounts ${p.accounts.read}/${p.accounts.written}, posts ${p.posts.read}/${p.posts.written}, metrics ${p.metrics.read}/${p.metrics.written}; digest ${r.readback.hash}`);
+  if (r.note) logLine('  note: ' + r.note);
+  if (!r.readback.ok) S.err = `${name}: readback MISMATCH — the store does not hold what was sent.`;
+}
+const actions = {
+  settings() { const f = $('cfgForm'); for (const [k, v] of Object.entries(S.cfg)) { const el = f.elements[k]; if (el) { if (el.type === 'checkbox') el.checked = !!v; else el.value = v; } } $('dlg').showModal(); },
+  fixture() { S.mode = 'fixture'; S.rows = makeFixture(now()); S.err = null; renderAll(); },
+  refresh() { return refresh(); },
+  schema() { return guarded('schema setup', async () => { requireStore(); await S.store.batch(SCHEMA.map(q => ({ query: q, params: [] }))); const v = await S.store.query(`select v from rooms_os_now.schema_meta where k='version'`); logLine('schema ready, version ' + (v[0] && v[0].v)); }); },
+  tests() { return runTests().then(r => { S.tests = r; if (!S.rows) { $('sec-store').innerHTML = ''; S.rows = { runs: [], snapshots: [], posts: [] }; S.mode = S.mode === 'none' ? 'none' : S.mode; } renderAll(); }); },
+  'ingest-bluesky'() { return guarded('Bluesky ingest', async () => { requireStore(); if (!S.cfg.bsky) throw new Error('Set Bluesky handle in Settings'); reportIngest('Bluesky', await ingestBluesky(deps(), S.cfg.bsky)); }); },
+  'ingest-mastodon'() { return guarded('Mastodon ingest', async () => { requireStore(); if (!S.cfg.mInstance || !S.cfg.mAcct) throw new Error('Set Mastodon instance and account in Settings'); reportIngest('Mastodon', await ingestMastodon(deps(), S.cfg.mInstance, S.cfg.mAcct)); }); },
+  'verify-tf'() { return guarded('Typefully verify', async () => { if (!S.cfg.tfKey) throw new Error('Set Typefully API key in Settings'); const v = await verifyTypefully(deps(), S.cfg); logLine(`Typefully access verified: ${v.socialSets.length} social set(s): ${v.socialSets.map(s => s.username || s.id).join(', ')}`); }); },
+  'ingest-typefully'() { return guarded('Typefully ingest', async () => { requireStore(); if (!S.cfg.tfKey) throw new Error('Set Typefully API key in Settings'); reportIngest('Typefully', await ingestTypefully(deps(), S.cfg)); }); },
+  'ingest-x'() { return guarded('X archive import', async () => {
+    requireStore(); const file = $('xfile') && $('xfile').files[0]; if (!file) throw new Error('Choose the monthly X archive file first');
+    const d = $('xdate').value; if (!d) throw new Error('Set the date the archive was exported');
+    const parsed = parseXArchive(await file.text());
+    logLine(`parsed ${file.name}: ${parsed.total} rows → ${parsed.posts.length} original posts (${parsed.retweets} RT, ${parsed.replies} replies, ${parsed.skipped} skipped)`);
+    reportIngest('X archive', await ingestXArchive(deps(), parsed, S.cfg.xHandle || 'x', iso(Date.parse(d + 'T00:00:00Z'))));
+  }); },
+};
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-action]'); if (!b) return;
+  const a = b.dataset.action;
+  if (a === 'saveCfg') { const f = $('cfgForm'), cfg = {}; for (const el of f.elements) if (el.name) cfg[el.name] = el.type === 'checkbox' ? el.checked : el.value.trim(); S.cfg = cfg; saveCfg(cfg, stor); applyCfg(); refresh(); return; }
+  if (actions[a]) { e.preventDefault(); const r = actions[a](); if (r && r.catch) r.catch(err => { S.err = err.message; renderAll(); }); }
+});
+document.addEventListener('change', e => {
+  const el = e.target;
+  if (el.dataset.filter) { const k = el.dataset.filter; S.filters[k] = k === 'metric' ? el.value : Number(el.value); if (k === 'trendDays') renderTrends(); else renderCompare(); }
+  else if (el.dataset.src) { S.filters.sources[el.dataset.src] = el.checked; renderCompare(); }
+});
+function applyCfg() {
+  S.store = null;
+  if (S.cfg.neon) { try { S.store = neonClient(S.cfg.neon); } catch (e) { S.err = 'Neon connection string is not a valid URL'; } }
+}
+S.cfg = loadCfg(stor); applyCfg();
+renderAll();
+if (S.store) refresh();
+if (location.hash === '#test') actions.tests();
+</script>
+</body>
+</html>

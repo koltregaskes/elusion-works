@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta name="robots" content="noindex,nofollow">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Booster Catch — final 40 s · original Three.js reconstruction (Starship Flight 5)</title>
+<style>
+  :root{--bg:#05070a;--panel:#0b0f14;--line:#1e2833;--fg:#cfd8e3;--dim:#7d8794;--acc:#ff9d3b;--ok:#5fd38d;--bad:#ff5d5d}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow:hidden}
+  #gl{position:fixed;inset:0;width:100%;height:100%;display:block}
+  #boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg);z-index:50;text-align:center;padding:20px}
+  #title{position:fixed;left:12px;top:10px;z-index:5;pointer-events:none;text-shadow:0 1px 3px #000}
+  #title b{font-size:13px;letter-spacing:.06em;color:#fff}
+  #title span{display:block;color:#b7c2cf;font-size:11px}
+  .tag{position:fixed;z-index:6;padding:3px 8px;background:rgba(5,8,12,.72);border:1px solid var(--line);color:#e6edf5;font-size:11px;letter-spacing:.05em;cursor:pointer;user-select:none}
+  .tag.main{cursor:default;border-color:#3a4a5c}
+  .tag small{color:var(--dim)}
+  #vig{position:fixed;z-index:4;pointer-events:none;display:none;box-shadow:inset 0 0 120px 40px rgba(0,0,0,.65)}
+  #side{position:fixed;right:0;top:0;width:320px;bottom:78px;background:var(--panel);border-left:1px solid var(--line);z-index:8;overflow:auto;padding:10px 12px;display:none}
+  #side.open{display:block}
+  #side h3{margin:12px 0 5px;font-size:11px;letter-spacing:.1em;color:var(--acc);text-transform:uppercase;font-weight:600}
+  #side h3:first-child{margin-top:0}
+  .ev{display:flex;gap:6px;padding:3px 4px;border:1px solid transparent;cursor:pointer;align-items:baseline}
+  .ev:hover{background:#121922}
+  .ev.cur{border-color:var(--acc)}
+  .ev .t{color:#fff;white-space:nowrap;min-width:84px}
+  .badge{font-size:9px;padding:0 4px;border-radius:2px;white-space:nowrap}
+  .badge.ref{background:var(--acc);color:#000}
+  .badge.apx{border:1px solid var(--dim);color:var(--dim)}
+  table{width:100%;border-collapse:collapse}
+  td{padding:1px 0}td:last-child{text-align:right;color:#fff}
+  .note{color:var(--dim);font-size:10.5px}
+  #sync div{padding:1px 0}.pass{color:var(--ok)}.fail{color:var(--bad)}
+  #bar{position:fixed;left:0;right:0;bottom:0;height:78px;background:var(--panel);border-top:1px solid var(--line);z-index:9;padding:8px 12px;display:flex;flex-direction:column;gap:6px}
+  #row1,#row2{display:flex;align-items:center;gap:8px}
+  button,select{background:#121922;color:var(--fg);border:1px solid #2a3644;padding:4px 9px;font:inherit;cursor:pointer}
+  button:hover{border-color:var(--acc)}button.on{background:var(--acc);color:#000;border-color:var(--acc)}
+  #clock{min-width:230px;color:#fff}
+  #track{position:relative;flex:1;height:26px}
+  #scrub{position:absolute;left:0;right:0;top:6px;width:100%;margin:0;accent-color:var(--acc)}
+  .tick{position:absolute;top:0;width:0;height:7px;border-left:2px solid var(--dim);pointer-events:none}
+  .tick.ref{border-left-color:var(--acc);height:11px}
+  .tickl{position:absolute;top:14px;font-size:9px;color:var(--dim);transform:translateX(-50%);white-space:nowrap;pointer-events:none}
+  #credits{position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:60;display:none;align-items:center;justify-content:center;padding:16px}
+  #credits.open{display:flex}
+  #cbox{max-width:760px;max-height:90vh;overflow:auto;background:var(--panel);border:1px solid var(--acc);padding:18px 22px;font-size:12px}
+  #cbox h2{margin:0 0 8px;font-size:14px;color:var(--acc)}
+  #cbox p{margin:6px 0}#cbox code{color:#fff}
+  .sp{flex:1}
+  @media(max-width:820px){#clock{min-width:150px}}
+</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
+</head>
+<body>
+<div id="boot">Loading Three.js r160 from CDN…<br>(If this message stays, the CDN is unreachable — open online, or point the importmap at a local copy of three.module.js.)</div>
+<canvas id="gl"></canvas>
+<div id="title"><b>BOOSTER CATCH · FINAL 40 s</b><span>Unofficial, original Three.js reconstruction · Starship Flight 5 (13 Oct 2024)</span><span>Mission &amp; footage owner: SpaceX · no SpaceX footage/assets used</span></div>
+<div id="vig"></div>
+<div id="tags"></div>
+
+<aside id="side">
+  <h3>Events (click to seek)</h3>
+  <div id="events"></div>
+  <p class="note"><span class="badge ref">REF</span> = time taken from the cited reference (see Credits; transcribed — confirm against source). <span class="badge apx">APPROX</span> = modelled/estimated by this reconstruction, not a published time.</p>
+  <h3>Model telemetry <span class="note">(model values, not flight data)</span></h3>
+  <table id="tel"></table>
+  <h3>Synchronisation</h3>
+  <button id="syncBtn">Run sync test</button>
+  <div id="sync" class="note" style="margin-top:6px">Not run yet. Checks scrub determinism, REF alignment, pin–rail contact, and that all three cameras read the same timeline state.</div>
+</aside>
+
+<div id="bar">
+  <div id="row1">
+    <button id="play" title="Space">⏸ Pause</button>
+    <button id="replay" title="R">↻ Replay</button>
+    <span id="clock"></span>
+    <div id="track"><input id="scrub" type="range" min="0" step="0.01"></div>
+  </div>
+  <div id="row2">
+    <span class="note">View</span>
+    <button data-cam="wide" title="1">Wide</button>
+    <button data-cam="onboard" title="2">Onboard</button>
+    <button data-cam="close" title="3">Close</button>
+    <button id="multi" title="4">Multi-view</button>
+    <span class="note">Speed</span>
+    <select id="speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select>
+    <span class="sp"></span>
+    <button id="dataBtn">Data</button>
+    <button id="credBtn">Credits &amp; rights</button>
+  </div>
+</div>
+
+<div id="credits"><div id="cbox">
+  <h2>Credits, sources &amp; rights</h2>
+  <p><b>Event depicted:</b> Starship Flight 5 (IFT-5), 13 Oct 2024, Starbase, Texas — first catch of a Super Heavy booster by the launch-tower “chopstick” arms.</p>
+  <p><b>Mission / footage owner:</b> Space Exploration Technologies Corp. (SpaceX). Starship, Super Heavy, Mechazilla and related names are SpaceX's. This project is independent, unofficial, educational, and is not affiliated with or endorsed by SpaceX.</p>
+  <p><b>What this file contains:</b> only original, procedurally generated geometry, textures, shaders and animation written for this reconstruction. <b>No SpaceX footage, photographs, audio, logos, livery or CAD are embedded or loaded.</b> Proportions (≈71 m booster, 9 m diameter, 33 engines, ≈146 m tower, two catch arms) are from public descriptions; the design details are my own approximations.</p>
+  <p><b>Reference rights:</b> The three REF event times were transcribed from SpaceX's published Flight 5 mission timeline / webcast (13 Oct 2024). Timing facts are used for citation only. If you compare against SpaceX's own video, or want to embed it or any of their imagery, you must clear that use with SpaceX separately — nothing here grants such rights.</p>
+  <p><b>Verification status:</b> <code id="vstat"></code></p>
+  <p><b>What is modelled, not measured:</b> trajectory, speeds, altitudes, attitude, grid-fin motion, arm timing, engine-count transitions, camera positions, dust and plume. All camera views are virtual and are not the positions of any real camera. Everything not labelled REF is APPROX.</p>
+  <p><b>Software:</b> Three.js (MIT) loaded from the jsDelivr CDN.</p>
+  <p><button id="credClose">Close</button></p>
+</div></div>
+
+<script type="module">
+import * as THREE from 'three';
+document.getElementById('boot').remove();
+
+/* ============================================================
+   REFERENCE DATA — edit here if the source differs.
+   Times are mission elapsed seconds (T+) from liftoff.
+   ============================================================ */
+const REF = {
+  mission:'Starship Flight 5 (IFT-5)', date:'2024-10-13', site:'Starbase, Texas',
+  owner:'Space Exploration Technologies Corp. (SpaceX)',
+  source:'SpaceX Flight 5 mission page / webcast replay, 13 Oct 2024',
+  lbT : 6*60+41,   // Booster landing-burn startup   (REF)
+  catchT: 7*60+4,  // Booster catch — pins on rails  (REF)
+  cutT: 7*60+5,    // Engine cutoff                  (REF)
+  verified:false   // set true only after you have checked every value above against the source
+};
+document.getElementById('vstat').textContent = REF.verified
+  ? 'REF times verified against: '+REF.source
+  : 'UNVERIFIED — REF times were transcribed by the author of this file and must be confirmed against: '+REF.source+'. Edit the REF object in the script if they differ.';
+
+/* ---------- math helpers ---------- */
+const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const ss=(a,b,x)=>{const t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t)};
+const pad=n=>String(n).padStart(2,'0');
+const fmtT=s=>{const m=Math.floor(s/60);return 'T+'+pad(m)+':'+(s-m*60).toFixed(1).padStart(4,'0')};
+
+/* ---------- timeline ---------- */
+const PRE=40, POST=6, DUR=PRE+POST;           // window is catch−40 s … catch+6 s
+const TC=REF.catchT;
+const tLB=REF.lbT-TC, tCut=REF.cutT-TC;       // τ (s relative to catch)
+const T_TRANS=-7;                             // 13→3 engine transition (APPROX)
+const EVENTS=[
+  {id:'start',tau:-PRE,label:'Window start — unpowered descent, grid-fin steering',kind:'apx'},
+  {id:'lb',tau:tLB,label:'Landing-burn startup (13 engines)',kind:'ref'},
+  {id:'close',tau:-10,label:'Chopsticks begin closing',kind:'apx'},
+  {id:'trans',tau:T_TRANS,label:'13 → 3 engine transition',kind:'apx'},
+  {id:'hover',tau:-2.5,label:'Final hover, roll aligned to arms',kind:'apx'},
+  {id:'catch',tau:0,label:'CATCH — pins settle on rails',kind:'ref'},
+  {id:'cut',tau:tCut,label:'Engine cutoff',kind:'ref'},
+  {id:'end',tau:POST,label:'Window end — vehicle hanging on arms',kind:'apx'}
+];
+EVENTS.forEach(e=>e.T=TC+e.tau);
+
+/* ---------- geometry constants (metres) ---------- */
+const TOWER_H=146, TOWER_HW=5;
+const HINGE_X=8, HINGE_Z=6.6, ARM_LEN=30, ARM_Y=78, RAIL_TOP_OFF=2.1;
+const CATCH_X=21, PIN_Y=58, PIN_R=0.55, PIN_TIP=6.3;
+const BOOST_R=4.5, BOOST_H=71, OPEN_ANG=THREE.MathUtils.degToRad(38);
+const Y_CATCH=ARM_Y+RAIL_TOP_OFF+PIN_R-PIN_Y;
+const UP=new THREE.Vector3(0,1,0);
+const U=new THREE.Vector3(0.8,0,0.6).normalize();       // direction to the Gulf (approach side)
+const Wv=new THREE.Vector3(-U.z,0,U.x);
+const SUN=new THREE.Vector3(0.85,0.2,-0.45).normalize();
+
+/* ============================================================
+   DETERMINISTIC MOTION MODEL  (pure functions of τ → scrub-safe)
+   ============================================================ */
+const vyProf=t=>{ // vertical speed (m/s, negative = descending)
+  if(t<=tLB) return lerp(-310,-240,(t+PRE)/(tLB+PRE));
+  if(t<=-6){const s=(t-tLB)/(-6-tLB);return -7-233*Math.pow(1-s,1.4)}
+  if(t<=-2.5){const s=(t+6)/3.5;return -7*(1-ss(0,1,s))}
+  if(t<=0){const s=(t+2.5)/2.5;return -1.1*Math.sin(Math.PI*s)}
+  return 0;
+};
+const vhProf=t=>{ // horizontal speed toward catch point
+  if(t<=tLB) return lerp(150,120,(t+PRE)/(tLB+PRE));
+  if(t<=-6){const s=(t-tLB)/(-6-tLB);return 8+112*Math.pow(1-s,1.4)}
+  if(t<=-2.5){const s=(t+6)/3.5;return 8*(1-ss(0,1,s))}
+  return 0;
+};
+const TSTEP=0.01, NT=Math.round(DUR/TSTEP)+1, I0=Math.round(PRE/TSTEP);
+const dyTab=new Float32Array(NT), dhTab=new Float32Array(NT);
+for(let i=I0-1;i>=0;i--){
+  const t=-PRE+i*TSTEP;
+  dyTab[i]=dyTab[i+1]+0.5*(-vyProf(t)-vyProf(t+TSTEP))*TSTEP;
+  dhTab[i]=dhTab[i+1]+0.5*(vhProf(t)+vhProf(t+TSTEP))*TSTEP;
+}
+const tab=(a,tau)=>{const f=clamp((tau+PRE)/TSTEP,0,NT-1),i=Math.floor(f),j=Math.min(i+1,NT-1);return a[i]+(a[j]-a[i])*(f-i)};
+
+function engState(tau){
+  const on=ss(tLB,tLB+0.8,tau)*(1-ss(tCut-0.2,tCut+0.4,tau));
+  const trans=ss(T_TRANS-0.3,T_TRANS+0.2,tau);
+  let thr=0;
+  if(on>0) thr=lerp(1,0.6,trans)*(trans>0.99?(1-0.12*ss(-3,0,tau)+0.03*Math.sin(tau*9)):1);
+  const ctr=on, mid=on*(1-trans);
+  const n=(ctr>0.01?3:0)+(mid>0.01?10:0);
+  return {ctr,mid,thr,n};
+}
+const thrustForDust=b=>{const e=engState(b);return e.thr*(e.ctr>0?0.35+0.65*(3*e.ctr+10*e.mid)/13:0)};
+
+const _qT=new THREE.Quaternion(),_qR=new THREE.Quaternion();
+function computeState(tau){
+  const dy=tab(dyTab,tau), dh=tab(dhTab,tau);
+  const sag=tau>0?0.18*(1-Math.exp(-tau/0.5)*(Math.cos(6*tau)+(2/6)*Math.sin(6*tau))):0;
+  const g=clamp((-tau-1)/18,0,1), wob=14*Math.pow(g,1.3)*Math.sin(0.55*tau+0.8);
+  const pos=new THREE.Vector3(CATCH_X+U.x*dh+Wv.x*wob, Y_CATCH+dy-sag, U.z*dh+Wv.z*wob);
+  const vy=vyProf(tau), vh=vhProf(tau);
+  const gate=1-ss(-8,-2.5,tau);
+  const phi=0.5*Math.atan2(vh,-vy)*gate;
+  const wt=0.03*Math.sin(1.3*tau)*gate;
+  const a=new THREE.Vector3(U.x*Math.sin(phi)+Wv.x*wt, Math.cos(phi), U.z*Math.sin(phi)+Wv.z*wt).normalize();
+  const psi=THREE.MathUtils.degToRad(70)*(1-ss(-24,-2.5,tau));
+  const quat=new THREE.Quaternion().multiplyQuaternions(_qT.setFromUnitVectors(UP,a),_qR.setFromAxisAngle(UP,psi));
+  const armOpen=OPEN_ANG*(1-ss(-10,-1.5,tau));
+  const eng=engState(tau);
+  const fa=0.45*(1-ss(-9,-1,tau))*(1-ss(0,1.5,tau))+0.03*(1-ss(0,1.5,tau));
+  const fins=[0,1,2,3].map(i=>fa*Math.sin(1.9*tau+i*1.57)+0.12*(1-ss(-30,-23,tau))*(i%2?1:-1));
+  const railTop=ARM_Y-sag+RAIL_TOP_OFF;
+  const pinBottom=pos.y+PIN_Y*a.y-PIN_R;
+  const pinPos=new THREE.Vector3(0,PIN_Y,0).applyQuaternion(quat).add(pos);
+  return {tau,pos,quat,up:a,vy,vh,speed:Math.hypot(vy,vh),sag,armOpen,armY:ARM_Y-sag,eng,fins,railTop,pinBottom,gap:pinBottom-railTop,pinPos,roll:psi,
+          dist:Math.hypot(pos.x-CATCH_X,pos.z)};
+}
+
+/* ============================================================
+   RENDERER, SKY, ENVIRONMENT
+   ============================================================ */
+const canvas=document.getElementById('gl');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=0.85;
+const scene=new THREE.Scene();
+scene.fog=new THREE.FogExp2(0xc9a98f,0.00006);
+
+const skyFrag=`
+uniform vec3 uSun; varying vec3 vDir;
+void main(){
+  vec3 d=normalize(vDir); float h=d.y;
+  vec3 zen=vec3(0.03,0.10,0.32), mid=vec3(0.22,0.36,0.62), hor=vec3(0.95,0.55,0.32);
+  vec3 col=mix(hor,mid,smoothstep(0.0,0.22,h)); col=mix(col,zen,smoothstep(0.18,0.85,h));
+  if(h<0.0) col=mix(hor*0.55,vec3(0.16,0.13,0.09),smoothstep(0.0,-0.12,h));
+  float s=max(dot(d,normalize(uSun)),0.0);
+  col+=vec3(1.0,0.5,0.2)*pow(s,6.0)*0.55+vec3(1.0,0.8,0.5)*pow(s,120.0)*2.0+vec3(1.0,0.9,0.7)*smoothstep(0.9993,0.9998,s)*12.0;
+  gl_FragColor=vec4(col,1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
+const skyVert=`varying vec3 vDir; void main(){vDir=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`;
+const mkSky=()=>new THREE.ShaderMaterial({uniforms:{uSun:{value:SUN.clone()}},vertexShader:skyVert,fragmentShader:skyFrag,side:THREE.BackSide,depthWrite:false,depthTest:false,fog:false});
+
+const pmrem=new THREE.PMREMGenerator(renderer);
+const envScene=new THREE.Scene(); envScene.add(new THREE.Mesh(new THREE.SphereGeometry(50,32,16),mkSky()));
+const envTex=pmrem.fromScene(envScene,0.03).texture;
+scene.environment=envTex;
+
+const skyMesh=new THREE.Mesh(new THREE.SphereGeometry(20000,32,16),mkSky());
+skyMesh.renderOrder=-10; skyMesh.frustumCulled=false; scene.add(skyMesh);
+
+const sunLight=new THREE.DirectionalLight(0xffd0a0,3.0); sunLight.position.copy(SUN).multiplyScalar(600); scene.add(sunLight);
+scene.add(new THREE.HemisphereLight(0x9fb8e0,0x6b5a45,0.55));
+
+const std=(color,o={})=>new THREE.MeshStandardMaterial(Object.assign({color,envMap:envTex,envMapIntensity:0.8},o));
+const box=new THREE.BoxGeometry(1,1,1);
+
+/* ---------- ground, pad, sea ---------- */
+function noiseTex(base,vari,size=256,sc=1){
+  const c=document.createElement('canvas');c.width=c.height=size;const x=c.getContext('2d');
+  x.fillStyle=base;x.fillRect(0,0,size,size);
+  for(let i=0;i<size*size/6;i++){const v=Math.random();x.fillStyle=`rgba(${vari},${(v*0.25).toFixed(2)})`;x.fillRect(Math.random()*size,Math.random()*size,2*sc,2*sc)}
+  const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;return t;
+}
+const gTex=noiseTex('#8c8062','40,34,20');gTex.repeat.set(900,900);
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(80000,80000).rotateX(-Math.PI/2),std(0xffffff,{map:gTex,roughness:1,metalness:0,envMapIntensity:0.35}));
+scene.add(ground);
+const pad=new THREE.Mesh(new THREE.CylinderGeometry(85,85,0.2,64),std(0x8c8c88,{roughness:0.9,metalness:0,envMapIntensity:0.3}));pad.position.set(14,0.1,0);scene.add(pad);
+const scorch=new THREE.Mesh(new THREE.CylinderGeometry(14,14,0.1,48),std(0x1a1816,{roughness:1,metalness:0,envMapIntensity:0.1}));scorch.position.set(CATCH_X,0.25,0);scene.add(scorch);
+const seaG=new THREE.Group();seaG.rotation.y=-Math.atan2(U.z,U.x);scene.add(seaG);
+const sea=new THREE.Mesh(new THREE.PlaneGeometry(60000,60000).rotateX(-Math.PI/2),std(0x1f6470,{roughness:0.18,metalness:0.1,envMapIntensity:1.1}));sea.position.set(2200+30000,0.05,0);seaG.add(sea);
+const sand=new THREE.Mesh(new THREE.PlaneGeometry(220,60000).rotateX(-Math.PI/2),std(0xcdbb95,{roughness:1,metalness:0,envMapIntensity:0.4}));sand.position.set(2100,0.04,0);seaG.add(sand);
+
+/* ---------- tower (instanced lattice) ---------- */
+function beams(list,mat){
+  const m=new THREE.InstancedMesh(box,mat,list.length),q=new THREE.Quaternion(),s=new THREE.Vector3(),p=new THREE.Vector3(),M=new THREE.Matrix4(),a=new THREE.Vector3(),b=new THREE.Vector3(),d=new THREE.Vector3();
+  list.forEach((e,i)=>{a.set(e[0],e[1],e[2]);b.set(e[3],e[4],e[5]);d.subVectors(b,a);const len=d.length();p.addVectors(a,b).multiplyScalar(.5);q.setFromUnitVectors(UP,d.normalize());s.set(e[6],len,e[6]);M.compose(p,q,s);m.setMatrixAt(i,M)});
+  m.frustumCulled=false;return m;
+}
+const steel=std(0x8e9399,{metalness:0.5,roughness:0.55});
+const tower=new THREE.Group();scene.add(tower);
+{
+  const L=[],C=[[-1,-1],[1,-1],[1,1],[-1,1]].map(c=>[c[0]*TOWER_HW,c[1]*TOWER_HW]),SEG=6,NS=Math.floor(TOWER_H/SEG);
+  C.forEach(c=>L.push([c[0],0,c[1],c[0],TOWER_H,c[1],0.9]));
+  for(let k=1;k<=NS;k++)for(let i=0;i<4;i++){const a=C[i],b=C[(i+1)%4];L.push([a[0],k*SEG,a[1],b[0],k*SEG,b[1],0.35])}
+  for(let k=0;k<NS;k++)for(let i=0;i<4;i++){const a=C[i],b=C[(i+1)%4];const flip=(k+i)%2;
+    L.push(flip?[a[0],k*SEG,a[1],b[0],(k+1)*SEG,b[1],0.3]:[b[0],k*SEG,b[1],a[0],(k+1)*SEG,a[1],0.3])}
+  tower.add(beams(L,steel));
+  const top=new THREE.Mesh(box,steel);top.scale.set(11,4,11);top.position.y=TOWER_H+2;tower.add(top);
+  const mast=new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.3,14,8),steel);mast.position.y=TOWER_H+11;tower.add(mast);
+  // vertical carriage rails on +x face
+  [-3,3].forEach(z=>{const r=new THREE.Mesh(box,steel);r.scale.set(0.8,TOWER_H-6,0.8);r.position.set(TOWER_HW+0.4,TOWER_H/2,z);tower.add(r)});
+  // base + service block
+  const base=new THREE.Mesh(box,std(0x70757b,{roughness:.8}));base.scale.set(16,10,16);base.position.set(0,5,0);tower.add(base);
+  const lift=new THREE.Mesh(box,std(0xa7a49c,{roughness:.8,metalness:.2}));lift.scale.set(3,TOWER_H*0.8,4);lift.position.set(-TOWER_HW-2,TOWER_H*0.4,0);tower.add(lift);
+}
+// carriage
+const carriageG=new THREE.Group();scene.add(carriageG);
+const carriage=new THREE.Mesh(box,std(0x6f747a,{metalness:0.5,roughness:0.5}));carriage.scale.set(3.8,14,2*HINGE_Z+3.6);carriage.position.set(7.3,ARM_Y,0);carriageG.add(carriage);
+
+/* ---------- chopstick arms ---------- */
+const armMat=std(0x7a8087,{metalness:0.55,roughness:0.5}), railMat=std(0x2b2e32,{metalness:0.7,roughness:0.45});
+function makeArm(){
+  const g=new THREE.Group(),add=(sx,sy,sz,x,y,z,m=armMat)=>{const o=new THREE.Mesh(box,m);o.scale.set(sx,sy,sz);o.position.set(x,y,z);g.add(o);return o};
+  add(ARM_LEN,3,2.4,ARM_LEN/2,0,0);
+  add(24,0.6,1.8,18,1.8,0,railMat);                 // catch rail; top at +2.1
+  add(ARM_LEN,0.5,1.2,ARM_LEN/2,-6,0);             // lower chord
+  for(let x=2;x<=ARM_LEN;x+=4)add(0.4,4.5,0.4,x,-3.75,0);
+  for(let x=2;x<ARM_LEN;x+=4){const o=add(0.3,5.4,0.3,x+2,-3.75,0);o.rotation.z=(x/4%2?1:-1)*0.69}
+  add(2.6,3.6,2.8,ARM_LEN-0.5,-1,0);
+  return g;
+}
+const armR=makeArm(),armL=makeArm();scene.add(armR,armL);
+armR.position.set(HINGE_X,ARM_Y,HINGE_Z);armL.position.set(HINGE_X,ARM_Y,-HINGE_Z);
+
+/* ---------- launch mount, masts, tank farm ---------- */
+{
+  const mat=std(0x5d6268,{metalness:.5,roughness:.6}),sh=new THREE.Shape();
+  sh.absarc(0,0,10,0,Math.PI*2,false);const hole=new THREE.Path();hole.absarc(0,0,5,0,Math.PI*2,true);sh.holes.push(hole);
+  const geo=new THREE.ExtrudeGeometry(sh,{depth:3,bevelEnabled:false,curveSegments:40});geo.rotateX(-Math.PI/2);
+  const t=new THREE.Mesh(geo,mat);t.position.set(CATCH_X,17,0);scene.add(t);
+  for(let i=0;i<6;i++){const a=i/6*Math.PI*2,l=new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.3,17,12),mat);l.position.set(CATCH_X+8.4*Math.cos(a),8.5,8.4*Math.sin(a));scene.add(l)}
+  for(let i=0;i<6;i++){const a=i/6*Math.PI*2+0.5,c=new THREE.Mesh(box,std(0x2a2d31));c.scale.set(1.6,1.4,2.2);c.position.set(CATCH_X+5.6*Math.cos(a),20.6,5.6*Math.sin(a));c.rotation.y=-a;scene.add(c)}
+  const white=std(0xe6e6e2,{roughness:.6,metalness:.2});
+  [[-60,-90],[85,-100],[-50,105]].forEach(p=>{const m=new THREE.Mesh(new THREE.CylinderGeometry(0.4,0.7,115,8),steel);m.position.set(p[0],57,p[1]);scene.add(m)});
+  for(let i=0;i<5;i++){const c=new THREE.Mesh(new THREE.CylinderGeometry(6,6,34,24),white);c.position.set(-150-i*16,17,45+(i%2)*14);scene.add(c)}
+  for(let i=0;i<6;i++){const b=new THREE.Mesh(box,std(0xb9b6ac,{roughness:.9,metalness:.1}));b.scale.set(20+i*3,8,12);b.position.set(-70+i*38,4,-150-(i%3)*20);scene.add(b)}
+}
+
+/* ============================================================
+   BOOSTER (original procedural mesh)
+   ============================================================ */
+function bodyTexture(){
+  const c=document.createElement('canvas');c.width=64;c.height=1024;const x=c.getContext('2d'),N=36,h=1024/N;
+  for(let r=0;r<N;r++){const v=196+Math.floor(Math.random()*26);x.fillStyle=`rgb(${v},${v+2},${v+6})`;x.fillRect(0,r*h,64,h);x.fillStyle='rgba(40,44,50,.55)';x.fillRect(0,r*h,64,2)}
+  for(let i=0;i<60;i++){x.fillStyle=`rgba(30,26,22,${Math.random()*0.12})`;x.fillRect(Math.random()*64,Math.random()*1024,1+Math.random()*2,40+Math.random()*180)}
+  const g=x.createLinearGradient(0,1024,0,1024*0.78);g.addColorStop(0,'rgba(14,10,8,.92)');g.addColorStop(1,'rgba(14,10,8,0)');x.fillStyle=g;x.fillRect(0,0,64,1024);
+  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.wrapS=THREE.RepeatWrapping;t.anisotropy=4;return t;
+}
+const booster=new THREE.Group();scene.add(booster);
+const hullMat=std(0xffffff,{map:bodyTexture(),metalness:0.85,roughness:0.36,envMapIntensity:1.0});
+const darkMat=std(0x35322f,{metalness:0.6,roughness:0.6});
+const dkMetal=std(0x3a3d42,{metalness:0.8,roughness:0.4});
+{
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(BOOST_R,BOOST_R,64,64,1,true),hullMat);body.position.y=3.5+32;booster.add(body);
+  const skirt=new THREE.Mesh(new THREE.CylinderGeometry(BOOST_R,BOOST_R,3.5,48,1,true),darkMat);skirt.position.y=1.75;booster.add(skirt);
+  const hs=new THREE.Mesh(new THREE.CylinderGeometry(BOOST_R,BOOST_R,3.5,48,1,true),std(0x676a70,{metalness:.8,roughness:.45}));hs.position.y=69.25;booster.add(hs);
+  for(let i=0;i<24;i++){const a=i/24*Math.PI*2,s=new THREE.Mesh(box,std(0x0a0a0c,{roughness:1,metalness:0}));s.scale.set(0.12,2.2,0.38);s.position.set((BOOST_R+0.02)*Math.cos(a),69.25,(BOOST_R+0.02)*Math.sin(a));s.rotation.y=-a;booster.add(s)}
+  const top=new THREE.Mesh(new THREE.CircleGeometry(BOOST_R,48).rotateX(-Math.PI/2),dkMetal);top.position.y=BOOST_H;booster.add(top);
+  const bot=new THREE.Mesh(new THREE.CircleGeometry(BOOST_R,48).rotateX(Math.PI/2),darkMat);bot.position.y=1.0;booster.add(bot);
+  // catch pins
+  const pinG=new THREE.CylinderGeometry(PIN_R,PIN_R,2.0,16).rotateX(Math.PI/2),pinM=std(0x8d9096,{metalness:.9,roughness:.3});
+  [-1,1].forEach(sd=>{const p=new THREE.Mesh(pinG,pinM);p.position.set(0,PIN_Y,sd*(PIN_TIP-1.0));booster.add(p);
+    const bk=new THREE.Mesh(box,pinM);bk.scale.set(1.4,1.5,0.9);bk.position.set(0,PIN_Y,sd*(BOOST_R+0.2));booster.add(bk)});
+  // grid fins
+  const finMat=std(0x5b5e63,{metalness:.85,roughness:.42}),finPivots=[];
+  for(let k=0;k<4;k++){
+    const az=Math.PI/4+k*Math.PI/2,root=new THREE.Group();root.position.set(4.6*Math.cos(az),65,4.6*Math.sin(az));root.rotation.y=-az;
+    const pivot=new THREE.Group();root.add(pivot);finPivots.push(pivot);
+    const add=(sx,sy,sz,x,y,z)=>{const m=new THREE.Mesh(box,finMat);m.scale.set(sx,sy,sz);m.position.set(x,y,z);pivot.add(m)};
+    const W=3.4,D=3.6,T=0.22;
+    add(W,T*1.6,0.18,W/2,0,D/2);add(W,T*1.6,0.18,W/2,0,-D/2);add(0.18,T*1.6,D,0,0,0);add(0.18,T*1.6,D,W,0,0);
+    for(let i=1;i<6;i++)add(0.07,T,D,W*i/6,0,0);
+    for(let j=1;j<7;j++)add(W,T,0.07,W/2,0,-D/2+D*j/7);
+    booster.add(root);
+  }
+  booster.userData.fins=finPivots;
+}
+// engines (33): 3 centre, 10 middle, 20 outer
+const ENG=[];
+[[3,1.1,Math.PI/2],[10,2.45,0.1],[20,3.65,0]].forEach(([n,r,o])=>{for(let i=0;i<n;i++){const a=o+i/n*Math.PI*2;ENG.push([r*Math.cos(a),r*Math.sin(a)])}});
+const bells=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.3,0.6,1.3,14,1,true),new THREE.MeshStandardMaterial({color:0x44464b,metalness:.85,roughness:.4,side:THREE.DoubleSide,envMap:envTex}),33);
+{const M=new THREE.Matrix4();ENG.forEach((e,i)=>{M.makeTranslation(e[0],0.9,e[1]);bells.setMatrixAt(i,M)});booster.add(bells)}
+
+/* ---------- plume (instanced shader cones) ---------- */
+const plumeMat=new THREE.ShaderMaterial({
+  uniforms:{uT:{value:0}},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:false,
+  vertexShader:`attribute float aInt; varying float vInt; varying vec2 vUv; varying vec3 vN; varying vec3 vV;
+    void main(){vUv=uv;vInt=aInt;vec4 mv=modelViewMatrix*instanceMatrix*vec4(position,1.0);vN=normalize(mat3(modelViewMatrix)*normal);vV=normalize(-mv.xyz);gl_Position=projectionMatrix*mv;}`,
+  fragmentShader:`uniform float uT; varying float vInt; varying vec2 vUv; varying vec3 vN; varying vec3 vV;
+    void main(){
+      float along=1.0-vUv.y; float f=abs(dot(normalize(vN),normalize(vV)));
+      float flick=0.82+0.18*sin(along*28.0-uT*55.0+vUv.x*12.0)*sin(uT*37.0+vUv.x*6.0);
+      float dia=0.8+0.2*cos(along*26.0);
+      float a=vInt*pow(1.0-along,1.3)*pow(f,0.9)*flick*dia;
+      vec3 col=mix(vec3(3.0,2.6,2.0),vec3(1.4,0.45,0.12),pow(along,0.45));
+      gl_FragColor=vec4(col,a);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }`
+});
+const plumeGeo=new THREE.CylinderGeometry(0.5,0.1,1,16,1,true);
+function mkPlume(count){const g=plumeGeo.clone();const a=new THREE.InstancedBufferAttribute(new Float32Array(count),1);a.setUsage(THREE.DynamicDrawUsage);g.setAttribute('aInt',a);const m=new THREE.InstancedMesh(g,plumeMat,count);m.frustumCulled=false;m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);booster.add(m);return m}
+const plume=mkPlume(13), plumeOuter=mkPlume(1);
+const glowTex=(()=>{const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d'),g=x.createRadialGradient(64,64,0,64,64,64);g.addColorStop(0,'rgba(255,240,210,1)');g.addColorStop(.25,'rgba(255,170,80,.7)');g.addColorStop(1,'rgba(255,90,20,0)');x.fillStyle=g;x.fillRect(0,0,128,128);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t})();
+const glow=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,fog:false}));glow.position.y=-3;booster.add(glow);
+const plumeLight=new THREE.PointLight(0xffb066,0,0,2);plumeLight.position.y=-9;booster.add(plumeLight);
+
+/* ---------- ground dust / steam (deterministic particles) ---------- */
+const ND=900,dA=[],dB=[],dC=[],dLife=[],dPh=[],dSp=[],dUp=[],dSz=[];
+{let s=12345;const r=()=>(s=(s*1664525+1013904223)>>>0)/4294967296;
+ for(let i=0;i<ND;i++){dA.push(r());dB.push(r());dC.push(r());dLife.push(5+4*r());dPh.push(r()*9);dSp.push(14+26*r());dUp.push(0.4+1.6*r());dSz.push(14+30*r())}}
+const dustGeo=new THREE.BufferGeometry();
+dustGeo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(ND*3),3));
+dustGeo.setAttribute('aSize',new THREE.BufferAttribute(new Float32Array(ND),1));
+dustGeo.setAttribute('aAlpha',new THREE.BufferAttribute(new Float32Array(ND),1));
+const dustMat=new THREE.ShaderMaterial({uniforms:{uScale:{value:600}},transparent:true,depthWrite:false,fog:false,
+  vertexShader:`attribute float aSize; attribute float aAlpha; uniform float uScale; varying float vA;
+    void main(){vA=aAlpha;vec4 mv=modelViewMatrix*vec4(position,1.0);gl_PointSize=clamp(aSize*uScale/max(-mv.z,1.0),0.0,420.0);gl_Position=projectionMatrix*mv;}`,
+  fragmentShader:`varying float vA; void main(){float d=length(gl_PointCoord-0.5);float a=smoothstep(0.5,0.05,d)*vA;gl_FragColor=vec4(vec3(0.66,0.58,0.48),a);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
+  }`});
+const dust=new THREE.Points(dustGeo,dustMat);dust.frustumCulled=false;scene.add(dust);
+function updDust(tau){
+  const P=dustGeo.attributes.position.array,S=dustGeo.attributes.aSize.array,A=dustGeo.attributes.aAlpha.array;
+  for(let i=0;i<ND;i++){
+    const L=dLife[i],age=(((tau-dPh[i])%L)+L)%L,b=tau-age;
+    let I=0;
+    if(b>=tLB){const y=Y_CATCH+tab(dyTab,b);I=thrustForDust(b)*(1-ss(40,260,y))}
+    const th=dB[i]*Math.PI*2,r=7+dSp[i]*age*(1-0.5*age/L);
+    P[i*3]=CATCH_X+Math.cos(th)*r+U.x*age*2;P[i*3+1]=1+dUp[i]*age*0.9+dA[i]*3;P[i*3+2]=Math.sin(th)*r+U.z*age*2;
+    S[i]=dSz[i]*(1+age*0.6);A[i]=I*Math.pow(1-age/L,1.5)*0.5;
+  }
+  dustGeo.attributes.position.needsUpdate=dustGeo.attributes.aSize.needsUpdate=dustGeo.attributes.aAlpha.needsUpdate=true;
+}
+
+/* ============================================================
+   CAMERAS (all virtual; one shared timeline state)
+   ============================================================ */
+const camW=new THREE.PerspectiveCamera(30,1.6,5,40000);
+const camO=new THREE.PerspectiveCamera(90,1.6,0.4,40000);
+const camC=new THREE.PerspectiveCamera(30,1.6,0.3,40000);
+booster.add(camO);
+const O_POS=new THREE.Vector3(-4.9,70.2,0);
+const O_Q=new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(new THREE.Vector3(),new THREE.Vector3(-0.15,-1,0).normalize(),UP));
+camO.position.copy(O_POS);camO.quaternion.copy(O_Q);
+const CAMS={wide:camW,onboard:camO,close:camC};
+const CAM_LABEL={wide:['WIDE','tower-side tracking telephoto (virtual)'],onboard:['ONBOARD','booster-mounted, looks down toward tower (virtual)'],close:['CLOSE','arm-level camera tracking the pins (virtual)']};
+const C_POS=new THREE.Vector3(22,97,-36);
+const _tv=new THREE.Vector3(),_ev=new THREE.Euler();
+
+function updateCameras(tau,s){
+  // wide
+  const bc=s.pos.clone().addScaledVector(s.up,35),focus=new THREE.Vector3(12,58,0);
+  const tgt=bc.lerp(focus,ss(-14,-4,tau));
+  camW.position.set(40,22,-262);camW.lookAt(tgt);
+  const dW=camW.position.distanceTo(tgt),SW=lerp(380,170,ss(-PRE,-2,tau));
+  camW.fov=clamp(2*Math.atan(SW/2/dW)*180/Math.PI,3.2,40);
+  const sh=0.0012*(camW.fov/20);camW.rotateX(sh*(Math.sin(7.1*tau)+Math.sin(13.3*tau+1)));camW.rotateY(sh*(Math.sin(5.3*tau+2)+Math.sin(11.7*tau)));
+  camW.userData.tau=tau;
+  // onboard (child of booster: inherits pose)
+  const amp=0.002+0.006*s.eng.thr*(s.eng.n>0?1:0);
+  _ev.set(amp*Math.sin(37*tau),amp*Math.sin(41*tau+1),amp*Math.sin(29*tau+2));
+  camO.quaternion.copy(O_Q).multiply(new THREE.Quaternion().setFromEuler(_ev));
+  camO.fov=88;camO.userData.tau=tau;
+  // close
+  camC.position.copy(C_POS);camC.lookAt(s.pinPos);
+  const dC2=C_POS.distanceTo(s.pinPos),SC=lerp(70,22,ss(-30,-3,tau));
+  camC.fov=clamp(2*Math.atan(SC/2/dC2)*180/Math.PI,1.0,40);
+  camC.userData.tau=tau;
+}
+
+/* ============================================================
+   APPLY STATE (single source of truth for everything visible)
+   ============================================================ */
+const _M=new THREE.Matrix4(),_q=new THREE.Quaternion(),_p=new THREE.Vector3(),_s=new THREE.Vector3();
+let curState=null;
+function apply(tau){
+  const s=computeState(tau);curState=s;
+  booster.position.copy(s.pos);booster.quaternion.copy(s.quat);
+  armR.rotation.y=-s.armOpen;armL.rotation.y=s.armOpen;
+  armR.position.y=armL.position.y=s.armY;carriage.position.y=s.armY;
+  booster.userData.fins.forEach((p,i)=>p.rotation.z=s.fins[i]);
+  // plumes
+  const e=s.eng,alt=s.pos.y,k=clamp(alt/2500,0,1);
+  const L=(9+13*k)*(0.55+0.5*e.thr),w=1.0+1.2*k;
+  const pa=plume.geometry.attributes.aInt;
+  for(let i=0;i<13;i++){
+    const lv=(i<3?e.ctr:e.mid)*e.thr;
+    _p.set(ENG[i][0],0.25-L/2,ENG[i][1]);_s.set(w,L*(0.3+0.7*Math.min(1,lv*1.2)),w);_s.y=Math.max(_s.y,0.001);_p.y=0.25-_s.y/2;
+    _M.compose(_p,_q.identity(),_s);plume.setMatrixAt(i,_M);pa.array[i]=lv*0.9;
+  }
+  plume.instanceMatrix.needsUpdate=true;pa.needsUpdate=true;
+  const tot=(3*e.ctr+10*e.mid)/13*e.thr,Lo=L*1.5*(0.3+0.7*Math.min(1,tot*1.5));
+  _p.set(0,0.25-Lo/2,0);_s.set(4.2+3.5*k,Math.max(Lo,0.001),4.2+3.5*k);_M.compose(_p,_q.identity(),_s);plumeOuter.setMatrixAt(0,_M);plumeOuter.instanceMatrix.needsUpdate=true;
+  plumeOuter.geometry.attributes.aInt.array[0]=tot*0.22;plumeOuter.geometry.attributes.aInt.needsUpdate=true;
+  plumeMat.uniforms.uT.value=tau;
+  glow.material.opacity=clamp(tot*1.4,0,1);const gs=14+22*tot;glow.scale.set(gs,gs,1);glow.visible=tot>0.001;
+  plumeLight.intensity=2000*(tot+0.05*(e.n>0?1:0))*(e.n>0?1:0);
+  updDust(tau);
+  updateCameras(tau,s);
+  return s;
+}
+
+/* ============================================================
+   UI: transport, layout, rendering
+   ============================================================ */
+const $=q=>document.querySelector(q);
+const scrub=$('#scrub');scrub.max=DUR;
+const state={tw:0,playing:true,speed:1,mode:'multi',focus:'wide',dirty:true,panel:innerWidth>900};
+// ticks
+{const tr=$('#track');EVENTS.forEach(ev=>{const x=(ev.tau+PRE)/DUR*100;const t=document.createElement('div');t.className='tick '+ev.kind;t.style.left=x+'%';tr.appendChild(t);
+  if(ev.kind==='ref'||ev.id==='close'){const l=document.createElement('div');l.className='tickl';l.style.left=x+'%';l.textContent=({lb:'LB start',catch:'CATCH',cut:'cutoff',close:'arms close'})[ev.id];tr.appendChild(l)}})}
+// events list
+const evBox=$('#events');
+EVENTS.forEach(ev=>{const d=document.createElement('div');d.className='ev';d.dataset.id=ev.id;
+  d.innerHTML=`<span class="t">${ev.kind==='apx'?'≈ ':''}${fmtT(ev.T)}</span><span style="flex:1">${ev.label}</span><span class="badge ${ev.kind==='ref'?'ref':'apx'}">${ev.kind==='ref'?'REF'+(REF.verified?'':'*'):'APPROX'}</span>`;
+  d.onclick=()=>seek(ev.tau);evBox.appendChild(d)});
+const tel=$('#tel');
+const telRows=['Mission time','τ to catch','Base altitude','Speed','Dist. to catch pt','Engines lit','Arm opening','Pin–rail gap','Contact'];
+tel.innerHTML=telRows.map(r=>`<tr><td>${r}</td><td data-k="${r}"></td></tr>`).join('');
+const tk=k=>tel.querySelector(`[data-k="${k}"]`);
+
+function seek(tau){state.tw=clamp(tau+PRE,0,DUR);state.dirty=true;if(!state.playing&&tau>=POST-1e-6){}}
+scrub.addEventListener('input',()=>{state.tw=parseFloat(scrub.value);state.dirty=true});
+const playBtn=$('#play');
+const setPlaying=p=>{state.playing=p;playBtn.textContent=p?'⏸ Pause':'▶ Play'};
+playBtn.onclick=()=>{if(state.tw>=DUR-1e-6){state.tw=0}setPlaying(!state.playing)};
+$('#replay').onclick=()=>{state.tw=0;setPlaying(true);state.dirty=true};
+$('#speed').onchange=e=>state.speed=parseFloat(e.target.value);
+document.querySelectorAll('[data-cam]').forEach(b=>b.onclick=()=>{state.focus=b.dataset.cam;state.mode='single';ui()});
+$('#multi').onclick=()=>{state.mode='multi';ui()};
+$('#dataBtn').onclick=()=>{state.panel=!state.panel;ui()};
+$('#credBtn').onclick=()=>$('#credits').classList.add('open');
+$('#credClose').onclick=()=>$('#credits').classList.remove('open');
+$('#credits').onclick=e=>{if(e.target.id==='credits')e.currentTarget.classList.remove('open')};
+addEventListener('keydown',e=>{
+  if(e.target.tagName==='SELECT')return;
+  if(e.code==='Space'){e.preventDefault();playBtn.click()}
+  else if(e.key==='r'||e.key==='R')$('#replay').click();
+  else if(e.key==='ArrowLeft'){state.tw=clamp(state.tw-(e.shiftKey?1:0.1),0,DUR);state.dirty=true}
+  else if(e.key==='ArrowRight'){state.tw=clamp(state.tw+(e.shiftKey?1:0.1),0,DUR);state.dirty=true}
+  else if(e.key==='1'){state.focus='wide';state.mode='single';ui()}
+  else if(e.key==='2'){state.focus='onboard';state.mode='single';ui()}
+  else if(e.key==='3'){state.focus='close';state.mode='single';ui()}
+  else if(e.key==='4'){state.mode='multi';ui()}
+});
+function ui(){
+  $('#side').classList.toggle('open',state.panel);
+  document.querySelectorAll('[data-cam]').forEach(b=>b.classList.toggle('on',state.mode==='single'&&b.dataset.cam===state.focus));
+  $('#multi').classList.toggle('on',state.mode==='multi');
+  $('#dataBtn').classList.toggle('on',state.panel);
+  resize();
+}
+function stageRect(){const bar=$('#bar').offsetHeight,sw=state.panel?$('#side').offsetWidth:0;return{w:innerWidth-sw,h:innerHeight-bar}}
+function tiles(){
+  const r=stageRect(),order=[state.focus,...['wide','onboard','close'].filter(c=>c!==state.focus)];
+  if(state.mode==='single')return[{id:state.focus,x:0,y:0,w:r.w,h:r.h,main:true}];
+  const mw=Math.floor(r.w*0.68),sw=r.w-mw,hh=Math.floor(r.h/2);
+  return[{id:order[0],x:0,y:0,w:mw-2,h:r.h,main:true},{id:order[1],x:mw,y:0,w:sw,h:hh-1},{id:order[2],x:mw,y:hh+1,w:sw,h:r.h-hh-1}];
+}
+const tagsEl=$('#tags');
+const tagEls={};
+['wide','onboard','close'].forEach(id=>{const d=document.createElement('div');d.className='tag';d.onclick=()=>{if(!d.classList.contains('main')){state.focus=id;ui()}};tagsEl.appendChild(d);tagEls[id]=d});
+const vig=$('#vig');
+function resize(){renderer.setSize(innerWidth,innerHeight,false);canvas.style.width=innerWidth+'px';canvas.style.height=innerHeight+'px';
+  const ts=tiles();
+  Object.values(tagEls).forEach(d=>d.style.display='none');vig.style.display='none';
+  ts.forEach(t=>{const d=tagEls[t.id];d.style.display='block';d.style.left=(t.x+8)+'px';d.style.top=(t.y+t.h-28)+'px';d.classList.toggle('main',!!t.main);
+    d.innerHTML=`${CAM_LABEL[t.id][0]} <small>${CAM_LABEL[t.id][1]}</small>`;
+    if(t.id==='onboard'){vig.style.display='block';Object.assign(vig.style,{left:t.x+'px',top:t.y+'px',width:t.w+'px',height:t.h+'px'})}});
+  state.dirty=true;
+}
+addEventListener('resize',resize);
+
+const _v=new THREE.Vector3();
+function render(){
+  const H=innerHeight,pr=renderer.getPixelRatio();
+  renderer.setScissorTest(false);renderer.setClearColor(0x05070a,1);renderer.clear();renderer.setScissorTest(true);
+  tiles().forEach(t=>{
+    const cam=CAMS[t.id];cam.aspect=t.w/t.h;cam.updateProjectionMatrix();
+    cam.getWorldPosition(_v);skyMesh.position.copy(_v);
+    dustMat.uniforms.uScale.value=(t.h*pr)/(2*Math.tan(THREE.MathUtils.degToRad(cam.fov)/2));
+    renderer.setViewport(t.x,H-t.y-t.h,t.w,t.h);renderer.setScissor(t.x,H-t.y-t.h,t.w,t.h);
+    renderer.render(scene,cam);
+  });
+}
+function hud(s){
+  const tau=s.tau;
+  $('#clock').textContent=`${fmtT(TC+tau)}  ·  τ ${tau>=0?'+':'−'}${Math.abs(tau).toFixed(1)} s vs catch`;
+  scrub.value=state.tw;
+  tk('Mission time').textContent=fmtT(TC+tau);
+  tk('τ to catch').textContent=(tau>=0?'+':'')+tau.toFixed(2)+' s';
+  tk('Base altitude').textContent=s.pos.y.toFixed(1)+' m';
+  tk('Speed').textContent=s.speed.toFixed(1)+' m/s';
+  tk('Dist. to catch pt').textContent=s.dist.toFixed(1)+' m';
+  tk('Engines lit').textContent=s.eng.n+' / 33';
+  tk('Arm opening').textContent=THREE.MathUtils.radToDeg(s.armOpen).toFixed(1)+'°';
+  tk('Pin–rail gap').textContent=Math.max(s.gap,0).toFixed(2)+' m';
+  tk('Contact').textContent=s.gap<=0.005?'YES':'no';
+  let cur=null;EVENTS.forEach(e=>{if(tau>=e.tau-1e-6)cur=e});
+  evBox.querySelectorAll('.ev').forEach(d=>d.classList.toggle('cur',cur&&d.dataset.id===cur.id));
+}
+
+/* ---------- sync test ---------- */
+const sig=t=>{const s=computeState(t);return[s.pos.x,s.pos.y,s.pos.z,s.quat.x,s.quat.y,s.quat.z,s.quat.w,s.armOpen,s.eng.n,s.eng.thr,s.gap,...s.fins]};
+function runSync(){
+  const out=[],ok=(n,c,d='')=>out.push([n,c,d]);
+  const keep=state.tw;
+  const A=JSON.stringify(sig(-12.34));sig(4);sig(-31);ok('Scrub determinism (−12.34 → +4 → −31 → −12.34 s)',A===JSON.stringify(sig(-12.34)));
+  const lbTau=REF.lbT-REF.catchT;
+  ok('Landing burn: engines 0 before, 13 after REF startup',computeState(lbTau-0.2).eng.n===0&&computeState(lbTau+1).eng.n===13,`τ=${lbTau} s`);
+  const c0=computeState(0);ok('Catch: pin–rail gap = 0 at REF catch time',Math.abs(c0.gap)<1e-3&&computeState(-1).gap>0.05,`gap(0)=${c0.gap.toFixed(4)} m`);
+  ok('Arms: open at window start, fully closed at catch',computeState(-PRE).armOpen>0.6&&c0.armOpen<1e-6);
+  ok('Engines off after REF cutoff',computeState(REF.cutT-REF.catchT+0.6).eng.n===0&&computeState(REF.cutT-REF.catchT-0.5).eng.n>0,`cutoff τ=+${tCut} s`);
+  ok('Vehicle rides arms after catch (gap stays ≈0)',Math.abs(computeState(3).gap)<1e-3&&Math.abs(computeState(POST).gap)<1e-3);
+  let camOK=true,detail='';
+  [-PRE,-23,-10,-3,0,4].forEach(t=>{
+    const s=apply(t);[camW,camO,camC].forEach(c=>{c.updateMatrixWorld(true);c.updateProjectionMatrix()});
+    if(!(camW.userData.tau===t&&camO.userData.tau===t&&camC.userData.tau===t)){camOK=false;detail+=` τstamp@${t}`}
+    const ndc=s.pos.clone().addScaledVector(s.up,35).project(camW);if(Math.abs(ndc.x)>1||Math.abs(ndc.y)>1){camOK=false;detail+=` wide-miss@${t}`}
+    const cd=new THREE.Vector3();camC.getWorldDirection(cd);const toPin=s.pinPos.clone().sub(camC.position).normalize();if(cd.dot(toPin)<0.99999){camOK=false;detail+=` close-miss@${t}`}
+    const exp=O_POS.clone().applyQuaternion(s.quat).add(s.pos),wp=new THREE.Vector3();camO.getWorldPosition(wp);if(wp.distanceTo(exp)>1e-3){camOK=false;detail+=` onboard-off@${t}`}
+  });
+  ok('Wide / onboard / close read the same τ; booster in wide frame; close tracks pins; onboard rides hull',camOK,detail);
+  const evOK=EVENTS.filter(e=>e.kind==='ref').length===3;ok('Three REF events present: landing-burn startup, catch, engine cutoff'+(REF.verified?'':' (REF values unverified)'),evOK);
+  state.tw=keep;state.dirty=true;
+  $('#sync').innerHTML=out.map(o=>`<div class="${o[1]?'pass':'fail'}">${o[1]?'✓':'✗'} ${o[0]}${o[2]?` <span class="note">${o[2]}</span>`:''}</div>`).join('');
+  return out;
+}
+$('#syncBtn').onclick=runSync;
+
+/* ---------- main loop ---------- */
+let last=performance.now();
+function frame(now){
+  const dt=Math.min(0.1,(now-last)/1000);last=now;
+  if(state.playing){state.tw+=dt*state.speed;state.dirty=true;if(state.tw>=DUR){state.tw=DUR;setPlaying(false)}}
+  if(state.dirty){state.dirty=false;const s=apply(state.tw-PRE);hud(s);render()}
+  requestAnimationFrame(frame);
+}
+ui();
+requestAnimationFrame(frame);
+window.__bc={computeState,seek,runSync,REF,EVENTS,state};
+</script>
+</body>
+</html>

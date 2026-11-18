@@ -1,0 +1,662 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta name="robots" content="noindex,nofollow">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flight 5 / The Catch</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg:#0b1319; --panel:#111e27; --line:#2d414e;
+    --text:#eaf2f5; --muted:#a9bec9; --accent:#90efcf;
+  }
+  * { box-sizing:border-box }
+  body {
+    margin:0; background:var(--bg); color:var(--text);
+    font:15px/1.5 system-ui,sans-serif;
+  }
+  main { max-width:1200px; margin:auto; padding:clamp(14px,3vw,34px) }
+  header { display:flex; justify-content:space-between; align-items:end; gap:16px; margin-bottom:16px }
+  h1 { font-size:clamp(30px,6vw,60px); line-height:1; margin:5px 0 0; letter-spacing:-.055em }
+  p { margin:0 }
+  .label { color:var(--accent); text-transform:uppercase; letter-spacing:.14em; font-size:11px; font-weight:750 }
+  .muted, .credits { color:var(--muted) }
+  button, select {
+    color:var(--text); background:#192a35; border:1px solid var(--line);
+    border-radius:7px; padding:8px 12px; font:inherit; cursor:pointer;
+  }
+  button:hover, select:hover { border-color:var(--accent) }
+  button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible {
+    outline:2px solid var(--accent); outline-offset:4px;
+  }
+  button:disabled { opacity:.5; cursor:default }
+  button[aria-pressed="true"], #play { background:var(--accent); color:#09221a; border-color:var(--accent); font-weight:700 }
+  #stage {
+    position:relative; height:clamp(340px,53vw,610px); overflow:hidden;
+    border:1px solid var(--line); border-radius:14px 14px 0 0;
+    background:linear-gradient(#365569,#718d9b 62%,#bea68a);
+  }
+  #stage canvas { display:block; width:100%; height:100% }
+  .hud {
+    pointer-events:none; position:absolute; inset:0; padding:clamp(12px,2vw,23px);
+    display:flex; flex-direction:column; justify-content:space-between;
+  }
+  .hudrow { display:flex; justify-content:space-between; align-items:start; gap:10px }
+  .plate {
+    background:#08141cdd; color:var(--text); border:1px solid #92b5c24d;
+    padding:8px 11px; border-radius:7px;
+  }
+  #clock { display:block; font:700 clamp(19px,3vw,33px)/1.2 ui-monospace,monospace; font-variant-numeric:tabular-nums }
+  #phase { color:#c6dbe5; font-size:12px }
+  #view { max-width:50%; text-align:right }
+  #status {
+    color:white; position:absolute; left:50%; top:50%;
+    transform:translate(-50%,-50%); width:max-content; max-width:85%; text-align:center;
+  }
+  .controls { background:var(--panel); border:1px solid var(--line); border-top:0; border-radius:0 0 14px 14px; padding:15px }
+  .toolbar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px }
+  .cameras { display:flex; gap:5px; flex-wrap:wrap; margin-left:auto }
+  .ruler { position:relative; padding-top:8px }
+  #seek { display:block; width:100%; margin:0; accent-color:var(--accent); cursor:pointer }
+  .times { display:flex; justify-content:space-between; font:12px ui-monospace,monospace; color:var(--muted); margin-top:6px }
+  .events { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; margin-top:13px }
+  .event { text-align:left; font-size:13px }
+  .event time { display:block; color:var(--accent); font:700 13px ui-monospace,monospace; margin-bottom:4px }
+  .event.current { border-color:var(--accent) }
+  .credits { display:grid; gap:7px; margin-top:17px; max-width:86ch; font-size:13px }
+  a { color:var(--accent) }
+  #file-state { font-size:12px }
+  @media(max-width:580px) {
+    header { align-items:start; flex-direction:column }
+    .cameras { margin-left:0; width:100% }
+    .event { padding:7px; font-size:11px }
+    .event time { font-size:12px }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <p class="label">Starbase · October 13, 2024</p>
+      <h1>Flight 5 / The Catch</h1>
+    </div>
+    <div>
+      <button type="button" id="save" disabled>Save offline HTML</button>
+      <p id="file-state" class="muted"></p>
+    </div>
+  </header>
+
+  <section id="stage" aria-label="Three-dimensional booster catch reconstruction">
+    <div class="hud">
+      <div class="hudrow">
+        <div class="plate">
+          <span id="clock">T+06:08.0</span>
+          <span id="phase">Transonic cue</span>
+        </div>
+        <div id="view" class="plate label">01 / Wide</div>
+      </div>
+      <div><span class="plate label">Illustrative reconstruction</span></div>
+    </div>
+    <p id="status" class="plate" role="status">Loading Three.js…</p>
+  </section>
+
+  <section class="controls" aria-label="Playback">
+    <div class="toolbar">
+      <button type="button" id="play">Play</button>
+      <button type="button" id="replay" title="Play from the transonic cue">Replay</button>
+      <select id="speed" aria-label="Playback speed">
+        <option value="0.5">0.5×</option>
+        <option value="1" selected>1×</option>
+        <option value="2">2×</option>
+      </select>
+      <div class="cameras" role="group" aria-label="Camera">
+        <button type="button" data-camera="0" aria-pressed="true" title="Shortcut: 1">Wide</button>
+        <button type="button" data-camera="1" aria-pressed="false" title="Shortcut: 2">Onboard</button>
+        <button type="button" data-camera="2" aria-pressed="false" title="Shortcut: 3">Close</button>
+      </div>
+    </div>
+    <div class="ruler">
+      <input id="seek" type="range" min="368" max="418" step="0.01" value="368" aria-label="Mission elapsed time">
+      <div class="times"><span>T+06:08</span><span>T+06:58</span></div>
+    </div>
+    <div class="events" aria-label="Jump to a reference cue">
+      <button type="button" class="event current" data-time="368"><time>T+06:08</time>Super Heavy transonic</button>
+      <button type="button" class="event" data-time="393"><time>T+06:33</time>Landing burn startup</button>
+      <button type="button" class="event" data-time="416"><time>T+06:56</time>Shutdown / catch cue</button>
+    </div>
+  </section>
+
+  <footer class="credits">
+    <p><strong>Mission and original webcast: SpaceX.</strong>
+      Reference: <a href="https://www.spacex.com/launches/mission/?missionId=starship-flight-5"
+      target="_blank" rel="noopener noreferrer">Starship’s Fifth Flight Test</a>,
+      published mission timeline. The T+06:56 entry is the combined shutdown and catch-attempt
+      cue; SpaceX documented the successful catch. No footage, stills, audio, or third-party
+      models are included. The reference is linked, not reproduced.</p>
+    <p><strong>Timing and approximations:</strong> The three buttons use the published
+      mission-clock values, not frame measurements from the webcast. The path, scale,
+      engine visuals, arm movement, contact pose, and simulated onboard view are approximate.
+      The decimal clock shows playback position, not reference precision. The first eight
+      seconds are lead-in; the last two are a hold on the catch.</p>
+    <p>Space: play/pause · 1–3: switch camera · Focus the slider and use ←/→ to nudge.</p>
+  </footer>
+</main>
+
+<!--
+Three.js is distributed under the MIT License.
+Copyright © Three.js Authors.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the “Software”), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+-->
+<script id="three-runtime"></script>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const shell = document.documentElement.cloneNode(true);
+
+(async function boot() {
+  try {
+    let library = $("three-runtime").textContent;
+    const embedded = Boolean(library.trim());
+    if (!embedded) {
+      const url = "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js";
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Could not download Three.js (" + response.status + ").");
+      library = (await response.text())
+        .replace(/^\s*\/\/[#@]\s*sourceMappingURL=.*$/gm, "");
+      const script = document.createElement("script");
+      script.textContent = library;
+      document.head.appendChild(script);
+    }
+    if (!window.THREE || window.THREE.REVISION !== "160") {
+      throw new Error("The pinned Three.js runtime did not load.");
+    }
+    $("file-state").textContent = embedded ? "Three.js embedded · offline ready" : "Save once to embed Three.js";
+    $("save").disabled = false;
+    $("save").onclick = () => {
+      const copy = shell.cloneNode(true);
+      copy.querySelector("#three-runtime").textContent = library.replace(/<\/script/gi, "<\\/script");
+      const file = new Blob(["<!doctype html>\n", copy.outerHTML], {type:"text/html;charset=utf-8"});
+      const url = URL.createObjectURL(file);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "flight-5-catch-offline.html";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 15000);
+    };
+    build(window.THREE);
+  } catch (err) {
+    $("status").textContent = "Reconstruction unavailable: " + err.message
+      + " The first open needs internet access; the scene needs WebGL.";
+    console.error(err);
+  }
+})();
+
+function build(T) {
+  const START=368, IGNITION=393, CATCH=416, END=418;
+  const V = (x=0,y=0,z=0) => new T.Vector3(x,y,z);
+  const clamp = T.MathUtils.clamp;
+  const mix = T.MathUtils.lerp;
+  const smooth = (a,b,n) => {
+    const u = clamp((n-a)/(b-a),0,1);
+    return u*u*(3-2*u);
+  };
+  let seed = 51324;
+  const random = () => ((seed = (Math.imul(seed,1664525)+1013904223) >>> 0) / 4294967296);
+
+  const stage = $("stage");
+  const renderer = new T.WebGLRenderer({antialias:true, alpha:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.75));
+  renderer.setClearColor(0,0);
+  renderer.outputColorSpace = T.SRGBColorSpace;
+  renderer.toneMapping = T.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.18;
+  renderer.domElement.setAttribute("aria-label", "Procedural view of the booster and catch tower");
+  stage.prepend(renderer.domElement);
+
+  const scene = new T.Scene();
+  scene.fog = new T.FogExp2(0x9bafb5,0.00026);
+  const camera = new T.PerspectiveCamera(43,1,0.35,26000);
+  scene.add(new T.HemisphereLight(0xd5efff,0x7d6f55,2.15));
+  const sun = new T.DirectionalLight(0xffdfb2,3.0);
+  sun.position.set(150,210,85);
+  scene.add(sun);
+  const fill = new T.DirectionalLight(0xa4c9fb,0.9);
+  fill.position.set(-110,80,-150);
+  scene.add(fill);
+
+  const mat = (color,metalness=0,roughness=.75) =>
+    new T.MeshStandardMaterial({color,metalness,roughness});
+  const steel = mat(0x93a6ad,.57,.48);
+  const towerDark = mat(0x43545b,.36);
+  const towerLight = mat(0x7d8b91,.36);
+  const armMat = mat(0x8b7764,.3);
+  const armTop = mat(0xc0b09a,.34);
+  const dark = mat(0x222c32,.35);
+  const gold = mat(0xb58950,.2);
+  const pale = mat(0xb1b2a8,.1);
+  const concrete = mat(0x747976);
+  const asphalt = mat(0x424d51);
+  const glass = mat(0x303f50,.25);
+  const cube = new T.BoxGeometry(1,1,1);
+  const unitBar = new T.CylinderGeometry(1,1,1,8);
+  const hat = V(0,1,0);
+  function mesh(g,m,parent,x=0,y=0,z=0) {
+    const o=new T.Mesh(g,m); o.position.set(x,y,z); parent.add(o); return o;
+  }
+  function box(p,m,x,y,z,w,h,d) {
+    const o=mesh(cube,m,p,x,y,z); o.scale.set(w,h,d); return o;
+  }
+  function cyl(p,m,x,y,z,rt,rb,h,n=32) {
+    return mesh(new T.CylinderGeometry(rt,rb,h,n),m,p,x,y,z);
+  }
+  function beam(p,m,a,b,w,d=w) {
+    const axis=b.clone().sub(a);
+    const mid=a.clone().lerp(b,.5);
+    const o=box(p,m,mid.x,mid.y,mid.z,w,axis.length(),d);
+    o.quaternion.setFromUnitVectors(hat,axis.normalize());
+    return o;
+  }
+  function rod(p,m,a,b,r) {
+    const axis=b.clone().sub(a), mid=a.clone().lerp(b,.5);
+    const o=mesh(unitBar,m,p,mid.x,mid.y,mid.z);
+    o.scale.set(r,axis.length(),r);
+    o.quaternion.setFromUnitVectors(hat,axis.normalize());
+    return o;
+  }
+
+  // Original terrain and pad blocks. No image or model assets.
+  const sea = mesh(new T.PlaneGeometry(32000,32000),mat(0x527681,.18,.6),scene,0,-.65,0);
+  sea.rotation.x=-Math.PI/2;
+  const coast = new T.Shape();
+  [[-8500,-7200],[490,-7200],[390,-2250],[525,-550],[330,-140],
+   [410,500],[670,1500],[1100,7200],[-8500,7200]]
+    .forEach(([x,z],i) => i ? coast.lineTo(x,-z) : coast.moveTo(x,-z));
+  coast.closePath();
+  mesh(new T.ShapeGeometry(coast),mat(0x777e62),scene).rotation.x=-Math.PI/2;
+  box(scene,asphalt,2,.09,4,131,.18,111);
+  box(scene,concrete,9,.3,0,59,.55,32);
+  box(scene,asphalt,-292,.11,32,495,.21,15);
+  box(scene,asphalt,-34,.11,268,12,.21,435);
+  for(let j=0;j<31;j++) box(scene,pale,-61-j*15,.23,32,6,.025,.23);
+  for(let j=0;j<7;j++) {
+    const x=-55-j*11,z=-60-(j%2)*10;
+    cyl(scene,steel,x,5,z,4.1,4.1,10,24);
+    cyl(scene,pale,x,10.4,z,3.4,4.1,.8,24);
+  }
+  for(let j=0;j<5;j++) {
+    const x=-46-j*17, z=66+(j%2)*12;
+    box(scene,towerLight,x,2.9,z,12,5.8,8);
+    box(scene,pale,x,5.95,z,12.4,.3,8.4);
+  }
+  for(let i=0;i<45;i++) {
+    const x=-590+random()*820,z=-560+random()*1120;
+    if (Math.abs(x)<100 && Math.abs(z)<115) continue;
+    box(scene,mat(i%2?0x85816a:0x737958),x,.04,z,8+random()*40,.07,5+random()*17);
+  }
+  // Painted ground marks; an original stage layout, not a survey.
+  for(let j=0;j<4;j++) {
+    box(scene,gold,13+j*6,.595,13.8,3,.021,.3);
+    box(scene,gold,13+j*6,.595,-13.8,3,.021,.3);
+  }
+
+  // Tower truss and lift structure.
+  const tower = new T.Group();
+  scene.add(tower);
+  const feet=[[-5.6,-5.6],[5.6,-5.6],[5.6,5.6],[-5.6,5.6]];
+  for(const [x,z] of feet) {
+    box(tower,concrete,x,1.25,z,4.5,2.5,4.5);
+    box(tower,towerDark,x,68,z,1.25,133,1.25);
+    box(tower,towerLight,x+.37,68,z+.36,.22,132,.22);
+  }
+  for(let bay=0;bay<12;bay++) {
+    const y=3+bay*10.9;
+    for(let i=0;i<4;i++) {
+      const [ax,az]=feet[i], [bx,bz]=feet[(i+1)%4];
+      beam(tower,towerLight,V(ax,y,az),V(bx,y,bz),.66);
+      beam(tower,towerDark,V(ax,y,az),V(bx,y+10.9,bz),.46);
+      beam(tower,towerLight,V(bx,y,bz),V(ax,y+10.9,az),.39);
+    }
+    if(bay%2===0) box(tower,dark,-4.6,y+1,-4.7,3.3,.24,3.8);
+  }
+  box(tower,towerDark,-.9,135,0,13.2,2.1,12.4);
+  box(tower,towerLight,-2.8,138.5,-1.9,6,6.7,7.6);
+  box(tower,glass,-2.8,139.55,2.0,5.1,1.4,.22);
+  rod(tower,towerLight,V(-4,142,-3),V(-4,148,-3),.12);
+  for(const z of [-3.5,3.5]) box(tower,steel,6.35,65,z,.32,127,.58);
+
+  // A single local contact plane defines both the arm rails and the vehicle pose.
+  const deckY=107, pinY=62.8, pinRadius=.21;
+  const contactX=23, contactY=deckY+pinRadius-pinY;
+  const carriage=new T.Group();
+  tower.add(carriage);
+  carriage.position.set(6.8,deckY,0);
+  box(carriage,towerDark,0,-2.1,0,2.2,5.3,13.8);
+  box(carriage,towerLight,-.2,.05,0,1.9,.7,14);
+  const arms=[];
+  for(const side of [-1,1]) {
+    const a=new T.Group();
+    a.position.set(.4,0,side*7);
+    carriage.add(a);
+    arms.push({a,side});
+    cyl(a,dark,0,-.6,0,1.08,1.17,2.4,20);
+    box(a,armTop,10,-.20,0,18.4,.4,.95);
+    box(a,armMat,9.65,-.91,0,18.8,1,.72);
+    beam(a,armMat,V(.7,-3.4,0),V(18.8,-1,0),.53,.56);
+    for(let i=0;i<5;i++) {
+      const x=1.5+i*3.35;
+      beam(a,towerLight,V(x,-3.2+x*.126,0),V(x+2,-1,0),.38,.54);
+    }
+    box(a,gold,18.87,-.50,0,.65,.98,1.08);
+  }
+
+  // Super Heavy silhouette, skirt, engine bells, grid fins and catch lugs.
+  const booster=new T.Group();
+  scene.add(booster);
+  const profile=[[4.23,0],[4.48,1.2],[4.5,7],[4.5,65.5],
+    [4.39,68.1],[4.24,70.2],[3.98,70.9],[0,70.9]];
+  mesh(new T.LatheGeometry(profile.map(([x,y])=>new T.Vector2(x,y)),64),steel,booster);
+  const skin=[mat(0x9baab1,.57,.49),mat(0xaab8be,.6,.44),mat(0x879ca4,.53,.52)];
+  for(let i=0;i<24;i++) {
+    const g=new T.CylinderGeometry(4.509,4.509,56,3,1,true,i*Math.PI/12+.012,Math.PI/12-.024);
+    mesh(g,skin[i%3],booster,0,35,0);
+  }
+  for(const y of [1.3,6.7,14.5,29.2,44.2,60.0,66.0,70.2])
+    cyl(booster,y>59?steel:towerLight,0,y,0,4.52,4.52,.105,64);
+  cyl(booster,dark,0,1.02,0,4.17,4.32,.55,40);
+  box(booster,towerLight,4.42,34.8,0,.35,51,.56);
+  box(booster,steel,-4.46,35.1,0,.22,48,.41);
+  for(const side of [-1,1]) {
+    box(booster,dark,0,pinY,side*4.41,1.0,1.2,.55);
+    rod(booster,armTop,V(0,pinY,side*4.35),V(0,pinY,side*5.58),pinRadius);
+  }
+  for(let i=0;i<4;i++) {
+    const fin=new T.Group();
+    booster.add(fin);
+    fin.rotation.y=Math.PI/4+i*Math.PI/2;
+    const y=66.2, x0=4.22, x1=7.95, z0=-1.63,z1=1.63;
+    box(fin,towerDark,4.3,y,0,.52,1.2,1.08);
+    for(const z of [z0,z1]) box(fin,dark,(x0+x1)/2,y,z,x1-x0,.23,.15);
+    for(const x of [x0,x1]) box(fin,dark,x,y,0,.15,.23,z1-z0);
+    for(let j=1;j<8;j++) box(fin,towerDark,x0+j*(x1-x0)/8,y,0,.069,.18,z1-z0);
+    for(let j=1;j<7;j++) box(fin,towerDark,(x0+x1)/2,y,z0+j*(z1-z0)/7,x1-x0,.18,.069);
+  }
+  const engineLocations=[];
+  for(const [n,r] of [[1,0],[6,1.15],[10,2.31],[16,3.45]]) {
+    for(let j=0;j<n;j++) {
+      const a=j/n*Math.PI*2+(n===16?.07:0);
+      const x=Math.cos(a)*r,z=Math.sin(a)*r;
+      cyl(booster,towerDark,x,.26,z,.24,.43,.96,12);
+      cyl(booster,dark,x,-.222,z,.37,.37,.035,12);
+      engineLocations.push([x,z]);
+    }
+  }
+
+  // Local lights and hand-built procedural exhaust.
+  const jetGeo=new T.CylinderGeometry(.82,.065,1,16,1,true);
+  jetGeo.translate(0,-.5,0);
+  const jets=[];
+  for(let i=0;i<7;i++) {
+    const [x,z]=engineLocations[i];
+    const plume=new T.Group();
+    plume.position.set(x,-.18,z);
+    booster.add(plume);
+    const makeGlow = color => new T.MeshBasicMaterial({
+      color, transparent:true, opacity:0, depthWrite:false,
+      blending:T.AdditiveBlending, side:T.DoubleSide
+    });
+    const outer=mesh(jetGeo,makeGlow(0xff8645),plume);
+    const core=mesh(jetGeo,makeGlow(0xffefce),plume);
+    jets.push({plume,outer,core});
+  }
+  const engineLight=new T.PointLight(0xffb25e,0,130,2);
+  engineLight.position.y=-4;
+  booster.add(engineLight);
+
+  const nDust=190;
+  const dustGeo=new T.BufferGeometry();
+  const pos=new Float32Array(nDust*3), opacity=new Float32Array(nDust), size=new Float32Array(nDust);
+  const dustSeeds=Array.from({length:nDust},()=>[random(),random(),random(),random()]);
+  dustGeo.setAttribute("position",new T.BufferAttribute(pos,3).setUsage(T.DynamicDrawUsage));
+  dustGeo.setAttribute("amount",new T.BufferAttribute(opacity,1).setUsage(T.DynamicDrawUsage));
+  dustGeo.setAttribute("diameter",new T.BufferAttribute(size,1).setUsage(T.DynamicDrawUsage));
+  const dustMat=new T.ShaderMaterial({
+    transparent:true,depthWrite:false,
+    uniforms:{px:{value:500}},
+    vertexShader:`
+      uniform float px;
+      attribute float amount,diameter;
+      varying float vAmount;
+      void main() {
+        vec4 eye=modelViewMatrix*vec4(position,1.);
+        vAmount=amount;
+        gl_PointSize=clamp(px*diameter/max(1.,-eye.z),1.,116.);
+        gl_Position=projectionMatrix*eye;
+      }`,
+    fragmentShader:`
+      varying float vAmount;
+      void main() {
+        float r=length(gl_PointCoord-.5)*2.;
+        float falloff=1.-smoothstep(.13,1.,r);
+        gl_FragColor=vec4(.69,.65,.56,falloff*falloff*vAmount);
+      }`
+  });
+  const dust=new T.Points(dustGeo,dustMat);
+  dust.frustumCulled=false;
+  scene.add(dust);
+
+  // [mission seconds, X, base Y, Z, pitch, roll]. Artistic key poses.
+  // Shape-preserving Hermite interpolation avoids altitude undershoot.
+  const path=[
+    [368,580,2380,310,.13,-.17],
+    [376,424,1800,253,.13,-.15],
+    [384,302,1145,196,.15,-.19],
+    [393,166,528,108,.18,-.22],
+    [398,102,288,67,.16,-.15],
+    [404,64,151,34,.09,-.085],
+    [409,39,89,12,.043,-.052],
+    [412,26.2,62,3.5,.014,-.018],
+    [414,23.9,48,0.7,.005,-.006],
+    [416,contactX,contactY,0,0,0],
+    [418,contactX,contactY,0,0,0]
+  ];
+  function slope(i,k) {
+    const a=path[i-1],b=path[i],c=path[i+1];
+    if(!a) return (c[k]-b[k])/(c[0]-b[0]);
+    if(!c) return (b[k]-a[k])/(b[0]-a[0]);
+    const m=(b[k]-a[k])/(b[0]-a[0]), n=(c[k]-b[k])/(c[0]-b[0]);
+    return m*n>0 ? 2*m*n/(m+n) : 0;
+  }
+  function pose(t) {
+    let i=0;
+    while(i<path.length-2 && t>path[i+1][0]) ++i;
+    const a=path[i],b=path[i+1],dt=b[0]-a[0];
+    const u=clamp((t-a[0])/dt,0,1), u2=u*u,u3=u2*u;
+    const f=k=>(2*u3-3*u2+1)*a[k]+(u3-2*u2+u)*dt*slope(i,k)
+       +(-2*u3+3*u2)*b[k]+(u3-u2)*dt*slope(i+1,k);
+    booster.position.set(f(1),f(2),f(3));
+    booster.rotation.set(f(4),.012*(1-smooth(407,416,t)),f(5));
+    booster.updateMatrixWorld(true);
+    const angle=mix(-.44,.120,smooth(408.6,CATCH,t));
+    for(const {a,side} of arms) a.rotation.y=side*angle;
+
+    const live=t>=IGNITION && t<CATCH;
+    const fire=live ? smooth(IGNITION,IGNITION+.4,t)*(1-smooth(CATCH-.3,CATCH,t)) : 0;
+    const short=smooth(402,412,t);
+    jets.forEach(({plume,outer,core},j)=>{
+      const active=(j<3?1:1-smooth(405,409,t))*fire;
+      plume.visible=active>.001;
+      const flicker=.89+.11*Math.sin(t*43+j*3.87);
+      const length=mix(46,11,short)*flicker*(1+.08*j);
+      outer.scale.set(1.5+short*.4,length,1.5+short*.4);
+      core.scale.set(.65,length*.59,.65);
+      outer.material.opacity=active*.34;
+      core.material.opacity=active*.9;
+    });
+    engineLight.intensity=fire*28000;
+
+    dust.visible=t>407.5;
+    if(dust.visible) {
+      for(let i=0;i<nDust;i++) {
+        const [a,b,c,d]=dustSeeds[i];
+        const born=407.5+a*8.25, age=t-born, life=2.2+b*4.8;
+        const q=clamp(age/life,0,1), theta=b*6.28318;
+        const r=6+q*(18+c*49);
+        pos[3*i]=contactX+Math.cos(theta)*r+q*q*13;
+        pos[3*i+1]=1+d*3+q*(4+16*d);
+        pos[3*i+2]=Math.sin(theta)*r;
+        opacity[i]=.19*smooth(0,.17,q)*(1-smooth(.59,1,q))*(.5+.5*c);
+        size[i]=5+q*(17+c*19);
+      }
+      for(const a of Object.values(dustGeo.attributes)) a.needsUpdate=true;
+    }
+  }
+
+  const viewNames=["01 / Wide","02 / Onboard · simulated","03 / Catch close-up"];
+  let view=0,t=START,playing=false,dirty=true,prior=null,aspect=1;
+  const camTarget=V();
+  function frameCamera() {
+    const {x,y,z}=booster.position;
+    camera.up.set(0,1,0);
+    const narrow=Math.max(1,1.35/aspect);
+    if(view===0) {
+      const high=smooth(160,900,y);
+      const distance=(135+y*1.03)*narrow;
+      camTarget.set(mix(11,x*.50,high),mix(68,y*.49+36,high),z*.48*high);
+      camera.position.set(camTarget.x+distance*.93,camTarget.y+distance*.33,camTarget.z+distance*.91);
+      camera.fov=44;
+    } else if(view===1) {
+      camera.position.copy(booster.localToWorld(V(-4.76,68.2,3.4)));
+      camTarget.copy(booster.localToWorld(V(-27,41.2,7.7)));
+      camera.up.applyQuaternion(booster.quaternion);
+      camera.fov=77;
+    } else {
+      const arrive=smooth(402,414,t);
+      camTarget.set(mix(x,16,arrive),mix(y+36,106,arrive),mix(z,0,arrive));
+      camera.position.copy(camTarget).add(V(97*narrow,20+12*(1-arrive),73*narrow));
+      camera.fov=39;
+    }
+    camera.aspect=aspect;
+    camera.updateProjectionMatrix();
+    camera.lookAt(camTarget);
+  }
+
+  const seek=$("seek");
+  const cueButtons=[...document.querySelectorAll("[data-time]")];
+  const cameraButtons=[...document.querySelectorAll("[data-camera]")];
+  const clock=seconds=>{
+    const tenths=Math.round(seconds*10);
+    const min=String(Math.floor(tenths/600)).padStart(2,"0");
+    const sec=String(Math.floor(tenths/10)%60).padStart(2,"0");
+    return "T+"+min+":"+sec+"."+tenths%10;
+  };
+  function render() {
+    pose(t);
+    frameCamera();
+    renderer.render(scene,camera);
+    const stamp=clock(t);
+    $("clock").textContent=stamp;
+    seek.value=t.toFixed(2);
+    seek.setAttribute("aria-valuetext",stamp);
+    $("phase").textContent=t>=CATCH?"Shutdown / catch · hold":
+      t>=409?"Tower approach · approximate":
+      t>=IGNITION?"Landing burn":"Transonic cue / descent";
+    const active=t>=CATCH?2:t>=IGNITION?1:0;
+    cueButtons.forEach((b,i)=>b.classList.toggle("current",i===active));
+    dirty=false;
+  }
+  function resize() {
+    const w=stage.clientWidth,h=stage.clientHeight;
+    if(w<1 || h<1) return;
+    aspect=w/h;
+    renderer.setSize(w,h,false);
+    dustMat.uniforms.px.value=h*renderer.getPixelRatio()*.84;
+    dirty=true;
+  }
+  new ResizeObserver(resize).observe(stage);
+  resize();
+  function setPlaying(value) {
+    playing=value;
+    prior=null;
+    $("play").textContent=value?"Pause":"Play";
+  }
+  function jump(value) {
+    setPlaying(false);
+    t=clamp(value,START,END);
+    dirty=true;
+  }
+  function toggle() {
+    if(playing) return setPlaying(false);
+    if(t>=END) t=START;
+    dirty=true;
+    setPlaying(true);
+  }
+  $("play").onclick=toggle;
+  $("replay").onclick=()=>{jump(START);setPlaying(true)};
+  seek.addEventListener("input",()=>jump(Number(seek.value)));
+  cueButtons.forEach(b=>b.onclick=()=>jump(Number(b.dataset.time)));
+  function chooseCamera(n) {
+    view=n;
+    cameraButtons.forEach((b,i)=>b.setAttribute("aria-pressed",i===n?"true":"false"));
+    $("view").textContent=viewNames[n];
+    dirty=true;
+  }
+  cameraButtons.forEach(b=>b.onclick=()=>chooseCamera(Number(b.dataset.camera)));
+  document.addEventListener("keydown",e=>{
+    if(e.altKey||e.ctrlKey||e.metaKey||e.repeat) return;
+    if(e.target.closest("button,input,select,textarea,a,[contenteditable]")) return;
+    if(e.code==="Space") {e.preventDefault();toggle()}
+    if(["1","2","3"].includes(e.key)) chooseCamera(Number(e.key)-1);
+    if(["ArrowLeft","ArrowRight"].includes(e.key)) {
+      e.preventDefault();
+      jump(t+(e.key==="ArrowLeft"?-1:1)*(e.shiftKey?5:.25));
+    }
+  });
+  document.addEventListener("visibilitychange",()=>{prior=null});
+  renderer.domElement.addEventListener("webglcontextlost",e=>{
+    e.preventDefault();
+    setPlaying(false);
+    $("status").hidden=false;
+    $("status").textContent="Graphics context lost. Waiting for the browser to restore it…";
+  });
+  renderer.domElement.addEventListener("webglcontextrestored",()=>{
+    $("status").hidden=true;
+    dirty=true;
+  });
+
+  $("status").hidden=true;
+  render();
+  requestAnimationFrame(function tick(now){
+    if(playing){
+      if(prior!==null) t=Math.min(END,t+(now-prior)/1000*Number($("speed").value));
+      prior=now;
+      dirty=true;
+      if(t>=END) setPlaying(false);
+    }
+    if(dirty) render();
+    requestAnimationFrame(tick);
+  });
+}
+</script>
+</body>
+</html>

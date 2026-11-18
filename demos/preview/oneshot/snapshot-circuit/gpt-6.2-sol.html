@@ -1,0 +1,720 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta name="robots" content="noindex,nofollow">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#171a16">
+<title>The Citrus Circuit · Countertop Motor Club</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #171a16;
+    --panel: #21251e;
+    --line: #363d31;
+    --ink: #f4f0df;
+    --muted: #b8beb0;
+    --lime: #e1fa91;
+    --mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(ellipse at 55% 0, #282e23, var(--bg) 65%);
+    color: var(--ink);
+    font: 15px/1.5 system-ui, sans-serif;
+  }
+  button, summary, input { cursor: pointer; }
+  button { font: inherit; }
+  :focus-visible { outline: 3px solid var(--lime); outline-offset: 4px; }
+  [hidden] { display: none !important; }
+  .shell { width: min(1220px, calc(100% - 40px)); margin: auto; padding-bottom: 32px; }
+  .mast {
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    border-bottom: 1px solid var(--line); padding: 19px 0;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 750; }
+  .brand-icon {
+    display: grid; place-items: center; width: 31px; height: 31px;
+    border-radius: 50%; background: var(--lime); color: #272e1e; font-size: 18px;
+  }
+  .eyebrow { font: 700 11px/1.4 var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+  .quiet { color: var(--muted); }
+  .hero { padding: 25px 0 20px; }
+  .hero .eyebrow { color: var(--lime); }
+  h1 { margin: 2px 0 3px; font-size: clamp(2.35rem, 6vw, 4.6rem); line-height: .99; letter-spacing: -.065em; }
+  .hero p { margin: 9px 0 0; color: var(--muted); }
+  .play { display: grid; grid-template-columns: minmax(0, 1fr) 244px; gap: 15px; align-items: start; }
+  .field { min-width: 0; }
+  .stage {
+    position: relative; overflow: hidden; border: 1px solid #535a46;
+    border-radius: 15px; background: #292f23;
+  }
+  .stage svg { display: block; width: 100%; height: auto; }
+  .stage.bump { box-shadow: inset 0 0 0 2px #ff9e72, 0 0 0 2px #ff9e72; }
+  .gate { color: #979d89; }
+  .gate.active { color: var(--lime); }
+  .gate.passed { color: #697c65; }
+  .gate .beam { stroke: currentColor; stroke-width: 2; stroke-dasharray: 5 7; opacity: .65; }
+  .gate.active .beam { stroke-width: 3; opacity: 1; }
+  .gate circle { fill: currentColor; stroke: #1e241d; stroke-width: 2; }
+  .gate .gate-label { fill: currentColor; font: 700 13px var(--mono); text-anchor: middle; }
+  #finishGate:not(.active) .finish-pips { opacity: 0; }
+  .anchor-layer { pointer-events: none; }
+  .anchor-dot { fill: none; stroke: #fff7da; stroke-width: 2; }
+  .anchor-tag { fill: #252a21; stroke: #fff7da; stroke-width: 1; }
+  .anchor-num { fill: #fff7da; font: 700 12px var(--mono); text-anchor: middle; }
+  .controls {
+    display: flex; justify-content: space-between; gap: 10px;
+    margin-top: 10px;
+  }
+  .control-group { display: flex; gap: 6px; min-width: 0; }
+  .pad, .restart {
+    background: #2b3127; border: 1px solid #4b5343; border-radius: 9px;
+    color: var(--ink); min-height: 48px; font-weight: 720;
+  }
+  .pad {
+    display: flex; justify-content: center; align-items: center; gap: 5px;
+    padding: 6px 13px; touch-action: none; user-select: none;
+    -webkit-user-select: none; -webkit-touch-callout: none;
+  }
+  .pad.gas { color: #242b19; background: var(--lime); border-color: var(--lime); }
+  .pad.down { background: #4b563b; color: white; box-shadow: inset 0 2px 4px #181d15; }
+  .pad.gas.down { background: #b6ce68; color: #141b0d; }
+  .pad .arrow { font-size: 18px; line-height: 1; }
+  .panel, .reference {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  }
+  .panel { padding: 15px; }
+  .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  .status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--lime); }
+  .clock { font: 750 clamp(1.6rem, 3.5vw, 2.1rem)/1.2 var(--mono); margin: 8px 0 4px; letter-spacing: -.05em; }
+  .best { color: var(--muted); font: 12px var(--mono); }
+  .progress { border-block: 1px solid var(--line); margin: 14px 0; padding: 11px 0; }
+  .progress h2 { font-size: 16px; margin: 0 0 7px; }
+  .steps { display: flex; gap: 5px; margin: 0; padding: 0; list-style: none; }
+  .steps li {
+    flex: 1; text-align: center; border: 1px solid #505748; border-radius: 5px;
+    color: var(--muted); font: 700 11px/25px var(--mono);
+  }
+  .steps li.current { background: var(--lime); border-color: var(--lime); color: #1b2115; }
+  .steps li.done { background: #34432c; color: #e0f5d5; }
+  .hint { margin: 8px 0 0; min-height: 1.5em; font-size: 13px; color: var(--muted); }
+  .restart { width: 100%; min-height: 41px; padding: 6px 12px; }
+  .restart:hover { border-color: var(--lime); }
+  .keys { margin: 11px 0 0; color: var(--muted); font-size: 12px; }
+  kbd { font: 11px var(--mono); color: var(--ink); }
+  .finish-card {
+    position: absolute; inset: 0; display: grid; place-items: center; padding: 9px;
+    background: #131711b8;
+  }
+  .finish-card > div {
+    width: min(100%, 270px); text-align: center; padding: 12px 18px 15px;
+    background: #262e21; border: 1px solid var(--lime); border-radius: 12px;
+  }
+  .finish-card h2 { margin: 2px 0; font-size: clamp(1.2rem, 4vw, 2rem); line-height: 1.1; }
+  .finish-card p { margin: 5px 0 9px; font-family: var(--mono); }
+  .reference { margin-top: 15px; }
+  .reference summary { padding: 12px 15px; font-weight: 720; }
+  .reference summary span { color: var(--muted); font-size: 12px; font-weight: 400; margin-left: 7px; }
+  .reference-body { padding: 0 15px 15px; }
+  .reference-grid { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 17px; }
+  figure { margin: 0; }
+  figure svg { display: block; width: 100%; height: auto; border-radius: 9px; border: 1px solid #77705e; }
+  figcaption, .reference p { color: var(--muted); font-size: 13px; margin: 7px 0; }
+  .reference a { color: var(--lime); }
+  .reference strong { color: var(--ink); }
+  .compare { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+  .compare input { accent-color: var(--lime); }
+  table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 12px; }
+  th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 5px 4px; }
+  td:not(:first-child) { font: 11px var(--mono); white-space: nowrap; }
+  @media (max-width: 780px) {
+    .play { grid-template-columns: minmax(0, 1fr) 198px; gap: 10px; }
+    .panel { padding: 11px; }
+  }
+  @media (max-width: 640px) {
+    .shell { width: calc(100% - 20px); }
+    .mast { padding: 11px 0; }
+    .mast > .eyebrow { font-size: 9px; }
+    .hero { padding: 15px 0 12px; }
+    .hero p { font-size: 13px; margin-top: 5px; }
+    .play, .reference-grid { grid-template-columns: minmax(0, 1fr); }
+    .panel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 8px 13px; }
+    .progress { margin: 0; padding: 0; border: 0; }
+    .keys { margin: auto 0; }
+    .pad { padding-inline: 9px; }
+    .controls { margin-top: 7px; }
+    .stage { border-radius: 10px; }
+  }
+  @media (max-width: 355px) {
+    .pad { padding-inline: 6px; font-size: 13px; }
+    .brand { font-size: 13px; }
+    .reference summary span { display: none; }
+  }
+</style>
+</head>
+<body>
+<main class="shell">
+  <header class="mast">
+    <div class="brand"><span class="brand-icon" aria-hidden="true">◈</span> Countertop Motor Club</div>
+    <div class="eyebrow quiet">Room 01 / Time trial</div>
+  </header>
+
+  <section class="hero" aria-labelledby="title">
+    <div class="eyebrow">The Night Kitchen</div>
+    <h1 id="title">The Citrus Circuit</h1>
+    <p>Two clockwise laps around the last espresso of the night.</p>
+  </section>
+
+  <div class="play">
+    <div class="field">
+      <div class="stage" id="stage">
+        <svg id="course" viewBox="0 0 960 592" role="img" aria-labelledby="mapTitle mapDesc">
+          <title id="mapTitle">The Citrus Circuit race map</title>
+          <desc id="mapDesc">A clockwise loop around a worktop. Start at the bottom heading left. Gate one is on the left, two at the top, and three on the right.</desc>
+          <defs>
+            <pattern id="floorTile" width="48" height="48" patternUnits="userSpaceOnUse">
+              <rect width="48" height="48" fill="#4b5140"/>
+              <path d="M0 48V0H48" fill="none" stroke="#343a30" stroke-width="3"/>
+              <path d="M3 46V3H46" fill="none" stroke="#5a604c" stroke-opacity=".48"/>
+              <circle cx="26" cy="23" r="1" fill="#70745d" opacity=".45"/>
+            </pattern>
+            <pattern id="checker" width="12" height="12" patternUnits="userSpaceOnUse">
+              <rect width="12" height="12" fill="#e6e3ca"/>
+              <path d="M0 0h6v6H0zm6 6h6v6H6z" fill="#252a23"/>
+            </pattern>
+            <linearGradient id="wood" x2=".85" y2="1" gradientUnits="objectBoundingBox">
+              <stop stop-color="#ab744b"/><stop offset=".52" stop-color="#83583e"/><stop offset="1" stop-color="#633f30"/>
+            </linearGradient>
+            <pattern id="grain" width="135" height="27" patternUnits="userSpaceOnUse">
+              <path d="M-12 6Q24 1 64 6T150 6M-8 15Q38 10 78 15T153 15M-6 21Q31 26 74 21T147 21"
+                    stroke="#f8c78c" stroke-opacity=".18" fill="none"/>
+            </pattern>
+            <radialGradient id="orange" cx=".37" cy=".32" r=".75" gradientUnits="objectBoundingBox">
+              <stop stop-color="#ffd583"/><stop offset=".58" stop-color="#f3a039"/><stop offset="1" stop-color="#c45d23"/>
+            </radialGradient>
+            <linearGradient id="glass">
+              <stop stop-color="#63301f"/><stop offset=".22" stop-color="#be7135"/>
+              <stop offset=".46" stop-color="#e5a458"/><stop offset=".8" stop-color="#98502b"/><stop offset="1" stop-color="#5d2b1d"/>
+            </linearGradient>
+            <linearGradient id="steel" x2=".8" y2="1" gradientUnits="objectBoundingBox">
+              <stop stop-color="#eeeee0"/><stop offset=".42" stop-color="#a4b1a8"/><stop offset=".69" stop-color="#687b75"/><stop offset="1" stop-color="#c1c8b9"/>
+            </linearGradient>
+            <pattern id="weave" width="8" height="8" patternUnits="userSpaceOnUse">
+              <path d="M0 1H8M1 0V8" stroke="#c1d1e7" stroke-opacity=".27" stroke-width="1"/>
+            </pattern>
+
+            <!-- Five original object drawings, all centered on their named landmark. -->
+            <g id="art-plate">
+              <circle cx="4" cy="7" r="47" fill="#271c17" opacity=".34"/>
+              <circle r="46" fill="#ddd8b9" stroke="#b3aa87" stroke-width="2"/>
+              <circle r="39" fill="#f3e8c8" stroke="#638177" stroke-width="2"/>
+              <circle r="33" fill="#ded7b9"/>
+              <circle cx="-12" cy="-9" r="17" fill="url(#orange)" stroke="#bd602b"/>
+              <circle cx="13" cy="-2" r="16" fill="url(#orange)" stroke="#bd602b"/>
+              <circle cx="-3" cy="16" r="15" fill="#ffba55" stroke="#c56c2d" stroke-width="2"/>
+              <circle cx="-3" cy="16" r="12.5" fill="#ed892e" stroke="#ffe4a1" stroke-width="1.5"/>
+              <path d="M-3 4v24m-12-12H9m-20-8 16 16m-16 0L5 8" stroke="#ffd78a" stroke-width="1.4"/>
+              <path d="M-13-12q-4-10 6-12 1 8-6 12M14-4q4-9 12-5-4 7-12 5" fill="#6e8237"/>
+            </g>
+            <g id="art-cup">
+              <ellipse cx="5" cy="7" rx="38" ry="35" fill="#2d201a" opacity=".38"/>
+              <circle r="34" fill="#dcd7bf" stroke="#b6b197" stroke-width="2"/>
+              <circle r="28" fill="#eeead4" stroke="#889886"/>
+              <path d="M18-7q24-3 21 10-2 10-21 5" fill="none" stroke="#eee7cd" stroke-width="7"/>
+              <circle r="22" fill="#f8f1d9" stroke="#b2aa90" stroke-width="2"/>
+              <circle r="17.5" fill="#6d3c28" stroke="#ba794c" stroke-width="2"/>
+              <path d="M-12 1C-11-11 11-14 12-2 12 7-4 13-7 5-10-3 7-7 7-1 7 3 0 6-2 2"
+                    fill="none" stroke="#e8b581" stroke-width="2" stroke-linecap="round"/>
+            </g>
+            <g id="art-bottle">
+              <g transform="rotate(21)">
+                <path d="M-10-38h25v17q17 9 17 23v31q0 11-12 11h-34q-12 0-12-11V2q0-14 16-23z"
+                      transform="translate(3 5)" fill="#271b16" opacity=".38"/>
+                <path d="M-11-42h22v20q16 8 16 21v32q0 10-10 10h-34q-10 0-10-10V-1q0-13 16-21z"
+                      fill="url(#glass)" stroke="#663923" stroke-width="2"/>
+                <rect x="-12" y="-47" width="24" height="12" rx="3" fill="#c6a66b" stroke="#745538"/>
+                <path d="M-7-44v6m5-6v6m5-6v6m5-6v6" stroke="#8d713f"/>
+                <rect x="-23" y="-2" width="46" height="27" rx="3" fill="#f0dfab"/>
+                <path d="M-23 3h46m-46 17h46" stroke="#ad7250"/>
+                <text y="15" text-anchor="middle" font-family="monospace" font-weight="bold" font-size="8" fill="#583923">BITTERS</text>
+                <path d="M-18-11q2-4 7-6m-8 47v3q1 3 5 3" fill="none" stroke="#fdd993" stroke-width="2" opacity=".7"/>
+              </g>
+            </g>
+            <g id="art-spoon">
+              <g transform="rotate(-23)">
+                <path d="M-5 0Q-21-7-20-21t19-14Q16-33 16-21 16-6 5 0l1 54q0 6-5 6t-6-6z"
+                      transform="translate(4 5)" fill="#2e211b" opacity=".35"/>
+                <path d="M-5 0Q-21-7-20-21t19-14Q16-33 16-21 16-6 5 0l1 54q0 6-5 6t-6-6z"
+                      fill="url(#steel)" stroke="#657270" stroke-width="1.5"/>
+                <ellipse cx="-2" cy="-20" rx="13" ry="11" fill="none" stroke="#f0f0dc" opacity=".7"/>
+                <path d="M0 7v45" stroke="#e7eadd" stroke-width="1.5" opacity=".75"/>
+              </g>
+            </g>
+            <g id="art-napkin">
+              <g transform="rotate(-13)">
+                <path d="M-54-34H56V31H-54z" transform="translate(5 6)" fill="#2e211b" opacity=".4"/>
+                <path d="M-54-34H54V31H-54z" fill="#435e89" stroke="#293c5d" stroke-width="2"/>
+                <path d="M-54-34H54V31H-54z" fill="url(#weave)"/>
+                <path d="m-54-34 77 8 31 57H-54z" fill="#718cad" opacity=".6"/>
+                <path d="M-45-29v55m7-55v55m-12-7h96" fill="none" stroke="#b9cbe0" stroke-width="1.7" opacity=".72"/>
+                <path d="M-48 31v5m7-5v4m7-4v5m7-5v4m7-4v5m7-5v4m7-4v5m7-5v4m7-4v5m7-5v4m7-4v5m7-5v4m7-4v5m7-5v4m7-4v5"
+                      stroke="#92a9c4" stroke-width="1.2"/>
+              </g>
+            </g>
+            <path id="route" d="M500 484H273C166 484 112 428 112 329V254C112 162 176 108 263 108H683C791 108 850 170 850 258V342C850 433 789 484 686 484Z"/>
+            <path id="arrow" d="M-11-6-5 0-11 6M0-6 6 0 0 6" fill="none" stroke="#d0d6b4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </defs>
+
+          <!-- Invented room and racing surface; neither is part of the reference. -->
+          <rect width="960" height="592" fill="#262d24"/>
+          <rect x="12" y="12" width="936" height="568" rx="14" fill="url(#floorTile)" stroke="#737761" stroke-width="2"/>
+          <rect x="20" y="20" width="920" height="552" rx="10" fill="none" stroke="#252d24" stroke-width="3"/>
+          <g fill="#9da18a" stroke="#32392d" stroke-width="2">
+            <circle cx="27" cy="27" r="4"/><circle cx="933" cy="27" r="4"/>
+            <circle cx="27" cy="565" r="4"/><circle cx="933" cy="565" r="4"/>
+          </g>
+
+          <g fill="none" stroke-linejoin="round">
+            <use href="#route" transform="translate(0 4)" stroke="#242920" stroke-width="134" opacity=".65"/>
+            <use href="#route" stroke="#b5ad86" stroke-width="124"/>
+            <use href="#route" stroke="#aa5a42" stroke-width="124" stroke-dasharray="17 16"/>
+            <use href="#route" stroke="#252c26" stroke-width="108"/>
+            <use href="#route" stroke="#4e5749" stroke-width="101"/>
+            <use href="#route" stroke="#303832" stroke-width="98"/>
+            <use href="#route" stroke="#bac2a4" stroke-opacity=".36" stroke-width="2" stroke-dasharray="10 13"/>
+          </g>
+          <g opacity=".77">
+            <use href="#arrow" transform="translate(332 108)"/>
+            <use href="#arrow" transform="translate(649 108)"/>
+            <use href="#arrow" transform="translate(850 382) rotate(101)"/>
+            <use href="#arrow" transform="translate(371 484) rotate(180)"/>
+            <use href="#arrow" transform="translate(112 370) rotate(-99)"/>
+          </g>
+
+          <rect x="209" y="181" width="548" height="239" rx="39" fill="#232a20" opacity=".8"/>
+          <rect x="204" y="175" width="548" height="239" rx="37" fill="url(#wood)" stroke="#d09b70" stroke-width="2"/>
+          <rect x="204" y="175" width="548" height="239" rx="37" fill="url(#grain)"/>
+          <rect x="213" y="184" width="530" height="221" rx="30" fill="none" stroke="#422e24" stroke-opacity=".55" stroke-width="2"/>
+          <g id="sceneProps"></g>
+          <g text-anchor="middle" fill="#ffe1ae">
+            <text x="482" y="305" font-family="Georgia, serif" font-size="24" font-style="italic">The Night Kitchen</text>
+            <text x="482" y="324" font-family="monospace" font-size="9" font-weight="bold" letter-spacing="2">SERVICE COUNTER</text>
+          </g>
+
+          <g id="gate1" class="gate active" transform="translate(112 302)" data-nx="0" data-ny="-1">
+            <path class="beam" d="M-54 0H54"/><circle cx="-54" r="4"/><circle cx="54" r="4"/>
+            <text class="gate-label" x="-71" y="5">01</text>
+          </g>
+          <g id="gate2" class="gate" transform="translate(480 108)" data-nx="1" data-ny="0">
+            <path class="beam" d="M0-54V54"/><circle cy="-54" r="4"/><circle cy="54" r="4"/>
+            <text class="gate-label" y="-68">02</text>
+          </g>
+          <g id="gate3" class="gate" transform="translate(850 302)" data-nx="0" data-ny="1">
+            <path class="beam" d="M-54 0H54"/><circle cx="-54" r="4"/><circle cx="54" r="4"/>
+            <text class="gate-label" x="71" y="5">03</text>
+          </g>
+          <g id="finishGate" class="gate" transform="translate(500 484)" data-nx="-1" data-ny="0">
+            <rect x="-6" y="-54" width="12" height="108" fill="url(#checker)"/>
+            <g class="finish-pips"><circle cy="-54" r="5"/><circle cy="54" r="5"/></g>
+            <text class="gate-label" y="79">START / FINISH</text>
+          </g>
+          <text x="42" y="558" fill="#c2c7ac" font-family="monospace" font-size="10" letter-spacing="2">↑ N</text>
+          <text x="918" y="558" text-anchor="end" fill="#c2c7ac" font-family="monospace" font-size="10" letter-spacing="2">CC / 01</text>
+          <g id="sceneMarks" class="anchor-layer" visibility="hidden"></g>
+
+          <!-- Car points along its local +X axis. -->
+          <g id="car" transform="translate(553 484) rotate(180)">
+            <rect x="-17" y="-9" width="41" height="24" rx="9" fill="#151a15" opacity=".7"/>
+            <g fill="#141a17">
+              <rect x="-14" y="-12" width="9" height="6" rx="2"/><rect x="7" y="-12" width="9" height="6" rx="2"/>
+              <rect x="-14" y="6" width="9" height="6" rx="2"/><rect x="7" y="6" width="9" height="6" rx="2"/>
+            </g>
+            <path d="M-19-7q0-3 5-3h24q9 0 10 5V5q-1 5-10 5h-24q-5 0-5-3z" fill="#e1fa91" stroke="#526335" stroke-width="1.6"/>
+            <path d="m-9-7 13 1 4 3v6L4 6l-13 1-2-4v-6z" fill="#39493c"/>
+            <path d="M1-5v10" stroke="#a7bd94" stroke-width="1.2"/>
+            <path d="M14-7h3m-3 14h3" stroke="#fff4d6" stroke-width="3" stroke-linecap="round"/>
+            <path d="M-16-7v3m0 8v3" stroke="#c7573e" stroke-width="2.6" stroke-linecap="round"/>
+          </g>
+        </svg>
+
+        <div class="finish-card" id="finishCard" hidden>
+          <div>
+            <div class="eyebrow" id="finishCaption">Two laps recorded</div>
+            <h2>Race complete</h2>
+            <p id="finalTime">00:00.00</p>
+            <button class="restart" id="again" type="button">Race again</button>
+          </div>
+        </div>
+      </div>
+      <div class="controls" aria-label="On-screen driving controls">
+        <div class="control-group">
+          <button type="button" class="pad" data-action="left" aria-label="Steer left"><span class="arrow" aria-hidden="true">←</span> Left</button>
+          <button type="button" class="pad" data-action="right" aria-label="Steer right"><span class="arrow" aria-hidden="true">→</span> Right</button>
+        </div>
+        <div class="control-group">
+          <button type="button" class="pad" data-action="brake" aria-label="Brake or reverse"><span class="arrow" aria-hidden="true">↓</span> Brake</button>
+          <button type="button" class="pad gas" data-action="gas" aria-label="Accelerate"><span class="arrow" aria-hidden="true">↑</span> Gas</button>
+        </div>
+      </div>
+    </div>
+
+    <aside class="panel" aria-label="Race dashboard">
+      <div>
+        <div class="panel-head">
+          <span class="eyebrow quiet">Race clock</span>
+          <span class="status" id="raceStatus">Ready</span>
+        </div>
+        <div class="clock" id="clock">00:00.00</div>
+        <div class="best">Best <span id="best">—</span></div>
+      </div>
+      <div class="progress">
+        <h2 id="lapLabel">Lap 1 / 2</h2>
+        <ol class="steps" aria-label="Lap gates">
+          <li class="current" aria-label="Checkpoint 1" aria-current="step">01</li>
+          <li aria-label="Checkpoint 2">02</li>
+          <li aria-label="Checkpoint 3">03</li>
+          <li aria-label="Start and finish line">S/F</li>
+        </ol>
+        <p class="hint" id="hint" role="status">Drive to gate 01.</p>
+      </div>
+      <button class="restart" id="restart" type="button">↻ Restart</button>
+      <p class="keys"><kbd>↑ ↓ ← →</kbd> or <kbd>W A S D</kbd> to drive<br><kbd>R</kbd> to restart · Hold ↓ to reverse</p>
+    </aside>
+  </div>
+
+  <details class="reference">
+    <summary>Reference &amp; rights <span>One illustration · five measured landmarks</span></summary>
+    <div class="reference-body">
+      <div class="reference-grid">
+        <figure>
+          <svg id="referenceImage" viewBox="0 0 960 592" role="img" aria-labelledby="refTitle refDesc">
+            <title id="refTitle">Last Espresso, the original still-life reference</title>
+            <desc id="refDesc">An overhead illustration of a citrus plate, espresso cup, bitters bottle, cobalt napkin, and spoon, with the five anchor points numbered.</desc>
+            <defs>
+              <pattern id="refGrid" width="32" height="32" patternUnits="userSpaceOnUse">
+                <path d="M0 32V0H32" fill="none" stroke="#4d4b3c" stroke-opacity=".19"/>
+              </pattern>
+              <linearGradient id="refPaper" x2=".85" y2="1" gradientUnits="objectBoundingBox">
+                <stop stop-color="#dcd2b4"/><stop offset="1" stop-color="#a99c78"/>
+              </linearGradient>
+            </defs>
+            <rect width="960" height="592" fill="url(#refPaper)"/>
+            <rect x="22" y="22" width="916" height="548" rx="2" fill="url(#refGrid)" stroke="#625b47" stroke-opacity=".52"/>
+            <rect x="190" y="151" width="575" height="291" rx="43" fill="#665641" opacity=".37" transform="translate(7 10)"/>
+            <rect x="190" y="151" width="575" height="291" rx="43" fill="url(#wood)" stroke="#ebc59c" stroke-width="2"/>
+            <rect x="190" y="151" width="575" height="291" rx="43" fill="url(#grain)"/>
+            <!-- Canonical source coordinates, measured at each group's local origin. -->
+            <g id="sourceProps">
+              <g transform="translate(303 235)" data-label="Citrus plate"><use href="#art-plate"/></g>
+              <g transform="translate(440 230)" data-label="Espresso cup"><use href="#art-cup"/></g>
+              <g transform="translate(629 218)" data-label="Bitters bottle"><use href="#art-bottle"/></g>
+              <g transform="translate(347 351)" data-label="Cobalt napkin"><use href="#art-napkin"/></g>
+              <g transform="translate(608 362)" data-label="Spoon"><use href="#art-spoon"/></g>
+            </g>
+            <g id="sourceMarks" class="anchor-layer"></g>
+            <text x="52" y="81" fill="#3d382d" font-family="Georgia, serif" font-size="41" font-style="italic">Last Espresso</text>
+            <text x="54" y="111" fill="#443e2e" font-family="monospace" font-size="14" letter-spacing="2">STILL-LIFE STUDY / 01</text>
+            <text x="904" y="535" text-anchor="end" fill="#443e2e" font-family="monospace" font-size="14" letter-spacing="2">960 × 592</text>
+          </svg>
+          <figcaption><cite>Last Espresso</cite> · Original overhead SVG illustration, embedded in this file.</figcaption>
+        </figure>
+
+        <div>
+          <label class="compare"><input type="checkbox" id="compare"> Show matching anchors on the track</label>
+          <table aria-label="Reference and level landmark measurements">
+            <thead><tr><th>Landmark</th><th>Reference</th><th>Level</th><th>Shift</th></tr></thead>
+            <tbody id="measurements"></tbody>
+          </table>
+          <p>Coordinates are SVG units from the top-left. Each measurement uses the object’s marked anchor. Both drawings use the same 960 × 592 coordinate space.</p>
+          <p><strong>Source rights:</strong> <cite>Last Espresso</cite> was drawn for this build. To the extent copyright applies, the illustration is dedicated to the public domain under <a href="https://creativecommons.org/publicdomain/zero/1.0/">CC0 1.0</a>. No external images or private family photographs are used.</p>
+          <p><strong>Credit:</strong> Shipper’s example inspired the idea of turning a still life into a racing level. The Night Kitchen, its layout, and the artwork are original to this build.</p>
+        </div>
+      </div>
+    </div>
+  </details>
+</main>
+
+<script>
+(() => {
+  'use strict';
+
+  const $ = id => document.getElementById(id);
+  const ns = 'http://www.w3.org/2000/svg';
+  const svgEl = (tag, attrs = {}) => {
+    const el = document.createElementNS(ns, tag);
+    for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, value);
+    return el;
+  };
+  const origin = el => {
+    const m = el.transform.baseVal.getItem(0).matrix;
+    return { x: m.e, y: m.f };
+  };
+  const pointString = p => `${p.x}, ${p.y}`;
+
+  // Transfer the reference landmarks at 1:1 scale and measure the actual result.
+  function mark(layer, p, number) {
+    const g = svgEl('g', { transform: `translate(${p.x} ${p.y})` });
+    g.append(svgEl('circle', { r: 4, class: 'anchor-dot' }));
+    g.append(svgEl('path', { d: 'M4-4L13-13', stroke: '#fff7da', 'stroke-width': 1.5 }));
+    g.append(svgEl('circle', { cx: 19, cy: -19, r: 9, class: 'anchor-tag' }));
+    const text = svgEl('text', { x: 19, y: -15, class: 'anchor-num' });
+    text.textContent = number;
+    g.append(text);
+    layer.append(g);
+  }
+  [...$('sourceProps').children].forEach((source, i) => {
+    const ref = origin(source);
+    const placed = svgEl('g', { transform: `translate(${ref.x} ${ref.y})` });
+    placed.append(source.firstElementChild.cloneNode(true));
+    $('sceneProps').append(placed);
+    const level = origin(placed);
+    mark($('sourceMarks'), ref, i + 1);
+    mark($('sceneMarks'), level, i + 1);
+    const row = $('measurements').insertRow();
+    const shift = Math.hypot(level.x - ref.x, level.y - ref.y);
+    for (const value of [`${i + 1}. ${source.dataset.label}`, pointString(ref), pointString(level), `${shift} u`]) {
+      row.insertCell().textContent = value;
+    }
+  });
+  $('compare').addEventListener('change', e => {
+    $('sceneMarks').setAttribute('visibility', e.target.checked ? 'visible' : 'hidden');
+  });
+
+  const gateNodes = ['gate1', 'gate2', 'gate3', 'finishGate'].map($);
+  const gates = gateNodes.map(node => ({
+    ...origin(node), nx: Number(node.dataset.nx), ny: Number(node.dataset.ny), half: 54
+  }));
+  const stepNodes = [...document.querySelectorAll('.steps li')];
+
+  // The painted and physical tracks use the same centerline.
+  const route = $('route');
+  const routeLength = route.getTotalLength();
+  const samples = Array.from({ length: Math.ceil(routeLength / 4) }, (_, i, a) => i);
+  for (let i = 0; i < samples.length; i++) {
+    samples[i] = route.getPointAtLength(i * routeLength / samples.length);
+  }
+  const WALL = 38; // 54-unit road radius, with room for the car's body.
+  const LAPS = 2;
+  const SAVE_KEY = 'countertop-motor-club-citrus-best-v1';
+  let best = 0;
+  try {
+    const saved = Number(localStorage.getItem(SAVE_KEY));
+    if (Number.isFinite(saved) && saved > 0) best = saved;
+  } catch (_) { /* Racing still works when storage is blocked. */ }
+
+  const car = { x: 553, y: 484, angle: Math.PI, speed: 0 };
+  let lap, next, elapsed, state, bump, last;
+  const byKey = new Map([
+    ['ArrowLeft', 'left'], ['KeyA', 'left'], ['ArrowRight', 'right'], ['KeyD', 'right'],
+    ['ArrowUp', 'gas'], ['KeyW', 'gas'], ['ArrowDown', 'brake'], ['KeyS', 'brake']
+  ]);
+  const keys = new Set();
+  const pointers = new Map();
+  const padKeys = new Map();
+  const pads = [...document.querySelectorAll('[data-action]')];
+
+  function timeLabel(seconds) {
+    const n = Math.floor(seconds * 100);
+    const pad = v => String(v).padStart(2, '0');
+    return `${pad(Math.floor(n / 6000))}:${pad(Math.floor(n / 100) % 60)}.${pad(n % 100)}`;
+  }
+  function input(action) {
+    for (const code of keys) if (byKey.get(code) === action) return true;
+    for (const value of pointers.values()) if (value === action) return true;
+    for (const value of padKeys.values()) if (value === action) return true;
+    return false;
+  }
+  function clearInputs() {
+    keys.clear();
+    pointers.clear();
+    padKeys.clear();
+    pads.forEach(pad => pad.classList.remove('down'));
+  }
+  function renderCar() {
+    $('car').setAttribute('transform', `translate(${car.x} ${car.y}) rotate(${car.angle * 180 / Math.PI})`);
+  }
+  function dashboard() {
+    $('lapLabel').textContent = `Lap ${lap} / ${LAPS}`;
+    $('raceStatus').textContent = { ready: 'Ready', running: 'Racing', finished: 'Finished' }[state];
+    $('best').textContent = best ? timeLabel(best) : '—';
+    $('hint').textContent = state === 'finished' ? 'Both laps complete.'
+      : next === 3 ? (lap === LAPS ? 'Cross the line to finish.' : 'Cross the line for lap 2.')
+      : `Drive to gate 0${next + 1}.`;
+    gateNodes.forEach((node, i) => {
+      const current = state !== 'finished' && i === next;
+      const done = state === 'finished' || i < next;
+      node.classList.toggle('active', current);
+      node.classList.toggle('passed', done);
+      stepNodes[i].classList.toggle('current', current);
+      stepNodes[i].classList.toggle('done', done);
+      if (current) stepNodes[i].setAttribute('aria-current', 'step');
+      else stepNodes[i].removeAttribute('aria-current');
+    });
+  }
+  function restart(refocus = false) {
+    Object.assign(car, { x: 553, y: 484, angle: Math.PI, speed: 0 });
+    lap = 1;
+    next = 0;
+    elapsed = 0;
+    bump = 0;
+    last = null;
+    state = 'ready';
+    clearInputs();
+    $('finishCard').hidden = true;
+    $('stage').classList.remove('bump');
+    $('clock').textContent = timeLabel(0);
+    renderCar();
+    dashboard();
+    if (refocus) $('restart').focus({ preventScroll: true });
+  }
+  function finish() {
+    state = 'finished';
+    car.speed = 0;
+    clearInputs();
+    const record = !best || elapsed < best;
+    if (record) {
+      best = elapsed;
+      try { localStorage.setItem(SAVE_KEY, String(best)); } catch (_) {}
+    }
+    $('finalTime').textContent = timeLabel(elapsed);
+    $('finishCaption').textContent = record ? 'New personal best' : 'Two laps recorded';
+    $('finishCard').hidden = false;
+    $('again').focus({ preventScroll: true });
+  }
+  function crossed(gate, x0, y0, x1, y1) {
+    const a = (x0 - gate.x) * gate.nx + (y0 - gate.y) * gate.ny;
+    const b = (x1 - gate.x) * gate.nx + (y1 - gate.y) * gate.ny;
+    if (!(a < 0 && b >= 0)) return false; // Only count forward crossings.
+    const t = -a / (b - a);
+    const x = x0 + (x1 - x0) * t - gate.x;
+    const y = y0 + (y1 - y0) * t - gate.y;
+    return Math.abs(-x * gate.ny + y * gate.nx) <= gate.half;
+  }
+  function checkProgress(x0, y0) {
+    if (!crossed(gates[next], x0, y0, car.x, car.y)) return;
+    if (next < 3) next++;
+    else if (lap < LAPS) {
+      lap++;
+      next = 0;
+    } else finish();
+    dashboard();
+  }
+
+  function move(dt, gas, brake, steering) {
+    const x0 = car.x;
+    const y0 = car.y;
+    if (gas && brake) {
+      car.speed = Math.sign(car.speed) * Math.max(0, Math.abs(car.speed) - 420 * dt);
+    } else if (gas) {
+      car.speed = Math.min(248, car.speed + (car.speed < 0 ? 315 : 175) * dt);
+    } else if (brake) {
+      car.speed = Math.max(-92, car.speed - (car.speed > 0 ? 330 : 112) * dt);
+    } else {
+      car.speed = Math.sign(car.speed) * Math.max(0, Math.abs(car.speed) - 62 * dt);
+    }
+
+    const steeringGrip = Math.min(1, Math.abs(car.speed) / 55);
+    car.angle += steering * Math.sign(car.speed) * steeringGrip * 3.1 * dt;
+    const x = car.x + Math.cos(car.angle) * car.speed * dt;
+    const y = car.y + Math.sin(car.angle) * car.speed * dt;
+
+    let nearest = samples[0], d2 = Infinity;
+    for (const p of samples) {
+      const dx = x - p.x, dy = y - p.y;
+      const dist = dx * dx + dy * dy;
+      if (dist < d2) { nearest = p; d2 = dist; }
+    }
+    if (d2 > WALL * WALL) {
+      // Project back onto the road edge, retaining tangential motion.
+      const factor = WALL / Math.sqrt(d2);
+      car.x = nearest.x + (x - nearest.x) * factor;
+      car.y = nearest.y + (y - nearest.y) * factor;
+      if (bump <= 0 && Math.abs(car.speed) >= 42) {
+        car.speed *= .52;
+        bump = .18;
+      }
+      car.speed *= Math.exp(-4.4 * dt);
+    } else {
+      car.x = x;
+      car.y = y;
+    }
+    checkProgress(x0, y0);
+  }
+
+  function frame(now) {
+    const dt = last === null ? 0 : Math.min(.05, (now - last) / 1000);
+    last = now;
+    if (!document.hidden && state !== 'finished') {
+      const gas = input('gas'), brake = input('brake');
+      const steering = Number(input('right')) - Number(input('left'));
+      if (state === 'ready' && (gas || brake)) {
+        state = 'running';
+        dashboard();
+      }
+      if (state === 'running' && dt > 0) {
+        // Substeps keep the curb and gate checks stable at lower refresh rates.
+        const count = Math.ceil(dt / (1 / 120));
+        const step = dt / count;
+        for (let i = 0; i < count && state === 'running'; i++) {
+          elapsed += step;
+          bump = Math.max(0, bump - step);
+          move(step, gas, brake, steering);
+        }
+        $('clock').textContent = timeLabel(elapsed);
+        renderCar();
+      }
+    }
+    $('stage').classList.toggle('bump', state === 'running' && bump > 0);
+    for (const pad of pads) pad.classList.toggle('down', input(pad.dataset.action));
+    requestAnimationFrame(frame);
+  }
+
+  window.addEventListener('keydown', e => {
+    if (e.altKey || e.ctrlKey || e.metaKey || e.target.matches?.('input, textarea, select, [contenteditable]')) return;
+    if (byKey.has(e.code)) {
+      e.preventDefault();
+      if (state !== 'finished') keys.add(e.code);
+    } else if (e.code === 'KeyR' && !e.repeat) {
+      e.preventDefault();
+      restart(state === 'finished');
+    }
+  });
+  window.addEventListener('keyup', e => keys.delete(e.code));
+  window.addEventListener('blur', clearInputs);
+  document.addEventListener('visibilitychange', () => { clearInputs(); last = null; });
+
+  pads.forEach(pad => {
+    pad.addEventListener('pointerdown', e => {
+      if (e.button !== 0 || state === 'finished') return;
+      e.preventDefault();
+      pad.setPointerCapture(e.pointerId);
+      pointers.set(e.pointerId, pad.dataset.action);
+    });
+    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+      pad.addEventListener(type, e => pointers.delete(e.pointerId));
+    }
+    // A focused pedal can also be held with Space or Enter.
+    pad.addEventListener('keydown', e => {
+      if (e.code !== 'Space' && e.code !== 'Enter') return;
+      e.preventDefault();
+      if (state !== 'finished') padKeys.set(e.code, pad.dataset.action);
+    });
+    pad.addEventListener('keyup', e => {
+      if (e.code !== 'Space' && e.code !== 'Enter') return;
+      e.preventDefault();
+      padKeys.delete(e.code);
+    });
+    pad.addEventListener('blur', () => padKeys.clear());
+  });
+  $('restart').addEventListener('click', () => restart());
+  $('again').addEventListener('click', () => restart(true));
+
+  restart();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
