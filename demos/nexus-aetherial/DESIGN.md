@@ -28,7 +28,7 @@ components:
 ---
 
 ## Overview
-A split-flap-display / anatomy-board aesthetic. Notable for shipping **three colour modes** — light, dark, and sepia — each with a full ink scale. Origin: Claude Design bundle (`Nexus Aetherial-handoff.zip`, extracted at `W:\Websites\claude-designs\extracted\nexus-aetherial\`). Tokens from `anatomy.css`.
+A split-flap-display / anatomy-board aesthetic. Notable for shipping **three colour modes** — light, dark, and sepia — each with a full ink scale. Origin: Claude Design bundle (`Nexus Aetherial-handoff.zip`). Tokens from `anatomy.css`.
 
 ## Colors
 Mode-driven **ink scales** rather than fixed colours: each mode (light `#0d0f17`, dark `#f0f2f8`, sepia `#1a1410`) defines primary ink plus soft / faint / ghost tiers. The design is type-and-ink led; chroma is minimal.
