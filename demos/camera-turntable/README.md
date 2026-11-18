@@ -52,4 +52,4 @@ The first checks the film's script frame by frame. The second drives the page in
 
 ## Status
 
-Unlisted. The page carries `noindex`, and it is not in the gallery or the sitemap. Nothing here is published.
+Unlisted draft. The page carries `noindex`, and it is not in the gallery or the sitemap. Nothing here is published. The site deploys its main branch, so merging this would put the page at /demos/camera-turntable/, where anyone with the address could open it.

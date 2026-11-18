@@ -85,6 +85,14 @@ It confirmed as sound: the film never enters the real model (recomputed against 
 
 Found by my own checks on the way: a list with headings placed straight inside it (axe); the faint twin of the front glass drawn unsquashed, as a bubble 2 cm proud of the lens; a row of buttons wrapping on phones and covering the panel; labels running off the screen edge and crowding each other.
 
+## Found afterwards
+
+On 18 November 2026 an outside review of other demos pointed out two places where a comment written in the middle of a line had swallowed the code after it. Every demo was then scanned for the same mistake, and this one had it. In the commit that acted on the independent review above, a comment was added part way along the line that makes the disc the camera stands on, and it swallowed the two instructions that give the disc its shadow and put it in the scene. From then on only the disc's ring and green tick were drawn, lying on the floor, and the pictures kept in this folder showed that.
+
+The disc is drawn again. The browser check now asks for it by name: it must be in the scene, take the camera's shadow, be wider than the camera, and have its top where the camera's feet are. The pictures were retaken.
+
+No outside review of this demo itself has been received.
+
 ## Provenance
 
 - Model: Claude Fable 5.2 (`claude-fable-5-2`), Claude Code cloud session, high effort.
