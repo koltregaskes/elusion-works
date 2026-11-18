@@ -6,7 +6,7 @@ A newsletter template. One issue of plain data goes in; an email and its plain-t
 
 **It has not been opened in an email program.** It was checked against the rules email programs are known to enforce, and looked at in one browser. Outlook, Gmail and Apple Mail have not seen it.
 
-**Quality bar it sets:** an email that is built, not hand-edited: one file of data in, the email and its plain text out, and 14 rules that read the finished email itself, tag by tag and piece of text by piece of text. 64 faults put in by hand, several ways for each rule, are each caught by the right rule.
+**Quality bar it sets:** an email that is built, not hand-edited: one file of data in, the email and its plain text out, and 14 rules that read the finished email itself, tag by tag and piece of text by piece of text. 65 faults put in by hand, several ways for each rule, are each caught by the right rule.
 Use it as the reference for newsletters and any email sent to more than one person.
 
 ## What it does
