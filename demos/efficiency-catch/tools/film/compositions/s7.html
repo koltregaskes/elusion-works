@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="UTF-8" />
+    <title>7. The long game</title>
+    <script src="../assets/vendor/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "Outfit"; src: url("../assets/fonts/outfit-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; font-display: block; }
+      @font-face { font-family: "JetBrains Mono"; src: url("../assets/fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2"); font-weight: 100 800; font-display: block; }
+      :root { --ground: #111315; --panel: #1a1d20; --ink: #f4f5f3; --muted: #9aa2a8; --green: #3fe08a; --green-ink: #06210f; --display: "Outfit", sans-serif; --mono: "JetBrains Mono", monospace; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      .clip { position: absolute; inset: 0; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; padding: 120px 140px 150px; background: var(--ground); color: var(--ink); font-family: var(--display); }
+      .eyebrow { font: 600 30px/1 var(--mono); letter-spacing: 0.22em; text-transform: uppercase; color: var(--green); }
+      .big { font-weight: 800; letter-spacing: -0.035em; line-height: 0.95; }
+      .green { color: var(--green); }
+      .muted { color: var(--muted); }
+      .abs { position: absolute; }
+      /* comic-book dots, used sparingly */
+      .dots { position: absolute; background-image: radial-gradient(circle at 50% 50%, var(--green) 0 34%, transparent 36%); background-size: 26px 26px; opacity: 0.16; }
+      /* 7 the long game */
+      #s7a { left: 140px; right: 140px; top: 250px; font-size: 168px; }
+      #s7w { left: 140px; right: 220px; top: 250px; font-size: 100px; }
+      #s7b { left: 140px; right: 300px; top: 250px; font-size: 104px; }
+      #s7c { left: 140px; right: 200px; top: 520px; font-size: 104px; }
+      #s7d { left: 140px; right: 140px; top: 360px; font-size: 128px; white-space: nowrap; }
+      #credit { left: 140px; right: 140px; top: 560px; font: 500 36px/1.4 var(--display); color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="s7" data-width="1920" data-height="1080" data-duration="21.6">
+
+        <div class="dots" style="right:0;top:0;width:520px;height:260px"></div>
+        <p class="eyebrow" id="s7e">The long game</p>
+        <div id="s7a" class="abs big">Decouple your value from your <span class="green">velocity.</span></div>
+        <div id="s7w" class="abs big" data-hold>If your role is purely about speed and volume, AI will eventually do it better than you.</div>
+        <div id="s7b" class="abs big">The people who thrive aren&rsquo;t the ones doing more.</div>
+        <div id="s7c" class="abs big green">They&rsquo;re the ones deciding what&rsquo;s worth doing at all.</div>
+        <div id="s7rule" class="abs" style="left:140px;top:800px;width:1640px;height:10px;border-radius:5px;background:#3fe08a;transform-origin:0 50%"></div>
+        <div id="s7d" class="abs big">That&rsquo;s the skill to invest in.</div>
+        <div id="s7end" class="abs" style="left:140px;top:700px;width:420px;height:8px;border-radius:4px;background:#3fe08a;transform-origin:0 50%"></div>
+        <p id="credit" class="abs">Words: Kol Tregaskes, &ldquo;AI&rsquo;s Efficiency Promise Has a Catch &ndash; You&rdquo;, Kol&rsquo;s Korner, February 2026.<br />Film: written as code and rendered with HyperFrames.</p>
+      <script>
+        (function () {
+          // This scene runs from 72 s of the film. Times below are film times; at() turns them into this scene's own clock.
+          const T0 = 72, at = t => Math.round((t - T0) * 1000) / 1000, tl = gsap.timeline({ paused: true });
+          const fromTo = (sel, a, b, t) => tl.fromTo(sel, a, b, at(t)), to = (sel, v, t) => tl.to(sel, v, at(t));
+          const up = (sel, t, y = 46, d = 0.5) => fromTo(sel, { opacity: 0, y }, { opacity: 1, y: 0, duration: d, ease: "power3.out" }, t);
+          const slam = (sel, t, from = 1.7) => fromTo(sel, { opacity: 0, scale: from }, { opacity: 1, scale: 1, duration: 0.3, ease: "back.out(2)" }, t);
+          const pop = (sel, t) => fromTo(sel, { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, duration: 0.34, ease: "back.out(2.4)" }, t);
+          const off = (sel, t, d = 0.3) => to(sel, { opacity: 0, duration: d, ease: "power2.in" }, t);
+          up("#s7e", 72.0, 20); up("#s7a", 72.1);
+     
+          off("#s7a", 75.7); up("#s7w", 76.1); off("#s7w", 81.5); up("#s7b", 81.9); slam("#s7c", 84.0, 1.25);
+          fromTo("#s7rule", { scaleX: 0, opacity: 1 }, { scaleX: 1, duration: 2.6, ease: "none" }, 84.4); off("#s7rule", 87.2);
+          off("#s7b", 87.2); off("#s7c", 87.2);
+          up("#s7d", 87.6); up("#credit", 88.2, 20); fromTo("#s7end", { scaleX: 0, opacity: 1 }, { scaleX: 1, duration: 4.8, ease: "none" }, 88.6);
+          to("#s7d", { opacity: 1, duration: 0.1 }, 93.5); // holds the timeline open to the last frame
+          tl.set({}, {}, 21.6); // the scene's clock runs to its last frame
+          window.__timelines = window.__timelines || {};
+          window.__timelines["s7"] = tl;
+        })();
+      </script>
+    </div>
+  </body>
+</html>
