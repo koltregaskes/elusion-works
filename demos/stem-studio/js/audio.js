@@ -79,6 +79,9 @@ export function makeMixer(ctx, project) {
 // Schedule everything between two beats. `when(beat)` gives the clock time for a beat.
 // `until` is the beat where loaded audio must stop: the loop end while looping, the end of the range in an export.
 export const FADE = 0.005; // seconds: loaded audio cut part-way fades in and out this fast, so a cut does not click
+// A change of tempo moves the moment a sounding stem must stop, later or sooner. The recording itself plays at its own speed and is not stretched. The stop is put at the new moment and the fade out goes with it: slowing down no longer leaves the stem silent from its old stop to the new one, and speeding up no longer cuts it off without its fade. `ends` is when the recording runs out by itself; a stem that runs out before the stop needs no fade.
+export function restop(src, gain, now, stopAt, ends) { const at = Math.max(now, stopAt); try { src.stop(at); } catch (err) { return false; /* already ended */ }
+  if (gain) { const p = gain.gain; p.cancelScheduledValues(now); p.setValueAtTime(1, now); if (at < ends - 1e-6) { const f = Math.min(FADE, Math.max(0, at - now)); p.setValueAtTime(1, at - f); p.linearRampToValueAtTime(0, at); } } return true; }
 export function schedule(ctx, mixer, project, stems, fromBeat, toBeat, when, startingMidClip, onSource, until = Infinity) {
   const spb = 60 / project.bpm;
   for (const ev of events(project, fromBeat, toBeat)) { const out = mixer.input(ev.track); if (out) playNote(ctx, out, ev, when(ev.beat), spb); }
@@ -91,7 +94,8 @@ export function schedule(ctx, mixer, project, stems, fromBeat, toBeat, when, sta
     const src = ctx.createBufferSource(), g = ctx.createGain(); src.buffer = buf; src.connect(g).connect(out);
     if (offset > 0) { g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(1, t0 + f); } // starts inside the recording
     if (offset + dur < buf.duration - 1e-6) { g.gain.setValueAtTime(1, t1 - f); g.gain.linearRampToValueAtTime(0, t1); } // stops before the recording ends
-    src.start(t0, offset, dur); if (onSource) onSource(clip.id, src, stopBeat);
+    /* In an export the length is fixed. Live, the stop is set apart from the start, so that a change of tempo can move it: see restop(). */
+    if (onSource) { src.start(t0, offset); src.stop(t1); onSource(clip.id, src, stopBeat, g, t0 + buf.duration - offset, t1); } else src.start(t0, offset, dur);
   }
 }
 
@@ -140,7 +144,7 @@ export class Engine {
     let horizon = this.b0 + (this.ctx.currentTime + 0.2 - this.t0) / spb;
     for (let guard = 0; guard < 4 && this.cursor < horizon; guard++) {
       const to = Math.min(horizon, end);
-      if (to > this.cursor) { schedule(this.ctx, this.mixer, p, this.stems, this.cursor, to, b => this.when(b), this.first, (id, src, until) => { this.live.set(id, { src, until }); src.onended = () => { if (this.live.get(id) && this.live.get(id).src === src) this.live.delete(id); }; }, end); this.first = false; this.cursor = to; } // loaded audio stops at the loop end, so a wrap never stacks copies
+      if (to > this.cursor) { schedule(this.ctx, this.mixer, p, this.stems, this.cursor, to, b => this.when(b), this.first, (id, src, until, gain, ends, at) => { this.live.set(id, { src, until, gain, ends, at }); src.onended = () => { if (this.live.get(id) && this.live.get(id).src === src) this.live.delete(id); }; }, end); this.first = false; this.cursor = to; } // loaded audio stops at the loop end, so a wrap never stacks copies
       if (this.cursor >= end) {
         if (!this.loop) { if (this.position() >= end + TAIL / spb) { this.stop(); if (this.onstop) this.onstop(); } return; }
         this.t0 = this.when(end); this.b0 = this.loop[0]; this.cursor = this.loop[0]; this.first = true; horizon = this.b0 + (this.ctx.currentTime + 0.2 - this.t0) / spb; // wrap the loop
@@ -148,7 +152,7 @@ export class Engine {
     }
   }
   retime() { if (!this.playing) return; const b = this.position(); this.t0 = this.ctx.currentTime; this.b0 = b; this.cursor = Math.max(this.cursor, b); } // call before the tempo changes
-  refresh() { if (!this.mixer) return; const p = this.get(); this.mixer.update(p); for (const [id, { src, until }] of this.live) { if (!p.clips.some(c => c.id === id)) { try { src.stop(); } catch (err) { /* already ended */ } this.live.delete(id); } else if (this.playing) { try { src.stop(Math.max(this.ctx.currentTime, this.when(until))); } catch (err) { /* already ended */ } } } } // a stem clip that was deleted stops sounding; after a tempo change the loop end moves, and so does its stop
+  refresh() { if (!this.mixer) return; const p = this.get(); this.mixer.update(p); for (const [id, e] of this.live) { if (!p.clips.some(c => c.id === id)) { try { e.src.stop(); } catch (err) { /* already ended */ } this.live.delete(id); } else if (this.playing) { const at = this.when(e.until); if (Math.abs(at - e.at) > 1e-4 && restop(e.src, e.gain, this.ctx.currentTime, at, e.ends)) e.at = Math.max(this.ctx.currentTime, at); } } } /* only a stop that has really moved is set again, so that an edit that leaves the tempo alone does not touch a sounding stem */ // a stem clip that was deleted stops sounding; after a tempo change the loop end moves, and so does its stop
   stop(quiet) { if (this.timer) clearInterval(this.timer); this.timer = null; if (this.mixer) { const m = this.mixer.master; m.gain.setTargetAtTime(0, this.ctx.currentTime, 0.012); setTimeout(() => m.disconnect(), 120); } this.mixer = null; this.playing = false; this.live.clear(); void quiet; }
   level() { if (!this.mixer || !this.mixer.analyser) return 0; const a = this.mixer.analyser, d = this.buf || (this.buf = new Float32Array(a.fftSize)); a.getFloatTimeDomainData(d); let s = 0; for (let i = 0; i < d.length; i++) s += d[i] * d[i]; return Math.sqrt(s / d.length); }
 }

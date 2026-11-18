@@ -41,6 +41,8 @@ const brief = briefFor(p, 'make the ending bigger'); assert.ok(brief.includes('"
 // Loading: junk is refused in plain words, a saved project survives a round trip.
 assert.throws(() => validate({ hello: 1 }), /not a Stem Studio project/); assert.deepEqual(validate(JSON.parse(snap)), p);
 assert.equal(rowsFor('drums').length, 6); assert.equal(rowsFor('bass').length, 15); assert.equal(rowsFor('lead')[14].label, 'A4');
+// After any plan the sections are in the order they come in the song, even if they were handed over out of order. (A comment on the same line once swallowed this sort.)
+{ const q = JSON.parse(snap); q.sections.reverse(); assert.equal(q.sections[0].name, 'Last chorus'); const out = applyPlan(q, { ops: [{ op: 'set_tempo', bpm: 120 }] }).project.sections; assert.deepEqual(out.map(x => x.name), ['Intro', 'Verse', 'Chorus', 'Break', 'Last chorus']); assert.deepEqual(out.map(x => x.start), [0, 4, 12, 20, 24]); }
 // Review regressions: hostile or broken files, half-understood requests, sections after a cut, the 64-bar limit.
 const bad = JSON.parse(snap); delete bad.patterns['d-verse'].notes; bad.tracks[0].kind = 'drums);background-image:url(https://evil.example/px'; bad.clips[0].shift = 1e9; bad.clips[1].len = 1e9; bad.patterns['__proto__x'] = { kind: 'drums', bars: 1, notes: [] };
 bad.tracks.push({ id: 'x', name: 'X', kind: 'keys', vol: 'loud' }); bad.patterns['k-pad'].notes.push({ t: 'a', d: 1, p: 60 }, { t: 2, d: 1e9, p: 200 }, null);

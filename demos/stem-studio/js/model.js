@@ -156,7 +156,7 @@ export function applyPlan(p0, plan) {
     else if (op.op === 'mute') { const t = trackOrThrow(p, op.track); if (op.on !== undefined && typeof op.on !== 'boolean') throw new Error('"mute" needs "on" as true or false'); t.mute = op.on !== false; said.push(`${t.name} ${t.mute ? 'muted' : 'unmuted'}`); }
     p.clips = p.clips.filter(c => c.len >= 1 && c.start < MAX_BARS);
   }
-  p.bars = Math.max(8, Math.min(MAX_BARS, Math.max(p.bars, ...p.clips.map(c => c.start + c.len)))); p.sections.sort // grows to fit; only a delete makes the song shorter (Clear leaves empty bars)((x, y) => x.start - y.start);
+  p.bars = Math.max(8, Math.min(MAX_BARS, Math.max(p.bars, ...p.clips.map(c => c.start + c.len)))); /* grows to fit; only a delete makes the song shorter (Clear leaves empty bars) */ p.sections.sort((x, y) => x.start - y.start);
   return { project: p, said };
 }
 

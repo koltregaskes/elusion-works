@@ -116,6 +116,16 @@ Reviewed on 17 November 2026 by ChatGPT in chat mode at Pro, driven by another C
 | Phone load time on 4G under three seconds | Not done. Cannot be measured here | None |
 | Safari, Firefox, real Suno stems, a plan written by Claude | Not done. Only Chromium is installed here; no real stems or model calls in this session | None |
 
+### Fix check, 18 November 2026
+
+The same outside reviewer read the fixes above the next morning and moved its score from 6 to 7 out of 10, still HOLD. It found two more faults, both real.
+
+| Finding | What was done | Held by |
+|---|---|---|
+| A change of tempo while a stem is sounding in a loop was still wrong. The stop was moved but the stem's length and fade were fixed when it started: slowing down left it silent from its old stop to the new one, and speeding up cut it off without its fade | True. Live, a stem is now started with no fixed length and stopped apart, and a change of tempo moves the stop and the fade together. An edit that leaves the tempo alone does not touch a sounding stem | `audio.test.mjs`, new: the sums worked by hand (120 to 60 bpm one second into a two-bar clip stops at 7 s, not 4; 120 to 240 stops at 2.5 s, with its fade). Browser check: in mid loop, slower moves the stop later and faster sooner, each with a fade at the new stop. Not heard |
+| A comment written part way along a line had swallowed the call that keeps the sections in order after a plan | True. The call is restored. With the requests the arranger understands today the sections did not in fact get out of order, so nothing visible had gone wrong | `model.test.mjs`: sections handed over in reverse come back in the order of the song |
+| Reaching controls by touch, by keyboard and at real browser zoom is unproved; nobody has listened | Still true. Listed under Not verified | |
+
 ## Provenance
 
 - Model: Claude Fable 5.2 (`claude-fable-5-2`), Claude Code cloud session, high effort.

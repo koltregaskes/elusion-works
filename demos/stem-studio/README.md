@@ -56,7 +56,7 @@ Idea after Alex's AI-native music workstation (https://x.com/The_Alex/status/211
 - `js/model.js`: the song as data. Edits, plans, the request matcher and loading. Pure functions.
 - `js/audio.js`: voices, mixer, scheduler, offline render and the WAV encoder.
 - `js/app.js`: the interface.
-- `tools/`: checks (not shipped). `model.test.mjs` needs only Node: `node demos/stem-studio/tools/model.test.mjs`. `smoke.mjs` and `shots.mjs` need Playwright and a static server serving the repo root (set `BASE`); `smoke.mjs` also needs the path to `axe.min.js` as its first argument: `BASE=http://127.0.0.1:8765 node demos/stem-studio/tools/smoke.mjs node_modules/axe-core/axe.min.js`. It takes several minutes.
+- `tools/`: checks (not shipped). `model.test.mjs` and `audio.test.mjs` need only Node: `node demos/stem-studio/tools/model.test.mjs` and `node demos/stem-studio/tools/audio.test.mjs`. `smoke.mjs` and `shots.mjs` need Playwright and a static server serving the repo root (set `BASE`); `smoke.mjs` also needs the path to `axe.min.js` as its first argument: `BASE=http://127.0.0.1:8765 node demos/stem-studio/tools/smoke.mjs node_modules/axe-core/axe.min.js`. It takes several minutes.
 
 ## Status
 

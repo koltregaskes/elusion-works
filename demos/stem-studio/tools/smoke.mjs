@@ -145,8 +145,12 @@ const SINE = () => { window.__sine = (secs, hz = 220) => { const sr = 44100, n =
   await page.reload(); await page.waitForFunction(() => window.stemStudio); await A(page, SINE);
   await A(page, async () => { await window.stemStudio.loadStem('Long take.wav', window.__sine(30)); window.stemStudio.apply({ ops: [{ op: 'set_tempo', bpm: 180 }] }); });
   await page.click('.clip[data-id="c-drums-11"]'); await page.click('#loop'); await page.click('#play'); // the loop is that one-bar clip, bar 12, inside the 30 s stem
-  await page.waitForFunction(() => window.__src.length >= 5, null, { timeout: 30000 }); await page.click('#play');
-  const recs = await A(page, () => window.__src.map(x => ({ when: x.when, offset: x.offset, duration: x.duration, stops: x.stops }))), ramps = await A(page, () => window.__ramps);
+  await page.waitForFunction(() => window.__src.length >= 5, null, { timeout: 30000 });
+  // A change of tempo in mid loop moves the stop of the stem that is sounding, and its fade with it: slower puts both later, faster puts both sooner. (Live, a stem is started with no fixed length and stopped apart, so that this can be done.)
+  const moved = await A(page, async () => { const n0 = window.__src.length, out = []; while (window.__src.length === n0) await new Promise(r => setTimeout(r, 10)); /* a pass has just begun, so it has most of its bar still to run */ const r = window.__src.at(-1); for (const bpm of [90, 170]) { const before = r.stops.length; window.stemStudio.apply({ ops: [{ op: 'set_tempo', bpm }] }); await new Promise(res => setTimeout(res, 30)); out.push({ bpm, was: r.stops[before - 1], now: r.stops.at(-1), more: r.stops.length - before, faded: window.__ramps.some(t => Math.abs(t - r.stops.at(-1)) < 1e-6) }); } window.stemStudio.apply({ ops: [{ op: 'set_tempo', bpm: 180 }] }); return out; });
+  await page.click('#play');
+  const recs = await A(page, () => window.__src.slice(0, 5).map(x => ({ when: x.when, offset: x.offset, duration: x.stops[0] - x.when, given: x.duration, stops: x.stops }))), ramps = await A(page, () => window.__ramps);
+  for (const r of recs) assert.equal(r.given, undefined, 'a live stem was started with a fixed length, which a tempo change cannot move');
   const bar = 4 * 60 / 180, offset = 11 * bar; // worked by hand: one bar at 180 bpm is 1.3333 s; bar 12 starts 11 bars, 14.667 s, into the stem
   for (const [i, r] of recs.entries()) {
     assert.ok(Math.abs(r.offset - offset) < 1e-6, `pass ${i + 1} starts ${r.offset} s into the stem`); assert.ok(Math.abs(r.duration - bar) < 1e-6, `pass ${i + 1} lasts ${r.duration} s, the loop is ${bar.toFixed(4)} s`);
@@ -154,6 +158,9 @@ const SINE = () => { window.__sine = (secs, hz = 220) => { const sr = 44100, n =
     assert.ok(ramps.some(t => Math.abs(t - (r.when + r.duration)) < 1e-6), `pass ${i + 1} fades out at the loop end`);
   }
   log(`loop: ${recs.length} passes of a 30 s stem over a one-bar loop, each ${bar.toFixed(3)} s from ${offset.toFixed(3)} s in, no two sounding at once, each fading out at the wrap`);
+  for (const m of moved) { assert.ok(m.more >= 1, `the tempo went to ${m.bpm} and the sounding stem's stop was not moved`); assert.ok(m.faded, `the tempo went to ${m.bpm} and no fade was planned at the new stop`); }
+  assert.ok(moved[0].now > moved[0].was + 0.01, `slower (180 to 90 bpm): the stop went from ${moved[0].was} to ${moved[0].now}, which is not later`); assert.ok(moved[1].now < moved[1].was - 0.01, `faster (90 to 170 bpm): the stop went from ${moved[1].was} to ${moved[1].now}, which is not sooner`);
+  log('tempo change in mid loop: slower moves the sounding stem\'s stop later, faster moves it sooner, and the fade out goes with it each time');
   await ctx.close();
 }
 { // 3. Stem downloads come from one version of the song, even if it is edited while they render; no sound support is handled.
