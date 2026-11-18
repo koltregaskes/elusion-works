@@ -111,7 +111,7 @@ Screenshots (Win+Shift+S) of anything odd are very welcome.
 ## 5. How to send feedback
 
 Reply on Linear **KOL-6021** with your answers and screenshots, or drop a note
-in `W:\agent-docs\handoffs\codex-2026-10\` named
+in the private agent handoff folder named
 `HOMEWORLD-CLONE-PLAYTEST-<date>.md`. Your frame-rate numbers and your "what
 breaks the illusion first" answer are the two most useful things.
 

@@ -129,7 +129,7 @@ suite. Confident, restrained, slightly mythic. Never "demo-ware."
 
 **Origin:** Claude Design handoff bundle (`Chronicles of Bone-handoff.zip`,
 dated 2026-05-25). Full original spec preserved at
-`W:\Websites\claude-designs\extracted\chronicles-of-bone\`.
+the private local design archive.
 
 **Build status:** placed and verified. Five acts render, side rail and
 keyboard nav work, 4 pins / 10 plates / 6 reel rows / 5 image-slots / 20
@@ -363,7 +363,7 @@ CDN scripts use `integrity` SRI hashes — keep them when bumping versions.
 ## Outstanding Work
 
 Tracked in original `CONTENT.md` (archived at
-`W:\Websites\claude-designs\extracted\chronicles-of-bone\project\CONTENT.md`).
+`project/CONTENT.md` in the private design archive).
 Current status after the Codex content pass:
 
 - **Shipped:** page title and metadata no longer use forbidden framing.
@@ -393,7 +393,7 @@ Current status after the Codex content pass:
 | Source | Claude Design handoff bundle |
 | Bundle file | `Chronicles of Bone-handoff.zip` |
 | Bundle date | 2026-05-25 |
-| Bundle archive | `W:\Websites\claude-designs\extracted\chronicles-of-bone\` |
+| Bundle archive | the private local design archive |
 | Placement date | 2026-05-25 |
 | Initial placement by | Build (Claude Code) |
 | Deployed URL | `https://elusionworks.com/demos/chronicles-of-bone/` |
