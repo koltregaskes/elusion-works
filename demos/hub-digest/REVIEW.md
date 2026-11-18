@@ -26,7 +26,7 @@ Verified by running. All passed on the code as committed.
 
 - `node demos/hub-digest/tools/email.test.mjs`: pass.
   - The files beside the page are the ones the issue makes. The sample passes all 14 checks.
-  - 64 faults put in by hand on the finished email, several ways for each check, are each caught by the right check and no other. They include the ways the first version of the checks missed.
+  - 65 faults put in by hand on the finished email, several ways for each check, are each caught by the right check and no other. They include the ways the first version of the checks missed.
   - Words that only look like faults pass. Markup in the words is made safe. An issue filled in wrongly, or a link that cannot be sent, stops the build.
   - Parts left out are left out. Japanese, and a name of one very long word, still build. Dates, reading time, wrapping and contrast match values worked out by hand.
 - `node demos/hub-digest/tools/smoke.mjs`: pass, in headless Chromium.
@@ -87,6 +87,8 @@ A second, outside review was posted on the pull requests on 18 November 2026: Ch
 | The check measured the table cell, not the link | True. It now measures the link | the checks above |
 | No email program has opened it, in light or dark | Still true, and still the big one. Listed under Not verified. The Outlook rule above is the part most in need of a real look | |
 | The demo's own tests do not run in the repo's CI | Not done here: CI is shared by the whole site, and changing it is outside this demo's folder | |
+
+The same reviewer, reading other demos, found two places where a comment written part way along a line had swallowed the code after it. Every demo was scanned for that mistake, and this one's rules test had it: one of the faults put in by hand, a link with no words to press, was never tried. It is restored and is caught by the right rule, so the count is 65 faults, not 64.
 
 ## Provenance
 
