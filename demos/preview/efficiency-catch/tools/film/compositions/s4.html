@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="UTF-8" />
+    <title>4. Jevons</title>
+    <script src="../assets/vendor/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "Outfit"; src: url("../assets/fonts/outfit-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; font-display: block; }
+      @font-face { font-family: "JetBrains Mono"; src: url("../assets/fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2"); font-weight: 100 800; font-display: block; }
+      :root { --ground: #111315; --panel: #1a1d20; --ink: #f4f5f3; --muted: #9aa2a8; --green: #3fe08a; --green-ink: #06210f; --display: "Outfit", sans-serif; --mono: "JetBrains Mono", monospace; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      .clip { position: absolute; inset: 0; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; padding: 120px 140px 150px; background: var(--ground); color: var(--ink); font-family: var(--display); }
+      .eyebrow { font: 600 30px/1 var(--mono); letter-spacing: 0.22em; text-transform: uppercase; color: var(--green); }
+      .big { font-weight: 800; letter-spacing: -0.035em; line-height: 0.95; }
+      .green { color: var(--green); }
+      .muted { color: var(--muted); }
+      .abs { position: absolute; }
+      /* comic-book dots, used sparingly */
+      .dots { position: absolute; background-image: radial-gradient(circle at 50% 50%, var(--green) 0 34%, transparent 36%); background-size: 26px 26px; opacity: 0.16; }
+      /* 4 Jevons */
+      #root h2 { font-size: 132px; margin-top: 34px; }
+      #engine { left: 140px; top: 500px; width: 620px; height: 400px; }
+      #coal { left: 800px; top: 500px; width: 420px; height: 400px; }
+      #coal i { position: absolute; width: 44px; height: 44px; background: var(--ink); border-radius: 9px; transform: rotate(18deg); }
+      #root .col { left: 1290px; right: 120px; }
+      #s4a { top: 500px; font-size: 52px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.08; }
+      #s4b { top: 750px; font-size: 76px; }
+      #s4x { background: var(--ground); }
+      #s4c { left: 140px; right: 140px; top: 300px; font-size: 120px; }
+      #s4d { left: 140px; right: 140px; top: 520px; font-size: 230px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="s4" data-width="1920" data-height="1080" data-duration="12">
+
+        <p class="eyebrow" id="s4e">This isn&rsquo;t new</p>
+        <h2 class="big" id="s4h">The Jevons paradox</h2>
+        <svg id="engine" class="abs" data-layout-allow-overflow viewBox="0 0 620 400" fill="none" stroke="#f4f5f3" stroke-width="8" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
+          <rect x="40" y="150" width="330" height="170" rx="26" />
+          <rect x="90" y="50" width="56" height="100" />
+          <path d="M70 50h96" />
+          <path d="M370 235h110" />
+          <g id="wheel"><circle cx="480" cy="235" r="110" /><path d="M480 125v220M370 235h220M402 157l156 156M558 157L402 313" /></g>
+          <path d="M20 345h580" />
+          <g id="puffs" stroke="#3fe08a"><circle id="p1" cx="118" cy="14" r="16" /><circle id="p2" cx="160" cy="-22" r="22" /><circle id="p3" cx="214" cy="-52" r="28" /></g>
+        </svg>
+        <div id="coal" class="abs"></div>
+        <div id="s4a" class="abs col">Coal-fired engines didn&rsquo;t reduce coal consumption.</div>
+        <div id="s4b" class="abs col big green">Consumption exploded.</div>
+        <div id="s4x" class="abs" style="inset:0">
+          <div class="dots" style="right:0;top:0;width:640px;height:260px"></div>
+          <div id="s4c" class="abs big">AI does this to your capacity.</div>
+          <div id="s4d" class="abs big green">You&rsquo;re the coal.</div>
+        </div>
+      <script>
+        (function () {
+          // This scene runs from 26.4 s of the film. Times below are film times; at() turns them into this scene's own clock.
+          const T0 = 26.4, at = t => Math.round((t - T0) * 1000) / 1000, tl = gsap.timeline({ paused: true });
+          const fromTo = (sel, a, b, t) => tl.fromTo(sel, a, b, at(t)), to = (sel, v, t) => tl.to(sel, v, at(t));
+          const up = (sel, t, y = 46, d = 0.5) => fromTo(sel, { opacity: 0, y }, { opacity: 1, y: 0, duration: d, ease: "power3.out" }, t);
+          const slam = (sel, t, from = 1.7) => fromTo(sel, { opacity: 0, scale: from }, { opacity: 1, scale: 1, duration: 0.3, ease: "back.out(2)" }, t);
+          const pop = (sel, t) => fromTo(sel, { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, duration: 0.34, ease: "back.out(2.4)" }, t);
+          const off = (sel, t, d = 0.3) => to(sel, { opacity: 0, duration: d, ease: "power2.in" }, t);
+            const coal = document.getElementById("coal");
+            for (let i = 0; i < 28; i++) { const lump = document.createElement("i"), col = i % 7, row = Math.floor(i / 7); lump.id = "c" + i; lump.style.left = 10 + col * 58 + (row % 2) * 12 + "px"; lump.style.bottom = 56 + row * 60 + "px"; lump.style.transform = "rotate(" + (12 + ((i * 37) % 40)) + "deg)"; coal.appendChild(lump); }
+          up("#s4e", 26.4, 20); up("#s4h", 26.5);
+          fromTo("#engine", { opacity: 0, x: -60 }, { opacity: 1, x: 0, duration: 0.5, ease: "power3.out" }, 27.4);
+          fromTo("#wheel", { rotation: 0, svgOrigin: "480 235" }, { rotation: 1440, svgOrigin: "480 235", duration: 6.4, ease: "power1.in" }, 27.4);
+          ["#p1", "#p2", "#p3"].forEach((p, i) => { fromTo(p, { opacity: 0, y: 30 }, { opacity: 1, y: -10 - i * 6, duration: 0.5, ease: "power1.out" }, 28.0 + i * 0.22); to(p, { opacity: 0, y: -50, duration: 0.5, ease: "power1.in" }, 28.5 + i * 0.22);
+            for (let k = 1; k < 4; k++) { fromTo(p, { opacity: 0, y: 30 }, { opacity: 1, y: -10 - i * 6, duration: 0.5, ease: "power1.out", immediateRender: false }, 28.0 + k * 1.3 + i * 0.22); to(p, { opacity: 0, y: -50, duration: 0.5, ease: "power1.in" }, 28.5 + k * 1.3 + i * 0.22); } });
+          for (let i = 0; i < 28; i++) { fromTo("#c" + i, { opacity: 0, y: -40 }, { opacity: 1, y: 0, duration: 0.22, ease: "power2.in" }, i < 5 ? 27.9 + i * 0.14 : 30.4 + (i - 5) * 0.11); }
+          up("#s4a", 28.6); slam("#s4b", 30.6, 1.4);
+     
+          to(["#s4e", "#s4h", "#engine", "#coal", "#s4a", "#s4b"], { opacity: 0, duration: 0.25 }, 33.4);
+          fromTo("#s4x", { opacity: 0 }, { opacity: 1, duration: 0.25 }, 33.5); up("#s4c", 33.7);
+          slam("#s4d", 35.4, 1.5);
+          tl.set({}, {}, 12); // the scene's clock runs to its last frame
+          window.__timelines = window.__timelines || {};
+          window.__timelines["s4"] = tl;
+        })();
+      </script>
+    </div>
+  </body>
+</html>

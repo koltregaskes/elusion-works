@@ -1,5 +1,6 @@
 User-agent: *
 Allow: /
+Disallow: /demos/preview/
 
 Sitemap: https://elusionworks.com/sitemap.xml
 Sitemap: https://elusionworks.com/demos/golden/sitemap.xml
