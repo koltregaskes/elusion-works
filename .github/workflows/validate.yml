@@ -78,7 +78,8 @@ jobs:
       - name: Verify no absolute Windows paths leaked into tracked text files
         # The deploy workflow already does this on _site/. We mirror it on the source tree,
         # docs included, so a PR can be caught before the build step.
-        # Any drive letter with either slash. Only file names are printed, not the match.
+        # Any drive letter with one or more slashes of either kind (so JS/JSON-escaped
+        # paths match too). Only file names are printed, not the match.
         # grep exit 0 = hit, 1 = clean, 2 or more = scan error (fails too).
         run: |
           rc=0
@@ -86,7 +87,7 @@ jobs:
                --include='*.html' --include='*.js' --include='*.jsx' --include='*.mjs' \
                --include='*.txt' --include='*.xml' --include='*.md' --include='*.json' \
                --include='*.css' --include='*.svg' --include='*.py' --include='*.webmanifest' \
-               '\b[A-Z]:[\\/][A-Za-z_]|review_path|repo_path|review_dir' \
+               '\b[A-Z]:[\\/]+[A-Za-z0-9_]|review_path|repo_path|review_dir' \
                --exclude-dir='node_modules' --exclude-dir='.git' \
                . > /tmp/leaked-paths.txt || rc=$?
           if [ "$rc" -eq 0 ]; then
