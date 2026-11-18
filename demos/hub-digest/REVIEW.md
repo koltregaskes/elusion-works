@@ -32,7 +32,7 @@ Verified by running. All passed on the code as committed.
 - `node demos/hub-digest/tools/smoke.mjs`: pass, in headless Chromium.
   - Scripts off: the email in its frame, a link to its plain text, the inbox line and the checks as made.
   - The checks are run again in the browser on the file as served. Tab follows what is seen without the page moving.
-  - The email shows 600 and 375 wide in a frame as tall as its words. The button has its colour and padding on its cell. A link pressed in the preview leaves it as it was and fetches nothing.
+  - The email shows 600 and 375 wide in a frame as tall as its words. The whole button is its link: the link fills the green shape, a press on the green away from the words reaches it, and its focus ring is white where the other links' is green. A link pressed in the preview leaves it as it was and fetches nothing.
   - The email on its own fits 1280, 600, 375 and 320 wide, also with its style block taken out. Five awkward issues fit at 600, 375 and 320.
   - Phones 390x800, 320x568 and 740x360 by touch, 1920x1080, and text at twice the size: the preview page fits.
   - axe WCAG 2.2 A and AA on the preview page in its three looks and on the email. No console errors.
@@ -61,7 +61,7 @@ A second pass by a separate Claude agent (Opus), read-only, given the brief and 
 | # | Finding | What was done | Held by |
 |---|---|---|---|
 | 1 | Blocker. Ten of the 14 checks were weaker than their names. Each could be passed by a slightly different fault: small text written with a space, a colour pair never worked out, a script handler in single quotes, a hidden line that was not hidden, a plain text with only the links | The checks were rebuilt. They now take the email apart and work on its tags and on each piece of text with its own colour, background and size. Names say what is tested. Words that only look like faults pass | builder test: 64 faults by hand, including the reviewer's |
-| 2 | Blocker. The button's padding was on the link, which Outlook ignores | Colour and padding are on the table cell | builder test and browser check of the markup; not seen in Outlook |
+| 2 | Blocker. The button's padding was on the link, which Outlook ignores | Colour and padding were put on the table cell. (That left only the words pressable; the outside review below caught it. The padding is now on the link, and on the cell for Outlook alone) | builder test and browser check of the markup; not seen in Outlook |
 | 3 | Blocker. One very long word, or wide figures, made the email wider than the screen, and empty parts kept their headings | Words wrap. Figures are limited to 7 characters and 2 to 4 in a row, share the width evenly and shrink on a phone. Empty parts are left out. An issue filled in wrongly stops the build | builder test; browser check on five awkward issues at three widths |
 | 4 | Markup gaps for real sending: no exact line heights for Outlook, a padded paragraph, the language only where webmail removes it, the lead story not a heading, no thought for dark mode | Exact line heights throughout. The notice is a table cell. The language and a label are on the email itself. The lead story is a heading. Two lines for Outlook's dark mode. The README lists what a sender still has to do | builder test for the markup; none seen in a client |
 | 5 | A link pressed in the preview replaced the email with a missing page, or went to the Hub | Links in the preview do nothing but say where they would go | browser check |
@@ -75,6 +75,18 @@ A second pass by a separate Claude agent (Opus), read-only, given the brief and 
 | 13 | The look: a stock dark newsletter, nothing of the comic about it | The title sits in a panel, section names are captions, the figures are a strip, and the rules between sections are gone | by looking; not judged by a person |
 
 Two things found by the author on the way. The site's own build refuses a page that names an outside address it does not list, so the sample's links go to the Hub's own address and the plain text is read from its file. And the email file is served as a page here, so it carries a `noindex` mark that an inbox ignores.
+
+## Outside review
+
+A second, outside review was posted on the pull requests on 18 November 2026: ChatGPT in chat mode at Pro, driven by another Claude session at Kol's request. It covered this demo with Close Shave, read the code and pictures, and did not open the email. It scored the pair 7 out of 10 and said HOLD. It found no tracking, no sending code and no real address in the email.
+
+| Finding | What was done | Held by |
+|---|---|---|
+| Only the button's words could be pressed. The padding was on the table cell, so the green round the words was not part of the link | True. The link itself is now padded and coloured, so the whole green shape is the link. For Outlook on Windows, which throws a link's padding away, the same padding is put on the cell by a rule only Outlook reads, so it should still look like a button there, though there only its words can be pressed | builder test of the markup, cell and link; browser check: the link's box is the button's box, all four corners and the edge are the link, and a real press on the edge reaches it |
+| The button's focus ring was the same green as the button, so it could not be seen | True. The button's ring is white and stands three pixels clear of the green. The other links keep the green ring, which shows against the dark page | builder test; browser check of the ring's colour, width and gap; looked at in a picture |
+| The check measured the table cell, not the link | True. It now measures the link | the checks above |
+| No email program has opened it, in light or dark | Still true, and still the big one. Listed under Not verified. The Outlook rule above is the part most in need of a real look | |
+| The demo's own tests do not run in the repo's CI | Not done here: CI is shared by the whole site, and changing it is outside this demo's folder | |
 
 ## Provenance
 

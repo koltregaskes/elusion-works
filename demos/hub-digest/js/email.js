@@ -34,6 +34,7 @@ export function validate(i) { const bad = [], need = (ok, what) => { if (!ok) ba
 /* ---- The HTML ---- */
 const font = (size, lineHeight, colour, more = '') => `font-family:${SANS};font-size:${size}px;line-height:${lineHeight}px;mso-line-height-rule:exactly;color:${colour};word-break:break-word;overflow-wrap:anywhere;${more}`;
 const mono = (size, colour, more = '') => `font-family:${MONO};font-size:${size}px;line-height:${size + 6}px;mso-line-height-rule:exactly;color:${colour};letter-spacing:1.5px;text-transform:uppercase;${more}`;
+export const BUTTON = { pad: '13px 22px' }; /* the room round the button's words: on the link everywhere, and on its cell for Outlook alone */
 const table = (inner, attrs = '', style = '') => `<table role="presentation" cellpadding="0" cellspacing="0" border="0" ${attrs} style="border-collapse:collapse;${style}">${inner}</table>`;
 const row = (inner, pad = '0 32px') => `<tr><td class="px" style="padding:${pad};">${inner}</td></tr>`;
 const a = (url, text, style) => `<a href="${esc(link(url))}" style="${style}">${text}</a>`;
@@ -56,8 +57,8 @@ export function html(issue) { validate(issue); const when = longDate(issue.date)
     ...(issue.numbers.length ? [row(`${heading('In numbers')}${space(14)}${table(`<tr>${issue.numbers.map(number).join('')}</tr>`, 'width="100%"', 'width:100%;table-layout:fixed;')}`, TOP)] : []),
     ...(issue.reading.length ? [row(`${heading('Worth your time')}${space(6)}${table(issue.reading.map(read).join(''), 'width="100%"', 'width:100%;')}`, TOP)] : []),
     ...(issue.prompt ? [row(`${heading(issue.prompt.title)}${space(14)}${table(`<tr><td style="padding:16px 18px;border:1px solid ${C.line};border-left:4px solid ${C.accent};background-color:${C.card};font-family:${MONO};font-size:15px;line-height:24px;mso-line-height-rule:exactly;color:${C.ink};word-break:break-word;overflow-wrap:anywhere;" bgcolor="${C.card}">${esc(issue.prompt.text).replace(/\n/g, '<br>')}</td></tr>`, 'width="100%"', 'width:100%;')}<p style="margin:10px 0 0 0;${font(15, 22, C.muted)}">${esc(issue.prompt.note)}</p>`, TOP)] : []),
-    /* the button: its colour and its padding are on the table cell, which every email program keeps, so that it stays a button where the link's own padding is thrown away */
-    ...(issue.button ? [row(table(`<tr><td class="btn" align="center" bgcolor="${C.accent}" style="padding:13px 22px;background-color:${C.accent};border-radius:8px;">${a(issue.button.url, esc(issue.button.label), `display:inline-block;${font(17, 22, C.accentInk, 'font-weight:700;')}text-decoration:none;`)}</td></tr>`), TOP)] : []),
+    /* the button: the link itself is padded and coloured, so that the whole green shape is the link and can be pressed anywhere on it. Outlook on Windows throws a link's padding away, so for Outlook alone the same padding is put on the table cell (mso-padding-alt), which also carries the colour: there it still looks like a button, though only its words can be pressed */
+    ...(issue.button ? [row(table(`<tr><td class="btn" align="center" bgcolor="${C.accent}" style="background-color:${C.accent};border-radius:8px;mso-padding-alt:${BUTTON.pad};">${a(issue.button.url, esc(issue.button.label), `display:inline-block;padding:${BUTTON.pad};mso-padding-alt:0;background-color:${C.accent};border-radius:8px;${font(17, 22, C.accentInk, 'font-weight:700;')}text-decoration:none;`)}</td></tr>`), TOP)] : []),
     row(`<div style="border-top:1px solid ${C.line};font-size:1px;line-height:1px;mso-line-height-rule:exactly;">&nbsp;</div>`, '34px 32px 0 32px'),
     row(`<p style="margin:0 0 8px 0;${font(14, 21, C.muted)}">You are getting this because you asked for the weekly digest from AI Resource Hub. ${a(TAGS.unsubscribe, 'Stop these emails', `color:${C.soft};text-decoration:underline;`)}.</p><p style="margin:0;${font(14, 21, C.muted)}">AI Resource Hub, ${TAGS.address}</p>`, '20px 32px 36px 32px'),
   ];
@@ -78,6 +79,7 @@ export function html(issue) { validate(issue); const when = longDate(issue.date)
 body{margin:0;padding:0;width:100%!important;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%}
 table{mso-table-lspace:0;mso-table-rspace:0}
 a:focus{outline:3px solid ${C.accent};outline-offset:2px}
+.btn a:focus{outline-color:${C.ink};outline-offset:3px}
 [data-ogsc] .btn a{color:${C.accentInk}!important}
 [data-ogsb] .btn{background-color:${C.accent}!important}
 @media (max-width:480px){.px{padding-left:20px!important;padding-right:20px!important}.h1{font-size:40px!important;line-height:42px!important}.fig{font-size:26px!important;line-height:30px!important}}

@@ -56,7 +56,7 @@ The second and third need the site's development packages (Playwright and axe-co
 
 ## Honest limits
 
-- No email program has opened it. The checks are rules, and rules are not the same as seeing it in Outlook, Gmail or Apple Mail. Before a first real send it has to be sent to test inboxes. Things most likely to differ there, none of them seen: Outlook on Windows ignores rounded corners and some spacing; some programs lighten or invert a dark email in their own dark mode (two lines in the style block are there for Outlook's, untested); a phone may turn the date or the address into a link.
+- No email program has opened it. The checks are rules, and rules are not the same as seeing it in Outlook, Gmail or Apple Mail. Before a first real send it has to be sent to test inboxes. Things most likely to differ there, none of them seen: Outlook on Windows ignores rounded corners and some spacing, and is expected to let only the button's words be pressed, not the green round them (everywhere else the whole button is the link); some programs lighten or invert a dark email in their own dark mode (two lines in the style block are there for Outlook's, untested); a phone may turn the date or the address into a link.
 - The checks cannot see layout. They do not know whether something sticks out. That is checked in a browser, on the sample and on five awkward issues, not on whatever an editor writes next.
 - Nothing sends it. A real newsletter needs a sending service, a list of people who asked for it, and a working way to stop. The sending service also has to add the one-click unsubscribe headers that Gmail and Yahoo ask of bulk senders, and its tracked links and encoding make the email bigger than the size measured here. None of that is here, and none of it should be added without Kol's say-so.
 - The template has a place for a way to stop the emails and for who sent them. Whether a given send meets the law is for whoever sends it to check; nothing here is legal advice.
@@ -67,4 +67,4 @@ The second and third need the site's development packages (Playwright and axe-co
 
 ## Status
 
-Unlisted. The preview page and the email file both carry `noindex`, and neither is in the gallery or the sitemap. Nothing here is published or sent.
+Unlisted draft. The preview page and the email file both carry `noindex`, and neither is in the gallery or the sitemap. Nothing here is published or sent. The site deploys its main branch, so merging this would put the preview page and the email file on the live site at /demos/hub-digest/, where anyone with the address could open them.
