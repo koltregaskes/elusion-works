@@ -134,7 +134,7 @@
     const go = () => { const p = film.play(); if (p && p.then) p.then(() => { oops.textContent = ''; }, e => { if (!e || e.name !== 'AbortError') problem('The film did not start.'); }); };
     function retry() { oops.textContent = ''; if (film.error || film.networkState === 3) { film.addEventListener('loadedmetadata', () => { film.currentTime = wanted; go(); }, { once: true }); film.load(); } else { film.currentTime = wanted; go(); } }
     const failed = () => problem('The film could not be loaded.'); film.addEventListener('error', failed); film.querySelector('source').addEventListener('error', failed);
-    for (const r of rows) { const b = r.querySelector('.t'); b.disabled = false; b.addEventListener('click', async e => { wanted = Number(e.currentTarget.dataset.at); film.currentTime = wanted; mark(); await reveal(); go(); }); } // the times only become buttons once this script is running
+    for (const r of rows) { const b = r.querySelector('.t'); b.disabled = false; b.addEventListener('click', async e => { wanted = Number(e.currentTarget.dataset.at); film.pause(); /* a film already playing waits at the chosen line while the page brings it into view: it must not run on out of sight */ film.currentTime = wanted; mark(); await reveal(); go(); }); } // the times only become buttons once this script is running
     document.getElementById('how').hidden = false;
     film.addEventListener('timeupdate', mark); film.addEventListener('seeked', mark);
   })();

@@ -101,6 +101,16 @@ ChatGPT in chat mode at Pro, driven by another Claude session at Kol's request, 
 
 Found on the way, not raised by the outside review: the page's lede used an en dash in the essay's title, where the essay uses a hyphen; it is now a hyphen. The film's end credit (scene 7) still has that en dash, burned into the picture; changing it means a new render, which was not done. A smoke check that compares frames from different scenes failed once when the machine was very busy and passed on the runs after; it is the old check, unchanged.
 
+### Fix check, 18 November 2026
+
+The same outside reviewer read the fixes above the next morning and moved its score from 6.5 to 7 out of 10, still HOLD.
+
+| Finding | What was done | Held by |
+|---|---|---|
+| Pressing a time while the film was already playing did not pause it, so it ran on from the chosen line, out of sight, while the page was still bringing it into view | True. A playing film is now paused at the chosen line, brought into view, and only then played | `smoke.mjs`: with the film playing and off screen, a pressed time gives a pause, then a start in view within 0.3 s of that line. With the fix taken out the check fails |
+| The film is not readable in normal phone playback; a note is not a phone version | Still true. A phone cut of the film is a redesign and a new render. Listed under Not verified and Known limits | Kol |
+| Nobody independent has watched and heard the film | Still true | Kol |
+
 ## Provenance
 
 - Model: Claude Fable 5.2 (`claude-fable-5-2`), Claude Code cloud session, high effort.
