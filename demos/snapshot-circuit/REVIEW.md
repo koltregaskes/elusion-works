@@ -64,7 +64,7 @@ Verified by running, in Node and in headless Chromium 153.
 - Objects are found by colour and contrast, not by recognising what they are, so they are named by colour ("Yellow object").
 - The record time is kept for the sample photograph only.
 - Back on the road puts you on the centre of the road at the point the race already has you, standing still. It never moves you further round.
-- Single-letter shortcuts (C, M, P, R and W A S D) cannot be switched off or changed. See Outside review.
+- The letter keys (C, M, P, R and W A S D) can be switched off on the start card but not changed to other keys. On a window 480 px tall or less the switch is hidden with the rest of the key list.
 - Without WebGL the page shows a notice only; there is no 2D version.
 
 ## Independent review
@@ -105,7 +105,7 @@ Reviewed by ChatGPT in chat mode at Pro, driven by another Claude session at the
 | Start can be pressed before a track exists | True: pressing Start or Enter while the sample was loading threw an error. Fixed: Start is switched off until there is a circuit, and the card says the sample is being read | `smoke.mjs` (sample held back on purpose) |
 | A failed sample-photo load is not handled | True: an error, a blank card, and no frames drawn even after choosing your own photo. Fixed: the card says the sample could not be loaded and offers to try again or use your own photo; the drawing loop runs either way | `smoke.mjs` (sample blocked, then retried and raced) |
 | Photo swaps leave textures, materials and geometries on the graphics card | True by reading and by count: on the old page, 20 swaps took live WebGL textures from 1 to 21 and buffers from 216 to 4,536. Fixed: everything the old photograph used is released before the new one is built | `smoke.mjs` (21 swaps, memory count unchanged) |
-| Single-letter shortcuts cannot be turned off, changed or limited to focus (WCAG 2.1.4) | True. Not done: it needs a decision from Kol (a switch for letter keys, or arrows, Escape and buttons only). Arrow keys and Escape already cover steering and pause | None |
+| Single-letter shortcuts cannot be turned off, changed or limited to focus (WCAG 2.1.4) | True. First left for Kol to decide; done on 18 November after the reviewer's fix check raised it again. A switch on the start card turns the letter keys off, and the choice is kept. Every letter already had a button, and the arrows and Escape cover steering and pause | Browser check: with the switch off, W, P, C, M and R do nothing and the arrows, Escape and the buttons still work; the choice survives a refresh |
 | The race canvas has no `tabindex`, so focusing it does nothing | True, though harmless in practice (focus fell to the page, where the keys still work). Fixed with `tabindex="-1"` | `smoke.mjs` Tab-order check still passes |
 | Racing view looks like a basic prototype: primitive karts, flat lighting, empty black horizon | True. Two small changes only: the black sky is now a charcoal haze that the table fades into, and each kart has a soft shadow under it. Karts, lighting, wheel and steering animation, and a tabletop setting were not redesigned; that needs Kol's direction and a real screen | Screenshots before and after, looked at; not a test |
 | Visual slice on real hardware, 20-second clip, reference set, frame timing, listening to the sound | Not done: no real device, no person to watch or listen here | None |
@@ -113,6 +113,19 @@ Reviewed by ChatGPT in chat mode at Pro, driven by another Claude session at the
 | No usable fallback without WebGL | True. Not done: a 2D version is a new build. Listed under Known limits | None |
 | The 660-case sweep uses made-up layouts, not photographs; full races mostly use the autopilot | True, and already said under Checks run and Not verified | This file |
 | (From the outside review of Still Water, which uses the same Kodak suite.) Permission to reuse the photograph is not established, and the page said it was "released by Eastman Kodak for unrestricted use" as fact | True. The credit line, the README and this file now call it a stand-in test image whose terms are not settled, to be replaced with Kol's own photograph before the page is merged or made public. The photograph itself is not replaced: that needs Kol's own picture | Browser check: the credit says so and makes no claim that it is free to use |
+
+### Fix check, 18 November 2026
+
+The same outside reviewer read the fixes above the next morning and moved its score from 6 to 7 out of 10, still HOLD.
+
+| Finding | What was done | Held by |
+|---|---|---|
+| A comment written part way along a line of the browser check had swallowed two assertions: that R puts the kart back on the road, and that the page says so | True. Restored. Both pass, so the page had been doing the right thing; it was the check that was not looking | `smoke.mjs` |
+| The letter keys still cannot be switched off | Done: see the row above | `smoke.mjs` |
+| The Kodak sample is still in the branch with its terms unsettled | Still true, and still a block on merging. It needs Kol's own photograph | Kol |
+| Kart design, wheel and steering movement, the setting, reference comparisons and footage from a real device | Not done: a visual redesign, and nothing here can film a real device | Kol |
+
+The start card was made 40 px taller at most, so that it still fits a 1280 by 800 window with the new switch on it.
 
 ## Provenance
 

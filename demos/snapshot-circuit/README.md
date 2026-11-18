@@ -14,6 +14,7 @@ Use it as the reference for small browser games and for anything that turns a pi
 - Three laps against two computer drivers. Laps only count if you take the checkpoints in order, so short cuts and reversing earn nothing.
 - Two views (behind the kart, and from above), a map made of the photograph itself, pause, and a button that puts you back on the road.
 - **Use your own photo** builds a new circuit from any picture. The picture is read in the page and is never uploaded. Very wide or tall pictures are cut to their middle.
+- **Keys.** Arrows steer, go and brake; Escape pauses. The letter keys (W A S D, R, C, P, M) do the same jobs as the buttons, and a switch on the start card turns them off for anyone who speaks to their computer.
 - Keyboard on a computer; on a phone the kart drives itself forward and you steer and brake with on-screen buttons.
 - Small synthesised sounds (engine, bump, boost, lap), with a mute button.
 

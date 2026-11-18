@@ -187,9 +187,11 @@ const KEYMAP = { ArrowLeft: 'left', a: 'left', ArrowRight: 'right', d: 'right', 
 function setPaused(on) { if (mode !== 'race' || on === paused) return; paused = on; $('pause').setAttribute('aria-pressed', String(on)); $('pause').textContent = on ? 'Resume' : 'Pause'; clearTimeout(sayTimer); $('say').textContent = on ? 'Paused' : ''; if (on) audio.engine(0, false); for (const k in keys) keys[k] = false; wantBack = false; }
 function setTop(on) { topView = on; $('cam').setAttribute('aria-pressed', String(on)); }
 function setSound(on) { soundOn = on; $('sound').setAttribute('aria-pressed', String(on)); try { localStorage.setItem('snapshot-circuit:sound', on ? '1' : '0'); } catch (err) { /* fine without */ } }
+let lettersOn = true; function setLetters(on) { lettersOn = on; $('letters').checked = on; if (!on) for (const k of ['left', 'right', 'up', 'down']) keys[k] = false; try { localStorage.setItem('snapshot-circuit:letters', on ? '1' : '0'); } catch (err) { /* fine without */ } }
 function backOnRoad() { if (mode === 'race' && race.go && !paused) wantBack = true; } // done by the next step of the race, like any other control
 addEventListener('keydown', e => {
   if (e.ctrlKey || e.metaKey || e.altKey) return; const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, onButton = e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT';
+  if (!lettersOn && /^[a-z]$/.test(k)) return; /* letter keys switched off: the arrows, Escape, Enter, Space and the buttons still do everything */
   if (KEYMAP[k] && mode === 'race') { if (!paused) keys[KEYMAP[k]] = true; e.preventDefault(); return; }
   if (onButton && (k === 'Enter' || k === ' ')) return; // those two belong to the button that has the focus
   if (k === 'c') setTop(!topView); else if (k === 'm') setSound(!soundOn); else if (k === 'p' || k === 'Escape') setPaused(!paused); else if (k === 'r') backOnRoad(); else if (k === 'Enter' && mode !== 'race') startRace();
@@ -212,10 +214,11 @@ async function loadSample() { // true when the sample is in place; if it cannot 
 
 // ---- Go ---------------------------------------------------------------------------------------------------------------
 try { soundOn = localStorage.getItem('snapshot-circuit:sound') !== '0'; } catch (err) { /* default on */ }
+try { setLetters(localStorage.getItem('snapshot-circuit:letters') !== '0'); } catch (err) { /* default on */ } $('letters').addEventListener('change', e => setLetters(e.target.checked));
 $('sound').setAttribute('aria-pressed', String(soundOn)); setTop(topView); resize(); hud(false);
 window.snapshotCircuit = { // for the automated checks
   ready: (requestAnimationFrame(frame), loadSample()),
-  state: () => ({ mode, paused, topView, soundOn, photoKey, method: analysis.method, t: race.t, go: race.go, lap: race.karts[0].lap, place: standings(race).indexOf(0) + 1, v: race.karts[0].v, done: race.karts.map(k => k.done), order: [...race.order],
+  state: () => ({ mode, paused, topView, soundOn, lettersOn, photoKey, method: analysis.method, t: race.t, go: race.go, lap: race.karts[0].lap, place: standings(race).indexOf(0) + 1, v: race.karts[0].v, done: race.karts.map(k => k.done), order: [...race.order],
     blobs: analysis.blobs.map(b => ({ x: b.x, y: b.y, name: b.name, role: b.role })), hazards: track.hazards.map(h => ({ x: h.x, z: h.z, r: h.r, photo: toPhoto(h.x, h.z, track.H) })), flat: track.flat.length, cropped, size: [photo.width, photo.height], pickups: track.pickups.length, length: track.length }),
   start: startRace, autopilot: on => { auto = on; }, usePhoto, gpu: () => ({ ...renderer.info.memory }),
   fast(n) { let i = 0; for (; i < n && mode === 'race'; i++) advance(); return i; }, // run the race ahead without waiting for frames

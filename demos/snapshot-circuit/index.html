@@ -51,7 +51,7 @@
   .touch #speed { bottom:max(104px,calc(env(safe-area-inset-bottom) + 104px)); }
 
   /* Cards: start and finish */
-  .card { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); width:min(94vw,720px); max-height:min(92vh,640px); overflow:auto; padding:22px 24px; border-radius:18px; background:var(--panel); border:1px solid var(--line); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); box-shadow:0 30px 80px rgba(0,0,0,.55); }
+  .card { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); width:min(94vw,720px); max-height:min(92vh,680px); overflow:auto; padding:22px 24px; border-radius:18px; background:var(--panel); border:1px solid var(--line); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); box-shadow:0 30px 80px rgba(0,0,0,.55); }
   [hidden] { display:none !important; }
   h1 { margin:8px 0 6px; font-size:clamp(30px,5.4vw,52px); line-height:.95; font-weight:800; letter-spacing:-.035em; }
   h2 { margin:8px 0 6px; font-size:clamp(26px,4.4vw,40px); line-height:1; font-weight:800; letter-spacing:-.03em; }
@@ -66,7 +66,7 @@
   .note { margin:8px 0 0; font-size:12px; color:var(--muted); }
   .note a { color:var(--ink); text-decoration:underline; text-underline-offset:2px; } .idea { order:4; }
   .actions { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
-  .keys { margin:14px 0 0; font-size:12px; color:var(--muted); } .keys kbd { font:600 11px var(--mono); padding:1px 6px; border-radius:5px; border:1px solid var(--line); background:rgba(255,255,255,.06); color:var(--ink); }
+  .keys { margin:14px 0 0; font-size:12px; color:var(--muted); } .opt { margin-top:8px; } .opt label { display:block; min-height:24px; cursor:pointer; } .opt input { width:16px; height:16px; margin:0 6px 0 0; vertical-align:-3px; accent-color:var(--accent); } .keys kbd { font:600 11px var(--mono); padding:1px 6px; border-radius:5px; border:1px solid var(--line); background:rgba(255,255,255,.06); color:var(--ink); }
   .result { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin:12px 0 16px; } .result .stat { min-width:0; }
   #fallback { position:fixed; inset:0; display:none; place-items:center; padding:28px; text-align:center; background:var(--bg); z-index:9; } #fallback p { max-width:460px; color:#d7dce0; }
 
@@ -125,6 +125,7 @@
     <button class="btn" id="sample" type="button" hidden>Back to the sample photo</button>
   </div>
   <p class="keys"><kbd>←</kbd> <kbd>→</kbd> steer · <kbd>↑</kbd> go · <kbd>↓</kbd> brake · <kbd>R</kbd> back on road · <kbd>C</kbd> view · <kbd>P</kbd> pause · <kbd>M</kbd> sound. On a phone, your kart drives itself forward: steer and brake with the buttons. Your own photo stays on your device.</p>
+  <p class="keys opt"><label for="letters"><input type="checkbox" id="letters" checked> Letter keys on. Untick if you speak to your computer: the arrows, Escape and the buttons do everything.</label></p>
   <p class="note idea">After <a href="https://x.com/danshipper/status/2119869228207546638" rel="noopener">a post by Dan Shipper</a> about a photograph turned into a racing game. This is an original build: the code, the circuit maker and the karts were written for this page.</p>
 </section>
 
