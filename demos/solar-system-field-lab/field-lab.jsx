@@ -807,9 +807,15 @@ const Foot = () => (
           <a href="https://koltregaskesphotography.com/">KT Photography</a>
         </div>
       </div>
+      <p id="data-provenance">Moon counts: Jupiter 115, Saturn 293, Uranus 29, Neptune 16.
+        Source: <a href="https://ssd.jpl.nasa.gov/sats/discovery.html">JPL IAU-recognised satellite table</a>, accessed 16 November 2026.
+        Cross-checks: <a href="https://science.nasa.gov/uranus/moons/">NASA Uranus moons</a> and <a href="https://science.nasa.gov/neptune/moons/">NASA Neptune moons</a>, accessed 16 November 2026.
+        Counts can change as discoveries are recognised. Other figures and prose remain unverified in this edition.
+        Orbit paths, sizes, interiors and procedural textures are simplified educational models, not measurements or spacecraft images.
+      </p>
       <div className="row" style={{marginTop:24, alignItems:'center'}}>
         <div className="tele sm">© Elusion Works / Kol Tregaskes · v0.2 · dark-mode</div>
-        <div className="tele sm">data · NASA fact sheets · simplified Kepler · 2026</div>
+        <div className="tele sm">Moon counts checked 16 November 2026 · JPL IAU-recognised satellites</div>
       </div>
     </div>
   </footer>

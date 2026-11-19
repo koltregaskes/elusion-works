@@ -284,6 +284,7 @@ const PlanetPage = ({ planetKey, onClose, onNavigate }) => {
 
   return (
     <div className="planet-page">
+      <p>Moon-count edition: <a href="https://ssd.jpl.nasa.gov/sats/discovery.html">JPL IAU-recognised satellites</a>, checked 16 November 2026. Other figures remain unverified educational approximations.</p>
       <div className="pp-top">
         <div className="crumbs">
           <a onClick={onClose}>← Field Lab</a>

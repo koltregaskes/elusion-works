@@ -1,10 +1,10 @@
 /* ============================================================
    Nexus Aetherial — real model dataset
    ----------------------------------------------------------------
-   Figures are plausible, drawn from publicly-reported benchmark
-   scores and product pages as of mid-2026. Treat as illustrative;
-   the site is a design demonstration, not a live leaderboard.
-   ============================================================ */
+   Illustrative static design data with no primary citations. No dates, model
+   specifications, benchmark scores or prices in this fixture are verified.
+   There is no live feed or automatic data refresh.
+*/
 
 window.NEXUS_DATA = {
   models: [
@@ -181,14 +181,14 @@ window.NEXUS_DATA = {
   ],
 
   releases: [
-    { code: 'GPT-5',         headline: 'ADAPTIVE REASONING ROUTER LIVE',          t: 'NOW',  family: 'OpenAI' },
-    { code: 'Claude Opus 4.5', headline: 'SWE-BENCH VERIFIED · NEW HIGH 80.2',    t: 'T\u22124M', family: 'Anthropic' },
-    { code: 'Gemini 2.5 Pro',headline: '2M TOKEN CONTEXT GENERALLY AVAILABLE',    t: 'T\u221218M',family: 'Google DeepMind' },
-    { code: 'Grok 4',        headline: 'HUMANITY\u2019S LAST EXAM · UPDATED',     t: 'T\u22122H', family: 'xAI' },
-    { code: 'Kimi K2',       headline: 'AGENTIC HARNESS PUBLISHED · OSS',          t: 'T\u22125H', family: 'Moonshot AI' },
-    { code: 'DeepSeek V3.1', headline: 'CHECKPOINT EXPORT \u00B7 HF MIRROR',       t: 'T\u22127H', family: 'DeepSeek' },
-    { code: 'Llama 4 Maverick', headline: 'LATENCY DROP \u00B7 18% ON H200',       t: 'T\u221211H',family: 'Meta' },
-    { code: 'Qwen3 Max',     headline: 'VISION TOWER UPGRADED \u00B7 + 4.2 GPQA',  t: 'T\u221216H',family: 'Alibaba' },
+    { code: 'GPT-5',         headline: 'EXAMPLE REASONING ROUTER',          t: 'EXAMPLE',  family: 'OpenAI' },
+    { code: 'Claude Opus 4.5', headline: 'SWE-BENCH VERIFIED · NEW HIGH 80.2',    t: 'EXAMPLE', family: 'Anthropic' },
+    { code: 'Gemini 2.5 Pro',headline: '2M TOKEN CONTEXT GENERALLY AVAILABLE',    t: 'EXAMPLE',family: 'Google DeepMind' },
+    { code: 'Grok 4',        headline: 'HUMANITY\u2019S LAST EXAM · UPDATED',     t: 'EXAMPLE', family: 'xAI' },
+    { code: 'Kimi K2',       headline: 'AGENTIC HARNESS PUBLISHED · OSS',          t: 'EXAMPLE', family: 'Moonshot AI' },
+    { code: 'DeepSeek V3.1', headline: 'CHECKPOINT EXPORT \u00B7 HF MIRROR',       t: 'EXAMPLE', family: 'DeepSeek' },
+    { code: 'Llama 4 Maverick', headline: 'LATENCY DROP \u00B7 18% ON H200',       t: 'EXAMPLE',family: 'Meta' },
+    { code: 'Qwen3 Max',     headline: 'VISION TOWER UPGRADED \u00B7 + 4.2 GPQA',  t: 'EXAMPLE',family: 'Alibaba' },
   ],
 
   /* Benchmark suites — pick any subset for the matrix radar */

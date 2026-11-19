@@ -161,8 +161,8 @@
 
     const suite = data.benchSuites.find(s => s.id === activeSuite);
     meta.textContent = view === 'suite'
-      ? `${rows.length} MODELS · ${suite.name} · UPDATED 06:21 UTC`
-      : `${rows.length} MODELS · ALL SUITES · UPDATED 06:21 UTC`;
+      ? `${rows.length} MODELS · ${suite.name} · ILLUSTRATIVE STATIC DATA`
+      : `${rows.length} MODELS · ALL SUITES · ILLUSTRATIVE STATIC DATA`;
   }
 
   function render() {
