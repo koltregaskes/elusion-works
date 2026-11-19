@@ -213,7 +213,9 @@ export class StudioUI {
       }
     });
     window.addEventListener('keydown', (e) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+      if (e.defaultPrevented || e.target.closest?.('input, select, textarea, [contenteditable]')) return;
+      // Let native controls own Space; the page shortcut is for the scene itself.
+      if (e.key === ' ' && e.target.closest?.('button, a[href], summary')) return;
       if (e.key.toLowerCase() === 'h') document.body.classList.toggle('ui-hidden');
       if (/^[1-8]$/.test(e.key)) this.h.onPreset(Number(e.key) - 1);
       if (e.key.toLowerCase() === 't') this.h.onDrive();
