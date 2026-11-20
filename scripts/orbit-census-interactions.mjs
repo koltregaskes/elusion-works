@@ -21,6 +21,10 @@ const OBJ = [
   ['HULIANWANG DIGUI-01', 59001, '2024-210A', 'PAY', 'PRC', '2024-11-11', 'XSC', null, 'active', 13.2, 0.001, 86.5, 40, 0, 100],
   ['O3B MPOWER F7', 59002, '2024-180A', 'PAY', 'O3B', '2024-10-01', 'AFETR', null, 'active', 5.0, 0.0002, 0.05, 0, 0, 200],
   ['RASSVET-1', 59003, '2025-010A', 'PAY', 'CIS', '2025-01-20', 'PKMTR', null, 'active', 15.0, 0.001, 97.6, 300, 0, 250],
+  // Same launch (2020-001A/B: the worker compares the first 8 characters) on the same elements.
+  // Excluded as a known same-launch pair before the speed rule, so it must not add to the slow count.
+  ['STACK A', 59010, '2020-001A', 'PAY', 'US', '2020-01-07', 'AFETR', null, 'active', 14.2, 0.001, 45, 210, 0, 30],
+  ['STACK B', 59011, '2020-001B', 'PAY', 'US', '2020-01-07', 'AFETR', null, 'active', 14.2, 0.001, 45, 210, 0, 30],
   // Matched in SATCAT (has a launch date) but no radar size; and one with no SATCAT match at all.
   ['TESTSAT MATCHED', 59004, '2023-001A', 'PAY', 'US', '2023-01-03', 'AFETR', null, 'active', 14.9, 0.001, 53, 10, 0, 300],
   ['TESTSAT UNMATCHED', 59005, '2023-002A', 'PAY', '', '', '', null, 'last-30-days', 14.8, 0.001, 70, 200, 0, 50],
@@ -103,9 +107,9 @@ try {
   // close-approach card: criteria stated; co-moving ISS pair counted, not listed; honest empty state
   await p.waitForFunction(() => !/Screening/.test(document.querySelector('#conj').textContent));
   const conj = await p.evaluate(() => ({ none: document.querySelector('#conjNone')?.textContent || '', slow: document.querySelector('#conjSlow')?.textContent || '', note: document.querySelector('#conjNote').textContent, listed: document.querySelectorAll('#conj li[data-a]').length }));
-  check(/25 km/.test(conj.note) && /10 m\/s/.test(conj.note) && /different launches/.test(conj.note), 'card states all three screen rules', conj.note);
+  check(/25 km/.test(conj.note) && /10 m\/s/.test(conj.note) && /known same-launch pairs excluded/.test(conj.note) && !/different launches/.test(conj.note), 'card states all three screen rules, without claiming launches are known', conj.note);
   check(conj.listed === 0, 'co-moving ISS pair is not listed as an approach');
-  check(/^1 co-moving pair under 10 m\/s left out/.test(conj.slow), 'slow pair is counted on the card', conj.slow);
+  check(/^1 co-moving pair under 10 m\/s left out/.test(conj.slow), 'slow ISS pair counted; 2020-001A/B excluded by launch prefix through the worker', conj.slow);
   check(conj.none === "No pairs meet this screen's criteria right now.", 'empty state names the criteria, not "no pairs under 25 km"', conj.none);
   check(!errors.length, 'no page errors', errors.join(' | '));
   await ctx.close();

@@ -41,8 +41,8 @@ by type, regime, owner, constellation, debris event or element age; regime filte
 period, light/shadow, full SATCAT facts, orbit and ground track, next pass over the
 observer with visibility · 06 Distribution: live altitude histogram (drag to filter a
 band), inclination vs altitude, Gabbard diagram, launch year · 07 Close approaches:
-an instantaneous spatial-hash screen (`src/screen.js`) for pairs under 25 km, from different
-launches, moving at least 10 m/s apart; the card states all three rules, counts the slow
+an instantaneous spatial-hash screen (`src/screen.js`) for pairs under 25 km, moving at least
+10 m/s apart, with known same-launch pairs excluded (objects without a launch designator stay in); the card states all three rules, counts the slow
 pairs it leaves out, and says "No pairs meet this screen's criteria" when the list is empty
 (a distance screen, not a probability) · 08 Over you: count and list above 10° from one of
 18 cities (London by default), or from your location on request, which the picker then shows.

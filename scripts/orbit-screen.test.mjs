@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { screenPairs, SCREEN_KM, MIN_RELATIVE_KMS } from '../demos/orbit-census/src/screen.js';
+import { screenPairs, launchKey, SCREEN_KM, MIN_RELATIVE_KMS } from '../demos/orbit-census/src/screen.js';
 import { family, FAMILIES, MEGA } from '../demos/orbit-census/src/classify.js';
 
 // Scene units: 1 = 1000 km, velocity in 1000 km/s. Two objects ~6,800 km out, apart by `km` along x.
@@ -45,6 +45,24 @@ test('same launch is screened out; unpropagated objects are ignored', () => {
   assert.equal(pair(1, 3, ['2020-001A', '2020-001A']).pairs.length, 0);
   const pv = new Float32Array(12); pv.set([6.8, 0, 0, 0, 0, 0], 0); pv.set([6.801, 0, 0, 0.003, 0, 0], 6);
   assert.equal(screenPairs(pv, new Uint8Array([1, 0]), ['A', 'B']).pairs.length, 0);
+});
+
+test('unknown launch provenance is never treated as same-launch, in either order', () => {
+  // blank/blank and blank/known: listed at 11 m/s, counted as slow at 9 m/s
+  for (const launches of [['', ''], ['', '2020-001'], ['2020-001', '']]) {
+    const fast = pair(1, 0.011, launches);
+    assert.equal(fast.pairs.length, 1, `listed at 11 m/s: ${JSON.stringify(launches)}`);
+    const slow = pair(1, 0.009, launches);
+    assert.deepEqual([slow.pairs.length, slow.slow], [0, 1], `slow at 9 m/s: ${JSON.stringify(launches)}`);
+  }
+});
+
+test('the worker prefix makes 2020-001A and 2020-001B one known launch', () => {
+  const prefix = launchKey; // what worker.js stores per object
+  assert.equal(prefix('2020-001A'), prefix('2020-001B'));
+  assert.equal(pair(1, 3, ['2020-001A', '2020-001B'].map(prefix)).pairs.length, 0);
+  assert.equal(pair(1, 0.005, ['2020-001A', '2020-001B'].map(prefix)).slow, 0); // excluded before the speed rule
+  assert.equal(prefix(null), '');
 });
 
 test('results are sorted nearest first and capped', () => {

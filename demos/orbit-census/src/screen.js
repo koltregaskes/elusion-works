@@ -4,13 +4,18 @@
 //
 // Criteria, all three shown in the console so an empty list never reads as "nothing nearby":
 //   1. closer than SCREEN_KM right now (an instantaneous distance, not a probability);
-//   2. from different launches (same-launch trains and stacks would fill the list);
+//   2. not a known same-launch pair: two objects whose launch designators (first 8 characters,
+//      e.g. 2020-001) match and are non-empty are skipped (trains and stacks would fill the list).
+//      An object with no designator is never treated as same-launch, so such pairs stay listed;
+//      the card says "known same-launch pairs excluded", not "different launches";
 //   3. moving at least MIN_RELATIVE_KMS apart. This is a speed heuristic, not docking data: it keeps
 //      out co-moving pairs such as separately catalogued ISS modules, and would also hide any other
 //      pair drifting together more slowly than that. Those are counted in `slow`, not dropped silently.
 export const SCREEN_KM = 25;
 export const MIN_RELATIVE_KMS = 0.01; // 10 m/s
 export const SCREEN_MAX = 8;
+// Launch key the worker stores per object: the designator's first 8 characters (2020-001A -> 2020-001).
+export const launchKey = (id) => String(id || '').slice(0, 8);
 
 export function screenPairs(pv, ok, cospar, { limKm = SCREEN_KM, minRelKms = MIN_RELATIVE_KMS, max = SCREEN_MAX } = {}) {
   const n = ok.length; const cell = limKm / 1000; const map = new Map();

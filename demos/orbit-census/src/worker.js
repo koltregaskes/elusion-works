@@ -5,7 +5,7 @@
 // Scene units: 1 = 1000 km. TEME (x, y, z) maps to scene (x, z, -y) so +y is the north pole.
 import { json2satrec, sgp4, gstime, sunPos, eciToGeodetic, geodeticToEcf, ecfToLookAngles, eciToEcf } from '../vendor/satellite/index.js';
 import { rowToOmm } from './catalog.js';
-import { screenPairs } from './screen.js';
+import { screenPairs, launchKey } from './screen.js';
 
 const DAY = 86400000;
 const toJd = (ms) => ms / DAY + 2440587.5;
@@ -110,7 +110,7 @@ self.onmessage = (ev) => {
   if (m.type === 'init') {
     const t0 = performance.now(); let bad = 0;
     recs = m.rows.map((row) => { try { const r = json2satrec(rowToOmm(row)); if (r.error) { bad++; return null; } return r; } catch { bad++; return null; } });
-    cospar = m.rows.map((row) => String(row[2] || '').slice(0, 8));
+    cospar = m.rows.map((row) => launchKey(row[2]));
     self.postMessage({ type: 'ready', n: recs.length, bad, ms: performance.now() - t0 });
   } else if (m.type === 'prop') {
     const n = recs.length; const pv = new Float32Array(n * 6); const ok = new Uint8Array(n);

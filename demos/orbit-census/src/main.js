@@ -683,6 +683,6 @@ function setSource() {
   el.title=$('#dataNotice').textContent;
 }
 $('#retryBtn').addEventListener('click', () => location.reload());
-$('#conjNote').textContent = `Distance screen, not a collision probability: pairs under ${SCREEN_KM} km right now, from different launches, moving at least ${MIN_RELATIVE_KMS * 1000} m/s relative to each other.`;
+$('#conjNote').textContent = `Distance screen, not a collision probability: pairs under ${SCREEN_KM} km right now, moving at least ${MIN_RELATIVE_KMS * 1000} m/s relative to each other; known same-launch pairs excluded.`;
 window.__oc = { S, camera, controls, globe, flyTo, select, setLens };
 start();
