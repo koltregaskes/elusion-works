@@ -49,7 +49,7 @@ function finish() { const part = slowed > 0, top = !part && game.score > bestSco
   cover('Game over', '', [['Score', String(game.score)], ['Best this visit', String(bestScore)], ['Walls', String(game.passed)], ['Close shaves', String(game.shaves)], ['Best run', `×${1 + game.best}`], ['Level', String(G.levelOf(game.passed))], ...(part ? [['Speed', slowed === ticks ? 'Slower' : 'Slower for part of it']] : [])], 'Try again', true);
   $('c-title').focus({ preventScroll: true }); $('cover').scrollIntoView({ block: 'nearest' }); say(`Game over. ${many(game.score, 'point', 'points')}, ${many(game.passed, 'wall', 'walls')}, ${many(game.shaves, 'close shave', 'close shaves')}.${top && game.score ? ' Your best this visit.' : ''}`); }
 $('c-go').addEventListener('click', () => { if (mode === 'paused') resume(); else start(seed); });
-$('c-other').addEventListener('click', () => start(1 + Math.floor(Math.random() * 9999)));
+$('c-other').addEventListener('click', () => { let next = 1 + Math.floor(Math.random() * 9999); if (next === seed) next = next % 9999 + 1; /* New walls never hands back the seed you just had, which the draw would do once in 9,999 */ start(next); });
 $('pause').addEventListener('click', () => { if (mode === 'playing') pause(); else resume(); });
 /* A button pressed in the middle of a game hands the focus back to the room, so that the keys go on going to the game. */
 const back = () => { if (mode === 'playing') board.focus({ preventScroll: true }); };

@@ -87,6 +87,16 @@ A second, outside review was posted on the pull requests on 18 November 2026: Ch
 | Nobody has played it by hand or on a real phone, or heard the sound; survival by scripted players does not show it is fun or fair to a person | Still true. Listed under Not verified | |
 | The demo's own tests do not run in the repo's CI | Not done here: CI is shared by the whole site, and changing it is outside this demo's folder | |
 
+### Second-family review, 20 November 2026
+
+Codex, a model from a different family, read the code, tests and CI results on 19 November (relayed onto the pull request by another Claude session) and said to keep this in draft. It confirmed the two fixes above. Its test reviewer found one more fault.
+
+| Finding | What was done | Held by |
+|---|---|---|
+| "New walls" could start the same seed again: the draw is free to come up with the seed you just had, and the check accepted any seed | True, once in 9,999. If the draw gives the present seed, the next one is taken instead | `smoke.mjs`: with the draw forced to the present seed, New walls starts the next one (and goes round from 9999 to 1); Try again keeps the seed |
+| Nobody has played a run by keyboard or on a real phone, or heard the sound; scripted players show the walls can be reached, not that it is fun or fair to a person | Still true | Kol |
+| Whether `REVIEW.md` and `proof.jpg` are meant to stay as public files, given the repo's rule against temporary review artefacts | For Kol to say. This file is the review the brief asked each demo to carry; the picture is the evidence it points at | Kol |
+
 ## Provenance
 
 - No library, no font, picture or sound file. The sounds are made by the browser.
