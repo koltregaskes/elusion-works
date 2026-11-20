@@ -93,6 +93,20 @@ A second, outside review was posted on the pull request on 17 November 2026: Cha
 
 One fault turned up while writing the check, and it was not in the outside review. At large text, a link straight to the basket opened part way down the page: the browser put the basket itself at the top of the window, and the bar and the notice were scrolled out of sight. A view opened by its address now starts at the top of the page.
 
+### Second-family review, 20 November 2026
+
+Codex, a model from a different family, read the code, tests and CI results on 19 November (relayed onto the pull request by another Claude session) and said to keep this in draft. Its test reviewer said the keyboard check stopped short: it visited five controls of one print as they first stand, and never changed a choice or went on to the basket.
+
+The check now walks the whole journey by keyboard at four sizes: sizes and frames changed with the arrow keys, the count, Add to basket, back and forward through every control, the basket, Remove, Put it back, the order and the end. After every key, the control with the focus must be whole, inside the window and clear of the pinned bar and wall, ring included. Written that way it found three faults, all real and all small.
+
+| Finding | What was done | Held by |
+|---|---|---|
+| Moving to a size or frame with the arrow keys could leave its tile part way off the foot of the window. The browser brings the unseen radio box into sight, not the tile round it | The whole tile is brought into sight when the keyboard goes to it | `smoke.mjs`, the journey |
+| Enter on Add to basket adds the line "You have 2 of these" above the button, which pushed the button, still holding the focus, part way off the window | After anything you do, whatever has the focus is kept whole and in sight | the journey |
+| On a 320 phone, Shift and Tab back to "All six prints" in the basket stopped it under the pinned bar | Room is kept for the bar on every view, not only on a print | the journey |
+| Whether `REVIEW.md` and `proof.jpg` are meant to stay as public files, given the repo's rule against temporary review artefacts | For Kol to say. This file is the review the brief asked each demo to carry | Kol |
+| Nobody has done this on a real phone or heard a screen reader say the limit, the new total or the mock order | Still true | Kol |
+
 ## Provenance
 
 - No library, no font, picture or data file. The six pictures are drawn by `js/art.js`.

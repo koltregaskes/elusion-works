@@ -76,6 +76,11 @@ function show(quiet) { const r = route(), from = view === 'print' ? shown : null
   for (const v of VIEWS) $(v).hidden = v !== view; document.title = view === 'print' ? `${F.printOf(shown).ref} · ${TITLE}` : view === 'basket' ? `Your basket (${F.totals(basket).count}) · ${TITLE}` : view === 'done' ? `Nothing was bought · ${TITLE}` : TITLE;
   if (quiet) return; const back = view === 'prints' && from ? document.querySelector(`#grid li[data-print="${from}"] a`) : null; /* coming back from a print, you are put back at that print */
   if (back) { back.focus({ preventScroll: true }); back.closest('li').scrollIntoView({ block: 'center' }); } else { scrollTo(0, 0); $(view).querySelector('h1').focus({ preventScroll: true }); } }
+/* A size or a frame is a small unseen box inside its tile. When the keyboard moves to one, the browser brings only that box into sight, so the tile could be left part way off the window: the whole tile is brought in instead, with room for the ring round it. */
+document.addEventListener('focusin', e => { const tile = e.target.closest && e.target.closest('label.tile'); if (tile) tile.scrollIntoView({ block: 'nearest' }); });
+/* After anything you do, what has the focus stays whole and in sight. A line added above a button ("You have 2 of these") or a list drawn again can otherwise push the control you are on part way off the window. */
+const keep = () => requestAnimationFrame(() => { const a = document.activeElement; if (!a || a === document.body || !a.closest('main') || a.closest('.stage') || !a.getClientRects().length) return; (a.closest('label.tile') || a).scrollIntoView({ block: 'nearest' }); });
+for (const kind of ['click', 'change', 'submit']) document.addEventListener(kind, keep);
 addEventListener('hashchange', () => show(false));
 paintBag(); show(true);
 window.printSale = { state: () => ({ view, id: view === 'print' ? shown : null, choice: { ...choice }, basket: basket.map(l => ({ ...l })), totals: F.totals(basket), order: lastOrder, undo: undo ? { ...undo.line } : null }) }; /* for the checks in tools/ */
