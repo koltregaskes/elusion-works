@@ -20,7 +20,7 @@ rounded:
 ---
 
 ## Overview
-A weather application demo whose **background is driven by the current condition** (clear, cloud, rain, night) rather than a fixed palette. Foreground stays constant: warm off-white text over a single burnt-orange accent. Origin: Claude Design bundle (`Atmosphere-handoff.zip`, extracted at `W:\Websites\claude-designs\extracted\atmosphere\`). Tokens from its CSS.
+A weather application demo whose **background is driven by the current condition** (clear, cloud, rain, night) rather than a fixed palette. Foreground stays constant: warm off-white text over a single burnt-orange accent. Origin: Claude Design bundle (`Atmosphere-handoff.zip`, extracted to a private local design archive). Tokens from its CSS.
 
 ## Colors
 The palette is deliberately minimal in tokens because the **backdrop is dynamic** — condition-driven gradients. The fixed tokens are the foreground: warm off-white text in three opacity tiers (`text` / `text-soft` / `text-faint`) and a single burnt-orange accent (`#c2410c`).

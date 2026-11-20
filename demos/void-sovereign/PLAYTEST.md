@@ -110,9 +110,8 @@ Screenshots (Win+Shift+S) of anything odd are very welcome.
 
 ## 5. How to send feedback
 
-Reply on Linear **KOL-6021** with your answers and screenshots, or drop a note
-in `W:\agent-docs\handoffs\codex-2026-10\` named
-`HOMEWORLD-CLONE-PLAYTEST-<date>.md`. Your frame-rate numbers and your "what
+Email your answers and screenshots to contact@elusionworks.com with
+"Void Sovereign playtest" in the subject. Your frame-rate numbers and your "what
 breaks the illusion first" answer are the two most useful things.
 
 Latest critic score and history: `CRITIQUE-ROUND-*.md` in this folder. Round

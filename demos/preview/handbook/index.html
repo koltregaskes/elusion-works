@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Rooms OS handbook</title>
+<meta name="description" content="A sample handbook for Rooms OS, a way of running a team of AI agents: rooms and lanes, the hub, claims, evidence, approvals, handovers and safety. With search, code samples you can copy, and a light and a dark look.">
+<meta name="theme-color" content="#111315">
+<link rel="icon" href="../../../assets/favicon.svg" type="image/svg+xml">
+<!-- Unlisted until release is approved: remove the next line, then add the gallery card and sitemap entry. -->
+<meta name="robots" content="noindex,nofollow">
+<style>
+  :root { --bg:#111315; --side:#15181a; --card:#191c1f; --line:rgba(255,255,255,.14); --ink:#f4f5f3; --soft:#d6dbde; --muted:#a9b1b6; --accent:#3fe08a; --accent-ink:#06210f; --link:#3fe08a; --edge:#7b858b;
+    --sans:"Helvetica Neue","Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif; --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace; --bar:58px; --strip:calc(1.875rem + 1px); --top:calc(var(--bar) + var(--strip)); color-scheme:dark; } /* --bar is the bar across the top, --strip the demo notice under it, --top the two together */
+  :root[data-theme="light"] { --bg:#f7f8f6; --side:#eff1ee; --card:#ffffff; --line:rgba(20,23,26,.16); --ink:#14171a; --soft:#2c3236; --muted:#566065; --accent:#0b7a46; --accent-ink:#ffffff; --link:#0b7a46; --edge:#6a7479; color-scheme:light; }
+  @media (prefers-color-scheme:light) { :root:not([data-theme]) { --bg:#f7f8f6; --side:#eff1ee; --card:#ffffff; --line:rgba(20,23,26,.16); --ink:#14171a; --soft:#2c3236; --muted:#566065; --accent:#0b7a46; --accent-ink:#ffffff; --link:#0b7a46; --edge:#6a7479; color-scheme:light; } }
+  * { box-sizing:border-box; }
+  html { background:var(--bg); font-size:100%; -webkit-text-size-adjust:100%; }
+  /* What a link goes to stops clear of the bar at the top. This is set on the things gone to, not as padding on the page: padding would also make the browser scroll the page to the top whenever the search box or a button in the bar took the focus. */
+  main, main article, h1, h2, .code, .scroll { scroll-margin-top:calc(var(--top) + 1rem); }
+  body { margin:0; background:var(--bg); color:var(--ink); font:1rem/1.6 var(--sans); }
+  [hidden]:not([hidden="until-found"]) { display:none !important; } /* pages not shown are hidden "until found": a browser's own Find can look inside them, where it knows how */
+  a { color:var(--link); text-underline-offset:3px; } button, input { font:inherit; color:inherit; }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:6px; }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+  .skip { position:absolute; left:12px; top:-60px; z-index:30; padding:9px 13px; border-radius:8px; background:var(--accent); color:var(--accent-ink); font-weight:700; text-decoration:none; } .skip:focus { top:10px; }
+
+  /* The bar across the top: name, search, light or dark. */
+  #bar { position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:12px; height:var(--bar); padding:0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)); background:var(--bg); border-bottom:1px solid var(--line); }
+  #bar .name { font-weight:800; letter-spacing:-.02em; font-size:1.0625rem; white-space:nowrap; text-decoration:none; color:var(--ink); } #bar .name span { color:var(--accent); }
+  .btn { min-height:38px; padding:0 13px; border-radius:10px; border:1px solid var(--line); background:transparent; font-weight:700; font-size:0.875rem; cursor:pointer; white-space:nowrap; }
+  #find { position:relative; flex:1 1 auto; max-width:460px; margin-left:auto; }
+  #q { width:100%; min-height:38px; padding:0 12px 0 34px; border-radius:10px; border:1px solid var(--edge); background:var(--card); font-size:0.9375rem; } #q::placeholder { color:var(--muted); opacity:1; }
+  #find::before { content:""; position:absolute; left:12px; top:50%; width:11px; height:11px; margin-top:-8px; border:2px solid var(--muted); border-radius:50%; pointer-events:none; } #find::after { content:""; position:absolute; left:23px; top:50%; width:7px; height:2px; margin-top:4px; background:var(--muted); transform:rotate(45deg); pointer-events:none; }
+  #results { position:absolute; left:0; right:0; top:calc(100% + 6px); margin:0; padding:6px; list-style:none; max-height:min(70vh, 520px); overflow:auto; border-radius:12px; border:1px solid var(--line); background:var(--card); box-shadow:0 18px 50px rgba(0,0,0,.35); }
+  /* The demo notice: always in view under the bar, on every page and every section link, with scripts on or off. Plain words, in the house colours. */
+  #demo-note { position:sticky; top:var(--bar); z-index:19; margin:0; padding:0.3125rem max(16px, env(safe-area-inset-right)) 0.3125rem max(16px, env(safe-area-inset-left)); font-size:0.8125rem; line-height:1.25rem; color:var(--soft); background:var(--side); border-bottom:1px solid var(--line); } #demo-note strong { color:var(--ink); }
+  @media (max-width:900px) { #demo-note .more { display:none; } }
+  #results li { padding:8px 10px; border-radius:8px; cursor:pointer; } #results li[aria-selected="true"] { background:color-mix(in srgb, var(--accent) 16%, transparent); outline:1px solid var(--accent); }
+  #results .where { display:block; font-weight:700; font-size:0.9062rem; } #results .where small { font-weight:500; color:var(--muted); font-size:0.7812rem; } #results .bit { display:block; font-size:0.8125rem; color:var(--soft); line-height:1.45; }
+  #results .none { cursor:default; color:var(--muted); font-size:0.875rem; }
+  mark { background:color-mix(in srgb, var(--accent) 30%, transparent); color:var(--ink); border-radius:3px; padding:0 2px; box-shadow:0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent); } /* found words are marked in the one green, not a second colour */
+
+  /* Three columns: the pages, the page, what is on it. */
+  .cols { display:grid; grid-template-columns:260px minmax(0, 1fr) 220px; max-width:1320px; margin:0 auto; }
+  #side { position:sticky; top:var(--top); align-self:start; height:calc(100vh - var(--top)); overflow:auto; padding:22px 14px 30px 18px; border-right:1px solid var(--line); background:var(--side); }
+  #side p { margin:0 0 8px 8px; font:600 0.6875rem/1.2 var(--mono); letter-spacing:.18em; text-transform:uppercase; color:var(--muted); }
+  #side ol { margin:0; padding:0; list-style:none; } #side a { display:block; padding:7px 9px; border-radius:8px; color:var(--soft); text-decoration:none; font-size:0.9375rem; } #side a:hover { color:var(--ink); background:color-mix(in srgb, var(--ink) 7%, transparent); }
+  #side a[aria-current="page"] { color:var(--ink); font-weight:700; background:color-mix(in srgb, var(--accent) 15%, transparent); box-shadow:inset 3px 0 0 var(--accent); }
+  main { min-width:0; padding:34px clamp(18px, 4vw, 56px) 70px; }
+  article { max-width:70ch; } .js-off article + article { margin-top:70px; padding-top:40px; border-top:1px solid var(--line); } /* with scripts off the pages follow one another, with a rule between them */
+  .eyebrow { margin:0; font:600 0.6875rem/1.2 var(--mono); letter-spacing:.2em; text-transform:uppercase; color:var(--accent); }
+  h1 { margin:10px 0 14px; font-size:clamp(2.375rem, 6vw, 3.875rem); line-height:.95; font-weight:800; letter-spacing:-.045em; } h1:focus { outline:none; }
+  h2 { margin:44px 0 10px; font-size:1.625rem; line-height:1.15; font-weight:800; letter-spacing:-.025em; } h2 a { color:inherit; text-decoration:none; } h2 a:hover::after { content:" #"; color:var(--muted); }
+  .lede { font-size:1.1875rem; color:var(--soft); } p, li { color:var(--soft); } article ul, article ol { padding-left:22px; } article li { margin-bottom:6px; } strong { color:var(--ink); }
+  .note { margin:18px 0; padding:12px 14px; border-radius:12px; border:1px solid var(--line); border-left:4px solid var(--accent); background:var(--card); } .note p { margin:0; }
+  code { font:0.9em var(--mono); padding:1px 5px; border-radius:5px; background:color-mix(in srgb, var(--ink) 9%, transparent); color:var(--ink); }
+  .code { position:relative; margin:16px 0; border-radius:12px; border:1px solid var(--line); background:var(--card); } .code pre { margin:0; padding:40px 16px 14px; overflow-x:auto; font:0.8438rem/1.6 var(--mono); color:var(--soft); tab-size:2; } .code pre code { padding:0; background:none; font:inherit; }
+  .code .lang { position:absolute; right:74px; top:9px; font:600 0.6562rem/1 var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--muted); } .code .copy { position:absolute; right:8px; top:6px; min-height:28px; padding:0 10px; border-radius:8px; border:1px solid var(--line); background:var(--bg); font:700 0.75rem/1 var(--sans); cursor:pointer; }
+  /* Code is coloured in the house colours only: comments quiet and sloped, strings in the one green, keywords and names in bold ink. */ .t-comment { color:var(--muted); font-style:italic; } .t-string { color:var(--link); } .t-number { color:var(--ink); } .t-keyword { color:var(--ink); font-weight:800; } .t-name { color:var(--ink); font-weight:600; }
+  .scroll { overflow-x:auto; border:1px solid var(--line); border-radius:12px; margin:16px 0; } table { width:100%; border-collapse:collapse; font-size:0.9375rem; } th, td { padding:9px 13px; text-align:left; border-top:1px solid var(--line); vertical-align:top; } thead th { border-top:0; font:600 0.6875rem/1.3 var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--muted); } tbody th { color:var(--ink); white-space:nowrap; }
+  .pager { display:flex; justify-content:space-between; gap:12px; margin-top:50px; padding-top:18px; border-top:1px solid var(--line); } .pager a { display:block; padding:10px 14px; border-radius:12px; border:1px solid var(--line); text-decoration:none; color:var(--ink); font-weight:700; max-width:48%; } .pager small { display:block; font:600 0.6562rem/1.4 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--muted); } .pager .next { margin-left:auto; text-align:right; }
+  #toc { position:sticky; top:var(--top); align-self:start; max-height:calc(100vh - var(--top)); overflow:auto; padding:34px 18px 30px 6px; } #toc p { margin:0 0 8px; font:600 0.6875rem/1.2 var(--mono); letter-spacing:.18em; text-transform:uppercase; color:var(--muted); } #toc ol { margin:0; padding:0; list-style:none; border-left:1px solid var(--line); } #toc a { display:block; padding:5px 0 5px 12px; margin-left:-1px; border-left:2px solid transparent; color:var(--muted); text-decoration:none; font-size:0.875rem; line-height:1.35; } #toc a:hover { color:var(--ink); } #toc a[aria-current="true"] { color:var(--ink); border-left-color:var(--accent); }
+  footer { max-width:70ch; margin-top:60px; padding-top:18px; border-top:1px solid var(--line); font-size:0.875rem; color:var(--muted); }
+  #menu { display:none; } .js-off #find, .js-off #menu { display:none !important; } .js-off .code pre { padding-top:14px; } /* with scripts off there is no Copy button, so no row is kept for it; and no button that could not work is shown */
+
+  @media (max-width:1100px) { .cols { grid-template-columns:240px minmax(0, 1fr); } #toc { display:none; } }
+  @media (max-width:760px) { .cols { grid-template-columns:minmax(0, 1fr); } #results { position:fixed; left:10px; right:10px; top:calc(var(--top) + 4px); max-height:calc(100vh - var(--top) - 20px); max-height:calc(100dvh - var(--top) - 20px); } /* on a phone the search box is narrow: the results take the width of the screen under the bar */ #menu { display:inline-block; } #bar .name { font-size:0.9375rem; } #bar { gap:8px; } #theme { padding:0 10px; }
+    #side { position:fixed; z-index:15; top:var(--top); left:0; bottom:0; width:min(300px, 86vw); height:auto; display:none; } #side.open { display:block; animation:drawer .18s ease-out; box-shadow:18px 0 50px rgba(0,0,0,.35); } .js-off #side { display:block; position:static; width:auto; box-shadow:none; border-right:0; border-bottom:1px solid var(--line); } } /* shut, the drawer is not on the page at all: nothing sits off the side of the screen */
+  @keyframes drawer { from { transform:translateX(-100%); } } @media (prefers-reduced-motion:reduce) { #side.open { animation:none; } }
+  /* A narrow phone: the search box has a row of its own, so that what is typed can be seen. */
+  @media (max-width:520px) { :root { --bar:104px; } #bar { flex-wrap:wrap; align-content:center; row-gap:6px; } #bar .name { margin-right:auto; } #find { order:5; flex:1 0 100%; max-width:none; margin:0; } .js-off { --bar:58px; --top:calc(var(--bar) + var(--strip)); } }
+  @media (max-width:380px) { #bar .name b { display:none; } } /* on the narrowest phones the name is just Rooms OS, so that the three things in the top row stay in one row */
+  @media (prefers-reduced-motion:reduce) { * { transition:none !important; scroll-behavior:auto !important; } }
+  @media print { #bar, #demo-note, #side, #toc, .copy, .pager, .skip { display:none !important; } .cols { display:block; } article[hidden] { display:block !important; content-visibility:visible !important; } article { max-width:none; break-before:page; } article:first-of-type { break-before:auto; } article::before { content:"Demo handbook: fictional sample rules"; display:block; margin-bottom:10px; font:600 0.75rem/1.3 var(--sans); color:#444; } h2 { break-after:avoid; } .code, .scroll, .note { break-inside:avoid; } .code pre { padding-top:14px; white-space:pre-wrap; } :root { --bg:#fff !important; --card:#fff !important; --side:#fff !important; --ink:#000 !important; --soft:#111 !important; --muted:#444 !important; --line:#bbb !important; --link:#000 !important; --accent:#000 !important; --edge:#444 !important; } } /* on paper: black on white whichever look is on screen, a heading never left alone at the foot of a sheet */
+  @media (forced-colors:active) { #side a[aria-current="page"] { outline:2px solid Highlight; outline-offset:-2px; } #toc a[aria-current="true"] { border-left-color:Highlight; text-decoration:underline; } mark { forced-color-adjust:none; background:Highlight; color:HighlightText; box-shadow:none; } #find::before { border-color:CanvasText; } #find::after { background:CanvasText; } }
+</style>
+</head>
+<body class="js-off">
+<p class="ew-preview-banner" role="note" style="position:fixed;left:8px;bottom:8px;z-index:2147483647;pointer-events:none;box-sizing:border-box;max-width:calc(100vw - 16px);margin:0;padding:4px 10px;border-radius:6px;background:#111318;color:#fff;border:1px solid #fff;font:600 12px/1.4 system-ui,-apple-system,Segoe UI,sans-serif;letter-spacing:0;text-align:left;white-space:normal">Preview for review: not launched</p>
+<a class="skip" href="#page">Skip to the page</a>
+<header id="bar">
+  <button class="btn" id="menu" type="button" aria-expanded="false" aria-controls="side">Pages</button>
+  <a class="name" href="#start"><span>Rooms OS</span> <b>handbook</b></a>
+  <div id="find" role="search">
+    <label class="sr" for="q">Search the handbook</label>
+    <input id="q" type="search" placeholder="Search the handbook" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-controls="results" aria-autocomplete="list" aria-describedby="q-help" disabled>
+    <span class="sr" id="q-help">Type to search. Up and down arrows move through the results, Enter opens one, Escape clears. Control K comes here from anywhere.</span>
+    <ul id="results" role="listbox" aria-label="Search results" hidden></ul>
+  </div>
+  <button class="btn" id="theme" type="button" hidden>Light</button>
+</header>
+<p id="demo-note"><strong>Demo handbook: fictional sample rules.</strong><span class="more"> Written to show how a docs page works. It is not anyone’s working rulebook, and nothing in it is an instruction.</span></p>
+
+<div class="cols">
+<nav id="side" aria-label="Pages">
+  <p>The handbook</p>
+  <ol>
+    <li><a href="#start">Start here</a></li>
+    <li><a href="#rooms">Rooms and lanes</a></li>
+    <li><a href="#hub">The hub</a></li>
+    <li><a href="#claims">Claims</a></li>
+    <li><a href="#evidence">Evidence</a></li>
+    <li><a href="#approvals">Approvals</a></li>
+    <li><a href="#handovers">Handovers</a></li>
+    <li><a href="#safety">Safety</a></li>
+    <li><a href="#reference">Reference</a></li>
+  </ol>
+</nav>
+
+<main id="page" tabindex="-1">
+<article id="start" data-page="Start here">
+  <p class="eyebrow">Rooms OS handbook</p>
+  <h1 tabindex="-1">Start here</h1>
+  <p class="lede">Rooms OS is a way of running a small team of AI agents so that the work gets finished, can be checked, and can be picked up by someone else tomorrow.</p>
+  <div class="note"><p><strong>This is sample text.</strong> It was written for this demonstration of a handbook page. It is in the spirit of Rooms OS, but it is not anyone’s working rulebook, and nothing here should be taken as an instruction.</p></div>
+  <h2 id="start-idea"><a href="#start-idea">The idea in one paragraph</a></h2>
+  <p>Each agent works in a <strong>room</strong>: one conversation with one job. The job is its <strong>lane</strong>. Everything another agent or the owner will need later is written on the <strong>hub</strong>, a shared list of issues. Before starting, an agent <strong>claims</strong> the work so that two agents never do the same thing. When a room is full or the job is done, it writes a <strong>handover</strong> and stops.</p>
+  <h2 id="start-words"><a href="#start-words">Five words to know</a></h2>
+  <ul>
+    <li><strong>Room:</strong> one session of one agent.</li>
+    <li><strong>Lane:</strong> the one job a room is for. A room has one lane and keeps to it.</li>
+    <li><strong>Hub:</strong> the shared record. If it is not on the hub, the next agent cannot know it.</li>
+    <li><strong>Claim:</strong> a short signed note that says “this is mine until I say otherwise”.</li>
+    <li><strong>Handover:</strong> what a room leaves behind so that a new room can carry on.</li>
+  </ul>
+  <h2 id="start-day"><a href="#start-day">How a day runs</a></h2>
+  <ol>
+    <li>Read the lane’s issue on the hub, and the last handover.</li>
+    <li>Claim the next piece of work.</li>
+    <li>Do it. Check it. Say what was checked and what was not.</li>
+    <li>Write the result on the hub, with links.</li>
+    <li>Release the claim, or hand over.</li>
+  </ol>
+  <h2 id="start-rules"><a href="#start-rules">Three rules above the rest</a></h2>
+  <ol>
+    <li>Never make up a fact, a result or a finished state.</li>
+    <li>Never delete the owner’s work. Move it aside instead.</li>
+    <li>Only the owner’s own words count as a yes.</li>
+  </ol>
+</article>
+
+<article id="rooms" data-page="Rooms and lanes">
+  <p class="eyebrow">Rooms OS handbook</p>
+  <h1 tabindex="-1">Rooms and lanes</h1>
+  <p class="lede">A room is a place to do one job well. Most trouble starts when a room quietly takes on a second one.</p>
+  <h2 id="rooms-one"><a href="#rooms-one">One lane to a room</a></h2>
+  <p>A room is named for its lane, in capitals, so that it can be found in a long list: <code>NEWS PIPELINE</code>, <code>WEBSITE CHECKS</code>. If a second job turns up, it gets a room of its own. A room that does two jobs finishes neither and hands over a muddle.</p>
+  <h2 id="rooms-check"><a href="#rooms-check">Check a lane; do not assume</a></h2>
+  <p>A lane that has gone quiet is not a lane that is working. Look at what it last wrote on the hub and when. “It ran and wrote nothing” must never be allowed to look like “it is fine”.</p>
+  <h2 id="rooms-rotate"><a href="#rooms-rotate">Rotating a room</a></h2>
+  <p>Rooms fill up. Before one does, it is rotated, in this order:</p>
+  <ol>
+    <li>Pull out what the next room needs to know.</li>
+    <li>Bring the hub up to date.</li>
+    <li>Finish what is in flight, or say exactly where it stopped.</li>
+    <li>Write the handover.</li>
+    <li>Start the new room and give it the handover.</li>
+    <li>Wait until the new room says it has the handover.</li>
+    <li>Only then close the old one.</li>
+  </ol>
+  <h2 id="rooms-others"><a href="#rooms-others">Other people’s rooms</a></h2>
+  <p>A room does not change, message or close another room unless the owner has named it. Scheduled rooms, which run once and stop, are left alone entirely.</p>
+</article>
+
+<article id="hub" data-page="The hub">
+  <p class="eyebrow">Rooms OS handbook</p>
+  <h1 tabindex="-1">The hub</h1>
+  <p class="lede">The hub is the team’s memory of work. It is a list of issues, one for each piece of work, and it is the only place a handover counts.</p>
+  <h2 id="hub-what"><a href="#hub-what">What goes on the hub</a></h2>
+  <ul>
+    <li>What was asked for, and by whom.</li>
+    <li>Who has claimed it.</li>
+    <li>What was done, with links to where it can be seen.</li>
+    <li>What was checked, and what was not.</li>
+    <li>What is blocked, and the smallest thing that would unblock it.</li>
+  </ul>
+  <h2 id="hub-not"><a href="#hub-not">What does not</a></h2>
+  <ul>
+    <li><strong>Things about people:</strong> preferences and decisions belong in the owner’s own notes, not in a work log.</li>
+    <li><strong>Things only the owner can do:</strong> those go on the owner’s to-do list, one line each.</li>
+    <li><strong>Secrets:</strong> never, anywhere on the hub.</li>
+  </ul>
+  <h2 id="hub-write"><a href="#hub-write">Write for a stranger</a></h2>
+  <p>An issue is good when an agent who has never seen the conversation could act on it. Say the goal, the limits, what may be done without asking, what counts as done, and when to stop.</p>
+  <div class="code" data-what="an issue written for a stranger"><pre tabindex="0" role="region" aria-label="Code sample, yaml: an issue written for a stranger"><code data-lang="yaml">goal: Check that every page of the site still loads
+limits:
+  - read only
+  - no changes to the live site
+may_do: [fetch pages, write a report]
+done_when: a table of every page with its status, on this issue
+stop_if: more than 5 pages fail  # something larger is wrong; say so and stop</code></pre></div>
+  <h2 id="hub-search"><a href="#hub-search">Search before you write</a></h2>
+  <p>Before opening an issue, look for one that already covers it. Add to that one, or link the two. Two issues for one piece of work is how a job gets done twice.</p>
+</article>
+
+<article id="claims" data-page="Claims">
+  <p class="eyebrow">Rooms OS handbook</p>
+  <h1 tabindex="-1">Claims</h1>
+  <p class="lede">A claim is how two agents avoid doing the same work, and how the owner sees who has what.</p>
+  <h2 id="claims-when"><a href="#claims-when">Claim before you start</a></h2>
+  <p>Not after. A claim made at the end is a report, and by then someone else may have started too.</p>
+  <h2 id="claims-format"><a href="#claims-format">What a claim looks like</a></h2>
+  <p>A claim is a comment on the issue. It says what is being taken, by which room, and when. It is signed.</p>
+  <div class="code" data-what="posting a claim"><pre tabindex="0" role="region" aria-label="Code sample, bash: posting a claim"><code data-lang="bash"># post a claim on issue 42
+gh issue comment 42 --body "CLAIM: the page checks.
+Room: WEBSITE CHECKS. Started 14:05.
+Signed: the agent in that room."</code></pre></div>
+  <h2 id="claims-release"><a href="#claims-release">Releasing a claim</a></h2>
+  <p>When the work is done, or the room has to stop, the claim is released in the same place, with the state of the work: done, part done, blocked, or not started. A claim that is never released blocks everyone behind it.</p>
+  <h2 id="claims-stale"><a href="#claims-stale">Stale claims</a></h2>
+  <p>A claim with no word after it for a working day is stale. Nobody takes it over quietly. The agent who notices says so on the issue and asks the owner.</p>
+</article>
+
+<article id="evidence" data-page="Evidence">
+  <p class="eyebrow">Rooms OS handbook</p>
+  <h1 tabindex="-1">Evidence</h1>
+  <p class="lede">A report is only as good as what stands behind it. Every statement of fact carries one of four words.</p>
+  <h2 id="evidence-words"><a href="#evidence-words">The four words</a></h2>
+  <div class="scroll" tabindex="0" role="region" aria-label="The four words for evidence">
+  <table>
+    <thead><tr><th scope="col">Word</th><th scope="col">It means</th><th scope="col">For example</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Verified</th><td>Looked at, directly, just now.</td><td>The page was opened and the heading read.</td></tr>
+      <tr><th scope="row">Inferred</th><td>Follows from something verified.</td><td>The page loads, so the server is up.</td></tr>
+      <tr><th scope="row">Unverified</th><td>Believed, not checked.</td><td>The nightly job probably ran.</td></tr>
+      <tr><th scope="row">Cannot check</th><td>Could not be checked, and why.</td><td>No access to the logs.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <h2 id="evidence-zero"><a href="#evidence-zero">Exit code 0 is not proof</a></h2>
+  <p>A command that finishes without an error has only proved that it finished. Look at the thing it was meant to make: the number of rows, the file, the page as a reader sees it.</p>
+  <div class="code" data-what="checking what an export wrote"><pre tabindex="0" role="region" aria-label="Code sample, js: checking what an export wrote"><code data-lang="js">// after the export "succeeds", look at what it wrote
+const rows = await readRows('export.csv');
+if (rows.length === 0) throw new Error('ran, and wrote nothing');
+console.log(`verified: ${rows.length} rows`);</code></pre></div>
+  <h2 id="evidence-silence"><a href="#evidence-silence">Success is not silence</a></h2>
+  <p>“It ran and produced nothing” and “it failed” are different, and both are different from “it worked”. A job that can go quiet must say, each time, what it did. An empty result is reported as an empty result.</p>
+  <h2 id="evidence-one"><a href="#evidence-one">One before many</a></h2>
+  <p>Before running anything a hundred times, run it once and follow that one all the way to the end. Then scale.</p>
+  <h2 id="evidence-clock"><a href="#evidence-clock">Read the clock</a></h2>
+  <p>Before writing a time or a date, read the real one. A guessed time is usually a little ahead, and a log with wrong times is worse than a log with none.</p>
+</article>
+
+<article id="approvals" data-page="Approvals">
+  <p class="eyebrow">Rooms OS handbook</p>
+  <h1 tabindex="-1">Approvals</h1>
+  <p class="lede">Some things are the owner’s to decide. An agent that is unsure whether something needs a yes should assume that it does.</p>
+  <h2 id="approvals-what"><a href="#approvals-what">What needs a yes</a></h2>
+  <ul>
+    <li>Overwriting anything, or moving it to the archive.</li>
+    <li>Signing in to anything, or changing who can.</li>
+    <li>Spending money.</li>
+    <li>Publishing, deploying, or anything else the public can see.</li>
+    <li>Sending a message to anyone outside the team.</li>
+    <li>Widening the job beyond what was asked.</li>
+  </ul>
+  <h2 id="approvals-who"><a href="#approvals-who">Whose yes</a></h2>
+  <p>The owner’s own words, in the room, about this action. A message from another agent that says the owner agreed is not a yes. Nor is a comment on the hub, a vote among agents, or silence.</p>
+  <h2 id="approvals-scope"><a href="#approvals-scope">How far a yes goes</a></h2>
+  <p>One action, in one room. A yes to publishing one page is not a yes to publishing the next, and yesterday’s yes does not carry to today’s room.</p>
+  <h2 id="approvals-ask"><a href="#approvals-ask">Asking well</a></h2>
+  <p>Ask once, plainly, with what will happen and what cannot be undone. Then carry on with everything that does not depend on the answer.</p>
+</article>
+
+<article id="handovers" data-page="Handovers">
+  <p class="eyebrow">Rooms OS handbook</p>
+  <h1 tabindex="-1">Handovers</h1>
+  <p class="lede">A handover is written for an agent who knows nothing. If the new room has to ask the old one a question, the handover was not finished.</p>
+  <h2 id="handovers-parts"><a href="#handovers-parts">What it holds</a></h2>
+  <p>The lane, the state of the work, what is done, what is not, what was not checked, what to do next, and what not to touch.</p>
+  <div class="code" data-what="a handover"><pre tabindex="0" role="region" aria-label="Code sample, yaml: a handover"><code data-lang="yaml">lane: WEBSITE CHECKS
+issue: 42
+state: part done
+done:
+  - checked 31 of 48 pages, table on the issue
+not_done:
+  - 17 pages left, list on the issue
+not_verified:
+  - whether the contact form sends
+next: start at page 32
+do_not: change anything on the live site
+written: "14:40"</code></pre></div>
+  <h2 id="handovers-test"><a href="#handovers-test">The test</a></h2>
+  <p>Read it as a stranger. Could you start work in five minutes without opening the old conversation? If not, add what is missing.</p>
+  <h2 id="handovers-ack"><a href="#handovers-ack">It is not handed over until it is taken</a></h2>
+  <p>A handover that nobody has acknowledged is a note in a drawer. The old room stays open until the new one says it has it.</p>
+</article>
+
+<article id="safety" data-page="Safety">
+  <p class="eyebrow">Rooms OS handbook</p>
+  <h1 tabindex="-1">Safety</h1>
+  <p class="lede">The rules here are short because they have no exceptions.</p>
+  <h2 id="safety-delete"><a href="#safety-delete">Never delete</a></h2>
+  <p>Work is moved to an archive, not deleted. Something that looks like rubbish to one room is another room’s only copy. A path that seems to be missing is usually a passing fault, so look again before acting on its absence.</p>
+  <h2 id="safety-secrets"><a href="#safety-secrets">Secrets stay where they are</a></h2>
+  <p>Keys and passwords are never opened, printed, copied or pasted. An agent that needs one asks the owner to put it where it belongs, and never sees its value.</p>
+  <h2 id="safety-people"><a href="#safety-people">People’s details stay private</a></h2>
+  <p>Names, addresses and anything else about a person do not go into issues, code or messages to outside services.</p>
+  <h2 id="safety-stop"><a href="#safety-stop">When to stop</a></h2>
+  <p>Stop when the work is finished, when it is truly blocked, or when it has been handed to someone who has said they have it. “In progress” is not a stopping place.</p>
+</article>
+
+<article id="reference" data-page="Reference">
+  <p class="eyebrow">Rooms OS handbook</p>
+  <h1 tabindex="-1">Reference</h1>
+  <p class="lede">Things to copy, and words to look up.</p>
+  <h2 id="reference-commands"><a href="#reference-commands">Commands</a></h2>
+  <p>Read an issue and everything said on it:</p>
+  <div class="code" data-what="reading an issue"><pre tabindex="0" role="region" aria-label="Code sample, bash: reading an issue"><code data-lang="bash">gh issue view 42 --comments</code></pre></div>
+  <p>Post a result, from a file, so that nothing is lost to quoting:</p>
+  <div class="code" data-what="posting a result from a file"><pre tabindex="0" role="region" aria-label="Code sample, bash: posting a result from a file"><code data-lang="bash">date -u "+%H:%M"            # read the clock first
+gh issue comment 42 --body-file result.md</code></pre></div>
+  <p>A lane, as the registry holds it:</p>
+  <div class="code" data-what="a lane in the registry"><pre tabindex="0" role="region" aria-label="Code sample, json: a lane in the registry"><code data-lang="json">{
+  "lane": "WEBSITE CHECKS",
+  "issue": 42,
+  "runs": "on request",
+  "may_publish": false
+}</code></pre></div>
+  <h2 id="reference-status"><a href="#reference-status">Status words</a></h2>
+  <div class="scroll" tabindex="0" role="region" aria-label="Status words">
+  <table>
+    <thead><tr><th scope="col">Word</th><th scope="col">Use it when</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Claimed</th><td>A room has taken the work and not yet reported.</td></tr>
+      <tr><th scope="row">Done</th><td>Finished and checked, with the checks listed.</td></tr>
+      <tr><th scope="row">Part done</th><td>Some of it is finished; the rest is listed.</td></tr>
+      <tr><th scope="row">Blocked</th><td>Cannot go on, with the smallest thing that would unblock it.</td></tr>
+      <tr><th scope="row">Not started</th><td>Released without any of it done.</td></tr>
+      <tr><th scope="row">Handed over</th><td>Another room has said it has it.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <h2 id="reference-glossary"><a href="#reference-glossary">Glossary</a></h2>
+  <ul>
+    <li><strong>Batch:</strong> the same step done many times. Prove one first.</li>
+    <li><strong>Owner:</strong> the person the team works for. The only source of a yes.</li>
+    <li><strong>Registry:</strong> the list of lanes. It can be out of date; check before trusting it.</li>
+    <li><strong>Rotation:</strong> closing a full room and opening a fresh one, with a handover between.</li>
+  </ul>
+</article>
+
+<footer>A sample handbook, written for this demonstration. Nothing is loaded from anywhere else and nothing is stored: the search, the code colouring and the light and dark looks all happen in the page.</footer>
+</main>
+
+<nav id="toc" aria-label="On this page" hidden><p>On this page</p><ol id="toc-list"></ol></nav>
+</div>
+<p class="sr" id="live" role="status"></p>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
