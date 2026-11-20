@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>The job that said nothing: a long-read template</title>
+<meta name="description" content="A template for a long article: a title card, chapters with a contents list that follows you, notes in the margin, a short read that folds the piece into its first sentences, text sizes, a paper look and a print layout. The article is a sample.">
+<meta name="theme-color" content="#111315">
+<link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml">
+<!-- Unlisted until release is approved: remove the next line, then add the gallery card and sitemap entry. -->
+<meta name="robots" content="noindex">
+<style>
+  :root { --bg:#111315; --card:#191c1f; --line:rgba(255,255,255,.16); --ink:#f4f5f3; --soft:#d9dee1; --muted:#a9b1b6; --accent:#3fe08a; --accent-ink:#06210f; --edge:#7b858b;
+    --sans:"Helvetica Neue","Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif; --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif; --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace; --top:3.5rem; --scale:1; color-scheme:dark; }
+  :root[data-look="paper"] { --bg:#f5f2ea; --card:#fffdf7; --line:rgba(23,25,27,.2); --ink:#17191b; --soft:#2b2f32; --muted:#596065; --accent:#0b7a46; --accent-ink:#ffffff; --edge:#6a7176; color-scheme:light; }
+  * { box-sizing:border-box; }
+  html { background:var(--bg); font-size:100%; -webkit-text-size-adjust:100%; }
+  /* What a link goes to stops clear of the strip at the top. This is set on the things gone to, not as padding on the page: padding would also make the browser scroll the page whenever a button in the strip itself took the focus. */
+  #story, .body h2, #notes li, .ref, .note { scroll-margin-top:calc(var(--top) + 1rem); }
+  body { margin:0; background:var(--bg); color:var(--ink); font:1rem/1.5 var(--sans); }
+  [hidden] { display:none !important; }
+  a { color:var(--accent); text-underline-offset:3px; } button { font:inherit; color:inherit; }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:6px; }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+  .skip { position:absolute; left:12px; top:-60px; z-index:40; padding:9px 13px; border-radius:8px; background:var(--accent); color:var(--accent-ink); font-weight:700; text-decoration:none; } .skip:focus { top:10px; }
+  .eyebrow { margin:0; font:600 .6875rem/1.3 var(--mono); letter-spacing:.2em; text-transform:uppercase; color:var(--accent); }
+
+  /* The strip across the top: the name, how much is left, and the reader's controls. A line along its foot shows how far through the article you are. */
+  #mast { position:sticky; top:0; z-index:30; display:flex; align-items:center; gap:.625rem; min-height:3.25rem; padding:.375rem max(16px, env(safe-area-inset-right)) .375rem max(16px, env(safe-area-inset-left)); background:var(--bg); border-bottom:1px solid var(--line); }
+  #mast .name { font-weight:800; letter-spacing:-.02em; font-size:1.0625rem; white-space:nowrap; } #mast .name span { color:var(--accent); }
+  #left { margin:0 auto 0 .5rem; font:600 .75rem/1.2 var(--mono); letter-spacing:.06em; color:var(--muted); white-space:nowrap; }
+  .tools { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:.375rem; } .btn { min-height:2.25rem; min-width:2.25rem; padding:0 .6875rem; border-radius:.625rem; border:1px solid var(--edge); background:transparent; font-weight:700; font-size:.8125rem; cursor:pointer; white-space:nowrap; } .btn[aria-pressed="true"] { background:var(--ink); border-color:var(--ink); color:var(--bg); } .btn:disabled { opacity:.4; cursor:default; }
+  #progress { position:absolute; left:0; right:0; bottom:-1px; height:3px; background:transparent; } #progress i { display:block; height:100%; width:0; background:var(--accent); }
+
+  /* The title card. */
+  .hero { max-width:72rem; margin:0 auto; padding:clamp(2rem, 6vw, 4.5rem) max(20px, env(safe-area-inset-right)) 1.5rem max(20px, env(safe-area-inset-left)); }
+  h1 { margin:.875rem 0 1.125rem; max-width:11ch; font-size:clamp(2.75rem, 9.5vw, 7rem); line-height:.88; font-weight:800; letter-spacing:-.04em; text-wrap:balance; }
+  .stand { margin:0; max-width:36ch; font:1.375rem/1.4 var(--serif); color:var(--soft); }
+  .meta { display:flex; flex-wrap:wrap; gap:.25rem 1.125rem; margin:1.375rem 0 0; padding:0; list-style:none; font:600 .75rem/1.4 var(--mono); letter-spacing:.06em; color:var(--muted); }
+  .art { margin:2.25rem 0 0; padding:0; } .art svg { display:block; width:100%; height:auto; aspect-ratio:1000 / 170; } .art figcaption { margin-top:.5rem; font-size:.8125rem; color:var(--muted); }
+  .ink { fill:none; stroke:var(--ink); stroke-width:6; stroke-linecap:round; stroke-linejoin:round; } .ink.fill { fill:var(--bg); } .ink.thin { stroke-width:3.5; } .ink.green { stroke:var(--accent); } .ink.dash { stroke-dasharray:5 5; } .dot { fill:var(--ink); } .dot.green { fill:var(--accent); } .shade { fill:var(--ink); opacity:.16; }
+
+  /* Three columns on a wide screen: the chapters, the words, and the notes. */
+  .cols { display:grid; grid-template-columns:13rem minmax(0, 36rem) 15rem; gap:0 3rem; justify-content:center; max-width:76rem; margin:0 auto; padding:2rem max(20px, env(safe-area-inset-right)) 4rem max(20px, env(safe-area-inset-left)); }
+  #toc { position:sticky; top:calc(var(--top) + 1.5rem); align-self:start; } #toc p { margin:0 0 .5rem; font:600 .6875rem/1.2 var(--mono); letter-spacing:.18em; text-transform:uppercase; color:var(--muted); } #toc ol { margin:0; padding:0; list-style:none; counter-reset:ch; border-left:1px solid var(--line); }
+  #toc a { display:block; padding:.375rem 0 .375rem .875rem; margin-left:-1px; border-left:2px solid transparent; color:var(--muted); text-decoration:none; font-size:calc(.875rem * var(--scale)); line-height:1.3; } #toc a:hover { color:var(--ink); } #toc a[aria-current="true"] { color:var(--ink); border-left-color:var(--accent); font-weight:700; }
+  .body { grid-column:2; min-width:0; font:calc(1.1875rem * var(--scale))/1.62 var(--serif); color:var(--soft); }
+  .body p { margin:0 0 1.15em; } .body > section > p:first-of-type { margin-top:0; }
+  .body .first::first-letter { float:left; margin:.02em .1em 0 0; font:800 3.72em/.8 var(--sans); letter-spacing:-.05em; color:var(--ink); }
+  .body h2 { position:relative; margin:2.4em 0 .7em; font:800 calc(1.75rem * var(--scale))/1.05 var(--sans); letter-spacing:-.035em; color:var(--ink); text-wrap:balance; } .body h2 .n { display:block; margin-bottom:.5rem; font:600 .6875rem/1 var(--mono); letter-spacing:.2em; color:var(--accent); } .body h2 { margin-bottom:.3em; }
+  .link { display:block; min-height:1.75rem; margin:0 0 .9rem; padding:0; border:0; background:transparent; font:600 .75rem/1 var(--sans); color:var(--muted); text-decoration:underline; text-underline-offset:3px; cursor:pointer; } .link:hover, .link.said { color:var(--ink); }
+  .pull { margin:1.6em 0; padding:0 0 0 1.125rem; border-left:4px solid var(--accent); font:800 calc(1.625rem * var(--scale))/1.12 var(--sans); letter-spacing:-.03em; color:var(--ink); text-wrap:balance; }
+  .keys { margin:1.6em 0; padding:1rem 1.125rem; border-radius:.875rem; border:1px solid var(--line); background:var(--card); font:calc(1rem * var(--scale))/1.5 var(--sans); } .keys h3 { margin:0 0 .5rem; font:600 .6875rem/1.2 var(--mono); letter-spacing:.18em; text-transform:uppercase; color:var(--accent); } .keys ol { margin:0; padding-left:1.25rem; } .keys li { margin-bottom:.375rem; color:var(--soft); } .keys li::marker { font-weight:800; color:var(--ink); }
+  .fig { margin:1.8em 0; } .fig svg { display:block; width:100%; height:auto; } .fig figcaption { margin-top:.625rem; font:calc(.875rem * var(--scale))/1.45 var(--sans); color:var(--muted); } .legend { display:flex; flex-wrap:wrap; gap:.25rem 1.25rem; margin:.5rem 0 0; padding:0; list-style:none; font:600 calc(.75rem * var(--scale))/1.4 var(--sans); color:var(--soft); } .legend svg { display:inline-block; width:.9em; height:.9em; margin-right:.4em; vertical-align:-.08em; }
+  /* Notes. A small number in the text; the note itself beside the paragraph on a wide screen, under it on a narrow one. */
+  sup { line-height:0; font-size:1em; vertical-align:.3em; } .ref { display:inline-block; min-width:1.5rem; height:1.5rem; padding:0 .3rem; margin:-.75rem 0 -.75rem .125rem; border-radius:.375rem; border:1px solid var(--accent); font:700 .75rem/calc(1.5rem - 2px) var(--sans); cursor:pointer; text-align:center; text-decoration:none; color:var(--accent); background:transparent; } .nb { white-space:nowrap; } /* a note's number stays with the word it follows */
+  .has-note { position:relative; } .note { margin:0 0 1.15em; padding:.75rem .875rem; border-radius:.75rem; border:1px solid var(--line); background:var(--card); font:calc(.875rem * var(--scale))/1.5 var(--sans); color:var(--soft); } .note:focus { outline:none; } .note:focus-visible { outline:2px solid var(--accent); outline-offset:4px; } .shut { display:inline-block; min-height:1.5rem; padding:0; border:0; background:transparent; font:600 .75rem/1.5 var(--sans); color:var(--muted); text-decoration:underline; text-underline-offset:3px; cursor:pointer; } .note b { display:block; margin-bottom:.25rem; font:600 .6875rem/1 var(--mono); letter-spacing:.16em; text-transform:uppercase; color:var(--accent); }
+  @media (min-width:69em) { .note { position:absolute; left:calc(100% + 3rem); top:.25rem; width:15rem; margin:0; padding:0 0 0 .875rem; border:0; border-left:2px solid var(--accent); border-radius:0; background:none; } }
+  #notes { grid-column:2; margin-top:3rem; padding-top:1.25rem; border-top:1px solid var(--line); font:.9375rem/1.55 var(--sans); color:var(--soft); } #notes h2 { margin:0 0 .75rem; font:600 .6875rem/1.2 var(--mono); letter-spacing:.18em; text-transform:uppercase; color:var(--muted); } #notes ol { margin:0; padding-left:1.375rem; } #notes li { margin-bottom:.625rem; } .js-on #notes { display:none; }
+  .end { grid-column:2; margin-top:2.5rem; padding-top:1.25rem; border-top:1px solid var(--line); font-size:.875rem; color:var(--muted); } .end p { margin:0 0 .625rem; } .end strong { color:var(--ink); }
+
+  /* The short read: each paragraph folded to its first sentence. */
+  .short .rest, .short .pull, .short .fig, .short .keys, .short .note { display:none; } .short .body p { margin-bottom:.7em; } .short .body .first::first-letter { float:none; margin:0; font:inherit; letter-spacing:inherit; color:inherit; } .short .body h2 { margin-top:1.6em; }
+  .js-off .js { display:none !important; } .js-off #mast { min-height:0; }
+
+  @media (max-width:68.99em) { .cols { grid-template-columns:minmax(0, 36rem); } #toc { position:static; grid-column:1; margin-bottom:2rem; padding:1rem 1.125rem; border-radius:.875rem; border:1px solid var(--line); background:var(--card); } #toc ol { border-left:0; columns:2; column-gap:1.5rem; } #toc a { padding:.3125rem 0; border-left:0; } #toc a[aria-current="true"] { text-decoration:underline; text-decoration-color:var(--accent); text-decoration-thickness:2px; } .body, #notes, .end { grid-column:1; } }
+  /* A narrow screen: the strip is a tall thing to keep in sight on a phone, so it scrolls away with the page. Only the line of progress stays, along the very top. */
+  @media (max-width:44em) { .art svg { aspect-ratio:auto; height:9rem; } /* on a phone the drawing keeps its height and shows the middle of the row: the still bell and its neighbours */ #mast { position:static; flex-wrap:wrap; min-height:0; } #left { order:3; flex:1 0 100%; margin:0; } #progress { position:fixed; top:0; bottom:auto; z-index:30; } :root { --top:.75rem; } }
+  @media (max-width:35em) { .stand { font-size:1.1875rem; } #toc ol { columns:1; } .pull { font-size:calc(1.375rem * var(--scale)); } }
+  @media (prefers-reduced-motion:reduce) { * { scroll-behavior:auto !important; transition:none !important; } }
+  @media print { #mast, #toc, .link, .js, .note, .skip, #notes a, .end p + p { display:none !important; } .body, #notes, .end { max-width:34em; } .cols { display:block; padding:0; } .hero { padding:0 0 1rem; } h1 { font-size:3rem; max-width:none; } .art svg { max-height:9rem; } #notes { display:block !important; } .short .rest { display:inline !important; } .short .pull, .short .fig, .short .keys { display:block !important; } .body h2 { break-after:avoid; } .fig, .keys, .pull { break-inside:avoid; } .ref { background:none; color:#000; padding:0; }
+    :root { --bg:#fff !important; --card:#fff !important; --ink:#000 !important; --soft:#111 !important; --muted:#444 !important; --line:#bbb !important; --accent:#000 !important; --accent-ink:#fff !important; } .body { font-size:11.5pt; } }
+  @media (forced-colors:active) { #progress i { background:Highlight; } .ref { border-color:Highlight; color:Highlight; } #toc a[aria-current="true"] { text-decoration:underline; } .btn[aria-pressed="true"] { outline:3px solid Highlight; outline-offset:-4px; } .ink { stroke:CanvasText; } .ink.fill { fill:Canvas; } .ink.green { stroke:Highlight; } .dot { fill:CanvasText; } .dot.green { fill:Highlight; } .shade { fill:CanvasText; } } /* the drawings take the reader's own colours; a pressed button is ringed; the quiet nights are dashed as well as green, so that they are told apart without colour */
+</style>
+</head>
+<body class="js-off">
+<a class="skip" href="#story">Skip to the article</a>
+<header id="mast">
+  <span class="name"><span>Kol’s</span> Korner</span>
+  <p id="left" class="js"></p>
+  <div class="tools js" role="group" aria-label="Reading: length, text size and look">
+    <button class="btn" id="short" type="button" aria-pressed="false">Short read</button>
+    <button class="btn" id="smaller" type="button">Smaller</button>
+    <button class="btn" id="larger" type="button">Larger</button>
+    <button class="btn" id="look" type="button" aria-pressed="false">Paper</button>
+  </div>
+  <div id="progress" class="js" role="progressbar" aria-label="How much of the article you have read" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div>
+</header>
+
+<main>
+<article id="story" tabindex="-1">
+  <header class="hero">
+    <p class="eyebrow">Systems · a sample article</p>
+    <h1>The job that said nothing</h1>
+    <p class="stand">Some jobs fail loudly. The dangerous ones run on time, report success and do nothing. A note on silence, and how to hear it.</p>
+    <ul class="meta"><li>Sample text, written for this template</li><li id="mins">About 4 minutes</li><li><time datetime="2026-11-17">17 November 2026</time></li></ul>
+    <figure class="art">
+      <svg viewBox="0 0 1000 170" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Seven bells hang in a row. Six are swinging, with lines of sound round them. The one in the middle, in green, hangs still.">
+        <path class="ink" d="M20 34 H980"/>
+        <g id="bells"><g transform="translate(110 34) scale(.56)"><path class="ink thin" d="M-66 92 Q-80 118 -66 144"/><path class="ink thin" d="M-84 80 Q-104 118 -84 156"/><path class="ink thin" d="M66 92 Q80 118 66 144"/><path class="ink thin" d="M84 80 Q104 118 84 156"/><g transform="rotate(9)"><path class="ink" d="M0 0 V24"/><path class="ink fill" d="M0 24 C-36 28 -42 92 -46 150 L-60 174 H60 L46 150 C42 92 36 28 0 24 Z"/><path class="shade" d="M14 40 C30 60 34 110 36 150 L46 168 H22 C26 120 24 70 14 40 Z"/><circle class="dot" cx="0" cy="192" r="11"/></g></g><g transform="translate(240 34) scale(.56)"><path class="ink thin" d="M-66 92 Q-80 118 -66 144"/><path class="ink thin" d="M-84 80 Q-104 118 -84 156"/><path class="ink thin" d="M66 92 Q80 118 66 144"/><path class="ink thin" d="M84 80 Q104 118 84 156"/><g transform="rotate(-9)"><path class="ink" d="M0 0 V24"/><path class="ink fill" d="M0 24 C-36 28 -42 92 -46 150 L-60 174 H60 L46 150 C42 92 36 28 0 24 Z"/><path class="shade" d="M14 40 C30 60 34 110 36 150 L46 168 H22 C26 120 24 70 14 40 Z"/><circle class="dot" cx="0" cy="192" r="11"/></g></g><g transform="translate(370 34) scale(.56)"><path class="ink thin" d="M66 92 Q80 118 66 144"/><path class="ink thin" d="M84 80 Q104 118 84 156"/><g transform="rotate(9)"><path class="ink" d="M0 0 V24"/><path class="ink fill" d="M0 24 C-36 28 -42 92 -46 150 L-60 174 H60 L46 150 C42 92 36 28 0 24 Z"/><path class="shade" d="M14 40 C30 60 34 110 36 150 L46 168 H22 C26 120 24 70 14 40 Z"/><circle class="dot" cx="0" cy="192" r="11"/></g></g><g transform="translate(500 34) scale(.56)"><g transform="rotate(0)"><path class="ink green" d="M0 0 V24"/><path class="ink fill green" d="M0 24 C-36 28 -42 92 -46 150 L-60 174 H60 L46 150 C42 92 36 28 0 24 Z"/><path class="shade" d="M14 40 C30 60 34 110 36 150 L46 168 H22 C26 120 24 70 14 40 Z"/><circle class="dot green" cx="0" cy="192" r="11"/></g></g><g transform="translate(630 34) scale(.56)"><path class="ink thin" d="M-66 92 Q-80 118 -66 144"/><path class="ink thin" d="M-84 80 Q-104 118 -84 156"/><g transform="rotate(9)"><path class="ink" d="M0 0 V24"/><path class="ink fill" d="M0 24 C-36 28 -42 92 -46 150 L-60 174 H60 L46 150 C42 92 36 28 0 24 Z"/><path class="shade" d="M14 40 C30 60 34 110 36 150 L46 168 H22 C26 120 24 70 14 40 Z"/><circle class="dot" cx="0" cy="192" r="11"/></g></g><g transform="translate(760 34) scale(.56)"><path class="ink thin" d="M-66 92 Q-80 118 -66 144"/><path class="ink thin" d="M-84 80 Q-104 118 -84 156"/><path class="ink thin" d="M66 92 Q80 118 66 144"/><path class="ink thin" d="M84 80 Q104 118 84 156"/><g transform="rotate(-9)"><path class="ink" d="M0 0 V24"/><path class="ink fill" d="M0 24 C-36 28 -42 92 -46 150 L-60 174 H60 L46 150 C42 92 36 28 0 24 Z"/><path class="shade" d="M14 40 C30 60 34 110 36 150 L46 168 H22 C26 120 24 70 14 40 Z"/><circle class="dot" cx="0" cy="192" r="11"/></g></g><g transform="translate(890 34) scale(.56)"><path class="ink thin" d="M-66 92 Q-80 118 -66 144"/><path class="ink thin" d="M-84 80 Q-104 118 -84 156"/><path class="ink thin" d="M66 92 Q80 118 66 144"/><path class="ink thin" d="M84 80 Q104 118 84 156"/><g transform="rotate(9)"><path class="ink" d="M0 0 V24"/><path class="ink fill" d="M0 24 C-36 28 -42 92 -46 150 L-60 174 H60 L46 150 C42 92 36 28 0 24 Z"/><path class="shade" d="M14 40 C30 60 34 110 36 150 L46 168 H22 C26 120 24 70 14 40 Z"/><circle class="dot" cx="0" cy="192" r="11"/></g></g></g>
+      </svg>
+    </figure>
+  </header>
+
+  <div class="cols">
+  <nav id="toc" aria-label="In this article">
+    <p>In this article</p>
+    <ol>
+      <li><a href="#dog">The dog in the night</a></li>
+      <li><a href="#three">Three outcomes, not two</a></li>
+      <li><a href="#wins">Why silence wins</a></li>
+      <li><a href="#example">Nine quiet nights</a></li>
+      <li><a href="#hear">How to hear it</a></li>
+      <li><a href="#cost">What it costs</a></li>
+    </ol>
+  </nav>
+
+  <div class="body" id="words">
+    <section>
+      <p class="first">A failure makes a noise. Something stops, a light goes red, somebody swears. You know where to look, and usually when. Most of what we build to watch our machines is built to hear that noise.</p>
+      <p>The failure worth fearing makes no noise at all. It is the task that starts on time, runs to the end, reports success and does no work. Nothing stops. No light changes. The first sign is a person asking, weeks later, why the thing they rely on has had nothing new in it since the spring.</p>
+    </section>
+
+    <section>
+      <h2 id="dog" tabindex="-1"><span class="n" aria-hidden="true">01</span><span class="t">The dog in the night</span></h2>
+      <p>The best-known lesson in this is a dog that did not bark. In Arthur Conan Doyle’s “Silver Blaze”, a racehorse is taken from its stable at night, and the stable dog stays <span class="nb">quiet.<sup><a class="ref" id="r1" href="#n1" aria-label="Note 1">1</a></sup></span> Holmes takes the silence for the clue: the dog knew the visitor. Everyone else had looked at what happened. He asked what should have happened, and had not.</p>
+      <p>Absence is evidence only to someone who expected a presence. A bark announces itself. A missing bark has to be noticed by somebody who was listening for it, at the right hour, with an idea already in mind of what the night ought to sound like.</p>
+    </section>
+
+    <section>
+      <h2 id="three" tabindex="-1"><span class="n" aria-hidden="true">02</span><span class="t">Three outcomes, not two</span></h2>
+      <p>We talk about jobs as if they had two outcomes, and they have three. It worked. It failed. Or it ran and did nothing. From outside, the third looks exactly like the first.</p>
+      <blockquote class="pull" aria-hidden="true">Zero rows read, zero files written, zero messages sent: all done without complaint.</blockquote>
+      <p>The usual check asks only whether the job finished. A program ends by handing back a number, and zero means that it ended without <span class="nb">complaint.<sup><a class="ref" id="r2" href="#n2" aria-label="Note 2">2</a></sup></span> That is a statement about the ending. It says nothing about the middle.</p>
+      <p>A job can read nothing, write nothing and send nothing, and still hand back a zero. Zero rows read, zero files written, zero messages sent: all done without complaint. The number is honest. We are the ones who read “finished” and heard “worked”.</p>
+    </section>
+
+    <section>
+      <h2 id="wins" tabindex="-1"><span class="n" aria-hidden="true">03</span><span class="t">Why silence wins</span></h2>
+      <p>Silence wins because it is the cheapest thing a system can do. A failure takes effort: something has to notice, stop, and say so. Doing nothing takes none. A source moves, a filter grows too strict, a list comes back empty, and every step after that is handed nothing, does nothing with it and passes nothing on, correctly.</p>
+      <p>It also wins because nobody reads good news. A column of green ticks is looked at once, on the day it is built. After that it is furniture. Our own dashboards train us to look only when something is red, and silence is never red.</p>
+    </section>
+
+    <section>
+      <h2 id="example" tabindex="-1"><span class="n" aria-hidden="true">04</span><span class="t">Nine quiet nights</span></h2>
+      <p>Take a made-up case of a familiar kind: a nightly news job whose feed moves, so that it reads an empty list and reports success. The job gathers news each night for a morning briefing. One night the site it reads moves its feed to a new address. The old address still answers, politely, with an empty list. The job finds no stories, writes a briefing with no stories in it, and says that all is well.</p>
+      <figure class="fig">
+        <svg viewBox="0 0 720 100" role="img" aria-label="Fourteen nights in a row. On the first five the job gathered stories. On the last nine it gathered none. Every night is marked as a success.">
+          <path class="ink thin" d="M24 62 H696"/>
+          <g id="nights"><g transform="translate(48 62)"><path class="ink thin" d="M-7 -36 l5 6 l10 -12"/><circle class="dot" r="13"/></g><g transform="translate(96 62)"><path class="ink thin" d="M-7 -36 l5 6 l10 -12"/><circle class="dot" r="13"/></g><g transform="translate(144 62)"><path class="ink thin" d="M-7 -36 l5 6 l10 -12"/><circle class="dot" r="13"/></g><g transform="translate(192 62)"><path class="ink thin" d="M-7 -36 l5 6 l10 -12"/><circle class="dot" r="13"/></g><g transform="translate(240 62)"><path class="ink thin" d="M-7 -36 l5 6 l10 -12"/><circle class="dot" r="13"/></g><g transform="translate(288 62)"><path class="ink thin" d="M-7 -36 l5 6 l10 -12"/><circle class="ink thin fill green dash" r="13"/></g><g transform="translate(336 62)"><path class="ink thin" d="M-7 -36 l5 6 l10 -12"/><circle class="ink thin fill green dash" r="13"/></g><g transform="translate(384 62)"><path class="ink thin" d="M-7 -36 l5 6 l10 -12"/><circle class="ink thin fill green dash" r="13"/></g><g transform="translate(432 62)"><path class="ink thin" d="M-7 -36 l5 6 l10 -12"/><circle class="ink thin fill green dash" r="13"/></g><g transform="translate(480 62)"><path class="ink thin" d="M-7 -36 l5 6 l10 -12"/><circle class="ink thin fill green dash" r="13"/></g><g transform="translate(528 62)"><path class="ink thin" d="M-7 -36 l5 6 l10 -12"/><circle class="ink thin fill green dash" r="13"/></g><g transform="translate(576 62)"><path class="ink thin" d="M-7 -36 l5 6 l10 -12"/><circle class="ink thin fill green dash" r="13"/></g><g transform="translate(624 62)"><path class="ink thin" d="M-7 -36 l5 6 l10 -12"/><circle class="ink thin fill green dash" r="13"/></g><g transform="translate(672 62)"><path class="ink thin" d="M-7 -36 l5 6 l10 -12"/><circle class="ink thin fill green dash" r="13"/></g></g>
+        </svg>
+        <ul class="legend" aria-hidden="true"><li><svg viewBox="0 0 20 20"><circle class="dot" cx="10" cy="10" r="8"/></svg>Gathered stories</li><li><svg viewBox="0 0 20 20"><circle class="ink thin fill green dash" cx="10" cy="10" r="7"/></svg>Gathered nothing</li><li><svg viewBox="0 0 20 20"><path class="ink thin" d="M3 10 l5 6 l9 -12"/></svg>Reported success</li></ul>
+        <figcaption>Fourteen nights of an invented job. Every one ended in success. On nine of them it gathered nothing.</figcaption>
+      </figure>
+      <p>The job does this for nine nights before anyone asks. Nobody is told, because nothing failed. The briefing looks thin, and then it looks normal, because thin is what it has become. On the tenth day somebody asks whether there has really been no news.</p>
+    </section>
+
+    <section>
+      <h2 id="hear" tabindex="-1"><span class="n" aria-hidden="true">05</span><span class="t">How to hear it</span></h2>
+      <p>The cure is to make every job say what it did, in numbers, every time. Not “done”. Say “read 212 items, kept 31, wrote one file with 31 stories in it”. A line like that can be wrong in ways that show.</p>
+      <p>Then decide, in advance, what too little looks like. Thirty-one stories is a normal night. Three is odd. None is a fault, whatever number the program hands back. Write the floor down where the job can check itself against it, and have it complain when it falls through.</p>
+      <p>And arrange to be told when nothing arrives at all. Railways dealt with this long ago, with a handle the driver has to keep hold of: let go, and the train <span class="nb">stops.<sup><a class="ref" id="r3" href="#n3" aria-label="Note 3">3</a></sup></span> The software version is a message that has to keep arriving. The alarm is its absence.</p>
+      <aside class="keys" aria-labelledby="keys-h">
+        <h3 id="keys-h">Three habits</h3>
+        <ol>
+          <li>Every run says what it did, in numbers.</li>
+          <li>Every job knows what too little looks like, and complains.</li>
+          <li>Something notices when a message that should arrive does not.</li>
+        </ol>
+      </aside>
+    </section>
+
+    <section>
+      <h2 id="cost" tabindex="-1"><span class="n" aria-hidden="true">06</span><span class="t">What it costs</span></h2>
+      <p>None of this is expensive. One line of output, one number to hold it against, one timer. The cost is in the habit: somebody has to decide what normal is, and mind when it changes.</p>
+      <p>The habit of asking what a job made is worth more than any tool. A team that asks “what did it actually make?” of every success will find its silent jobs early. A team that asks only “did it pass?” will find them when a reader does.</p>
+      <p>So listen for the dog. When something that ought to make a noise has made none, that is not peace. Go and look at the stable.</p>
+    </section>
+  </div>
+
+  <section id="notes" aria-labelledby="notes-h">
+    <h2 id="notes-h">Notes</h2>
+    <ol>
+      <li id="n1">“Silver Blaze” was first printed in The Strand Magazine in December 1892 and collected in The Memoirs of Sherlock Holmes. The exchange about “the curious incident of the dog in the night-time” comes about two thirds of the way through; the explanation is kept for the end. <a href="#r1">Back to the text</a></li>
+      <li id="n2">The exit code: the number a program hands back when it ends. By long custom zero means no error, and any other number usually means that something went wrong. <a href="#r2">Back to the text</a></li>
+      <li id="n3">The dead man’s handle. In software the message that has to keep arriving is called a heartbeat, and the thing that acts when it stops, a dead man’s switch. <a href="#r3">Back to the text</a></li>
+    </ol>
+  </section>
+
+  <footer class="end">
+    <p><strong>This article is sample text.</strong> It was written to fill this template. The nine quiet nights are invented, as the article says.</p>
+    <p>Nothing is loaded from anywhere else and nothing is stored: your text size, the paper look and the short read last until you leave the page.</p>
+  </footer>
+  </div>
+</article>
+</main>
+<p class="sr" id="live" role="status"></p>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
