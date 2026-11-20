@@ -25,7 +25,7 @@ Ready for Kol to try. Not published, not in the gallery or the sitemap.
 Verified by running. All passed on the code as committed.
 
 - `node demos/enquiry/tools/flow.test.mjs`: pass.
-  - A good enquiry passes every step. 48 wrong answers each get the one message that says what to do, and 36 awkward but right ones pass (the test counts them as it runs).
+  - A good enquiry passes every step. 48 wrong answers each get the one message that says what to do, and 38 awkward but right ones pass (the test counts them as it runs).
   - No step can be reached past an unfinished one. Answers to questions not asked are dropped. What pasting leaves behind is tidied off.
 - `node demos/enquiry/tools/smoke.mjs`: pass, in headless Chromium.
   - Scripts off, and before the script arrives: every question on one page; Enter in a box sends nothing and goes nowhere.
@@ -90,6 +90,18 @@ A second, outside review was posted on the pull request on 17 November 2026: Cha
 | "Unlisted" pages become reachable once merged, because the site deploys its main branch | The README now says so | |
 
 A browser can ignore a page that asks it not to fill a box in, so a visitor's own details may still be offered by the browser. The page cannot stop that; it can only ask for made-up ones.
+
+### Second-family review, 20 November 2026
+
+Codex, a model from a different family, read the code, tests and CI results on 19 November (relayed onto the pull request by another Claude session) and said to keep this in draft. Its test reviewer found more.
+
+| Finding | What was done | Held by |
+|---|---|---|
+| An address for a later step, or for the end, opened cold with nothing filled in, put you at the first step without a word. (For the end, even moving within the page said nothing) | True. Arriving cold, a plain note now says which step was asked for and why you are at another; nothing takes the focus and nothing is marked wrong. Asked for from within the page, the end now lists what the unfinished step needs, as a step does | `smoke.mjs`: three addresses at 1280 and on a 320 phone, the note's exact words, in sight, focus on nothing, no problems listed, gone once you move on |
+| Found while checking that: on a small phone the browser's own jump to the address scrolled the note, and the notice that this is a demonstration, out of sight | A step opened by its address now starts at the top of the page, and the form then brings the note into sight | the check above, which failed until this was done |
+| The check that nothing is sent ticked the agreement box by force and watched the desktop path for 0.3 s | The made-up journey now ticks it with an ordinary tap or click on its words, and watches every request from the first choice through Send to Start again. Nothing is let through except the browser's own fetch of this site's tab icon, by exact address. Origins are compared whole | `smoke.mjs`, at 1280, on a 320 phone by touch, and at large text |
+| This file said 36 awkward but right answers pass; the test counts 38 | Corrected | |
+| Nobody independent has done the phone journey, and a live form would need approved questions, budget bands and somewhere to send to | Still true | Kol |
 
 ## Provenance
 

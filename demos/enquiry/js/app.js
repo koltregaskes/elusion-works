@@ -42,7 +42,7 @@ $('madeup').addEventListener('click', () => { $('name').value = F.MADE_UP.name; 
 form.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches('input[type="checkbox"], input[type="radio"]')) e.preventDefault(); });
 
 /* ---- One step at a time ---- */
-function show(i, opts = {}) { const from = step; step = i; if (i === LAST) returning = false; clearErrors(); asked(); sections.forEach((s, k) => { s.hidden = k !== i; }); if (i === LAST) answers(); paintSteps();
+function show(i, opts = {}) { const from = step; step = i; if (!opts.quiet) $('moved').hidden = true; /* the note about an address that could not be opened goes as soon as you do anything */ if (i === LAST) returning = false; clearErrors(); asked(); sections.forEach((s, k) => { s.hidden = k !== i; }); if (i === LAST) answers(); paintSteps();
   $('back').hidden = i === 0; $('next').textContent = i === LAST ? 'Send enquiry' : returning ? 'Back to your answers' : 'Continue'; document.title = titleNow();
   const at = '#' + F.STEPS[i].id; if (opts.push && location.hash !== at) history.pushState({ from }, '', at); if (opts.replace) history.replaceState(null, '', at); if (opts.quiet) return;
   sections[i].querySelector('h2').focus({ preventScroll: true }); /* the heading takes the focus, so that a screen reader says where you now are and Tab starts at the first question */
@@ -58,7 +58,9 @@ form.addEventListener('submit', e => { e.preventDefault(); const data = read(), 
 $('back').addEventListener('click', () => { if (history.state && history.state.from === step - 1) history.back(); else show(step - 1, { replace: true }); });
 /* The address says what is shown, so that the browser's Back and Forward work. A step past an unfinished one cannot be reached by its address: you are put at the unfinished one and told what it needs. */
 function fromAddress(quiet) { const id = location.hash.slice(1), data = read(); if (id === 'sent' && F.ready(data)) { finish(data, false, quiet); return; } if (sent) { sent = false; form.hidden = false; $('sent').hidden = true; }
-  const known = F.STEPS.some(s => s.id === id), want = known ? F.stepOf(id) : id === 'sent' ? LAST : 0, can = Math.min(want, F.furthest(data)); show(can, { quiet }); if (id && (!known || can !== want)) history.replaceState(history.state, '', '#' + F.STEPS[can].id); if (known && can !== want && !quiet) showErrors(F.check(F.STEPS[can].id, data)); }
+  const known = F.STEPS.some(s => s.id === id), want = known ? F.stepOf(id) : id === 'sent' ? LAST : 0, can = Math.min(want, F.furthest(data)); show(can, { quiet }); if (id && (!known || can !== want)) history.replaceState(history.state, '', '#' + F.STEPS[can].id);
+  /* Sent to a step that cannot be opened yet, or to the end before anything is filled in: you are told why you are somewhere else. Arriving cold, by a link or a bookmark, that is a plain note and nothing takes the focus; moving about within the page, it is the list of what the unfinished step still needs. */
+  if ((known || id === 'sent') && can !== want) { if (quiet) { const asked = id === 'sent' ? 'the end of the form' : `“${F.STEPS[want].title}”`, words = `That address is for ${asked}, which opens once the steps before it are done. You are at the first one that is not: “${F.STEPS[can].title}”.`; $('moved').textContent = words; $('moved').hidden = false; say(words); intoView(); } else showErrors(F.check(F.STEPS[can].id, data)); } }
 addEventListener('hashchange', () => fromAddress(false));
 
 /* ---- The end: what would have been sent ---- */
@@ -68,5 +70,5 @@ $('again').addEventListener('click', () => { sent = false; returning = false; fo
 
 fromAddress(true);
 /* Coming back to the page, the browser may put old answers back in the boxes after this script has run: the count, the questions asked and the step shown are made to agree with them. */
-addEventListener('pageshow', () => { count(false); fromAddress(true); });
+addEventListener('pageshow', () => { count(false); fromAddress(true); if (!$('moved').hidden) requestAnimationFrame(intoView); /* after the browser has made its own jump to the address, so that the note is what is in sight */ });
 window.enquiry = { state: () => ({ step, id: sent ? 'sent' : F.STEPS[step].id, sent, returning, data: read() }) }; /* for the checks in tools/ */
