@@ -89,6 +89,15 @@ Reviewed on 17 November 2026 by ChatGPT in chat mode at Pro, driven by another C
 
 One test was changed in a way that is not a new check: the smoke test's first step waited a fixed 6 s for the clock to advance more than 1 s, which failed on the new code while the machine was heavily loaded (about one frame a second); a probe of the old code under the same load moved the clock only 0.2 s in 5 s, so it would have failed too. It now waits up to 2 minutes for the same condition. The assertion itself is unchanged.
 
+### Second-family review, 20 November 2026
+
+Codex, a model from a different family, read the code, tests and CI results on 19 November (relayed onto the pull request by another Claude session) and said to keep this in draft. It did not run the page.
+
+| Finding | What was done | Held by |
+|---|---|---|
+| The event times are still not checked against a dated primary source. Reading T+6:08 as the Mach 1 crossing is an interpretation, and agreeing with the chosen figures to 0.2 s cannot establish what happened when accounts differ by seconds | Tried and blocked. On 20 November the Wikipedia page for the flight and SpaceX's own mission page were both asked for, and both are outside the network this session is allowed to reach, so nothing was read. Nothing on the page was changed on the strength of memory. To settle it: open either page, read off the booster's entries from boostback to the catch, and compare them with the three times in the README's table. The page, the README and the pull request description already say the times are unchecked | Kol, or a session that can reach those two sites |
+| The contact between the booster and the arms in the last eight seconds has not been judged by eye, on a desktop and a phone, with sound | Still true | Kol |
+
 ## Provenance
 
 - Model: Claude Fable 5.2 (`claude-fable-5-2`), Claude Code cloud session, high effort.
