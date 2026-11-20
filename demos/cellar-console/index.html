@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cellar console · Wherry Lane Brewing Co.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@400;600;800&family=Public+Sans:wght@400;600;700&family=Martian+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+:root{--enamel:#eef0eb;--panel:#fbfcf9;--ink:#141815;--green:#1f4d3a;--copper:#b86b3a;--amber:#f2a516;--red:#d23b2a;--line:#d5d9d1;--mut:#6b736d}
+*{box-sizing:border-box;margin:0}
+html,body{background:var(--enamel);color:var(--ink);font-family:"Public Sans",system-ui,sans-serif}
+.top{display:flex;align-items:center;gap:22px;padding:14px 28px;background:var(--green);color:#eef0eb}
+.top .name{font:800 22px "Saira Condensed";letter-spacing:.04em;text-transform:uppercase}
+.top .name small{font:400 12px "Public Sans";letter-spacing:0;text-transform:none;opacity:.7;margin-left:10px}
+.top .sp{flex:1}
+.pill{font:600 12px "Saira Condensed";letter-spacing:.1em;text-transform:uppercase;padding:6px 10px;border:1px solid rgba(238,240,235,.35);border-radius:3px;display:flex;gap:8px;align-items:center}
+.dot{width:8px;height:8px;border-radius:50%;background:#59d18b;box-shadow:0 0 0 3px rgba(89,209,139,.2)}
+.clock{font:600 22px "Saira Condensed";letter-spacing:.04em}
+.alarm{display:flex;align-items:center;gap:14px;padding:10px 28px;background:#fff4dc;border-bottom:2px solid var(--amber);font-size:14px}
+.alarm b{font:800 13px "Saira Condensed";letter-spacing:.12em;color:#8a5a00;text-transform:uppercase}
+.alarm button{margin-left:auto}
+button{font:600 13px "Saira Condensed";letter-spacing:.1em;text-transform:uppercase;border:1.5px solid var(--ink);background:var(--panel);color:var(--ink);padding:8px 14px;border-radius:3px;cursor:pointer}
+button:hover{background:var(--ink);color:#fff}
+button.pri{background:var(--copper);border-color:var(--copper);color:#fff}
+main{padding:18px 28px 30px;display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:22px}
+.floor{border:1px solid var(--line);border-radius:6px;padding:18px 18px 8px;position:relative;background:
+ linear-gradient(transparent 0 70%,#1f4d3a 70% 72.5%,transparent 72.5%),
+ linear-gradient(90deg,rgba(150,160,150,.35) 1px,transparent 1px) 0 0/44px 22px,
+ linear-gradient(rgba(150,160,150,.35) 1px,transparent 1px) 0 0/44px 22px,#f7f8f4}
+.floor .h{background:#f7f8f4;margin:-18px -18px 0;padding:14px 18px 10px;border-radius:6px 6px 0 0;border-bottom:1px solid var(--line)}
+.valveh{cursor:pointer}
+.valveh:hover rect.lever{fill:#d23b2a}
+.h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.h h2{font:800 15px "Saira Condensed";letter-spacing:.14em;text-transform:uppercase}
+.h span{font:400 11px "Martian Mono",monospace;color:var(--mut)}
+.tanks{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;align-items:end;padding-top:34px;position:relative}
+.tanks:before{content:'GLYCOL FLOW ▸';position:absolute;left:0;top:8px;font:600 10px 'Saira Condensed';letter-spacing:.14em;color:#2b6a9c}
+.tank{background:transparent;position:relative;z-index:1}
+.tanks:after{content:"";position:absolute;left:-18px;right:-18px;top:40px;height:9px;background:linear-gradient(rgba(255,255,255,.35) 0 30%,transparent 30%),repeating-linear-gradient(90deg,#9fd0ff 0 6px,transparent 6px 14px) 0 4px/100% 2px no-repeat,#b86b3a;animation:flow 1s linear infinite;z-index:0}
+@keyframes flow{to{background-position:0 0,14px 4px,0 0}}
+.tank{cursor:pointer;text-align:center;border-radius:6px;padding:6px 2px 10px;transition:background .2s}
+.tank:hover{background:#f1f3ee}
+.tank.sel{background:#e9efe9;outline:2px solid var(--green)}
+.tank{min-width:0}
+.tank svg{width:100%;max-height:220px;height:auto;display:block;overflow:visible;margin:0 auto}
+.tag{font:800 13px "Saira Condensed";letter-spacing:.1em;margin-top:4px}
+.beer{font-size:12px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.read{display:flex;justify-content:center;gap:8px;font:600 15px "Saira Condensed";margin-top:4px}
+.read .warn{color:var(--red)}
+.detail{display:grid;grid-template-columns:1.25fr 1fr;gap:18px;margin-top:18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px 18px}
+.big{font:800 46px/1 "Saira Condensed";letter-spacing:-.01em}
+.big small{font-size:18px;color:var(--mut);font-weight:600;margin-left:3px}
+.kv{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0 6px}
+.kv div{border-top:2px solid var(--ink);padding-top:6px}
+.kv span{display:block;font:600 11px "Saira Condensed";letter-spacing:.12em;text-transform:uppercase;color:var(--mut)}
+.kv b{font:800 24px "Saira Condensed"}
+svg.chart{width:100%;height:150px;display:block}
+.side{display:flex;flex-direction:column;gap:22px}
+.valve{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--line)}
+.valve:last-child{border-bottom:0}
+.valve .l{font-weight:600;font-size:14px}.valve .l small{display:block;font-weight:400;color:var(--mut);font-size:12px}
+.sw{width:58px;height:30px;border-radius:15px;background:#c7ccc4;position:relative;cursor:pointer;border:0;padding:0;transition:background .2s}
+.sw:after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:left .2s}
+.sw.on{background:var(--green)}.sw.on:after{left:31px}
+.sw:hover{background:#b3b9b0}.sw.on:hover{background:#2a6650}
+.log{font:400 12px/1.6 "Martian Mono",monospace;color:#39413b;max-height:210px;overflow:auto}
+.log div{padding:6px 0;border-bottom:1px dashed var(--line)}
+.log time{color:var(--copper);margin-right:8px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+main>div{min-width:0}
+.floor{overflow:hidden}
+@media (max-width:1100px){main{grid-template-columns:minmax(0,1fr)}.detail{grid-template-columns:1fr}}
+@media (max-width:640px){
+ .top{padding:12px 16px;gap:10px;flex-wrap:wrap}.top .name small{display:none}.pill{display:none}
+ .alarm{padding:10px 16px;flex-wrap:wrap}
+ main{padding:14px 12px 24px}
+ .tanks{grid-template-columns:repeat(6,112px);overflow-x:auto;overflow-y:hidden;margin:0 -18px;padding-left:18px;padding-right:18px}
+ .tanks:after{left:0;right:auto;width:calc(6 * 122px + 36px)}
+ .h{flex-wrap:wrap;gap:4px}
+ .kv{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+<div class="top"><span class="name">Wherry Lane<small>Cellar console · Norwich brewhouse</small></span><span class="sp"></span><span class="pill"><i class="dot"></i>Glycol chiller 1.5 °C</span><span class="pill"><i class="dot"></i>CO₂ recovery on</span><span class="clock" id="clock">07:30</span></div>
+<div class="alarm" id="alarm"><b>FV4 · Above set point</b><span id="alarmtxt">Broadland IPA is 1.4 °C above its 19.0 °C set point. Free rise ended 6 h ago.</span><button id="ack">Acknowledge</button></div>
+<main>
+ <div>
+  <section class="floor">
+   <div class="h"><h2>Fermenting vessels</h2><span>6 × 20 hl unitanks · tap a valve handle to open or close glycol</span></div>
+   <div class="tanks" id="tanks"></div>
+  </section>
+  <div class="detail">
+   <section class="card">
+    <div class="h"><h2 id="dTitle">FV4 · Broadland IPA</h2><span id="dDay">Day 6 of 14</span></div>
+    <div style="display:flex;align-items:flex-end;gap:26px;flex-wrap:wrap"><div><div class="big" id="dSG">1.018</div><div style="font:600 12px 'Saira Condensed';letter-spacing:.12em;color:var(--mut)">PRESENT GRAVITY</div></div><div><div class="big" id="dABV">5.5<small>% ABV</small></div><div style="font:600 12px 'Saira Condensed';letter-spacing:.12em;color:var(--mut)">ESTIMATED SO FAR</div></div></div>
+    <div class="kv"><div><span>Original</span><b id="kOG">1.060</b></div><div><span>Target</span><b id="kFG">1.012</b></div><div><span>Attenuation</span><b id="kAtt">70%</b></div><div><span>Yeast</span><b id="kY">London III</b></div></div>
+    <svg class="chart" id="gChart" viewBox="0 0 420 160" preserveAspectRatio="none"></svg>
+   </section>
+   <section class="card">
+    <div class="h"><h2>Temperature</h2><span id="tNow">20.4 °C · set 19.0</span></div>
+    <svg class="chart" id="tChart" viewBox="0 0 400 190" preserveAspectRatio="none"></svg>
+    <div class="actions"><button id="sDown">Set −0.5 °C</button><button id="sUp">Set +0.5 °C</button><button class="pri" id="crash">Crash to 2 °C</button></div>
+   </section>
+  </div>
+ </div>
+ <div class="side">
+  <section class="card">
+   <div class="h"><h2>This week</h2><span>w/c 23 Nov</span></div>
+   <div id="sched"></div>
+  </section>
+  <section class="card">
+   <div class="h"><h2>Cellar log</h2><span>today</span></div>
+   <div class="log" id="log"></div>
+   <div class="actions"><button id="dry">Log dry hop</button><button id="sample">Take sample</button></div>
+  </section>
+ </div>
+</main>
+<script>
+const T=[
+ {id:'FV1',beer:'Marsh Light',style:'Pale ale 3.8%',srm:5,og:1.038,fg:1.009,sg:1.011,day:9,len:10,set:18,temp:18.1,yeast:'Nottingham',fill:.86},
+ {id:'FV2',beer:'Wherry Bitter',style:'Best bitter 4.2%',srm:13,og:1.042,fg:1.010,sg:1.024,day:3,len:10,set:19,temp:19.2,yeast:'Ringwood',fill:.9},
+ {id:'FV3',beer:'Lantern Porter',style:'Porter 5.1%',srm:32,og:1.052,fg:1.013,sg:1.015,day:8,len:12,set:19,temp:18.9,yeast:'Whitbread B',fill:.82},
+ {id:'FV4',beer:'Broadland IPA',style:'IPA 6.2%',srm:7,og:1.060,fg:1.012,sg:1.018,day:6,len:14,set:19,temp:20.4,yeast:'London III',fill:.92},
+ {id:'FV5',beer:'Empty · CIP',style:'Caustic wash 75 °C',srm:0,og:0,fg:0,sg:0,day:0,len:0,set:0,temp:61.0,yeast:'-',fill:0},
+ {id:'FV6',beer:'Hobbledown Winter',style:'Winter warmer 7.0%',srm:20,og:1.068,fg:1.016,sg:1.016,day:18,len:21,set:2,temp:2.3,yeast:'Ringwood',fill:.78}];
+let sel=3;
+const SRM=s=>{const st=[[2,'#f8e08a'],[5,'#e8b84a'],[9,'#d68b25'],[14,'#b5621a'],[20,'#8c3f12'],[30,'#4b1e0b'],[40,'#250e06']];for(let i=0;i<st.length;i++)if(s<=st[i][0])return st[i][1];return'#1a0a04'};
+const abv=t=>((t.og-t.sg)*131.25).toFixed(1);
+function tankSVG(t,i){const lvl=t.fill,c=SRM(t.srm),warn=Math.abs(t.temp-t.set)>1&&t.og;
+ const top=24+(1-lvl)*150;
+ let bubbles='';if(t.og&&t.sg>t.fg+.001){for(let k=0;k<7;k++){const x=30+((k*37+i*13)%60),d=(k*0.37+i*.2)%2.4;bubbles+=`<circle cx="${x}" cy="180" r="${1.5+(k%3)}" fill="rgba(255,255,255,.7)"><animate attributeName="cy" from="180" to="${top+4}" dur="${2.2+(k%3)*.5}s" begin="${d}s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;1;1;0" dur="${2.2+(k%3)*.5}s" begin="${d}s" repeatCount="indefinite"/></circle>`}}
+ const open=V[i]&&V[i].wall&&t.og;const pipe=`<g><rect x="96" y="-40" width="6" height="${t.og?132:40}" fill="#b86b3a"/>${open&&t.og?`<line x1="99" y1="-38" x2="99" y2="92" stroke="#9fd0ff" stroke-width="2" stroke-dasharray="5 6"><animate attributeName="stroke-dashoffset" from="22" to="0" dur=".8s" repeatCount="indefinite"/></line>`:''}${t.og?`<g class="valveh" data-v="${i}"><circle cx="99" cy="-10" r="7" fill="#2a2f2c"/><rect class="lever" x="97" y="-12" width="26" height="4" rx="2" fill="${open?'#1f4d3a':'#8a918c'}" transform="rotate(${open?0:-90} 99 -10)"/><rect x="84" y="-26" width="44" height="32" fill="transparent"/></g>`:''}</g>`;
+ return `<svg viewBox="0 -40 120 290">${pipe}<defs><clipPath id="cl${i}"><path d="M14 20 Q14 8 26 8 H94 Q106 8 106 20 V176 L66 222 H54 L14 176Z"/></clipPath><linearGradient id="st${i}" x1="0" x2="1"><stop offset="0" stop-color="#a7aea8"/><stop offset=".35" stop-color="#f4f6f3"/><stop offset=".6" stop-color="#c9cfca"/><stop offset="1" stop-color="#8f9791"/></linearGradient></defs>
+ <line x1="22" y1="190" x2="16" y2="246" stroke="#7d857f" stroke-width="4"/><line x1="98" y1="190" x2="104" y2="246" stroke="#7d857f" stroke-width="4"/>
+ <path d="M14 20 Q14 8 26 8 H94 Q106 8 106 20 V176 L66 222 H54 L14 176Z" fill="url(#st${i})" stroke="#6e7670" stroke-width="1.5"/>
+ <g clip-path="url(#cl${i})" opacity=".9">${lvl?`<rect x="0" y="${top}" width="120" height="260" fill="${c}"/><rect x="0" y="${top}" width="120" height="5" fill="#f7f1df" opacity=".85"/>${bubbles}`:`<rect x="0" y="0" width="120" height="260" fill="url(#st${i})"/><text x="60" y="110" text-anchor="middle" font-family="Saira Condensed" font-weight="800" font-size="16" fill="#6e7670">CIP</text>`}</g>
+ <rect x="40" y="40" width="40" height="120" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="2" rx="2"/>
+ <rect x="14" y="60" width="92" height="6" fill="${t.set<6&&t.og?'#9fd0ff':'#cfd5d0'}" opacity=".9"/><rect x="14" y="120" width="92" height="6" fill="${t.set<6&&t.og?'#9fd0ff':'#cfd5d0'}" opacity=".9"/>
+ <circle cx="60" cy="20" r="6" fill="#59656b"/><circle cx="102" cy="90" r="5" fill="${warn?'#d23b2a':'#59d18b'}">${warn?'<animate attributeName="opacity" values="1;.25;1" dur="1s" repeatCount="indefinite"/>':''}</circle></svg>`}
+function renderTanks(){const box=document.getElementById('tanks');box.innerHTML='';T.forEach((t,i)=>{const d=document.createElement('div');d.className='tank'+(i===sel?' sel':'');const warn=Math.abs(t.temp-t.set)>1&&t.og;
+ d.innerHTML=tankSVG(t,i)+`<div class="tag">${t.id}</div><div class="beer">${t.beer}</div><div class="read"><span class="${warn?'warn':''}">${t.temp.toFixed(1)}°</span><span>${t.og?t.sg.toFixed(3):'-'}</span></div>`;d.onclick=e=>{const v=e.target.closest('.valveh');if(v){V[i].wall=!V[i].wall;log(`${t.id} wall valve ${V[i].wall?'opened':'closed'} from the cellar view`);renderAll();return}sel=i;renderTanks();renderDetail()};box.appendChild(d)})}
+function curve(t){const pts=[];const n=Math.max(t.len,1);for(let d=0;d<=n;d++){const k=1-Math.exp(-d/2.3);pts.push(t.og-(t.og-t.fg)*Math.min(1,k*1.08))}return pts}
+function renderDetail(){const t=T[sel];document.getElementById('dTitle').textContent=t.id+' · '+t.beer;
+ if(!t.og){document.getElementById('dDay').textContent='Cleaning in place';['dSG','kOG','kFG','kAtt','kY'].forEach(id=>document.getElementById(id).textContent='-');document.getElementById('dABV').innerHTML='-';document.getElementById('gChart').innerHTML='<text x="210" y="80" text-anchor="middle" font-family="Saira Condensed" font-size="18" fill="#6b736d">Vessel empty. Caustic at 61 °C, rinse due 08:10.</text>';tChart(t);return}
+ document.getElementById('dDay').textContent='Day '+t.day+' of '+t.len;document.getElementById('dSG').textContent=t.sg.toFixed(3);document.getElementById('dABV').innerHTML=abv(t)+'<small>% ABV</small>';
+ document.getElementById('kOG').textContent=t.og.toFixed(3);document.getElementById('kFG').textContent=t.fg.toFixed(3);document.getElementById('kAtt').textContent=Math.round((t.og-t.sg)/(t.og-1)*100)+'%';document.getElementById('kY').textContent=t.yeast;
+ const c=curve(t),W=420,H=160,P=24,max=t.og+.004,min=t.fg-.006;const x=d=>P+d/t.len*(W-P*2),y=v=>12+(max-v)/(max-min)*(H-40);
+ let s=`<rect x="${P}" y="${y(t.fg+.002)}" width="${W-P*2}" height="${y(t.fg-.002)-y(t.fg+.002)}" fill="#e3efe7"/><text x="${W-P}" y="${y(t.fg+.002)-4}" text-anchor="end" font-family="Martian Mono" font-size="10" fill="#1f4d3a">target ${t.fg.toFixed(3)}</text>`;
+ for(let d=0;d<=t.len;d+=2)s+=`<line x1="${x(d)}" x2="${x(d)}" y1="12" y2="${H-28}" stroke="#e1e4de"/><text x="${x(d)}" y="${H-10}" text-anchor="middle" font-family="Martian Mono" font-size="10" fill="#6b736d">d${d}</text>`;
+ const kk=d=>1-Math.exp(-d/2.3);const act=[];for(let d=0;d<=t.day;d++)act.push(d===t.day?t.sg:t.og-(t.og-t.sg)*kk(d)/kk(t.day)+(d?Math.sin(d*2.1)*.0008:0));
+ const fut=[];for(let d=t.day;d<=t.len;d++){const f=(d-t.day)/Math.max(1,t.len-t.day);fut.push([d,t.sg-(t.sg-t.fg)*(1-Math.pow(1-f,3))])}
+ s+=`<path d="M${fut.map(([d,v])=>x(d)+' '+y(v)).join(' L')}" fill="none" stroke="#9aa39c" stroke-width="2" stroke-dasharray="5 5"/>`;
+ s+=`<path d="M${act.map((v,d)=>x(d)+' '+y(v)).join(' L')}" fill="none" stroke="#b86b3a" stroke-width="3" stroke-linejoin="round"/>`;
+ act.forEach((v,d)=>s+=`<circle cx="${x(d)}" cy="${y(v)}" r="${d===t.day?6:3}" fill="${d===t.day?'#b86b3a':'#fff'}" stroke="#b86b3a" stroke-width="2"/>`);
+ s+=`<text x="${x(t.day)+10}" y="${y(t.sg)-10}" font-family="Saira Condensed" font-weight="800" font-size="16" fill="#141815">${t.sg.toFixed(3)} today</text>`;
+ document.getElementById('gChart').innerHTML=s;tChart(t)}
+function tChart(t){const W=400,H=190,P=24;const hist=[];for(let h=0;h<=48;h++){hist.push(t.temp-(48-h)*0.0+(Math.sin(h/3+sel)*.25)+(h<30?-(t.temp-t.set)*(1-h/30)*.2:0))}hist[48]=t.temp;
+ const lo=Math.min(t.set,...hist)-1.2,hi=Math.max(t.set,...hist)+1.2;const x=h=>P+h/48*(W-P*2),y=v=>10+(hi-v)/(hi-lo)*(H-36);
+ let s=`<line x1="${P}" x2="${W-P}" y1="${y(t.set)}" y2="${y(t.set)}" stroke="#1f4d3a" stroke-width="2" stroke-dasharray="2 4"/><text x="${W-P}" y="${y(t.set)-5}" text-anchor="end" font-family="Martian Mono" font-size="10" fill="#1f4d3a">set ${t.set.toFixed(1)} °C</text>`;
+ s+=`<path d="M${hist.map((v,h)=>x(h)+' '+y(v)).join(' L')} L${x(48)} ${H-26} L${x(0)} ${H-26}Z" fill="rgba(210,59,42,.08)"/><path d="M${hist.map((v,h)=>x(h)+' '+y(v)).join(' L')}" fill="none" stroke="${Math.abs(t.temp-t.set)>1?'#d23b2a':'#141815'}" stroke-width="2.4"/>`;
+ [0,12,24,36,48].forEach(h=>s+=`<text x="${x(h)}" y="${H-10}" text-anchor="middle" font-family="Martian Mono" font-size="10" fill="#6b736d">${h===48?'now':'-'+(48-h)+'h'}</text>`);
+ document.getElementById('tChart').innerHTML=s;document.getElementById('tNow').textContent=t.temp.toFixed(1)+' °C · set '+t.set.toFixed(1)}
+// schedule
+const S=[['Mon','Rack FV6 to bright tank 2','Hobbledown Winter, 18 hl','#1f4d3a'],['Tue','Brew day: Wherry Bitter','into FV5 once CIP passes','#b86b3a'],['Wed','Dry hop FV4','4 kg Citra, 2 kg Jester','#c7a000'],['Thu','Cask fill, bright tank 2','72 firkins for the Adnams run','#1f4d3a'],['Fri','Crash FV1, Marsh Light','to 2 °C, finings Saturday','#2b6a9c']];
+function renderSched(){document.getElementById('sched').innerHTML=S.map(([d,a,b,c])=>`<div class="valve"><div style="display:flex;gap:12px;align-items:center"><span style="font:800 15px 'Saira Condensed';width:34px;height:34px;border-radius:4px;background:${c};color:#fff;display:grid;place-items:center;letter-spacing:.04em">${d}</span><div class="l">${a}<small>${b}</small></div></div></div>`).join('')}
+// valves
+const V=T.map(t=>({cone:t.set<6&&!!t.og,wall:Math.abs(t.temp-t.set)<.6||t.set<6}));
+function renderValves(){renderSched();return;const b=document.getElementById('valves');b.innerHTML='';T.forEach((t,i)=>{if(!t.og)return;const r=document.createElement('div');r.className='valve';r.innerHTML=`<div class="l">${t.id} wall jacket<small>${t.beer} · ${V[i].wall?'open, chilling':'closed'}</small></div>`;const s=document.createElement('button');s.className='sw'+(V[i].wall?' on':'');s.setAttribute('aria-label',t.id+' wall valve');s.onclick=()=>{V[i].wall=!V[i].wall;log(`${t.id} wall valve ${V[i].wall?'opened':'closed'} by KT`);renderValves()};r.appendChild(s);b.appendChild(r)})}
+const L=[['05:42','FV6 gravity 1.016, stable three days. Ready to rack Monday.'],['06:15','FV4 free rise ended at 20.3 °C. Diacetyl rest done.'],['06:58','FV5 caustic cycle started, 75 °C.'],['07:10','FV2 krausen high. Blow-off bucket changed.']];
+function log(txt){const d=new Date();L.unshift([d.toTimeString().slice(0,5),txt]);renderLog()}
+function renderLog(){document.getElementById('log').innerHTML=L.map(([t,x])=>`<div><time>${t}</time>${x}</div>`).join('')}
+document.getElementById('ack').onclick=()=>{document.getElementById('alarm').style.display='none';log('FV4 high temperature acknowledged. Wall valve opened.');V[3].wall=true;T[3].temp=19.6;renderAll()};
+document.getElementById('sDown').onclick=()=>{const t=T[sel];if(!t.og)return;t.set=Math.round((t.set-.5)*10)/10;log(`${t.id} set point lowered to ${t.set.toFixed(1)} °C`);renderAll()};
+document.getElementById('sUp').onclick=()=>{const t=T[sel];if(!t.og)return;t.set=Math.round((t.set+.5)*10)/10;log(`${t.id} set point raised to ${t.set.toFixed(1)} °C`);renderAll()};
+document.getElementById('crash').onclick=()=>{const t=T[sel];if(!t.og)return;t.set=2;V[sel].wall=true;V[sel].cone=true;log(`${t.id} crash cooling to 2 °C started. Expect 36 h.`);renderAll()};
+document.getElementById('dry').onclick=()=>{const t=T[sel];if(!t.og)return;log(`${t.id} dry hop logged: 4 kg Citra, 2 kg Jester (UK).`)};
+document.getElementById('sample').onclick=()=>{const t=T[sel];if(!t.og)return;t.sg=Math.max(t.fg,+(t.sg-.001).toFixed(3));log(`${t.id} sample: ${t.sg.toFixed(3)} at ${t.temp.toFixed(1)} °C.`);renderAll()};
+function renderAll(){renderTanks();renderDetail();renderValves()}
+setInterval(()=>{T.forEach(t=>{if(!t.og)return;const target=t.set+(V[T.indexOf(t)].wall?0:.8);t.temp+=(target-t.temp)*.04+(Math.random()-.5)*.04});renderTanks();renderDetail();document.getElementById('clock').textContent=new Date().toTimeString().slice(0,5)},10000);
+document.getElementById('clock').textContent=new Date().toTimeString().slice(0,5);
+renderAll();renderLog();
+</script>
+</body>
+</html>
