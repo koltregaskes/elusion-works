@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>The weekly digest: an email template for AI Resource Hub</title>
+<meta name="description" content="A demonstration of a newsletter template: one issue of plain data made into an email and its plain-text twin, shown as a desktop and a phone would, with the checks an email has to pass.">
+<meta name="theme-color" content="#111315">
+<link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml">
+<!-- Unlisted until release is approved: remove the next line, then add the gallery card and sitemap entry. -->
+<meta name="robots" content="noindex">
+<style>
+  :root { --bg:#111315; --card:#191c1f; --field:#0f1113; --line:rgba(255,255,255,.16); --edge:#7f898f; --ink:#f4f5f3; --soft:#d9dee1; --muted:#a9b1b6; --accent:#3fe08a; --accent-ink:#06210f;
+    --sans:"Helvetica Neue","Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif; --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace; color-scheme:dark; }
+  * { box-sizing:border-box; }
+  html { background:var(--bg); font-size:100%; -webkit-text-size-adjust:100%; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:1rem/1.5 var(--sans); overflow-wrap:break-word; }
+  [hidden] { display:none !important; }
+  a { color:var(--accent); text-underline-offset:3px; } button { font:inherit; color:inherit; }
+  :focus-visible { outline:3px solid var(--accent); outline-offset:2px; border-radius:.5rem; }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+  .eyebrow { margin:0; font:600 .6875rem/1.3 var(--mono); letter-spacing:.2em; text-transform:uppercase; color:var(--accent); }
+
+  .page { display:grid; grid-template-columns:minmax(0, 27rem) minmax(0, 41rem); grid-template-areas:"head main" "rest main" "foot foot"; grid-template-rows:auto 1fr auto; gap:1.5rem 3.5rem; justify-content:center; align-items:start; max-width:78rem; margin:0 auto; padding:clamp(1.5rem, 5vw, 4rem) max(20px, env(safe-area-inset-right)) 4rem max(20px, env(safe-area-inset-left)); }
+  .head { grid-area:head; } main { grid-area:main; min-width:0; } .rest { grid-area:rest; } footer { grid-area:foot; }
+  h1 { margin:.875rem 0 1.125rem; font-size:clamp(2rem, 11vw, 5.25rem); line-height:.9; font-weight:800; letter-spacing:-.045em; text-wrap:balance; overflow-wrap:anywhere; }
+  .lede { margin:0; max-width:32ch; font-size:1.1875rem; color:var(--soft); }
+  .demo { margin:1.5rem 0 0; max-width:40ch; padding:.75rem .875rem; border-radius:.75rem; border:1px solid var(--line); border-left:4px solid var(--accent); font-size:.875rem; color:var(--soft); } .demo strong { color:var(--ink); }
+  h2 { margin:2.25rem 0 .75rem; font:600 .6875rem/1.3 var(--mono); letter-spacing:.16em; text-transform:uppercase; color:var(--muted); }
+  .sub { margin:-.25rem 0 .875rem; max-width:44ch; color:var(--muted); font-size:.9375rem; }
+
+  /* The checks: what an email has to pass, each with what was found. */
+  #checks { display:grid; gap:.125rem; margin:0; padding:0; list-style:none; } #checks li { display:grid; grid-template-columns:1.5rem minmax(0, 1fr); gap:.75rem; padding:.4375rem 0; border-top:1px solid var(--line); } #checks li:last-child { border-bottom:1px solid var(--line); }
+  #checks .mark { display:grid; place-items:center; width:1.5rem; height:1.5rem; margin-top:.125rem; border-radius:50%; background:var(--ink); color:var(--bg); font:700 .875rem/1 var(--mono); } #checks li.bad .mark { background:none; border:2px solid var(--ink); color:var(--ink); }
+  #checks b { display:block; font-weight:700; } #checks .detail { display:block; color:var(--muted); font-size:.875rem; }
+  #ran { margin:.75rem 0 0; color:var(--muted); font-size:.875rem; }
+  .row { display:flex; flex-wrap:wrap; gap:.625rem; margin-top:1rem; } .btn { display:inline-flex; align-items:center; justify-content:center; min-height:2.75rem; padding:0 1rem; border:2px solid var(--edge); border-radius:.75rem; background:none; color:var(--ink); font-weight:700; text-decoration:none; cursor:pointer; }
+  .links { margin:1rem 0 0; padding:0; list-style:none; display:grid; gap:.125rem; } .links a { display:inline-flex; align-items:center; min-height:2.75rem; font-weight:700; }
+
+  /* How an inbox shows it: who it is from, the subject, and the line that follows. */
+  .inbox { display:grid; grid-template-columns:auto minmax(0, 1fr); gap:0 .875rem; margin:0; padding:.75rem 1rem; border:1px solid var(--line); border-radius:.75rem; background:var(--card); } .inbox .av { grid-row:1 / 4; align-self:center; display:grid; place-items:center; width:2.5rem; height:2.5rem; border-radius:50%; background:var(--ink); color:var(--bg); font:800 .8125rem/1 var(--mono); } .inbox .who { color:var(--muted); font-size:.8125rem; }
+  .inbox .subj { font-weight:700; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; } .inbox .pre { color:var(--muted); font-size:.9375rem; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  .seg { display:inline-flex; flex-wrap:wrap; margin:1.25rem 0 .75rem; padding:.1875rem; border:1px solid var(--line); border-radius:.75rem; } .seg button { min-height:2.75rem; padding:0 1rem; border:0; border-radius:.5rem; background:none; color:var(--soft); font-weight:700; cursor:pointer; } .seg button[aria-pressed="true"] { background:var(--ink); color:var(--bg); }
+  .js-off .seg, .js-off .row, .js-off #ran { display:none; }
+  /* The email itself, in a frame of its own, at the width chosen. */
+  .stage { padding:clamp(.5rem, 2vw, 1rem); border:1px solid var(--line); border-radius:1rem; background:#0a0b0c; } #mail { display:block; width:100%; max-width:600px; height:70rem; margin:0 auto; border:0; border-radius:.5rem; background:var(--bg); } .stage[data-look="phone"] #mail { max-width:375px; }
+  .stage[data-look="text"] #mail, .stage:not([data-look="text"]) #plain-wrap { display:none; }
+  #plain { margin:0; padding:1rem; border-radius:.5rem; background:var(--bg); color:var(--soft); font:.875rem/1.55 var(--mono); white-space:pre-wrap; overflow-wrap:anywhere; }
+  .said { margin:.625rem 0 0; color:var(--muted); font-size:.9375rem; }
+  .nojs { display:none; margin:1rem 0 0; color:var(--soft); font-size:.9375rem; } .js-off .nojs { display:block; }
+  footer { color:var(--muted); font-size:.8125rem; } footer p { margin:0; }
+
+  @media (max-width:64em) { .page { grid-template-columns:minmax(0, 41rem); grid-template-areas:"head" "main" "rest" "foot"; grid-template-rows:auto; } .lede, .demo, .sub { max-width:none; } }
+  @media (forced-colors:active) { .seg button[aria-pressed="true"] { outline:2px solid Highlight; } #checks .mark { border:2px solid CanvasText; } }
+</style>
+</head>
+<body class="js-off">
+<div class="page">
+  <header class="head">
+    <p class="eyebrow">AI Resource Hub</p>
+    <h1>The weekly digest</h1>
+    <p class="lede">An email template. One issue of plain data goes in; an email and its plain-text twin come out.</p>
+    <p class="demo"><strong>This is a sample issue.</strong> Nothing is sent: there is no mailing list behind this page. The resources and figures in the email are made up. Its links lead to the Hub's front page, or are left for the sender to fill in.</p>
+  </header>
+<main>
+  <h2 style="margin-top:0" id="inbox-title">As an inbox shows it</h2>
+<!--inbox--><p class="inbox"><span class="av" aria-hidden="true">AI</span><span class="who">AI Resource Hub</span><span class="subj">Four new resources, and a prompt that asks for the working</span><span class="pre">A notebook that reads your PDFs, a plain guide to evals, and the question to ask before you trust an answer.</span></p><!--/inbox-->
+  <div class="seg" role="group" aria-label="How to see the email"><button type="button" data-look="desktop" aria-pressed="true">600 wide</button><button type="button" data-look="phone" aria-pressed="false">375 wide</button><button type="button" data-look="text" aria-pressed="false">Plain text</button></div>
+  <p class="nojs">With scripts off, the email is shown in a tall frame that scrolls, and its links are live: one press loads that page in the frame. Its plain text is behind the link "The plain text on its own". The checks were run when the email was made.</p>
+  <div class="stage" id="stage" data-look="desktop">
+    <iframe id="mail" src="email.html" title="The email"></iframe>
+    <div id="plain-wrap"><pre id="plain" tabindex="0" aria-label="The email as plain text"></pre></div>
+  </div>
+  <p class="said" id="size" role="status"></p>
+</main>
+
+  <div class="rest">
+    <h2 id="checks-title">What an email has to pass</h2>
+    <p class="sub">Each rule reads the finished email itself: every tag, and every piece of text with the colour, background and size it ends up with. They are rules, not a test in Outlook or Gmail.</p>
+    <ul id="checks" aria-labelledby="checks-title">
+<!--checks--><li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>Small enough not to be cut off</b><span class="sr"> (passes)</span><span class="detail">21.4 KB as written. Gmail cuts an email off above 102.0 KB, and a sending service adds to it.</span></span></li>
+<li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>A subject that fits an inbox</b><span class="sr"> (passes)</span><span class="detail">58 characters, and 60 is about what a phone shows.</span></span></li>
+<li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>A hidden line to follow the subject</b><span class="sr"> (passes)</span><span class="detail">108 characters, first in the email and hidden from the reader, for the inbox to show.</span></span></li>
+<li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>No pictures</b><span class="sr"> (passes)</span><span class="detail">Many inboxes hide pictures until asked. There are none, in the tags or the styles.</span></span></li>
+<li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>No script, form or frame</b><span class="sr"> (passes)</span><span class="detail">No tag that runs or collects anything, no handler on any tag, no link that runs code.</span></span></li>
+<li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>Nothing fetched from elsewhere</b><span class="sr"> (passes)</span><span class="detail">No web fonts, no style sheets, no tracking pixel.</span></span></li>
+<li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>Every link is a full, secure address or left for the sender</b><span class="sr"> (passes)</span><span class="detail">10 links, each with words to press.</span></span></li>
+<li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>A way to stop the emails, and a place for who sent them</b><span class="sr"> (passes)</span><span class="detail">Both are in the words a reader sees. Whether a send meets the law is for the sender to check.</span></span></li>
+<li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>Layout by tables that screen readers skip</b><span class="sr"> (passes)</span><span class="detail">13 tables, each marked as layout only, and for Outlook one more, 600 wide, marked the same.</span></span></li>
+<li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>No flex, grid or positioning</b><span class="sr"> (passes)</span><span class="detail">In the tags and the style block alike. Tables, padding and plain colours are what email programs share.</span></span></li>
+<li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>Text large enough to read on a phone</b><span class="sr"> (passes)</span><span class="detail">Every piece of text was measured: 14 px or more, and 12 px for labels in capitals.</span></span></li>
+<li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>Every piece of text is easy to read against what is behind it</b><span class="sr"> (passes)</span><span class="detail">Worked out for each piece of text from its own colour and background: the weakest is 7.9 to 1, and 4.5 is the mark. 9 pairings are used.</span></span></li>
+<li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>The language is said twice, and the title is the subject</b><span class="sr"> (passes)</span><span class="detail">Once on the page and once on the email itself, because webmail throws the first away.</span></span></li>
+<li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>A plain-text version that says the same</b><span class="sr"> (passes)</span><span class="detail">93 lines. Every piece of text and every link in the email is in it, in the same order, each link with its own words, and no line is over 78 characters but for a link.</span></span></li><!--/checks-->
+    </ul>
+    <p id="ran" role="status"></p>
+    <h2>Take it</h2>
+    <div class="row"><button type="button" class="btn" id="copy-html">Copy the HTML</button><button type="button" class="btn" id="copy-text">Copy the plain text</button></div>
+    <ul class="links"><li><a href="email.html">The email on its own, as a page</a></li><li><a href="email.html.txt">The email&rsquo;s HTML, exactly as made</a></li><li><a href="email.txt">The plain text on its own</a></li></ul>
+    <p class="said" id="said" role="status"></p>
+  </div>
+
+<footer><p>A demonstration of an email template, made for AI Resource Hub. It has been checked against rules and in one browser, not in Outlook, Gmail or Apple Mail.</p></footer>
+</div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
