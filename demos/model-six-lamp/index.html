@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Model 6 task lamp · Holloway Lamp Works, Sheffield</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#171614;--desk:#2a2622;--light:#ffd9a3;--ink:#efe9df;--dim:#8d877d;--finish:#b8442c;--lx:68%;--ly:46%}
+*{box-sizing:border-box;margin:0}
+html,body{background:var(--bg);color:var(--ink);font-family:Archivo,system-ui,sans-serif;font-variation-settings:"wdth" 100}
+a{color:inherit}
+nav{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;justify-content:space-between;align-items:center;padding:20px 36px;font:600 11px "JetBrains Mono",monospace;letter-spacing:.12em;text-transform:uppercase;mix-blend-mode:difference;color:#e9e3d8}
+nav .mark{font:800 15px Archivo;font-variation-settings:"wdth" 125;letter-spacing:.02em}
+nav .links{display:flex;gap:26px}
+nav .bag{border:1px solid currentColor;padding:7px 11px;border-radius:999px}
+.hero{position:relative;height:100vh;min-height:680px;overflow:hidden;cursor:crosshair;touch-action:none;background:
+ radial-gradient(ellipse 60% 40% at var(--lx) calc(var(--ly) + 8%),rgba(255,217,163,.16),transparent 70%),var(--bg)}
+.lampbox{position:absolute;inset:0;z-index:1}
+.desk{position:absolute;left:0;right:0;bottom:0;height:24%;background:linear-gradient(#2e2924,#1f1c19);border-top:1px solid #3a342d}
+.desk:before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(90deg,rgba(255,255,255,.015) 0 1px,transparent 1px 14px)}
+svg#lamp{position:absolute;inset:0;width:100%;height:100%;z-index:3;overflow:visible}
+.copy{position:absolute;z-index:2;right:6%;top:18%;width:min(640px,52%)}
+.eyebrow{font:600 11px "JetBrains Mono",monospace;letter-spacing:.16em;text-transform:uppercase;color:var(--light)}
+h1{font-weight:850;font-variation-settings:"wdth" 118;font-size:clamp(46px,6.4vw,104px);line-height:.88;letter-spacing:-.03em;margin:18px 0 22px}
+h1 .thin{font-weight:300;font-variation-settings:"wdth" 62;letter-spacing:-.01em}
+.lede{font-size:19px;line-height:1.45;max-width:31ch;color:#d9d2c6;font-weight:380}
+.cta{display:flex;gap:14px;align-items:center;margin-top:28px;flex-wrap:wrap}
+.btn{font:600 12px "JetBrains Mono",monospace;letter-spacing:.08em;text-transform:uppercase;padding:15px 20px;border:1px solid var(--ink);background:var(--ink);color:#171614;cursor:pointer;border-radius:2px}
+.btn.ghost{background:transparent;color:var(--ink)}
+.btn:hover{background:var(--light);border-color:var(--light);color:#171614}
+.price{font:600 13px "JetBrains Mono",monospace;color:var(--dim)}
+.price b{color:var(--ink);font-size:18px}
+.shade{position:absolute;inset:0;z-index:4;pointer-events:none;background:radial-gradient(circle at var(--lx) var(--ly),rgba(23,22,20,0) 0,rgba(23,22,20,0) 170px,rgba(23,22,20,.55) 340px,rgba(23,22,20,.82) 560px)}
+.hint{position:absolute;z-index:6;left:36px;bottom:30px;font:400 11px "JetBrains Mono",monospace;color:var(--dim);letter-spacing:.06em}
+.hint b{color:var(--light);font-weight:600}
+.finishes{position:absolute;z-index:6;right:36px;bottom:28px;display:flex;gap:10px;align-items:center;font:400 11px "JetBrains Mono",monospace;color:var(--dim)}
+.sw{width:30px;height:30px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;box-shadow:inset 0 -4px 6px rgba(0,0,0,.35),inset 0 3px 4px rgba(255,255,255,.18)}
+.sw.on{outline:2px solid var(--ink);outline-offset:3px}
+#fname{min-width:110px;text-align:right;color:var(--ink)}
+.stamp{position:absolute;z-index:7;right:12%;top:12%;border:3px solid var(--finish);color:var(--finish);font:800 20px Archivo;font-variation-settings:"wdth" 118;text-transform:uppercase;letter-spacing:.04em;padding:10px 16px;transform:rotate(-9deg) scale(2);opacity:0;pointer-events:none;background:rgba(23,22,20,.6);line-height:1.1;text-align:center}
+.stamp small{display:block;font:600 11px "JetBrains Mono",monospace;letter-spacing:.1em}
+.stamp.on{animation:stamp .5s cubic-bezier(.2,1.6,.4,1) forwards}
+@keyframes stamp{to{opacity:1;transform:rotate(-9deg) scale(1)}}
+section{padding:110px 36px;max-width:1360px;margin:0 auto}
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:24px}
+h2{font-weight:800;font-variation-settings:"wdth" 112;font-size:clamp(34px,4vw,58px);line-height:.95;letter-spacing:-.02em}
+.parts{grid-column:1/-1;display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid #3a352f;margin-top:46px}
+.part{padding:22px 22px 26px 0;border-right:1px solid #3a352f}
+.part:last-child{border-right:0}
+.part .n{font:600 11px "JetBrains Mono",monospace;color:var(--light)}
+.part h3{font-weight:700;font-size:20px;margin:12px 0 8px;font-variation-settings:"wdth" 108}
+.part p{color:#b9b2a6;font-size:15px;line-height:1.5;padding-right:12px}
+.spec{grid-column:7/-1;font:400 13px "JetBrains Mono",monospace}
+.spec div{display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid #2f2b26}
+.spec span{color:var(--dim)}
+.note{grid-column:1/6;font-size:17px;line-height:1.55;color:#cfc8bb}
+.note p+p{margin-top:14px}
+.sig{font:600 12px "JetBrains Mono",monospace;color:var(--dim);margin-top:18px}
+footer{border-top:1px solid #2f2b26;padding:28px 36px;display:flex;justify-content:space-between;font:400 11px "JetBrains Mono",monospace;color:var(--dim);flex-wrap:wrap;gap:10px}
+@media (max-width:860px){
+ nav{padding:16px 18px}nav .links{display:none}
+ .hero{height:auto;min-height:0;padding:96px 20px 0;display:flex;flex-direction:column}
+ .copy{position:relative;right:auto;top:auto;width:100%;z-index:5}
+ .lampbox{position:relative;height:430px;margin:0 -20px}
+ .hint{position:relative;left:auto;bottom:auto;margin:6px 0 4px}
+ .finishes{position:relative;right:auto;bottom:auto;margin:6px 0 26px}
+ .lede{font-size:17px}
+ .stamp{top:auto;bottom:140px;right:10%}
+ section{padding:70px 20px}
+ .parts{grid-template-columns:1fr 1fr}.part:nth-child(2){border-right:0}
+ .note,.spec{grid-column:1/-1}
+}
+</style>
+</head>
+<body>
+<nav><span class="mark">HOLLOWAY</span><span class="links"><a href="#anatomy">Anatomy</a><a href="#spec">Specification</a><a href="#workshop">Workshop</a></span><span class="bag" id="bag">Basket · 0</span></nav>
+<header class="hero" id="hero">
+ <div class="copy">
+  <div class="eyebrow">Model 6 · Batch 14 of 2026 · 60 made</div>
+  <h1>Three springs.<br><span class="thin">One pool of light.</span></h1>
+  <p class="lede">A task lamp balanced by hand in Kelham Island, Sheffield. Put the light exactly where the work is, and it stays there.</p>
+  <div class="cta"><button class="btn" id="reserve">Reserve from batch 14</button><span class="price"><b>£385</b> · ships late January</span></div>
+ </div>
+ <div class="lampbox" id="lampbox"><div class="desk"></div><svg id="lamp" aria-label="Model 6 lamp, drag to aim the light"></svg></div>
+ <div class="shade" id="shade"></div>
+ <div class="stamp" id="stamp">Reserved<small id="stampno">Batch 14 · No. 37</small></div>
+ <div class="hint"><b>Drag the light.</b> The arm follows like the real one does.</div>
+ <div class="finishes" id="finishes"><span id="fname">Oxide Red</span></div>
+</header>
+<section id="anatomy">
+ <div class="grid">
+  <h2 style="grid-column:1/8">Built like the 1930s originals. Wired for the 2020s.</h2>
+  <div class="parts">
+   <div class="part"><div class="n">01 · Base</div><h3>Cast iron, 3.2 kg</h3><p>Poured at a foundry in Rotherham and machined flat, so the lamp never tips at full reach.</p></div>
+   <div class="part"><div class="n">02 · Arms</div><h3>Steel, three springs</h3><p>Each spring is matched to the arm by weight. Set the head anywhere and let go.</p></div>
+   <div class="part"><div class="n">03 · Shade</div><h3>Spun aluminium</h3><p>Hand-spun on a lathe, with a matt black inside that keeps glare off your screen.</p></div>
+   <div class="part"><div class="n">04 · Light</div><h3>8 W, warm 2700 K</h3><p>CRI 95 so paint and fabric look true. A brass dimmer sits where your thumb lands.</p></div>
+  </div>
+ </div>
+</section>
+<section id="spec" style="padding-top:20px">
+ <div class="grid" id="workshop">
+  <div class="note"><p>We make sixty of each batch, by hand, and number every one. When a batch is gone we start the next, rather than piling stock in a warehouse.</p><p>Springs are guaranteed for ten years. If one ever tires, post the arm back and we will re-tension it free of charge.</p><div class="sig">Ruth Holloway, workshop lead</div></div>
+  <div class="spec">
+   <div><span>Reach</span>760 mm at full stretch</div>
+   <div><span>Light</span>8 W LED, about 600 lm, 2700 K</div>
+   <div><span>Colour rendering</span>CRI 95</div>
+   <div><span>Flex</span>2 m braided cotton, UK plug</div>
+   <div><span>Weight</span>4.6 kg in total</div>
+   <div><span>Finishes</span>Oxide Red, Mill Green, Graphite, Bare Steel</div>
+   <div><span>Guarantee</span>10 years on springs, 3 on electrics</div>
+  </div>
+ </div>
+</section>
+<footer><span>Holloway Lamp Works · Kelham Island, Sheffield S3</span><span>A design study. Holloway is a fictional workshop.</span></footer>
+<script>
+const FIN=[['Oxide Red','#b8442c'],['Mill Green','#4f6b4a'],['Graphite','#3b3d40'],['Bare Steel','#a9aaa6']];
+let fin=0;
+const svg=document.getElementById('lamp'),hero=document.getElementById('hero'),box=document.getElementById('lampbox');
+const NS='http://www.w3.org/2000/svg';
+function el(t,a,p=svg){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);p.appendChild(e);return e}
+let target={x:0,y:0},cur={x:0,y:0},dims;
+function measure(){const r=box.getBoundingClientRect(),h=hero.getBoundingClientRect();const mobile=innerWidth<=860;
+ const W=r.width,H=r.height;const deskY=H*.76;const s=Math.min(W*(mobile?.0021:.00105),H*.00125);
+ dims={W,H,deskY,s,base:{x:mobile?W*.2:W*.17,y:deskY},L1:300*s*1.0,L2:290*s*1.0,ox:r.left-h.left,oy:r.top-h.top,mobile}}
+function draw(){const {s,base,L1,L2}=dims;const col=FIN[fin][1];svg.innerHTML='';
+ const defs=el('defs',{});const g=el('radialGradient',{id:'pool',cx:'50%',cy:'50%',r:'50%'},defs);el('stop',{offset:'0','stop-color':'#ffd9a3','stop-opacity':'.55'},g);el('stop',{offset:'1','stop-color':'#ffd9a3','stop-opacity':'0'},g);
+ const lg=el('linearGradient',{id:'beam',x1:'0',y1:'0',x2:'0',y2:'1'},defs);el('stop',{offset:'0','stop-color':'#ffe2b8','stop-opacity':'.28'},lg);el('stop',{offset:'1','stop-color':'#ffe2b8','stop-opacity':'0'},lg);
+ // IK: shoulder above base
+ const sh={x:base.x,y:base.y-40*s};
+ const tx=cur.x,ty=cur.y;
+ // head sits back from the target along shoulder->target line
+ let dx=tx-sh.x,dy=ty-sh.y,dist=Math.max(1,Math.hypot(dx,dy));const back=Math.min(dist*.62,380*s);
+ let hx=tx-dx/dist*back,hy=ty-dy/dist*back-90*s;
+ let ddx=hx-sh.x,ddy=hy-sh.y,d=Math.hypot(ddx,ddy);const maxR=L1+L2-2;if(d>maxR){hx=sh.x+ddx/d*maxR;hy=sh.y+ddy/d*maxR;d=maxR}if(d<60*s){d=60*s}
+ const a=Math.atan2(hy-sh.y,hx-sh.x);const cosB=(L1*L1+d*d-L2*L2)/(2*L1*d);const B=Math.acos(Math.max(-1,Math.min(1,cosB)));
+ const el1=a-B;const elb={x:sh.x+Math.cos(el1)*L1,y:sh.y+Math.sin(el1)*L1};
+ // beam + pool
+ const aim=Math.atan2(ty-hy,tx-hx);const spread=.36;const far=Math.hypot(tx-hx,ty-hy)*1.25;
+ el('path',{d:`M${hx} ${hy} L${hx+Math.cos(aim-spread)*far} ${hy+Math.sin(aim-spread)*far} L${hx+Math.cos(aim+spread)*far} ${hy+Math.sin(aim+spread)*far}Z`,fill:'url(#beam)'});
+ if(!dims.mobile)el('ellipse',{cx:tx,cy:dims.deskY+10,rx:220*s,ry:34*s,fill:'url(#pool)',opacity:Math.max(0,1-Math.abs(ty-dims.deskY)/500)});
+ // base
+ el('ellipse',{cx:base.x,cy:base.y+2,rx:92*s,ry:12*s,fill:'rgba(0,0,0,.45)'});
+ el('path',{d:`M${base.x-82*s} ${base.y} q0 -22 18 -26 h${128*s} q18 4 18 26z`,fill:col});
+ el('rect',{x:base.x-74*s,y:base.y-34*s,width:148*s,height:8*s,rx:3,fill:'rgba(255,255,255,.14)'});
+ el('rect',{x:base.x-8*s,y:sh.y,width:16*s,height:40*s,fill:'#2a2a2a'});
+ // springs (zigzags alongside lower arm)
+ const spring=(p,q,off,n)=>{const ang=Math.atan2(q.y-p.y,q.x-p.x),nx=-Math.sin(ang)*off,ny=Math.cos(ang)*off;let dd=`M${p.x+nx} ${p.y+ny}`;for(let i=1;i<=n;i++){const t=.18+.5*i/n;const w=(i%2?5:-5)*s;dd+=` L${p.x+(q.x-p.x)*t+nx-Math.sin(ang)*w} ${p.y+(q.y-p.y)*t+ny+Math.cos(ang)*w}`}dd+=` L${p.x+(q.x-p.x)*.75+nx} ${p.y+(q.y-p.y)*.75+ny}`;el('path',{d:dd,stroke:'#c9c4bb','stroke-width':1.6*s+.4,fill:'none'})};
+ spring(sh,elb,14*s,22);spring(sh,elb,-14*s,22);
+ // arms (twin rods)
+ const rod=(p,q,off)=>{const ang=Math.atan2(q.y-p.y,q.x-p.x),nx=-Math.sin(ang)*off,ny=Math.cos(ang)*off;el('line',{x1:p.x+nx,y1:p.y+ny,x2:q.x+nx,y2:q.y+ny,stroke:col,'stroke-width':7*s+1,'stroke-linecap':'round'})};
+ rod(sh,elb,6*s);rod(sh,elb,-6*s);rod(elb,{x:hx,y:hy},4*s);rod(elb,{x:hx,y:hy},-4*s);
+ spring(elb,{x:hx,y:hy},11*s,16);
+ el('circle',{cx:sh.x,cy:sh.y,r:11*s,fill:'#2a2a2a',stroke:col,'stroke-width':3*s});
+ el('circle',{cx:elb.x,cy:elb.y,r:10*s,fill:'#2a2a2a',stroke:col,'stroke-width':3*s});
+ // head
+ const hg=el('g',{transform:`translate(${hx} ${hy}) rotate(${aim*180/Math.PI})`});
+ el('path',{d:`M${-34*s} ${-20*s} L${-10*s} ${-24*s} L${58*s} ${-58*s} Q${70*s} 0 ${58*s} ${58*s} L${-10*s} ${24*s} L${-34*s} ${20*s} Z`,fill:col},hg);
+ el('path',{d:`M${-34*s} ${-20*s} L${-10*s} ${-24*s} L${58*s} ${-58*s} L${50*s} ${-46*s} L${-12*s} ${-14*s} Z`,fill:'rgba(255,255,255,.18)'},hg);
+ el('ellipse',{cx:62*s,cy:0,rx:9*s,ry:56*s,fill:'#fff3dd'},hg);
+ el('ellipse',{cx:62*s,cy:0,rx:22*s,ry:72*s,fill:'#ffd9a3',opacity:.25},hg);
+ el('circle',{cx:-24*s,cy:0,r:9*s,fill:'#2a2a2a'},hg);
+ // flex
+ el('path',{d:`M${base.x+70*s} ${base.y-10*s} C ${base.x+180*s} ${base.y+30*s}, ${base.x+260*s} ${base.y+50*s}, ${base.x+420*s} ${base.y+60*s}`,stroke:'#cdb89a','stroke-width':3*s,fill:'none',opacity:.8});
+ // move the spotlight on the page
+ const hr=hero.getBoundingClientRect();hero.style.setProperty('--lx',(tx+dims.ox)+'px');hero.style.setProperty('--ly',(ty+dims.oy)+'px');
+}
+function setTarget(px,py){const r=box.getBoundingClientRect();target.x=Math.max(20,Math.min(dims.W-20,px-r.left));target.y=Math.max(40,Math.min(dims.deskY+20,py-r.top))}
+let dragging=false;
+hero.addEventListener('pointerdown',e=>{if(e.target.closest('button,a'))return;dragging=true;setTarget(e.clientX,e.clientY)});
+addEventListener('pointermove',e=>{if(dragging)setTarget(e.clientX,e.clientY)});addEventListener('pointerup',()=>dragging=false);
+function tick(){cur.x+=(target.x-cur.x)*.14;cur.y+=(target.y-cur.y)*.14;draw();requestAnimationFrame(tick)}
+function home(){measure();const c=document.querySelector('h1').getBoundingClientRect(),r=box.getBoundingClientRect();
+ if(dims.mobile){target={x:dims.W*.72,y:dims.deskY-10}}else{target={x:c.left-r.left+c.width*.22,y:c.top-r.top+c.height*.75}}}
+// finishes
+const fw=document.getElementById('finishes');FIN.forEach((f,i)=>{const b=document.createElement('button');b.className='sw'+(i?'':' on');b.style.background=f[1];b.setAttribute('aria-label',f[0]);b.onclick=()=>{fin=i;document.querySelectorAll('.sw').forEach(x=>x.classList.remove('on'));b.classList.add('on');document.getElementById('fname').textContent=f[0];document.documentElement.style.setProperty('--finish',f[1])};fw.appendChild(b)});
+// reserve
+let n=0;document.getElementById('reserve').onclick=()=>{n++;const no=36+n;document.getElementById('bag').textContent='Basket · '+n;document.getElementById('stampno').textContent='Batch 14 · No. '+no+' · '+FIN[fin][0];const s=document.getElementById('stamp');s.classList.remove('on');void s.offsetWidth;s.classList.add('on');document.getElementById('reserve').textContent='Reserve another'};
+addEventListener('resize',()=>{home();cur={...target}});
+document.fonts.ready.then(()=>{home()});home();cur={x:dims.base.x+40,y:dims.deskY-60};tick();
+</script>
+</body>
+</html>

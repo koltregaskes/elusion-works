@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Plain Hunt: ring the 2 in a touch on six bells</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;600;700&family=Martian+Mono:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#eceee8;--ink:#141414;--red:#c8102e;--blue:#1f4fa3;--mid:#6c6f68;--rule:#c9ccc3}
+*{box-sizing:border-box;margin:0}
+html,body{background:var(--paper);color:var(--ink);font-family:"Familjen Grotesk",system-ui,sans-serif;overflow-x:hidden}
+body{min-height:100vh;background-image:linear-gradient(var(--rule) 1px,transparent 1px);background-size:100% 32px;background-position:0 -1px}
+.app{display:grid;grid-template-columns:200px minmax(0,1fr) 330px;min-height:100vh;max-width:1440px;margin:0 auto}
+/* rope column */
+.ropecol{position:relative;border-right:1.5px solid var(--ink);background:var(--paper);display:flex;flex-direction:column;align-items:center;overflow:hidden;user-select:none;touch-action:none;cursor:grab}
+.ropecol .cap{position:absolute;z-index:2;top:14px;left:50%;transform:translateX(-50%);white-space:nowrap;background:var(--paper);border:1.5px solid var(--ink);padding:6px 8px;text-align:center;font:600 10px "Martian Mono",monospace;letter-spacing:.14em;text-transform:uppercase}
+.rope{position:absolute;left:50%;top:-40px;width:14px;margin-left:-7px;height:calc(100% - 120px);transition:transform .32s cubic-bezier(.3,.7,.3,1)}
+.rope .line{position:absolute;inset:0;background:repeating-linear-gradient(28deg,#d9c79c 0 3px,#b9a576 3px 6px);border-radius:7px}
+.sally{position:absolute;left:-9px;width:32px;height:150px;bottom:110px;border-radius:16px;background:repeating-linear-gradient(-32deg,var(--red) 0 9px,#fafafa 9px 15px,var(--blue) 15px 24px,#fafafa 24px 30px);box-shadow:inset -6px 0 8px rgba(0,0,0,.25),inset 5px 0 6px rgba(255,255,255,.35)}
+.tail{position:absolute;bottom:0;left:2px;width:10px;height:60px;border-radius:5px;background:#d9c79c;transform-origin:top}
+.rope.back{transform:translateY(180px)}
+.ropecol .hint{position:absolute;bottom:18px;left:0;right:0;text-align:center;font:400 11px/1.5 "Martian Mono",monospace;color:var(--mid);padding:0 14px}
+.flash{position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at 50% 70%,rgba(200,16,46,.22),transparent 60%);opacity:0;transition:opacity .4s}
+.flash.on{opacity:1;transition:none}
+/* centre */
+.centre{padding:30px 40px 30px;display:flex;flex-direction:column;min-width:0}
+header{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;border-bottom:1.5px solid var(--ink);padding-bottom:16px}
+h1{font-weight:700;font-size:clamp(44px,5.6vw,84px);line-height:.86;letter-spacing:-.04em}
+h1 span{color:var(--red)}
+.meta{font:400 11px/1.6 "Martian Mono",monospace;text-align:right;color:var(--mid);white-space:nowrap}
+.meta b{color:var(--ink);font-weight:600}
+.call{font:700 26px "Familjen Grotesk";letter-spacing:-.01em;padding:16px 0 10px;min-height:58px;display:flex;align-items:center;gap:12px}
+.call .tag{font:600 10px "Martian Mono",monospace;letter-spacing:.14em;text-transform:uppercase;color:#fff;background:var(--ink);padding:5px 7px;border-radius:2px}
+.gridwrap{position:relative;flex:1;min-height:420px;border:1.5px solid var(--ink);background:#f6f7f3;overflow:hidden}
+.gridwrap canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding-top:14px}
+button{font:600 12px "Martian Mono",monospace;letter-spacing:.06em;text-transform:uppercase;border:1.5px solid var(--ink);background:var(--paper);color:var(--ink);padding:11px 16px;cursor:pointer;border-radius:0}
+button.primary{background:var(--ink);color:var(--paper)}
+button:hover{background:var(--red);border-color:var(--red);color:#fff}
+.pick{display:flex;border:1.5px solid var(--ink)}
+.pick button{border:0;border-right:1.5px solid var(--ink);padding:11px 13px}
+.pick button:last-child{border-right:0}
+.pick button.on{background:var(--blue);color:#fff}
+.lab{font:400 11px "Martian Mono",monospace;color:var(--mid)}
+/* right */
+.score{border-left:1.5px solid var(--ink);padding:30px 26px;display:flex;flex-direction:column;gap:22px;background:var(--paper)}
+.kick{font:600 10px "Martian Mono",monospace;letter-spacing:.16em;text-transform:uppercase;color:var(--mid)}
+.big{font:700 72px/1 "Familjen Grotesk";letter-spacing:-.05em}
+.big small{font-size:20px;letter-spacing:0;color:var(--mid);margin-left:4px}
+.verdict{font-size:17px;line-height:1.35}
+#strike{width:100%;height:120px;border:1.5px solid var(--ink);background:#f6f7f3;display:block}
+.notes{font-size:14px;line-height:1.5;color:#2c2e2a;border-top:1.5px solid var(--ink);padding-top:14px}
+.notes p+p{margin-top:8px}
+kbd{font:600 11px "Martian Mono",monospace;border:1.5px solid var(--ink);padding:1px 6px;border-bottom-width:3px}
+@media (max-width:1100px){.app{grid-template-columns:150px minmax(0,1fr)}.score{grid-column:1/-1;border-left:0;border-top:1.5px solid var(--ink);display:grid;grid-template-columns:1fr 1fr;gap:20px}}
+@media (max-width:700px){
+ .app{grid-template-columns:1fr}
+ .ropecol{order:2;height:230px;border-right:0;border-top:1.5px solid var(--ink)}
+ .rope{height:330px}.rope.back{transform:translateY(90px)}.sally{bottom:60px;height:110px}
+ .centre{padding:20px 16px}
+ header{flex-direction:column;gap:8px}.meta{text-align:left}
+ .gridwrap{min-height:360px}
+ .score{order:3;grid-template-columns:1fr;padding:20px 16px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+ <div class="ropecol" id="ropecol" aria-label="Bell rope: click, tap or press space to pull">
+  <div class="cap">Your rope · the <span id="capbell">2</span></div>
+  <div class="rope" id="rope"><div class="line"></div><div class="sally"></div><div class="tail"></div></div>
+  <div class="flash" id="flash"></div>
+  <div class="hint">Pull on <kbd>Space</kbd>, click or tap. Sally pulls are handstrokes, tail-end pulls are backstrokes.</div>
+ </div>
+ <section class="centre">
+  <header>
+   <h1>Plain Hunt<br>on <span>Six</span>.</h1>
+   <div class="meta">Tower: St Wendreda, practice night<br>Method: <b>Plain Hunt Minor</b><br>Changes: <b>12</b> + rounds either side<br>Pace: <b id="pace">2 h 54 m</b> peal speed</div>
+  </header>
+  <div class="call"><span class="tag" id="calltag">Captain</span><span id="call">Pick a bell, then press Look to.</span></div>
+  <div class="gridwrap"><canvas id="grid"></canvas></div>
+  <div class="bar">
+   <span class="lab">Ring the</span>
+   <div class="pick" id="pick"><button data-b="1">1</button><button data-b="2" class="on">2</button><button data-b="3">3</button><button data-b="4">4</button><button data-b="5">5</button><button data-b="6">6</button></div>
+   <button class="primary" id="go">Look to</button>
+   <button id="slow">Slower</button><button id="fast">Faster</button>
+  </div>
+ </section>
+ <aside class="score">
+  <div><div class="kick">Striking error, mean</div><div class="big" id="err">-<small>ms</small></div></div>
+  <div class="verdict" id="verdict">The band rings every bell except yours. Strike in your place: the gap between blows is <b id="gap">-</b>.</div>
+  <div><div class="kick" style="margin-bottom:8px">Each of your blows, early to late</div><canvas id="strike"></canvas></div>
+  <div class="notes">
+   <p><b>How it works.</b> Every bell moves one place per change, up to the back and down to the lead, then home. Your path is the blue line.</p>
+   <p>Ringers leave a one-beat <b>handstroke gap</b> before each handstroke row. Listen for it; it is where beginners rush.</p>
+  </div>
+ </aside>
+</div>
+<script>
+const N=6;
+// plain hunt minor: alternate swaps (12)(34)(56) and (23)(45)
+function plainCourse(){const rows=[];let r=[1,2,3,4,5,6];rows.push(r.slice());for(let i=0;i<12;i++){const n=r.slice();const s=i%2===0?0:1;for(let j=s;j+1<N;j+=2){[n[j],n[j+1]]=[n[j+1],n[j]]}r=n;rows.push(r.slice())}return rows}
+const COURSE=plainCourse();
+// full touch: 4 rows rounds, 12 changes, 4 rows rounds (rows 0..)
+const TOUCH=[...Array(4).fill([1,2,3,4,5,6]),...COURSE.slice(1),...Array(3).fill([1,2,3,4,5,6])];
+const START_METHOD=4, END_METHOD=4+12;
+let me=2, interval=230, playing=false, t0=0, actx=null, blows=[], myTimes=[], raf=0, curRow=-1, schedule=[];
+const $=id=>document.getElementById(id);
+// ---------- audio: bell synth from partials ----------
+const FREQ={1:880,2:784,3:698.5,4:659.3,5:587.3,6:523.3}; // C major tenor in C5-ish (light ring of six)
+function bell(b,when,gain=0.32){if(!actx)return;const f=FREQ[b]*0.5;const parts=[[0.5,.22,4.2],[1,.35,3],[1.183,.28,2.4],[1.506,.14,1.8],[2,.55,1.6],[2.514,.12,1],[2.662,.1,.9],[3.011,.08,.7]];
+ const out=actx.createGain();out.gain.value=gain;out.connect(master);
+ parts.forEach(([r,a,d])=>{const o=actx.createOscillator();o.type='sine';o.frequency.value=f*r;const g=actx.createGain();g.gain.setValueAtTime(0,when);g.gain.linearRampToValueAtTime(a,when+.004);g.gain.exponentialRampToValueAtTime(.0001,when+d);o.connect(g);g.connect(out);o.start(when);o.stop(when+d+.05)})}
+let master;
+function ensureAudio(){if(actx)return;actx=new (window.AudioContext||window.webkitAudioContext)();master=actx.createGain();master.gain.value=.8;const comp=actx.createDynamicsCompressor();master.connect(comp);comp.connect(actx.destination)}
+// ---------- timing ----------
+function buildSchedule(){schedule=[];let t=0;TOUCH.forEach((row,ri)=>{if(ri%2===0&&ri>0)t+=interval; // handstroke gap
+ row.forEach((b,pi)=>{schedule.push({row:ri,place:pi,bell:b,t});t+=interval})});return t}
+// ---------- grid drawing ----------
+const gc=$('grid'),gx=gc.getContext('2d');
+function sizeCanvas(c){const r=c.getBoundingClientRect(),d=Math.min(2,devicePixelRatio||1);c.width=r.width*d;c.height=r.height*d;const x=c.getContext('2d');x.setTransform(d,0,0,d,0,0);return r}
+let GR;
+function drawGrid(now){const r=GR||(GR=sizeCanvas(gc));const W=r.width,H=r.height;gx.clearRect(0,0,W,H);
+ const narrow=W<520;
+ const rowsVisible=TOUCH.length, colW=Math.min(54,(W-120)/N), rowH=Math.min(26,(H-40)/rowsVisible);
+ const gridW=colW*N, x0=narrow?Math.max(70,(W-gridW)/2+20):Math.max(60,(W-gridW)/2-60), y0=20;
+ // row labels
+ gx.font='300 10px "Martian Mono",monospace';gx.fillStyle='#8a8d85';gx.textAlign='right';
+ TOUCH.forEach((row,ri)=>{const y=y0+ri*rowH+rowH/2+3;
+  const lab=ri<START_METHOD?'rounds':(ri===START_METHOD?'go':(ri>=END_METHOD?(ri===END_METHOD?'that\u2019s all':''):''));
+  if(lab)gx.fillText(lab,x0-14,y);
+  if(ri%2===0){gx.fillStyle='rgba(20,20,20,.035)';gx.fillRect(x0-4,y0+ri*rowH,gridW+8,rowH);gx.fillStyle='#8a8d85'}
+ });
+ // treble red line + my blue line
+ const path=b=>TOUCH.map((row,ri)=>[x0+row.indexOf(b)*colW+colW/2,y0+ri*rowH+rowH/2]);
+ const line=(pts,col,w)=>{gx.strokeStyle=col;gx.lineWidth=w;gx.lineJoin='round';gx.beginPath();pts.forEach(([x,y],i)=>i?gx.lineTo(x,y):gx.moveTo(x,y));gx.stroke()};
+ if(me!==1)line(path(1),'rgba(200,16,46,.55)',2);
+ line(path(me),'#1f4fa3',3.2);
+ // numbers
+ gx.textAlign='center';
+ TOUCH.forEach((row,ri)=>row.forEach((b,pi)=>{const x=x0+pi*colW+colW/2,y=y0+ri*rowH+rowH/2;
+  const done=playing&&ri<curRow;const isMe=b===me;
+  if(isMe){gx.fillStyle='#1f4fa3';gx.beginPath();gx.arc(x,y,3.4,0,7);gx.fill();return}
+  gx.font=(isMe?'600 ':'400 ')+Math.round(Math.min(15,rowH*.62))+'px "Martian Mono",monospace';
+  gx.fillStyle=isMe?'#1f4fa3':(done?'#b8bbb2':'#141414');gx.fillText(b,x,y+5)}));
+ // cursor
+ if(playing&&now!=null){const s=schedule.find(s=>s.t>now)||schedule[schedule.length-1];const ri=s.row;curRow=ri;
+  gx.strokeStyle='#c8102e';gx.lineWidth=1.5;gx.strokeRect(x0-6,y0+ri*rowH,gridW+12,rowH)}
+ // my blow marks
+ myTimes.forEach(m=>{if(m.row==null)return;const x=x0+m.place*colW+colW/2+(m.err/interval)*colW,y=y0+m.row*rowH+rowH/2;gx.fillStyle=Math.abs(m.err)<45?'#1f4fa3':'#c8102e';gx.beginPath();gx.arc(x,y-11,2.6,0,7);gx.fill()});
+ // place header
+ gx.font='600 10px "Martian Mono",monospace';gx.fillStyle='#6c6f68';
+ // legend
+ if(!narrow){gx.textAlign='left';const lx=x0+gridW+40;gx.fillStyle='#141414';gx.font='600 11px "Martian Mono",monospace';gx.fillText('LEAD \u2192 BACK',lx,y0+12);
+  gx.font='400 12px "Familjen Grotesk"';gx.fillStyle='#1f4fa3';gx.fillRect(lx,y0+32,22,3);gx.fillStyle='#141414';gx.fillText('your bell, the '+me,lx+30,y0+37);
+  gx.fillStyle='rgba(200,16,46,.6)';gx.fillRect(lx,y0+52,22,2);gx.fillStyle='#141414';gx.fillText('the treble',lx+30,y0+57);
+  gx.fillStyle='#6c6f68';gx.font='400 11px "Martian Mono",monospace';
+  ['Rows alternate handstroke','and backstroke. Shaded','rows are handstrokes.','','Dots above a number are','your blows: blue is good,','red is clipping or late.'].forEach((s,i)=>gx.fillText(s,lx,y0+90+i*16))}
+}
+// ---------- strike chart ----------
+const sc=$('strike'),sx=sc.getContext('2d');
+function drawStrike(){const r=sizeCanvas(sc);const W=r.width,H=r.height;sx.clearRect(0,0,W,H);
+ sx.strokeStyle='#c9ccc3';sx.lineWidth=1;sx.beginPath();sx.moveTo(0,H/2);sx.lineTo(W,H/2);sx.stroke();
+ sx.font='400 9px "Martian Mono",monospace';sx.fillStyle='#8a8d85';sx.fillText('early',6,12);sx.fillText('late',6,H-6);
+ const n=TOUCH.length;myTimes.forEach((m,i)=>{const x=20+(m.row??i)/(n-1)*(W-30);const y=H/2+Math.max(-1,Math.min(1,m.err/interval))*(H/2-10);
+  sx.fillStyle=Math.abs(m.err)<45?'#1f4fa3':'#c8102e';sx.fillRect(x-3,y-3,6,6)})}
+// ---------- game loop ----------
+function start(){ensureAudio();if(actx.state==='suspended')actx.resume();myTimes=[];blows=[];const total=buildSchedule();
+ t0=actx.currentTime+1.6;playing=true;curRow=0;
+ schedule.forEach(s=>{if(s.bell!==me)bell(s.bell,t0+s.t/1000)});
+ call('Captain','Look to. Treble\u2019s going\u2026 she\u2019s gone.');
+ const marks=[[START_METHOD,'Go Plain Hunt!'],[END_METHOD,'That\u2019s all.'],[TOUCH.length-1,'Stand next.']];
+ marks.forEach(([ri,txt])=>{const s=schedule.find(s=>s.row===ri);setTimeout(()=>playing&&call('Conductor',txt),(t0-actx.currentTime)*1000+s.t-interval*5)});
+ setTimeout(()=>{finish()},(t0-actx.currentTime)*1000+total+600);
+ $('verdict').innerHTML='The band rings every bell except yours. Strike in your place: the gap between blows is <b>'+interval+' ms</b>.';loop()}
+function call(tag,txt){$('calltag').textContent=tag;$('call').textContent=txt}
+function loop(){cancelAnimationFrame(raf);const f=()=>{if(!playing)return;const now=(actx.currentTime-t0)*1000;drawGrid(now);raf=requestAnimationFrame(f)};f()}
+function pull(){const rope=$('rope');rope.classList.toggle('back');const fl=$('flash');fl.classList.add('on');setTimeout(()=>fl.classList.remove('on'),40);
+ ensureAudio();if(actx.state==='suspended')actx.resume();
+ const now=actx.currentTime;bell(me,now);
+ if(!playing)return;const tms=(now-t0)*1000;
+ const mine=schedule.filter(s=>s.bell===me);let best=null;mine.forEach(s=>{if(myTimes.some(m=>m.row===s.row))return;if(!best||Math.abs(s.t-tms)<Math.abs(best.t-tms))best=s});
+ if(best&&Math.abs(best.t-tms)<interval*1.5){myTimes.push({row:best.row,place:best.place,err:tms-best.t});updateScore()}}
+function updateScore(){const errs=myTimes.map(m=>Math.abs(m.err));const mean=errs.reduce((a,b)=>a+b,0)/errs.length;$('err').innerHTML=Math.round(mean)+'<small>ms</small>';drawStrike();
+ const v=mean<25?'Lovely striking. You could ring this for a wedding.':mean<45?'Good, steady striking. A touch of clipping now and then.':mean<80?'Getting there. Watch the handstroke gap.':'Plenty of clashes. Slow it down and listen to the bell before yours.';$('verdict').textContent=v}
+function finish(){playing=false;call('Captain','Stand. Thank you, everyone.');drawGrid();const missed=schedule.filter(s=>s.bell===me).length-myTimes.length;if(missed>0)$('verdict').textContent+=` You missed ${missed} of ${schedule.filter(s=>s.bell===me).length} blows.`}
+// ---------- controls ----------
+$('go').onclick=()=>{if(playing){playing=false;call('Captain','Stand. Let\u2019s go again.');return}start()};
+document.querySelectorAll('#pick button').forEach(b=>b.onclick=()=>{if(playing)return;document.querySelectorAll('#pick button').forEach(x=>x.classList.remove('on'));b.classList.add('on');me=+b.dataset.b;$('capbell').textContent=me===1?'treble':me===6?'tenor':me;myTimes=[];drawGrid();drawStrike()});
+function pace(){const blowsPerChange=N+.5;const sec=interval/1000*blowsPerChange*5040;const h=Math.floor(sec/3600),m=Math.round(sec%3600/60);$('pace').textContent=h+' h '+String(m).padStart(2,'0')+' m';const g=$('gap');if(g)g.textContent=interval+' ms'}
+$('slow').onclick=()=>{if(!playing){interval=Math.min(400,interval+25);pace()}};$('fast').onclick=()=>{if(!playing){interval=Math.max(160,interval-25);pace()}};
+$('ropecol').addEventListener('pointerdown',e=>{e.preventDefault();pull()});
+addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();pull()}});
+addEventListener('resize',()=>{GR=null;drawGrid();drawStrike()});
+// demo marks so the page is never empty before play
+function demo(){const mine=[];TOUCH.forEach((row,ri)=>{if(ri<10){const p=row.indexOf(me);mine.push({row:ri,place:p,err:Math.sin(ri*1.7)*38+(ri===5?70:0)})}});myTimes=mine;const errs=mine.map(m=>Math.abs(m.err));$('err').innerHTML=Math.round(errs.reduce((a,b)=>a+b,0)/errs.length)+'<small>ms</small>';$('verdict').innerHTML='Example from a practice night: steady, but the 2 rushed its handstroke at row 6. Press <b>Look to</b> and beat it.'}
+pace();demo();document.fonts.ready.then(()=>{GR=null;drawGrid();drawStrike()});drawGrid();drawStrike();
+</script>
+</body>
+</html>

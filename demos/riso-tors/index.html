@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tor Press: a two-ink risograph generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bench:#2b2b2b;--paper:#f3efe6;--ink:#111}
+*{box-sizing:border-box;margin:0}
+html,body{background:#d8d4cb;color:var(--ink);font-family:"Instrument Sans",system-ui,sans-serif}
+body{min-height:100vh;background:
+ linear-gradient(90deg,rgba(0,0,0,.04) 1px,transparent 1px) 0 0/28px 28px,
+ linear-gradient(rgba(0,0,0,.04) 1px,transparent 1px) 0 0/28px 28px,#d8d4cb}
+.shell{display:grid;grid-template-columns:minmax(0,1fr) 360px;min-height:100vh;max-width:1500px;margin:0 auto}
+.bed{display:flex;align-items:center;justify-content:center;padding:36px;position:relative}
+.sheet{position:relative;height:min(84vh,1100px);aspect-ratio:3/4;box-shadow:0 1px 0 rgba(0,0,0,.08),0 18px 40px -10px rgba(0,0,0,.35),0 2px 6px rgba(0,0,0,.15);transform:rotate(-.6deg);transition:transform .5s cubic-bezier(.2,.8,.2,1)}
+.sheet.feed{animation:feed .9s cubic-bezier(.3,.7,.2,1)}
+@keyframes feed{0%{transform:translateY(-110vh) rotate(-3deg)}100%{transform:translateY(0) rotate(-.6deg)}}
+.sheet canvas{width:100%;height:100%;display:block}
+.tape{position:absolute;width:90px;height:26px;background:rgba(255,248,210,.6);top:-10px;box-shadow:0 1px 2px rgba(0,0,0,.1)}
+.tape.l{left:24px;transform:rotate(-8deg)}.tape.r{right:24px;transform:rotate(6deg)}
+.panel{background:var(--bench);color:#eee;padding:34px 30px;display:flex;flex-direction:column;gap:22px}
+.brand{font:400 30px/0.95 "Bowlby One";letter-spacing:.01em;text-transform:uppercase}
+.brand span{color:#ff48b0}
+.sub{font:400 12px/1.6 "DM Mono",monospace;color:#a9a9a9}
+.lab{font:500 10px "DM Mono",monospace;letter-spacing:.16em;text-transform:uppercase;color:#8c8c8c;margin-bottom:10px}
+.drums{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.drum{aspect-ratio:1;border-radius:50%;border:2px solid transparent;cursor:pointer;position:relative;padding:0;background:none}
+.drum i{position:absolute;inset:5px;border-radius:50%;display:block}
+.drum i:after{content:"";position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 30% 30%,rgba(255,255,255,.35),transparent 50%)}
+.drum.on{border-color:#fff}
+.drum span{position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);font:400 9px "DM Mono",monospace;color:#999;white-space:nowrap}
+.row{display:flex;justify-content:space-between;font:400 12px "DM Mono",monospace;color:#cfcfcf;margin-bottom:6px}
+input[type=range]{width:100%;accent-color:#ff48b0}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+button.b{font:500 12px "DM Mono",monospace;letter-spacing:.06em;text-transform:uppercase;border:1.5px solid #eee;background:transparent;color:#eee;padding:13px 10px;cursor:pointer}
+button.b.main{grid-column:1/-1;background:#ff48b0;border-color:#ff48b0;color:#111;font-size:14px;padding:16px}
+button.b:hover{background:#eee;color:#111}
+.log{font:400 11px/1.7 "DM Mono",monospace;color:#9a9a9a;border-top:1px solid #444;padding-top:14px;margin-top:auto}
+.log b{color:#eee;font-weight:500}
+@media (max-width:900px){
+ .shell{grid-template-columns:1fr}
+ .bed{padding:28px 18px 18px}
+ .sheet{height:auto;width:100%;max-width:520px}
+ .panel{padding:26px 20px}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+ <div class="bed"><div class="sheet" id="sheet"><canvas id="c" width="900" height="1200"></canvas><div class="tape l"></div><div class="tape r"></div></div></div>
+ <aside class="panel">
+  <div><div class="brand">Tor <span>Press</span></div><p class="sub" style="margin-top:10px">Two drums, one master, slightly off register. Every pull is a new view of a Dartmoor tor in an edition of fifty.</p></div>
+  <div><div class="lab">Ink drums · <span id="pairname" style="color:#eee">Blue over Fluoro Pink</span></div>
+   <div class="drums" id="drums"></div></div>
+  <div style="margin-top:8px"><div class="row"><span>Misregistration</span><span id="mrv">3 mm</span></div><input type="range" id="mr" min="0" max="8" value="3"></div>
+  <div><div class="row"><span>Halftone screen</span><span id="lpv">55 lpi</span></div><input type="range" id="lp" min="30" max="85" value="55"></div>
+  <div><div class="row"><span>Ink coverage</span><span id="icv">Heavy</span></div><input type="range" id="ic" min="0" max="2" value="2"></div>
+  <div class="btns"><button class="b main" id="pull">Pull a print</button><button class="b" id="same">Re-ink</button><button class="b" id="save">Save PNG</button></div>
+  <div class="log" id="log"></div>
+ </aside>
+</div>
+<script>
+const INKS={fluoro:['Fluoro Pink','#ff48b0'],blue:['Blue','#0078bf'],teal:['Teal','#00838a'],yellow:['Yellow','#ffe800'],red:['Bright Red','#f15060'],green:['Green','#00a95c'],orange:['Orange','#ff6c2f'],burgundy:['Burgundy','#914e72']};
+const PAIRS=[['blue','fluoro'],['teal','orange'],['burgundy','yellow'],['green','red']];
+const TORS=[['High Willhays','621 m','the roof of southern England'],['Yes Tor','619 m','a whisker short of the top'],['Haytor Rocks','457 m','granite with a quarry tramway'],['Hound Tor','414 m','a ruined village in its lee']];
+let pair=0, seed=Date.now()%100000, edition=1;
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),W=900,H=1200;
+function rng(s){return()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function hexRGB(h){return[1,3,5].map(i=>parseInt(h.slice(i,i+2),16))}
+// --- density layer helpers: we paint greyscale masks then screen them ---
+function layer(){const c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');x.fillStyle='#000';x.fillRect(0,0,W,H);return[c,x]}
+function noise2(r){const g=[];for(let i=0;i<64;i++)g.push(r());return(x)=>{const i=Math.floor(x),f=x-i,a=g[i&63],b=g[(i+1)&63],t=f*f*(3-2*f);return a+(b-a)*t}}
+function ridge(x,r,y,amp,freq,oct){const n=noise2(r);x.beginPath();x.moveTo(0,H);for(let px=0;px<=W;px+=6){let v=0,a=1,f=freq;for(let o=0;o<oct;o++){v+=n(px*f/100+o*13)*a;a*=.5;f*=2.1}x.lineTo(px,y-v*amp)}x.lineTo(W,H);x.closePath()}
+function tor(x,r,cx,base,scale){ // stack of rounded granite blocks with jointing
+ const stacks=2+Math.floor(r()*3);let left=cx-scale*(.9+r()*.4);
+ for(let s=0;s<stacks;s++){const w=scale*(.45+r()*.55),hgt=scale*(.6+r()*1.1);let y=base;const n=3+Math.floor(r()*4);let bx=left;
+  for(let k=0;k<n;k++){const bw=w*(1-k*.08)*(0.85+r()*.3),bh=hgt/n*(0.8+r()*.5);const off=(r()-.5)*bw*.18;
+   x.beginPath();x.roundRect(bx+off+(w-bw)/2,y-bh,bw,bh,Math.min(bh,bw)*.32);x.fill();y-=bh*.94}
+  left+=w*(0.95+r()*.35)}
+ return left}
+function drawScene(){const r=rng(seed);const pr=PAIRS[pair];const A=INKS[pr[0]][1],B=INKS[pr[1]][1];
+ const cover=+document.getElementById('ic').value,cells=Math.max(5,Math.round(520/+document.getElementById('lp').value));
+ const mis=+document.getElementById('mr').value*2.4;
+ const t=TORS[Math.floor(r()*TORS.length)];
+ // MASK A (dark drum): hills, tor, title
+ const [ca,xa]=layer(),[cb,xb]=layer();
+ const horizon=H*(.44+r()*.06);
+ // sky gradient in B
+ const g=xb.createLinearGradient(0,0,0,horizon);g.addColorStop(0,`rgba(255,255,255,${.55+cover*.1})`);g.addColorStop(1,'rgba(255,255,255,.04)');xb.fillStyle=g;xb.fillRect(0,0,W,horizon+40);
+ // sun in B solid
+ const sx=W*(.2+r()*.6),sy=horizon*(.38+r()*.3),sr=70+r()*70;xb.fillStyle='#fff';xb.beginPath();xb.arc(sx,sy,sr,0,7);xb.fill();
+ // clouds: subtract
+ xb.fillStyle='rgba(0,0,0,.85)';for(let i=0;i<4;i++){const cy=horizon*(.2+r()*.6),cx=r()*W,cw=140+r()*260;xb.beginPath();xb.ellipse(cx,cy,cw,12+r()*10,0,0,7);xb.fill()}
+ // distant ridges A at low density
+ [[.18,horizon+10,40,.9],[.32,horizon+70,60,.7],[.5,horizon+150,80,.5]].forEach(([d,y,a,f],i)=>{xa.fillStyle=`rgba(255,255,255,${d+cover*.04})`;ridge(xa,r,y,a,f,3);xa.fill()});
+ // tor silhouette on near ridge A full
+ const torBase=horizon+40+r()*40;xa.fillStyle='rgba(255,255,255,.95)';tor(xa,r,W*(.3+r()*.25),torBase+6,120+r()*50);
+ // mid-tone in B on the tor faces (light from the sun side)
+ xb.fillStyle='rgba(255,255,255,.55)';const r2=rng(seed);for(let i=0;i<40;i++)r2();
+ // foreground moor in both: A medium, B gorse speckle
+ xa.fillStyle=`rgba(255,255,255,${.42+cover*.08})`;ridge(xa,r,torBase+80,60,.35,4);xa.fill();
+ xb.save();ridge(xb,r,torBase+80,60,.35,4);xb.clip();xb.fillStyle='rgba(255,255,255,.35)';xb.fillRect(0,0,W,H);
+ for(let i=0;i<220;i++){xb.fillStyle=`rgba(255,255,255,${.4+r()*.6})`;const gx=r()*W,gy=torBase+60+r()*(H-torBase);xb.beginPath();xb.arc(gx,gy,3+r()*10*(gy/H),0,7);xb.fill()}xb.restore();
+ // walls: dry-stone lines in A
+ xa.strokeStyle='#fff';xa.lineWidth=3;for(let i=0;i<3;i++){xa.beginPath();let px=-10,py=torBase+120+i*90+r()*40;xa.moveTo(px,py);while(px<W+10){px+=40+r()*60;py+=(r()-.5)*24;xa.lineTo(px,py)}xa.stroke()}
+ // frame: image block with paper margins, type sits on bare paper below
+ const IX=54,IY=96,IW=W-108,IH=H-96-350;[xa,xb].forEach(m=>{m.globalCompositeOperation='source-over';m.fillStyle='#000';m.fillRect(0,0,W,IY);m.fillRect(0,IY+IH,W,H);m.fillRect(0,0,IX,H);m.fillRect(IX+IW,0,W,H)});
+ // composite: paper
+ ctx.globalCompositeOperation='source-over';ctx.fillStyle='#f3efe6';ctx.fillRect(0,0,W,H);
+ // paper fibres
+ for(let i=0;i<2600;i++){ctx.fillStyle=`rgba(${120+r()*60},${110+r()*50},90,${r()*.06})`;ctx.fillRect(r()*W,r()*H,1+r()*3,1)}
+ ctx.globalCompositeOperation='multiply';
+ screen(cb,B,cells,mis*.6,-mis*.4,r,1.05);
+ screen(ca,A,cells,0,0,r,1);
+ // typography printed in A solid, with B knockout shadow
+ ctx.globalCompositeOperation='multiply';
+ const pad=58;
+ ctx.fillStyle=B;ctx.font='92px "Bowlby One"';ctx.textBaseline='alphabetic';
+ const name=t[0].toUpperCase();const words=name.split(' ');let fs=110;ctx.font=fs+'px "Bowlby One"';
+ while(Math.max(...words.map(w=>ctx.measureText(w).width))>W-pad*2)fs-=4,ctx.font=fs+'px "Bowlby One"';
+ words.forEach((w,i)=>{ctx.fillStyle=B;ctx.fillText(w,pad+mis+3,H-pad-(words.length-1-i)*fs*.92-96+mis);ctx.fillStyle=A;ctx.fillText(w,pad,H-pad-(words.length-1-i)*fs*.92-96)});
+ ctx.fillStyle=A;ctx.font='500 22px "DM Mono"';
+ ctx.fillText(t[1].toUpperCase()+'  \u00b7  DARTMOOR',pad,H-pad-46);
+ ctx.font='400 18px "DM Mono"';ctx.fillText(t[2],pad,H-pad-16);
+ ctx.textAlign='right';ctx.fillText('No. '+edition+' / 50',W-pad,H-pad-16);ctx.textAlign='left';
+ ctx.font='500 15px "DM Mono"';ctx.fillText('TOR PRESS  \u00b7  TWO-COLOUR STENCIL PRINT',pad,pad+4);
+ ctx.textAlign='right';ctx.fillText(INKS[pr[0]][0].toUpperCase()+' + '+INKS[pr[1]][0].toUpperCase(),W-pad,pad+4);ctx.textAlign='left';
+ // ink starve + specks
+ ctx.globalCompositeOperation='source-over';
+ for(let i=0;i<900;i++){ctx.fillStyle=`rgba(243,239,230,${.4+r()*.5})`;ctx.fillRect(r()*W,r()*H,1+r()*2,1+r()*2)}
+ // roller streak
+ const sy2=r()*H;const sg=ctx.createLinearGradient(0,sy2,0,sy2+30);sg.addColorStop(0,'rgba(243,239,230,0)');sg.addColorStop(.5,'rgba(243,239,230,.35)');sg.addColorStop(1,'rgba(243,239,230,0)');ctx.fillStyle=sg;ctx.fillRect(0,sy2,W,30);
+ log(t,pr)}
+function screen(mask,hex,cell,ox,oy,r,gain){const d=mask.getContext('2d').getImageData(0,0,W,H).data;const [R,G,Bc]=hexRGB(hex);ctx.fillStyle=hex;
+ for(let y=0;y<H;y+=cell){const row=(Math.floor(y/cell)%2)*cell/2;for(let x=-cell;x<W+cell;x+=cell){const px=Math.max(0,Math.min(W-1,Math.round(x+row))),py=Math.max(0,Math.min(H-1,Math.round(y)));const v=d[(py*W+px)*4]/255*gain;if(v<.04)continue;
+  if(v>.9){ctx.fillRect(x+row+ox-cell/2,y+oy-cell/2,cell+.6,cell+.6);continue}
+  const rad=Math.sqrt(v)*cell*.62*(0.92+r()*.16);ctx.beginPath();ctx.arc(x+row+ox,y+oy,rad,0,7);ctx.fill()}}}
+function log(t,pr){document.getElementById('log').innerHTML=`<b>Job ${String(seed).padStart(5,'0')}</b> · print ${edition} of 50<br>Subject: ${t[0]}, ${t[1]}<br>Drums: ${INKS[pr[0]][0]} over ${INKS[pr[1]][0]}<br>Screen: ${document.getElementById('lp').value} lpi, register off ${document.getElementById('mr').value} mm<br>Heights from Ordnance Survey. Scenery invented.`}
+// UI
+const drums=document.getElementById('drums');PAIRS.forEach((p,i)=>{const b=document.createElement('button');b.className='drum'+(i===pair?' on':'');b.setAttribute('aria-label',INKS[p[0]][0]+' and '+INKS[p[1]][0]);b.innerHTML=`<i style="background:conic-gradient(${INKS[p[0]][1]} 0 50%,${INKS[p[1]][1]} 50% 100%)"></i>`;b.onclick=()=>{pair=i;document.getElementById('pairname').textContent=INKS[p[0]][0]+' over '+INKS[p[1]][0];document.querySelectorAll('.drum').forEach(x=>x.classList.remove('on'));b.classList.add('on');drawScene()};drums.appendChild(b)});
+const sheet=document.getElementById('sheet');
+document.getElementById('pull').onclick=()=>{seed=Math.floor(Math.random()*99999);edition=edition%50+1;sheet.classList.remove('feed');void sheet.offsetWidth;sheet.classList.add('feed');drawScene()};
+document.getElementById('same').onclick=drawScene;
+['mr','lp','ic'].forEach(id=>document.getElementById(id).addEventListener('input',()=>{document.getElementById('mrv').textContent=document.getElementById('mr').value+' mm';document.getElementById('lpv').textContent=document.getElementById('lp').value+' lpi';document.getElementById('icv').textContent=['Light','Medium','Heavy'][document.getElementById('ic').value];drawScene()}));
+document.getElementById('save').onclick=()=>{const a=document.createElement('a');a.download='tor-press-'+seed+'.png';a.href=cv.toDataURL('image/png');a.click()};
+seed=new URLSearchParams(location.search).get('seed')|0||31415;
+drawScene();Promise.all([document.fonts.load('92px "Bowlby One"'),document.fonts.load('500 22px "DM Mono"'),document.fonts.load('400 18px "DM Mono"')]).then(()=>document.fonts.ready).then(drawScene,drawScene);
+</script>
+</body>
+</html>
