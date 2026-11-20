@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Foley Desk · describe a scene, hear it</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;600;800&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--body:#c9cdcf;--face:#e3e5e4;--ink:#121314;--mut:#5d6366;--or:#ff5a1f;--slot:#1a1c1d;--led:#9dff6a}
+*{box-sizing:border-box;margin:0}
+html,body{background:var(--body);color:var(--ink);font-family:"Schibsted Grotesk",system-ui,sans-serif}
+body{min-height:100vh;padding:26px;background:radial-gradient(1000px 500px at 20% 0,#d7dadb,transparent),var(--body)}
+.unit{max-width:1380px;margin:0 auto;background:var(--face);border-radius:18px;box-shadow:0 1px 0 #fff inset,0 -2px 0 rgba(0,0,0,.08) inset,0 30px 60px -20px rgba(0,0,0,.35),0 2px 4px rgba(0,0,0,.15);overflow:hidden}
+.bar{display:flex;align-items:center;gap:16px;padding:16px 24px;border-bottom:1px solid #c4c8c9}
+.logo{font:800 20px "Schibsted Grotesk";letter-spacing:-.02em;display:flex;align-items:center;gap:10px}
+.logo i{width:14px;height:14px;border-radius:50%;background:var(--or);box-shadow:0 0 0 4px rgba(255,90,31,.18)}
+.bar .meta{font:400 11px "Geist Mono",monospace;color:var(--mut);letter-spacing:.04em}
+.bar .sp{flex:1}
+.screw{width:10px;height:10px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#fff,#9aa0a3);position:relative}
+.screw:after{content:"";position:absolute;left:1px;right:1px;top:4px;height:1.5px;background:#6d7376;transform:rotate(35deg)}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 300px}
+.left{padding:22px 24px 24px;border-right:1px solid #c4c8c9;min-width:0}
+.lab{font:500 10px "Geist Mono",monospace;letter-spacing:.16em;text-transform:uppercase;color:var(--mut);margin-bottom:8px;display:flex;justify-content:space-between}
+.prompt{position:relative;background:var(--slot);border-radius:10px;padding:18px 20px 16px;color:#e9ecec;box-shadow:inset 0 2px 6px rgba(0,0,0,.6)}
+.prompt textarea{width:100%;background:transparent;border:0;color:#e9ecec;font:400 21px/1.4 "Schibsted Grotesk";resize:none;outline:none;min-height:62px;overflow:hidden;display:block;padding:0}
+.prompt .hl{font:400 21px/1.4 "Schibsted Grotesk";color:transparent;position:absolute;left:20px;right:20px;top:18px;pointer-events:none;white-space:pre-wrap;word-wrap:break-word}
+.prompt .hl mark{background:rgba(255,90,31,.32);color:transparent;border-radius:3px;box-shadow:0 0 0 2px rgba(255,90,31,.32)}
+.prow{display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:10px;flex-wrap:wrap}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font:400 11px "Geist Mono",monospace;color:#aeb5b7;border:1px solid #3a3e40;border-radius:999px;padding:4px 9px;cursor:pointer;background:none}
+.chip:hover{color:#fff;border-color:var(--or)}
+.gen{font:800 14px "Schibsted Grotesk";background:var(--or);color:#120800;border:0;border-radius:8px;padding:12px 18px;cursor:pointer;box-shadow:0 3px 0 #b33a0d}
+.gen:active{transform:translateY(2px);box-shadow:0 1px 0 #b33a0d}
+.tracks{margin-top:22px;display:flex;flex-direction:column;gap:8px}
+.trk{display:grid;grid-template-columns:170px minmax(0,1fr) 110px;gap:12px;align-items:center;background:#eef0ef;border:1px solid #cfd3d4;border-radius:10px;padding:8px 10px;animation:in .45s cubic-bezier(.2,.8,.2,1) both}
+@keyframes in{from{opacity:0;transform:translateY(8px)}}
+.trk .nm{font:800 15px "Schibsted Grotesk";display:flex;align-items:center;gap:8px}
+.trk .nm b{width:10px;height:10px;border-radius:2px;display:inline-block}
+.trk .why{font:400 10.5px "Geist Mono",monospace;color:var(--mut);margin-top:3px}
+.trk canvas{width:100%;height:46px;display:block;background:#f8f9f8;border-radius:6px}
+.trk .ctl{display:flex;gap:6px;align-items:center}
+.k{width:30px;height:30px;border-radius:6px;border:1px solid #b9bec0;background:linear-gradient(#fff,#e2e5e5);font:500 11px "Geist Mono",monospace;cursor:pointer;color:var(--ink)}
+.k.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.trk input[type=range]{width:44px;accent-color:var(--or)}
+.stagewrap{margin-top:18px}
+.stage{position:relative;height:250px;border-radius:10px;background:radial-gradient(circle at 50% 100%,#2b2f31 0,#1a1c1d 70%);box-shadow:inset 0 2px 6px rgba(0,0,0,.6);overflow:hidden;touch-action:none}
+.stage:before{content:"";position:absolute;inset:0;background:repeating-radial-gradient(circle at 50% 100%,transparent 0 58px,rgba(157,255,106,.09) 58px 59px)}
+.stage .you{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);font:500 10px "Geist Mono",monospace;color:#9dff6a;letter-spacing:.14em}
+.stage .ax{position:absolute;top:10px;font:400 10px "Geist Mono",monospace;color:#6f7a7d;letter-spacing:.1em}
+.dotl{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px;cursor:grab;user-select:none}
+.dotl b{width:20px;height:20px;border-radius:50%;box-shadow:0 0 0 4px rgba(255,255,255,.08),0 0 18px currentColor}
+.dotl span{font:500 10px "Geist Mono",monospace;color:#e9ecec;letter-spacing:.06em;white-space:nowrap}
+.empty{font:400 13px "Geist Mono",monospace;color:var(--mut);padding:26px;border:1.5px dashed #b9bec0;border-radius:10px;text-align:center}
+.right{padding:22px 22px 24px;display:flex;flex-direction:column;gap:20px;background:linear-gradient(#e7e9e8,#dfe2e1)}
+.transport{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tbtn{height:64px;border-radius:12px;border:1px solid #aeb3b5;background:linear-gradient(#f9faf9,#dcdfdf);box-shadow:0 3px 0 #a7acae;cursor:pointer;font:800 13px "Schibsted Grotesk";letter-spacing:.04em;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--ink)}
+.tbtn:active,.tbtn.on{transform:translateY(2px);box-shadow:0 1px 0 #a7acae}
+.tbtn.on .ic{background:var(--or)}
+.ic{width:12px;height:12px;border-radius:50%;background:#7c8285}
+.scope{background:var(--slot);border-radius:10px;height:150px;box-shadow:inset 0 2px 6px rgba(0,0,0,.6);position:relative;overflow:hidden}
+.scope canvas{width:100%;height:100%;display:block}
+.scope .t{position:absolute;left:12px;top:10px;font:400 10px "Geist Mono",monospace;color:#7d8a8d;letter-spacing:.1em}
+.time{font:500 34px "Geist Mono",monospace;letter-spacing:-.02em;color:var(--ink)}
+.time small{font-size:12px;color:var(--mut)}
+.meters{display:flex;gap:6px;height:120px;align-items:flex-end;background:var(--slot);border-radius:10px;padding:10px;box-shadow:inset 0 2px 6px rgba(0,0,0,.6)}
+.meters i{flex:1;background:linear-gradient(to top,#9dff6a 0 60%,#ffd23f 60% 82%,#ff5a1f 82%);border-radius:2px;height:4%;transition:height .06s;opacity:.92}
+.note{font:400 11px/1.6 "Geist Mono",monospace;color:var(--mut);border-top:1px solid #c4c8c9;padding-top:14px}
+.note b{color:var(--ink);font-weight:500}
+@media (max-width:980px){.grid{grid-template-columns:1fr}.left{border-right:0;border-bottom:1px solid #c4c8c9}.right{display:grid;grid-template-columns:1fr 1fr}.note,.scope{grid-column:1/-1}}
+@media (max-width:600px){
+ body{padding:10px}.unit{border-radius:12px}
+ .bar{padding:12px 14px}.bar .meta{display:none}
+ .left{padding:16px 14px}.right{padding:16px 14px;grid-template-columns:1fr}
+ .prompt textarea,.prompt .hl{font-size:17px}
+ .trk{grid-template-columns:1fr;gap:6px}
+ .trk .ctl{justify-content:flex-start}
+}
+</style>
+</head>
+<body>
+<div class="unit">
+ <div class="bar"><span class="screw"></span><span class="logo"><i></i>Foley Desk</span><span class="meta">Scene to sound · prototype 0.4</span><span class="sp"></span><span class="meta">48 kHz · stereo · 20 s loop</span><span class="screw"></span></div>
+ <div class="grid">
+  <div class="left">
+   <div class="lab"><span>Describe the scene</span><span id="count">0 layers</span></div>
+   <div class="prompt"><div class="hl" id="hl"></div><textarea id="p" rows="3" spellcheck="false">Wet night on the harbour wall at Whitby. Light rain, waves slapping below, a loose halyard clanking on a mast, and gulls somewhere out in the dark.</textarea>
+    <div class="prow"><div class="chips"><button class="chip" data-p="Bonfire night on Hampstead Heath. A crackling fire, wind in the trees and footsteps on gravel.">Bonfire night</button><button class="chip" data-p="Dawn in a Cotswold garden. Birdsong, a gentle breeze and a church clock ticking somewhere indoors.">Cotswold dawn</button><button class="chip" data-p="A stormy cliff path in Cornwall. Strong wind, heavy rain and big waves breaking on the rocks.">Cornish storm</button></div><button class="gen" id="gen">Generate layers ↵</button></div>
+   </div>
+   <div class="tracks" id="tracks"></div>
+   <div class="stagewrap"><div class="lab"><span>Place each layer around the listener</span><span>left/right = pan · up = further away</span></div><div class="stage" id="stage"><span class="ax" style="left:12px">L</span><span class="ax" style="right:12px">R</span><span class="you">▲ LISTENER</span></div></div>
+  </div>
+  <div class="right">
+   <div><div class="lab"><span>Transport</span></div><div class="transport"><button class="tbtn" id="play"><span class="ic"></span>Play</button><button class="tbtn" id="stop">Stop</button></div></div>
+   <div class="time" id="time">00:00.0<small> / 00:20.0</small></div>
+   <div class="scope"><span class="t">MASTER SCOPE</span><canvas id="scope"></canvas></div>
+   <div><div class="lab"><span>Spectrum</span><span>20 Hz to 16 kHz</span></div><div class="meters" id="meters"></div></div>
+   <p class="note"><b>How this prototype works.</b> A keyword parser stands in for the scene model, and every layer is synthesised live in your browser from filtered noise and oscillators. No samples, no network, nothing uploaded.</p>
+  </div>
+ </div>
+</div>
+<script>
+const LIB={
+ rain:{name:'Rain',col:'#4aa3ff',kw:['rain','drizzle','wet','shower'],why:'steady noise, 1 to 8 kHz, random drops'},
+ waves:{name:'Waves',col:'#1d6fa5',kw:['wave','waves','sea','surf','harbour','tide'],why:'brown noise, 7 s swell'},
+ wind:{name:'Wind',col:'#9aa7ad',kw:['wind','breeze','gust','stormy','storm'],why:'band-passed noise, slow sweep'},
+ fire:{name:'Fire',col:'#ff5a1f',kw:['fire','bonfire','crackling','hearth','embers'],why:'low roar plus crackle clicks'},
+ steps:{name:'Footsteps',col:'#8c6a4a',kw:['footsteps','steps','walking','gravel'],why:'gravel crunch, 0.55 s stride'},
+ halyard:{name:'Halyard',col:'#c7b300',kw:['halyard','mast','rigging','clank','clanking'],why:'inharmonic metal pings'},
+ gulls:{name:'Gulls',col:'#e8e8e8',kw:['gull','gulls','seagull','seagulls'],why:'swept saw calls, distant'},
+ birds:{name:'Birdsong',col:'#6fcf5b',kw:['birdsong','birds','dawn chorus','robin','blackbird'],why:'sine chirps, two voices'},
+ clock:{name:'Clock',col:'#bfa58a',kw:['clock','ticking','tick'],why:'1 Hz woodblock tick'}
+};
+let layers=[],actx=null,master,analyser,playing=false,startAt=0,nodes=[];
+const LOOP=20;
+const $=id=>document.getElementById(id);
+function parse(text){const t=text.toLowerCase();const found=[];const marks=[];
+ for(const k in LIB){for(const w of LIB[k].kw){const re=new RegExp('\\b'+w+'\\b','g');let m;let hit=false;while((m=re.exec(t))){marks.push([m.index,m.index+w.length]);hit=true}if(hit&&!found.includes(k))found.push(k)}}
+ let level=t.match(/\b(light|gentle|distant|soft)\b/)?.6:t.match(/\b(heavy|strong|big|loud)\b/)?1:.8;
+ return{found,marks,level}}
+function autosize(){const ta=$('p');ta.style.height='auto';ta.style.height=ta.scrollHeight+'px'}
+function highlight(){autosize();const text=$('p').value;const{marks}=parse(text);marks.sort((a,b)=>a[0]-b[0]);let out='',i=0;const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+ marks.forEach(([a,b])=>{if(a<i)return;out+=esc(text.slice(i,a))+'<mark>'+esc(text.slice(a,b))+'</mark>';i=b});out+=esc(text.slice(i));$('hl').innerHTML=out+'\n'}
+function generate(){const{found,level}=parse($('p').value);stopAudio();const POS={rain:[.5,.35],waves:[.3,.7],wind:[.7,.4],fire:[.5,.82],steps:[.62,.86],halyard:[.78,.55],gulls:[.2,.18],birds:[.25,.3],clock:[.82,.75]};layers=found.map((k,i)=>({k,vol:k==='waves'||k==='rain'?level:.7,mute:false,solo:false,seed:i*97+7,x:POS[k][0],y:POS[k][1]}));renderTracks();renderStage();if(playing)startAudio()}
+function renderTracks(){const box=$('tracks');box.innerHTML='';$('count').textContent=layers.length+' layer'+(layers.length===1?'':'s');
+ if(!layers.length){box.innerHTML='<div class="empty">No sound words found yet. Try rain, waves, wind, fire, footsteps, gulls, birdsong or a clock.</div>';return}
+ layers.forEach((L,i)=>{const d=document.createElement('div');d.className='trk';d.style.animationDelay=(i*70)+'ms';const lib=LIB[L.k];
+  d.innerHTML=`<div><div class="nm"><b style="background:${lib.col}"></b>${lib.name}</div><div class="why">${lib.why}</div></div><canvas></canvas><div class="ctl"><button class="k ${L.mute?'on':''}" data-a="m">M</button><button class="k ${L.solo?'on':''}" data-a="s">S</button><input type="range" min="0" max="1" step=".01" value="${L.vol}" aria-label="${lib.name} level"></div>`;
+  d.querySelector('[data-a=m]').onclick=e=>{L.mute=!L.mute;e.target.classList.toggle('on');applyGains()};
+  d.querySelector('[data-a=s]').onclick=e=>{L.solo=!L.solo;e.target.classList.toggle('on');applyGains()};
+  d.querySelector('input').oninput=e=>{L.vol=+e.target.value;applyGains()};
+  box.appendChild(d);wave(d.querySelector('canvas'),L)})}
+function wave(c,L){const r=c.getBoundingClientRect(),dpr=Math.min(2,devicePixelRatio||1);c.width=r.width*dpr;c.height=r.height*dpr;const x=c.getContext('2d');x.scale(dpr,dpr);const W=r.width,H=r.height,col=LIB[L.k].col;
+ let s=L.seed;const rnd=()=>(s=(s*16807)%2147483647)/2147483647;
+ x.fillStyle=col==='#e8e8e8'?'#9aa3a6':col;
+ for(let px=0;px<W;px+=2){const t=px/W*LOOP;let a=.15;
+  switch(L.k){case'rain':a=.35+rnd()*.25+(rnd()<.06?.4:0);break;case'waves':a=.15+.75*Math.pow(Math.max(0,Math.sin(t/7*Math.PI*2)),2)+rnd()*.08;break;case'wind':a=.2+.5*(.5+.5*Math.sin(t*.7+Math.sin(t*.23)*2))+rnd()*.06;break;
+   case'fire':a=.25+rnd()*.12+(rnd()<.12?.55*rnd():0);break;case'steps':a=(t%.55)<.12?.7+rnd()*.2:.04;break;case'halyard':a=(Math.sin(t*1.3+L.seed)>.93)?.85-((t*3)%1)*.4:.03;break;
+   case'gulls':a=((t%6.5)<1.2)?.5+.3*Math.sin(t*14):.02;break;case'birds':a=(Math.sin(t*5.1)>.6&&(t%4)<2.5)?.4+rnd()*.4:.03;break;case'clock':a=(t%1)<.03?.8:.02;break}
+  a*=L.vol*1.1;const h=Math.max(1,a*H*.9);x.globalAlpha=L.mute?.25:.9;x.fillRect(px,(H-h)/2,1.4,h)}}
+// ---------- audio ----------
+function noiseBuffer(type){const len=actx.sampleRate*2,b=actx.createBuffer(1,len,actx.sampleRate),d=b.getChannelData(0);let l=0;for(let i=0;i<len;i++){const w=Math.random()*2-1;if(type==='brown'){l=(l+.02*w)/1.02;d[i]=l*3.5}else d[i]=w}return b}
+function src(type){const s=actx.createBufferSource();s.buffer=type==='brown'?BUF.brown:BUF.white;s.loop=true;s.start();nodes.push(s);return s}
+let BUF={};
+function ensure(){if(actx)return;actx=new (window.AudioContext||window.webkitAudioContext)();master=actx.createGain();master.gain.value=.9;analyser=actx.createAnalyser();analyser.fftSize=2048;master.connect(analyser);analyser.connect(actx.destination);BUF.white=noiseBuffer('white');BUF.brown=noiseBuffer('brown')}
+function bp(f,q){const n=actx.createBiquadFilter();n.type='bandpass';n.frequency.value=f;n.Q.value=q;return n}
+function filt(type,f){const n=actx.createBiquadFilter();n.type=type;n.frequency.value=f;return n}
+let timers=[];
+function every(ms,fn,jit=0){const go=()=>{if(!playing)return;fn();timers.push(setTimeout(go,ms+(Math.random()-.5)*jit))};timers.push(setTimeout(go,Math.random()*ms))}
+function burst(out,dur,f,q,g=1){const s=actx.createBufferSource();s.buffer=BUF.white;const b=bp(f,q),e=actx.createGain();const t=actx.currentTime;e.gain.setValueAtTime(0,t);e.gain.linearRampToValueAtTime(g,t+.004);e.gain.exponentialRampToValueAtTime(.001,t+dur);s.connect(b);b.connect(e);e.connect(out);s.start(t,Math.random());s.stop(t+dur+.05)}
+function tone(out,f,dur,g,type='sine',sweep){const o=actx.createOscillator();o.type=type;const e=actx.createGain();const t=actx.currentTime;o.frequency.setValueAtTime(f,t);if(sweep)o.frequency.exponentialRampToValueAtTime(sweep,t+dur);e.gain.setValueAtTime(0,t);e.gain.linearRampToValueAtTime(g,t+.01);e.gain.exponentialRampToValueAtTime(.001,t+dur);o.connect(e);e.connect(out);o.start(t);o.stop(t+dur+.05)}
+function build(L){const g=actx.createGain();const pan=actx.createStereoPanner();const lp=filt('lowpass',16000);g.connect(pan);pan.connect(lp);lp.connect(master);L.gain=g;L.pan=pan;L.lp=lp;place(L);const t=actx.currentTime;
+ switch(L.k){
+ case'rain':{const s=src('white'),h=filt('highpass',900),l=filt('lowpass',7500),a=actx.createGain();a.gain.value=.16;s.connect(h);h.connect(l);l.connect(a);a.connect(g);every(45,()=>burst(g,.04,2500+Math.random()*4000,4,.25),60);break}
+ case'waves':{const s=src('brown'),l=filt('lowpass',500),a=actx.createGain();a.gain.value=.1;s.connect(l);l.connect(a);a.connect(g);const lfo=actx.createOscillator();lfo.frequency.value=1/7;const lg=actx.createGain();lg.gain.value=.5;lfo.connect(lg);lg.connect(a.gain);lfo.start();nodes.push(lfo);const lf2=actx.createGain();lf2.gain.value=380;lfo.connect(lf2);lf2.connect(l.frequency);break}
+ case'wind':{const s=src('white'),b=bp(500,1.2),a=actx.createGain();a.gain.value=.22;s.connect(b);b.connect(a);a.connect(g);const lfo=actx.createOscillator();lfo.frequency.value=.11;const lg=actx.createGain();lg.gain.value=320;lfo.connect(lg);lg.connect(b.frequency);lfo.start();nodes.push(lfo);break}
+ case'fire':{const s=src('brown'),l=filt('lowpass',260),a=actx.createGain();a.gain.value=.25;s.connect(l);l.connect(a);a.connect(g);every(90,()=>{if(Math.random()<.5)burst(g,.012+Math.random()*.02,3000+Math.random()*3000,2,.5+Math.random()*.5)},140);break}
+ case'steps':every(550,()=>{for(let i=0;i<5;i++)setTimeout(()=>burst(g,.05,1200+Math.random()*1800,1.5,.5),i*14)},40);break;
+ case'halyard':every(2300,()=>{const f=880+Math.random()*120;[1,2.76,5.4,8.93].forEach((r,i)=>tone(g,f*r,1.4/(i+1),.12/(i+1)));if(Math.random()<.5)setTimeout(()=>[1,2.76,5.4].forEach((r,i)=>tone(g,f*1.02*r,.9/(i+1),.07/(i+1))),180)},2600);break;
+ case'gulls':{const out=actx.createGain();out.gain.value=.5;const lp=filt('lowpass',2400);out.connect(lp);lp.connect(g);every(6500,()=>{for(let i=0;i<3;i++)setTimeout(()=>tone(out,1400,.32,.05,'sawtooth',900),i*260)},3000);break}
+ case'birds':every(900,()=>{const f=2600+Math.random()*2400;for(let i=0;i<2+Math.random()*4;i++)setTimeout(()=>tone(g,f,.09,.06,'sine',f*(1.2+Math.random()*.5)),i*85)},900);break;
+ case'clock':every(1000,()=>{tone(g,1800,.03,.25,'triangle');burst(g,.02,3500,6,.3)});break}
+}
+function place(L){if(!L.pan)return;L.pan.pan.setTargetAtTime((L.x-.5)*1.8,actx.currentTime,.05);L.lp.frequency.setTargetAtTime(16000*Math.pow(.12,1-L.y),actx.currentTime,.05)}
+function dist(L){return .35+.65*L.y}
+function applyGains(){const anySolo=layers.some(l=>l.solo);layers.forEach(L=>{if(!L.gain)return;const on=!L.mute&&(!anySolo||L.solo);L.gain.gain.setTargetAtTime(on?L.vol*dist(L):0,actx.currentTime,.05)});renderWaves()}
+function renderStage(){const st=$('stage');st.querySelectorAll('.dotl').forEach(n=>n.remove());layers.forEach(L=>{const d=document.createElement('div');d.className='dotl';const col=LIB[L.k].col;d.style.color=col;d.innerHTML=`<b style="background:${col}"></b><span>${LIB[L.k].name}</span>`;const pos=()=>{d.style.left=(L.x*100)+'%';d.style.top=(8+(1-L.y)*80)+'%'};pos();
+ d.onpointerdown=e=>{d.setPointerCapture(e.pointerId);const r=st.getBoundingClientRect();d.onpointermove=ev=>{L.x=Math.max(.04,Math.min(.96,(ev.clientX-r.left)/r.width));L.y=Math.max(0,Math.min(1,1-((ev.clientY-r.top)/r.height-.08)/.8));pos();if(L.pan){place(L);applyGains()}}};d.onpointerup=()=>{d.onpointermove=null};st.appendChild(d)})}
+function renderWaves(){document.querySelectorAll('.trk canvas').forEach((c,i)=>wave(c,layers[i]))}
+function startAudio(){ensure();if(actx.state==='suspended')actx.resume();playing=true;$('play').classList.add('on');nodes=[];timers=[];layers.forEach(build);applyGains();startAt=actx.currentTime}
+function stopAudio(){playing=false;$('play').classList.remove('on');timers.forEach(clearTimeout);timers=[];nodes.forEach(n=>{try{n.stop()}catch(e){}});nodes=[];layers.forEach(L=>{if(L.gain){L.gain.disconnect();L.gain=null}})}
+$('play').onclick=()=>{if(playing)return;startAudio()};$('stop').onclick=stopAudio;$('gen').onclick=generate;
+$('p').addEventListener('input',highlight);$('p').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();generate()}});
+document.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{$('p').value=c.dataset.p;highlight();generate()});
+// meters + scope
+const M=$('meters');for(let i=0;i<20;i++)M.appendChild(document.createElement('i'));
+const sc=$('scope'),sx=sc.getContext('2d');
+function frame(){const r=sc.getBoundingClientRect(),dpr=Math.min(2,devicePixelRatio||1);if(sc.width!==Math.round(r.width*dpr)){sc.width=r.width*dpr;sc.height=r.height*dpr}const W=sc.width,H=sc.height;sx.clearRect(0,0,W,H);
+ sx.strokeStyle='rgba(157,255,106,.12)';sx.lineWidth=1;for(let i=1;i<4;i++){sx.beginPath();sx.moveTo(0,H*i/4);sx.lineTo(W,H*i/4);sx.stroke()}
+ sx.strokeStyle='#9dff6a';sx.lineWidth=2*dpr/1.5;sx.shadowColor='#9dff6a';sx.shadowBlur=8;sx.beginPath();
+ if(playing&&analyser){const d=new Uint8Array(analyser.fftSize);analyser.getByteTimeDomainData(d);for(let i=0;i<d.length;i+=4){const x=i/d.length*W,y=H/2+(d[i]-128)/128*H*1.6;i?sx.lineTo(x,y):sx.moveTo(x,y)}
+  const f=new Uint8Array(analyser.frequencyBinCount);analyser.getByteFrequencyData(f);[...M.children].forEach((b,i)=>{const idx=Math.floor(Math.pow(i/20,2)*f.length*.7)+1;b.style.height=Math.max(3,f[idx]/255*100)+'%'});
+  const t=(actx.currentTime-startAt)%LOOP;$('time').innerHTML=`00:${t.toFixed(1).padStart(4,'0')}<small> / 00:20.0</small>`}
+ else{const now=performance.now()/1000;for(let x=0;x<W;x+=3){const y=H/2+Math.sin(x/W*18+now*2)*H*.08*Math.sin(x/W*Math.PI)+Math.sin(x/W*61+now*5)*H*.025;x?sx.lineTo(x,y):sx.moveTo(x,y)}[...M.children].forEach((b,i)=>b.style.height=(8+Math.abs(Math.sin(i*.9+now*1.3))*26*(1-i/26))+'%')}
+ sx.stroke();sx.shadowBlur=0;requestAnimationFrame(frame)}
+addEventListener('resize',()=>{renderWaves();autosize()});
+highlight();generate();document.fonts.ready.then(()=>{renderWaves();autosize()});frame();
+</script>
+</body>
+</html>
