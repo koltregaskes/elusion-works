@@ -168,7 +168,7 @@ function draw(dt) {
   renderer.render(scene, camera);
   if (mode === 'menu') return;
   $('lap').textContent = `${Math.min(LAPS, me.lap + 1)}/${LAPS}`; $('place').textContent = ORD[standings(race).indexOf(0)]; $('time').textContent = fmt(race.t);
-  $('speedbar').style.width = Math.min(100, Math.abs(me.v) / 45 * 100) + '%'; $('speed').classList.toggle('boost', me.boost > 0);
+  const full = Math.min(100, Math.abs(me.v) / 45 * 100), words = `Speed: ${Math.round(full)} out of 100${me.boost > 0 ? ', boosted' : ''}`; $('speedbar').style.width = full + '%'; $('speed').classList.toggle('boost', me.boost > 0); if ($('speed').getAttribute('aria-label') !== words) $('speed').setAttribute('aria-label', words); /* the bar says how full it is, to someone who cannot see it; it is not a live region, so it is read only when asked for */
   const mc = $('map'), g = mc.getContext('2d'); g.drawImage(mapBase, 0, 0);
   race.karts.forEach((k, i) => { const [u, v] = toPhoto(k.x, k.z, track.H); g.fillStyle = ['#3fe08a', '#ffb347', '#6aa9ff'][i]; g.strokeStyle = '#000'; g.lineWidth = 2; g.beginPath(); g.arc(u * mc.width, v * mc.height, i ? 6 : 8, 0, 7); g.fill(); g.stroke(); });
   audio.engine(me.v, mode === 'race' && race.go && !paused);

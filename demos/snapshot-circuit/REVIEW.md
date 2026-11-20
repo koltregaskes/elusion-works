@@ -127,6 +127,16 @@ The same outside reviewer read the fixes above the next morning and moved its sc
 
 The start card was made 40 px taller at most, so that it still fits a 1280 by 800 window with the new switch on it.
 
+### Second-family review, 20 November 2026
+
+Codex, a model from a different family, read the code, tests and CI results on 19 November (relayed onto the pull request by another Claude session) and said to keep this in draft. It did not run the page.
+
+| Finding | What was done | Held by |
+|---|---|---|
+| The speed bar grows and shrinks, but to a screen reader it was only ever called "Speed" | True. Its name now carries the level, in whole numbers out of 100 (the kart's speed as a share of the speed that fills the bar), and says when it is boosted. It is not announced as it changes; it is read when asked for | `smoke.mjs`: with the kart moving, the bar's name agrees with the kart's speed |
+| The Kodak sample still has no established permission | Still true, and still the block on merging. It needs Kol's own photograph | Kol |
+| Nobody has raced it on a phone or judged the steering, the kart's visibility or the result card | Still true | Kol |
+
 ## Provenance
 
 - Model: Claude Fable 5.2 (`claude-fable-5-2`), Claude Code cloud session, high effort.
