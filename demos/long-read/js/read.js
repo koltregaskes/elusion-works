@@ -20,9 +20,11 @@ export function current(tops, y, view, clear = 0) { const line = y + clear + Mat
 
 // The short read: the first sentence of a paragraph. A sentence ends at a full stop, question mark or exclamation mark that is followed by a space and a capital, or by the end.
 // Stops inside figures (3.5), after initials and common abbreviations, and before a small letter do not end it.
-const SHORT = new Set(['mr', 'mrs', 'ms', 'dr', 'st', 'vs', 'etc', 'e.g', 'i.e']);
+// A figure may begin the next sentence ("The job stopped. 3 retries followed."), so a stop before a figure does end it, unless the word before is one that is written before a figure: No. 3, fig. 2, vol. 4.
+const SHORT = new Set(['mr', 'mrs', 'ms', 'dr', 'st', 'vs', 'etc', 'e.g', 'i.e']), BEFORE_A_FIGURE = new Set(['fig', 'figs', 'vol', 'vols', 'pp', 'ch', 'ca', 'approx', 'sec', 'para', 'eq', 'nos']);
 export function firstSentence(text) { const t = text.replace(/\s+/g, ' ').trim(); for (let i = 0; i < t.length; i++) { if (!'.!?'.includes(t[i])) continue; let end = i + 1; while (end < t.length && /[.!?"'”’)\]]/.test(t[end])) end++; if (end < t.length && t[end] !== ' ') continue;
-    const rest = t.slice(end).trimStart(), word = t.slice(0, i).split(' ').pop().toLowerCase().replace(/^[("'“‘]+/, ''); if (rest && (/^[a-z0-9]/.test(rest) || (t[i] === '.' && (SHORT.has(word) || /^[a-z]$/.test(word))))) continue; return t.slice(0, end); } return t; }
+    const rest = t.slice(end).trimStart(), as = t.slice(0, i).split(' ').pop().replace(/^[("'“‘]+/, ''), word = as.toLowerCase(), figure = /^[0-9]/.test(rest); /* "No." with its capital is the abbreviation; "no." is the end of a sentence */
+    if (rest && (/^[a-z]/.test(rest) || (t[i] === '.' && (SHORT.has(word) || /^[a-z]$/.test(word) || (figure && (BEFORE_A_FIGURE.has(word) || as === 'No')))))) continue; return t.slice(0, end); } return t; }
 
 // Where the first sentence ends in the text as it is written in the page, counted in its own characters. firstSentence() works on text with its runs of spaces and line breaks made single; the page's text need not be so tidy, so the place is found by walking the page's text and counting each run of space once.
 export function sentenceEnd(raw) { const first = firstSentence(raw); let i = 0, n = 0, inSpace = false; while (i < raw.length && /\s/.test(raw[i])) i++; for (; i < raw.length && n < first.length; i++) { if (/\s/.test(raw[i])) { if (!inSpace) n++; inSpace = true; } else { n++; inSpace = false; } } return i; }

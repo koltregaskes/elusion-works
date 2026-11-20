@@ -98,6 +98,16 @@ A second, outside review was posted on the pull requests on 17 November 2026: Ch
 | No reference comparison, real phone, screen reader or print on paper | Still true. Listed under Not verified | |
 | "Unlisted" pages become reachable once merged, because the site deploys its main branch | The README now says so | |
 
+### Second-family review, 20 November 2026
+
+Codex, a model from a different family, read the code, tests and CI results on 19 November (relayed onto the pull request by another Claude session) and said to keep this in draft. Its test reviewer found one more fault.
+
+| Finding | What was done | Held by |
+|---|---|---|
+| The short read did not end a sentence when the next one began with a figure: "The job stopped. 3 retries followed." stayed whole | True. A stop before a figure now ends the sentence, unless the word before is one written before a figure (No. 3, fig. 2, p. 12, vol. 4). A figure with a stop inside it (3.5, 2.10) is still one figure | `read.test.mjs`: ten cases written out by hand, in the rule and in the page's own text |
+| The folding check let a button vanish (it only asked for one or none) and did not look at links or ids | True. Each case now says exactly how many buttons and links must be left, where each link goes, and which ids there are. With the paragraph in the page, every link and button must still take the keyboard's focus | `smoke.mjs`, eight cases |
+| Nobody has edited the article, checked a linked note at large text on a real phone, printed it or used a screen reader | Still true | Kol |
+
 ## Provenance
 
 - No library, no font, picture or data file. Both drawings are shapes in the page.
