@@ -17,8 +17,9 @@ frame.addEventListener('load', () => { tame(); fit(); }); addEventListener('resi
 function show(next) { look = next; stage.dataset.look = next; frame.title = `The email, ${WIDE[next]} wide`; for (const b of document.querySelectorAll('.seg button')) b.setAttribute('aria-pressed', b.dataset.look === next); fit(); }
 for (const b of document.querySelectorAll('.seg button')) b.addEventListener('click', () => show(b.dataset.look));
 
-/* ---- The checks, run again here on the file as it is served ---- */
-async function check() { try { const [h, t] = await Promise.all(['email.html', 'email.txt'].map(f => fetch(f, { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error(`${f}: ${r.status}`); return r.text(); }))), doc = new DOMParser().parseFromString(h, 'text/html');
+/* ---- The checks, run again here on the email as it is served ---- */
+/* The email itself is read from email.html.txt, which the website serves untouched. email.html, shown in the frame, is the same email as a page: the website adds lines of its own to every page it serves, and those must not be copied into an email. */
+async function check() { try { const [h, t] = await Promise.all(['email.html.txt', 'email.txt'].map(f => fetch(f, { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error(`${f}: ${r.status}`); return r.text(); }))), doc = new DOMParser().parseFromString(h, 'text/html');
     mail = { html: h, text: t, subject: doc.title, preheader: doc.body.firstElementChild.textContent.replace(/[͏‌ \s]+$/, '') }; results = lint(mail);
     $('checks').replaceChildren(...results.map(c => el('li', { className: c.ok ? 'ok' : 'bad' }, el('span', { className: 'mark', ariaHidden: 'true', textContent: c.ok ? '✓' : '!' }), el('span', { className: 'what' }, el('b', { textContent: c.name }), el('span', { className: 'sr', textContent: c.ok ? ' (passes)' : ' (fails)' }), el('span', { className: 'detail', textContent: c.detail })))));
     document.querySelector('.inbox .subj').textContent = mail.subject; document.querySelector('.inbox .pre').textContent = mail.preheader; $('plain').textContent = t;
@@ -28,7 +29,7 @@ async function check() { try { const [h, t] = await Promise.all(['email.html', '
 /* ---- Copy ---- */
 async function copy(button, what, words) { if (!mail) { $('said').textContent = 'The email file has not been read yet.'; return; } const was = button.textContent;
   try { await navigator.clipboard.writeText(what()); button.textContent = 'Copied'; $('said').textContent = `${words} is copied: ${(bytes(what()) / 1024).toFixed(1)} KB.`; }
-  catch (err) { $('said').textContent = `Copying was not allowed. Use the link below, "${words === 'The HTML' ? 'The email on its own' : 'The plain text on its own'}", and copy it there.`; } setTimeout(() => { button.textContent = was; }, 2000); }
+  catch (err) { $('said').textContent = `Copying was not allowed. Use the link below, "${words === 'The HTML' ? 'The email’s HTML, exactly as made' : 'The plain text on its own'}", and copy it there.`; } setTimeout(() => { button.textContent = was; }, 2000); }
 $('copy-html').addEventListener('click', e => copy(e.currentTarget, () => mail.html, 'The HTML')); $('copy-text').addEventListener('click', e => copy(e.currentTarget, () => mail.text, 'The plain text'));
 
 show('desktop'); const ready = check();

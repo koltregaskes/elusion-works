@@ -26,7 +26,7 @@ Verified by running. All passed on the code as committed.
 
 - `node demos/hub-digest/tools/email.test.mjs`: pass.
   - The files beside the page are the ones the issue makes. The sample passes all 14 checks.
-  - 65 faults put in by hand on the finished email, several ways for each check, are each caught by the right check and no other. They include the ways the first version of the checks missed.
+  - 81 faults put in by hand on the finished email, several ways for each check, are each caught by the right check and no other. They include the ways the first version of the checks missed.
   - Words that only look like faults pass. Markup in the words is made safe. An issue filled in wrongly, or a link that cannot be sent, stops the build.
   - Parts left out are left out. Japanese, and a name of one very long word, still build. Dates, reading time, wrapping and contrast match values worked out by hand.
 - `node demos/hub-digest/tools/smoke.mjs`: pass, in headless Chromium.
@@ -60,7 +60,7 @@ A second pass by a separate Claude agent (Opus), read-only, given the brief and 
 
 | # | Finding | What was done | Held by |
 |---|---|---|---|
-| 1 | Blocker. Ten of the 14 checks were weaker than their names. Each could be passed by a slightly different fault: small text written with a space, a colour pair never worked out, a script handler in single quotes, a hidden line that was not hidden, a plain text with only the links | The checks were rebuilt. They now take the email apart and work on its tags and on each piece of text with its own colour, background and size. Names say what is tested. Words that only look like faults pass | builder test: 65 faults by hand (64 until one that a comment had swallowed was restored), including the reviewer's |
+| 1 | Blocker. Ten of the 14 checks were weaker than their names. Each could be passed by a slightly different fault: small text written with a space, a colour pair never worked out, a script handler in single quotes, a hidden line that was not hidden, a plain text with only the links | The checks were rebuilt. They now take the email apart and work on its tags and on each piece of text with its own colour, background and size. Names say what is tested. Words that only look like faults pass | builder test: faults by hand (64 at the time; 81 now), including the reviewer's |
 | 2 | Blocker. The button's padding was on the link, which Outlook ignores | Colour and padding were put on the table cell. (That left only the words pressable; the outside review below caught it. The padding is now on the link, and on the cell for Outlook alone) | builder test and browser check of the markup; not seen in Outlook |
 | 3 | Blocker. One very long word, or wide figures, made the email wider than the screen, and empty parts kept their headings | Words wrap. Figures are limited to 7 characters and 2 to 4 in a row, share the width evenly and shrink on a phone. Empty parts are left out. An issue filled in wrongly stops the build | builder test; browser check on five awkward issues at three widths |
 | 4 | Markup gaps for real sending: no exact line heights for Outlook, a padded paragraph, the language only where webmail removes it, the lead story not a heading, no thought for dark mode | Exact line heights throughout. The notice is a table cell. The language and a label are on the email itself. The lead story is a heading. Two lines for Outlook's dark mode. The README lists what a sender still has to do | builder test for the markup; none seen in a client |
@@ -89,6 +89,19 @@ A second, outside review was posted on the pull requests on 18 November 2026: Ch
 | The demo's own tests do not run in the repo's CI | Not done here: CI is shared by the whole site, and changing it is outside this demo's folder | |
 
 The same reviewer, reading other demos, found two places where a comment written part way along a line had swallowed the code after it. Every demo was scanned for that mistake, and this one's rules test had it: one of the faults put in by hand, a link with no words to press, was never tried. It is restored and is caught by the right rule, so the count is 65 faults, not 64.
+
+### Second-family review, 20 November 2026
+
+Codex, a model from a different family, read the code, tests and CI results on 19 November (relayed onto the pull request by another Claude session) and said to keep this in draft. Its test reviewer found two things that mattered.
+
+| Finding | What was done | Held by |
+|---|---|---|
+| The email a visitor would copy from the built website was not the email the builder made. The website adds lines of its own to every page when it is built, and the preview page read the email from that page. A real build confirmed it: 22,467 bytes served against 21,984 made, the extra being the website's security policy and referrer rule. Copy the HTML would have handed those over as part of the email | The email itself is now also written to `email.html.txt`, a file the website leaves alone, and that is what the page copies, checks and counts. `email.html` stays as the page shown in the frame. The one line this demo used to put in the email for the web's sake (`noindex`) is no longer in the email at all: it is added only to the page | `built.test.mjs`, new: after a real build, the two files a visitor takes are the email byte for byte, and the page differs from it by three web lines and nothing else. It fails on one changed byte in either file (tried). The browser check passes against the built site as well as the source |
+| Three faults got past all 14 checks: two resources' names changed over in the plain text; the headline made the colour of the page by a rule in the style block; the table only Outlook reads made 900 wide | True of all three. The plain text is now held to the email's order, each link with its own words. The style block may set a colour only in the two dark mode lines and only to the colour the thing already has, and may hide nothing. The Outlook table must be there once, marked as layout, and 600 wide | builder test: 16 more faults by hand, 81 in all, each caught by the right check and no other |
+| To hold the order, the plain text had to follow the email's | It now gives the name, the link to read online, the title and the issue line in that order, and each resource as "Tool: Lanternfile" where it had "Lanternfile (Tool)" | builder test |
+| No email program has opened it; whether `REVIEW.md` and `proof.jpg` are meant to stay as public files | Still true; for Kol | Kol |
+
+The preview already on the live site, copied there on 18 November by another session, has the first fault: its Copy the HTML gives the retagged page.
 
 ## Provenance
 

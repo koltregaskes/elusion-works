@@ -1,6 +1,8 @@
-AI RESOURCE HUB: THE WEEKLY DIGEST
-Issue 12, 17 November 2026, 1 minute read
+AI RESOURCE HUB
 Read this online: {{view_online_url}}
+
+THE WEEKLY DIGEST
+Issue 12, 17 November 2026, 1 minute read
 
 This is a sample issue. The resources and figures in it are made up to
 show the template. Its links lead to the Hub’s front page, or are left
@@ -24,25 +26,25 @@ machine.
 ----------------------------------------
 NEW ON THE HUB
 
-Lanternfile (Tool)
+Tool: Lanternfile
 Turns a folder of PDFs into a notebook you can question, and runs on
 your own machine so nothing leaves it.
 Good for: anyone with a pile of reports and no time.
 https://theairesourcehub.com/#lanternfile
 
-Evals without the jargon (Guide)
+Guide: Evals without the jargon
 A forty-minute read on testing a model against your own questions, with
 a spreadsheet you can copy.
 Good for: teams about to choose between two models.
 https://theairesourcehub.com/#evals-without-the-jargon
 
-Kittiwake 2 Small (Model)
+Model: Kittiwake 2 Small
 A small open model that is quick on a laptop and honest about what it
 does not know.
 Good for: drafts, summaries and anything private.
 https://theairesourcehub.com/#kittiwake-2-small
 
-Hard Questions, Plain Answers (Dataset)
+Dataset: Hard Questions, Plain Answers
 Twelve hundred questions with checked answers and the working shown, for
 seeing whether a model reasons or guesses.
 Good for: people who build things on top of models.

@@ -78,7 +78,7 @@
     <h2 id="checks-title">What an email has to pass</h2>
     <p class="sub">Each rule reads the finished email itself: every tag, and every piece of text with the colour, background and size it ends up with. They are rules, not a test in Outlook or Gmail.</p>
     <ul id="checks" aria-labelledby="checks-title">
-<!--checks--><li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>Small enough not to be cut off</b><span class="sr"> (passes)</span><span class="detail">21.5 KB as written. Gmail cuts an email off above 102.0 KB, and a sending service adds to it.</span></span></li>
+<!--checks--><li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>Small enough not to be cut off</b><span class="sr"> (passes)</span><span class="detail">21.4 KB as written. Gmail cuts an email off above 102.0 KB, and a sending service adds to it.</span></span></li>
 <li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>A subject that fits an inbox</b><span class="sr"> (passes)</span><span class="detail">58 characters, and 60 is about what a phone shows.</span></span></li>
 <li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>A hidden line to follow the subject</b><span class="sr"> (passes)</span><span class="detail">108 characters, first in the email and hidden from the reader, for the inbox to show.</span></span></li>
 <li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>No pictures</b><span class="sr"> (passes)</span><span class="detail">Many inboxes hide pictures until asked. There are none, in the tags or the styles.</span></span></li>
@@ -86,17 +86,17 @@
 <li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>Nothing fetched from elsewhere</b><span class="sr"> (passes)</span><span class="detail">No web fonts, no style sheets, no tracking pixel.</span></span></li>
 <li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>Every link is a full, secure address or left for the sender</b><span class="sr"> (passes)</span><span class="detail">10 links, each with words to press.</span></span></li>
 <li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>A way to stop the emails, and a place for who sent them</b><span class="sr"> (passes)</span><span class="detail">Both are in the words a reader sees. Whether a send meets the law is for the sender to check.</span></span></li>
-<li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>Layout by tables that screen readers skip</b><span class="sr"> (passes)</span><span class="detail">13 tables, each marked as layout only.</span></span></li>
+<li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>Layout by tables that screen readers skip</b><span class="sr"> (passes)</span><span class="detail">13 tables, each marked as layout only, and for Outlook one more, 600 wide, marked the same.</span></span></li>
 <li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>No flex, grid or positioning</b><span class="sr"> (passes)</span><span class="detail">In the tags and the style block alike. Tables, padding and plain colours are what email programs share.</span></span></li>
 <li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>Text large enough to read on a phone</b><span class="sr"> (passes)</span><span class="detail">Every piece of text was measured: 14 px or more, and 12 px for labels in capitals.</span></span></li>
 <li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>Every piece of text is easy to read against what is behind it</b><span class="sr"> (passes)</span><span class="detail">Worked out for each piece of text from its own colour and background: the weakest is 7.9 to 1, and 4.5 is the mark. 9 pairings are used.</span></span></li>
 <li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>The language is said twice, and the title is the subject</b><span class="sr"> (passes)</span><span class="detail">Once on the page and once on the email itself, because webmail throws the first away.</span></span></li>
-<li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>A plain-text version that says the same</b><span class="sr"> (passes)</span><span class="detail">91 lines. Every piece of text and every link in the email is in it, and no line is over 78 characters but for a link.</span></span></li><!--/checks-->
+<li class="ok"><span class="mark" aria-hidden="true">✓</span><span class="what"><b>A plain-text version that says the same</b><span class="sr"> (passes)</span><span class="detail">93 lines. Every piece of text and every link in the email is in it, in the same order, each link with its own words, and no line is over 78 characters but for a link.</span></span></li><!--/checks-->
     </ul>
     <p id="ran" role="status"></p>
     <h2>Take it</h2>
     <div class="row"><button type="button" class="btn" id="copy-html">Copy the HTML</button><button type="button" class="btn" id="copy-text">Copy the plain text</button></div>
-    <ul class="links"><li><a href="email.html">The email on its own</a></li><li><a href="email.txt">The plain text on its own</a></li></ul>
+    <ul class="links"><li><a href="email.html">The email on its own, as a page</a></li><li><a href="email.html.txt">The email&rsquo;s HTML, exactly as made</a></li><li><a href="email.txt">The plain text on its own</a></li></ul>
     <p class="said" id="said" role="status"></p>
   </div>
 

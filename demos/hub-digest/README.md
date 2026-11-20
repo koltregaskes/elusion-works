@@ -6,7 +6,7 @@ A newsletter template. One issue of plain data goes in; an email and its plain-t
 
 **It has not been opened in an email program.** It was checked against the rules email programs are known to enforce, and looked at in one browser. Outlook, Gmail and Apple Mail have not seen it.
 
-**Quality bar it sets:** an email that is built, not hand-edited: one file of data in, the email and its plain text out, and 14 rules that read the finished email itself, tag by tag and piece of text by piece of text. 65 faults put in by hand, several ways for each rule, are each caught by the right rule.
+**Quality bar it sets:** an email that is built, not hand-edited: one file of data in, the email and its plain text out, and 14 rules that read the finished email itself, tag by tag and piece of text by piece of text. 81 faults put in by hand, several ways for each rule, are each caught by the right rule.
 Use it as the reference for newsletters and any email sent to more than one person.
 
 ## What it does
@@ -24,8 +24,9 @@ Use it as the reference for newsletters and any email sent to more than one pers
 
 - `js/issue.js`: one issue as plain data. This is the only file an editor changes.
 - `js/email.js`: `render()` makes the email and its plain text from an issue; `lint()` checks the result. An issue filled in wrongly, or a link that is not a full, secure address, stops the build and says what is needed. Words are made safe, so the data cannot put markup into the email. No page, so it runs in Node.
-- `tools/build.mjs`: writes `email.html`, `email.txt` and the parts of the preview page that come from the issue. It refuses to write an email that fails a check.
-- `email.html`, `email.txt`: the built email. `email.html` carries one line that is for the web and not for inboxes, a `noindex` mark, because the file is also served as a page here.
+- `tools/build.mjs`: writes `email.html`, `email.html.txt`, `email.txt` and the parts of the preview page that come from the issue. It refuses to write an email that fails a check.
+- `email.html.txt`, `email.txt`: the built email and its plain text, exactly as made. These are what the page copies, checks and counts. The website leaves `.txt` files alone when it is built.
+- `email.html`: the same email as a page to look at in the frame. It carries one line that is for the web and not for inboxes, a `noindex` mark, and the website adds two more of its own when it is built (a security policy and a referrer rule). None of the three is in the email that is copied. `tools/built.test.mjs` holds all of this against a real build.
 - `js/app.js`, `index.html`: the preview page.
 - Three places are left for whatever sends the email to fill in: `{{unsubscribe_url}}`, `{{view_online_url}}` and `{{postal_address}}`.
 - No library, no font or picture file, no outside request.
@@ -51,6 +52,18 @@ After changing the issue, make the email again:
 ```bash
 node demos/hub-digest/tools/build.mjs
 ```
+
+To check the email as the built website serves it, build the site and then compare:
+
+```bash
+python3 scripts/build-site.py
+```
+
+```bash
+node demos/hub-digest/tools/built.test.mjs
+```
+
+The browser check can also be pointed at the built site: serve the `_site` folder and give its address in place of the one above.
 
 The second and third need the site's development packages (Playwright and axe-core, from `npm install` at the site's root) and a Chromium that Playwright can find, or `PW_CHROMIUM` set to one. [REVIEW.md](REVIEW.md) lists what each one proves, what an independent review found and what nobody has checked.
 
