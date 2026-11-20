@@ -25,6 +25,7 @@ jobs:
       - run: node --test scripts/catalogue-health.test.mjs
       - run: node --check demos/orbit-census/tools/build-catalog.mjs
       - run: node --test scripts/catalogue-source.test.mjs
+      - run: node --test scripts/orbit-screen.test.mjs
       - run: node --test scripts/redirect-safety.test.mjs
       - run: python scripts/test-seo-content.py
       - run: node scripts/check-links.mjs --external
@@ -57,6 +58,27 @@ jobs:
         with:
           name: axe-${{ matrix.width }}-${{ matrix.shard }}
           path: test-results/
+
+  orbit-interactions:
+    # The launch tests only reach Orbit Census's "catalogue unavailable" state (the catalogue is
+    # built at deploy time). This serves a fresh fixture catalogue and checks loaded-data behaviour.
+    name: Orbit Census with loaded data
+    runs-on: windows-latest
+    env:
+      PLAYWRIGHT_CHANNEL: msedge
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: python scripts/build-site.py
+      - run: node scripts/orbit-census-interactions.mjs
 
   coverage:
     name: Complete route and viewport acceptance

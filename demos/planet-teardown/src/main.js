@@ -431,7 +431,8 @@ function filmTick(dt) {
 
 // keyboard
 addEventListener('keydown', (e) => {
-  if (e.target.tagName === 'INPUT') return;
+  // leave typing and native control keys alone (search box, city picker, focused buttons)
+  if (e.target.closest?.('input, select, textarea, [contenteditable]') || (e.key === ' ' && e.target.closest?.('button'))) return;
   const k = e.key.toLowerCase();
   if (/^[1-8]$/.test(k)) selectPlanet(PLANETS[+k - 1].id);
   else if (k === 's') setMode('surface'); else if (k === 'c') setMode('cutaway'); else if (k === 'x') setMode('exploded');
@@ -453,7 +454,7 @@ function syncUrl() {
   const u = new URLSearchParams();
   u.set('p', P.id); if (S.mode !== 'surface') u.set('mode', S.mode); if (S.accent !== 'lime') u.set('accent', S.accent);
   for (const k of ['clean', 'notour', 'q']) if (q.has(k)) u.set(k, q.get(k));
-  history.replaceState(null, '', `?${u}`);
+  try { history.replaceState(null, '', `?${u}`); } catch { /* sandboxed frame */ }
 }
 
 // ---------------------------------------------------------------------------

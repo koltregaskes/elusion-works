@@ -22,7 +22,9 @@ export const FAMILIES = [
   { id: 'oneweb', label: 'OneWeb', re: /^ONEWEB/, color: '#b98cff' },
   { id: 'kuiper', label: 'Kuiper', re: /^KUIPER/, color: '#ffb347' },
   { id: 'qianfan', label: 'Qianfan', re: /^(QIANFAN|G60)/, color: '#ff6b8b' },
-  { id: 'guowang', label: 'Guowang', re: /^(GUOWANG|SATNET)/, color: '#ff8f5a' },
+  { id: 'guowang', label: 'Guowang', re: /^(GUOWANG|SATNET|HULIANWANG)/, color: '#ff8f5a' },
+  { id: 'o3b', label: 'O3b', re: /^O3B/, color: '#8fe0ff' }, // both generations: first O3b and mPOWER
+  { id: 'rassvet', label: 'Rassvet', re: /^RASSVET/, color: '#ffcf8f' },
   { id: 'iridium', label: 'Iridium', re: /^IRIDIUM(?!.*DEB)/, color: '#7cf0b4' },
   { id: 'globalstar', label: 'Globalstar', re: /^GLOBALSTAR/, color: '#e6e27a' },
   { id: 'orbcomm', label: 'Orbcomm', re: /^ORBCOMM/, color: '#9fb4c8' },
@@ -37,7 +39,7 @@ export const FAMILIES = [
   { id: 'stations', label: 'Stations and crew', re: /^(ISS|CSS|TIANHE|WENTIAN|MENGTIAN|SOYUZ|PROGRESS|SHENZHOU|TIANZHOU|CREW DRAGON|DRAGON|CYGNUS|STARLINER|HTV)/, color: '#ffffff' },
 ];
 export const NAV = new Set(['gps', 'glonass', 'galileo', 'beidou', 'qzss', 'navic']);
-export const MEGA = new Set(['starlink', 'oneweb', 'kuiper', 'qianfan', 'guowang', 'iridium', 'globalstar', 'orbcomm']);
+export const MEGA = new Set(['starlink', 'oneweb', 'kuiper', 'qianfan', 'guowang', 'o3b', 'rassvet', 'iridium', 'globalstar', 'orbcomm']);
 
 export function family(name) {
   const n = String(name).toUpperCase();
