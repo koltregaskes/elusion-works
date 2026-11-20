@@ -19,7 +19,7 @@ Use it as the reference for dashboards and charts.
 ## What the figures mean
 
 - **Daily visitors, summed** adds up each day's visitors. Someone who comes on three days counts three times; it is not a count of different people.
-- **Typical page load** is the load a typical visit met: half the visits in the period waited that long or less.
+- **Typical page load** is the middle of the daily load readings, with each site's day counted once for every visit it had that day. The sample holds one load reading for a site for a day, so this is not what half of all single visits waited: that would need a reading for each visit.
 - **Had an outage** means any downtime at all in the period. **Slow** means a typical load over 2.5 seconds. A site can be both, and the page shows both.
 - **Last deploy** is the last one inside the period, so it agrees with the list of deploys beside it.
 - **When people visit** shows the average number of visits in each hour of each weekday. Hours are UTC.

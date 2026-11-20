@@ -108,6 +108,16 @@ ChatGPT (chat mode, Pro) reviewed the branch at `c129990` on 17 November 2026, d
 
 Found while doing this, not raised by the review: focusing a source or device bar that was off the screen scrolled the page, and the scroll hid the tip at once, so a keyboard user saw nothing (the old test read the tip's text without checking it was shown). Fixed and tested. The picture script hovered five pixels above the chart, so `proof.jpg` never showed a reading; fixed and the pictures taken again.
 
+### Second-family review, 20 November 2026
+
+Codex, a model from a different family, read the code, tests and CI results on 19 November (relayed onto the pull request by another Claude session) and said to keep this in draft. It did not run the page.
+
+| Finding | What was done | Held by |
+|---|---|---|
+| "Typical page load" was described as what half of all visits waited. The sum is the middle of the daily load readings, weighted by visits, and one reading a day cannot say what single visits met | True. The README, the code's own note and the "is slow" line on the page now say what the figure is and no more | By reading; the data and browser checks still agree with the page |
+| On a phone the table still puts load, uptime and the last deploy across a sideways scroll | Still true. A phone layout for the table is a design decision. Listed under Known limits | Kol |
+| Nobody has used it with a screen reader or on a real phone | Still true | Kol |
+
 ## Provenance
 
 - Model: Claude Fable 5.2 (`claude-fable-5-2`), Claude Code cloud session, high effort.

@@ -61,7 +61,7 @@ export function makeData(seed = 20261117) {
 }
 
 const sum = a => a.reduce((x, y) => x + y, 0);
-// The middle value when each value counts as many times as its weight: here, the page load a typical visit met.
+// The middle value when each value counts as many times as its weight: here, the middle of the daily load readings, each day counted once for every visit it had. One reading a day for a site is all there is, so this says nothing finer about single visits.
 function weightedMedian(pairs) { const list = pairs.filter(p => p[1] > 0).sort((a, b) => a[0] - b[0]), total = sum(list.map(p => p[1])); let run = 0; for (const [value, weight] of list) { run += weight; if (run * 2 >= total) return value; } return 0; }
 export const change = (now, before) => (before > 0 ? (now - before) / before : now > 0 ? null : 0); // null: nothing to compare with
 const LEVEL = { critical: 0, warning: 1, good: 2 };
@@ -93,7 +93,7 @@ export function summarise(data, { range = 28, sites = null } = {}) {
   const deploys = data.deploys.filter(d => d.day >= from && d.day <= to && chosen.some(s => s.id === d.site)).sort((a, b) => b.day - a.day || a.site.localeCompare(b.site)).map(d => ({ ...d, siteName: data.sites.find(s => s.id === d.site).name, daysAgo: to - d.day }));
   const notes = []; // plain sentences about what stands out
   for (const s of perSite) if (s.outage) notes.push({ level: 'critical', site: s.id, text: `${s.name} was down for ${s.downMinutes} minutes in this period.` });
-  for (const s of perSite) if (s.slow) notes.push({ level: 'warning', site: s.id, text: `${s.name} is slow: a typical visit waits ${(s.load / 1000).toFixed(1)} seconds for a page.` });
+  for (const s of perSite) if (s.slow) notes.push({ level: 'warning', site: s.id, text: `${s.name} is slow: its typical page load is ${(s.load / 1000).toFixed(1)} seconds.` });
   for (const s of perSite) { const failed = deploys.filter(d => d.site === s.id && !d.ok); if (failed.length) notes.push({ level: 'warning', site: s.id, text: failed.length === 1 ? `A deploy of ${s.name} failed on ${fmt.day(failed[0].date)}.` : `${failed.length} deploys of ${s.name} failed in this period, the last on ${fmt.day(failed[0].date)}.` }); } // one note per site, so every failed deploy is counted and none is left out
   for (const s of perSite) if (s.delta !== null && s.delta < -0.15) notes.push({ level: 'warning', site: s.id, text: `${s.name} is down ${Math.round(-s.delta * 100)}% on the ${weeks === 1 ? 'week' : weeks + ' weeks'} before.` });
   for (const s of perSite) if (s.delta !== null && s.delta > 0.25) notes.push({ level: 'good', site: s.id, text: `${s.name} is up ${Math.round(s.delta * 100)}% on the ${weeks === 1 ? 'week' : weeks + ' weeks'} before.` });
