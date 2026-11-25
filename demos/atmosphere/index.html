@@ -291,7 +291,7 @@ function App() {
     localStorage.setItem('atm.location.postcode', location.postcode || '');
   }, [location]);
   const [station, setStation] = React.useState(() => ({
-    id: localStorage.getItem('atm.wu_station_id') || 'IEDENB52',
+    id: localStorage.getItem('atm.wu_station_id') || 'DEMO01',
   }));
   React.useEffect(() => {
     localStorage.setItem('atm.wu_station_id', station.id);

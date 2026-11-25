@@ -448,7 +448,7 @@ function DaylightStrip({ hour, accent }) {
 
 function SetupView({ location, setLocation, station, setStation, accent }) {
   const [postcode, setPostcode] = React.useState(location.postcode || '');
-  const [stationId, setStationId] = React.useState(station.id || 'IEDENB52');
+  const [stationId, setStationId] = React.useState(station.id || 'DEMO01');
   const [units, setUnits] = React.useState(localStorage.getItem('atm.units') || 'metric');
 
   const save = () => {
@@ -486,7 +486,7 @@ function SetupView({ location, setLocation, station, setStation, accent }) {
 
           <div style={{ marginTop: 18 }}>
             <MonoLabel>Station ID</MonoLabel>
-            <SetupInput label="Station ID" value={stationId} onChange={setStationId} placeholder="IEDENB52" mono big />
+            <SetupInput label="Station ID" value={stationId} onChange={setStationId} placeholder="Your station ID" mono big />
             <div className="mono" style={{ fontSize: 10, color: 'var(--atm-text-faint)', marginTop: 6, letterSpacing: 1.2 }}>
               DISPLAY LABEL ONLY · NO STATION CONNECTION
             </div>
