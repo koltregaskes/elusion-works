@@ -21,6 +21,7 @@ concurrency:
 
 jobs:
   build:
+    timeout-minutes: 30
     outputs:
       catalogue_outcome: ${{ steps.orbitcat.outcome == 'success' && steps.orbitcheck.outcome == 'success' && 'success' || 'failure' }}
     runs-on: ubuntu-latest
@@ -45,8 +46,12 @@ jobs:
           key: celestrak-csv-v1-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: celestrak-csv-v1-
 
+      # A stalled upstream must not hold the deploy for hours (25 Nov: one run hung over 20
+      # minutes; normal builds take under 2). On timeout the step fails, the gate below keeps
+      # the previous deployment, and the next scheduled run retries.
       - name: Build Orbit Census catalogue from CelesTrak
         id: orbitcat
+        timeout-minutes: 10
         run: node demos/orbit-census/tools/build-catalog.mjs _site/demos/orbit-census/data/catalog.json
 
       # Retain completed responses and provider pauses even if acquisition or a later gate fails.
