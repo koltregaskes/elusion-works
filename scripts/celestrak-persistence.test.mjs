@@ -35,7 +35,7 @@ test('ordinary network failures also persist their quiet period',async()=>{
   await assert.rejects(get('https://fixture/a',1));assert.ok(new Map(JSON.parse(saved)).get(RETRY_STATE).retryUntil>clock);
 });
 test('workflow saves independently of later failure and serialises hosted runs',()=>{
-  const workflow=fs.readFileSync('.github/workflows/pages.yml','utf8');
+  const workflow=fs.readFileSync('.github/workflows/orbit-census-data.yml','utf8');
   assert.match(workflow,/uses: actions\/cache\/restore@v4/);assert.doesNotMatch(workflow,/uses: actions\/cache@/);
   assert.match(workflow,/if: \$\{\{ always\(\) && hashFiles\('\.local\/celestrak-cache.json'\) != '' \}\}\s+uses: actions\/cache\/save@v4/);
   assert.match(workflow,/cancel-in-progress: false/);

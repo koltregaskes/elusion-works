@@ -6,8 +6,10 @@ env:
 on:
   push:
     branches: ["main"]
-  schedule:
-    - cron: "0 7,19 * * *"
+  # Publish fresh Orbit Census data as soon as a refresh passes its gate.
+  workflow_run:
+    workflows: ["Refresh Orbit Census data"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -21,9 +23,8 @@ concurrency:
 
 jobs:
   build:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     timeout-minutes: 30
-    outputs:
-      catalogue_outcome: ${{ steps.orbitcat.outputs.acquired == 'success' && steps.orbitcheck.outcome == 'success' && 'success' || 'failure' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -38,60 +39,43 @@ jobs:
       - name: Assemble and validate the launch bundle
         run: python scripts/build-site.py
 
-      # Retain shared upstream responses across deploys; TTLs are enforced by the builder.
-      - name: Restore CelesTrak response cache
+      # Orbit Census data refreshes in its own workflow (orbit-census-data.yml), which saves each
+      # catalogue that passes the strict gate to the cache. The deploy takes the newest of those,
+      # or else the catalogue already live, and never fetches CelesTrak itself. An upstream outage
+      # can only make the data older, shown on the page as its "data as of" date; it never blocks
+      # a deploy (25 Nov: CelesTrak pauses and stalls blocked four deploys).
+      - name: Restore last good Orbit Census catalogue
         uses: actions/cache/restore@v4
         with:
-          path: .local/celestrak-cache.json
-          key: celestrak-csv-v1-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: celestrak-csv-v1-
+          path: _site/demos/orbit-census/data/catalog.json
+          key: orbit-catalogue-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: orbit-catalogue-v1-
 
-      # A stalled or paused upstream must not hold or block the whole site deploy (25 Nov: one
-      # run hung over 20 minutes; three more failed on a CelesTrak pause and blocked unrelated
-      # fixes). If acquisition fails or exceeds 9 minutes, reuse the catalogue already live
-      # (it passed this same gate when published). `acquired` records the real result, so the
-      # catalogue-health job still fails loudly. If the fallback also fails, the build fails.
-      - name: Build Orbit Census catalogue from CelesTrak
-        id: orbitcat
-        timeout-minutes: 15
+      - name: Fall back to the published catalogue
         run: |
-          set +e
-          timeout -k 15 540 node demos/orbit-census/tools/build-catalog.mjs _site/demos/orbit-census/data/catalog.json
-          code=$?
-          set -e
-          if [ "$code" -eq 0 ]; then
-            echo "acquired=success" >> "$GITHUB_OUTPUT"
-          else
-            echo "acquired=failure" >> "$GITHUB_OUTPUT"
-            echo "::warning::CelesTrak acquisition failed (exit $code); reusing the published catalogue."
+          if [ ! -s _site/demos/orbit-census/data/catalog.json ]; then
+            echo "::warning::No refreshed Orbit Census catalogue in the cache; reusing the published catalogue."
             mkdir -p _site/demos/orbit-census/data
-            curl -fsSL --retry 3 --max-time 60 -o "$RUNNER_TEMP/catalog.json"               https://elusionworks.com/demos/orbit-census/data/catalog.json
+            curl -fsSL --retry 3 --max-time 60 -o "$RUNNER_TEMP/catalog.json" https://elusionworks.com/demos/orbit-census/data/catalog.json
             mv "$RUNNER_TEMP/catalog.json" _site/demos/orbit-census/data/catalog.json
           fi
 
-      # Retain completed responses and provider pauses even if acquisition or a later gate fails.
-      - name: Save CelesTrak response cache
-        if: ${{ always() && hashFiles('.local/celestrak-cache.json') != '' }}
-        uses: actions/cache/save@v4
-        with:
-          path: .local/celestrak-cache.json
-          key: celestrak-csv-v1-${{ github.run_id }}-${{ github.run_attempt }}
-
-      - name: Validate Orbit Census catalogue before publication
-        id: orbitcheck
+      # Structure must be sound (a broken file would break the demo); age only warns.
+      - name: Check Orbit Census catalogue structure
         run: |
-          node --input-type=module <<'NODE'
+          node --input-type=module <<'JS'
           import { readFileSync } from 'node:fs';
           import { inspectCatalogue } from './demos/orbit-census/src/catalogue-status.js';
           const fail = message => { console.error(`::error::Orbit Census: ${message}`); process.exit(1); };
           let doc;
           try { doc=JSON.parse(readFileSync('_site/demos/orbit-census/data/catalog.json','utf8')); }
-          catch { fail('catalogue is missing, empty or invalid JSON; keeping the previous deployment.'); }
-          try {
-            const status=inspectCatalogue(doc,{requireComplete:true});
-            console.log(`Orbit Census catalogue: ${doc.rows.length} objects; all GP groups and SATCAT acquired. Element epochs ${new Date(status.epochOldest).toISOString()} to ${new Date(status.epochNewest).toISOString()}; ${status.oldElements} over 10 days old.`);
-          } catch(error) { fail(error.message); }
-          NODE
+          catch { fail('catalogue is missing, empty or invalid JSON.'); }
+          let status;
+          try { status=inspectCatalogue(doc); } catch(error) { fail(error.message); }
+          const asOf=new Date(status.acquired).toISOString();
+          if (status.partial || status.staleAcquisition) console.log(`::warning::Orbit Census data as of ${asOf} is ${status.partial?'partial':'stale'}; deploying it with its date shown.`);
+          console.log(`Orbit Census catalogue: ${doc.rows.length} objects; data as of ${asOf}.`);
+          JS
 
       - name: Verify static site bundle
         run: |
@@ -285,16 +269,3 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v5
 
-  catalogue-health:
-    name: Orbit Census acquisition signal
-    needs: build
-    if: always() && needs.build.result != 'cancelled'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-      - run: node scripts/catalogue-health.mjs
-        env:
-          CATALOGUE_OUTCOME: ${{ needs.build.outputs.catalogue_outcome }}

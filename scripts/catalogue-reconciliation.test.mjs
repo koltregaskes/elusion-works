@@ -7,7 +7,7 @@ import {CELESTRAK_GP,CELESTRAK_SATCAT,GROUPS} from '../demos/orbit-census/src/ca
 import {GP_CACHE_MS,GP_FRESHNESS_MS,SATCAT_CACHE_MS,SATCAT_FRESHNESS_MS,HOUR_MS} from '../demos/orbit-census/src/freshness-policy.js';
 
 const root=process.cwd(), now=Date.parse('2026-03-02T08:00:00Z');
-const workflow=fs.readFileSync('.github/workflows/pages.yml','utf8');
+const workflow=fs.readFileSync('.github/workflows/orbit-census-data.yml','utf8');
 const gate=workflow.match(/node --input-type=module <<'NODE'\r?\n([\s\S]*?)\r?\n          NODE/)[1]
   .split(/\r?\n/).map(s=>s.replace(/^          /,'')).join('\n');
 fs.mkdirSync('.local',{recursive:true});

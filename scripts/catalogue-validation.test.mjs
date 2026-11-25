@@ -9,7 +9,8 @@ import test from 'node:test';
 import { GROUPS, FIELDS, parseCsv } from '../demos/orbit-census/src/catalog.js';
 
 const root = process.cwd();
-const wf = fs.readFileSync('.github/workflows/pages.yml', 'utf8');
+const wf = fs.readFileSync('.github/workflows/orbit-census-data.yml', 'utf8');
+const pages = fs.readFileSync('.github/workflows/pages.yml', 'utf8');
 // Execute the actual workflow heredoc, not a separately maintained validator.
 const script = wf.match(/node --input-type=module <<'NODE'\r?\n([\s\S]*?)\r?\n          NODE/)[1]
   .split(/\r?\n/).map(s => s.replace(/^          /, '')).join('\n');
@@ -167,16 +168,44 @@ for (const [scenario, expectedBuild, expectedGate] of [
   if (expectedGate) assert.match(r.stderr, /::error::Orbit Census/);
 });
 test('all workflow jobs retain the expected dependency and failure conditions', () => {
-  const jobs = [...wf.split(/^jobs:\r?\n/m)[1].matchAll(/^  ([\w-]+):\r?\n/gm)].map(m => m[1]);
-  assert.deepEqual(jobs, ['build', 'deploy', 'catalogue-health']); assert.doesNotMatch(wf, /continue-on-error/);
-  assert.match(wf, /deploy:\r?\n    needs: build\r?\n    if: needs.build.result == 'success'/);
-  assert.match(wf, /catalogue-health:[\s\S]*?needs: build\r?\n    if: always\(\) && needs.build.result != 'cancelled'/);
-  assert.match(wf, /steps.orbitcat.outputs.acquired == 'success' && steps.orbitcheck.outcome == 'success' && 'success' \|\| 'failure'/);
-  // A failed or slow CelesTrak fetch falls back to the published catalogue instead of blocking the deploy;
-  // the real result is still reported through `acquired` and the catalogue-health job.
+  const jobsOf = text => [...text.split(/^jobs:\r?\n/m)[1].matchAll(/^  ([\w-]+):\r?\n/gm)].map(m => m[1]);
+  // The data refresh runs on its own; a failed or stalled acquisition turns it red and publishes nothing.
+  assert.match(wf, /^name: Refresh Orbit Census data$/m);
+  assert.deepEqual(jobsOf(wf), ['refresh', 'catalogue-health']); assert.doesNotMatch(wf, /continue-on-error/);
+  assert.match(wf, /catalogue-health:[\s\S]*?needs: refresh\r?\n    if: always\(\) && needs.refresh.result != 'cancelled'/);
+  assert.match(wf, /steps.orbitcat.outcome == 'success' && steps.orbitcheck.outcome == 'success' && 'success' \|\| 'failure'/);
   assert.match(wf, /timeout -k 15 540 node demos\/orbit-census\/tools\/build-catalog\.mjs/);
-  assert.match(wf, /echo "acquired=failure" >> "\$GITHUB_OUTPUT"[\s\S]*?mkdir -p _site\/demos\/orbit-census\/data[\s\S]*?curl -fsSL[\s\S]*?https:\/\/elusionworks\.com\/demos\/orbit-census\/data\/catalog\.json[\s\S]*?mv /);
+  assert.match(wf, /id: orbitcheck[\s\S]*?requireComplete:true[\s\S]*?Publish last good catalogue[\s\S]*?actions\/cache\/save@v4\r?\n        with:\r?\n          path: _site\/demos\/orbit-census\/data\/catalog\.json\r?\n          key: orbit-catalogue-v1-/);
+  // The site deploy never fetches CelesTrak and never blocks on stale data.
+  assert.deepEqual(jobsOf(pages), ['build', 'deploy']); assert.doesNotMatch(pages, /continue-on-error/);
+  assert.doesNotMatch(pages, /build-catalog|celestrak\.org|requireComplete/);
+  assert.match(pages, /workflow_run:\r?\n    workflows: \["Refresh Orbit Census data"\]/);
+  assert.match(pages, /build:\r?\n    if: github.event_name != 'workflow_run' \|\| github.event.workflow_run.conclusion == 'success'/);
+  assert.match(pages, /deploy:\r?\n    needs: build\r?\n    if: needs.build.result == 'success'/);
+  assert.match(pages, /actions\/cache\/restore@v4\r?\n        with:\r?\n          path: _site\/demos\/orbit-census\/data\/catalog\.json\r?\n          key: orbit-catalogue-v1-.*\r?\n          restore-keys: orbit-catalogue-v1-/);
+  assert.match(pages, /if \[ ! -s _site\/demos\/orbit-census\/data\/catalog\.json \][\s\S]*?curl -fsSL[\s\S]*?https:\/\/elusionworks\.com\/demos\/orbit-census\/data\/catalog\.json[\s\S]*?mv /);
 });
+// Execute the deploy's own structure check: stale data deploys with a warning; broken data stops the build.
+const deployCheck = pages.match(/node --input-type=module <<'JS'\r?\n([\s\S]*?)\r?\n          JS/)[1]
+  .split(/\r?\n/).map(s => s.replace(/^          /, '')).join('\n');
+const runDeployCheck = doc => {
+  fs.writeFileSync(catalogue, typeof doc === 'string' ? doc : JSON.stringify(doc));
+  return spawnSync(process.execPath, ['--input-type=module'], { cwd: fixture, input: deployCheck, encoding: 'utf8' });
+};
+test('deploy check passes stale data with a dated warning', () => {
+  const d = valid(); d.generated = new Date(Date.now() - 3 * 86400000).toISOString();
+  assert.notEqual(validate(d).status, 0, 'the strict refresh gate rejects it');
+  const r = runDeployCheck(d); assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /::warning::Orbit Census data as of \d{4}-\d{2}-\d{2}T[\d:.]+Z is stale/);
+});
+test('deploy check passes partial data with a dated warning', () => {
+  const d = valid(); d.groups.stations = null;
+  const r = runDeployCheck(d); assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /is partial/);
+});
+for (const [label, doc] of [['empty file', ''], ['malformed JSON', '{'], ['wrong version', { ...valid(), v: 2 }]])
+  test('deploy check rejects ' + label, () => {
+    const r = runDeployCheck(doc); assert.equal(r.status, 1, r.stdout + r.stderr); assert.match(r.stderr, /::error::Orbit Census/);
+  });
 test('health code fails for unsuccessful or unavailable acquisition outcomes', () => {
   const code = fs.readFileSync('scripts/catalogue-health.mjs', 'utf8');
   for (const outcome of ['success', 'failure', 'skipped', undefined]) {
