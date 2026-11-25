@@ -23,7 +23,7 @@ jobs:
   build:
     timeout-minutes: 30
     outputs:
-      catalogue_outcome: ${{ steps.orbitcat.outcome == 'success' && steps.orbitcheck.outcome == 'success' && 'success' || 'failure' }}
+      catalogue_outcome: ${{ steps.orbitcat.outputs.acquired == 'success' && steps.orbitcheck.outcome == 'success' && 'success' || 'failure' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -46,13 +46,28 @@ jobs:
           key: celestrak-csv-v1-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: celestrak-csv-v1-
 
-      # A stalled upstream must not hold the deploy for hours (25 Nov: one run hung over 20
-      # minutes; normal builds take under 2). On timeout the step fails, the gate below keeps
-      # the previous deployment, and the next scheduled run retries.
+      # A stalled or paused upstream must not hold or block the whole site deploy (25 Nov: one
+      # run hung over 20 minutes; three more failed on a CelesTrak pause and blocked unrelated
+      # fixes). If acquisition fails or exceeds 9 minutes, reuse the catalogue already live
+      # (it passed this same gate when published). `acquired` records the real result, so the
+      # catalogue-health job still fails loudly. If the fallback also fails, the build fails.
       - name: Build Orbit Census catalogue from CelesTrak
         id: orbitcat
-        timeout-minutes: 10
-        run: node demos/orbit-census/tools/build-catalog.mjs _site/demos/orbit-census/data/catalog.json
+        timeout-minutes: 15
+        run: |
+          set +e
+          timeout -k 15 540 node demos/orbit-census/tools/build-catalog.mjs _site/demos/orbit-census/data/catalog.json
+          code=$?
+          set -e
+          if [ "$code" -eq 0 ]; then
+            echo "acquired=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "acquired=failure" >> "$GITHUB_OUTPUT"
+            echo "::warning::CelesTrak acquisition failed (exit $code); reusing the published catalogue."
+            mkdir -p _site/demos/orbit-census/data
+            curl -fsSL --retry 3 --max-time 60 -o "$RUNNER_TEMP/catalog.json"               https://elusionworks.com/demos/orbit-census/data/catalog.json
+            mv "$RUNNER_TEMP/catalog.json" _site/demos/orbit-census/data/catalog.json
+          fi
 
       # Retain completed responses and provider pauses even if acquisition or a later gate fails.
       - name: Save CelesTrak response cache
