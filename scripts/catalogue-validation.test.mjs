@@ -170,16 +170,17 @@ for (const [scenario, expectedBuild, expectedGate] of [
 test('all workflow jobs retain the expected dependency and failure conditions', () => {
   const jobsOf = text => [...text.split(/^jobs:\r?\n/m)[1].matchAll(/^  ([\w-]+):\r?\n/gm)].map(m => m[1]);
   // The data refresh runs on its own; a failed or stalled acquisition turns it red and publishes nothing.
-  assert.match(wf, /^name: Refresh Orbit Census data$/m);
+  assert.match(wf, /^name: Refresh Orbit Census data\r?$/m);
   assert.deepEqual(jobsOf(wf), ['refresh', 'catalogue-health']); assert.doesNotMatch(wf, /continue-on-error/);
   assert.match(wf, /catalogue-health:[\s\S]*?needs: refresh\r?\n    if: always\(\) && needs.refresh.result != 'cancelled'/);
-  assert.match(wf, /steps.orbitcat.outcome == 'success' && steps.orbitcheck.outcome == 'success' && 'success' \|\| 'failure'/);
+  assert.match(wf, /steps.orbitcat.outcome == 'success' && steps.orbitcheck.outcome == 'success' && steps.orbitpublish.outcome == 'success' && 'success' \|\| 'failure'/);
   assert.match(wf, /timeout -k 15 540 node demos\/orbit-census\/tools\/build-catalog\.mjs/);
   assert.match(wf, /id: orbitcheck[\s\S]*?requireComplete:true[\s\S]*?Publish last good catalogue[\s\S]*?actions\/cache\/save@v4\r?\n        with:\r?\n          path: _site\/demos\/orbit-census\/data\/catalog\.json\r?\n          key: orbit-catalogue-v1-/);
   // The site deploy never fetches CelesTrak and never blocks on stale data.
   assert.deepEqual(jobsOf(pages), ['build', 'deploy']); assert.doesNotMatch(pages, /continue-on-error/);
   assert.doesNotMatch(pages, /build-catalog|celestrak\.org|requireComplete/);
-  assert.match(pages, /workflow_run:\r?\n    workflows: \["Refresh Orbit Census data"\]/);
+  assert.match(pages, /workflow_run:\r?\n    workflows: \["Refresh Orbit Census data"\]\r?\n    branches: \["main"\]/);
+  assert.match(pages, /group: \$\{\{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format\('pages-noop-\{0\}', github.run_id\) \|\| 'pages' \}\}/);
   assert.match(pages, /build:\r?\n    if: github.event_name != 'workflow_run' \|\| github.event.workflow_run.conclusion == 'success'/);
   assert.match(pages, /deploy:\r?\n    needs: build\r?\n    if: needs.build.result == 'success'/);
   assert.match(pages, /actions\/cache\/restore@v4\r?\n        with:\r?\n          path: _site\/demos\/orbit-census\/data\/catalog\.json\r?\n          key: orbit-catalogue-v1-.*\r?\n          restore-keys: orbit-catalogue-v1-/);

@@ -9,6 +9,7 @@ on:
   # Publish fresh Orbit Census data as soon as a refresh passes its gate.
   workflow_run:
     workflows: ["Refresh Orbit Census data"]
+    branches: ["main"]
     types: [completed]
   workflow_dispatch:
 
@@ -17,8 +18,10 @@ permissions:
   pages: write
   id-token: write
 
+# A failed refresh still fires workflow_run; give that no-op run its own group so it can never
+# displace a deploy waiting in the "pages" group.
 concurrency:
-  group: "pages"
+  group: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' && format('pages-noop-{0}', github.run_id) || 'pages' }}
   cancel-in-progress: false
 
 jobs:
