@@ -174,8 +174,8 @@ test('all workflow jobs retain the expected dependency and failure conditions', 
   assert.match(wf, /steps.orbitcat.outputs.acquired == 'success' && steps.orbitcheck.outcome == 'success' && 'success' \|\| 'failure'/);
   // A failed or slow CelesTrak fetch falls back to the published catalogue instead of blocking the deploy;
   // the real result is still reported through `acquired` and the catalogue-health job.
-  assert.match(wf, /timeout 540 node demos\/orbit-census\/tools\/build-catalog\.mjs/);
-  assert.match(wf, /echo "acquired=failure" >> "\$GITHUB_OUTPUT"[\s\S]*?curl -fsS[\s\S]*?https:\/\/elusionworks\.com\/demos\/orbit-census\/data\/catalog\.json/);
+  assert.match(wf, /timeout -k 15 540 node demos\/orbit-census\/tools\/build-catalog\.mjs/);
+  assert.match(wf, /echo "acquired=failure" >> "\$GITHUB_OUTPUT"[\s\S]*?mkdir -p _site\/demos\/orbit-census\/data[\s\S]*?curl -fsSL[\s\S]*?https:\/\/elusionworks\.com\/demos\/orbit-census\/data\/catalog\.json[\s\S]*?mv /);
 });
 test('health code fails for unsuccessful or unavailable acquisition outcomes', () => {
   const code = fs.readFileSync('scripts/catalogue-health.mjs', 'utf8');

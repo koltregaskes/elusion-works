@@ -53,10 +53,10 @@ jobs:
       # catalogue-health job still fails loudly. If the fallback also fails, the build fails.
       - name: Build Orbit Census catalogue from CelesTrak
         id: orbitcat
-        timeout-minutes: 12
+        timeout-minutes: 15
         run: |
           set +e
-          timeout 540 node demos/orbit-census/tools/build-catalog.mjs _site/demos/orbit-census/data/catalog.json
+          timeout -k 15 540 node demos/orbit-census/tools/build-catalog.mjs _site/demos/orbit-census/data/catalog.json
           code=$?
           set -e
           if [ "$code" -eq 0 ]; then
@@ -64,7 +64,9 @@ jobs:
           else
             echo "acquired=failure" >> "$GITHUB_OUTPUT"
             echo "::warning::CelesTrak acquisition failed (exit $code); reusing the published catalogue."
-            curl -fsS --retry 3 --max-time 120 -o _site/demos/orbit-census/data/catalog.json               https://elusionworks.com/demos/orbit-census/data/catalog.json
+            mkdir -p _site/demos/orbit-census/data
+            curl -fsSL --retry 3 --max-time 60 -o "$RUNNER_TEMP/catalog.json"               https://elusionworks.com/demos/orbit-census/data/catalog.json
+            mv "$RUNNER_TEMP/catalog.json" _site/demos/orbit-census/data/catalog.json
           fi
 
       # Retain completed responses and provider pauses even if acquisition or a later gate fails.
