@@ -1,0 +1,98 @@
+name: Refresh Orbit Census data
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+# Orbit Census data refreshes here, apart from the site deploy (25 Nov: CelesTrak pauses and
+# stalls blocked four site deploys). Each catalogue that passes the strict gate below is saved
+# to the Actions cache as the "last good" file; the Pages workflow reads the newest one and
+# never fetches CelesTrak itself. A failed refresh turns this workflow red and leaves the last
+# good file in place, so the page shows older data with its "data as of" date.
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: orbit-census-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    timeout-minutes: 20
+    outputs:
+      catalogue_outcome: ${{ steps.orbitcat.outcome == 'success' && steps.orbitcheck.outcome == 'success' && steps.orbitpublish.outcome == 'success' && 'success' || 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      # Retain shared upstream responses across runs; TTLs are enforced by the builder.
+      - name: Restore CelesTrak response cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .local/celestrak-cache.json
+          key: celestrak-csv-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: celestrak-csv-v1-
+
+      # A stalled upstream is cut off at 9 minutes; the job then fails and nothing is published.
+      - name: Build Orbit Census catalogue from CelesTrak
+        id: orbitcat
+        timeout-minutes: 12
+        run: |
+          mkdir -p _site/demos/orbit-census/data
+          timeout -k 15 540 node demos/orbit-census/tools/build-catalog.mjs _site/demos/orbit-census/data/catalog.json
+
+      # Retain completed responses and provider pauses even if acquisition or the gate fails.
+      - name: Save CelesTrak response cache
+        if: ${{ always() && hashFiles('.local/celestrak-cache.json') != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .local/celestrak-cache.json
+          key: celestrak-csv-v1-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Validate Orbit Census catalogue before publication
+        id: orbitcheck
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { inspectCatalogue } from './demos/orbit-census/src/catalogue-status.js';
+          const fail = message => { console.error(`::error::Orbit Census: ${message}`); process.exit(1); };
+          let doc;
+          try { doc=JSON.parse(readFileSync('_site/demos/orbit-census/data/catalog.json','utf8')); }
+          catch { fail('catalogue is missing, empty or invalid JSON; keeping the previous deployment.'); }
+          try {
+            const status=inspectCatalogue(doc,{requireComplete:true});
+            console.log(`Orbit Census catalogue: ${doc.rows.length} objects; all GP groups and SATCAT acquired. Element epochs ${new Date(status.epochOldest).toISOString()} to ${new Date(status.epochNewest).toISOString()}; ${status.oldElements} over 10 days old.`);
+          } catch(error) { fail(error.message); }
+          NODE
+
+      # Only a catalogue that passed the gate reaches this step. The Pages workflow restores the
+      # newest entry under this prefix.
+      - name: Publish last good catalogue for the site deploy
+        id: orbitpublish
+        uses: actions/cache/save@v4
+        with:
+          path: _site/demos/orbit-census/data/catalog.json
+          key: orbit-catalogue-v1-${{ github.run_id }}-${{ github.run_attempt }}
+
+  catalogue-health:
+    name: Orbit Census acquisition signal
+    needs: refresh
+    if: always() && needs.refresh.result != 'cancelled'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - run: node scripts/catalogue-health.mjs
+        env:
+          CATALOGUE_OUTCOME: ${{ needs.refresh.outputs.catalogue_outcome }}

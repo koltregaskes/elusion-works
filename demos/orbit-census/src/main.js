@@ -654,7 +654,9 @@ function setSource() {
   if (!d) { el.classList.add('bad'); el.innerHTML = '<i></i>No data'; return; }
   const status=inspectCatalogue(d);
   el.classList.add(status.partial||status.staleAcquisition||status.oldElements||status.futureElements?'warn':'mono');
-  el.textContent=status.partial?'Partial catalogue':status.staleAcquisition?'Stale catalogue':'CelesTrak snapshot';
+  // The data refresh runs apart from the site deploy, so older data can be live; always show its date.
+  const asOf=Number.isFinite(status.acquired)?' · data as of '+new Date(status.acquired).toISOString().slice(0,16).replace('T',' ')+' UTC':'';
+  el.textContent=(status.partial?'Partial catalogue':status.staleAcquisition?'Stale catalogue':'CelesTrak snapshot')+asOf;
   $('#dataNotice').textContent=catalogueNotice(d,status);
   $('#dataNotice').hidden=false;
   el.title=$('#dataNotice').textContent;
