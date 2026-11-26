@@ -9,7 +9,8 @@
     "build": "python scripts/build-site.py",
     "test:seo": "python scripts/check-launch-seo.py",
     "test:links": "node scripts/check-links.mjs",
-    "test:launch": "node scripts/launch-browser.mjs"
+    "test:launch": "node scripts/launch-browser.mjs",
+    "test:teardown": "node demos/hoover-dam/teardown/tools/sequence.test.mjs && node demos/hoover-dam/teardown/tools/smoke.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
