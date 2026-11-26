@@ -121,8 +121,14 @@ async function runLayout(browser, layout, size) {
     if (!(await page.locator('#ctl').evaluate((el) => el.open))) await click(page, '#ctl summary');
     const scenes = { normal: [1065, 11000], peak: [1065, 13000], flood: [1218, 70000], drought: [1041, 7000] };
     for (const [name, [lake, inflow]] of Object.entries(scenes)) {
-      await click(page, `#scn button[data-scn="${name}"]`);
-      const got = await ev(`[st.lake, st.inflow]`);
+      // Read in the same turn as the click. The live model integrates the lake
+      // on the next frame, and a full plant at peak gate moves it before a
+      // later read can see the value the scenario wrote.
+      const got = await page.evaluate((scenarioName) => {
+        document.querySelector(`#scn button[data-scn="${scenarioName}"]`).click();
+        const { st } = window.teardown;
+        return [st.lake, st.inflow];
+      }, name);
       check(`scenario ${name}`, got[0] === lake && got[1] === inflow, `${got[0]} ft, ${got[1]} cfs`);
     }
     const gate0 = await ev(`st.units[12].gate`);
@@ -132,6 +138,7 @@ async function runLayout(browser, layout, size) {
     await page.waitForTimeout(500);
     const gateLater = await ev(`st.units[12].gate`);
     check('gate slider has inertia', gateSoon < 0.98 && gateLater > gateSoon + 0.05, `${gate0.toFixed(2)} -> ${gateSoon.toFixed(2)} -> ${gateLater.toFixed(2)}`);
+    await page.evaluate(() => { window.teardown.st.paused = true; });
     await pressRange(page, 'lake', 'Home');
     check('lake slider', await ev(`st.lake`) === 895);
     await pressRange(page, 'inflow', 'End');
@@ -140,6 +147,7 @@ async function runLayout(browser, layout, size) {
     check('drum slider', await ev(`st.drum`) === 0);
     await pressRange(page, 'units', 'Home');
     check('units slider', await ev(`st.units.every(u => !u.on)`));
+    await page.evaluate(() => { window.teardown.st.paused = false; });
 
     for (const id of ['hero', 'dam', 'towers', 'penstocks', 'turbine', 'spillways', 'tunnels']) {
       await click(page, `#asm button[data-asm="${id}"]`);
