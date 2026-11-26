@@ -459,8 +459,10 @@ $('#play').addEventListener('click', togglePlay);
 $('#bar').addEventListener('pointerdown', (e) => { const r = $('#bar').getBoundingClientRect(); film.touched = false; seek((e.clientX - r.left) / r.width * FILM, true); });
 ['pointerdown', 'wheel', 'keydown', 'touchstart'].forEach((tp) => addEventListener(tp, (e) => {
   if (!e.isTrusted) return;
-  if (tp === 'keydown' && (e.code === 'Space' || e.code === 'ArrowLeft' || e.code === 'ArrowRight' || e.key === 's' || e.key === 'S')) return;
   film.lastInput = performance.now();
+  // Space and the arrows are handled below. They still count as input, or the
+  // log treats a pause after 25 quiet seconds as idle and starts the tour again.
+  if (tp === 'keydown' && (e.code === 'Space' || e.code === 'ArrowLeft' || e.code === 'ArrowRight' || e.key === 's' || e.key === 'S')) return;
   if (!e.target.closest?.(OWN)) film.touched = true;
   if (film.playing && seq.kind === 'log' && !e.target.closest?.(OWN)) setPlaying(false);
 }, { capture: true, passive: true }));
@@ -526,6 +528,11 @@ function setKind(kind, autoplay = true) {
   if (seq.kind === 'log') {
     seq.run = null; seq.playing = false; seq.ov = {};
     clearSpin();
+    // applyRun leaves the sequence's pause flag and, after Dispatch, auto mode.
+    // The log integrates the lake itself and sets gates from the film.
+    st.paused = false;
+    st.mode = 'manual';
+    seek(film.t, true);
     $('#acts').textContent = `${BEATS.length - 1} operator actions`;
     paintPlay(film.playing);
     return;

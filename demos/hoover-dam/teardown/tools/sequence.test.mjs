@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { efficiency } from '../../src/model/hydro.js';
 import { ELEV } from '../../src/model/data.js';
-import { Run, hillSamples, A5_INDEX, PHASES } from '../src/sequence.js';
+import { Run, hillSamples, A5_INDEX, PHASES, DT } from '../src/sequence.js';
 
 const near = (a, b, eps, msg) => assert.ok(Math.abs(a - b) <= eps, `${msg}: ${a} vs ${b}`);
 
@@ -69,6 +69,29 @@ assert.equal(typeof day.phaseAt(peak, followed), 'string');
 const day2 = new Run('day');
 day2.rebuild(peak);
 near(day2.state.lake, day.state.lake, 1e-6, 'dispatch day lake is exact');
+
+const atPeak = 25.5;
+const plain = new Run('day');
+plain.rebuild(atPeak);
+const gateOnly = new Run('day', { gate: 0.8 });
+gateOnly.rebuild(atPeak);
+const unitsOnly = new Run('day', { units: 10 });
+unitsOnly.rebuild(atPeak);
+assert.ok(plain.state.out.mw > 500, `dispatch peak generates (${plain.state.out.mw})`);
+assert.ok(gateOnly.state.out.mw > 100, `a gate override keeps the units (${gateOnly.state.out.mw})`);
+assert.equal(unitsOnly.state.units.filter((u) => u.on).length, 10, 'a unit-count override brings that many on');
+assert.ok(unitsOnly.state.out.mw > 100, `a unit-count override keeps a gate (${unitsOnly.state.out.mw})`);
+assert.ok(gateOnly.state.units.some((u) => u.on), 'a gate override leaves a unit online');
+
+const offGrid = new Run('a5');
+offGrid.rebuild(0);
+offGrid.seek(41.999);
+for (let i = 0; i < 900; i++) offGrid.advance(DT, false);
+const canonical = new Run('a5');
+canonical.rebuild(0);
+canonical.seek(offGrid.tau);
+near(offGrid.state.lake, canonical.state.lake, 1e-6, 'play after an off-grid scrub matches a direct seek');
+near(offGrid.tau / (1 / 60), Math.round(offGrid.tau / (1 / 60)), 1e-6, 'playback stays on the 1/60 grid');
 
 const hill = hillSamples();
 const peakGate = hill.reduce((p, q) => (q.eta > p.eta ? q : p));

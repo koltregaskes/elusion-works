@@ -121,10 +121,27 @@ function dayCommand(tau, ov) {
     drum: ov.drum ?? 1,
     inflow: ov.inflow ?? 11000,
     speed: 24 / DAY_DUR,
+    // null means "let auto dispatch choose this". One override keeps the other.
     gate: ov.gate ?? null,
     n: ov.units ?? null,
     mode: ov.gate == null && ov.units == null ? 'auto' : 'manual',
   };
+}
+
+// The units and the gate auto dispatch would choose at this lake and hour.
+// A scratch step keeps that decision inside hydro.js. Paused, so the lake stays.
+function autoPlan(state) {
+  const scratch = {
+    lake: state.lake, inflow: state.inflow, drum: state.drum,
+    mode: 'auto', demand: demandMW(state.hour),
+    units: state.units.map((u) => ({ ...u })),
+    hour: state.hour, day: state.day, speed: state.speed,
+    paused: true, out: { ...state.out },
+  };
+  step(scratch, 0);
+  let n = 0, gate = 0;
+  for (const u of scratch.units) if (u.on) { n++; gate = u.gate; }
+  return { n, gate };
 }
 
 function snapshot(st) {
@@ -155,16 +172,32 @@ function applyCommand(state, cmd, dt) {
   state.drum = cmd.drum;
   state.inflow = cmd.inflow;
   state.speed = cmd.speed;
-  state.mode = cmd.mode;
   state.paused = false;
-  if (cmd.mode === 'auto') {
+  const gateMissing = cmd.gate == null;
+  const unitsMissing = cmd.n == null;
+  if (gateMissing && unitsMissing) {
+    state.mode = 'auto';
     state.demand = demandMW(state.hour);
     return;
   }
+  // A gate with no unit count, or a unit count with no gate, would turn the
+  // plant off: manual mode runs nobody when n is missing, and a null gate
+  // eases every wicket shut. Fill the missing half from auto dispatch.
+  state.mode = 'manual';
+  let gate = cmd.gate;
+  let n = cmd.n;
+  let order = BRING_ON;
+  if (gateMissing || unitsMissing) {
+    const plan = autoPlan(state);
+    if (gateMissing) gate = plan.gate;
+    if (unitsMissing) n = plan.n;
+    order = CENTER;
+  }
   state.units.forEach((u) => { u.on = false; });
-  for (let i = 0; i < cmd.n; i++) state.units[BRING_ON[i]].on = true;
+  const count = Math.max(0, n || 0);
+  for (let i = 0; i < count && i < order.length; i++) state.units[order[i]].on = true;
   const k = 1 - Math.exp(-dt * GATE_INERTIA);
-  for (const u of state.units) u.gate += (cmd.gate - u.gate) * k;
+  for (const u of state.units) u.gate += ((gate || 0) - u.gate) * k;
 }
 
 export class Run {
@@ -253,11 +286,16 @@ export class Run {
   seek(tau) {
     if (!this.built) this.rebuild(tau);
     tau = clamp(tau, 0, this.duration);
+    // The recorded run steps by exactly DT from the origin. An in-between
+    // time is not a state the model produced, and playing onward from a
+    // fractional step would leave the grid, so a later seek would disagree.
+    const grid = Math.min(this.duration, Math.round(tau / DT) * DT);
     let cp = this.checkpoints[0];
-    for (const c of this.checkpoints) if (c.tau <= tau + 1e-6) cp = c;
+    for (const c of this.checkpoints) if (c.tau <= grid + 1e-6) cp = c;
     restore(this.state, cp.snap);
     this.tau = cp.tau;
-    while (this.tau < tau - 1e-8) this.advance(Math.min(DT, tau - this.tau), false);
+    const steps = Math.max(0, Math.round((grid - this.tau) / DT));
+    for (let i = 0; i < steps; i++) this.advance(DT, false);
   }
 
   index(tau) {

@@ -252,7 +252,7 @@ async function runLayout(browser, layout, size) {
   check('sound off', await ev(`audio.on`) === false);
 
   await click(page, '#seq button[data-seq="log"]');
-  check('operator log returns', await ev(`seq.kind === 'log' && seq.run === null`));
+  check('operator log returns', await ev(`seq.kind === 'log' && seq.run === null && st.paused === false && st.mode === 'manual'`));
 
   const noisy = errs.filter((e) => !/favicon|Failed to load resource|fonts\.googleapis|fonts\.gstatic/i.test(e));
   check('no page errors', noisy.length === 0, noisy.slice(0, 3).join(' | '));
