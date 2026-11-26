@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Shot Framer: frame shots from a 360 picture</title>
+<meta name="description" content="Look round a 360 picture, frame it like a camera in six shapes from cinema to tall, save a list of shots, and export each one as a picture. Works in the page; nothing is uploaded.">
+<meta name="theme-color" content="#111315">
+<link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml">
+<!-- Unlisted until release is approved: remove the next line, then add the gallery card and sitemap entry. -->
+<meta name="robots" content="noindex">
+<style>
+  :root { --bg:#111315; --panel:#171a1d; --line:rgba(255,255,255,.16); --ink:#f4f5f3; --soft:#dfe4e7; --muted:#b3babf; --accent:#3fe08a; --accent-ink:#06210f;
+    --sans:"Helvetica Neue","Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif; --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace; color-scheme:dark; }
+  * { box-sizing:border-box; }
+  html { background:var(--bg); -webkit-text-size-adjust:100%; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 var(--sans); }
+  [hidden] { display:none !important; }
+  a { color:var(--ink); } button, input, textarea { font:inherit; color:inherit; }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:6px; }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+  .eyebrow { margin:0; font:600 11px/1.2 var(--mono); letter-spacing:.2em; text-transform:uppercase; color:var(--accent); }
+  .btn { min-height:40px; padding:0 14px; border-radius:10px; border:1px solid var(--line); background:rgba(255,255,255,.06); font-weight:700; font-size:14px; cursor:pointer; white-space:nowrap; }
+  .btn.go { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); } .btn.small { min-height:32px; padding:0 10px; font-size:12.5px; } .btn:disabled { opacity:.45; cursor:default; }
+  .btn[aria-pressed="true"] { background:var(--ink); color:#111; border-color:var(--ink); }
+
+  .app { display:grid; grid-template-columns:minmax(0, 1fr) 360px; min-height:100vh; min-height:100svh; }
+  /* The stage: the frame, at the shape chosen, as large as fits. */
+  #stage { position:sticky; top:0; height:100vh; height:100svh; display:grid; grid-template-rows:auto minmax(0, 1fr) auto; padding:18px 20px 14px; min-width:0; }
+  header h1 { margin:8px 0 0; font-size:clamp(34px, 5vw, 64px); line-height:.9; font-weight:800; letter-spacing:-.05em; }
+  #well { position:relative; min-height:0; margin:14px 0 10px; display:grid; place-items:center; }
+  #frame { position:relative; background:#0b0c0d; outline:1px solid var(--line); }
+  #view { display:block; width:100%; height:100%; touch-action:none; cursor:grab; } #view.drag { cursor:grabbing; } #view:focus-visible { outline-offset:3px; }
+  #thirds { position:absolute; inset:0; pointer-events:none; background:linear-gradient(to right, transparent calc(33.333% - .5px), rgba(255,255,255,.4) calc(33.333% - .5px), rgba(255,255,255,.4) calc(33.333% + .5px), transparent calc(33.333% + .5px), transparent calc(66.666% - .5px), rgba(255,255,255,.4) calc(66.666% - .5px), rgba(255,255,255,.4) calc(66.666% + .5px), transparent calc(66.666% + .5px)), linear-gradient(to bottom, transparent calc(33.333% - .5px), rgba(255,255,255,.4) calc(33.333% - .5px), rgba(255,255,255,.4) calc(33.333% + .5px), transparent calc(33.333% + .5px), transparent calc(66.666% - .5px), rgba(255,255,255,.4) calc(66.666% - .5px), rgba(255,255,255,.4) calc(66.666% + .5px), transparent calc(66.666% + .5px)); }
+  #read { display:flex; flex-wrap:wrap; gap:6px 18px; align-items:baseline; margin:0; font:600 13px/1.4 var(--mono); color:var(--soft); font-variant-numeric:tabular-nums; } #read span b { color:var(--muted); font-weight:500; margin-right:6px; letter-spacing:.08em; text-transform:uppercase; font-size:11px; }
+  #hint { margin:6px 0 0; font-size:12.5px; color:var(--muted); }
+  #turns { display:grid; grid-template-columns:repeat(4, max-content); gap:6px; margin:0 0 8px; } .btn.turn { min-height:44px; min-width:44px; padding:0 12px; }
+  @media (max-width:420px) { #turns { grid-template-columns:1fr 1fr; } }
+
+  /* The panel: shape, lens, shots. */
+  #panel { border-left:1px solid var(--line); background:var(--panel); padding:18px 18px 28px; min-width:0; }
+  #panel h2 { margin:22px 0 9px; font:600 11px/1.2 var(--mono); letter-spacing:.18em; text-transform:uppercase; color:var(--muted); } #panel h2:first-child { margin-top:2px; }
+  .shapes { display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin:0; padding:0; border:0; } .shapes legend { padding:0; }
+  .seg { position:relative; } .seg input { position:absolute; inset:0; opacity:0; margin:0; cursor:pointer; } .seg span { display:grid; place-items:center; gap:1px; min-height:50px; padding:5px 4px; border-radius:10px; border:1px solid var(--line); background:rgba(255,255,255,.05); font-weight:700; font-size:14px; line-height:1.15; text-align:center; } .seg small { display:block; font:500 10.5px/1.2 var(--mono); color:var(--muted); letter-spacing:.06em; }
+  .seg input:checked + span { background:var(--ink); color:#111; border-color:var(--ink); } .seg input:checked + span small { color:#3a4044; } .seg input:focus-visible + span { outline:2px solid var(--accent); outline-offset:2px; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; } .row + .row { margin-top:8px; }
+  .lens { margin:0; font-weight:700; } #fov { width:100%; margin:6px 0 2px; accent-color:var(--accent); height:28px; } .ends { display:flex; justify-content:space-between; font:500 11px/1 var(--mono); color:var(--muted); }
+  #shots { margin:10px 0 0; padding:0; list-style:none; display:grid; gap:8px; } #shots li { display:grid; gap:10px; align-items:center; padding:8px; border-radius:12px; border:1px solid var(--line); background:rgba(255,255,255,.03); }
+  #shots canvas { display:block; width:auto; height:auto; max-width:76px; max-height:76px; justify-self:center; border-radius:6px; background:#0b0c0d; } #shots li { grid-template-columns:76px minmax(0, 1fr); } #shots p { margin:0 0 6px; font-size:12.5px; line-height:1.35; color:var(--soft); } #shots .row { gap:5px; }
+  #none { margin:10px 0 0; font-size:13px; color:var(--muted); }
+  #text { display:block; width:100%; min-height:86px; margin:8px 0 0; padding:9px 10px; border-radius:10px; border:1px solid var(--line); background:#101214; font:12px/1.5 var(--mono); color:var(--soft); resize:vertical; }
+  .note { margin:8px 0 0; font-size:12.5px; color:var(--muted); } #status { margin:8px 0 0; font-size:13px; color:var(--soft); min-height:1.5em; font-variant-ligatures:none; font-feature-settings:"calt" 0, "liga" 0; overflow-wrap:anywhere; } #progress { margin:2px 0 0; min-height:1.4em; font-variant-numeric:tabular-nums; }
+  #drop { margin:8px 0 0; padding:12px; border-radius:12px; border:1px dashed var(--line); font-size:13px; color:var(--muted); } #drop.over { border-color:var(--accent); color:var(--ink); }
+  #file { display:block; margin-top:8px; max-width:100%; font-size:13px; } #file::file-selector-button { min-height:36px; margin-right:10px; padding:0 12px; border-radius:9px; border:1px solid var(--line); background:rgba(255,255,255,.06); color:var(--ink); font:700 13px/1 var(--sans); cursor:pointer; }
+  footer { margin-top:26px; padding-top:14px; border-top:1px solid var(--line); font-size:12.5px; color:var(--muted); }
+
+  @media (max-width:860px) { .app { grid-template-columns:minmax(0, 1fr); } #stage { position:relative; height:auto; padding:14px 14px 10px; } #well { margin:10px 0 8px; } #panel { border-left:0; border-top:1px solid var(--line); padding:14px 14px 28px; } header h1 { font-size:34px; } }
+  @media (max-height:520px) and (min-width:861px) { header h1 { font-size:30px; } #stage { padding:10px 14px 8px; } #hint { display:none; } }
+  @media (prefers-reduced-motion:reduce) { * { transition:none !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+<main id="stage">
+  <header>
+    <p class="eyebrow">A 360 picture, framed like a camera</p>
+    <h1>Shot Framer</h1>
+  </header>
+  <div id="well">
+    <div id="frame">
+      <canvas id="view" tabindex="0" role="application" aria-label="The frame" aria-describedby="hint"></canvas>
+      <div id="thirds" aria-hidden="true"></div>
+    </div>
+  </div>
+  <div>
+    <div class="row" id="turns" role="group" aria-label="Turn and tilt the frame, 10 degrees a press"><button class="btn turn" type="button" data-yaw="-10">Turn left</button><button class="btn turn" type="button" data-yaw="10">Turn right</button><button class="btn turn" type="button" data-pitch="10">Tilt up</button><button class="btn turn" type="button" data-pitch="-10">Tilt down</button></div>
+    <p id="read" aria-hidden="true"><span><b>Facing</b><span id="r-head">north, 0°</span></span><span><b>Tilt</b><span id="r-tilt">level</span></span><span><b>Lens</b><span id="r-lens">24 mm</span></span><span><b>Shape</b><span id="r-shape">16:9</span></span></p>
+    <p id="hint">Drag the picture to look round, or use the turn and tilt buttons. Scroll over it, or pinch, to change the lens. With the picture selected: arrow keys turn, plus and minus change the lens, S saves a shot.</p>
+  </div>
+</main>
+
+<aside id="panel" aria-label="Framing and shots">
+  <h2 id="shape-h">Shape</h2>
+  <fieldset class="shapes" aria-labelledby="shape-h" id="shapes"></fieldset>
+
+  <h2 id="lens-h">Lens</h2>
+  <p class="lens" id="lens-words" aria-hidden="true">24 mm, a wide lens</p>
+  <input id="fov" type="range" min="12" max="110" step="1" value="46" aria-labelledby="lens-h" aria-describedby="lens-note">
+  <div class="ends" aria-hidden="true"><span>long</span><span>wide</span></div>
+  <p class="note" id="lens-note">Millimetres are the lens a full-frame camera would need, with the frame fitted inside its 36 by 24 mm sensor (turned on its side for a tall shape). Changing the shape keeps the lens, unless the new shape cannot go that wide or that long; then it takes the nearest lens it has, and says so.</p>
+  <div class="row" style="margin-top:10px"><button class="btn small" id="grid" type="button" aria-pressed="true">Thirds</button><button class="btn small" id="home" type="button">Back to the start</button></div>
+
+  <h2>Shots</h2>
+  <div class="row"><button class="btn go" id="save" type="button">Save this shot</button><button class="btn" id="export" type="button">Export this frame</button></div>
+  <fieldset class="row" style="border:0; padding:0; margin:10px 0 0"><legend class="sr">Size of exported pictures</legend>
+    <label class="seg"><input type="radio" name="size" value="1920" checked><span style="min-height:36px; padding:0 12px">HD<small>1920 long</small></span></label>
+    <label class="seg"><input type="radio" name="size" value="3840"><span style="min-height:36px; padding:0 12px">4K<small>3840 long</small></span></label>
+  </fieldset>
+  <p id="status" role="status"></p>
+  <p id="progress" class="note" aria-hidden="true"></p>
+  <p id="none">No shots saved yet. Frame something and press Save this shot.</p>
+  <ol id="shots" aria-label="Saved shots"></ol>
+  <div class="row" style="margin-top:10px"><button class="btn small" id="all" type="button" disabled>Export all</button><button class="btn small" id="copy" type="button" disabled>Copy the list</button></div>
+  <label class="sr" for="text">The shot list, as text</label>
+  <textarea id="text" readonly rows="4" hidden></textarea>
+
+  <h2>Picture</h2>
+  <p class="note" id="pic" style="margin-top:0; color:var(--soft)">The sample: a sculpture park at night, drawn by this page.</p>
+  <div id="drop">
+    <label for="file">Use your own 360 picture: choose a file, or drop one here. It should be twice as wide as it is tall.</label>
+    <input id="file" type="file" accept="image/*">
+  </div>
+  <div class="row" style="margin-top:8px"><button class="btn small" id="sample" type="button" hidden>Back to the sample</button></div>
+  <p class="note">Your picture is opened by this page on your own device. It is not uploaded, and nothing is stored.</p>
+
+  <footer>After <a href="https://x.com/runwayml/status/2119874555581694370" rel="noopener">a post by Runway</a>. An original tool, not made by or with Runway. The sample picture is worked out in the page; no picture file is loaded.</footer>
+</aside>
+</div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
