@@ -9,6 +9,9 @@ import { FrancisUnit } from './francis.js';
 import { createState, step, UNIT_IDS, thrustMN } from '../../src/model/hydro.js';
 import { ELEV, SCENARIOS } from '../../src/model/data.js';
 import { DAM, elevToY } from '../../src/scene/util.js';
+import { Audio } from '../../src/ui/audio.js';
+import { Run, applyRun, PHASES, DT, A5_INDEX } from './sequence.js';
+import { drawHill, drawTach, drawSequence, chartHit } from './instruments.js';
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -95,24 +98,51 @@ function setLabels(v) { S.labels = v; document.body.classList.toggle('nolabels',
 
 // ---------------------------------------------------------------------------
 // controls
+const seq = { kind: 'log', run: null, playing: false, slow: 1, follow: A5_INDEX, acc: 0, ov: {} };
+let rebuildTimer = 0;
+let gateCmd = 0.7, gateLive = false;
 function range(id, fn, fmt) {
   const el = $(`#${id}`), o = $(`#${id}Out`);
-  const apply = () => { fn(+el.value); el.style.setProperty('--p', `${(el.value - el.min) / (el.max - el.min) * 100}%`); if (o) o.textContent = fmt(+el.value); };
-  el.addEventListener('input', apply); apply();
-  return { el, set(v) { el.value = v; apply(); } };
+  const paint = (v) => { el.style.setProperty('--p', `${(v - el.min) / (el.max - el.min) * 100}%`); if (o) o.textContent = fmt(v); };
+  const apply = (fromUser) => { const v = +el.value; fn(v, fromUser === true); paint(v); };
+  el.addEventListener('input', () => apply(true));
+  el.addEventListener('change', () => { if (seq.kind !== 'log') rebuildSeq(true); });
+  apply(false);
+  return {
+    el, fmt, paint,
+    set(v) { el.value = v; apply(false); },
+    show(v) { if (document.activeElement === el) return; el.value = v; paint(v); },
+  };
 }
 const order = [7, 8, 6, 9, 5, 10, 4, 11, 3, 12, 2, 13, 1, 14, 0, 15, 16];
 const R = {
-  lake: range('lake', (v) => { st.lake = v; }, (v) => `${n0(v)} ft`),
-  inflow: range('inflow', (v) => { st.inflow = v; }, (v) => `${n0(v)} cfs`),
-  gate: range('gate', (v) => { st.units.forEach((u) => { u.gate = v; }); }, (v) => `${Math.round(v * 100)}%`),
-  drum: range('drum', (v) => { st.drum = v; }, (v) => (v > 0.98 ? 'raised' : v < 0.02 ? 'lowered' : `${Math.round(v * 100)}%`)),
-  units: range('units', (v) => { st.units.forEach((u) => { u.on = false; }); for (let i = 0; i < v; i++) st.units[order[i]].on = true; if (v > 0) st.units[UNIT_IDS.indexOf('A5')].on = true; }, (v) => `${v} / 17`),
+  lake: range('lake', (v, fromUser) => { if (fromUser && seq.kind !== 'log') { seq.ov.lake0 = v; queueRebuild(); } else if (seq.kind === 'log') st.lake = v; }, (v) => `${n0(v)} ft`),
+  inflow: range('inflow', (v, fromUser) => { if (fromUser && seq.kind !== 'log') { seq.ov.inflow = v; queueRebuild(); } else if (seq.kind === 'log') st.inflow = v; }, (v) => `${n0(v)} cfs`),
+  gate: range('gate', (v, fromUser) => {
+    gateCmd = v;
+    if (fromUser && seq.kind !== 'log') { seq.ov.gate = v; gateLive = false; queueRebuild(); }
+    else if (fromUser) gateLive = true;
+    else { gateLive = false; st.units.forEach((u) => { u.gate = v; }); }
+  }, (v) => `${Math.round(v * 100)}%`),
+  drum: range('drum', (v, fromUser) => { if (fromUser && seq.kind !== 'log') { seq.ov.drum = v; queueRebuild(); } else if (seq.kind === 'log') st.drum = v; }, (v) => (v > 0.98 ? 'raised' : v < 0.02 ? 'lowered' : `${Math.round(v * 100)}%`)),
+  units: range('units', (v, fromUser) => {
+    if (fromUser && seq.kind !== 'log') { seq.ov.units = v; queueRebuild(); return; }
+    if (seq.kind !== 'log') return;
+    st.units.forEach((u) => { u.on = false; });
+    for (let i = 0; i < v; i++) st.units[order[i]].on = true;
+    if (v > 0) st.units[UNIT_IDS.indexOf('A5')].on = true;
+  }, (v) => `${v} / 17`),
 };
 function scenario(k) {
   const s = SCENARIOS[k];
-  R.lake.set(s.lake); R.inflow.set(s.inflow); R.gate.set(s.gate); R.drum.set(s.drum === 'raised' ? 1 : 0); R.units.set(s.units);
-  st.speed = s.speed > 4 ? 12 : 1;
+  if (seq.kind !== 'log') {
+    seq.ov = { lake0: s.lake, inflow: s.inflow, gate: s.gate, drum: s.drum === 'raised' ? 1 : 0, units: s.units };
+    R.lake.show(s.lake); R.inflow.show(s.inflow); R.gate.show(s.gate); R.drum.show(s.drum === 'raised' ? 1 : 0); R.units.show(s.units);
+    rebuildSeq(true);
+  } else {
+    R.lake.set(s.lake); R.inflow.set(s.inflow); R.gate.set(s.gate); R.drum.set(s.drum === 'raised' ? 1 : 0); R.units.set(s.units);
+    st.speed = s.speed > 4 ? 12 : 1;
+  }
   $$('[data-scn]').forEach((b) => b.classList.toggle('on', b.dataset.scn === k));
 }
 $$('[data-scn]').forEach((b) => b.addEventListener('click', () => scenario(b.dataset.scn)));
@@ -177,7 +207,11 @@ function sysStatus(s) {
 
 // unit bars
 const ub = $('#ubars');
-const ubRows = UNIT_IDS.map((id) => { const r = document.createElement('div'); r.className = 'ub'; r.innerHTML = `<span>${id}</span><i></i><em>0</em>`; ub.appendChild(r); return { id, r, bar: r.querySelector('i'), v: r.querySelector('em') }; });
+const ubRows = UNIT_IDS.map((id, i) => {
+  const r = document.createElement('div'); r.className = 'ub'; r.innerHTML = `<span>${id}</span><i></i><em>0</em>`;
+  r.title = `Follow ${id}`; r.addEventListener('click', () => setFollow(i));
+  ub.appendChild(r); return { id, r, bar: r.querySelector('i'), v: r.querySelector('em') };
+});
 
 // load meter cells and crosses
 const cells = $('#loadCells'); for (let i = 0; i < 40; i++) cells.appendChild(document.createElement('i'));
@@ -400,27 +434,216 @@ function seek(t, instant = true) {
   for (let i = 0; i <= k; i++) { const b = BEATS[i]; if (b.ramp) { const [key, a, z, d] = b.ramp; const f = Math.min(1, (film.t - b.t) / d); R[key].set(a + (z - a) * EASE(f)); } }
   film.idx = k;
 }
-function setPlaying(v) { film.playing = v; if (v) film.touched = false; $('#play').classList.toggle('paused', !v); ghost.hidden = !v || !ghost.classList.contains('live'); $('#status').innerHTML = `<i></i>${v ? 'Operator log' : 'Hands on'}`; }
-$('#play').addEventListener('click', () => { if (!film.playing) { if (film.t > FILM - 0.5) film.t = 0; seek(film.t, false); } setPlaying(!film.playing); });
+const OWN = '#transport, #play, #bar, #chart, #slow, #seq, #sound, #legend, #back, #next';
+function paintPlay(v) {
+  $('#play').classList.toggle('paused', !v);
+  $('#play').setAttribute('aria-label', v ? 'Pause' : 'Play');
+}
+function setPlaying(v) {
+  film.playing = v; if (v) film.touched = false;
+  paintPlay(v); ghost.hidden = !v || !ghost.classList.contains('live');
+  $('#status').innerHTML = `<i></i>${v ? 'Operator log' : 'Hands on'}`;
+}
+function playingNow() { return seq.kind === 'log' ? film.playing : seq.playing; }
+function togglePlay() {
+  if (seq.kind === 'log') {
+    if (!film.playing) { if (film.t > FILM - 0.5) film.t = 0; seek(film.t, false); }
+    setPlaying(!film.playing);
+  } else {
+    seq.playing = !seq.playing;
+    paintPlay(seq.playing);
+    $('#status').innerHTML = `<i></i>${seq.playing ? (seq.kind === 'day' ? 'Dispatch' : 'A5 run') : 'Paused'}`;
+  }
+}
+$('#play').addEventListener('click', togglePlay);
 $('#bar').addEventListener('pointerdown', (e) => { const r = $('#bar').getBoundingClientRect(); film.touched = false; seek((e.clientX - r.left) / r.width * FILM, true); });
 ['pointerdown', 'wheel', 'keydown', 'touchstart'].forEach((tp) => addEventListener(tp, (e) => {
   if (!e.isTrusted) return;
   film.lastInput = performance.now();
-  if (!e.target.closest?.('#play, #bar')) film.touched = true;
-  if (film.playing && !e.target.closest?.('#play, #bar')) setPlaying(false);
+  // Space and the arrows are handled below. They still count as input, or the
+  // log treats a pause after 25 quiet seconds as idle and starts the tour again.
+  if (tp === 'keydown' && (e.code === 'Space' || e.code === 'ArrowLeft' || e.code === 'ArrowRight' || e.key === 's' || e.key === 'S')) return;
+  if (!e.target.closest?.(OWN)) film.touched = true;
+  if (film.playing && seq.kind === 'log' && !e.target.closest?.(OWN)) setPlaying(false);
 }, { capture: true, passive: true }));
 function filmTick(dt) {
+  if (seq.kind !== 'log') return;
   if (!film.playing) {
     if (!q.has('notour') && performance.now() - film.lastInput > 25000) { film.t = 0; film.idx = -1; setPlaying(true); }
     return;
   }
   if (intro) return; // the opening shot holds the clock at 00:00
-  film.t += dt;
+  film.t += dt / seq.slow;
   if (film.t >= FILM) { film.t = 0; film.idx = -1; }
   const k = beatAt(film.t);
   if (k !== film.idx) { film.idx = k; BEATS[k].apply(false); ghostTap(BEATS[k].target); }
   const b = BEATS[k];
   if (b.ramp) { const [key, a, z, d] = b.ramp; const f = Math.min(1, (film.t - b.t) / d); R[key].set(a + (z - a) * EASE(f)); }
+}
+function stepBeat(dir) {
+  const eps = 0.08;
+  if (dir > 0) {
+    const n = BEATS.find((b) => b.t > film.t + eps);
+    seek(n ? n.t : 0, false);
+  } else {
+    const prev = [...BEATS].reverse().find((b) => b.t < film.t - eps);
+    seek(prev ? prev.t : 0, true);
+  }
+  setPlaying(false);
+}
+
+// ---------------------------------------------------------------------------
+// sequences: one driver (tau). The operator log stays the default.
+const legend = $('#legend');
+for (const p of PHASES) {
+  const i = document.createElement('i');
+  i.innerHTML = `<b style="background:${p.color}"></b>${p.nick}`;
+  legend.appendChild(i);
+}
+function mmss(t) { const s = Math.max(0, Math.floor(t)); return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; }
+function clearSpin() { st.units.forEach((u) => { delete u.spin; }); }
+function publish() {
+  if (!seq.run) return;
+  applyRun(st, seq.run);
+  out = st.out;
+}
+function queueRebuild() { clearTimeout(rebuildTimer); rebuildTimer = setTimeout(() => rebuildSeq(false), 80); }
+function rebuildSeq(keepTau) {
+  if (seq.kind === 'log') return;
+  const tau = keepTau && seq.run ? seq.run.tau : (seq.run ? seq.run.tau : 0);
+  seq.run = new Run(seq.kind, seq.ov);
+  seq.run.rebuild(tau);
+  publish();
+}
+function setKind(kind, autoplay = true) {
+  seq.kind = kind === 'day' || kind === 'a5' ? kind : 'log';
+  document.body.classList.toggle('sequencing', seq.kind !== 'log');
+  $$('#seq button').forEach((b) => b.classList.toggle('on', b.dataset.seq === seq.kind));
+  $('#bar').hidden = seq.kind !== 'log';
+  $('#chart').hidden = seq.kind === 'log';
+  $('#legend').hidden = seq.kind === 'log';
+  $('#endL').textContent = seq.kind === 'log' ? 'Wake' : (seq.kind === 'day' ? '00:00' : 'Stand');
+  $('#endR').textContent = seq.kind === 'log' ? 'Reassemble' : (seq.kind === 'day' ? '24:00' : 'Trip');
+  $('#lakeLab').textContent = seq.kind === 'log' ? 'Lake' : 'Start lake';
+  if (seq.kind === 'log') {
+    seq.run = null; seq.playing = false; seq.ov = {};
+    clearSpin();
+    // applyRun leaves the sequence's pause flag and, after Dispatch, auto mode.
+    // The log integrates the lake itself and sets gates from the film.
+    st.paused = false;
+    st.mode = 'manual';
+    seek(film.t, true);
+    $('#acts').textContent = `${BEATS.length - 1} operator actions`;
+    paintPlay(film.playing);
+    return;
+  }
+  if (film.playing) setPlaying(false);
+  seq.ov = {};
+  seq.acc = 0;
+  seq.run = new Run(seq.kind, seq.ov);
+  seq.run.rebuild(0);
+  const lake0 = seq.kind === 'day' ? 1065 : 1198;
+  R.lake.show(lake0); R.inflow.show(seq.kind === 'day' ? 11000 : 12000); R.drum.show(1);
+  publish();
+  seq.playing = autoplay;
+  paintPlay(autoplay);
+  $('#status').innerHTML = `<i></i>${autoplay ? (seq.kind === 'day' ? 'Dispatch' : 'A5 run') : 'Paused'}`;
+}
+function setFollow(i) { seq.follow = Math.max(0, Math.min(16, i)); }
+function stepPhase(dir) {
+  const run = seq.run; if (!run) return;
+  const b = run.bounds(seq.follow);
+  if (!b.length) return;
+  const tau = run.tau;
+  let k = 0;
+  for (let i = 0; i < b.length; i++) if (b[i].t0 <= tau + 1e-3) k = i;
+  seq.playing = false; paintPlay(false);
+  if (dir > 0) run.seek(b[k + 1] ? b[k + 1].t0 : 0);
+  else run.seek((tau - b[k].t0 > 0.15 ? b[k] : (b[k - 1] || b[0])).t0);
+  publish();
+}
+$('#back').addEventListener('click', () => (seq.kind === 'log' ? stepBeat(-1) : stepPhase(-1)));
+$('#next').addEventListener('click', () => (seq.kind === 'log' ? stepBeat(1) : stepPhase(1)));
+$$('#seq button').forEach((b) => b.addEventListener('click', () => setKind(b.dataset.seq, true)));
+$$('#slow button').forEach((b) => b.addEventListener('click', () => {
+  const s = +b.dataset.s;
+  seq.slow = seq.slow === s ? 1 : s;
+  $$('#slow button').forEach((x) => x.classList.toggle('on', +x.dataset.s === seq.slow));
+}));
+const chart = $('#chart');
+let chartDrag = null;
+function scrubChart(e) {
+  if (!seq.run) return;
+  const hit = chartHit(chart, seq.run, e.clientX, e.clientY);
+  seq.run.seek(hit.tau);
+  publish();
+  chartDrag.unit = hit.unit;
+}
+chart.addEventListener('pointerdown', (e) => {
+  if (seq.kind === 'log') return;
+  chart.setPointerCapture(e.pointerId);
+  seq.playing = false; paintPlay(false);
+  chartDrag = { x: e.clientX, y: e.clientY, moved: false, unit: seq.follow };
+  scrubChart(e);
+});
+chart.addEventListener('pointermove', (e) => {
+  if (!chartDrag) return;
+  if (Math.hypot(e.clientX - chartDrag.x, e.clientY - chartDrag.y) > 4) chartDrag.moved = true;
+  scrubChart(e);
+});
+chart.addEventListener('pointerup', () => {
+  if (chartDrag && !chartDrag.moved) setFollow(chartDrag.unit);
+  chartDrag = null;
+});
+addEventListener('keydown', (e) => {
+  if (e.target.closest('input, textarea')) return;
+  if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+  if (e.key === 'ArrowRight') stepTransport(1);
+  if (e.key === 'ArrowLeft') stepTransport(-1);
+  if (e.key === 's' || e.key === 'S') { const on = audio.toggle(); syncSound(on); }
+});
+function stepTransport(dir) { if (seq.kind === 'log') stepBeat(dir); else stepPhase(dir); }
+
+const audio = new Audio();
+function syncSound(on = audio.on) {
+  const b = $('#sound');
+  b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  b.setAttribute('aria-label', on ? 'Sound on' : 'Sound off');
+  b.classList.toggle('on', on);
+}
+$('#sound').addEventListener('click', () => { try { syncSound(audio.toggle()); } catch { syncSound(false); } });
+
+const tagLines = $('#taglines'), tagLayer = $('#tags');
+const tagPool = UNIT_IDS.map((id) => {
+  const line = document.createElementNS(SVGNS, 'line'); tagLines.appendChild(line);
+  const div = document.createElement('button'); div.type = 'button'; div.className = 'tag'; div.textContent = id; tagLayer.appendChild(div);
+  return { id, line, div };
+});
+tagPool.forEach((t, i) => t.div.addEventListener('click', () => setFollow(i)));
+function drawTags() {
+  const embed = document.body.classList.contains('embed');
+  const gens = model.S.ph.gens;
+  const showAll = embed && S.labels;
+  tagPool.forEach((t, i) => {
+    const on = i === seq.follow;
+    const show = S.labels && (showAll || on) && seq.kind !== 'log';
+    t.div.style.display = show ? '' : 'none';
+    t.line.style.display = show ? '' : 'none';
+    if (!show) return;
+    const g = gens.find((x) => x.id === t.id); if (!g) return;
+    const v = g.group.getWorldPosition(new THREE.Vector3());
+    const pr = v.project(stage.camera);
+    const x = (pr.x * 0.5 + 0.5) * innerWidth, y = (-pr.y * 0.5 + 0.5) * innerHeight;
+    const ok = pr.z < 1 && y > 40 && y < innerHeight - 20;
+    t.div.style.display = ok ? '' : 'none'; t.line.style.display = ok ? '' : 'none';
+    if (!ok) return;
+    const ty = y - 28 - (i % 3) * 2;
+    t.div.style.transform = `translate(${x + 10}px, ${ty}px)`;
+    t.div.classList.toggle('on', on);
+    t.line.setAttribute('x1', x); t.line.setAttribute('y1', y);
+    t.line.setAttribute('x2', x + 10); t.line.setAttribute('y2', ty + 8);
+    if (on) { t.line.style.stroke = '#ff5a1f'; } else t.line.style.stroke = '';
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -429,6 +652,13 @@ const clock = new THREE.Clock();
 let T = 0, frame = 0, sample = 0, fpsT = performance.now(), fpsN = 0, low = 0;
 const t0 = performance.now();
 function modeLabel() {
+  if (seq.kind !== 'log' && seq.run) {
+    if (S.look === 'cut') return 'Section';
+    if (S.exploded) return 'Take apart';
+    const id = seq.run.phaseAt(seq.run.tau, seq.follow);
+    const phase = PHASES.find((p) => p.id === id);
+    return phase ? phase.name : 'Running';
+  }
   if (film.idx >= 0 && !film.touched) return BEATS[film.idx].mode;
   if (S.look === 'cut') return 'Section';
   if (S.exploded) return 'Take apart';
@@ -448,17 +678,41 @@ function introTick(dt) {
   if (!intro.tapped && intro.t > 2.6) { intro.tapped = true; ghostTap(BEATS[0].target); }
   if (intro.t > 3) intro = null;
 }
+function sequenceTick(dt) {
+  if (!seq.run || !seq.playing || intro) return;
+  seq.acc += dt / seq.slow;
+  // A 60 fps clock is a fraction of a nanosecond under 1/60. Without this,
+  // that shortfall drops a step every few dozen frames.
+  while (seq.acc + 1e-9 >= DT) {
+    seq.acc -= DT;
+    if (Math.abs(seq.acc) < 1e-9) seq.acc = 0;
+    if (seq.run.tau >= seq.run.duration - 1e-4) { seq.run.seek(0); seq.acc = 0; break; }
+    seq.run.advance(DT, false);
+  }
+  publish();
+}
 function loop() {
   const dt = Math.min(0.05, clock.getDelta()); T += dt; frame++;
   introTick(dt);
   filmTick(dt);
-  out = step(st, dt);
-  if (st.lake > ELEV.crest + 1) st.lake = ELEV.crest + 1;
+  if (seq.kind === 'log') {
+    if (gateLive) {
+      const k = 1 - Math.exp(-dt * 1.6);
+      st.units.forEach((u) => { u.gate += (gateCmd - u.gate) * k; });
+    }
+    out = step(st, dt);
+    if (st.lake > ELEV.crest + 1) st.lake = ELEV.crest + 1;
+  } else {
+    sequenceTick(dt);
+    if (seq.run) publish();
+  }
   if (fly) { fly.t += dt / fly.dur; const k = fly.t >= 1 ? 1 : EASE(fly.t); stage.camera.position.lerpVectors(fly.p0, fly.p1, k); stage.controls.target.lerpVectors(fly.t0, fly.t1, k); if (fly.t >= 1) fly = null; }
   if (S.turntable) stage.pivot.rotation.y += dt * 0.07;
   else if (turnTo !== null) { let r = stage.pivot.rotation.y % (Math.PI * 2); if (r > Math.PI) r -= Math.PI * 2; if (r < -Math.PI) r += Math.PI * 2; stage.pivot.rotation.y = r + (turnTo - r) * Math.min(1, dt * 3); }
   stage.controls.update();
   model.update(st, out, dt, T);
+  const followed = model.S.ph.gens.find((g) => g.id === UNIT_IDS[seq.follow]);
+  if (followed && seq.kind !== 'log') followed.mat.emissiveIntensity = Math.max(followed.mat.emissiveIntensity, 0.22);
   unit.update(st.units[UNIT_IDS.indexOf('A5')], dt);
   if (S.focus === 'turbine') unit.root.rotation.y += dt * 0.12;
   stage.render(dt);
@@ -474,7 +728,7 @@ function loop() {
     const u5 = st.units[UNIT_IDS.indexOf('A5')];
     $('#aMW').textContent = `${(u5.mw || 0).toFixed(1)} MW`; $('#aGate').textContent = `${Math.round((u5.on ? u5.gate : 0) * 100)}%`;
     $('#aQ').textContent = `${n0(u5.q || 0)} cfs`; $('#aRpm').textContent = `${Math.round(u5.rpm || 0)} rpm`; $('#aEta').textContent = u5.eta ? `${(u5.eta * 100).toFixed(1)}%` : '—';
-    ubRows.forEach((r, i) => { const u = st.units[i]; r.bar.style.setProperty('--w', `${Math.min(100, (u.mw || 0) / 122.4 * 100)}%`); r.v.textContent = u.on ? `${Math.round(u.mw || 0)}` : 'off'; r.r.classList.toggle('off', !u.on); r.r.classList.toggle('hot', u.id === 'A5' || (u.mw || 0) > 110); });
+    ubRows.forEach((r, i) => { const u = st.units[i]; r.bar.style.setProperty('--w', `${Math.min(100, (u.mw || 0) / 122.4 * 100)}%`); r.v.textContent = u.on ? `${Math.round(u.mw || 0)}` : 'off'; r.r.classList.toggle('off', !u.on); r.r.classList.toggle('hot', i === seq.follow || (u.mw || 0) > 110); r.r.classList.toggle('on', i === seq.follow && seq.kind !== 'log'); });
     const anyOff = st.units.some((u) => !u.on);
     const pill = $('#unitsPill'); pill.textContent = S.exploded ? 'Detached' : out.running === 17 ? 'All on' : anyOff ? 'Holding' : '—'; pill.className = `pill ${S.exploded ? 'or' : ''}`;
     const pct = Math.max(0, Math.min(1, out.thrust / THRUST_MAX));
@@ -484,20 +738,47 @@ function loop() {
     $('#runtime').textContent = `${String(Math.floor(rt / 3600)).padStart(2, '0')}:${String(Math.floor(rt / 60) % 60).padStart(2, '0')}:${String(rt % 60).padStart(2, '0')}`;
     const mode = modeLabel();
     if ($('#modeT').textContent !== mode) $('#modeT').textContent = mode;
-    $('#modeS').textContent = S.focus === 'turbine' ? `Unit A5 · ${(u5.mw || 0).toFixed(0)} MW · gate ${Math.round((u5.on ? u5.gate : 0) * 100)}%` : out.spillQ > 1 ? `Spill ${n0(out.spillQ)} cfs · lake ${n0(st.lake)} ft` : `Head ${n0(out.gross)} ft · ${out.running} units · ${n0(out.turbQ)} cfs`;
-    if (!film.playing) $('#status').innerHTML = `<i></i>${mode}`;
+    $('#modeS').textContent = seq.kind !== 'log'
+      ? `${UNIT_IDS[seq.follow]} · lake ${n0(st.lake)} ft · ${n0(out.mw)} MW`
+      : S.focus === 'turbine' ? `Unit A5 · ${(u5.mw || 0).toFixed(0)} MW · gate ${Math.round((u5.on ? u5.gate : 0) * 100)}%` : out.spillQ > 1 ? `Spill ${n0(out.spillQ)} cfs · lake ${n0(st.lake)} ft` : `Head ${n0(out.gross)} ft · ${out.running} units · ${n0(out.turbQ)} cfs`;
+    if (!playingNow()) $('#status').innerHTML = `<i></i>${mode}`;
     for (const r of sysRows) { const [txt, cls] = sysStatus(r); r.pill.textContent = txt; r.pill.className = `pill ${cls}`; r.li.classList.toggle('on', S.focus === r.id || (r.id === 'turbine' && S.focus === 'turbine')); }
-    // film bar
-    const f = film.t / FILM;
-    $('#fill').style.width = `${f * 100}%`; $('#knob').style.left = `${f * 100}%`;
-    [...ticks.children].forEach((tk, i) => tk.classList.toggle('done', BEATS[i].t <= film.t));
-    $('#beatT').textContent = BEATS[Math.max(0, film.idx)].label;
-    const s = Math.floor(film.t); $('#clock').textContent = `00:${String(s).padStart(2, '0')} / 00:${FILM}`;
+    if (seq.kind === 'log') {
+      const f = film.t / FILM;
+      $('#fill').style.width = `${f * 100}%`; $('#knob').style.left = `${f * 100}%`;
+      [...ticks.children].forEach((tk, i) => tk.classList.toggle('done', BEATS[i].t <= film.t));
+      $('#beatT').textContent = BEATS[Math.max(0, film.idx)].label;
+      const s = Math.floor(film.t); $('#clock').textContent = `00:${String(s).padStart(2, '0')} / 00:${FILM}`;
+    } else if (seq.run) {
+      const run = seq.run;
+      const phase = PHASES.find((p) => p.id === run.phaseAt(run.tau, seq.follow));
+      $('#beatT').textContent = `${UNIT_IDS[seq.follow]} · ${phase ? phase.name : ''}`;
+      if (seq.kind === 'day') {
+        const h = run.tau / run.duration * 24;
+        const hh = Math.floor(h), mm = Math.floor((h - hh) * 60);
+        $('#clock').textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} / 24:00`;
+      } else $('#clock').textContent = `${mmss(run.tau)} / ${mmss(run.duration)}`;
+      const bounds = run.bounds(seq.follow);
+      $('#acts').textContent = `${bounds.length} phases`;
+      if (!document.activeElement?.closest?.('#ctl')) {
+        const lake0 = seq.ov.lake0 ?? (seq.kind === 'day' ? 1065 : 1198);
+        R.lake.show(lake0);
+        if (seq.ov.inflow == null) R.inflow.show(st.inflow);
+        if (seq.ov.drum == null) R.drum.show(st.drum);
+        if (seq.ov.gate == null) R.gate.show(st.units[A5_INDEX].gate || 0);
+        if (seq.ov.units == null) R.units.show(st.units.filter((u) => u.on).length);
+      }
+      drawSequence($('#chart'), run, seq.follow, run.tau);
+    }
     drawLine($('#cvOut'), 'mw', 0, 2200, OR);
     drawLine($('#cvLake'), 'lake', 895, 1240, INKC, ELEV.fullPool);
     drawGate();
+    drawHill($('#cvHill'), st.units[seq.kind === 'log' ? A5_INDEX : seq.follow]);
+    drawTach($('#cvTach'), st.units[A5_INDEX].rpm || 0);
     drawDraft(T);
     drawCallouts();
+    drawTags();
+    if (audio.on) audio.update(out, stage.camera.position.distanceTo(stage.controls.target));
   }
   fpsN++;
   const now = performance.now();
@@ -506,17 +787,25 @@ function loop() {
 }
 
 // ---------------------------------------------------------------------------
-// boot + deep links: ?t=12 (film time), ?q=0|1|2, ?clean, ?notour, ?pause
+// boot + deep links: ?t=12 (film time, or sequence time with ?seq=), ?q=0|1|2, ?clean, ?notour, ?pause, ?seq=a5|day, ?layout=embed
+if (q.get('layout') === 'embed' || q.get('layout') === 'figure') {
+  document.body.classList.add('embed');
+  $('#ctl').open = true;
+}
 if (q.has('q')) { stage.lock = true; stage.setQuality(+q.get('q')); }
 // phones and small tablets start one tier down (no GTAO, lighter pixel ratio); they can still step down further
 else if (Math.min(innerWidth, innerHeight) < 600 || matchMedia('(pointer: coarse)').matches) stage.setQuality(1);
 if (q.has('clean')) document.body.classList.add('clean');
-seek(q.has('t') ? +q.get('t') : 0, true);
-if (q.has('t')) { // let springs settle for stills
+const wantSeq = q.get('seq');
+const sequenced = wantSeq === 'a5' || wantSeq === 'day';
+if (!sequenced) seek(q.has('t') ? +q.get('t') : 0, true);
+if (q.has('t') && !sequenced) { // let springs settle for stills
   model.e = S.exploded ? 1 : 0; unit.e = S.unitOpen ? 1 : 0; stage.pivot.rotation.y = 0;
 }
-setPlaying(!q.has('notour') && !q.has('pause'));
-if (!q.has('t')) {
+if (!sequenced) setPlaying(!q.has('notour') && !q.has('pause'));
+else setKind(wantSeq, !q.has('pause') && !q.has('notour'));
+if (sequenced && q.has('t')) { seq.run.seek(+q.get('t') || 0); publish(); }
+if (!q.has('t') && !sequenced) {
   // the opening shot: start apart, high and wide, then swing in to the hero view as it assembles
   model.e = 1; model.explode(true);
   const h = viewPose(VIEWS.hero), lift = h.p.clone().sub(h.t);
@@ -530,4 +819,11 @@ if (q.has('pause')) { st.paused = true; }
 stage.renderer.compile(stage.scene, stage.camera);
 $('#boot').classList.add('done');
 requestAnimationFrame(loop);
-window.teardown = { stage, model, unit, st, S, film, seek, get intro() { return intro; }, get out() { return out; } };
+window.teardown = {
+  stage, model, unit, st, S, film, seek, audio, seq,
+  ready: true,
+  setKind, setFollow, stepTransport, togglePlay,
+  get intro() { return intro; },
+  get out() { return out; },
+  get playing() { return playingNow(); },
+};

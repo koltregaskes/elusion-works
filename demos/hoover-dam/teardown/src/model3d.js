@@ -407,7 +407,8 @@ export class StudyModel {
     }
     for (const g of this.S.ph.gens) {
       const u = st.units.find((uu) => uu.id === g.id);
-      g.rotor.rotation.y += ((u?.rpm || 0) / 60) * Math.PI * 2 * dt / 12;
+      if (u && u.spin != null) g.rotor.rotation.y = u.spin;
+      else g.rotor.rotation.y += ((u?.rpm || 0) / 60) * Math.PI * 2 * dt / 12;
       g.mat.emissiveIntensity = Math.min(0.28, (u?.mw || 0) / 400);
     }
     let sideQ = { '-1': 0, '1': 0 };

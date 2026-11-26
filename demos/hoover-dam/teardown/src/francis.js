@@ -146,7 +146,11 @@ export class FrancisUnit {
     for (const p of this.gates) p.rotation.y = -p.userData.a + Math.PI / 2 - this.gateAngle * 0.95;
     const rpm = unit?.rpm || 0;
     const w = rpm / 60 * Math.PI * 2 / 12; // shown at 1/12 speed
-    this.runner.rotation.y += w * dt; this.rotor.rotation.y += w * dt; this.shaft.rotation.y += w * dt;
+    if (unit && unit.spin != null) {
+      this.runner.rotation.y = unit.spin; this.rotor.rotation.y = unit.spin; this.shaft.rotation.y = unit.spin;
+    } else {
+      this.runner.rotation.y += w * dt; this.rotor.rotation.y += w * dt; this.shaft.rotation.y += w * dt;
+    }
     const on = Math.min(1, (unit?.mw || 0) / 60);
     this.poleMat.color.set(0x8a8f96).lerp(this.accentCol || (this.accentCol = new THREE.Color(ACCENT)), on);
     this.poleMat.emissiveIntensity = on * 0.25;

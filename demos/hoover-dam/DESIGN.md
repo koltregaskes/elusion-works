@@ -123,13 +123,46 @@ switches between them.
   the drum gates, section, reassemble). It plays with a ghost cursor tapping the real
   controls, can be scrubbed on its beat-ticked bar, pauses on any input and restarts
   after 25 s of quiet. Seeking replays every beat up to that time, so a still at `?t=`
-  is exactly that moment of the film.
+  is exactly that moment of the film. Back and next step one beat. Slow motion
+  (1/200, 1/60, 1/12) divides the same clock.
+- **Sequences:** A5 run and Dispatch sit next to the log. One driver, `tau`, is the
+  only thing play, step, scrub and slow motion move. The lake, the gates and the
+  rotor angle are whatever `hydro.js` produces when those same fixed 1/60 s steps
+  are replayed, so scrubbing to a time matches playing to it. The A5 run is a
+  teaching start-up: standstill, roll, on the line, on load, then a flood that
+  climbs through the drum-gate top and a release that falls through the minimum
+  power pool. Spill starts when the lake is above the drum-gate top, and every
+  unit trips below the minimum power pool, so those chart boundaries move when
+  the drum gates or the water balance change. Dispatch is one 24-hour day on the
+  field lab's auto dispatch. The demand curve is a teaching shape (quiet night,
+  afternoon peak), not a Bureau of Reclamation schedule. Click a chart row or a
+  unit bar to follow that machine. The hill chart is the gate slice of
+  `efficiency()` in `hydro.js`, with a live dot; it is not a surveyed Francis
+  map, because that function has no head axis. The tachometer on the gate slider
+  reads shaft rpm. Hands-on gate moves ease at 1.6/s; the log and the sequences
+  stay exact because they set the gate themselves.
+- **Sound** is the field lab's `src/ui/audio.js`: roar from discharge, rush from
+  spill, hum from units online. It stays off until the Sound button (or S).
+- **Embed:** `?layout=embed` (or `figure`) drops the side columns and keeps the
+  log, the chart and the gate. `?seq=a5` or `?seq=day` opens that sequence;
+  `?t=` is then sequence time. Follow tags label the units while a sequence is
+  running. In the embed every unit is tagged; otherwise only the one you follow.
 - **Drafting overlay:** orbit circles, dashed arcs, travelling nodes, a crosshair on the
   subject and a dashed model frame, redrawn from the camera every other frame.
 - **Callouts:** orange dot, elbow leader, two-line mono label; the set changes with the
   isolated assembly.
-- Deep links: `?t=13.5` (film time), `?q=0|1|2`, `?pause`, `?clean`, `?notour`. The same
-  keys work after a hash (`#t=13.5&pause`) for hosts that drop query strings.
+- Deep links: `?t=13.5` (film time, or sequence time when `?seq=` is set), `?q=0|1|2`,
+  `?pause`, `?clean`, `?notour`, `?seq=a5|day`, `?layout=embed`. The same keys work
+  after a hash (`#t=13.5&pause`) for hosts that drop query strings.
+- **Checks:** `node demos/hoover-dam/teardown/tools/sequence.test.mjs` replays the
+  driver and checks the lake, the trip, and that a lowered drum spills sooner.
+  `node demos/hoover-dam/teardown/tools/smoke.mjs` clicks every control at
+  1440×900, 1280×720 and 390×844, on the full page and the embed.
+  `node demos/hoover-dam/teardown/tools/record.mjs --frames 180 --out clip.mp4`
+  writes a 60 fps clip from a virtual clock. The recorder is not part of CI, and no
+  clip is committed. Left for later: a surveyed efficiency map with a head axis
+  (the model has none), and flying the camera to the followed unit. Follow is the
+  chart row, the unit bar, the tag and the hill dot.
 - **Opening shot:** without `?t=`, the model boots in pieces, the camera swings in from high
   and wide while the parts snap together, and the film clock holds at 00:00 until the ghost
   cursor's first tap (about 3 s). Portrait screens back the camera off (up to 2.2x) so the
