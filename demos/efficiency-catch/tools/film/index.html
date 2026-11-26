@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>The Catch Is You</title>
+    <script src="assets/vendor/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "Outfit"; src: url("assets/fonts/outfit-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; font-display: block; }
+      @font-face { font-family: "JetBrains Mono"; src: url("assets/fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2"); font-weight: 100 800; font-display: block; }
+      :root { --ground: #111315; --panel: #1a1d20; --ink: #f4f5f3; --muted: #9aa2a8; --green: #3fe08a; --green-ink: #06210f; --display: "Outfit", sans-serif; --mono: "JetBrains Mono", monospace; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--ground); }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: var(--ground); color: var(--ink); font-family: var(--display); }
+      .clip { position: absolute; inset: 0; }
+      .scene { padding: 120px 140px 150px; }
+      .eyebrow { font: 600 30px/1 var(--mono); letter-spacing: 0.22em; text-transform: uppercase; color: var(--green); }
+      .big { font-weight: 800; letter-spacing: -0.035em; line-height: 0.95; }
+      .green { color: var(--green); }
+      .muted { color: var(--muted); }
+      .abs { position: absolute; }
+      /* comic-book dots, used sparingly */
+      .dots { position: absolute; background-image: radial-gradient(circle at 50% 50%, var(--green) 0 34%, transparent 36%); background-size: 26px 26px; opacity: 0.16; }
+      /* footer: where we are in the film */
+      #foot { position: absolute; left: 140px; right: 140px; bottom: 64px; display: flex; align-items: center; justify-content: space-between; font: 600 28px/1 var(--mono); letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); z-index: 5; }
+      #ticks { display: flex; gap: 12px; }
+      #ticks i { display: block; width: 56px; height: 8px; border-radius: 4px; background: #343a40; }
+      #ticks i b { display: block; width: 100%; height: 100%; border-radius: 4px; background: var(--green); opacity: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="93.6" data-width="1920" data-height="1080" data-fps="30">
+
+      <div id="s1" class="clip" data-composition-id="s1" data-composition-src="compositions/s1.html" data-start="0" data-duration="7.2" data-track-index="0"></div>
+
+      <div id="s2" class="clip" data-composition-id="s2" data-composition-src="compositions/s2.html" data-start="7.2" data-duration="7.2" data-track-index="0"></div>
+
+      <div id="s3" class="clip" data-composition-id="s3" data-composition-src="compositions/s3.html" data-start="14.4" data-duration="12" data-track-index="0"></div>
+
+      <div id="s4" class="clip" data-composition-id="s4" data-composition-src="compositions/s4.html" data-start="26.4" data-duration="12" data-track-index="0"></div>
+
+      <div id="s5" class="clip" data-composition-id="s5" data-composition-src="compositions/s5.html" data-start="38.4" data-duration="12" data-track-index="0"></div>
+
+      <div id="s6" class="clip" data-composition-id="s6" data-composition-src="compositions/s6.html" data-start="50.4" data-duration="21.6" data-track-index="0"></div>
+
+      <div id="s7" class="clip" data-composition-id="s7" data-composition-src="compositions/s7.html" data-start="72" data-duration="21.6" data-track-index="0"></div>
+
+      <div id="foot" class="clip" data-start="0" data-duration="93.6" data-track-index="1" style="top:auto;height:30px">
+        <span>Kol&rsquo;s Korner</span>
+        <span id="ticks"><i><b id="t1"></b></i><i><b id="t2"></b></i><i><b id="t3"></b></i><i><b id="t4"></b></i><i><b id="t5"></b></i><i><b id="t6"></b></i><i><b id="t7"></b></i></span>
+      </div>
+
+      <audio id="bed" data-start="0" data-duration="93.6" data-track-index="2" data-volume="1" src="assets/bed.m4a"></audio>
+    </div>
+
+    <script>
+      // The film is seven scenes, each its own file in compositions/. This root only keeps the footer in step.
+      const tl = gsap.timeline({ paused: true });
+      [0, 7.2, 14.4, 26.4, 38.4, 50.4, 72].forEach((t, i) => tl.fromTo("#t" + (i + 1), { opacity: 0 }, { opacity: 1, duration: 0.3 }, t + 0.1));
+      tl.set({}, {}, 93.6);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>
